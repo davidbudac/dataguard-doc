@@ -1,10 +1,10 @@
 <title>Fast-start failover, second by second</title>
 
 <style>
-/* Token legend: bg page ground · sf surface · sf2 sunken · sf3 track · ln hairline
-   ln2 strong line · ik/ik2/ik3 ink · tl teal (serving) · bl blue (applying)
-   am amber (waiting) · rd red (down) · vi violet (observer decision) · sl slate
-   *f = the matching fill · fc focus · gd grid · sh shadow.
+/* Token legend: bg page ground - sf surface - sf2 sunken - sf3 track - ln hairline
+   ln2 strong line - ik/ik2/ik3 ink - tl teal (serving) - bl blue (applying)
+   am amber (waiting) - rd red (down) - vi violet (observer decision) - sl slate
+   *f = the matching fill - fc focus - gd grid - sh shadow.
    Light is the default. Dark is redefined under the media query, and both are
    redefined again under [data-theme] so the host toggle wins in both directions.
    Components below style themselves only through these tokens. */
@@ -64,6 +64,7 @@ background:var(--bg);color:var(--ik);font-family:var(--sans);font-size:15px;line
 .rail-hd{padding:12px 16px;border-bottom:1px solid var(--ln);background:var(--sf2);display:flex;justify-content:space-between;align-items:baseline;gap:8px;border-radius:3px 3px 0 0}
 .rail-hd button{font-family:var(--mono);font-size:11px;letter-spacing:.04em;color:var(--ik2);background:transparent;border:1px solid var(--ln2);border-radius:2px;padding:2px 8px;cursor:pointer}
 .rail-hd button:hover{color:var(--ik);border-color:var(--ik3)}
+.rail-btns{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
 .ctl{padding:15px 16px;border-bottom:1px solid var(--ln);display:flex;flex-direction:column;gap:8px}
 .ctl:last-child{border-bottom:0}
 .ctl.is-off{opacity:.46}
@@ -177,7 +178,13 @@ td .mono{font-size:12px;color:var(--ik)}
 .foot sup{font-family:var(--mono);color:var(--ik2);margin-right:4px}
 .sr{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
 
-/* svg — timeline and sequence, tokens only */
+/* app view -- the connect descriptor block */
+.tns{background:var(--sf2);border:1px solid var(--ln);border-radius:3px;padding:13px 16px;overflow-x:auto;font-family:var(--mono);font-size:12px;line-height:1.75;color:var(--ik2);white-space:pre}
+.tns .hl{color:var(--vi);font-weight:600}
+.tns .svc{color:var(--tl);font-weight:600}
+.tns .dim{color:var(--ik3)}
+
+/* svg -- timeline and sequence, tokens only */
 .tl-svg text,.sq-svg text{font-family:var(--sans);fill:var(--ik2)}
 .tl-svg .t-mono,.sq-svg .s-mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
 .tl-svg .t-lane{fill:var(--ik);font-size:13px;font-weight:600}
@@ -199,6 +206,7 @@ td .mono{font-size:12px;color:var(--ik)}
 .tl-svg .b-sl{fill:var(--sf3);stroke:var(--ln2)}
 .tl-svg .b-hatch{fill:url(#fsfoHatch);stroke:var(--rd)}
 .tl-svg .b-hatch2{fill:url(#txHatch);stroke:var(--rd)}
+.tl-svg .b-hatch3{fill:url(#apHatch);stroke:var(--rd)}
 .tl-svg .hatch-bg{fill:var(--rdf)}
 .tl-svg .hatch-ln{stroke:var(--rd);stroke-width:2;opacity:.5}
 .tl-svg .f-tl{fill:var(--tl)}
@@ -438,7 +446,7 @@ td .mono{font-size:12px;color:var(--ik)}
       </div>
       <div class="note k-rd">
         <h3>The ping properties override the threshold</h3>
-        <p>From the broker documentation: the <span class="mono">FastStartFailoverThreshold</span> property is ignored when the <span class="mono">ObserverPingRetry</span> and <span class="mono">ObserverPingInterval</span> properties are set. Detection then costs interval times retries, which can be about a second.</p>
+        <p>From the broker documentation: the <span class="mono">FastStartFailoverThreshold</span> property is ignored when the <span class="mono">ObserverPingRetry</span> and <span class="mono">ObserverPingInterval</span> properties are set. Detection then costs interval &times; (retries + 1), about a second at the minimum values.</p>
       </div>
       <div class="note k-rd">
         <h3>An isolated primary runs its own clock</h3>
@@ -485,7 +493,7 @@ td .mono{font-size:12px;color:var(--ik)}
         <line class="s-ar" x1="474" y1="118" x2="168" y2="118" marker-end="url(#sqA)"></line>
         <text class="s-msg" x="320" y="136" text-anchor="middle">ack</text>
         <line class="s-ar-d" x1="166" y1="144" x2="472" y2="144" marker-end="url(#sqA)"></line>
-        <text class="s-msg" x="480" y="162" text-anchor="middle">ship redo — SYNC in MaxAvailability, ASYNC in MaxPerformance</text>
+        <text class="s-msg" x="480" y="162" text-anchor="middle">ship redo &mdash; SYNC in MaxAvailability, ASYNC in MaxPerformance</text>
         <line class="s-ar" x1="166" y1="170" x2="792" y2="170" marker-end="url(#sqA)"></line>
 
         <line class="s-x" x1="148" y1="198" x2="172" y2="222"></line>
@@ -493,17 +501,17 @@ td .mono{font-size:12px;color:var(--ik)}
         <text class="s-msg s-rd" x="186" y="215">primary host crashes</text>
         <rect class="s-dead" x="150" y="228" width="20" height="448"></rect>
 
-        <text class="s-msg s-rd" x="330" y="252" text-anchor="middle">ping — no answer</text>
+        <text class="s-msg s-rd" x="330" y="252" text-anchor="middle">ping &mdash; no answer</text>
         <line class="s-ar-rd" x1="474" y1="260" x2="190" y2="260" marker-end="url(#sqAr)"></line>
 
-        <rect class="s-noteb" x="330" y="278" width="300" height="52" rx="2"></rect>
-        <text class="s-note" x="344" y="298">detection = <tspan class="s-mono">ObserverPingInterval</tspan> ×</text>
-        <text class="s-note" x="344" y="316"><tspan class="s-mono">ObserverPingRetry</tspan>; threshold clock starts</text>
+        <rect class="s-noteb" x="330" y="278" width="320" height="52" rx="2"></rect>
+        <text class="s-note" x="344" y="298">detection = <tspan class="s-mono">ObserverPingInterval</tspan> &times;</text>
+        <text class="s-note" x="344" y="316">(<tspan class="s-mono">ObserverPingRetry</tspan> + 1); threshold clock starts</text>
 
         <text class="s-msg" x="640" y="356" text-anchor="middle">lost contact too? synchronized, or</text>
-        <text class="s-msg" x="640" y="370" text-anchor="middle">apply lag ≤ <tspan class="s-mono">FastStartFailoverLagLimit</tspan>?</text>
+        <text class="s-msg" x="640" y="370" text-anchor="middle">apply lag &le; <tspan class="s-mono">FastStartFailoverLagLimit</tspan>?</text>
         <line class="s-ar" x1="488" y1="378" x2="792" y2="378" marker-end="url(#sqA)"></line>
-        <text class="s-msg" x="640" y="400" text-anchor="middle">ready — no contact with the primary either</text>
+        <text class="s-msg" x="640" y="400" text-anchor="middle">ready &mdash; no contact with the primary either</text>
         <line class="s-ar-d" x1="792" y1="408" x2="488" y2="408" marker-end="url(#sqA)"></line>
 
         <rect class="s-noteb" x="344" y="426" width="272" height="32" rx="2"></rect>
@@ -519,10 +527,10 @@ td .mono{font-size:12px;color:var(--ik)}
         <text class="s-note" x="678" y="596"><tspan class="s-mono">3</tspan>  opens read-write</text>
         <text class="s-small" x="678" y="612">service restored</text>
 
-        <text class="s-msg s-tl" x="600" y="646" text-anchor="middle">failover complete — new primary open</text>
+        <text class="s-msg s-tl" x="600" y="646" text-anchor="middle">failover complete &mdash; new primary open</text>
         <line class="s-ar-tl" x1="656" y1="654" x2="488" y2="654" marker-end="url(#sqAt)"></line>
 
-        <text class="s-small" x="20" y="694"><tspan class="s-mono">FastStartFailoverAutoReinstate = TRUE</tspan> — the old primary is reinstated as a standby via Flashback Database when it returns. Reinstate is out of scope here.</text>
+        <text class="s-small" x="20" y="694"><tspan class="s-mono">FastStartFailoverAutoReinstate = TRUE</tspan> &mdash; the old primary is reinstated as a standby via Flashback Database when it returns. Reinstate is out of scope here.</text>
       </svg>
     </div>
   </section>
@@ -530,13 +538,13 @@ td .mono{font-size:12px;color:var(--ik)}
   <section class="sec">
     <div class="sec-hd">
       <p class="eyebrow">Transport layer</p>
-      <h2>Where NET_TIMEOUT fits — and where it doesn't</h2>
+      <h2>Where NET_TIMEOUT fits &mdash; and where it doesn't</h2>
     </div>
-    <p class="caption"><span class="mono">NET_TIMEOUT</span> is an attribute of <span class="mono">LOG_ARCHIVE_DEST_n</span> on the primary (broker property <span class="mono">NetTimeout</span>), and it is not a failover clock — it sets how many seconds LGWR blocks waiting for the standby to acknowledge redo shipped synchronously by the <span class="mono">NSSn</span> process, after which an error is logged, the redo transport session is terminated, and the destination is dropped. Neither the observer nor the target standby consults it when deciding to fail over; the observer's clocks run on a separate connection. Both it and <span class="mono">FastStartFailoverThreshold</span> default to 30 seconds, which is exactly why the two get confused — so both panels below span the same window, and the brace under each shows which clock is really running.</p>
+    <p class="caption"><span class="mono">NET_TIMEOUT</span> is an attribute of <span class="mono">LOG_ARCHIVE_DEST_n</span> on the primary (broker property <span class="mono">NetTimeout</span>), and it is not a failover clock &mdash; it sets how many seconds LGWR blocks waiting for the standby to acknowledge redo shipped synchronously by the <span class="mono">NSSn</span> process, after which an error is logged, the redo transport session is terminated, and the destination is dropped. Neither the observer nor the target standby consults it when deciding to fail over; the observer's clocks run on a separate connection. Both it and <span class="mono">FastStartFailoverThreshold</span> default to 30 seconds, which is exactly why the two get confused &mdash; so both panels below span the same window, and the brace under each shows which clock is really running. Panel B additionally shortens <span class="mono">NET_TIMEOUT</span> to 10 s &mdash; shorter than the threshold, the exact configuration that looks like it should lose data &mdash; to show why it doesn't.</p>
 
     <div class="sq-wrap">
-      <svg class="tl-svg tx-svg" viewBox="0 0 960 412" role="img"
-           aria-label="Two mini-timelines from the primary's point of view, both spanning the same thirty seconds. Panel A: the standby link fails while the observer is still reachable in MaxAvailability; LGWR blocks for NET_TIMEOUT, then the destination is dropped and the primary carries on open but unsynchronized, so no failover happens. Panel B: the primary is fully isolated; it stalls instead, and FastStartFailoverThreshold rather than NET_TIMEOUT decides the outcome.">
+      <svg class="tl-svg tx-svg" viewBox="0 0 960 484" role="img"
+           aria-label="Two mini-timelines from the primary's point of view, both spanning the same thirty seconds. Panel A: the standby link fails while the observer is still reachable in MaxAvailability; LGWR blocks for NET_TIMEOUT, then the destination is dropped and the primary carries on open but unsynchronized, so no failover happens. Panel B: the primary is fully isolated and NET_TIMEOUT is deliberately shortened to ten seconds; in-flight commits wait on the acknowledgement until NET_TIMEOUT expires, but the primary is not allowed to continue without reaching the observer or the target standby, so it stalls, and FastStartFailoverThreshold decides the outcome. No acknowledged commit is lost.">
         <defs>
           <pattern id="txHatch" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
             <rect width="8" height="8" class="hatch-bg"></rect>
@@ -544,10 +552,10 @@ td .mono{font-size:12px;color:var(--ik)}
           </pattern>
         </defs>
 
-        <!-- Panel A — standby link fails, observer still reachable. Scale: x = 246 + 16t, so 0 s = 246 and 30 s = 726 -->
-        <text class="t-top" x="40" y="18">A — Standby link fails, observer still reachable · MaxAvailability (SYNC)</text>
+        <!-- Panel A &mdash; standby link fails, observer still reachable. Scale: x = 246 + 16t, so 0 s = 246 and 30 s = 726 -->
+        <text class="t-top" x="40" y="18">A &mdash; Standby link fails, observer still reachable &middot; MaxAvailability (SYNC)</text>
         <text class="t-mark f-rd" x="254" y="44">Standby stops acknowledging</text>
-        <text class="t-mark f-rd" x="718" y="44" text-anchor="end">Error logged — transport session terminated</text>
+        <text class="t-mark f-rd" x="718" y="44" text-anchor="end">Error logged &mdash; transport session terminated</text>
         <line class="gridline" stroke-dasharray="4 4" x1="246" y1="50" x2="246" y2="128"></line>
         <line class="gridline" stroke-dasharray="4 4" x1="726" y1="50" x2="726" y2="128"></line>
         <line class="m-rd" stroke-width="2" x1="246" y1="46" x2="246" y2="54"></line>
@@ -557,38 +565,216 @@ td .mono{font-size:12px;color:var(--ik)}
         <rect class="bar b-tl" x="150" y="54" width="96" height="42"></rect>
         <text class="t-bar f-tl" x="198" y="80" text-anchor="middle">Committing</text>
         <rect class="bar b-am" x="246" y="54" width="480" height="42"></rect>
-        <text class="t-bar f-am" x="486" y="80" text-anchor="middle">LGWR blocks — committing sessions wait on the SYNC acknowledgement</text>
+        <text class="t-bar f-am" x="486" y="80" text-anchor="middle">LGWR blocks &mdash; committing sessions wait on the SYNC acknowledgement</text>
         <rect class="bar b-tl" x="726" y="54" width="192" height="42"></rect>
         <text class="t-bar f-tl" x="822" y="80" text-anchor="middle">Open, UNSYNCHRONIZED</text>
         <path class="brace br-am" d="M246,114 q0,5 5,5 H481 q5,0 5,5 q0,-5 5,-5 H721 q5,0 5,-5"></path>
         <text class="t-brace-n t-mono" x="486" y="140" text-anchor="middle">NET_TIMEOUT</text>
-        <text class="t-brace-v t-mono" x="486" y="155" text-anchor="middle">30 s default · minimum 1 s · Oracle recommends at least 8–10 s</text>
-        <text class="t-bar f-sl" x="40" y="178">Primary stays open and nothing fails over — but it is now <tspan class="t-mono">UNSYNCHRONIZED</tspan>, so fast-start failover is impossible until the standby resynchronizes.</text>
+        <text class="t-brace-v t-mono" x="486" y="155" text-anchor="middle">30 s default &middot; minimum 1 s &middot; Oracle recommends at least 8&ndash;10 s</text>
+        <text class="t-bar f-sl" x="40" y="178">Primary stays open and nothing fails over &mdash; but it is now <tspan class="t-mono">UNSYNCHRONIZED</tspan>, so fast-start failover is impossible until the standby resynchronizes.</text>
 
         <line class="ax" x1="40" y1="198" x2="920" y2="198"></line>
 
-        <!-- Panel B — primary fully isolated: the simulator's isolated scenario, same 0 to 30 s span -->
-        <text class="t-top" x="40" y="224">B — Primary fully isolated from observer and standby · the simulator's isolated scenario</text>
+        <!-- Panel B &mdash; primary fully isolated, NET_TIMEOUT deliberately 10 s (< threshold). Scale: x = 246 + 16t, so 10 s = 406 and 30 s = 726 -->
+        <text class="t-top" x="40" y="224">B &mdash; Primary fully isolated from observer and standby &middot; NET_TIMEOUT shortened to 10 s to pull the clocks apart</text>
         <text class="t-mark f-rd" x="254" y="248">Primary loses observer and standby</text>
         <text class="t-mark f-rd" x="718" y="248" text-anchor="end">Outcome decided</text>
-        <line class="gridline" stroke-dasharray="4 4" x1="246" y1="254" x2="246" y2="348"></line>
-        <line class="gridline" stroke-dasharray="4 4" x1="726" y1="254" x2="726" y2="348"></line>
+        <line class="gridline" stroke-dasharray="4 4" x1="246" y1="254" x2="246" y2="383"></line>
+        <line class="gridline" stroke-dasharray="4 4" x1="726" y1="254" x2="726" y2="383"></line>
         <line class="m-rd" stroke-width="2" x1="246" y1="250" x2="246" y2="258"></line>
         <line class="m-rd" stroke-width="2" x1="726" y1="250" x2="726" y2="258"></line>
         <text class="t-lane" x="136" y="276" text-anchor="end">Primary</text>
         <text class="t-sub" x="136" y="290" text-anchor="end">isolated</text>
         <rect class="bar b-tl" x="150" y="258" width="96" height="42"></rect>
         <text class="t-bar f-tl" x="198" y="284" text-anchor="middle">Committing</text>
-        <rect class="bar b-hatch2" x="246" y="258" width="672" height="42"></rect>
-        <text class="t-bar f-rd" x="582" y="284" text-anchor="middle">STALLED — the stall overrides drop-and-continue</text>
-        <text class="t-bar f-am" x="254" y="318">In-flight commits still hang first — NET_TIMEOUT shapes only these seconds</text>
-        <path class="brace br-rd" d="M246,334 q0,5 5,5 H481 q5,0 5,5 q0,-5 5,-5 H721 q5,0 5,-5"></path>
-        <text class="t-brace-n t-mono" x="486" y="360" text-anchor="middle">FastStartFailoverThreshold</text>
-        <text class="t-brace-v t-mono" x="486" y="375" text-anchor="middle">30 s default — the clock that actually decides the outcome</text>
-        <text class="t-bar f-sl" x="40" y="398">The primary must assume a failover may already have happened, so it stalls — and <tspan class="t-mono">FastStartFailoverThreshold</tspan> decides what happens next.</text>
+        <rect class="bar b-am" x="246" y="258" width="160" height="42"></rect>
+        <text class="t-bar f-am" x="326" y="284" text-anchor="middle">Commits wait on ack</text>
+        <rect class="bar b-hatch2" x="406" y="258" width="512" height="42"></rect>
+        <text class="t-bar f-rd" x="662" y="284" text-anchor="middle">STALLED &mdash; not allowed to continue alone</text>
+        <path class="brace br-am" d="M246,314 q0,5 5,5 H321 q5,0 5,5 q0,-5 5,-5 H401 q5,0 5,-5"></path>
+        <text class="t-brace-n t-mono" x="326" y="340" text-anchor="middle">NET_TIMEOUT</text>
+        <text class="t-brace-v t-mono" x="326" y="355" text-anchor="middle">10 s here &mdash; moves only the STALLED boundary, never the outcome</text>
+        <path class="brace br-rd" d="M246,369 q0,5 5,5 H481 q5,0 5,5 q0,-5 5,-5 H721 q5,0 5,-5"></path>
+        <text class="t-brace-n t-mono" x="486" y="395" text-anchor="middle">FastStartFailoverThreshold</text>
+        <text class="t-brace-v t-mono" x="486" y="410" text-anchor="middle">30 s &mdash; the clock that actually decides the outcome</text>
+        <text class="t-bar f-am" x="40" y="432">At NET_TIMEOUT the transport gives up and would normally drop the destination and carry on alone &mdash;</text>
+        <text class="t-bar f-am" x="40" y="447">but with fast-start failover enabled that needs an OK from the observer or the target standby. Nobody answers, so the stall holds.</text>
+        <text class="t-bar f-sl" x="40" y="469">No acknowledged commit is lost: everything acknowledged before t = 0 is already on the standby, and nothing after t = 0 is acknowledged at all.</text>
       </svg>
     </div>
+
+    <div class="notes">
+      <div class="note k-am">
+        <h3>&ldquo;NET_TIMEOUT 10 s, threshold 30 s &mdash; do I lose 20 s of redo?&rdquo;</h3>
+        <p>No. The worry assumes the primary starts committing alone at second 10 and the failover at second 30 discards those commits. But <span class="mono">NET_TIMEOUT</span> expiring only brings the primary to a decision point; whether it may actually continue without its standby is a separate check &mdash; and an isolated primary fails it.</p>
+      </div>
+      <div class="note k-vi">
+        <h3>Continuing alone requires a witness</h3>
+        <p>With fast-start failover enabled, a MaxAvailability primary may drop to <span class="mono">UNSYNCHRONIZED</span> and keep committing only while it can still reach the observer or the target standby. In panel A the observer is reachable, so the primary carries on &mdash; and fast-start failover is simply disarmed until the standby resynchronizes. In panel B there is nobody to ask, so redo generation stalls: <span class="mono">V$DATABASE.FS_FAILOVER_STATUS</span> goes to <span class="mono">STALLED</span>.</p>
+      </div>
+      <div class="note k-tl">
+        <h3>Why the failover still loses nothing</h3>
+        <p>Under SYNC a commit is not acknowledged until the standby holds its redo. Every transaction any client ever saw succeed is therefore already on the standby when it opens as the new primary. Commits issued during the stall never return &mdash; those sessions hang until the old primary aborts and get errors, not silent loss. A shorter <span class="mono">NET_TIMEOUT</span> only moves the moment the hanging starts.</p>
+      </div>
+    </div>
+
     <p class="caption">In MaxPerformance (ASYNC) commits never wait for the standby, so <span class="mono">NET_TIMEOUT</span> never touches user sessions and never appears on the failover timeline; eligibility and data loss are bounded by <span class="mono">FastStartFailoverLagLimit</span> instead.</p>
+  </section>
+
+  <section class="sec" id="appview">
+    <div class="sec-hd">
+      <p class="eyebrow">The application's view</p>
+      <h2>What the application sees, with both databases in one connect string</h2>
+    </div>
+    <p class="caption">One application, one connect descriptor listing both hosts, one role-based service &mdash; <span class="mono">app_svc</span> runs only where the database is currently primary, so the standby's listener refuses instantly with <span class="mono">ORA-12514</span>. The scenario, protection mode, and broker clocks are inherited from the workbench above; this panel replays the same failure as seen from the application's connection pool. The worst-case client is modelled: a request that arrives at t&nbsp;=&nbsp;0 and starts dialing immediately.</p>
+
+    <div class="workbench">
+
+      <aside class="rail" aria-label="Connect string parameters">
+        <div class="rail-hd">
+          <span class="eyebrow">Connect string</span>
+          <span class="rail-btns">
+            <button type="button" id="ap-defaults">Defaults</button>
+            <button type="button" id="ap-tuned">Tuned</button>
+          </span>
+        </div>
+
+        <div class="ctl">
+          <div class="ctl-hd">
+            <label class="ctl-name" for="ap-tct">TRANSPORT_CONNECT_TIMEOUT</label>
+            <output class="ctl-val" id="ap-v-tct" for="ap-tct">60 s</output>
+          </div>
+          <input type="range" id="ap-tct" min="1" max="60" step="1" value="60" aria-describedby="ap-n-tct">
+          <div class="ctl-scale"><span>1 s</span><span>60 s</span></div>
+          <p class="ctl-note" id="ap-n-tct">TCP connect budget per ADDRESS. Default 60 s &mdash; the clock that runs, in full, on every visit to a silently unreachable host.</p>
+        </div>
+
+        <div class="ctl">
+          <div class="ctl-hd">
+            <label class="ctl-name" for="ap-ct">CONNECT_TIMEOUT</label>
+            <output class="ctl-val" id="ap-v-ct" for="ap-ct">not set</output>
+          </div>
+          <input type="range" id="ap-ct" min="0" max="120" step="1" value="0" aria-describedby="ap-n-ct">
+          <div class="ctl-scale"><span>not set</span><span>120 s</span></div>
+          <p class="ctl-note" id="ap-n-ct">Caps one complete attempt to one ADDRESS &mdash; transport plus listener handshake. Not set by default; the HA guide&rsquo;s example uses 90 s.</p>
+        </div>
+
+        <div class="ctl">
+          <div class="ctl-hd">
+            <label class="ctl-name" for="ap-rc">RETRY_COUNT</label>
+            <output class="ctl-val" id="ap-v-rc" for="ap-rc">0</output>
+          </div>
+          <input type="range" id="ap-rc" min="0" max="100" step="1" value="0" aria-describedby="ap-n-rc">
+          <div class="ctl-scale"><span>0</span><span>100</span></div>
+          <p class="ctl-note" id="ap-n-rc">Extra traversals of the whole address list after the first one fails. Default 0 &mdash; one pass, then the error goes to the application.</p>
+        </div>
+
+        <div class="ctl">
+          <div class="ctl-hd">
+            <label class="ctl-name" for="ap-rd">RETRY_DELAY</label>
+            <output class="ctl-val" id="ap-v-rd" for="ap-rd">0 s</output>
+          </div>
+          <input type="range" id="ap-rd" min="0" max="30" step="1" value="0" aria-describedby="ap-n-rd">
+          <div class="ctl-scale"><span>0 s</span><span>30 s</span></div>
+          <p class="ctl-note" id="ap-n-rd">Seconds between traversals. Unset retries immediately; Oracle&rsquo;s guidance is short delays &times; many retries.</p>
+        </div>
+
+        <div class="ctl" id="ap-ctl-dead">
+          <fieldset class="seg">
+            <legend class="ctl-name is-prose">Dead address answers how?</legend>
+            <div class="seg-row">
+              <input type="radio" name="ap-dead" id="ap-drop" value="drop" checked>
+              <label for="ap-drop">Silence (host gone)</label>
+              <input type="radio" name="ap-dead" id="ap-rst" value="rst">
+              <label for="ap-rst">Refused (host up)</label>
+            </div>
+          </fieldset>
+          <p class="ctl-note" id="ap-n-dead">Host unreachable &mdash; SYN packets vanish; each visit to address 1 waits out the transport timeout.</p>
+        </div>
+      </aside>
+
+      <section class="stage">
+        <div class="stage-hd">
+          <h2>Timeline &mdash; the same failover, as the application experiences it</h2>
+          <span class="eyebrow" id="ap-eyebrow">t = 0 is the failure event</span>
+        </div>
+
+        <div class="tns" id="ap-tns"></div>
+
+        <div class="banner" id="ap-banner" hidden>
+          <span class="banner-k">ORA-12514</span>
+          <p class="banner-b" id="ap-banner-body"></p>
+        </div>
+
+        <div class="tl-wrap" id="ap-wrap"></div>
+        <p class="sr" id="ap-summary" aria-live="polite"></p>
+
+        <div class="legend">
+          <span><i class="lg-tl"></i>Connected / service published</span>
+          <span><i class="lg-am"></i>Waiting on a timeout or retrying</span>
+          <span><i class="lg-rd"></i>Dead address or refusal</span>
+          <span><i class="lg-vi"></i>Application reconnects</span>
+          <span><i class="lg-sl"></i>Idle</span>
+        </div>
+
+        <p class="caption" id="ap-caption"></p>
+      </section>
+    </div>
+
+    <div class="readout">
+      <p class="eyebrow">App readout</p>
+      <div class="chips" id="ap-chips"></div>
+    </div>
+
+    <div class="notes" style="margin-top:38px">
+      <div class="note k-vi">
+        <h3>The service name is the switch</h3>
+        <p>A role-based service exists only where the database currently runs as primary (<span class="mono">srvctl add service -role PRIMARY</span>, or a startup trigger checking <span class="mono">DATABASE_ROLE</span>). The standby&rsquo;s listener is up and answers immediately &mdash; with <span class="mono">ORA-12514</span>, because nothing publishes <span class="mono">app_svc</span> there. That instant refusal is what makes a two-address string safe: the wrong database can never accept the connection.</p>
+      </div>
+      <div class="note k-am">
+        <h3>The dead address is a toll booth</h3>
+        <p>With <span class="mono">LOAD_BALANCE</span> off the client walks the list in order, so every traversal first pays <span class="mono">min(TRANSPORT_CONNECT_TIMEOUT, CONNECT_TIMEOUT)</span> waiting on the unreachable host &mdash; including every fresh connection <em>after</em> the failover, until the old primary is reinstated or the string reordered. <span class="mono">LOAD_BALANCE = ON</span> randomizes the order and halves the expected toll.</p>
+      </div>
+      <div class="note k-rd">
+        <h3>The default string retries exactly never</h3>
+        <p><span class="mono">RETRY_COUNT</span> defaults to 0: one traversal, then the error goes straight to the application. The budget must cover the whole outage: (<span class="mono">RETRY_COUNT</span> + 1) &times; traversal + <span class="mono">RETRY_COUNT</span> &times; <span class="mono">RETRY_DELAY</span> has to reach past the new primary&rsquo;s open, with room to spare.</p>
+      </div>
+      <div class="note k-tl">
+        <h3>Short delays, many retries</h3>
+        <p>Oracle&rsquo;s HA guidance: a generous <span class="mono">CONNECT_TIMEOUT</span> (90 s in the documented example), a transport timeout around a second, and a short <span class="mono">RETRY_DELAY</span> with a high <span class="mono">RETRY_COUNT</span>, so that one of the traversals lands just after the service is republished. Its switchover sizing example budgets 100 &times; 3 s.</p>
+      </div>
+      <div class="note k-bl">
+        <h3>These parameters govern only the dial tone</h3>
+        <p>Nothing here touches sessions that were already connected. They die by TCP rules &mdash; instant resets from a reachable host, long hangs across a partition &mdash; unless keepalives, <span class="mono">SQLNET.RECV_TIMEOUT</span>, or FAN break them faster; TAF or Application Continuity is what resumes their work afterwards. This panel models the pool&rsquo;s <em>new</em> connections only.</p>
+      </div>
+      <div class="note k-rd">
+        <h3>When no failover is coming</h3>
+        <p>If the readiness check above refuses the failover, the service is never republished; every traversal ends in <span class="mono">ORA-12514</span>, the string exhausts its budget, and the application stays down until a human intervenes. Retry parameters buy time, not availability.</p>
+      </div>
+    </div>
+
+    <div class="tbl-wrap" style="margin-top:24px">
+      <table>
+        <thead>
+          <tr><th scope="col">Parameter</th><th scope="col">Placed at</th><th scope="col">Default</th><th scope="col">What it governs</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><span class="mono">TRANSPORT_CONNECT_TIMEOUT</span></td><td>DESCRIPTION</td><td class="n">60 s</td>
+            <td>Establishing the TCP connection to one ADDRESS. The clock that runs while a host is silently unreachable.</td></tr>
+          <tr><td><span class="mono">CONNECT_TIMEOUT</span></td><td>DESCRIPTION</td><td class="n">not set</td>
+            <td>One complete connection attempt to one ADDRESS &mdash; transport plus listener handshake. Applied per address.</td></tr>
+          <tr><td><span class="mono">RETRY_COUNT</span></td><td>DESCRIPTION</td><td class="n">0</td>
+            <td>Additional traversals of the full address list after the first attempt fails across all of it.</td></tr>
+          <tr><td><span class="mono">RETRY_DELAY</span></td><td>DESCRIPTION</td><td class="n">not set</td>
+            <td>Seconds between traversals. Unset means the next traversal starts immediately.</td></tr>
+          <tr><td><span class="mono">FAILOVER</span></td><td>ADDRESS_LIST / DESCRIPTION</td><td class="n">on</td>
+            <td>Connect-time failover: try the next address when one fails. Already the default &mdash; spelled out in the string above for clarity.</td></tr>
+          <tr><td><span class="mono">LOAD_BALANCE</span></td><td>ADDRESS_LIST</td><td class="n">off</td>
+            <td>Randomize address order instead of walking the list top-down. Default on only under a DESCRIPTION_LIST.</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="caption">Defaults per the Oracle 19c Net Services Reference (connect-descriptor timeout parameters); tuning guidance per the 19c High Availability Overview, &ldquo;Oracle Net TNS String Parameters.&rdquo;</p>
   </section>
 
   <section class="sec">
@@ -610,9 +796,9 @@ td .mono{font-size:12px;color:var(--ik)}
             <td>Number of times the observer retries a failed ping before initiating failover. A ping counts as failed when there is no answer within <span class="mono">ObserverPingInterval</span>.</td></tr>
           <tr><td><span class="mono">FastStartFailoverLagLimit</span></td><td class="n">30 s</td><td class="n">5 s</td>
             <td>MaxPerformance only. Maximum seconds the standby's apply point may lag the primary's redo generation point for fast-start failover to be permitted. Bounds the data loss.</td></tr>
-          <tr><td><span class="mono">FastStartFailoverPmyShutdown</span></td><td class="n">TRUE</td><td class="n">—</td>
+          <tr><td><span class="mono">FastStartFailoverPmyShutdown</span></td><td class="n">TRUE</td><td class="n">&mdash;</td>
             <td>When TRUE, a primary whose <span class="mono">V$DATABASE.FS_FAILOVER_STATUS</span> has been <span class="mono">STALLED</span> for longer than <span class="mono">FastStartFailoverThreshold</span> seconds, and that cannot reach the observer or the target standby, shuts itself down with an abort.</td></tr>
-          <tr><td><span class="mono">FastStartFailoverAutoReinstate</span></td><td class="n">TRUE</td><td class="n">—</td>
+          <tr><td><span class="mono">FastStartFailoverAutoReinstate</span></td><td class="n">TRUE</td><td class="n">&mdash;</td>
             <td>The old primary is automatically reinstated as a standby when it returns.</td></tr>
         </tbody>
       </table>
@@ -623,6 +809,7 @@ td .mono{font-size:12px;color:var(--ik)}
   <div class="foot">
     <p><sup>1</sup>The threshold is skipped entirely for user-configurable health conditions and for application-initiated failover through <span class="mono">DBMS_DG.INITIATE_FS_FAILOVER</span>. Neither is drawn on the timeline.</p>
     <p><sup>2</sup>Apply-time figures on this page are illustrative. Terminal recovery is modelled one-to-one against the apply lag at failure time so the relationship is visible; real duration depends on the redo volume left to apply and on the environment.</p>
+    <p><sup>3</sup>Client-side constants in the application view are nominal: an <span class="mono">ORA-12514</span> refusal is drawn as 0.2 s, an OS-level connection refusal as 0.15 s, and session establishment as 0.3 s; real values are network-dependent but small. The role-based service is assumed registered the instant the new primary opens &mdash; LREG typically takes a moment longer.</p>
   </div>
 </div>
 
@@ -631,7 +818,7 @@ td .mono{font-size:12px;color:var(--ik)}
   "use strict";
 
   /* ---------------------------------------------------------
-     MODEL — one pure function. Everything rendered below reads
+     MODEL -- one pure function. Everything rendered below reads
      only from what this returns.
      --------------------------------------------------------- */
   /* MODEL:START */
@@ -691,14 +878,73 @@ td .mono{font-size:12px;color:var(--ik)}
   }
   /* MODEL:END */
 
+  /* APPMODEL:START */
+  /**
+   * computeApp(a, m, scenario) -> what the two-address connect string does.
+   * a = { tct:s, ct:s (0 = not set), rc:n, rd:s, dead:'drop'|'rst' }
+   * m = computeFsfo(C). One worst-case connection request starts dialing at
+   * t = 0 and runs the string's full retry ladder.
+   */
+  function computeApp(a, m, scenario) {
+    var REFUSE = 0.2, ESTAB = 0.3, RST = 0.15;    // nominal, see footnote 3
+
+    // A partition drops packets, so no refusal ever comes back from address 1.
+    var drop = scenario === 'isolated' || a.dead === 'drop';
+    var cap = a.ct > 0 ? a.ct : Infinity;
+    var d1 = drop ? Math.min(a.tct, cap) : Math.min(RST, cap);
+
+    // The role-based service reappears when the new primary opens read-write.
+    var tService = m.blocked ? null : m.tOpen;
+
+    var attempts = [], tConn = null, gaveUp = null, S = 0;
+    for (var k = 0; k <= a.rc; k++) {
+      var a1End = S + d1;                          // address 1: always dead
+      if (tService !== null && a1End >= tService) {
+        tConn = a1End + ESTAB;                     // address 2 now accepts
+        attempts.push({ start: S, a1End: a1End, end: tConn, ok: true });
+        break;
+      }
+      var a2End = a1End + REFUSE;                  // address 2: ORA-12514
+      attempts.push({ start: S, a1End: a1End, end: a2End, ok: false });
+      if (k === a.rc) { gaveUp = a2End; break; }
+      S = a2End + a.rd;
+    }
+
+    var passCost = d1 + REFUSE;
+    var worst = (a.rc + 1) * passCost + a.rc * a.rd;
+    var retryCost = d1 + ESTAB;                    // an attempt started after tService
+    var end = tConn !== null ? tConn : gaveUp;
+
+    // Horizon: show the story, but never let a huge retry budget blow up the
+    // axis. Anything past the cap is clipped and annotated instead.
+    var capT = Math.max(160, (tService || 0) + 100);
+    var need = Math.max(Math.min(end, capT), m.initiate, tService || 0);
+    var raw = need * 1.12 + Math.max(2, need * 0.06);
+    var tickStep = pickTickStep(raw);
+    var horizon = Math.max(tickStep, Math.ceil(raw / tickStep) * tickStep);
+    var preRoll = Math.max(2, Math.min(10, Math.round(horizon * 0.2)));
+    var clipped = end > horizon;
+
+    return { d1: d1, drop: drop, refuse: REFUSE, estab: ESTAB, passCost: passCost,
+      tService: tService, attempts: attempts, tConn: tConn, gaveUp: gaveUp,
+      worst: worst, retryCost: retryCost, clipped: clipped,
+      horizon: horizon, preRoll: preRoll, tickStep: tickStep };
+  }
+  /* APPMODEL:END */
+
   /* ---------- helpers ---------- */
   function fmt(n) {
-    if (!isFinite(n)) return '—';
+    if (!isFinite(n)) return '\u2014';
     var r = Math.round(n * 100) / 100;
     if (Math.abs(r - Math.round(r)) < 1e-9) return String(Math.round(r));
     return (Math.round(n * 10) / 10 === r) ? r.toFixed(1) : r.toFixed(2);
   }
-  function sign(n) { return fmt(n).replace(/^-/, '−'); }
+  function sign(n) { return fmt(n).replace(/^-/, '\u2212'); }
+  function fmtClock(n) {
+    if (n < 100) return fmt(n) + ' s';
+    var mnt = Math.floor(n / 60), sec = Math.round(n % 60);
+    return fmt(n) + ' s (' + mnt + ' min' + (sec ? ' ' + sec + ' s' : '') + ')';
+  }
   function esc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
   function approxW(s, size, mono) { return String(s).length * size * (mono ? 0.60 : 0.53); }
   function r1(n) { return Math.round(n * 10) / 10; }
@@ -724,6 +970,13 @@ td .mono{font-size:12px;color:var(--ik)}
   };
   var C = Object.assign({}, DEFAULTS);
 
+  /* connect-string state -- defaults mirror the parameters' real defaults;
+     "Tuned" applies the HA guide's shape (short transport timeout, generous
+     CONNECT_TIMEOUT, short delays x many retries). */
+  var APP_DEFAULTS = { tct: 60, ct: 0, rc: 0, rd: 0, dead: 'drop' };
+  var APP_TUNED = { tct: 3, ct: 90, rc: 30, rd: 3 };
+  var A = Object.assign({}, APP_DEFAULTS);
+
   var $ = function (id) { return document.getElementById(id); };
   var els = {
     threshold: $('c-threshold'), pingset: $('c-pingset'), pingInterval: $('c-pinginterval'),
@@ -738,12 +991,19 @@ td .mono{font-size:12px;color:var(--ik)}
     nLagLimit: $('n-laglimit'), nShutdown: $('n-shutdown'),
     vThreshold: $('v-threshold'), vPingSet: $('v-pingset'), vPingInterval: $('v-pinginterval'),
     vPingRetry: $('v-pingretry'), vLag: $('v-lag'), vLagLimit: $('v-laglimit'),
-    vRole: $('v-role'), vShutdown: $('v-shutdown')
+    vRole: $('v-role'), vShutdown: $('v-shutdown'),
+    apTct: $('ap-tct'), apCt: $('ap-ct'), apRc: $('ap-rc'), apRd: $('ap-rd'),
+    apVTct: $('ap-v-tct'), apVCt: $('ap-v-ct'), apVRc: $('ap-v-rc'), apVRd: $('ap-v-rd'),
+    apDrop: $('ap-drop'), apRst: $('ap-rst'), apNDead: $('ap-n-dead'),
+    apDefaults: $('ap-defaults'), apTuned: $('ap-tuned'),
+    apTns: $('ap-tns'), apWrap: $('ap-wrap'), apChips: $('ap-chips'),
+    apBanner: $('ap-banner'), apBannerBody: $('ap-banner-body'),
+    apCaption: $('ap-caption'), apEyebrow: $('ap-eyebrow'), apSummary: $('ap-summary')
   };
 
   var TH_NOTE = "Seconds the master observer spends trying to reconnect before it initiates failover. The clock starts the instant the observer first loses the connection. Minimum 6 s.";
-  var TH_IGNORED = 'The <span class="mono">FastStartFailoverThreshold</span> property is ignored when the <span class="mono">ObserverPingRetry</span> and <span class="mono">ObserverPingInterval</span> properties are set. Detection is governed by interval × retries instead.';
-  var TH_IGNORED_ISO = 'Ignored for the observer’s detection while the ping properties are set — but it still governs the primary’s own stall clock below, so it stays adjustable here.';
+  var TH_IGNORED = 'The <span class="mono">FastStartFailoverThreshold</span> property is ignored when the <span class="mono">ObserverPingRetry</span> and <span class="mono">ObserverPingInterval</span> properties are set. Detection is governed by interval \u00d7 (retries + 1) instead.';
+  var TH_IGNORED_ISO = 'Ignored for the observer\u2019s detection while the ping properties are set \u2014 but it still governs the primary\u2019s own stall clock below, so it stays adjustable here.';
 
   /* ---------- timeline geometry (single time -> x scale) ---------- */
   var G = { padL: 138, padR: 30, topY: 16, braceY: 42, markY: 72, laneH: 46, laneTop: 80, braceRow: 50 };
@@ -760,47 +1020,47 @@ td .mono{font-size:12px;color:var(--ik)}
     var iso = C.scenario === 'isolated';
     var s = [], push = function (x) { s.push(x); };
 
-    /* lane segments — labels degrade to a shorter form when the bar is narrow */
+    /* lane segments -- labels degrade to a shorter form when the bar is narrow */
     var lanes = [
       { name: 'Primary', sub: 'production database', segs: [] },
       { name: 'Observer', sub: 'DGMGRL, third host', segs: [] },
       { name: 'Standby', sub: 'failover target', segs: [] }
     ];
 
-    lanes[0].segs.push({ a: t0, b: 0, cls: 'b-tl', lc: 'f-tl', lab: ['Open read-write — shipping redo', 'Shipping redo', 'Open'] });
+    lanes[0].segs.push({ a: t0, b: 0, cls: 'b-tl', lc: 'f-tl', lab: ['Open read-write \u2014 shipping redo', 'Shipping redo', 'Open'] });
     if (iso) {
       if (m.abort !== null) {
-        lanes[0].segs.push({ a: 0, b: m.abort, cls: 'b-hatch', lc: 'f-rd', lab: ['STALLED — redo generation halted', 'STALLED'] });
-        lanes[0].segs.push({ a: m.abort, b: t1, cls: 'b-hatch', lc: 'f-rd', lab: ['Aborted — instance shut itself down', 'Aborted'] });
+        lanes[0].segs.push({ a: 0, b: m.abort, cls: 'b-hatch', lc: 'f-rd', lab: ['STALLED \u2014 redo generation halted', 'STALLED'] });
+        lanes[0].segs.push({ a: m.abort, b: t1, cls: 'b-hatch', lc: 'f-rd', lab: ['Aborted \u2014 instance shut itself down', 'Aborted'] });
       } else {
-        lanes[0].segs.push({ a: 0, b: t1, cls: 'b-hatch', lc: 'f-rd', lab: ['STALLED indefinitely — no redo, no commits', 'STALLED indefinitely', 'STALLED'] });
+        lanes[0].segs.push({ a: 0, b: t1, cls: 'b-hatch', lc: 'f-rd', lab: ['STALLED indefinitely \u2014 no redo, no commits', 'STALLED indefinitely', 'STALLED'] });
       }
     } else {
-      lanes[0].segs.push({ a: 0, b: t1, cls: 'b-hatch', lc: 'f-rd', lab: ['Down — host has crashed', 'Down'] });
+      lanes[0].segs.push({ a: 0, b: t1, cls: 'b-hatch', lc: 'f-rd', lab: ['Down \u2014 host has crashed', 'Down'] });
     }
 
-    lanes[1].segs.push({ a: t0, b: 0, cls: 'b-sl', lc: 'f-sl', lab: ['Pinging primary — connection healthy', 'Pinging primary', 'Pinging'] });
+    lanes[1].segs.push({ a: t0, b: 0, cls: 'b-sl', lc: 'f-sl', lab: ['Pinging primary \u2014 connection healthy', 'Pinging primary', 'Pinging'] });
     lanes[1].segs.push({
       a: 0, b: m.initiate, cls: 'b-am', lc: 'f-am',
-      lab: m.pingSet ? ['Ping retries — no answer', 'Ping retries', 'Retries']
-                     : ['Reconnect attempts — threshold clock running', 'Reconnect attempts', 'Reconnecting']
+      lab: m.pingSet ? ['Ping retries \u2014 no answer', 'Ping retries', 'Retries']
+                     : ['Reconnect attempts \u2014 threshold clock running', 'Reconnect attempts', 'Reconnecting']
     });
     lanes[1].segs.push({
       a: m.initiate, b: t1, cls: 'b-sl', lc: 'f-sl',
-      lab: m.blocked ? ['Failover not permitted — keeps monitoring', 'Failover not permitted', 'Not permitted']
+      lab: m.blocked ? ['Failover not permitted \u2014 keeps monitoring', 'Failover not permitted', 'Not permitted']
                      : ['Monitors the failover, then the new primary', 'Monitors the new primary', 'Monitoring']
     });
 
     lanes[2].segs.push({ a: t0, b: 0, cls: 'b-bl', lc: 'f-bl', lab: ['Applying redo', 'Applying'] });
     lanes[2].segs.push({ a: 0, b: m.initiate, cls: 'b-bl', lc: 'f-bl', lab: ['Keeps applying the redo it received', 'Keeps applying redo', 'Applying'] });
     if (m.blocked) {
-      lanes[2].segs.push({ a: m.initiate, b: t1, cls: 'b-bl', lc: 'f-bl', lab: ['Remains a standby — readiness check failed', 'Remains a standby', 'Standby'] });
+      lanes[2].segs.push({ a: m.initiate, b: t1, cls: 'b-bl', lc: 'f-bl', lab: ['Remains a standby \u2014 readiness check failed', 'Remains a standby', 'Standby'] });
     } else {
       if (m.applyRemaining > 0) {
-        lanes[2].segs.push({ a: m.initiate, b: m.initiate + m.applyRemaining, cls: 'b-am', lc: 'f-am', lab: ['Terminal recovery — applies remaining redo', 'Terminal recovery', 'Recovery'] });
+        lanes[2].segs.push({ a: m.initiate, b: m.initiate + m.applyRemaining, cls: 'b-am', lc: 'f-am', lab: ['Terminal recovery \u2014 applies remaining redo', 'Terminal recovery', 'Recovery'] });
       }
       lanes[2].segs.push({ a: m.initiate + m.applyRemaining, b: m.tOpen, cls: 'b-am', lc: 'f-am', lab: ['Converts to the primary role', 'Role change'] });
-      lanes[2].segs.push({ a: m.tOpen, b: t1, cls: 'b-tl', lc: 'f-tl', lab: ['Open read-write — service restored', 'Open read-write', 'Open'] });
+      lanes[2].segs.push({ a: m.tOpen, b: t1, cls: 'b-tl', lc: 'f-tl', lab: ['Open read-write \u2014 service restored', 'Open read-write', 'Open'] });
     }
 
     /* braces under the axis, tied to the exact interval each parameter governs */
@@ -808,33 +1068,33 @@ td .mono{font-size:12px;color:var(--ik)}
     if (m.pingSet) {
       braces.push({
         a: 0, b: m.detect, tone: 'br-am', mono: true,
-        name: 'ObserverPingInterval × (ObserverPingRetry + 1)',
-        val: fmt(C.pingInterval) + ' ms × ' + (C.pingRetry + 1) + ' = ' + fmt(m.detect) + ' s detection'
+        name: 'ObserverPingInterval \u00d7 (ObserverPingRetry + 1)',
+        val: fmt(C.pingInterval) + ' ms \u00d7 ' + (C.pingRetry + 1) + ' = ' + fmt(m.detect) + ' s detection'
       });
     } else {
       braces.push({
         a: 0, b: m.initiate, tone: 'br-am', mono: true, name: 'FastStartFailoverThreshold',
-        val: fmt(C.threshold) + ' s — observer ' + (iso ? 'clock' : 'reconnect window')
+        val: fmt(C.threshold) + ' s \u2014 observer ' + (iso ? 'clock' : 'reconnect window')
       });
     }
     if (iso && m.abort !== null) {
       braces.push({
         a: 0, b: m.abort, tone: 'br-rd', mono: true, name: 'FastStartFailoverThreshold',
-        val: fmt(C.threshold) + ' s — primary stall clock, runs independently'
+        val: fmt(C.threshold) + ' s \u2014 primary stall clock, runs independently'
       });
     }
     if (!m.blocked) {
       if (m.applyRemaining > 0) {
         braces.push({
           a: m.initiate, b: m.initiate + m.applyRemaining, tone: 'br-bl', mono: false,
-          name: 'Terminal recovery ≈ apply lag at failure time',
-          val: fmt(m.applyRemaining) + ' s — illustrative estimate, not a broker parameter'
+          name: 'Terminal recovery \u2248 apply lag at failure time',
+          val: fmt(m.applyRemaining) + ' s \u2014 illustrative estimate, not a broker parameter'
         });
       }
       braces.push({
         a: m.initiate + m.applyRemaining, b: m.tOpen, tone: 'br-am', mono: false,
         name: 'Role change + read-write open',
-        val: fmt(C.roleTransition) + ' s — environment-dependent, not a broker parameter'
+        val: fmt(C.roleTransition) + ' s \u2014 environment-dependent, not a broker parameter'
       });
     }
 
@@ -898,7 +1158,7 @@ td .mono{font-size:12px;color:var(--ik)}
     var xz = X(0);
     if (iso) {
       push(ln('partition', xz, G.laneTop - 4, xz, G.lanesBottom + 4));
-      push(txt('t-mark f-rd', xz + 8, G.markY, null, 'Network partition — primary cut off from observer and standby'));
+      push(txt('t-mark f-rd', xz + 8, G.markY, null, 'Network partition \u2014 primary cut off from observer and standby'));
     } else {
       var cy = G.lane[0] + G.laneH / 2;
       push(ln('m-rd', xz - 7, cy - 7, xz + 7, cy + 7, ' stroke-width="2.5"'));
@@ -926,7 +1186,7 @@ td .mono{font-size:12px;color:var(--ik)}
                   : txt('t-mark f-rd', xa - 8, gapA + 16, 'end', esc(aCands[2])));
       } else {
         push(txt('t-mark f-rd', plotL + 8, gapA + 16, null,
-          'Stays stalled indefinitely — the stall itself is what prevents a split brain'));
+          'Stays stalled indefinitely \u2014 the stall itself is what prevents a split brain'));
       }
     }
 
@@ -934,8 +1194,8 @@ td .mono{font-size:12px;color:var(--ik)}
     var xi = X(m.initiate), obsTop = G.lane[1], obsBot = obsTop + G.laneH, stbTop = G.lane[2];
     push(ln(m.blocked ? 'm-rd' : 'm-vi', xi, obsTop - 10, xi, obsBot + 4, ' stroke-width="2"'));
     push('<path class="' + (m.blocked ? 'f-rd' : 'f-vi') + '" d="M' + r1(xi) + ',' + (obsTop + 17) + ' l6,6 l-6,6 l-6,-6 z"></path>');
-    var dLab = m.blocked ? (m.pingSet ? 'Detection ends — failover refused at t = ' + fmt(m.initiate) + ' s'
-                                      : 'Threshold expires — failover refused at t = ' + fmt(m.initiate) + ' s')
+    var dLab = m.blocked ? (m.pingSet ? 'Detection ends \u2014 failover refused at t = ' + fmt(m.initiate) + ' s'
+                                      : 'Threshold expires \u2014 failover refused at t = ' + fmt(m.initiate) + ' s')
                          : 'Initiates failover at t = ' + fmt(m.initiate) + ' s';
     var dX = xi + 9, dAnc = null;
     if (dX + approxW(dLab, 11.5) > plotR) { dX = xi - 9; dAnc = 'end'; }
@@ -944,7 +1204,7 @@ td .mono{font-size:12px;color:var(--ik)}
 
     /* readiness exchange between observer and standby */
     var rY = obsBot + 26, ra = xz + 3, rb = xi - 7;
-    var rLab = m.blocked ? 'Standby not ready — apply lag exceeds FastStartFailoverLagLimit'
+    var rLab = m.blocked ? 'Standby not ready \u2014 apply lag exceeds FastStartFailoverLagLimit'
                          : 'Confirms the standby also lost contact and is ready';
     var rCls = m.blocked ? 'f-rd' : 'f-sl';
     if (rb - ra > 34) {
@@ -962,11 +1222,11 @@ td .mono{font-size:12px;color:var(--ik)}
     /* top brace: total outage */
     if (!m.blocked) {
       push(braceUp(xz, X(m.tOpen), G.braceY, 'br-sl'));
-      var tLab = 'Total outage ≈ detection + threshold + failover execution  =  ' + fmt(m.tOpen) + ' s';
+      var tLab = 'Total outage \u2248 ' + (m.pingSet ? 'ping detection' : 'threshold') + ' + failover execution  =  ' + fmt(m.tOpen) + ' s';
       var tw = approxW(tLab, 12);
       push(txt('t-top', Math.min(Math.max((xz + X(m.tOpen)) / 2, tw / 2 + 6), W - tw / 2 - 6), G.topY, 'middle', esc(tLab)));
     } else {
-      push(txt('t-top f-rd', plotL, G.topY, null, 'No automatic failover — the primary stays down and the standby stays a standby'));
+      push(txt('t-top f-rd', plotL, G.topY, null, 'No automatic failover \u2014 the primary stays down and the standby stays a standby'));
     }
 
     /* braces */
@@ -1006,41 +1266,41 @@ td .mono{font-size:12px;color:var(--ik)}
 
   function renderReadout(m) {
     var out = chip('vi', 'Failover initiated at', fmt(m.initiate), 's', m.pingSet
-      ? 'Detection by <span class="mono">ObserverPingInterval</span> × (<span class="mono">ObserverPingRetry</span> + 1)'
+      ? 'Detection by <span class="mono">ObserverPingInterval</span> \u00d7 (<span class="mono">ObserverPingRetry</span> + 1)'
       : 'One <span class="mono">FastStartFailoverThreshold</span> after the observer lost the primary');
 
     out += m.blocked
       ? chip('rd', 'New primary open', 'not permitted', '', 'Readiness check failed, so no failover is attempted')
       : chip('tl', 'New primary open', fmt(m.tOpen), 's',
           fmt(m.initiate) + ' + ' + fmt(m.applyRemaining) + ' + ' + fmt(C.roleTransition) +
-          ' — initiation, terminal recovery, role change');
+          ' \u2014 initiation, terminal recovery, role change');
 
     if (m.dataLossKind === 'none') {
-      out += chip('ik', 'Maximum data loss', '0', '', 'SYNC transport in MaxAvailability — zero data loss');
+      out += chip('ik', 'Maximum data loss', '0', '', 'SYNC transport in MaxAvailability \u2014 zero data loss');
     } else if (m.dataLossKind === 'bounded') {
-      out += chip('am', 'Maximum data loss', '≤ ' + fmt(m.dataLossSeconds), 's of redo',
+      out += chip('am', 'Maximum data loss', '\u2264 ' + fmt(m.dataLossSeconds), 's of redo',
         'ASYNC transport, bounded by <span class="mono">FastStartFailoverLagLimit</span> = ' + fmt(C.lagLimit) + ' s');
     } else {
-      out += chip('rd', 'Maximum data loss', '—', '', 'No failover occurs, so nothing is lost and nothing is recovered');
+      out += chip('rd', 'Maximum data loss', '\u2014', '', 'No failover occurs, so nothing is lost and nothing is recovered');
     }
 
     if (C.scenario === 'isolated') {
       out += m.abort !== null
         ? chip('rd', 'Primary self-abort at', fmt(m.abort), 's',
-            '<span class="mono">FastStartFailoverPmyShutdown = TRUE</span> — stalled for one threshold')
+            '<span class="mono">FastStartFailoverPmyShutdown = TRUE</span> \u2014 stalled for one threshold')
         : chip('rd', 'Primary self-abort at', 'never', '',
-            '<span class="mono">FastStartFailoverPmyShutdown = FALSE</span> — stays stalled indefinitely');
+            '<span class="mono">FastStartFailoverPmyShutdown = FALSE</span> \u2014 stays stalled indefinitely');
     }
     els.chips.innerHTML = out;
   }
 
   function renderProse(m) {
     var iso = C.scenario === 'isolated';
-    els.heading.textContent = iso ? 'Timeline — isolated primary' : 'Timeline — primary crash';
+    els.heading.textContent = iso ? 'Timeline \u2014 isolated primary' : 'Timeline \u2014 primary crash';
 
     els.banner.hidden = !m.blocked;
     if (m.blocked) {
-      els.bannerBody.innerHTML = 'Fast-start failover is not permitted: the standby’s apply lag of <span class="mono">' +
+      els.bannerBody.innerHTML = 'Fast-start failover is not permitted: the standby\u2019s apply lag of <span class="mono">' +
         fmt(C.standbyLag) + ' s</span> exceeds <span class="mono">FastStartFailoverLagLimit = ' + fmt(C.lagLimit) +
         ' s</span>. The observer still detects the loss and still counts the threshold, but the readiness check fails, so the standby stays a standby.';
     }
@@ -1048,7 +1308,7 @@ td .mono{font-size:12px;color:var(--ik)}
     els.callout.hidden = !iso;
     if (iso) {
       els.calloutBody.innerHTML = m.abort !== null
-        ? 'Two independent <span class="mono">FastStartFailoverThreshold</span> clocks are running, one on each side of the partition. The observer’s clock decides when the standby is promoted; the primary’s own stall clock decides when it aborts itself at <span class="mono">' + fmt(m.abort) + ' s</span>. Neither side can see the other, and that is exactly the point — at most one database ends up open.'
+        ? 'Two independent <span class="mono">FastStartFailoverThreshold</span> clocks are running, one on each side of the partition. The observer\u2019s clock decides when the standby is promoted; the primary\u2019s own stall clock decides when it aborts itself at <span class="mono">' + fmt(m.abort) + ' s</span>. Neither side can see the other, and that is exactly the point \u2014 at most one database ends up open.'
         : 'With <span class="mono">FastStartFailoverPmyShutdown = FALSE</span> the isolated primary never aborts. It stays <span class="mono">STALLED</span>, which is what keeps it from committing anything the new primary will not have. The stall is the split-brain protection.';
     }
 
@@ -1057,13 +1317,13 @@ td .mono{font-size:12px;color:var(--ik)}
         ' s</span> the standby fails the readiness check, so nothing is promoted. Lower the apply lag or raise <span class="mono">FastStartFailoverLagLimit</span> to see the failover proceed.'
       : m.pingSet
         ? 'With both ping properties set, the observer stops waiting after <span class="mono">' + fmt(C.pingInterval) +
-          ' ms × ' + (C.pingRetry + 1) + ' = ' + fmt(m.detect) + ' s</span> and initiates immediately. The new primary is open at <span class="mono">' +
-          fmt(m.tOpen) + ' s</span>, and <span class="mono">FastStartFailoverThreshold = ' + fmt(C.threshold) + ' s</span> never enters the observer’s arithmetic.'
+          ' ms \u00d7 ' + (C.pingRetry + 1) + ' = ' + fmt(m.detect) + ' s</span> and initiates immediately. The new primary is open at <span class="mono">' +
+          fmt(m.tOpen) + ' s</span>, and <span class="mono">FastStartFailoverThreshold = ' + fmt(C.threshold) + ' s</span> never enters the observer\u2019s arithmetic.'
         : 'The observer spends <span class="mono">' + fmt(C.threshold) + ' s</span> trying to reconnect, initiates at <span class="mono">' +
           fmt(m.initiate) + ' s</span>, and the standby is open read-write at <span class="mono">' + fmt(m.tOpen) +
           ' s</span>. Most of that is the threshold, which is the one number you actually control.';
 
-    els.eyebrow.textContent = 't = 0 is the failure event · horizon ' + fmt(m.horizon) + ' s';
+    els.eyebrow.textContent = 't = 0 is the failure event \u00b7 horizon ' + fmt(m.horizon) + ' s';
     els.summary.textContent = 'Timeline: failover initiated at ' + fmt(m.initiate) + ' seconds; ' +
       (m.blocked ? 'failover not permitted because the apply lag exceeds FastStartFailoverLagLimit; '
                  : 'new primary open at ' + fmt(m.tOpen) + ' seconds; ') +
@@ -1118,8 +1378,338 @@ td .mono{font-size:12px;color:var(--ik)}
       : 'Isolated-primary scenario only. A crashed host is already down.';
   }
 
+  /* ---------- application view ---------- */
+  function buildAppTimeline(ap, m, W) {
+    var plotL = G.padL, plotR = W - G.padR, plotW = plotR - plotL;
+    var t0 = -ap.preRoll, t1 = ap.horizon;
+    function X(t) { return plotL + (t - t0) / (t1 - t0) * plotW; }
+    var pps = plotW / (t1 - t0);
+    var iso = C.scenario === 'isolated';
+    var s = [], push = function (x) { s.push(x); };
+
+    var att = ap.attempts, lastA = att[att.length - 1];
+    var aggregate = att.length > 1 && ((ap.passCost + A.rd) * pps < 22 || att.length > 48);
+
+    var lanes = [
+      { name: 'Service', sub: 'app_svc · role-based', segs: [] },
+      { name: 'Existing sessions', sub: 'the connection pool', segs: [] },
+      { name: 'New connections', sub: 'the string at work', segs: [] }
+    ];
+
+    /* lane 0 -- where the service is published */
+    lanes[0].segs.push({ a: t0, b: 0, cls: 'b-tl', lc: 'f-tl', lab: ['Published by the old primary’s listener', 'On the old primary', 'Old primary'] });
+    var svcBack = m.blocked ? t1 : m.tOpen;
+    lanes[0].segs.push({
+      a: 0, b: svcBack, cls: 'b-hatch3', lc: 'f-rd',
+      lab: iso ? ['Old primary stalled — unreachable, service dark', 'Unreachable — dark', 'Dark']
+               : ['Nowhere — nothing publishes app_svc', 'Nowhere', '—']
+    });
+    if (!m.blocked) lanes[0].segs.push({ a: m.tOpen, b: t1, cls: 'b-tl', lc: 'f-tl', lab: ['Published by the new primary — started at role change', 'On the new primary', 'New primary'] });
+
+    /* lane 1 -- sessions that were already connected */
+    lanes[1].segs.push({ a: t0, b: 0, cls: 'b-tl', lc: 'f-tl', lab: ['Pooled sessions working on the primary', 'Working', 'OK'] });
+    var poolEnd = ap.tConn !== null ? ap.tConn : t1;
+    if (iso) {
+      lanes[1].segs.push({ a: 0, b: poolEnd, cls: 'b-am', lc: 'f-am', lab: ['In-flight calls hang — a partition returns no errors', 'Calls hang — pool unusable', 'Hanging'] });
+    } else {
+      var bk = Math.min(1.5, poolEnd);
+      lanes[1].segs.push({ a: 0, b: bk, cls: 'b-hatch3', lc: 'f-rd', lab: ['In-flight calls error — ORA-3113', 'Errors'] });
+      lanes[1].segs.push({ a: bk, b: poolEnd, cls: 'b-am', lc: 'f-am', lab: ['Pool empty — requests wait or fail', 'Pool empty', 'Empty'] });
+    }
+    if (ap.tConn !== null) lanes[1].segs.push({ a: ap.tConn, b: t1, cls: 'b-tl', lc: 'f-tl', lab: ['Pool rebuilt on the new primary', 'Pool rebuilt', 'OK'] });
+
+    /* lane 2 -- the retry ladder */
+    lanes[2].segs.push({ a: t0, b: 0, cls: 'b-sl', lc: 'f-sl', lab: ['Any request connects at once', 'Connects at once', '—'] });
+    var ticks = [];
+    if (aggregate) {
+      var failN = ap.tConn !== null ? att.length - 1 : att.length;
+      var failEnd = ap.tConn !== null ? lastA.start : Math.min(ap.gaveUp, t1);
+      if (failN > 0) lanes[2].segs.push({
+        a: 0, b: failEnd, cls: 'b-am', lc: 'f-am',
+        lab: [failN + ' failed traversals — address 1 waits, address 2 refuses (ORA-12514)', failN + ' failed traversals', 'Retrying']
+      });
+      if (ap.tConn !== null) lanes[2].segs.push({ a: lastA.start, b: lastA.a1End, cls: 'b-am', lc: 'f-am', lab: [fmt(ap.d1) + ' s'] });
+    } else {
+      att.forEach(function (at) {
+        lanes[2].segs.push({
+          a: at.start, b: at.a1End, cls: 'b-am', lc: 'f-am',
+          lab: ['Address 1 — dead, ' + fmt(ap.d1) + ' s', fmt(ap.d1) + ' s']
+        });
+        if (!at.ok && at.end < t1) ticks.push(at.end);
+      });
+    }
+    if (ap.tConn !== null) {
+      lanes[2].segs.push({
+        a: ap.tConn, b: t1, cls: 'b-tl', lc: 'f-tl',
+        lab: ap.drop ? ['Connected — each later connect still pays the dead address first', 'Connected — still paying the toll', 'Connected']
+                     : ['Connected — the refused address costs almost nothing', 'Connected', 'OK']
+      });
+    } else if (ap.gaveUp !== null && ap.gaveUp < t1) {
+      lanes[2].segs.push({ a: ap.gaveUp, b: t1, cls: 'b-sl', lc: 'f-sl', lab: ['No more attempts — the string is exhausted', 'String exhausted', '—'] });
+    }
+
+    /* braces under the axis */
+    var braces = [];
+    if (att.length > 1 && !aggregate) {
+      braces.push({
+        a: att[0].start, b: att[1].start, tone: 'br-am', mono: false,
+        name: 'One traversal + RETRY_DELAY',
+        val: fmt(ap.d1) + ' + ' + fmt(ap.refuse) + ' + ' + fmt(A.rd) + ' = ' + fmt(ap.passCost + A.rd) + ' s'
+      });
+    } else {
+      braces.push({
+        a: 0, b: att[0].a1End, tone: 'br-am', mono: true,
+        name: 'min(TRANSPORT_CONNECT_TIMEOUT, CONNECT_TIMEOUT)',
+        val: fmt(ap.d1) + ' s on the dead address, every traversal'
+      });
+    }
+    if (ap.tConn !== null && ap.tConn - m.tOpen > 2) {
+      braces.push({
+        a: m.tOpen, b: ap.tConn, tone: 'br-vi', mono: false,
+        name: 'Client-side overhead',
+        val: fmt(ap.tConn - m.tOpen) + ' s after the database is back'
+      });
+    }
+    if (ap.gaveUp !== null && !ap.clipped) {
+      braces.push({
+        a: 0, b: ap.gaveUp, tone: 'br-rd', mono: false,
+        name: 'Retry budget — exhausted',
+        val: (A.rc + 1) + ' × ' + fmt(ap.passCost) + ' + ' + A.rc + ' × ' + fmt(A.rd) + ' = ' + fmt(ap.gaveUp) + ' s'
+      });
+    }
+
+    /* pack braces into rows so no two labels can overlap (same scheme as above) */
+    var rows = [], rowCount = 0;
+    braces.forEach(function (br) {
+      br.x0 = X(br.a); br.x1 = X(br.b);
+      var mid = (br.x0 + br.x1) / 2;
+      var w = Math.max(approxW(br.name, 11.5, br.mono), approxW(br.val, 11, true), br.x1 - br.x0) + 18;
+      var L = mid - w / 2, R = mid + w / 2, d;
+      if (L < 6) { d = 6 - L; L += d; R += d; }
+      if (R > W - 6) { d = R - (W - 6); L -= d; R -= d; }
+      var i = 0;
+      while (rows[i] && rows[i].some(function (o) { return !(R < o.L - 10 || L > o.R + 10); })) i++;
+      if (!rows[i]) rows[i] = [];
+      rows[i].push({ L: L, R: R });
+      br.row = i; br.lx = (L + R) / 2;
+      if (i + 1 > rowCount) rowCount = i + 1;
+    });
+
+    var H = G.braceTop + Math.max(1, rowCount) * G.braceRow + 6;
+
+    push('<svg class="tl-svg" width="' + W + '" height="' + H + '" viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-labelledby="ap-summary">');
+    push('<defs><pattern id="apHatch" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">' +
+      '<rect width="8" height="8" class="hatch-bg"></rect><line x1="0" y1="0" x2="0" y2="8" class="hatch-ln"></line></pattern></defs>');
+
+    /* pre-failure zone, gridlines, axis */
+    push('<rect class="prezone" x="' + r1(plotL) + '" y="' + G.laneTop + '" width="' + r1(X(0) - plotL) +
+      '" height="' + (G.lanesBottom - G.laneTop) + '"></rect>');
+    if (X(0) - plotL >= approxW('Steady state', 10.5) + 12) push(txt('t-tick', plotL + 6, G.markY, null, 'Steady state'));
+
+    for (var tk = Math.ceil(t0 / ap.tickStep) * ap.tickStep; tk <= t1 + 1e-9; tk += ap.tickStep) {
+      push(ln('gridline', X(tk), G.laneTop, X(tk), G.axisY));
+      push(txt('t-tick t-mono', X(tk), G.axisY + 16, 'middle', esc(sign(tk))));
+    }
+    push(ln('ax', plotL, G.axisY, plotR, G.axisY));
+    push(txt('t-tick t-mono', plotR, G.axisY + 30, 'end', 'seconds from the failure event'));
+
+    /* lanes */
+    lanes.forEach(function (lane, i) {
+      var y = G.lane[i];
+      push('<rect class="lane-bg" x="' + r1(plotL) + '" y="' + y + '" width="' + r1(plotW) + '" height="' + G.laneH + '" rx="2"></rect>');
+      push(txt('t-lane', G.padL - 14, y + 20, 'end', esc(lane.name)));
+      push(txt('t-sub', G.padL - 14, y + 34, 'end', esc(lane.sub)));
+      lane.segs.forEach(function (sg) {
+        var x0 = Math.max(plotL, X(sg.a)), x1 = Math.min(plotR, X(sg.b)), w = x1 - x0;
+        if (w <= 0.5) return;
+        push('<rect class="bar ' + sg.cls + '" x="' + r1(x0) + '" y="' + (y + 6) + '" width="' + r1(w) +
+          '" height="' + (G.laneH - 12) + '"><title>' + esc(sg.lab[0]) + '</title></rect>');
+        var lab = fitLabel(sg.lab, w);
+        if (lab) push(txt('t-bar ' + sg.lc, (x0 + x1) / 2, y + 28, 'middle', esc(lab)));
+      });
+    });
+
+    /* ORA-12514 refusal ticks on the ladder */
+    ticks.forEach(function (tt) {
+      var x = X(tt);
+      if (x <= plotR - 1) push(ln('m-rd', x, G.lane[2] + 10, x, G.lane[2] + G.laneH - 10, ' stroke-width="1.5"'));
+    });
+
+    /* t = 0 */
+    var xz = X(0);
+    push(ln('partition', xz, G.laneTop - 4, xz, G.lanesBottom + 4));
+    push(txt('t-mark f-rd', xz + 8, G.markY, null,
+      iso ? 'Partition — the primary becomes unreachable' : 'Primary crashes — requests start failing'));
+
+    /* the service coming back */
+    var gapA = G.lane[0] + G.laneH;
+    if (!m.blocked) {
+      var xo = X(m.tOpen);
+      push(ln('m-tl', xo, G.lane[0] - 6, xo, G.lanesBottom + 4, ' stroke-width="1.5" stroke-dasharray="5 4"'));
+      var oCands = ['New primary opens — app_svc published at t = ' + fmt(m.tOpen) + ' s',
+                    'app_svc published at t = ' + fmt(m.tOpen) + ' s', 'app_svc back'];
+      var oLab = null;
+      for (var oi = 0; oi < oCands.length; oi++) {
+        if (xo + 8 + approxW(oCands[oi], 11.5) <= plotR) { oLab = oCands[oi]; break; }
+      }
+      push(oLab ? txt('t-mark f-tl', xo + 8, gapA + 16, null, esc(oLab))
+                : txt('t-mark f-tl', xo - 8, gapA + 16, 'end', esc(oCands[2])));
+    }
+
+    /* the app's reconnect, or its error */
+    var gapB = G.lane[1] + G.laneH;
+    if (ap.tConn !== null) {
+      var xc = X(ap.tConn);
+      push(ln('m-vi', xc, G.lane[2] - 6, xc, G.lane[2] + G.laneH + 4, ' stroke-width="2"'));
+      push('<path class="f-vi" d="M' + r1(xc) + ',' + (G.lane[2] + 11) + ' l6,6 l-6,6 l-6,-6 z"></path>');
+      var cLab = 'Application reconnected at t = ' + fmt(ap.tConn) + ' s';
+      var cX = xc + 9, cAnc = null;
+      if (cX + approxW(cLab, 11.5) > plotR) { cX = xc - 9; cAnc = 'end'; }
+      push(txt('t-mark f-vi', cX, gapB + 16, cAnc, esc(cLab)));
+    } else if (ap.clipped) {
+      push(txt('t-mark f-rd', plotR, gapB + 16, 'end',
+        esc('keeps retrying → gives up at t = ' + fmtClock(ap.gaveUp))));
+    } else if (ap.gaveUp !== null) {
+      var xg = X(ap.gaveUp), cyg = G.lane[2] + G.laneH / 2;
+      push(ln('m-rd', xg - 7, cyg - 7, xg + 7, cyg + 7, ' stroke-width="2.5"'));
+      push(ln('m-rd', xg + 7, cyg - 7, xg - 7, cyg + 7, ' stroke-width="2.5"'));
+      var gLab = 'ORA-12514 to the application at t = ' + fmt(ap.gaveUp) + ' s';
+      var gX = xg + 9, gAnc = null;
+      if (gX + approxW(gLab, 11.5) > plotR) { gX = xg - 9; gAnc = 'end'; }
+      push(txt('t-mark f-rd', gX, gapB + 16, gAnc, esc(gLab)));
+    }
+
+    /* top annotation */
+    if (ap.tConn !== null) {
+      push(braceUp(xz, X(ap.tConn), G.braceY, 'br-sl'));
+      var tLab = 'Application outage = ' + fmt(ap.tConn) + ' s — ' + fmt(ap.tConn - m.tOpen) + ' s of it client-side';
+      var tw = approxW(tLab, 12);
+      push(txt('t-top', Math.min(Math.max((xz + X(ap.tConn)) / 2, tw / 2 + 6), W - tw / 2 - 6), G.topY, 'middle', esc(tLab)));
+    } else if (m.blocked) {
+      push(txt('t-top f-rd', plotL, G.topY, null, 'No failover is coming — every traversal is refused, the application stays down'));
+    } else {
+      push(txt('t-top f-rd', plotL, G.topY, null, 'The connect string gives up before the failover finishes — the application stays down'));
+    }
+
+    /* braces */
+    braces.forEach(function (br) {
+      var y = G.braceTop + br.row * G.braceRow;
+      push(braceDown(br.x0, br.x1, y, br.tone));
+      push(txt('t-brace-n' + (br.mono ? ' t-mono' : ''), br.lx, y + 26, 'middle', esc(br.name)));
+      push(txt('t-brace-v t-mono', br.lx, y + 41, 'middle', esc(br.val)));
+    });
+
+    push('</svg>');
+    return s.join('');
+  }
+
+  function tnsToken(name, val) { return '<span class="hl">(' + name + ' = ' + val + ')</span>'; }
+
+  function renderTns() {
+    var set = [];
+    if (A.tct !== 60) set.push(tnsToken('TRANSPORT_CONNECT_TIMEOUT', A.tct));
+    if (A.ct > 0) set.push(tnsToken('CONNECT_TIMEOUT', A.ct));
+    if (A.rc > 0) set.push(tnsToken('RETRY_COUNT', A.rc));
+    if (A.rd > 0) set.push(tnsToken('RETRY_DELAY', A.rd));
+    var lines = ['<span class="svc">app_svc</span> =', ' (DESCRIPTION ='];
+    for (var i = 0; i < set.length; i += 2) lines.push('   ' + set.slice(i, i + 2).join(''));
+    lines.push('   (ADDRESS_LIST = (FAILOVER = on)');
+    lines.push('     (ADDRESS = (PROTOCOL = tcp)(HOST = dc1-prm01)(PORT = 1521))');
+    lines.push('     (ADDRESS = (PROTOCOL = tcp)(HOST = dc2-sby01)(PORT = 1521)))');
+    lines.push('   (CONNECT_DATA = (SERVICE_NAME = <span class="svc">app_svc</span>)))');
+    var absent = [];
+    if (A.tct === 60) absent.push('TRANSPORT_CONNECT_TIMEOUT (60 s default)');
+    if (A.ct === 0) absent.push('CONNECT_TIMEOUT (no cap)');
+    if (A.rc === 0) absent.push('RETRY_COUNT (0 — no retries)');
+    if (A.rd === 0) absent.push('RETRY_DELAY (immediate)');
+    if (absent.length) {
+      lines.push('');
+      lines.push('<span class="dim"># not in the string, defaults apply:</span>');
+      lines.push('<span class="dim">#   ' + absent.join(' · ') + '</span>');
+    }
+    els.apTns.innerHTML = lines.join('\n');
+  }
+
+  function renderAppControls() {
+    var iso = C.scenario === 'isolated';
+    els.apVTct.textContent = A.tct + ' s';
+    els.apVCt.textContent = A.ct > 0 ? A.ct + ' s' : 'not set';
+    els.apVRc.textContent = String(A.rc);
+    els.apVRd.textContent = A.rd + ' s';
+    els.apRst.disabled = iso;
+    els.apDrop.checked = iso || A.dead === 'drop';
+    els.apRst.checked = !iso && A.dead === 'rst';
+    els.apNDead.textContent = iso
+      ? 'A partition drops packets: no refusal ever comes back, so the dead address always costs the full transport budget.'
+      : (A.dead === 'drop'
+        ? 'Host unreachable — SYN packets vanish; each visit to address 1 waits out min(TRANSPORT_CONNECT_TIMEOUT, CONNECT_TIMEOUT).'
+        : 'Host up, instance down — the OS refuses instantly; address 1 costs almost nothing.');
+  }
+
+  function renderAppReadout(ap, m) {
+    var out = '';
+    if (ap.tConn !== null) {
+      out += chip('vi', 'App reconnected at', fmt(ap.tConn), 's',
+        'Traversal ' + ap.attempts.length + ' of ' + (A.rc + 1) + ' — after ' + fmt(ap.d1) + ' s on the dead address');
+      out += chip('am', 'Client-side overhead', fmt(ap.tConn - m.tOpen), 's',
+        'The database was back at ' + fmt(m.tOpen) + ' s; the rest is the connect string');
+    } else {
+      out += chip('rd', 'App reconnected', 'never', '',
+        m.blocked ? 'No failover happens above, so <span class="mono">app_svc</span> is never republished'
+                  : 'ORA-12514 at ' + fmt(ap.gaveUp) + ' s — a fresh attempt after ' + fmt(m.tOpen) +
+                    ' s would connect in ' + fmt(ap.retryCost) + ' s');
+    }
+    out += chip(ap.tConn !== null ? 'tl' : 'rd', 'Retry budget', fmt(ap.worst), 's',
+      '(' + (A.rc + 1) + ' × ' + fmt(ap.passCost) + ' s) + (' + A.rc + ' × ' + fmt(A.rd) + ' s delay)' +
+      (m.blocked ? ' — no failover to wait for'
+        : ap.tConn !== null ? ' — covers this failover' : ' — runs out too soon'));
+    out += chip('ik', 'One traversal costs', fmt(ap.passCost), 's',
+      ap.drop ? 'min(TCT, CT) on the dead address + an instant ORA-12514 from the standby'
+              : 'Both addresses answer instantly — refused, refused');
+    els.apChips.innerHTML = out;
+  }
+
+  function renderAppProse(ap, m) {
+    var luck = ap.tConn !== null && ap.attempts.length === 1 && A.rc === 0 && ap.drop && ap.d1 >= m.tOpen;
+    els.apEyebrow.textContent = 't = 0 is the failure event · same clock as the broker timeline';
+
+    els.apBanner.hidden = !(ap.gaveUp !== null && !m.blocked);
+    if (!els.apBanner.hidden) {
+      els.apBannerBody.innerHTML = 'The string gave up at <span class="mono">' + fmt(ap.gaveUp) +
+        ' s</span>, before the new primary opened at <span class="mono">' + fmt(m.tOpen) +
+        ' s</span>. The failover itself completed fine — but this application saw <span class="mono">ORA-12514</span> and stays down until something dials again. The retry budget (<span class="mono">' +
+        (A.rc + 1) + ' × ' + fmt(ap.passCost) + ' + ' + A.rc + ' × ' + fmt(A.rd) + ' = ' + fmt(ap.worst) +
+        ' s</span>) has to outlast the outage: raise <span class="mono">RETRY_COUNT</span> or <span class="mono">RETRY_DELAY</span>.';
+    }
+
+    els.apCaption.innerHTML = m.blocked
+      ? 'No failover is coming (the readiness check above failed), so no retry budget can save this string: it exhausted ' +
+        (A.rc + 1) + ' traversal' + (A.rc ? 's' : '') + ' at <span class="mono">' + fmtClock(ap.gaveUp) +
+        '</span> and the application is down until a manual failover republishes <span class="mono">app_svc</span>.'
+      : luck
+        ? 'The single traversal hung on the dead address for <span class="mono">' + fmt(ap.d1) +
+          ' s</span> — and by the time it fell through to the standby, the failover was already done, so it connected at <span class="mono">' +
+          fmt(ap.tConn) + ' s</span>. That is luck, not design: had the failover taken longer than ' + fmt(ap.d1) +
+          ' s, this string would have returned <span class="mono">ORA-12514</span> and stopped. It also means the application waited ' +
+          fmt(ap.tConn - m.tOpen) + ' s longer than the database did.'
+        : ap.tConn !== null
+          ? 'The string traversed the list ' + ap.attempts.length + ' time' + (ap.attempts.length > 1 ? 's' : '') +
+            ', paying <span class="mono">' + fmt(ap.d1) + ' s</span> on the dead first address each pass. The traversal that reached the standby after <span class="mono">app_svc</span> reappeared connected at <span class="mono">' +
+            fmt(ap.tConn) + ' s</span> — ' + fmt(ap.tConn - m.tOpen) + ' s after the database itself was back.'
+          : 'The string ran out of retries at <span class="mono">' + fmt(ap.gaveUp) +
+            ' s</span>, while the failover was still running: the new primary opens at <span class="mono">' + fmt(m.tOpen) +
+            ' s</span>, but by then nobody is dialing anymore.';
+
+    els.apSummary.textContent = 'Application view: ' + (ap.tConn !== null
+      ? 'reconnected at ' + fmt(ap.tConn) + ' seconds, ' + fmt(ap.tConn - m.tOpen) + ' seconds after the new primary opened.'
+      : m.blocked
+        ? 'no failover occurs; the connect string exhausted its retries at ' + fmt(ap.gaveUp) + ' seconds and the application stays down.'
+        : 'the connect string gave up at ' + fmt(ap.gaveUp) + ' seconds, before the failover completed; the application stays down.');
+  }
+
   /* ---------- render loop ---------- */
   var lastW = 0, lastSig = '', queued = false;
+  var lastWApp = 0, lastSigApp = '';
 
   function draw() {
     queued = false;
@@ -1135,6 +1725,20 @@ td .mono{font-size:12px;color:var(--ik)}
     if (sig !== lastSig) {
       if (els.wrap.firstChild && els.wrap.firstChild.classList) els.wrap.firstChild.classList.add('is-new');
       lastSig = sig;
+    }
+
+    /* the application view reads the same broker model */
+    var ap = computeApp(A, m, C.scenario);
+    renderAppControls();
+    renderTns();
+    renderAppProse(ap, m);
+    renderAppReadout(ap, m);
+    lastWApp = Math.max(880, Math.round(els.apWrap.clientWidth) || 880);
+    els.apWrap.innerHTML = buildAppTimeline(ap, m, lastWApp);
+    var sigApp = [C.scenario, m.blocked, ap.tConn !== null, ap.clipped, A.dead].join('|');
+    if (sigApp !== lastSigApp) {
+      if (els.apWrap.firstChild && els.apWrap.firstChild.classList) els.apWrap.firstChild.classList.add('is-new');
+      lastSigApp = sigApp;
     }
   }
   function schedule() { if (!queued) { queued = true; requestAnimationFrame(draw); } }
@@ -1163,11 +1767,29 @@ td .mono{font-size:12px;color:var(--ik)}
     schedule();
   });
 
+  /* connect-string wiring */
+  [[els.apTct, 'tct'], [els.apCt, 'ct'], [els.apRc, 'rc'], [els.apRd, 'rd']].forEach(function (p) {
+    p[0].addEventListener('input', function () { A[p[1]] = parseInt(p[0].value, 10); schedule(); });
+  });
+  Array.prototype.forEach.call(document.querySelectorAll('input[name="ap-dead"]'), function (r) {
+    r.addEventListener('change', function () { if (r.checked) { A.dead = r.value; schedule(); } });
+  });
+  function syncAppInputs() {
+    els.apTct.value = A.tct; els.apCt.value = A.ct; els.apRc.value = A.rc; els.apRd.value = A.rd;
+    els.apDrop.checked = A.dead === 'drop'; els.apRst.checked = A.dead === 'rst';
+  }
+  els.apDefaults.addEventListener('click', function () { A = Object.assign({}, APP_DEFAULTS); syncAppInputs(); schedule(); });
+  els.apTuned.addEventListener('click', function () { A = Object.assign({}, A, APP_TUNED); syncAppInputs(); schedule(); });
+
   function onResize() {
-    if (Math.abs(Math.max(880, Math.round(els.wrap.clientWidth) || 880) - lastW) > 2) schedule();
+    if (Math.abs(Math.max(880, Math.round(els.wrap.clientWidth) || 880) - lastW) > 2 ||
+        Math.abs(Math.max(880, Math.round(els.apWrap.clientWidth) || 880) - lastWApp) > 2) schedule();
   }
   window.addEventListener('resize', onResize);
-  if (typeof ResizeObserver === 'function') new ResizeObserver(onResize).observe(els.wrap);
+  if (typeof ResizeObserver === 'function') {
+    var ro = new ResizeObserver(onResize);
+    ro.observe(els.wrap); ro.observe(els.apWrap);
+  }
 
   draw();
 })();

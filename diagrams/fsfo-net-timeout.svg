@@ -12,7 +12,6 @@
   Anchor points used below:
       x(-14) = 140   plot left edge / start of the pre-failure zone
       x(  0) = 280   t = 0, the failure event
-      x(  3) = 310   end of the in-flight-commit sliver in panel B
       x( 30) = 580   NET_TIMEOUT expiry (panel A) / FastStartFailoverThreshold expiry (panel B)
       x( 80) = 1080  plot right edge
   Grid lines every 10 s: x = 180, 280, 380, 480, 580, 680, 780, 880, 980, 1080.
@@ -21,7 +20,7 @@
 -->
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 740" width="1200" height="740" role="img" aria-labelledby="ttl desc">
   <title id="ttl">Where NET_TIMEOUT fits in fast-start failover</title>
-  <desc id="desc">Two stacked timelines from the primary database's point of view, both on the same seconds axis. Panel A: the standby link fails while the observer stays reachable, so committing sessions hang for NET_TIMEOUT seconds, the destination is then dropped and the primary carries on open but unsynchronized — no failover happens. Panel B: the primary is fully isolated, in-flight commits hang only for the first seconds, and the FastStartFailoverThreshold stall clock takes over and ends in self-abort. NET_TIMEOUT never gates the failover decision.</desc>
+  <desc id="desc">Two stacked timelines from the primary database's point of view, both on the same seconds axis. Panel A: the standby link fails while the observer stays reachable, so committing sessions hang for NET_TIMEOUT seconds, the destination is then dropped and the primary carries on open but unsynchronized — no failover happens. Panel B: the primary is fully isolated, in-flight commits stay hung for the entire stall — at the 30 s defaults NET_TIMEOUT and the FastStartFailoverThreshold stall clock expire together — and the threshold decides the outcome, ending in self-abort. NET_TIMEOUT never gates the failover decision.</desc>
 
   <defs>
     <style>
@@ -174,10 +173,9 @@
   <text class="s" x="128" y="467" font-size="14" font-weight="600" fill="#334155" text-anchor="end">Primary</text>
   <rect x="140" y="446" width="140" height="34" rx="3" fill="#D6EEE9" stroke="#0E7C6B" stroke-width="1.5"/>
   <text class="s" x="210" y="467" font-size="12" fill="#0A5C50" text-anchor="middle">open, commits acked</text>
-  <rect x="280" y="446" width="30" height="34" fill="#FDF0DC" stroke="#D97706" stroke-width="1.5"/>
-  <rect x="310" y="446" width="270" height="34" fill="url(#hatchRedLight)" stroke="#D64545" stroke-width="1.5" stroke-dasharray="6 4"/>
-  <rect x="360" y="455" width="170" height="17" fill="#FFFFFF" opacity="0.9"/>
-  <text class="s" x="445" y="467" font-size="12" font-weight="600" fill="#A83232" text-anchor="middle">STALLED — no redo generated</text>
+  <rect x="280" y="446" width="300" height="34" rx="3" fill="url(#hatchRedLight)" stroke="#D64545" stroke-width="1.5" stroke-dasharray="6 4"/>
+  <rect x="345" y="455" width="170" height="17" fill="#FFFFFF" opacity="0.9"/>
+  <text class="s" x="430" y="467" font-size="12" font-weight="600" fill="#A83232" text-anchor="middle">STALLED — no redo generated</text>
   <rect x="580" y="446" width="500" height="34" rx="3" fill="url(#hatchRed)" stroke="#D64545" stroke-width="1.5"/>
   <rect x="591" y="455" width="470" height="17" fill="#FFFFFF" opacity="0.9"/>
   <text class="s" x="595" y="467" font-size="12" font-weight="600" fill="#A83232">aborted — instance shut down (<tspan class="m">FastStartFailoverPmyShutdown</tspan> = TRUE)</text>
@@ -188,10 +186,10 @@
   <!-- partition divider drawn on top of the lane -->
   <line x1="280" y1="444" x2="280" y2="512" stroke="#D64545" stroke-width="2" stroke-dasharray="7 5"/>
 
-  <!-- callout for the in-flight commit sliver -->
+  <!-- callout: the commit hang spans the whole stall -->
   <polyline points="295,480 295,496 312,496" fill="none" stroke="#94A3B8" stroke-width="1"/>
-  <rect x="314" y="489" width="321" height="15" fill="#FFFFFF" opacity="0.95"/>
-  <text class="s" x="318" y="500" font-size="12" fill="#475569">in-flight commits hang (<tspan class="m">NET_TIMEOUT</tspan> territory)</text>
+  <rect x="314" y="489" width="650" height="15" fill="#FFFFFF" opacity="0.95"/>
+  <text class="s" x="318" y="500" font-size="12" fill="#475569">in-flight commits stay hung for the entire stall — <tspan class="m">NET_TIMEOUT</tspan> (also 30 s by default) never gets to act</text>
 
   <!-- axis -->
   <line x1="140" y1="512" x2="1080" y2="512" stroke="#475569" stroke-width="1.5"/>
@@ -230,7 +228,7 @@
   <!-- annotation -->
   <rect x="140" y="632" width="3" height="30" fill="#D64545"/>
   <text class="s" x="152" y="642" font-size="12" fill="#334155">With fast-start failover enabled the primary may not take panel A's escape hatch — it cannot simply drop the destination and keep running.</text>
-  <text class="s" x="152" y="658" font-size="12" fill="#334155">It must assume a failover may have happened, so the stall clock takes over and <tspan class="m">NET_TIMEOUT</tspan> only shapes the first seconds.</text>
+  <text class="s" x="152" y="658" font-size="12" fill="#334155">It must assume a failover may have happened, so commits stay hung for the whole stall — at the defaults <tspan class="m">NET_TIMEOUT</tspan> and the threshold expire together.</text>
 
   <!-- ============================ footnotes ============================ -->
   <g class="s" font-size="12" fill="#64748B">

@@ -28,7 +28,14 @@ primary itself keeps running. Two independent `FastStartFailoverThreshold` clock
 opposite sides of the partition — one ending in the standby's activation, the other in the old
 primary's self-abort. That is the split-brain protection.
 
-![Timeline of a fast-start failover with an isolated primary: a dashed divider at t = 0 marks the network partition, the primary lane stalls and then self-aborts at t = 30 s under FastStartFailoverPmyShutdown = TRUE, while the observer and standby run the same 30 s threshold on the other side of the partition.](fsfo-timeline-isolated.svg)
+From its first second the stall looks like `NET_TIMEOUT` territory — in-flight SYNC commits
+hanging while LGWR waits for an acknowledgment that cannot come — but with fast-start failover
+enabled the primary may not drop the destination and resume redo generation when `NET_TIMEOUT`
+expires, so the commits stay hung for the whole stall, and the stall's *length* is set by
+`FastStartFailoverThreshold`, not by `NET_TIMEOUT`. At the defaults both clocks are 30 s and
+expire together (figure 4, panel B, walks through this distinction).
+
+![Timeline of a fast-start failover with an isolated primary: a dashed divider at t = 0 marks the network partition, the primary lane stalls — in-flight commits stay hung for the entire stall, which NET_TIMEOUT never shortens — and then self-aborts at t = 30 s under FastStartFailoverPmyShutdown = TRUE, while the observer and standby run the same 30 s threshold on the other side of the partition. The stall's length is set by the threshold, not by NET_TIMEOUT.](fsfo-timeline-isolated.svg)
 
 ### 3. Message sequence
 
@@ -51,11 +58,12 @@ impossible until the standby resynchronizes. In MaxPerformance (ASYNC) commits n
 standby, so `NET_TIMEOUT` never appears on the failover timeline at all, and eligibility and data
 loss are governed by `FastStartFailoverLagLimit` instead. When the primary is fully isolated
 (panel B) the fast-start failover stall overrides all of this — the primary may not simply drop the
-destination and keep running, so `NET_TIMEOUT` shapes only the first seconds while
-`FastStartFailoverThreshold` decides the outcome; neither the observer nor the target standby ever
-consults `NET_TIMEOUT` for the failover decision.
+destination and keep running, committing sessions stay hung for the whole stall, and
+`FastStartFailoverThreshold` decides the outcome (at the defaults both clocks are 30 s and expire
+together); neither the observer nor the target standby ever consults `NET_TIMEOUT` for the
+failover decision.
 
-![Two stacked timelines from the primary's point of view. Panel A: the standby link fails while the observer stays reachable, committing sessions hang for the 30 s NET_TIMEOUT, then the destination is dropped and the primary is open but unsynchronized — no failover. Panel B: the primary is fully isolated, in-flight commits hang only briefly, and the 30 s FastStartFailoverThreshold stall clock takes over and ends in self-abort.](fsfo-net-timeout.svg)
+![Two stacked timelines from the primary's point of view. Panel A: the standby link fails while the observer stays reachable, committing sessions hang for the 30 s NET_TIMEOUT, then the destination is dropped and the primary is open but unsynchronized — no failover. Panel B: the primary is fully isolated, in-flight commits stay hung for the entire stall, and the 30 s FastStartFailoverThreshold stall clock decides the outcome, ending in self-abort.](fsfo-net-timeout.svg)
 
 ## Broker properties
 
@@ -80,10 +88,11 @@ they have existed since 12.2 and 19c DGMGRL accepts them — they appear in the 
 editions, linked below.)
 
 In other words: once a DBA explicitly sets both ping properties, detection is governed by
-*interval × retries* — which can be roughly one second — instead of by the 30-second threshold.
+*interval × (retries + 1)* — the first failed ping plus its retries, roughly one second at the
+minimum values — instead of by the 30-second threshold.
 The figures here show the default configuration, where the threshold is what you are waiting for.
 If you set the ping properties, the amber threshold window in figures 1 and 2 collapses to
-`ObserverPingInterval` × `ObserverPingRetry`. In the isolated-primary scenario the primary's own
+`ObserverPingInterval` × (`ObserverPingRetry` + 1). In the isolated-primary scenario the primary's own
 stall clock still uses `FastStartFailoverThreshold`; the quirk affects the observer's detection,
 not the primary's stall.
 

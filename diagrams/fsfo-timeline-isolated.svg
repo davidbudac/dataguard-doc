@@ -16,9 +16,9 @@
   Grid lines every 10 s: x = 180, 280, 380, 480, 580, 680, 780, 880, 980, 1080.
   Lane bands (y): Primary 158..192, Observer 240..274, Standby 322..356. Axis y = 394.
 -->
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 640" width="1200" height="640" role="img" aria-labelledby="ttl desc">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 656" width="1200" height="656" role="img" aria-labelledby="ttl desc">
   <title id="ttl">Fast-start failover with an isolated primary (network partition)</title>
-  <desc id="desc">Timeline with three lanes (Primary, Observer, Standby) on a seconds axis. At t = 0 a network partition isolates the primary from both the observer and the target standby. On the primary side redo generation stalls and, after FastStartFailoverThreshold seconds, the primary aborts itself because FastStartFailoverPmyShutdown is TRUE. On the observer and standby side the same threshold elapses and the standby is activated. Two independent threshold clocks guarantee at most one open primary.</desc>
+  <desc id="desc">Timeline with three lanes (Primary, Observer, Standby) on a seconds axis. At t = 0 a network partition isolates the primary from both the observer and the target standby. On the primary side redo generation stalls and in-flight commits stay hung for the entire stall — NET_TIMEOUT never gets to drop the destination — until, after FastStartFailoverThreshold seconds (the threshold, not NET_TIMEOUT, sets the stall's length), the primary aborts itself because FastStartFailoverPmyShutdown is TRUE. On the observer and standby side the same threshold elapses and the standby is activated. Two independent threshold clocks guarantee at most one open primary.</desc>
 
   <defs>
     <style>
@@ -46,7 +46,7 @@
   </defs>
 
   <!-- white background (explicit, for dark-mode renderers) -->
-  <rect x="0" y="0" width="1200" height="640" fill="#FFFFFF"/>
+  <rect x="0" y="0" width="1200" height="656" fill="#FFFFFF"/>
 
   <!-- ============================ title ============================ -->
   <text class="s" x="40" y="34" font-size="19" font-weight="600" fill="#0F172A">Fast-start failover with an isolated primary (network partition)</text>
@@ -73,7 +73,7 @@
 
   <!-- ========= primary-side threshold clock (brace above the primary lane) ========= -->
   <text class="m" x="430" y="110" font-size="13" fill="#0F172A" text-anchor="middle">FastStartFailoverThreshold</text>
-  <text class="s" x="430" y="127" font-size="12" fill="#475569" text-anchor="middle">stall clock — <tspan class="m">V$DATABASE.FS_FAILOVER_STATUS</tspan> = STALLED (default 30 s)</text>
+  <text class="s" x="430" y="127" font-size="12" fill="#475569" text-anchor="middle">stall clock — <tspan class="m">V$DATABASE.FS_FAILOVER_STATUS</tspan> = STALLED — this, not <tspan class="m">NET_TIMEOUT</tspan>, sets the stall length (default 30 s)</text>
   <path d="M 280,148 Q 280,140 288,140 L 422,140 Q 430,140 430,132 Q 430,140 438,140 L 572,140 Q 580,140 580,148"
         fill="none" stroke="#D97706" stroke-width="1.5"/>
 
@@ -113,6 +113,11 @@
   <!-- self-abort marker at t = 30 -->
   <circle cx="580" cy="175" r="10" fill="#FFFFFF" stroke="#D64545" stroke-width="2.5"/>
   <rect x="575" y="170" width="10" height="10" fill="#D64545"/>
+
+  <!-- callout: the commit hang spans the whole stall (same motif as figure 4, panel B) -->
+  <polyline points="295,192 295,206 312,206" fill="none" stroke="#94A3B8" stroke-width="1"/>
+  <rect x="314" y="199" width="460" height="15" fill="#FFFFFF" opacity="0.95"/>
+  <text class="s" x="318" y="210" font-size="12" fill="#475569">in-flight commits stay hung for the entire stall — <tspan class="m">NET_TIMEOUT</tspan> never acts</text>
 
   <!-- ============================ observer lane ============================ -->
   <text class="s" x="128" y="261" font-size="14" font-weight="600" fill="#334155" text-anchor="end">Observer</text>
@@ -200,7 +205,8 @@
   <!-- ============================ footnotes ============================ -->
   <g class="s" font-size="12" fill="#64748B">
     <text x="40" y="594">If <tspan class="m">FastStartFailoverPmyShutdown</tspan> = FALSE the primary stays stalled indefinitely instead of aborting — the stall itself is what prevents a split brain.</text>
-    <text x="40" y="610">Data loss: none in MaxAvailability (SYNC). In MaxPerformance (ASYNC) it is bounded by <tspan class="m">FastStartFailoverLagLimit</tspan>.</text>
-    <text x="40" y="626"><tspan class="m">FastStartFailoverAutoReinstate</tspan> = TRUE (default): the old primary is reinstated as a standby when it returns — out of scope here.</text>
+    <text x="40" y="610"><tspan class="m">NET_TIMEOUT</tspan> does not shorten the stall — the primary may not drop the destination and resume redo generation; at the defaults both clocks are 30 s and expire together (figure 4, panel B).</text>
+    <text x="40" y="626">Data loss: none in MaxAvailability (SYNC). In MaxPerformance (ASYNC) it is bounded by <tspan class="m">FastStartFailoverLagLimit</tspan>.</text>
+    <text x="40" y="642"><tspan class="m">FastStartFailoverAutoReinstate</tspan> = TRUE (default): the old primary is reinstated as a standby when it returns — out of scope here.</text>
   </g>
 </svg>

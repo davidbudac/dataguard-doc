@@ -32,7 +32,9 @@ agree on:
 - `ObserverPingInterval` default 100 ms; `ObserverPingRetry` default 10.
   Documented quirk: when BOTH are explicitly set, the threshold is ignored for
   the observer's detection. The isolated primary's own stall clock still uses
-  the threshold. Docs gap: the 19c properties reference does not list these two
+  the threshold. Detection is stated in every asset as
+  pingInterval × (pingRetry + 1) — the first failed ping plus its retries,
+  ≈ 1.1 s at the minimums (the docs say only "nearly 1 second"). Docs gap: the 19c properties reference does not list these two
   properties (they exist since 12.2); cite the 21c+ edition for them.
 - `FastStartFailoverLagLimit` default 30 s, min 5 s, MaxPerformance only.
 - `FastStartFailoverPmyShutdown` default TRUE: a primary STALLED
@@ -43,7 +45,11 @@ agree on:
   LGWR waits for the standby's SYNC ack; it is NEVER a failover clock, never
   affects sessions under ASYNC, and must not appear in the broker-properties
   table. In full isolation the FSFO stall overrides its drop-and-continue
-  behavior.
+  behavior. At the defaults it and the threshold both run 30 s from t = 0 and
+  expire together — never draw NET_TIMEOUT as bounding only the first seconds
+  of an isolated stall; the commit hang spans the whole stall. The simulator's
+  panel B deliberately shortens it to 10 s (and says so) to pull the two
+  clocks apart; the threshold/abort still runs 0 → 30 s.
 - Failover execution (terminal recovery + role change + open) is
   environment-dependent, not parameter-driven — always label it that way.
 - Reinstate (`FastStartFailoverAutoReinstate`, Flashback Database) is
