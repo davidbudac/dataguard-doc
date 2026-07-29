@@ -26,6 +26,14 @@ const page = `<!doctype html>
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="description" content="Interactive second-by-second simulator of Oracle Data Guard fast-start failover.">
 <title>${title}</title>
+<style>
+/* The fragment paints --bg on .fsfo only, which is capped at 1240px and centred,
+   so the page gutters fall back to the browser default. As the host page we own
+   html/body: pick up the same token (the fragment defines it on :root, including
+   its dark and [data-theme] redefinitions) so the gutters follow the theme.
+   color-scheme keeps scrollbars and form controls in step. */
+html,body{margin:0;background:var(--bg,#F4F6F8);color-scheme:light dark}
+</style>
 </head>
 <body>
 ${body.trim()}
