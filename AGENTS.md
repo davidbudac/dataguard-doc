@@ -204,6 +204,20 @@ blocked when MaxPerformance and lag > lag limit; the isolated primary's abort
 always uses the threshold. `computeFsfo` also has an `observer-lost` branch
 (below) returning `observerLost` and `ifDiedNow`.
 
+The page is split into four chapters — `#ch-clocks`, `#ch-transport`, `#ch-app`,
+`#ch-reference` — each a `<section class="chapter">` wrapper that opens with a
+full-bleed divider band (large number, `h2` title, one-line blurb) and is listed
+in the sticky `<nav class="chapnav">` sitting between the hero and chapter 1. A
+second, self-contained IIFE at the end of the file drives it: it measures the bar
+into `--navh` (the chapters' `scroll-margin-top` and the control rails' sticky
+offset both derive from it) and runs the scroll spy on two IntersectionObservers
+— a 1 px band at the switch line for ordinary scrolling, plus the open region
+below that line for anchor jumps, which step over a 1 px band in a single frame
+without ever intersecting it. New sections belong **inside** one of the four
+wrappers. Related: `.fsfo` uses `overflow-x:clip`, not `hidden`, because `hidden`
+forces `overflow-y` to `auto`, which makes `.fsfo` a scroll container and
+silently kills every `position:sticky` inside it (the control rails included).
+
 The workbench carries three scenarios. The third, **observer lost**, kills the
 only observer host at t = 0: the primary keeps serving because it still reaches
 the target standby, the standby keeps applying, and no fast-start failover is
