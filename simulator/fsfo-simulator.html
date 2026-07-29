@@ -1,0 +1,1174 @@
+<title>Fast-start failover, second by second</title>
+
+<style>
+/* Token legend: bg page ground · sf surface · sf2 sunken · sf3 track · ln hairline
+   ln2 strong line · ik/ik2/ik3 ink · tl teal (serving) · bl blue (applying)
+   am amber (waiting) · rd red (down) · vi violet (observer decision) · sl slate
+   *f = the matching fill · fc focus · gd grid · sh shadow.
+   Light is the default. Dark is redefined under the media query, and both are
+   redefined again under [data-theme] so the host toggle wins in both directions.
+   Components below style themselves only through these tokens. */
+:root{
+--bg:#F4F6F8;--sf:#FFFFFF;--sf2:#EDF1F5;--sf3:#E4E9EF;--ln:#DCE2EA;--ln2:#BFC9D6;
+--ik:#101922;--ik2:#46566A;--ik3:#6E7F93;
+--tl:#0E7C6B;--tlf:#D5EDE8;--bl:#2563EB;--blf:#DBE6FE;--am:#D97706;--amf:#FAEAD2;
+--rd:#D64545;--rdf:#FADEDE;--vi:#6D5AE6;--vif:#E3DFFB;--sl:#475569;
+--fc:#2563EB;--gd:#E7ECF2;--sh:0 1px 2px rgba(16,25,34,.05),0 8px 24px rgba(16,25,34,.05);
+}
+@media (prefers-color-scheme:dark){:root{
+--bg:#0A0E13;--sf:#111821;--sf2:#0D141C;--sf3:#16202B;--ln:#1F2A36;--ln2:#33414F;
+--ik:#E7EEF6;--ik2:#A0B1C4;--ik3:#78899C;
+--tl:#34D3B8;--tlf:#0D3A33;--bl:#6BA5FB;--blf:#14294A;--am:#F5B443;--amf:#402C10;
+--rd:#F58080;--rdf:#45191C;--vi:#AEA0F8;--vif:#241E4A;--sl:#8095AC;
+--fc:#6BA5FB;--gd:#182230;--sh:0 1px 2px rgba(0,0,0,.5),0 10px 30px rgba(0,0,0,.35);
+}}
+:root[data-theme="dark"]{
+--bg:#0A0E13;--sf:#111821;--sf2:#0D141C;--sf3:#16202B;--ln:#1F2A36;--ln2:#33414F;
+--ik:#E7EEF6;--ik2:#A0B1C4;--ik3:#78899C;
+--tl:#34D3B8;--tlf:#0D3A33;--bl:#6BA5FB;--blf:#14294A;--am:#F5B443;--amf:#402C10;
+--rd:#F58080;--rdf:#45191C;--vi:#AEA0F8;--vif:#241E4A;--sl:#8095AC;
+--fc:#6BA5FB;--gd:#182230;--sh:0 1px 2px rgba(0,0,0,.5),0 10px 30px rgba(0,0,0,.35);
+}
+:root[data-theme="light"]{
+--bg:#F4F6F8;--sf:#FFFFFF;--sf2:#EDF1F5;--sf3:#E4E9EF;--ln:#DCE2EA;--ln2:#BFC9D6;
+--ik:#101922;--ik2:#46566A;--ik3:#6E7F93;
+--tl:#0E7C6B;--tlf:#D5EDE8;--bl:#2563EB;--blf:#DBE6FE;--am:#D97706;--amf:#FAEAD2;
+--rd:#D64545;--rdf:#FADEDE;--vi:#6D5AE6;--vif:#E3DFFB;--sl:#475569;
+--fc:#2563EB;--gd:#E7ECF2;--sh:0 1px 2px rgba(16,25,34,.05),0 8px 24px rgba(16,25,34,.05);
+}
+
+/* base */
+.fsfo{--sans:system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+--mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,"Liberation Mono",monospace;
+background:var(--bg);color:var(--ik);font-family:var(--sans);font-size:15px;line-height:1.55;
+-webkit-font-smoothing:antialiased;padding:34px 22px 72px;max-width:1240px;margin:0 auto;overflow-x:hidden}
+.fsfo *,.fsfo *::before,.fsfo *::after{box-sizing:border-box}
+.fsfo [hidden]{display:none !important}
+.fsfo :focus-visible{outline:2px solid var(--fc);outline-offset:2px;border-radius:2px}
+.fsfo p{margin:0}
+.mono,.fsfo .num{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--ik3)}
+
+/* header */
+.hd{display:flex;flex-direction:column;gap:10px;padding-bottom:22px;border-bottom:1px solid var(--ln)}
+.hd h1{margin:0;font-size:clamp(26px,3.4vw,38px);line-height:1.1;font-weight:620;letter-spacing:-.022em;text-wrap:balance}
+.hd .lede{max-width:62ch;color:var(--ik2);font-size:16px}
+
+/* workbench */
+.workbench{display:grid;grid-template-columns:302px minmax(0,1fr);gap:26px;align-items:start;margin-top:26px}
+@media (max-width:960px){.workbench{grid-template-columns:minmax(0,1fr)}}
+
+/* control rail */
+.rail{display:flex;flex-direction:column;background:var(--sf);border:1px solid var(--ln);border-radius:3px;box-shadow:var(--sh);min-width:0}
+@media (min-width:961px){.rail{position:sticky;top:16px;max-height:calc(100vh - 32px);overflow-y:auto}}
+.rail-hd{padding:12px 16px;border-bottom:1px solid var(--ln);background:var(--sf2);display:flex;justify-content:space-between;align-items:baseline;gap:8px;border-radius:3px 3px 0 0}
+.rail-hd button{font-family:var(--mono);font-size:11px;letter-spacing:.04em;color:var(--ik2);background:transparent;border:1px solid var(--ln2);border-radius:2px;padding:2px 8px;cursor:pointer}
+.rail-hd button:hover{color:var(--ik);border-color:var(--ik3)}
+.ctl{padding:15px 16px;border-bottom:1px solid var(--ln);display:flex;flex-direction:column;gap:8px}
+.ctl:last-child{border-bottom:0}
+.ctl.is-off{opacity:.46}
+.ctl-hd{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
+.ctl-hd+.ctl-hd{margin-top:6px}
+.ctl-name{font-family:var(--mono);font-size:12px;color:var(--ik);word-break:break-word}
+.ctl-name.is-prose{font-family:var(--sans);font-size:12.5px;letter-spacing:.01em;color:var(--ik2)}
+.ctl-val{font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:13px;font-weight:600;color:var(--vi);white-space:nowrap}
+.ctl-note{font-size:11.5px;line-height:1.45;color:var(--ik3)}
+.ctl-note .mono{font-size:11px;color:var(--ik2)}
+.ctl-note.is-warn{color:var(--am)}
+.ctl-scale{display:flex;justify-content:space-between;font-family:var(--mono);font-size:10px;color:var(--ik3);margin-top:-4px}
+
+input[type="range"]{-webkit-appearance:none;appearance:none;width:100%;height:20px;margin:0;background:transparent;cursor:pointer;accent-color:var(--vi)}
+input[type="range"]::-webkit-slider-runnable-track{height:3px;background:var(--sf3);border-radius:2px;border:0}
+input[type="range"]::-moz-range-track{height:3px;background:var(--sf3);border-radius:2px;border:0}
+input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:14px;height:14px;margin-top:-5.5px;border-radius:50%;background:var(--vi);border:2px solid var(--sf);box-shadow:0 0 0 1px var(--vi)}
+input[type="range"]::-moz-range-thumb{width:12px;height:12px;border-radius:50%;background:var(--vi);border:2px solid var(--sf);box-shadow:0 0 0 1px var(--vi)}
+input[type="range"]:disabled{cursor:not-allowed}
+input[type="range"]:disabled::-webkit-slider-thumb{background:var(--ik3);box-shadow:0 0 0 1px var(--ik3)}
+input[type="range"]:disabled::-moz-range-thumb{background:var(--ik3);box-shadow:0 0 0 1px var(--ik3)}
+
+.seg{border:0;padding:0;margin:0;display:flex;flex-direction:column;gap:8px;min-width:0}
+.seg legend{padding:0}
+.seg-row{display:grid;grid-template-columns:1fr 1fr;border:1px solid var(--ln2);border-radius:2px;overflow:hidden}
+.seg-row input{position:absolute;opacity:0;width:1px;height:1px}
+.seg-row label{padding:7px 6px;text-align:center;font-size:12px;color:var(--ik2);background:var(--sf);cursor:pointer;border-right:1px solid var(--ln);user-select:none}
+.seg-row label:last-of-type{border-right:0}
+.seg-row label:hover{background:var(--sf2)}
+.seg-row input:checked+label{background:var(--vif);color:var(--ik);font-weight:560;box-shadow:inset 0 -2px 0 var(--vi)}
+.seg-row input:focus-visible+label{outline:2px solid var(--fc);outline-offset:-2px}
+
+.sw{display:flex;align-items:flex-start;gap:10px;cursor:pointer}
+.sw input{position:absolute;opacity:0;width:1px;height:1px}
+.sw-track{flex:0 0 auto;margin-top:2px;width:34px;height:18px;border-radius:9px;background:var(--sf3);border:1px solid var(--ln2);position:relative}
+.sw-track::after{content:"";position:absolute;top:2px;left:2px;width:12px;height:12px;border-radius:50%;background:var(--ik3)}
+.sw input:checked+.sw-track{background:var(--vif);border-color:var(--vi)}
+.sw input:checked+.sw-track::after{left:18px;background:var(--vi)}
+.sw input:focus-visible+.sw-track{outline:2px solid var(--fc);outline-offset:2px}
+.sw input:disabled+.sw-track{opacity:.5}
+.sw-text{display:flex;flex-direction:column;gap:2px;min-width:0}
+.sw-state{font-family:var(--mono);font-size:11px;font-weight:600;color:var(--vi)}
+@media (prefers-reduced-motion:no-preference){
+.sw-track,.sw-track::after,.seg-row label,.rail-hd button{transition:background-color .16s ease,border-color .16s ease,left .16s ease,color .16s ease}}
+
+/* stage */
+.stage{display:flex;flex-direction:column;gap:14px;min-width:0}
+.stage-hd{display:flex;justify-content:space-between;align-items:baseline;gap:14px;flex-wrap:wrap}
+.stage-hd h2{margin:0;font-size:15px;font-weight:600;letter-spacing:-.01em}
+.banner,.callout{display:flex;gap:12px;align-items:flex-start;padding:12px 14px 12px 12px;border-radius:2px;border:1px solid;border-left-width:4px}
+.banner{background:var(--rdf);border-color:var(--rd)}
+.callout{background:var(--vif);border-color:var(--vi)}
+.banner-k,.callout-k{font-family:var(--mono);font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;padding-top:2px;white-space:nowrap}
+.banner-k{color:var(--rd)}
+.callout-k{color:var(--vi)}
+.banner-b,.callout-b{font-size:13.5px;color:var(--ik)}
+.banner-b .mono,.callout-b .mono{font-size:12.5px}
+.tl-wrap{background:var(--sf);border:1px solid var(--ln);border-radius:3px;box-shadow:var(--sh);overflow-x:auto;overflow-y:hidden}
+.tl-wrap svg{display:block}
+.caption{font-size:13px;color:var(--ik2);max-width:76ch}
+.caption .mono{font-size:12px;color:var(--ik)}
+.legend{display:flex;flex-wrap:wrap;gap:6px 18px;font-size:11.5px;color:var(--ik2)}
+.legend span{display:inline-flex;align-items:center;gap:7px}
+.legend i{width:15px;height:9px;border-radius:1px;border:1px solid;display:inline-block}
+.lg-tl{background:var(--tlf);border-color:var(--tl)}
+.lg-bl{background:var(--blf);border-color:var(--bl)}
+.lg-am{background:var(--amf);border-color:var(--am)}
+.lg-rd{background:var(--rdf);border-color:var(--rd)}
+.lg-vi{background:var(--vif);border-color:var(--vi)}
+.lg-sl{background:var(--sf3);border-color:var(--ln2)}
+
+/* readout */
+.readout{margin-top:30px}
+.chips{display:grid;grid-template-columns:repeat(auto-fit,minmax(196px,1fr));gap:1px;background:var(--ln);border:1px solid var(--ln);border-radius:3px;overflow:hidden;margin-top:10px}
+.chip{background:var(--sf);padding:14px 16px;display:flex;flex-direction:column;gap:3px;min-width:0}
+.chip-k{font-family:var(--mono);font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--ik3)}
+.chip-v{font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:26px;font-weight:620;letter-spacing:-.03em;line-height:1.15;color:var(--ik)}
+.chip-v small{font-size:14px;font-weight:500;color:var(--ik2);letter-spacing:0}
+.chip-s{font-size:11.5px;color:var(--ik3);line-height:1.4}
+.chip-s .mono{font-size:10.5px;color:var(--ik2)}
+.chip.t-tl .chip-v{color:var(--tl)}
+.chip.t-vi .chip-v{color:var(--vi)}
+.chip.t-am .chip-v{color:var(--am)}
+.chip.t-rd .chip-v{color:var(--rd)}
+
+/* prose + reference */
+.sec{margin-top:52px;display:flex;flex-direction:column;gap:14px}
+.sec>h2{margin:0;font-size:21px;font-weight:620;letter-spacing:-.018em;text-wrap:balance}
+.sec-hd{display:flex;flex-direction:column;gap:5px}
+.notes{display:grid;grid-template-columns:repeat(auto-fit,minmax(292px,1fr));gap:20px 32px}
+.note{display:flex;flex-direction:column;gap:5px;padding-left:13px;border-left:2px solid var(--ln2)}
+.note h3{margin:0;font-size:13.5px;font-weight:600}
+.note p{font-size:13.5px;color:var(--ik2)}
+.note .mono{font-size:12.5px;color:var(--ik)}
+.note.k-am{border-left-color:var(--am)}
+.note.k-vi{border-left-color:var(--vi)}
+.note.k-rd{border-left-color:var(--rd)}
+.note.k-tl{border-left-color:var(--tl)}
+.note.k-bl{border-left-color:var(--bl)}
+.tbl-wrap{overflow-x:auto;border:1px solid var(--ln);border-radius:3px;background:var(--sf)}
+table{border-collapse:collapse;width:100%;min-width:820px;font-size:13px}
+thead th{text-align:left;font-family:var(--mono);font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--ik3);font-weight:500;padding:10px 14px;border-bottom:1px solid var(--ln);background:var(--sf2);white-space:nowrap}
+tbody td{padding:11px 14px;border-bottom:1px solid var(--ln);vertical-align:top;color:var(--ik2)}
+tbody tr:last-child td{border-bottom:0}
+tbody td:first-child{color:var(--ik);white-space:nowrap}
+td.n{font-family:var(--mono);font-variant-numeric:tabular-nums;white-space:nowrap;color:var(--ik)}
+td .mono{font-size:12px;color:var(--ik)}
+.foot{margin-top:44px;padding-top:18px;border-top:1px solid var(--ln);display:flex;flex-direction:column;gap:9px}
+.foot p{font-size:12px;color:var(--ik3);max-width:84ch}
+.foot .mono{font-size:11.5px;color:var(--ik2)}
+.foot sup{font-family:var(--mono);color:var(--ik2);margin-right:4px}
+.sr{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
+
+/* svg — timeline and sequence, tokens only */
+.tl-svg text,.sq-svg text{font-family:var(--sans);fill:var(--ik2)}
+.tl-svg .t-mono,.sq-svg .s-mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.tl-svg .t-lane{fill:var(--ik);font-size:13px;font-weight:600}
+.tl-svg .t-sub{fill:var(--ik3);font-size:10px}
+.tl-svg .t-bar{font-size:11px}
+.tl-svg .t-tick{fill:var(--ik3);font-size:10.5px}
+.tl-svg .t-mark{font-size:11.5px;font-weight:560}
+.tl-svg .t-brace-n{font-size:11.5px;fill:var(--ik)}
+.tl-svg .t-brace-v{font-size:11px;fill:var(--ik2)}
+.tl-svg .t-top{font-size:12px;font-weight:560;fill:var(--ik)}
+.tl-svg .ax{stroke:var(--ln2);stroke-width:1}
+.tl-svg .gridline{stroke:var(--gd);stroke-width:1}
+.tl-svg .prezone{fill:var(--sf2)}
+.tl-svg .lane-bg{fill:var(--sf2);stroke:var(--ln);stroke-width:1}
+.tl-svg .bar{stroke-width:1.25;rx:2}
+.tl-svg .b-tl{fill:var(--tlf);stroke:var(--tl)}
+.tl-svg .b-bl{fill:var(--blf);stroke:var(--bl)}
+.tl-svg .b-am{fill:var(--amf);stroke:var(--am)}
+.tl-svg .b-sl{fill:var(--sf3);stroke:var(--ln2)}
+.tl-svg .b-hatch{fill:url(#fsfoHatch);stroke:var(--rd)}
+.tl-svg .b-hatch2{fill:url(#txHatch);stroke:var(--rd)}
+.tl-svg .hatch-bg{fill:var(--rdf)}
+.tl-svg .hatch-ln{stroke:var(--rd);stroke-width:2;opacity:.5}
+.tl-svg .f-tl{fill:var(--tl)}
+.tl-svg .f-bl{fill:var(--bl)}
+.tl-svg .f-am{fill:var(--am)}
+.tl-svg .f-rd{fill:var(--rd)}
+.tl-svg .f-vi{fill:var(--vi)}
+.tl-svg .f-sl{fill:var(--ik2)}
+.tl-svg .f-ar{fill:var(--sl)}
+.tl-svg .m-rd{stroke:var(--rd)}
+.tl-svg .m-vi{stroke:var(--vi)}
+.tl-svg .m-tl{stroke:var(--tl)}
+.tl-svg .partition{stroke:var(--rd);stroke-width:1.5;stroke-dasharray:5 4}
+.tl-svg .rdy{stroke:var(--sl);stroke-width:1.25;stroke-dasharray:4 3;fill:none}
+.tl-svg .rdy-bad{stroke:var(--rd);stroke-width:1.25;stroke-dasharray:4 3;fill:none}
+.tl-svg .brace{fill:none;stroke-width:1.35}
+.tl-svg .br-am{stroke:var(--am)}
+.tl-svg .br-bl{stroke:var(--bl)}
+.tl-svg .br-rd{stroke:var(--rd)}
+.tl-svg .br-sl{stroke:var(--ln2)}
+@media (prefers-reduced-motion:no-preference){
+.tl-svg.is-new{animation:fsfoIn .22s ease-out}
+@keyframes fsfoIn{from{opacity:.35}to{opacity:1}}}
+
+.sq-wrap{overflow-x:auto;background:var(--sf);border:1px solid var(--ln);border-radius:3px;box-shadow:var(--sh)}
+.sq-svg{display:block;min-width:880px;width:100%;height:auto}
+.tx-svg{display:block;min-width:840px;width:100%;height:auto}
+.sq-svg .s-name{fill:var(--ik);font-size:12.5px;font-weight:600}
+.sq-svg .s-msg{fill:var(--ik2);font-size:11.5px}
+.sq-svg .s-note{fill:var(--ik);font-size:11.5px}
+.sq-svg .s-small{fill:var(--ik3);font-size:10.5px}
+.sq-svg .s-box{fill:var(--sf2);stroke:var(--ln2);stroke-width:1}
+.sq-svg .s-life{stroke:var(--ln2);stroke-width:1;stroke-dasharray:3 4}
+.sq-svg .s-loop{fill:none;stroke:var(--ln2);stroke-width:1;stroke-dasharray:4 4}
+.sq-svg .s-tag{fill:var(--sf3);stroke:var(--ln2);stroke-width:1}
+.sq-svg .s-ar{stroke:var(--sl);stroke-width:1.25;fill:none}
+.sq-svg .s-ar-d{stroke:var(--sl);stroke-width:1.25;stroke-dasharray:4 3;fill:none}
+.sq-svg .s-ar-rd{stroke:var(--rd);stroke-width:1.25;stroke-dasharray:4 3;fill:none}
+.sq-svg .s-ar-vi{stroke:var(--vi);stroke-width:2;fill:none}
+.sq-svg .s-ar-tl{stroke:var(--tl);stroke-width:1.25;stroke-dasharray:4 3;fill:none}
+.sq-svg .s-noteb{fill:var(--amf);stroke:var(--am);stroke-width:1}
+.sq-svg .s-act{fill:var(--blf);stroke:var(--bl);stroke-width:1.25}
+.sq-svg .s-dead{fill:url(#sqHatch);stroke:var(--rd);stroke-width:1}
+.sq-svg .sq-bg{fill:var(--rdf)}
+.sq-svg .sq-ln{stroke:var(--rd);stroke-width:2;opacity:.5}
+.sq-svg .s-rd{fill:var(--rd)}
+.sq-svg .s-vi{fill:var(--vi)}
+.sq-svg .s-tl{fill:var(--tl)}
+.sq-svg .s-x{stroke:var(--rd);stroke-width:2.5}
+.sq-svg .ah-sl{fill:var(--sl)}
+.sq-svg .ah-rd{fill:var(--rd)}
+.sq-svg .ah-vi{fill:var(--vi)}
+.sq-svg .ah-tl{fill:var(--tl)}
+</style>
+
+<div class="fsfo">
+
+  <header class="hd">
+    <p class="eyebrow">Oracle 19c Data Guard broker</p>
+    <h1>Fast-start failover, second by second</h1>
+    <p class="lede">Set the broker properties on the left and watch the exact moment the observer gives up on the primary, the moment the standby opens read-write, and how much redo you lose in between.</p>
+  </header>
+
+  <div class="workbench">
+
+    <aside class="rail" aria-label="Broker properties and scenario">
+      <div class="rail-hd">
+        <span class="eyebrow">Configuration</span>
+        <button type="button" id="c-reset">Reset defaults</button>
+      </div>
+
+      <div class="ctl">
+        <fieldset class="seg">
+          <legend class="ctl-name is-prose">Scenario</legend>
+          <div class="seg-row">
+            <input type="radio" name="scenario" id="sc-crash" value="crash" checked>
+            <label for="sc-crash">Primary crash</label>
+            <input type="radio" name="scenario" id="sc-iso" value="isolated">
+            <label for="sc-iso">Isolated primary</label>
+          </div>
+        </fieldset>
+        <p class="ctl-note" id="n-scenario">The primary host dies outright. Observer and standby both lose it at the same instant.</p>
+      </div>
+
+      <div class="ctl">
+        <fieldset class="seg">
+          <legend class="ctl-name is-prose">Protection mode</legend>
+          <div class="seg-row">
+            <input type="radio" name="mode" id="md-avail" value="maxavail" checked>
+            <label for="md-avail">MaxAvailability</label>
+            <input type="radio" name="mode" id="md-perf" value="maxperf">
+            <label for="md-perf">MaxPerformance</label>
+          </div>
+        </fieldset>
+        <p class="ctl-note" id="n-mode">SYNC redo transport. The standby must have been synchronized at failure time; data loss is zero.</p>
+      </div>
+
+      <div class="ctl" id="ctl-threshold">
+        <div class="ctl-hd">
+          <label class="ctl-name" for="c-threshold">FastStartFailoverThreshold</label>
+          <output class="ctl-val" id="v-threshold" for="c-threshold">30 s</output>
+        </div>
+        <input type="range" id="c-threshold" min="6" max="120" step="1" value="30" aria-describedby="n-threshold">
+        <div class="ctl-scale"><span>6 s</span><span>120 s</span></div>
+        <p class="ctl-note" id="n-threshold">Seconds the master observer spends trying to reconnect before it initiates failover. The clock starts the instant the observer first loses the connection. Minimum 6 s.</p>
+      </div>
+
+      <div class="ctl">
+        <label class="sw" for="c-pingset">
+          <input type="checkbox" id="c-pingset">
+          <span class="sw-track" aria-hidden="true"></span>
+          <span class="sw-text">
+            <span class="ctl-name">ObserverPingInterval / ObserverPingRetry</span>
+            <span class="sw-state" id="v-pingset">not set</span>
+          </span>
+        </label>
+        <p class="ctl-note">Set both properties explicitly to hand detection over to the ping loop.</p>
+      </div>
+
+      <div class="ctl" id="ctl-ping" hidden>
+        <div class="ctl-hd">
+          <label class="ctl-name" for="c-pinginterval">ObserverPingInterval</label>
+          <output class="ctl-val" id="v-pinginterval" for="c-pinginterval">100 ms</output>
+        </div>
+        <input type="range" id="c-pinginterval" min="100" max="5000" step="100" value="100">
+        <div class="ctl-scale"><span>100 ms</span><span>5000 ms</span></div>
+        <div class="ctl-hd">
+          <label class="ctl-name" for="c-pingretry">ObserverPingRetry</label>
+          <output class="ctl-val" id="v-pingretry" for="c-pingretry">10</output>
+        </div>
+        <input type="range" id="c-pingretry" min="10" max="50" step="1" value="10">
+        <div class="ctl-scale"><span>10</span><span>50</span></div>
+        <p class="ctl-note">A ping counts as failed when there is no answer within <span class="mono">ObserverPingInterval</span>. Detection ends after the last retry.</p>
+      </div>
+
+      <div class="ctl">
+        <div class="ctl-hd">
+          <label class="ctl-name is-prose" for="c-lag">Standby apply lag at failure time</label>
+          <output class="ctl-val" id="v-lag" for="c-lag">10 s</output>
+        </div>
+        <input type="range" id="c-lag" min="0" max="90" step="1" value="10">
+        <div class="ctl-scale"><span>0 s</span><span>90 s</span></div>
+        <p class="ctl-note">How far the standby's apply point trails the primary's redo generation point when the failure lands.</p>
+      </div>
+
+      <div class="ctl" id="ctl-laglimit">
+        <div class="ctl-hd">
+          <label class="ctl-name" for="c-laglimit">FastStartFailoverLagLimit</label>
+          <output class="ctl-val" id="v-laglimit" for="c-laglimit">30 s</output>
+        </div>
+        <input type="range" id="c-laglimit" min="5" max="90" step="1" value="30">
+        <div class="ctl-scale"><span>5 s</span><span>90 s</span></div>
+        <p class="ctl-note" id="n-laglimit">MaxPerformance only. Not evaluated in MaxAvailability, where the standby must be synchronized instead.</p>
+      </div>
+
+      <div class="ctl">
+        <div class="ctl-hd">
+          <label class="ctl-name is-prose" for="c-role">Role transition + open time</label>
+          <output class="ctl-val" id="v-role" for="c-role">15 s</output>
+        </div>
+        <input type="range" id="c-role" min="5" max="60" step="1" value="15">
+        <div class="ctl-scale"><span>5 s</span><span>60 s</span></div>
+        <p class="ctl-note">Environment-dependent, not a broker parameter. Covers the role change and the read-write open once the redo is applied.</p>
+      </div>
+
+      <div class="ctl" id="ctl-shutdown">
+        <label class="sw" for="c-shutdown">
+          <input type="checkbox" id="c-shutdown" checked>
+          <span class="sw-track" aria-hidden="true"></span>
+          <span class="sw-text">
+            <span class="ctl-name">FastStartFailoverPmyShutdown</span>
+            <span class="sw-state" id="v-shutdown">TRUE</span>
+          </span>
+        </label>
+        <p class="ctl-note" id="n-shutdown">Isolated-primary scenario only.</p>
+      </div>
+    </aside>
+
+    <section class="stage">
+      <div class="stage-hd">
+        <h2 id="tl-heading">Timeline</h2>
+        <span class="eyebrow" id="tl-eyebrow">t = 0 is the failure event</span>
+      </div>
+
+      <div class="banner" id="banner" hidden>
+        <span class="banner-k">Blocked</span>
+        <p class="banner-b" id="banner-body"></p>
+      </div>
+
+      <div class="tl-wrap" id="tl-wrap"></div>
+      <p class="sr" id="tl-summary" aria-live="polite"></p>
+
+      <div class="legend">
+        <span><i class="lg-tl"></i>Open read-write</span>
+        <span><i class="lg-bl"></i>Applying redo</span>
+        <span><i class="lg-am"></i>Waiting or recovering</span>
+        <span><i class="lg-rd"></i>Down or stalled</span>
+        <span><i class="lg-vi"></i>Observer decision</span>
+        <span><i class="lg-sl"></i>Monitoring</span>
+      </div>
+
+      <p class="caption" id="tl-caption"></p>
+
+      <div class="callout" id="callout" hidden>
+        <span class="callout-k">Split brain</span>
+        <p class="callout-b" id="callout-body"></p>
+      </div>
+    </section>
+  </div>
+
+  <section class="readout">
+    <p class="eyebrow">Readout</p>
+    <div class="chips" id="chips"></div>
+  </section>
+
+  <section class="sec">
+    <div class="sec-hd">
+      <p class="eyebrow">How to read this</p>
+      <h2>Six things the timeline is telling you</h2>
+    </div>
+    <div class="notes">
+      <div class="note k-am">
+        <h3>The threshold is a reconnect budget</h3>
+        <p><span class="mono">FastStartFailoverThreshold</span> is not a timeout on one ping. It is the number of seconds the master observer keeps attempting to reconnect to the primary, counted from the moment it first lost the connection. That moment is t = 0 here.</p>
+      </div>
+      <div class="note k-vi">
+        <h3>Two parties have to agree</h3>
+        <p>Fast-start failover happens when the observer <em>and</em> the target standby have both lost the primary for the threshold. During the countdown the observer confirms with the standby that it also lost contact and is ready. If the standby still has contact with the primary, no failover.</p>
+      </div>
+      <div class="note k-bl">
+        <h3>Readiness means different things per mode</h3>
+        <p>In MaxAvailability and MaxProtection the standby must have been synchronized at failure time. In MaxPerformance its apply lag must be at or below <span class="mono">FastStartFailoverLagLimit</span>. Fail that check and fast-start failover is not allowed at all.</p>
+      </div>
+      <div class="note k-tl">
+        <h3>Execution is not a parameter</h3>
+        <p>Once initiated, the standby finishes applying the redo it already received, converts to the primary role, and opens read-write. That span grows with the apply lag at failure time and with your environment. No broker property shortens it.</p>
+      </div>
+      <div class="note k-rd">
+        <h3>The ping properties override the threshold</h3>
+        <p>From the broker documentation: the <span class="mono">FastStartFailoverThreshold</span> property is ignored when the <span class="mono">ObserverPingRetry</span> and <span class="mono">ObserverPingInterval</span> properties are set. Detection then costs interval times retries, which can be about a second.</p>
+      </div>
+      <div class="note k-rd">
+        <h3>An isolated primary runs its own clock</h3>
+        <p>When a partition cuts the primary off from both the observer and the standby, redo generation stalls, <span class="mono">V$DATABASE.FS_FAILOVER_STATUS</span> goes to <span class="mono">STALLED</span>, and after <span class="mono">FastStartFailoverThreshold</span> seconds the primary aborts itself if <span class="mono">FastStartFailoverPmyShutdown</span> is TRUE. Two clocks, one open primary.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="sec">
+    <div class="sec-hd">
+      <p class="eyebrow">Message order</p>
+      <h2>Who says what, in what order</h2>
+    </div>
+    <p class="caption">The primary-crash case as a sequence of messages between the three actors. Colors carry the same meaning as the timeline above.</p>
+    <div class="sq-wrap">
+      <svg class="sq-svg" viewBox="0 0 960 704" role="img"
+           aria-label="Sequence diagram of fast-start failover after a primary crash: steady-state pings and redo shipping, the crash, failed pings and retries, the threshold clock, the observer to standby readiness exchange, threshold expiry, the failover command, standby activation, and the completion message.">
+        <defs>
+          <pattern id="sqHatch" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+            <rect width="8" height="8" class="sq-bg"></rect>
+            <line x1="0" y1="0" x2="0" y2="8" class="sq-ln"></line>
+          </pattern>
+          <marker id="sqA" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,1 L10,5 L0,9 z" class="ah-sl"></path></marker>
+          <marker id="sqAr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,1 L10,5 L0,9 z" class="ah-rd"></path></marker>
+          <marker id="sqAv" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,1 L10,5 L0,9 z" class="ah-vi"></path></marker>
+          <marker id="sqAt" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,1 L10,5 L0,9 z" class="ah-tl"></path></marker>
+        </defs>
+
+        <line class="s-life" x1="160" y1="54" x2="160" y2="676"></line>
+        <line class="s-life" x1="480" y1="54" x2="480" y2="676"></line>
+        <line class="s-life" x1="800" y1="54" x2="800" y2="676"></line>
+
+        <rect class="s-box" x="86" y="16" width="148" height="34" rx="2"></rect>
+        <text class="s-name" x="160" y="38" text-anchor="middle">Primary</text>
+        <rect class="s-box" x="406" y="16" width="148" height="34" rx="2"></rect>
+        <text class="s-name" x="480" y="38" text-anchor="middle">Observer</text>
+        <rect class="s-box" x="726" y="16" width="148" height="34" rx="2"></rect>
+        <text class="s-name" x="800" y="38" text-anchor="middle">Target standby</text>
+
+        <rect class="s-loop" x="92" y="72" width="800" height="106" rx="2"></rect>
+        <rect class="s-tag" x="92" y="72" width="132" height="19" rx="2"></rect>
+        <text class="s-small s-mono" x="100" y="86">loop  steady state</text>
+        <text class="s-msg" x="320" y="110" text-anchor="middle">ping</text>
+        <line class="s-ar" x1="474" y1="118" x2="168" y2="118" marker-end="url(#sqA)"></line>
+        <text class="s-msg" x="320" y="136" text-anchor="middle">ack</text>
+        <line class="s-ar-d" x1="166" y1="144" x2="472" y2="144" marker-end="url(#sqA)"></line>
+        <text class="s-msg" x="480" y="162" text-anchor="middle">ship redo — SYNC in MaxAvailability, ASYNC in MaxPerformance</text>
+        <line class="s-ar" x1="166" y1="170" x2="792" y2="170" marker-end="url(#sqA)"></line>
+
+        <line class="s-x" x1="148" y1="198" x2="172" y2="222"></line>
+        <line class="s-x" x1="172" y1="198" x2="148" y2="222"></line>
+        <text class="s-msg s-rd" x="186" y="215">primary host crashes</text>
+        <rect class="s-dead" x="150" y="228" width="20" height="448"></rect>
+
+        <text class="s-msg s-rd" x="330" y="252" text-anchor="middle">ping — no answer</text>
+        <line class="s-ar-rd" x1="474" y1="260" x2="190" y2="260" marker-end="url(#sqAr)"></line>
+
+        <rect class="s-noteb" x="330" y="278" width="300" height="52" rx="2"></rect>
+        <text class="s-note" x="344" y="298">detection = <tspan class="s-mono">ObserverPingInterval</tspan> ×</text>
+        <text class="s-note" x="344" y="316"><tspan class="s-mono">ObserverPingRetry</tspan>; threshold clock starts</text>
+
+        <text class="s-msg" x="640" y="356" text-anchor="middle">lost contact too? synchronized, or</text>
+        <text class="s-msg" x="640" y="370" text-anchor="middle">apply lag ≤ <tspan class="s-mono">FastStartFailoverLagLimit</tspan>?</text>
+        <line class="s-ar" x1="488" y1="378" x2="792" y2="378" marker-end="url(#sqA)"></line>
+        <text class="s-msg" x="640" y="400" text-anchor="middle">ready — no contact with the primary either</text>
+        <line class="s-ar-d" x1="792" y1="408" x2="488" y2="408" marker-end="url(#sqA)"></line>
+
+        <rect class="s-noteb" x="344" y="426" width="272" height="32" rx="2"></rect>
+        <text class="s-note s-mono" x="358" y="447">FastStartFailoverThreshold expires</text>
+
+        <text class="s-msg s-vi s-mono" x="640" y="480" text-anchor="middle">FAILOVER</text>
+        <line class="s-ar-vi" x1="488" y1="490" x2="790" y2="490" marker-end="url(#sqAv)"></line>
+
+        <rect class="s-act" x="662" y="504" width="276" height="118" rx="2"></rect>
+        <text class="s-note" x="678" y="526"><tspan class="s-mono">1</tspan>  terminal recovery</text>
+        <text class="s-small" x="678" y="542">applies the redo it already received</text>
+        <text class="s-note" x="678" y="568"><tspan class="s-mono">2</tspan>  converts to the primary role</text>
+        <text class="s-note" x="678" y="596"><tspan class="s-mono">3</tspan>  opens read-write</text>
+        <text class="s-small" x="678" y="612">service restored</text>
+
+        <text class="s-msg s-tl" x="600" y="646" text-anchor="middle">failover complete — new primary open</text>
+        <line class="s-ar-tl" x1="656" y1="654" x2="488" y2="654" marker-end="url(#sqAt)"></line>
+
+        <text class="s-small" x="20" y="694"><tspan class="s-mono">FastStartFailoverAutoReinstate = TRUE</tspan> — the old primary is reinstated as a standby via Flashback Database when it returns. Reinstate is out of scope here.</text>
+      </svg>
+    </div>
+  </section>
+
+  <section class="sec">
+    <div class="sec-hd">
+      <p class="eyebrow">Transport layer</p>
+      <h2>Where NET_TIMEOUT fits — and where it doesn't</h2>
+    </div>
+    <p class="caption"><span class="mono">NET_TIMEOUT</span> is an attribute of <span class="mono">LOG_ARCHIVE_DEST_n</span> on the primary (broker property <span class="mono">NetTimeout</span>), and it is not a failover clock — it sets how many seconds LGWR blocks waiting for the standby to acknowledge redo shipped synchronously by the <span class="mono">NSSn</span> process, after which an error is logged, the redo transport session is terminated, and the destination is dropped. Neither the observer nor the target standby consults it when deciding to fail over; the observer's clocks run on a separate connection. Both it and <span class="mono">FastStartFailoverThreshold</span> default to 30 seconds, which is exactly why the two get confused — so both panels below span the same window, and the brace under each shows which clock is really running.</p>
+
+    <div class="sq-wrap">
+      <svg class="tl-svg tx-svg" viewBox="0 0 960 412" role="img"
+           aria-label="Two mini-timelines from the primary's point of view, both spanning the same thirty seconds. Panel A: the standby link fails while the observer is still reachable in MaxAvailability; LGWR blocks for NET_TIMEOUT, then the destination is dropped and the primary carries on open but unsynchronized, so no failover happens. Panel B: the primary is fully isolated; it stalls instead, and FastStartFailoverThreshold rather than NET_TIMEOUT decides the outcome.">
+        <defs>
+          <pattern id="txHatch" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+            <rect width="8" height="8" class="hatch-bg"></rect>
+            <line x1="0" y1="0" x2="0" y2="8" class="hatch-ln"></line>
+          </pattern>
+        </defs>
+
+        <!-- Panel A — standby link fails, observer still reachable. Scale: x = 246 + 16t, so 0 s = 246 and 30 s = 726 -->
+        <text class="t-top" x="40" y="18">A — Standby link fails, observer still reachable · MaxAvailability (SYNC)</text>
+        <text class="t-mark f-rd" x="254" y="44">Standby stops acknowledging</text>
+        <text class="t-mark f-rd" x="718" y="44" text-anchor="end">Error logged — transport session terminated</text>
+        <line class="gridline" stroke-dasharray="4 4" x1="246" y1="50" x2="246" y2="128"></line>
+        <line class="gridline" stroke-dasharray="4 4" x1="726" y1="50" x2="726" y2="128"></line>
+        <line class="m-rd" stroke-width="2" x1="246" y1="46" x2="246" y2="54"></line>
+        <line class="m-rd" stroke-width="2" x1="726" y1="46" x2="726" y2="54"></line>
+        <text class="t-lane" x="136" y="72" text-anchor="end">Primary</text>
+        <text class="t-sub" x="136" y="86" text-anchor="end">SYNC transport</text>
+        <rect class="bar b-tl" x="150" y="54" width="96" height="42"></rect>
+        <text class="t-bar f-tl" x="198" y="80" text-anchor="middle">Committing</text>
+        <rect class="bar b-am" x="246" y="54" width="480" height="42"></rect>
+        <text class="t-bar f-am" x="486" y="80" text-anchor="middle">LGWR blocks — committing sessions wait on the SYNC acknowledgement</text>
+        <rect class="bar b-tl" x="726" y="54" width="192" height="42"></rect>
+        <text class="t-bar f-tl" x="822" y="80" text-anchor="middle">Open, UNSYNCHRONIZED</text>
+        <path class="brace br-am" d="M246,114 q0,5 5,5 H481 q5,0 5,5 q0,-5 5,-5 H721 q5,0 5,-5"></path>
+        <text class="t-brace-n t-mono" x="486" y="140" text-anchor="middle">NET_TIMEOUT</text>
+        <text class="t-brace-v t-mono" x="486" y="155" text-anchor="middle">30 s default · minimum 1 s · Oracle recommends at least 8–10 s</text>
+        <text class="t-bar f-sl" x="40" y="178">Primary stays open and nothing fails over — but it is now <tspan class="t-mono">UNSYNCHRONIZED</tspan>, so fast-start failover is impossible until the standby resynchronizes.</text>
+
+        <line class="ax" x1="40" y1="198" x2="920" y2="198"></line>
+
+        <!-- Panel B — primary fully isolated: the simulator's isolated scenario, same 0 to 30 s span -->
+        <text class="t-top" x="40" y="224">B — Primary fully isolated from observer and standby · the simulator's isolated scenario</text>
+        <text class="t-mark f-rd" x="254" y="248">Primary loses observer and standby</text>
+        <text class="t-mark f-rd" x="718" y="248" text-anchor="end">Outcome decided</text>
+        <line class="gridline" stroke-dasharray="4 4" x1="246" y1="254" x2="246" y2="348"></line>
+        <line class="gridline" stroke-dasharray="4 4" x1="726" y1="254" x2="726" y2="348"></line>
+        <line class="m-rd" stroke-width="2" x1="246" y1="250" x2="246" y2="258"></line>
+        <line class="m-rd" stroke-width="2" x1="726" y1="250" x2="726" y2="258"></line>
+        <text class="t-lane" x="136" y="276" text-anchor="end">Primary</text>
+        <text class="t-sub" x="136" y="290" text-anchor="end">isolated</text>
+        <rect class="bar b-tl" x="150" y="258" width="96" height="42"></rect>
+        <text class="t-bar f-tl" x="198" y="284" text-anchor="middle">Committing</text>
+        <rect class="bar b-hatch2" x="246" y="258" width="672" height="42"></rect>
+        <text class="t-bar f-rd" x="582" y="284" text-anchor="middle">STALLED — the stall overrides drop-and-continue</text>
+        <text class="t-bar f-am" x="254" y="318">In-flight commits still hang first — NET_TIMEOUT shapes only these seconds</text>
+        <path class="brace br-rd" d="M246,334 q0,5 5,5 H481 q5,0 5,5 q0,-5 5,-5 H721 q5,0 5,-5"></path>
+        <text class="t-brace-n t-mono" x="486" y="360" text-anchor="middle">FastStartFailoverThreshold</text>
+        <text class="t-brace-v t-mono" x="486" y="375" text-anchor="middle">30 s default — the clock that actually decides the outcome</text>
+        <text class="t-bar f-sl" x="40" y="398">The primary must assume a failover may already have happened, so it stalls — and <tspan class="t-mono">FastStartFailoverThreshold</tspan> decides what happens next.</text>
+      </svg>
+    </div>
+    <p class="caption">In MaxPerformance (ASYNC) commits never wait for the standby, so <span class="mono">NET_TIMEOUT</span> never touches user sessions and never appears on the failover timeline; eligibility and data loss are bounded by <span class="mono">FastStartFailoverLagLimit</span> instead.</p>
+  </section>
+
+  <section class="sec">
+    <div class="sec-hd">
+      <p class="eyebrow">Reference</p>
+      <h2>The broker properties on this page</h2>
+    </div>
+    <div class="tbl-wrap">
+      <table>
+        <thead>
+          <tr><th scope="col">Property</th><th scope="col">Default</th><th scope="col">Minimum</th><th scope="col">What it governs</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><span class="mono">FastStartFailoverThreshold</span></td><td class="n">30 s</td><td class="n">6 s</td>
+            <td>Seconds the master observer attempts to reconnect to the primary before initiating fast-start failover. The interval starts when the observer first loses its connection to the primary.</td></tr>
+          <tr><td><span class="mono">ObserverPingInterval</span></td><td class="n">100 ms</td><td class="n">100 ms</td>
+            <td>How frequently the observer pings the primary.</td></tr>
+          <tr><td><span class="mono">ObserverPingRetry</span></td><td class="n">10</td><td class="n">10</td>
+            <td>Number of times the observer retries a failed ping before initiating failover. A ping counts as failed when there is no answer within <span class="mono">ObserverPingInterval</span>.</td></tr>
+          <tr><td><span class="mono">FastStartFailoverLagLimit</span></td><td class="n">30 s</td><td class="n">5 s</td>
+            <td>MaxPerformance only. Maximum seconds the standby's apply point may lag the primary's redo generation point for fast-start failover to be permitted. Bounds the data loss.</td></tr>
+          <tr><td><span class="mono">FastStartFailoverPmyShutdown</span></td><td class="n">TRUE</td><td class="n">—</td>
+            <td>When TRUE, a primary whose <span class="mono">V$DATABASE.FS_FAILOVER_STATUS</span> has been <span class="mono">STALLED</span> for longer than <span class="mono">FastStartFailoverThreshold</span> seconds, and that cannot reach the observer or the target standby, shuts itself down with an abort.</td></tr>
+          <tr><td><span class="mono">FastStartFailoverAutoReinstate</span></td><td class="n">TRUE</td><td class="n">—</td>
+            <td>The old primary is automatically reinstated as a standby when it returns.</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="caption">Documented quirk: the <span class="mono">FastStartFailoverThreshold</span> property is ignored when the <span class="mono">ObserverPingRetry</span> and <span class="mono">ObserverPingInterval</span> properties are set. Toggle the ping properties on in the rail to see detection collapse to about a second.</p>
+  </section>
+
+  <div class="foot">
+    <p><sup>1</sup>The threshold is skipped entirely for user-configurable health conditions and for application-initiated failover through <span class="mono">DBMS_DG.INITIATE_FS_FAILOVER</span>. Neither is drawn on the timeline.</p>
+    <p><sup>2</sup>Apply-time figures on this page are illustrative. Terminal recovery is modelled one-to-one against the apply lag at failure time so the relationship is visible; real duration depends on the redo volume left to apply and on the environment.</p>
+  </div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  /* ---------------------------------------------------------
+     MODEL — one pure function. Everything rendered below reads
+     only from what this returns.
+     --------------------------------------------------------- */
+  /* MODEL:START */
+  function pickTickStep(span) {
+    var steps = [0.5, 1, 2, 5, 10, 15, 20, 30, 60, 120, 300, 600];
+    for (var i = 0; i < steps.length; i++) { if (span / steps[i] <= 9) return steps[i]; }
+    return steps[steps.length - 1];
+  }
+
+  /**
+   * computeFsfo(c) -> derived model
+   * c = { scenario:'crash'|'isolated', mode:'maxavail'|'maxperf',
+   *       threshold:s, pingSet:bool, pingInterval:ms, pingRetry:n,
+   *       standbyLag:s, lagLimit:s, roleTransition:s, pmyShutdown:bool }
+   */
+  function computeFsfo(c) {
+    var pingSet = !!c.pingSet;
+
+    // Detection: with the ping properties explicitly set, the first ping plus
+    // its retries. Otherwise the first failed ping, effectively immediate.
+    var detect = pingSet ? (c.pingInterval * (c.pingRetry + 1)) / 1000 : 0.3;
+
+    // The threshold clock starts at t = 0, when the observer first loses the
+    // connection. The ping properties, when set, replace it for detection.
+    var initiate = pingSet ? detect : c.threshold;
+
+    // MaxPerformance readiness check. Failing it forbids fast-start failover.
+    var blocked = c.mode === 'maxperf' && c.standbyLag > c.lagLimit;
+
+    var applyRemaining = c.standbyLag;            // illustrative 1:1 with lag
+    var tOpen = initiate + applyRemaining + c.roleTransition;
+
+    // The primary's own stall clock always uses the threshold, even when the
+    // ping properties are set: the quirk affects the observer's detection only.
+    var abort = (c.scenario === 'isolated' && c.pmyShutdown) ? c.threshold : null;
+
+    var dataLossKind = blocked ? 'na' : (c.mode === 'maxavail' ? 'none' : 'bounded');
+    var dataLossSeconds = dataLossKind === 'bounded' ? c.standbyLag : 0;
+
+    // Adaptive horizon: whatever is actually drawn, plus a margin.
+    var marks = [initiate];
+    marks.push(blocked ? initiate * 1.5 + 6 : tOpen);
+    if (!pingSet) marks.push(c.threshold);
+    if (abort !== null) marks.push(abort);
+    var end = Math.max.apply(null, marks);
+    var raw = end * 1.12 + Math.max(2, end * 0.06);
+    var tickStep = pickTickStep(raw);
+    var horizon = Math.max(tickStep, Math.ceil(raw / tickStep) * tickStep);
+    var preRoll = Math.max(2, Math.min(10, Math.round(horizon * 0.2)));
+
+    return {
+      pingSet: pingSet, detect: detect, initiate: initiate,
+      applyRemaining: applyRemaining, tOpen: tOpen, blocked: blocked, abort: abort,
+      dataLossKind: dataLossKind, dataLossSeconds: dataLossSeconds,
+      horizon: horizon, preRoll: preRoll, tickStep: tickStep
+    };
+  }
+  /* MODEL:END */
+
+  /* ---------- helpers ---------- */
+  function fmt(n) {
+    if (!isFinite(n)) return '—';
+    var r = Math.round(n * 100) / 100;
+    if (Math.abs(r - Math.round(r)) < 1e-9) return String(Math.round(r));
+    return (Math.round(n * 10) / 10 === r) ? r.toFixed(1) : r.toFixed(2);
+  }
+  function sign(n) { return fmt(n).replace(/^-/, '−'); }
+  function esc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+  function approxW(s, size, mono) { return String(s).length * size * (mono ? 0.60 : 0.53); }
+  function r1(n) { return Math.round(n * 10) / 10; }
+  /* first candidate label that fits the given pixel width, else null */
+  function fitLabel(cands, w) {
+    for (var i = 0; i < cands.length; i++) { if (approxW(cands[i], 11) + 14 <= w) return cands[i]; }
+    return null;
+  }
+  function txt(cls, x, y, anchor, body) {
+    return '<text class="' + cls + '" x="' + r1(x) + '" y="' + r1(y) + '"' +
+      (anchor ? ' text-anchor="' + anchor + '"' : '') + '>' + body + '</text>';
+  }
+  function ln(cls, x1, y1, x2, y2, extra) {
+    return '<line class="' + cls + '" x1="' + r1(x1) + '" y1="' + r1(y1) + '" x2="' + r1(x2) +
+      '" y2="' + r1(y2) + '"' + (extra || '') + '></line>';
+  }
+
+  /* ---------- control state ---------- */
+  var DEFAULTS = {
+    scenario: 'crash', mode: 'maxavail', threshold: 30, pingSet: false,
+    pingInterval: 100, pingRetry: 10, standbyLag: 10, lagLimit: 30,
+    roleTransition: 15, pmyShutdown: true
+  };
+  var C = Object.assign({}, DEFAULTS);
+
+  var $ = function (id) { return document.getElementById(id); };
+  var els = {
+    threshold: $('c-threshold'), pingset: $('c-pingset'), pingInterval: $('c-pinginterval'),
+    pingRetry: $('c-pingretry'), lag: $('c-lag'), lagLimit: $('c-laglimit'),
+    role: $('c-role'), shutdown: $('c-shutdown'), reset: $('c-reset'),
+    ctlThreshold: $('ctl-threshold'), ctlPing: $('ctl-ping'), ctlLagLimit: $('ctl-laglimit'),
+    ctlShutdown: $('ctl-shutdown'), wrap: $('tl-wrap'), chips: $('chips'),
+    banner: $('banner'), bannerBody: $('banner-body'), callout: $('callout'),
+    calloutBody: $('callout-body'), caption: $('tl-caption'), heading: $('tl-heading'),
+    eyebrow: $('tl-eyebrow'), summary: $('tl-summary'),
+    nScenario: $('n-scenario'), nMode: $('n-mode'), nThreshold: $('n-threshold'),
+    nLagLimit: $('n-laglimit'), nShutdown: $('n-shutdown'),
+    vThreshold: $('v-threshold'), vPingSet: $('v-pingset'), vPingInterval: $('v-pinginterval'),
+    vPingRetry: $('v-pingretry'), vLag: $('v-lag'), vLagLimit: $('v-laglimit'),
+    vRole: $('v-role'), vShutdown: $('v-shutdown')
+  };
+
+  var TH_NOTE = "Seconds the master observer spends trying to reconnect before it initiates failover. The clock starts the instant the observer first loses the connection. Minimum 6 s.";
+  var TH_IGNORED = 'The <span class="mono">FastStartFailoverThreshold</span> property is ignored when the <span class="mono">ObserverPingRetry</span> and <span class="mono">ObserverPingInterval</span> properties are set. Detection is governed by interval × retries instead.';
+  var TH_IGNORED_ISO = 'Ignored for the observer’s detection while the ping properties are set — but it still governs the primary’s own stall clock below, so it stays adjustable here.';
+
+  /* ---------- timeline geometry (single time -> x scale) ---------- */
+  var G = { padL: 138, padR: 30, topY: 16, braceY: 42, markY: 72, laneH: 46, laneTop: 80, braceRow: 50 };
+  G.lane = [G.laneTop, G.laneTop + 92, G.laneTop + 190];   // gaps of 46 and 52
+  G.lanesBottom = G.lane[2] + G.laneH;
+  G.axisY = G.lanesBottom + 24;
+  G.braceTop = G.axisY + 34;
+
+  function buildTimeline(m, W) {
+    var plotL = G.padL, plotR = W - G.padR, plotW = plotR - plotL;
+    var t0 = -m.preRoll, t1 = m.horizon;
+    function X(t) { return plotL + (t - t0) / (t1 - t0) * plotW; }
+
+    var iso = C.scenario === 'isolated';
+    var s = [], push = function (x) { s.push(x); };
+
+    /* lane segments — labels degrade to a shorter form when the bar is narrow */
+    var lanes = [
+      { name: 'Primary', sub: 'production database', segs: [] },
+      { name: 'Observer', sub: 'DGMGRL, third host', segs: [] },
+      { name: 'Standby', sub: 'failover target', segs: [] }
+    ];
+
+    lanes[0].segs.push({ a: t0, b: 0, cls: 'b-tl', lc: 'f-tl', lab: ['Open read-write — shipping redo', 'Shipping redo', 'Open'] });
+    if (iso) {
+      if (m.abort !== null) {
+        lanes[0].segs.push({ a: 0, b: m.abort, cls: 'b-hatch', lc: 'f-rd', lab: ['STALLED — redo generation halted', 'STALLED'] });
+        lanes[0].segs.push({ a: m.abort, b: t1, cls: 'b-hatch', lc: 'f-rd', lab: ['Aborted — instance shut itself down', 'Aborted'] });
+      } else {
+        lanes[0].segs.push({ a: 0, b: t1, cls: 'b-hatch', lc: 'f-rd', lab: ['STALLED indefinitely — no redo, no commits', 'STALLED indefinitely', 'STALLED'] });
+      }
+    } else {
+      lanes[0].segs.push({ a: 0, b: t1, cls: 'b-hatch', lc: 'f-rd', lab: ['Down — host has crashed', 'Down'] });
+    }
+
+    lanes[1].segs.push({ a: t0, b: 0, cls: 'b-sl', lc: 'f-sl', lab: ['Pinging primary — connection healthy', 'Pinging primary', 'Pinging'] });
+    lanes[1].segs.push({
+      a: 0, b: m.initiate, cls: 'b-am', lc: 'f-am',
+      lab: m.pingSet ? ['Ping retries — no answer', 'Ping retries', 'Retries']
+                     : ['Reconnect attempts — threshold clock running', 'Reconnect attempts', 'Reconnecting']
+    });
+    lanes[1].segs.push({
+      a: m.initiate, b: t1, cls: 'b-sl', lc: 'f-sl',
+      lab: m.blocked ? ['Failover not permitted — keeps monitoring', 'Failover not permitted', 'Not permitted']
+                     : ['Monitors the failover, then the new primary', 'Monitors the new primary', 'Monitoring']
+    });
+
+    lanes[2].segs.push({ a: t0, b: 0, cls: 'b-bl', lc: 'f-bl', lab: ['Applying redo', 'Applying'] });
+    lanes[2].segs.push({ a: 0, b: m.initiate, cls: 'b-bl', lc: 'f-bl', lab: ['Keeps applying the redo it received', 'Keeps applying redo', 'Applying'] });
+    if (m.blocked) {
+      lanes[2].segs.push({ a: m.initiate, b: t1, cls: 'b-bl', lc: 'f-bl', lab: ['Remains a standby — readiness check failed', 'Remains a standby', 'Standby'] });
+    } else {
+      if (m.applyRemaining > 0) {
+        lanes[2].segs.push({ a: m.initiate, b: m.initiate + m.applyRemaining, cls: 'b-am', lc: 'f-am', lab: ['Terminal recovery — applies remaining redo', 'Terminal recovery', 'Recovery'] });
+      }
+      lanes[2].segs.push({ a: m.initiate + m.applyRemaining, b: m.tOpen, cls: 'b-am', lc: 'f-am', lab: ['Converts to the primary role', 'Role change'] });
+      lanes[2].segs.push({ a: m.tOpen, b: t1, cls: 'b-tl', lc: 'f-tl', lab: ['Open read-write — service restored', 'Open read-write', 'Open'] });
+    }
+
+    /* braces under the axis, tied to the exact interval each parameter governs */
+    var braces = [];
+    if (m.pingSet) {
+      braces.push({
+        a: 0, b: m.detect, tone: 'br-am', mono: true,
+        name: 'ObserverPingInterval × (ObserverPingRetry + 1)',
+        val: fmt(C.pingInterval) + ' ms × ' + (C.pingRetry + 1) + ' = ' + fmt(m.detect) + ' s detection'
+      });
+    } else {
+      braces.push({
+        a: 0, b: m.initiate, tone: 'br-am', mono: true, name: 'FastStartFailoverThreshold',
+        val: fmt(C.threshold) + ' s — observer ' + (iso ? 'clock' : 'reconnect window')
+      });
+    }
+    if (iso && m.abort !== null) {
+      braces.push({
+        a: 0, b: m.abort, tone: 'br-rd', mono: true, name: 'FastStartFailoverThreshold',
+        val: fmt(C.threshold) + ' s — primary stall clock, runs independently'
+      });
+    }
+    if (!m.blocked) {
+      if (m.applyRemaining > 0) {
+        braces.push({
+          a: m.initiate, b: m.initiate + m.applyRemaining, tone: 'br-bl', mono: false,
+          name: 'Terminal recovery ≈ apply lag at failure time',
+          val: fmt(m.applyRemaining) + ' s — illustrative estimate, not a broker parameter'
+        });
+      }
+      braces.push({
+        a: m.initiate + m.applyRemaining, b: m.tOpen, tone: 'br-am', mono: false,
+        name: 'Role change + read-write open',
+        val: fmt(C.roleTransition) + ' s — environment-dependent, not a broker parameter'
+      });
+    }
+
+    /* pack braces into rows so no two labels can overlap */
+    var rows = [], rowCount = 0;
+    braces.forEach(function (br) {
+      br.x0 = X(br.a); br.x1 = X(br.b);
+      var mid = (br.x0 + br.x1) / 2;
+      var w = Math.max(approxW(br.name, 11.5, br.mono), approxW(br.val, 11, true), br.x1 - br.x0) + 18;
+      var L = mid - w / 2, R = mid + w / 2, d;
+      if (L < 6) { d = 6 - L; L += d; R += d; }
+      if (R > W - 6) { d = R - (W - 6); L -= d; R -= d; }
+      var i = 0;
+      while (rows[i] && rows[i].some(function (o) { return !(R < o.L - 10 || L > o.R + 10); })) i++;
+      if (!rows[i]) rows[i] = [];
+      rows[i].push({ L: L, R: R });
+      br.row = i; br.lx = (L + R) / 2;
+      if (i + 1 > rowCount) rowCount = i + 1;
+    });
+
+    var H = G.braceTop + Math.max(1, rowCount) * G.braceRow + 6;
+
+    push('<svg class="tl-svg" width="' + W + '" height="' + H + '" viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-labelledby="tl-summary">');
+    push('<defs><pattern id="fsfoHatch" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">' +
+      '<rect width="8" height="8" class="hatch-bg"></rect><line x1="0" y1="0" x2="0" y2="8" class="hatch-ln"></line></pattern>' +
+      '<marker id="tlAv" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse"><path d="M0,1 L10,5 L0,9 z" class="f-vi"></path></marker>' +
+      '<marker id="tlAs" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,1 L10,5 L0,9 z" class="f-ar"></path></marker>' +
+      '<marker id="tlAr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,1 L10,5 L0,9 z" class="f-rd"></path></marker></defs>');
+
+    /* pre-failure zone, gridlines, axis */
+    push('<rect class="prezone" x="' + r1(plotL) + '" y="' + G.laneTop + '" width="' + r1(X(0) - plotL) +
+      '" height="' + (G.lanesBottom - G.laneTop) + '"></rect>');
+    /* only label the pre-failure zone when it is wide enough to hold the text */
+    if (X(0) - plotL >= approxW('Steady state', 10.5) + 12) push(txt('t-tick', plotL + 6, G.markY, null, 'Steady state'));
+
+    for (var tk = Math.ceil(t0 / m.tickStep) * m.tickStep; tk <= t1 + 1e-9; tk += m.tickStep) {
+      push(ln('gridline', X(tk), G.laneTop, X(tk), G.axisY));
+      push(txt('t-tick t-mono', X(tk), G.axisY + 16, 'middle', esc(sign(tk))));
+    }
+    push(ln('ax', plotL, G.axisY, plotR, G.axisY));
+    push(txt('t-tick t-mono', plotR, G.axisY + 30, 'end', 'seconds from the failure event'));
+
+    /* lanes */
+    lanes.forEach(function (lane, i) {
+      var y = G.lane[i];
+      push('<rect class="lane-bg" x="' + r1(plotL) + '" y="' + y + '" width="' + r1(plotW) + '" height="' + G.laneH + '" rx="2"></rect>');
+      push(txt('t-lane', G.padL - 14, y + 20, 'end', esc(lane.name)));
+      push(txt('t-sub', G.padL - 14, y + 34, 'end', esc(lane.sub)));
+
+      lane.segs.forEach(function (sg) {
+        var x0 = Math.max(plotL, X(sg.a)), x1 = Math.min(plotR, X(sg.b)), w = x1 - x0;
+        if (w <= 0.5) return;
+        push('<rect class="bar ' + sg.cls + '" x="' + r1(x0) + '" y="' + (y + 6) + '" width="' + r1(w) +
+          '" height="' + (G.laneH - 12) + '"><title>' + esc(sg.lab[0]) + '</title></rect>');
+        var lab = fitLabel(sg.lab, w);
+        if (lab) push(txt('t-bar ' + sg.lc, (x0 + x1) / 2, y + 28, 'middle', esc(lab)));
+      });
+    });
+
+    /* the t = 0 event */
+    var xz = X(0);
+    if (iso) {
+      push(ln('partition', xz, G.laneTop - 4, xz, G.lanesBottom + 4));
+      push(txt('t-mark f-rd', xz + 8, G.markY, null, 'Network partition — primary cut off from observer and standby'));
+    } else {
+      var cy = G.lane[0] + G.laneH / 2;
+      push(ln('m-rd', xz - 7, cy - 7, xz + 7, cy + 7, ' stroke-width="2.5"'));
+      push(ln('m-rd', xz + 7, cy - 7, xz - 7, cy + 7, ' stroke-width="2.5"'));
+      push(txt('t-mark f-rd', xz + 8, G.markY, null, 'Primary host crashes'));
+    }
+
+    /* primary self-abort (isolated). Sits one line above the observer's marker
+       label, because with the ping properties off both land on the same x. */
+    var gapA = G.lane[0] + G.laneH;
+    if (iso) {
+      if (m.abort !== null) {
+        var xa = X(m.abort);
+        push(ln('m-rd', xa, G.lane[0] + 2, xa, gapA + 8, ' stroke-width="2"'));
+        push('<circle class="f-rd" cx="' + r1(xa) + '" cy="' + (G.lane[0] + G.laneH / 2) + '" r="4"></circle>');
+        /* longest form that still fits to the right of the marker, so the label
+           never has to flip left and cross the partition line */
+        var aCands = ['Self-abort at t = ' + fmt(m.abort) + ' s  (FastStartFailoverPmyShutdown = TRUE)',
+                      'Self-abort at t = ' + fmt(m.abort) + ' s', 'Self-abort'];
+        var aLab = null;
+        for (var ai = 0; ai < aCands.length; ai++) {
+          if (xa + 8 + approxW(aCands[ai], 11.5) <= plotR) { aLab = aCands[ai]; break; }
+        }
+        push(aLab ? txt('t-mark f-rd', xa + 8, gapA + 16, null, esc(aLab))
+                  : txt('t-mark f-rd', xa - 8, gapA + 16, 'end', esc(aCands[2])));
+      } else {
+        push(txt('t-mark f-rd', plotL + 8, gapA + 16, null,
+          'Stays stalled indefinitely — the stall itself is what prevents a split brain'));
+      }
+    }
+
+    /* observer decision */
+    var xi = X(m.initiate), obsTop = G.lane[1], obsBot = obsTop + G.laneH, stbTop = G.lane[2];
+    push(ln(m.blocked ? 'm-rd' : 'm-vi', xi, obsTop - 10, xi, obsBot + 4, ' stroke-width="2"'));
+    push('<path class="' + (m.blocked ? 'f-rd' : 'f-vi') + '" d="M' + r1(xi) + ',' + (obsTop + 17) + ' l6,6 l-6,6 l-6,-6 z"></path>');
+    var dLab = m.blocked ? (m.pingSet ? 'Detection ends — failover refused at t = ' + fmt(m.initiate) + ' s'
+                                      : 'Threshold expires — failover refused at t = ' + fmt(m.initiate) + ' s')
+                         : 'Initiates failover at t = ' + fmt(m.initiate) + ' s';
+    var dX = xi + 9, dAnc = null;
+    if (dX + approxW(dLab, 11.5) > plotR) { dX = xi - 9; dAnc = 'end'; }
+    push(txt('t-mark ' + (m.blocked ? 'f-rd' : 'f-vi'), dX, obsTop - 8, dAnc, esc(dLab)));
+    if (!m.blocked) push(ln('m-vi', xi, obsBot + 4, xi, stbTop - 3, ' stroke-width="2" marker-end="url(#tlAv)"'));
+
+    /* readiness exchange between observer and standby */
+    var rY = obsBot + 26, ra = xz + 3, rb = xi - 7;
+    var rLab = m.blocked ? 'Standby not ready — apply lag exceeds FastStartFailoverLagLimit'
+                         : 'Confirms the standby also lost contact and is ready';
+    var rCls = m.blocked ? 'f-rd' : 'f-sl';
+    if (rb - ra > 34) {
+      var mk = m.blocked ? 'url(#tlAr)' : 'url(#tlAs)';
+      push(ln(m.blocked ? 'rdy-bad' : 'rdy', ra, rY, rb, rY, ' marker-start="' + mk + '" marker-end="' + mk + '"'));
+      var rw = approxW(rLab, 11);
+      push(txt('t-bar ' + rCls, Math.min(Math.max((ra + rb) / 2, plotL + rw / 2), plotR - rw / 2), rY - 7, 'middle', esc(rLab)));
+    } else {
+      push(txt('t-bar ' + rCls, xi + 9, rY + 4, null, esc(rLab)));
+    }
+
+    /* new primary open */
+    if (!m.blocked) push(ln('m-tl', X(m.tOpen), stbTop + 2, X(m.tOpen), stbTop + G.laneH - 2, ' stroke-width="2"'));
+
+    /* top brace: total outage */
+    if (!m.blocked) {
+      push(braceUp(xz, X(m.tOpen), G.braceY, 'br-sl'));
+      var tLab = 'Total outage ≈ detection + threshold + failover execution  =  ' + fmt(m.tOpen) + ' s';
+      var tw = approxW(tLab, 12);
+      push(txt('t-top', Math.min(Math.max((xz + X(m.tOpen)) / 2, tw / 2 + 6), W - tw / 2 - 6), G.topY, 'middle', esc(tLab)));
+    } else {
+      push(txt('t-top f-rd', plotL, G.topY, null, 'No automatic failover — the primary stays down and the standby stays a standby'));
+    }
+
+    /* braces */
+    braces.forEach(function (br) {
+      var y = G.braceTop + br.row * G.braceRow;
+      push(braceDown(br.x0, br.x1, y, br.tone));
+      push(txt('t-brace-n' + (br.mono ? ' t-mono' : ''), br.lx, y + 26, 'middle', esc(br.name)));
+      push(txt('t-brace-v t-mono', br.lx, y + 41, 'middle', esc(br.val)));
+    });
+
+    push('</svg>');
+    return s.join('');
+  }
+
+  /* curly braces whose tips sit exactly on x0 and x1 */
+  function brace(x0, x1, y, tone, dir) {
+    var h = 5 * dir, mid = (x0 + x1) / 2;
+    if (x1 - x0 < 22) {
+      return '<path class="brace ' + tone + '" d="M' + r1(x0) + ',' + y + ' V' + (y + h) + ' H' + r1(x1) +
+        ' V' + y + ' M' + r1(mid) + ',' + (y + h) + ' V' + (y + h + 5 * dir) + '"></path>';
+    }
+    var d = 'M' + r1(x0) + ',' + y + ' q0,' + h + ' ' + Math.abs(h) + ',' + h +
+      ' H' + r1(mid - Math.abs(h)) + ' q' + Math.abs(h) + ',0 ' + Math.abs(h) + ',' + h +
+      ' q0,' + (-h) + ' ' + Math.abs(h) + ',' + (-h) +
+      ' H' + r1(x1 - Math.abs(h)) + ' q' + Math.abs(h) + ',0 ' + Math.abs(h) + ',' + (-h);
+    return '<path class="brace ' + tone + '" d="' + d + '"></path>';
+  }
+  function braceDown(x0, x1, y, tone) { return brace(x0, x1, y, tone, 1); }
+  function braceUp(x0, x1, y, tone) { return brace(x0, x1, y, tone, -1); }
+
+  /* ---------- readout ---------- */
+  function chip(kind, k, v, unit, sub) {
+    return '<div class="chip t-' + kind + '"><span class="chip-k">' + esc(k) + '</span>' +
+      '<span class="chip-v">' + esc(v) + (unit ? '<small> ' + esc(unit) + '</small>' : '') + '</span>' +
+      '<span class="chip-s">' + sub + '</span></div>';
+  }
+
+  function renderReadout(m) {
+    var out = chip('vi', 'Failover initiated at', fmt(m.initiate), 's', m.pingSet
+      ? 'Detection by <span class="mono">ObserverPingInterval</span> × (<span class="mono">ObserverPingRetry</span> + 1)'
+      : 'One <span class="mono">FastStartFailoverThreshold</span> after the observer lost the primary');
+
+    out += m.blocked
+      ? chip('rd', 'New primary open', 'not permitted', '', 'Readiness check failed, so no failover is attempted')
+      : chip('tl', 'New primary open', fmt(m.tOpen), 's',
+          fmt(m.initiate) + ' + ' + fmt(m.applyRemaining) + ' + ' + fmt(C.roleTransition) +
+          ' — initiation, terminal recovery, role change');
+
+    if (m.dataLossKind === 'none') {
+      out += chip('ik', 'Maximum data loss', '0', '', 'SYNC transport in MaxAvailability — zero data loss');
+    } else if (m.dataLossKind === 'bounded') {
+      out += chip('am', 'Maximum data loss', '≤ ' + fmt(m.dataLossSeconds), 's of redo',
+        'ASYNC transport, bounded by <span class="mono">FastStartFailoverLagLimit</span> = ' + fmt(C.lagLimit) + ' s');
+    } else {
+      out += chip('rd', 'Maximum data loss', '—', '', 'No failover occurs, so nothing is lost and nothing is recovered');
+    }
+
+    if (C.scenario === 'isolated') {
+      out += m.abort !== null
+        ? chip('rd', 'Primary self-abort at', fmt(m.abort), 's',
+            '<span class="mono">FastStartFailoverPmyShutdown = TRUE</span> — stalled for one threshold')
+        : chip('rd', 'Primary self-abort at', 'never', '',
+            '<span class="mono">FastStartFailoverPmyShutdown = FALSE</span> — stays stalled indefinitely');
+    }
+    els.chips.innerHTML = out;
+  }
+
+  function renderProse(m) {
+    var iso = C.scenario === 'isolated';
+    els.heading.textContent = iso ? 'Timeline — isolated primary' : 'Timeline — primary crash';
+
+    els.banner.hidden = !m.blocked;
+    if (m.blocked) {
+      els.bannerBody.innerHTML = 'Fast-start failover is not permitted: the standby’s apply lag of <span class="mono">' +
+        fmt(C.standbyLag) + ' s</span> exceeds <span class="mono">FastStartFailoverLagLimit = ' + fmt(C.lagLimit) +
+        ' s</span>. The observer still detects the loss and still counts the threshold, but the readiness check fails, so the standby stays a standby.';
+    }
+
+    els.callout.hidden = !iso;
+    if (iso) {
+      els.calloutBody.innerHTML = m.abort !== null
+        ? 'Two independent <span class="mono">FastStartFailoverThreshold</span> clocks are running, one on each side of the partition. The observer’s clock decides when the standby is promoted; the primary’s own stall clock decides when it aborts itself at <span class="mono">' + fmt(m.abort) + ' s</span>. Neither side can see the other, and that is exactly the point — at most one database ends up open.'
+        : 'With <span class="mono">FastStartFailoverPmyShutdown = FALSE</span> the isolated primary never aborts. It stays <span class="mono">STALLED</span>, which is what keeps it from committing anything the new primary will not have. The stall is the split-brain protection.';
+    }
+
+    els.caption.innerHTML = m.blocked
+      ? 'The observer counts down as usual, but at <span class="mono">' + fmt(m.initiate) +
+        ' s</span> the standby fails the readiness check, so nothing is promoted. Lower the apply lag or raise <span class="mono">FastStartFailoverLagLimit</span> to see the failover proceed.'
+      : m.pingSet
+        ? 'With both ping properties set, the observer stops waiting after <span class="mono">' + fmt(C.pingInterval) +
+          ' ms × ' + (C.pingRetry + 1) + ' = ' + fmt(m.detect) + ' s</span> and initiates immediately. The new primary is open at <span class="mono">' +
+          fmt(m.tOpen) + ' s</span>, and <span class="mono">FastStartFailoverThreshold = ' + fmt(C.threshold) + ' s</span> never enters the observer’s arithmetic.'
+        : 'The observer spends <span class="mono">' + fmt(C.threshold) + ' s</span> trying to reconnect, initiates at <span class="mono">' +
+          fmt(m.initiate) + ' s</span>, and the standby is open read-write at <span class="mono">' + fmt(m.tOpen) +
+          ' s</span>. Most of that is the threshold, which is the one number you actually control.';
+
+    els.eyebrow.textContent = 't = 0 is the failure event · horizon ' + fmt(m.horizon) + ' s';
+    els.summary.textContent = 'Timeline: failover initiated at ' + fmt(m.initiate) + ' seconds; ' +
+      (m.blocked ? 'failover not permitted because the apply lag exceeds FastStartFailoverLagLimit; '
+                 : 'new primary open at ' + fmt(m.tOpen) + ' seconds; ') +
+      (m.dataLossKind === 'none' ? 'zero data loss.'
+        : m.dataLossKind === 'bounded' ? 'up to ' + fmt(m.dataLossSeconds) + ' seconds of redo lost.'
+        : 'no failover occurs.') +
+      (m.abort !== null ? ' Primary aborts itself at ' + fmt(m.abort) + ' seconds.' : '');
+  }
+
+  /* ---------- control enable / disable rules ---------- */
+  function renderControls() {
+    var iso = C.scenario === 'isolated', avail = C.mode === 'maxavail';
+
+    els.vThreshold.textContent = C.threshold + ' s';
+    els.vPingInterval.textContent = C.pingInterval + ' ms';
+    els.vPingRetry.textContent = String(C.pingRetry);
+    els.vLag.textContent = C.standbyLag + ' s';
+    els.vLagLimit.textContent = C.lagLimit + ' s';
+    els.vRole.textContent = C.roleTransition + ' s';
+    els.vPingSet.textContent = C.pingSet ? 'set explicitly' : 'not set';
+    els.vShutdown.textContent = C.pmyShutdown ? 'TRUE' : 'FALSE';
+
+    els.nScenario.textContent = iso
+      ? 'A network partition cuts the primary off from both the observer and the standby. The primary is still running.'
+      : 'The primary host dies outright. Observer and standby both lose it at the same instant.';
+    els.nMode.innerHTML = avail
+      ? 'SYNC redo transport. The standby must have been synchronized at failure time; data loss is zero.'
+      : 'ASYNC redo transport. Failover is permitted only while the apply lag stays within <span class="mono">FastStartFailoverLagLimit</span>.';
+
+    /* Ping properties set: the threshold no longer gates the observer's
+       detection, so it is grayed out. In the isolated scenario it still drives
+       the primary's stall clock, so there it stays adjustable. */
+    els.ctlPing.hidden = !C.pingSet;
+    els.ctlThreshold.classList.toggle('is-off', C.pingSet);
+    els.nThreshold.classList.toggle('is-warn', C.pingSet);
+    els.threshold.disabled = C.pingSet && !iso;
+    if (C.pingSet) els.nThreshold.innerHTML = iso ? TH_IGNORED_ISO : TH_IGNORED;
+    else els.nThreshold.textContent = TH_NOTE;
+
+    els.lagLimit.disabled = avail;
+    els.ctlLagLimit.classList.toggle('is-off', avail);
+    els.nLagLimit.innerHTML = avail
+      ? 'Not evaluated in MaxAvailability. Readiness there means the standby was synchronized at failure time.'
+      : 'The standby is eligible for failover only while its apply lag is at or below this. Minimum 5 s.';
+
+    els.shutdown.disabled = !iso;
+    els.ctlShutdown.classList.toggle('is-off', !iso);
+    els.nShutdown.innerHTML = iso
+      ? (C.pmyShutdown
+        ? 'The stalled primary aborts itself after one <span class="mono">FastStartFailoverThreshold</span>.'
+        : 'The primary stays stalled indefinitely instead of aborting.')
+      : 'Isolated-primary scenario only. A crashed host is already down.';
+  }
+
+  /* ---------- render loop ---------- */
+  var lastW = 0, lastSig = '', queued = false;
+
+  function draw() {
+    queued = false;
+    var m = computeFsfo(C);
+    renderControls();
+    renderProse(m);
+    renderReadout(m);
+
+    lastW = Math.max(880, Math.round(els.wrap.clientWidth) || 880);
+    els.wrap.innerHTML = buildTimeline(m, lastW);
+
+    var sig = [C.scenario, C.mode, C.pingSet, C.pmyShutdown, m.blocked, m.applyRemaining > 0].join('|');
+    if (sig !== lastSig) {
+      if (els.wrap.firstChild && els.wrap.firstChild.classList) els.wrap.firstChild.classList.add('is-new');
+      lastSig = sig;
+    }
+  }
+  function schedule() { if (!queued) { queued = true; requestAnimationFrame(draw); } }
+
+  /* ---------- wiring ---------- */
+  [[els.threshold, 'threshold'], [els.pingInterval, 'pingInterval'], [els.pingRetry, 'pingRetry'],
+   [els.lag, 'standbyLag'], [els.lagLimit, 'lagLimit'], [els.role, 'roleTransition']
+  ].forEach(function (p) {
+    p[0].addEventListener('input', function () { C[p[1]] = parseInt(p[0].value, 10); schedule(); });
+  });
+  els.pingset.addEventListener('change', function () { C.pingSet = els.pingset.checked; schedule(); });
+  els.shutdown.addEventListener('change', function () { C.pmyShutdown = els.shutdown.checked; schedule(); });
+  ['scenario', 'mode'].forEach(function (group) {
+    Array.prototype.forEach.call(document.querySelectorAll('input[name="' + group + '"]'), function (r) {
+      r.addEventListener('change', function () { if (r.checked) { C[group] = r.value; schedule(); } });
+    });
+  });
+
+  els.reset.addEventListener('click', function () {
+    C = Object.assign({}, DEFAULTS);
+    els.threshold.value = C.threshold; els.pingInterval.value = C.pingInterval;
+    els.pingRetry.value = C.pingRetry; els.lag.value = C.standbyLag;
+    els.lagLimit.value = C.lagLimit; els.role.value = C.roleTransition;
+    els.pingset.checked = C.pingSet; els.shutdown.checked = C.pmyShutdown;
+    $('sc-crash').checked = true; $('md-avail').checked = true;
+    schedule();
+  });
+
+  function onResize() {
+    if (Math.abs(Math.max(880, Math.round(els.wrap.clientWidth) || 880) - lastW) > 2) schedule();
+  }
+  window.addEventListener('resize', onResize);
+  if (typeof ResizeObserver === 'function') new ResizeObserver(onResize).observe(els.wrap);
+
+  draw();
+})();
+</script>

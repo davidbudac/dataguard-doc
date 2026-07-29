@@ -1,0 +1,206 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  fsfo-timeline-isolated.svg — Oracle 19c Data Guard broker, fast-start failover with an isolated primary.
+
+  TIME -> X SCALE (single linear scale, every x in this file is derived from it):
+
+      x(t) = 280 + 10 * t          [px per second = 10]
+
+  Domain t = -14 s .. +80 s  ->  x = 140 .. 1080 (plot area).
+  Anchor points used below:
+      x(-14) = 140   plot left edge / start of the pre-failure zone
+      x(  0) = 280   t = 0, the network partition
+      x( 30) = 580   FastStartFailoverThreshold expiry (default 30 s) — on BOTH sides
+      x( 45) = 730   new primary open (illustrative)
+      x( 80) = 1080  plot right edge
+  Grid lines every 10 s: x = 180, 280, 380, 480, 580, 680, 780, 880, 980, 1080.
+  Lane bands (y): Primary 158..192, Observer 240..274, Standby 322..356. Axis y = 394.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 640" width="1200" height="640" role="img" aria-labelledby="ttl desc">
+  <title id="ttl">Fast-start failover with an isolated primary (network partition)</title>
+  <desc id="desc">Timeline with three lanes (Primary, Observer, Standby) on a seconds axis. At t = 0 a network partition isolates the primary from both the observer and the target standby. On the primary side redo generation stalls and, after FastStartFailoverThreshold seconds, the primary aborts itself because FastStartFailoverPmyShutdown is TRUE. On the observer and standby side the same threshold elapses and the standby is activated. Two independent threshold clocks guarantee at most one open primary.</desc>
+
+  <defs>
+    <style>
+      text { font-variant-numeric: tabular-nums; font-feature-settings: "tnum"; }
+      .s { font-family: Helvetica Neue, Arial, sans-serif; }
+      .m { font-family: SF Mono, Menlo, Consolas, monospace; }
+    </style>
+    <pattern id="hatchRed" patternUnits="userSpaceOnUse" width="9" height="9" patternTransform="rotate(45)">
+      <rect width="9" height="9" fill="#FCEAEA"/>
+      <line x1="0" y1="0" x2="0" y2="9" stroke="#E28C8C" stroke-width="3"/>
+    </pattern>
+    <pattern id="hatchRedLight" patternUnits="userSpaceOnUse" width="9" height="9" patternTransform="rotate(45)">
+      <rect width="9" height="9" fill="#FEF4F4"/>
+      <line x1="0" y1="0" x2="0" y2="9" stroke="#EFB6B6" stroke-width="2"/>
+    </pattern>
+    <marker id="arrEndSlate" viewBox="0 0 10 10" refX="9" refY="5" markerUnits="userSpaceOnUse" markerWidth="10" markerHeight="10" orient="auto">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#475569"/>
+    </marker>
+    <marker id="arrStartSlate" viewBox="0 0 10 10" refX="1" refY="5" markerUnits="userSpaceOnUse" markerWidth="10" markerHeight="10" orient="auto">
+      <path d="M 10 0 L 0 5 L 10 10 z" fill="#475569"/>
+    </marker>
+    <marker id="arrEndViolet" viewBox="0 0 10 10" refX="9" refY="5" markerUnits="userSpaceOnUse" markerWidth="10" markerHeight="10" orient="auto">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#6D5AE6"/>
+    </marker>
+  </defs>
+
+  <!-- white background (explicit, for dark-mode renderers) -->
+  <rect x="0" y="0" width="1200" height="640" fill="#FFFFFF"/>
+
+  <!-- ============================ title ============================ -->
+  <text class="s" x="40" y="34" font-size="19" font-weight="600" fill="#0F172A">Fast-start failover with an isolated primary (network partition)</text>
+  <text class="s" x="40" y="56" font-size="13" fill="#475569">Oracle 19c Data Guard broker — the primary keeps running but can reach neither the observer nor the target standby.</text>
+
+  <!-- ============================ legend ============================ -->
+  <g>
+    <rect x="40" y="69" width="16" height="14" rx="2" fill="#D6EEE9" stroke="#0E7C6B" stroke-width="1.5"/>
+    <text class="s" x="62" y="80" font-size="12" fill="#334155">open read-write (serving)</text>
+
+    <rect x="238" y="69" width="16" height="14" rx="2" fill="#DCE7FD" stroke="#2563EB" stroke-width="1.5"/>
+    <text class="s" x="260" y="80" font-size="12" fill="#334155">applying redo (standby duty)</text>
+
+    <rect x="454" y="69" width="16" height="14" rx="2" fill="#FDF0DC" stroke="#D97706" stroke-width="1.5"/>
+    <text class="s" x="476" y="80" font-size="12" fill="#334155">waiting / countdown window</text>
+
+    <rect x="658" y="69" width="16" height="14" rx="2" fill="url(#hatchRed)" stroke="#D64545" stroke-width="1.5"/>
+    <text class="s" x="680" y="80" font-size="12" fill="#334155">down / stalled</text>
+
+    <circle cx="798" cy="76" r="7" fill="#FFFFFF" stroke="#6D5AE6" stroke-width="2.5"/>
+    <circle cx="798" cy="76" r="3" fill="#6D5AE6"/>
+    <text class="s" x="812" y="80" font-size="12" fill="#334155">observer decision or command</text>
+  </g>
+
+  <!-- ========= primary-side threshold clock (brace above the primary lane) ========= -->
+  <text class="m" x="430" y="110" font-size="13" fill="#0F172A" text-anchor="middle">FastStartFailoverThreshold</text>
+  <text class="s" x="430" y="127" font-size="12" fill="#475569" text-anchor="middle">stall clock — <tspan class="m">V$DATABASE.FS_FAILOVER_STATUS</tspan> = STALLED (default 30 s)</text>
+  <path d="M 280,148 Q 280,140 288,140 L 422,140 Q 430,140 430,132 Q 430,140 438,140 L 572,140 Q 580,140 580,148"
+        fill="none" stroke="#D97706" stroke-width="1.5"/>
+
+  <!-- ============================ grid ============================ -->
+  <g stroke="#E7EDF3" stroke-width="1">
+    <line x1="180" y1="152" x2="180" y2="394"/>
+    <line x1="380" y1="152" x2="380" y2="394"/>
+    <line x1="480" y1="152" x2="480" y2="394"/>
+    <line x1="580" y1="152" x2="580" y2="394"/>
+    <line x1="680" y1="152" x2="680" y2="394"/>
+    <line x1="780" y1="152" x2="780" y2="394"/>
+    <line x1="880" y1="152" x2="880" y2="394"/>
+    <line x1="980" y1="152" x2="980" y2="394"/>
+    <line x1="1080" y1="152" x2="1080" y2="394"/>
+  </g>
+  <!-- event guides: t = 30, t = 45 (t = 0 is the partition divider below) -->
+  <g stroke="#CBD5E1" stroke-width="1" stroke-dasharray="3 3">
+    <line x1="580" y1="152" x2="580" y2="394"/>
+    <line x1="730" y1="152" x2="730" y2="394"/>
+  </g>
+
+  <!-- ================= network partition motif at t = 0 ================= -->
+  <line x1="284" y1="220" x2="1080" y2="220" stroke="#D64545" stroke-width="1.5" stroke-dasharray="7 5"/>
+  <text class="s" x="272" y="224" font-size="13" font-weight="600" fill="#A83232" text-anchor="end">network partition</text>
+  <text class="s" x="1076" y="212" font-size="12" fill="#A83232" text-anchor="end">primary cannot reach the observer or the standby</text>
+
+  <!-- ============================ primary lane ============================ -->
+  <text class="s" x="128" y="179" font-size="14" font-weight="600" fill="#334155" text-anchor="end">Primary</text>
+  <rect x="140" y="158" width="140" height="34" rx="3" fill="#D6EEE9" stroke="#0E7C6B" stroke-width="1.5"/>
+  <text class="s" x="210" y="179" font-size="12" fill="#0A5C50" text-anchor="middle">open, ships redo</text>
+  <rect x="280" y="158" width="300" height="34" rx="3" fill="url(#hatchRedLight)" stroke="#D64545" stroke-width="1.5" stroke-dasharray="6 4"/>
+  <rect x="345" y="167" width="170" height="17" fill="#FFFFFF" opacity="0.9"/>
+  <text class="s" x="430" y="180" font-size="12" font-weight="600" fill="#A83232" text-anchor="middle">STALLED — no redo generated</text>
+  <rect x="580" y="158" width="500" height="34" rx="3" fill="url(#hatchRed)" stroke="#D64545" stroke-width="1.5"/>
+  <rect x="591" y="167" width="483" height="17" fill="#FFFFFF" opacity="0.9"/>
+  <text class="s" x="595" y="180" font-size="12" font-weight="600" fill="#A83232">self-abort — the instance shuts down (<tspan class="m">FastStartFailoverPmyShutdown</tspan> = TRUE)</text>
+  <!-- self-abort marker at t = 30 -->
+  <circle cx="580" cy="175" r="10" fill="#FFFFFF" stroke="#D64545" stroke-width="2.5"/>
+  <rect x="575" y="170" width="10" height="10" fill="#D64545"/>
+
+  <!-- ============================ observer lane ============================ -->
+  <text class="s" x="128" y="261" font-size="14" font-weight="600" fill="#334155" text-anchor="end">Observer</text>
+  <rect x="580" y="256" width="500" height="2" fill="#E2E8F0"/>
+  <rect x="140" y="240" width="140" height="34" rx="3" fill="#F1F5F9" stroke="#94A3B8" stroke-width="1.5"/>
+  <text class="s" x="210" y="261" font-size="12" fill="#475569" text-anchor="middle">pinging primary</text>
+  <rect x="280" y="240" width="300" height="34" rx="3" fill="#FDF0DC" stroke="#D97706" stroke-width="1.5"/>
+  <text class="s" x="430" y="261" font-size="12" fill="#9A5B04" text-anchor="middle">ping fails; reconnect attempts</text>
+  <line x1="280" y1="236" x2="280" y2="278" stroke="#D64545" stroke-width="2"/>
+  <circle cx="580" cy="257" r="9" fill="#FFFFFF" stroke="#6D5AE6" stroke-width="2.5"/>
+  <circle cx="580" cy="257" r="3.5" fill="#6D5AE6"/>
+
+  <!-- =============== observer <-> standby readiness exchange =============== -->
+  <line x1="330" y1="278" x2="330" y2="318" stroke="#475569" stroke-width="1.5" stroke-dasharray="5 4"
+        marker-start="url(#arrStartSlate)" marker-end="url(#arrEndSlate)"/>
+  <rect x="336" y="283" width="182" height="32" fill="#FFFFFF" opacity="0.92"/>
+  <text class="s" x="340" y="294" font-size="12" fill="#475569">confirms the standby also lost</text>
+  <text class="s" x="340" y="310" font-size="12" fill="#475569">contact and is ready</text>
+
+  <!-- =============== observer initiates failover at t = 30 =============== -->
+  <line x1="580" y1="276" x2="580" y2="318" stroke="#6D5AE6" stroke-width="2" marker-end="url(#arrEndViolet)"/>
+  <rect x="586" y="287" width="120" height="18" fill="#FFFFFF" opacity="0.92"/>
+  <text class="s" x="590" y="300" font-size="13" font-weight="600" fill="#6D5AE6">initiates failover</text>
+
+  <!-- ============================ standby lane ============================ -->
+  <text class="s" x="128" y="343" font-size="14" font-weight="600" fill="#334155" text-anchor="end">Standby</text>
+  <rect x="140" y="322" width="140" height="34" rx="3" fill="#DCE7FD" stroke="#2563EB" stroke-width="1.5"/>
+  <text class="s" x="210" y="343" font-size="12" fill="#1D4ED8" text-anchor="middle">applying redo</text>
+  <rect x="280" y="322" width="300" height="34" rx="3" fill="#DCE7FD" stroke="#2563EB" stroke-width="1.5"/>
+  <text class="s" x="430" y="343" font-size="12" fill="#1D4ED8" text-anchor="middle">keeps applying received redo</text>
+  <rect x="580" y="322" width="150" height="34" rx="3" fill="#FDF0DC" stroke="#D97706" stroke-width="1.5"/>
+  <text class="s" x="655" y="343" font-size="12" fill="#9A5B04" text-anchor="middle">applies remaining redo</text>
+  <rect x="730" y="322" width="350" height="34" rx="3" fill="#D6EEE9" stroke="#0E7C6B" stroke-width="1.5"/>
+  <text class="s" x="905" y="343" font-size="12" fill="#0A5C50" text-anchor="middle">open read-write — service restored</text>
+
+  <!-- partition divider drawn on top so it visibly spans all three lanes -->
+  <line x1="280" y1="152" x2="280" y2="394" stroke="#D64545" stroke-width="2" stroke-dasharray="7 5"/>
+
+  <!-- ============================ axis ============================ -->
+  <line x1="140" y1="394" x2="1080" y2="394" stroke="#475569" stroke-width="1.5"/>
+  <g stroke="#475569" stroke-width="1.5">
+    <line x1="180" y1="394" x2="180" y2="400"/>
+    <line x1="280" y1="394" x2="280" y2="402"/>
+    <line x1="380" y1="394" x2="380" y2="400"/>
+    <line x1="480" y1="394" x2="480" y2="400"/>
+    <line x1="580" y1="394" x2="580" y2="402"/>
+    <line x1="680" y1="394" x2="680" y2="400"/>
+    <line x1="730" y1="394" x2="730" y2="402"/>
+    <line x1="780" y1="394" x2="780" y2="400"/>
+    <line x1="880" y1="394" x2="880" y2="400"/>
+    <line x1="980" y1="394" x2="980" y2="400"/>
+    <line x1="1080" y1="394" x2="1080" y2="400"/>
+  </g>
+  <g class="s" font-size="12" fill="#64748B" text-anchor="middle">
+    <text x="180" y="414">−10</text>
+    <text x="280" y="414" fill="#0F172A" font-weight="600">0</text>
+    <text x="380" y="414">10</text>
+    <text x="480" y="414">20</text>
+    <text x="580" y="414" fill="#0F172A" font-weight="600">30</text>
+    <text x="680" y="414">40</text>
+    <text x="730" y="414" fill="#0F172A" font-weight="600">45</text>
+    <text x="780" y="414">50</text>
+    <text x="880" y="414">60</text>
+    <text x="980" y="414">70</text>
+    <text x="1080" y="414">80</text>
+  </g>
+  <text class="s" x="620" y="434" font-size="13" fill="#475569" text-anchor="middle">seconds from failure (t = 0)</text>
+
+  <!-- ================= under-axis braces (observer / standby side) ================= -->
+  <path d="M 280,448 Q 280,456 288,456 L 422,456 Q 430,456 430,464 Q 430,456 438,456 L 572,456 Q 580,456 580,448"
+        fill="none" stroke="#D97706" stroke-width="1.5"/>
+  <text class="m" x="430" y="484" font-size="13" fill="#0F172A" text-anchor="middle">FastStartFailoverThreshold</text>
+  <text class="s" x="430" y="501" font-size="12" fill="#475569" text-anchor="middle">observer-side clock — default 30 s, minimum 6 s</text>
+
+  <path d="M 580,448 Q 580,456 588,456 L 647,456 Q 655,456 655,464 Q 655,456 663,456 L 722,456 Q 730,456 730,448"
+        fill="none" stroke="#475569" stroke-width="1.5"/>
+  <text class="s" x="586" y="484" font-size="13" font-weight="600" fill="#0F172A">failover execution — apply remaining redo, convert to primary, open read-write</text>
+  <text class="s" x="586" y="501" font-size="12" fill="#475569">depends on redo left to apply and the role change — not a broker parameter</text>
+
+  <!-- ============================ key-insight callout ============================ -->
+  <rect x="140" y="520" width="940" height="54" rx="6" fill="#F5F3FF" stroke="#6D5AE6" stroke-width="1.5"/>
+  <text class="s" x="180" y="544" font-size="15" font-weight="600" fill="#4C3FBF">Two independent <tspan class="m">FastStartFailoverThreshold</tspan> clocks run on either side of the partition</text>
+  <text class="s" x="180" y="564" font-size="13" fill="#4C3FBF">The primary aborts itself while the standby is activated — at most one open primary. This is the split-brain protection.</text>
+
+  <!-- ============================ footnotes ============================ -->
+  <g class="s" font-size="12" fill="#64748B">
+    <text x="40" y="594">If <tspan class="m">FastStartFailoverPmyShutdown</tspan> = FALSE the primary stays stalled indefinitely instead of aborting — the stall itself is what prevents a split brain.</text>
+    <text x="40" y="610">Data loss: none in MaxAvailability (SYNC). In MaxPerformance (ASYNC) it is bounded by <tspan class="m">FastStartFailoverLagLimit</tspan>.</text>
+    <text x="40" y="626"><tspan class="m">FastStartFailoverAutoReinstate</tspan> = TRUE (default): the old primary is reinstated as a standby when it returns — out of scope here.</text>
+  </g>
+</svg>

@@ -1,0 +1,241 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  fsfo-net-timeout.svg — where NET_TIMEOUT fits relative to the fast-start failover clocks.
+  Two stacked panels, both from the primary database's point of view.
+
+  TIME -> X SCALE (one linear scale, shared by BOTH panels and identical to
+  fsfo-timeline-crash.svg / fsfo-timeline-isolated.svg, so the figures overlay):
+
+      x(t) = 280 + 10 * t          [px per second = 10]
+
+  Domain t = -14 s .. +80 s  ->  x = 140 .. 1080 (plot area of each panel).
+  Anchor points used below:
+      x(-14) = 140   plot left edge / start of the pre-failure zone
+      x(  0) = 280   t = 0, the failure event
+      x(  3) = 310   end of the in-flight-commit sliver in panel B
+      x( 30) = 580   NET_TIMEOUT expiry (panel A) / FastStartFailoverThreshold expiry (panel B)
+      x( 80) = 1080  plot right edge
+  Grid lines every 10 s: x = 180, 280, 380, 480, 580, 680, 780, 880, 980, 1080.
+  Panel A: bar 164..198, axis y = 230, brace tips y = 284.
+  Panel B: bar 446..480, axis y = 512, brace tips y = 566.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 740" width="1200" height="740" role="img" aria-labelledby="ttl desc">
+  <title id="ttl">Where NET_TIMEOUT fits in fast-start failover</title>
+  <desc id="desc">Two stacked timelines from the primary database's point of view, both on the same seconds axis. Panel A: the standby link fails while the observer stays reachable, so committing sessions hang for NET_TIMEOUT seconds, the destination is then dropped and the primary carries on open but unsynchronized — no failover happens. Panel B: the primary is fully isolated, in-flight commits hang only for the first seconds, and the FastStartFailoverThreshold stall clock takes over and ends in self-abort. NET_TIMEOUT never gates the failover decision.</desc>
+
+  <defs>
+    <style>
+      text { font-variant-numeric: tabular-nums; font-feature-settings: "tnum"; }
+      .s { font-family: Helvetica Neue, Arial, sans-serif; }
+      .m { font-family: SF Mono, Menlo, Consolas, monospace; }
+    </style>
+    <pattern id="hatchRed" patternUnits="userSpaceOnUse" width="9" height="9" patternTransform="rotate(45)">
+      <rect width="9" height="9" fill="#FCEAEA"/>
+      <line x1="0" y1="0" x2="0" y2="9" stroke="#E28C8C" stroke-width="3"/>
+    </pattern>
+    <pattern id="hatchRedLight" patternUnits="userSpaceOnUse" width="9" height="9" patternTransform="rotate(45)">
+      <rect width="9" height="9" fill="#FEF4F4"/>
+      <line x1="0" y1="0" x2="0" y2="9" stroke="#EFB6B6" stroke-width="2"/>
+    </pattern>
+  </defs>
+
+  <!-- white background (explicit, for dark-mode renderers) -->
+  <rect x="0" y="0" width="1200" height="740" fill="#FFFFFF"/>
+
+  <!-- ============================ title ============================ -->
+  <text class="s" x="40" y="34" font-size="19" font-weight="600" fill="#0F172A">Where <tspan class="m" font-size="18">NET_TIMEOUT</tspan> fits — and where it does not</text>
+  <text class="s" x="40" y="56" font-size="13" fill="#475569"><tspan class="m">NET_TIMEOUT</tspan> is a redo-transport attribute of <tspan class="m">LOG_ARCHIVE_DEST_n</tspan> on the primary (broker property <tspan class="m">NetTimeout</tspan>), one layer below the broker clocks.</text>
+  <text class="s" x="40" y="74" font-size="13" fill="#475569">Neither the observer nor the target standby consults it for the failover decision. Both panels below are the primary's point of view.</text>
+
+  <!-- ============================ legend ============================ -->
+  <g>
+    <rect x="40" y="87" width="16" height="14" rx="2" fill="#D6EEE9" stroke="#0E7C6B" stroke-width="1.5"/>
+    <text class="s" x="62" y="98" font-size="12" fill="#334155">open read-write (serving)</text>
+
+    <rect x="253" y="87" width="16" height="14" rx="2" fill="#FDF0DC" stroke="#D97706" stroke-width="1.5"/>
+    <text class="s" x="275" y="98" font-size="12" fill="#334155">waiting / countdown window</text>
+
+    <rect x="473" y="87" width="16" height="14" rx="2" fill="url(#hatchRed)" stroke="#D64545" stroke-width="1.5"/>
+    <text class="s" x="495" y="98" font-size="12" fill="#334155">down / stalled</text>
+
+    <rect x="619" y="86" width="3" height="16" fill="#D64545"/>
+    <text class="s" x="635" y="98" font-size="12" fill="#334155">failure event (t = 0)</text>
+  </g>
+
+  <!-- ==================================================================== -->
+  <!-- ============================ PANEL A ============================== -->
+  <!-- ==================================================================== -->
+  <rect x="40" y="116" width="20" height="20" rx="3" fill="#F1F5F9" stroke="#475569" stroke-width="1.5"/>
+  <text class="s" x="50" y="131" font-size="13" font-weight="600" fill="#0F172A" text-anchor="middle">A</text>
+  <text class="s" x="68" y="130" font-size="15" font-weight="600" fill="#0F172A">Standby link fails, observer still reachable — MaxAvailability (SYNC)</text>
+
+  <!-- grid -->
+  <g stroke="#E7EDF3" stroke-width="1">
+    <line x1="180" y1="162" x2="180" y2="230"/>
+    <line x1="280" y1="162" x2="280" y2="230"/>
+    <line x1="380" y1="162" x2="380" y2="230"/>
+    <line x1="480" y1="162" x2="480" y2="230"/>
+    <line x1="580" y1="162" x2="580" y2="230"/>
+    <line x1="680" y1="162" x2="680" y2="230"/>
+    <line x1="780" y1="162" x2="780" y2="230"/>
+    <line x1="880" y1="162" x2="880" y2="230"/>
+    <line x1="980" y1="162" x2="980" y2="230"/>
+    <line x1="1080" y1="162" x2="1080" y2="230"/>
+  </g>
+  <g stroke="#CBD5E1" stroke-width="1" stroke-dasharray="3 3">
+    <line x1="280" y1="162" x2="280" y2="230"/>
+    <line x1="580" y1="162" x2="580" y2="230"/>
+  </g>
+
+  <!-- event labels -->
+  <text class="s" x="290" y="154" font-size="12" font-weight="600" fill="#A83232">standby link lost</text>
+  <text class="s" x="586" y="154" font-size="12" font-weight="600" fill="#A83232"><tspan class="m">NET_TIMEOUT</tspan> expires — transport session terminated</text>
+
+  <!-- lane -->
+  <text class="s" x="128" y="185" font-size="14" font-weight="600" fill="#334155" text-anchor="end">Primary</text>
+  <rect x="140" y="164" width="140" height="34" rx="3" fill="#D6EEE9" stroke="#0E7C6B" stroke-width="1.5"/>
+  <text class="s" x="210" y="185" font-size="12" fill="#0A5C50" text-anchor="middle">open, commits acked</text>
+  <rect x="280" y="164" width="300" height="34" rx="3" fill="#FDF0DC" stroke="#D97706" stroke-width="1.5"/>
+  <text class="s" x="430" y="185" font-size="12" fill="#9A5B04" text-anchor="middle">committing sessions hang — LGWR waits</text>
+  <rect x="580" y="164" width="500" height="34" rx="3" fill="#D6EEE9" stroke="#0E7C6B" stroke-width="1.5"/>
+  <text class="s" x="830" y="185" font-size="12" fill="#0A5C50" text-anchor="middle">open again — destination dropped, configuration UNSYNCHRONIZED</text>
+  <!-- event ticks -->
+  <line x1="280" y1="160" x2="280" y2="202" stroke="#D64545" stroke-width="2"/>
+  <line x1="580" y1="160" x2="580" y2="202" stroke="#D64545" stroke-width="2"/>
+
+  <!-- axis -->
+  <line x1="140" y1="230" x2="1080" y2="230" stroke="#475569" stroke-width="1.5"/>
+  <g stroke="#475569" stroke-width="1.5">
+    <line x1="180" y1="230" x2="180" y2="236"/>
+    <line x1="280" y1="230" x2="280" y2="238"/>
+    <line x1="380" y1="230" x2="380" y2="236"/>
+    <line x1="480" y1="230" x2="480" y2="236"/>
+    <line x1="580" y1="230" x2="580" y2="238"/>
+    <line x1="680" y1="230" x2="680" y2="236"/>
+    <line x1="780" y1="230" x2="780" y2="236"/>
+    <line x1="880" y1="230" x2="880" y2="236"/>
+    <line x1="980" y1="230" x2="980" y2="236"/>
+    <line x1="1080" y1="230" x2="1080" y2="236"/>
+  </g>
+  <g class="s" font-size="12" fill="#64748B" text-anchor="middle">
+    <text x="180" y="250">−10</text>
+    <text x="280" y="250" fill="#0F172A" font-weight="600">0</text>
+    <text x="380" y="250">10</text>
+    <text x="480" y="250">20</text>
+    <text x="580" y="250" fill="#0F172A" font-weight="600">30</text>
+    <text x="680" y="250">40</text>
+    <text x="780" y="250">50</text>
+    <text x="880" y="250">60</text>
+    <text x="980" y="250">70</text>
+    <text x="1080" y="250">80</text>
+  </g>
+  <text class="s" x="620" y="270" font-size="13" fill="#475569" text-anchor="middle">seconds from failure (t = 0)</text>
+
+  <!-- brace: NET_TIMEOUT -->
+  <path d="M 280,284 Q 280,292 288,292 L 422,292 Q 430,292 430,300 Q 430,292 438,292 L 572,292 Q 580,292 580,284"
+        fill="none" stroke="#D97706" stroke-width="1.5"/>
+  <text class="s" x="430" y="320" font-size="13" fill="#0F172A" text-anchor="middle"><tspan class="m">NET_TIMEOUT</tspan> — attribute of <tspan class="m">LOG_ARCHIVE_DEST_n</tspan> on the primary</text>
+  <text class="s" x="430" y="337" font-size="12" fill="#475569" text-anchor="middle">default 30 s, minimum 1 s — at least 8–10 s recommended, to ride out transient network errors</text>
+
+  <!-- annotation -->
+  <rect x="140" y="350" width="3" height="30" fill="#0E7C6B"/>
+  <text class="s" x="152" y="360" font-size="12" fill="#334155">The primary itself never goes down and no failover happens here. But while the configuration is UNSYNCHRONIZED, fast-start</text>
+  <text class="s" x="152" y="376" font-size="12" fill="#334155">failover is temporarily impossible — the target standby no longer passes the readiness check. Protection resumes after resync.</text>
+
+  <line x1="40" y1="392" x2="1160" y2="392" stroke="#E2E8F0" stroke-width="1"/>
+
+  <!-- ==================================================================== -->
+  <!-- ============================ PANEL B ============================== -->
+  <!-- ==================================================================== -->
+  <rect x="40" y="398" width="20" height="20" rx="3" fill="#F1F5F9" stroke="#475569" stroke-width="1.5"/>
+  <text class="s" x="50" y="413" font-size="13" font-weight="600" fill="#0F172A" text-anchor="middle">B</text>
+  <text class="s" x="68" y="412" font-size="15" font-weight="600" fill="#0F172A">Primary fully isolated — the fast-start failover stall overrides (compare figure 2)</text>
+
+  <!-- grid -->
+  <g stroke="#E7EDF3" stroke-width="1">
+    <line x1="180" y1="444" x2="180" y2="512"/>
+    <line x1="380" y1="444" x2="380" y2="512"/>
+    <line x1="480" y1="444" x2="480" y2="512"/>
+    <line x1="580" y1="444" x2="580" y2="512"/>
+    <line x1="680" y1="444" x2="680" y2="512"/>
+    <line x1="780" y1="444" x2="780" y2="512"/>
+    <line x1="880" y1="444" x2="880" y2="512"/>
+    <line x1="980" y1="444" x2="980" y2="512"/>
+    <line x1="1080" y1="444" x2="1080" y2="512"/>
+  </g>
+  <g stroke="#CBD5E1" stroke-width="1" stroke-dasharray="3 3">
+    <line x1="580" y1="444" x2="580" y2="512"/>
+  </g>
+
+  <!-- event label -->
+  <text class="s" x="290" y="436" font-size="12" font-weight="600" fill="#A83232">network partition — the primary is isolated from the observer and the standby</text>
+
+  <!-- lane -->
+  <text class="s" x="128" y="467" font-size="14" font-weight="600" fill="#334155" text-anchor="end">Primary</text>
+  <rect x="140" y="446" width="140" height="34" rx="3" fill="#D6EEE9" stroke="#0E7C6B" stroke-width="1.5"/>
+  <text class="s" x="210" y="467" font-size="12" fill="#0A5C50" text-anchor="middle">open, commits acked</text>
+  <rect x="280" y="446" width="30" height="34" fill="#FDF0DC" stroke="#D97706" stroke-width="1.5"/>
+  <rect x="310" y="446" width="270" height="34" fill="url(#hatchRedLight)" stroke="#D64545" stroke-width="1.5" stroke-dasharray="6 4"/>
+  <rect x="360" y="455" width="170" height="17" fill="#FFFFFF" opacity="0.9"/>
+  <text class="s" x="445" y="467" font-size="12" font-weight="600" fill="#A83232" text-anchor="middle">STALLED — no redo generated</text>
+  <rect x="580" y="446" width="500" height="34" rx="3" fill="url(#hatchRed)" stroke="#D64545" stroke-width="1.5"/>
+  <rect x="591" y="455" width="470" height="17" fill="#FFFFFF" opacity="0.9"/>
+  <text class="s" x="595" y="467" font-size="12" font-weight="600" fill="#A83232">aborted — instance shut down (<tspan class="m">FastStartFailoverPmyShutdown</tspan> = TRUE)</text>
+  <!-- self-abort marker at t = 30 -->
+  <circle cx="580" cy="463" r="10" fill="#FFFFFF" stroke="#D64545" stroke-width="2.5"/>
+  <rect x="575" y="458" width="10" height="10" fill="#D64545"/>
+
+  <!-- partition divider drawn on top of the lane -->
+  <line x1="280" y1="444" x2="280" y2="512" stroke="#D64545" stroke-width="2" stroke-dasharray="7 5"/>
+
+  <!-- callout for the in-flight commit sliver -->
+  <polyline points="295,480 295,496 312,496" fill="none" stroke="#94A3B8" stroke-width="1"/>
+  <rect x="314" y="489" width="321" height="15" fill="#FFFFFF" opacity="0.95"/>
+  <text class="s" x="318" y="500" font-size="12" fill="#475569">in-flight commits hang (<tspan class="m">NET_TIMEOUT</tspan> territory)</text>
+
+  <!-- axis -->
+  <line x1="140" y1="512" x2="1080" y2="512" stroke="#475569" stroke-width="1.5"/>
+  <g stroke="#475569" stroke-width="1.5">
+    <line x1="180" y1="512" x2="180" y2="518"/>
+    <line x1="280" y1="512" x2="280" y2="520"/>
+    <line x1="380" y1="512" x2="380" y2="518"/>
+    <line x1="480" y1="512" x2="480" y2="518"/>
+    <line x1="580" y1="512" x2="580" y2="520"/>
+    <line x1="680" y1="512" x2="680" y2="518"/>
+    <line x1="780" y1="512" x2="780" y2="518"/>
+    <line x1="880" y1="512" x2="880" y2="518"/>
+    <line x1="980" y1="512" x2="980" y2="518"/>
+    <line x1="1080" y1="512" x2="1080" y2="518"/>
+  </g>
+  <g class="s" font-size="12" fill="#64748B" text-anchor="middle">
+    <text x="180" y="532">−10</text>
+    <text x="280" y="532" fill="#0F172A" font-weight="600">0</text>
+    <text x="380" y="532">10</text>
+    <text x="480" y="532">20</text>
+    <text x="580" y="532" fill="#0F172A" font-weight="600">30</text>
+    <text x="680" y="532">40</text>
+    <text x="780" y="532">50</text>
+    <text x="880" y="532">60</text>
+    <text x="980" y="532">70</text>
+    <text x="1080" y="532">80</text>
+  </g>
+  <text class="s" x="620" y="552" font-size="13" fill="#475569" text-anchor="middle">seconds from failure (t = 0)</text>
+
+  <!-- brace: FastStartFailoverThreshold -->
+  <path d="M 280,566 Q 280,574 288,574 L 422,574 Q 430,574 430,582 Q 430,574 438,574 L 572,574 Q 580,574 580,566"
+        fill="none" stroke="#D97706" stroke-width="1.5"/>
+  <text class="s" x="430" y="602" font-size="13" fill="#0F172A" text-anchor="middle"><tspan class="m">FastStartFailoverThreshold</tspan> — the primary's stall clock</text>
+  <text class="s" x="430" y="619" font-size="12" fill="#475569" text-anchor="middle">default 30 s — the same window the observer runs in figures 1 and 2</text>
+
+  <!-- annotation -->
+  <rect x="140" y="632" width="3" height="30" fill="#D64545"/>
+  <text class="s" x="152" y="642" font-size="12" fill="#334155">With fast-start failover enabled the primary may not take panel A's escape hatch — it cannot simply drop the destination and keep running.</text>
+  <text class="s" x="152" y="658" font-size="12" fill="#334155">It must assume a failover may have happened, so the stall clock takes over and <tspan class="m">NET_TIMEOUT</tspan> only shapes the first seconds.</text>
+
+  <!-- ============================ footnotes ============================ -->
+  <g class="s" font-size="12" fill="#64748B">
+    <text x="40" y="682">The observer's clocks — <tspan class="m">FastStartFailoverThreshold</tspan>, <tspan class="m">ObserverPingInterval</tspan> / <tspan class="m">ObserverPingRetry</tspan> — run on a separate connection.</text>
+    <text x="40" y="698">MaxPerformance (ASYNC): commits never wait for the standby, so <tspan class="m">NET_TIMEOUT</tspan> never appears on the failover timeline at all.</text>
+    <text x="40" y="714">Eligibility and data loss are then governed by <tspan class="m">FastStartFailoverLagLimit</tspan> instead.</text>
+  </g>
+</svg>

@@ -1,0 +1,180 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  fsfo-sequence.svg — Oracle 19c Data Guard broker, fast-start failover message sequence (primary host crash).
+
+  This is a sequence diagram, so the vertical axis is ordering, not a linear time scale.
+  The elapsed-time gutter on the left maps it back to the timeline figures with an explicit
+  y -> t scale, so the same four instants line up across all three figures:
+
+      y = 254  ->  t ≈ 0 s        primary host crashes, observer's first failed ping
+      y = 374  ->  t = 0 s        FastStartFailoverThreshold clock starts
+      y = 542  ->  t = 30 s       threshold expires (default 30 s)
+      y = 672  ->  t ≈ 45 s       new primary open read-write
+  The amber gutter bar spans y = 374 .. 542, i.e. the whole t = 0 .. 30 s threshold window.
+
+  Lifelines (x): Primary 300, Observer 545, Target standby 766.
+  Activation rectangles are 14 px wide: Primary 293..307, Observer 538..552, Standby 759..773.
+  Gutter rule at x = 150; note strips span x = 170 .. 740.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 820" width="1000" height="820" role="img" aria-labelledby="ttl desc">
+  <title id="ttl">Fast-start failover message sequence (primary host crash)</title>
+  <desc id="desc">Sequence diagram with three lifelines: Primary, Observer and Target standby. In steady state the observer pings the primary and the primary ships redo to the standby. The primary host crashes; the observer's pings go unanswered and the FastStartFailoverThreshold clock starts. The observer asks the standby whether it also lost contact and is ready, the standby replies yes, the threshold expires at 30 seconds and the observer sends the failover command. The standby performs terminal recovery, converts to the primary role, opens read-write and reports completion.</desc>
+
+  <defs>
+    <style>
+      text { font-variant-numeric: tabular-nums; font-feature-settings: "tnum"; }
+      .s { font-family: Helvetica Neue, Arial, sans-serif; }
+      .m { font-family: SF Mono, Menlo, Consolas, monospace; }
+    </style>
+    <pattern id="hatchRed" patternUnits="userSpaceOnUse" width="9" height="9" patternTransform="rotate(45)">
+      <rect width="9" height="9" fill="#FCEAEA"/>
+      <line x1="0" y1="0" x2="0" y2="9" stroke="#E28C8C" stroke-width="3"/>
+    </pattern>
+    <marker id="arrEndSlate" viewBox="0 0 10 10" refX="9" refY="5" markerUnits="userSpaceOnUse" markerWidth="10" markerHeight="10" orient="auto">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#475569"/>
+    </marker>
+    <marker id="arrEndViolet" viewBox="0 0 10 10" refX="9" refY="5" markerUnits="userSpaceOnUse" markerWidth="10" markerHeight="10" orient="auto">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#6D5AE6"/>
+    </marker>
+    <marker id="arrEndRed" viewBox="0 0 10 10" refX="9" refY="5" markerUnits="userSpaceOnUse" markerWidth="10" markerHeight="10" orient="auto">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#D64545"/>
+    </marker>
+    <marker id="arrEndTeal" viewBox="0 0 10 10" refX="9" refY="5" markerUnits="userSpaceOnUse" markerWidth="10" markerHeight="10" orient="auto">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#0E7C6B"/>
+    </marker>
+  </defs>
+
+  <!-- white background (explicit, for dark-mode renderers) -->
+  <rect x="0" y="0" width="1000" height="820" fill="#FFFFFF"/>
+
+  <!-- ============================ title ============================ -->
+  <text class="s" x="40" y="34" font-size="19" font-weight="600" fill="#0F172A">Fast-start failover — message sequence (primary host crash)</text>
+  <text class="s" x="40" y="56" font-size="13" fill="#475569">Oracle 19c Data Guard broker. Solid arrows are pings and commands; dashed arrows are replies and acknowledgements.</text>
+
+  <!-- ============================ elapsed-time gutter ============================ -->
+  <line x1="150" y1="80" x2="150" y2="762" stroke="#E2E8F0" stroke-width="1"/>
+  <text class="s" x="140" y="72" font-size="12" fill="#94A3B8" text-anchor="end">elapsed</text>
+  <g stroke="#94A3B8" stroke-width="1.5">
+    <line x1="144" y1="254" x2="158" y2="254"/>
+    <line x1="144" y1="572" x2="158" y2="572"/>
+    <line x1="144" y1="672" x2="158" y2="672"/>
+  </g>
+  <g class="m" font-size="12" fill="#475569" text-anchor="end">
+    <text x="140" y="258">t ≈ 0</text>
+    <text x="140" y="576">t = 30 s</text>
+    <text x="140" y="676">t ≈ 45 s</text>
+  </g>
+  <rect x="156" y="374" width="8" height="168" rx="4" fill="#FDF0DC" stroke="#D97706" stroke-width="1.5"/>
+  <text class="m" x="140" y="450" font-size="12" fill="#9A5B04" text-anchor="end">t = 0 → 30 s</text>
+  <text class="s" x="140" y="466" font-size="12" fill="#9A5B04" text-anchor="end">threshold window</text>
+
+  <!-- ============================ lifeline heads ============================ -->
+  <rect x="220" y="80" width="160" height="38" rx="4" fill="#F1F5F9" stroke="#475569" stroke-width="1.5"/>
+  <text class="s" x="300" y="104" font-size="14" font-weight="600" fill="#0F172A" text-anchor="middle">Primary</text>
+  <rect x="465" y="80" width="160" height="38" rx="4" fill="#F1F5F9" stroke="#475569" stroke-width="1.5"/>
+  <text class="s" x="545" y="104" font-size="14" font-weight="600" fill="#0F172A" text-anchor="middle">Observer</text>
+  <rect x="686" y="80" width="160" height="38" rx="4" fill="#F1F5F9" stroke="#475569" stroke-width="1.5"/>
+  <text class="s" x="766" y="104" font-size="14" font-weight="600" fill="#0F172A" text-anchor="middle">Target standby</text>
+
+  <!-- ============================ lifelines ============================ -->
+  <g stroke="#94A3B8" stroke-width="1" stroke-dasharray="4 4">
+    <line x1="300" y1="118" x2="300" y2="762"/>
+    <line x1="545" y1="118" x2="545" y2="762"/>
+    <line x1="766" y1="118" x2="766" y2="762"/>
+  </g>
+
+  <!-- ============================ activation rectangles ============================ -->
+  <!-- primary: open read-write, then down -->
+  <rect x="293" y="118" width="14" height="136" fill="#D6EEE9" stroke="#0E7C6B" stroke-width="1.5"/>
+  <rect x="293" y="254" width="14" height="508" fill="url(#hatchRed)" stroke="#D64545" stroke-width="1.5"/>
+  <!-- observer: running throughout -->
+  <rect x="538" y="118" width="14" height="644" fill="#F1F5F9" stroke="#94A3B8" stroke-width="1.5"/>
+  <!-- standby: applying redo -> terminal recovery -> role change -> open read-write -->
+  <rect x="759" y="118" width="14" height="462" fill="#DCE7FD" stroke="#2563EB" stroke-width="1.5"/>
+  <rect x="759" y="580" width="14" height="52" fill="#FDF0DC" stroke="#D97706" stroke-width="1.5"/>
+  <rect x="759" y="632" width="14" height="40" fill="#FDF0DC" stroke="#D97706" stroke-width="1.5"/>
+  <rect x="759" y="672" width="14" height="90" fill="#D6EEE9" stroke="#0E7C6B" stroke-width="1.5"/>
+
+  <!-- ============================ steady-state loop frame ============================ -->
+  <rect x="190" y="132" width="710" height="100" fill="none" stroke="#94A3B8" stroke-width="1"/>
+  <path d="M 190,132 L 262,132 L 262,142 L 252,150 L 190,150 z" fill="#F1F5F9" stroke="#94A3B8" stroke-width="1"/>
+  <text class="m" x="200" y="146" font-size="12" fill="#475569">loop</text>
+  <text class="s" x="272" y="146" font-size="12" fill="#475569">[steady state]</text>
+
+  <!-- ping (command, solid) -->
+  <line x1="538" y1="172" x2="309" y2="172" stroke="#475569" stroke-width="1.5" marker-end="url(#arrEndSlate)"/>
+  <text class="s" x="424" y="164" font-size="12" fill="#334155" text-anchor="middle">ping</text>
+  <!-- ack (reply, dashed) -->
+  <line x1="307" y1="196" x2="536" y2="196" stroke="#475569" stroke-width="1.5" stroke-dasharray="5 4" marker-end="url(#arrEndSlate)"/>
+  <text class="s" x="424" y="188" font-size="12" fill="#334155" text-anchor="middle">ack</text>
+  <!-- redo shipping (solid) -->
+  <line x1="307" y1="220" x2="757" y2="220" stroke="#2563EB" stroke-width="1.5" marker-end="url(#arrEndSlate)"/>
+  <rect x="425" y="202" width="216" height="16" fill="#FFFFFF" opacity="0.95"/>
+  <text class="s" x="533" y="214" font-size="12" fill="#1D4ED8" text-anchor="middle">ships redo (SYNC in MaxAvailability)</text>
+
+  <!-- ============================ crash ============================ -->
+  <circle cx="300" cy="254" r="11" fill="#FFFFFF" stroke="#D64545" stroke-width="2.5"/>
+  <line x1="294" y1="248" x2="306" y2="260" stroke="#D64545" stroke-width="2.5"/>
+  <line x1="306" y1="248" x2="294" y2="260" stroke="#D64545" stroke-width="2.5"/>
+  <text class="s" x="318" y="250" font-size="13" font-weight="600" fill="#A83232">primary host crashes</text>
+
+  <!-- ============================ failed ping ============================ -->
+  <line x1="538" y1="292" x2="326" y2="292" stroke="#D64545" stroke-width="1.5" marker-end="url(#arrEndRed)"/>
+  <line x1="309" y1="287" x2="319" y2="297" stroke="#D64545" stroke-width="2.5"/>
+  <line x1="319" y1="287" x2="309" y2="297" stroke="#D64545" stroke-width="2.5"/>
+  <rect x="380" y="274" width="104" height="16" fill="#FFFFFF" opacity="0.95"/>
+  <text class="s" x="432" y="286" font-size="12" fill="#A83232" text-anchor="middle">ping — no answer</text>
+
+  <!-- ============================ note: ping retries ============================ -->
+  <rect x="170" y="304" width="570" height="48" rx="4" fill="#F8FAFC" stroke="#CBD5E1" stroke-width="1"/>
+  <rect x="170" y="304" width="4" height="48" fill="#D97706"/>
+  <text class="s" x="186" y="322" font-size="12" fill="#334155"><tspan class="m">ObserverPingRetry</tspan> = 10 — the observer retries the failed ping ten times,</text>
+  <text class="s" x="186" y="340" font-size="12" fill="#334155">one every <tspan class="m">ObserverPingInterval</tspan> = 100 ms, so the loss is detected in under a second.</text>
+
+  <!-- ==================== threshold clock starts (t = 0) ==================== -->
+  <rect x="172" y="357" width="604" height="16" fill="#FFFFFF" opacity="0.95"/>
+  <text class="s" x="176" y="368" font-size="12" fill="#9A5B04"><tspan class="m">FastStartFailoverThreshold</tspan> clock starts — the observer first lost its connection to the primary</text>
+  <line x1="156" y1="374" x2="940" y2="374" stroke="#D97706" stroke-width="1.5" stroke-dasharray="6 4"/>
+
+  <!-- ==================== readiness exchange with the standby ==================== -->
+  <line x1="552" y1="412" x2="757" y2="412" stroke="#475569" stroke-width="1.5" marker-end="url(#arrEndSlate)"/>
+  <text class="s" x="656" y="390" font-size="12" fill="#334155" text-anchor="middle">have you lost contact too?</text>
+  <text class="s" x="656" y="404" font-size="12" fill="#334155" text-anchor="middle">are you ready to fail over?</text>
+
+  <line x1="757" y1="442" x2="554" y2="442" stroke="#475569" stroke-width="1.5" stroke-dasharray="5 4" marker-end="url(#arrEndSlate)"/>
+  <text class="s" x="656" y="434" font-size="12" fill="#334155" text-anchor="middle">yes — no contact either; ready</text>
+
+  <!-- ============================ note: readiness check ============================ -->
+  <rect x="170" y="454" width="570" height="66" rx="4" fill="#F8FAFC" stroke="#CBD5E1" stroke-width="1"/>
+  <rect x="170" y="454" width="4" height="66" fill="#475569"/>
+  <text class="s" x="186" y="472" font-size="12" font-weight="600" fill="#334155">readiness check</text>
+  <text class="s" x="186" y="490" font-size="12" fill="#334155">MaxAvailability / MaxProtection — the standby must have been synchronized at failure time.</text>
+  <text class="s" x="186" y="508" font-size="12" fill="#334155">MaxPerformance — the standby's apply lag must be ≤ <tspan class="m">FastStartFailoverLagLimit</tspan>.</text>
+
+  <!-- ==================== threshold expires (t = 30 s) ==================== -->
+  <rect x="172" y="525" width="450" height="16" fill="#FFFFFF" opacity="0.95"/>
+  <text class="s" x="176" y="536" font-size="12" fill="#9A5B04"><tspan class="m">FastStartFailoverThreshold</tspan> expires — 30 s elapsed with no reconnection</text>
+  <line x1="156" y1="542" x2="940" y2="542" stroke="#D97706" stroke-width="1.5" stroke-dasharray="6 4"/>
+
+  <!-- ============================ failover command ============================ -->
+  <line x1="552" y1="572" x2="757" y2="572" stroke="#6D5AE6" stroke-width="2" marker-end="url(#arrEndViolet)"/>
+  <text class="s" x="656" y="562" font-size="13" font-weight="600" fill="#6D5AE6" text-anchor="middle">FAILOVER — fast-start failover</text>
+
+  <!-- ============ standby activation phases: labels to the right ============ -->
+  <text class="s" x="782" y="598" font-size="12" fill="#9A5B04">terminal recovery —</text>
+  <text class="s" x="782" y="614" font-size="12" fill="#9A5B04">applies redo already received</text>
+  <text class="s" x="782" y="656" font-size="12" fill="#9A5B04">converts to the primary role</text>
+  <text class="s" x="782" y="692" font-size="12" fill="#0A5C50">opens read-write —</text>
+  <text class="s" x="782" y="708" font-size="12" fill="#0A5C50">service restored</text>
+
+  <!-- ============================ completion reply ============================ -->
+  <line x1="757" y1="746" x2="554" y2="746" stroke="#0E7C6B" stroke-width="1.5" stroke-dasharray="5 4" marker-end="url(#arrEndTeal)"/>
+  <text class="s" x="656" y="724" font-size="12" fill="#0A5C50" text-anchor="middle">failover complete</text>
+  <text class="s" x="656" y="738" font-size="12" fill="#0A5C50" text-anchor="middle">new primary open read-write</text>
+
+  <!-- ============================ footnotes ============================ -->
+  <g class="s" font-size="12" fill="#64748B">
+    <text x="40" y="786"><tspan class="m">FastStartFailoverAutoReinstate</tspan> = TRUE (default): the old primary is reinstated as a standby when it returns — out of scope here.</text>
+    <text x="40" y="802">Data loss: none in MaxAvailability (SYNC). In MaxPerformance (ASYNC) it is bounded by <tspan class="m">FastStartFailoverLagLimit</tspan>.</text>
+  </g>
+</svg>
