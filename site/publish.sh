@@ -45,10 +45,12 @@ node site/build.mjs
 # The working tree is what ships, so an uncommitted edit publishes silently
 # unless we mention it. Warn, do not block: previewing uncommitted work on the
 # real URL is a legitimate reason to run this.
+rev="$(git rev-parse --short HEAD 2>/dev/null || echo '?')"
 if ! git diff --quiet HEAD -- simulator/fsfo-simulator.html 2>/dev/null; then
-  printf '\033[1;33mNOTE:\033[0m simulator/fsfo-simulator.html has uncommitted changes; publishing the working-tree version.\n'
+  printf '\033[1;33mNOTE:\033[0m simulator/fsfo-simulator.html has uncommitted changes; publishing the working-tree version, not %s.\n' "$rev"
+  rev="${rev}+dirty"
 fi
-say "Publishing $(wc -c < _site/index.html | tr -d ' ') bytes from $(git rev-parse --short HEAD 2>/dev/null || echo '?')"
+say "Publishing $(wc -c < _site/index.html | tr -d ' ') bytes from ${rev}"
 
 if (( dry_run )); then
   say "--dry-run: built only, nothing deployed"
