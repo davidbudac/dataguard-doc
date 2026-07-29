@@ -13,13 +13,49 @@ to extend it without breaking consistency or accuracy.
 | `diagrams/fsfo-sequence.svg` (+`.png`) | Sequence diagram of the crash case with an elapsed-time gutter |
 | `diagrams/fsfo-net-timeout.svg` (+`.png`) | Two panels separating NET_TIMEOUT (redo transport) from the broker failover clocks |
 | `diagrams/README.md` | Figure embeds, broker-property and redo-transport-property tables with verified defaults, the ping-properties quirk, the verified-facts sections behind the simulator's commit/reopen/observer views, the drawing idealizations, Oracle doc links |
-| `simulator/fsfo-simulator.html` | Source fragment of the interactive simulator, published as a GitHub Pages site |
-| `site/build.mjs` + `.github/workflows/pages.yml` | Wraps the fragment into a full page (doctype, charset, title) and deploys it to GitHub Pages on every push to main, after an ASCII-only guard |
+| `simulator/fsfo-simulator.html` | Source fragment of the interactive simulator, published at davidbudac.cz/dataguard |
+| `site/build.mjs` | Wraps the fragment into a full page (doctype, charset, title) and enforces the ASCII-only guard — it exits non-zero on any byte above U+007E |
+| `site/publish.sh` | Builds and deploys to the VPS, then verifies the public URL |
 
-The simulator was previously published as a Claude artifact; that artifact was
-retired on 2026-07-29 — do not republish it as an artifact. Since then the
-simulator ships as a standalone GitHub Pages site instead: every push to main
-redeploys it, so pushing simulator changes IS publishing.
+## Publishing
+
+The simulator is served at **https://davidbudac.cz/dataguard/** from the user's
+own VPS. To publish:
+
+```bash
+./site/publish.sh
+```
+
+It builds `_site/`, tars it over ssh to `root@dbhetz-ubu26:/var/www/dataguard`
+(unpacking beside the live tree and renaming it in, so a half-uploaded tree is
+never live), then re-fetches the public URL and fails unless it gets HTTP 200
+with exactly the byte count it just built. `--dry-run` builds without deploying.
+Overridable via `DG_HOST`, `DG_DEST`, `DG_URL`.
+
+Two things to know:
+
+- **Publishing is explicit now.** It is no longer a side effect of `git push`.
+  Committing changes nothing about what is live until you run the script.
+- **The script ships the working tree, not `HEAD`** — deliberately, so you can
+  preview an edit on the real URL before committing. It prints a warning when
+  the fragment has uncommitted changes; read that warning.
+
+nginx serves it from a dedicated `location ^~ /dataguard/` block in
+`/etc/nginx/sites-enabled/dbudac.conf` on the VPS. That block sets its own
+security headers instead of including `snippets/dbudac-headers.conf`, because
+the shared snippet's CSP is `script-src 'self'` and the page needs
+`'unsafe-inline'` for its single inline `<script>`; two CSP headers are enforced
+as their intersection, so including the snippet would silently break the page.
+The block's comments say so on the server too. Note that on that box
+`sites-enabled/dbudac.conf` is a **regular file, not a symlink** — the
+`sites-available/` copy is stale, so edit the enabled one.
+
+Two earlier publishing routes are retired — do not resurrect either:
+
+- A Claude artifact, retired 2026-07-29 (do not republish as an artifact).
+- GitHub Pages (`.github/workflows/pages.yml`), removed 2026-07-30 when the repo
+  went private. The ASCII guard that lived in that workflow now lives in
+  `site/build.mjs`, so it still runs on every publish.
 
 ## Accuracy rules (non-negotiable)
 
@@ -209,9 +245,9 @@ Two more sections sit on their own time scales, each with its own pure function:
   failures, outage length, redo rate. Footnote 4 on the page lists the
   idealizations; `diagrams/README.md` repeats them.
 
-The simulator is live on GitHub Pages and redeploys on every push to main (see
-above). Before pushing simulator changes, verify both themes and the
-key states first: defaults, isolated scenario, MaxPerformance with lag > limit
+The simulator is live at davidbudac.cz/dataguard; run `./site/publish.sh` to push
+changes (see Publishing above). Before publishing simulator changes, verify both
+themes and the key states first: defaults, isolated scenario, MaxPerformance with lag > limit
 (blocked banner), ping properties set (threshold grayed out, ~1.1 s detection);
 observer-lost defaults (flat lanes, Unobserved callout, failover-clock controls
 grayed) and switching back out of it (no control left stuck disabled) — in the

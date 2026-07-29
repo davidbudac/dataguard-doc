@@ -27,11 +27,17 @@ and reintroduced twice by later edits that typed a plain em dash.
 Entities do **not** decode inside `<script>` or `<style>` — `&mdash;` there renders as
 the literal seven characters. That is why JS gets `\uXXXX` and comments get ASCII.
 
-Before committing or republishing the simulator, verify:
+`site/build.mjs` enforces this: it exits non-zero, naming the offending lines, on
+any byte above U+007E. Since `site/publish.sh` builds before it deploys, a
+non-ASCII fragment cannot reach davidbudac.cz/dataguard. To check by hand before
+committing:
 
 ```bash
 LC_ALL=C grep -nP '[^\x00-\x7F]' simulator/fsfo-simulator.html && echo "NON-ASCII FOUND" || echo "ASCII clean"
 ```
+
+Note `grep -P` is unavailable on a stock macOS grep (it works here only because
+`grep` is ugrep) — `node site/build.mjs` is the portable check.
 
 This rule is specific to the simulator fragment. Markdown files (`AGENTS.md`,
 `diagrams/README.md`) and SVG figures declare their own encoding and may use real
