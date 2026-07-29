@@ -96,6 +96,26 @@ If you set the ping properties, the amber threshold window in figures 1 and 2 co
 stall clock still uses `FastStartFailoverThreshold`; the quirk affects the observer's detection,
 not the primary's stall.
 
+### Redo transport properties
+
+The four below are transport plumbing, deliberately kept out of the table above: none of them
+decides whether or when a fast-start failover happens. Each is a broker property whose value lands
+in a `LOG_ARCHIVE_DEST_n` attribute on the primary — `NetTimeout` included, which is exactly why it
+belongs here and not among the failover clocks (figure 4 exists to make that point).
+
+| Broker property | `LOG_ARCHIVE_DEST_n` attribute | Default | Governs |
+|---|---|---|---|
+| `LogXptMode` | `SYNC AFFIRM` · `SYNC NOAFFIRM` (FASTSYNC) · `ASYNC NOAFFIRM` | `ASYNC` | How the commit waits, or does not wait, for the standby's acknowledgment. Legal per protection mode: MaxProtection `SYNC`; MaxAvailability `SYNC` or `FASTSYNC`; MaxPerformance `ASYNC`. |
+| `ReopenSecs` (deprecated in 19c) | `REOPEN` | 300 s | Minimum seconds before a failed destination is retried — at the first log switch after the interval has elapsed. Valid values 0 or greater; applies to all errors, not only connection failures. |
+| `MaxFailure` (deprecated in 19c) | `MAX_FAILURE` | 0 — unlimited | Consecutive attempts to reestablish a failed destination before it is disabled, with no further access until it is manually reenabled. |
+| `NetTimeout` | `NET_TIMEOUT` | 30 s (minimum 1 s) | Seconds LGWR blocks waiting for a SYNC acknowledgment. Never a failover clock — see figure 4. |
+
+`ReopenSecs` and `MaxFailure` are deprecated as broker properties in 19c and still functional;
+Oracle points to `EDIT DATABASE ... SET PARAMETER` for setting the underlying attributes instead.
+Their semantics here follow the `LOG_ARCHIVE_DEST_n` attribute reference rather than the broker
+properties page: the 19c broker page describes `MaxFailure` as "Corresponds to: VALID_FOR", which
+is a documentation defect.
+
 ## Reading the figures
 
 - **Failover conditions.** During the threshold window the observer keeps trying to reconnect and
@@ -150,6 +170,108 @@ trigger). Verified facts it relies on:
   above (they need keepalives/`SQLNET.RECV_TIMEOUT`/FAN to die fast, and
   TAF/Application Continuity to resume work).
 
+## Commit anatomy (the simulator's commit view)
+
+The simulator's `#commitview` section takes one commit apart on a millisecond axis under each
+`LogXptMode`. Verified facts it relies on:
+
+- `LogXptMode` takes `SYNC`, `FASTSYNC` or `ASYNC`; the broker default is `ASYNC`. Each maps to a
+  pair of `LOG_ARCHIVE_DEST_n` attributes: `SYNC AFFIRM`, `SYNC NOAFFIRM`, `ASYNC NOAFFIRM`.
+- `AFFIRM` "acknowledges received redo data after writing it to the standby redo log"; `NOAFFIRM`
+  acknowledges it *before* that write. That one word is the whole difference between SYNC and
+  FASTSYNC. Two documented defaults coexist: the Database Reference gives `NOAFFIRM` as the
+  attribute's own default, while the Data Guard usage note gives the contextual default — `AFFIRM`
+  with `SYNC`, `NOAFFIRM` with `ASYNC`. `AFFIRM` without `SYNC` is deprecated.
+- `FASTSYNC` arrived in 12.1 as "a new high performance redo transport mode", and is available in
+  maximum availability only. (Same citation quirk as the ping properties: the notice exists only in
+  the 12.1 edition of the broker release-changes page, linked below.)
+- SYNC blocks the commit until the redo has been sent and acknowledged; ASYNC commits without
+  waiting for the standby at all.
+- **Why the model uses max() and not a sum.** The 19c HA guide walks the SYNC commit path in
+  thirteen steps: LGWR *starts the remote write* (step 5) **before** it *issues the local write*
+  (step 6), and only afterwards *waits for the remote write to complete* (step 7). The local
+  online-redo write and the network round trip therefore overlap, and a commit costs the longer of
+  the two — `max(local write, remote ack path)`. Oracle never calls this "parallel", so neither do
+  these assets; the step ordering is the evidence. The `log file parallel write` wait event is *not*
+  evidence for it — that event is about multiplexed redo log members.
+- Protection-mode legality (broker Table 4-2): MaxProtection requires `SYNC`; MaxAvailability
+  allows `SYNC` or `FASTSYNC`; MaxPerformance is listed with `ASYNC` only — the docs do not say
+  SYNC is illegal there, and neither do these assets. The table's footnote adds that fast-start
+  failover "cannot be initiated when FASTSYNC is used and the standby is missing redo data".
+
+## Transport outage and retry (the simulator's reopen view)
+
+The `#reopenview` section runs on a minutes axis and starts where figure 4 panel A ends: the
+destination is already closed, and the primary is open, unsynchronized, and generating redo nobody
+is receiving.
+
+- `ReopenSecs` / `REOPEN` — broker default 300 s, valid values 0 or greater. What 0 means is not
+  documented, so the simulator's slider floors at 30 s rather than guess. Deprecated as a broker
+  property in 19c.
+- Retry semantics: "redo transport services attempt to reopen failed destinations at log switch
+  time", once the time of the last error plus the `REOPEN` interval is less than the current time.
+  The interval gates eligibility; the log switch is the trigger. `REOPEN` applies to all errors,
+  not only connection failures.
+- `MaxFailure` / `MAX_FAILURE` — counts *consecutive* attempts to reestablish a failed destination
+  at log switches. The default is an unlimited number of archival attempts (`MAX_FAILURE = 0`);
+  that 0 is the default for destinations in the default group, while destinations in a non-default
+  log-archive-destination group default to 1.
+- On reaching the limit the destination is disabled, and "there is no further access until the
+  destination is manually reenabled" — the network healing does not bring it back, and the
+  destination is thereafter treated as if `REOPEN` had not been specified. Whether a successful
+  reopen resets the counter is not documented; the word "consecutive" implies it, which is as far
+  as these assets go. Exception: since 12.2, GROUP/PRIORITY destinations re-enter service when
+  they are found accessible.
+- Sourcing note: every `MAX_FAILURE` semantic above comes from the `LOG_ARCHIVE_DEST_n` attribute
+  reference, not the broker properties page, whose 19c edition mislabels `MaxFailure` as
+  corresponding to `VALID_FOR`.
+
+## Observer loss and multiple observers (the simulator's third scenario)
+
+The simulator's `observer-lost` scenario kills the only observer host at t = 0 and leaves
+everything else intact. Nothing fails over, and that is the point.
+
+- The primary stalls only when it can reach *neither* the observer *nor* the target standby. With
+  the standby still reachable it keeps serving; "no new transactions are able to commit" describes
+  the double-loss case, not this one.
+- While unobserved, `V$DATABASE.FS_FAILOVER_STATUS` reads `PRIMARY UNOBSERVED` and
+  `FS_FAILOVER_OBSERVER_PRESENT` reads `NO` — that column reports "whether the master observer is
+  currently connected to the local database".
+- Two errors that are not interchangeable: `ORA-16820` ("fast-start failover observer is no longer
+  observing this database") is a standing health condition on the configuration; `ORA-16658`
+  ("unobserved fast-start failover configuration") is raised when a failover is *attempted* while
+  unobserved.
+- 19c registers up to three observers for one broker configuration; exactly one is the master, and
+  "only the master observer can coordinate fast-start failover". If the master is lost while the
+  primary and standby can still reach each other, the broker nominates a backup observer as the new
+  master by itself (automatic since 12.2); `SET MASTEROBSERVER TO` is the manual override. The
+  count of three is 19c-specific — later releases allow more, so do not carry the number across
+  editions.
+- The simulator deliberately models the single-observer configuration, where none of that
+  redundancy exists: no backup to promote, no failover possible, and `FastStartFailoverThreshold`
+  counting nothing.
+
+## Drawing idealizations (the simulator's footnote 4)
+
+Where the simulator draws something it cannot know, it is listed on the page itself and here:
+
+- Commit latency is `max(local write, remote ack path)` on the strength of the documented step
+  ordering above — not on any Oracle statement that the two run in parallel.
+- RFS processing on the standby is drawn as 0 ms; the standby redo log write is the only
+  standby-side cost modelled.
+- The `ASYNC` ship-done marker is illustrative — the redo is assumed to leave as soon as the local
+  write finishes.
+- Reopen retries are drawn at exact `ReopenSecs` multiples. The real trigger is the first log
+  switch after the interval has elapsed, so a real retry lands at or after each mark.
+- The unshipped-redo gap drains at five times the generation rate (a net four times), a stand-in
+  for whatever headroom the link and the standby's apply really have.
+- The standby's apply lag is taken as ~0 at the moment the destination closes, growing one second
+  per second while nothing arrives — which is what puts the MaxPerformance disarm marker exactly
+  one `FastStartFailoverLagLimit` after the break, against t = 0 in MaxAvailability, where the
+  standby is unsynchronized immediately.
+- Client-side constants in the application view are nominal (footnote 3): 0.2 s for an `ORA-12514`
+  refusal, 0.15 s for an OS-level refusal, 0.3 s to establish a session.
+
 ## Oracle documentation
 
 - [Oracle Data Guard Broker Properties (19c)](https://docs.oracle.com/en/database/oracle/oracle-database/19/dgbkr/oracle-data-guard-broker-properties.html)
@@ -160,3 +282,15 @@ trigger). Verified facts it relies on:
 - [Local Naming Parameters in the tnsnames.ora File (19c Net Services Reference — connect-descriptor timeout parameters)](https://docs.oracle.com/en/database/oracle/oracle-database/19/netrf/local-naming-parameters-in-tns-ora-file.html)
 - [Oracle Net TNS String Parameters (19c High Availability Overview — recommended client failover settings)](https://docs.oracle.com/en/database/oracle/oracle-database/19/haovw/oracle-net-tns-string-parameters.html)
 - [Connection Time Estimates During Data Guard Switchover or Failover (19c High Availability Overview)](https://docs.oracle.com/en/database/oracle/oracle-database/19/haovw/connection-time-estimates-data-guard-switchover-or-failover.html)
+- [Managing Broker Configuration Members (19c — protection modes vs. redo transport modes, Table 4-2)](https://docs.oracle.com/en/database/oracle/oracle-database/19/dgbkr/managing-oracle-data-guard-broker-configuration-members.html)
+- [Oracle Data Guard Protection Modes (19c Data Guard Concepts and Administration — attribute-level Table 6-1)](https://docs.oracle.com/en/database/oracle/oracle-database/19/sbydb/oracle-data-guard-protection-modes.html)
+- [Oracle Data Guard Redo Transport Services (19c Data Guard Concepts and Administration)](https://docs.oracle.com/en/database/oracle/oracle-database/19/sbydb/oracle-data-guard-redo-transport-services.html)
+- [Redo Transport Troubleshooting and Tuning (19c High Availability Overview — the thirteen-step SYNC commit path)](https://docs.oracle.com/en/database/oracle/oracle-database/19/haovw/redo-transport-troubleshooting-and-tuning.html)
+- [Optimizing Automatic Failover (19c High Availability Overview — the primary's stall condition)](https://docs.oracle.com/en/database/oracle/oracle-database/19/haovw/optimizing-automatic-failover-common-scenarios-minimize-downtime1.html)
+- [Changes in Oracle Data Guard Broker 12c Release 1 (12.1 — the only edition that documents `FASTSYNC` as new)](https://docs.oracle.com/database/121/DGBKR/release_changes.htm)
+- [Changes in Oracle Data Guard Broker 12c Release 2 (12.2 — automatic backup-observer promotion)](https://docs.oracle.com/en/database/oracle/oracle-database/12.2/dgbkr/release-changes.html)
+- [Scenarios Using the DGMGRL Utility (19c — Scenario 6, registering and managing multiple observers)](https://docs.oracle.com/en/database/oracle/oracle-database/19/dgbkr/examples-using-data-guard-broker-DGMGRL-utility.html)
+- [Oracle Data Guard Broker Commands (19c — `SET MASTEROBSERVER TO`)](https://docs.oracle.com/en/database/oracle/oracle-database/19/dgbkr/oracle-data-guard-broker-commands.html)
+- [V$DATABASE (19c Database Reference — `FS_FAILOVER_STATUS`, `FS_FAILOVER_OBSERVER_PRESENT`)](https://docs.oracle.com/en/database/oracle/oracle-database/19/refrn/V-DATABASE.html)
+- [ORA-16820 — fast-start failover observer is no longer observing this database](https://docs.oracle.com/en/error-help/db/ora-16820/)
+- [ORA-16658 — unobserved fast-start failover configuration](https://docs.oracle.com/en/error-help/db/ora-16658/)

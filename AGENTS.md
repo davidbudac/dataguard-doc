@@ -12,13 +12,14 @@ to extend it without breaking consistency or accuracy.
 | `diagrams/fsfo-timeline-isolated.svg` (+`.png`) | Swimlane timeline, network partition: two independent threshold clocks, primary self-abort (split-brain protection) |
 | `diagrams/fsfo-sequence.svg` (+`.png`) | Sequence diagram of the crash case with an elapsed-time gutter |
 | `diagrams/fsfo-net-timeout.svg` (+`.png`) | Two panels separating NET_TIMEOUT (redo transport) from the broker failover clocks |
-| `diagrams/README.md` | Figure embeds, broker-property table with verified defaults, the ping-properties quirk, Oracle doc links |
-| `simulator/fsfo-simulator.html` | Source of the interactive simulator artifact (self-contained HTML fragment) |
+| `diagrams/README.md` | Figure embeds, broker-property and redo-transport-property tables with verified defaults, the ping-properties quirk, the verified-facts sections behind the simulator's commit/reopen/observer views, the drawing idealizations, Oracle doc links |
+| `simulator/fsfo-simulator.html` | Source fragment of the interactive simulator, published as a GitHub Pages site |
+| `site/build.mjs` + `.github/workflows/pages.yml` | Wraps the fragment into a full page (doctype, charset, title) and deploys it to GitHub Pages on every push to main, after an ASCII-only guard |
 
-The simulator was previously published as a Claude artifact. As of 2026-07-29
-the artifact is retired and no longer maintained — do not republish it. The
-HTML fragment stays in the repo purely as source; treat it like any other
-committed file.
+The simulator was previously published as a Claude artifact; that artifact was
+retired on 2026-07-29 — do not republish it as an artifact. Since then the
+simulator ships as a standalone GitHub Pages site instead: every push to main
+redeploys it, so pushing simulator changes IS publishing.
 
 ## Accuracy rules (non-negotiable)
 
@@ -66,6 +67,56 @@ agree on:
   sessions. Nominal drawing constants (footnote 3): refusal 0.2 s, OS refusal
   0.15 s, establish 0.3 s; service assumed published the instant the new
   primary opens.
+- `LogXptMode` takes SYNC | FASTSYNC | ASYNC, broker default ASYNC, mapping to
+  `SYNC`+`AFFIRM`, `SYNC`+`NOAFFIRM`, `ASYNC`+`NOAFFIRM`. `AFFIRM` acknowledges
+  received redo AFTER writing it to the standby redo log, `NOAFFIRM` BEFORE that
+  write — spell it exactly that way round. Two documented defaults coexist:
+  parameter-level `NOAFFIRM` (Database Reference) and the contextual default
+  (`AFFIRM` with SYNC, `NOAFFIRM` with ASYNC, Concepts and Administration);
+  `AFFIRM` without `SYNC` is deprecated. FASTSYNC is 12.1+ and MaxAvailability
+  only — cite the 12.1 broker release-changes page, the only edition carrying
+  the notice (same precedent as the 21c ObserverPing* citation). Legality per
+  broker Table 4-2: MaxProtection SYNC; MaxAvailability SYNC or FASTSYNC;
+  MaxPerformance ASYNC is the only mode listed — never write that SYNC is
+  illegal there. FSFO cannot be initiated when FASTSYNC is in use and the
+  standby is missing redo data.
+- Commit cost is **max(local write, remote ack path)**, never the sum, because
+  the documented 13-step SYNC path has LGWR start the remote write (step 5)
+  before it issues the local write (step 6) and wait for the remote write only
+  afterwards (step 7). Two things never to do: never claim Oracle calls this
+  "parallel" (it does not — the step ordering is the whole evidence), and never
+  cite the `log file parallel write` wait event as support, since that event is
+  about multiplexed online-redo members.
+- `ReopenSecs`/`REOPEN` default 300 s, valid values ≥ 0; the meaning of 0 is
+  NOT documented, so the simulator floors its slider at 30 s instead of
+  guessing. The interval only gates eligibility — redo transport retries failed
+  destinations at log switch time, once last error + `REOPEN` < now — and it
+  applies to all errors, not just connection failures.
+- `MaxFailure`/`MAX_FAILURE` counts CONSECUTIVE attempts to reestablish the
+  destination at log switches; 0 = unlimited and is the default for
+  default-group destinations (non-default log-archive-destination groups default
+  to 1). At the limit the destination is disabled with no further access until
+  it is MANUALLY reenabled — the network healing does not bring it back, and the
+  destination is then treated as if `REOPEN` had not been specified. Whether a
+  successful reopen resets the counter is NOT documented ("consecutive" implies
+  it; do not state it as fact). Exception: 12.2+ GROUP/PRIORITY destinations
+  re-enter service when found accessible. Both are deprecated as broker
+  properties in 19c (`EDIT DATABASE ... SET PARAMETER` instead). Documentation
+  defect: the 19c broker-properties page lists `MaxFailure` as "Corresponds to:
+  VALID_FOR" — always cite the sbydb `LOG_ARCHIVE_DEST_n` attributes page for
+  `MAX_FAILURE` semantics, never the broker page.
+- Observer loss alone stalls nothing: the primary stalls only when it can reach
+  NEITHER the observer NOR the target standby. While unobserved,
+  `V$DATABASE.FS_FAILOVER_STATUS` = `PRIMARY UNOBSERVED` and
+  `FS_FAILOVER_OBSERVER_PRESENT` = NO. `ORA-16820` (observer no longer observing
+  this database) is the standing health condition; `ORA-16658` (unobserved
+  fast-start failover configuration) is raised only when a failover is ATTEMPTED
+  while unobserved — never use the two interchangeably. 19c registers up to
+  three observers, one of them master, and only the master coordinates FSFO; if
+  the master dies while primary and standby still see each other, the broker
+  promotes a backup observer automatically (12.2+), with `SET MASTEROBSERVER TO`
+  as the manual override. The "three" is 19c-specific — later releases allow
+  more, so do not carry the number across editions.
 
 When adding new claims, verify against docs.oracle.com first and note the
 source in `diagrams/README.md`.
@@ -107,12 +158,23 @@ external requests (artifact CSP),
 vanilla JS, token-based theming — palette custom properties on `:root`,
 redefined under `@media (prefers-color-scheme: dark)` AND under
 `:root[data-theme="dark"]` / `:root[data-theme="light"]` so the host toggle wins
-both ways. One pure function `computeFsfo(c)` (between `/* MODEL:START */` and
-`/* MODEL:END */` markers) derives everything rendered; test it standalone in
-node by extracting between the markers. Timing model: initiate = threshold, or
-pingInterval × (pingRetry + 1) when the ping properties are set; blocked when
-MaxPerformance and lag > lag limit; the isolated primary's abort always uses the
-threshold.
+both ways. Every section is driven by a pure function inside a marker pair —
+`computeFsfo(c)` in `/* MODEL:START */`…`/* MODEL:END */`, plus `APPMODEL`,
+`COMMITMODEL` and `REOPENMODEL` below. Each block is self-contained (its tick-step
+helper lives inside it), so a standalone node test is just the concatenation of
+the blocks you need, extracted between the markers. Timing model: initiate =
+threshold, or pingInterval × (pingRetry + 1) when the ping properties are set;
+blocked when MaxPerformance and lag > lag limit; the isolated primary's abort
+always uses the threshold. `computeFsfo` also has an `observer-lost` branch
+(below) returning `observerLost` and `ifDiedNow`.
+
+The workbench carries three scenarios. The third, **observer lost**, kills the
+only observer host at t = 0: the primary keeps serving because it still reaches
+the target standby, the standby keeps applying, and no fast-start failover is
+possible at all — so every control that governs a failover clock grays out, the
+lanes stay flat, and the "Seven things the timeline is telling you" grid (six
+before this scenario existed) explains why nothing happens. Its `ifDiedNow`
+value is what the primary's death during the blind window would cost.
 
 The "application's view" section (`#appview`) has its own pure function
 `computeApp(a, m, scenario)` between `/* APPMODEL:START */` and
@@ -122,17 +184,47 @@ ladder (per-pass toll min(TCT, CT) on the dead address, instant ORA-12514 from
 the standby, RETRY_DELAY between traversals, success once a traversal reaches
 address 2 at/after tOpen). Attempts collapse into an aggregated band when they
 would be subpixel; horizons past ~160 s clip with a "gives up at" annotation.
-The isolated scenario forces drop (partition = no refusals). Its state object
-is `A`; presets: Defaults (parameter defaults) and Tuned (3/90/30×3, HA-guide
-shape).
+The isolated scenario forces drop (partition = no refusals); the observer-lost
+scenario returns `noEvent`, since nothing ever moves for a client to notice. Its
+state object is `A`; presets: Defaults (parameter defaults) and Tuned (3/90/30×3,
+HA-guide shape).
 
-The artifact is retired (see above) — no republish step applies anymore. If the
-simulator is ever republished again in the future, verify both themes and the
+Two more sections sit on their own time scales, each with its own pure function:
+
+- **`#commitview`** — the millisecond-scale anatomy of one commit under SYNC /
+  FASTSYNC / ASYNC. `computeCommit(k)` (`COMMITMODEL` markers) takes the transport
+  mode, the local redo write (0–25 ms), the standby SRL write (0–25 ms) and the
+  network RTT, and returns commit latency as max(local write, remote ack path) —
+  the overlap rule above, not a sum. Chips: commit latency, standby wait,
+  SYNC-vs-FASTSYNC delta, loss exposure. Picking ASYNC while the workbench is in
+  MaxAvailability raises a conflict warning. Its RTT slider is two-way bound to
+  the topology strip's RTT (`C.latency`) — moving either moves both.
+- **`#reopenview`** — the minutes-scale aftermath, starting after the destination
+  is already closed. `computeReopen(r)` (`REOPENMODEL` markers) draws the
+  `ReopenSecs` retries at exact multiples, the `MaxFailure` tripwire that disables
+  the destination for good, the unshipped-redo area with an MB readout off the
+  redo-rate slider, catch-up at 5× the generation rate, and the FSFO disarm
+  marker — t = 0 in MaxAvailability (unsynchronized immediately), t =
+  `FastStartFailoverLagLimit` in MaxPerformance. Controls: reopen interval, max
+  failures, outage length, redo rate. Footnote 4 on the page lists the
+  idealizations; `diagrams/README.md` repeats them.
+
+The simulator is live on GitHub Pages and redeploys on every push to main (see
+above). Before pushing simulator changes, verify both themes and the
 key states first: defaults, isolated scenario, MaxPerformance with lag > limit
-(blocked banner), ping properties set (threshold grayed out, ~1.1 s detection)
-— and in the app view: defaults (lucky 60 s hang), defaults + threshold 90
-(ORA-12514 banner), Tuned preset (discrete retry ladder), Refused +
-RETRY_COUNT 100 (aggregated band), blocked (budget exhausted, "never" chip).
+(blocked banner), ping properties set (threshold grayed out, ~1.1 s detection);
+observer-lost defaults (flat lanes, Unobserved callout, failover-clock controls
+grayed) and switching back out of it (no control left stuck disabled) — in the
+app view: defaults (lucky 60 s hang), defaults + threshold 90 (ORA-12514
+banner), Tuned preset (discrete retry ladder), Refused + RETRY_COUNT 100
+(aggregated band), blocked (budget exhausted, "never" chip), observer-lost
+(no-event state) — in the commit view: SYNC at RTT 0 (local write is the whole
+commit), FASTSYNC (ack lands before the standby's write finishes), ASYNC (the
+wait bar disappears, plus the conflict warning under MaxAvailability) — and in
+the reopen view: defaults, a tripped `MaxFailure` (disabled banner, no
+reconnect), a short reopen interval against a long outage (dense ticks
+aggregate), and MaxAvailability vs. MaxPerformance (disarm marker at t = 0 vs.
+at the lag limit).
 
 ## Process that produced this (worth repeating)
 
@@ -151,6 +243,7 @@ Keep that order: facts → spec → build → adversarial review → publish.
 
 - Nothing is committed without the user asking. Commit messages end with
   `Co-Authored-By:` per the harness rules.
-- Scenarios covered so far: primary crash and isolated primary. If the user
-  asks for reinstate, add it as a new figure/scenario rather than crowding the
-  existing ones.
+- Scenarios covered so far: primary crash, isolated primary, and observer lost
+  (simulator only — there is no static figure for it). Reinstate stays out of
+  scope; if the user asks for it, add it as a new figure/scenario rather than
+  crowding the existing ones.
