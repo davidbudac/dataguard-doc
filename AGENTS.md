@@ -15,8 +15,10 @@ to extend it without breaking consistency or accuracy.
 | `diagrams/README.md` | Figure embeds, broker-property table with verified defaults, the ping-properties quirk, Oracle doc links |
 | `simulator/fsfo-simulator.html` | Source of the interactive simulator artifact (self-contained HTML fragment) |
 
-The simulator is published as a Claude artifact:
-**https://claude.ai/code/artifact/da90b968-3a7e-4cbc-8a32-ec0180d30b51**
+The simulator was previously published as a Claude artifact. As of 2026-07-29
+the artifact is retired and no longer maintained — do not republish it. The
+HTML fragment stays in the repo purely as source; treat it like any other
+committed file.
 
 ## Accuracy rules (non-negotiable)
 
@@ -54,6 +56,16 @@ agree on:
   environment-dependent, not parameter-driven — always label it that way.
 - Reinstate (`FastStartFailoverAutoReinstate`, Flashback Database) is
   deliberately out of scope; at most a footnote.
+- Client connect-string facts (simulator "application's view" section; sources
+  in `diagrams/README.md`): `TRANSPORT_CONNECT_TIMEOUT` default 60 s per
+  ADDRESS; `CONNECT_TIMEOUT` per ADDRESS, no default (HA guide example 90 s);
+  `RETRY_COUNT` default 0 (extra traversals of the whole list), `RETRY_DELAY`
+  no default; `FAILOVER` default on; `LOAD_BALANCE` default off inside an
+  ADDRESS_LIST. Role-based services make the standby refuse instantly with
+  ORA-12514. These parameters affect only NEW connections, never established
+  sessions. Nominal drawing constants (footnote 3): refusal 0.2 s, OS refusal
+  0.15 s, establish 0.3 s; service assumed published the instant the new
+  primary opens.
 
 When adding new claims, verify against docs.oracle.com first and note the
 source in `diagrams/README.md`.
@@ -86,7 +98,12 @@ Regenerate a PNG after editing an SVG:
 ## The simulator
 
 `simulator/fsfo-simulator.html` is a self-contained fragment (no doctype/html/
-head/body; `<title>` first). Constraints: zero external requests (artifact CSP),
+head/body; `<title>` first). **It must stay pure ASCII** — because it has no
+`<head>`, it carries no `<meta charset>`, so any raw em dash or `×` renders as
+mojibake (`Timeline â€” primary crash`). Escape by region: named entities in
+markup, `\uXXXX` in JS strings, plain ASCII in comments. Full rule and the
+verification command are in [CLAUDE.md](CLAUDE.md). Other constraints: zero
+external requests (artifact CSP),
 vanilla JS, token-based theming — palette custom properties on `:root`,
 redefined under `@media (prefers-color-scheme: dark)` AND under
 `:root[data-theme="dark"]` / `:root[data-theme="light"]` so the host toggle wins
@@ -97,11 +114,25 @@ pingInterval × (pingRetry + 1) when the ping properties are set; blocked when
 MaxPerformance and lag > lag limit; the isolated primary's abort always uses the
 threshold.
 
-To republish after editing: use the Artifact tool with the existing URL above so
-the link stays stable (`url:` parameter from a session that didn't originally
-publish it). Verify both themes and the four key states before republishing:
-defaults, isolated scenario, MaxPerformance with lag > limit (blocked banner),
-ping properties set (threshold grayed out, ~1.1 s detection).
+The "application's view" section (`#appview`) has its own pure function
+`computeApp(a, m, scenario)` between `/* APPMODEL:START */` and
+`/* APPMODEL:END */` — it consumes computeFsfo's output and simulates one
+worst-case connection request walking the two-address descriptor's retry
+ladder (per-pass toll min(TCT, CT) on the dead address, instant ORA-12514 from
+the standby, RETRY_DELAY between traversals, success once a traversal reaches
+address 2 at/after tOpen). Attempts collapse into an aggregated band when they
+would be subpixel; horizons past ~160 s clip with a "gives up at" annotation.
+The isolated scenario forces drop (partition = no refusals). Its state object
+is `A`; presets: Defaults (parameter defaults) and Tuned (3/90/30×3, HA-guide
+shape).
+
+The artifact is retired (see above) — no republish step applies anymore. If the
+simulator is ever republished again in the future, verify both themes and the
+key states first: defaults, isolated scenario, MaxPerformance with lag > limit
+(blocked banner), ping properties set (threshold grayed out, ~1.1 s detection)
+— and in the app view: defaults (lucky 60 s hang), defaults + threshold 90
+(ORA-12514 banner), Tuned preset (discrete retry ladder), Refused +
+RETRY_COUNT 100 (aggregated band), blocked (budget exhausted, "never" chip).
 
 ## Process that produced this (worth repeating)
 

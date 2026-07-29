@@ -1392,49 +1392,49 @@ td .mono{font-size:12px;color:var(--ik)}
     var aggregate = att.length > 1 && ((ap.passCost + A.rd) * pps < 22 || att.length > 48);
 
     var lanes = [
-      { name: 'Service', sub: 'app_svc · role-based', segs: [] },
+      { name: 'Service', sub: 'app_svc \u00b7 role-based', segs: [] },
       { name: 'Existing sessions', sub: 'the connection pool', segs: [] },
       { name: 'New connections', sub: 'the string at work', segs: [] }
     ];
 
     /* lane 0 -- where the service is published */
-    lanes[0].segs.push({ a: t0, b: 0, cls: 'b-tl', lc: 'f-tl', lab: ['Published by the old primary’s listener', 'On the old primary', 'Old primary'] });
+    lanes[0].segs.push({ a: t0, b: 0, cls: 'b-tl', lc: 'f-tl', lab: ['Published by the old primary\u2019s listener', 'On the old primary', 'Old primary'] });
     var svcBack = m.blocked ? t1 : m.tOpen;
     lanes[0].segs.push({
       a: 0, b: svcBack, cls: 'b-hatch3', lc: 'f-rd',
-      lab: iso ? ['Old primary stalled — unreachable, service dark', 'Unreachable — dark', 'Dark']
-               : ['Nowhere — nothing publishes app_svc', 'Nowhere', '—']
+      lab: iso ? ['Old primary stalled \u2014 unreachable, service dark', 'Unreachable \u2014 dark', 'Dark']
+               : ['Nowhere \u2014 nothing publishes app_svc', 'Nowhere', '\u2014']
     });
-    if (!m.blocked) lanes[0].segs.push({ a: m.tOpen, b: t1, cls: 'b-tl', lc: 'f-tl', lab: ['Published by the new primary — started at role change', 'On the new primary', 'New primary'] });
+    if (!m.blocked) lanes[0].segs.push({ a: m.tOpen, b: t1, cls: 'b-tl', lc: 'f-tl', lab: ['Published by the new primary \u2014 started at role change', 'On the new primary', 'New primary'] });
 
     /* lane 1 -- sessions that were already connected */
     lanes[1].segs.push({ a: t0, b: 0, cls: 'b-tl', lc: 'f-tl', lab: ['Pooled sessions working on the primary', 'Working', 'OK'] });
     var poolEnd = ap.tConn !== null ? ap.tConn : t1;
     if (iso) {
-      lanes[1].segs.push({ a: 0, b: poolEnd, cls: 'b-am', lc: 'f-am', lab: ['In-flight calls hang — a partition returns no errors', 'Calls hang — pool unusable', 'Hanging'] });
+      lanes[1].segs.push({ a: 0, b: poolEnd, cls: 'b-am', lc: 'f-am', lab: ['In-flight calls hang \u2014 a partition returns no errors', 'Calls hang \u2014 pool unusable', 'Hanging'] });
     } else {
       var bk = Math.min(1.5, poolEnd);
-      lanes[1].segs.push({ a: 0, b: bk, cls: 'b-hatch3', lc: 'f-rd', lab: ['In-flight calls error — ORA-3113', 'Errors'] });
-      lanes[1].segs.push({ a: bk, b: poolEnd, cls: 'b-am', lc: 'f-am', lab: ['Pool empty — requests wait or fail', 'Pool empty', 'Empty'] });
+      lanes[1].segs.push({ a: 0, b: bk, cls: 'b-hatch3', lc: 'f-rd', lab: ['In-flight calls error \u2014 ORA-3113', 'Errors'] });
+      lanes[1].segs.push({ a: bk, b: poolEnd, cls: 'b-am', lc: 'f-am', lab: ['Pool empty \u2014 requests wait or fail', 'Pool empty', 'Empty'] });
     }
     if (ap.tConn !== null) lanes[1].segs.push({ a: ap.tConn, b: t1, cls: 'b-tl', lc: 'f-tl', lab: ['Pool rebuilt on the new primary', 'Pool rebuilt', 'OK'] });
 
     /* lane 2 -- the retry ladder */
-    lanes[2].segs.push({ a: t0, b: 0, cls: 'b-sl', lc: 'f-sl', lab: ['Any request connects at once', 'Connects at once', '—'] });
+    lanes[2].segs.push({ a: t0, b: 0, cls: 'b-sl', lc: 'f-sl', lab: ['Any request connects at once', 'Connects at once', '\u2014'] });
     var ticks = [];
     if (aggregate) {
       var failN = ap.tConn !== null ? att.length - 1 : att.length;
       var failEnd = ap.tConn !== null ? lastA.start : Math.min(ap.gaveUp, t1);
       if (failN > 0) lanes[2].segs.push({
         a: 0, b: failEnd, cls: 'b-am', lc: 'f-am',
-        lab: [failN + ' failed traversals — address 1 waits, address 2 refuses (ORA-12514)', failN + ' failed traversals', 'Retrying']
+        lab: [failN + ' failed traversals \u2014 address 1 waits, address 2 refuses (ORA-12514)', failN + ' failed traversals', 'Retrying']
       });
       if (ap.tConn !== null) lanes[2].segs.push({ a: lastA.start, b: lastA.a1End, cls: 'b-am', lc: 'f-am', lab: [fmt(ap.d1) + ' s'] });
     } else {
       att.forEach(function (at) {
         lanes[2].segs.push({
           a: at.start, b: at.a1End, cls: 'b-am', lc: 'f-am',
-          lab: ['Address 1 — dead, ' + fmt(ap.d1) + ' s', fmt(ap.d1) + ' s']
+          lab: ['Address 1 \u2014 dead, ' + fmt(ap.d1) + ' s', fmt(ap.d1) + ' s']
         });
         if (!at.ok && at.end < t1) ticks.push(at.end);
       });
@@ -1442,11 +1442,11 @@ td .mono{font-size:12px;color:var(--ik)}
     if (ap.tConn !== null) {
       lanes[2].segs.push({
         a: ap.tConn, b: t1, cls: 'b-tl', lc: 'f-tl',
-        lab: ap.drop ? ['Connected — each later connect still pays the dead address first', 'Connected — still paying the toll', 'Connected']
-                     : ['Connected — the refused address costs almost nothing', 'Connected', 'OK']
+        lab: ap.drop ? ['Connected \u2014 each later connect still pays the dead address first', 'Connected \u2014 still paying the toll', 'Connected']
+                     : ['Connected \u2014 the refused address costs almost nothing', 'Connected', 'OK']
       });
     } else if (ap.gaveUp !== null && ap.gaveUp < t1) {
-      lanes[2].segs.push({ a: ap.gaveUp, b: t1, cls: 'b-sl', lc: 'f-sl', lab: ['No more attempts — the string is exhausted', 'String exhausted', '—'] });
+      lanes[2].segs.push({ a: ap.gaveUp, b: t1, cls: 'b-sl', lc: 'f-sl', lab: ['No more attempts \u2014 the string is exhausted', 'String exhausted', '\u2014'] });
     }
 
     /* braces under the axis */
@@ -1474,8 +1474,8 @@ td .mono{font-size:12px;color:var(--ik)}
     if (ap.gaveUp !== null && !ap.clipped) {
       braces.push({
         a: 0, b: ap.gaveUp, tone: 'br-rd', mono: false,
-        name: 'Retry budget — exhausted',
-        val: (A.rc + 1) + ' × ' + fmt(ap.passCost) + ' + ' + A.rc + ' × ' + fmt(A.rd) + ' = ' + fmt(ap.gaveUp) + ' s'
+        name: 'Retry budget \u2014 exhausted',
+        val: (A.rc + 1) + ' \u00d7 ' + fmt(ap.passCost) + ' + ' + A.rc + ' \u00d7 ' + fmt(A.rd) + ' = ' + fmt(ap.gaveUp) + ' s'
       });
     }
 
@@ -1540,14 +1540,14 @@ td .mono{font-size:12px;color:var(--ik)}
     var xz = X(0);
     push(ln('partition', xz, G.laneTop - 4, xz, G.lanesBottom + 4));
     push(txt('t-mark f-rd', xz + 8, G.markY, null,
-      iso ? 'Partition — the primary becomes unreachable' : 'Primary crashes — requests start failing'));
+      iso ? 'Partition \u2014 the primary becomes unreachable' : 'Primary crashes \u2014 requests start failing'));
 
     /* the service coming back */
     var gapA = G.lane[0] + G.laneH;
     if (!m.blocked) {
       var xo = X(m.tOpen);
       push(ln('m-tl', xo, G.lane[0] - 6, xo, G.lanesBottom + 4, ' stroke-width="1.5" stroke-dasharray="5 4"'));
-      var oCands = ['New primary opens — app_svc published at t = ' + fmt(m.tOpen) + ' s',
+      var oCands = ['New primary opens \u2014 app_svc published at t = ' + fmt(m.tOpen) + ' s',
                     'app_svc published at t = ' + fmt(m.tOpen) + ' s', 'app_svc back'];
       var oLab = null;
       for (var oi = 0; oi < oCands.length; oi++) {
@@ -1569,7 +1569,7 @@ td .mono{font-size:12px;color:var(--ik)}
       push(txt('t-mark f-vi', cX, gapB + 16, cAnc, esc(cLab)));
     } else if (ap.clipped) {
       push(txt('t-mark f-rd', plotR, gapB + 16, 'end',
-        esc('keeps retrying → gives up at t = ' + fmtClock(ap.gaveUp))));
+        esc('keeps retrying \u2192 gives up at t = ' + fmtClock(ap.gaveUp))));
     } else if (ap.gaveUp !== null) {
       var xg = X(ap.gaveUp), cyg = G.lane[2] + G.laneH / 2;
       push(ln('m-rd', xg - 7, cyg - 7, xg + 7, cyg + 7, ' stroke-width="2.5"'));
@@ -1583,13 +1583,13 @@ td .mono{font-size:12px;color:var(--ik)}
     /* top annotation */
     if (ap.tConn !== null) {
       push(braceUp(xz, X(ap.tConn), G.braceY, 'br-sl'));
-      var tLab = 'Application outage = ' + fmt(ap.tConn) + ' s — ' + fmt(ap.tConn - m.tOpen) + ' s of it client-side';
+      var tLab = 'Application outage = ' + fmt(ap.tConn) + ' s \u2014 ' + fmt(ap.tConn - m.tOpen) + ' s of it client-side';
       var tw = approxW(tLab, 12);
       push(txt('t-top', Math.min(Math.max((xz + X(ap.tConn)) / 2, tw / 2 + 6), W - tw / 2 - 6), G.topY, 'middle', esc(tLab)));
     } else if (m.blocked) {
-      push(txt('t-top f-rd', plotL, G.topY, null, 'No failover is coming — every traversal is refused, the application stays down'));
+      push(txt('t-top f-rd', plotL, G.topY, null, 'No failover is coming \u2014 every traversal is refused, the application stays down'));
     } else {
-      push(txt('t-top f-rd', plotL, G.topY, null, 'The connect string gives up before the failover finishes — the application stays down'));
+      push(txt('t-top f-rd', plotL, G.topY, null, 'The connect string gives up before the failover finishes \u2014 the application stays down'));
     }
 
     /* braces */
@@ -1621,13 +1621,13 @@ td .mono{font-size:12px;color:var(--ik)}
     var absent = [];
     if (A.tct === 60) absent.push('TRANSPORT_CONNECT_TIMEOUT (60 s default)');
     if (A.ct === 0) absent.push('CONNECT_TIMEOUT (no cap)');
-    if (A.rc === 0) absent.push('RETRY_COUNT (0 — no retries)');
+    if (A.rc === 0) absent.push('RETRY_COUNT (0 \u2014 no retries)');
     if (A.rd === 0) absent.push('RETRY_DELAY (immediate)');
     if (absent.length) {
       lines.push('');
       lines.push('<span class="dim"># not in the string, defaults apply:</span>');
       for (var j = 0; j < absent.length; j += 2)
-        lines.push('<span class="dim">#   ' + absent.slice(j, j + 2).join(' · ') + '</span>');
+        lines.push('<span class="dim">#   ' + absent.slice(j, j + 2).join(' \u00b7 ') + '</span>');
     }
     els.apTns.innerHTML = lines.join('\n');
   }
@@ -1644,43 +1644,43 @@ td .mono{font-size:12px;color:var(--ik)}
     els.apNDead.textContent = iso
       ? 'A partition drops packets: no refusal ever comes back, so the dead address always costs the full transport budget.'
       : (A.dead === 'drop'
-        ? 'Host unreachable — SYN packets vanish; each visit to address 1 waits out min(TRANSPORT_CONNECT_TIMEOUT, CONNECT_TIMEOUT).'
-        : 'Host up, instance down — the OS refuses instantly; address 1 costs almost nothing.');
+        ? 'Host unreachable \u2014 SYN packets vanish; each visit to address 1 waits out min(TRANSPORT_CONNECT_TIMEOUT, CONNECT_TIMEOUT).'
+        : 'Host up, instance down \u2014 the OS refuses instantly; address 1 costs almost nothing.');
   }
 
   function renderAppReadout(ap, m) {
     var out = '';
     if (ap.tConn !== null) {
       out += chip('vi', 'App reconnected at', fmt(ap.tConn), 's',
-        'Traversal ' + ap.attempts.length + ' of ' + (A.rc + 1) + ' — after ' + fmt(ap.d1) + ' s on the dead address');
+        'Traversal ' + ap.attempts.length + ' of ' + (A.rc + 1) + ' \u2014 after ' + fmt(ap.d1) + ' s on the dead address');
       out += chip('am', 'Client-side overhead', fmt(ap.tConn - m.tOpen), 's',
         'The database was back at ' + fmt(m.tOpen) + ' s; the rest is the connect string');
     } else {
       out += chip('rd', 'App reconnected', 'never', '',
         m.blocked ? 'No failover happens above, so <span class="mono">app_svc</span> is never republished'
-                  : 'ORA-12514 at ' + fmt(ap.gaveUp) + ' s — a fresh attempt after ' + fmt(m.tOpen) +
+                  : 'ORA-12514 at ' + fmt(ap.gaveUp) + ' s \u2014 a fresh attempt after ' + fmt(m.tOpen) +
                     ' s would connect in ' + fmt(ap.retryCost) + ' s');
     }
     out += chip(ap.tConn !== null ? 'tl' : 'rd', 'Retry budget', fmt(ap.worst), 's',
-      '(' + (A.rc + 1) + ' × ' + fmt(ap.passCost) + ' s) + (' + A.rc + ' × ' + fmt(A.rd) + ' s delay)' +
-      (m.blocked ? ' — no failover to wait for'
-        : ap.tConn !== null ? ' — covers this failover' : ' — runs out too soon'));
+      '(' + (A.rc + 1) + ' \u00d7 ' + fmt(ap.passCost) + ' s) + (' + A.rc + ' \u00d7 ' + fmt(A.rd) + ' s delay)' +
+      (m.blocked ? ' \u2014 no failover to wait for'
+        : ap.tConn !== null ? ' \u2014 covers this failover' : ' \u2014 runs out too soon'));
     out += chip('ik', 'One traversal costs', fmt(ap.passCost), 's',
       ap.drop ? 'min(TCT, CT) on the dead address + an instant ORA-12514 from the standby'
-              : 'Both addresses answer instantly — refused, refused');
+              : 'Both addresses answer instantly \u2014 refused, refused');
     els.apChips.innerHTML = out;
   }
 
   function renderAppProse(ap, m) {
     var luck = ap.tConn !== null && ap.attempts.length === 1 && A.rc === 0 && ap.drop && ap.d1 >= m.tOpen;
-    els.apEyebrow.textContent = 't = 0 is the failure event · same clock as the broker timeline';
+    els.apEyebrow.textContent = 't = 0 is the failure event \u00b7 same clock as the broker timeline';
 
     els.apBanner.hidden = !(ap.gaveUp !== null && !m.blocked);
     if (!els.apBanner.hidden) {
       els.apBannerBody.innerHTML = 'The string gave up at <span class="mono">' + fmt(ap.gaveUp) +
         ' s</span>, before the new primary opened at <span class="mono">' + fmt(m.tOpen) +
-        ' s</span>. The failover itself completed fine — but this application saw <span class="mono">ORA-12514</span> and stays down until something dials again. The retry budget (<span class="mono">' +
-        (A.rc + 1) + ' × ' + fmt(ap.passCost) + ' + ' + A.rc + ' × ' + fmt(A.rd) + ' = ' + fmt(ap.worst) +
+        ' s</span>. The failover itself completed fine \u2014 but this application saw <span class="mono">ORA-12514</span> and stays down until something dials again. The retry budget (<span class="mono">' +
+        (A.rc + 1) + ' \u00d7 ' + fmt(ap.passCost) + ' + ' + A.rc + ' \u00d7 ' + fmt(A.rd) + ' = ' + fmt(ap.worst) +
         ' s</span>) has to outlast the outage: raise <span class="mono">RETRY_COUNT</span> or <span class="mono">RETRY_DELAY</span>.';
     }
 
@@ -1690,14 +1690,14 @@ td .mono{font-size:12px;color:var(--ik)}
         '</span> and the application is down until a manual failover republishes <span class="mono">app_svc</span>.'
       : luck
         ? 'The single traversal hung on the dead address for <span class="mono">' + fmt(ap.d1) +
-          ' s</span> — and by the time it fell through to the standby, the failover was already done, so it connected at <span class="mono">' +
+          ' s</span> \u2014 and by the time it fell through to the standby, the failover was already done, so it connected at <span class="mono">' +
           fmt(ap.tConn) + ' s</span>. That is luck, not design: had the failover taken longer than ' + fmt(ap.d1) +
           ' s, this string would have returned <span class="mono">ORA-12514</span> and stopped. It also means the application waited ' +
           fmt(ap.tConn - m.tOpen) + ' s longer than the database did.'
         : ap.tConn !== null
           ? 'The string traversed the list ' + ap.attempts.length + ' time' + (ap.attempts.length > 1 ? 's' : '') +
             ', paying <span class="mono">' + fmt(ap.d1) + ' s</span> on the dead first address each pass. The traversal that reached the standby after <span class="mono">app_svc</span> reappeared connected at <span class="mono">' +
-            fmt(ap.tConn) + ' s</span> — ' + fmt(ap.tConn - m.tOpen) + ' s after the database itself was back.'
+            fmt(ap.tConn) + ' s</span> \u2014 ' + fmt(ap.tConn - m.tOpen) + ' s after the database itself was back.'
           : 'The string ran out of retries at <span class="mono">' + fmt(ap.gaveUp) +
             ' s</span>, while the failover was still running: the new primary opens at <span class="mono">' + fmt(m.tOpen) +
             ' s</span>, but by then nobody is dialing anymore.';
