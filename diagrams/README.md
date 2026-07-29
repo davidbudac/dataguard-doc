@@ -125,6 +125,31 @@ Each `.svg` is a standalone file with no external references and an explicit whi
 so it renders correctly in GitHub's dark mode. The text is real `<text>`, so it stays selectable
 and searchable.
 
+## Client connect string (the simulator's application view)
+
+The simulator's "application's view" section models a client using one connect
+descriptor listing both hosts plus a role-based service (started only where the
+database runs as primary, via `srvctl add service -role PRIMARY` or a startup
+trigger). Verified facts it relies on:
+
+- `TRANSPORT_CONNECT_TIMEOUT` — TCP connect budget **per ADDRESS**, default
+  60 s (19c connect descriptor). The clock that runs while a host is silently
+  unreachable.
+- `CONNECT_TIMEOUT` — caps one complete attempt to one ADDRESS (transport +
+  listener handshake), applied per address; no default in the descriptor. The
+  HA guide's example uses 90 s.
+- `RETRY_COUNT` — additional traversals of the full address list after the
+  first fails across all of it; default 0. `RETRY_DELAY` — seconds between
+  traversals; no default (retries immediately). HA guidance: short delays ×
+  many retries (its switchover sizing example is 100 × 3 s).
+- `FAILOVER` default `on` (DESCRIPTION_LIST / DESCRIPTION / ADDRESS_LIST);
+  `LOAD_BALANCE` default `off` inside an ADDRESS_LIST, `on` only under a
+  DESCRIPTION_LIST.
+- A standby whose listener does not publish the role-based service refuses
+  instantly with `ORA-12514`; established sessions are untouched by all of the
+  above (they need keepalives/`SQLNET.RECV_TIMEOUT`/FAN to die fast, and
+  TAF/Application Continuity to resume work).
+
 ## Oracle documentation
 
 - [Oracle Data Guard Broker Properties (19c)](https://docs.oracle.com/en/database/oracle/oracle-database/19/dgbkr/oracle-data-guard-broker-properties.html)
@@ -132,3 +157,6 @@ and searchable.
 - [LOG_ARCHIVE_DEST_n parameter attributes (19c Data Guard Concepts and Administration)](https://docs.oracle.com/en/database/oracle/oracle-database/19/sbydb/LOG_ARCHIVE_DEST_n-parameter-attributes.html)
 - [LOG_ARCHIVE_DEST_n (19c Database Reference)](https://docs.oracle.com/en/database/oracle/oracle-database/19/refrn/LOG_ARCHIVE_DEST_n.html)
 - [Oracle Data Guard Broker Properties (21c — documents `ObserverPingInterval` / `ObserverPingRetry`)](https://docs.oracle.com/en/database/oracle/oracle-database/21/dgbkr/oracle-data-guard-broker-properties.html)
+- [Local Naming Parameters in the tnsnames.ora File (19c Net Services Reference — connect-descriptor timeout parameters)](https://docs.oracle.com/en/database/oracle/oracle-database/19/netrf/local-naming-parameters-in-tns-ora-file.html)
+- [Oracle Net TNS String Parameters (19c High Availability Overview — recommended client failover settings)](https://docs.oracle.com/en/database/oracle/oracle-database/19/haovw/oracle-net-tns-string-parameters.html)
+- [Connection Time Estimates During Data Guard Switchover or Failover (19c High Availability Overview)](https://docs.oracle.com/en/database/oracle/oracle-database/19/haovw/connection-time-estimates-data-guard-switchover-or-failover.html)
