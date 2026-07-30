@@ -333,6 +333,11 @@ td .mono{font-size:12px;color:var(--ik)}
 .cfg-wide{grid-column:1/-1}
 .cfg-hd{display:flex;justify-content:space-between;align-items:baseline;gap:12px;padding:10px 16px;border-bottom:1px solid var(--ln);background:var(--sf2);border-radius:3px 3px 0 0}
 .cfg-file{font-family:var(--mono);font-size:12px;font-weight:600;color:var(--ik)}
+.cfg-hd-r{display:flex;align-items:baseline;gap:10px;flex-shrink:0}
+.cfg-copy{font-family:var(--mono);font-size:11px;letter-spacing:.04em;color:var(--ik2);background:transparent;border:1px solid var(--ln2);border-radius:2px;padding:2px 8px;cursor:pointer;flex-shrink:0}
+.cfg-copy:hover{color:var(--ik);border-color:var(--ik3)}
+.cfg-copy.is-done{color:var(--ik);border-color:var(--vi);background:var(--vif)}
+.cfg-copy.is-fail{color:var(--rd);border-color:var(--rd)}
 .cfg .tns{border:0;border-radius:0 0 3px 3px}
 @media (max-width:960px){.cfg-grid{grid-template-columns:minmax(0,1fr)}}
 
@@ -1544,7 +1549,10 @@ window.DG = (function () {
       <article class="cfg cfg-wide">
         <div class="cfg-hd">
           <span class="cfg-file">DGMGRL &mdash; the broker configuration</span>
-          <span class="eyebrow">any host &middot; one session</span>
+          <div class="cfg-hd-r">
+            <span class="eyebrow">any host &middot; one session</span>
+            <button type="button" class="cfg-copy" data-copy="cfg-broker" aria-label="Copy the broker configuration commands">Copy</button>
+          </div>
         </div>
         <div class="tns" id="cfg-broker"></div>
       </article>
@@ -1552,7 +1560,10 @@ window.DG = (function () {
       <article class="cfg">
         <div class="cfg-hd">
           <span class="cfg-file">DGMGRL &mdash; the observer</span>
-          <span class="eyebrow" id="cfg-observer-host">observer host</span>
+          <div class="cfg-hd-r">
+            <span class="eyebrow" id="cfg-observer-host">observer host</span>
+            <button type="button" class="cfg-copy" data-copy="cfg-observer" aria-label="Copy the observer commands">Copy</button>
+          </div>
         </div>
         <div class="tns" id="cfg-observer"></div>
       </article>
@@ -1560,7 +1571,10 @@ window.DG = (function () {
       <article class="cfg">
         <div class="cfg-hd">
           <span class="cfg-file">LOG_ARCHIVE_DEST_2 &mdash; where the transport properties land</span>
-          <span class="eyebrow">primary &middot; broker-owned</span>
+          <div class="cfg-hd-r">
+            <span class="eyebrow">primary &middot; broker-owned</span>
+            <button type="button" class="cfg-copy" data-copy="cfg-dest" aria-label="Copy the LOG_ARCHIVE_DEST_2 parameter">Copy</button>
+          </div>
         </div>
         <div class="tns" id="cfg-dest"></div>
       </article>
@@ -1568,7 +1582,10 @@ window.DG = (function () {
       <article class="cfg cfg-wide">
         <div class="cfg-hd">
           <span class="cfg-file">tnsnames.ora &mdash; the connect string</span>
-          <span class="eyebrow">every application host</span>
+          <div class="cfg-hd-r">
+            <span class="eyebrow">every application host</span>
+            <button type="button" class="cfg-copy" data-copy="cfg-tns" aria-label="Copy the tnsnames.ora entry">Copy</button>
+          </div>
         </div>
         <div class="tns" id="cfg-tns"></div>
       </article>
@@ -1684,7 +1701,7 @@ window.DG = (function () {
     '.sec-hd .eyebrow', '.sec-hd h2', '.sec > h2',
     '.caption', '.note h3', '.note p',
     'thead th', 'tbody td',
-    '.cfg-file', '.cfg-hd .eyebrow',
+    '.cfg-file', '.cfg-hd .eyebrow', '.cfg-copy',
     '.foot p',
     /* the deployment chapter's static form */
     '.dep-row label', '.dep-cap', '.dep-grp', '.dep-actions button',
@@ -4659,6 +4676,50 @@ window.DG = (function () {
     if (navigator.clipboard && navigator.clipboard.writeText) {
       navigator.clipboard.writeText(url).then(ok, fail);
     } else { fail(); }
+  });
+
+  /* ---------- chapter 5: copy a card to the clipboard ----------
+     The cards are redrawn on every draw(), so the buttons read the live
+     textContent at click time -- never a cached string. textContent drops the
+     highlight spans and keeps the parenthetical commentary, which is what is
+     on screen. */
+  Array.prototype.forEach.call(document.querySelectorAll('.cfg-copy'), function (btn) {
+    var pane = document.getElementById(btn.getAttribute('data-copy'));
+    if (!pane) { btn.hidden = true; return; }
+    var timer = null;
+    function flash(cls, label) {
+      btn.classList.remove('is-done', 'is-fail');
+      btn.classList.add(cls);
+      btn.textContent = label;
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(function () {
+        btn.classList.remove('is-done', 'is-fail');
+        btn.textContent = t('Copy');
+      }, 1800);
+    }
+    function fallback(text) {
+      /* No async clipboard (http origin, older browser): a hidden textarea and
+         execCommand still work, and a failure there is reported as one. */
+      var ta = document.createElement('textarea');
+      ta.value = text;
+      ta.setAttribute('readonly', 'readonly');
+      ta.style.position = 'fixed';
+      ta.style.top = '-1000px';
+      document.body.appendChild(ta);
+      ta.select();
+      var ok = false;
+      try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+      document.body.removeChild(ta);
+      flash(ok ? 'is-done' : 'is-fail', ok ? t('Copied') : t('Copy blocked'));
+    }
+    btn.addEventListener('click', function () {
+      var text = pane.textContent;
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(function () {
+          flash('is-done', t('Copied'));
+        }, function () { fallback(text); });
+      } else { fallback(text); }
+    });
   });
 
   els.depResetAll.addEventListener('click', function () {
