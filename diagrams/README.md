@@ -255,9 +255,9 @@ everything else intact. Nothing fails over, and that is the point.
   redundancy exists: no backup to promote, no failover possible, and `FastStartFailoverThreshold`
   counting nothing.
 
-## Configuration files (the simulator's chapter 4)
+## Configuration files (the simulator's chapter 5)
 
-Chapter 4 renders the workbench state as the commands and files that would set
+Chapter 5 renders the workbench state as the commands and files that would set
 it. Verified facts it relies on:
 
 - Property scope, per the broker properties reference: `FastStartFailoverThreshold`,
@@ -326,7 +326,7 @@ Where the simulator draws something it cannot know, it is listed on the page its
 - [Changes in Oracle Data Guard Broker 12c Release 1 (12.1 — the only edition that documents `FASTSYNC` as new)](https://docs.oracle.com/database/121/DGBKR/release_changes.htm)
 - [Changes in Oracle Data Guard Broker 12c Release 2 (12.2 — automatic backup-observer promotion)](https://docs.oracle.com/en/database/oracle/oracle-database/12.2/dgbkr/release-changes.html)
 - [Scenarios Using the DGMGRL Utility (19c — Scenario 6, registering and managing multiple observers)](https://docs.oracle.com/en/database/oracle/oracle-database/19/dgbkr/examples-using-data-guard-broker-DGMGRL-utility.html)
-- [Oracle Data Guard Broker Commands (19c — `SET MASTEROBSERVER TO`; the `EDIT`/`ENABLE`/`CONNECT` syntax behind the chapter-4 config cards)](https://docs.oracle.com/en/database/oracle/oracle-database/19/dgbkr/oracle-data-guard-broker-commands.html)
+- [Oracle Data Guard Broker Commands (19c — `SET MASTEROBSERVER TO`; the `EDIT`/`ENABLE`/`CONNECT` syntax behind the chapter-5 config cards)](https://docs.oracle.com/en/database/oracle/oracle-database/19/dgbkr/oracle-data-guard-broker-commands.html)
 - [V$DATABASE (19c Database Reference — `FS_FAILOVER_STATUS`, `FS_FAILOVER_OBSERVER_PRESENT`)](https://docs.oracle.com/en/database/oracle/oracle-database/19/refrn/V-DATABASE.html)
 - [ORA-16820 — fast-start failover observer is no longer observing this database](https://docs.oracle.com/en/error-help/db/ora-16820/)
 - [ORA-16658 — unobserved fast-start failover configuration](https://docs.oracle.com/en/error-help/db/ora-16658/)

@@ -59,7 +59,7 @@ background:var(--bg);color:var(--ik);font-family:var(--sans);font-size:15px;line
 .hd h1{margin:0;font-size:clamp(26px,3.4vw,38px);line-height:1.1;font-weight:620;letter-spacing:-.022em;text-wrap:balance}
 .hd .lede{max-width:62ch;color:var(--ik2);font-size:16px}
 
-/* chapters -- the sticky chapter bar and the five dividers. Additive chrome:
+/* chapters -- the sticky chapter bar and the six dividers. Additive chrome:
    every existing section keeps its own styles, a chapter is only a wrapper.
    --navh is the bar's measured height (JS keeps it current); the chapter
    scroll targets and the control rail's sticky offset both derive from it, so
@@ -298,7 +298,7 @@ td .mono{font-size:12px;color:var(--ik)}
 .tns .svc{color:var(--tl);font-weight:600}
 .tns .dim{color:var(--ik3)}
 .tns .bad{color:var(--rd);font-weight:600}
-/* chapter 4 -- the generated config blocks */
+/* chapter 5 -- the generated config blocks */
 .cfg-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;align-items:start;margin-top:18px}
 .cfg{background:var(--sf);border:1px solid var(--ln);border-radius:3px;min-width:0}
 .cfg-wide{grid-column:1/-1}
@@ -402,7 +402,7 @@ td .mono{font-size:12px;color:var(--ik)}
 .sq-svg .ah-vi{fill:var(--vi)}
 .sq-svg .ah-tl{fill:var(--tl)}
 
-/* chapter 6 -- the deployment editor. Static markup, never innerHTML-drawn,
+/* chapter 4 -- the deployment editor. Static markup, never innerHTML-drawn,
    so typing keeps focus while every draw() repaints the rest of the page. */
 .hd-dep{margin-top:10px;font-family:var(--mono);font-size:12.5px;letter-spacing:.06em;color:var(--vi)}
 .dep-cards{display:flex;flex-direction:column;gap:14px;margin-top:18px}
@@ -446,9 +446,9 @@ select.dep-in{width:auto;min-width:13em;cursor:pointer}
       <li><a href="#ch-clocks" data-ch="ch-clocks"><span class="cn-n">1</span><span class="cn-t">The failover clocks</span><span class="cn-s">Clocks</span></a></li>
       <li><a href="#ch-transport" data-ch="ch-transport"><span class="cn-n">2</span><span class="cn-t">The transport layer</span><span class="cn-s">Transport</span></a></li>
       <li><a href="#ch-app" data-ch="ch-app"><span class="cn-n">3</span><span class="cn-t">The application&rsquo;s view</span><span class="cn-s">App view</span></a></li>
-      <li><a href="#ch-config" data-ch="ch-config"><span class="cn-n">4</span><span class="cn-t">The configuration</span><span class="cn-s">Config</span></a></li>
-      <li><a href="#ch-reference" data-ch="ch-reference"><span class="cn-n">5</span><span class="cn-t">Reference</span><span class="cn-s">Reference</span></a></li>
-      <li><a href="#ch-deploy" data-ch="ch-deploy"><span class="cn-n">6</span><span class="cn-t">Your deployment</span><span class="cn-s">Deploy</span></a></li>
+      <li><a href="#ch-deploy" data-ch="ch-deploy"><span class="cn-n">4</span><span class="cn-t">Your deployment</span><span class="cn-s">Deploy</span></a></li>
+      <li><a href="#ch-config" data-ch="ch-config"><span class="cn-n">5</span><span class="cn-t">The configuration</span><span class="cn-s">Config</span></a></li>
+      <li><a href="#ch-reference" data-ch="ch-reference"><span class="cn-n">6</span><span class="cn-t">Reference</span><span class="cn-s">Reference</span></a></li>
     </ol>
   </nav>
 
@@ -1228,137 +1228,12 @@ select.dep-in{width:auto;min-width:13em;cursor:pointer}
   </section>
   </section>
 
-  <section class="chapter" id="ch-config" aria-labelledby="ch-config-h">
+  <section class="chapter" id="ch-deploy" aria-labelledby="ch-deploy-h">
   <div class="chdiv">
     <p class="chdiv-n" aria-hidden="true">4</p>
     <div class="chdiv-b">
-      <h2 class="chdiv-t" id="ch-config-h"><span class="sr">Chapter 4 &mdash; </span>The configuration</h2>
-      <p class="chdiv-d">Everything the controls above are set to, written out as the commands and files that would set it &mdash; and rewritten live as you drag.</p>
-    </div>
-  </div>
-
-  <section class="sec" id="configview">
-    <div class="sec-hd">
-      <p class="eyebrow">Configuration files</p>
-      <h2>The same settings, as you would type them</h2>
-    </div>
-    <p class="caption">The primary is <span class="mono" data-name="dbPrimary">prm01</span> on <span class="mono" data-name="hostPrimary">dc1-prm01</span>, the target standby <span class="mono" data-name="dbStandby">sby01</span> on <span class="mono" data-name="hostStandby">dc2-sby01</span> &mdash; the two hosts from the connect string above. Values that differ from their documented defaults are <span class="hl">highlighted</span>; the grey parenthetical lines are this page commenting, not DGMGRL syntax. Four controls never appear below &mdash; scenario, apply lag, role-transition time and RTT are conditions of the environment, not lines of configuration.</p>
-
-    <div class="cfg-grid">
-      <article class="cfg cfg-wide">
-        <div class="cfg-hd">
-          <span class="cfg-file">DGMGRL &mdash; the broker configuration</span>
-          <span class="eyebrow">any host &middot; one session</span>
-        </div>
-        <div class="tns" id="cfg-broker"></div>
-      </article>
-
-      <article class="cfg">
-        <div class="cfg-hd">
-          <span class="cfg-file">DGMGRL &mdash; the observer</span>
-          <span class="eyebrow" id="cfg-observer-host">observer host</span>
-        </div>
-        <div class="tns" id="cfg-observer"></div>
-      </article>
-
-      <article class="cfg">
-        <div class="cfg-hd">
-          <span class="cfg-file">LOG_ARCHIVE_DEST_2 &mdash; where the transport properties land</span>
-          <span class="eyebrow">primary &middot; broker-owned</span>
-        </div>
-        <div class="tns" id="cfg-dest"></div>
-      </article>
-
-      <article class="cfg cfg-wide">
-        <div class="cfg-hd">
-          <span class="cfg-file">tnsnames.ora &mdash; the connect string</span>
-          <span class="eyebrow">every application host</span>
-        </div>
-        <div class="tns" id="cfg-tns"></div>
-      </article>
-    </div>
-    <p class="caption">Command syntax per the 19c broker commands reference; the clock properties (<span class="mono">FastStartFailoverThreshold</span>, the two <span class="mono">ObserverPing*</span> properties, <span class="mono">FastStartFailoverLagLimit</span>, <span class="mono">FastStartFailoverPmyShutdown</span>) are configuration-wide, while <span class="mono">LogXptMode</span> is set per database. <span class="mono">START OBSERVER IN BACKGROUND</span> is the form the documentation prefers.</p>
-  </section>
-  </section>
-
-  <section class="chapter" id="ch-reference" aria-labelledby="ch-reference-h">
-  <div class="chdiv">
-    <p class="chdiv-n" aria-hidden="true">5</p>
-    <div class="chdiv-b">
-      <h2 class="chdiv-t" id="ch-reference-h"><span class="sr">Chapter 5 &mdash; </span>Reference</h2>
-      <p class="chdiv-d">Every property this page touches &mdash; default, minimum, what it governs &mdash; and the footnotes behind the drawings.</p>
-    </div>
-  </div>
-
-  <section class="sec">
-    <div class="sec-hd">
-      <p class="eyebrow">Reference</p>
-      <h2>The broker properties on this page</h2>
-    </div>
-    <div class="tbl-wrap">
-      <table>
-        <thead>
-          <tr><th scope="col">Property</th><th scope="col">Default</th><th scope="col">Minimum</th><th scope="col">What it governs</th></tr>
-        </thead>
-        <tbody>
-          <tr><td><span class="mono">FastStartFailoverThreshold</span></td><td class="n">30 s</td><td class="n">6 s</td>
-            <td>Seconds the master observer attempts to reconnect to the primary before initiating fast-start failover. The interval starts when the observer first loses its connection to the primary.</td></tr>
-          <tr><td><span class="mono">ObserverPingInterval</span></td><td class="n">100 ms</td><td class="n">100 ms</td>
-            <td>How frequently the observer pings the primary.</td></tr>
-          <tr><td><span class="mono">ObserverPingRetry</span></td><td class="n">10</td><td class="n">10</td>
-            <td>Number of times the observer retries a failed ping before initiating failover. A ping counts as failed when there is no answer within <span class="mono">ObserverPingInterval</span>.</td></tr>
-          <tr><td><span class="mono">FastStartFailoverLagLimit</span></td><td class="n">30 s</td><td class="n">5 s</td>
-            <td>MaxPerformance only. Maximum seconds the standby's apply point may lag the primary's redo generation point for fast-start failover to be permitted. Bounds the data loss.</td></tr>
-          <tr><td><span class="mono">FastStartFailoverPmyShutdown</span></td><td class="n">TRUE</td><td class="n">&mdash;</td>
-            <td>When TRUE, a primary whose <span class="mono">V$DATABASE.FS_FAILOVER_STATUS</span> has been <span class="mono">STALLED</span> for longer than <span class="mono">FastStartFailoverThreshold</span> seconds, and that cannot reach the observer or the target standby, shuts itself down with an abort.</td></tr>
-          <tr><td><span class="mono">FastStartFailoverAutoReinstate</span></td><td class="n">TRUE</td><td class="n">&mdash;</td>
-            <td>The old primary is automatically reinstated as a standby when it returns.</td></tr>
-        </tbody>
-      </table>
-    </div>
-    <p class="caption">Documented quirk: the <span class="mono">FastStartFailoverThreshold</span> property is ignored when the <span class="mono">ObserverPingRetry</span> and <span class="mono">ObserverPingInterval</span> properties are set. Toggle the ping properties on in the rail to see detection collapse to about a second.</p>
-
-    <div class="sec-hd" style="margin-top:24px">
-      <p class="eyebrow">Reference &middot; transport</p>
-      <h2>Redo transport properties on this page</h2>
-    </div>
-    <p class="caption">Transport plumbing, kept apart from the failover clocks above: none of these decides whether or when a failover happens. Each is a broker property whose value lands in a <span class="mono">LOG_ARCHIVE_DEST_n</span> attribute on the primary.</p>
-    <div class="tbl-wrap">
-      <table>
-        <thead>
-          <tr><th scope="col">Broker property</th><th scope="col">LOG_ARCHIVE_DEST_n attribute</th><th scope="col">Default</th><th scope="col">What it governs</th></tr>
-        </thead>
-        <tbody>
-          <tr><td><span class="mono">LogXptMode</span></td>
-            <td><span class="mono">SYNC AFFIRM</span> &middot; <span class="mono">SYNC NOAFFIRM</span> (FASTSYNC) &middot; <span class="mono">ASYNC NOAFFIRM</span></td>
-            <td class="n">ASYNC</td>
-            <td>How the commit waits, or does not wait, for the standby&rsquo;s acknowledgement.</td></tr>
-          <tr><td><span class="mono">ReopenSecs</span> (deprecated 19c)</td><td><span class="mono">REOPEN</span></td><td class="n">300 s</td>
-            <td>Minimum seconds before a failed destination is retried, at the next log switch after the interval has elapsed. Valid values are 0 or greater; applies to all errors, not only connection failures.</td></tr>
-          <tr><td><span class="mono">MaxFailure</span> (deprecated 19c)</td><td><span class="mono">MAX_FAILURE</span></td><td class="n">0 &mdash; no limit</td>
-            <td>Consecutive failed attempts to reestablish a failed destination before it is disabled, with no further access until it is manually reenabled.</td></tr>
-          <tr><td><span class="mono">NetTimeout</span></td><td><span class="mono">NET_TIMEOUT</span></td><td class="n">30 s</td>
-            <td>Seconds LGWR waits for a SYNC acknowledgement &mdash; never a failover clock.</td></tr>
-        </tbody>
-      </table>
-    </div>
-    <p class="caption">Both <span class="mono">ReopenSecs</span> and <span class="mono">MaxFailure</span> are deprecated as of 19c and still functional; Oracle points to <span class="mono">EDIT DATABASE ... SET PARAMETER</span> for setting the underlying attributes instead. Attribute semantics here follow the <span class="mono">LOG_ARCHIVE_DEST_n</span> reference rather than the broker properties page.</p>
-  </section>
-
-  <div class="foot">
-    <p><sup>1</sup>The threshold is skipped entirely for user-configurable health conditions and for application-initiated failover through <span class="mono">DBMS_DG.INITIATE_FS_FAILOVER</span>. Neither is drawn on the timeline.</p>
-    <p><sup>2</sup>Apply-time figures are illustrative. Terminal recovery is modelled one-to-one against the apply lag at failure time so the relationship is visible; real duration depends on the redo volume left and on the environment.</p>
-    <p><sup>3</sup>Client-side constants in the application view are nominal: an <span class="mono">ORA-12514</span> refusal is drawn as 0.2 s, an OS-level connection refusal as 0.15 s, and session establishment as 0.3 s; real values are network-dependent but small. The role-based service is assumed registered the instant the new primary opens &mdash; LREG typically takes a moment longer.</p>
-    <p><sup>4</sup>The reopen panel is idealized in three places. Retries are drawn at exact <span class="mono">ReopenSecs</span> multiples, where transport really retries at the first log switch after the interval, so a real retry lands at or after the mark. The gap drains at five times the generation rate, a stand-in for whatever headroom the link and the standby&rsquo;s apply actually have. And the apply lag is taken as near zero at t = 0, growing one second per second while nothing arrives, which puts the MaxPerformance marker exactly one <span class="mono">FastStartFailoverLagLimit</span> after the break. The commit panel is nominal in the same spirit: RFS processing is drawn as zero, and the <span class="mono">ASYNC</span> ship-done marker assumes the redo leaves as soon as the local write finishes.</p>
-  </div>
-  </section>
-
-  <section class="chapter" id="ch-deploy" aria-labelledby="ch-deploy-h">
-  <div class="chdiv">
-    <p class="chdiv-n" aria-hidden="true">6</p>
-    <div class="chdiv-b">
-      <h2 class="chdiv-t" id="ch-deploy-h"><span class="sr">Chapter 6 &mdash; </span>Your deployment</h2>
-      <p class="chdiv-d">Put your own names on everything above, edit every parameter in one place, and carry the result as a file or a link.</p>
+      <h2 class="chdiv-t" id="ch-deploy-h"><span class="sr">Chapter 4 &mdash; </span>Your deployment</h2>
+      <p class="chdiv-d">Put your own names on the whole page, edit every parameter in one place, and carry the result as a file or a link.</p>
     </div>
   </div>
 
@@ -1367,7 +1242,7 @@ select.dep-in{width:auto;min-width:13em;cursor:pointer}
       <p class="eyebrow">Deployment</p>
       <h2>The whole page, in your deployment&rsquo;s terms</h2>
     </div>
-    <p class="caption">Everything here rewrites the page live. The names feed the topology strip, the connect string and the chapter&nbsp;4 cards; the parameters are the same values as the chapter 1&ndash;3 controls, in both directions. A cleared name falls back to the fixture default, and the whole configuration auto-saves in this browser.</p>
+    <p class="caption">Everything here rewrites the page live. The names feed the topology strip, the connect string and the chapter&nbsp;5 cards; the parameters are the same values as the chapter 1&ndash;3 controls, in both directions. A cleared name falls back to the fixture default, and the whole configuration auto-saves in this browser.</p>
 
     <div class="dep-cards">
       <article class="cfg">
@@ -1401,7 +1276,7 @@ select.dep-in{width:auto;min-width:13em;cursor:pointer}
           <div class="dep-row"><label for="dep-sub-s">Standby subtitle</label>
             <input class="dep-in" type="text" id="dep-sub-s" maxlength="64" placeholder="failover target"></div>
         </div>
-        <p class="dep-cap">The two subtitles and site labels appear under the topology boxes in chapter&nbsp;1; the databases, hosts, port and service appear in the connect string and in every chapter&nbsp;4 card.</p>
+        <p class="dep-cap">The two subtitles and site labels appear under the topology boxes in chapter&nbsp;1; the databases, hosts, port and service appear in the connect string and in every chapter&nbsp;5 card.</p>
       </article>
 
       <article class="cfg">
@@ -1474,6 +1349,131 @@ select.dep-in{width:auto;min-width:13em;cursor:pointer}
       </article>
     </div>
   </section>
+  </section>
+
+  <section class="chapter" id="ch-config" aria-labelledby="ch-config-h">
+  <div class="chdiv">
+    <p class="chdiv-n" aria-hidden="true">5</p>
+    <div class="chdiv-b">
+      <h2 class="chdiv-t" id="ch-config-h"><span class="sr">Chapter 5 &mdash; </span>The configuration</h2>
+      <p class="chdiv-d">Everything the controls above are set to, written out as the commands and files that would set it &mdash; and rewritten live as you drag.</p>
+    </div>
+  </div>
+
+  <section class="sec" id="configview">
+    <div class="sec-hd">
+      <p class="eyebrow">Configuration files</p>
+      <h2>The same settings, as you would type them</h2>
+    </div>
+    <p class="caption">The primary is <span class="mono" data-name="dbPrimary">prm01</span> on <span class="mono" data-name="hostPrimary">dc1-prm01</span>, the target standby <span class="mono" data-name="dbStandby">sby01</span> on <span class="mono" data-name="hostStandby">dc2-sby01</span> &mdash; the two hosts from the connect string above. Values that differ from their documented defaults are <span class="hl">highlighted</span>; the grey parenthetical lines are this page commenting, not DGMGRL syntax. Four controls never appear below &mdash; scenario, apply lag, role-transition time and RTT are conditions of the environment, not lines of configuration.</p>
+
+    <div class="cfg-grid">
+      <article class="cfg cfg-wide">
+        <div class="cfg-hd">
+          <span class="cfg-file">DGMGRL &mdash; the broker configuration</span>
+          <span class="eyebrow">any host &middot; one session</span>
+        </div>
+        <div class="tns" id="cfg-broker"></div>
+      </article>
+
+      <article class="cfg">
+        <div class="cfg-hd">
+          <span class="cfg-file">DGMGRL &mdash; the observer</span>
+          <span class="eyebrow" id="cfg-observer-host">observer host</span>
+        </div>
+        <div class="tns" id="cfg-observer"></div>
+      </article>
+
+      <article class="cfg">
+        <div class="cfg-hd">
+          <span class="cfg-file">LOG_ARCHIVE_DEST_2 &mdash; where the transport properties land</span>
+          <span class="eyebrow">primary &middot; broker-owned</span>
+        </div>
+        <div class="tns" id="cfg-dest"></div>
+      </article>
+
+      <article class="cfg cfg-wide">
+        <div class="cfg-hd">
+          <span class="cfg-file">tnsnames.ora &mdash; the connect string</span>
+          <span class="eyebrow">every application host</span>
+        </div>
+        <div class="tns" id="cfg-tns"></div>
+      </article>
+    </div>
+    <p class="caption">Command syntax per the 19c broker commands reference; the clock properties (<span class="mono">FastStartFailoverThreshold</span>, the two <span class="mono">ObserverPing*</span> properties, <span class="mono">FastStartFailoverLagLimit</span>, <span class="mono">FastStartFailoverPmyShutdown</span>) are configuration-wide, while <span class="mono">LogXptMode</span> is set per database. <span class="mono">START OBSERVER IN BACKGROUND</span> is the form the documentation prefers.</p>
+  </section>
+  </section>
+
+  <section class="chapter" id="ch-reference" aria-labelledby="ch-reference-h">
+  <div class="chdiv">
+    <p class="chdiv-n" aria-hidden="true">6</p>
+    <div class="chdiv-b">
+      <h2 class="chdiv-t" id="ch-reference-h"><span class="sr">Chapter 6 &mdash; </span>Reference</h2>
+      <p class="chdiv-d">Every property this page touches &mdash; default, minimum, what it governs &mdash; and the footnotes behind the drawings.</p>
+    </div>
+  </div>
+
+  <section class="sec">
+    <div class="sec-hd">
+      <p class="eyebrow">Reference</p>
+      <h2>The broker properties on this page</h2>
+    </div>
+    <div class="tbl-wrap">
+      <table>
+        <thead>
+          <tr><th scope="col">Property</th><th scope="col">Default</th><th scope="col">Minimum</th><th scope="col">What it governs</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><span class="mono">FastStartFailoverThreshold</span></td><td class="n">30 s</td><td class="n">6 s</td>
+            <td>Seconds the master observer attempts to reconnect to the primary before initiating fast-start failover. The interval starts when the observer first loses its connection to the primary.</td></tr>
+          <tr><td><span class="mono">ObserverPingInterval</span></td><td class="n">100 ms</td><td class="n">100 ms</td>
+            <td>How frequently the observer pings the primary.</td></tr>
+          <tr><td><span class="mono">ObserverPingRetry</span></td><td class="n">10</td><td class="n">10</td>
+            <td>Number of times the observer retries a failed ping before initiating failover. A ping counts as failed when there is no answer within <span class="mono">ObserverPingInterval</span>.</td></tr>
+          <tr><td><span class="mono">FastStartFailoverLagLimit</span></td><td class="n">30 s</td><td class="n">5 s</td>
+            <td>MaxPerformance only. Maximum seconds the standby's apply point may lag the primary's redo generation point for fast-start failover to be permitted. Bounds the data loss.</td></tr>
+          <tr><td><span class="mono">FastStartFailoverPmyShutdown</span></td><td class="n">TRUE</td><td class="n">&mdash;</td>
+            <td>When TRUE, a primary whose <span class="mono">V$DATABASE.FS_FAILOVER_STATUS</span> has been <span class="mono">STALLED</span> for longer than <span class="mono">FastStartFailoverThreshold</span> seconds, and that cannot reach the observer or the target standby, shuts itself down with an abort.</td></tr>
+          <tr><td><span class="mono">FastStartFailoverAutoReinstate</span></td><td class="n">TRUE</td><td class="n">&mdash;</td>
+            <td>The old primary is automatically reinstated as a standby when it returns.</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="caption">Documented quirk: the <span class="mono">FastStartFailoverThreshold</span> property is ignored when the <span class="mono">ObserverPingRetry</span> and <span class="mono">ObserverPingInterval</span> properties are set. Toggle the ping properties on in the rail to see detection collapse to about a second.</p>
+
+    <div class="sec-hd" style="margin-top:24px">
+      <p class="eyebrow">Reference &middot; transport</p>
+      <h2>Redo transport properties on this page</h2>
+    </div>
+    <p class="caption">Transport plumbing, kept apart from the failover clocks above: none of these decides whether or when a failover happens. Each is a broker property whose value lands in a <span class="mono">LOG_ARCHIVE_DEST_n</span> attribute on the primary.</p>
+    <div class="tbl-wrap">
+      <table>
+        <thead>
+          <tr><th scope="col">Broker property</th><th scope="col">LOG_ARCHIVE_DEST_n attribute</th><th scope="col">Default</th><th scope="col">What it governs</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><span class="mono">LogXptMode</span></td>
+            <td><span class="mono">SYNC AFFIRM</span> &middot; <span class="mono">SYNC NOAFFIRM</span> (FASTSYNC) &middot; <span class="mono">ASYNC NOAFFIRM</span></td>
+            <td class="n">ASYNC</td>
+            <td>How the commit waits, or does not wait, for the standby&rsquo;s acknowledgement.</td></tr>
+          <tr><td><span class="mono">ReopenSecs</span> (deprecated 19c)</td><td><span class="mono">REOPEN</span></td><td class="n">300 s</td>
+            <td>Minimum seconds before a failed destination is retried, at the next log switch after the interval has elapsed. Valid values are 0 or greater; applies to all errors, not only connection failures.</td></tr>
+          <tr><td><span class="mono">MaxFailure</span> (deprecated 19c)</td><td><span class="mono">MAX_FAILURE</span></td><td class="n">0 &mdash; no limit</td>
+            <td>Consecutive failed attempts to reestablish a failed destination before it is disabled, with no further access until it is manually reenabled.</td></tr>
+          <tr><td><span class="mono">NetTimeout</span></td><td><span class="mono">NET_TIMEOUT</span></td><td class="n">30 s</td>
+            <td>Seconds LGWR waits for a SYNC acknowledgement &mdash; never a failover clock.</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="caption">Both <span class="mono">ReopenSecs</span> and <span class="mono">MaxFailure</span> are deprecated as of 19c and still functional; Oracle points to <span class="mono">EDIT DATABASE ... SET PARAMETER</span> for setting the underlying attributes instead. Attribute semantics here follow the <span class="mono">LOG_ARCHIVE_DEST_n</span> reference rather than the broker properties page.</p>
+  </section>
+
+  <div class="foot">
+    <p><sup>1</sup>The threshold is skipped entirely for user-configurable health conditions and for application-initiated failover through <span class="mono">DBMS_DG.INITIATE_FS_FAILOVER</span>. Neither is drawn on the timeline.</p>
+    <p><sup>2</sup>Apply-time figures are illustrative. Terminal recovery is modelled one-to-one against the apply lag at failure time so the relationship is visible; real duration depends on the redo volume left and on the environment.</p>
+    <p><sup>3</sup>Client-side constants in the application view are nominal: an <span class="mono">ORA-12514</span> refusal is drawn as 0.2 s, an OS-level connection refusal as 0.15 s, and session establishment as 0.3 s; real values are network-dependent but small. The role-based service is assumed registered the instant the new primary opens &mdash; LREG typically takes a moment longer.</p>
+    <p><sup>4</sup>The reopen panel is idealized in three places. Retries are drawn at exact <span class="mono">ReopenSecs</span> multiples, where transport really retries at the first log switch after the interval, so a real retry lands at or after the mark. The gap drains at five times the generation rate, a stand-in for whatever headroom the link and the standby&rsquo;s apply actually have. And the apply lag is taken as near zero at t = 0, growing one second per second while nothing arrives, which puts the MaxPerformance marker exactly one <span class="mono">FastStartFailoverLagLimit</span> after the break. The commit panel is nominal in the same spirit: RFS processing is drawn as zero, and the <span class="mono">ASYNC</span> ship-done marker assumes the redo leaves as soon as the local write finishes.</p>
+  </div>
   </section>
 </div>
 
@@ -1847,7 +1847,7 @@ select.dep-in{width:auto;min-width:13em;cursor:pointer}
 
   /* commit-anatomy state. The RTT is deliberately absent: that one lives in
      C.latency, so the topology strip and this section always agree.
-     netTimeout is presentation-only: chapter 6 edits it and the dest card
+     netTimeout is presentation-only: chapter 4 edits it and the dest card
      prints it, but the commit model never reads it -- NET_TIMEOUT bounds the
      ack wait on a broken link, it does not add to a healthy commit. */
   var CM_DEFAULTS = { xpt: 'sync', localWrite: 2, sbWrite: 2, netTimeout: 30 };
@@ -1858,7 +1858,7 @@ select.dep-in{width:auto;min-width:13em;cursor:pointer}
   var RP_DEFAULTS = { reopen: 300, maxFailure: 0, outage: 600, rate: 5 };
   var R = Object.assign({}, RP_DEFAULTS);
 
-  /* deployment identity -- chapter 6. ID holds the raw typed values; every
+  /* deployment identity -- chapter 4. ID holds the raw typed values; every
      renderer reads through idv(), which trims and falls back to the fixture
      default on blank, so a cleared field visibly reverts and no renderer
      ever sees an empty name. */
@@ -2861,7 +2861,7 @@ select.dep-in{width:auto;min-width:13em;cursor:pointer}
   }
   function renderTns() { els.apTns.innerHTML = buildTns(); }
 
-  /* ---------- chapter 4: the configuration, written out ----------
+  /* ---------- chapter 5: the configuration, written out ----------
      Pure presentation over C, K, R and the tns builder above; rewritten on
      every draw. The DGMGRL cards are transcripts, so their grey commentary
      is parenthetical and unprefixed (DGMGRL has no comment syntax to
@@ -3922,10 +3922,10 @@ select.dep-in{width:auto;min-width:13em;cursor:pointer}
       lastSigRp = sigRp;
     }
 
-    /* chapter 4 reads all four state objects, so any control repaints it */
+    /* chapter 5 reads all four state objects, so any control repaints it */
     renderConfig();
 
-    /* chapter 6 and the identity prose follow every repaint; the debounced
+    /* chapter 4 and the identity prose follow every repaint; the debounced
        save keeps localStorage mirroring whatever is on screen */
     applyNames();
     syncDeployForm();
@@ -4055,8 +4055,8 @@ select.dep-in{width:auto;min-width:13em;cursor:pointer}
     });
   });
 
-  /* ---------- chapter 6: identity, two-way sync, save and share ----------
-     The chapter 6 form is static markup, never innerHTML-drawn, so typing
+  /* ---------- chapter 4: identity, two-way sync, save and share ----------
+     The chapter 4 form is static markup, never innerHTML-drawn, so typing
      keeps focus. Sync runs both ways: its fields write the same C/A/K/R/ID
      state the rails use and mirror the rail controls, while syncDeployForm()
      (called from draw) refreshes every field the user is not typing in. */
@@ -4274,7 +4274,7 @@ select.dep-in{width:auto;min-width:13em;cursor:pointer}
     if (text && !isErr) msgTimer = setTimeout(function () { els.depMsg.hidden = true; }, 6000);
   }
 
-  /* ---------- chapter 6 wiring ---------- */
+  /* ---------- chapter 4 wiring ---------- */
   [[els.depName, 'name'], [els.depDbP, 'dbPrimary'], [els.depDbS, 'dbStandby'],
    [els.depHostP, 'hostPrimary'], [els.depHostS, 'hostStandby'], [els.depHostO, 'hostObserver'],
    [els.depSvc, 'service'], [els.depPort, 'port'], [els.depDc1, 'dc1'], [els.depDc2, 'dc2'],
@@ -4475,7 +4475,7 @@ select.dep-in{width:auto;min-width:13em;cursor:pointer}
     setActive(idx);
   }
 
-  /* Number keys 1-5 jump to the matching chapter. Modifier combos stay with
+  /* Number keys 1-6 jump to the matching chapter. Modifier combos stay with
      the browser (Cmd+1 is a tab switch), and text-entry contexts keep their
      digits; range/radio controls have no use for them, so a hotkey pressed
      while a slider has focus still navigates. */
