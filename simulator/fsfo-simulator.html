@@ -2619,7 +2619,10 @@ window.DG = (function () {
 
   /* Split brain = two databases open read-write and both generating redo.
      The broker never allows it: either the old primary is gone (crash), or it
-     is STALLED and cannot commit anything the new primary will not have. */
+     is STALLED and cannot commit anything further. (Under ASYNC the old
+     primary may already hold in-flight commits the standby never received,
+     bounded by the lag limit; the stall caps that divergence, it does not
+     erase it.) */
   function splitBrainChip(m) {
     var K_SB = 'Split brain', V_NO = 'no';
     if (m.observerLost) {
@@ -2728,6 +2731,8 @@ window.DG = (function () {
     if (iso) {
       els.calloutBody.innerHTML = m.abort !== null
         ? t('Two independent <span class="mono">FastStartFailoverThreshold</span> clocks are running, one on each side of the partition. The observer\u2019s clock decides when the standby is promoted; the primary\u2019s own stall clock decides when it aborts itself at <span class="mono">{0} s</span>. Neither side can see the other, so at most one database ends up open.', fmt(m.abort))
+        : C.mode === 'maxperf'
+        ? t('With <span class="mono">FastStartFailoverPmyShutdown = FALSE</span> the isolated primary never aborts. It stays <span class="mono">STALLED</span>, which keeps it from committing anything further: the stall is the split-brain protection. One MaxPerformance caveat: commits whose ASYNC redo was still in flight at the partition exist on the old primary only, bounded by <span class="mono">FastStartFailoverLagLimit</span>. The stall caps that divergence; it does not erase it.')
         : t('With <span class="mono">FastStartFailoverPmyShutdown = FALSE</span> the isolated primary never aborts. It stays <span class="mono">STALLED</span>, which keeps it from committing anything the new primary will not have \u2014 the stall is the split-brain protection.');
     }
 
