@@ -361,7 +361,7 @@ td .mono{font-size:12px;color:var(--ik)}
   <header class="hd">
     <p class="eyebrow">Oracle 19c Data Guard broker</p>
     <h1>Fast-start failover, second by second</h1>
-    <p class="lede">Set the broker properties on the left and watch the exact moment the observer gives up on the primary, the moment the standby opens read-write, and how much redo you lose in between.</p>
+    <p class="lede">Set the broker properties on the left and watch when the observer gives up on the primary, when the standby opens read-write, and how much redo is lost in between.</p>
   </header>
 
   <nav class="chapnav" id="chapnav" aria-label="Chapters">
@@ -378,7 +378,7 @@ td .mono{font-size:12px;color:var(--ik)}
     <p class="chdiv-n" aria-hidden="true">1</p>
     <div class="chdiv-b">
       <h2 class="chdiv-t" id="ch-clocks-h"><span class="sr">Chapter 1 &mdash; </span>The failover clocks</h2>
-      <p class="chdiv-d">Who notices that the primary is gone, how long they wait before acting, and what the standby still has to do once the observer gives the order.</p>
+      <p class="chdiv-d">Who notices the primary is gone, how long they wait, and what the standby still has to do once the order comes.</p>
     </div>
   </div>
 
@@ -558,31 +558,31 @@ td .mono{font-size:12px;color:var(--ik)}
     <div class="notes">
       <div class="note k-am">
         <h3>The threshold is a reconnect budget</h3>
-        <p><span class="mono">FastStartFailoverThreshold</span> is not a timeout on one ping. It is the number of seconds the master observer keeps attempting to reconnect to the primary, counted from the moment it first lost the connection. That moment is t = 0 here.</p>
+        <p><span class="mono">FastStartFailoverThreshold</span> is not a timeout on one ping: it is how long the master observer keeps trying to reconnect, counted from the moment it first lost the connection. That moment is t = 0 here.</p>
       </div>
       <div class="note k-vi">
         <h3>Two parties have to agree</h3>
-        <p>Fast-start failover happens when the observer <em>and</em> the target standby have both lost the primary for the threshold. During the countdown the observer confirms with the standby that it also lost contact and is ready. If the standby still has contact with the primary, no failover.</p>
+        <p>Fast-start failover requires the observer <em>and</em> the target standby to have both lost the primary for the threshold. During the countdown the observer confirms the standby has also lost contact and is ready; if the standby can still see the primary, no failover.</p>
       </div>
       <div class="note k-bl">
         <h3>Readiness means different things per mode</h3>
-        <p>In MaxAvailability and MaxProtection the standby must have been synchronized at failure time. In MaxPerformance its apply lag must be at or below <span class="mono">FastStartFailoverLagLimit</span>. Fail that check and fast-start failover is not allowed at all.</p>
+        <p>In MaxAvailability and MaxProtection the standby must have been synchronized at failure time. In MaxPerformance its apply lag must be at or below <span class="mono">FastStartFailoverLagLimit</span>. Fail the check and failover is not allowed at all.</p>
       </div>
       <div class="note k-tl">
         <h3>Execution is not a parameter</h3>
-        <p>Once initiated, the standby finishes applying the redo it already received, converts to the primary role, and opens read-write. That span grows with the apply lag at failure time and with your environment. No broker property shortens it.</p>
+        <p>Once initiated, the standby applies the redo it already holds, converts to the primary role, and opens read-write. That span depends on the apply lag at failure time and on your environment; no broker property shortens it.</p>
       </div>
       <div class="note k-rd">
         <h3>The ping properties override the threshold</h3>
-        <p>From the broker documentation: the <span class="mono">FastStartFailoverThreshold</span> property is ignored when the <span class="mono">ObserverPingRetry</span> and <span class="mono">ObserverPingInterval</span> properties are set. Detection then costs interval &times; (retries + 1), about a second at the minimum values.</p>
+        <p>Per the broker documentation, <span class="mono">FastStartFailoverThreshold</span> is ignored when <span class="mono">ObserverPingRetry</span> and <span class="mono">ObserverPingInterval</span> are set. Detection then costs interval &times; (retries + 1), about a second at the minimums.</p>
       </div>
       <div class="note k-rd">
         <h3>An isolated primary runs its own clock</h3>
-        <p>When a partition cuts the primary off from both the observer and the standby, redo generation stalls, <span class="mono">V$DATABASE.FS_FAILOVER_STATUS</span> goes to <span class="mono">STALLED</span>, and after <span class="mono">FastStartFailoverThreshold</span> seconds the primary aborts itself if <span class="mono">FastStartFailoverPmyShutdown</span> is TRUE. Two clocks, one open primary.</p>
+        <p>Cut off from both the observer and the standby, the primary stalls &mdash; <span class="mono">V$DATABASE.FS_FAILOVER_STATUS</span> goes to <span class="mono">STALLED</span> &mdash; and, if <span class="mono">FastStartFailoverPmyShutdown</span> is TRUE, aborts itself after one threshold. Two clocks, one open primary.</p>
       </div>
       <div class="note k-vi">
         <h3>No observer, no fast-start failover</h3>
-        <p>Lose the only observer and nothing visible breaks: the primary still commits, the standby still applies. But the configuration is now unobserved &mdash; <span class="mono">V$DATABASE.FS_FAILOVER_STATUS</span> reads <span class="mono">PRIMARY UNOBSERVED</span>, <span class="mono">FS_FAILOVER_OBSERVER_PRESENT</span> reads <span class="mono">NO</span>, and the broker raises <span class="mono">ORA-16820</span>. Register up to three observers in 19c: one is the master, and if it is lost while primary and standby stay connected, the broker nominates a backup as the new master on its own.</p>
+        <p>Lose the only observer and nothing visible breaks: the primary still commits, the standby still applies. But <span class="mono">V$DATABASE.FS_FAILOVER_STATUS</span> now reads <span class="mono">PRIMARY UNOBSERVED</span>, <span class="mono">FS_FAILOVER_OBSERVER_PRESENT</span> reads <span class="mono">NO</span>, and the broker raises <span class="mono">ORA-16820</span>. 19c registers up to three observers; lose the master while primary and standby stay connected and the broker promotes a backup on its own.</p>
       </div>
     </div>
   </section>
@@ -682,7 +682,7 @@ td .mono{font-size:12px;color:var(--ik)}
       <p class="eyebrow">Transport layer &middot; one commit</p>
       <h2>What one commit pays for the standby &mdash; SYNC, FASTSYNC, ASYNC</h2>
     </div>
-    <p class="caption">Everything above this point is drawn in seconds. One commit is drawn in milliseconds &mdash; and milliseconds are the scale at which the redo transport is actually paid, on every commit, for as long as the configuration runs; the failure clocks elsewhere on this page start only when something breaks. The broker property is <span class="mono">LogXptMode</span>; its values are <span class="mono">SYNC</span>, <span class="mono">FASTSYNC</span> and <span class="mono">ASYNC</span>, and what separates them is one disk write on the standby and one round trip on the wire. Set them here, then read the <span class="mono">NET_TIMEOUT</span> section that follows for what happens when the acknowledgement stops coming back.</p>
+    <p class="caption">The failure clocks above run only when something breaks; the transport cost is paid in milliseconds on every commit, for as long as the configuration runs. The broker property is <span class="mono">LogXptMode</span> &mdash; <span class="mono">SYNC</span>, <span class="mono">FASTSYNC</span> or <span class="mono">ASYNC</span> &mdash; and what separates the three is one disk write on the standby and one round trip on the wire.</p>
 
     <div class="workbench">
 
@@ -775,15 +775,15 @@ td .mono{font-size:12px;color:var(--ik)}
     <div class="notes" style="margin-top:38px">
       <div class="note k-vi">
         <h3>AFFIRM is a disk promise</h3>
-        <p><span class="mono">LogXptMode</span> is one property with three values, and each one sets a pair of destination attributes. <span class="mono">SYNC</span> means <span class="mono">SYNC</span> + <span class="mono">AFFIRM</span>: the destination acknowledges received redo only after writing it to the standby redo log. <span class="mono">FASTSYNC</span> means <span class="mono">SYNC</span> + <span class="mono">NOAFFIRM</span>: it acknowledges before writing it. Under both, a transaction cannot commit until all its redo has been sent to and acknowledged by the destination &mdash; the two differ only in what the acknowledgement is worth. All three values require standby redo logs.</p>
+        <p>Each <span class="mono">LogXptMode</span> value sets a pair of destination attributes. <span class="mono">SYNC</span> means <span class="mono">SYNC</span> + <span class="mono">AFFIRM</span>: the destination acknowledges received redo only after writing it to the standby redo log. <span class="mono">FASTSYNC</span> means <span class="mono">SYNC</span> + <span class="mono">NOAFFIRM</span>: it acknowledges before that write. Under both, a transaction cannot commit until the destination has acknowledged all its redo; the two differ only in what the acknowledgement is worth. All three values require standby redo logs.</p>
       </div>
       <div class="note k-am">
         <h3>FASTSYNC trades the disk wait for time</h3>
-        <p><span class="mono">FASTSYNC</span> has existed since 12.1 and is only available in maximum availability protection mode. What it buys back is the standby redo log write &mdash; but only while the network is the bottleneck: once the local write is longer than the round trip, the commit already covers that write and the chip above reads zero. What it costs is a window in which the standby has acknowledged redo it has not yet written; the broker documents that fast-start failover cannot be initiated when <span class="mono">FASTSYNC</span> is used and the standby is missing redo data.</p>
+        <p><span class="mono">FASTSYNC</span> exists since 12.1, in maximum availability mode only. It buys back the standby redo log write, but only while the network is the bottleneck: once the local write outlasts the round trip, the chip above reads zero. The cost is a window in which the standby has acknowledged redo it has not yet written; the broker documents that fast-start failover cannot be initiated when <span class="mono">FASTSYNC</span> is in use and the standby is missing redo data.</p>
       </div>
       <div class="note k-rd">
         <h3>ASYNC answers before the standby knows</h3>
-        <p>Under <span class="mono">ASYNC</span> + <span class="mono">NOAFFIRM</span> &mdash; the broker default &mdash; a transaction commits without waiting for the destination at all, so the commit costs the local write and nothing else. Redo that has not crossed the wire yet is exactly the exposure, which is why fast-start failover in MaxPerformance is gated on <span class="mono">FastStartFailoverLagLimit</span> rather than on the standby being synchronized. The broker&rsquo;s protection-mode table lists <span class="mono">ASYNC</span> for MaxPerformance, and <span class="mono">SYNC</span> or <span class="mono">FASTSYNC</span> for MaxAvailability. MaxProtection is out of scope on this page.</p>
+        <p>Under <span class="mono">ASYNC</span> + <span class="mono">NOAFFIRM</span>, the broker default, a transaction never waits for the destination: the commit costs the local write alone. Redo still on the wire is the exposure, which is why MaxPerformance gates fast-start failover on <span class="mono">FastStartFailoverLagLimit</span> rather than on synchronization. The broker&rsquo;s protection-mode table lists <span class="mono">ASYNC</span> for MaxPerformance, and <span class="mono">SYNC</span> or <span class="mono">FASTSYNC</span> for MaxAvailability. MaxProtection is out of scope here.</p>
       </div>
     </div>
   </section>
@@ -793,7 +793,7 @@ td .mono{font-size:12px;color:var(--ik)}
       <p class="eyebrow">Transport layer</p>
       <h2>Where NET_TIMEOUT fits &mdash; and where it doesn't</h2>
     </div>
-    <p class="caption"><span class="mono">NET_TIMEOUT</span> is an attribute of <span class="mono">LOG_ARCHIVE_DEST_n</span> on the primary (broker property <span class="mono">NetTimeout</span>), and it is not a failover clock &mdash; it sets how many seconds LGWR blocks waiting for the standby to acknowledge redo shipped synchronously by the <span class="mono">NSSn</span> process, after which an error is logged, the redo transport session is terminated, and the destination is dropped. Neither the observer nor the target standby consults it when deciding to fail over; the observer's clocks run on a separate connection. Both it and <span class="mono">FastStartFailoverThreshold</span> default to 30 seconds, which is exactly why the two get confused &mdash; so both panels below span the same window, and the brace under each shows which clock is really running. Panel B additionally shortens <span class="mono">NET_TIMEOUT</span> to 10 s &mdash; shorter than the threshold, the exact configuration that looks like it should lose data &mdash; to show why it doesn't.</p>
+    <p class="caption"><span class="mono">NET_TIMEOUT</span> is an attribute of <span class="mono">LOG_ARCHIVE_DEST_n</span> on the primary (broker property <span class="mono">NetTimeout</span>), not a failover clock: it caps how many seconds LGWR blocks waiting for the standby to acknowledge synchronously shipped redo, after which an error is logged, the transport session is terminated, and the destination is dropped. Neither the observer nor the target standby consults it. It and <span class="mono">FastStartFailoverThreshold</span> both default to 30 seconds, which is why the two get confused, so both panels span the same window and the brace under each shows which clock is really running. Panel B shortens <span class="mono">NET_TIMEOUT</span> to 10 s &mdash; the configuration that looks like it should lose data &mdash; to show why it doesn't.</p>
 
     <div class="sq-wrap">
       <svg class="tl-svg tx-svg" viewBox="0 0 960 484" role="img"
@@ -859,15 +859,15 @@ td .mono{font-size:12px;color:var(--ik)}
     <div class="notes">
       <div class="note k-am">
         <h3>&ldquo;NET_TIMEOUT 10 s, threshold 30 s &mdash; do I lose 20 s of redo?&rdquo;</h3>
-        <p>No. The worry assumes the primary starts committing alone at second 10 and the failover at second 30 discards those commits. But <span class="mono">NET_TIMEOUT</span> expiring only brings the primary to a decision point; whether it may actually continue without its standby is a separate check &mdash; and an isolated primary fails it.</p>
+        <p>No. The worry assumes the primary commits alone from second 10 and the failover at second 30 discards those commits. But <span class="mono">NET_TIMEOUT</span> expiring only brings the primary to a decision point; whether it may continue without its standby is a separate check, and an isolated primary fails it.</p>
       </div>
       <div class="note k-vi">
         <h3>Continuing alone requires a witness</h3>
-        <p>With fast-start failover enabled, a MaxAvailability primary may drop to <span class="mono">UNSYNCHRONIZED</span> and keep committing only while it can still reach the observer or the target standby. In panel A the observer is reachable, so the primary carries on &mdash; and fast-start failover is simply disarmed until the standby resynchronizes. In panel B there is nobody to ask, so redo generation stalls: <span class="mono">V$DATABASE.FS_FAILOVER_STATUS</span> goes to <span class="mono">STALLED</span>.</p>
+        <p>With fast-start failover enabled, a MaxAvailability primary may drop to <span class="mono">UNSYNCHRONIZED</span> and keep committing only while it can still reach the observer or the target standby. In panel A the observer is reachable, so the primary carries on and fast-start failover is disarmed until the standby resynchronizes. In panel B nobody answers, so redo generation stalls: <span class="mono">V$DATABASE.FS_FAILOVER_STATUS</span> goes to <span class="mono">STALLED</span>.</p>
       </div>
       <div class="note k-tl">
         <h3>Why the failover still loses nothing</h3>
-        <p>Under SYNC a commit is not acknowledged until the standby holds its redo. Every transaction any client ever saw succeed is therefore already on the standby when it opens as the new primary. Commits issued during the stall never return &mdash; those sessions hang until the old primary aborts and get errors, not silent loss. A shorter <span class="mono">NET_TIMEOUT</span> only moves the moment the hanging starts.</p>
+        <p>Under SYNC a commit is not acknowledged until the standby holds its redo, so every transaction a client ever saw succeed is already on the standby when it opens as the new primary. Commits issued during the stall never return: those sessions hang until the old primary aborts and get errors, not silent loss. A shorter <span class="mono">NET_TIMEOUT</span> only moves the moment the hanging starts.</p>
       </div>
     </div>
 
@@ -879,7 +879,7 @@ td .mono{font-size:12px;color:var(--ik)}
       <p class="eyebrow">Transport layer &middot; after the drop</p>
       <h2>The destination is dropped &mdash; ReopenSecs and MaxFailure decide when redo flows again</h2>
     </div>
-    <p class="caption">This panel continues the one directly above, at the point where panel A stops: the error has been logged, the redo transport session has been terminated, and the standby destination is closed. The primary stays up and open read-write for the whole of this timeline &mdash; the only thing that is closed is the standby destination, <span class="mono">LOG_ARCHIVE_DEST_2</span>. From here two properties decide the rest: <span class="mono">ReopenSecs</span> decides how soon redo transport may try that destination again, and <span class="mono">MaxFailure</span> decides whether it ever stops trying. The protection mode is inherited from the workbench at the top of the page; it changes what the closed destination costs fast-start failover, never when the destination reopens. Everything below is drawn in minutes.</p>
+    <p class="caption">This panel picks up where panel A stops: the error is logged, the transport session is terminated, and the standby destination <span class="mono">LOG_ARCHIVE_DEST_2</span> is closed. The primary stays open read-write throughout. Two properties decide the rest: <span class="mono">ReopenSecs</span> sets how soon redo transport may try the destination again, <span class="mono">MaxFailure</span> whether it ever stops trying. The protection mode is inherited from the workbench above; it changes what the closed destination costs fast-start failover, never when the destination reopens. Everything below is drawn in minutes.</p>
 
     <div class="workbench">
 
@@ -967,15 +967,15 @@ td .mono{font-size:12px;color:var(--ik)}
     <div class="notes" style="margin-top:38px">
       <div class="note k-am">
         <h3>The gap is at least ReopenSecs</h3>
-        <p>Nothing brings a failed destination back sooner than one <span class="mono">ReopenSecs</span>, however briefly the network was down. The property gates eligibility; the log switch supplies the trigger. Redo transport attempts to reopen failed destinations at log switch time, and only when the time of the last error plus the <span class="mono">REOPEN</span> interval is earlier than the current time. So the real retry lands at the first log switch after the interval expires, which is why a busy database recovers faster than a quiet one. <span class="mono">REOPEN</span> applies to every error on the destination, not only to connection failures.</p>
+        <p>Nothing brings a failed destination back sooner than one <span class="mono">ReopenSecs</span>, however brief the outage. The property gates eligibility; the log switch supplies the trigger: transport retries a failed destination at log switch time, once the last error plus the <span class="mono">REOPEN</span> interval is in the past. The real retry therefore lands at the first log switch after the interval expires, which is why a busy database recovers faster than a quiet one. <span class="mono">REOPEN</span> applies to every error, not only connection failures.</p>
       </div>
       <div class="note k-rd">
         <h3>MaxFailure is a tripwire, not a retry budget</h3>
-        <p><span class="mono">MaxFailure</span> counts the consecutive times, at a log switch, that redo transport tries to reestablish communication with a failed destination. Its default 0 means an unlimited number of archival attempts. Set it, and reaching the limit does not slow the retries down &mdash; it disables the destination: there is no further access to it until it is manually reenabled, and the destination is then treated as if <span class="mono">REOPEN</span> had not been specified. The network healing afterwards changes nothing. One documented exception: destinations configured with the 12.2 <span class="mono">GROUP</span> and <span class="mono">PRIORITY</span> attributes re-enter service on their own when redo transport finds them accessible again.</p>
+        <p><span class="mono">MaxFailure</span> counts consecutive attempts, at log switches, to reestablish a failed destination; its default 0 means unlimited attempts. Reaching the limit does not slow the retries down &mdash; it disables the destination: no further access until it is manually reenabled, and it is then treated as if <span class="mono">REOPEN</span> had not been specified. The network healing afterwards changes nothing. One documented exception: destinations with the 12.2 <span class="mono">GROUP</span> and <span class="mono">PRIORITY</span> attributes re-enter service on their own once redo transport finds them accessible.</p>
       </div>
       <div class="note k-vi">
-        <h3>This is where the lag limit quietly expires</h3>
-        <p>Nothing is arriving, so the standby falls behind in real time. In MaxAvailability the standby is <span class="mono">UNSYNCHRONIZED</span> from the first second and fast-start failover is disarmed immediately. In MaxPerformance it survives until the apply lag passes <span class="mono">FastStartFailoverLagLimit</span> &mdash; 30 s by default, so roughly half a minute into an outage that may run for hours. Either way the workbench at the top of the page would now be showing its blocked banner: the observer still counts, the standby still fails the readiness check, and no failover is permitted until the destination is shipping and the standby is back in step.</p>
+        <h3>This is where the lag limit expires</h3>
+        <p>Nothing is arriving, so the standby falls behind in real time. In MaxAvailability it is <span class="mono">UNSYNCHRONIZED</span> from the first second and fast-start failover is disarmed immediately; in MaxPerformance it survives until the apply lag passes <span class="mono">FastStartFailoverLagLimit</span> &mdash; 30 s by default, half a minute into an outage that may run for hours. Either way, no failover is permitted until the destination is shipping and the standby is back in step.</p>
       </div>
     </div>
   </section>
@@ -986,7 +986,7 @@ td .mono{font-size:12px;color:var(--ik)}
     <p class="chdiv-n" aria-hidden="true">3</p>
     <div class="chdiv-b">
       <h2 class="chdiv-t" id="ch-app-h"><span class="sr">Chapter 3 &mdash; </span>The application&rsquo;s view</h2>
-      <p class="chdiv-d">One connect descriptor, both hosts, one role-based service &mdash; what the failover above costs a connection pool that happens to be dialing while it runs.</p>
+      <p class="chdiv-d">One connect descriptor, both hosts, one role-based service &mdash; what the failover above costs a connection pool caught dialing while it runs.</p>
     </div>
   </div>
 
@@ -995,7 +995,7 @@ td .mono{font-size:12px;color:var(--ik)}
       <p class="eyebrow">The application's view</p>
       <h2>What the application sees, with both databases in one connect string</h2>
     </div>
-    <p class="caption">One application, one connect descriptor listing both hosts, one role-based service &mdash; <span class="mono">app_svc</span> runs only where the database is currently primary, so the standby's listener refuses instantly with <span class="mono">ORA-12514</span>. The scenario, protection mode, and broker clocks are inherited from the workbench above; this panel replays the same failure as seen from the application's connection pool. The worst-case client is modelled: a request that arrives at t&nbsp;=&nbsp;0 and starts dialing immediately.</p>
+    <p class="caption"><span class="mono">app_svc</span> runs only where the database is currently primary, so the standby's listener refuses instantly with <span class="mono">ORA-12514</span>. Scenario, protection mode, and broker clocks are inherited from the workbench above; this panel replays the same failure as seen from the connection pool, for the worst-case client &mdash; a request that starts dialing at t&nbsp;=&nbsp;0.</p>
 
     <div class="workbench">
 
@@ -1098,11 +1098,11 @@ td .mono{font-size:12px;color:var(--ik)}
     <div class="notes" style="margin-top:38px">
       <div class="note k-vi">
         <h3>The service name is the switch</h3>
-        <p>A role-based service exists only where the database currently runs as primary (<span class="mono">srvctl add service -role PRIMARY</span>, or a startup trigger checking <span class="mono">DATABASE_ROLE</span>). The standby&rsquo;s listener is up and answers immediately &mdash; with <span class="mono">ORA-12514</span>, because nothing publishes <span class="mono">app_svc</span> there. That instant refusal is what makes a two-address string safe: the wrong database can never accept the connection.</p>
+        <p>A role-based service exists only where the database currently runs as primary (<span class="mono">srvctl add service -role PRIMARY</span>, or a startup trigger checking <span class="mono">DATABASE_ROLE</span>). The standby&rsquo;s listener is up and answers immediately with <span class="mono">ORA-12514</span>, because nothing publishes <span class="mono">app_svc</span> there. That instant refusal makes a two-address string safe: the wrong database can never accept the connection.</p>
       </div>
       <div class="note k-am">
         <h3>The dead address is a toll booth</h3>
-        <p>With <span class="mono">LOAD_BALANCE</span> off the client walks the list in order, so every traversal first pays <span class="mono">min(TRANSPORT_CONNECT_TIMEOUT, CONNECT_TIMEOUT)</span> waiting on the unreachable host &mdash; including every fresh connection <em>after</em> the failover, until the old primary is reinstated or the string reordered. <span class="mono">LOAD_BALANCE = ON</span> randomizes the order and halves the expected toll.</p>
+        <p>With <span class="mono">LOAD_BALANCE</span> off the client walks the list in order, so every traversal first pays <span class="mono">min(TRANSPORT_CONNECT_TIMEOUT, CONNECT_TIMEOUT)</span> on the unreachable host &mdash; including every fresh connection <em>after</em> the failover, until the old primary is reinstated or the string reordered. <span class="mono">LOAD_BALANCE = ON</span> randomizes the order and halves the expected toll.</p>
       </div>
       <div class="note k-rd">
         <h3>The default string retries exactly never</h3>
@@ -1114,7 +1114,7 @@ td .mono{font-size:12px;color:var(--ik)}
       </div>
       <div class="note k-bl">
         <h3>These parameters govern only the dial tone</h3>
-        <p>Nothing here touches sessions that were already connected. They die by TCP rules &mdash; instant resets from a reachable host, long hangs across a partition &mdash; unless keepalives, <span class="mono">SQLNET.RECV_TIMEOUT</span>, or FAN break them faster; TAF or Application Continuity is what resumes their work afterwards. This panel models the pool&rsquo;s <em>new</em> connections only.</p>
+        <p>Nothing here touches sessions that were already connected. They die by TCP rules &mdash; instant resets from a reachable host, long hangs across a partition &mdash; unless keepalives, <span class="mono">SQLNET.RECV_TIMEOUT</span>, or FAN break them faster; TAF or Application Continuity resumes their work afterwards. This panel models <em>new</em> connections only.</p>
       </div>
       <div class="note k-rd">
         <h3>When no failover is coming</h3>
@@ -1152,7 +1152,7 @@ td .mono{font-size:12px;color:var(--ik)}
     <p class="chdiv-n" aria-hidden="true">4</p>
     <div class="chdiv-b">
       <h2 class="chdiv-t" id="ch-reference-h"><span class="sr">Chapter 4 &mdash; </span>Reference</h2>
-      <p class="chdiv-d">Every property this page touches, with its default, its minimum and what it governs &mdash; and the footnotes behind the drawings.</p>
+      <p class="chdiv-d">Every property this page touches &mdash; default, minimum, what it governs &mdash; and the footnotes behind the drawings.</p>
     </div>
   </div>
 
@@ -1188,7 +1188,7 @@ td .mono{font-size:12px;color:var(--ik)}
       <p class="eyebrow">Reference &middot; transport</p>
       <h2>Redo transport properties on this page</h2>
     </div>
-    <p class="caption">These are transport plumbing, kept apart from the failover clocks in the first table on purpose: none of them decides whether or when a failover happens. Each one is a broker property whose value lands in a <span class="mono">LOG_ARCHIVE_DEST_n</span> attribute on the primary.</p>
+    <p class="caption">Transport plumbing, kept apart from the failover clocks above: none of these decides whether or when a failover happens. Each is a broker property whose value lands in a <span class="mono">LOG_ARCHIVE_DEST_n</span> attribute on the primary.</p>
     <div class="tbl-wrap">
       <table>
         <thead>
@@ -1213,9 +1213,9 @@ td .mono{font-size:12px;color:var(--ik)}
 
   <div class="foot">
     <p><sup>1</sup>The threshold is skipped entirely for user-configurable health conditions and for application-initiated failover through <span class="mono">DBMS_DG.INITIATE_FS_FAILOVER</span>. Neither is drawn on the timeline.</p>
-    <p><sup>2</sup>Apply-time figures on this page are illustrative. Terminal recovery is modelled one-to-one against the apply lag at failure time so the relationship is visible; real duration depends on the redo volume left to apply and on the environment.</p>
+    <p><sup>2</sup>Apply-time figures are illustrative. Terminal recovery is modelled one-to-one against the apply lag at failure time so the relationship is visible; real duration depends on the redo volume left and on the environment.</p>
     <p><sup>3</sup>Client-side constants in the application view are nominal: an <span class="mono">ORA-12514</span> refusal is drawn as 0.2 s, an OS-level connection refusal as 0.15 s, and session establishment as 0.3 s; real values are network-dependent but small. The role-based service is assumed registered the instant the new primary opens &mdash; LREG typically takes a moment longer.</p>
-    <p><sup>4</sup>The reopen panel is idealized in three places. Retries are drawn at exact <span class="mono">ReopenSecs</span> multiples, where redo transport really retries at the first log switch after the interval has elapsed, so a real retry lands at or after the mark drawn here. The gap is drawn draining at five times the redo generation rate, a net four times, which is a stand-in for whatever headroom the link and the standby&rsquo;s apply actually have. And the standby&rsquo;s apply lag is taken to be near zero at t = 0 and to grow one second per second while nothing arrives, which is what puts the MaxPerformance marker exactly one <span class="mono">FastStartFailoverLagLimit</span> after the break. The commit panel is nominal in the same spirit: RFS processing on the standby is drawn as zero, and the <span class="mono">ASYNC</span> ship-done marker assumes the redo leaves as soon as the local write finishes.</p>
+    <p><sup>4</sup>The reopen panel is idealized in three places. Retries are drawn at exact <span class="mono">ReopenSecs</span> multiples, where transport really retries at the first log switch after the interval, so a real retry lands at or after the mark. The gap drains at five times the generation rate, a stand-in for whatever headroom the link and the standby&rsquo;s apply actually have. And the apply lag is taken as near zero at t = 0, growing one second per second while nothing arrives, which puts the MaxPerformance marker exactly one <span class="mono">FastStartFailoverLagLimit</span> after the break. The commit panel is nominal in the same spirit: RFS processing is drawn as zero, and the <span class="mono">ASYNC</span> ship-done marker assumes the redo leaves as soon as the local write finishes.</p>
   </div>
   </section>
 </div>
@@ -2097,8 +2097,8 @@ td .mono{font-size:12px;color:var(--ik)}
       els.banner.hidden = true;
       els.callout.hidden = false;
       els.calloutK.textContent = 'Unobserved';
-      els.calloutBody.innerHTML = 'The configuration is running unobserved. <span class="mono">V$DATABASE.FS_FAILOVER_STATUS</span> on the primary reads <span class="mono">PRIMARY UNOBSERVED</span> and <span class="mono">FS_FAILOVER_OBSERVER_PRESENT</span> reads <span class="mono">NO</span>; once enough time has passed since the database last heard from the observer, the broker raises <span class="mono">ORA-16820</span> against it. Attempt a failover in this state and it fails with <span class="mono">ORA-16658</span>, \u201cunobserved fast-start failover configuration\u201d. Restart the observer \u2014 or register up to three of them (19c), so that losing the master leaves a backup for the broker to nominate as the new master automatically.';
-      els.caption.innerHTML = 'Nothing on this timeline moves. The primary still reaches the target standby, so it keeps committing, and the standby keeps applying; only the automation is gone. <span class="mono">FastStartFailoverThreshold</span> never starts counting, because the party that counts it is the observer. The exposure is not this failure but the next one: if the primary died right now, somebody would have to fail over by hand.';
+      els.calloutBody.innerHTML = 'The configuration is running unobserved: <span class="mono">V$DATABASE.FS_FAILOVER_STATUS</span> reads <span class="mono">PRIMARY UNOBSERVED</span>, <span class="mono">FS_FAILOVER_OBSERVER_PRESENT</span> reads <span class="mono">NO</span>, and once enough time passes the broker raises <span class="mono">ORA-16820</span>. Attempt a failover in this state and it fails with <span class="mono">ORA-16658</span>, \u201cunobserved fast-start failover configuration\u201d. Restart the observer, or register up to three of them (19c) so losing the master leaves a backup for the broker to promote automatically.';
+      els.caption.innerHTML = 'Nothing on this timeline moves. The primary still reaches the target standby, so it keeps committing, and the standby keeps applying; only the automation is gone. <span class="mono">FastStartFailoverThreshold</span> never starts counting \u2014 the party that counts it is the observer. The exposure is the next failure: if the primary died right now, somebody would have to fail over by hand.';
       els.summary.textContent = 'Timeline: the observer host is down at t = 0. The primary stays open read-write and keeps shipping redo, the standby keeps applying, and no fast-start failover can be initiated while the configuration is unobserved.' +
         (m.ifDiedNow > 0
           ? ' If the primary died now, a manual failover would lose up to ' + fmt(m.ifDiedNow) + ' seconds of redo.'
@@ -2119,8 +2119,8 @@ td .mono{font-size:12px;color:var(--ik)}
     els.callout.hidden = !iso;
     if (iso) {
       els.calloutBody.innerHTML = m.abort !== null
-        ? 'Two independent <span class="mono">FastStartFailoverThreshold</span> clocks are running, one on each side of the partition. The observer\u2019s clock decides when the standby is promoted; the primary\u2019s own stall clock decides when it aborts itself at <span class="mono">' + fmt(m.abort) + ' s</span>. Neither side can see the other, and that is exactly the point \u2014 at most one database ends up open.'
-        : 'With <span class="mono">FastStartFailoverPmyShutdown = FALSE</span> the isolated primary never aborts. It stays <span class="mono">STALLED</span>, which is what keeps it from committing anything the new primary will not have. The stall is the split-brain protection.';
+        ? 'Two independent <span class="mono">FastStartFailoverThreshold</span> clocks are running, one on each side of the partition. The observer\u2019s clock decides when the standby is promoted; the primary\u2019s own stall clock decides when it aborts itself at <span class="mono">' + fmt(m.abort) + ' s</span>. Neither side can see the other, so at most one database ends up open.'
+        : 'With <span class="mono">FastStartFailoverPmyShutdown = FALSE</span> the isolated primary never aborts. It stays <span class="mono">STALLED</span>, which keeps it from committing anything the new primary will not have \u2014 the stall is the split-brain protection.';
     }
 
     els.caption.innerHTML = m.blocked
@@ -2616,7 +2616,7 @@ td .mono{font-size:12px;color:var(--ik)}
       els.apHeading.textContent = 'Timeline \u2014 nothing for the application to experience';
       els.apEyebrow.textContent = 't = 0 is the observer host failure \u00b7 nothing changes for the application';
       els.apBanner.hidden = true;
-      els.apCaption.innerHTML = 'The descriptor never has to fail over: <span class="mono">app_svc</span> stays published on the primary, address 1 answers as it always did, and no established session is disturbed. The observer is not in the connection path at all \u2014 it decides whether a failover may happen, and while it is gone the answer is simply no. What this panel would show for a real failure is one scenario away.';
+      els.apCaption.innerHTML = 'The descriptor never has to fail over: <span class="mono">app_svc</span> stays published on the primary, address 1 answers as it always did, and no established session is disturbed. The observer is not in the connection path \u2014 it decides whether a failover may happen, and while it is gone the answer is no.';
       els.apSummary.textContent = 'Application view: the observer host is down, but nothing fails over, so the service stays on the primary and neither existing sessions nor new connections notice anything.';
       return;
     }
@@ -2640,9 +2640,9 @@ td .mono{font-size:12px;color:var(--ik)}
         '</span> and the application is down until a manual failover republishes <span class="mono">app_svc</span>.'
       : luck
         ? 'The single traversal hung on the dead address for <span class="mono">' + fmt(ap.d1) +
-          ' s</span> \u2014 and by the time it fell through to the standby, the failover was already done, so it connected at <span class="mono">' +
-          fmt(ap.tConn) + ' s</span>. That is luck, not design: had the failover taken longer than ' + fmt(ap.d1) +
-          ' s, this string would have returned <span class="mono">ORA-12514</span> and stopped. It also means the application waited ' +
+          ' s</span>; by the time it fell through to the standby, the failover was already done, so it connected at <span class="mono">' +
+          fmt(ap.tConn) + ' s</span>. That is luck: had the failover taken longer than ' + fmt(ap.d1) +
+          ' s, this string would have returned <span class="mono">ORA-12514</span> and stopped. The application also waited ' +
           fmt(ap.tConn - m.tOpen) + ' s longer than the database did.'
         : ap.tConn !== null
           ? 'The string traversed the list ' + ap.attempts.length + ' time' + (ap.attempts.length > 1 ? 's' : '') +
@@ -2948,7 +2948,7 @@ td .mono{font-size:12px;color:var(--ik)}
 
     els.cmBanner.hidden = !cm.modeConflict;
     if (cm.modeConflict) {
-      els.cmBannerBody.innerHTML = 'The workbench above is set to MaxAvailability, and the broker\u2019s protection-mode table lists <span class="mono">SYNC</span> or <span class="mono">FASTSYNC</span> for that mode (<span class="mono">ASYNC</span> is what it lists for MaxPerformance). The <span class="mono">ASYNC</span> commit is drawn here so the shape is comparable \u2014 switch the workbench to MaxPerformance for the pairing the documentation describes.';
+      els.cmBannerBody.innerHTML = 'The workbench above is set to MaxAvailability, for which the broker\u2019s protection-mode table lists <span class="mono">SYNC</span> or <span class="mono">FASTSYNC</span>; <span class="mono">ASYNC</span> is listed for MaxPerformance. The commit is drawn anyway so the shape is comparable \u2014 switch the workbench to MaxPerformance for the documented pairing.';
     }
 
     els.cmEyebrow.textContent = 't = 0 is the COMMIT \u00b7 horizon ' + fmt(cm.horizonMs) + ' ms';
@@ -2956,7 +2956,7 @@ td .mono{font-size:12px;color:var(--ik)}
     els.cmCaption.innerHTML = async
       ? 'The commit returns after the local redo log write \u2014 <span class="mono">' + fmt(cm.commitMs) +
         ' ms</span> \u2014 because nothing on that path involves the standby. The redo crosses the wire afterwards and lands around <span class="mono">' +
-        fmt(cm.shipDoneMs) + ' ms</span>, so every transaction committed inside that window exists only on the primary for as long as it lasts. That window is the data loss a MaxPerformance failover is bounded by, not the wire time itself.'
+        fmt(cm.shipDoneMs) + ' ms</span>; transactions committed inside that window exist only on the primary. That window, not the wire time, is the data loss a MaxPerformance failover is bounded by.'
       : sync
         ? 'LGWR starts the remote write before it issues the local online redo log write, so the <span class="mono">' +
           fmt(cm.localWriteMs) + ' ms</span> local write and the <span class="mono">' + fmt(cm.ackPath) +
@@ -3613,6 +3613,21 @@ td .mono{font-size:12px;color:var(--ik)}
     }
     setActive(idx);
   }
+
+  /* Number keys 1-4 jump to the matching chapter. Modifier combos stay with
+     the browser (Cmd+1 is a tab switch), and text-entry contexts keep their
+     digits; range/radio controls have no use for them, so a hotkey pressed
+     while a slider has focus still navigates. */
+  document.addEventListener('keydown', function (e) {
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    var idx = (e.key && e.key.length === 1) ? e.key.charCodeAt(0) - 49 : -1;
+    if (idx < 0 || idx >= items.length) return;
+    var t = e.target, tag = t && t.tagName;
+    if (tag === 'TEXTAREA' || tag === 'SELECT' || (t && t.isContentEditable)) return;
+    if (tag === 'INPUT' && !/^(range|radio|checkbox|button)$/.test(t.type)) return;
+    e.preventDefault();
+    items[idx].link.click();
+  });
 
   measure();
   if (typeof IntersectionObserver !== 'function') return;
