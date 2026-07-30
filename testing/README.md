@@ -10,7 +10,10 @@ It assumes a **working** broker configuration — primary, target standby, one o
 fast-start failover already enabled. It uses the same fixture as every other asset in this
 repo: primary `prm01` on host `dc1-prm01`, standby `sby01` on host `dc2-sby01`, role-based
 service `app_svc`. The observer host, which the other assets never need to name, is
-`dc3-obs01` here. Substitute your own names throughout.
+`dc3-obs01` here. Substitute your own names throughout. (The simulator's chapter 6, "Your
+deployment", can carry your real names and parameter values, export them as a JSON config
+file, and share them as a link — handy for keeping a drill's parameter set next to the page
+that explains it.)
 
 **Run this only in a test environment.** The drills abort instances, cut networks with
 firewall rules, and deliberately trip failure limits. Nothing here is safe on a system

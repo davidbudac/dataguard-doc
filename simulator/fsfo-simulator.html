@@ -415,6 +415,35 @@ td .mono{font-size:12px;color:var(--ik)}
 .sq-svg .ah-rd{fill:var(--rd)}
 .sq-svg .ah-vi{fill:var(--vi)}
 .sq-svg .ah-tl{fill:var(--tl)}
+
+/* chapter 6 -- the deployment editor. Static markup, never innerHTML-drawn,
+   so typing keeps focus while every draw() repaints the rest of the page. */
+.hd-dep{margin-top:10px;font-family:var(--mono);font-size:12.5px;letter-spacing:.06em;color:var(--vi)}
+.dep-cards{display:flex;flex-direction:column;gap:14px;margin-top:18px}
+.dep-grid{display:grid;grid-template-columns:1fr 1fr;gap:13px 26px;padding:15px 16px}
+@media (max-width:960px){.dep-grid{grid-template-columns:minmax(0,1fr)}}
+.dep-row{display:flex;flex-direction:column;gap:5px;min-width:0}
+.dep-row label{font-family:var(--mono);font-size:12px;color:var(--ik);word-break:break-word}
+.dep-row label .dep-u{color:var(--ik3);font-size:11px}
+.dep-grp{grid-column:1/-1;margin-bottom:-6px}
+.dep-grp:not(:first-child){margin-top:8px}
+.dep-in{font-family:var(--mono);font-size:13px;color:var(--vi);background:var(--sf2);border:1px solid var(--ln2);border-radius:2px;padding:5px 8px;width:100%;min-width:0}
+.dep-in:focus{outline:none;border-color:var(--vi)}
+.dep-in::placeholder{font-family:var(--sans);font-size:12px;color:var(--ik3);opacity:1}
+input.dep-in[type="number"]{width:8em;font-variant-numeric:tabular-nums}
+.dep-in:disabled{opacity:.45;cursor:not-allowed}
+select.dep-in{width:auto;min-width:13em;cursor:pointer}
+.dep-check{display:flex;align-items:center;gap:8px;min-height:31px}
+.dep-check input{accent-color:var(--vi);width:15px;height:15px;margin:0;flex:none}
+.dep-check label{font-family:var(--mono);font-size:12px;color:var(--ik);cursor:pointer}
+.dep-cap{padding:0 16px 15px;font-size:11.5px;line-height:1.45;color:var(--ik3);max-width:84ch}
+.dep-cap .mono{font-size:11px;color:var(--ik2)}
+.dep-actions{display:flex;flex-wrap:wrap;gap:8px;padding:15px 16px}
+.dep-actions button{font-family:var(--mono);font-size:12px;letter-spacing:.04em;color:var(--ik2);background:transparent;border:1px solid var(--ln2);border-radius:2px;padding:6px 14px;cursor:pointer}
+.dep-actions button:hover{color:var(--ik);border-color:var(--ik3)}
+.dep-msg{padding:0 16px 13px;font-family:var(--mono);font-size:12px;color:var(--tl)}
+.dep-msg.is-err{color:var(--rd)}
+.dep-shareurl{margin:0 16px 13px;width:calc(100% - 32px)}
 </style>
 
 <div class="fsfo">
@@ -423,6 +452,7 @@ td .mono{font-size:12px;color:var(--ik)}
     <p class="eyebrow">Oracle 19c Data Guard broker</p>
     <h1>Fast-start failover, second by second</h1>
     <p class="lede">Set the broker properties on the left and watch when the observer gives up on the primary, when the standby opens read-write, and how much redo is lost in between.</p>
+    <p class="hd-dep" id="hd-dep" hidden></p>
   </header>
 
   <nav class="chapnav" id="chapnav" aria-label="Chapters">
@@ -432,6 +462,7 @@ td .mono{font-size:12px;color:var(--ik)}
       <li><a href="#ch-app" data-ch="ch-app" title="Press 3"><span class="cn-n">3</span><span class="cn-t">The application&rsquo;s view</span><span class="cn-s">App view</span></a></li>
       <li><a href="#ch-config" data-ch="ch-config" title="Press 4"><span class="cn-n">4</span><span class="cn-t">The configuration</span><span class="cn-s">Config</span></a></li>
       <li><a href="#ch-reference" data-ch="ch-reference" title="Press 5"><span class="cn-n">5</span><span class="cn-t">Reference</span><span class="cn-s">Reference</span></a></li>
+      <li><a href="#ch-deploy" data-ch="ch-deploy" title="Press 6"><span class="cn-n">6</span><span class="cn-t">Your deployment</span><span class="cn-s">Deploy</span></a></li>
     </ol>
   </nav>
 
@@ -1059,7 +1090,7 @@ td .mono{font-size:12px;color:var(--ik)}
       <p class="eyebrow">The application's view</p>
       <h2>What the application sees, with both databases in one connect string</h2>
     </div>
-    <p class="caption"><span class="mono">app_svc</span> runs only where the database is currently primary, so the standby's listener refuses instantly with <span class="mono">ORA-12514</span>. Scenario, protection mode, and broker clocks are inherited from the workbench above; this panel replays the same failure as seen from the connection pool, for the worst-case client &mdash; a request that starts dialing at t&nbsp;=&nbsp;0.</p>
+    <p class="caption"><span class="mono" data-name="service">app_svc</span> runs only where the database is currently primary, so the standby's listener refuses instantly with <span class="mono">ORA-12514</span>. Scenario, protection mode, and broker clocks are inherited from the workbench above; this panel replays the same failure as seen from the connection pool, for the worst-case client &mdash; a request that starts dialing at t&nbsp;=&nbsp;0.</p>
 
     <div class="workbench">
 
@@ -1162,7 +1193,7 @@ td .mono{font-size:12px;color:var(--ik)}
     <div class="notes" style="margin-top:38px">
       <div class="note k-vi">
         <h3>The service name is the switch</h3>
-        <p>A role-based service exists only where the database currently runs as primary (<span class="mono">srvctl add service -role PRIMARY</span>, or a startup trigger checking <span class="mono">DATABASE_ROLE</span>). The standby&rsquo;s listener is up and answers immediately with <span class="mono">ORA-12514</span>, because nothing publishes <span class="mono">app_svc</span> there. That instant refusal makes a two-address string safe: the wrong database can never accept the connection.</p>
+        <p>A role-based service exists only where the database currently runs as primary (<span class="mono">srvctl add service -role PRIMARY</span>, or a startup trigger checking <span class="mono">DATABASE_ROLE</span>). The standby&rsquo;s listener is up and answers immediately with <span class="mono">ORA-12514</span>, because nothing publishes <span class="mono" data-name="service">app_svc</span> there. That instant refusal makes a two-address string safe: the wrong database can never accept the connection.</p>
       </div>
       <div class="note k-am">
         <h3>The dead address is a toll booth</h3>
@@ -1225,7 +1256,7 @@ td .mono{font-size:12px;color:var(--ik)}
       <p class="eyebrow">Configuration files</p>
       <h2>The same settings, as you would type them</h2>
     </div>
-    <p class="caption">The primary is <span class="mono">prm01</span> on <span class="mono">dc1-prm01</span>, the target standby <span class="mono">sby01</span> on <span class="mono">dc2-sby01</span> &mdash; the two hosts from the connect string above. Values that differ from their documented defaults are <span class="hl">highlighted</span>; the grey parenthetical lines are this page commenting, not DGMGRL syntax. Four controls never appear below &mdash; scenario, apply lag, role-transition time and RTT are conditions of the environment, not lines of configuration.</p>
+    <p class="caption">The primary is <span class="mono" data-name="dbPrimary">prm01</span> on <span class="mono" data-name="hostPrimary">dc1-prm01</span>, the target standby <span class="mono" data-name="dbStandby">sby01</span> on <span class="mono" data-name="hostStandby">dc2-sby01</span> &mdash; the two hosts from the connect string above. Values that differ from their documented defaults are <span class="hl">highlighted</span>; the grey parenthetical lines are this page commenting, not DGMGRL syntax. Four controls never appear below &mdash; scenario, apply lag, role-transition time and RTT are conditions of the environment, not lines of configuration.</p>
 
     <div class="cfg-grid">
       <article class="cfg cfg-wide">
@@ -1239,7 +1270,7 @@ td .mono{font-size:12px;color:var(--ik)}
       <article class="cfg">
         <div class="cfg-hd">
           <span class="cfg-file">DGMGRL &mdash; the observer</span>
-          <span class="eyebrow">observer host</span>
+          <span class="eyebrow" id="cfg-observer-host">observer host</span>
         </div>
         <div class="tns" id="cfg-observer"></div>
       </article>
@@ -1334,6 +1365,129 @@ td .mono{font-size:12px;color:var(--ik)}
     <p><sup>3</sup>Client-side constants in the application view are nominal: an <span class="mono">ORA-12514</span> refusal is drawn as 0.2 s, an OS-level connection refusal as 0.15 s, and session establishment as 0.3 s; real values are network-dependent but small. The role-based service is assumed registered the instant the new primary opens &mdash; LREG typically takes a moment longer.</p>
     <p><sup>4</sup>The reopen panel is idealized in three places. Retries are drawn at exact <span class="mono">ReopenSecs</span> multiples, where transport really retries at the first log switch after the interval, so a real retry lands at or after the mark. The gap drains at five times the generation rate, a stand-in for whatever headroom the link and the standby&rsquo;s apply actually have. And the apply lag is taken as near zero at t = 0, growing one second per second while nothing arrives, which puts the MaxPerformance marker exactly one <span class="mono">FastStartFailoverLagLimit</span> after the break. The commit panel is nominal in the same spirit: RFS processing is drawn as zero, and the <span class="mono">ASYNC</span> ship-done marker assumes the redo leaves as soon as the local write finishes.</p>
   </div>
+  </section>
+
+  <section class="chapter" id="ch-deploy" aria-labelledby="ch-deploy-h">
+  <div class="chdiv">
+    <p class="chdiv-n" aria-hidden="true">6</p>
+    <div class="chdiv-b">
+      <h2 class="chdiv-t" id="ch-deploy-h"><span class="sr">Chapter 6 &mdash; </span>Your deployment</h2>
+      <p class="chdiv-d">Put your own names on everything above, edit every parameter in one place, and carry the result as a file or a link.</p>
+    </div>
+  </div>
+
+  <section class="sec" id="deployview">
+    <div class="sec-hd">
+      <p class="eyebrow">Deployment</p>
+      <h2>The whole page, in your deployment&rsquo;s terms</h2>
+    </div>
+    <p class="caption">Everything here rewrites the page live. The names feed the topology strip, the connect string and the chapter&nbsp;4 cards; the parameters are the same values as the chapter 1&ndash;3 controls, in both directions. A cleared name falls back to the fixture default, and the whole configuration auto-saves in this browser.</p>
+
+    <div class="dep-cards">
+      <article class="cfg">
+        <div class="cfg-hd">
+          <span class="cfg-file">Deployment identity</span>
+          <span class="eyebrow">names only &mdash; nothing behavioral</span>
+        </div>
+        <div class="dep-grid">
+          <div class="dep-row"><label for="dep-name">Deployment name</label>
+            <input class="dep-in" type="text" id="dep-name" maxlength="64" placeholder="unnamed &mdash; shown in the page header when set"></div>
+          <div class="dep-row"><label for="dep-svc">Role-based service</label>
+            <input class="dep-in" type="text" id="dep-svc" maxlength="64" placeholder="app_svc"></div>
+          <div class="dep-row"><label for="dep-db-p">Primary DB_UNIQUE_NAME</label>
+            <input class="dep-in" type="text" id="dep-db-p" maxlength="64" placeholder="prm01"></div>
+          <div class="dep-row"><label for="dep-db-s">Standby DB_UNIQUE_NAME</label>
+            <input class="dep-in" type="text" id="dep-db-s" maxlength="64" placeholder="sby01"></div>
+          <div class="dep-row"><label for="dep-host-p">Primary host</label>
+            <input class="dep-in" type="text" id="dep-host-p" maxlength="64" placeholder="dc1-prm01"></div>
+          <div class="dep-row"><label for="dep-host-s">Standby host</label>
+            <input class="dep-in" type="text" id="dep-host-s" maxlength="64" placeholder="dc2-sby01"></div>
+          <div class="dep-row"><label for="dep-host-o">Observer host</label>
+            <input class="dep-in" type="text" id="dep-host-o" maxlength="64" placeholder="unnamed &mdash; the page says &ldquo;third host&rdquo;"></div>
+          <div class="dep-row"><label for="dep-port">Listener port</label>
+            <input class="dep-in" type="number" id="dep-port" min="1" max="65535" step="1" value="1521"></div>
+          <div class="dep-row"><label for="dep-dc1">Primary site label</label>
+            <input class="dep-in" type="text" id="dep-dc1" maxlength="64" placeholder="DC 1"></div>
+          <div class="dep-row"><label for="dep-dc2">Standby site label</label>
+            <input class="dep-in" type="text" id="dep-dc2" maxlength="64" placeholder="DC 2"></div>
+          <div class="dep-row"><label for="dep-sub-p">Primary subtitle</label>
+            <input class="dep-in" type="text" id="dep-sub-p" maxlength="64" placeholder="production"></div>
+          <div class="dep-row"><label for="dep-sub-s">Standby subtitle</label>
+            <input class="dep-in" type="text" id="dep-sub-s" maxlength="64" placeholder="failover target"></div>
+        </div>
+        <p class="dep-cap">The two subtitles and site labels appear under the topology boxes in chapter&nbsp;1; the databases, hosts, port and service appear in the connect string and in every chapter&nbsp;4 card.</p>
+      </article>
+
+      <article class="cfg">
+        <div class="cfg-hd">
+          <span class="cfg-file">Data Guard parameters</span>
+          <span class="eyebrow">live in both directions</span>
+        </div>
+        <div class="dep-grid">
+          <p class="eyebrow dep-grp">Failover clocks &mdash; chapter 1</p>
+          <div class="dep-row"><label for="dep-threshold">FastStartFailoverThreshold <span class="dep-u">s</span></label>
+            <input class="dep-in" type="number" id="dep-threshold" min="6" max="120" step="1" value="30"></div>
+          <div class="dep-row"><label for="dep-pingset">ObserverPing properties</label>
+            <span class="dep-check"><input type="checkbox" id="dep-pingset"><label for="dep-pingset">set ObserverPingInterval / ObserverPingRetry</label></span></div>
+          <div class="dep-row"><label for="dep-pinginterval">ObserverPingInterval <span class="dep-u">ms</span></label>
+            <input class="dep-in" type="number" id="dep-pinginterval" min="100" max="5000" step="100" value="100" disabled></div>
+          <div class="dep-row"><label for="dep-pingretry">ObserverPingRetry</label>
+            <input class="dep-in" type="number" id="dep-pingretry" min="10" max="50" step="1" value="10" disabled></div>
+          <div class="dep-row"><label for="dep-laglimit">FastStartFailoverLagLimit <span class="dep-u">s</span></label>
+            <input class="dep-in" type="number" id="dep-laglimit" min="5" max="90" step="1" value="30" disabled></div>
+          <div class="dep-row"><label for="dep-pmyshutdown">FastStartFailoverPmyShutdown</label>
+            <span class="dep-check"><input type="checkbox" id="dep-pmyshutdown" checked><label for="dep-pmyshutdown">TRUE &mdash; a stalled primary aborts itself</label></span></div>
+
+          <p class="eyebrow dep-grp">Protection &amp; transport &mdash; chapter 2</p>
+          <div class="dep-row"><label for="dep-mode">Protection mode</label>
+            <select class="dep-in" id="dep-mode">
+              <option value="maxavail" selected>MaxAvailability</option>
+              <option value="maxperf">MaxPerformance</option>
+            </select></div>
+          <div class="dep-row"><label for="dep-xpt">LogXptMode</label>
+            <select class="dep-in" id="dep-xpt">
+              <option value="sync" selected>SYNC</option>
+              <option value="fastsync">FASTSYNC</option>
+              <option value="async">ASYNC</option>
+            </select></div>
+          <div class="dep-row"><label for="dep-nettimeout">NetTimeout <span class="dep-u">s</span></label>
+            <input class="dep-in" type="number" id="dep-nettimeout" min="1" max="120" step="1" value="30"></div>
+          <div class="dep-row"><label for="dep-reopen">ReopenSecs <span class="dep-u">s</span></label>
+            <input class="dep-in" type="number" id="dep-reopen" min="30" max="900" step="15" value="300"></div>
+          <div class="dep-row"><label for="dep-maxfailure">MaxFailure <span class="dep-u">0 = no limit</span></label>
+            <input class="dep-in" type="number" id="dep-maxfailure" min="0" max="10" step="1" value="0"></div>
+
+          <p class="eyebrow dep-grp">Connect string &mdash; chapter 3</p>
+          <div class="dep-row"><label for="dep-tct">TRANSPORT_CONNECT_TIMEOUT <span class="dep-u">s</span></label>
+            <input class="dep-in" type="number" id="dep-tct" min="1" max="60" step="1" value="60"></div>
+          <div class="dep-row"><label for="dep-ct">CONNECT_TIMEOUT <span class="dep-u">s &middot; 0 = not set</span></label>
+            <input class="dep-in" type="number" id="dep-ct" min="0" max="120" step="1" value="0"></div>
+          <div class="dep-row"><label for="dep-rc">RETRY_COUNT</label>
+            <input class="dep-in" type="number" id="dep-rc" min="0" max="100" step="1" value="0"></div>
+          <div class="dep-row"><label for="dep-rd">RETRY_DELAY <span class="dep-u">s</span></label>
+            <input class="dep-in" type="number" id="dep-rd" min="0" max="30" step="1" value="0"></div>
+        </div>
+        <p class="dep-cap">The same state the chapter 1&ndash;3 rails edit, so changes made here move those sliders and redraw every timeline &mdash; and dragging a slider updates this card. The simulation conditions (scenario, apply lag, RTT, role-transition time, outage length, redo rate) stay with their own rails: they describe the incident being replayed, not the deployment. <span class="mono">NetTimeout</span> is edited only here; it lands in the <span class="mono">LOG_ARCHIVE_DEST_2</span> card and never decides a failover.</p>
+      </article>
+
+      <article class="cfg">
+        <div class="cfg-hd">
+          <span class="cfg-file">Save, share, reuse</span>
+          <span class="eyebrow">this browser &middot; a file &middot; a link</span>
+        </div>
+        <div class="dep-actions">
+          <button type="button" id="dep-export">Export JSON</button>
+          <button type="button" id="dep-import">Import JSON</button>
+          <button type="button" id="dep-share">Copy shareable link</button>
+          <button type="button" id="dep-resetall">Reset everything</button>
+          <input type="file" id="dep-file" accept=".json,application/json" hidden>
+        </div>
+        <p class="dep-msg" id="dep-msg" hidden></p>
+        <input class="dep-in dep-shareurl" type="text" id="dep-share-url" readonly hidden aria-label="Shareable link">
+        <p class="dep-cap">Every change auto-saves in this browser and survives a reload. The exported file carries the identity, the parameters above, and the chapter 1&ndash;3 simulation conditions; the link packs the same JSON into the URL fragment, applies once when opened, then leaves the address bar. A file edited by hand is fine &mdash; unknown keys are ignored, out-of-range values are clamped.</p>
+      </article>
+    </div>
+  </section>
   </section>
 </div>
 
@@ -1706,14 +1860,41 @@ td .mono{font-size:12px;color:var(--ik)}
   var A = Object.assign({}, APP_DEFAULTS);
 
   /* commit-anatomy state. The RTT is deliberately absent: that one lives in
-     C.latency, so the topology strip and this section always agree. */
-  var CM_DEFAULTS = { xpt: 'sync', localWrite: 2, sbWrite: 2 };
+     C.latency, so the topology strip and this section always agree.
+     netTimeout is presentation-only: chapter 6 edits it and the dest card
+     prints it, but the commit model never reads it -- NET_TIMEOUT bounds the
+     ack wait on a broken link, it does not add to a healthy commit. */
+  var CM_DEFAULTS = { xpt: 'sync', localWrite: 2, sbWrite: 2, netTimeout: 30 };
   var K = Object.assign({}, CM_DEFAULTS);
 
   /* reopen state. The protection mode and the lag limit are deliberately
      absent: those come from C, so this panel always agrees with the workbench. */
   var RP_DEFAULTS = { reopen: 300, maxFailure: 0, outage: 600, rate: 5 };
   var R = Object.assign({}, RP_DEFAULTS);
+
+  /* deployment identity -- chapter 6. ID holds the raw typed values; every
+     renderer reads through idv(), which trims and falls back to the fixture
+     default on blank, so a cleared field visibly reverts and no renderer
+     ever sees an empty name. */
+  var ID_DEFAULTS = {
+    name: '',
+    dbPrimary: 'prm01', dbStandby: 'sby01',
+    hostPrimary: 'dc1-prm01', hostStandby: 'dc2-sby01', hostObserver: '',
+    service: 'app_svc', port: 1521,
+    dc1: 'DC 1', dc2: 'DC 2',
+    subPrimary: 'production', subStandby: 'failover target'
+  };
+  var ID = Object.assign({}, ID_DEFAULTS);
+  function idv(k) {
+    var v = ID[k];
+    if (v === null || v === undefined) return ID_DEFAULTS[k];
+    v = String(v).trim();
+    return v === '' ? ID_DEFAULTS[k] : v;
+  }
+  function idPort() {
+    var p = parseInt(ID.port, 10);
+    return (isNaN(p) || p < 1 || p > 65535) ? 1521 : p;
+  }
 
   var $ = function (id) { return document.getElementById(id); };
   var els = {
@@ -1761,7 +1942,21 @@ td .mono{font-size:12px;color:var(--ik)}
     rpNOutage: $('rp-n-outage'),
     rpWrap: $('rp-wrap'), rpChips: $('rp-chips'), rpCaption: $('rp-caption'),
     rpEyebrow: $('rp-eyebrow'), rpSummary: $('rp-summary'),
-    rpBanner: $('rp-banner'), rpBannerBody: $('rp-banner-body')
+    rpBanner: $('rp-banner'), rpBannerBody: $('rp-banner-body'),
+    hdDep: $('hd-dep'), depMsg: $('dep-msg'), cfgObserverHost: $('cfg-observer-host'),
+    depName: $('dep-name'), depDbP: $('dep-db-p'), depDbS: $('dep-db-s'),
+    depHostP: $('dep-host-p'), depHostS: $('dep-host-s'), depHostO: $('dep-host-o'),
+    depSvc: $('dep-svc'), depPort: $('dep-port'),
+    depDc1: $('dep-dc1'), depDc2: $('dep-dc2'),
+    depSubP: $('dep-sub-p'), depSubS: $('dep-sub-s'),
+    depMode: $('dep-mode'), depThreshold: $('dep-threshold'), depPingset: $('dep-pingset'),
+    depPingInterval: $('dep-pinginterval'), depPingRetry: $('dep-pingretry'),
+    depLagLimit: $('dep-laglimit'), depShutdown: $('dep-pmyshutdown'),
+    depXpt: $('dep-xpt'), depNetTimeout: $('dep-nettimeout'),
+    depReopen: $('dep-reopen'), depMaxFailure: $('dep-maxfailure'),
+    depTct: $('dep-tct'), depCt: $('dep-ct'), depRc: $('dep-rc'), depRd: $('dep-rd'),
+    depExport: $('dep-export'), depImport: $('dep-import'), depFile: $('dep-file'),
+    depShare: $('dep-share'), depShareUrl: $('dep-share-url'), depResetAll: $('dep-resetall')
   };
 
   var TH_NOTE = "Seconds the master observer spends trying to reconnect before it initiates failover. The clock starts the instant the observer first loses the connection. Minimum 6 s.";
@@ -2358,6 +2553,14 @@ td .mono{font-size:12px;color:var(--ik)}
   }
 
   /* ---------- application view ---------- */
+  /* The service lane's left-gutter subtitle; a long configured name is
+     shortened so it stays inside the fixed gutter. */
+  function svcSub() {
+    var s = idv('service');
+    if (s.length > 12) s = s.slice(0, 10) + '...';
+    return s + ' ' + String.fromCharCode(183) + ' role-based';
+  }
+
   /* Observer lost: the application never learns anything happened. Three flat
      lanes, no markers, no braces -- the point is the absence of an event. */
   function buildAppNoEventTimeline(ap, W) {
@@ -2367,7 +2570,7 @@ td .mono{font-size:12px;color:var(--ik)}
     var s = [], push = function (x) { s.push(x); };
 
     var lanes = [
-      { name: 'Service', sub: 'app_svc \u00b7 role-based', segs: [
+      { name: 'Service', sub: svcSub(), segs: [
         { a: t0, b: t1, cls: 'b-tl', lc: 'f-tl',
           lab: ['Published by the primary\u2019s listener \u2014 it never moves', 'On the primary throughout', 'On the primary'] }] },
       { name: 'Existing sessions', sub: 'the connection pool', segs: [
@@ -2430,7 +2633,7 @@ td .mono{font-size:12px;color:var(--ik)}
     var aggregate = att.length > 1 && ((ap.passCost + A.rd) * pps < 22 || att.length > 48);
 
     var lanes = [
-      { name: 'Service', sub: 'app_svc \u00b7 role-based', segs: [] },
+      { name: 'Service', sub: svcSub(), segs: [] },
       { name: 'Existing sessions', sub: 'the connection pool', segs: [] },
       { name: 'New connections', sub: 'the string at work', segs: [] }
     ];
@@ -2441,7 +2644,7 @@ td .mono{font-size:12px;color:var(--ik)}
     lanes[0].segs.push({
       a: 0, b: svcBack, cls: 'b-hatch3', lc: 'f-rd',
       lab: iso ? ['Old primary stalled \u2014 unreachable, service dark', 'Unreachable \u2014 dark', 'Dark']
-               : ['Nowhere \u2014 nothing publishes app_svc', 'Nowhere', '\u2014']
+               : ['Nowhere \u2014 nothing publishes ' + idv('service'), 'Nowhere', '\u2014']
     });
     if (!m.blocked) lanes[0].segs.push({ a: m.tOpen, b: t1, cls: 'b-tl', lc: 'f-tl', lab: ['Published by the new primary \u2014 started at role change', 'On the new primary', 'New primary'] });
 
@@ -2585,8 +2788,8 @@ td .mono{font-size:12px;color:var(--ik)}
     if (!m.blocked) {
       var xo = X(m.tOpen);
       push(ln('m-tl', xo, G.lane[0] - 6, xo, G.lanesBottom + 4, ' stroke-width="1.5" stroke-dasharray="5 4"'));
-      var oCands = ['New primary opens \u2014 app_svc published at t = ' + fmt(m.tOpen) + ' s',
-                    'app_svc published at t = ' + fmt(m.tOpen) + ' s', 'app_svc back'];
+      var oCands = ['New primary opens \u2014 ' + idv('service') + ' published at t = ' + fmt(m.tOpen) + ' s',
+                    idv('service') + ' published at t = ' + fmt(m.tOpen) + ' s', 'service back'];
       var oLab = null;
       for (var oi = 0; oi < oCands.length; oi++) {
         if (xo + 8 + approxW(oCands[oi], 11.5) <= plotR) { oLab = oCands[oi]; break; }
@@ -2650,12 +2853,13 @@ td .mono{font-size:12px;color:var(--ik)}
     if (A.ct > 0) set.push(tnsToken('CONNECT_TIMEOUT', A.ct));
     if (A.rc > 0) set.push(tnsToken('RETRY_COUNT', A.rc));
     if (A.rd > 0) set.push(tnsToken('RETRY_DELAY', A.rd));
-    var lines = ['<span class="svc">app_svc</span> =', ' (DESCRIPTION ='];
+    var svc = esc(idv('service')), port = idPort();
+    var lines = ['<span class="svc">' + svc + '</span> =', ' (DESCRIPTION ='];
     for (var i = 0; i < set.length; i += 2) lines.push('   ' + set.slice(i, i + 2).join(''));
     lines.push('   (ADDRESS_LIST = (FAILOVER = on)');
-    lines.push('     (ADDRESS = (PROTOCOL = tcp)(HOST = dc1-prm01)(PORT = 1521))');
-    lines.push('     (ADDRESS = (PROTOCOL = tcp)(HOST = dc2-sby01)(PORT = 1521)))');
-    lines.push('   (CONNECT_DATA = (SERVICE_NAME = <span class="svc">app_svc</span>)))');
+    lines.push('     (ADDRESS = (PROTOCOL = tcp)(HOST = ' + esc(idv('hostPrimary')) + ')(PORT = ' + port + '))');
+    lines.push('     (ADDRESS = (PROTOCOL = tcp)(HOST = ' + esc(idv('hostStandby')) + ')(PORT = ' + port + ')))');
+    lines.push('   (CONNECT_DATA = (SERVICE_NAME = <span class="svc">' + svc + '</span>)))');
     var absent = [];
     if (A.tct === 60) absent.push('TRANSPORT_CONNECT_TIMEOUT (60 s default)');
     if (A.ct === 0) absent.push('CONNECT_TIMEOUT (no cap)');
@@ -2692,17 +2896,18 @@ td .mono{font-size:12px;color:var(--ik)}
     var xptVal = async ? 'ASYNC' : (fast ? 'FASTSYNC' : 'SYNC');
     var avail = C.mode === 'maxavail';
     var detectS = C.pingInterval * (C.pingRetry + 1) / 1000;
+    var dbP = esc(idv('dbPrimary')), dbS = esc(idv('dbStandby')), svc = esc(idv('service'));
 
     /* one DGMGRL session sets everything; database-scoped first, then the
        configuration-wide clocks, then the switch that arms it all */
     var b = [];
-    b.push(cfgCmd('CONNECT sys@prm01 AS SYSDBA;'));
+    b.push(cfgCmd('CONNECT sys@' + dbP + ' AS SYSDBA;'));
     b.push('');
-    b.push(cfgCmd("EDIT DATABASE 'sby01' SET PROPERTY 'LogXptMode' = '" +
+    b.push(cfgCmd("EDIT DATABASE '" + dbS + "' SET PROPERTY 'LogXptMode' = '" +
       cfgVal(xptVal, async) + "';", async ? 'default' : null));
-    b.push(cfgCmd("EDIT DATABASE 'prm01' SET PROPERTY 'LogXptMode' = '" +
+    b.push(cfgCmd("EDIT DATABASE '" + dbP + "' SET PROPERTY 'LogXptMode' = '" +
       cfgVal(xptVal, async) + "';"));
-    b.push(cfgNote('(prm01 ships redo with it once a role swap makes it the standby)'));
+    b.push(cfgNote('(' + dbP + ' ships redo with it once a role swap makes it the standby)'));
     if (async && avail) {
       b.push(cfgNote('(mismatch: for MaxAvailability the broker documents SYNC or', 'bad'));
       b.push(cfgNote(' FASTSYNC \u2014 pick one of those in the commit section above)', 'bad'));
@@ -2744,7 +2949,7 @@ td .mono{font-size:12px;color:var(--ik)}
 
     /* the observer is just another DGMGRL client, on its own host */
     var o = [];
-    o.push(cfgCmd('CONNECT sys@prm01 AS SYSDBA;'));
+    o.push(cfgCmd('CONNECT sys@' + dbP + ' AS SYSDBA;'));
     o.push(cfgCmd('START OBSERVER IN BACKGROUND;'));
     o.push(cfgNote('(the prompt returns; the observer process keeps running)'));
     o.push('');
@@ -2758,30 +2963,33 @@ td .mono{font-size:12px;color:var(--ik)}
       o.push(cfgNote('(this is the process that runs the ' + C.threshold +
         ' s reconnect clock)'));
     }
-    o.push(cfgNote('(prm01 and sby01 resolve through this host\u2019s tnsnames.ora)'));
+    o.push(cfgNote('(' + dbP + ' and ' + dbS + ' resolve through this host\u2019s tnsnames.ora)'));
     els.cfgObserver.innerHTML = o.join('\n');
 
     /* the destination parameter those transport properties translate to */
     var d = [];
-    d.push('<span class="dim"># broker-owned on prm01: LogXptMode, NetTimeout, ReopenSecs</span>');
+    d.push('<span class="dim"># broker-owned on ' + dbP + ': LogXptMode, NetTimeout, ReopenSecs</span>');
     d.push('<span class="dim"># and MaxFailure all land in these attributes. By hand it</span>');
     d.push('<span class="dim"># would read:</span>');
     d.push('');
     d.push('log_archive_dest_2 =');
-    d.push("   'SERVICE=sby01 " +
+    d.push("   'SERVICE=" + dbS + ' ' +
       cfgVal(async ? 'ASYNC NOAFFIRM' : (fast ? 'SYNC NOAFFIRM' : 'SYNC AFFIRM'), async) +
-      (async ? '' : ' NET_TIMEOUT=30'));
+      (async ? '' : ' NET_TIMEOUT=' + cfgVal(K.netTimeout, K.netTimeout === 30)));
     d.push('    REOPEN=' + cfgVal(R.reopen, R.reopen === 300) +
       ' MAX_FAILURE=' + cfgVal(R.maxFailure, R.maxFailure === 0));
     d.push('    VALID_FOR=(ONLINE_LOGFILES,PRIMARY_ROLE)');
-    d.push("    DB_UNIQUE_NAME=sby01'");
+    d.push('    DB_UNIQUE_NAME=' + dbS + "'");
     d.push('');
     if (async) {
       d.push('<span class="dim"># NET_TIMEOUT left out: it bounds the SYNC ack wait, and it</span>');
       d.push('<span class="dim"># never affects sessions under ASYNC</span>');
-    } else {
+    } else if (K.netTimeout === 30) {
       d.push('<span class="dim"># NET_TIMEOUT=30 is the default, spelled out \u2014 seconds LGWR</span>');
       d.push('<span class="dim"># waits for the standby\u2019s acknowledgement</span>');
+    } else {
+      d.push('<span class="dim"># NET_TIMEOUT=' + K.netTimeout + ': seconds LGWR waits for the</span>');
+      d.push('<span class="dim"># standby\u2019s acknowledgement (the default is 30)</span>');
     }
     d.push(R.maxFailure === 0
       ? '<span class="dim"># MAX_FAILURE=0: retried at every log switch, without limit</span>'
@@ -2793,8 +3001,8 @@ td .mono{font-size:12px;color:var(--ik)}
 
     /* the client card is chapter 3's descriptor, gathered here */
     els.cfgTns.innerHTML = buildTns() + '\n\n' +
-      '<span class="dim"># app_svc is published only where the database runs as primary:</span>\n' +
-      '<span class="dim">#   srvctl add service -db prm01 -service app_svc -role PRIMARY</span>';
+      '<span class="dim"># ' + svc + ' is published only where the database runs as primary:</span>\n' +
+      '<span class="dim">#   srvctl add service -db ' + dbP + ' -service ' + svc + ' -role PRIMARY</span>';
   }
 
   function renderAppControls() {
@@ -2843,7 +3051,7 @@ td .mono{font-size:12px;color:var(--ik)}
         'The database was back at ' + fmt(m.tOpen) + ' s; the rest is the connect string');
     } else {
       out += chip('rd', 'App reconnected', 'never', '',
-        m.blocked ? 'No failover happens above, so <span class="mono">app_svc</span> is never republished'
+        m.blocked ? 'No failover happens above, so <span class="mono">' + esc(idv('service')) + '</span> is never republished'
                   : 'ORA-12514 at ' + fmt(ap.gaveUp) + ' s \u2014 a fresh attempt after ' + fmt(m.tOpen) +
                     ' s would connect in ' + fmt(ap.retryCost) + ' s');
     }
@@ -2862,7 +3070,7 @@ td .mono{font-size:12px;color:var(--ik)}
       els.apHeading.textContent = 'Timeline \u2014 nothing for the application to experience';
       els.apEyebrow.textContent = 't = 0 is the observer host failure \u00b7 nothing changes for the application';
       els.apBanner.hidden = true;
-      els.apCaption.innerHTML = 'The descriptor never has to fail over: <span class="mono">app_svc</span> stays published on the primary, address 1 answers as it always did, and no established session is disturbed. The observer is not in the connection path \u2014 it decides whether a failover may happen, and while it is gone the answer is no.';
+      els.apCaption.innerHTML = 'The descriptor never has to fail over: <span class="mono">' + esc(idv('service')) + '</span> stays published on the primary, address 1 answers as it always did, and no established session is disturbed. The observer is not in the connection path \u2014 it decides whether a failover may happen, and while it is gone the answer is no.';
       els.apSummary.textContent = 'Application view: the observer host is down, but nothing fails over, so the service stays on the primary and neither existing sessions nor new connections notice anything.';
       return;
     }
@@ -2883,7 +3091,7 @@ td .mono{font-size:12px;color:var(--ik)}
     els.apCaption.innerHTML = m.blocked
       ? 'No failover is coming (the readiness check above failed), so no retry budget can save this string: it exhausted ' +
         (A.rc + 1) + ' traversal' + (A.rc ? 's' : '') + ' at <span class="mono">' + fmtClock(ap.gaveUp) +
-        '</span> and the application is down until a manual failover republishes <span class="mono">app_svc</span>.'
+        '</span> and the application is down until a manual failover republishes <span class="mono">' + esc(idv('service')) + '</span>.'
       : luck
         ? 'The single traversal hung on the dead address for <span class="mono">' + fmt(ap.d1) +
           ' s</span>; by the time it fell through to the standby, the failover was already done, so it connected at <span class="mono">' +
@@ -2892,7 +3100,7 @@ td .mono{font-size:12px;color:var(--ik)}
           fmt(ap.tConn - m.tOpen) + ' s longer than the database did.'
         : ap.tConn !== null
           ? 'The string traversed the list ' + ap.attempts.length + ' time' + (ap.attempts.length > 1 ? 's' : '') +
-            ', paying <span class="mono">' + fmt(ap.d1) + ' s</span> on the dead first address each pass. The traversal that reached the standby after <span class="mono">app_svc</span> reappeared connected at <span class="mono">' +
+            ', paying <span class="mono">' + fmt(ap.d1) + ' s</span> on the dead first address each pass. The traversal that reached the standby after <span class="mono">' + esc(idv('service')) + '</span> reappeared connected at <span class="mono">' +
             fmt(ap.tConn) + ' s</span> \u2014 ' + fmt(ap.tConn - m.tOpen) + ' s after the database itself was back.'
           : 'The string ran out of retries at <span class="mono">' + fmt(ap.gaveUp) +
             ' s</span>, while the failover was still running: the new primary opens at <span class="mono">' + fmt(m.tOpen) +
@@ -3586,8 +3794,16 @@ td .mono{font-size:12px;color:var(--ik)}
     var latLab = C.latency + ' ms RTT';
     var s = [], push = function (x) { s.push(x); };
 
+    /* configurable subtitles; a long pair degrades to its shorter parts so it
+       stays inside the 180 / 150 px boxes */
+    var subP = fitLabel([idv('subPrimary') + ', ' + idv('dc1'), idv('subPrimary'), idv('dc1')], 176) || idv('dc1');
+    var subS = fitLabel([idv('subStandby') + ', ' + idv('dc2'), idv('subStandby'), idv('dc2')], 176) || idv('dc2');
+    var oh = String(ID.hostObserver || '').trim();
+    var subO = oh ? (fitLabel(['DGMGRL, ' + oh, oh], 146) || oh) : 'DGMGRL, third host';
+
     push('<svg class="topo-svg" viewBox="0 0 960 200" role="img" aria-label="' +
-      esc('Topology: the primary database in data center 1, the target standby in data center 2, the observer on a third host. ' +
+      esc('Topology: the primary database in ' + idv('dc1') + ', the target standby in ' + idv('dc2') +
+          ', the observer on ' + (oh ? oh : 'a third host') + '. ' +
           (obs ? 'The observer host dies at t = 0. The primary and the standby stay connected, so redo keeps flowing, but the configuration is unobserved and nothing can fail over.'
                : iso ? 'A network partition cuts the primary off from the observer and the standby at t = 0.'
                : 'The primary host crashes at t = 0.') +
@@ -3611,9 +3827,9 @@ td .mono{font-size:12px;color:var(--ik)}
       push(txt('tp-cap', 480, 146, 'middle', esc(sync ? 'redo (SYNC): each commit waits one standby RTT' : 'redo (ASYNC)')));
       push(txt('tp-lat', 480, 174, 'middle', esc(latLab)));
 
-      push(nodeBox(405, 14, 150, 46, 'tp-node tp-down', 'Observer', 'DGMGRL, third host'));
-      push(nodeBox(110, 132, 180, 52, 'tp-node', 'Primary', 'production, DC 1'));
-      push(nodeBox(670, 132, 180, 52, 'tp-node', 'Standby', 'failover target, DC 2'));
+      push(nodeBox(405, 14, 150, 46, 'tp-node tp-down', 'Observer', subO));
+      push(nodeBox(110, 132, 180, 52, 'tp-node', 'Primary', subP));
+      push(nodeBox(670, 132, 180, 52, 'tp-node', 'Standby', subS));
       push(ln('tp-x', 424, 26, 438, 40));
       push(ln('tp-x', 438, 26, 424, 40));
       push(txt('tp-ev', 395, 40, 'end', 'observer host down at t = 0'));
@@ -3639,9 +3855,9 @@ td .mono{font-size:12px;color:var(--ik)}
         txt('tp-name', x + w / 2, y + 22, 'middle', esc(name)) +
         txt('tp-sub', x + w / 2, y + 38, 'middle', esc(sub));
     }
-    push(nodeBox(405, 14, 150, 46, 'tp-node tp-obs', 'Observer', 'DGMGRL, third host'));
-    push(nodeBox(110, 132, 180, 52, 'tp-node' + (iso ? '' : ' tp-down'), 'Primary', 'production, DC 1'));
-    push(nodeBox(670, 132, 180, 52, 'tp-node', 'Standby', 'failover target, DC 2'));
+    push(nodeBox(405, 14, 150, 46, 'tp-node tp-obs', 'Observer', subO));
+    push(nodeBox(110, 132, 180, 52, 'tp-node' + (iso ? '' : ' tp-down'), 'Primary', subP));
+    push(nodeBox(670, 132, 180, 52, 'tp-node', 'Standby', subS));
 
     if (iso) {
       push('<path class="tp-part" d="M356,6 L318,194"></path>');
@@ -3722,6 +3938,12 @@ td .mono{font-size:12px;color:var(--ik)}
 
     /* chapter 4 reads all four state objects, so any control repaints it */
     renderConfig();
+
+    /* chapter 6 and the identity prose follow every repaint; the debounced
+       save keeps localStorage mirroring whatever is on screen */
+    applyNames();
+    syncDeployForm();
+    saveSoon();
   }
   function schedule() { if (!queued) { queued = true; requestAnimationFrame(draw); } }
 
@@ -3849,6 +4071,351 @@ td .mono{font-size:12px;color:var(--ik)}
     });
   });
 
+  /* ---------- chapter 6: identity, two-way sync, save and share ----------
+     The chapter 6 form is static markup, never innerHTML-drawn, so typing
+     keeps focus. Sync runs both ways: its fields write the same C/A/K/R/ID
+     state the rails use and mirror the rail controls, while syncDeployForm()
+     (called from draw) refreshes every field the user is not typing in. */
+
+  var nameSpans = document.querySelectorAll('[data-name]');
+  function applyNames() {
+    Array.prototype.forEach.call(nameSpans, function (sp) {
+      sp.textContent = idv(sp.getAttribute('data-name'));
+    });
+    var nm = String(ID.name || '').trim();
+    els.hdDep.textContent = nm;
+    els.hdDep.hidden = nm === '';
+    var oh = String(ID.hostObserver || '').trim();
+    els.cfgObserverHost.textContent = oh || 'observer host';
+  }
+
+  function setField(el, v) {
+    if (!el || el === document.activeElement) return;
+    if (el.type === 'checkbox') { el.checked = !!v; return; }
+    var s = String(v);
+    if (el.value !== s) el.value = s;
+  }
+  function syncDeployForm() {
+    setField(els.depName, ID.name); setField(els.depSvc, ID.service);
+    setField(els.depDbP, ID.dbPrimary); setField(els.depDbS, ID.dbStandby);
+    setField(els.depHostP, ID.hostPrimary); setField(els.depHostS, ID.hostStandby);
+    setField(els.depHostO, ID.hostObserver); setField(els.depPort, ID.port);
+    setField(els.depDc1, ID.dc1); setField(els.depDc2, ID.dc2);
+    setField(els.depSubP, ID.subPrimary); setField(els.depSubS, ID.subStandby);
+    setField(els.depMode, C.mode); setField(els.depThreshold, C.threshold);
+    setField(els.depPingset, C.pingSet);
+    setField(els.depPingInterval, C.pingInterval); setField(els.depPingRetry, C.pingRetry);
+    setField(els.depLagLimit, C.lagLimit); setField(els.depShutdown, C.pmyShutdown);
+    setField(els.depXpt, K.xpt); setField(els.depNetTimeout, K.netTimeout);
+    setField(els.depReopen, R.reopen); setField(els.depMaxFailure, R.maxFailure);
+    setField(els.depTct, A.tct); setField(els.depCt, A.ct);
+    setField(els.depRc, A.rc); setField(els.depRd, A.rd);
+    /* same gates as the rail: the ping numbers need their checkbox, the lag
+       limit is MaxPerformance-only. The scenario gray-outs deliberately do
+       not reach in here -- this card is configuration, not simulation. */
+    els.depPingInterval.disabled = !C.pingSet;
+    els.depPingRetry.disabled = !C.pingSet;
+    els.depLagLimit.disabled = C.mode === 'maxavail';
+  }
+
+  /* ---------- serialization ---------- */
+  function currentConfig() {
+    return {
+      v: 1,
+      deployment: {
+        name: String(ID.name || '').trim(),
+        dbPrimary: idv('dbPrimary'), dbStandby: idv('dbStandby'),
+        hostPrimary: idv('hostPrimary'), hostStandby: idv('hostStandby'),
+        hostObserver: String(ID.hostObserver || '').trim(),
+        service: idv('service'), port: idPort(),
+        dc1: idv('dc1'), dc2: idv('dc2'),
+        subPrimary: idv('subPrimary'), subStandby: idv('subStandby')
+      },
+      params: {
+        mode: C.mode, threshold: C.threshold, pingSet: C.pingSet,
+        pingInterval: C.pingInterval, pingRetry: C.pingRetry,
+        lagLimit: C.lagLimit, pmyShutdown: C.pmyShutdown,
+        logXptMode: K.xpt, netTimeout: K.netTimeout,
+        reopen: R.reopen, maxFailure: R.maxFailure,
+        tct: A.tct, ct: A.ct, rc: A.rc, rd: A.rd
+      },
+      sim: {
+        scenario: C.scenario, standbyLag: C.standbyLag,
+        roleTransition: C.roleTransition, latency: C.latency,
+        localWrite: K.localWrite, sbWrite: K.sbWrite,
+        outage: R.outage, rate: R.rate, dead: A.dead
+      }
+    };
+  }
+
+  /* clamp a candidate to an input element's own min/max/step, so the DOM
+     stays the single source of bounds */
+  function clampToEl(el, v, dflt) {
+    var n = parseFloat(v);
+    if (isNaN(n)) return dflt;
+    var st = parseFloat(el.step || '1'), mn = parseFloat(el.min), mx = parseFloat(el.max);
+    if (!isNaN(st) && st > 0) n = Math.round(n / st) * st;
+    if (!isNaN(mn) && n < mn) n = mn;
+    if (!isNaN(mx) && n > mx) n = mx;
+    return n;
+  }
+
+  /* Apply an imported/stored/shared config. Starts from the defaults and
+     copies whitelisted keys only, so a partial or hand-edited file is fine
+     and unknown keys from a future version are ignored. */
+  function applyConfig(cfg) {
+    if (!cfg || typeof cfg !== 'object') return false;
+    var d = cfg.deployment || {}, p = cfg.params || {}, sm = cfg.sim || {};
+
+    var id2 = Object.assign({}, ID_DEFAULTS);
+    Object.keys(ID_DEFAULTS).forEach(function (k) {
+      if (!(k in d)) return;
+      id2[k] = k === 'port' ? d[k]
+        : String(d[k] === null || d[k] === undefined ? '' : d[k]).trim().slice(0, 64);
+    });
+    ID = id2;
+    ID.port = idPort();
+
+    var c = Object.assign({}, DEFAULTS);
+    if (p.mode === 'maxavail' || p.mode === 'maxperf') c.mode = p.mode;
+    if ('pingSet' in p) c.pingSet = !!p.pingSet;
+    if ('pmyShutdown' in p) c.pmyShutdown = !!p.pmyShutdown;
+    c.threshold = clampToEl(els.threshold, p.threshold, c.threshold);
+    c.pingInterval = clampToEl(els.pingInterval, p.pingInterval, c.pingInterval);
+    c.pingRetry = clampToEl(els.pingRetry, p.pingRetry, c.pingRetry);
+    c.lagLimit = clampToEl(els.lagLimit, p.lagLimit, c.lagLimit);
+    if (sm.scenario === 'crash' || sm.scenario === 'isolated' || sm.scenario === 'observer-lost') c.scenario = sm.scenario;
+    c.standbyLag = clampToEl(els.lag, sm.standbyLag, c.standbyLag);
+    c.roleTransition = clampToEl(els.role, sm.roleTransition, c.roleTransition);
+    c.latency = clampToEl(els.latency, sm.latency, c.latency);
+    C = c;
+
+    var a = Object.assign({}, APP_DEFAULTS);
+    a.tct = clampToEl(els.apTct, p.tct, a.tct);
+    a.ct = clampToEl(els.apCt, p.ct, a.ct);
+    a.rc = clampToEl(els.apRc, p.rc, a.rc);
+    a.rd = clampToEl(els.apRd, p.rd, a.rd);
+    if (sm.dead === 'drop' || sm.dead === 'rst') a.dead = sm.dead;
+    A = a;
+
+    var k2 = Object.assign({}, CM_DEFAULTS);
+    if (p.logXptMode === 'sync' || p.logXptMode === 'fastsync' || p.logXptMode === 'async') k2.xpt = p.logXptMode;
+    k2.netTimeout = clampToEl(els.depNetTimeout, p.netTimeout, k2.netTimeout);
+    k2.localWrite = clampToEl(els.cmLw, sm.localWrite, k2.localWrite);
+    k2.sbWrite = clampToEl(els.cmSbw, sm.sbWrite, k2.sbWrite);
+    K = k2;
+
+    var r2 = Object.assign({}, RP_DEFAULTS);
+    r2.reopen = clampToEl(els.rpReopen, p.reopen, r2.reopen);
+    r2.maxFailure = clampToEl(els.rpMaxFailure, p.maxFailure, r2.maxFailure);
+    r2.outage = clampToEl(els.rpOutage, sm.outage, r2.outage);
+    r2.rate = clampToEl(els.rpRate, sm.rate, r2.rate);
+    R = r2;
+    return true;
+  }
+
+  /* push all five state objects into the chapter 1-3 rail controls; used
+     after import, a share-link boot and reset-everything */
+  function syncControlsFromState() {
+    els.threshold.value = C.threshold; els.pingInterval.value = C.pingInterval;
+    els.pingRetry.value = C.pingRetry; els.lag.value = C.standbyLag;
+    els.lagLimit.value = C.lagLimit; els.role.value = C.roleTransition;
+    els.latency.value = C.latency;
+    els.pingset.checked = C.pingSet; els.shutdown.checked = C.pmyShutdown;
+    $('sc-crash').checked = C.scenario === 'crash';
+    $('sc-iso').checked = C.scenario === 'isolated';
+    $('sc-obs').checked = C.scenario === 'observer-lost';
+    $('md-avail').checked = C.mode === 'maxavail';
+    $('md-perf').checked = C.mode === 'maxperf';
+    syncAppInputs();
+    els.cmLw.value = K.localWrite; els.cmSbw.value = K.sbWrite; els.cmRtt.value = C.latency;
+    els.cmSync.checked = K.xpt === 'sync';
+    els.cmFast.checked = K.xpt === 'fastsync';
+    els.cmAsync.checked = K.xpt === 'async';
+    els.rpReopen.value = R.reopen; els.rpMaxFailure.value = R.maxFailure;
+    els.rpOutage.value = R.outage; els.rpRate.value = R.rate;
+  }
+
+  /* ---------- persistence and sharing ---------- */
+  var LS_KEY = 'dg-fsfo-cfg-v1';
+  var saveTimer = null;
+  function saveLocal() {
+    try { localStorage.setItem(LS_KEY, JSON.stringify(currentConfig())); }
+    catch (e) { /* private mode etc. -- the page just stops persisting */ }
+  }
+  function saveSoon() {
+    if (saveTimer) clearTimeout(saveTimer);
+    saveTimer = setTimeout(saveLocal, 300);
+  }
+  function loadLocal() {
+    try {
+      var raw = localStorage.getItem(LS_KEY);
+      return raw ? JSON.parse(raw) : null;
+    } catch (e) { return null; }
+  }
+
+  function b64uEncode(str) {
+    return btoa(unescape(encodeURIComponent(str)))
+      .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  }
+  function b64uDecode(str) {
+    var b = str.replace(/-/g, '+').replace(/_/g, '/');
+    while (b.length % 4) b += '=';
+    return decodeURIComponent(escape(atob(b)));
+  }
+  function readHashConfig() {
+    var h = location.hash || '';
+    if (h.indexOf('#cfg=') !== 0) return null;
+    try { return JSON.parse(b64uDecode(h.slice(5))); } catch (e) { return null; }
+  }
+  function stripHash() {
+    try { history.replaceState(null, '', location.pathname + location.search); }
+    catch (e) { /* sandboxed viewers may refuse; the hash is only read at load */ }
+  }
+  function makeShareUrl() {
+    return location.href.split('#')[0] + '#cfg=' + b64uEncode(JSON.stringify(currentConfig()));
+  }
+
+  function slug(s) {
+    s = String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+    return s || 'deployment';
+  }
+  var msgTimer = null;
+  function setMsg(text, isErr) {
+    els.depMsg.textContent = text;
+    els.depMsg.classList.toggle('is-err', !!isErr);
+    els.depMsg.hidden = !text;
+    els.depShareUrl.hidden = true;
+    if (msgTimer) clearTimeout(msgTimer);
+    if (text && !isErr) msgTimer = setTimeout(function () { els.depMsg.hidden = true; }, 6000);
+  }
+
+  /* ---------- chapter 6 wiring ---------- */
+  [[els.depName, 'name'], [els.depDbP, 'dbPrimary'], [els.depDbS, 'dbStandby'],
+   [els.depHostP, 'hostPrimary'], [els.depHostS, 'hostStandby'], [els.depHostO, 'hostObserver'],
+   [els.depSvc, 'service'], [els.depPort, 'port'], [els.depDc1, 'dc1'], [els.depDc2, 'dc2'],
+   [els.depSubP, 'subPrimary'], [els.depSubS, 'subStandby']
+  ].forEach(function (pr) {
+    pr[0].addEventListener('input', function () { ID[pr[1]] = pr[0].value; schedule(); });
+  });
+
+  /* Each numeric field clamps against its canonical rail control (or itself,
+     for NetTimeout), applies live while typing, and canonicalizes on blur. */
+  [[els.depThreshold, els.threshold, function (v) { C.threshold = v; }],
+   [els.depPingInterval, els.pingInterval, function (v) { C.pingInterval = v; }],
+   [els.depPingRetry, els.pingRetry, function (v) { C.pingRetry = v; }],
+   [els.depLagLimit, els.lagLimit, function (v) { C.lagLimit = v; }],
+   [els.depNetTimeout, null, function (v) { K.netTimeout = v; }],
+   [els.depReopen, els.rpReopen, function (v) { R.reopen = v; }],
+   [els.depMaxFailure, els.rpMaxFailure, function (v) { R.maxFailure = v; }],
+   [els.depTct, els.apTct, function (v) { A.tct = v; }],
+   [els.depCt, els.apCt, function (v) { A.ct = v; }],
+   [els.depRc, els.apRc, function (v) { A.rc = v; }],
+   [els.depRd, els.apRd, function (v) { A.rd = v; }]
+  ].forEach(function (pr) {
+    var field = pr[0], rail = pr[1], apply = pr[2];
+    function commit(canon) {
+      var v = clampToEl(rail || field, field.value, null);
+      if (v === null) { if (canon) syncDeployForm(); return; }
+      apply(v);
+      if (rail) rail.value = v;
+      if (canon) field.value = v;
+      schedule();
+    }
+    field.addEventListener('input', function () { commit(false); });
+    field.addEventListener('change', function () { commit(true); });
+  });
+
+  els.depMode.addEventListener('change', function () {
+    C.mode = els.depMode.value === 'maxperf' ? 'maxperf' : 'maxavail';
+    $('md-avail').checked = C.mode === 'maxavail';
+    $('md-perf').checked = C.mode === 'maxperf';
+    schedule();
+  });
+  els.depXpt.addEventListener('change', function () {
+    var v = els.depXpt.value;
+    K.xpt = (v === 'fastsync' || v === 'async') ? v : 'sync';
+    els.cmSync.checked = K.xpt === 'sync';
+    els.cmFast.checked = K.xpt === 'fastsync';
+    els.cmAsync.checked = K.xpt === 'async';
+    schedule();
+  });
+  els.depPingset.addEventListener('change', function () {
+    C.pingSet = els.depPingset.checked;
+    els.pingset.checked = C.pingSet;
+    schedule();
+  });
+  els.depShutdown.addEventListener('change', function () {
+    C.pmyShutdown = els.depShutdown.checked;
+    els.shutdown.checked = C.pmyShutdown;
+    schedule();
+  });
+
+  els.depExport.addEventListener('click', function () {
+    var cfg = currentConfig();
+    var blob = new Blob([JSON.stringify(cfg, null, 2)], { type: 'application/json' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = 'fsfo-config-' + slug(cfg.deployment.name) + '.json';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+    setMsg('Exported ' + a.download, false);
+  });
+
+  els.depImport.addEventListener('click', function () { els.depFile.click(); });
+  els.depFile.addEventListener('change', function () {
+    var f = els.depFile.files && els.depFile.files[0];
+    els.depFile.value = '';
+    if (!f) return;
+    var rd = new FileReader();
+    rd.onload = function () {
+      var cfg = null;
+      try { cfg = JSON.parse(String(rd.result)); } catch (e) { cfg = null; }
+      if (!cfg || typeof cfg !== 'object' || Array.isArray(cfg)) {
+        setMsg('Import failed: ' + f.name + ' is not a config JSON object', true);
+        return;
+      }
+      applyConfig(cfg);
+      syncControlsFromState();
+      schedule();
+      var nm = String(ID.name || '').trim();
+      setMsg('Imported ' + f.name + (nm ? ' (' + nm + ')' : ''), false);
+    };
+    rd.onerror = function () { setMsg('Import failed: could not read ' + f.name, true); };
+    rd.readAsText(f);
+  });
+
+  els.depShare.addEventListener('click', function () {
+    var url = makeShareUrl();
+    function ok() { setMsg('Link copied. Opening it restores this exact configuration.', false); }
+    function fail() {
+      setMsg('Copy blocked; the link is in the box below.', true);
+      els.depShareUrl.value = url;
+      els.depShareUrl.hidden = false;
+      els.depShareUrl.focus();
+      els.depShareUrl.select();
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(url).then(ok, fail);
+    } else { fail(); }
+  });
+
+  els.depResetAll.addEventListener('click', function () {
+    C = Object.assign({}, DEFAULTS);
+    A = Object.assign({}, APP_DEFAULTS);
+    K = Object.assign({}, CM_DEFAULTS);
+    R = Object.assign({}, RP_DEFAULTS);
+    ID = Object.assign({}, ID_DEFAULTS);
+    try { localStorage.removeItem(LS_KEY); } catch (e) { /* fine */ }
+    stripHash();
+    syncControlsFromState();
+    schedule();
+    setMsg('Everything reset to the documented defaults', false);
+  });
+
   function onResize() {
     if (Math.abs(Math.max(880, Math.round(els.wrap.clientWidth) || 880) - lastW) > 2 ||
         Math.abs(Math.max(880, Math.round(els.apWrap.clientWidth) || 880) - lastWApp) > 2 ||
@@ -3861,6 +4428,14 @@ td .mono{font-size:12px;color:var(--ik)}
     ro.observe(els.wrap); ro.observe(els.apWrap); ro.observe(els.cmWrap); ro.observe(els.rpWrap);
   }
 
+  /* boot: a share link wins over this browser's stored config, which wins
+     over the defaults. The cfg hash is applied once and stripped -- the
+     config is in localStorage from here on, and a stale hash would clobber
+     later edits on every reload. */
+  var boot = readHashConfig();
+  if (boot) { applyConfig(boot); stripHash(); }
+  else { boot = loadLocal(); if (boot) applyConfig(boot); }
+  if (boot) syncControlsFromState();
   draw();
 })();
 </script>
@@ -4036,11 +4611,21 @@ td .mono{font-size:12px;color:var(--ik)}
     'appview': { title: 'Application view', chips: 'ap-chips', cfg: function () {
       return ['TCT ' + txt('ap-v-tct'), 'CT ' + txt('ap-v-ct'),
         'RETRY_COUNT ' + txt('ap-v-rc')].join(SEP);
+    } },
+    'deployview': { title: 'Your deployment', cfg: function () {
+      function val(id, dflt) {
+        var e = document.getElementById(id);
+        var v = e && e.value ? e.value.replace(/\s+/g, ' ').trim() : '';
+        return v || dflt;
+      }
+      return [val('dep-name', 'unnamed'),
+        val('dep-db-p', 'prm01') + ' ' + String.fromCharCode(8594) + ' ' + val('dep-db-s', 'sby01'),
+        val('dep-svc', 'app_svc')].join(SEP);
     } }
   };
 
   var wbs = [];
-  Array.prototype.forEach.call(document.querySelectorAll('.workbench'), function (el) {
+  Array.prototype.forEach.call(document.querySelectorAll('.workbench, .dep-cards'), function (el) {
     var host = el.closest ? el.closest('section[id]') : null;
     if (host && SPECS[host.id]) wbs.push({ el: el, spec: SPECS[host.id] });
   });
@@ -4070,7 +4655,7 @@ td .mono{font-size:12px;color:var(--ik)}
     pT.textContent = wb.spec.title;
     pC.textContent = wb.spec.cfg();
     pO.textContent = '';
-    var chip = document.querySelector('#' + wb.spec.chips + ' .chip');
+    var chip = wb.spec.chips ? document.querySelector('#' + wb.spec.chips + ' .chip') : null;
     if (chip) {
       var k = chip.querySelector('.chip-k'), v = chip.querySelector('.chip-v');
       if (k && v) {
