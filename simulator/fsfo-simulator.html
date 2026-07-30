@@ -4108,9 +4108,9 @@ td .mono{font-size:12px;color:var(--ik)}
   }
   window.addEventListener('scroll', schedule, { passive: true });
   window.addEventListener('resize', schedule);
-  document.addEventListener('input', schedule, true);
-  document.addEventListener('change', schedule, true);
-  document.addEventListener('click', schedule, true);
+  document.addEventListener('input', schedule);
+  document.addEventListener('change', schedule);
+  document.addEventListener('click', schedule);
   if (mq.addEventListener) mq.addEventListener('change', schedule);
   else if (mq.addListener) mq.addListener(schedule);
   update();
