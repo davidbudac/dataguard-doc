@@ -101,6 +101,29 @@ line-height:1;letter-spacing:-.05em;color:var(--vi)}
 .chdiv{grid-template-columns:minmax(0,1fr);row-gap:4px}
 .chdiv-n{font-size:30px}}
 
+/* Config pill -- the floating "back to the controls" chip, script-injected
+   onto body (fixed to the viewport, and body sits outside .fsfo, which is why
+   the font stacks are restated here: --sans/--mono are scoped to .fsfo).
+   Shown only while no workbench is on screen, desktop only -- below 961px the
+   rails are not sticky and the pill would sit on top of the prose. */
+.cfgpill{position:fixed;right:16px;bottom:16px;z-index:40;display:none;align-items:center;gap:11px;
+max-width:min(380px,44vw);padding:10px 14px 10px 12px;text-align:left;cursor:pointer;
+background:var(--sf);color:var(--ik);border:1px solid var(--ln2);border-radius:3px;box-shadow:var(--sh);
+font-family:system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;font-size:12.5px;line-height:1.45}
+@media (min-width:961px){.cfgpill.is-on{display:flex}}
+.cfgpill:hover{border-color:var(--vi)}
+.cfgpill:focus-visible{outline:2px solid var(--fc);outline-offset:2px;border-radius:3px}
+.cfgpill svg{flex:0 0 auto;display:block;color:var(--vi)}
+.cfgpill-b{min-width:0;display:flex;flex-direction:column;gap:1px}
+.cfgpill-t{font-family:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,"Liberation Mono",monospace;
+font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--ik3);
+white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cfgpill-c{color:var(--ik2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cfgpill-o{color:var(--ik2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cfgpill-o b{font-weight:620;color:var(--ik)}
+@media (prefers-reduced-motion:no-preference){.cfgpill{transition:border-color .16s ease}}
+@media print{.cfgpill{display:none !important}}
+
 /* topology strip */
 .topo{margin-top:20px}
 .topo-svg{display:block;min-width:640px;width:100%;height:auto}
@@ -152,6 +175,15 @@ line-height:1;letter-spacing:-.05em;color:var(--vi)}
 .ctl-note .mono{font-size:11px;color:var(--ik2)}
 .ctl-note.is-warn{color:var(--am)}
 .ctl-scale{display:flex;justify-content:space-between;font-family:var(--mono);font-size:10px;color:var(--ik3);margin-top:-4px}
+/* Collapsed control notes. .notes-managed arrives via script, so without JS
+   every note stays visible; the Notes button in each rail header toggles
+   .notes-open per rail. Warning notes (.is-warn) always punch through -- they
+   are state, not documentation, and several appear only mid-interaction.
+   Collapsed is also denser: the point is a rail that fits the viewport, and
+   the workbench rail's controls alone run close to a full screen. */
+.rail.notes-managed:not(.notes-open) .ctl-note:not(.is-warn){display:none}
+.rail.notes-managed:not(.notes-open) .ctl{padding:11px 16px;gap:6px}
+.rail-hd button[aria-pressed="true"]{background:var(--vif);color:var(--ik);border-color:var(--vi)}
 
 input[type="range"]{-webkit-appearance:none;appearance:none;width:100%;height:20px;margin:0;background:transparent;cursor:pointer;accent-color:var(--vi)}
 input[type="range"]::-webkit-slider-runnable-track{height:3px;background:var(--sf3);border-radius:2px;border:0}
@@ -407,7 +439,9 @@ td .mono{font-size:12px;color:var(--ik)}
     <aside class="rail" aria-label="Broker properties and scenario">
       <div class="rail-hd">
         <span class="eyebrow">Configuration</span>
-        <button type="button" id="c-reset">Reset defaults</button>
+        <span class="rail-btns">
+          <button type="button" id="c-reset">Reset defaults</button>
+        </span>
       </div>
 
       <div class="ctl">
@@ -511,8 +545,8 @@ td .mono{font-size:12px;color:var(--ik)}
           <label class="ctl-name is-prose" for="c-latency">Inter-node network latency (RTT)</label>
           <output class="ctl-val" id="v-latency" for="c-latency">0 ms</output>
         </div>
-        <input type="range" id="c-latency" min="0" max="2000" step="10" value="0" aria-describedby="n-latency">
-        <div class="ctl-scale"><span>0 ms</span><span>2000 ms</span></div>
+        <input type="range" id="c-latency" min="0" max="100" step="1" value="0" aria-describedby="n-latency">
+        <div class="ctl-scale"><span>0 ms</span><span>100 ms</span></div>
         <p class="ctl-note" id="n-latency">One round trip between any two of the three hosts, drawn on the topology at the top of the page. The FAILOVER command pays half an RTT before terminal recovery starts; under SYNC every commit also waits one standby round trip. Not a broker parameter.</p>
       </div>
 
@@ -750,8 +784,8 @@ td .mono{font-size:12px;color:var(--ik)}
             <label class="ctl-name is-prose" for="cm-rtt">Network RTT</label>
             <output class="ctl-val" id="cm-v-rtt" for="cm-rtt">0 ms</output>
           </div>
-          <input type="range" id="cm-rtt" min="0" max="2000" step="10" value="0" aria-describedby="cm-n-rtt">
-          <div class="ctl-scale"><span>0 ms</span><span>2000 ms</span></div>
+          <input type="range" id="cm-rtt" min="0" max="100" step="1" value="0" aria-describedby="cm-n-rtt">
+          <div class="ctl-scale"><span>0 ms</span><span>100 ms</span></div>
           <p class="ctl-note" id="cm-n-rtt">The same round trip as the topology strip at the top of the page &mdash; moving it here moves it there, and the timelines above redraw with it. Half of it each way. Reset leaves it alone: RTT follows the topology slider.</p>
         </div>
       </aside>
@@ -1091,6 +1125,11 @@ td .mono{font-size:12px;color:var(--ik)}
           <p class="banner-b" id="ap-banner-body"></p>
         </div>
 
+        <section class="readout readout-stage">
+          <p class="eyebrow">App readout</p>
+          <div class="chips" id="ap-chips"></div>
+        </section>
+
         <div class="tl-wrap" id="ap-wrap"></div>
         <p class="sr" id="ap-summary" aria-live="polite"></p>
 
@@ -1104,11 +1143,6 @@ td .mono{font-size:12px;color:var(--ik)}
 
         <p class="caption" id="ap-caption"></p>
       </section>
-    </div>
-
-    <div class="readout">
-      <p class="eyebrow">App readout</p>
-      <div class="chips" id="ap-chips"></div>
     </div>
 
     <div class="notes" style="margin-top:38px">
@@ -1453,7 +1487,7 @@ td .mono{font-size:12px;color:var(--ik)}
 
   /* COMMITMODEL:START */
   /* Tick steps for a millisecond axis, kept readable from a 0 ms RTT up to
-     2000 ms. Local to this block so it stays standalone-testable. */
+     100 ms. Local to this block so it stays standalone-testable. */
   function cmTickStep(span) {
     var steps = [1, 2, 5, 10, 20, 50, 100, 200, 500, 1000];
     for (var i = 0; i < steps.length; i++) { if (span / steps[i] <= 9) return steps[i]; }
@@ -3915,5 +3949,170 @@ td .mono{font-size:12px;color:var(--ik)}
     pending = true;
     requestAnimationFrame(function () { pending = false; measure(); bind(); pick(); });
   });
+})();
+</script>
+
+<script>
+/* Rail chrome -- a third self-contained IIFE, for the same reason as the
+   chapter bar: it shares no state with the models, so it degrades to nothing
+   if it throws, and the page above keeps working.
+
+   Two pieces. (1) Notes toggles: each rail's control notes collapse behind a
+   Notes button in the rail header, so the rail fits the viewport and stops
+   scrolling internally; .is-warn notes stay visible regardless (see the CSS).
+   (2) The config pill: while no workbench is on screen, a fixed chip in the
+   bottom-right restates the last-passed workbench's headline settings and its
+   first readout chip, and clicking it scrolls back to that workbench. Both are
+   script-injected, so without JS there is no dead chrome. */
+(function () {
+  "use strict";
+
+  /* ---------- collapsible rail notes ---------- */
+  Array.prototype.forEach.call(document.querySelectorAll('.rail'), function (rail) {
+    if (!rail.querySelector('.ctl-note')) return;
+    var btns = rail.querySelector('.rail-btns');
+    if (!btns) return;
+    rail.classList.add('notes-managed');
+    var b = document.createElement('button');
+    b.type = 'button';
+    b.textContent = 'Notes';
+    b.setAttribute('aria-pressed', 'false');
+    b.setAttribute('title', 'Show the explanation under each control');
+    b.addEventListener('click', function () {
+      var open = rail.classList.toggle('notes-open');
+      b.setAttribute('aria-pressed', open ? 'true' : 'false');
+    });
+    btns.insertBefore(b, btns.firstChild);
+  });
+
+  /* ---------- config pill ---------- */
+  if (!window.matchMedia || typeof requestAnimationFrame !== 'function') return;
+  var mq = window.matchMedia('(min-width: 961px)');
+  var SEP = ' \u00b7 ';
+
+  function txt(id) {
+    var e = document.getElementById(id);
+    return e ? e.textContent.replace(/\s+/g, ' ').trim() : '';
+  }
+  function segLabel(name) {
+    var r = document.querySelector('input[name="' + name + '"]:checked');
+    if (!r) return '';
+    var l = document.querySelector('label[for="' + r.id + '"]');
+    return l ? l.textContent.trim() : r.value;
+  }
+
+  /* One entry per workbench, keyed by the id of the section that carries it.
+     cfg() reads the same DOM the rail displays, so the pill can never say
+     something the controls do not. */
+  var SPECS = {
+    'ch-clocks': { title: 'Failover clocks', chips: 'chips', cfg: function () {
+      var ping = document.getElementById('c-pingset');
+      return [segLabel('scenario'), segLabel('mode'),
+        (ping && ping.checked) ? 'ping props set' : 'threshold ' + txt('v-threshold')].join(SEP);
+    } },
+    'commitview': { title: 'One commit', chips: 'cm-chips', cfg: function () {
+      return [segLabel('cm-xpt'), 'RTT ' + txt('cm-v-rtt'), 'SRL ' + txt('cm-v-sbw')].join(SEP);
+    } },
+    'reopenview': { title: 'Reopen aftermath', chips: 'rp-chips', cfg: function () {
+      return ['reopen ' + txt('rp-v-reopen'), 'MaxFailure ' + txt('rp-v-maxfailure'),
+        'outage ' + txt('rp-v-outage')].join(SEP);
+    } },
+    'appview': { title: 'Application view', chips: 'ap-chips', cfg: function () {
+      return ['TCT ' + txt('ap-v-tct'), 'CT ' + txt('ap-v-ct'),
+        'RETRY_COUNT ' + txt('ap-v-rc')].join(SEP);
+    } }
+  };
+
+  var wbs = [];
+  Array.prototype.forEach.call(document.querySelectorAll('.workbench'), function (el) {
+    var host = el.closest ? el.closest('section[id]') : null;
+    if (host && SPECS[host.id]) wbs.push({ el: el, spec: SPECS[host.id] });
+  });
+  if (!wbs.length) return;
+
+  var pill = document.createElement('button');
+  pill.type = 'button';
+  pill.className = 'cfgpill';
+  pill.innerHTML =
+    '<svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true">' +
+    '<path d="M2 9l5-5 5 5" fill="none" stroke="currentColor" stroke-width="1.8" ' +
+    'stroke-linecap="round" stroke-linejoin="round"/></svg>' +
+    '<span class="cfgpill-b"><span class="cfgpill-t"></span>' +
+    '<span class="cfgpill-c"></span><span class="cfgpill-o"></span></span>';
+  document.body.appendChild(pill);
+  var pT = pill.querySelector('.cfgpill-t');
+  var pC = pill.querySelector('.cfgpill-c');
+  var pO = pill.querySelector('.cfgpill-o');
+
+  function navH() {
+    var nav = document.getElementById('chapnav');
+    return (nav && nav.offsetHeight) || 46;
+  }
+
+  var cur = null;
+  function fill(wb) {
+    pT.textContent = wb.spec.title;
+    pC.textContent = wb.spec.cfg();
+    pO.textContent = '';
+    var chip = document.querySelector('#' + wb.spec.chips + ' .chip');
+    if (chip) {
+      var k = chip.querySelector('.chip-k'), v = chip.querySelector('.chip-v');
+      if (k && v) {
+        pO.appendChild(document.createTextNode(k.textContent.trim() + ' '));
+        var b = document.createElement('b');
+        b.textContent = v.textContent.replace(/\s+/g, ' ').trim();
+        pO.appendChild(b);
+      }
+    }
+    pill.setAttribute('aria-label', 'Back to the ' + wb.spec.title + ' controls');
+  }
+
+  /* A workbench counts as on screen once more than SLOP px of it is inside
+     the viewport below the chapter bar; the pill then has nothing to add.
+     It counts as passed once it sits (almost) entirely above the bar. */
+  var SLOP = 90;
+  function update() {
+    if (!mq.matches) { pill.classList.remove('is-on'); cur = null; return; }
+    var nh = navH(), vh = window.innerHeight || 800;
+    var visible = false, passed = null, j, r;
+    for (j = 0; j < wbs.length; j++) {
+      r = wbs[j].el.getBoundingClientRect();
+      if (Math.min(r.bottom, vh) - Math.max(r.top, nh) > SLOP) visible = true;
+      if (r.bottom <= nh + SLOP) passed = wbs[j];
+    }
+    if (visible || !passed) { pill.classList.remove('is-on'); cur = null; return; }
+    cur = passed;
+    fill(passed);
+    pill.classList.add('is-on');
+  }
+
+  pill.addEventListener('click', function () {
+    if (!cur) return;
+    var el = cur.el;
+    var top = el.getBoundingClientRect().top +
+      (window.pageYOffset || document.documentElement.scrollTop || 0) - navH() - 12;
+    var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    window.scrollTo({ top: Math.max(0, top), behavior: reduce ? 'auto' : 'smooth' });
+    el.setAttribute('tabindex', '-1');
+    try { el.focus({ preventScroll: true }); } catch (e) { /* focus is a nicety */ }
+  });
+
+  /* One rAF-throttled refresh for everything. Input/change/click bubble up
+     from the rails after the models' own listeners have queued their redraw,
+     and rAF callbacks run in queue order, so this always reads fresh chips. */
+  var queued = false;
+  function schedule() {
+    if (queued) return;
+    queued = true;
+    requestAnimationFrame(function () { queued = false; update(); });
+  }
+  window.addEventListener('scroll', schedule, { passive: true });
+  window.addEventListener('resize', schedule);
+  document.addEventListener('input', schedule, true);
+  document.addEventListener('change', schedule, true);
+  document.addEventListener('click', schedule, true);
+  if (mq.addEventListener) mq.addEventListener('change', schedule);
+  else if (mq.addListener) mq.addListener(schedule);
+  update();
 })();
 </script>
