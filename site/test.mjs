@@ -230,3 +230,69 @@ test('FSFO disarms at t = 0 in MaxAvailability, at the lag limit in MaxPerforman
   assert.equal(mk('maxperf', 30).fsfoLostAt, 30);
   assert.equal(mk('maxperf', 5).fsfoLostAt, 5);
 });
+
+// ---------- the Czech catalog ----------
+//
+// The catalog is keyed by English source strings, so a missing entry degrades to
+// English on its own -- there is nothing to assert about coverage here. What can
+// silently break a published page is a malformed entry: a placeholder the
+// translation dropped (leaving a bare {0} on screen), unbalanced <span> markup
+// inside a string that is assigned via innerHTML, or a pluralized source whose
+// translation has no Czech forms. Those are what this checks.
+
+const CAT = JSON.parse(
+  await readFile(new URL('../simulator/i18n/cs.json', import.meta.url), 'utf8'),
+);
+
+test('catalog: declares Czech and is non-empty', () => {
+  assert.equal(CAT.lang, 'cs');
+  assert.ok(Object.keys(CAT.strings).length > 500, 'suspiciously few translations');
+});
+
+test('catalog: no entry is empty or identical to its English key', () => {
+  for (const [en, cs] of Object.entries(CAT.strings)) {
+    assert.ok(cs.trim(), `empty translation for ${JSON.stringify(en.slice(0, 60))}`);
+    assert.notEqual(cs, en, `identity entry for ${JSON.stringify(en.slice(0, 60))} -- drop the key instead`);
+  }
+});
+
+test('catalog: every {n} placeholder survives translation', () => {
+  const holes = (s) => [...new Set(s.match(/\{\d+\}/g) ?? [])].sort();
+  for (const [en, cs] of Object.entries(CAT.strings)) {
+    assert.deepEqual(holes(cs), holes(en),
+      `placeholder mismatch for ${JSON.stringify(en.slice(0, 60))}`);
+  }
+});
+
+test('catalog: inline markup stays balanced', () => {
+  // Sentences carry <span class="mono">/<tspan>/<em>/<sup> around technical
+  // terms and are assigned via innerHTML, so a dropped closing tag would eat
+  // the rest of the paragraph.
+  const tags = (s) => {
+    const counts = {};
+    for (const m of s.matchAll(/<(\/?)(span|tspan|em|sup|b|i)\b/g)) {
+      counts[m[2]] = (counts[m[2]] ?? 0) + (m[1] ? -1 : 1);
+    }
+    return counts;
+  };
+  for (const [en, cs] of Object.entries(CAT.strings)) {
+    assert.deepEqual(tags(cs), tags(en),
+      `tag balance differs for ${JSON.stringify(en.slice(0, 60))}`);
+  }
+});
+
+test('catalog: a pluralized source gets Czech forms, and Czech gets three', () => {
+  for (const [en, cs] of Object.entries(CAT.strings)) {
+    if (!en.includes('|')) {
+      assert.equal(cs.includes('|'), false,
+        `unpluralized source translated with forms: ${JSON.stringify(en.slice(0, 60))}`);
+      continue;
+    }
+    // Czech needs one / few / many; two forms are accepted only when the source
+    // itself renders identically for few and many (a "{0}krat"-style phrasing).
+    const forms = cs.split('|');
+    assert.ok(forms.length === 2 || forms.length === 3,
+      `expected 2 or 3 Czech forms, got ${forms.length} for ${JSON.stringify(en.slice(0, 60))}`);
+    for (const f of forms) assert.ok(f.trim(), 'empty plural form');
+  }
+});

@@ -58,6 +58,21 @@ background:var(--bg);color:var(--ik);font-family:var(--sans);font-size:15px;line
 .hd{display:flex;flex-direction:column;gap:10px;padding-bottom:22px;border-bottom:1px solid var(--ln)}
 .hd h1{margin:0;font-size:clamp(26px,3.4vw,38px);line-height:1.1;font-weight:620;letter-spacing:-.022em;text-wrap:balance}
 .hd .lede{max-width:62ch;color:var(--ik2);font-size:16px}
+/* The eyebrow and the language switch share one row, so the switch sits at the
+   page's top-right without leaving the header's flow. */
+.hd-top{display:flex;justify-content:space-between;align-items:center;gap:16px}
+
+/* Language switch -- EN / CS, styled after the segmented controls in the rails.
+   The labels are language tags, not words, so they need no translation. */
+.langsw{display:flex;flex:0 0 auto;border:1px solid var(--ln2);border-radius:2px;overflow:hidden}
+.langsw button{font-family:var(--mono);font-size:11px;letter-spacing:.1em;color:var(--ik3);
+background:var(--sf);border:0;border-right:1px solid var(--ln);padding:4px 10px;cursor:pointer}
+.langsw button:last-child{border-right:0}
+.langsw button:hover{color:var(--ik);background:var(--sf2)}
+.langsw button[aria-pressed="true"]{background:var(--vif);color:var(--ik);font-weight:600;
+box-shadow:inset 0 -2px 0 var(--vi)}
+@media (prefers-reduced-motion:no-preference){
+.langsw button{transition:background-color .16s ease,color .16s ease}}
 
 /* chapters -- the sticky chapter bar and the five dividers. Additive chrome:
    every existing section keeps its own styles, a chapter is only a wrapper.
@@ -417,10 +432,154 @@ td .mono{font-size:12px;color:var(--ik)}
 .sq-svg .ah-tl{fill:var(--tl)}
 </style>
 
+<script>
+/* Language -- the first script block on the page, and the only one the others
+   depend on. It defines DG.t (translate) and DG.setLang and touches no markup,
+   because it runs before the markup is parsed.
+
+   English is the source language: it lives in the markup and inside the t()
+   calls, so a missing translation degrades to readable English rather than to a
+   key. Czech lives OUTSIDE this file, in simulator/i18n/cs.json, and
+   site/build.mjs inlines it into the built page as
+   <script type="application/json" id="dg-i18n-cs">. That split is not
+   incidental -- this fragment carries no <meta charset> (see CLAUDE.md), so it
+   must stay pure ASCII, and a Czech catalog spelled in \uXXXX escapes would be
+   unmaintainable. The JSON block lands inside the wrapper that declares the
+   charset, so it can hold real accented characters.
+
+   Catalog keys ARE the English source strings. A string with no entry falls
+   through untranslated, which is what makes the technical vocabulary work:
+   property names, protection modes, transport modes, Oracle statuses, error
+   numbers, SQL and DGMGRL are simply absent from the catalog, or carried
+   verbatim inside a translated sentence. A Czech reader can still match every
+   term on the page against the Oracle documentation. */
+window.DG = (function () {
+  "use strict";
+  var LANGS = { en: 1, cs: 1 };
+  var CATS = {};
+  var lang = 'en';
+  var subs = [];
+  var statik = null;
+  /* Lookups with no entry, collected rather than logged: the headless coverage
+     check reads this to report what is still untranslated. */
+  var missing = {};
+
+  var el = document.getElementById('dg-i18n-cs');
+  if (el) {
+    try {
+      var data = JSON.parse(el.textContent);
+      CATS.cs = (data && data.strings) || {};
+    } catch (e) { CATS.cs = {}; }
+  }
+
+  function fill(s, args, from) {
+    return s.replace(/\{(\d+)\}/g, function (all, i) {
+      var v = args[Number(i) + from];
+      return (v === undefined || v === null) ? all : String(v);
+    });
+  }
+
+  /* t(source, ...values) -- translate, then substitute {0}, {1}, ... Sentences
+     are keyed whole and take placeholders rather than being concatenated,
+     because Czech puts the numbers in different places than English does. */
+  function t(s) {
+    var cat = CATS[lang];
+    var v = cat ? cat[s] : undefined;
+    if (v === undefined || v === null) {
+      if (lang !== 'en') missing[s] = 1;
+      v = s;
+    }
+    return arguments.length > 1 ? fill(v, arguments, 1) : v;
+  }
+
+  /* Czech has three cardinal forms (1 / 2-4 / 5 and up) where English has two,
+     so a countable string carries its forms '|'-separated in that order on both
+     sides of the catalog: tp('{0} retry|{0} retries', n, n). */
+  function plural(n) {
+    if (lang === 'cs') return n === 1 ? 0 : (n >= 2 && n <= 4 ? 1 : 2);
+    return n === 1 ? 0 : 1;
+  }
+  function tp(s, n) {
+    var forms = t(s).split('|');
+    var i = plural(n);
+    return fill(forms[i < forms.length ? i : forms.length - 1], arguments, 2);
+  }
+
+  /* Decimal separator. Czech writes 1,1 s where English writes 1.1 s. Applied
+     by the page's fmt() helper, so it reaches prose, chips and drawings --
+     never the config cards, whose values are all integers and must stay valid
+     Oracle syntax. */
+  function dec() { return lang === 'cs' ? ',' : '.'; }
+
+  function syncUrl() {
+    if (!window.history || !history.replaceState || !window.URLSearchParams) return;
+    var p = new URLSearchParams(location.search);
+    if (lang === 'en') p.delete('lang'); else p.set('lang', lang);
+    var q = p.toString();
+    var next = location.pathname + (q ? '?' + q : '') + location.hash;
+    if (next !== location.pathname + location.search + location.hash) {
+      history.replaceState(null, '', next);
+    }
+  }
+
+  /* The static markup pass runs before the subscribers, always. The models
+     rewrite a dozen control notes and headings that also exist in the markup,
+     so whoever runs last owns them -- and it has to be the models. */
+  function refresh() {
+    if (statik) statik();
+    for (var i = 0; i < subs.length; i++) subs[i]();
+  }
+
+  function setLang(next) {
+    if (!LANGS[next] || next === lang) return;
+    lang = next;
+    document.documentElement.lang = lang;
+    try { localStorage.setItem('dg-lang', lang); } catch (e) { /* private mode */ }
+    syncUrl();
+    refresh();
+  }
+
+  /* Resolution order: an explicit ?lang= beats a remembered choice beats
+     English. Nothing is rendered yet, so this only sets state. */
+  var want = null;
+  if (window.URLSearchParams) {
+    var q = new URLSearchParams(location.search).get('lang');
+    if (q && LANGS[q]) want = q;
+  }
+  if (!want) {
+    try {
+      var saved = localStorage.getItem('dg-lang');
+      if (saved && LANGS[saved]) want = saved;
+    } catch (e) { /* private mode */ }
+  }
+  if (want) lang = want;
+  document.documentElement.lang = lang;
+  /* Normalize the pasted URL right away, the same way the config params are:
+     an unknown ?lang= token drops instead of lingering next to an English page.
+     A clean URL is a no-op -- syncUrl skips replaceState when nothing changes. */
+  syncUrl();
+
+  return {
+    t: t, tp: tp, dec: dec, setLang: setLang,
+    lang: function () { return lang; },
+    has: function (code) { return !!CATS[code]; },
+    onLang: function (cb) { subs.push(cb); },
+    setStatic: function (cb) { statik = cb; },
+    missing: function () { return Object.keys(missing).sort(); }
+  };
+})();
+</script>
+
 <div class="fsfo">
 
   <header class="hd">
-    <p class="eyebrow">Oracle 19c Data Guard broker</p>
+    <div class="hd-top">
+      <p class="eyebrow">Oracle 19c Data Guard broker</p>
+      <div class="langsw" id="langsw" role="group" aria-label="Language">
+        <button type="button" data-lang="en" aria-pressed="true" title="English">EN</button>
+        <button type="button" data-lang="cs" aria-pressed="false" title="Czech">CS</button>
+      </div>
+    </div>
     <h1>Fast-start failover, second by second</h1>
     <p class="lede">Set the broker properties on the left and watch when the observer gives up on the primary, when the standby opens read-write, and how much redo is lost in between.</p>
   </header>
@@ -1338,8 +1497,108 @@ td .mono{font-size:12px;color:var(--ik)}
 </div>
 
 <script>
+/* Static markup translation, plus the EN / CS switch.
+
+   Deliberately placed between the markup and the models: it snapshots the
+   English source out of the DOM, and it has to do that before the models'
+   first draw() overwrites the control notes and headings they share. From then
+   on every pass reads the snapshot, never the live DOM, so a translated string
+   can never become the source for the next translation.
+
+   Elements are matched by selector rather than tagged with data-i18n
+   attributes. Being generous with the selectors costs nothing: a string with no
+   catalog entry falls through unchanged, so the property names, DGMGRL
+   commands, ORA numbers and mode names sitting in the same table cells stay
+   English by simply not being in the catalog. */
 (function () {
   "use strict";
+  var DG = window.DG;
+  if (!DG) return;
+
+  /* Whole innerHTML is translated, markup and all: a sentence often carries
+     <span class="mono"> around a property name, and the catalog entry carries
+     the same span so the term keeps its monospace styling in Czech. */
+  var HTML_SEL = [
+    '.hd h1', '.hd .lede', '.hd .eyebrow',
+    '.chapnav .cn-t', '.chapnav .cn-s',
+    '.chdiv-t', '.chdiv-d',
+    '.rail-hd .eyebrow', '.rail-hd button',
+    '.seg legend', '.seg-row label',
+    '.ctl-name.is-prose', '.ctl-note', '.ctl-scale span',
+    '.stage-hd h2', '.stage-hd .eyebrow',
+    '.banner-k', '.callout-k', '.readout .eyebrow',
+    '.sec-hd .eyebrow', '.sec-hd h2', '.sec > h2',
+    '.caption', '.note h3', '.note p',
+    'thead th', 'tbody td',
+    '.cfg-file', '.cfg-hd .eyebrow',
+    '.foot p',
+    '.sq-svg text', '.tx-svg text'
+  ].join(', ');
+
+  /* Legend entries are a colour swatch followed by a bare text node, so only
+     that trailing node moves -- the <i> must survive untouched. */
+  var TAIL_SEL = '.legend span';
+
+  var ATTR = ['aria-label', 'title'];
+
+  var root = document.querySelector('.fsfo');
+  if (!root) return;
+
+  var html = [], tail = [], attrs = [], docTitle = document.title, built = false;
+
+  function build() {
+    Array.prototype.forEach.call(root.querySelectorAll(HTML_SEL), function (el) {
+      html.push({ el: el, en: el.innerHTML });
+    });
+    Array.prototype.forEach.call(root.querySelectorAll(TAIL_SEL), function (el) {
+      var n = el.lastChild;
+      if (n && n.nodeType === 3 && n.data.trim()) tail.push({ node: n, en: n.data });
+    });
+    Array.prototype.forEach.call(root.querySelectorAll('[aria-label], [title]'), function (el) {
+      ATTR.forEach(function (a) {
+        var v = el.getAttribute(a);
+        if (v) attrs.push({ el: el, a: a, en: v });
+      });
+    });
+    built = true;
+  }
+
+  /* Snapshot once, then always render from the snapshot. Nothing the models add
+     to the DOM later is ever picked up here -- those strings go through t() on
+     their own, where they are built. */
+  function apply() {
+    if (!built) build();
+    var t = DG.t;
+    html.forEach(function (o) {
+      var v = t(o.en);
+      if (o.el.innerHTML !== v) o.el.innerHTML = v;
+    });
+    tail.forEach(function (o) { o.node.data = t(o.en); });
+    attrs.forEach(function (o) { o.el.setAttribute(o.a, t(o.en)); });
+    document.title = t(docTitle);
+    Array.prototype.forEach.call(btns, function (b) {
+      b.setAttribute('aria-pressed', b.getAttribute('data-lang') === DG.lang() ? 'true' : 'false');
+    });
+  }
+
+  var sw = document.getElementById('langsw');
+  var btns = sw ? sw.querySelectorAll('button[data-lang]') : [];
+  Array.prototype.forEach.call(btns, function (b) {
+    b.addEventListener('click', function () { DG.setLang(b.getAttribute('data-lang')); });
+  });
+  /* Hide the switch when the build did not inline a catalog -- the raw fragment
+     opened on its own has English only, and a dead toggle is worse than none. */
+  if (sw && !DG.has('cs')) sw.hidden = true;
+
+  DG.setStatic(apply);
+  apply();
+})();
+</script>
+
+<script>
+(function () {
+  "use strict";
+  var t = window.DG.t, tp = window.DG.tp;
 
   /* ---------------------------------------------------------
      MODEL -- one pure function. Everything rendered below reads
@@ -1661,11 +1920,15 @@ td .mono{font-size:12px;color:var(--ik)}
   /* REOPENMODEL:END */
 
   /* ---------- helpers ---------- */
+  /* Czech writes 1,1 s where English writes 1.1 s. Every number the page shows
+     in prose, a chip or a drawing goes through here; the config cards do not,
+     and their values are integers anyway, so no Oracle syntax is ever touched. */
   function fmt(n) {
     if (!isFinite(n)) return '\u2014';
     var r = Math.round(n * 100) / 100;
     if (Math.abs(r - Math.round(r)) < 1e-9) return String(Math.round(r));
-    return (Math.round(n * 10) / 10 === r) ? r.toFixed(1) : r.toFixed(2);
+    var s = (Math.round(n * 10) / 10 === r) ? r.toFixed(1) : r.toFixed(2);
+    return s.replace('.', window.DG.dec());
   }
   function sign(n) { return fmt(n).replace(/^-/, '\u2212'); }
   function fmtClock(n) {
@@ -1804,45 +2067,45 @@ td .mono{font-size:12px;color:var(--ik)}
 
     /* lane segments -- labels degrade to a shorter form when the bar is narrow */
     var lanes = [
-      { name: 'Primary', sub: 'production database', segs: [] },
-      { name: 'Observer', sub: 'DGMGRL, third host', segs: [] },
-      { name: 'Standby', sub: 'failover target', segs: [] }
+      { name: 'Primary', sub: t('production database'), segs: [] },
+      { name: 'Observer', sub: t('DGMGRL, third host'), segs: [] },
+      { name: 'Standby', sub: t('failover target'), segs: [] }
     ];
 
-    lanes[0].segs.push({ a: t0, b: 0, cls: 'b-tl', lc: 'f-tl', lab: ['Open read-write \u2014 shipping redo', 'Shipping redo', 'Open'] });
+    lanes[0].segs.push({ a: t0, b: 0, cls: 'b-tl', lc: 'f-tl', lab: [t('Open read-write \u2014 shipping redo'), t('Shipping redo'), t('Open')] });
     if (iso) {
       if (m.abort !== null) {
-        lanes[0].segs.push({ a: 0, b: m.abort, cls: 'b-hatch', lc: 'f-rd', lab: ['STALLED \u2014 redo generation halted', 'STALLED'] });
-        lanes[0].segs.push({ a: m.abort, b: t1, cls: 'b-hatch', lc: 'f-rd', lab: ['Aborted \u2014 instance shut itself down', 'Aborted'] });
+        lanes[0].segs.push({ a: 0, b: m.abort, cls: 'b-hatch', lc: 'f-rd', lab: [t('STALLED \u2014 redo generation halted'), 'STALLED'] });
+        lanes[0].segs.push({ a: m.abort, b: t1, cls: 'b-hatch', lc: 'f-rd', lab: [t('Aborted \u2014 instance shut itself down'), t('Aborted')] });
       } else {
-        lanes[0].segs.push({ a: 0, b: t1, cls: 'b-hatch', lc: 'f-rd', lab: ['STALLED indefinitely \u2014 no redo, no commits', 'STALLED indefinitely', 'STALLED'] });
+        lanes[0].segs.push({ a: 0, b: t1, cls: 'b-hatch', lc: 'f-rd', lab: [t('STALLED indefinitely \u2014 no redo, no commits'), t('STALLED indefinitely'), 'STALLED'] });
       }
     } else {
-      lanes[0].segs.push({ a: 0, b: t1, cls: 'b-hatch', lc: 'f-rd', lab: ['Down \u2014 host has crashed', 'Down'] });
+      lanes[0].segs.push({ a: 0, b: t1, cls: 'b-hatch', lc: 'f-rd', lab: [t('Down \u2014 host has crashed'), t('Down')] });
     }
 
-    lanes[1].segs.push({ a: t0, b: 0, cls: 'b-sl', lc: 'f-sl', lab: ['Pinging primary \u2014 connection healthy', 'Pinging primary', 'Pinging'] });
+    lanes[1].segs.push({ a: t0, b: 0, cls: 'b-sl', lc: 'f-sl', lab: [t('Pinging primary \u2014 connection healthy'), t('Pinging primary'), t('Pinging')] });
     lanes[1].segs.push({
       a: 0, b: m.initiate, cls: 'b-am', lc: 'f-am',
-      lab: m.pingSet ? ['Ping retries \u2014 no answer', 'Ping retries', 'Retries']
-                     : ['Reconnect attempts \u2014 threshold clock running', 'Reconnect attempts', 'Reconnecting']
+      lab: m.pingSet ? [t('Ping retries \u2014 no answer'), t('Ping retries'), t('Retries')]
+                     : [t('Reconnect attempts \u2014 threshold clock running'), t('Reconnect attempts'), t('Reconnecting')]
     });
     lanes[1].segs.push({
       a: m.initiate, b: t1, cls: 'b-sl', lc: 'f-sl',
-      lab: m.blocked ? ['Failover not permitted \u2014 keeps monitoring', 'Failover not permitted', 'Not permitted']
-                     : ['Monitors the failover, then the new primary', 'Monitors the new primary', 'Monitoring']
+      lab: m.blocked ? [t('Failover not permitted \u2014 keeps monitoring'), t('Failover not permitted'), t('Not permitted')]
+                     : [t('Monitors the failover, then the new primary'), t('Monitors the new primary'), t('Monitoring')]
     });
 
-    lanes[2].segs.push({ a: t0, b: 0, cls: 'b-bl', lc: 'f-bl', lab: ['Applying redo', 'Applying'] });
-    lanes[2].segs.push({ a: 0, b: m.blocked ? m.initiate : m.execStart, cls: 'b-bl', lc: 'f-bl', lab: ['Keeps applying the redo it received', 'Keeps applying redo', 'Applying'] });
+    lanes[2].segs.push({ a: t0, b: 0, cls: 'b-bl', lc: 'f-bl', lab: [t('Applying redo'), t('Applying')] });
+    lanes[2].segs.push({ a: 0, b: m.blocked ? m.initiate : m.execStart, cls: 'b-bl', lc: 'f-bl', lab: [t('Keeps applying the redo it received'), t('Keeps applying redo'), t('Applying')] });
     if (m.blocked) {
-      lanes[2].segs.push({ a: m.initiate, b: t1, cls: 'b-bl', lc: 'f-bl', lab: ['Remains a standby \u2014 readiness check failed', 'Remains a standby', 'Standby'] });
+      lanes[2].segs.push({ a: m.initiate, b: t1, cls: 'b-bl', lc: 'f-bl', lab: [t('Remains a standby \u2014 readiness check failed'), t('Remains a standby'), 'Standby'] });
     } else {
       if (m.applyRemaining > 0) {
-        lanes[2].segs.push({ a: m.execStart, b: m.execStart + m.applyRemaining, cls: 'b-am', lc: 'f-am', lab: ['Terminal recovery \u2014 applies remaining redo', 'Terminal recovery', 'Recovery'] });
+        lanes[2].segs.push({ a: m.execStart, b: m.execStart + m.applyRemaining, cls: 'b-am', lc: 'f-am', lab: [t('Terminal recovery \u2014 applies remaining redo'), t('Terminal recovery'), t('Recovery')] });
       }
-      lanes[2].segs.push({ a: m.execStart + m.applyRemaining, b: m.tOpen, cls: 'b-am', lc: 'f-am', lab: ['Converts to the primary role', 'Role change'] });
-      lanes[2].segs.push({ a: m.tOpen, b: t1, cls: 'b-tl', lc: 'f-tl', lab: ['Open read-write \u2014 service restored', 'Open read-write', 'Open'] });
+      lanes[2].segs.push({ a: m.execStart + m.applyRemaining, b: m.tOpen, cls: 'b-am', lc: 'f-am', lab: [t('Converts to the primary role'), t('Role change')] });
+      lanes[2].segs.push({ a: m.tOpen, b: t1, cls: 'b-tl', lc: 'f-tl', lab: [t('Open read-write \u2014 service restored'), t('Open read-write'), t('Open')] });
     }
 
     /* braces under the axis, tied to the exact interval each parameter governs */
@@ -1851,39 +2114,40 @@ td .mono{font-size:12px;color:var(--ik)}
       braces.push({
         a: 0, b: m.detect, tone: 'br-am', mono: true,
         name: 'ObserverPingInterval \u00d7 (ObserverPingRetry + 1)',
-        val: fmt(C.pingInterval) + ' ms \u00d7 ' + (C.pingRetry + 1) + ' = ' + fmt(m.detect) + ' s detection'
+        val: t('{0} ms \u00d7 {1} = {2} s detection', fmt(C.pingInterval), C.pingRetry + 1, fmt(m.detect))
       });
     } else {
       braces.push({
         a: 0, b: m.initiate, tone: 'br-am', mono: true, name: 'FastStartFailoverThreshold',
-        val: fmt(C.threshold) + ' s \u2014 observer ' + (iso ? 'clock' : 'reconnect window')
+        val: iso ? t('{0} s \u2014 observer clock', fmt(C.threshold))
+                 : t('{0} s \u2014 observer reconnect window', fmt(C.threshold))
       });
     }
     if (iso && m.abort !== null) {
       braces.push({
         a: 0, b: m.abort, tone: 'br-rd', mono: true, name: 'FastStartFailoverThreshold',
-        val: fmt(C.threshold) + ' s \u2014 primary stall clock, runs independently'
+        val: t('{0} s \u2014 primary stall clock, runs independently', fmt(C.threshold))
       });
     }
     if (!m.blocked) {
       if (m.netHop >= 0.2) {
         braces.push({
           a: m.initiate, b: m.execStart, tone: 'br-sl', mono: false,
-          name: 'FAILOVER command in flight',
-          val: fmt(m.netHop) + ' s \u2014 one-way network latency'
+          name: t('FAILOVER command in flight'),
+          val: t('{0} s \u2014 one-way network latency', fmt(m.netHop))
         });
       }
       if (m.applyRemaining > 0) {
         braces.push({
           a: m.execStart, b: m.execStart + m.applyRemaining, tone: 'br-bl', mono: false,
-          name: 'Terminal recovery \u2248 apply lag at failure time',
-          val: fmt(m.applyRemaining) + ' s \u2014 illustrative estimate, not a broker parameter'
+          name: t('Terminal recovery \u2248 apply lag at failure time'),
+          val: t('{0} s \u2014 illustrative estimate, not a broker parameter', fmt(m.applyRemaining))
         });
       }
       braces.push({
         a: m.execStart + m.applyRemaining, b: m.tOpen, tone: 'br-am', mono: false,
-        name: 'Role change + read-write open',
-        val: fmt(C.roleTransition) + ' s \u2014 environment-dependent, not a broker parameter'
+        name: t('Role change + read-write open'),
+        val: t('{0} s \u2014 environment-dependent, not a broker parameter', fmt(C.roleTransition))
       });
     }
 
@@ -1917,14 +2181,15 @@ td .mono{font-size:12px;color:var(--ik)}
     push('<rect class="prezone" x="' + r1(plotL) + '" y="' + G.laneTop + '" width="' + r1(X(0) - plotL) +
       '" height="' + (G.lanesBottom - G.laneTop) + '"></rect>');
     /* only label the pre-failure zone when it is wide enough to hold the text */
-    if (X(0) - plotL >= approxW('Steady state', 10.5) + 12) push(txt('t-tick', plotL + 6, G.markY, null, 'Steady state'));
+    var ssLab = t('Steady state');
+    if (X(0) - plotL >= approxW(ssLab, 10.5) + 12) push(txt('t-tick', plotL + 6, G.markY, null, esc(ssLab)));
 
     for (var tk = Math.ceil(t0 / m.tickStep) * m.tickStep; tk <= t1 + 1e-9; tk += m.tickStep) {
       push(ln('gridline', X(tk), G.laneTop, X(tk), G.axisY));
       push(txt('t-tick t-mono', X(tk), G.axisY + 16, 'middle', esc(sign(tk))));
     }
     push(ln('ax', plotL, G.axisY, plotR, G.axisY));
-    push(txt('t-tick t-mono', plotR, G.axisY + 30, 'end', 'seconds from the failure event'));
+    push(txt('t-tick t-mono', plotR, G.axisY + 30, 'end', esc(t('seconds from the failure event'))));
 
     /* lanes */
     lanes.forEach(function (lane, i) {
@@ -1947,12 +2212,12 @@ td .mono{font-size:12px;color:var(--ik)}
     var xz = X(0);
     if (iso) {
       push(ln('partition', xz, G.laneTop - 4, xz, G.lanesBottom + 4));
-      push(txt('t-mark f-rd', xz + 8, G.markY, null, 'Network partition \u2014 primary cut off from observer and standby'));
+      push(txt('t-mark f-rd', xz + 8, G.markY, null, esc(t('Network partition \u2014 primary cut off from observer and standby'))));
     } else {
       var cy = G.lane[0] + G.laneH / 2;
       push(ln('m-rd', xz - 7, cy - 7, xz + 7, cy + 7, ' stroke-width="2.5"'));
       push(ln('m-rd', xz + 7, cy - 7, xz - 7, cy + 7, ' stroke-width="2.5"'));
-      push(txt('t-mark f-rd', xz + 8, G.markY, null, 'Primary host crashes'));
+      push(txt('t-mark f-rd', xz + 8, G.markY, null, esc(t('Primary host crashes'))));
     }
 
     /* primary self-abort (isolated). Sits one line above the observer's marker
@@ -1965,8 +2230,8 @@ td .mono{font-size:12px;color:var(--ik)}
         push('<circle class="f-rd" cx="' + r1(xa) + '" cy="' + (G.lane[0] + G.laneH / 2) + '" r="4"></circle>');
         /* longest form that still fits to the right of the marker, so the label
            never has to flip left and cross the partition line */
-        var aCands = ['Self-abort at t = ' + fmt(m.abort) + ' s  (FastStartFailoverPmyShutdown = TRUE)',
-                      'Self-abort at t = ' + fmt(m.abort) + ' s', 'Self-abort'];
+        var aCands = [t('Self-abort at t = {0} s  (FastStartFailoverPmyShutdown = TRUE)', fmt(m.abort)),
+                      t('Self-abort at t = {0} s', fmt(m.abort)), t('Self-abort')];
         var aLab = null;
         for (var ai = 0; ai < aCands.length; ai++) {
           if (xa + 8 + approxW(aCands[ai], 11.5) <= plotR) { aLab = aCands[ai]; break; }
@@ -1975,7 +2240,7 @@ td .mono{font-size:12px;color:var(--ik)}
                   : txt('t-mark f-rd', xa - 8, gapA + 16, 'end', esc(aCands[2])));
       } else {
         push(txt('t-mark f-rd', plotL + 8, gapA + 16, null,
-          'Stays stalled indefinitely \u2014 the stall itself is what prevents a split brain'));
+          esc(t('Stays stalled indefinitely \u2014 the stall itself is what prevents a split brain'))));
       }
     }
 
@@ -1983,9 +2248,9 @@ td .mono{font-size:12px;color:var(--ik)}
     var xi = X(m.initiate), obsTop = G.lane[1], obsBot = obsTop + G.laneH, stbTop = G.lane[2];
     push(ln(m.blocked ? 'm-rd' : 'm-vi', xi, obsTop - 10, xi, obsBot + 4, ' stroke-width="2"'));
     push('<path class="' + (m.blocked ? 'f-rd' : 'f-vi') + '" d="M' + r1(xi) + ',' + (obsTop + 17) + ' l6,6 l-6,6 l-6,-6 z"></path>');
-    var dLab = m.blocked ? (m.pingSet ? 'Detection ends \u2014 failover refused at t = ' + fmt(m.initiate) + ' s'
-                                      : 'Threshold expires \u2014 failover refused at t = ' + fmt(m.initiate) + ' s')
-                         : 'Initiates failover at t = ' + fmt(m.initiate) + ' s';
+    var dLab = m.blocked ? (m.pingSet ? t('Detection ends \u2014 failover refused at t = {0} s', fmt(m.initiate))
+                                      : t('Threshold expires \u2014 failover refused at t = {0} s', fmt(m.initiate)))
+                         : t('Initiates failover at t = {0} s', fmt(m.initiate));
     var dX = xi + 9, dAnc = null;
     if (dX + approxW(dLab, 11.5) > plotR) { dX = xi - 9; dAnc = 'end'; }
     push(txt('t-mark ' + (m.blocked ? 'f-rd' : 'f-vi'), dX, obsTop - 8, dAnc, esc(dLab)));
@@ -1993,8 +2258,8 @@ td .mono{font-size:12px;color:var(--ik)}
 
     /* readiness exchange between observer and standby */
     var rY = obsBot + 26, ra = xz + 3, rb = xi - 7;
-    var rLab = m.blocked ? 'Standby not ready \u2014 apply lag exceeds FastStartFailoverLagLimit'
-                         : 'Confirms the standby also lost contact and is ready';
+    var rLab = m.blocked ? t('Standby not ready \u2014 apply lag exceeds FastStartFailoverLagLimit')
+                         : t('Confirms the standby also lost contact and is ready');
     var rCls = m.blocked ? 'f-rd' : 'f-sl';
     if (rb - ra > 34) {
       var mk = m.blocked ? 'url(#tlAr)' : 'url(#tlAs)';
@@ -2011,11 +2276,13 @@ td .mono{font-size:12px;color:var(--ik)}
     /* top brace: total outage */
     if (!m.blocked) {
       push(braceUp(xz, X(m.tOpen), G.braceY, 'br-sl'));
-      var tLab = 'Total outage \u2248 ' + (m.pingSet ? 'ping detection' : 'threshold') + ' + failover execution  =  ' + fmt(m.tOpen) + ' s';
+      var tLab = m.pingSet
+        ? t('Total outage \u2248 ping detection + failover execution  =  {0} s', fmt(m.tOpen))
+        : t('Total outage \u2248 threshold + failover execution  =  {0} s', fmt(m.tOpen));
       var tw = approxW(tLab, 12);
       push(txt('t-top', Math.min(Math.max((xz + X(m.tOpen)) / 2, tw / 2 + 6), W - tw / 2 - 6), G.topY, 'middle', esc(tLab)));
     } else {
-      push(txt('t-top f-rd', plotL, G.topY, null, 'No automatic failover \u2014 the primary stays down and the standby stays a standby'));
+      push(txt('t-top f-rd', plotL, G.topY, null, esc(t('No automatic failover \u2014 the primary stays down and the standby stays a standby'))));
     }
 
     /* braces */
@@ -2041,17 +2308,17 @@ td .mono{font-size:12px;color:var(--ik)}
     var s = [], push = function (x) { s.push(x); };
 
     var lanes = [
-      { name: 'Primary', sub: 'production database', segs: [
+      { name: 'Primary', sub: t('production database'), segs: [
         { a: t0, b: t1, cls: 'b-tl', lc: 'f-tl',
-          lab: ['Open read-write \u2014 still shipping redo', 'Open read-write', 'Open'] }] },
-      { name: 'Observer', sub: 'DGMGRL, third host', segs: [
+          lab: [t('Open read-write \u2014 still shipping redo'), t('Open read-write'), t('Open')] }] },
+      { name: 'Observer', sub: t('DGMGRL, third host'), segs: [
         { a: t0, b: 0, cls: 'b-sl', lc: 'f-sl',
-          lab: ['Pinging primary \u2014 connection healthy', 'Pinging primary', 'Pinging'] },
+          lab: [t('Pinging primary \u2014 connection healthy'), t('Pinging primary'), t('Pinging')] },
         { a: 0, b: t1, cls: 'b-hatch', lc: 'f-rd',
-          lab: ['Host down \u2014 nobody is watching', 'Host down', 'Down'] }] },
-      { name: 'Standby', sub: 'failover target', segs: [
+          lab: [t('Host down \u2014 nobody is watching'), t('Host down'), t('Down')] }] },
+      { name: 'Standby', sub: t('failover target'), segs: [
         { a: t0, b: t1, cls: 'b-bl', lc: 'f-bl',
-          lab: ['Applying \u2014 connection to primary intact', 'Applying redo', 'Applying'] }] }
+          lab: [t('Applying \u2014 connection to primary intact'), t('Applying redo'), t('Applying')] }] }
     ];
 
     /* no braces here, so the drawing ends just under the axis labels */
@@ -2065,14 +2332,15 @@ td .mono{font-size:12px;color:var(--ik)}
     /* pre-failure zone, gridlines, axis */
     push('<rect class="prezone" x="' + r1(plotL) + '" y="' + G.laneTop + '" width="' + r1(X(0) - plotL) +
       '" height="' + (G.lanesBottom - G.laneTop) + '"></rect>');
-    if (X(0) - plotL >= approxW('Steady state', 10.5) + 12) push(txt('t-tick', plotL + 6, G.markY, null, 'Steady state'));
+    var ssLab = t('Steady state');
+    if (X(0) - plotL >= approxW(ssLab, 10.5) + 12) push(txt('t-tick', plotL + 6, G.markY, null, esc(ssLab)));
 
     for (var tk = Math.ceil(t0 / m.tickStep) * m.tickStep; tk <= t1 + 1e-9; tk += m.tickStep) {
       push(ln('gridline', X(tk), G.laneTop, X(tk), G.axisY));
       push(txt('t-tick t-mono', X(tk), G.axisY + 16, 'middle', esc(sign(tk))));
     }
     push(ln('ax', plotL, G.axisY, plotR, G.axisY));
-    push(txt('t-tick t-mono', plotR, G.axisY + 30, 'end', 'seconds from the failure event'));
+    push(txt('t-tick t-mono', plotR, G.axisY + 30, 'end', esc(t('seconds from the failure event'))));
 
     /* lanes */
     lanes.forEach(function (lane, i) {
@@ -2094,14 +2362,14 @@ td .mono{font-size:12px;color:var(--ik)}
     var xz = X(0), cy = G.lane[1] + G.laneH / 2;
     push(ln('m-rd', xz - 7, cy - 7, xz + 7, cy + 7, ' stroke-width="2.5"'));
     push(ln('m-rd', xz + 7, cy - 7, xz - 7, cy + 7, ' stroke-width="2.5"'));
-    push(txt('t-mark f-rd', xz + 12, G.lane[1] + G.laneH + 16, null, 'Observer host dies at t = 0'));
+    push(txt('t-mark f-rd', xz + 12, G.lane[1] + G.laneH + 16, null, esc(t('Observer host dies at t = 0'))));
 
     /* what the primary reports about it, in the gap above the observer lane */
     push(txt('t-mark f-vi', xz + 12, G.lane[0] + G.laneH + 18, null,
-      '<tspan class="t-mono">FS_FAILOVER_STATUS = PRIMARY UNOBSERVED</tspan> on the primary from here on'));
+      t('<tspan class="t-mono">FS_FAILOVER_STATUS = PRIMARY UNOBSERVED</tspan> on the primary from here on')));
 
     push(txt('t-top f-am', plotL, G.topY, null,
-      esc('No automatic failover possible while unobserved \u2014 primary and standby carry on')));
+      esc(t('No automatic failover possible while unobserved \u2014 primary and standby carry on'))));
 
     push('</svg>');
     return s.join('');
@@ -2134,73 +2402,76 @@ td .mono{font-size:12px;color:var(--ik)}
      The broker never allows it: either the old primary is gone (crash), or it
      is STALLED and cannot commit anything the new primary will not have. */
   function splitBrainChip(m) {
+    var K_SB = 'Split brain', V_NO = 'no';
     if (m.observerLost) {
-      return chip('ik', 'Split brain', 'no', '',
-        'Nothing diverged \u2014 one primary, one standby, and no failover was ever attempted');
+      return chip('ik', t(K_SB), t(V_NO), '',
+        t('Nothing diverged \u2014 one primary, one standby, and no failover was ever attempted'));
     }
     if (C.scenario !== 'isolated') {
-      return chip('ik', 'Split brain', 'no', '',
-        'The primary is down, so only one database is ever open read-write');
+      return chip('ik', t(K_SB), t(V_NO), '',
+        t('The primary is down, so only one database is ever open read-write'));
     }
     if (m.blocked) {
-      return chip('ik', 'Split brain', 'no', '',
-        'No failover is attempted and the isolated primary is <span class="mono">STALLED</span>, so there is nothing to diverge');
+      return chip('ik', t(K_SB), t(V_NO), '',
+        t('No failover is attempted and the isolated primary is <span class="mono">STALLED</span>, so there is nothing to diverge'));
     }
     if (m.abort === null) {
-      return chip('am', 'Split brain', 'no', '',
-        'Two instances stay up past ' + fmt(m.tOpen) + ' s, but the old primary is <span class="mono">STALLED</span> for good: no redo, no commits, manual reinstate');
+      return chip('am', t(K_SB), t(V_NO), '',
+        t('Two instances stay up past {0} s, but the old primary is <span class="mono">STALLED</span> for good: no redo, no commits, manual reinstate', fmt(m.tOpen)));
     }
     var overlap = m.abort - m.tOpen;
     return overlap > 0
-      ? chip('am', 'Split brain', 'no', '',
-          'Two instances overlap for ' + fmt(overlap) + ' s, from ' + fmt(m.tOpen) + ' s to the self-abort at ' +
-          fmt(m.abort) + ' s, but the old one is <span class="mono">STALLED</span> throughout')
-      : chip('ik', 'Split brain', 'no', '',
-          'The isolated primary aborts at ' + fmt(m.abort) + ' s, before the standby opens at ' + fmt(m.tOpen) + ' s');
+      ? chip('am', t(K_SB), t(V_NO), '',
+          t('Two instances overlap for {0} s, from {1} s to the self-abort at {2} s, but the old one is <span class="mono">STALLED</span> throughout',
+            fmt(overlap), fmt(m.tOpen), fmt(m.abort)))
+      : chip('ik', t(K_SB), t(V_NO), '',
+          t('The isolated primary aborts at {0} s, before the standby opens at {1} s', fmt(m.abort), fmt(m.tOpen)));
   }
 
   function renderReadout(m) {
     if (m.observerLost) {
-      var o = chip('rd', 'Failover initiated', 'never', '',
-        'No observer is connected, so nothing can initiate fast-start failover');
-      o += chip('ik', 'New primary open', 'n/a', '',
-        'Nothing failed over \u2014 the standby is still a standby, and the primary is still the primary');
+      var o = chip('rd', t('Failover initiated'), t('never'), '',
+        t('No observer is connected, so nothing can initiate fast-start failover'));
+      o += chip('ik', t('New primary open'), t('n/a'), '',
+        t('Nothing failed over \u2014 the standby is still a standby, and the primary is still the primary'));
       o += m.ifDiedNow > 0
-        ? chip('am', 'If the primary died right now', '\u2264 ' + fmt(m.ifDiedNow), 's of redo',
-            'Failover would be manual, and MaxPerformance leaves the current apply lag of <span class="mono">' +
-            fmt(m.ifDiedNow) + ' s</span> of redo at risk')
-        : chip('ik', 'If the primary died right now', '0', '',
-            'Failover would be manual, but a synchronized standby in MaxAvailability means zero data loss');
+        ? chip('am', t('If the primary died right now'), '\u2264 ' + fmt(m.ifDiedNow), t('s of redo'),
+            t('Failover would be manual, and MaxPerformance leaves the current apply lag of <span class="mono">{0} s</span> of redo at risk', fmt(m.ifDiedNow)))
+        : chip('ik', t('If the primary died right now'), '0', '',
+            t('Failover would be manual, but a synchronized standby in MaxAvailability means zero data loss'));
       o += splitBrainChip(m);
       els.chips.innerHTML = o;
       return;
     }
 
-    var out = chip('vi', 'Failover initiated at', fmt(m.initiate), 's', m.pingSet
-      ? 'Detection by <span class="mono">ObserverPingInterval</span> \u00d7 (<span class="mono">ObserverPingRetry</span> + 1)'
-      : 'One <span class="mono">FastStartFailoverThreshold</span> after the observer lost the primary');
+    var out = chip('vi', t('Failover initiated at'), fmt(m.initiate), 's', m.pingSet
+      ? t('Detection by <span class="mono">ObserverPingInterval</span> \u00d7 (<span class="mono">ObserverPingRetry</span> + 1)')
+      : t('One <span class="mono">FastStartFailoverThreshold</span> after the observer lost the primary'));
 
     out += m.blocked
-      ? chip('rd', 'New primary open', 'not permitted', '', 'Readiness check failed, so no failover is attempted')
-      : chip('tl', 'New primary open', fmt(m.tOpen), 's',
-          fmt(m.initiate) + (m.netHop > 0 ? ' + ' + fmt(m.netHop) : '') + ' + ' + fmt(m.applyRemaining) + ' + ' + fmt(C.roleTransition) +
-          ' \u2014 initiation, ' + (m.netHop > 0 ? 'network, ' : '') + 'terminal recovery, role change');
+      ? chip('rd', t('New primary open'), t('not permitted'), '', t('Readiness check failed, so no failover is attempted'))
+      : chip('tl', t('New primary open'), fmt(m.tOpen), 's',
+          m.netHop > 0
+            ? t('{0} + {1} + {2} + {3} \u2014 initiation, network, terminal recovery, role change',
+                fmt(m.initiate), fmt(m.netHop), fmt(m.applyRemaining), fmt(C.roleTransition))
+            : t('{0} + {1} + {2} \u2014 initiation, terminal recovery, role change',
+                fmt(m.initiate), fmt(m.applyRemaining), fmt(C.roleTransition)));
 
     if (m.dataLossKind === 'none') {
-      out += chip('ik', 'Maximum data loss', '0', '', 'SYNC transport in MaxAvailability \u2014 zero data loss');
+      out += chip('ik', t('Maximum data loss'), '0', '', t('SYNC transport in MaxAvailability \u2014 zero data loss'));
     } else if (m.dataLossKind === 'bounded') {
-      out += chip('am', 'Maximum data loss', '\u2264 ' + fmt(m.dataLossSeconds), 's of redo',
-        'ASYNC transport, bounded by <span class="mono">FastStartFailoverLagLimit</span> = ' + fmt(C.lagLimit) + ' s');
+      out += chip('am', t('Maximum data loss'), '\u2264 ' + fmt(m.dataLossSeconds), t('s of redo'),
+        t('ASYNC transport, bounded by <span class="mono">FastStartFailoverLagLimit</span> = {0} s', fmt(C.lagLimit)));
     } else {
-      out += chip('rd', 'Maximum data loss', '\u2014', '', 'No failover occurs, so nothing is lost and nothing is recovered');
+      out += chip('rd', t('Maximum data loss'), '\u2014', '', t('No failover occurs, so nothing is lost and nothing is recovered'));
     }
 
     if (C.scenario === 'isolated') {
       out += m.abort !== null
-        ? chip('rd', 'Primary self-abort at', fmt(m.abort), 's',
-            '<span class="mono">FastStartFailoverPmyShutdown = TRUE</span> \u2014 stalled for one threshold')
-        : chip('rd', 'Primary self-abort at', 'never', '',
-            '<span class="mono">FastStartFailoverPmyShutdown = FALSE</span> \u2014 stays stalled indefinitely');
+        ? chip('rd', t('Primary self-abort at'), fmt(m.abort), 's',
+            t('<span class="mono">FastStartFailoverPmyShutdown = TRUE</span> \u2014 stalled for one threshold'))
+        : chip('rd', t('Primary self-abort at'), t('never'), '',
+            t('<span class="mono">FastStartFailoverPmyShutdown = FALSE</span> \u2014 stays stalled indefinitely'));
     }
 
     out += splitBrainChip(m);
@@ -2211,56 +2482,52 @@ td .mono{font-size:12px;color:var(--ik)}
     var iso = C.scenario === 'isolated';
 
     if (m.observerLost) {
-      els.heading.textContent = 'Timeline \u2014 observer lost';
-      els.eyebrow.textContent = 't = 0 is the observer host failure';
+      els.heading.textContent = t('Timeline \u2014 observer lost');
+      els.eyebrow.textContent = t('t = 0 is the observer host failure');
       els.banner.hidden = true;
       els.callout.hidden = false;
-      els.calloutK.textContent = 'Unobserved';
-      els.calloutBody.innerHTML = 'The configuration is running unobserved: <span class="mono">V$DATABASE.FS_FAILOVER_STATUS</span> reads <span class="mono">PRIMARY UNOBSERVED</span>, <span class="mono">FS_FAILOVER_OBSERVER_PRESENT</span> reads <span class="mono">NO</span>, and once enough time passes the broker raises <span class="mono">ORA-16820</span>. Attempt a failover in this state and it fails with <span class="mono">ORA-16658</span>, \u201cunobserved fast-start failover configuration\u201d. Restart the observer, or register up to three of them (19c) so losing the master leaves a backup for the broker to promote automatically.';
-      els.caption.innerHTML = 'Nothing on this timeline moves. The primary still reaches the target standby, so it keeps committing, and the standby keeps applying; only the automation is gone. <span class="mono">FastStartFailoverThreshold</span> never starts counting \u2014 the party that counts it is the observer. The exposure is the next failure: if the primary died right now, somebody would have to fail over by hand.';
-      els.summary.textContent = 'Timeline: the observer host is down at t = 0. The primary stays open read-write and keeps shipping redo, the standby keeps applying, and no fast-start failover can be initiated while the configuration is unobserved.' +
+      els.calloutK.textContent = t('Unobserved');
+      els.calloutBody.innerHTML = t('The configuration is running unobserved: <span class="mono">V$DATABASE.FS_FAILOVER_STATUS</span> reads <span class="mono">PRIMARY UNOBSERVED</span>, <span class="mono">FS_FAILOVER_OBSERVER_PRESENT</span> reads <span class="mono">NO</span>, and once enough time passes the broker raises <span class="mono">ORA-16820</span>. Attempt a failover in this state and it fails with <span class="mono">ORA-16658</span>, \u201cunobserved fast-start failover configuration\u201d. Restart the observer, or register up to three of them (19c) so losing the master leaves a backup for the broker to promote automatically.');
+      els.caption.innerHTML = t('Nothing on this timeline moves. The primary still reaches the target standby, so it keeps committing, and the standby keeps applying; only the automation is gone. <span class="mono">FastStartFailoverThreshold</span> never starts counting \u2014 the party that counts it is the observer. The exposure is the next failure: if the primary died right now, somebody would have to fail over by hand.');
+      els.summary.textContent = t('Timeline: the observer host is down at t = 0. The primary stays open read-write and keeps shipping redo, the standby keeps applying, and no fast-start failover can be initiated while the configuration is unobserved.') +
         (m.ifDiedNow > 0
-          ? ' If the primary died now, a manual failover would lose up to ' + fmt(m.ifDiedNow) + ' seconds of redo.'
-          : ' If the primary died now, a manual failover would lose nothing, because the standby is synchronized.');
+          ? ' ' + t('If the primary died now, a manual failover would lose up to {0} seconds of redo.', fmt(m.ifDiedNow))
+          : ' ' + t('If the primary died now, a manual failover would lose nothing, because the standby is synchronized.'));
       return;
     }
 
-    els.heading.textContent = iso ? 'Timeline \u2014 isolated primary' : 'Timeline \u2014 primary crash';
-    els.calloutK.textContent = 'Split brain';
+    els.heading.textContent = iso ? t('Timeline \u2014 isolated primary') : t('Timeline \u2014 primary crash');
+    els.calloutK.textContent = t('Split brain');
 
     els.banner.hidden = !m.blocked;
     if (m.blocked) {
-      els.bannerBody.innerHTML = 'Fast-start failover is not permitted: the standby\u2019s apply lag of <span class="mono">' +
-        fmt(C.standbyLag) + ' s</span> exceeds <span class="mono">FastStartFailoverLagLimit = ' + fmt(C.lagLimit) +
-        ' s</span>. The observer still detects the loss and still counts the threshold, but the readiness check fails, so the standby stays a standby.';
+      els.bannerBody.innerHTML = t('Fast-start failover is not permitted: the standby\u2019s apply lag of <span class="mono">{0} s</span> exceeds <span class="mono">FastStartFailoverLagLimit = {1} s</span>. The observer still detects the loss and still counts the threshold, but the readiness check fails, so the standby stays a standby.',
+        fmt(C.standbyLag), fmt(C.lagLimit));
     }
 
     els.callout.hidden = !iso;
     if (iso) {
       els.calloutBody.innerHTML = m.abort !== null
-        ? 'Two independent <span class="mono">FastStartFailoverThreshold</span> clocks are running, one on each side of the partition. The observer\u2019s clock decides when the standby is promoted; the primary\u2019s own stall clock decides when it aborts itself at <span class="mono">' + fmt(m.abort) + ' s</span>. Neither side can see the other, so at most one database ends up open.'
-        : 'With <span class="mono">FastStartFailoverPmyShutdown = FALSE</span> the isolated primary never aborts. It stays <span class="mono">STALLED</span>, which keeps it from committing anything the new primary will not have \u2014 the stall is the split-brain protection.';
+        ? t('Two independent <span class="mono">FastStartFailoverThreshold</span> clocks are running, one on each side of the partition. The observer\u2019s clock decides when the standby is promoted; the primary\u2019s own stall clock decides when it aborts itself at <span class="mono">{0} s</span>. Neither side can see the other, so at most one database ends up open.', fmt(m.abort))
+        : t('With <span class="mono">FastStartFailoverPmyShutdown = FALSE</span> the isolated primary never aborts. It stays <span class="mono">STALLED</span>, which keeps it from committing anything the new primary will not have \u2014 the stall is the split-brain protection.');
     }
 
     els.caption.innerHTML = m.blocked
-      ? 'The observer counts down as usual, but at <span class="mono">' + fmt(m.initiate) +
-        ' s</span> the standby fails the readiness check, so nothing is promoted. Lower the apply lag or raise <span class="mono">FastStartFailoverLagLimit</span> to see the failover proceed.'
+      ? t('The observer counts down as usual, but at <span class="mono">{0} s</span> the standby fails the readiness check, so nothing is promoted. Lower the apply lag or raise <span class="mono">FastStartFailoverLagLimit</span> to see the failover proceed.', fmt(m.initiate))
       : m.pingSet
-        ? 'With both ping properties set, the observer stops waiting after <span class="mono">' + fmt(C.pingInterval) +
-          ' ms \u00d7 ' + (C.pingRetry + 1) + ' = ' + fmt(m.detect) + ' s</span> and initiates immediately. The new primary is open at <span class="mono">' +
-          fmt(m.tOpen) + ' s</span>, and <span class="mono">FastStartFailoverThreshold = ' + fmt(C.threshold) + ' s</span> never enters the observer\u2019s arithmetic.'
-        : 'The observer spends <span class="mono">' + fmt(C.threshold) + ' s</span> trying to reconnect, initiates at <span class="mono">' +
-          fmt(m.initiate) + ' s</span>, and the standby is open read-write at <span class="mono">' + fmt(m.tOpen) +
-          ' s</span>. Most of that is the threshold, which is the one number you actually control.';
+        ? t('With both ping properties set, the observer stops waiting after <span class="mono">{0} ms \u00d7 {1} = {2} s</span> and initiates immediately. The new primary is open at <span class="mono">{3} s</span>, and <span class="mono">FastStartFailoverThreshold = {4} s</span> never enters the observer\u2019s arithmetic.',
+            fmt(C.pingInterval), C.pingRetry + 1, fmt(m.detect), fmt(m.tOpen), fmt(C.threshold))
+        : t('The observer spends <span class="mono">{0} s</span> trying to reconnect, initiates at <span class="mono">{1} s</span>, and the standby is open read-write at <span class="mono">{2} s</span>. Most of that is the threshold, which is the one number you actually control.',
+            fmt(C.threshold), fmt(m.initiate), fmt(m.tOpen));
 
-    els.eyebrow.textContent = 't = 0 is the failure event \u00b7 horizon ' + fmt(m.horizon) + ' s';
-    els.summary.textContent = 'Timeline: failover initiated at ' + fmt(m.initiate) + ' seconds; ' +
-      (m.blocked ? 'failover not permitted because the apply lag exceeds FastStartFailoverLagLimit; '
-                 : 'new primary open at ' + fmt(m.tOpen) + ' seconds; ') +
-      (m.dataLossKind === 'none' ? 'zero data loss.'
-        : m.dataLossKind === 'bounded' ? 'up to ' + fmt(m.dataLossSeconds) + ' seconds of redo lost.'
-        : 'no failover occurs.') +
-      (m.abort !== null ? ' Primary aborts itself at ' + fmt(m.abort) + ' seconds.' : '');
+    els.eyebrow.textContent = t('t = 0 is the failure event \u00b7 horizon {0} s', fmt(m.horizon));
+    els.summary.textContent = t('Timeline: failover initiated at {0} seconds; ', fmt(m.initiate)) +
+      (m.blocked ? t('failover not permitted because the apply lag exceeds FastStartFailoverLagLimit; ')
+                 : t('new primary open at {0} seconds; ', fmt(m.tOpen))) +
+      (m.dataLossKind === 'none' ? t('zero data loss.')
+        : m.dataLossKind === 'bounded' ? t('up to {0} seconds of redo lost.', fmt(m.dataLossSeconds))
+        : t('no failover occurs.')) +
+      (m.abort !== null ? ' ' + t('Primary aborts itself at {0} seconds.', fmt(m.abort)) : '');
   }
 
   /* ---------- control enable / disable rules ---------- */
@@ -2275,17 +2542,17 @@ td .mono{font-size:12px;color:var(--ik)}
     els.vLagLimit.textContent = C.lagLimit + ' s';
     els.vRole.textContent = C.roleTransition + ' s';
     els.vLatency.textContent = C.latency + ' ms';
-    els.vPingSet.textContent = C.pingSet ? 'set explicitly' : 'not set';
+    els.vPingSet.textContent = C.pingSet ? t('set explicitly') : t('not set');
     els.vShutdown.textContent = C.pmyShutdown ? 'TRUE' : 'FALSE';
 
     els.nScenario.textContent = obs
-      ? OBS_NOTES.scenario
+      ? t(OBS_NOTES.scenario)
       : iso
-        ? 'A network partition cuts the primary off from both the observer and the standby. The primary is still running.'
-        : 'The primary host dies outright. Observer and standby both lose it at the same instant.';
+        ? t('A network partition cuts the primary off from both the observer and the standby. The primary is still running.')
+        : t('The primary host dies outright. Observer and standby both lose it at the same instant.');
     els.nMode.innerHTML = avail
-      ? 'SYNC redo transport. The standby must have been synchronized at failure time; data loss is zero.'
-      : 'ASYNC redo transport. Failover is permitted only while the apply lag stays within <span class="mono">FastStartFailoverLagLimit</span>.';
+      ? t('SYNC redo transport. The standby must have been synchronized at failure time; data loss is zero.')
+      : t('ASYNC redo transport. Failover is permitted only while the apply lag stays within <span class="mono">FastStartFailoverLagLimit</span>.');
 
     /* Controls that only a failover gives meaning to. Everything below is set
        from state on every draw, never one-shot on a change event, so switching
@@ -2294,33 +2561,33 @@ td .mono{font-size:12px;color:var(--ik)}
     els.pingInterval.disabled = obs;
     els.pingRetry.disabled = obs;
     els.ctlPingSet.classList.toggle('is-off', obs);
-    els.nPingSet.textContent = obs ? OBS_NOTES.pingset : PINGSET_NOTE;
+    els.nPingSet.textContent = t(obs ? OBS_NOTES.pingset : PINGSET_NOTE);
 
     els.role.disabled = obs;
     els.ctlRole.classList.toggle('is-off', obs);
-    els.nRole.textContent = obs ? OBS_NOTES.role : ROLE_NOTE;
+    els.nRole.textContent = t(obs ? OBS_NOTES.role : ROLE_NOTE);
 
     /* the apply lag stays live in every scenario -- here it is what a manual
        failover would cost, rather than what the readiness check looks at */
-    els.nLag.textContent = obs ? OBS_NOTES.lag : LAG_NOTE;
+    els.nLag.textContent = t(obs ? OBS_NOTES.lag : LAG_NOTE);
 
     if (obs) {
       els.ctlPing.hidden = true;
       els.threshold.disabled = true;
       els.ctlThreshold.classList.add('is-off');
       els.nThreshold.classList.remove('is-warn');
-      els.nThreshold.textContent = OBS_NOTES.threshold;
+      els.nThreshold.textContent = t(OBS_NOTES.threshold);
 
       els.nLatency.classList.remove('is-warn');
-      els.nLatency.innerHTML = LAT_NOTE;
+      els.nLatency.innerHTML = t(LAT_NOTE);
 
       els.lagLimit.disabled = true;
       els.ctlLagLimit.classList.add('is-off');
-      els.nLagLimit.textContent = OBS_NOTES.lagLimit;
+      els.nLagLimit.textContent = t(OBS_NOTES.lagLimit);
 
       els.shutdown.disabled = true;
       els.ctlShutdown.classList.add('is-off');
-      els.nShutdown.textContent = OBS_NOTES.shutdown;
+      els.nShutdown.textContent = t(OBS_NOTES.shutdown);
       return;
     }
 
@@ -2331,30 +2598,30 @@ td .mono{font-size:12px;color:var(--ik)}
     els.ctlThreshold.classList.toggle('is-off', C.pingSet);
     els.nThreshold.classList.toggle('is-warn', C.pingSet);
     els.threshold.disabled = C.pingSet && !iso;
-    if (C.pingSet) els.nThreshold.innerHTML = iso ? TH_IGNORED_ISO : TH_IGNORED;
-    else els.nThreshold.textContent = TH_NOTE;
+    if (C.pingSet) els.nThreshold.innerHTML = t(iso ? TH_IGNORED_ISO : TH_IGNORED);
+    else els.nThreshold.textContent = t(TH_NOTE);
 
     /* An RTT at or above the ping window means a healthy ping can never be
        answered in time -- worth a warning, but not modelled further. */
     var latWarn = C.pingSet && C.latency >= C.pingInterval;
     els.nLatency.classList.toggle('is-warn', latWarn);
     els.nLatency.innerHTML = latWarn
-      ? 'RTT is at or above <span class="mono">ObserverPingInterval</span>: no ping can be answered inside its window, so the observer would count failures even against a healthy primary. Raise the interval above the RTT.'
-      : LAT_NOTE;
+      ? t('RTT is at or above <span class="mono">ObserverPingInterval</span>: no ping can be answered inside its window, so the observer would count failures even against a healthy primary. Raise the interval above the RTT.')
+      : t(LAT_NOTE);
 
     els.lagLimit.disabled = avail;
     els.ctlLagLimit.classList.toggle('is-off', avail);
     els.nLagLimit.innerHTML = avail
-      ? 'Not evaluated in MaxAvailability. Readiness there means the standby was synchronized at failure time.'
-      : 'The standby is eligible for failover only while its apply lag is at or below this. Minimum 5 s.';
+      ? t('Not evaluated in MaxAvailability. Readiness there means the standby was synchronized at failure time.')
+      : t('The standby is eligible for failover only while its apply lag is at or below this. Minimum 5 s.');
 
     els.shutdown.disabled = !iso;
     els.ctlShutdown.classList.toggle('is-off', !iso);
     els.nShutdown.innerHTML = iso
       ? (C.pmyShutdown
-        ? 'The stalled primary aborts itself after one <span class="mono">FastStartFailoverThreshold</span>.'
-        : 'The primary stays stalled indefinitely instead of aborting.')
-      : 'Isolated-primary scenario only. A crashed host is already down.';
+        ? t('The stalled primary aborts itself after one <span class="mono">FastStartFailoverThreshold</span>.')
+        : t('The primary stays stalled indefinitely instead of aborting.'))
+      : t('Isolated-primary scenario only. A crashed host is already down.');
   }
 
   /* ---------- application view ---------- */
@@ -2367,15 +2634,15 @@ td .mono{font-size:12px;color:var(--ik)}
     var s = [], push = function (x) { s.push(x); };
 
     var lanes = [
-      { name: 'Service', sub: 'app_svc \u00b7 role-based', segs: [
+      { name: t('Service'), sub: t('app_svc \u00b7 role-based'), segs: [
         { a: t0, b: t1, cls: 'b-tl', lc: 'f-tl',
-          lab: ['Published by the primary\u2019s listener \u2014 it never moves', 'On the primary throughout', 'On the primary'] }] },
-      { name: 'Existing sessions', sub: 'the connection pool', segs: [
+          lab: [t('Published by the primary\u2019s listener \u2014 it never moves'), t('On the primary throughout'), t('On the primary')] }] },
+      { name: t('Existing sessions'), sub: t('the connection pool'), segs: [
         { a: t0, b: t1, cls: 'b-tl', lc: 'f-tl',
-          lab: ['Pooled sessions keep working \u2014 nothing interrupts them', 'Sessions keep working', 'Working'] }] },
-      { name: 'New connections', sub: 'the string at work', segs: [
+          lab: [t('Pooled sessions keep working \u2014 nothing interrupts them'), t('Sessions keep working'), t('Working')] }] },
+      { name: t('New connections'), sub: t('the string at work'), segs: [
         { a: t0, b: t1, cls: 'b-tl', lc: 'f-tl',
-          lab: ['Address 1 answers as always \u2014 no toll, no ORA-12514', 'Address 1 answers as always', 'Connects'] }] }
+          lab: [t('Address 1 answers as always \u2014 no toll, no ORA-12514'), t('Address 1 answers as always'), t('Connects')] }] }
     ];
 
     var H = G.axisY + 44;
@@ -2385,14 +2652,15 @@ td .mono{font-size:12px;color:var(--ik)}
 
     push('<rect class="prezone" x="' + r1(plotL) + '" y="' + G.laneTop + '" width="' + r1(X(0) - plotL) +
       '" height="' + (G.lanesBottom - G.laneTop) + '"></rect>');
-    if (X(0) - plotL >= approxW('Steady state', 10.5) + 12) push(txt('t-tick', plotL + 6, G.markY, null, 'Steady state'));
+    var ssLab = t('Steady state');
+    if (X(0) - plotL >= approxW(ssLab, 10.5) + 12) push(txt('t-tick', plotL + 6, G.markY, null, esc(ssLab)));
 
     for (var tk = Math.ceil(t0 / ap.tickStep) * ap.tickStep; tk <= t1 + 1e-9; tk += ap.tickStep) {
       push(ln('gridline', X(tk), G.laneTop, X(tk), G.axisY));
       push(txt('t-tick t-mono', X(tk), G.axisY + 16, 'middle', esc(sign(tk))));
     }
     push(ln('ax', plotL, G.axisY, plotR, G.axisY));
-    push(txt('t-tick t-mono', plotR, G.axisY + 30, 'end', 'seconds from the observer host failure'));
+    push(txt('t-tick t-mono', plotR, G.axisY + 30, 'end', esc(t('seconds from the observer host failure'))));
 
     lanes.forEach(function (lane, i) {
       var y = G.lane[i];
@@ -2410,7 +2678,7 @@ td .mono{font-size:12px;color:var(--ik)}
     });
 
     push(txt('t-top f-sl', plotL, G.topY, null,
-      esc('Nothing to draw \u2014 the observer is not in the application\u2019s path, and no failover moves the service')));
+      esc(t('Nothing to draw \u2014 the observer is not in the application\u2019s path, and no failover moves the service'))));
 
     push('</svg>');
     return s.join('');
@@ -2430,49 +2698,50 @@ td .mono{font-size:12px;color:var(--ik)}
     var aggregate = att.length > 1 && ((ap.passCost + A.rd) * pps < 22 || att.length > 48);
 
     var lanes = [
-      { name: 'Service', sub: 'app_svc \u00b7 role-based', segs: [] },
-      { name: 'Existing sessions', sub: 'the connection pool', segs: [] },
-      { name: 'New connections', sub: 'the string at work', segs: [] }
+      { name: t('Service'), sub: t('app_svc \u00b7 role-based'), segs: [] },
+      { name: t('Existing sessions'), sub: t('the connection pool'), segs: [] },
+      { name: t('New connections'), sub: t('the string at work'), segs: [] }
     ];
 
     /* lane 0 -- where the service is published */
-    lanes[0].segs.push({ a: t0, b: 0, cls: 'b-tl', lc: 'f-tl', lab: ['Published by the old primary\u2019s listener', 'On the old primary', 'Old primary'] });
+    lanes[0].segs.push({ a: t0, b: 0, cls: 'b-tl', lc: 'f-tl', lab: [t('Published by the old primary\u2019s listener'), t('On the old primary'), t('Old primary')] });
     var svcBack = m.blocked ? t1 : m.tOpen;
     lanes[0].segs.push({
       a: 0, b: svcBack, cls: 'b-hatch3', lc: 'f-rd',
-      lab: iso ? ['Old primary stalled \u2014 unreachable, service dark', 'Unreachable \u2014 dark', 'Dark']
-               : ['Nowhere \u2014 nothing publishes app_svc', 'Nowhere', '\u2014']
+      lab: iso ? [t('Old primary stalled \u2014 unreachable, service dark'), t('Unreachable \u2014 dark'), t('Dark')]
+               : [t('Nowhere \u2014 nothing publishes app_svc'), t('Nowhere'), '\u2014']
     });
-    if (!m.blocked) lanes[0].segs.push({ a: m.tOpen, b: t1, cls: 'b-tl', lc: 'f-tl', lab: ['Published by the new primary \u2014 started at role change', 'On the new primary', 'New primary'] });
+    if (!m.blocked) lanes[0].segs.push({ a: m.tOpen, b: t1, cls: 'b-tl', lc: 'f-tl', lab: [t('Published by the new primary \u2014 started at role change'), t('On the new primary'), t('New primary')] });
 
     /* lane 1 -- sessions that were already connected */
-    lanes[1].segs.push({ a: t0, b: 0, cls: 'b-tl', lc: 'f-tl', lab: ['Pooled sessions working on the primary', 'Working', 'OK'] });
+    lanes[1].segs.push({ a: t0, b: 0, cls: 'b-tl', lc: 'f-tl', lab: [t('Pooled sessions working on the primary'), t('Working'), 'OK'] });
     var poolEnd = ap.tConn !== null ? ap.tConn : t1;
     if (iso) {
-      lanes[1].segs.push({ a: 0, b: poolEnd, cls: 'b-am', lc: 'f-am', lab: ['In-flight calls hang \u2014 a partition returns no errors', 'Calls hang \u2014 pool unusable', 'Hanging'] });
+      lanes[1].segs.push({ a: 0, b: poolEnd, cls: 'b-am', lc: 'f-am', lab: [t('In-flight calls hang \u2014 a partition returns no errors'), t('Calls hang \u2014 pool unusable'), t('Hanging')] });
     } else {
       var bk = Math.min(1.5, poolEnd);
-      lanes[1].segs.push({ a: 0, b: bk, cls: 'b-hatch3', lc: 'f-rd', lab: ['In-flight calls error \u2014 ORA-3113', 'Errors'] });
-      lanes[1].segs.push({ a: bk, b: poolEnd, cls: 'b-am', lc: 'f-am', lab: ['Pool empty \u2014 requests wait or fail', 'Pool empty', 'Empty'] });
+      lanes[1].segs.push({ a: 0, b: bk, cls: 'b-hatch3', lc: 'f-rd', lab: [t('In-flight calls error \u2014 ORA-3113'), t('Errors')] });
+      lanes[1].segs.push({ a: bk, b: poolEnd, cls: 'b-am', lc: 'f-am', lab: [t('Pool empty \u2014 requests wait or fail'), t('Pool empty'), t('Empty')] });
     }
-    if (ap.tConn !== null) lanes[1].segs.push({ a: ap.tConn, b: t1, cls: 'b-tl', lc: 'f-tl', lab: ['Pool rebuilt on the new primary', 'Pool rebuilt', 'OK'] });
+    if (ap.tConn !== null) lanes[1].segs.push({ a: ap.tConn, b: t1, cls: 'b-tl', lc: 'f-tl', lab: [t('Pool rebuilt on the new primary'), t('Pool rebuilt'), 'OK'] });
 
     /* lane 2 -- the retry ladder */
-    lanes[2].segs.push({ a: t0, b: 0, cls: 'b-sl', lc: 'f-sl', lab: ['Any request connects at once', 'Connects at once', '\u2014'] });
+    lanes[2].segs.push({ a: t0, b: 0, cls: 'b-sl', lc: 'f-sl', lab: [t('Any request connects at once'), t('Connects at once'), '\u2014'] });
     var ticks = [];
     if (aggregate) {
       var failN = ap.tConn !== null ? att.length - 1 : att.length;
       var failEnd = ap.tConn !== null ? lastA.start : Math.min(ap.gaveUp, t1);
       if (failN > 0) lanes[2].segs.push({
         a: 0, b: failEnd, cls: 'b-am', lc: 'f-am',
-        lab: [failN + ' failed traversals \u2014 address 1 waits, address 2 refuses (ORA-12514)', failN + ' failed traversals', 'Retrying']
+        lab: [tp('{0} failed traversal \u2014 address 1 waits, address 2 refuses (ORA-12514)|{0} failed traversals \u2014 address 1 waits, address 2 refuses (ORA-12514)', failN, failN),
+              tp('{0} failed traversal|{0} failed traversals', failN, failN), t('Retrying')]
       });
       if (ap.tConn !== null) lanes[2].segs.push({ a: lastA.start, b: lastA.a1End, cls: 'b-am', lc: 'f-am', lab: [fmt(ap.d1) + ' s'] });
     } else {
       att.forEach(function (at) {
         lanes[2].segs.push({
           a: at.start, b: at.a1End, cls: 'b-am', lc: 'f-am',
-          lab: ['Address 1 \u2014 dead, ' + fmt(ap.d1) + ' s', fmt(ap.d1) + ' s']
+          lab: [t('Address 1 \u2014 dead, {0} s', fmt(ap.d1)), fmt(ap.d1) + ' s']
         });
         if (!at.ok && at.end < t1) ticks.push(at.end);
       });
@@ -2480,11 +2749,11 @@ td .mono{font-size:12px;color:var(--ik)}
     if (ap.tConn !== null) {
       lanes[2].segs.push({
         a: ap.tConn, b: t1, cls: 'b-tl', lc: 'f-tl',
-        lab: ap.drop ? ['Connected \u2014 each later connect still pays the dead address first', 'Connected \u2014 still paying the toll', 'Connected']
-                     : ['Connected \u2014 the refused address costs almost nothing', 'Connected', 'OK']
+        lab: ap.drop ? [t('Connected \u2014 each later connect still pays the dead address first'), t('Connected \u2014 still paying the toll'), t('Connected')]
+                     : [t('Connected \u2014 the refused address costs almost nothing'), t('Connected'), 'OK']
       });
     } else if (ap.gaveUp !== null && ap.gaveUp < t1) {
-      lanes[2].segs.push({ a: ap.gaveUp, b: t1, cls: 'b-sl', lc: 'f-sl', lab: ['No more attempts \u2014 the string is exhausted', 'String exhausted', '\u2014'] });
+      lanes[2].segs.push({ a: ap.gaveUp, b: t1, cls: 'b-sl', lc: 'f-sl', lab: [t('No more attempts \u2014 the string is exhausted'), t('String exhausted'), '\u2014'] });
     }
 
     /* braces under the axis */
@@ -2492,27 +2761,27 @@ td .mono{font-size:12px;color:var(--ik)}
     if (att.length > 1 && !aggregate) {
       braces.push({
         a: att[0].start, b: att[1].start, tone: 'br-am', mono: false,
-        name: 'One traversal + RETRY_DELAY',
+        name: t('One traversal + RETRY_DELAY'),
         val: fmt(ap.d1) + ' + ' + fmt(ap.refuse) + ' + ' + fmt(A.rd) + ' = ' + fmt(ap.passCost + A.rd) + ' s'
       });
     } else {
       braces.push({
         a: 0, b: att[0].a1End, tone: 'br-am', mono: true,
         name: 'min(TRANSPORT_CONNECT_TIMEOUT, CONNECT_TIMEOUT)',
-        val: fmt(ap.d1) + ' s on the dead address, every traversal'
+        val: t('{0} s on the dead address, every traversal', fmt(ap.d1))
       });
     }
     if (ap.tConn !== null && ap.tConn - m.tOpen > 2) {
       braces.push({
         a: m.tOpen, b: ap.tConn, tone: 'br-vi', mono: false,
-        name: 'Client-side overhead',
-        val: fmt(ap.tConn - m.tOpen) + ' s after the database is back'
+        name: t('Client-side overhead'),
+        val: t('{0} s after the database is back', fmt(ap.tConn - m.tOpen))
       });
     }
     if (ap.gaveUp !== null && !ap.clipped) {
       braces.push({
         a: 0, b: ap.gaveUp, tone: 'br-rd', mono: false,
-        name: 'Retry budget \u2014 exhausted',
+        name: t('Retry budget \u2014 exhausted'),
         val: (A.rc + 1) + ' \u00d7 ' + fmt(ap.passCost) + ' + ' + A.rc + ' \u00d7 ' + fmt(A.rd) + ' = ' + fmt(ap.gaveUp) + ' s'
       });
     }
@@ -2543,14 +2812,15 @@ td .mono{font-size:12px;color:var(--ik)}
     /* pre-failure zone, gridlines, axis */
     push('<rect class="prezone" x="' + r1(plotL) + '" y="' + G.laneTop + '" width="' + r1(X(0) - plotL) +
       '" height="' + (G.lanesBottom - G.laneTop) + '"></rect>');
-    if (X(0) - plotL >= approxW('Steady state', 10.5) + 12) push(txt('t-tick', plotL + 6, G.markY, null, 'Steady state'));
+    var ssLab = t('Steady state');
+    if (X(0) - plotL >= approxW(ssLab, 10.5) + 12) push(txt('t-tick', plotL + 6, G.markY, null, esc(ssLab)));
 
     for (var tk = Math.ceil(t0 / ap.tickStep) * ap.tickStep; tk <= t1 + 1e-9; tk += ap.tickStep) {
       push(ln('gridline', X(tk), G.laneTop, X(tk), G.axisY));
       push(txt('t-tick t-mono', X(tk), G.axisY + 16, 'middle', esc(sign(tk))));
     }
     push(ln('ax', plotL, G.axisY, plotR, G.axisY));
-    push(txt('t-tick t-mono', plotR, G.axisY + 30, 'end', 'seconds from the failure event'));
+    push(txt('t-tick t-mono', plotR, G.axisY + 30, 'end', esc(t('seconds from the failure event'))));
 
     /* lanes */
     lanes.forEach(function (lane, i) {
@@ -2578,15 +2848,15 @@ td .mono{font-size:12px;color:var(--ik)}
     var xz = X(0);
     push(ln('partition', xz, G.laneTop - 4, xz, G.lanesBottom + 4));
     push(txt('t-mark f-rd', xz + 8, G.markY, null,
-      iso ? 'Partition \u2014 the primary becomes unreachable' : 'Primary crashes \u2014 requests start failing'));
+      esc(iso ? t('Partition \u2014 the primary becomes unreachable') : t('Primary crashes \u2014 requests start failing'))));
 
     /* the service coming back */
     var gapA = G.lane[0] + G.laneH;
     if (!m.blocked) {
       var xo = X(m.tOpen);
       push(ln('m-tl', xo, G.lane[0] - 6, xo, G.lanesBottom + 4, ' stroke-width="1.5" stroke-dasharray="5 4"'));
-      var oCands = ['New primary opens \u2014 app_svc published at t = ' + fmt(m.tOpen) + ' s',
-                    'app_svc published at t = ' + fmt(m.tOpen) + ' s', 'app_svc back'];
+      var oCands = [t('New primary opens \u2014 app_svc published at t = {0} s', fmt(m.tOpen)),
+                    t('app_svc published at t = {0} s', fmt(m.tOpen)), t('app_svc back')];
       var oLab = null;
       for (var oi = 0; oi < oCands.length; oi++) {
         if (xo + 8 + approxW(oCands[oi], 11.5) <= plotR) { oLab = oCands[oi]; break; }
@@ -2601,18 +2871,18 @@ td .mono{font-size:12px;color:var(--ik)}
       var xc = X(ap.tConn);
       push(ln('m-vi', xc, G.lane[2] - 6, xc, G.lane[2] + G.laneH + 4, ' stroke-width="2"'));
       push('<path class="f-vi" d="M' + r1(xc) + ',' + (G.lane[2] + 11) + ' l6,6 l-6,6 l-6,-6 z"></path>');
-      var cLab = 'Application reconnected at t = ' + fmt(ap.tConn) + ' s';
+      var cLab = t('Application reconnected at t = {0} s', fmt(ap.tConn));
       var cX = xc + 9, cAnc = null;
       if (cX + approxW(cLab, 11.5) > plotR) { cX = xc - 9; cAnc = 'end'; }
       push(txt('t-mark f-vi', cX, gapB + 16, cAnc, esc(cLab)));
     } else if (ap.clipped) {
       push(txt('t-mark f-rd', plotR, gapB + 16, 'end',
-        esc('keeps retrying \u2192 gives up at t = ' + fmtClock(ap.gaveUp))));
+        esc(t('keeps retrying \u2192 gives up at t = {0}', fmtClock(ap.gaveUp)))));
     } else if (ap.gaveUp !== null) {
       var xg = X(ap.gaveUp), cyg = G.lane[2] + G.laneH / 2;
       push(ln('m-rd', xg - 7, cyg - 7, xg + 7, cyg + 7, ' stroke-width="2.5"'));
       push(ln('m-rd', xg + 7, cyg - 7, xg - 7, cyg + 7, ' stroke-width="2.5"'));
-      var gLab = 'ORA-12514 to the application at t = ' + fmt(ap.gaveUp) + ' s';
+      var gLab = t('ORA-12514 to the application at t = {0} s', fmt(ap.gaveUp));
       var gX = xg + 9, gAnc = null;
       if (gX + approxW(gLab, 11.5) > plotR) { gX = xg - 9; gAnc = 'end'; }
       push(txt('t-mark f-rd', gX, gapB + 16, gAnc, esc(gLab)));
@@ -2621,13 +2891,13 @@ td .mono{font-size:12px;color:var(--ik)}
     /* top annotation */
     if (ap.tConn !== null) {
       push(braceUp(xz, X(ap.tConn), G.braceY, 'br-sl'));
-      var tLab = 'Application outage = ' + fmt(ap.tConn) + ' s \u2014 ' + fmt(ap.tConn - m.tOpen) + ' s of it client-side';
+      var tLab = t('Application outage = {0} s \u2014 {1} s of it client-side', fmt(ap.tConn), fmt(ap.tConn - m.tOpen));
       var tw = approxW(tLab, 12);
       push(txt('t-top', Math.min(Math.max((xz + X(ap.tConn)) / 2, tw / 2 + 6), W - tw / 2 - 6), G.topY, 'middle', esc(tLab)));
     } else if (m.blocked) {
-      push(txt('t-top f-rd', plotL, G.topY, null, 'No failover is coming \u2014 every traversal is refused, the application stays down'));
+      push(txt('t-top f-rd', plotL, G.topY, null, esc(t('No failover is coming \u2014 every traversal is refused, the application stays down'))));
     } else {
-      push(txt('t-top f-rd', plotL, G.topY, null, 'The connect string gives up before the failover finishes \u2014 the application stays down'));
+      push(txt('t-top f-rd', plotL, G.topY, null, esc(t('The connect string gives up before the failover finishes \u2014 the application stays down'))));
     }
 
     /* braces */
@@ -2657,13 +2927,13 @@ td .mono{font-size:12px;color:var(--ik)}
     lines.push('     (ADDRESS = (PROTOCOL = tcp)(HOST = dc2-sby01)(PORT = 1521)))');
     lines.push('   (CONNECT_DATA = (SERVICE_NAME = <span class="svc">app_svc</span>)))');
     var absent = [];
-    if (A.tct === 60) absent.push('TRANSPORT_CONNECT_TIMEOUT (60 s default)');
-    if (A.ct === 0) absent.push('CONNECT_TIMEOUT (no cap)');
-    if (A.rc === 0) absent.push('RETRY_COUNT (0 \u2014 no retries)');
-    if (A.rd === 0) absent.push('RETRY_DELAY (immediate)');
+    if (A.tct === 60) absent.push('TRANSPORT_CONNECT_TIMEOUT ' + t('(60 s default)'));
+    if (A.ct === 0) absent.push('CONNECT_TIMEOUT ' + t('(no cap)'));
+    if (A.rc === 0) absent.push('RETRY_COUNT ' + t('(0 \u2014 no retries)'));
+    if (A.rd === 0) absent.push('RETRY_DELAY ' + t('(immediate)'));
     if (absent.length) {
       lines.push('');
-      lines.push('<span class="dim"># not in the string, defaults apply:</span>');
+      lines.push('<span class="dim"># ' + t('not in the string, defaults apply:') + '</span>');
       for (var j = 0; j < absent.length; j += 2)
         lines.push('<span class="dim">#   ' + absent.slice(j, j + 2).join(' \u00b7 ') + '</span>');
     }
@@ -2699,45 +2969,45 @@ td .mono{font-size:12px;color:var(--ik)}
     b.push(cfgCmd('CONNECT sys@prm01 AS SYSDBA;'));
     b.push('');
     b.push(cfgCmd("EDIT DATABASE 'sby01' SET PROPERTY 'LogXptMode' = '" +
-      cfgVal(xptVal, async) + "';", async ? 'default' : null));
+      cfgVal(xptVal, async) + "';", async ? t('default') : null));
     b.push(cfgCmd("EDIT DATABASE 'prm01' SET PROPERTY 'LogXptMode' = '" +
       cfgVal(xptVal, async) + "';"));
-    b.push(cfgNote('(prm01 ships redo with it once a role swap makes it the standby)'));
+    b.push(cfgNote(t('(prm01 ships redo with it once a role swap makes it the standby)')));
     if (async && avail) {
-      b.push(cfgNote('(mismatch: for MaxAvailability the broker documents SYNC or', 'bad'));
-      b.push(cfgNote(' FASTSYNC \u2014 pick one of those in the commit section above)', 'bad'));
+      b.push(cfgNote(t('(mismatch: for MaxAvailability the broker documents SYNC or'), 'bad'));
+      b.push(cfgNote(t(' FASTSYNC \u2014 pick one of those in the commit section above)'), 'bad'));
     }
     if (fast && !avail) {
-      b.push(cfgNote('(FASTSYNC is documented for MaxAvailability only)', 'bad'));
+      b.push(cfgNote(t('(FASTSYNC is documented for MaxAvailability only)'), 'bad'));
     }
     b.push('');
     b.push(cfgCmd('EDIT CONFIGURATION SET PROTECTION MODE AS ' +
       (avail ? 'MAXAVAILABILITY' : 'MAXPERFORMANCE') + ';'));
     b.push('');
     b.push(cfgCmd('EDIT CONFIGURATION SET PROPERTY FastStartFailoverThreshold = ' +
-      cfgVal(C.threshold, C.threshold === 30) + ';', C.threshold === 30 ? 'default' : null));
+      cfgVal(C.threshold, C.threshold === 30) + ';', C.threshold === 30 ? t('default') : null));
     if (C.pingSet) {
       b.push(cfgCmd('EDIT CONFIGURATION SET PROPERTY ObserverPingInterval = ' +
         cfgVal(C.pingInterval, C.pingInterval === 100) + ';'));
       b.push(cfgCmd('EDIT CONFIGURATION SET PROPERTY ObserverPingRetry = ' +
         cfgVal(C.pingRetry, C.pingRetry === 10) + ';'));
-      b.push(cfgNote('(with both set, the threshold above is ignored for detection:'));
+      b.push(cfgNote(t('(with both set, the threshold above is ignored for detection:')));
       b.push(cfgNote(' ' + C.pingInterval + ' ms \u00d7 (' + C.pingRetry + ' + 1) \u2248 ' +
         fmt(detectS) + ' s)'));
     } else {
-      b.push(cfgNote('(ObserverPingInterval / ObserverPingRetry stay unset \u2014'));
-      b.push(cfgNote(' detection runs on the threshold)'));
+      b.push(cfgNote(t('(ObserverPingInterval / ObserverPingRetry stay unset \u2014')));
+      b.push(cfgNote(t(' detection runs on the threshold)')));
     }
     if (avail) {
-      b.push(cfgNote('(FastStartFailoverLagLimit not evaluated in MaxAvailability \u2014'));
-      b.push(cfgNote(' the standby must be synchronized instead)'));
+      b.push(cfgNote(t('(FastStartFailoverLagLimit not evaluated in MaxAvailability \u2014')));
+      b.push(cfgNote(t(' the standby must be synchronized instead)')));
     } else {
       b.push(cfgCmd('EDIT CONFIGURATION SET PROPERTY FastStartFailoverLagLimit = ' +
-        cfgVal(C.lagLimit, C.lagLimit === 30) + ';', C.lagLimit === 30 ? 'default' : null));
+        cfgVal(C.lagLimit, C.lagLimit === 30) + ';', C.lagLimit === 30 ? t('default') : null));
     }
     b.push(cfgCmd('EDIT CONFIGURATION SET PROPERTY FastStartFailoverPmyShutdown = ' +
       cfgVal(C.pmyShutdown ? 'TRUE' : 'FALSE', C.pmyShutdown) + ';',
-      C.pmyShutdown ? 'default' : null));
+      C.pmyShutdown ? t('default') : null));
     b.push('');
     b.push(cfgCmd('ENABLE FAST_START FAILOVER;'));
     els.cfgBroker.innerHTML = b.join('\n');
@@ -2746,26 +3016,24 @@ td .mono{font-size:12px;color:var(--ik)}
     var o = [];
     o.push(cfgCmd('CONNECT sys@prm01 AS SYSDBA;'));
     o.push(cfgCmd('START OBSERVER IN BACKGROUND;'));
-    o.push(cfgNote('(the prompt returns; the observer process keeps running)'));
+    o.push(cfgNote(t('(the prompt returns; the observer process keeps running)')));
     o.push('');
     if (C.scenario === 'observer-lost') {
-      o.push(cfgNote('(chapter 1 is currently killing this process at t = 0 \u2014', 'bad'));
-      o.push(cfgNote(' while it is gone, no fast-start failover is possible)', 'bad'));
+      o.push(cfgNote(t('(chapter 1 is currently killing this process at t = 0 \u2014'), 'bad'));
+      o.push(cfgNote(t(' while it is gone, no fast-start failover is possible)'), 'bad'));
     } else if (C.pingSet) {
-      o.push(cfgNote('(this is the process that initiates failover, here after \u2248 ' +
-        fmt(detectS) + ' s)'));
+      o.push(cfgNote(t('(this is the process that initiates failover, here after \u2248 {0} s)', fmt(detectS))));
     } else {
-      o.push(cfgNote('(this is the process that runs the ' + C.threshold +
-        ' s reconnect clock)'));
+      o.push(cfgNote(t('(this is the process that runs the {0} s reconnect clock)', C.threshold)));
     }
-    o.push(cfgNote('(prm01 and sby01 resolve through this host\u2019s tnsnames.ora)'));
+    o.push(cfgNote(t('(prm01 and sby01 resolve through this host\u2019s tnsnames.ora)')));
     els.cfgObserver.innerHTML = o.join('\n');
 
     /* the destination parameter those transport properties translate to */
     var d = [];
-    d.push('<span class="dim"># broker-owned on prm01: LogXptMode, NetTimeout, ReopenSecs</span>');
-    d.push('<span class="dim"># and MaxFailure all land in these attributes. By hand it</span>');
-    d.push('<span class="dim"># would read:</span>');
+    d.push('<span class="dim"># ' + t('broker-owned on prm01: LogXptMode, NetTimeout, ReopenSecs') + '</span>');
+    d.push('<span class="dim"># ' + t('and MaxFailure all land in these attributes. By hand it') + '</span>');
+    d.push('<span class="dim"># ' + t('would read:') + '</span>');
     d.push('');
     d.push('log_archive_dest_2 =');
     d.push("   'SERVICE=sby01 " +
@@ -2777,30 +3045,29 @@ td .mono{font-size:12px;color:var(--ik)}
     d.push("    DB_UNIQUE_NAME=sby01'");
     d.push('');
     if (async) {
-      d.push('<span class="dim"># NET_TIMEOUT left out: it bounds the SYNC ack wait, and it</span>');
-      d.push('<span class="dim"># never affects sessions under ASYNC</span>');
+      d.push('<span class="dim"># ' + t('NET_TIMEOUT left out: it bounds the SYNC ack wait, and it') + '</span>');
+      d.push('<span class="dim"># ' + t('never affects sessions under ASYNC') + '</span>');
     } else {
-      d.push('<span class="dim"># NET_TIMEOUT=30 is the default, spelled out \u2014 seconds LGWR</span>');
-      d.push('<span class="dim"># waits for the standby\u2019s acknowledgement</span>');
+      d.push('<span class="dim"># ' + t('NET_TIMEOUT=30 is the default, spelled out \u2014 seconds LGWR') + '</span>');
+      d.push('<span class="dim"># ' + t('waits for the standby\u2019s acknowledgement') + '</span>');
     }
-    d.push(R.maxFailure === 0
-      ? '<span class="dim"># MAX_FAILURE=0: retried at every log switch, without limit</span>'
-      : '<span class="dim"># MAX_FAILURE=' + R.maxFailure + ': disabled for good after ' +
-        R.maxFailure + ' consecutive failed reopens</span>');
-    d.push('<span class="dim"># ReopenSecs / MaxFailure are deprecated as broker properties</span>');
-    d.push('<span class="dim"># in 19c \u2014 set the attributes via EDIT DATABASE ... SET PARAMETER</span>');
+    d.push('<span class="dim"># ' + (R.maxFailure === 0
+      ? t('MAX_FAILURE=0: retried at every log switch, without limit')
+      : t('MAX_FAILURE={0}: disabled for good after {0} consecutive failed reopens', R.maxFailure)) + '</span>');
+    d.push('<span class="dim"># ' + t('ReopenSecs / MaxFailure are deprecated as broker properties') + '</span>');
+    d.push('<span class="dim"># ' + t('in 19c \u2014 set the attributes via EDIT DATABASE ... SET PARAMETER') + '</span>');
     els.cfgDest.innerHTML = d.join('\n');
 
     /* the client card is chapter 3's descriptor, gathered here */
     els.cfgTns.innerHTML = buildTns() + '\n\n' +
-      '<span class="dim"># app_svc is published only where the database runs as primary:</span>\n' +
+      '<span class="dim"># ' + t('app_svc is published only where the database runs as primary:') + '</span>\n' +
       '<span class="dim">#   srvctl add service -db prm01 -service app_svc -role PRIMARY</span>';
   }
 
   function renderAppControls() {
     var iso = C.scenario === 'isolated', obs = C.scenario === 'observer-lost';
     els.apVTct.textContent = A.tct + ' s';
-    els.apVCt.textContent = A.ct > 0 ? A.ct + ' s' : 'not set';
+    els.apVCt.textContent = A.ct > 0 ? A.ct + ' s' : t('not set');
     els.apVRc.textContent = String(A.rc);
     els.apVRd.textContent = A.rd + ' s';
 
@@ -2814,7 +3081,7 @@ td .mono{font-size:12px;color:var(--ik)}
     els.apTuned.disabled = obs;
     if (obs) {
       els.apRst.disabled = true;
-      els.apNDead.textContent = 'Nothing dials into a failure here: the service never moves, so no address in the string is ever dead.';
+      els.apNDead.textContent = t('Nothing dials into a failure here: the service never moves, so no address in the string is ever dead.');
       return;
     }
 
@@ -2822,87 +3089,78 @@ td .mono{font-size:12px;color:var(--ik)}
     els.apDrop.checked = iso || A.dead === 'drop';
     els.apRst.checked = !iso && A.dead === 'rst';
     els.apNDead.textContent = iso
-      ? 'A partition drops packets: no refusal ever comes back, so the dead address always costs the full transport budget.'
+      ? t('A partition drops packets: no refusal ever comes back, so the dead address always costs the full transport budget.')
       : (A.dead === 'drop'
-        ? 'Host unreachable \u2014 SYN packets vanish; each visit to address 1 waits out min(TRANSPORT_CONNECT_TIMEOUT, CONNECT_TIMEOUT).'
-        : 'Host up, instance down \u2014 the OS refuses instantly; address 1 costs almost nothing.');
+        ? t('Host unreachable \u2014 SYN packets vanish; each visit to address 1 waits out min(TRANSPORT_CONNECT_TIMEOUT, CONNECT_TIMEOUT).')
+        : t('Host up, instance down \u2014 the OS refuses instantly; address 1 costs almost nothing.'));
   }
 
   function renderAppReadout(ap, m) {
     if (ap.noEvent) {
-      els.apChips.innerHTML = chip('tl', 'Application impact', 'none', '',
-        'Nothing to replay \u2014 the observer\u2019s death is invisible to connected sessions and to new connections');
+      els.apChips.innerHTML = chip('tl', t('Application impact'), t('none'), '',
+        t('Nothing to replay \u2014 the observer\u2019s death is invisible to connected sessions and to new connections'));
       return;
     }
 
     var out = '';
     if (ap.tConn !== null) {
-      out += chip('vi', 'App reconnected at', fmt(ap.tConn), 's',
-        'Traversal ' + ap.attempts.length + ' of ' + (A.rc + 1) + ' \u2014 after ' + fmt(ap.d1) + ' s on the dead address');
-      out += chip('am', 'Client-side overhead', fmt(ap.tConn - m.tOpen), 's',
-        'The database was back at ' + fmt(m.tOpen) + ' s; the rest is the connect string');
+      out += chip('vi', t('App reconnected at'), fmt(ap.tConn), 's',
+        t('Traversal {0} of {1} \u2014 after {2} s on the dead address', ap.attempts.length, A.rc + 1, fmt(ap.d1)));
+      out += chip('am', t('Client-side overhead'), fmt(ap.tConn - m.tOpen), 's',
+        t('The database was back at {0} s; the rest is the connect string', fmt(m.tOpen)));
     } else {
-      out += chip('rd', 'App reconnected', 'never', '',
-        m.blocked ? 'No failover happens above, so <span class="mono">app_svc</span> is never republished'
-                  : 'ORA-12514 at ' + fmt(ap.gaveUp) + ' s \u2014 a fresh attempt after ' + fmt(m.tOpen) +
-                    ' s would connect in ' + fmt(ap.retryCost) + ' s');
+      out += chip('rd', t('App reconnected'), t('never'), '',
+        m.blocked ? t('No failover happens above, so <span class="mono">app_svc</span> is never republished')
+                  : t('ORA-12514 at {0} s \u2014 a fresh attempt after {1} s would connect in {2} s',
+                      fmt(ap.gaveUp), fmt(m.tOpen), fmt(ap.retryCost)));
     }
-    out += chip(ap.tConn !== null ? 'tl' : 'rd', 'Retry budget', fmt(ap.worst), 's',
-      '(' + (A.rc + 1) + ' \u00d7 ' + fmt(ap.passCost) + ' s) + (' + A.rc + ' \u00d7 ' + fmt(A.rd) + ' s delay)' +
-      (m.blocked ? ' \u2014 no failover to wait for'
-        : ap.tConn !== null ? ' \u2014 covers this failover' : ' \u2014 runs out too soon'));
-    out += chip('ik', 'One traversal costs', fmt(ap.passCost), 's',
-      ap.drop ? 'min(TCT, CT) on the dead address + an instant ORA-12514 from the standby'
-              : 'Both addresses answer instantly \u2014 refused, refused');
+    out += chip(ap.tConn !== null ? 'tl' : 'rd', t('Retry budget'), fmt(ap.worst), 's',
+      t('({0} \u00d7 {1} s) + ({2} \u00d7 {3} s delay)', A.rc + 1, fmt(ap.passCost), A.rc, fmt(A.rd)) +
+      (m.blocked ? t(' \u2014 no failover to wait for')
+        : ap.tConn !== null ? t(' \u2014 covers this failover') : t(' \u2014 runs out too soon')));
+    out += chip('ik', t('One traversal costs'), fmt(ap.passCost), 's',
+      ap.drop ? t('min(TCT, CT) on the dead address + an instant ORA-12514 from the standby')
+              : t('Both addresses answer instantly \u2014 refused, refused'));
     els.apChips.innerHTML = out;
   }
 
   function renderAppProse(ap, m) {
     if (ap.noEvent) {
-      els.apHeading.textContent = 'Timeline \u2014 nothing for the application to experience';
-      els.apEyebrow.textContent = 't = 0 is the observer host failure \u00b7 nothing changes for the application';
+      els.apHeading.textContent = t('Timeline \u2014 nothing for the application to experience');
+      els.apEyebrow.textContent = t('t = 0 is the observer host failure \u00b7 nothing changes for the application');
       els.apBanner.hidden = true;
-      els.apCaption.innerHTML = 'The descriptor never has to fail over: <span class="mono">app_svc</span> stays published on the primary, address 1 answers as it always did, and no established session is disturbed. The observer is not in the connection path \u2014 it decides whether a failover may happen, and while it is gone the answer is no.';
-      els.apSummary.textContent = 'Application view: the observer host is down, but nothing fails over, so the service stays on the primary and neither existing sessions nor new connections notice anything.';
+      els.apCaption.innerHTML = t('The descriptor never has to fail over: <span class="mono">app_svc</span> stays published on the primary, address 1 answers as it always did, and no established session is disturbed. The observer is not in the connection path \u2014 it decides whether a failover may happen, and while it is gone the answer is no.');
+      els.apSummary.textContent = t('Application view: the observer host is down, but nothing fails over, so the service stays on the primary and neither existing sessions nor new connections notice anything.');
       return;
     }
 
     var luck = ap.tConn !== null && ap.attempts.length === 1 && A.rc === 0 && ap.drop && ap.d1 >= m.tOpen;
-    els.apHeading.textContent = 'Timeline \u2014 the same failover, as the application experiences it';
-    els.apEyebrow.textContent = 't = 0 is the failure event \u00b7 same clock as the broker timeline';
+    els.apHeading.textContent = t('Timeline \u2014 the same failover, as the application experiences it');
+    els.apEyebrow.textContent = t('t = 0 is the failure event \u00b7 same clock as the broker timeline');
 
     els.apBanner.hidden = !(ap.gaveUp !== null && !m.blocked);
     if (!els.apBanner.hidden) {
-      els.apBannerBody.innerHTML = 'The string gave up at <span class="mono">' + fmt(ap.gaveUp) +
-        ' s</span>, before the new primary opened at <span class="mono">' + fmt(m.tOpen) +
-        ' s</span>. The failover itself completed fine \u2014 but this application saw <span class="mono">ORA-12514</span> and stays down until something dials again. The retry budget (<span class="mono">' +
-        (A.rc + 1) + ' \u00d7 ' + fmt(ap.passCost) + ' + ' + A.rc + ' \u00d7 ' + fmt(A.rd) + ' = ' + fmt(ap.worst) +
-        ' s</span>) has to outlast the outage: raise <span class="mono">RETRY_COUNT</span> or <span class="mono">RETRY_DELAY</span>.';
+      els.apBannerBody.innerHTML = t('The string gave up at <span class="mono">{0} s</span>, before the new primary opened at <span class="mono">{1} s</span>. The failover itself completed fine \u2014 but this application saw <span class="mono">ORA-12514</span> and stays down until something dials again. The retry budget (<span class="mono">{2} \u00d7 {3} + {4} \u00d7 {5} = {6} s</span>) has to outlast the outage: raise <span class="mono">RETRY_COUNT</span> or <span class="mono">RETRY_DELAY</span>.',
+        fmt(ap.gaveUp), fmt(m.tOpen), A.rc + 1, fmt(ap.passCost), A.rc, fmt(A.rd), fmt(ap.worst));
     }
 
     els.apCaption.innerHTML = m.blocked
-      ? 'No failover is coming (the readiness check above failed), so no retry budget can save this string: it exhausted ' +
-        (A.rc + 1) + ' traversal' + (A.rc ? 's' : '') + ' at <span class="mono">' + fmtClock(ap.gaveUp) +
-        '</span> and the application is down until a manual failover republishes <span class="mono">app_svc</span>.'
+      ? tp('No failover is coming (the readiness check above failed), so no retry budget can save this string: it exhausted {0} traversal at <span class="mono">{1}</span> and the application is down until a manual failover republishes <span class="mono">app_svc</span>.|No failover is coming (the readiness check above failed), so no retry budget can save this string: it exhausted {0} traversals at <span class="mono">{1}</span> and the application is down until a manual failover republishes <span class="mono">app_svc</span>.',
+          A.rc + 1, A.rc + 1, fmtClock(ap.gaveUp))
       : luck
-        ? 'The single traversal hung on the dead address for <span class="mono">' + fmt(ap.d1) +
-          ' s</span>; by the time it fell through to the standby, the failover was already done, so it connected at <span class="mono">' +
-          fmt(ap.tConn) + ' s</span>. That is luck: had the failover taken longer than ' + fmt(ap.d1) +
-          ' s, this string would have returned <span class="mono">ORA-12514</span> and stopped. The application also waited ' +
-          fmt(ap.tConn - m.tOpen) + ' s longer than the database did.'
+        ? t('The single traversal hung on the dead address for <span class="mono">{0} s</span>; by the time it fell through to the standby, the failover was already done, so it connected at <span class="mono">{1} s</span>. That is luck: had the failover taken longer than {0} s, this string would have returned <span class="mono">ORA-12514</span> and stopped. The application also waited {2} s longer than the database did.',
+            fmt(ap.d1), fmt(ap.tConn), fmt(ap.tConn - m.tOpen))
         : ap.tConn !== null
-          ? 'The string traversed the list ' + ap.attempts.length + ' time' + (ap.attempts.length > 1 ? 's' : '') +
-            ', paying <span class="mono">' + fmt(ap.d1) + ' s</span> on the dead first address each pass. The traversal that reached the standby after <span class="mono">app_svc</span> reappeared connected at <span class="mono">' +
-            fmt(ap.tConn) + ' s</span> \u2014 ' + fmt(ap.tConn - m.tOpen) + ' s after the database itself was back.'
-          : 'The string ran out of retries at <span class="mono">' + fmt(ap.gaveUp) +
-            ' s</span>, while the failover was still running: the new primary opens at <span class="mono">' + fmt(m.tOpen) +
-            ' s</span>, but by then nobody is dialing anymore.';
+          ? tp('The string traversed the list {0} time, paying <span class="mono">{1} s</span> on the dead first address each pass. The traversal that reached the standby after <span class="mono">app_svc</span> reappeared connected at <span class="mono">{2} s</span> \u2014 {3} s after the database itself was back.|The string traversed the list {0} times, paying <span class="mono">{1} s</span> on the dead first address each pass. The traversal that reached the standby after <span class="mono">app_svc</span> reappeared connected at <span class="mono">{2} s</span> \u2014 {3} s after the database itself was back.',
+              ap.attempts.length, ap.attempts.length, fmt(ap.d1), fmt(ap.tConn), fmt(ap.tConn - m.tOpen))
+          : t('The string ran out of retries at <span class="mono">{0} s</span>, while the failover was still running: the new primary opens at <span class="mono">{1} s</span>, but by then nobody is dialing anymore.',
+              fmt(ap.gaveUp), fmt(m.tOpen));
 
-    els.apSummary.textContent = 'Application view: ' + (ap.tConn !== null
-      ? 'reconnected at ' + fmt(ap.tConn) + ' seconds, ' + fmt(ap.tConn - m.tOpen) + ' seconds after the new primary opened.'
+    els.apSummary.textContent = t('Application view: ') + (ap.tConn !== null
+      ? t('reconnected at {0} seconds, {1} seconds after the new primary opened.', fmt(ap.tConn), fmt(ap.tConn - m.tOpen))
       : m.blocked
-        ? 'no failover occurs; the connect string exhausted its retries at ' + fmt(ap.gaveUp) + ' seconds and the application stays down.'
-        : 'the connect string gave up at ' + fmt(ap.gaveUp) + ' seconds, before the failover completed; the application stays down.');
+        ? t('no failover occurs; the connect string exhausted its retries at {0} seconds and the application stays down.', fmt(ap.gaveUp))
+        : t('the connect string gave up at {0} seconds, before the failover completed; the application stays down.', fmt(ap.gaveUp)));
   }
 
   /* ---------- one commit, millisecond scale ---------- */
@@ -2926,42 +3184,42 @@ td .mono{font-size:12px;color:var(--ik)}
     var ackOut = cm.ackAtMs === null ? null : cm.ackAtMs - cm.oneWay;  // when the standby sends the ack
 
     var lanes = [
-      { name: 'User session', sub: 'the committing app', segs: [] },
-      { name: 'Primary LGWR', sub: 'online redo log write', segs: [] },
-      { name: 'Wire', sub: 'primary to standby', segs: [] },
-      { name: 'Standby', sub: 'RFS + standby redo log', segs: [] }
+      { name: t('User session'), sub: t('the committing app'), segs: [] },
+      { name: 'Primary LGWR', sub: t('online redo log write'), segs: [] },
+      { name: t('Wire'), sub: t('primary to standby'), segs: [] },
+      { name: 'Standby', sub: t('RFS + standby redo log'), segs: [] }
     ];
 
-    lanes[0].segs.push({ a: t0, b: 0, cls: 'b-sl', lc: 'f-sl', lab: ['Inside the transaction', 'Transaction'] });
+    lanes[0].segs.push({ a: t0, b: 0, cls: 'b-sl', lc: 'f-sl', lab: [t('Inside the transaction'), t('Transaction')] });
     lanes[0].segs.push({
       a: 0, b: cm.commitMs, cls: 'b-am', lc: 'f-am',
-      lab: ['Waiting on the commit \u2014 the session is blocked', 'Waiting on the commit', 'Waiting']
+      lab: [t('Waiting on the commit \u2014 the session is blocked'), t('Waiting on the commit'), t('Waiting')]
     });
     lanes[0].segs.push({
       a: cm.commitMs, b: t1, cls: 'b-tl', lc: 'f-tl',
-      lab: ['Commit returned \u2014 the session carries on', 'Commit returned', 'Returned']
+      lab: [t('Commit returned \u2014 the session carries on'), t('Commit returned'), t('Returned')]
     });
 
     if (cm.localWriteMs > 0) {
       lanes[1].segs.push({
         a: 0, b: cm.localWriteMs, cls: 'b-bl', lc: 'f-bl',
-        lab: ['Writes the redo to the online redo log', 'Local redo write', 'Local write']
+        lab: [t('Writes the redo to the online redo log'), t('Local redo write'), t('Local write')]
       });
     }
     if (async && cm.shipDoneMs > cm.commitMs) {
       lanes[1].segs.push({
         a: cm.commitMs, b: cm.shipDoneMs, cls: 'b-sl', lc: 'f-sl',
-        lab: ['Ships the redo in the background \u2014 nobody is waiting', 'Ships in the background', 'Background']
+        lab: [t('Ships the redo in the background \u2014 nobody is waiting'), t('Ships in the background'), t('Background')]
       });
       lanes[2].segs.push({
         a: cm.commitMs, b: cm.shipDoneMs, cls: 'b-hatchc', lc: 'f-rd',
-        lab: ['Committed redo still in flight', 'Redo in flight', 'In flight']
+        lab: [t('Committed redo still in flight'), t('Redo in flight'), t('In flight')]
       });
     }
     if (cm.sbWriteMs > 0) {
       lanes[3].segs.push({
         a: srlStart, b: srlStart + cm.sbWriteMs, cls: 'b-bl', lc: 'f-bl',
-        lab: ['Writes it to the standby redo log', 'Standby redo log write', 'SRL write']
+        lab: [t('Writes it to the standby redo log'), t('Standby redo log write'), t('SRL write')]
       });
     }
 
@@ -2971,29 +3229,31 @@ td .mono{font-size:12px;color:var(--ik)}
     if (cm.oneWay > 0) {
       braces.push({
         a: 0, b: cm.oneWay, tone: 'br-sl', mono: false,
-        names: ['Network, one way out', 'One way out'],
-        val: fmt(cm.oneWay) + ' ms \u2014 half of the ' + fmt(cm.rttMs) + ' ms round trip'
+        names: [t('Network, one way out'), t('One way out')],
+        val: t('{0} ms \u2014 half of the {1} ms round trip', fmt(cm.oneWay), fmt(cm.rttMs))
       });
       if (ackOut !== null) {
         braces.push({
           a: ackOut, b: cm.ackAtMs, tone: 'br-vi', mono: false,
-          names: ['Acknowledgement, one way back', 'One way back'],
-          val: fmt(cm.oneWay) + ' ms \u2014 the other half'
+          names: [t('Acknowledgement, one way back'), t('One way back')],
+          val: t('{0} ms \u2014 the other half', fmt(cm.oneWay))
         });
       }
     }
     if (cm.sbWriteMs > 0) {
       braces.push({
         a: srlStart, b: srlStart + cm.sbWriteMs, tone: sync ? 'br-am' : 'br-sl', mono: false,
-        names: ['Standby redo log write', 'SRL write'],
-        val: fmt(cm.sbWriteMs) + ' ms \u2014 ' + (sync ? 'on the commit path (AFFIRM)' : 'off the commit path (NOAFFIRM)')
+        names: [t('Standby redo log write'), t('SRL write')],
+        val: sync ? t('{0} ms \u2014 on the commit path (AFFIRM)', fmt(cm.sbWriteMs))
+                  : t('{0} ms \u2014 off the commit path (NOAFFIRM)', fmt(cm.sbWriteMs))
       });
     }
     if (cm.localWriteMs > 0) {
       braces.push({
         a: 0, b: cm.localWriteMs, tone: 'br-bl', mono: false,
-        names: ['Local online redo log write', 'Local write'],
-        val: fmt(cm.localWriteMs) + ' ms \u2014 ' + (async ? 'the whole commit' : 'overlaps the round trip')
+        names: [t('Local online redo log write'), t('Local write')],
+        val: async ? t('{0} ms \u2014 the whole commit', fmt(cm.localWriteMs))
+                   : t('{0} ms \u2014 overlaps the round trip', fmt(cm.localWriteMs))
       });
     }
 
@@ -3029,17 +3289,17 @@ td .mono{font-size:12px;color:var(--ik)}
     /* pre-commit zone, gridlines, axis */
     push('<rect class="prezone" x="' + r1(plotL) + '" y="' + GC.laneTop + '" width="' + r1(X(0) - plotL) +
       '" height="' + (GC.lanesBottom - GC.laneTop) + '"></rect>');
-    var zw = X(0) - plotL, zLab = null;
-    if (zw >= approxW('COMMIT issued', 10.5) + 12) zLab = 'COMMIT issued';
+    var zw = X(0) - plotL, zLab = null, zFull = t('COMMIT issued');
+    if (zw >= approxW(zFull, 10.5) + 12) zLab = zFull;
     else if (zw >= approxW('COMMIT', 10.5) + 10) zLab = 'COMMIT';
-    if (zLab) push(txt('t-tick', X(0) - 6, GC.markY, 'end', zLab));
+    if (zLab) push(txt('t-tick', X(0) - 6, GC.markY, 'end', esc(zLab)));
 
     for (var tk = Math.ceil(t0 / cm.tickStepMs) * cm.tickStepMs; tk <= t1 + 1e-9; tk += cm.tickStepMs) {
       push(ln('gridline', X(tk), GC.laneTop, X(tk), GC.axisY));
       push(txt('t-tick t-mono', X(tk), GC.axisY + 16, 'middle', esc(sign(tk))));
     }
     push(ln('ax', plotL, GC.axisY, plotR, GC.axisY));
-    push(txt('t-tick t-mono', plotR, GC.axisY + 30, 'end', 'milliseconds from COMMIT'));
+    push(txt('t-tick t-mono', plotR, GC.axisY + 30, 'end', esc(t('milliseconds from COMMIT'))));
 
     /* lanes */
     lanes.forEach(function (lane, i) {
@@ -3062,19 +3322,19 @@ td .mono{font-size:12px;color:var(--ik)}
     if (!async) {
       if (wSpan >= 8) {
         push(ln('w-send', X(0), wy, X(cm.oneWay), wy, ' marker-end="url(#cmAs)"'));
-        var sLab = fitLabel(['redo to the standby \u2192', 'redo \u2192', '\u2192'], wSpan);
+        var sLab = fitLabel([t('redo to the standby \u2192'), t('redo \u2192'), '\u2192'], wSpan);
         if (sLab) push(txt('t-bar f-bl', (X(0) + X(cm.oneWay)) / 2, wy - 7, 'middle', esc(sLab)));
         push(ln('w-ack', X(cm.ackAtMs), wy, X(ackOut), wy, ' marker-end="url(#cmAa)"'));
-        var aLab = fitLabel(['\u2190 acknowledgement', '\u2190 ack', '\u2190'], wSpan);
+        var aLab = fitLabel([t('\u2190 acknowledgement'), t('\u2190 ack'), '\u2190'], wSpan);
         if (aLab) push(txt('t-bar f-vi', (X(ackOut) + X(cm.ackAtMs)) / 2, wy + 16, 'middle', esc(aLab)));
       } else {
         push(txt('t-bar f-sl', X(0) + 8, wy + 4, null, esc(cm.rttMs === 0
-          ? 'At 0 ms RTT the wire costs nothing \u2014 only the disk writes are left'
-          : 'The ' + fmt(cm.rttMs) + ' ms round trip is too short to draw at this scale')));
+          ? t('At 0 ms RTT the wire costs nothing \u2014 only the disk writes are left')
+          : t('The {0} ms round trip is too short to draw at this scale', fmt(cm.rttMs)))));
       }
     } else if (wSpan < 8) {
       push(txt('t-bar f-sl', X(0) + 8, wy + 4, null,
-        esc('The redo leaves after the commit has already returned')));
+        esc(t('The redo leaves after the commit has already returned'))));
     }
 
     /* the standby: RFS receive, the SRL write, and where the ack comes from */
@@ -3083,22 +3343,22 @@ td .mono{font-size:12px;color:var(--ik)}
     if (ackOut !== null) {
       var xk = X(ackOut);
       push('<path class="f-vi" d="M' + r1(xk) + ',' + (GC.lane[3] + 6) + ' l7,7 l-7,7 l-7,-7 z"><title>' +
-        esc(sync ? 'AFFIRM \u2014 the destination acknowledges after writing the redo to the standby redo log'
-                 : 'NOAFFIRM \u2014 the destination acknowledges on receipt, before writing the redo') + '</title></path>');
-      var kLab = sync ? 'ack \u2014 after the disk write' : 'ack \u2014 before the disk write';
+        esc(sync ? t('AFFIRM \u2014 the destination acknowledges after writing the redo to the standby redo log')
+                 : t('NOAFFIRM \u2014 the destination acknowledges on receipt, before writing the redo')) + '</title></path>');
+      var kLab = sync ? t('ack \u2014 after the disk write') : t('ack \u2014 before the disk write');
       var kX = xk + 11, kAnc = null, kw = approxW(kLab, 11.5);
       if (kX + kw > plotR) { kX = xk - 11; kAnc = 'end'; }
       push(txt('t-mark f-vi', kX, gapY, kAnc, esc(kLab)));
       ackBox = kAnc ? [kX - kw, kX] : [kX, kX + kw];
     } else {
-      var dLab = 'redo lands here \u2014 after the commit already returned';
+      var dLab = t('redo lands here \u2014 after the commit already returned');
       var dX = xr + 11, dAnc = null, dw = approxW(dLab, 11.5);
       if (dX + dw > plotR) { dX = xr - 11; dAnc = 'end'; }
       push(txt('t-mark f-sl', dX, gapY, dAnc, esc(dLab)));
       ackBox = dAnc ? [dX - dw, dX] : [dX, dX + dw];
     }
     /* the RFS tick gets a label only when the ack label leaves room for one */
-    var rLab = fitLabel(['RFS receives the redo', 'RFS receives', 'RFS'], plotR - xr - 14);
+    var rLab = fitLabel([t('RFS receives the redo'), t('RFS receives'), 'RFS'], plotR - xr - 14);
     if (rLab) {
       var rL = xr + 8, rR = rL + approxW(rLab, 11);
       if (!ackBox || rR < ackBox[0] - 12 || rL > ackBox[1] + 12) push(txt('t-bar f-bl', rL, gapY, null, esc(rLab)));
@@ -3107,15 +3367,15 @@ td .mono{font-size:12px;color:var(--ik)}
     /* the moment the commit returns */
     var xc = X(cm.commitMs);
     push(ln('m-tl', xc, GC.laneTop - 10, xc, GC.lanesBottom + 6, ' stroke-width="1.5" stroke-dasharray="5 4"'));
-    var cLab = 'commit returns at ' + fmt(cm.commitMs) + ' ms';
+    var cLab = t('commit returns at {0} ms', fmt(cm.commitMs));
     var cX = xc + 8, cAnc = null;
     if (cX + approxW(cLab, 11.5) > plotR) { cX = xc - 8; cAnc = 'end'; }
     push(txt('t-mark f-tl', cX, GC.markY, cAnc, esc(cLab)));
 
     push(txt('t-top', plotL, GC.topY, null, esc(async
-      ? 'ASYNC \u00b7 the commit costs the local write, ' + fmt(cm.localWriteMs) + ' ms \u2014 the standby is not on the path'
-      : xpName + ' \u00b7 commit = max(local write ' + fmt(cm.localWriteMs) + ' ms, ack path ' +
-        fmt(cm.ackPath) + ' ms) = ' + fmt(cm.commitMs) + ' ms')));
+      ? t('ASYNC \u00b7 the commit costs the local write, {0} ms \u2014 the standby is not on the path', fmt(cm.localWriteMs))
+      : t('{0} \u00b7 commit = max(local write {1} ms, ack path {2} ms) = {3} ms',
+          xpName, fmt(cm.localWriteMs), fmt(cm.ackPath), fmt(cm.commitMs)))));
 
     /* braces */
     drawn.forEach(function (br) {
@@ -3145,16 +3405,16 @@ td .mono{font-size:12px;color:var(--ik)}
     if (els.latency.value !== String(C.latency)) els.latency.value = C.latency;
 
     els.cmNXpt.classList.toggle('is-warn', cm.modeConflict);
-    els.cmNXpt.innerHTML = CM_XPT_NOTE[cm.xpt] + (cm.modeConflict
-      ? ' The workbench above is set to MaxAvailability, for which the broker documents <span class="mono">SYNC</span> or <span class="mono">FASTSYNC</span>.'
+    els.cmNXpt.innerHTML = t(CM_XPT_NOTE[cm.xpt]) + (cm.modeConflict
+      ? ' ' + t('The workbench above is set to MaxAvailability, for which the broker documents <span class="mono">SYNC</span> or <span class="mono">FASTSYNC</span>.')
       : '');
 
-    els.cmNSbw.innerHTML = 'How long the standby takes to write the received redo to its standby redo log. ' +
+    els.cmNSbw.innerHTML = t('How long the standby takes to write the received redo to its standby redo log.') + ' ' +
       (cm.xpt === 'sync'
-        ? 'Under <span class="mono">SYNC</span> it is on the commit path: <span class="mono">AFFIRM</span> means the acknowledgement waits for it.'
+        ? t('Under <span class="mono">SYNC</span> it is on the commit path: <span class="mono">AFFIRM</span> means the acknowledgement waits for it.')
         : cm.xpt === 'fastsync'
-          ? 'Under <span class="mono">FASTSYNC</span> the write still happens \u2014 just after the acknowledgement, so the commit never sees it.'
-          : 'Under <span class="mono">ASYNC</span> nothing on the primary waits for it.');
+          ? t('Under <span class="mono">FASTSYNC</span> the write still happens \u2014 just after the acknowledgement, so the commit never sees it.')
+          : t('Under <span class="mono">ASYNC</span> nothing on the primary waits for it.'));
   }
 
   function renderCommit(cm) {
@@ -3162,64 +3422,62 @@ td .mono{font-size:12px;color:var(--ik)}
     var xpName = sync ? 'SYNC' : (cm.xpt === 'fastsync' ? 'FASTSYNC' : 'ASYNC');
     var delta = cm.syncFastsyncDelta;
 
-    var out = chip('ik', 'Commit returns after', fmt(cm.commitMs), 'ms', async
-      ? 'The local redo log write, and nothing else'
-      : 'max(local write ' + fmt(cm.localWriteMs) + ' ms, ack path ' + fmt(cm.ackPath) +
-        ' ms) \u2014 the remote write is started before the local one, so they overlap');
+    var out = chip('ik', t('Commit returns after'), fmt(cm.commitMs), 'ms', async
+      ? t('The local redo log write, and nothing else')
+      : t('max(local write {0} ms, ack path {1} ms) \u2014 the remote write is started before the local one, so they overlap',
+          fmt(cm.localWriteMs), fmt(cm.ackPath)));
 
-    out += chip('am', 'Waiting on the standby', cm.standbyWait > 0 ? fmt(cm.standbyWait) : 'none',
+    out += chip('am', t('Waiting on the standby'), cm.standbyWait > 0 ? fmt(cm.standbyWait) : t('none'),
       cm.standbyWait > 0 ? 'ms' : '', async
-        ? 'Nothing on the commit path crosses to the standby'
+        ? t('Nothing on the commit path crosses to the standby')
         : cm.standbyWait > 0
-          ? 'What the commit pays on top of its own redo log write'
-          : 'The local write already covers the whole acknowledgement path, so the standby costs nothing here');
+          ? t('What the commit pays on top of its own redo log write')
+          : t('The local write already covers the whole acknowledgement path, so the standby costs nothing here'));
 
-    out += chip('vi', 'SYNC vs FASTSYNC here', delta > 0 ? '\u2212' + fmt(delta) : '0', 'ms', delta > 0
-      ? '<span class="mono">FASTSYNC</span> returns ' + fmt(delta) + ' ms sooner at these settings' +
-        (Math.abs(delta - cm.sbWriteMs) < 1e-9 ? ' \u2014 exactly the standby redo log write' : ' \u2014 less than the full SRL write, the local write already covers the rest')
-      : 'No gap at these settings: the local write is at least as long as the round trip, so <span class="mono">AFFIRM</span> costs nothing');
+    out += chip('vi', t('SYNC vs FASTSYNC here'), delta > 0 ? '\u2212' + fmt(delta) : '0', 'ms', delta > 0
+      ? (Math.abs(delta - cm.sbWriteMs) < 1e-9
+          ? t('<span class="mono">FASTSYNC</span> returns {0} ms sooner at these settings \u2014 exactly the standby redo log write', fmt(delta))
+          : t('<span class="mono">FASTSYNC</span> returns {0} ms sooner at these settings \u2014 less than the full SRL write, the local write already covers the rest', fmt(delta)))
+      : t('No gap at these settings: the local write is at least as long as the round trip, so <span class="mono">AFFIRM</span> costs nothing'));
 
     out += cm.exposed
-      ? chip('rd', 'Loss exposure', 'yes', '', 'Redo is still in flight when the commit returns \u2014 it reaches the standby around ' +
-          fmt(cm.shipDoneMs) + ' ms')
-      : chip('ik', 'Loss exposure', 'none', '', K.xpt === 'sync'
-          ? 'The redo is on the standby\u2019s disk before the commit returns'
-          : 'Acknowledged before the commit returns \u2014 from standby memory; the disk write lands at ' + fmt(cm.srlDoneMs) + ' ms');
+      ? chip('rd', t('Loss exposure'), t('yes'), '',
+          t('Redo is still in flight when the commit returns \u2014 it reaches the standby around {0} ms', fmt(cm.shipDoneMs)))
+      : chip('ik', t('Loss exposure'), t('none'), '', K.xpt === 'sync'
+          ? t('The redo is on the standby\u2019s disk before the commit returns')
+          : t('Acknowledged before the commit returns \u2014 from standby memory; the disk write lands at {0} ms', fmt(cm.srlDoneMs)));
 
     if (cm.modeConflict) {
-      out += chip('rd', 'Protection mode', 'mismatch', '',
-        '<span class="mono">ASYNC</span> against a MaxAvailability workbench \u2014 drawn, not configurable');
+      out += chip('rd', t('Protection mode'), t('mismatch'), '',
+        t('<span class="mono">ASYNC</span> against a MaxAvailability workbench \u2014 drawn, not configurable'));
     }
     els.cmChips.innerHTML = out;
 
     els.cmBanner.hidden = !cm.modeConflict;
     if (cm.modeConflict) {
-      els.cmBannerBody.innerHTML = 'The workbench above is set to MaxAvailability, for which the broker\u2019s protection-mode table lists <span class="mono">SYNC</span> or <span class="mono">FASTSYNC</span>; <span class="mono">ASYNC</span> is listed for MaxPerformance. The commit is drawn anyway so the shape is comparable \u2014 switch the workbench to MaxPerformance for the documented pairing.';
+      els.cmBannerBody.innerHTML = t('The workbench above is set to MaxAvailability, for which the broker\u2019s protection-mode table lists <span class="mono">SYNC</span> or <span class="mono">FASTSYNC</span>; <span class="mono">ASYNC</span> is listed for MaxPerformance. The commit is drawn anyway so the shape is comparable \u2014 switch the workbench to MaxPerformance for the documented pairing.');
     }
 
-    els.cmEyebrow.textContent = 't = 0 is the COMMIT \u00b7 horizon ' + fmt(cm.horizonMs) + ' ms';
+    els.cmEyebrow.textContent = t('t = 0 is the COMMIT \u00b7 horizon {0} ms', fmt(cm.horizonMs));
 
     els.cmCaption.innerHTML = async
-      ? 'The commit returns after the local redo log write \u2014 <span class="mono">' + fmt(cm.commitMs) +
-        ' ms</span> \u2014 because nothing on that path involves the standby. The redo crosses the wire afterwards and lands around <span class="mono">' +
-        fmt(cm.shipDoneMs) + ' ms</span>; transactions committed inside that window exist only on the primary. That window, not the wire time, is the data loss a MaxPerformance failover is bounded by.'
+      ? t('The commit returns after the local redo log write \u2014 <span class="mono">{0} ms</span> \u2014 because nothing on that path involves the standby. The redo crosses the wire afterwards and lands around <span class="mono">{1} ms</span>; transactions committed inside that window exist only on the primary. That window, not the wire time, is the data loss a MaxPerformance failover is bounded by.',
+          fmt(cm.commitMs), fmt(cm.shipDoneMs))
       : sync
-        ? 'LGWR starts the remote write before it issues the local online redo log write, so the <span class="mono">' +
-          fmt(cm.localWriteMs) + ' ms</span> local write and the <span class="mono">' + fmt(cm.ackPath) +
-          ' ms</span> acknowledgement path overlap: the commit costs the longer of the two, <span class="mono">' + fmt(cm.commitMs) +
-          ' ms</span>. Under <span class="mono">AFFIRM</span> the acknowledgement is only sent once the redo is in the standby redo log, which is why the round trip carries the <span class="mono">' +
-          fmt(cm.sbWriteMs) + ' ms</span> write inside it. Nothing is acknowledged to the application that the standby does not already hold on disk.'
-        : 'With <span class="mono">NOAFFIRM</span> the standby acknowledges the moment it receives the redo, so the acknowledgement path is the bare round trip, <span class="mono">' +
-          fmt(cm.ackPath) + ' ms</span>, and the commit returns at <span class="mono">' + fmt(cm.commitMs) +
-          ' ms</span>' + (delta > 0 ? ' \u2014 <span class="mono">' + fmt(delta) + ' ms</span> sooner than <span class="mono">SYNC</span> at these settings' : ', the same as <span class="mono">SYNC</span> at these settings') +
-          '. The standby redo log write still happens; it just happens after the primary was told the redo had arrived.';
+        ? t('LGWR starts the remote write before it issues the local online redo log write, so the <span class="mono">{0} ms</span> local write and the <span class="mono">{1} ms</span> acknowledgement path overlap: the commit costs the longer of the two, <span class="mono">{2} ms</span>. Under <span class="mono">AFFIRM</span> the acknowledgement is only sent once the redo is in the standby redo log, which is why the round trip carries the <span class="mono">{3} ms</span> write inside it. Nothing is acknowledged to the application that the standby does not already hold on disk.',
+            fmt(cm.localWriteMs), fmt(cm.ackPath), fmt(cm.commitMs), fmt(cm.sbWriteMs))
+        : (delta > 0
+            ? t('With <span class="mono">NOAFFIRM</span> the standby acknowledges the moment it receives the redo, so the acknowledgement path is the bare round trip, <span class="mono">{0} ms</span>, and the commit returns at <span class="mono">{1} ms</span> \u2014 <span class="mono">{2} ms</span> sooner than <span class="mono">SYNC</span> at these settings. The standby redo log write still happens; it just happens after the primary was told the redo had arrived.',
+                fmt(cm.ackPath), fmt(cm.commitMs), fmt(delta))
+            : t('With <span class="mono">NOAFFIRM</span> the standby acknowledges the moment it receives the redo, so the acknowledgement path is the bare round trip, <span class="mono">{0} ms</span>, and the commit returns at <span class="mono">{1} ms</span>, the same as <span class="mono">SYNC</span> at these settings. The standby redo log write still happens; it just happens after the primary was told the redo had arrived.',
+                fmt(cm.ackPath), fmt(cm.commitMs)));
 
-    els.cmSummary.textContent = 'One commit under ' + xpName + ': returns after ' + fmt(cm.commitMs) +
-      ' milliseconds, of which ' + (cm.standbyWait > 0 ? fmt(cm.standbyWait) + ' is spent waiting on the standby' : 'none is spent waiting on the standby') +
+    els.cmSummary.textContent = t('One commit under {0}: returns after {1} milliseconds, of which ', xpName, fmt(cm.commitMs)) +
+      (cm.standbyWait > 0 ? t('{0} is spent waiting on the standby', fmt(cm.standbyWait)) : t('none is spent waiting on the standby')) +
       '. ' + (async
-        ? 'Redo is still in flight when the commit returns and reaches the standby around ' + fmt(cm.shipDoneMs) + ' milliseconds.'
-        : 'The standby holds the redo before the commit returns.') +
-      ' SYNC costs ' + fmt(delta) + ' milliseconds more than FASTSYNC at these settings.';
+        ? t('Redo is still in flight when the commit returns and reaches the standby around {0} milliseconds.', fmt(cm.shipDoneMs))
+        : t('The standby holds the redo before the commit returns.')) +
+      ' ' + t('SYNC costs {0} milliseconds more than FASTSYNC at these settings.', fmt(delta));
   }
 
   /* ---------- the reopen panel, minutes after the drop ---------- */
@@ -3234,9 +3492,11 @@ td .mono{font-size:12px;color:var(--ik)}
   }
   /* Compact duration for the drawing, where horizontal room is scarce. */
   function rpDur(sec) { return sec < 60 ? fmt(sec) + ' s' : fmt(sec / 60) + ' min'; }
+  /* Ordinals are language-specific: English suffixes, a bare "5." in Czech. */
   function rpOrd(n) {
-    var t = n % 100;
-    if (t >= 11 && t <= 13) return n + 'th';
+    if (window.DG.lang() !== 'en') return n + '.';
+    var r = n % 100;
+    if (r >= 11 && r <= 13) return n + 'th';
     return n + (['th', 'st', 'nd', 'rd'][n % 10] || 'th');
   }
 
@@ -3252,42 +3512,42 @@ td .mono{font-size:12px;color:var(--ik)}
     var closeEnd = back !== null ? back : t1;
 
     var lanes = [
-      { name: 'Primary transport', sub: 'LOG_ARCHIVE_DEST_2', segs: [] },
-      { name: 'Unshipped redo', sub: 'the gap on the primary', segs: [] },
-      { name: 'Standby', sub: 'apply of received redo', segs: [] }
+      { name: t('Primary transport'), sub: 'LOG_ARCHIVE_DEST_2', segs: [] },
+      { name: t('Unshipped redo'), sub: t('the gap on the primary'), segs: [] },
+      { name: 'Standby', sub: t('apply of received redo'), segs: [] }
     ];
 
-    lanes[0].segs.push({ a: t0, b: 0, cls: 'b-tl', lc: 'f-tl', lab: ['Shipping redo to the standby', 'Shipping redo', 'Shipping'] });
+    lanes[0].segs.push({ a: t0, b: 0, cls: 'b-tl', lc: 'f-tl', lab: [t('Shipping redo to the standby'), t('Shipping redo'), t('Shipping')] });
     if (disabled) {
-      lanes[0].segs.push({ a: 0, b: rp.disabledAt, cls: 'b-hatchr', lc: 'f-rd', lab: ['Destination closed \u2014 retried once per ReopenSecs', 'Destination closed', 'Closed'] });
-      lanes[0].segs.push({ a: rp.disabledAt, b: t1, cls: 'b-hatchr', lc: 'f-rd', lab: ['Destination disabled \u2014 no further access until it is manually reenabled', 'Destination disabled', 'Disabled'] });
+      lanes[0].segs.push({ a: 0, b: rp.disabledAt, cls: 'b-hatchr', lc: 'f-rd', lab: [t('Destination closed \u2014 retried once per ReopenSecs'), t('Destination closed'), t('Closed')] });
+      lanes[0].segs.push({ a: rp.disabledAt, b: t1, cls: 'b-hatchr', lc: 'f-rd', lab: [t('Destination disabled \u2014 no further access until it is manually reenabled'), t('Destination disabled'), t('Disabled')] });
     } else {
-      lanes[0].segs.push({ a: 0, b: closeEnd, cls: 'b-hatchr', lc: 'f-rd', lab: ['Destination closed \u2014 retried once per ReopenSecs', 'Destination closed', 'Closed'] });
-      lanes[0].segs.push({ a: back, b: rp.resyncAt, cls: 'b-tl', lc: 'f-tl', lab: ['Shipping again \u2014 and resolving the gap', 'Shipping + gap resolution', 'Shipping'] });
-      lanes[0].segs.push({ a: rp.resyncAt, b: t1, cls: 'b-tl', lc: 'f-tl', lab: ['Shipping redo \u2014 back in step', 'Back in step', 'Shipping'] });
+      lanes[0].segs.push({ a: 0, b: closeEnd, cls: 'b-hatchr', lc: 'f-rd', lab: [t('Destination closed \u2014 retried once per ReopenSecs'), t('Destination closed'), t('Closed')] });
+      lanes[0].segs.push({ a: back, b: rp.resyncAt, cls: 'b-tl', lc: 'f-tl', lab: [t('Shipping again \u2014 and resolving the gap'), t('Shipping + gap resolution'), t('Shipping')] });
+      lanes[0].segs.push({ a: rp.resyncAt, b: t1, cls: 'b-tl', lc: 'f-tl', lab: [t('Shipping redo \u2014 back in step'), t('Back in step'), t('Shipping')] });
     }
 
-    lanes[2].segs.push({ a: t0, b: 0, cls: 'b-bl', lc: 'f-bl', lab: ['Applying redo', 'Applying'] });
-    lanes[2].segs.push({ a: 0, b: closeEnd, cls: 'b-sl', lc: 'f-sl', lab: ['Idle \u2014 nothing is arriving', 'Idle \u2014 nothing arriving', 'Idle'] });
+    lanes[2].segs.push({ a: t0, b: 0, cls: 'b-bl', lc: 'f-bl', lab: [t('Applying redo'), t('Applying')] });
+    lanes[2].segs.push({ a: 0, b: closeEnd, cls: 'b-sl', lc: 'f-sl', lab: [t('Idle \u2014 nothing is arriving'), t('Idle \u2014 nothing arriving'), t('Idle')] });
     if (back !== null) {
-      lanes[2].segs.push({ a: back, b: rp.resyncAt, cls: 'b-am', lc: 'f-am', lab: ['Gap resolution \u2014 applying the backlog', 'Gap resolution', 'Catching up'] });
-      lanes[2].segs.push({ a: rp.resyncAt, b: t1, cls: 'b-bl', lc: 'f-bl', lab: ['Applying redo \u2014 in step with the primary again', 'Applying redo', 'Applying'] });
+      lanes[2].segs.push({ a: back, b: rp.resyncAt, cls: 'b-am', lc: 'f-am', lab: [t('Gap resolution \u2014 applying the backlog'), t('Gap resolution'), t('Catching up')] });
+      lanes[2].segs.push({ a: rp.resyncAt, b: t1, cls: 'b-bl', lc: 'f-bl', lab: [t('Applying redo \u2014 in step with the primary again'), t('Applying redo'), t('Applying')] });
     }
 
     /* braces under the axis, tied to the exact interval each one governs */
     var braces = [{
       a: 0, b: rp.reopen, tone: 'br-am', mono: true, name: 'ReopenSecs',
-      val: fmt(rp.reopen) + ' s \u2014 the earliest the destination is eligible again'
+      val: t('{0} s \u2014 the earliest the destination is eligible again', fmt(rp.reopen))
     }];
     if (disabled) {
       braces.push({
         a: 0, b: rp.disabledAt, tone: 'br-rd', mono: true, name: 'MaxFailure \u00d7 ReopenSecs',
-        val: rp.maxFailure + ' \u00d7 ' + fmt(rp.reopen) + ' s = ' + fmt(rp.disabledAt) + ' s to the last attempt'
+        val: t('{0} \u00d7 {1} s = {2} s to the last attempt', rp.maxFailure, fmt(rp.reopen), fmt(rp.disabledAt))
       });
     } else {
       braces.push({
-        a: back, b: rp.resyncAt, tone: 'br-bl', mono: false, name: 'Gap resolution',
-        val: fmt(rp.catchupSecs) + ' s \u2014 illustrative, drawn at 5\u00d7 the generation rate'
+        a: back, b: rp.resyncAt, tone: 'br-bl', mono: false, name: t('Gap resolution'),
+        val: t('{0} s \u2014 illustrative, drawn at 5\u00d7 the generation rate', fmt(rp.catchupSecs))
       });
     }
 
@@ -3318,15 +3578,17 @@ td .mono{font-size:12px;color:var(--ik)}
     /* pre-failure zone, gridlines, axis */
     push('<rect class="prezone" x="' + r1(plotL) + '" y="' + G.laneTop + '" width="' + r1(X(0) - plotL) +
       '" height="' + (G.lanesBottom - G.laneTop) + '"></rect>');
-    if (X(0) - plotL >= approxW('Shipping normally', 10.5) + 12) push(txt('t-tick', plotL + 6, G.markY, null, 'Shipping normally'));
+    var snLab = t('Shipping normally');
+    if (X(0) - plotL >= approxW(snLab, 10.5) + 12) push(txt('t-tick', plotL + 6, G.markY, null, esc(snLab)));
 
     for (var tk = Math.ceil(t0 / rp.tickStep) * rp.tickStep; tk <= t1 + 1e-9; tk += rp.tickStep) {
       push(ln('gridline', X(tk), G.laneTop, X(tk), G.axisY));
       push(txt('t-tick t-mono', X(tk), G.axisY + 16, 'middle', esc(rpTickLabel(tk, rp.tickStep))));
     }
     push(ln('ax', plotL, G.axisY, plotR, G.axisY));
-    push(txt('t-tick t-mono', plotR, G.axisY + 30, 'end',
-      (rp.tickStep >= 60 ? 'minutes' : 'seconds') + ' from the error that closed the destination'));
+    push(txt('t-tick t-mono', plotR, G.axisY + 30, 'end', esc(rp.tickStep >= 60
+      ? t('minutes from the error that closed the destination')
+      : t('seconds from the error that closed the destination'))));
 
     /* lanes. Lane 1 carries an area rather than bars, so it has no segments. */
     lanes.forEach(function (lane, i) {
@@ -3353,18 +3615,18 @@ td .mono{font-size:12px;color:var(--ik)}
       var xd0 = X(rp.disabledAt);
       push('<path class="area-am" d="M' + r1(X(0)) + ',' + r1(aBot) + ' L' + r1(xd0) + ',' + r1(AY(rp.disabledAt)) +
         ' L' + r1(xd0) + ',' + r1(aBot) + ' Z"><title>' +
-        esc('The gap grows one second per second while the destination is closed') + '</title></path>');
+        esc(t('The gap grows one second per second while the destination is closed')) + '</title></path>');
       push('<path class="area-rd" d="M' + r1(xd0) + ',' + r1(AY(rp.disabledAt)) + ' L' + r1(plotR) + ',' + r1(aTop) +
         ' L' + r1(plotR) + ',' + r1(aBot) + ' L' + r1(xd0) + ',' + r1(aBot) + ' Z"><title>' +
-        esc('Past the disable nothing stops it: the gap keeps growing until somebody reenables the destination') + '</title></path>');
+        esc(t('Past the disable nothing stops it: the gap keeps growing until somebody reenables the destination')) + '</title></path>');
     } else {
       push('<path class="area-am" d="M' + r1(X(0)) + ',' + r1(aBot) + ' L' + r1(X(back)) + ',' + r1(aTop) +
         ' L' + r1(Math.min(plotR, X(rp.resyncAt))) + ',' + r1(aBot) + ' Z"><title>' +
-        esc('The gap grows while the destination is closed, then drains once redo flows again') + '</title></path>');
+        esc(t('The gap grows while the destination is closed, then drains once redo flows again')) + '</title></path>');
     }
-    push(txt('t-bar f-am', X(0) + 8, aTop + 13, null, esc(
-      (disabled ? 'Still growing at ' : 'Peak ') + fmt(rp.peakExposureSecs) + ' s of redo \u2248 ' +
-      fmt(rp.peakExposureMB) + ' MB')));
+    push(txt('t-bar f-am', X(0) + 8, aTop + 13, null, esc(disabled
+      ? t('Still growing at {0} s of redo \u2248 {1} MB', fmt(rp.peakExposureSecs), fmt(rp.peakExposureMB))
+      : t('Peak {0} s of redo \u2248 {1} MB', fmt(rp.peakExposureSecs), fmt(rp.peakExposureMB)))));
 
     /* failed retries, as ticks on the transport lane or one aggregated run */
     var fails = [], fi;
@@ -3392,16 +3654,16 @@ td .mono{font-size:12px;color:var(--ik)}
     var gapA1 = G.lane[0] + G.laneH + 14, gapA2 = gapA1 + 15;
     var nFail = rp.failedRetries;
     push(txt('t-mark f-am', plotL + 6, gapA1, null, esc(nFail === 0
-      ? 'The first retry already succeeds \u2014 the network healed inside one ReopenSecs'
-      : nFail + ' failed retr' + (nFail === 1 ? 'y' : 'ies') + ' \u2014 one every ' + fmt(rp.reopen) +
-        ' s, each at the next log switch')));
+      ? t('The first retry already succeeds \u2014 the network healed inside one ReopenSecs')
+      : tp('{0} failed retry \u2014 one every {1} s, each at the next log switch|{0} failed retries \u2014 one every {1} s, each at the next log switch',
+           nFail, nFail, fmt(rp.reopen)))));
 
     /* t = 0: the error that closed the destination */
     var xz = X(0);
     push(ln('m-rd', xz, G.laneTop - 4, xz, G.lanesBottom + 4, ' stroke-width="1.5" stroke-dasharray="5 4"'));
     push(ln('m-rd', xz - 6, G.lane[0] + 11, xz + 6, G.lane[0] + 23, ' stroke-width="2.4"'));
     push(ln('m-rd', xz + 6, G.lane[0] + 11, xz - 6, G.lane[0] + 23, ' stroke-width="2.4"'));
-    push(txt('t-mark f-rd', xz + 9, G.markY, null, 'Error logged \u2014 destination closed'));
+    push(txt('t-mark f-rd', xz + 9, G.markY, null, esc(t('Error logged \u2014 destination closed'))));
 
     /* the moment redo flows again, or the moment the destination is disabled */
     function markAt(x, cands, cls) {
@@ -3415,16 +3677,16 @@ td .mono{font-size:12px;color:var(--ik)}
     if (back !== null) {
       var xb = X(back);
       push(ln('m-tl', xb, G.lane[0] + 2, xb, G.lanesBottom + 4, ' stroke-width="1.5" stroke-dasharray="5 4"'));
-      markAt(xb, ['Redo flows again at t = ' + rpDur(back) + ' \u2014 the first retry at or after the network healed',
-                  'Redo flows again at t = ' + rpDur(back), 'Redo flows again'], 'f-tl');
+      markAt(xb, [t('Redo flows again at t = {0} \u2014 the first retry at or after the network healed', rpDur(back)),
+                  t('Redo flows again at t = {0}', rpDur(back)), t('Redo flows again')], 'f-tl');
     } else {
       var xdd = X(rp.disabledAt), cyd = G.lane[0] + G.laneH / 2;
       push(ln('m-rd', xdd, G.lane[0] + 2, xdd, G.lanesBottom + 4, ' stroke-width="2"'));
       push(ln('m-rd', xdd - 6, cyd - 6, xdd + 6, cyd + 6, ' stroke-width="2.6"'));
       push(ln('m-rd', xdd + 6, cyd - 6, xdd - 6, cyd + 6, ' stroke-width="2.6"'));
-      markAt(xdd, ['MaxFailure reached at t = ' + rpDur(rp.disabledAt) + ' \u2014 destination disabled until manually reenabled',
-                   'MaxFailure reached \u2014 disabled until manually reenabled',
-                   'MaxFailure reached'], 'f-rd');
+      markAt(xdd, [t('MaxFailure reached at t = {0} \u2014 destination disabled until manually reenabled', rpDur(rp.disabledAt)),
+                   t('MaxFailure reached \u2014 disabled until manually reenabled'),
+                   t('MaxFailure reached')], 'f-rd');
     }
 
     /* fast-start failover, in the gap between the redo lane and the standby */
@@ -3433,21 +3695,21 @@ td .mono{font-size:12px;color:var(--ik)}
       var xf = X(rp.fsfoLostAt);
       push(ln('g-vi', xf, G.lane[1] - 6, xf, G.lane[2] + G.laneH + 4));
       push('<path class="f-vi" d="M' + r1(xf) + ',' + (G.lane[1] + G.laneH + 1) + ' l5,5 l-5,5 l-5,-5 z"></path>');
-      var fLab = 'Apply lag passes FastStartFailoverLagLimit at t = ' + fmt(rp.fsfoLostAt) +
-        ' s \u2014 fast-start failover off the table';
+      var fLab = t('Apply lag passes FastStartFailoverLagLimit at t = {0} s \u2014 fast-start failover off the table',
+        fmt(rp.fsfoLostAt));
       var fX = xf + 9, fAnc = null;
       if (fX + approxW(fLab, 11.5) > plotR) { fX = xf - 9; fAnc = 'end'; }
       push(txt('t-mark f-vi', fX, gapB1, fAnc, esc(fLab)));
     } else {
       push(ln('g-rd', xz, G.lane[1] - 6, xz, G.lane[2] + G.laneH + 4));
       push(txt('t-mark f-rd', xz + 9, gapB1, null,
-        esc('UNSYNCHRONIZED \u2014 fast-start failover disarmed immediately')));
+        esc(t('UNSYNCHRONIZED \u2014 fast-start failover disarmed immediately'))));
     }
     if (rp.fsfoBackAt !== null) {
       var xk = X(rp.fsfoBackAt);
       if (xk <= plotR - 2) {
         push('<path class="f-vi" d="M' + r1(xk) + ',' + (gapB2 - 9) + ' l5,5 l-5,5 l-5,-5 z"></path>');
-        var kLab = 'FSFO re-armed \u2014 once the standby is back in sync';
+        var kLab = t('FSFO re-armed \u2014 once the standby is back in sync');
         var kX = xk + 9, kAnc = null;
         if (kX + approxW(kLab, 11.5) > plotR) { kX = xk - 9; kAnc = 'end'; }
         push(txt('t-mark f-vi', kX, gapB2, kAnc, esc(kLab)));
@@ -3457,12 +3719,13 @@ td .mono{font-size:12px;color:var(--ik)}
     /* top brace: how long redo does not flow */
     if (back !== null) {
       push(braceUp(xz, X(back), G.braceY, 'br-sl'));
-      var tLab = 'Redo stops flowing for ' + rpDur(back) + ' \u2014 back in step at ' + rpDur(rp.resyncAt);
+      var tLab = t('Redo stops flowing for {0} \u2014 back in step at {1}', rpDur(back), rpDur(rp.resyncAt));
       var tw = approxW(tLab, 12);
       push(txt('t-top', Math.min(Math.max((xz + X(back)) / 2, tw / 2 + 6), W - tw / 2 - 6), G.topY, 'middle', esc(tLab)));
     } else {
-      push(txt('t-top f-rd', plotL, G.topY, null, esc('Redo never resumes on its own \u2014 the destination is disabled at ' +
-        rpDur(rp.disabledAt) + ' and stays that way until a human reenables it')));
+      push(txt('t-top f-rd', plotL, G.topY, null, esc(t(
+        'Redo never resumes on its own \u2014 the destination is disabled at {0} and stays that way until a human reenables it',
+        rpDur(rp.disabledAt)))));
     }
 
     /* braces */
@@ -3479,103 +3742,91 @@ td .mono{font-size:12px;color:var(--ik)}
 
   function renderReopenControls() {
     els.rpVReopen.textContent = R.reopen + ' s';
-    els.rpVMaxFailure.textContent = R.maxFailure === 0 ? '0 \u2014 no limit' : String(R.maxFailure);
+    els.rpVMaxFailure.textContent = R.maxFailure === 0 ? t('0 \u2014 no limit') : String(R.maxFailure);
     els.rpVOutage.textContent = fmt(R.outage / 60) + ' min';
     els.rpVRate.textContent = R.rate + ' MB/s';
 
     els.rpNMaxFailure.classList.toggle('is-warn', R.maxFailure > 0);
     els.rpNMaxFailure.innerHTML = R.maxFailure === 0
-      ? '<span class="mono">0</span> = no limit &mdash; keep retrying forever. That is the default: an unlimited number of archival attempts to the failed destination.'
-      : 'After ' + R.maxFailure + ' consecutive failed attempts to reestablish the destination, redo transport disables it. Not a slower retry &mdash; no further access until it is manually reenabled.';
+      ? t('<span class="mono">0</span> = no limit &mdash; keep retrying forever. That is the default: an unlimited number of archival attempts to the failed destination.')
+      : t('After {0} consecutive failed attempts to reestablish the destination, redo transport disables it. Not a slower retry &mdash; no further access until it is manually reenabled.', R.maxFailure);
 
     els.rpNOutage.innerHTML = R.outage <= R.reopen
-      ? 'How long the network stays broken. It heals inside one <span class="mono">ReopenSecs</span> here, so the very first retry succeeds and <span class="mono">MaxFailure</span> never gets a chance to count anything.'
-      : 'How long the network stays broken before it heals on its own. Not a parameter &mdash; it is the thing the two properties above are reacting to.';
+      ? t('How long the network stays broken. It heals inside one <span class="mono">ReopenSecs</span> here, so the very first retry succeeds and <span class="mono">MaxFailure</span> never gets a chance to count anything.')
+      : t('How long the network stays broken before it heals on its own. Not a parameter &mdash; it is the thing the two properties above are reacting to.');
   }
 
   function renderReopenReadout(rp) {
-    var out = chip('am', 'First retry at', fmt(rp.reopen), 's',
-      'One <span class="mono">ReopenSecs</span> after the error, at the next log switch');
+    var out = chip('am', t('First retry at'), fmt(rp.reopen), 's',
+      t('One <span class="mono">ReopenSecs</span> after the error, at the next log switch'));
 
     out += rp.reconnectAt !== null
-      ? chip('tl', 'Redo flows again', fmt(rp.reconnectAt), 's',
-          'Retry ' + (rp.attempts.length - 1) + ' \u2014 the first one at or after the network healed at ' +
-          fmt(rp.outage) + ' s')
-      : chip('rd', 'Redo flows again', 'never', '',
-          'The destination was disabled at ' + fmt(rp.disabledAt) +
-          ' s \u2014 manual re-enable required, and the network healing at ' + fmt(rp.outage) + ' s changes nothing');
+      ? chip('tl', t('Redo flows again'), fmt(rp.reconnectAt), 's',
+          t('Retry {0} \u2014 the first one at or after the network healed at {1} s',
+            rp.attempts.length - 1, fmt(rp.outage)))
+      : chip('rd', t('Redo flows again'), t('never'), '',
+          t('The destination was disabled at {0} s \u2014 manual re-enable required, and the network healing at {1} s changes nothing',
+            fmt(rp.disabledAt), fmt(rp.outage)));
 
-    out += chip(rp.disabledAt !== null ? 'rd' : 'ik', 'Failed retries', fmt(rp.failedRetries),
-      'of ' + (rp.maxFailure > 0 ? fmt(rp.maxFailure) : 'no limit'),
-      'Plus the initial error at t = 0 that closed the destination: ' + rp.failures +
-      ' logged errors in all. <span class="mono">MAX_FAILURE</span> counts only the attempts to reestablish.');
+    out += chip(rp.disabledAt !== null ? 'rd' : 'ik', t('Failed retries'), fmt(rp.failedRetries),
+      rp.maxFailure > 0 ? t('of {0}', fmt(rp.maxFailure)) : t('of no limit'),
+      t('Plus the initial error at t = 0 that closed the destination: {0} logged errors in all. <span class="mono">MAX_FAILURE</span> counts only the attempts to reestablish.', rp.failures));
 
-    out += chip('am', 'Peak unshipped redo', fmt(rp.peakExposureSecs), 's of redo',
-      '\u2248 ' + fmt(rp.peakExposureMB) + ' MB at ' + fmt(rp.rate) + ' MB/s' +
-      (rp.reconnectAt !== null ? ', drained by ' + fmt(rp.resyncAt) + ' s'
-                               : ' \u2014 and still growing past the right edge'));
+    out += chip('am', t('Peak unshipped redo'), fmt(rp.peakExposureSecs), t('s of redo'),
+      (rp.reconnectAt !== null
+        ? t('\u2248 {0} MB at {1} MB/s, drained by {2} s', fmt(rp.peakExposureMB), fmt(rp.rate), fmt(rp.resyncAt))
+        : t('\u2248 {0} MB at {1} MB/s \u2014 and still growing past the right edge', fmt(rp.peakExposureMB), fmt(rp.rate))));
 
     out += rp.mode === 'maxperf'
-      ? chip('vi', 'Fast-start failover', fmt(rp.fsfoLostAt), 's to disarmed',
-          'The apply lag passes <span class="mono">FastStartFailoverLagLimit = ' + fmt(rp.fsfoLostAt) +
-          ' s</span> while nothing arrives' + (rp.fsfoBackAt !== null
-            ? '; re-armed around ' + fmt(rp.fsfoBackAt) + ' s' : '; never re-armed here'))
-      : chip('vi', 'Fast-start failover', 'disarmed', '',
-          'MaxAvailability: the standby is <span class="mono">UNSYNCHRONIZED</span> the moment the link breaks' +
-          (rp.fsfoBackAt !== null ? ' \u2014 re-armed around ' + fmt(rp.fsfoBackAt) + ' s, once it is back in sync'
-                                  : ', and stays that way'));
+      ? chip('vi', t('Fast-start failover'), fmt(rp.fsfoLostAt), t('s to disarmed'),
+          rp.fsfoBackAt !== null
+            ? t('The apply lag passes <span class="mono">FastStartFailoverLagLimit = {0} s</span> while nothing arrives; re-armed around {1} s', fmt(rp.fsfoLostAt), fmt(rp.fsfoBackAt))
+            : t('The apply lag passes <span class="mono">FastStartFailoverLagLimit = {0} s</span> while nothing arrives; never re-armed here', fmt(rp.fsfoLostAt)))
+      : chip('vi', t('Fast-start failover'), t('disarmed'), '',
+          rp.fsfoBackAt !== null
+            ? t('MaxAvailability: the standby is <span class="mono">UNSYNCHRONIZED</span> the moment the link breaks \u2014 re-armed around {0} s, once it is back in sync', fmt(rp.fsfoBackAt))
+            : t('MaxAvailability: the standby is <span class="mono">UNSYNCHRONIZED</span> the moment the link breaks, and stays that way'));
 
     els.rpChips.innerHTML = out;
   }
 
   function renderReopenProse(rp) {
-    els.rpEyebrow.textContent = 't = 0 is the error that closed the destination \u00b7 horizon ' +
-      fmt(rp.horizon / 60) + ' min';
+    els.rpEyebrow.textContent = t('t = 0 is the error that closed the destination \u00b7 horizon {0} min',
+      fmt(rp.horizon / 60));
 
     els.rpBanner.hidden = rp.disabledAt === null;
     if (rp.disabledAt !== null) {
-      els.rpBannerBody.innerHTML = '<span class="mono">MaxFailure = ' + rp.maxFailure +
-        '</span> consecutive failed attempts to reestablish the destination were reached at <span class="mono">' +
-        fmt(rp.disabledAt) + ' s</span>, so redo transport disabled it: there is no further access to the destination until it is manually reenabled. The network came back at <span class="mono">' +
-        fmt(rp.outage) + ' s</span> and nothing happened \u2014 from that point the destination behaves as if <span class="mono">REOPEN</span> had never been specified.';
+      els.rpBannerBody.innerHTML = t('<span class="mono">MaxFailure = {0}</span> consecutive failed attempts to reestablish the destination were reached at <span class="mono">{1} s</span>, so redo transport disabled it: there is no further access to the destination until it is manually reenabled. The network came back at <span class="mono">{2} s</span> and nothing happened \u2014 from that point the destination behaves as if <span class="mono">REOPEN</span> had never been specified.',
+        rp.maxFailure, fmt(rp.disabledAt), fmt(rp.outage));
     }
 
     var fsfoLine = rp.mode === 'maxperf'
-      ? 'Fast-start failover survives until <span class="mono">' + fmt(rp.fsfoLostAt) +
-        ' s</span>, when the apply lag passes <span class="mono">FastStartFailoverLagLimit</span>.'
-      : 'Fast-start failover is disarmed from the first second: in MaxAvailability the standby is <span class="mono">UNSYNCHRONIZED</span> as soon as the link breaks.';
+      ? t('Fast-start failover survives until <span class="mono">{0} s</span>, when the apply lag passes <span class="mono">FastStartFailoverLagLimit</span>.', fmt(rp.fsfoLostAt))
+      : t('Fast-start failover is disarmed from the first second: in MaxAvailability the standby is <span class="mono">UNSYNCHRONIZED</span> as soon as the link breaks.');
 
     var over = rp.reconnectAt === null ? 0 : rp.reconnectAt - rp.outage;
-    els.rpCaption.innerHTML = rp.disabledAt !== null
-      ? 'The destination was retried ' + rp.failedRetries + ' time' + (rp.failedRetries === 1 ? '' : 's') +
-        ', every <span class="mono">' + fmt(rp.reopen) + ' s</span>, and the ' + rpOrd(rp.maxFailure) +
-        ' failure at <span class="mono">' + fmt(rp.disabledAt) +
-        ' s</span> disabled it for good. The gap never stops growing on this drawing, because nothing on the primary will try that destination again. ' + fsfoLine
+    els.rpCaption.innerHTML = (rp.disabledAt !== null
+      ? tp('The destination was retried {0} time, every <span class="mono">{1} s</span>, and the {2} failure at <span class="mono">{3} s</span> disabled it for good. The gap never stops growing on this drawing, because nothing on the primary will try that destination again.|The destination was retried {0} times, every <span class="mono">{1} s</span>, and the {2} failure at <span class="mono">{3} s</span> disabled it for good. The gap never stops growing on this drawing, because nothing on the primary will try that destination again.',
+           rp.failedRetries, rp.failedRetries, fmt(rp.reopen), rpOrd(rp.maxFailure), fmt(rp.disabledAt))
       : rp.failedRetries === 0
-        ? 'The network healed at <span class="mono">' + fmt(rp.outage) +
-          ' s</span>, inside the first <span class="mono">ReopenSecs</span>, so the very first retry at <span class="mono">' +
-          fmt(rp.reopen) + ' s</span> succeeded and <span class="mono">MaxFailure</span> never counted anything. Even so the destination stayed closed for a full <span class="mono">' +
-          fmt(rp.reopen) + ' s</span> \u2014 that floor is the property\u2019s real cost. ' + fsfoLine
-        : 'The network healed at <span class="mono">' + fmt(rp.outage) +
-          ' s</span>, but the destination is only retried every <span class="mono">' + fmt(rp.reopen) + ' s</span>, so ' +
-          rp.failedRetries + ' of those attempts landed while the link was still down' +
-          (over > 0 ? ' and it stayed closed for another <span class="mono">' + fmt(over) +
-                      ' s</span> after the network was already fine'
-                    : ', and the next one landed exactly as the link came back') +
-          '. The backlog of <span class="mono">' + fmt(rp.peakExposureSecs) +
-          ' s</span> of redo then takes until <span class="mono">' + fmt(rp.resyncAt) +
-          ' s</span> to drain. ' + fsfoLine;
+        ? t('The network healed at <span class="mono">{0} s</span>, inside the first <span class="mono">ReopenSecs</span>, so the very first retry at <span class="mono">{1} s</span> succeeded and <span class="mono">MaxFailure</span> never counted anything. Even so the destination stayed closed for a full <span class="mono">{1} s</span> \u2014 that floor is the property\u2019s real cost.',
+            fmt(rp.outage), fmt(rp.reopen))
+        : (over > 0
+            ? t('The network healed at <span class="mono">{0} s</span>, but the destination is only retried every <span class="mono">{1} s</span>, so {2} of those attempts landed while the link was still down and it stayed closed for another <span class="mono">{3} s</span> after the network was already fine. The backlog of <span class="mono">{4} s</span> of redo then takes until <span class="mono">{5} s</span> to drain.',
+                fmt(rp.outage), fmt(rp.reopen), rp.failedRetries, fmt(over), fmt(rp.peakExposureSecs), fmt(rp.resyncAt))
+            : t('The network healed at <span class="mono">{0} s</span>, but the destination is only retried every <span class="mono">{1} s</span>, so {2} of those attempts landed while the link was still down, and the next one landed exactly as the link came back. The backlog of <span class="mono">{3} s</span> of redo then takes until <span class="mono">{4} s</span> to drain.',
+                fmt(rp.outage), fmt(rp.reopen), rp.failedRetries, fmt(rp.peakExposureSecs), fmt(rp.resyncAt)))
+      ) + ' ' + fsfoLine;
 
-    els.rpSummary.textContent = 'Reopen panel: the destination was closed at t = 0 and retried every ' +
-      fmt(rp.reopen) + ' seconds. ' + (rp.reconnectAt !== null
-        ? 'Redo flowed again at ' + fmt(rp.reconnectAt) + ' seconds after ' + rp.failedRetries +
-          ' failed retries, and the standby was back in step at ' + fmt(rp.resyncAt) + ' seconds.'
-        : 'MaxFailure was reached at ' + fmt(rp.disabledAt) +
-          ' seconds and the destination was disabled until it is manually reenabled; redo never resumes.') +
-      ' Peak unshipped redo ' + fmt(rp.peakExposureSecs) + ' seconds, about ' + fmt(rp.peakExposureMB) +
-      ' megabytes. ' + (rp.mode === 'maxperf'
-        ? 'Fast-start failover is disarmed at ' + fmt(rp.fsfoLostAt) + ' seconds.'
-        : 'Fast-start failover is disarmed immediately.');
+    els.rpSummary.textContent = t('Reopen panel: the destination was closed at t = 0 and retried every {0} seconds. ', fmt(rp.reopen)) +
+      (rp.reconnectAt !== null
+        ? t('Redo flowed again at {0} seconds after {1} failed retries, and the standby was back in step at {2} seconds.',
+            fmt(rp.reconnectAt), rp.failedRetries, fmt(rp.resyncAt))
+        : t('MaxFailure was reached at {0} seconds and the destination was disabled until it is manually reenabled; redo never resumes.', fmt(rp.disabledAt))) +
+      ' ' + t('Peak unshipped redo {0} seconds, about {1} megabytes.', fmt(rp.peakExposureSecs), fmt(rp.peakExposureMB)) +
+      ' ' + (rp.mode === 'maxperf'
+        ? t('Fast-start failover is disarmed at {0} seconds.', fmt(rp.fsfoLostAt))
+        : t('Fast-start failover is disarmed immediately.'));
   }
 
   /* ---------- topology strip ---------- */
@@ -3587,11 +3838,11 @@ td .mono{font-size:12px;color:var(--ik)}
     var s = [], push = function (x) { s.push(x); };
 
     push('<svg class="topo-svg" viewBox="0 0 960 200" role="img" aria-label="' +
-      esc('Topology: the primary database in data center 1, the target standby in data center 2, the observer on a third host. ' +
-          (obs ? 'The observer host dies at t = 0. The primary and the standby stay connected, so redo keeps flowing, but the configuration is unobserved and nothing can fail over.'
-               : iso ? 'A network partition cuts the primary off from the observer and the standby at t = 0.'
-               : 'The primary host crashes at t = 0.') +
-          ' Every link carries ' + C.latency + ' ms of round-trip latency.') + '">');
+      esc(t('Topology: the primary database in data center 1, the target standby in data center 2, the observer on a third host.') + ' ' +
+          (obs ? t('The observer host dies at t = 0. The primary and the standby stay connected, so redo keeps flowing, but the configuration is unobserved and nothing can fail over.')
+               : iso ? t('A network partition cuts the primary off from the observer and the standby at t = 0.')
+               : t('The primary host crashes at t = 0.')) + ' ' +
+          t('Every link carries {0} ms of round-trip latency.', C.latency)) + '">');
     push('<defs><pattern id="topoHatch" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">' +
       '<rect width="8" height="8" class="hatch-bg"></rect><line x1="0" y1="0" x2="0" y2="8" class="hatch-ln"></line></pattern>' +
       '<marker id="topoAr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse"><path d="M0,1 L10,5 L0,9 z" class="tp-ahr"></path></marker></defs>');
@@ -3606,17 +3857,17 @@ td .mono{font-size:12px;color:var(--ik)}
       push('<path class="tp-link-x" d="M535,64 L715,130"></path>');
       push('<path class="tp-link" d="M292,158 L664,158" marker-end="url(#topoAs)"></path>');
 
-      push(txt('tp-ev', 318, 92, 'end', 'no observer to ping'));
-      push(txt('tp-ev', 646, 92, null, 'no readiness check'));
-      push(txt('tp-cap', 480, 146, 'middle', esc(sync ? 'redo (SYNC): each commit waits one standby RTT' : 'redo (ASYNC)')));
+      push(txt('tp-ev', 318, 92, 'end', esc(t('no observer to ping'))));
+      push(txt('tp-ev', 646, 92, null, esc(t('no readiness check'))));
+      push(txt('tp-cap', 480, 146, 'middle', esc(sync ? t('redo (SYNC): each commit waits one standby RTT') : t('redo (ASYNC)'))));
       push(txt('tp-lat', 480, 174, 'middle', esc(latLab)));
 
-      push(nodeBox(405, 14, 150, 46, 'tp-node tp-down', 'Observer', 'DGMGRL, third host'));
-      push(nodeBox(110, 132, 180, 52, 'tp-node', 'Primary', 'production, DC 1'));
-      push(nodeBox(670, 132, 180, 52, 'tp-node', 'Standby', 'failover target, DC 2'));
+      push(nodeBox(405, 14, 150, 46, 'tp-node tp-down', 'Observer', t('DGMGRL, third host')));
+      push(nodeBox(110, 132, 180, 52, 'tp-node', 'Primary', t('production, DC 1')));
+      push(nodeBox(670, 132, 180, 52, 'tp-node', 'Standby', t('failover target, DC 2')));
       push(ln('tp-x', 424, 26, 438, 40));
       push(ln('tp-x', 438, 26, 424, 40));
-      push(txt('tp-ev', 395, 40, 'end', 'observer host down at t = 0'));
+      push(txt('tp-ev', 395, 40, 'end', esc(t('observer host down at t = 0'))));
       push('</svg>');
       return s.join('');
     }
@@ -3629,9 +3880,9 @@ td .mono{font-size:12px;color:var(--ik)}
 
     push(txt('tp-cap', 318, 84, 'end', 'ping'));
     push(txt('tp-lat', 318, 98, 'end', esc(latLab)));
-    push(txt('tp-cap', 646, 84, null, 'readiness check'));
+    push(txt('tp-cap', 646, 84, null, esc(t('readiness check'))));
     push(txt('tp-lat', 646, 98, null, esc(latLab)));
-    push(txt('tp-cap', 480, 146, 'middle', esc(sync ? 'redo (SYNC): each commit waits one standby RTT' : 'redo (ASYNC)')));
+    push(txt('tp-cap', 480, 146, 'middle', esc(sync ? t('redo (SYNC): each commit waits one standby RTT') : t('redo (ASYNC)'))));
     push(txt('tp-lat', 480, 174, 'middle', esc(latLab)));
 
     function nodeBox(x, y, w, h, cls, name, sub) {
@@ -3639,17 +3890,17 @@ td .mono{font-size:12px;color:var(--ik)}
         txt('tp-name', x + w / 2, y + 22, 'middle', esc(name)) +
         txt('tp-sub', x + w / 2, y + 38, 'middle', esc(sub));
     }
-    push(nodeBox(405, 14, 150, 46, 'tp-node tp-obs', 'Observer', 'DGMGRL, third host'));
-    push(nodeBox(110, 132, 180, 52, 'tp-node' + (iso ? '' : ' tp-down'), 'Primary', 'production, DC 1'));
-    push(nodeBox(670, 132, 180, 52, 'tp-node', 'Standby', 'failover target, DC 2'));
+    push(nodeBox(405, 14, 150, 46, 'tp-node tp-obs', 'Observer', t('DGMGRL, third host')));
+    push(nodeBox(110, 132, 180, 52, 'tp-node' + (iso ? '' : ' tp-down'), 'Primary', t('production, DC 1')));
+    push(nodeBox(670, 132, 180, 52, 'tp-node', 'Standby', t('failover target, DC 2')));
 
     if (iso) {
       push('<path class="tp-part" d="M356,6 L318,194"></path>');
-      push(txt('tp-ev', 346, 16, 'end', 'network partition at t = 0'));
+      push(txt('tp-ev', 346, 16, 'end', esc(t('network partition at t = 0'))));
     } else {
       push(ln('tp-x', 131, 151, 145, 165));
       push(ln('tp-x', 145, 151, 131, 165));
-      push(txt('tp-ev', 185, 126, 'middle', 'host down at t = 0'));
+      push(txt('tp-ev', 185, 126, 'middle', esc(t('host down at t = 0'))));
     }
     push('</svg>');
     return s.join('');
@@ -3806,7 +4057,7 @@ td .mono{font-size:12px;color:var(--ik)}
     if (!range || range.type !== 'range') return;
     out.classList.add('is-editable');
     out.setAttribute('tabindex', '0');
-    out.setAttribute('title', 'Click to type a value');
+    out.setAttribute('title', t('Click to type a value'));
     var box = null;
     function close() {
       if (!box) return;
@@ -3832,7 +4083,7 @@ td .mono{font-size:12px;color:var(--ik)}
       box.className = 'ctl-typein';
       box.min = range.min; box.max = range.max; box.step = range.step || '1';
       box.value = range.value;
-      box.setAttribute('aria-label', 'Type a value between ' + range.min + ' and ' + range.max);
+      box.setAttribute('aria-label', t('Type a value between {0} and {1}', range.min, range.max));
       out.classList.add('is-editing');
       out.parentNode.insertBefore(box, out.nextSibling);
       box.focus();
@@ -3846,6 +4097,19 @@ td .mono{font-size:12px;color:var(--ik)}
     out.addEventListener('click', open);
     out.addEventListener('keydown', function (e) {
       if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); }
+    });
+  });
+
+  /* A language switch is a full repaint: every string above is produced by
+     draw(), so nothing else has to be re-labelled here. The signature vars are
+     left alone deliberately -- the shapes did not change, only the words, and a
+     fade-in on a language flip would read as a state change. */
+  window.DG.onLang(draw);
+
+  /* Type-in readouts carry a title and an aria-label of their own. */
+  window.DG.onLang(function () {
+    Array.prototype.forEach.call(document.querySelectorAll('output.ctl-val.is-editable'), function (out) {
+      out.setAttribute('title', t('Click to type a value'));
     });
   });
 
@@ -3982,8 +4246,10 @@ td .mono{font-size:12px;color:var(--ik)}
    script-injected, so without JS there is no dead chrome. */
 (function () {
   "use strict";
+  var t = window.DG.t;
 
   /* ---------- collapsible rail notes ---------- */
+  var noteBtns = [];
   Array.prototype.forEach.call(document.querySelectorAll('.rail'), function (rail) {
     if (!rail.querySelector('.ctl-note')) return;
     var btns = rail.querySelector('.rail-btns');
@@ -3991,14 +4257,23 @@ td .mono{font-size:12px;color:var(--ik)}
     rail.classList.add('notes-managed');
     var b = document.createElement('button');
     b.type = 'button';
-    b.textContent = 'Notes';
+    b.textContent = t('Notes');
     b.setAttribute('aria-pressed', 'false');
-    b.setAttribute('title', 'Show the explanation under each control');
+    b.setAttribute('title', t('Show the explanation under each control'));
     b.addEventListener('click', function () {
       var open = rail.classList.toggle('notes-open');
       b.setAttribute('aria-pressed', open ? 'true' : 'false');
     });
     btns.insertBefore(b, btns.firstChild);
+    noteBtns.push(b);
+  });
+  /* Script-injected chrome is invisible to the static markup pass, so each
+     block that creates its own labels re-applies them on a language switch. */
+  window.DG.onLang(function () {
+    noteBtns.forEach(function (b) {
+      b.textContent = t('Notes');
+      b.setAttribute('title', t('Show the explanation under each control'));
+    });
   });
 
   /* ---------- config pill ---------- */
@@ -4024,14 +4299,14 @@ td .mono{font-size:12px;color:var(--ik)}
     'ch-clocks': { title: 'Failover clocks', chips: 'chips', cfg: function () {
       var ping = document.getElementById('c-pingset');
       return [segLabel('scenario'), segLabel('mode'),
-        (ping && ping.checked) ? 'ping props set' : 'threshold ' + txt('v-threshold')].join(SEP);
+        (ping && ping.checked) ? t('ping props set') : t('threshold {0}', txt('v-threshold'))].join(SEP);
     } },
     'commitview': { title: 'One commit', chips: 'cm-chips', cfg: function () {
       return [segLabel('cm-xpt'), 'RTT ' + txt('cm-v-rtt'), 'SRL ' + txt('cm-v-sbw')].join(SEP);
     } },
     'reopenview': { title: 'Reopen aftermath', chips: 'rp-chips', cfg: function () {
-      return ['reopen ' + txt('rp-v-reopen'), 'MaxFailure ' + txt('rp-v-maxfailure'),
-        'outage ' + txt('rp-v-outage')].join(SEP);
+      return [t('reopen {0}', txt('rp-v-reopen')), 'MaxFailure ' + txt('rp-v-maxfailure'),
+        t('outage {0}', txt('rp-v-outage'))].join(SEP);
     } },
     'appview': { title: 'Application view', chips: 'ap-chips', cfg: function () {
       return ['TCT ' + txt('ap-v-tct'), 'CT ' + txt('ap-v-ct'),
@@ -4067,7 +4342,7 @@ td .mono{font-size:12px;color:var(--ik)}
 
   var cur = null;
   function fill(wb) {
-    pT.textContent = wb.spec.title;
+    pT.textContent = t(wb.spec.title);
     pC.textContent = wb.spec.cfg();
     pO.textContent = '';
     var chip = document.querySelector('#' + wb.spec.chips + ' .chip');
@@ -4080,7 +4355,7 @@ td .mono{font-size:12px;color:var(--ik)}
         pO.appendChild(b);
       }
     }
-    pill.setAttribute('aria-label', 'Back to the ' + wb.spec.title + ' controls');
+    pill.setAttribute('aria-label', t('Back to the {0} controls', t(wb.spec.title)));
   }
 
   /* A workbench counts as on screen once more than SLOP px of it is inside
@@ -4129,6 +4404,7 @@ td .mono{font-size:12px;color:var(--ik)}
   document.addEventListener('click', schedule);
   if (mq.addEventListener) mq.addEventListener('change', schedule);
   else if (mq.addListener) mq.addListener(schedule);
+  window.DG.onLang(update);
   update();
 })();
 </script>
@@ -4347,14 +4623,17 @@ td .mono{font-size:12px;color:var(--ik)}
     'tuned':         { p: { tct: 3, ct: 90, rc: 30, rd: 3 }, to: 'appview',
                        label: 'Show me the ladder' }
   };
+  var t = window.DG.t;
+  var demoBtns = [];
   Array.prototype.forEach.call(document.querySelectorAll('.note[data-demo]'), function (card) {
     var d = DEMOS[card.getAttribute('data-demo')];
     if (!d) return;
     var b = document.createElement('button');
     b.type = 'button';
     b.className = 'demo';
-    b.textContent = d.label;
-    b.setAttribute('title', 'Set the controls up to demonstrate this and jump to the timeline');
+    b.textContent = t(d.label);
+    b.setAttribute('title', t('Set the controls up to demonstrate this and jump to the timeline'));
+    demoBtns.push({ b: b, d: d });
     b.addEventListener('click', function () {
       apply(d.p, true);
       requestAnimationFrame(function () {
@@ -4364,6 +4643,12 @@ td .mono{font-size:12px;color:var(--ik)}
       });
     });
     card.appendChild(b);
+  });
+  window.DG.onLang(function () {
+    demoBtns.forEach(function (o) {
+      o.b.textContent = t(o.d.label);
+      o.b.setAttribute('title', t('Set the controls up to demonstrate this and jump to the timeline'));
+    });
   });
 
   /* Serialize on any control activity: rAF collapses a gesture's bursts,

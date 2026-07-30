@@ -13,10 +13,11 @@ to extend it without breaking consistency or accuracy.
 | `diagrams/fsfo-sequence.svg` (+`.png`) | Sequence diagram of the crash case with an elapsed-time gutter |
 | `diagrams/fsfo-net-timeout.svg` (+`.png`) | Two panels separating NET_TIMEOUT (redo transport) from the broker failover clocks |
 | `diagrams/README.md` | Figure embeds, broker-property and redo-transport-property tables with verified defaults, the ping-properties quirk, the verified-facts sections behind the simulator's commit/reopen/observer views, the drawing idealizations, Oracle doc links |
-| `simulator/fsfo-simulator.html` | Source fragment of the interactive simulator, published at davidbudac.cz/dataguard |
+| `simulator/fsfo-simulator.html` | Source fragment of the interactive simulator, published at davidbudac.cz/dataguard. English only |
+| `simulator/i18n/cs.json` | Czech translation catalog, keyed by the English source strings. Real UTF-8 — deliberately outside the ASCII-only fragment |
 | `testing/README.md` | Test runbook: step-by-step drills verifying each documented situation against a real 19c configuration (crash, isolation, observer loss, NET_TIMEOUT, blocked failover, reopen/MaxFailure, client view, commit measurement), with an RTO/RPO probe harness and reinstate cleanup. Repo-only markdown — not part of the published site |
-| `site/build.mjs` | Wraps the fragment into a full page (doctype, charset, title, favicon, canonical + social meta) and enforces the ASCII-only guard — it exits non-zero on any byte above U+007E |
-| `site/test.mjs` | Standalone node test: extracts the four model marker blocks from the fragment and asserts the documented domain invariants. No dependencies; `node --test site/test.mjs`. `site/publish.sh` runs it after the build, so a model that contradicts the docs cannot be deployed |
+| `site/build.mjs` | Wraps the fragment into a full page (doctype, charset, title, favicon, canonical + social meta), inlines `simulator/i18n/cs.json` as a JSON `<script>`, and enforces the ASCII-only guard — it exits non-zero on any byte above U+007E |
+| `site/test.mjs` | Standalone node test: extracts the four model marker blocks from the fragment and asserts the documented domain invariants, then checks the Czech catalog for dropped placeholders, unbalanced inline markup and bad plural forms. No dependencies; `node --test site/test.mjs`. `site/publish.sh` runs it after the build, so a model that contradicts the docs cannot be deployed |
 | `site/publish.sh` | Builds, tests the models, and deploys to the VPS, then verifies the public URL |
 
 ## Publishing
@@ -329,7 +330,8 @@ broker composes.
 
 The simulator is live at davidbudac.cz/dataguard; run `./site/publish.sh` to push
 changes (see Publishing above). Before publishing simulator changes, verify both
-themes and the key states first: defaults, isolated scenario, MaxPerformance with lag > limit
+themes and the key states first — and, when the change touches prose, both
+languages (see Languages below): defaults, isolated scenario, MaxPerformance with lag > limit
 (blocked banner), ping properties set (threshold grayed out, ~1.1 s detection);
 observer-lost defaults (flat lanes, Unobserved callout, failover-clock controls
 grayed) and switching back out of it (no control left stuck disabled) — in the
@@ -362,6 +364,89 @@ under the chapter bar. Focus a slider in a collapsed rail (note appears,
 disappears on blur) with an `.is-warn` note visible elsewhere, in both themes.
 After a publish, `curl -s https://davidbudac.cz/dataguard/ | grep -E
 'og:image|canonical|theme-color|rel="icon"'` finds all four.
+
+## Languages (English + Czech)
+
+The page ships in English and Czech, chosen with an `EN` / `CS` toggle in the
+header. **English is the source language and the only one in the fragment.**
+Czech lives in `simulator/i18n/cs.json`, which `site/build.mjs` inlines into the
+built page's `<head>` as `<script type="application/json" id="dg-i18n-cs">`. That
+split exists because the fragment must stay pure ASCII (CLAUDE.md) and a Czech
+catalog spelled in `\uXXXX` escapes would be unmaintainable; the wrapper declares
+the charset, so the JSON block can hold real accented characters. Consequence:
+opening the raw fragment on its own gives English and hides the toggle.
+
+**Catalog keys are the English source strings**, not invented ids. A string with
+no entry falls through untranslated — which is exactly what keeps the technical
+vocabulary English, and it means adding English prose never breaks the Czech
+page, it just leaves that sentence English until someone translates it.
+
+### What is translated and what is not
+
+Translated: prose, headings, captions, control labels, chip labels and
+sub-lines, bar and brace labels in the drawings, screen-reader summaries, the
+grey commentary inside the config cards, `title`/`aria-label` text.
+
+**Never translated** — a Czech reader must be able to match every term against
+the Oracle documentation: property names (`FastStartFailoverThreshold`,
+`ReopenSecs`, …), `LOG_ARCHIVE_DEST_n` attributes, protection modes
+(`MaxAvailability`), transport modes (`SYNC`/`FASTSYNC`/`ASYNC`/`AFFIRM`/
+`NOAFFIRM`), Oracle statuses (`STALLED`, `UNSYNCHRONIZED`, `PRIMARY UNOBSERVED`),
+`ORA-` numbers, view and column names, DGMGRL and SQL, the fixture names
+(`prm01`, `app_svc`, `dc1-prm01`), and the role words *primary*, *standby* and
+*observer*, which Czech DBAs use in English anyway. Also untranslated on purpose:
+the numeric slider-scale labels, and parameter values like `on`/`off`/`TRUE`.
+
+### The mechanism
+
+- `window.DG` (first `<script>` on the page, before the markup): `t(source, …)`
+  translates and substitutes `{0}`, `{1}`, …; `tp(forms, n, …)` picks a plural
+  form; `dec()` is the decimal separator; `setLang`, `lang()`, `onLang(cb)`.
+  Resolution order is `?lang=` → `localStorage['dg-lang']` → English, and an
+  unknown token is normalized out of the URL on load.
+- **Sentences are keyed whole and take placeholders** — never concatenated from
+  fragments, because Czech puts the numbers elsewhere than English does. When you
+  add a sentence built from a condition, give each branch its own full key rather
+  than gluing a translated tail onto a translated head.
+- **Plurals**: Czech has three cardinal forms (1 / 2–4 / 5+) to English's two.
+  A countable string carries its forms `|`-separated on both sides of the
+  catalog: `tp('{0} retry|{0} retries', n, n)`. `site/test.mjs` checks this.
+- **Numbers**: `fmt()` swaps `.` for `,` under Czech. The config cards do not go
+  through it — their values are integers, so no Oracle syntax is ever touched.
+- **Static markup** is translated by the block sitting between the markup and the
+  models. It snapshots the English out of the DOM *once*, by CSS selector, and
+  every later pass renders from that snapshot, so a translated string can never
+  become the source for the next translation. It is placed there, and
+  `DG.setLang` runs it before the `onLang` subscribers, because the models own a
+  dozen control notes and headings that also exist in the markup — the models
+  have to win.
+- **Script-injected chrome** (the Notes buttons, the config pill, the demo
+  buttons) is invisible to that snapshot, so each of those blocks re-applies its
+  own labels from an `onLang` callback.
+- Adding a section: put its prose in the markup and its JS strings in `t()`, then
+  re-run the extraction below and translate the new keys.
+
+### Extracting and verifying
+
+There is no extraction script in the repo — the reliable way is to ask the page,
+because it knows which strings a given state actually asks for. `DG.missing()`
+returns every key looked up with no translation. Build, then load
+`_site/index.html` in headless Chrome with a probe appended that stubs
+`requestAnimationFrame` (the render loop wedges otherwise), calls
+`DG.setLang('cs')`, walks the key states, and dumps `JSON.stringify(DG.missing())`
+into the DOM for `--dump-dom` to pick up. Everything it reports must be a term
+from the never-translated list above.
+
+Two things that only a rendered page catches, both worth re-checking after
+translating: **lane labels live in a fixed 124 px gutter** (13 px for the name,
+10 px for the sub-line) and a longer Czech string silently clips off the left
+edge — `Primary transport` had to become `Transport primary`, not
+`Transport na primary`. And **rail headers wrap** when the eyebrow plus the
+buttons exceed 270 px, which is why `Reset defaults` is `Výchozí` and not
+`Zpět na výchozí`. Verify a `cs` → `en` round trip too: dump the DOM after
+`setLang('cs'); setLang('en')` and diff it against a plain English load. They
+must match except for the `is-new` fade-in class, which the language switch
+deliberately does not re-add.
 
 ## Process that produced this (worth repeating)
 

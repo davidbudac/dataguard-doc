@@ -48,6 +48,48 @@ const titleMatch = fragment.match(/<title>([\s\S]*?)<\/title>/i);
 const title = titleMatch ? titleMatch[1].trim() : 'Fast-start failover simulator';
 const body = titleMatch ? fragment.replace(titleMatch[0], '') : fragment;
 
+// The Czech catalog. It lives outside the fragment precisely because the
+// fragment must stay pure ASCII (the guard above), and Czech spelled in \uXXXX
+// escapes would be unreadable. Inlined here instead, inside the wrapper that
+// declares the charset, so it can carry real accented characters -- and inlined
+// rather than fetched because the page makes zero external requests.
+//
+// Keys are the English source strings, so an entry that is missing degrades to
+// English rather than to a key. That is also what keeps the technical
+// vocabulary English: property names, DGMGRL commands, ORA numbers and the
+// protection- and transport-mode names are simply not translated.
+const catalogPath = join(root, 'simulator/i18n/cs.json');
+let catalog = null;
+try {
+  catalog = JSON.parse(await readFile(catalogPath, 'utf8'));
+} catch (err) {
+  if (err.code !== 'ENOENT') {
+    console.error(`simulator/i18n/cs.json is not valid JSON: ${err.message}`);
+    process.exit(1);
+  }
+  console.warn('simulator/i18n/cs.json missing -- building English-only');
+}
+
+let catalogTag = '';
+if (catalog) {
+  const strings = catalog.strings || {};
+  const empty = Object.keys(strings).filter((k) => !String(strings[k]).trim());
+  if (empty.length) {
+    console.error(
+      `simulator/i18n/cs.json has ${empty.length} empty translation(s); ` +
+        `remove the key instead of leaving it blank, so it falls back to English:\n` +
+        empty.slice(0, 10).map((k) => `  ${JSON.stringify(k.slice(0, 70))}`).join('\n'),
+    );
+    process.exit(1);
+  }
+  // Escaping '<' is what makes this safe inside <script>: a '</script>' inside
+  // any translated string would otherwise close the block early. JSON.parse
+  // reads < back as '<', so the catalog itself is unchanged.
+  const json = JSON.stringify({ lang: catalog.lang || 'cs', strings }).replace(/</g, '\\u003c');
+  catalogTag = `<script type="application/json" id="dg-i18n-cs">${json}</script>\n`;
+  console.log(`inlined ${Object.keys(strings).length} Czech strings`);
+}
+
 // One description constant so <meta name="description"> and og:description
 // cannot drift apart. SITE is the canonical URL; og:image must be absolute,
 // and diagrams/ is copied into _site below, so the figure serves from the
@@ -96,7 +138,7 @@ const page = `<!doctype html>
    color-scheme keeps scrollbars and form controls in step. */
 html,body{margin:0;background:var(--bg,#F4F6F8);color-scheme:light dark}
 </style>
-</head>
+${catalogTag}</head>
 <body>
 ${body.trim()}
 </body>

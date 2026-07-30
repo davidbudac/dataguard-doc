@@ -42,3 +42,9 @@ Note `grep -P` is unavailable on a stock macOS grep (it works here only because
 This rule is specific to the simulator fragment. Markdown files (`AGENTS.md`,
 `diagrams/README.md`) and SVG figures declare their own encoding and may use real
 Unicode characters normally.
+
+**The Czech translation is why this rule did not have to bend.** `simulator/i18n/cs.json`
+is normal UTF-8 with real accented characters, and `site/build.mjs` inlines it into
+the built page's `<head>`, where the charset *is* declared. The fragment carries
+only English. So: never add a Czech string to the fragment, in any escaping —
+translations belong in the catalog. See AGENTS.md for the mechanism.
