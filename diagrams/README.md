@@ -11,6 +11,10 @@ and the standby passes its readiness check. The figures below break that sequenc
 second: what the broker parameters actually govern, what they do not, and how the same threshold
 protects against split brain when the primary is merely isolated rather than dead.
 
+To verify these behaviors against a real 19c configuration, see the
+[test runbook](../testing/README.md) — step-by-step drills for each situation below,
+with the expected observations and the reinstate/cleanup steps that make them repeatable.
+
 ## Figures
 
 ### 1. Primary host crash

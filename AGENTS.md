@@ -14,6 +14,7 @@ to extend it without breaking consistency or accuracy.
 | `diagrams/fsfo-net-timeout.svg` (+`.png`) | Two panels separating NET_TIMEOUT (redo transport) from the broker failover clocks |
 | `diagrams/README.md` | Figure embeds, broker-property and redo-transport-property tables with verified defaults, the ping-properties quirk, the verified-facts sections behind the simulator's commit/reopen/observer views, the drawing idealizations, Oracle doc links |
 | `simulator/fsfo-simulator.html` | Source fragment of the interactive simulator, published at davidbudac.cz/dataguard |
+| `testing/README.md` | Test runbook: step-by-step drills verifying each documented situation against a real 19c configuration (crash, isolation, observer loss, NET_TIMEOUT, blocked failover, reopen/MaxFailure, client view, commit measurement), with an RTO/RPO probe harness and reinstate cleanup. Repo-only markdown — not part of the published site |
 | `site/build.mjs` | Wraps the fragment into a full page (doctype, charset, title) and enforces the ASCII-only guard — it exits non-zero on any byte above U+007E |
 | `site/publish.sh` | Builds and deploys to the VPS, then verifies the public URL |
 
@@ -321,5 +322,8 @@ Keep that order: facts → spec → build → adversarial review → publish.
   `Co-Authored-By:` per the harness rules.
 - Scenarios covered so far: primary crash, isolated primary, and observer lost
   (simulator only — there is no static figure for it). Reinstate stays out of
-  scope; if the user asks for it, add it as a new figure/scenario rather than
-  crowding the existing ones.
+  scope for the figures and the simulator; if the user asks for it, add it as a
+  new figure/scenario rather than crowding the existing ones. Exception: the
+  test runbook (`testing/README.md`) uses `REINSTATE DATABASE` / auto-reinstate
+  as drill *cleanup* so drills are repeatable — that does not document the
+  mechanism and does not lift the out-of-scope rule.
