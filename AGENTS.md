@@ -12,7 +12,7 @@ to extend it without breaking consistency or accuracy.
 | `diagrams/fsfo-timeline-isolated.svg` (+`.png`) | Swimlane timeline, network partition: two independent threshold clocks, primary self-abort (split-brain protection) |
 | `diagrams/fsfo-sequence.svg` (+`.png`) | Sequence diagram of the crash case with an elapsed-time gutter |
 | `diagrams/fsfo-net-timeout.svg` (+`.png`) | Two panels separating NET_TIMEOUT (redo transport) from the broker failover clocks |
-| `diagrams/README.md` | Figure embeds, broker-property and redo-transport-property tables with verified defaults, the ping-properties quirk, the verified-facts sections behind the simulator's commit/reopen/observer views, the drawing idealizations, Oracle doc links |
+| `diagrams/README.md` | Figure embeds, broker-property and redo-transport-property tables with verified defaults, the ping-properties quirk, the verified-facts sections behind the simulator's commit/reopen/observer/side-topics views, the drawing idealizations, Oracle doc links |
 | `simulator/fsfo-simulator.html` | Source fragment of the interactive simulator, published at davidbudac.cz/dataguard. English only |
 | `simulator/i18n/cs.json` | Czech translation catalog, keyed by the English source strings. Real UTF-8 — deliberately outside the ASCII-only fragment |
 | `testing/README.md` | Test runbook: step-by-step drills verifying each documented situation against a real 19c configuration (crash, isolation, observer loss, NET_TIMEOUT, blocked failover, reopen/MaxFailure, client view, commit measurement), with an RTO/RPO probe harness and reinstate cleanup. Repo-only markdown — not part of the published site |
@@ -94,6 +94,19 @@ agree on:
   clocks apart; the threshold/abort still runs 0 → 30 s.
 - Failover execution (terminal recovery + role change + open) is
   environment-dependent, not parameter-driven — always label it that way.
+- **Switchover** (the planned role reversal, simulator scenario four): zero data loss in
+  **every** protection mode — never qualify it by mode. With FSFO enabled the broker permits a
+  switchover only to the pre-specified target standby, and only while that standby is synchronized
+  (MaxAvailability) or inside `FastStartFailoverLagLimit` (MaxPerformance); past the limit in
+  MaxPerformance it **refuses the command** — word it as a refused `SWITCHOVER`, never as a
+  forbidden failover. An apply lag does *not* block MaxAvailability, because synchronized is about
+  redo **received**; it only lengthens the catch-up. The **former primary** is the database that
+  restarts (as the new standby); "the new primary database does not need to be restarted", and it
+  does not wait for the old one. Sessions on the primary are terminated as it converts. No failover
+  clock runs at all — threshold, `ObserverPing*` and `FastStartFailoverPmyShutdown` are spectators,
+  and FSFO stays enabled across the swap. Duration is environment-dependent (unapplied redo, update
+  activity at the moment of the command, online redo logs to clear), so label it that way; the 1 s
+  verify and 2 s convert bands are nominal drawing constants (footnote 3), not documented numbers.
 - Reinstate (`FastStartFailoverAutoReinstate`, Flashback Database) is
   deliberately out of scope; at most a footnote.
 - Client connect-string facts (simulator "application's view" section; sources
@@ -144,6 +157,50 @@ agree on:
   defect: the 19c broker-properties page lists `MaxFailure` as "Corresponds to:
   VALID_FOR" — always cite the sbydb `LOG_ARCHIVE_DEST_n` attributes page for
   `MAX_FAILURE` semantics, never the broker page.
+- **SDU** (chapter 6): the HA guide recommends 65535 **for synchronous
+  transport only** — a best practice, never a requirement, and the guide says
+  nothing about ASYNC, so neither do these assets. `DEFAULT_SDU_SIZE` defaults
+  to 8192 with a documented range of 512 – 2097152 bytes, so never call 65535
+  the parameter's maximum (the guide's own "its maximum value" wording is
+  stale) and never present 2 MB as the recommendation. SDU is negotiated per
+  connection and the lower end wins — hence both ends.
+- **Socket buffers** (chapter 6): `SEND_BUF_SIZE` / `RECV_BUF_SIZE` are Oracle
+  Net parameters, not `LOG_ARCHIVE_DEST_n` attributes — settable in
+  `sqlnet.ora`, or per connect descriptor in `tnsnames.ora` and `listener.ora`,
+  at `DESCRIPTION` level or inside one `ADDRESS`. Defaults are OS-specific (the
+  Net Services reference gives Linux 2.6: 16 KB send, 87380 bytes receive), and
+  the value is a limit the OS may not grant in full. Sizing: Net Services says
+  at least one bandwidth-delay product (its worked example, 100 Mbit/s × 5 ms ≈
+  64 KB, and its own redo note that a 1 MB largest redo message would justify
+  1 MB); the HA guide says a minimum of 3 × BDP on a high-latency,
+  high-bandwidth link and gets there by raising the kernel maxima
+  (`tcp_rmem`/`tcp_wmem`) so the TCP stack sizes each socket itself. Do not
+  reconcile the HA guide's Linux example against its own text — it says "set the
+  maximum ... to 3*BDP. In this example BDP is 16MB" while setting 16777216, so
+  quote the command, never a derived BDP.
+- **oratcptest**: from MOS note 2064368.1, JRE 6+, any OS user. SYNC mode waits
+  for each message's ACK, ASYNC does not. `-length` is the average redo write
+  size (`redo size` / `redo writes`); `-write` on the client asks the server to
+  write each message to disk, mimicking the SRL write an AFFIRM standby pays,
+  and the server needs `-file` for it. Its output reports **half** the socket
+  buffer actually allocated ("should be doubled to find the actual size used"),
+  and the guide says explicitly **not** to use its `-sockbuf` parameter, because
+  an explicit request answers to different kernel parameters than the test. Only `-server`, `-port`, `-mode`,
+  `-duration`, `-interval`, `-num_conn`, `-output` and `-freq` are documented on
+  the public 19c page — the other three come from the login-gated MOS note, and
+  the card on the page says exactly that. Keep that provenance line.
+- **The SYNC wait events** (chapter 6): `log file sync` ⊃ `redo write time` ⊃
+  { `SYNC remote write`, `log file parallel write` }, with `RFS random i/o` on
+  the standby. Four of those are wait events; `redo write time` is a `V$SYSSTAT`
+  **statistic in centiseconds** ("10s of milliseconds") — never call it a wait
+  event and never drop the unit. The max()-not-sum rule above applies here too:
+  never draw the two legs as sequential, never call the overlap "parallel", and
+  never cite `log file parallel write` as evidence for it. Oracle's own guidance
+  is that `log file sync` averages are misleading (commit batching), so the page
+  points at transactions per second, the redo rate and histograms instead. The
+  before/after numbers on the page (0.68 → 4.60 ms, TPS −20.3%, redo writes
+  −61%, write size +94%) are **Oracle's worked example on Oracle's test system**
+  and must never be presented as what SYNC typically costs.
 - Observer loss alone stalls nothing: the primary stalls only when it can reach
   NEITHER the observer NOR the target standby. While unobserved,
   `V$DATABASE.FS_FAILOVER_STATUS` = `PRIMARY UNOBSERVED` and
@@ -209,10 +266,11 @@ after every build. Timing model: initiate =
 threshold, or pingInterval × (pingRetry + 1) when the ping properties are set;
 blocked when MaxPerformance and lag > lag limit; the isolated primary's abort
 always uses the threshold. `computeFsfo` also has an `observer-lost` branch
-(below) returning `observerLost` and `ifDiedNow`.
+(below) returning `observerLost` and `ifDiedNow`, and a `switchover` branch
+returning `switchover`, `tDown`, `tConvertEnd`, `downtime` and `tRestartDraw`.
 
-The page is split into six chapters — `#ch-clocks`, `#ch-transport`, `#ch-app`,
-`#ch-deploy`, `#ch-config`, `#ch-reference` — each a `<section class="chapter">` wrapper that opens with a
+The page is split into seven chapters — `#ch-clocks`, `#ch-transport`, `#ch-app`,
+`#ch-deploy`, `#ch-config`, `#ch-side`, `#ch-reference` — each a `<section class="chapter">` wrapper that opens with a
 full-bleed divider band (large number, `h2` title, one-line blurb) and is listed
 in the sticky `<nav class="chapnav">` sitting between the hero and chapter 1.
 
@@ -222,9 +280,9 @@ others carry `hidden`. Four things follow from that, and each is load-bearing:
 
 - **Nothing is hidden by markup or by CSS alone.** The script adds `is-tabbed`
   to `.fsfo`, and only then does `.chapter[hidden]` become `display:none`. With
-  no script the six chapters read top to bottom exactly as they did before
+  no script the seven chapters read top to bottom exactly as they did before
   tabs, and the bar is a list of in-page anchors. The print rule takes the same
-  route back — it un-hides all six, so a printout, and a find-in-page over it,
+  route back — it un-hides all seven, so a printout, and a find-in-page over it,
   still carries the whole document.
 - **Opening a chapter repaints its drawings.** A sketch built while its wrapper
   measured zero fell back to 880 px, so `show()` dispatches a `resize` event
@@ -244,8 +302,11 @@ others carry `hidden`. Four things follow from that, and each is load-bearing:
 It also measures the bar into `--navh` (the chapters' `scroll-margin-top` and
 the control rails' sticky offset both derive from it), and appends the prev/next
 pager at the foot of each panel, reading its titles off the nav links so a
-language switch just rebuilds it. New sections belong **inside** one of the six
-wrappers. Related: `.fsfo` uses `overflow-x:clip`, not `hidden`, because `hidden`
+language switch just rebuilds it. New sections belong **inside** one of the seven
+wrappers. Prose that points at another chapter uses an `<a class="xref">`; a
+delegated handler in the same IIFE opens the target's chapter before scrolling,
+because the browser cannot scroll to an element that is still `hidden` — the
+`hashchange` path alone opens the chapter but leaves the reader where they were. Related: `.fsfo` uses `overflow-x:clip`, not `hidden`, because `hidden`
 forces `overflow-y` to `auto`, which makes `.fsfo` a scroll container and
 silently kills every `position:sticky` inside it (the control rails included).
 
@@ -291,13 +352,28 @@ self-contained IIFE that injects its own DOM, degrades to nothing without JS,
 and never reaches into another IIFE's closure — push state via controls plus
 dispatched events only.
 
-The workbench carries three scenarios. The third, **observer lost**, kills the
+The workbench carries four scenarios. The third, **observer lost**, kills the
 only observer host at t = 0: the primary keeps serving because it still reaches
 the target standby, the standby keeps applying, and no fast-start failover is
 possible at all — so every control that governs a failover clock grays out, the
-lanes stay flat, and the "Seven things the timeline is telling you" grid (six
-before this scenario existed) explains why nothing happens. Its `ifDiedNow`
+lanes stay flat, and the "Ten things the timeline is telling you" grid (six
+before that scenario existed, seven before the switchover one) explains why
+nothing happens. Its `ifDiedNow`
 value is what the primary's death during the blind window would cost.
+
+The fourth, **switchover**, is the only planned event on the page: t = 0 is the DBA issuing
+`SWITCHOVER TO` the target standby, not a failure. It has its own `computeFsfo` branch
+(`switchover: true`, returning `tDown`, `tConvertEnd`, `downtime`, `tRestartDraw` and the two
+nominal constants `SW_VERIFY`/`SW_CONVERT`), its own timeline builder and its own `computeApp`
+branch — the ladder there starts at `tDown` and every address refuses instantly, because both
+hosts stay up. `blocked` means the broker **refused** the command (MaxPerformance, lag beyond the
+limit) and then nothing else happens: no conversion, no downtime, and the app view is a no-event
+with its own wording (`switchoverRefused`). Four controls gray out through the same
+borrow-and-restore pattern as observer lost (`SW_NOTES`): the threshold, both `ObserverPing*`
+sliders and their switch, `FastStartFailoverPmyShutdown`, and — in chapter 3 — the dead-address
+behaviour toggle, which has nothing to describe when neither host is dead. The apply lag, the lag
+limit, the role-transition time and the protection mode all stay live, because each still changes
+the outcome.
 
 The "application's view" section (`#appview`) has its own pure function
 `computeApp(a, m, scenario)` between `/* APPMODEL:START */` and
@@ -385,17 +461,42 @@ ASYNC (it bounds the SYNC ack wait and never affects sessions under ASYNC) and
 is framed as the hand-set equivalent — never claim it is the literal string the
 broker composes.
 
+Chapter 6 (`#ch-side`, "Side topics") holds the three things that sit beside the
+mainline story, in the order *prepare · measure · what happens when it breaks*.
+`#sduview` is static: SDU sizing for SYNC, the `SEND_BUF_SIZE`/`RECV_BUF_SIZE`
+socket buffers and the BDP arithmetic behind them, and Oracle's `oratcptest`
+network probe (whose output is where the buffer sizes are read back), with two
+config cards (`cfg-sdu`, `cfg-oratcp`) that get their Copy
+buttons from the chapter-5 wiring for free, because it runs document-wide over
+`.cfg-copy`. Their panes are hand-written and deliberately use `<standby-host>`
+placeholders rather than the `idv()` fixture names — a static pane cannot follow
+a configured deployment identity, so it does not pretend to. `#impactview` is
+static too: a hand-authored containment drawing (reusing `tl-svg tx-svg`, plus
+one added fill token `.b-vi`), the wait-event cards and a table of the AWR
+metrics to capture before and after enabling SYNC. `#nettimeoutview` is the
+NET_TIMEOUT explainer, moved here from chapter 2 unchanged apart from its
+eyebrow and its new id. The facts and the phrasing constraints behind all of it
+are in `diagrams/README.md`; the load-bearing ones are in the accuracy rules
+above.
+
 The simulator is live at davidbudac.cz/dataguard; run `./site/publish.sh` to push
 changes (see Publishing above). Before publishing simulator changes, verify both
 themes and the key states first — and, when the change touches prose, both
 languages (see Languages below): defaults, isolated scenario, MaxPerformance with lag > limit
 (blocked banner), ping properties set (threshold grayed out, ~1.1 s detection);
 observer-lost defaults (flat lanes, Unobserved callout, failover-clock controls
-grayed) and switching back out of it (no control left stuck disabled) — in the
+grayed) and switching back out of it (no control left stuck disabled); switchover
+defaults (verify/convert/catch-up/role-change bands, the downtime brace, the
+Role reversal callout, the four grayed controls), switchover in MaxPerformance
+with lag > limit (the refusal banner, flat lanes, no downtime), and switching
+back out of switchover (again, nothing left disabled and every note restored) — in the
 app view: defaults (lucky 60 s hang), defaults + threshold 90 (ORA-12514
 banner), Tuned preset (discrete retry ladder), Refused + RETRY_COUNT 100
 (aggregated band), blocked (budget exhausted, "never" chip), observer-lost
-(no-event state) — in the commit view: SYNC at RTT 0 (local write is the whole
+(no-event state), switchover at the defaults (the give-up banner about half a
+second in) and switchover with the Tuned preset (it rides through, with the
+wasted tail between the open and the connecting pass), switchover refused
+(no-event state with its own wording) — in the commit view: SYNC at RTT 0 (local write is the whole
 commit), FASTSYNC (ack lands before the standby's write finishes), ASYNC (the
 wait bar disappears, plus the conflict warning under MaxAvailability) — and in
 the reopen view: defaults, a tripped `MaxFailure` (disabled banner, no
@@ -417,7 +518,12 @@ default, NetTimeout 45 highlights in the dest card under SYNC and disappears
 under ASYNC, export → reset → import round-trips, a `#cfg=` link applies on a
 fresh load and strips itself from the address bar, reload restores the last
 state, "Reset everything" clears it, and a garbage import shows the inline
-error without touching state.
+error without touching state — and in the side-topics chapter: the two new Copy
+buttons put their pane's text on the clipboard, the containment drawing and the
+AWR table render in both themes and both languages, keys `6` and `7` open Side
+topics and Reference, and the two cross-links (chapter 2's commit caption to
+`#impactview`, the reopen caption to `#nettimeoutview`) open the other chapter
+*and* land on the section.
 
 URL state and chrome, same pre-publish pass: move three controls and
 `location.search` shows exactly those keys; reload restores the identical
@@ -544,8 +650,9 @@ Keep that order: facts → spec → build → adversarial review → publish.
 - Changing a documented default or a model formula means changing
   `site/test.mjs` in the same commit — the test gate exists to make the
   accuracy rules executable, not to be worked around.
-- Scenarios covered so far: primary crash, isolated primary, and observer lost
-  (simulator only — there is no static figure for it). Reinstate stays out of
+- Scenarios covered so far: primary crash, isolated primary, observer lost and
+  planned switchover (the last two are simulator only — there is no static figure
+  for either). Reinstate stays out of
   scope for the figures and the simulator; if the user asks for it, add it as a
   new figure/scenario rather than crowding the existing ones. Exception: the
   test runbook (`testing/README.md`) uses `REINSTATE DATABASE` / auto-reinstate

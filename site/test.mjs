@@ -31,7 +31,7 @@ const NAMES = ['MODEL', 'APPMODEL', 'COMMITMODEL', 'REOPENMODEL'];
 const code = NAMES.map(block).join('\n');
 const M = new Function(code +
   '\nreturn { computeFsfo, computeApp, computeCommit, computeReopen,' +
-  ' pickTickStep, cmTickStep, rpTickStep };')();
+  ' pickTickStep, cmTickStep, rpTickStep, SW_VERIFY, SW_CONVERT };')();
 
 const near = (got, want, label) =>
   assert.ok(Math.abs(got - want) < 1e-9, `${label ?? 'value'}: ${got} != ${want}`);
@@ -132,6 +132,60 @@ test('ifDiedNow prices the blind window: zero synchronized, the lag otherwise', 
   assert.equal(fsfo({ scenario: 'observer-lost', mode: 'maxperf', standbyLag: 42 }).ifDiedNow, 42);
 });
 
+// ---------- MODEL: the planned switchover ----------
+
+test('switchover: nominal verify and convert bands, and tOpen is their sum', () => {
+  assert.equal(M.SW_VERIFY, 1);
+  assert.equal(M.SW_CONVERT, 2);
+  const m = fsfo({ scenario: 'switchover' });
+  assert.equal(m.switchover, true);
+  assert.equal(m.tDown, M.SW_VERIFY);
+  assert.equal(m.tConvertEnd, M.SW_VERIFY + M.SW_CONVERT);
+  assert.equal(m.tOpen, M.SW_VERIFY + M.SW_CONVERT + CDEF.standbyLag + CDEF.roleTransition);
+  assert.equal(m.downtime, m.tOpen - m.tDown);
+  const slow = fsfo({ scenario: 'switchover', standbyLag: 40, roleTransition: 30 });
+  assert.equal(slow.tOpen, 1 + 2 + 40 + 30);
+  assert.equal(slow.downtime, 72);
+});
+
+test('switchover guarantees zero data loss in both protection modes', () => {
+  for (const mode of ['maxavail', 'maxperf']) {
+    const m = fsfo({ scenario: 'switchover', mode, standbyLag: 20, lagLimit: 30 });
+    assert.equal(m.dataLossKind, 'none');
+    assert.equal(m.dataLossSeconds, 0);
+    assert.equal(m.blocked, false);
+  }
+});
+
+test('switchover: FSFO enabled means MaxPerformance refuses past the lag limit', () => {
+  assert.equal(fsfo({ scenario: 'switchover', mode: 'maxperf', standbyLag: 45, lagLimit: 30 }).blocked, true);
+  assert.equal(fsfo({ scenario: 'switchover', mode: 'maxperf', standbyLag: 30, lagLimit: 30 }).blocked, false);
+  // MaxAvailability: synchronized is about redo received, so an apply lag
+  // lengthens the catch-up instead of blocking the command.
+  const avail = fsfo({ scenario: 'switchover', mode: 'maxavail', standbyLag: 90, lagLimit: 30 });
+  assert.equal(avail.blocked, false);
+  assert.equal(avail.tOpen, 1 + 2 + 90 + 15);
+  // Refused: nothing converts, so there is no downtime window at all.
+  const no = fsfo({ scenario: 'switchover', mode: 'maxperf', standbyLag: 45, lagLimit: 30 });
+  assert.equal(no.tOpen, null);
+  assert.equal(no.tDown, null);
+  assert.equal(no.downtime, null);
+  assert.equal(no.dataLossKind, 'none');
+});
+
+test('switchover runs no clocks: threshold and ping properties change nothing', () => {
+  const m = fsfo({ scenario: 'switchover' });
+  assert.equal(m.initiate, null);
+  assert.equal(m.detect, null);
+  assert.equal(m.abort, null);
+  const loud = fsfo({ scenario: 'switchover', threshold: 120, pingSet: true, pingInterval: 5000, pingRetry: 50 });
+  assert.equal(loud.tOpen, m.tOpen);
+  assert.equal(loud.abort, null);
+  // not even an isolated-style abort, and latency never enters the arithmetic
+  const far = fsfo({ scenario: 'switchover', latency: 100 });
+  assert.equal(far.tOpen, m.tOpen);
+});
+
 // ---------- APPMODEL: the connect string ----------
 
 test('default string, default clocks: the lucky 60 s hang connects', () => {
@@ -165,6 +219,45 @@ test('a partition drops packets: no refusal even from a live-host string', () =>
   const quiet = app({}, { scenario: 'observer-lost' });
   assert.equal(quiet.noEvent, true);
   assert.equal(quiet.attempts.length, 0);
+});
+
+test('switchover app: two instant refusals per traversal, no timeout anywhere', () => {
+  const a = app({}, { scenario: 'switchover' });
+  assert.equal(a.switchover, true);
+  assert.equal(a.drop, false);
+  near(a.d1, 0.2, 'd1');
+  near(a.passCost, 0.4, 'passCost');
+  assert.equal(a.startAt, 1);                 // dialing starts as the primary converts
+  // Neither the transport budget nor the dead-address behaviour can move it.
+  const other = app({ tct: 3, dead: 'rst' }, { scenario: 'switchover' });
+  assert.deepEqual(other.attempts, a.attempts);
+  near(other.gaveUp, a.gaveUp, 'gaveUp');
+});
+
+test('switchover app: the default string gives up long before the new primary opens', () => {
+  const a = app({}, { scenario: 'switchover' });
+  assert.equal(a.attempts.length, 1);
+  assert.equal(a.tConn, null);
+  near(a.gaveUp, 1.4, 'gaveUp');
+  assert.ok(a.gaveUp < a.tService, 'gives up before the service comes back');
+});
+
+test('switchover app: enough retries always connect, never before the open', () => {
+  const tuned = app({ tct: 3, ct: 90, rc: 30, rd: 3 }, { scenario: 'switchover' });
+  assert.equal(tuned.attempts.length, 9);
+  near(tuned.tConn, 28.7, 'tConn');
+  assert.ok(tuned.tConn >= tuned.tService, 'connects at or after the open');
+  const long = app({ rc: 100, rd: 1 }, { scenario: 'switchover', standbyLag: 60 });
+  assert.ok(long.tConn !== null && long.tConn >= long.tService);
+});
+
+test('switchover app: a refused command is a no-event', () => {
+  const a = app({}, { scenario: 'switchover', mode: 'maxperf', standbyLag: 45, lagLimit: 30 });
+  assert.equal(a.noEvent, true);
+  assert.equal(a.switchoverRefused, true);
+  assert.equal(a.attempts.length, 0);
+  assert.equal(a.tConn, null);
+  assert.equal(a.gaveUp, null);
 });
 
 // ---------- COMMITMODEL: one commit ----------

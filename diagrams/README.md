@@ -255,6 +255,67 @@ everything else intact. Nothing fails over, and that is the point.
   redundancy exists: no backup to promote, no failover possible, and `FastStartFailoverThreshold`
   counting nothing.
 
+## Planned switchover (the simulator's fourth scenario)
+
+The `switchover` scenario is the only planned event on the page: `DGMGRL> SWITCHOVER TO 'sby01'`
+at t = 0, both hosts up throughout, and the two databases trading roles.
+
+- A switchover is a planned role reversal that "guarantees no data loss and is typically done for
+  planned maintenance of the primary system". Zero data loss holds in **every** protection mode —
+  that is the headline contrast with a failover, and why MaxPerformance costs nothing here.
+- Prerequisites the broker checks before it starts: the primary enabled and in TRANSPORT-ON state,
+  the target standby enabled and in APPLY-ON state, no apply delay on the target (`DelayMins` must
+  be 0), and a configuration that still supports the current protection mode after the swap.
+- With fast-start failover **enabled** — the standing fixture of this page — "a switchover can be
+  performed only to the pre-specified target standby database and only if the standby database is
+  synchronized with the primary database or is within the configured lag limit, for the max
+  availability and max performance modes respectively". Two consequences the simulator models:
+  MaxPerformance with an apply lag beyond `FastStartFailoverLagLimit` makes the broker **refuse**
+  the command (the blocked banner, worded as a refusal rather than a forbidden failover); and
+  MaxAvailability is *not* blocked by an apply lag, because synchronized is about redo **received**
+  — the lag only lengthens the catch-up. Do not write it the other way round.
+- Fast-start failover stays enabled across the switchover; the roles simply swap, and no reinstate
+  is involved (reinstate remains out of scope page-wide).
+- The broker's documented step sequence: verify the states → convert the original primary to the
+  standby role → update the broker configuration file → restart the former primary as the new
+  standby (physical standby case) and start Redo Apply on it → open the new primary read/write and
+  start redo transport. "Note that the new primary database does not need to be restarted." **Only
+  the former primary restarts.**
+- Duration is environment-dependent, not parameter-driven — the same labeling rule as failover
+  execution. The documented factors: unapplied redo on the target ("By choosing the standby
+  database with the least amount of unapplied redo, you can minimize the overall time"), update
+  activity on the primary ("ensure the primary database is in a quiet state"), and dirty online
+  redo logs on the target ("It takes time to clear online redo logfiles. This may slow down
+  switchover").
+- User sessions on the primary do not survive its conversion to a standby — the SQL-level path is
+  `COMMIT TO SWITCHOVER ... WITH SESSION SHUTDOWN`, and `SWITCHOVER TO` handles it from 12.1 on.
+  Phrase it as "terminated as the primary converts". (`STANDBY_DB_PRESERVE_STATES` covers sessions
+  on the *standby* and is deliberately out of scope.)
+- Both hosts stay up, so both listeners answer the whole time: a client dialing mid-switchover gets
+  an instant `ORA-12514` from whichever address has no read-write service, never a TCP timeout.
+  That is why the application panel grays out the dead-address behaviour toggle and why
+  `TRANSPORT_CONNECT_TIMEOUT` / `CONNECT_TIMEOUT` cannot move its ladder.
+
+Drawing idealizations specific to this scenario (footnote 3 on the page):
+
+- `SW_VERIFY` = 1 s and `SW_CONVERT` = 2 s are **nominal drawing constants**, not documented
+  durations — the broker's step list carries no timings at all. `tDown` (the moment the primary
+  stops taking work) is the end of the verify band, and `tOpen = SW_VERIFY + SW_CONVERT +
+  apply lag + role transition`.
+- The former primary's restart is drawn as one band running from `tDown` past the new primary's
+  open, ending without a marker or a number. The doc's step list puts that restart *before* the
+  open, but the open is what ends the application's outage and does not wait for the restart, so
+  the band is drawn in parallel and makes no claim about where it ends.
+- The worst-case client is taken to start dialing at `tDown`, not at t = 0: before the conversion
+  the primary answers normally.
+
+Sources: the broker's [switchover chapter](https://docs.oracle.com/en/database/oracle/oracle-database/19/dgbkr/using-data-guard-broker-to-manage-switchovers-failovers.html)
+(prerequisites, step list, the FSFO-enabled restriction, the former-primary restart, "the new
+primary database does not need to be restarted", the zero-data-loss sentence) and
+[Managing Oracle Data Guard Role Transitions](https://docs.oracle.com/en/database/oracle/oracle-database/19/sbydb/managing-oracle-data-guard-role-transitions.html)
+(the two-phase transition, `SWITCHOVER ... VERIFY`, the duration factors, and the
+`WITH SESSION SHUTDOWN` heritage).
+
 ## Configuration files (the simulator's chapter 5)
 
 Chapter 5 renders the workbench state as the commands and files that would set
@@ -287,6 +348,96 @@ it. Verified facts it relies on:
   aliases), hosts `dc1-prm01`/`dc2-sby01`, service `app_svc` — shared with the
   application view.
 
+## Side topics (the simulator's chapter 6)
+
+Chapter 6 collects what sits beside the mainline story: SDU and `oratcptest` before SYNC is
+switched on, measuring what SYNC costs once it is, and the NET_TIMEOUT panels (figure 4), which
+moved here out of chapter 2. Verified facts behind the two new sections:
+
+**SDU.** The HA guide's "Set SDU Size to 65535 for Synchronous Transport Only" says Oracle testing
+has shown that setting SDU to 65535 improves the performance of synchronous transport, and it is
+set per connection through `SDU` in `tnsnames.ora` and `listener.ora`, or for every Oracle Net
+connection through `DEFAULT_SDU_SIZE` in `sqlnet.ora`. Three constraints on how these assets phrase
+it:
+
+- The recommendation is scoped to **synchronous transport only** — that scoping is the section's
+  own title. The guide does not say ASYNC gets no benefit, so neither does the page.
+- The guide calls 65535 "its maximum value". That wording is stale: the Net Services reference
+  gives `DEFAULT_SDU_SIZE` a default of **8192** and a range of **512 – 2097152** (2 MB). Say "the
+  recommended 65535" and never "the parameter's maximum"; do not offer 2 MB as a recommendation
+  either.
+- SDU is negotiated per connection and the lower of the two ends wins, which is why both ends are
+  set. It is a best practice, never a requirement — do not write that SYNC needs it.
+
+**Socket buffers (`SEND_BUF_SIZE`, `RECV_BUF_SIZE`).** These are Oracle Net parameters, *not*
+`LOG_ARCHIVE_DEST_n` attributes, and the two guides approach them from opposite ends — the page
+carries both because they answer different questions.
+
+- Net Services Reference: each specifies the buffer space limit for session send / receive
+  operations, supported by TCP/IP, TCP/IP with TLS and SDP; the default "is operating system
+  specific", with Linux 2.6 given as **16 KB** for `SEND_BUF_SIZE` and **87380 bytes** for
+  `RECV_BUF_SIZE`. Either can be overridden per client connection in the connect descriptor.
+- Net Services Administrator's Guide, "Configuring I/O Buffer Space": buffers "should be set to at
+  least the bandwidth-delay product", worked as 100 Mbps × 5 ms = 62,500 bytes ≈ 64 KB, and it
+  raises the redo case itself — a 1 MB largest redo message would justify 1 MB, while 64 KB
+  suffices when the average message is smaller. Same page: the actual value "may be less than the
+  value specified because of limitations in the host operating system or due to memory
+  constraints", and total memory scales with concurrent connections. Its examples put the two
+  parameters inside an `ADDRESS` *or* at `DESCRIPTION` level, in `listener.ora`, `tnsnames.ora` and
+  `sqlnet.ora` — which is why the config card shows both placements.
+- HA guide, "Set Send and Receive Buffer Sizes": the minimum recommended socket buffer size is
+  **3 × BDP**, "especially for a high-latency, high-bandwidth network", and its route is to let the
+  TCP stack size sockets dynamically while raising the kernel maxima `tcp_rmem` / `tcp_wmem`,
+  tuned with oratcptest. **Do not derive a BDP from its Linux example**: the text says to set the
+  maximum to 3\*BDP and that "in this example BDP is 16MB", while the command sets 16777216 (16 MB).
+  The page quotes the command and never a derived BDP; keep it that way.
+
+**oratcptest.** Downloaded from **MOS note 2064368.1** (login required), needs JRE 6 or later, runs
+as any OS user, verified with `java -jar oratcptest.jar -help`. The utility "simulat[es] Data Guard
+SYNC transport by waiting for acknowledgment (ACK) of a packet or ASYNC transport by not waiting
+for the ACK". Average redo write size = `redo size` / `redo writes` (`V$SYSSTAT` or AWR), which the
+guide says to use in the experiments and the page uses as `-length`. Flag provenance matters here:
+
+- The public 19c page documents only `-server`, `-port`, `-mode`, `-duration`, `-interval`,
+  `-num_conn`, `-output` and `-freq`, with the host given positionally on the client side.
+- `-length`, `-write` and `-file` come from MOS 2064368.1, which cannot be fetched without a login;
+  their shape is corroborated by independent public write-ups (`-file` on the server, `-write` on
+  the client asking the server to write each message to disk, mimicking the SRL write an AFFIRM
+  standby pays). The config card says so and points at `-help` — keep that provenance line if the
+  card is ever edited.
+- Its output reports the socket buffer size each connection used, and the guide warns that "that
+  value is half of the actual socket buffer size and should be doubled to find the actual size
+  used". The same page says **not** to use the tool's `sockbuf` parameter, "because the kernel
+  parameters which govern explicit requests for socket buffer size are different than those set
+  for this test". Both warnings are on the page and in the config card.
+
+**Measuring the impact of SYNC.** From "Tuning and Troubleshooting Synchronous Redo Transport" on
+the redo-transport troubleshooting page (the same page as the thirteen-step commit path):
+
+- Containment, straight off those thirteen steps: `log file sync` (step 1 → 13, the foreground's
+  whole cycle) contains `redo write time` (step 3 → 8, LGWR's write operation), which contains both
+  `SYNC remote write` (step 5 → 8, the remote leg) and `log file parallel write` (step 6, the local
+  redo write I/O). `RFS random i/o` is the standby-side event for its standby redo log write.
+- **Terminology.** `log file sync`, `log file parallel write`, `SYNC remote write` and
+  `RFS random i/o` are wait events. `redo write time` is **not** — it is a `V$SYSSTAT` statistic
+  whose Database Reference description is "Total elapsed time of the write from the redo log buffer
+  to the current redo log file in 10s of milliseconds", i.e. centiseconds. Never call it a wait
+  event, and always carry the unit: it is the trap when it is compared against millisecond averages.
+- The max()-not-sum rule from the commit view applies unchanged, and for the same reason. The
+  drawing must never show the local and remote legs as sequential, Oracle never calls the overlap
+  "parallel", and `log file parallel write` is never cited as evidence of it (listing it as the
+  local write's I/O event is fine).
+- **Averages are misleading, on the record**: "Oracle does not recommend using log file sync wait
+  times to measure the impact of SYNC because the averages can be very deceiving". Commit batching
+  makes many sessions wait on one slow write. For OLTP the guide says to watch transactions per
+  second and the redo rate; for batch loads, elapsed time.
+- The worked example (Table 17-3, Oracle's own test system): redo rate unchanged, `log file sync`
+  0.68 ms → 4.60 ms, TPS −20.3%, redo writes −61% while the average redo write size grew +94%.
+  **These are Oracle's numbers on Oracle's system** — the page says so, and any edit must keep that
+  framing. They are never "what SYNC costs".
+- Lag views: `V$DATAGUARD_STATS` for transport and apply lag (read `DATUM_TIME` beside them — it is
+  when the value was computed), `V$STANDBY_EVENT_HISTOGRAM` for the history of those lag values.
+
 ## Drawing idealizations (the simulator's footnote 4)
 
 Where the simulator draws something it cannot know, it is listed on the page itself and here:
@@ -307,11 +458,15 @@ Where the simulator draws something it cannot know, it is listed on the page its
   standby is unsynchronized immediately.
 - Client-side constants in the application view are nominal (footnote 3): 0.2 s for an `ORA-12514`
   refusal, 0.15 s for an OS-level refusal, 0.3 s to establish a session.
+- The chapter-6 containment drawing has no scale at all: the bar widths show which span contains
+  which, nothing else, and the drawing says so on its face. The one relationship it does assert is
+  that the remote leg is drawn longer than the local one, which is the case the picture is about.
 
 ## Oracle documentation
 
 - [Oracle Data Guard Broker Properties (19c)](https://docs.oracle.com/en/database/oracle/oracle-database/19/dgbkr/oracle-data-guard-broker-properties.html)
 - [Switchover and Failover Operations (19c, chapter 5)](https://docs.oracle.com/en/database/oracle/oracle-database/19/dgbkr/using-data-guard-broker-to-manage-switchovers-failovers.html)
+- [Managing Oracle Data Guard Role Transitions (19c Data Guard Concepts and Administration — the two-phase switchover, `SWITCHOVER ... VERIFY`, duration factors, `COMMIT TO SWITCHOVER ... WITH SESSION SHUTDOWN`)](https://docs.oracle.com/en/database/oracle/oracle-database/19/sbydb/managing-oracle-data-guard-role-transitions.html)
 - [LOG_ARCHIVE_DEST_n parameter attributes (19c Data Guard Concepts and Administration)](https://docs.oracle.com/en/database/oracle/oracle-database/19/sbydb/LOG_ARCHIVE_DEST_n-parameter-attributes.html)
 - [LOG_ARCHIVE_DEST_n (19c Database Reference)](https://docs.oracle.com/en/database/oracle/oracle-database/19/refrn/LOG_ARCHIVE_DEST_n.html)
 - [Oracle Data Guard Broker Properties (21c — documents `ObserverPingInterval` / `ObserverPingRetry`)](https://docs.oracle.com/en/database/oracle/oracle-database/21/dgbkr/oracle-data-guard-broker-properties.html)
@@ -321,7 +476,13 @@ Where the simulator draws something it cannot know, it is listed on the page its
 - [Managing Broker Configuration Members (19c — protection modes vs. redo transport modes, Table 4-2)](https://docs.oracle.com/en/database/oracle/oracle-database/19/dgbkr/managing-oracle-data-guard-broker-configuration-members.html)
 - [Oracle Data Guard Protection Modes (19c Data Guard Concepts and Administration — attribute-level Table 6-1)](https://docs.oracle.com/en/database/oracle/oracle-database/19/sbydb/oracle-data-guard-protection-modes.html)
 - [Oracle Data Guard Redo Transport Services (19c Data Guard Concepts and Administration)](https://docs.oracle.com/en/database/oracle/oracle-database/19/sbydb/oracle-data-guard-redo-transport-services.html)
-- [Redo Transport Troubleshooting and Tuning (19c High Availability Overview — the thirteen-step SYNC commit path)](https://docs.oracle.com/en/database/oracle/oracle-database/19/haovw/redo-transport-troubleshooting-and-tuning.html)
+- [Redo Transport Troubleshooting and Tuning (19c High Availability Overview — the thirteen-step SYNC commit path; "Tuning and Troubleshooting Synchronous Redo Transport" for the wait-event containment chain, the `redo write time` statistic, the averages-are-misleading warning, the worked before/after example and the lag views)](https://docs.oracle.com/en/database/oracle/oracle-database/19/haovw/redo-transport-troubleshooting-and-tuning.html)
+- [Plan an Oracle Data Guard Deployment (19c High Availability Overview — `oratcptest`, its documented flags, and average redo write size = redo size / redo writes)](https://docs.oracle.com/en/database/oracle/oracle-database/19/haovw/plan-oracle-data-guard-deployment.html)
+- [Configure and Deploy Oracle Data Guard (19c High Availability Overview — "Set SDU Size to 65535 for Synchronous Transport Only")](https://docs.oracle.com/en/database/oracle/oracle-database/19/haovw/configure-and-deploy-oracle-data-guard.html)
+- [Parameters for the sqlnet.ora File (19c Net Services Reference — `DEFAULT_SDU_SIZE` default 8192, range 512 – 2097152; `SEND_BUF_SIZE` / `RECV_BUF_SIZE` purpose and OS-specific defaults)](https://docs.oracle.com/en/database/oracle/oracle-database/19/netrf/parameters-for-the-sqlnet.ora.html)
+- [Optimizing Performance (19c Net Services Administrator's Guide — "Configuring I/O Buffer Space": the bandwidth-delay product worked example and where the buffer parameters go in `sqlnet.ora`, `tnsnames.ora` and `listener.ora`)](https://docs.oracle.com/en/database/oracle/oracle-database/19/netag/optimizing-performance.html)
+- [Statistics Descriptions (19c Database Reference — `redo write time` "in 10s of milliseconds", `redo size`, `redo writes`)](https://docs.oracle.com/en/database/oracle/oracle-database/19/refrn/statistics-descriptions-2.html)
+- MOS note 2064368.1, "Assessing and Tuning Network Performance for Data Guard and RMAN" — the `oratcptest.jar` download and its `-length` / `-write` / `-file` options. **My Oracle Support, login required**, so it cannot be re-verified from a browser without an account; treat its flag spellings as unconfirmed against the vendor and check `-help` instead.
 - [Optimizing Automatic Failover (19c High Availability Overview — the primary's stall condition)](https://docs.oracle.com/en/database/oracle/oracle-database/19/haovw/optimizing-automatic-failover-common-scenarios-minimize-downtime1.html)
 - [Changes in Oracle Data Guard Broker 12c Release 1 (12.1 — the only edition that documents `FASTSYNC` as new)](https://docs.oracle.com/database/121/DGBKR/release_changes.htm)
 - [Changes in Oracle Data Guard Broker 12c Release 2 (12.2 — automatic backup-observer promotion)](https://docs.oracle.com/en/database/oracle/oracle-database/12.2/dgbkr/release-changes.html)
