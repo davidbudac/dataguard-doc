@@ -48,13 +48,46 @@ const titleMatch = fragment.match(/<title>([\s\S]*?)<\/title>/i);
 const title = titleMatch ? titleMatch[1].trim() : 'Fast-start failover simulator';
 const body = titleMatch ? fragment.replace(titleMatch[0], '') : fragment;
 
+// One description constant so <meta name="description"> and og:description
+// cannot drift apart. SITE is the canonical URL; og:image must be absolute,
+// and diagrams/ is copied into _site below, so the figure serves from the
+// same tree the page does.
+const SITE = 'https://davidbudac.cz/dataguard/';
+const DESC =
+  'Interactive second-by-second simulator of Oracle Data Guard fast-start failover: ' +
+  'observer detection, FastStartFailoverThreshold, commit anatomy under SYNC/FASTSYNC/ASYNC, ' +
+  'ReopenSecs and MaxFailure, and what a connection pool sees.';
+// Inline SVG favicon: violet (--vi) rounded square with a white axis-and-tick
+// mark. Data URI keeps the page free of extra requests; '#' must be %23 and
+// angle brackets %3C/%3E or the URI is cut short. Safari <17 ignores SVG
+// favicons and 404s on /favicon.ico outside the nginx block -- accepted.
+const ICON =
+  "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E" +
+  "%3Crect width='16' height='16' rx='3' fill='%236D5AE6'/%3E" +
+  "%3Cpath d='M2.5 11.5h11M6 3.5v10' stroke='%23fff' stroke-width='1.6' stroke-linecap='round'/%3E%3C/svg%3E";
+
 const page = `<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="description" content="Interactive second-by-second simulator of Oracle Data Guard fast-start failover.">
+<meta name="description" content="${DESC}">
 <title>${title}</title>
+<link rel="canonical" href="${SITE}">
+<link rel="icon" href="${ICON}">
+<meta name="theme-color" content="#F4F6F8" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0A0E13" media="(prefers-color-scheme: dark)">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="davidbudac.cz">
+<meta property="og:title" content="${title}">
+<meta property="og:description" content="${DESC}">
+<meta property="og:url" content="${SITE}">
+<meta property="og:image" content="${SITE}diagrams/fsfo-timeline-crash.png">
+<meta property="og:image:type" content="image/png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="560">
+<meta property="og:image:alt" content="Swimlane timeline of a fast-start failover after a primary host crash: observer detection, the FastStartFailoverThreshold countdown, and the standby opening read-write.">
+<meta name="twitter:card" content="summary_large_image">
 <style>
 /* The fragment paints --bg on .fsfo only, which is capped at 1240px and centred,
    so the page gutters fall back to the browser default. As the host page we own
