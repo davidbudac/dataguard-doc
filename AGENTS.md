@@ -15,8 +15,9 @@ to extend it without breaking consistency or accuracy.
 | `diagrams/README.md` | Figure embeds, broker-property and redo-transport-property tables with verified defaults, the ping-properties quirk, the verified-facts sections behind the simulator's commit/reopen/observer views, the drawing idealizations, Oracle doc links |
 | `simulator/fsfo-simulator.html` | Source fragment of the interactive simulator, published at davidbudac.cz/dataguard |
 | `testing/README.md` | Test runbook: step-by-step drills verifying each documented situation against a real 19c configuration (crash, isolation, observer loss, NET_TIMEOUT, blocked failover, reopen/MaxFailure, client view, commit measurement), with an RTO/RPO probe harness and reinstate cleanup. Repo-only markdown — not part of the published site |
-| `site/build.mjs` | Wraps the fragment into a full page (doctype, charset, title) and enforces the ASCII-only guard — it exits non-zero on any byte above U+007E |
-| `site/publish.sh` | Builds and deploys to the VPS, then verifies the public URL |
+| `site/build.mjs` | Wraps the fragment into a full page (doctype, charset, title, favicon, canonical + social meta) and enforces the ASCII-only guard — it exits non-zero on any byte above U+007E |
+| `site/test.mjs` | Standalone node test: extracts the four model marker blocks from the fragment and asserts the documented domain invariants. No dependencies; `node --test site/test.mjs`. `site/publish.sh` runs it after the build, so a model that contradicts the docs cannot be deployed |
+| `site/publish.sh` | Builds, tests the models, and deploys to the VPS, then verifies the public URL |
 
 ## Publishing
 
@@ -197,9 +198,13 @@ redefined under `@media (prefers-color-scheme: dark)` AND under
 `:root[data-theme="dark"]` / `:root[data-theme="light"]` so the host toggle wins
 both ways. Every section is driven by a pure function inside a marker pair —
 `computeFsfo(c)` in `/* MODEL:START */`…`/* MODEL:END */`, plus `APPMODEL`,
-`COMMITMODEL` and `REOPENMODEL` below. Each block is self-contained (its tick-step
-helper lives inside it), so a standalone node test is just the concatenation of
-the blocks you need, extracted between the markers. Timing model: initiate =
+`COMMITMODEL` and `REOPENMODEL` below. The four blocks are DOM-free and
+closure-free, so a standalone node test is their concatenation, extracted
+between the markers — concatenate `MODEL` first: `computeApp` shares its
+`pickTickStep` (the millisecond- and minutes-scale blocks carry their own
+tick helpers because their ladders genuinely differ). `site/test.mjs` does
+exactly this and asserts the documented invariants; `site/publish.sh` runs it
+after every build. Timing model: initiate =
 threshold, or pingInterval × (pingRetry + 1) when the ping properties are set;
 blocked when MaxPerformance and lag > lag limit; the isolated primary's abort
 always uses the threshold. `computeFsfo` also has an `observer-lost` branch

@@ -41,6 +41,11 @@ node site/build.mjs
 
 [[ -s _site/index.html ]] || die "_site/index.html missing or empty after build"
 
+# --- 1b. the models must still say what the docs say. A red assertion here
+# means the fragment contradicts a documented Oracle fact -- never deploy that.
+say "Testing the models"
+node --test site/test.mjs
+
 # --- 2. say out loud which version is going out.
 # The working tree is what ships, so an uncommitted edit publishes silently
 # unless we mention it. Warn, do not block: previewing uncommitted work on the
