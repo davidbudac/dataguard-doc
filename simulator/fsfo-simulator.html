@@ -284,6 +284,14 @@ input[type="range"]:disabled::-moz-range-thumb{background:var(--ik3);box-shadow:
 .note.k-rd{border-left-color:var(--rd)}
 .note.k-tl{border-left-color:var(--tl)}
 .note.k-bl{border-left-color:var(--bl)}
+/* Demo buttons -- script-injected onto cards carrying data-demo. The \2192
+   arrow is a CSS escape: ASCII source bytes, decoded by the CSS parser. */
+.note .demo{align-self:flex-start;margin-top:3px;font-family:var(--mono);font-size:10.5px;
+letter-spacing:.1em;text-transform:uppercase;color:var(--vi);background:transparent;border:0;
+border-bottom:1px dashed var(--vi);padding:0 0 1px;cursor:pointer}
+.note .demo::after{content:"\00a0\2192"}
+.note .demo:hover{color:var(--ik);border-bottom-color:var(--ik)}
+@media print{.note .demo{display:none}}
 .tbl-wrap{overflow-x:auto;border:1px solid var(--ln);border-radius:3px;background:var(--sf)}
 table{border-collapse:collapse;width:100%;min-width:820px;font-size:13px}
 thead th{text-align:left;font-family:var(--mono);font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--ik3);font-weight:500;padding:10px 14px;border-bottom:1px solid var(--ln);background:var(--sf2);white-space:nowrap}
@@ -620,7 +628,7 @@ td .mono{font-size:12px;color:var(--ik)}
         <h3>Two parties have to agree</h3>
         <p>Fast-start failover requires the observer <em>and</em> the target standby to have both lost the primary for the threshold. During the countdown the observer confirms the standby has also lost contact and is ready; if the standby can still see the primary, no failover.</p>
       </div>
-      <div class="note k-bl">
+      <div class="note k-bl" data-demo="ready-modes">
         <h3>Readiness means different things per mode</h3>
         <p>In MaxAvailability and MaxProtection the standby must have been synchronized at failure time. In MaxPerformance its apply lag must be at or below <span class="mono">FastStartFailoverLagLimit</span>. Fail the check and failover is not allowed at all.</p>
       </div>
@@ -628,15 +636,15 @@ td .mono{font-size:12px;color:var(--ik)}
         <h3>Execution is not a parameter</h3>
         <p>Once initiated, the standby applies the redo it already holds, converts to the primary role, and opens read-write. That span depends on the apply lag at failure time and on your environment; no broker property shortens it.</p>
       </div>
-      <div class="note k-rd">
+      <div class="note k-rd" data-demo="ping-override">
         <h3>The ping properties override the threshold</h3>
         <p>Per the broker documentation, <span class="mono">FastStartFailoverThreshold</span> is ignored when <span class="mono">ObserverPingRetry</span> and <span class="mono">ObserverPingInterval</span> are set. Detection then costs interval &times; (retries + 1), about a second at the minimums.</p>
       </div>
-      <div class="note k-rd">
+      <div class="note k-rd" data-demo="iso-two-clocks">
         <h3>An isolated primary runs its own clock</h3>
         <p>Cut off from both the observer and the standby, the primary stalls &mdash; <span class="mono">V$DATABASE.FS_FAILOVER_STATUS</span> goes to <span class="mono">STALLED</span> &mdash; and, if <span class="mono">FastStartFailoverPmyShutdown</span> is TRUE, aborts itself after one threshold. Two clocks, one open primary.</p>
       </div>
-      <div class="note k-vi">
+      <div class="note k-vi" data-demo="no-observer">
         <h3>No observer, no fast-start failover</h3>
         <p>Lose the only observer and nothing visible breaks: the primary still commits, the standby still applies. But <span class="mono">V$DATABASE.FS_FAILOVER_STATUS</span> now reads <span class="mono">PRIMARY UNOBSERVED</span>, <span class="mono">FS_FAILOVER_OBSERVER_PRESENT</span> reads <span class="mono">NO</span>, and the broker raises <span class="mono">ORA-16820</span>. 19c registers up to three observers; lose the master while primary and standby stay connected and the broker promotes a backup on its own.</p>
       </div>
@@ -829,15 +837,15 @@ td .mono{font-size:12px;color:var(--ik)}
     </div>
 
     <div class="notes" style="margin-top:38px">
-      <div class="note k-vi">
+      <div class="note k-vi" data-demo="affirm">
         <h3>AFFIRM is a disk promise</h3>
         <p>Each <span class="mono">LogXptMode</span> value sets a pair of destination attributes. <span class="mono">SYNC</span> means <span class="mono">SYNC</span> + <span class="mono">AFFIRM</span>: the destination acknowledges received redo only after writing it to the standby redo log. <span class="mono">FASTSYNC</span> means <span class="mono">SYNC</span> + <span class="mono">NOAFFIRM</span>: it acknowledges before that write. Under both, a transaction cannot commit until the destination has acknowledged all its redo; the two differ only in what the acknowledgement is worth. All three values require standby redo logs.</p>
       </div>
-      <div class="note k-am">
+      <div class="note k-am" data-demo="fastsync">
         <h3>FASTSYNC trades the disk wait for time</h3>
         <p><span class="mono">FASTSYNC</span> exists since 12.1, in maximum availability mode only. It buys back the standby redo log write, but only while the network is the bottleneck: once the local write outlasts the round trip, the chip above reads zero. The cost is a window in which the standby has acknowledged redo it has not yet written; the broker documents that fast-start failover cannot be initiated when <span class="mono">FASTSYNC</span> is in use and the standby is missing redo data.</p>
       </div>
-      <div class="note k-rd">
+      <div class="note k-rd" data-demo="async">
         <h3>ASYNC answers before the standby knows</h3>
         <p>Under <span class="mono">ASYNC</span> + <span class="mono">NOAFFIRM</span>, the broker default, a transaction never waits for the destination: the commit costs the local write alone. Redo still on the wire is the exposure, which is why MaxPerformance gates fast-start failover on <span class="mono">FastStartFailoverLagLimit</span> rather than on synchronization. The broker&rsquo;s protection-mode table lists <span class="mono">ASYNC</span> for MaxPerformance, and <span class="mono">SYNC</span> or <span class="mono">FASTSYNC</span> for MaxAvailability. MaxProtection is out of scope here.</p>
       </div>
@@ -1021,15 +1029,15 @@ td .mono{font-size:12px;color:var(--ik)}
     </div>
 
     <div class="notes" style="margin-top:38px">
-      <div class="note k-am">
+      <div class="note k-am" data-demo="reopen-gap">
         <h3>The gap is at least ReopenSecs</h3>
         <p>Nothing brings a failed destination back sooner than one <span class="mono">ReopenSecs</span>, however brief the outage. The property gates eligibility; the log switch supplies the trigger: transport retries a failed destination at log switch time, once the last error plus the <span class="mono">REOPEN</span> interval is in the past. The real retry therefore lands at the first log switch after the interval expires, which is why a busy database recovers faster than a quiet one. <span class="mono">REOPEN</span> applies to every error, not only connection failures.</p>
       </div>
-      <div class="note k-rd">
+      <div class="note k-rd" data-demo="maxfailure">
         <h3>MaxFailure is a tripwire, not a retry budget</h3>
         <p><span class="mono">MaxFailure</span> counts consecutive attempts, at log switches, to reestablish a failed destination; its default 0 means unlimited attempts. Reaching the limit does not slow the retries down &mdash; it disables the destination: no further access until it is manually reenabled, and it is then treated as if <span class="mono">REOPEN</span> had not been specified. The network healing afterwards changes nothing. One documented exception: destinations with the 12.2 <span class="mono">GROUP</span> and <span class="mono">PRIORITY</span> attributes re-enter service on their own once redo transport finds them accessible.</p>
       </div>
-      <div class="note k-vi">
+      <div class="note k-vi" data-demo="disarm-perf">
         <h3>This is where the lag limit expires</h3>
         <p>Nothing is arriving, so the standby falls behind in real time. In MaxAvailability it is <span class="mono">UNSYNCHRONIZED</span> from the first second and fast-start failover is disarmed immediately; in MaxPerformance it survives until the apply lag passes <span class="mono">FastStartFailoverLagLimit</span> &mdash; 30 s by default, half a minute into an outage that may run for hours. Either way, no failover is permitted until the destination is shipping and the standby is back in step.</p>
       </div>
@@ -1160,11 +1168,11 @@ td .mono{font-size:12px;color:var(--ik)}
         <h3>The dead address is a toll booth</h3>
         <p>With <span class="mono">LOAD_BALANCE</span> off the client walks the list in order, so every traversal first pays <span class="mono">min(TRANSPORT_CONNECT_TIMEOUT, CONNECT_TIMEOUT)</span> on the unreachable host &mdash; including every fresh connection <em>after</em> the failover, until the old primary is reinstated or the string reordered. <span class="mono">LOAD_BALANCE = ON</span> randomizes the order and halves the expected toll.</p>
       </div>
-      <div class="note k-rd">
+      <div class="note k-rd" data-demo="retries-never">
         <h3>The default string retries exactly never</h3>
         <p><span class="mono">RETRY_COUNT</span> defaults to 0: one traversal, then the error goes straight to the application. The budget must cover the whole outage: (<span class="mono">RETRY_COUNT</span> + 1) &times; traversal + <span class="mono">RETRY_COUNT</span> &times; <span class="mono">RETRY_DELAY</span> has to reach past the new primary&rsquo;s open, with room to spare.</p>
       </div>
-      <div class="note k-tl">
+      <div class="note k-tl" data-demo="tuned">
         <h3>Short delays, many retries</h3>
         <p>Oracle&rsquo;s HA guidance: a generous <span class="mono">CONNECT_TIMEOUT</span> (90 s in the documented example), a transport timeout around a second, and a short <span class="mono">RETRY_DELAY</span> with a high <span class="mono">RETRY_COUNT</span>, so that one of the traversals lands just after the service is republished. Its switchover sizing example budgets 100 &times; 3 s.</p>
       </div>
@@ -4300,6 +4308,59 @@ td .mono{font-size:12px;color:var(--ik)}
       });
     }
   }
+
+  /* Demo buttons: a prose card that asserts something the workbench can
+     demonstrate gets a data-demo attribute, and this table supplies the
+     configuration that proves the claim. A demo applies OVER the defaults
+     baseline (fromDefaults: true), discarding whatever the reader had been
+     fiddling with -- reproducibility is the point, and the serializer below
+     then turns the URL into that demo's permalink on its own. The jump waits
+     out two rAFs because the models' redraw is queued in the first one and
+     can change the page height above the target. */
+  var DEMOS = {
+    'ready-modes':   { p: { pm: 'perf', lag: 45, ll: 30 }, to: 'ch-clocks',
+                       label: 'Show me a failed check' },
+    'ping-override': { p: { ps: 1 }, to: 'ch-clocks',
+                       label: 'Show me 1.1 s detection' },
+    'iso-two-clocks': { p: { sc: 'iso', ps: 1 }, to: 'ch-clocks',
+                       label: 'Show me the two clocks' },
+    'no-observer':   { p: { sc: 'obs' }, to: 'ch-clocks',
+                       label: 'Show me the blind window' },
+    'affirm':        { p: { xpt: 'sync', lat: 20, sbw: 10 }, to: 'commitview',
+                       label: 'Show me the ack path' },
+    'fastsync':      { p: { xpt: 'fastsync', lat: 20, sbw: 10 }, to: 'commitview',
+                       label: 'Show me the delta' },
+    'async':         { p: { xpt: 'async', lat: 20 }, to: 'commitview',
+                       label: 'Show me the trade' },
+    'reopen-gap':    { p: { rs: 900, og: 120 }, to: 'reopenview',
+                       label: 'Show me the gap' },
+    'maxfailure':    { p: { mf: 2, og: 1800 }, to: 'reopenview',
+                       label: 'Show me the tripwire' },
+    'disarm-perf':   { p: { pm: 'perf', ll: 30 }, to: 'reopenview',
+                       label: 'Show me the disarm point' },
+    'retries-never': { p: { th: 90 }, to: 'appview',
+                       label: 'Show me the give-up' },
+    'tuned':         { p: { tct: 3, ct: 90, rc: 30, rd: 3 }, to: 'appview',
+                       label: 'Show me the ladder' }
+  };
+  Array.prototype.forEach.call(document.querySelectorAll('.note[data-demo]'), function (card) {
+    var d = DEMOS[card.getAttribute('data-demo')];
+    if (!d) return;
+    var b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'demo';
+    b.textContent = d.label;
+    b.setAttribute('title', 'Set the controls up to demonstrate this and jump to the timeline');
+    b.addEventListener('click', function () {
+      apply(d.p, true);
+      requestAnimationFrame(function () {
+        requestAnimationFrame(function () {
+          jump(document.querySelector('#' + d.to + ' .workbench'));
+        });
+      });
+    });
+    card.appendChild(b);
+  });
 
   /* Serialize on any control activity: rAF collapses a gesture's bursts,
      the trailing debounce keeps replaceState far under WebKit's rate cap. */

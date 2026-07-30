@@ -243,6 +243,29 @@ IIFE's closure and are unreachable — anything outside pushes state by setting
 never by calling into the models. There is no URL key for `#cm-rtt`; it is a
 second face of `#c-latency` (`lat`), reconciled on every draw.
 
+**Demo links.** Prose cards that assert something the workbench can demonstrate
+carry a `data-demo` attribute; the fourth IIFE's `DEMOS` table maps each slug to
+the parameters that prove the claim plus the workbench to jump to, and injects a
+"Show me ..." button. A demo applies **over the defaults baseline**, resetting
+every unlisted control — reproducibility is the point — and the URL serializer
+then makes the address bar that demo's permalink by itself. The jump waits two
+rAFs (the redraw queued in the first can change page height above the target).
+
+**Page chrome (the third IIFE).** Two injected pieces, no markup of their own:
+the **Notes toggles** — every `.rail` containing a `.ctl-note` gets
+`notes-managed` plus a Notes button toggling `notes-open`; collapsed rails hide
+notes and tighten `.ctl` padding so the rail fits the viewport, but `.is-warn`
+notes always punch through (they are state, not documentation, and several
+appear only mid-interaction), and a focused control reveals its own note
+(`:focus-within`, deliberately never `:hover`) — and the **config pill**
+(`.cfgpill`), a fixed chip shown while no workbench is on screen and one has
+been passed, restating the last workbench's headline settings and first readout
+chip from the rendered DOM (so it can never contradict the controls) and
+jumping back on click. Standing rule for anything similar: new chrome is a
+self-contained IIFE that injects its own DOM, degrades to nothing without JS,
+and never reaches into another IIFE's closure — push state via controls plus
+dispatched events only.
+
 The workbench carries three scenarios. The third, **observer lost**, kills the
 only observer host at t = 0: the primary keeps serving because it still reaches
 the target standby, the standby keeps applying, and no fast-start failover is
@@ -327,6 +350,19 @@ MaxAvailability (red mismatch note), FASTSYNC under MaxPerformance (red
 MaxAvailability-only note), observer lost (red note in the observer card), and
 non-default reopen/max-failure values flowing into `REOPEN`/`MAX_FAILURE`.
 
+URL state and chrome, same pre-publish pass: move three controls and
+`location.search` shows exactly those keys; reload restores the identical
+state; Reset defaults leaves a bare URL with no `?`. Hostile params behave
+(`?th=999` clamps to 120; `?th=abc`, `?sc=bogus`, `?ps=7` are ignored);
+`?pm=perf&lag=45#ch-app` lands on chapter 3 in a blocked MaxPerformance.
+Drag a slider for 20 s and the console shows no `replaceState` rate warning.
+Click at least one demo button per chapter: the controls take the demo's
+values, the URL becomes its permalink, and the jump lands the workbench just
+under the chapter bar. Focus a slider in a collapsed rail (note appears,
+disappears on blur) with an `.is-warn` note visible elsewhere, in both themes.
+After a publish, `curl -s https://davidbudac.cz/dataguard/ | grep -E
+'og:image|canonical|theme-color|rel="icon"'` finds all four.
+
 ## Process that produced this (worth repeating)
 
 1. Verified every parameter default and semantic against Oracle docs before
@@ -344,6 +380,9 @@ Keep that order: facts → spec → build → adversarial review → publish.
 
 - Nothing is committed without the user asking. Commit messages end with
   `Co-Authored-By:` per the harness rules.
+- Changing a documented default or a model formula means changing
+  `site/test.mjs` in the same commit — the test gate exists to make the
+  accuracy rules executable, not to be worked around.
 - Scenarios covered so far: primary crash, isolated primary, and observer lost
   (simulator only — there is no static figure for it). Reinstate stays out of
   scope for the figures and the simulator; if the user asks for it, add it as a
