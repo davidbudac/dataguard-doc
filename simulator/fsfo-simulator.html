@@ -59,7 +59,7 @@ background:var(--bg);color:var(--ik);font-family:var(--sans);font-size:15px;line
 .hd h1{margin:0;font-size:clamp(26px,3.4vw,38px);line-height:1.1;font-weight:620;letter-spacing:-.022em;text-wrap:balance}
 .hd .lede{max-width:62ch;color:var(--ik2);font-size:16px}
 
-/* chapters -- the sticky chapter bar and the four dividers. Additive chrome:
+/* chapters -- the sticky chapter bar and the five dividers. Additive chrome:
    every existing section keeps its own styles, a chapter is only a wrapper.
    --navh is the bar's measured height (JS keeps it current); the chapter
    scroll targets and the control rail's sticky offset both derive from it, so
@@ -262,9 +262,18 @@ td .mono{font-size:12px;color:var(--ik)}
 
 /* app view -- the connect descriptor block */
 .tns{background:var(--sf2);border:1px solid var(--ln);border-radius:3px;padding:13px 16px;overflow-x:auto;font-family:var(--mono);font-size:12px;line-height:1.75;color:var(--ik2);white-space:pre}
-.tns .hl{color:var(--vi);font-weight:600}
+.tns .hl,.caption .hl{color:var(--vi);font-weight:600}
 .tns .svc{color:var(--tl);font-weight:600}
 .tns .dim{color:var(--ik3)}
+.tns .bad{color:var(--rd);font-weight:600}
+/* chapter 4 -- the generated config blocks */
+.cfg-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;align-items:start;margin-top:18px}
+.cfg{background:var(--sf);border:1px solid var(--ln);border-radius:3px;min-width:0}
+.cfg-wide{grid-column:1/-1}
+.cfg-hd{display:flex;justify-content:space-between;align-items:baseline;gap:12px;padding:10px 16px;border-bottom:1px solid var(--ln);background:var(--sf2);border-radius:3px 3px 0 0}
+.cfg-file{font-family:var(--mono);font-size:12px;font-weight:600;color:var(--ik)}
+.cfg .tns{border:0;border-radius:0 0 3px 3px}
+@media (max-width:960px){.cfg-grid{grid-template-columns:minmax(0,1fr)}}
 
 /* svg -- timeline and sequence, tokens only */
 .tl-svg text,.sq-svg text{font-family:var(--sans);fill:var(--ik2)}
@@ -375,7 +384,8 @@ td .mono{font-size:12px;color:var(--ik)}
       <li><a href="#ch-clocks" data-ch="ch-clocks"><span class="cn-n">1</span><span class="cn-t">The failover clocks</span><span class="cn-s">Clocks</span></a></li>
       <li><a href="#ch-transport" data-ch="ch-transport"><span class="cn-n">2</span><span class="cn-t">The transport layer</span><span class="cn-s">Transport</span></a></li>
       <li><a href="#ch-app" data-ch="ch-app"><span class="cn-n">3</span><span class="cn-t">The application&rsquo;s view</span><span class="cn-s">App view</span></a></li>
-      <li><a href="#ch-reference" data-ch="ch-reference"><span class="cn-n">4</span><span class="cn-t">Reference</span><span class="cn-s">Reference</span></a></li>
+      <li><a href="#ch-config" data-ch="ch-config"><span class="cn-n">4</span><span class="cn-t">The configuration</span><span class="cn-s">Config</span></a></li>
+      <li><a href="#ch-reference" data-ch="ch-reference"><span class="cn-n">5</span><span class="cn-t">Reference</span><span class="cn-s">Reference</span></a></li>
     </ol>
   </nav>
 
@@ -1153,11 +1163,64 @@ td .mono{font-size:12px;color:var(--ik)}
   </section>
   </section>
 
-  <section class="chapter" id="ch-reference" aria-labelledby="ch-reference-h">
+  <section class="chapter" id="ch-config" aria-labelledby="ch-config-h">
   <div class="chdiv">
     <p class="chdiv-n" aria-hidden="true">4</p>
     <div class="chdiv-b">
-      <h2 class="chdiv-t" id="ch-reference-h"><span class="sr">Chapter 4 &mdash; </span>Reference</h2>
+      <h2 class="chdiv-t" id="ch-config-h"><span class="sr">Chapter 4 &mdash; </span>The configuration</h2>
+      <p class="chdiv-d">Everything the controls above are set to, written out as the commands and files that would set it &mdash; and rewritten live as you drag.</p>
+    </div>
+  </div>
+
+  <section class="sec" id="configview">
+    <div class="sec-hd">
+      <p class="eyebrow">Configuration files</p>
+      <h2>The same settings, as you would type them</h2>
+    </div>
+    <p class="caption">The primary is <span class="mono">prm01</span> on <span class="mono">dc1-prm01</span>, the target standby <span class="mono">sby01</span> on <span class="mono">dc2-sby01</span> &mdash; the two hosts from the connect string above. Values that differ from their documented defaults are <span class="hl">highlighted</span>; the grey parenthetical lines are this page commenting, not DGMGRL syntax. Four controls never appear below &mdash; scenario, apply lag, role-transition time and RTT are conditions of the environment, not lines of configuration.</p>
+
+    <div class="cfg-grid">
+      <article class="cfg cfg-wide">
+        <div class="cfg-hd">
+          <span class="cfg-file">DGMGRL &mdash; the broker configuration</span>
+          <span class="eyebrow">any host &middot; one session</span>
+        </div>
+        <div class="tns" id="cfg-broker"></div>
+      </article>
+
+      <article class="cfg">
+        <div class="cfg-hd">
+          <span class="cfg-file">DGMGRL &mdash; the observer</span>
+          <span class="eyebrow">observer host</span>
+        </div>
+        <div class="tns" id="cfg-observer"></div>
+      </article>
+
+      <article class="cfg">
+        <div class="cfg-hd">
+          <span class="cfg-file">LOG_ARCHIVE_DEST_2 &mdash; where the transport properties land</span>
+          <span class="eyebrow">primary &middot; broker-owned</span>
+        </div>
+        <div class="tns" id="cfg-dest"></div>
+      </article>
+
+      <article class="cfg cfg-wide">
+        <div class="cfg-hd">
+          <span class="cfg-file">tnsnames.ora &mdash; the connect string</span>
+          <span class="eyebrow">every application host</span>
+        </div>
+        <div class="tns" id="cfg-tns"></div>
+      </article>
+    </div>
+    <p class="caption">Command syntax per the 19c broker commands reference; the clock properties (<span class="mono">FastStartFailoverThreshold</span>, the two <span class="mono">ObserverPing*</span> properties, <span class="mono">FastStartFailoverLagLimit</span>, <span class="mono">FastStartFailoverPmyShutdown</span>) are configuration-wide, while <span class="mono">LogXptMode</span> is set per database. <span class="mono">START OBSERVER IN BACKGROUND</span> is the form the documentation prefers.</p>
+  </section>
+  </section>
+
+  <section class="chapter" id="ch-reference" aria-labelledby="ch-reference-h">
+  <div class="chdiv">
+    <p class="chdiv-n" aria-hidden="true">5</p>
+    <div class="chdiv-b">
+      <h2 class="chdiv-t" id="ch-reference-h"><span class="sr">Chapter 5 &mdash; </span>Reference</h2>
       <p class="chdiv-d">Every property this page touches &mdash; default, minimum, what it governs &mdash; and the footnotes behind the drawings.</p>
     </div>
   </div>
@@ -1630,6 +1693,8 @@ td .mono{font-size:12px;color:var(--ik)}
     apCtlTct: $('ap-ctl-tct'), apCtlCt: $('ap-ctl-ct'), apCtlRc: $('ap-ctl-rc'),
     apCtlRd: $('ap-ctl-rd'), apCtlDead: $('ap-ctl-dead'),
     apTns: $('ap-tns'), apWrap: $('ap-wrap'), apChips: $('ap-chips'),
+    cfgBroker: $('cfg-broker'), cfgObserver: $('cfg-observer'),
+    cfgDest: $('cfg-dest'), cfgTns: $('cfg-tns'),
     apBanner: $('ap-banner'), apBannerBody: $('ap-banner-body'),
     apCaption: $('ap-caption'), apEyebrow: $('ap-eyebrow'), apSummary: $('ap-summary'),
     apHeading: $('ap-heading'),
@@ -2531,7 +2596,7 @@ td .mono{font-size:12px;color:var(--ik)}
 
   function tnsToken(name, val) { return '<span class="hl">(' + name + ' = ' + val + ')</span>'; }
 
-  function renderTns() {
+  function buildTns() {
     var set = [];
     if (A.tct !== 60) set.push(tnsToken('TRANSPORT_CONNECT_TIMEOUT', A.tct));
     if (A.ct > 0) set.push(tnsToken('CONNECT_TIMEOUT', A.ct));
@@ -2554,7 +2619,134 @@ td .mono{font-size:12px;color:var(--ik)}
       for (var j = 0; j < absent.length; j += 2)
         lines.push('<span class="dim">#   ' + absent.slice(j, j + 2).join(' \u00b7 ') + '</span>');
     }
-    els.apTns.innerHTML = lines.join('\n');
+    return lines.join('\n');
+  }
+  function renderTns() { els.apTns.innerHTML = buildTns(); }
+
+  /* ---------- chapter 4: the configuration, written out ----------
+     Pure presentation over C, K, R and the tns builder above; rewritten on
+     every draw. The DGMGRL cards are transcripts, so their grey commentary
+     is parenthetical and unprefixed (DGMGRL has no comment syntax to
+     borrow); the init.ora and tnsnames.ora cards use real # comments. */
+  function cfgVal(val, isDefault) {
+    return isDefault ? String(val) : '<span class="hl">' + val + '</span>';
+  }
+  function cfgCmd(cmd, note) {
+    return '<span class="dim">DGMGRL&gt;</span> ' + cmd +
+      (note ? '   <span class="dim">(' + note + ')</span>' : '');
+  }
+  function cfgNote(text, cls) {
+    return '<span class="' + (cls || 'dim') + '">        ' + text + '</span>';
+  }
+
+  function renderConfig() {
+    var async = K.xpt === 'async', fast = K.xpt === 'fastsync';
+    var xptVal = async ? 'ASYNC' : (fast ? 'FASTSYNC' : 'SYNC');
+    var avail = C.mode === 'maxavail';
+    var detectS = C.pingInterval * (C.pingRetry + 1) / 1000;
+
+    /* one DGMGRL session sets everything; database-scoped first, then the
+       configuration-wide clocks, then the switch that arms it all */
+    var b = [];
+    b.push(cfgCmd('CONNECT sys@prm01 AS SYSDBA;'));
+    b.push('');
+    b.push(cfgCmd("EDIT DATABASE 'sby01' SET PROPERTY 'LogXptMode' = '" +
+      cfgVal(xptVal, async) + "';", async ? 'default' : null));
+    b.push(cfgCmd("EDIT DATABASE 'prm01' SET PROPERTY 'LogXptMode' = '" +
+      cfgVal(xptVal, async) + "';"));
+    b.push(cfgNote('(prm01 ships redo with it once a role swap makes it the standby)'));
+    if (async && avail) {
+      b.push(cfgNote('(mismatch: for MaxAvailability the broker documents SYNC or', 'bad'));
+      b.push(cfgNote(' FASTSYNC \u2014 pick one of those in the commit section above)', 'bad'));
+    }
+    if (fast && !avail) {
+      b.push(cfgNote('(FASTSYNC is documented for MaxAvailability only)', 'bad'));
+    }
+    b.push('');
+    b.push(cfgCmd('EDIT CONFIGURATION SET PROTECTION MODE AS ' +
+      (avail ? 'MAXAVAILABILITY' : 'MAXPERFORMANCE') + ';'));
+    b.push('');
+    b.push(cfgCmd('EDIT CONFIGURATION SET PROPERTY FastStartFailoverThreshold = ' +
+      cfgVal(C.threshold, C.threshold === 30) + ';', C.threshold === 30 ? 'default' : null));
+    if (C.pingSet) {
+      b.push(cfgCmd('EDIT CONFIGURATION SET PROPERTY ObserverPingInterval = ' +
+        cfgVal(C.pingInterval, C.pingInterval === 100) + ';'));
+      b.push(cfgCmd('EDIT CONFIGURATION SET PROPERTY ObserverPingRetry = ' +
+        cfgVal(C.pingRetry, C.pingRetry === 10) + ';'));
+      b.push(cfgNote('(with both set, the threshold above is ignored for detection:'));
+      b.push(cfgNote(' ' + C.pingInterval + ' ms \u00d7 (' + C.pingRetry + ' + 1) \u2248 ' +
+        fmt(detectS) + ' s)'));
+    } else {
+      b.push(cfgNote('(ObserverPingInterval / ObserverPingRetry stay unset \u2014'));
+      b.push(cfgNote(' detection runs on the threshold)'));
+    }
+    if (avail) {
+      b.push(cfgNote('(FastStartFailoverLagLimit not evaluated in MaxAvailability \u2014'));
+      b.push(cfgNote(' the standby must be synchronized instead)'));
+    } else {
+      b.push(cfgCmd('EDIT CONFIGURATION SET PROPERTY FastStartFailoverLagLimit = ' +
+        cfgVal(C.lagLimit, C.lagLimit === 30) + ';', C.lagLimit === 30 ? 'default' : null));
+    }
+    b.push(cfgCmd('EDIT CONFIGURATION SET PROPERTY FastStartFailoverPmyShutdown = ' +
+      cfgVal(C.pmyShutdown ? 'TRUE' : 'FALSE', C.pmyShutdown) + ';',
+      C.pmyShutdown ? 'default' : null));
+    b.push('');
+    b.push(cfgCmd('ENABLE FAST_START FAILOVER;'));
+    els.cfgBroker.innerHTML = b.join('\n');
+
+    /* the observer is just another DGMGRL client, on its own host */
+    var o = [];
+    o.push(cfgCmd('CONNECT sys@prm01 AS SYSDBA;'));
+    o.push(cfgCmd('START OBSERVER IN BACKGROUND;'));
+    o.push(cfgNote('(the prompt returns; the observer process keeps running)'));
+    o.push('');
+    if (C.scenario === 'observer-lost') {
+      o.push(cfgNote('(chapter 1 is currently killing this process at t = 0 \u2014', 'bad'));
+      o.push(cfgNote(' while it is gone, no fast-start failover is possible)', 'bad'));
+    } else if (C.pingSet) {
+      o.push(cfgNote('(this is the process that initiates failover, here after \u2248 ' +
+        fmt(detectS) + ' s)'));
+    } else {
+      o.push(cfgNote('(this is the process that runs the ' + C.threshold +
+        ' s reconnect clock)'));
+    }
+    o.push(cfgNote('(prm01 and sby01 resolve through this host\u2019s tnsnames.ora)'));
+    els.cfgObserver.innerHTML = o.join('\n');
+
+    /* the destination parameter those transport properties translate to */
+    var d = [];
+    d.push('<span class="dim"># broker-owned on prm01: LogXptMode, NetTimeout, ReopenSecs</span>');
+    d.push('<span class="dim"># and MaxFailure all land in these attributes. By hand it</span>');
+    d.push('<span class="dim"># would read:</span>');
+    d.push('');
+    d.push('log_archive_dest_2 =');
+    d.push("   'SERVICE=sby01 " +
+      cfgVal(async ? 'ASYNC NOAFFIRM' : (fast ? 'SYNC NOAFFIRM' : 'SYNC AFFIRM'), async) +
+      (async ? '' : ' NET_TIMEOUT=30'));
+    d.push('    REOPEN=' + cfgVal(R.reopen, R.reopen === 300) +
+      ' MAX_FAILURE=' + cfgVal(R.maxFailure, R.maxFailure === 0));
+    d.push('    VALID_FOR=(ONLINE_LOGFILES,PRIMARY_ROLE)');
+    d.push("    DB_UNIQUE_NAME=sby01'");
+    d.push('');
+    if (async) {
+      d.push('<span class="dim"># NET_TIMEOUT left out: it bounds the SYNC ack wait, and it</span>');
+      d.push('<span class="dim"># never affects sessions under ASYNC</span>');
+    } else {
+      d.push('<span class="dim"># NET_TIMEOUT=30 is the default, spelled out \u2014 seconds LGWR</span>');
+      d.push('<span class="dim"># waits for the standby\u2019s acknowledgement</span>');
+    }
+    d.push(R.maxFailure === 0
+      ? '<span class="dim"># MAX_FAILURE=0: retried at every log switch, without limit</span>'
+      : '<span class="dim"># MAX_FAILURE=' + R.maxFailure + ': disabled for good after ' +
+        R.maxFailure + ' consecutive failed reopens</span>');
+    d.push('<span class="dim"># ReopenSecs / MaxFailure are deprecated as broker properties</span>');
+    d.push('<span class="dim"># in 19c \u2014 set the attributes via EDIT DATABASE ... SET PARAMETER</span>');
+    els.cfgDest.innerHTML = d.join('\n');
+
+    /* the client card is chapter 3's descriptor, gathered here */
+    els.cfgTns.innerHTML = buildTns() + '\n\n' +
+      '<span class="dim"># app_svc is published only where the database runs as primary:</span>\n' +
+      '<span class="dim">#   srvctl add service -db prm01 -service app_svc -role PRIMARY</span>';
   }
 
   function renderAppControls() {
@@ -3479,6 +3671,9 @@ td .mono{font-size:12px;color:var(--ik)}
       if (els.rpWrap.firstChild && els.rpWrap.firstChild.classList) els.rpWrap.firstChild.classList.add('is-new');
       lastSigRp = sigRp;
     }
+
+    /* chapter 4 reads all four state objects, so any control repaints it */
+    renderConfig();
   }
   function schedule() { if (!queued) { queued = true; requestAnimationFrame(draw); } }
 
@@ -3671,7 +3866,7 @@ td .mono{font-size:12px;color:var(--ik)}
     setActive(idx);
   }
 
-  /* Number keys 1-4 jump to the matching chapter. Modifier combos stay with
+  /* Number keys 1-5 jump to the matching chapter. Modifier combos stay with
      the browser (Cmd+1 is a tab switch), and text-entry contexts keep their
      digits; range/radio controls have no use for them, so a hotkey pressed
      while a slider has focus still navigates. */
