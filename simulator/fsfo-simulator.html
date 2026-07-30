@@ -183,6 +183,12 @@ white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
    the workbench rail's controls alone run close to a full screen. */
 .rail.notes-managed:not(.notes-open) .ctl-note:not(.is-warn){display:none}
 .rail.notes-managed:not(.notes-open) .ctl{padding:11px 16px;gap:6px}
+/* Discoverability hedge: while the rail is collapsed, the control being
+   touched still explains itself. Focus only -- never :hover, which would
+   shift layout under a moving cursor and flicker. The note sits after the
+   input inside .ctl, so the focused control itself never moves. Purely
+   additive next to the .is-warn punch-through above: it can only reveal. */
+.rail.notes-managed:not(.notes-open) .ctl:focus-within .ctl-note{display:block}
 .rail-hd button[aria-pressed="true"]{background:var(--vif);color:var(--ik);border-color:var(--vi)}
 
 input[type="range"]{-webkit-appearance:none;appearance:none;width:100%;height:20px;margin:0;background:transparent;cursor:pointer;accent-color:var(--vi)}
