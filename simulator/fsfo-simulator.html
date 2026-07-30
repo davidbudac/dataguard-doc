@@ -4300,6 +4300,10 @@ td .mono{font-size:12px;color:var(--ik)}
   var vals = {};
   new URLSearchParams(location.search).forEach(function (v, k) { vals[k] = v; });
   var appliedAny = apply(vals, false) > 0;
+  /* Normalize the pasted URL right away: clamped values re-emit corrected,
+     unknown tokens drop, foreign params survive. A clean URL is a no-op --
+     serialize() skips replaceState when nothing changes. */
+  serialize();
   if (appliedAny && location.hash.length > 1) {
     var anchor = document.getElementById(location.hash.slice(1));
     if (anchor) {
