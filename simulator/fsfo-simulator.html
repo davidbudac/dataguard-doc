@@ -3813,7 +3813,9 @@ td .mono{font-size:12px;color:var(--ik)}
       if (isNaN(v)) return;
       var min = parseFloat(range.min), max = parseFloat(range.max);
       range.value = Math.min(max, Math.max(min, v));
-      range.dispatchEvent(new Event('input'));
+      /* bubbles, like a real input event, so document-level listeners
+         (the config pill, the URL serializer) see the commit too */
+      range.dispatchEvent(new Event('input', { bubbles: true }));
     }
     function open() {
       if (box || range.disabled) return;
@@ -4120,5 +4122,199 @@ td .mono{font-size:12px;color:var(--ik)}
   if (mq.addEventListener) mq.addEventListener('change', schedule);
   else if (mq.addListener) mq.addListener(schedule);
   update();
+})();
+</script>
+
+<script>
+/* URL state -- a fourth self-contained IIFE. The address bar always holds a
+   shareable link to the current configuration: every non-default control
+   value is carried as a short query parameter (composing with the #chapter
+   anchors), and a visited link restores the controls before the reader ever
+   scrolls.
+
+   The state objects C/K/R/A live inside the first IIFE's closure and are
+   unreachable from here -- deliberately. State is pushed the way the
+   click-to-type readouts push it: set .value / .checked on the control, then
+   dispatch its own 'input' / 'change' event, so every existing listener and
+   repaint path runs unchanged. Reading goes straight from the controls, which
+   the models never rewrite outside user gestures, so the DOM is a faithful
+   mirror of the state.
+
+   Serialization is rAF-collapsed and then debounced ~300 ms, which is not
+   polish: WebKit rate-limits history.replaceState to ~100 calls per 30 s and
+   a slider drag alone would trip it. Listeners sit on document in the
+   CAPTURE phase so they also see non-bubbling programmatic dispatches; that
+   is safe here because this block reads raw control state, which is already
+   final when the event starts propagating. */
+(function () {
+  "use strict";
+  if (!window.history || !history.replaceState || !window.URLSearchParams) return;
+
+  /* The single source of truth tying URL keys to controls. Keys are a public
+     contract -- hand-assigned and decoupled from element ids, so a future id
+     rename cannot break shared links. Radio maps double as the validation
+     whitelist. Ranges read min/max/step off the control at apply time, so a
+     later re-ranged slider clamps old links instead of ignoring them.
+     There is deliberately no key for #cm-rtt: it is a second face of
+     #c-latency ('lat'), reconciled to it on every draw. */
+  var FIELDS = [
+    { k: 'sc',  t: 'radio', name: 'scenario', d: 'crash',
+      map: { crash: 'sc-crash', iso: 'sc-iso', obs: 'sc-obs' } },
+    { k: 'pm',  t: 'radio', name: 'mode', d: 'avail',
+      map: { avail: 'md-avail', perf: 'md-perf' } },
+    { k: 'th',  t: 'range', id: 'c-threshold',    d: 30 },
+    { k: 'ps',  t: 'check', id: 'c-pingset',      d: false },
+    { k: 'pi',  t: 'range', id: 'c-pinginterval', d: 100 },
+    { k: 'pr',  t: 'range', id: 'c-pingretry',    d: 10 },
+    { k: 'lag', t: 'range', id: 'c-lag',          d: 10 },
+    { k: 'll',  t: 'range', id: 'c-laglimit',     d: 30 },
+    { k: 'rt',  t: 'range', id: 'c-role',         d: 15 },
+    { k: 'lat', t: 'range', id: 'c-latency',      d: 0 },
+    { k: 'sd',  t: 'check', id: 'c-shutdown',     d: true },
+    { k: 'xpt', t: 'radio', name: 'cm-xpt', d: 'sync',
+      map: { sync: 'cm-sync', fastsync: 'cm-fastsync', async: 'cm-async' } },
+    { k: 'lw',  t: 'range', id: 'cm-lw',  d: 2 },
+    { k: 'sbw', t: 'range', id: 'cm-sbw', d: 2 },
+    { k: 'rs',  t: 'range', id: 'rp-reopen',     d: 300 },
+    { k: 'mf',  t: 'range', id: 'rp-maxfailure', d: 0 },
+    { k: 'og',  t: 'range', id: 'rp-outage',     d: 600 },
+    { k: 'rr',  t: 'range', id: 'rp-rate',       d: 5 },
+    { k: 'tct', t: 'range', id: 'ap-tct', d: 60 },
+    { k: 'ct',  t: 'range', id: 'ap-ct',  d: 0 },
+    { k: 'rc',  t: 'range', id: 'ap-rc',  d: 0 },
+    { k: 'rd',  t: 'range', id: 'ap-rd',  d: 0 },
+    { k: 'da',  t: 'radio', name: 'ap-dead', d: 'drop',
+      map: { drop: 'ap-drop', rst: 'ap-rst' } }
+  ];
+
+  /* Default and current value of a field, both as URL strings. */
+  function defStr(f) {
+    if (f.t === 'check') return f.d ? '1' : '0';
+    return String(f.d);
+  }
+  function readStr(f) {
+    if (f.t === 'radio') {
+      var r = document.querySelector('input[name="' + f.name + '"]:checked');
+      if (!r) return null;
+      for (var tok in f.map) { if (f.map[tok] === r.id) return tok; }
+      return null;
+    }
+    var el = document.getElementById(f.id);
+    if (!el) return null;
+    return f.t === 'check' ? (el.checked ? '1' : '0') : String(el.value);
+  }
+
+  /* Push values into the controls. vals maps URL keys to raw strings; with
+     fromDefaults every unlisted field is reset to its default, which is what
+     a demo link wants -- the demonstrated state, not a hybrid of it and
+     whatever the reader had been fiddling with. Returns how many controls
+     actually changed. Ranges clamp to the control's live min/max, then snap
+     to its step grid; garbage is ignored, never guessed at. */
+  function apply(vals, fromDefaults) {
+    var changed = 0;
+    FIELDS.forEach(function (f) {
+      var has = Object.prototype.hasOwnProperty.call(vals, f.k);
+      if (!has && !fromDefaults) return;
+      var v = has ? String(vals[f.k]) : defStr(f);
+      if (f.t === 'range') {
+        var el = document.getElementById(f.id);
+        if (!el) return;
+        var n = Number(v);
+        if (!isFinite(n)) return;
+        var min = Number(el.min), max = Number(el.max), st = Number(el.step || 1);
+        n = Math.min(max, Math.max(min, n));
+        n = min + Math.round((n - min) / st) * st;
+        if (el.value === String(n)) return;
+        el.value = n;
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+        changed++;
+      } else if (f.t === 'check') {
+        var c = document.getElementById(f.id);
+        if (!c || (v !== '1' && v !== '0')) return;
+        var want = v === '1';
+        if (c.checked === want) return;
+        c.checked = want;
+        c.dispatchEvent(new Event('change', { bubbles: true }));
+        changed++;
+      } else {
+        var id = f.map[v];
+        if (!id) return;
+        var r = document.getElementById(id);
+        if (!r || r.checked) return;
+        /* .checked + dispatch, never .click(): a disabled control swallows
+           click() but its change listener still runs on a dispatched event */
+        r.checked = true;
+        r.dispatchEvent(new Event('change', { bubbles: true }));
+        changed++;
+      }
+    });
+    return changed;
+  }
+
+  /* Rewrite the query string: our keys rebuilt from the controls, non-default
+     values only, foreign params (campaign tags and the like) left alone. */
+  function serialize() {
+    var p = new URLSearchParams(location.search);
+    FIELDS.forEach(function (f) { p.delete(f.k); });
+    FIELDS.forEach(function (f) {
+      var v = readStr(f);
+      if (v !== null && v !== defStr(f)) p.set(f.k, v);
+    });
+    var q = p.toString();
+    var next = location.pathname + (q ? '?' + q : '') + location.hash;
+    if (next !== location.pathname + location.search + location.hash) {
+      history.replaceState(null, '', next);
+    }
+  }
+
+  /* The pill's jump math, re-derived locally rather than shared across
+     IIFEs. Used by the hash fix-up below (and by the demo buttons). */
+  function navH() {
+    var nav = document.getElementById('chapnav');
+    return (nav && nav.offsetHeight) || 46;
+  }
+  function jump(el, instant) {
+    if (!el) return;
+    var top = el.getBoundingClientRect().top +
+      (window.pageYOffset || document.documentElement.scrollTop || 0) - navH() - 12;
+    var reduce = window.matchMedia &&
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    window.scrollTo({ top: Math.max(0, top), behavior: (instant || reduce) ? 'auto' : 'smooth' });
+    el.setAttribute('tabindex', '-1');
+    try { el.focus({ preventScroll: true }); } catch (e) { /* focus is a nicety */ }
+  }
+
+  /* Restore before the reader scrolls. No scrolling on restore -- the one
+     exception: applying params can reflow the page (ps=1 reveals two extra
+     sliders), which moves whatever the native hash scroll already landed on,
+     so with both a hash and applied params the anchor is re-run once,
+     instantly, after the models' redraw has settled. */
+  var vals = {};
+  new URLSearchParams(location.search).forEach(function (v, k) { vals[k] = v; });
+  var appliedAny = apply(vals, false) > 0;
+  if (appliedAny && location.hash.length > 1) {
+    var anchor = document.getElementById(location.hash.slice(1));
+    if (anchor) {
+      requestAnimationFrame(function () {
+        requestAnimationFrame(function () { anchor.scrollIntoView(); });
+      });
+    }
+  }
+
+  /* Serialize on any control activity: rAF collapses a gesture's bursts,
+     the trailing debounce keeps replaceState far under WebKit's rate cap. */
+  var qd = false, timer = 0;
+  function schedule() {
+    if (qd) return;
+    qd = true;
+    requestAnimationFrame(function () {
+      qd = false;
+      clearTimeout(timer);
+      timer = setTimeout(serialize, 300);
+    });
+  }
+  document.addEventListener('input', schedule, true);
+  document.addEventListener('change', schedule, true);
+  document.addEventListener('click', schedule, true);
 })();
 </script>

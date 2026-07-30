@@ -224,6 +224,25 @@ wrappers. Related: `.fsfo` uses `overflow-x:clip`, not `hidden`, because `hidden
 forces `overflow-y` to `auto`, which makes `.fsfo` a scroll container and
 silently kills every `position:sticky` inside it (the control rails included).
 
+**URL state.** A fourth self-contained IIFE at the end of the file keeps the
+address bar holding a shareable link to the current configuration: every
+non-default control value rides as a short query parameter (`?pm=perf&lag=45`,
+composing with the `#chapter` anchors), restored on load. Its `FIELDS` table is
+the single source of truth for the key vocabulary — hand-assigned short keys
+decoupled from element ids, radio maps doubling as the validation whitelist.
+Values from the URL are clamped to the control's live min/max, snapped to its
+step, and anything else is ignored; nothing from the URL reaches `innerHTML` or
+state unclamped. Serialization is rAF-collapsed **plus a ~300 ms trailing
+debounce — mandatory, not polish: WebKit rate-limits `history.replaceState` to
+about 100 calls per 30 s and a slider drag alone would trip it.** Listeners sit
+on `document` in the capture phase so they also catch non-bubbling programmatic
+dispatches (the click-to-type commit was one until it gained `bubbles:true`).
+The load-bearing architectural rule: `C`/`K`/`R`/`A` live inside the first
+IIFE's closure and are unreachable — anything outside pushes state by setting
+`.value`/`.checked` and dispatching the control's own `input`/`change` event,
+never by calling into the models. There is no URL key for `#cm-rtt`; it is a
+second face of `#c-latency` (`lat`), reconciled on every draw.
+
 The workbench carries three scenarios. The third, **observer lost**, kills the
 only observer host at t = 0: the primary keeps serving because it still reaches
 the target standby, the standby keeps applying, and no fast-start failover is
