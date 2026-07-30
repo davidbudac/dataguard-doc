@@ -142,6 +142,12 @@ line-height:1;letter-spacing:-.05em;color:var(--vi)}
 .ctl-name{font-family:var(--mono);font-size:12px;color:var(--ik);word-break:break-word}
 .ctl-name.is-prose{font-family:var(--sans);font-size:12.5px;letter-spacing:.01em;color:var(--ik2)}
 .ctl-val{font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:13px;font-weight:600;color:var(--vi);white-space:nowrap}
+.ctl-val.is-editable{cursor:text;border-bottom:1px dashed transparent}
+.ctl-val.is-editable:hover,.ctl-val.is-editable:focus-visible{border-bottom-color:var(--vi);outline:none}
+.ctl-val.is-editing{display:none}
+.ctl-typein{font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:13px;font-weight:600;color:var(--vi);background:var(--sf2);border:1px solid var(--vi);border-radius:2px;padding:0 4px;width:5.5em;text-align:right;-moz-appearance:textfield;appearance:textfield}
+.ctl-typein:focus{outline:none}
+.ctl-typein::-webkit-outer-spin-button,.ctl-typein::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
 .ctl-note{font-size:11.5px;line-height:1.45;color:var(--ik3)}
 .ctl-note .mono{font-size:11px;color:var(--ik2)}
 .ctl-note.is-warn{color:var(--am)}
@@ -3545,6 +3551,57 @@ td .mono{font-size:12px;color:var(--ik)}
     els.rpReopen.value = R.reopen; els.rpMaxFailure.value = R.maxFailure;
     els.rpOutage.value = R.outage; els.rpRate.value = R.rate;
     schedule();
+  });
+
+  /* Click-to-type on every slider readout. Each output.ctl-val whose "for"
+     names a range input becomes editable: click (or Enter) swaps in a number
+     box, Enter or blur commits, Escape cancels. The typed value is clamped
+     to the slider's min/max and fed back through the range's own 'input'
+     event, so every existing listener and repaint path runs unchanged. */
+  Array.prototype.forEach.call(document.querySelectorAll('output.ctl-val[for]'), function (out) {
+    var range = document.getElementById(out.getAttribute('for'));
+    if (!range || range.type !== 'range') return;
+    out.classList.add('is-editable');
+    out.setAttribute('tabindex', '0');
+    out.setAttribute('title', 'Click to type a value');
+    var box = null;
+    function close() {
+      if (!box) return;
+      var b = box; box = null;
+      if (b.parentNode) b.parentNode.removeChild(b);
+      out.classList.remove('is-editing');
+    }
+    function commit() {
+      if (!box) return;
+      var v = parseFloat(box.value);
+      close();
+      if (isNaN(v)) return;
+      var min = parseFloat(range.min), max = parseFloat(range.max);
+      range.value = Math.min(max, Math.max(min, v));
+      range.dispatchEvent(new Event('input'));
+    }
+    function open() {
+      if (box || range.disabled) return;
+      box = document.createElement('input');
+      box.type = 'number';
+      box.className = 'ctl-typein';
+      box.min = range.min; box.max = range.max; box.step = range.step || '1';
+      box.value = range.value;
+      box.setAttribute('aria-label', 'Type a value between ' + range.min + ' and ' + range.max);
+      out.classList.add('is-editing');
+      out.parentNode.insertBefore(box, out.nextSibling);
+      box.focus();
+      box.select();
+      box.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') { e.preventDefault(); commit(); }
+        else if (e.key === 'Escape') { e.preventDefault(); close(); out.focus(); }
+      });
+      box.addEventListener('blur', commit);
+    }
+    out.addEventListener('click', open);
+    out.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); }
+    });
   });
 
   function onResize() {
