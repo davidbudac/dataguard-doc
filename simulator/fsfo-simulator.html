@@ -94,9 +94,9 @@ border-top:1px solid var(--ln);border-bottom:1px solid var(--ln)}
 .chapnav a{display:flex;align-items:baseline;gap:8px;white-space:nowrap;text-decoration:none;
 padding:11px 14px 9px;border-bottom:2px solid transparent;color:var(--ik3);font-size:13.5px}
 .chapnav a:hover{color:var(--ik)}
-.chapnav a[aria-current="true"]{color:var(--ik);border-bottom-color:var(--vi)}
+.chapnav a[aria-selected="true"]{color:var(--ik);border-bottom-color:var(--vi)}
 .chapnav .cn-n{font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:11px;letter-spacing:.1em;color:var(--ik3)}
-.chapnav a[aria-current="true"] .cn-n{color:var(--vi)}
+.chapnav a[aria-selected="true"] .cn-n{color:var(--vi)}
 .chapnav .cn-s{display:none}
 @media (max-width:720px){
 .chapnav{padding:0 6px}
@@ -105,6 +105,32 @@ padding:11px 14px 9px;border-bottom:2px solid transparent;color:var(--ik3);font-
 .chapnav .cn-s{display:inline}}
 @media (prefers-reduced-motion:no-preference){
 .chapnav a{transition:color .16s ease,border-color .16s ease}}
+
+/* Tabbed mode -- set by script (see the chapter-bar IIFE). One chapter is in
+   the document at a time; the bar stops being a table of contents and becomes
+   the switch. Without script nothing is hidden and the page reads top to
+   bottom exactly as before, which is also what printing wants: the print rule
+   below puts every chapter back so a printed page (and a find-in-page over
+   it) still carries the whole document. */
+.fsfo.is-tabbed .chapter[hidden]{display:none}
+.fsfo.is-tabbed .chdiv{margin-top:0;border-top:0}
+@media print{
+.fsfo.is-tabbed .chapter[hidden]{display:block}
+.fsfo.is-tabbed .chdiv{margin-top:62px;border-top:1px solid var(--ln2)}
+.chapnav,.chpager{display:none !important}}
+
+/* Chapter pager -- prev/next at the foot of each panel, script-injected, so
+   the chapters still read as a sequence once the scroll between them is gone. */
+.chpager{display:flex;gap:12px;justify-content:space-between;align-items:stretch;
+margin:34px 0 8px;padding-top:18px;border-top:1px solid var(--ln)}
+.chpager a{flex:0 1 clamp(180px,42%,320px);display:block;text-decoration:none;color:var(--ik2);
+padding:11px 14px;border:1px solid var(--ln);border-radius:7px;background:var(--sf2)}
+.chpager a:hover{border-color:var(--vi);color:var(--ik)}
+.chpager .chp-r{margin-left:auto;text-align:right}
+.chpager .chp-k{display:block;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--ik3)}
+.chpager .chp-t{display:block;margin-top:3px;font-size:14px;font-weight:560;color:var(--ik)}
+@media (prefers-reduced-motion:no-preference){
+.chpager a{transition:color .16s ease,border-color .16s ease}}
 
 .chapter{scroll-margin-top:calc(var(--navh) + 10px)}
 .chdiv{display:grid;grid-template-columns:auto minmax(0,1fr);column-gap:20px;align-items:baseline;
@@ -624,12 +650,12 @@ window.DG = (function () {
 
   <nav class="chapnav" id="chapnav" aria-label="Chapters">
     <ol>
-      <li><a href="#ch-clocks" data-ch="ch-clocks" title="Press 1"><span class="cn-n">1</span><span class="cn-t">The failover clocks</span><span class="cn-s">Clocks</span></a></li>
-      <li><a href="#ch-transport" data-ch="ch-transport" title="Press 2"><span class="cn-n">2</span><span class="cn-t">The transport layer</span><span class="cn-s">Transport</span></a></li>
-      <li><a href="#ch-app" data-ch="ch-app" title="Press 3"><span class="cn-n">3</span><span class="cn-t">The application&rsquo;s view</span><span class="cn-s">App view</span></a></li>
-      <li><a href="#ch-deploy" data-ch="ch-deploy" title="Press 4"><span class="cn-n">4</span><span class="cn-t">Your deployment</span><span class="cn-s">Deploy</span></a></li>
-      <li><a href="#ch-config" data-ch="ch-config" title="Press 5"><span class="cn-n">5</span><span class="cn-t">The configuration</span><span class="cn-s">Config</span></a></li>
-      <li><a href="#ch-reference" data-ch="ch-reference" title="Press 6"><span class="cn-n">6</span><span class="cn-t">Reference</span><span class="cn-s">Reference</span></a></li>
+      <li><a href="#ch-clocks" id="tab-ch-clocks" data-ch="ch-clocks" title="Press 1"><span class="cn-n">1</span><span class="cn-t">The failover clocks</span><span class="cn-s">Clocks</span></a></li>
+      <li><a href="#ch-transport" id="tab-ch-transport" data-ch="ch-transport" title="Press 2"><span class="cn-n">2</span><span class="cn-t">The transport layer</span><span class="cn-s">Transport</span></a></li>
+      <li><a href="#ch-app" id="tab-ch-app" data-ch="ch-app" title="Press 3"><span class="cn-n">3</span><span class="cn-t">The application&rsquo;s view</span><span class="cn-s">App view</span></a></li>
+      <li><a href="#ch-deploy" id="tab-ch-deploy" data-ch="ch-deploy" title="Press 4"><span class="cn-n">4</span><span class="cn-t">Your deployment</span><span class="cn-s">Deploy</span></a></li>
+      <li><a href="#ch-config" id="tab-ch-config" data-ch="ch-config" title="Press 5"><span class="cn-n">5</span><span class="cn-t">The configuration</span><span class="cn-s">Config</span></a></li>
+      <li><a href="#ch-reference" id="tab-ch-reference" data-ch="ch-reference" title="Press 6"><span class="cn-n">6</span><span class="cn-t">Reference</span><span class="cn-s">Reference</span></a></li>
     </ol>
   </nav>
 
@@ -4781,11 +4807,23 @@ window.DG = (function () {
 </script>
 
 <script>
-/* Chapter bar -- sticky navigation and scroll spy. Deliberately a second,
-   self-contained IIFE: it shares no state with the models above, so it keeps
-   working if that block ever throws, and it degrades to plain anchor links
-   when IntersectionObserver is missing (nothing highlights, clicking still
-   jumps). No scroll listeners anywhere. */
+/* Chapter bar -- the tab strip. Deliberately a second, self-contained IIFE:
+   it shares no state with the models above, so it keeps working if that block
+   ever throws, and everything it does is an enhancement of markup that already
+   stands on its own.
+
+   The no-JS story is the whole reason nothing is hidden in the markup or by
+   CSS alone: without this script the six chapters sit in the document one
+   under the other and the bar is a list of in-page anchors, exactly as the
+   page read before tabs. This script marks .fsfo as is-tabbed, which is what
+   arms the hiding, and from then on one chapter is on screen at a time.
+   Printing takes the same route back -- the print rule un-hides all six, so a
+   printout, and a find-in-page over it, still carries the whole document.
+
+   A drawing built while its chapter was closed measured a zero-width wrapper
+   and fell back to 880px, so opening a chapter has to repaint it; see
+   redraw() below for how, and why the model block's ResizeObserver is not
+   enough on its own. */
 (function () {
   "use strict";
   var nav = document.getElementById('chapnav');
@@ -4795,9 +4833,13 @@ window.DG = (function () {
   var items = [], i, el;
   for (i = 0; i < links.length; i++) {
     el = document.getElementById(links[i].getAttribute('data-ch'));
-    if (el) items.push({ el: el, link: links[i] });
+    if (el) items.push({ el: el, link: links[i], id: links[i].getAttribute('data-ch') });
   }
   if (!items.length) return;
+
+  var t = function (s) {
+    return (window.DG && window.DG.t) ? window.DG.t(s) : s;
+  };
 
   /* The bar's measured height feeds --navh, which the chapter scroll-margin
      and the control rail's sticky offset are both derived from. Measuring
@@ -4806,67 +4848,229 @@ window.DG = (function () {
   function navH() { return nav.offsetHeight || 46; }
   function measure() { if (root) root.style.setProperty('--navh', navH() + 'px'); }
 
+  /* Tab semantics, applied here rather than in the markup for the same reason
+     as the hiding: an unscripted page has six headings and a list of links,
+     and calling that a tablist would be a lie. */
+  var list = nav.querySelector('ol');
+  if (list) {
+    list.setAttribute('role', 'tablist');
+    var lis = list.children;
+    for (i = 0; i < lis.length; i++) lis[i].setAttribute('role', 'presentation');
+  }
+  for (i = 0; i < items.length; i++) {
+    items[i].link.setAttribute('role', 'tab');
+    items[i].link.setAttribute('aria-controls', items[i].id);
+    items[i].el.setAttribute('role', 'tabpanel');
+    items[i].el.setAttribute('tabindex', '-1');
+  }
+  if (root) root.classList.add('is-tabbed');
+
   var current = -1;
-  function setActive(idx) {
-    if (idx === current) return;
-    current = idx;
-    for (var j = 0; j < items.length; j++) {
-      if (j === idx) items[j].link.setAttribute('aria-current', 'true');
-      else items[j].link.removeAttribute('aria-current');
-    }
+  function indexOf(id) {
+    for (var j = 0; j < items.length; j++) if (items[j].id === id) return j;
+    return -1;
   }
 
-  /* The switch line: a chapter takes over once its top is this far down the
-     viewport. It sits below the scroll-margin the anchors land on, so a
-     clicked chapter is the active one the moment it arrives. */
-  function line() { return navH() + 16; }
-
-  /* Active chapter = the last one whose top has passed the line. Reading four
-     rects is cheap because this runs only when an observer fires. */
-  function pick() {
-    var y = line(), idx = 0;
-    for (var j = 0; j < items.length; j++) {
-      if (items[j].el.getBoundingClientRect().top <= y) idx = j;
+  /* The chapter an arbitrary element lives in, so a jump from elsewhere on
+     the page can open its chapter first. */
+  function chapterOf(node) {
+    while (node && node !== document) {
+      if (node.classList && node.classList.contains('chapter')) return indexOf(node.id);
+      node = node.parentNode;
     }
-    setActive(idx);
+    return -1;
   }
 
-  /* Number keys 1-6 jump to the matching chapter. Modifier combos stay with
-     the browser (Cmd+1 is a tab switch), and text-entry contexts keep their
+  /* show(idx, opts) -- opts.scroll pulls the page up to the bar when the
+     reader was already below it (switching chapters from halfway down one
+     must not leave them halfway down the next), opts.focus moves focus to the
+     tab, and opts.push writes the chapter into the address bar. A reveal from
+     another IIFE passes none of the three: it only needs the panel in the
+     document before it measures anything. */
+  function show(idx, opts) {
+    if (idx < 0 || idx >= items.length) return;
+    opts = opts || {};
+    var changed = idx !== current;
+    if (changed) {
+      current = idx;
+      for (var j = 0; j < items.length; j++) {
+        var on = j === idx;
+        if (on) items[j].el.removeAttribute('hidden');
+        else items[j].el.setAttribute('hidden', '');
+        items[j].link.setAttribute('aria-selected', on ? 'true' : 'false');
+        items[j].link.setAttribute('tabindex', on ? '0' : '-1');
+      }
+      /* Keep the active tab reachable on a narrow, horizontally scrolling
+         strip -- a hotkey can select a tab that is off its edge. Done with
+         scrollLeft rather than scrollIntoView, which would also scroll the
+         PAGE to reach a tab inside the sticky bar. */
+      if (list && list.scrollWidth > list.clientWidth + 1) {
+        var lnk = items[idx].link;
+        var lo = lnk.offsetLeft, hi = lo + lnk.offsetWidth;
+        if (lo < list.scrollLeft) list.scrollLeft = Math.max(0, lo - 12);
+        else if (hi > list.scrollLeft + list.clientWidth) {
+          list.scrollLeft = hi - list.clientWidth + 12;
+        }
+      }
+    }
+    if (opts.push && window.history && history.pushState &&
+        location.hash !== '#' + items[idx].id) {
+      history.pushState(null, '', '#' + items[idx].id);
+    }
+    /* Land the new chapter under the bar, but only when the reader was
+       already past that point -- switching from the top of the page must not
+       yank them down over the header. The measurement runs off the PANEL, not
+       the bar: the bar is sticky, so once it is pinned its rect top reads 0
+       and "how far down the document is it" always comes back as the current
+       scroll position. */
+    if (opts.scroll) {
+      var y = window.pageYOffset || document.documentElement.scrollTop || 0;
+      var target = Math.max(0, items[idx].el.getBoundingClientRect().top + y - navH());
+      if (y > target) window.scrollTo(0, target);
+    }
+    if (opts.focus) {
+      try { items[idx].link.focus({ preventScroll: true }); }
+      catch (e2) { items[idx].link.focus(); }
+    }
+    if (changed) redraw();
+  }
+
+  /* A drawing built while its chapter was closed measured a zero-width
+     wrapper and fell back to 880px, so it has to be rebuilt at the real width
+     once the chapter opens. The model block already does exactly that on a
+     window resize -- it compares each wrapper against the width it last drew
+     and repaints only what moved -- so this borrows that path instead of
+     reaching into its internals. The ResizeObserver it also has does fire on
+     some of these visibility flips, but not on all of them; the event is what
+     makes the repaint certain, and a redundant one is a no-op by the width
+     comparison. */
+  function redraw() {
+    var ev;
+    try { ev = new Event('resize'); }
+    catch (e) {
+      ev = document.createEvent('Event');
+      ev.initEvent('resize', false, false);
+    }
+    window.dispatchEvent(ev);
+  }
+
+  /* Reveal, for the rest of the page: the config pill and the demo buttons
+     both jump to a workbench that may sit in a closed chapter, and they
+     measure its rect right afterwards, so it has to be on screen first. */
+  window.DGTabs = {
+    reveal: function (node) {
+      var idx = chapterOf(node);
+      if (idx >= 0 && idx !== current) show(idx, { push: false });
+      return idx >= 0;
+    }
+  };
+
+  /* Clicking a tab must not let the browser scroll to the panel: the panel is
+     about to become the top of the page anyway, and the native jump would
+     land past the sticky bar. */
+  for (i = 0; i < items.length; i++) {
+    (function (idx) {
+      items[idx].link.addEventListener('click', function (e) {
+        if (e.ctrlKey || e.metaKey || e.shiftKey || e.altKey || e.button > 0) return;
+        e.preventDefault();
+        show(idx, { scroll: true, push: true, focus: true });
+      });
+    })(i);
+  }
+
+  /* Arrow keys walk the strip when a tab has focus -- the standard tab
+     pattern, and the only place the roving tabindex above is felt. */
+  nav.addEventListener('keydown', function (e) {
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    var k = e.key, idx = current < 0 ? 0 : current, next = -1;
+    if (k === 'ArrowRight' || k === 'ArrowDown') next = (idx + 1) % items.length;
+    else if (k === 'ArrowLeft' || k === 'ArrowUp') next = (idx + items.length - 1) % items.length;
+    else if (k === 'Home') next = 0;
+    else if (k === 'End') next = items.length - 1;
+    if (next < 0) return;
+    e.preventDefault();
+    show(next, { scroll: true, push: true, focus: true });
+  });
+
+  /* Number keys 1-6 open the matching chapter. Modifier combos stay with the
+     browser (Cmd+1 is a tab switch), and text-entry contexts keep their
      digits; range/radio controls have no use for them, so a hotkey pressed
      while a slider has focus still navigates. */
   document.addEventListener('keydown', function (e) {
     if (e.ctrlKey || e.metaKey || e.altKey) return;
     var idx = (e.key && e.key.length === 1) ? e.key.charCodeAt(0) - 49 : -1;
     if (idx < 0 || idx >= items.length) return;
-    var t = e.target, tag = t && t.tagName;
-    if (tag === 'TEXTAREA' || tag === 'SELECT' || (t && t.isContentEditable)) return;
-    if (tag === 'INPUT' && !/^(range|radio|checkbox|button)$/.test(t.type)) return;
+    var tgt = e.target, tag = tgt && tgt.tagName;
+    if (tag === 'TEXTAREA' || tag === 'SELECT' || (tgt && tgt.isContentEditable)) return;
+    if (tag === 'INPUT' && !/^(range|radio|checkbox|button)$/.test(tgt.type)) return;
     e.preventDefault();
-    items[idx].link.click();
+    show(idx, { scroll: true, push: true });
   });
+
+  /* Chapter pager -- prev/next at the foot of each panel, so the six still
+     read as a sequence now that scrolling no longer carries the reader from
+     one into the next. Titles are read off the nav links rather than kept in
+     a second table, which is also why a language switch just rebuilds them. */
+  function title(idx) {
+    var full = items[idx].link.querySelector('.cn-t');
+    var short = items[idx].link.querySelector('.cn-s');
+    return ((full && full.textContent) || (short && short.textContent) || '').trim();
+  }
+  function card(idx, kicker, side) {
+    var a = document.createElement('a');
+    a.href = '#' + items[idx].id;
+    a.className = side;
+    a.innerHTML = '<span class="chp-k"></span><span class="chp-t"></span>';
+    a.querySelector('.chp-k').textContent = kicker;
+    a.querySelector('.chp-t').textContent = title(idx);
+    a.addEventListener('click', function (e) {
+      if (e.ctrlKey || e.metaKey || e.shiftKey || e.altKey || e.button > 0) return;
+      e.preventDefault();
+      show(idx, { scroll: true, push: true, focus: true });
+    });
+    return a;
+  }
+  function pagers() {
+    for (var j = 0; j < items.length; j++) {
+      /* Own children only: the panels nest sections several deep, and a
+         descendant query would find the neighbours' pagers too. */
+      var kids = items[j].el.children, k;
+      for (k = kids.length - 1; k >= 0; k--) {
+        if (kids[k].className === 'chpager') items[j].el.removeChild(kids[k]);
+      }
+      if (items.length < 2) continue;
+      var bar = document.createElement('nav');
+      bar.className = 'chpager';
+      bar.setAttribute('aria-label', t('Chapters'));
+      if (j > 0) bar.appendChild(card(j - 1, t('Previous chapter'), 'chp-l'));
+      if (j < items.length - 1) bar.appendChild(card(j + 1, t('Next chapter'), 'chp-r'));
+      items[j].el.appendChild(bar);
+    }
+  }
+  pagers();
+  if (window.DG && window.DG.onLang) window.DG.onLang(pagers);
+
+  /* Opening chapter: an address bar naming a chapter, or naming anything
+     inside one, wins; otherwise chapter 1. No scrolling either way -- the URL
+     IIFE below owns what a deep link scrolls to. */
+  function fromHash(opts) {
+    var id = location.hash.slice(1);
+    if (!id) return false;
+    var idx = indexOf(id);
+    if (idx < 0) {
+      var node = document.getElementById(id);
+      idx = node ? chapterOf(node) : -1;
+    }
+    if (idx < 0) return false;
+    show(idx, opts);
+    return true;
+  }
+  if (!fromHash({})) show(0, {});
+  window.addEventListener('popstate', function () { fromHash({}); });
+  window.addEventListener('hashchange', function () { fromHash({}); });
 
   measure();
   if (typeof IntersectionObserver !== 'function') return;
-
-  /* Two spies, both rooted at the switch line, because either one alone goes
-     stale. The 1px band catches a chapter boundary sliding past the line while
-     the reader scrolls. The open region below the line catches jumps -- a nav
-     click moves the page in a single frame, stepping straight over the band
-     without ever intersecting it, but it always makes the outgoing chapter
-     leave the region. Rebuilt on resize: both margins are viewport-derived. */
-  var spies = [];
-  function bind() {
-    while (spies.length) spies.pop().disconnect();
-    var y = line();
-    var below = Math.max(0, (window.innerHeight || 800) - y - 1);
-    [(-y) + 'px 0px ' + (-below) + 'px 0px', (-y) + 'px 0px 0px 0px'].forEach(function (rm) {
-      var io = new IntersectionObserver(pick, { rootMargin: rm });
-      for (var j = 0; j < items.length; j++) io.observe(items[j].el);
-      spies.push(io);
-    });
-  }
-  bind();
 
   /* Stuck state: with a 1px slice taken off the root's top, the bar stops
      being fully visible exactly when it pins to the viewport top. */
@@ -4878,7 +5082,7 @@ window.DG = (function () {
   window.addEventListener('resize', function () {
     if (pending) return;
     pending = true;
-    requestAnimationFrame(function () { pending = false; measure(); bind(); pick(); });
+    requestAnimationFrame(function () { pending = false; measure(); });
   });
 })();
 </script>
@@ -5028,6 +5232,10 @@ window.DG = (function () {
     var nh = navH(), vh = window.innerHeight || 800;
     var visible = false, passed = null, j, r;
     for (j = 0; j < wbs.length; j++) {
+      /* A workbench in a closed chapter has no box at all, and an all-zero
+         rect reads as "scrolled past" to the test below. Skip it: only the
+         open chapter's workbenches can be behind the reader. */
+      if (wbs[j].el.offsetParent === null) continue;
       r = wbs[j].el.getBoundingClientRect();
       if (Math.min(r.bottom, vh) - Math.max(r.top, nh) > SLOP) visible = true;
       if (r.bottom <= nh + SLOP) passed = wbs[j];
@@ -5220,6 +5428,9 @@ window.DG = (function () {
   }
   function jump(el, instant) {
     if (!el) return;
+    /* Open the target's chapter first: a demo button in one chapter can point
+       at a workbench in another, and a closed chapter has no rect to read. */
+    if (window.DGTabs) window.DGTabs.reveal(el);
     var top = el.getBoundingClientRect().top +
       (window.pageYOffset || document.documentElement.scrollTop || 0) - navH() - 12;
     var reduce = window.matchMedia &&

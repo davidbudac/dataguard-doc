@@ -214,13 +214,37 @@ always uses the threshold. `computeFsfo` also has an `observer-lost` branch
 The page is split into six chapters — `#ch-clocks`, `#ch-transport`, `#ch-app`,
 `#ch-deploy`, `#ch-config`, `#ch-reference` — each a `<section class="chapter">` wrapper that opens with a
 full-bleed divider band (large number, `h2` title, one-line blurb) and is listed
-in the sticky `<nav class="chapnav">` sitting between the hero and chapter 1. A
-second, self-contained IIFE at the end of the file drives it: it measures the bar
-into `--navh` (the chapters' `scroll-margin-top` and the control rails' sticky
-offset both derive from it) and runs the scroll spy on two IntersectionObservers
-— a 1 px band at the switch line for ordinary scrolling, plus the open region
-below that line for anchor jumps, which step over a 1 px band in a single frame
-without ever intersecting it. New sections belong **inside** one of the six
+in the sticky `<nav class="chapnav">` sitting between the hero and chapter 1.
+
+**The chapters are tabs.** A second, self-contained IIFE at the end of the file
+turns the bar into a tablist: one chapter is in the document at a time, the
+others carry `hidden`. Four things follow from that, and each is load-bearing:
+
+- **Nothing is hidden by markup or by CSS alone.** The script adds `is-tabbed`
+  to `.fsfo`, and only then does `.chapter[hidden]` become `display:none`. With
+  no script the six chapters read top to bottom exactly as they did before
+  tabs, and the bar is a list of in-page anchors. The print rule takes the same
+  route back — it un-hides all six, so a printout, and a find-in-page over it,
+  still carries the whole document.
+- **Opening a chapter repaints its drawings.** A sketch built while its wrapper
+  measured zero fell back to 880 px, so `show()` dispatches a `resize` event
+  and lets the model block's own width comparison repaint what moved. The
+  `ResizeObserver` there fires on *some* of these visibility flips but not all
+  of them — verified — so the event is what makes it certain.
+- **Anything that jumps to an element measures a rect, so the chapter has to be
+  open first.** `window.DGTabs.reveal(node)` opens the chapter containing a
+  node; `jump()` in the URL IIFE calls it, and the config pill skips
+  workbenches whose `offsetParent` is null (a closed chapter has no box, and an
+  all-zero rect otherwise reads as "scrolled past").
+- **Never measure the bar's own position with `getBoundingClientRect`.** It is
+  sticky, so once pinned its rect top reads 0 and "how far down the document is
+  it" always comes back as the current scroll position. `show()` measures the
+  panel instead.
+
+It also measures the bar into `--navh` (the chapters' `scroll-margin-top` and
+the control rails' sticky offset both derive from it), and appends the prev/next
+pager at the foot of each panel, reading its titles off the nav links so a
+language switch just rebuilds it. New sections belong **inside** one of the six
 wrappers. Related: `.fsfo` uses `overflow-x:clip`, not `hidden`, because `hidden`
 forces `overflow-y` to `auto`, which makes `.fsfo` a scroll container and
 silently kills every `position:sticky` inside it (the control rails included).
