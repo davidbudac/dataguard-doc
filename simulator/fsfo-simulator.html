@@ -74,25 +74,33 @@ box-shadow:inset 0 -2px 0 var(--vi)}
 @media (prefers-reduced-motion:no-preference){
 .langsw button{transition:background-color .16s ease,color .16s ease}}
 
-/* Explanations toggle -- the prose is opt-in. Script adds .prose-managed at
-   boot (without JS nothing is hidden, same contract as the tabs) and .prose-on
-   when the reader turns it on; the button sits next to the language switch.
-   Scoped to screen so a printout always carries the full document, and the
-   Reference chapter is exempt: its headers caption tables, not prose. The
-   :has() rule collapses sections left empty (ch1's notes grid); where :has is
-   unsupported the empty section costs only its margin. */
-.prose-toggle{font-family:var(--mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;
-color:var(--ik3);background:var(--sf);border:1px solid var(--ln2);border-radius:2px;padding:4px 10px;cursor:pointer}
-.prose-toggle:hover{color:var(--ik);background:var(--sf2)}
-.prose-toggle[aria-pressed="true"]{background:var(--vif);color:var(--ik);font-weight:600;box-shadow:inset 0 -2px 0 var(--vi)}
-.hd-tools{display:flex;flex:0 0 auto;gap:8px;align-items:center}
+/* "Explain more" -- the prose is opt-in, per section. The script gives every
+   section that owns static prose a .prose-managed class and injects the button
+   at the position of the first hidden block, so the button IS the explanation's
+   place on the page: nothing is silently missing, and one click opens exactly
+   the prose that belongs to what the reader is looking at. .prose-on is the
+   opened state. Without JS nothing is hidden and there is no button -- the same
+   contract as the tabs. Scoped to screen so a printout always carries the full
+   document; the Reference chapter is exempt in the script (its headers caption
+   tables, not prose). The left rule and its arrow echo the note cards below it.
+   \2193 / \2191 are CSS escapes: ASCII source bytes, decoded by the parser. */
+.explain{align-self:flex-start;display:inline-flex;align-items:center;gap:9px;
+font-family:var(--mono);font-size:11.5px;letter-spacing:.12em;text-transform:uppercase;
+font-weight:600;color:var(--vi);background:var(--vif);border:0;border-left:2px solid var(--vi);
+padding:7px 14px 7px 12px;cursor:pointer;text-align:left}
+.explain::after{content:"\2193";letter-spacing:0}
+.explain[aria-expanded="true"]::after{content:"\2191"}
+.explain:hover{color:var(--ik);background:var(--sf3)}
+/* A section that is nothing but prose (chapter 1's note grid) collapses to the
+   button alone, so it does not keep a full section's worth of air above it. */
+.sec.prose-only:not(.prose-on){margin-top:22px}
 @media (prefers-reduced-motion:no-preference){
-.prose-toggle{transition:background-color .16s ease,color .16s ease}}
+.explain{transition:color .16s ease,border-left-color .16s ease}}
+@media print{.explain{display:none}}
 @media screen{
-.fsfo.prose-managed:not(.prose-on) .chapter:not(#ch-reference) .sec>.sec-hd,
-.fsfo.prose-managed:not(.prose-on) .chapter:not(#ch-reference) .sec>.notes,
-.fsfo.prose-managed:not(.prose-on) .chapter:not(#ch-reference) .sec>.caption:not([id]){display:none}
-.fsfo.prose-managed:not(.prose-on) .chapter:not(#ch-reference) .sec:not(:has(.workbench,.sq-wrap,.tbl-wrap,.cfg-grid,.dep-cards)){display:none}
+.sec.prose-managed:not(.prose-on)>.sec-hd,
+.sec.prose-managed:not(.prose-on)>.notes,
+.sec.prose-managed:not(.prose-on)>.caption:not([id]){display:none}
 }
 
 /* chapters -- the sticky chapter bar. Additive chrome: every existing section
@@ -319,6 +327,15 @@ input[type="range"]:disabled::-moz-range-thumb{background:var(--ik3);box-shadow:
 .chip-s{overflow-wrap:anywhere}
 .chips{display:grid;grid-template-columns:repeat(auto-fit,minmax(196px,1fr));gap:1px;background:var(--ln);border:1px solid var(--ln);border-radius:3px;overflow:hidden;margin-top:10px}
 .chip{background:var(--sf);padding:14px 16px;display:flex;flex-direction:column;gap:3px;min-width:0}
+/* Key, value and sub sit on a shared three-row grid so they line up across the
+   whole readout: a key that wraps to two lines lengthens the row for everyone
+   instead of pushing its own value out of step. The parent's 1px row gaps fall
+   inside the chip's own area, so its background paints over them. */
+@supports (grid-template-rows:subgrid){
+  .chip{display:grid;grid-template-rows:subgrid;grid-row:span 3;align-content:start}
+  .chip-v{margin-top:2px}
+  .chip-s{margin-top:2px}
+}
 .chip-k{font-family:var(--mono);font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--ik3)}
 .chip-v{font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:26px;font-weight:620;letter-spacing:-.03em;line-height:1.15;color:var(--ik)}
 .chip-v small{font-size:14px;font-weight:500;color:var(--ik2);letter-spacing:0}
@@ -655,12 +672,9 @@ window.DG = (function () {
   <header class="hd">
     <div class="hd-top">
       <p class="eyebrow">Oracle 19c Data Guard broker</p>
-      <div class="hd-tools">
-        <button type="button" class="prose-toggle" id="prose-toggle" hidden aria-pressed="false">Explanations</button>
-        <div class="langsw" id="langsw" role="group" aria-label="Language">
-          <button type="button" data-lang="en" aria-pressed="true" title="English">EN</button>
-          <button type="button" data-lang="cs" aria-pressed="false" title="Czech">CS</button>
-        </div>
+      <div class="langsw" id="langsw" role="group" aria-label="Language">
+        <button type="button" data-lang="en" aria-pressed="true" title="English">EN</button>
+        <button type="button" data-lang="cs" aria-pressed="false" title="Czech">CS</button>
       </div>
     </div>
     <h1>Data Guard configuration</h1>
@@ -1951,7 +1965,7 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
     '.hd h1', '.hd .lede', '.hd .eyebrow',
     '.chapnav .cn-t', '.chapnav .cn-s',
     '.chdiv-t',
-    '.rail-hd .eyebrow', '.rail-hd button', '.prose-toggle',
+    '.rail-hd .eyebrow', '.rail-hd button',
     '.seg legend', '.seg-row label',
     '.ctl-name.is-prose', '.ctl-note', '.ctl-scale span',
     '.stage-hd h2', '.stage-hd .eyebrow',
@@ -2032,32 +2046,63 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
 </script>
 
 <script>
-/* Explanations toggle. Prose is opt-in: section headers, static captions and
-   the note grids stay hidden until the reader turns them on. State persists
-   per browser; without this script nothing is hidden (the hide rules key on
-   .prose-managed, which only this block adds). */
+/* "Explain more". Prose is opt-in per section: the section header, its static
+   caption and its note grid stay hidden behind one button, and the button is
+   injected where the first of them sits -- in the explanation's own place,
+   rather than as a global switch the reader has to find and connect to what
+   vanished. Without this script nothing is hidden and no button exists (the
+   hide rules key on .prose-managed, which only this block adds), the same
+   contract as the tabs.
+
+   The Reference chapter is skipped: its headers caption tables, not prose.
+   Captions carrying an id are live state written by the models, never
+   documentation, so they stay. A section whose every child is prose collapses
+   to the button alone -- .prose-only just trims its margin. */
 (function () {
   "use strict";
-  var root = document.querySelector('.fsfo');
-  var btn = document.getElementById('prose-toggle');
-  if (!root || !btn) return;
-  var KEY = 'dg-prose';
-  var on = false;
-  try { on = localStorage.getItem(KEY) === '1'; } catch (e) { /* private mode */ }
-  function apply() {
-    root.classList.toggle('prose-on', on);
-    btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+  var t = window.DG.t;
+  /* the same set the hide rules cover, matched on direct children only */
+  var SEL = '.sec-hd, .notes, .caption:not([id])';
+  var btns = [];
+
+  function label(b) {
+    b.textContent = b.getAttribute('aria-expanded') === 'true' ? t('Hide') : t('Explain more');
   }
-  root.classList.add('prose-managed');
-  btn.hidden = false;
-  btn.addEventListener('click', function () {
-    on = !on;
-    try { localStorage.setItem(KEY, on ? '1' : '0'); } catch (e) { /* private mode */ }
-    apply();
-    /* revealed or collapsed blocks move what is below them */
-    window.dispatchEvent(new Event('resize'));
-  });
-  apply();
+
+  Array.prototype.forEach.call(
+    document.querySelectorAll('.chapter:not(#ch-reference) .sec'),
+    function (sec) {
+      var kids = Array.prototype.slice.call(sec.children);
+      var first = null, all = kids.length > 0;
+      kids.forEach(function (el) {
+        var prose = el.matches && el.matches(SEL);
+        if (prose && !first) first = el;
+        if (!prose) all = false;
+      });
+      if (!first) return;
+
+      sec.classList.add('prose-managed');
+      if (all) sec.classList.add('prose-only');
+
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'explain';
+      b.setAttribute('aria-expanded', 'false');
+      label(b);
+      b.addEventListener('click', function () {
+        var open = sec.classList.toggle('prose-on');
+        b.setAttribute('aria-expanded', open ? 'true' : 'false');
+        label(b);
+        /* revealed or collapsed blocks move what is below them */
+        window.dispatchEvent(new Event('resize'));
+      });
+      sec.insertBefore(b, first);
+      btns.push(b);
+    }
+  );
+
+  /* Script-injected chrome is invisible to the static markup pass. */
+  window.DG.onLang(function () { btns.forEach(label); });
 })();
 </script>
 

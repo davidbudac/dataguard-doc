@@ -277,16 +277,22 @@ screen-reader-only `h2` (class `chdiv-t sr`, the `aria-labelledby` target and
 the translation hook; the old visible divider bands are gone) and is listed
 in the sticky `<nav class="chapnav">` sitting between the hero and chapter 1.
 
-**Prose is opt-in.** In the visual sections the `.sec-hd` header and intro
-caption sit *below* the workbench/drawing (chapter 4's card sections keep
-theirs on top — moved below, a header reads as the next block's label), and an
-"Explanations" toggle next to the language switch (`#prose-toggle`, state in
-`localStorage['dg-prose']`, off by default) hides every `.sec > .sec-hd`,
-`.sec > .notes` grid and static `.sec > .caption` (those without an `id`;
-dynamic state captions all have ids). Exempt: the Reference chapter (its
-headers caption tables) and print (a printout always carries everything).
-The hide rules key on `.prose-managed`, added only by the toggle's script, so
-without JS nothing is hidden — the same contract as the tabs.
+**Prose is opt-in, per section.** In the visual sections the `.sec-hd` header
+and intro caption sit *below* the workbench/drawing (chapter 4's card sections
+keep theirs on top — moved below, a header reads as the next block's label), and
+each section's `.sec-hd`, `.notes` grid and static `.caption` (those without an
+`id`; dynamic state captions all have ids) hide behind one **"Explain more"**
+button. A small IIFE injects that button at the position of the first hidden
+block, so the control *is* the explanation's place on the page — no global
+switch to find, and nothing silently missing. It adds `.prose-managed` to the
+section (the hide rules key on it, so without JS nothing is hidden — the same
+contract as the tabs), `.prose-only` where the section is nothing but prose
+(chapter 1's note grid, which then collapses to the button alone), and toggles
+`.prose-on` on click, relabelling the button `Hide` and flipping its arrow.
+Exempt: the Reference chapter, skipped in the script because its headers caption
+tables, and print (a printout always carries everything, and the buttons do not
+print). State is deliberately not persisted: the affordance is visible at every
+spot, so re-opening costs one click.
 
 **The chapters are tabs.** A second, self-contained IIFE at the end of the file
 turns the bar into a tablist: one chapter is in the document at a time, the
