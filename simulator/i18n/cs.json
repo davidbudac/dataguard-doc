@@ -233,6 +233,7 @@
   "Everything here rewrites the page live: the names feed the topology strip, the connect string and the configuration cards below; the parameters are the chapter 1–3 controls, in both directions. A cleared name falls back to the fixture default; everything auto-saves in this browser.": "Všechno tady přepisuje stránku naživo: jména se propisují do pásu topologie, do connect stringu a do konfiguračních karet níže; parametry jsou ovládací prvky kapitol 1–3, v obou směrech. Vymazané jméno se vrátí na výchozí fixture; všechno se automaticky ukládá v tomto prohlížeči.",
   "Everything reset to the documented defaults": "Všechno resetováno na dokumentované výchozí hodnoty",
   "Existing sessions": "Existující sezení",
+  "Explanations": "Vysvětlivky",
   "Export JSON": "Exportovat JSON",
   "Exported {0}": "Exportováno {0}",
   "Extra traversals of the whole address list after the first one fails. Default 0 — one pass, then the error goes to the application.": "Průchody celým seznamem adres nad první pokus. Výchozí 0 — jeden průchod a chyba jde aplikaci.",

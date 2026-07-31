@@ -74,6 +74,27 @@ box-shadow:inset 0 -2px 0 var(--vi)}
 @media (prefers-reduced-motion:no-preference){
 .langsw button{transition:background-color .16s ease,color .16s ease}}
 
+/* Explanations toggle -- the prose is opt-in. Script adds .prose-managed at
+   boot (without JS nothing is hidden, same contract as the tabs) and .prose-on
+   when the reader turns it on; the button sits next to the language switch.
+   Scoped to screen so a printout always carries the full document, and the
+   Reference chapter is exempt: its headers caption tables, not prose. The
+   :has() rule collapses sections left empty (ch1's notes grid); where :has is
+   unsupported the empty section costs only its margin. */
+.prose-toggle{font-family:var(--mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;
+color:var(--ik3);background:var(--sf);border:1px solid var(--ln2);border-radius:2px;padding:4px 10px;cursor:pointer}
+.prose-toggle:hover{color:var(--ik);background:var(--sf2)}
+.prose-toggle[aria-pressed="true"]{background:var(--vif);color:var(--ik);font-weight:600;box-shadow:inset 0 -2px 0 var(--vi)}
+.hd-tools{display:flex;flex:0 0 auto;gap:8px;align-items:center}
+@media (prefers-reduced-motion:no-preference){
+.prose-toggle{transition:background-color .16s ease,color .16s ease}}
+@media screen{
+.fsfo.prose-managed:not(.prose-on) .chapter:not(#ch-reference) .sec>.sec-hd,
+.fsfo.prose-managed:not(.prose-on) .chapter:not(#ch-reference) .sec>.notes,
+.fsfo.prose-managed:not(.prose-on) .chapter:not(#ch-reference) .sec>.caption:not([id]){display:none}
+.fsfo.prose-managed:not(.prose-on) .chapter:not(#ch-reference) .sec:not(:has(.workbench,.sq-wrap,.tbl-wrap,.cfg-grid,.dep-cards)){display:none}
+}
+
 /* chapters -- the sticky chapter bar. Additive chrome: every existing section
    keeps its own styles, a chapter is only a wrapper. --navh is the bar's
    measured height (JS keeps it current); the chapter scroll targets and the
@@ -634,9 +655,12 @@ window.DG = (function () {
   <header class="hd">
     <div class="hd-top">
       <p class="eyebrow">Oracle 19c Data Guard broker</p>
-      <div class="langsw" id="langsw" role="group" aria-label="Language">
-        <button type="button" data-lang="en" aria-pressed="true" title="English">EN</button>
-        <button type="button" data-lang="cs" aria-pressed="false" title="Czech">CS</button>
+      <div class="hd-tools">
+        <button type="button" class="prose-toggle" id="prose-toggle" hidden aria-pressed="false">Explanations</button>
+        <div class="langsw" id="langsw" role="group" aria-label="Language">
+          <button type="button" data-lang="en" aria-pressed="true" title="English">EN</button>
+          <button type="button" data-lang="cs" aria-pressed="false" title="Czech">CS</button>
+        </div>
       </div>
     </div>
     <h1>Data Guard configuration</h1>
@@ -880,11 +904,6 @@ window.DG = (function () {
   </section>
 
   <section class="sec">
-    <div class="sec-hd">
-      <p class="eyebrow">Message order</p>
-      <h2>The message sequence after a primary crash</h2>
-    </div>
-    <p class="caption">The primary-crash case as a sequence of messages between the three hosts. Colors carry the same meaning as the timeline above.</p>
     <div class="sq-wrap">
       <svg class="sq-svg" viewBox="0 0 960 704" role="img"
            aria-label="Sequence diagram of fast-start failover after a primary crash: steady-state pings and redo shipping, the crash, failed pings and retries, the threshold clock, the observer to standby readiness exchange, threshold expiry, the failover command, standby activation, and the completion message.">
@@ -957,6 +976,11 @@ window.DG = (function () {
         <text class="s-small" x="20" y="694"><tspan class="s-mono">FastStartFailoverAutoReinstate = TRUE</tspan> &mdash; the old primary is reinstated as a standby via Flashback Database when it returns. Reinstate is out of scope here.</text>
       </svg>
     </div>
+    <div class="sec-hd">
+      <p class="eyebrow">Message order</p>
+      <h2>The message sequence after a primary crash</h2>
+    </div>
+    <p class="caption">The primary-crash case as a sequence of messages between the three hosts. Colors carry the same meaning as the timeline above.</p>
   </section>
   </section>
 
@@ -964,11 +988,6 @@ window.DG = (function () {
   <h2 class="chdiv-t sr" id="ch-transport-h"><span class="sr">Chapter 2 &mdash; </span>The transport layer</h2>
 
   <section class="sec" id="commitview">
-    <div class="sec-hd">
-      <p class="eyebrow">Transport layer &middot; one commit</p>
-      <h2>What one commit costs &mdash; SYNC, FASTSYNC, ASYNC</h2>
-    </div>
-    <p class="caption">Transport cost is paid on every commit, for as long as the configuration runs. The broker property is <span class="mono">LogXptMode</span> (<span class="mono">SYNC</span>, <span class="mono">FASTSYNC</span> or <span class="mono">ASYNC</span>); the three differ by one disk write on the standby and one round trip on the wire. Measuring the cost from an AWR report is <a class="xref" href="#impactview">chapter 5</a>.</p>
 
     <div class="workbench">
 
@@ -1058,6 +1077,12 @@ window.DG = (function () {
       </section>
     </div>
 
+    <div class="sec-hd">
+      <p class="eyebrow">Transport layer &middot; one commit</p>
+      <h2>What one commit costs &mdash; SYNC, FASTSYNC, ASYNC</h2>
+    </div>
+    <p class="caption">Transport cost is paid on every commit, for as long as the configuration runs. The broker property is <span class="mono">LogXptMode</span> (<span class="mono">SYNC</span>, <span class="mono">FASTSYNC</span> or <span class="mono">ASYNC</span>); the three differ by one disk write on the standby and one round trip on the wire. Measuring the cost from an AWR report is <a class="xref" href="#impactview">chapter 5</a>.</p>
+
     <div class="notes" style="margin-top:38px">
       <div class="note k-vi" data-demo="affirm">
         <h3>AFFIRM means the redo is on disk</h3>
@@ -1075,11 +1100,6 @@ window.DG = (function () {
   </section>
 
   <section class="sec" id="reopenview">
-    <div class="sec-hd">
-      <p class="eyebrow">Transport layer &middot; after the drop</p>
-      <h2>The destination is dropped &mdash; ReopenSecs and MaxFailure decide when redo flows again</h2>
-    </div>
-    <p class="caption">This panel starts after the failure: <span class="mono">NET_TIMEOUT</span> expired, the error was logged, the transport session was terminated, and <span class="mono">LOG_ARCHIVE_DEST_2</span> is closed (panel A of <a class="xref" href="#nettimeoutview">where NET_TIMEOUT fits</a>, chapter 5). The primary stays open read-write. <span class="mono">ReopenSecs</span> sets how soon transport may retry the destination, <span class="mono">MaxFailure</span> whether it ever stops trying; the protection mode, inherited from chapter 1, changes what the outage costs fast-start failover, never when the destination reopens. Drawn in minutes.</p>
 
     <div class="workbench">
 
@@ -1164,6 +1184,12 @@ window.DG = (function () {
       </section>
     </div>
 
+    <div class="sec-hd">
+      <p class="eyebrow">Transport layer &middot; after the drop</p>
+      <h2>The destination is dropped &mdash; ReopenSecs and MaxFailure decide when redo flows again</h2>
+    </div>
+    <p class="caption">This panel starts after the failure: <span class="mono">NET_TIMEOUT</span> expired, the error was logged, the transport session was terminated, and <span class="mono">LOG_ARCHIVE_DEST_2</span> is closed (panel A of <a class="xref" href="#nettimeoutview">where NET_TIMEOUT fits</a>, chapter 5). The primary stays open read-write. <span class="mono">ReopenSecs</span> sets how soon transport may retry the destination, <span class="mono">MaxFailure</span> whether it ever stops trying; the protection mode, inherited from chapter 1, changes what the outage costs fast-start failover, never when the destination reopens. Drawn in minutes.</p>
+
     <div class="notes" style="margin-top:38px">
       <div class="note k-am" data-demo="reopen-gap">
         <h3>The gap is at least ReopenSecs</h3>
@@ -1185,11 +1211,6 @@ window.DG = (function () {
   <h2 class="chdiv-t sr" id="ch-app-h"><span class="sr">Chapter 3 &mdash; </span>The application&rsquo;s view</h2>
 
   <section class="sec" id="appview">
-    <div class="sec-hd">
-      <p class="eyebrow">The application's view</p>
-      <h2>What the application sees, with both databases in one connect string</h2>
-    </div>
-    <p class="caption"><span class="mono" data-name="service">app_svc</span> runs only where the database is currently primary; the standby's listener refuses instantly with <span class="mono">ORA-12514</span>. Scenario, protection mode and clocks are inherited from chapter 1. The timeline follows the worst-case client: a request that starts connecting the moment the service stops being published.</p>
 
     <div class="workbench">
 
@@ -1289,6 +1310,12 @@ window.DG = (function () {
       </section>
     </div>
 
+    <div class="sec-hd">
+      <p class="eyebrow">The application's view</p>
+      <h2>What the application sees, with both databases in one connect string</h2>
+    </div>
+    <p class="caption"><span class="mono" data-name="service">app_svc</span> runs only where the database is currently primary; the standby's listener refuses instantly with <span class="mono">ORA-12514</span>. Scenario, protection mode and clocks are inherited from chapter 1. The timeline follows the worst-case client: a request that starts connecting the moment the service stops being published.</p>
+
     <div class="notes" style="margin-top:38px">
       <div class="note k-vi">
         <h3>The service name is the switch</h3>
@@ -1349,6 +1376,7 @@ window.DG = (function () {
   <h2 class="chdiv-t sr" id="ch-config-h"><span class="sr">Chapter 4 &mdash; </span>Configuration</h2>
 
   <section class="sec" id="deployview">
+
     <div class="sec-hd">
       <p class="eyebrow">Deployment</p>
       <h2>The whole page, in your deployment&rsquo;s terms</h2>
@@ -1459,9 +1487,11 @@ window.DG = (function () {
         <p class="dep-cap">The exported file carries the identity, the parameters and the chapter 1&ndash;3 simulation conditions; the link packs the same JSON into the URL fragment, applies once, then leaves the address bar. The file can be edited by hand: unknown keys are ignored, out-of-range values clamped.</p>
       </article>
     </div>
+
   </section>
 
   <section class="sec" id="configview">
+
     <div class="sec-hd">
       <p class="eyebrow">Configuration files</p>
       <h2>The same settings, as you would type them</h2>
@@ -1513,6 +1543,7 @@ window.DG = (function () {
         <div class="tns" id="cfg-tns"></div>
       </article>
     </div>
+
     <p class="caption">Command syntax per the 19c broker commands reference; the clock properties (<span class="mono">FastStartFailoverThreshold</span>, the two <span class="mono">ObserverPing*</span> properties, <span class="mono">FastStartFailoverLagLimit</span>, <span class="mono">FastStartFailoverPmyShutdown</span>) are configuration-wide, while <span class="mono">LogXptMode</span> is set per database. <span class="mono">START OBSERVER IN BACKGROUND</span> is the form the documentation prefers.</p>
   </section>
   </section>
@@ -1643,11 +1674,6 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
   </section>
 
   <section class="sec" id="impactview">
-    <div class="sec-hd">
-      <p class="eyebrow">Side topics &middot; after you turn SYNC on</p>
-      <h2>What a commit waits for &mdash; log file sync and the events inside it</h2>
-    </div>
-    <p class="caption">Turn <span class="mono">SYNC</span> on and the <span class="mono">log file sync</span> average moves first &mdash; the number Oracle warns not to judge <span class="mono">SYNC</span> by. The events nest; reading an AWR report means knowing which contains which.</p>
 
     <div class="sq-wrap">
       <svg class="tl-svg tx-svg" viewBox="0 0 960 376" role="img"
@@ -1686,6 +1712,12 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
         <text class="t-bar f-sl" x="40" y="368">Not drawn: the CPU waits, the on-disk SCN update and the Oracle RAC broadcast that log file sync also covers.</text>
       </svg>
     </div>
+
+    <div class="sec-hd">
+      <p class="eyebrow">Side topics &middot; after you turn SYNC on</p>
+      <h2>What a commit waits for &mdash; log file sync and the events inside it</h2>
+    </div>
+    <p class="caption">Turn <span class="mono">SYNC</span> on and the <span class="mono">log file sync</span> average moves first &mdash; the number Oracle warns not to judge <span class="mono">SYNC</span> by. The events nest; reading an AWR report means knowing which contains which.</p>
 
     <div class="notes">
       <div class="note k-am">
@@ -1739,11 +1771,6 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
   </section>
 
   <section class="sec" id="nettimeoutview">
-    <div class="sec-hd">
-      <p class="eyebrow">Side topics &middot; when the ack stops coming</p>
-      <h2>Where NET_TIMEOUT fits, and where it does not</h2>
-    </div>
-    <p class="caption"><span class="mono">NET_TIMEOUT</span> (broker property <span class="mono">NetTimeout</span>) is a <span class="mono">LOG_ARCHIVE_DEST_n</span> attribute on the primary, not a failover clock: it caps how long LGWR waits for a SYNC acknowledgement before the error is logged, the transport session terminated, and the destination dropped. Both it and <span class="mono">FastStartFailoverThreshold</span> default to 30 s, which is why the two get confused; the panels span the same window, and panel B shortens <span class="mono">NET_TIMEOUT</span> to 10 s to show why data still is not lost.</p>
 
     <div class="sq-wrap">
       <svg class="tl-svg tx-svg" viewBox="0 0 960 484" role="img"
@@ -1805,6 +1832,12 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
         <text class="t-bar f-sl" x="40" y="469">No acknowledged commit is lost: everything acknowledged before t = 0 is already on the standby, and nothing after t = 0 is acknowledged at all.</text>
       </svg>
     </div>
+
+    <div class="sec-hd">
+      <p class="eyebrow">Side topics &middot; when the ack stops coming</p>
+      <h2>Where NET_TIMEOUT fits, and where it does not</h2>
+    </div>
+    <p class="caption"><span class="mono">NET_TIMEOUT</span> (broker property <span class="mono">NetTimeout</span>) is a <span class="mono">LOG_ARCHIVE_DEST_n</span> attribute on the primary, not a failover clock: it caps how long LGWR waits for a SYNC acknowledgement before the error is logged, the transport session terminated, and the destination dropped. Both it and <span class="mono">FastStartFailoverThreshold</span> default to 30 s, which is why the two get confused; the panels span the same window, and panel B shortens <span class="mono">NET_TIMEOUT</span> to 10 s to show why data still is not lost.</p>
 
     <div class="notes">
       <div class="note k-am">
@@ -1918,7 +1951,7 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
     '.hd h1', '.hd .lede', '.hd .eyebrow',
     '.chapnav .cn-t', '.chapnav .cn-s',
     '.chdiv-t',
-    '.rail-hd .eyebrow', '.rail-hd button',
+    '.rail-hd .eyebrow', '.rail-hd button', '.prose-toggle',
     '.seg legend', '.seg-row label',
     '.ctl-name.is-prose', '.ctl-note', '.ctl-scale span',
     '.stage-hd h2', '.stage-hd .eyebrow',
@@ -1994,6 +2027,36 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
   if (sw && !DG.has('cs')) sw.hidden = true;
 
   DG.setStatic(apply);
+  apply();
+})();
+</script>
+
+<script>
+/* Explanations toggle. Prose is opt-in: section headers, static captions and
+   the note grids stay hidden until the reader turns them on. State persists
+   per browser; without this script nothing is hidden (the hide rules key on
+   .prose-managed, which only this block adds). */
+(function () {
+  "use strict";
+  var root = document.querySelector('.fsfo');
+  var btn = document.getElementById('prose-toggle');
+  if (!root || !btn) return;
+  var KEY = 'dg-prose';
+  var on = false;
+  try { on = localStorage.getItem(KEY) === '1'; } catch (e) { /* private mode */ }
+  function apply() {
+    root.classList.toggle('prose-on', on);
+    btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+  }
+  root.classList.add('prose-managed');
+  btn.hidden = false;
+  btn.addEventListener('click', function () {
+    on = !on;
+    try { localStorage.setItem(KEY, on ? '1' : '0'); } catch (e) { /* private mode */ }
+    apply();
+    /* revealed or collapsed blocks move what is below them */
+    window.dispatchEvent(new Event('resize'));
+  });
   apply();
 })();
 </script>

@@ -277,6 +277,17 @@ screen-reader-only `h2` (class `chdiv-t sr`, the `aria-labelledby` target and
 the translation hook; the old visible divider bands are gone) and is listed
 in the sticky `<nav class="chapnav">` sitting between the hero and chapter 1.
 
+**Prose is opt-in.** In the visual sections the `.sec-hd` header and intro
+caption sit *below* the workbench/drawing (chapter 4's card sections keep
+theirs on top — moved below, a header reads as the next block's label), and an
+"Explanations" toggle next to the language switch (`#prose-toggle`, state in
+`localStorage['dg-prose']`, off by default) hides every `.sec > .sec-hd`,
+`.sec > .notes` grid and static `.sec > .caption` (those without an `id`;
+dynamic state captions all have ids). Exempt: the Reference chapter (its
+headers caption tables) and print (a printout always carries everything).
+The hide rules key on `.prose-managed`, added only by the toggle's script, so
+without JS nothing is hidden — the same contract as the tabs.
+
 **The chapters are tabs.** A second, self-contained IIFE at the end of the file
 turns the bar into a tablist: one chapter is in the document at a time, the
 others carry `hidden`. Four things follow from that, and each is load-bearing:
