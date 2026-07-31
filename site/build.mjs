@@ -45,7 +45,7 @@ if (offenders.length) {
 }
 
 const titleMatch = fragment.match(/<title>([\s\S]*?)<\/title>/i);
-const title = titleMatch ? titleMatch[1].trim() : 'Fast-start failover simulator';
+const title = titleMatch ? titleMatch[1].trim() : 'Data Guard configuration';
 const body = titleMatch ? fragment.replace(titleMatch[0], '') : fragment;
 
 // The Czech catalog. It lives outside the fragment precisely because the
@@ -96,9 +96,9 @@ if (catalog) {
 // same tree the page does.
 const SITE = 'https://davidbudac.cz/dataguard/';
 const DESC =
-  'Interactive second-by-second simulator of Oracle Data Guard fast-start failover: ' +
-  'observer detection, FastStartFailoverThreshold, commit anatomy under SYNC/FASTSYNC/ASYNC, ' +
-  'ReopenSecs and MaxFailure, and what a connection pool sees.';
+  'Interactive Oracle Data Guard configuration tool: broker properties, failover clocks, ' +
+  'commit cost under SYNC/FASTSYNC/ASYNC, ReopenSecs and MaxFailure, the connect string, ' +
+  'and the DGMGRL commands that set it all, redrawn live.';
 // Inline SVG favicon: violet (--vi) rounded square with a white axis-and-tick
 // mark. Data URI keeps the page free of extra requests; '#' must be %23 and
 // angle brackets %3C/%3E or the URI is cut short. Safari <17 ignores SVG
@@ -128,7 +128,7 @@ const page = `<!doctype html>
 <meta property="og:image:type" content="image/png">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="560">
-<meta property="og:image:alt" content="Swimlane timeline of a fast-start failover after a primary host crash: observer detection, the FastStartFailoverThreshold countdown, and the standby opening read-write.">
+<meta property="og:image:alt" content="Swimlane timeline of a Data Guard fast-start failover after a primary host crash: observer detection, the FastStartFailoverThreshold countdown, and the standby opening read-write.">
 <meta name="twitter:card" content="summary_large_image">
 <style>
 /* The fragment paints --bg on .fsfo only, which is capped at 1240px and centred,

@@ -1,8 +1,10 @@
 # Agent handoff — dataguard_doc
 
-This repo documents Oracle 19c Data Guard, starting with fast-start failover
-(FSFO). This file tells a future agent what exists, how it was produced, and how
-to extend it without breaking consistency or accuracy.
+This repo documents Oracle 19c Data Guard. The simulator started as a
+fast-start failover (FSFO) explainer and is now a general Data Guard
+configuration + visualization tool, published as "Data Guard configuration".
+This file tells a future agent what exists, how it was produced, and how to
+extend it without breaking consistency or accuracy.
 
 ## What exists
 
@@ -157,14 +159,14 @@ agree on:
   defect: the 19c broker-properties page lists `MaxFailure` as "Corresponds to:
   VALID_FOR" — always cite the sbydb `LOG_ARCHIVE_DEST_n` attributes page for
   `MAX_FAILURE` semantics, never the broker page.
-- **SDU** (chapter 6): the HA guide recommends 65535 **for synchronous
+- **SDU** (chapter 5): the HA guide recommends 65535 **for synchronous
   transport only** — a best practice, never a requirement, and the guide says
   nothing about ASYNC, so neither do these assets. `DEFAULT_SDU_SIZE` defaults
   to 8192 with a documented range of 512 – 2097152 bytes, so never call 65535
   the parameter's maximum (the guide's own "its maximum value" wording is
   stale) and never present 2 MB as the recommendation. SDU is negotiated per
   connection and the lower end wins — hence both ends.
-- **Socket buffers** (chapter 6): `SEND_BUF_SIZE` / `RECV_BUF_SIZE` are Oracle
+- **Socket buffers** (chapter 5): `SEND_BUF_SIZE` / `RECV_BUF_SIZE` are Oracle
   Net parameters, not `LOG_ARCHIVE_DEST_n` attributes — settable in
   `sqlnet.ora`, or per connect descriptor in `tnsnames.ora` and `listener.ora`,
   at `DESCRIPTION` level or inside one `ADDRESS`. Defaults are OS-specific (the
@@ -189,7 +191,7 @@ agree on:
   `-duration`, `-interval`, `-num_conn`, `-output` and `-freq` are documented on
   the public 19c page — the other three come from the login-gated MOS note, and
   the card on the page says exactly that. Keep that provenance line.
-- **The SYNC wait events** (chapter 6): `log file sync` ⊃ `redo write time` ⊃
+- **The SYNC wait events** (chapter 5): `log file sync` ⊃ `redo write time` ⊃
   { `SYNC remote write`, `log file parallel write` }, with `RFS random i/o` on
   the standby. Four of those are wait events; `redo write time` is a `V$SYSSTAT`
   **statistic in centiseconds** ("10s of milliseconds") — never call it a wait
@@ -269,8 +271,8 @@ always uses the threshold. `computeFsfo` also has an `observer-lost` branch
 (below) returning `observerLost` and `ifDiedNow`, and a `switchover` branch
 returning `switchover`, `tDown`, `tConvertEnd`, `downtime` and `tRestartDraw`.
 
-The page is split into seven chapters — `#ch-clocks`, `#ch-transport`, `#ch-app`,
-`#ch-deploy`, `#ch-config`, `#ch-side`, `#ch-reference` — each a `<section class="chapter">` wrapper that opens with a
+The page is split into six chapters — `#ch-clocks`, `#ch-transport`, `#ch-app`,
+`#ch-config`, `#ch-side`, `#ch-reference` — each a `<section class="chapter">` wrapper that opens with a
 full-bleed divider band (large number, `h2` title, one-line blurb) and is listed
 in the sticky `<nav class="chapnav">` sitting between the hero and chapter 1.
 
@@ -280,9 +282,9 @@ others carry `hidden`. Four things follow from that, and each is load-bearing:
 
 - **Nothing is hidden by markup or by CSS alone.** The script adds `is-tabbed`
   to `.fsfo`, and only then does `.chapter[hidden]` become `display:none`. With
-  no script the seven chapters read top to bottom exactly as they did before
+  no script the six chapters read top to bottom exactly as they did before
   tabs, and the bar is a list of in-page anchors. The print rule takes the same
-  route back — it un-hides all seven, so a printout, and a find-in-page over it,
+  route back — it un-hides all six, so a printout, and a find-in-page over it,
   still carries the whole document.
 - **Opening a chapter repaints its drawings.** A sketch built while its wrapper
   measured zero fell back to 880 px, so `show()` dispatches a `resize` event
@@ -302,7 +304,7 @@ others carry `hidden`. Four things follow from that, and each is load-bearing:
 It also measures the bar into `--navh` (the chapters' `scroll-margin-top` and
 the control rails' sticky offset both derive from it), and appends the prev/next
 pager at the foot of each panel, reading its titles off the nav links so a
-language switch just rebuilds it. New sections belong **inside** one of the seven
+language switch just rebuilds it. New sections belong **inside** one of the six
 wrappers. Prose that points at another chapter uses an `<a class="xref">`; a
 delegated handler in the same IIFE opens the target's chapter before scrolling,
 because the browser cannot scroll to an element that is still `hidden` — the
@@ -356,8 +358,7 @@ The workbench carries four scenarios. The third, **observer lost**, kills the
 only observer host at t = 0: the primary keeps serving because it still reaches
 the target standby, the standby keeps applying, and no fast-start failover is
 possible at all — so every control that governs a failover clock grays out, the
-lanes stay flat, and the "Ten things the timeline is telling you" grid (six
-before that scenario existed, seven before the switchover one) explains why
+lanes stay flat, and the "What the timeline shows" grid explains why
 nothing happens. Its `ifDiedNow`
 value is what the primary's death during the blind window would cost.
 
@@ -408,7 +409,7 @@ Two more sections sit on their own time scales, each with its own pure function:
   failures, outage length, redo rate. Footnote 4 on the page lists the
   idealizations; `diagrams/README.md` repeats them.
 
-Chapter 4 (`#ch-deploy`, section `#deployview`) makes the whole page
+Chapter 4, upper half (`#ch-config`, section `#deployview`) makes the whole page
 configurable per deployment. Three static cards (never innerHTML-rendered, so
 typing keeps focus): **Deployment identity** — a fifth state object
 `ID`/`ID_DEFAULTS` (deployment name, DB unique names, hosts, observer host,
@@ -438,7 +439,7 @@ five state objects, clears the stored key and strips the hash. The config
 pill registers `.dep-cards` as a workbench, which hides the pill while the
 chapter 4 cards are on screen.
 
-Chapter 5 (`#ch-config`, section `#configview`) is the configuration written
+Chapter 4, lower half (section `#configview`) is the configuration written
 out: four live code cards — the DGMGRL broker session, the observer start, the
 hand-set `LOG_ARCHIVE_DEST_2` equivalent, and chapter 3's `tnsnames.ora` — all
 regenerated by `renderConfig()` at the end of every `draw()` from C, K, R and
@@ -461,13 +462,13 @@ ASYNC (it bounds the SYNC ack wait and never affects sessions under ASYNC) and
 is framed as the hand-set equivalent — never claim it is the literal string the
 broker composes.
 
-Chapter 6 (`#ch-side`, "Side topics") holds the three things that sit beside the
+Chapter 5 (`#ch-side`, "Side topics") holds the three things that sit beside the
 mainline story, in the order *prepare · measure · what happens when it breaks*.
 `#sduview` is static: SDU sizing for SYNC, the `SEND_BUF_SIZE`/`RECV_BUF_SIZE`
 socket buffers and the BDP arithmetic behind them, and Oracle's `oratcptest`
 network probe (whose output is where the buffer sizes are read back), with two
 config cards (`cfg-sdu`, `cfg-oratcp`) that get their Copy
-buttons from the chapter-5 wiring for free, because it runs document-wide over
+buttons from the config-card wiring for free, because it runs document-wide over
 `.cfg-copy`. Their panes are hand-written and deliberately use `<standby-host>`
 placeholders rather than the `idv()` fixture names — a static pane cannot follow
 a configured deployment identity, so it does not pretend to. `#impactview` is

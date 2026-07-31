@@ -316,7 +316,7 @@ primary database does not need to be restarted", the zero-data-loss sentence) an
 (the two-phase transition, `SWITCHOVER ... VERIFY`, the duration factors, and the
 `WITH SESSION SHUTDOWN` heritage).
 
-## Configuration files (the simulator's chapter 5)
+## Configuration files (the simulator's chapter 4)
 
 Chapter 5 renders the workbench state as the commands and files that would set
 it. Verified facts it relies on:
@@ -348,7 +348,7 @@ it. Verified facts it relies on:
   aliases), hosts `dc1-prm01`/`dc2-sby01`, service `app_svc` — shared with the
   application view.
 
-## Side topics (the simulator's chapter 6)
+## Side topics (the simulator's chapter 5)
 
 Chapter 6 collects what sits beside the mainline story: SDU and `oratcptest` before SYNC is
 switched on, measuring what SYNC costs once it is, and the NET_TIMEOUT panels (figure 4), which

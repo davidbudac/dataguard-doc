@@ -4,8 +4,26 @@
     {
       "name": "dataguard-site",
       "runtimeExecutable": "python3",
-      "runtimeArgs": ["-m", "http.server", "8741", "--directory", "_site"],
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "8741",
+        "--directory",
+        "_site"
+      ],
       "port": 8741
+    },
+    {
+      "name": "dataguard-site-alt",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "8742",
+        "--directory",
+        "_site"
+      ],
+      "port": 8742
     }
   ]
 }
