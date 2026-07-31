@@ -273,7 +273,8 @@ returning `switchover`, `tDown`, `tConvertEnd`, `downtime` and `tRestartDraw`.
 
 The page is split into six chapters — `#ch-clocks`, `#ch-transport`, `#ch-app`,
 `#ch-config`, `#ch-side`, `#ch-reference` — each a `<section class="chapter">` wrapper that opens with a
-full-bleed divider band (large number, `h2` title, one-line blurb) and is listed
+screen-reader-only `h2` (class `chdiv-t sr`, the `aria-labelledby` target and
+the translation hook; the old visible divider bands are gone) and is listed
 in the sticky `<nav class="chapnav">` sitting between the hero and chapter 1.
 
 **The chapters are tabs.** A second, self-contained IIFE at the end of the file

@@ -74,16 +74,13 @@ box-shadow:inset 0 -2px 0 var(--vi)}
 @media (prefers-reduced-motion:no-preference){
 .langsw button{transition:background-color .16s ease,color .16s ease}}
 
-/* chapters -- the sticky chapter bar and the six dividers. Additive chrome:
-   every existing section keeps its own styles, a chapter is only a wrapper.
-   --navh is the bar's measured height (JS keeps it current); the chapter
-   scroll targets and the control rail's sticky offset both derive from it, so
-   nothing the reader jumps to ends up underneath the bar.
-   The bar and the dividers end at the content column, like the header rule and
-   every panel below, so all the vertical edges line up. Only one rule separates
-   any two of them: the header drops its bottom border in favour of the bar's
-   top one, and the first chapter divider drops its top border and sits flush
-   under the bar. */
+/* chapters -- the sticky chapter bar. Additive chrome: every existing section
+   keeps its own styles, a chapter is only a wrapper. --navh is the bar's
+   measured height (JS keeps it current); the chapter scroll targets and the
+   control rail's sticky offset both derive from it, so nothing the reader
+   jumps to ends up underneath the bar. Each chapter opens with a
+   screen-reader-only h2 (class chdiv-t, kept as the translation hook and the
+   aria-labelledby target); the visible chapter identity lives in the bar. */
 .fsfo{--navh:46px}
 .chapnav{position:sticky;top:0;z-index:30;margin:0;padding:0;background:var(--bg);
 border-top:1px solid var(--ln);border-bottom:1px solid var(--ln)}
@@ -113,10 +110,8 @@ padding:11px 14px 9px;border-bottom:2px solid transparent;color:var(--ik3);font-
    below puts every chapter back so a printed page (and a find-in-page over
    it) still carries the whole document. */
 .fsfo.is-tabbed .chapter[hidden]{display:none}
-.fsfo.is-tabbed .chdiv{margin-top:0;border-top:0}
 @media print{
 .fsfo.is-tabbed .chapter[hidden]{display:block}
-.fsfo.is-tabbed .chdiv{margin-top:62px;border-top:1px solid var(--ln2)}
 .chapnav,.chpager{display:none !important}}
 
 /* Chapter pager -- prev/next at the foot of each panel, script-injected, so
@@ -133,17 +128,6 @@ padding:11px 14px;border:1px solid var(--ln);border-radius:7px;background:var(--
 .chpager a{transition:color .16s ease,border-color .16s ease}}
 
 .chapter{scroll-margin-top:calc(var(--navh) + 10px)}
-.chdiv{display:grid;grid-template-columns:auto minmax(0,1fr);column-gap:20px;align-items:baseline;
-margin:62px 0 4px;padding:20px 22px;background:var(--sf2);
-border-top:1px solid var(--ln2);border-bottom:1px solid var(--ln)}
-.chapnav+.chapter .chdiv{margin-top:0;border-top:0}
-.chdiv-n{font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:42px;font-weight:620;
-line-height:1;letter-spacing:-.05em;color:var(--vi)}
-.chdiv-t{margin:0;font-size:clamp(19px,2.3vw,25px);font-weight:620;letter-spacing:-.02em;text-wrap:balance}
-.chdiv-d{margin-top:5px;font-size:13.5px;color:var(--ik2);max-width:74ch}
-@media (max-width:560px){
-.chdiv{grid-template-columns:minmax(0,1fr);row-gap:4px}
-.chdiv-n{font-size:30px}}
 
 /* Config pill -- the floating "back to the controls" chip, script-injected
    onto body (fixed to the viewport, and body sits outside .fsfo, which is why
@@ -672,13 +656,7 @@ window.DG = (function () {
   </nav>
 
   <section class="chapter" id="ch-clocks" aria-labelledby="ch-clocks-h">
-  <div class="chdiv">
-    <p class="chdiv-n" aria-hidden="true">1</p>
-    <div class="chdiv-b">
-      <h2 class="chdiv-t" id="ch-clocks-h"><span class="sr">Chapter 1 &mdash; </span>The failover clocks</h2>
-      <p class="chdiv-d">Detection of a failed primary, the observer&rsquo;s clocks, and what failover execution costs.</p>
-    </div>
-  </div>
+  <h2 class="chdiv-t sr" id="ch-clocks-h"><span class="sr">Chapter 1 &mdash; </span>The failover clocks</h2>
 
   <section class="topo" aria-label="Cluster topology">
     <div class="tl-wrap" id="topo-wrap"></div>
@@ -983,13 +961,7 @@ window.DG = (function () {
   </section>
 
   <section class="chapter" id="ch-transport" aria-labelledby="ch-transport-h">
-  <div class="chdiv">
-    <p class="chdiv-n" aria-hidden="true">2</p>
-    <div class="chdiv-b">
-      <h2 class="chdiv-t" id="ch-transport-h"><span class="sr">Chapter 2 &mdash; </span>The transport layer</h2>
-      <p class="chdiv-d">One commit in milliseconds; a failed destination in minutes.</p>
-    </div>
-  </div>
+  <h2 class="chdiv-t sr" id="ch-transport-h"><span class="sr">Chapter 2 &mdash; </span>The transport layer</h2>
 
   <section class="sec" id="commitview">
     <div class="sec-hd">
@@ -1210,13 +1182,7 @@ window.DG = (function () {
   </section>
 
   <section class="chapter" id="ch-app" aria-labelledby="ch-app-h">
-  <div class="chdiv">
-    <p class="chdiv-n" aria-hidden="true">3</p>
-    <div class="chdiv-b">
-      <h2 class="chdiv-t" id="ch-app-h"><span class="sr">Chapter 3 &mdash; </span>The application&rsquo;s view</h2>
-      <p class="chdiv-d">The connect string, the role-based service, and what a failover costs new connections.</p>
-    </div>
-  </div>
+  <h2 class="chdiv-t sr" id="ch-app-h"><span class="sr">Chapter 3 &mdash; </span>The application&rsquo;s view</h2>
 
   <section class="sec" id="appview">
     <div class="sec-hd">
@@ -1380,13 +1346,7 @@ window.DG = (function () {
   </section>
 
   <section class="chapter" id="ch-config" aria-labelledby="ch-config-h">
-  <div class="chdiv">
-    <p class="chdiv-n" aria-hidden="true">4</p>
-    <div class="chdiv-b">
-      <h2 class="chdiv-t" id="ch-config-h"><span class="sr">Chapter 4 &mdash; </span>Configuration</h2>
-      <p class="chdiv-d">Your names and parameters in one place, written out below as the commands and files that would set them.</p>
-    </div>
-  </div>
+  <h2 class="chdiv-t sr" id="ch-config-h"><span class="sr">Chapter 4 &mdash; </span>Configuration</h2>
 
   <section class="sec" id="deployview">
     <div class="sec-hd">
@@ -1558,13 +1518,7 @@ window.DG = (function () {
   </section>
 
   <section class="chapter" id="ch-side" aria-labelledby="ch-side-h">
-  <div class="chdiv">
-    <p class="chdiv-n" aria-hidden="true">5</p>
-    <div class="chdiv-b">
-      <h2 class="chdiv-t" id="ch-side-h"><span class="sr">Chapter 5 &mdash; </span>Side topics</h2>
-      <p class="chdiv-d">Network tuning before SYNC, measuring what SYNC costs, and where NET_TIMEOUT belongs.</p>
-    </div>
-  </div>
+  <h2 class="chdiv-t sr" id="ch-side-h"><span class="sr">Chapter 5 &mdash; </span>Side topics</h2>
 
   <section class="sec" id="sduview">
     <div class="sec-hd">
@@ -1872,13 +1826,7 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
   </section>
 
   <section class="chapter" id="ch-reference" aria-labelledby="ch-reference-h">
-  <div class="chdiv">
-    <p class="chdiv-n" aria-hidden="true">6</p>
-    <div class="chdiv-b">
-      <h2 class="chdiv-t" id="ch-reference-h"><span class="sr">Chapter 6 &mdash; </span>Reference</h2>
-      <p class="chdiv-d">Every property this page touches &mdash; default, minimum, what it governs &mdash; and the footnotes behind the drawings.</p>
-    </div>
-  </div>
+  <h2 class="chdiv-t sr" id="ch-reference-h"><span class="sr">Chapter 6 &mdash; </span>Reference</h2>
 
   <section class="sec">
     <div class="sec-hd">
@@ -1969,7 +1917,7 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
   var HTML_SEL = [
     '.hd h1', '.hd .lede', '.hd .eyebrow',
     '.chapnav .cn-t', '.chapnav .cn-s',
-    '.chdiv-t', '.chdiv-d',
+    '.chdiv-t',
     '.rail-hd .eyebrow', '.rail-hd button',
     '.seg legend', '.seg-row label',
     '.ctl-name.is-prose', '.ctl-note', '.ctl-scale span',
