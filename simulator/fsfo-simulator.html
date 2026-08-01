@@ -195,26 +195,43 @@ white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 
 /* topology strip */
 .topo{margin-top:20px}
-.topo-svg{display:block;min-width:640px;width:100%;height:auto}
+/* Capped at the viewBox width: at 1:1 the hairlines and 10-13px labels render
+   as crisply as the timeline below, which draws at native pixels. Wider
+   containers center the strip instead of scaling it soft. */
+.topo-svg{display:block;min-width:800px;width:100%;max-width:1180px;margin:0 auto;height:auto}
 .topo-svg text{font-family:var(--sans)}
 .topo-svg .tp-name{fill:var(--ik);font-size:13px;font-weight:600}
 .topo-svg .tp-sub{fill:var(--ik3);font-size:10px}
 .topo-svg .tp-cap{fill:var(--ik2);font-size:10.5px}
 .topo-svg .tp-lat{fill:var(--vi);font-size:10.5px;font-weight:600;font-family:var(--mono);font-variant-numeric:tabular-nums}
 .topo-svg .tp-ev{fill:var(--rd);font-size:11px;font-weight:600}
-.topo-svg .tp-node{fill:var(--sf2);stroke:var(--ln2);stroke-width:1}
-.topo-svg .tp-obs{fill:var(--vif);stroke:var(--vi)}
+/* nodes are cards: a flat surface rectangle with a hairline border and an
+   icon badge -- the same flat bordered language as the rail and the readout
+   tiles (no shadow: nothing else on the page floats). The cards are
+   monochrome; the glyphs say what a node is (database cylinder, observer
+   eye) and red is reserved for the one thing color must say -- this
+   component is down. */
+.topo-svg .tp-card{fill:var(--sf);stroke:var(--ln);stroke-width:1}
 .topo-svg .tp-down{fill:url(#topoHatch);stroke:var(--rd)}
-/* dashed containers for the two (or three) data centres: which failures are
+.topo-svg .tp-bdg{fill:var(--sf3)}
+.topo-svg .tp-bdg-down{fill:var(--rdf)}
+.topo-svg .tp-ico{stroke:var(--ik2)}
+.topo-svg .tp-ico-down{stroke:var(--rd)}
+/* ground panels for the two (or three) data centres: which failures are
    site failures and which are only link failures is the whole lesson of the
    observer-placement control */
-.topo-svg .tp-site{fill:none;stroke:var(--ln2);stroke-width:1;stroke-dasharray:3 3;opacity:.75}
+.topo-svg .tp-site{fill:var(--sf2);stroke:var(--ln);stroke-width:1}
 .topo-svg .tp-site-down{fill:url(#topoHatch);stroke:var(--rd);stroke-width:1;stroke-dasharray:3 3}
+/* the caption and latency of a link ride it in a pill; a dead link's pill
+   flips to the red tint and trades the RTT for the failure word */
+.topo-svg .tp-pill{fill:var(--sf);stroke:var(--ln2);stroke-width:1}
+.topo-svg .tp-pill-x{fill:var(--rdf);stroke:var(--rd);stroke-width:1}
+.topo-svg .tp-lat-x{fill:var(--rd);font-size:10.5px;font-weight:600;font-family:var(--mono);font-variant-numeric:tabular-nums}
 .topo-svg .tp-sitelab{fill:var(--ik3);font-size:10px;font-weight:600;letter-spacing:.12em}
 .topo-svg .tp-link{stroke:var(--ln2);stroke-width:1.25;fill:none}
 .topo-svg .tp-link-x{stroke:var(--rd);stroke-width:1.25;stroke-dasharray:4 3;fill:none}
 .topo-svg .tp-part{stroke:var(--rd);stroke-width:1.5;stroke-dasharray:5 4;fill:none}
-.topo-svg .tp-x{stroke:var(--rd);stroke-width:2.5}
+.topo-svg .tp-x{stroke:var(--rd);stroke-width:2.5;stroke-linecap:round}
 .topo-svg .tp-ahr{fill:var(--rd)}
 .topo-svg .tp-ahs{fill:var(--ln2)}
 .topo-svg .hatch-bg{fill:var(--rdf)}
@@ -6662,97 +6679,93 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
   }
 
   /* ---------- topology strip ---------- */
-  /* The primary, the standby and the redo link between them sit at the same
-     coordinates in every drawing. Only the observer box and the two links it
-     owns move with the placement, so the third-site row of this table is
-     exactly the geometry the page was built around. Every link carries its own
-     caption and latency anchors, because a run that clears the boxes in one
-     placement cuts straight through them in another. */
+  /* The primary and standby cards, and the redo link between them, sit at the
+     same coordinates in every drawing. Only the observer card, its ground
+     panel and the two links it owns move with the placement. Links are routed
+     orthogonally, every corner turned with a 7px arc so an elbow reads as one
+     bent wire rather than two butted segments, and each carries one pill
+     anchor (c/l/r = centered, left- or right-edge-anchored); the event-label
+     anchors move per placement because the free whitespace does. */
   function topoLayout(loc) {
-    var redo = { id: 'ps', n: ['pmy', 'sby'], d: 'M292,158 L664,158',
-      cap: [480, 146, 'middle'], lat: [480, 174, 'middle'] };
+    var redo = { id: 'ps', n: ['pmy', 'sby'], d: 'M287,148 L893,148', pill: { c: [590, 148] } };
 
-    /* Observer on the primary's own site: one short hop to the database it
-       watches, and a long one to the standby -- which is the placement's whole
+    /* Observer on the primary's own site: the DC 1 panel grows upward to hold
+       both cards, the ping collapses to a short vertical hop, and the
+       readiness check runs the whole strip -- which is the placement's whole
        problem, because a single cut takes both of the links that matter. */
     if (loc === 'dc1') {
       return {
-        obs: [110, 14, 180, 46], obsW: 176, obsX: [129, 26], obsEv: [300, 40, null],
-        sites: [['dc1', 96, 4, 208, 192], ['dc2', 656, 112, 208, 84]],
+        obs: [103, 26, 184, 52], obsW: 124, obsX: [261, 34], obsEv: [300, 40, null],
+        sites: [['dc1', 70, 10, 250, 204], ['dc2', 860, 96, 250, 118]],
         links: [
-          { id: 'op', n: ['obs', 'pmy'], d: 'M250,60 L250,132',
-            cap: [242, 92, 'end'], lat: [242, 106, 'end'], olc: [242, 92, 'end'] },
-          { id: 'os', n: ['obs', 'sby'], d: 'M290,44 L664,150',
-            cap: [430, 62, null], lat: [430, 76, null], olc: [430, 76, null] },
+          { id: 'op', n: ['obs', 'pmy'], d: 'M195,78 L195,118', pill: { l: [207, 98] } },
+          { id: 'os', n: ['obs', 'sby'], d: 'M287,52 L978,52 Q985,52 985,59 L985,118', pill: { c: [636, 52] } },
           redo
         ],
-        evPmy: [170, 126, 'middle'], evIso: [366, 16, null], evSw: [480, 192, 'middle'],
-        noObs: null
+        evPmy: [332, 120, null], evIso: [406, 16, null], evSw: [590, 192, 'middle'],
+        evDc2: [977, 88, 'end'], noObs: null
       };
     }
 
     /* Mirrored onto the standby's site. */
     if (loc === 'dc2') {
       return {
-        obs: [670, 14, 180, 46], obsW: 176, obsX: [689, 26], obsEv: [646, 40, 'end'],
-        sites: [['dc1', 96, 112, 208, 84], ['dc2', 656, 4, 208, 192]],
+        obs: [893, 26, 184, 52], obsW: 124, obsX: [1047, 34], obsEv: [881, 40, 'end'],
+        sites: [['dc1', 70, 96, 250, 118], ['dc2', 860, 10, 250, 204]],
         links: [
-          { id: 'op', n: ['obs', 'pmy'], d: 'M670,44 L296,150',
-            cap: [530, 62, 'end'], lat: [530, 76, 'end'], olc: [530, 76, 'end'] },
-          { id: 'os', n: ['obs', 'sby'], d: 'M710,60 L710,132',
-            cap: [718, 92, null], lat: [718, 106, null], olc: [718, 92, null] },
+          { id: 'op', n: ['obs', 'pmy'], d: 'M893,52 L202,52 Q195,52 195,59 L195,118', pill: { c: [544, 52] } },
+          { id: 'os', n: ['obs', 'sby'], d: 'M985,78 L985,118', pill: { r: [973, 98] } },
           redo
         ],
-        evPmy: [185, 126, 'middle'], evIso: [366, 16, null], evSw: [480, 192, 'middle'],
-        noObs: null
+        evPmy: [70, 88, null], evIso: [386, 16, 'end'], evSw: [590, 192, 'middle'],
+        evDc2: [850, 30, 'end'], noObs: null
       };
     }
 
-    /* 26ai: one on each database site. Both containers grow tall, the two
-       observer links become short local hops, and there is no third rectangle
-       at all -- which is exactly the placement's weakness, drawn. */
+    /* 26ai: one observer on each database site. Both panels grow tall to
+       hold an observer card above their database, the two observer links
+       collapse to short local hops, and there is no third panel at all --
+       which is exactly the placement's weakness, drawn. */
     if (loc === 'dc1dc2') {
       return {
-        obs: [110, 14, 180, 46], obsW: 176, obsX: [129, 26], obsEv: [300, 40, null],
-        obs2: [670, 14, 180, 46], obs2X: [689, 26],
-        sites: [['dc1', 96, 4, 208, 192], ['dc2', 656, 4, 208, 192]],
+        obs: [103, 26, 184, 52], obsW: 124, obsX: [261, 34], obsEv: [300, 40, null],
+        obs2: [893, 26, 184, 52],
+        sites: [['dc1', 70, 10, 250, 204], ['dc2', 860, 10, 250, 204]],
         links: [
-          { id: 'op', n: ['obs1', 'pmy'], d: 'M250,60 L250,132',
-            cap: [242, 92, 'end'], lat: [242, 106, 'end'], olc: [242, 92, 'end'] },
-          { id: 'os', n: ['obs2', 'sby'], d: 'M710,60 L710,132',
-            cap: [718, 92, null], lat: [718, 106, null], olc: [718, 92, null] },
+          { id: 'op', n: ['obs1', 'pmy'], d: 'M195,78 L195,118', pill: { l: [207, 98] } },
+          { id: 'os', n: ['obs2', 'sby'], d: 'M985,78 L985,118', pill: { r: [973, 98] } },
           redo
         ],
-        evPmy: [170, 126, 'middle'], evIso: [366, 16, null], evSw: [480, 192, 'middle'],
-        noObs: null
+        evPmy: [332, 120, null], evIso: [406, 16, null], evSw: [590, 192, 'middle'],
+        evDc2: [850, 30, 'end'], noObs: null
       };
     }
 
-    /* No observer at all: two sites, one link, and a line saying what is
+    /* No observer at all: two panels, one link, and a line saying what is
        missing. The empty middle is the point. */
     if (loc === 'none') {
       return {
         obs: null, obsW: 0, obsX: null, obsEv: null,
-        sites: [['dc1', 96, 112, 208, 84], ['dc2', 656, 112, 208, 84]],
+        sites: [['dc1', 70, 96, 250, 118], ['dc2', 860, 96, 250, 118]],
         links: [redo],
-        evPmy: [185, 126, 'middle'], evIso: [346, 16, 'end'], evSw: [480, 122, 'middle'],
-        noObs: [500, 34, 'middle']
+        evPmy: [70, 88, null], evIso: [384, 16, 'end'], evSw: [590, 192, 'middle'],
+        evDc2: [977, 88, 'end'], noObs: [590, 50, 'middle']
       };
     }
 
-    /* The third site, and the default. */
+    /* The third site, and the default. The DC 3 panel carries the same 33px
+       side margins around its card as the two database panels do -- tighter
+       and it reads as a misdrawn halo, not a site. */
     return {
-      obs: [405, 14, 150, 46], obsW: 146, obsX: [424, 26], obsEv: [395, 40, 'end'],
-      sites: [['dc1', 96, 112, 208, 84], ['dc2', 656, 112, 208, 84], ['dc3', 391, 4, 178, 66]],
+      obs: [509, 24, 162, 52], obsW: 103, obsX: [640, 32], obsEv: [714, 34, null],
+      sites: [['dc1', 70, 96, 250, 118], ['dc2', 860, 96, 250, 118], ['dc3', 476, 6, 228, 100]],
       links: [
-        { id: 'op', n: ['obs', 'pmy'], d: 'M430,64 L245,130',
-          cap: [318, 84, 'end'], lat: [318, 98, 'end'], olc: [318, 92, 'end'] },
-        { id: 'os', n: ['obs', 'sby'], d: 'M535,64 L715,130',
-          cap: [646, 84, null], lat: [646, 98, null], olc: [646, 92, null] },
+        { id: 'op', n: ['obs', 'pmy'], d: 'M526,58 L202,58 Q195,58 195,65 L195,118', pill: { c: [360, 58] } },
+        { id: 'os', n: ['obs', 'sby'], d: 'M654,58 L978,58 Q985,58 985,65 L985,118', pill: { c: [820, 58] } },
         redo
       ],
-      evPmy: [185, 126, 'middle'], evIso: [346, 16, 'end'], evSw: [480, 122, 'middle'],
-      noObs: null
+      evPmy: [70, 88, null], evIso: [384, 16, 'end'], evSw: [590, 192, 'middle'],
+      evDc2: [977, 88, 'end'], noObs: null
     };
   }
 
@@ -6803,21 +6816,53 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
     var obsMaster = sc === 'observer-lost' && multi;
     var sw = sc === 'switchover';
     var iso = sc === 'isolated';
+    var netFail = iso || sc === 'partition';
     var sync = C.mode === 'maxavail';
+    var latShort = C.latency + ' ms';
     var latLab = C.latency + ' ms RTT';
     var L = topoLayout(loc);
     var s = [], push = function (x) { s.push(x); };
 
-    function nodeBox(x, y, w, h, cls, name, sub) {
-      return '<rect class="' + cls + '" x="' + x + '" y="' + y + '" width="' + w + '" height="' + h + '" rx="2"></rect>' +
-        txt('tp-name', x + w / 2, y + 22, 'middle', esc(name)) +
-        txt('tp-sub', x + w / 2, y + 38, 'middle', esc(sub));
+    /* A node is a card: a flat bordered surface, a monochrome icon badge
+       (database cylinder or observer eye), then two lines of text. A dead
+       card hatches and its badge goes red; the name line keeps saying which
+       role died, because the identity of what died is half the caption. */
+    function nodeCard(x, y, w, h, isDown, isObs, name, sub) {
+      var db = h === 60;
+      var b = db ? 32 : 28, bx = x + 12, by = y + (db ? 14 : 12);
+      var pad = Math.round((b - 24) / 2);
+      var tx = x + (db ? 56 : 52);
+      return '<rect class="tp-card' + (isDown ? ' tp-down' : '') +
+        '" x="' + x + '" y="' + y + '" width="' + w + '" height="' + h + '" rx="5"></rect>' +
+        '<rect class="tp-bdg' + (isDown ? '-down' : '') + '" x="' + bx + '" y="' + by +
+        '" width="' + b + '" height="' + b + '" rx="7"></rect>' +
+        '<use href="#topoIco' + (isObs ? 'Eye' : 'Db') + '" class="tp-ico' + (isDown ? '-down' : '') +
+        '" transform="translate(' + (bx + pad) + ',' + (by + pad) + ')"></use>' +
+        txt('tp-name', tx, y + (db ? 26 : 22), null, esc(name)) +
+        txt('tp-sub', tx, y + (db ? 42 : 38), null, esc(sub));
+    }
+
+    /* The caption and the latency of a link ride it in one pill. A dead
+       link's pill flips to the red tint and its RTT becomes the failure word:
+       a round-trip time on a severed link is a number about nothing. */
+    function pillW(cap, lat) {
+      return Math.round(20 + approxW(cap, 10.5) + (lat ? 8 + approxW(lat, 10.5, true) : 0));
+    }
+    function pill(anchor, cap, lat, bad) {
+      var w = pillW(cap, lat);
+      var x = anchor.c ? anchor.c[0] - w / 2 : anchor.l ? anchor.l[0] : anchor.r[0] - w;
+      var cy = (anchor.c || anchor.l || anchor.r)[1];
+      var out = '<rect class="' + (bad ? 'tp-pill-x' : 'tp-pill') + '" x="' + r1(x) + '" y="' + r1(cy - 10) +
+        '" width="' + w + '" height="20" rx="3"></rect>' +
+        txt('tp-cap', x + 10, cy + 3.5, null, esc(cap));
+      if (lat) out += txt(bad ? 'tp-lat-x' : 'tp-lat', x + 10 + approxW(cap, 10.5) + 8, cy + 3.5, null, esc(lat));
+      return out;
     }
 
     /* configurable subtitles; a long pair degrades to its shorter parts so it
-       stays inside the 180 / 150 px boxes */
-    var subP = fitLabel([idv('subPrimary') + ', ' + idv('dc1'), idv('subPrimary'), idv('dc1')], 176) || idv('dc1');
-    var subS = fitLabel([idv('subStandby') + ', ' + idv('dc2'), idv('subStandby'), idv('dc2')], 176) || idv('dc2');
+       stays inside the card next to the badge */
+    var subP = fitLabel([idv('subPrimary') + ', ' + idv('dc1'), idv('subPrimary'), idv('dc1')], 118) || idv('dc1');
+    var subS = fitLabel([idv('subStandby') + ', ' + idv('dc2'), idv('subStandby'), idv('dc2')], 118) || idv('dc2');
     var subO = multi
       ? (fitLabel([t('master, in {0}', idv('dc1')), t('in {0}', idv('dc1')), idv('dc1')], L.obsW) || idv('dc1'))
       : topoSubO(loc, L.obsW);
@@ -6825,17 +6870,17 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
       ? (fitLabel([t('backup, in {0}', idv('dc2')), t('in {0}', idv('dc2')), idv('dc2')], L.obsW) || idv('dc2'))
       : null;
 
-    /* The dashed containers, drawn behind everything. Only a lost site is
-       filled: a severed link leaves both data centres perfectly healthy, and
-       the drawing has to keep saying so. */
+    /* The ground panels, drawn behind everything. Only a lost site is filled
+       with the hatch: a severed link leaves both data centres perfectly
+       healthy, and the drawing has to keep saying so. */
     function sites() {
       var out = '';
       L.sites.forEach(function (st) {
         var down = sc === 'dc2down' && st[0] === 'dc2';
         out += '<rect class="' + (down ? 'tp-site-down' : 'tp-site') + '" x="' + st[1] + '" y="' + st[2] +
-          '" width="' + st[3] + '" height="' + st[4] + '" rx="3"></rect>';
+          '" width="' + st[3] + '" height="' + st[4] + '" rx="6"></rect>';
         var lab = idv(st[0]);
-        out += txt('tp-sitelab', st[1] + st[3] / 2, st[2] + st[4] - 2, 'middle',
+        out += txt('tp-sitelab', st[1] + st[3] / 2, st[2] + st[4] - 5, 'middle',
           esc(fitLabel([lab], st[3] - 40) || lab));
       });
       return out;
@@ -6887,22 +6932,31 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
       return t('The primary host crashes at t = 0.');
     }
 
-    push('<svg class="topo-svg" viewBox="0 0 960 200" role="img" aria-label="' +
+    /* 10px of headroom above y=0 balances the 16px below the site panels,
+       now that the strip renders 1:1 against the wrap's border */
+    push('<svg class="topo-svg" viewBox="0 -10 1180 240" role="img" aria-label="' +
       esc(ariaPlace() + ' ' + ariaEvent() + ' ' +
           t('Every link carries {0} ms of round-trip latency.', C.latency)) + '">');
     push('<defs><pattern id="topoHatch" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">' +
       '<rect width="8" height="8" class="hatch-bg"></rect><line x1="0" y1="0" x2="0" y2="8" class="hatch-ln"></line></pattern>' +
-      '<marker id="topoAr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse"><path d="M0,1 L10,5 L0,9 z" class="tp-ahr"></path></marker></defs>');
+      '<marker id="topoAr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse"><path d="M0,1 L10,5 L0,9 z" class="tp-ahr"></path></marker>' +
+      '<g id="topoIcoDb" fill="none" stroke-width="1.8" stroke-linecap="round">' +
+      '<ellipse cx="12" cy="6" rx="8" ry="3.2"></ellipse>' +
+      '<path d="M4,6 V18 c0,1.77 3.58,3.2 8,3.2 s8,-1.43 8,-3.2 V6"></path>' +
+      '<path d="M4,12 c0,1.77 3.58,3.2 8,3.2 s8,-1.43 8,-3.2"></path></g>' +
+      '<g id="topoIcoEye" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' +
+      '<path d="M2.5,12 C5.5,6.8 8.6,4.6 12,4.6 s6.5,2.2 9.5,7.4 C18.5,17.2 15.4,19.4 12,19.4 s-6.5,-2.2 -9.5,-7.4 Z"></path>' +
+      '<circle cx="12" cy="12" r="3.1"></circle></g></defs>');
 
     /* the slate arrowhead exists only where the redo link survives */
-    if (obs || sw) {
+    if (obs || obsMaster || sw) {
       push('<defs><marker id="topoAs" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" ' +
         'orient="auto-start-reverse"><path d="M0,1 L10,5 L0,9 z" class="tp-ahs"></path></marker></defs>');
     }
 
     push(sites());
 
-    /* links first, nodes drawn over their ends */
+    /* links first, cards drawn over their ends */
     var down = {};
     L.links.forEach(function (lk) {
       down[lk.id] = obs ? (lk.id !== 'ps')
@@ -6912,37 +6966,45 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
         (lk.id === 'ps' ? ' marker-end="url(#topo' + (down.ps ? 'Ar' : 'As') + ')"' : '') + '></path>');
     });
 
-    /* One caption and one latency label per drawn link. While the observer is
-       gone its two links say what is missing instead: a round-trip time on a
-       link with nobody at the far end would be a number about nothing. */
+    /* One pill per drawn link. While the observer is gone its two links say
+       what is missing instead of a caption and a latency; a link that is down
+       keeps its caption but trades the RTT for the failure word. */
+    var psW = 0;
     L.links.forEach(function (lk) {
       if (obs && lk.id !== 'ps') {
-        push(txt('tp-ev', lk.olc[0], lk.olc[1], lk.olc[2],
-          esc(lk.id === 'op' ? t('no observer to ping') : t('no readiness check'))));
+        push(pill(lk.pill, lk.id === 'op' ? t('no observer to ping') : t('no readiness check'), null, true));
         return;
       }
       if (obsMaster && lk.id === 'op') {
-        push(txt('tp-ev', lk.olc[0], lk.olc[1], lk.olc[2], esc(t('master gone \u2014 backup nominated'))));
+        push(pill(lk.pill, t('master gone \u2014 backup nominated'), null, true));
         return;
       }
       var cap = lk.id === 'op' ? 'ping'
-        : lk.id === 'os' ? esc(t('readiness check'))
-          : esc(sync ? t('redo (SYNC): each commit waits one standby RTT') : t('redo (ASYNC)'));
-      push(txt('tp-cap', lk.cap[0], lk.cap[1], lk.cap[2], cap));
-      push(txt('tp-lat', lk.lat[0], lk.lat[1], lk.lat[2], esc(latLab)));
+        : lk.id === 'os' ? t('readiness check')
+          : sync ? t('redo (SYNC)') : t('redo (ASYNC)');
+      var lat = down[lk.id] ? t(netFail ? 'cut' : 'down')
+        : lk.id === 'ps' ? latLab : latShort;
+      if (lk.id === 'ps') {
+        psW = pillW(cap, lat);
+        /* the SYNC cost, spelled out under the pill while commits still flow */
+        if (sync && !down.ps) {
+          push(txt('tp-cap', 590, 170, 'middle', esc(t('each commit waits one standby RTT'))));
+        }
+      }
+      push(pill(lk.pill, cap, lat, !!down[lk.id]));
     });
 
-    /* nodes */
+    /* cards; the master observer's card is the one that dies on observer-lost,
+       and the backup's dies only with its whole site */
     if (L.obs) {
-      var obsCls = (obs || obsMaster || (sc === 'dc2down' && loc === 'dc2')) ? 'tp-node tp-down' : 'tp-node tp-obs';
-      push(nodeBox(L.obs[0], L.obs[1], L.obs[2], L.obs[3], obsCls, 'Observer', subO));
+      var obsDown = obs || obsMaster || (sc === 'dc2down' && loc === 'dc2');
+      push(nodeCard(L.obs[0], L.obs[1], L.obs[2], L.obs[3], obsDown, true, 'Observer', subO));
     }
     if (L.obs2) {
-      var obs2Cls = sc === 'dc2down' ? 'tp-node tp-down' : 'tp-node tp-obs';
-      push(nodeBox(L.obs2[0], L.obs2[1], L.obs2[2], L.obs2[3], obs2Cls, 'Observer', subO2));
+      push(nodeCard(L.obs2[0], L.obs2[1], L.obs2[2], L.obs2[3], sc === 'dc2down', true, 'Observer', subO2));
     }
-    push(nodeBox(110, 132, 180, 52, 'tp-node' + (sc === 'crash' ? ' tp-down' : ''), 'Primary', subP));
-    push(nodeBox(670, 132, 180, 52, 'tp-node' + (sc === 'dc2down' ? ' tp-down' : ''), 'Standby', subS));
+    push(nodeCard(103, 118, 184, 60, sc === 'crash', false, 'Primary', subP));
+    push(nodeCard(893, 118, 184, 60, sc === 'dc2down', false, 'Standby', subS));
 
     /* what happened at t = 0, in the vocabulary of the thing it happened to */
     if (obs || obsMaster) {
@@ -6954,21 +7016,22 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
       push(txt('tp-ev', L.evSw[0], L.evSw[1], L.evSw[2],
         esc(t('roles trade places at t = 0 \u2014 both hosts stay up'))));
     } else if (iso) {
-      push('<path class="tp-part" d="M356,6 L318,194"></path>');
+      push('<path class="tp-part" d="M392,14 L366,222"></path>');
       push(txt('tp-ev', L.evIso[0], L.evIso[1], L.evIso[2], esc(t('network partition at t = 0'))));
     } else if (sc === 'partition') {
-      /* one cut, on the one link that failed -- both sites are intact. The two
-         slashes sit in the band between the redo caption and its latency
-         label, so they never land on either. */
-      push(ln('tp-x', 470, 166, 480, 150));
-      push(ln('tp-x', 480, 166, 490, 150));
-      push(txt('tp-ev', 480, 190, 'middle',
+      /* one cut, on the one link that failed -- both sites are intact. The
+         two slashes sit on the line just left of the redo pill, so they never
+         land on it whatever width the pill's translation needs. */
+      var sx = 590 - psW / 2 - 26;
+      push(ln('tp-x', sx, 156, sx + 10, 140));
+      push(ln('tp-x', sx + 10, 156, sx + 20, 140));
+      push(txt('tp-ev', 590, 190, 'middle',
         esc(t('{0} to {1} link down at t = 0', idv('dc1'), idv('dc2')))));
     } else if (sc === 'dc2down') {
-      push(txt('tp-ev', 775, 126, 'middle', esc(t('site down at t = 0'))));
+      push(txt('tp-ev', L.evDc2[0], L.evDc2[1], L.evDc2[2], esc(t('site down at t = 0'))));
     } else {
-      push(ln('tp-x', 131, 151, 145, 165));
-      push(ln('tp-x', 145, 151, 131, 165));
+      push(ln('tp-x', 257, 130, 271, 144));
+      push(ln('tp-x', 271, 130, 257, 144));
       push(txt('tp-ev', L.evPmy[0], L.evPmy[1], L.evPmy[2], esc(t('host down at t = 0'))));
     }
 
