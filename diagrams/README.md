@@ -294,13 +294,8 @@ everything else intact. Nothing fails over, and that is the point.
 
 The simulator's second rail control crosses every scenario with four observer placements — **none**,
 the **primary's site**, the **standby's site**, and a **third site** (the default, and what the rest
-of this page assumes). Under the page's 26ai edition a fifth placement joins them — **both sites**:
-an observer on its own host beside each database, master and backup, ranked with
-`PreferredObserverHosts` (26ai registers up to four observers; losing the master is a *nomination*
-of a backup as the new master, and no fast-start failover can occur until that backup is observing —
-sources at the end of this file). The placement is not a broker property; the broker has nothing
-that records it, which is exactly why it belongs in the deployment identity rather than the
-parameter set.
+of this page assumes). The placement is not a broker property; the broker has nothing that records
+it, which is exactly why it belongs in the deployment identity rather than the parameter set.
 
 - **Oracle's hierarchy has three rungs.** First choice: "the observer should ideally be located at a
   third site or third data center so that the primary, observer, and standby have isolated power,
@@ -362,14 +357,14 @@ standby's own view stops being a veto and several **continues** cells below woul
 Neither the simulator nor these figures model that; they model the default, where a target standby
 that still reaches the primary is what prevents the attempt.
 
-| scenario | none | primary's site | standby's site | third site | both sites (26ai only) |
-|---|---|---|---|---|---|
-| **crash** — the primary host dies | manual | failover | failover | failover | failover |
-| **isolated** — every link out of the primary's site fails | continues | continues | failover (stall) | failover (stall) | failover (stall, nomination) † |
-| **partition** — only the link between the two database sites fails | continues | continues | **failover (stall)** | continues | **failover (stall, nomination)** † |
-| **dc2down** — the whole standby site is lost | continues | continues | **stall-noone** | continues | continues |
-| **observer-lost** — the observer host dies | (a plain crash) | observer-lost | observer-lost | observer-lost | continues (nomination) |
-| **switchover** — a planned role reversal | switchover | switchover | switchover | switchover | switchover |
+| scenario | none | primary's site | standby's site | third site |
+|---|---|---|---|---|
+| **crash** — the primary host dies | manual | failover | failover | failover |
+| **isolated** — every link out of the primary's site fails | continues | continues | failover (stall) | failover (stall) |
+| **partition** — only the link between the two database sites fails | continues | continues | **failover (stall)** | continues |
+| **dc2down** — the whole standby site is lost | continues | continues | **stall-noone** | continues |
+| **observer-lost** — the observer host dies | (a plain crash) | observer-lost | observer-lost | observer-lost |
+| **switchover** — a planned role reversal | switchover | switchover | switchover | switchover |
 
 Legend: **failover** — the standby is promoted; *(stall)* marks the cells where the primary is
 simultaneously cut off from both and self-aborts at the threshold. **continues** — nothing is
@@ -379,36 +374,8 @@ reachable standby to promote, and self-aborts one threshold later under
 primary is gone; only a DBA running `FAILOVER TO` moves the role, and no
 `FastStartFailoverLagLimit` bounds the loss, because that guarantee is fast-start failover's.
 **observer-lost** — the configuration is unobserved and nothing moves. **switchover** — the planned
-swap, identical at every placement. *(nomination)* marks the 26ai cells where the master observer is
-on the lost side of the failure and the broker nominates the backup at the other site as the new
-master; Oracle gives no duration for that interval, so the simulator draws it as a flag, never a
-number, and no clock moves because of it. The one coerced pairing is observer-lost with no observer
-deployed: there is nothing to lose, so it is the plain crash cell. The both-sites column exists only
-under the 26ai edition — asked for under 19c (only a crafted link or an imported file can), the
-model coerces it to the third site.
-
-† **The two flagged both-sites cells — partition and isolated — are inferences, not quoted
-outcomes.** Oracle states the nomination rule with a precondition, in the same words in the 19c and
-the 26ai fast-start failover chapters: "if the primary and target standby databases stay connected
-but the connection to the master observer is lost, then the broker tries to nominate a backup
-observer as the new master observer" — and, in the other direction, "if the primary or target
-standby databases lose connections to all backup observers, then the broker does not try to nominate
-a backup observer as the new master observer, and the broker reports that the configuration is not
-observed". Both flagged cells are failures that **separate the primary from the target standby**, so
-neither is the documented case, and no 26ai page walks through either one with an observer on each
-database site.
-
-They follow from composing the nomination rule with the quorum rules the rest of this matrix runs
-on. **partition · both sites**: the standby's side has lost the primary and the master alike, the
-backup beside the standby is nominated, and that new master plus the standby are both halves of a
-quorum that has lost a primary which never stopped serving — the false failover again, with nothing
-outside the two sites left to arbitrate. **isolated · both sites**: the same nomination on the
-standby's side, but here the primary really is cut off from everything, so the promotion is the
-right outcome and only the route to it is inferred. The simulator words both as consequences
-(`MULTI_NOTES.partition` and `MULTI_NOTES.nominate`, which carry the precondition and the
-inference in prose); re-verify against a live 26ai system before relying on either anywhere else.
-The **observer-lost · both sites** cell needs no flag: there the primary and the standby stay
-connected and only the master dies, which is the documented case verbatim.
+swap, identical at every placement. The one coerced pairing is observer-lost with no observer
+deployed: there is nothing to lose, so it is the plain crash cell.
 
 Three cells are worth reading twice:
 
@@ -425,12 +392,12 @@ Three cells are worth reading twice:
   the only thing still talking to the primary, so it holds fire. Nothing is promoted, the standby is
   stranded with no redo arriving, and the primary serves an outside world that cannot reach it.
 
-`site/test.mjs` carries this same table as executable assertions — the 24 19c outcomes and the 24
-stall flags looped literally, plus the six 26ai both-sites cells (`MATRIX26`: outcome, stall and
-nomination per scenario) and the 19c-invariance loops that pin the version axis (no version, or
-`'19c'`, must reproduce the 24-cell table exactly, with `nomination:false`, `lagStall:null`,
-`lagType:'apply'` everywhere) — so a model change that contradicts the matrix fails the build before
-it can be published. Change one and change all three: the model, the test tables, and this section.
+`site/test.mjs` carries this same table as executable assertions — the 24 outcomes and the 24
+stall flags looped literally, plus the 19c-invariance loops that pin the version axis (no version,
+or `'19c'`, must reproduce the 24-cell table exactly, with `lagStall:null` and `lagType:'apply'`
+everywhere, with every 26ai-only input along for the ride) — so a model change that contradicts the
+matrix fails the build before it can be published. Change one and change all three: the model, the
+test tables, and this section.
 
 ## Planned switchover (the simulator's switchover scenario)
 
@@ -749,11 +716,11 @@ Where the simulator draws something it cannot know, it is listed on the page its
 - [FastStartFailoverLagLimit (26ai Data Guard Broker Properties — the value ranges: 30 s default and 5 s minimum in MaxPerformance, 0 the default in MaxAvailability. **Its closing line still says the property is used only in maximum performance mode**, which the protection-modes section above contradicts; quote this page for ranges only, never for the mode question)](https://docs.oracle.com/en/database/oracle/oracle-database/26/dgbkr/faststartfailoverlaglimit.html)
 - [FastStartFailoverLagType (26ai Data Guard Broker Properties — `APPLY` default / `TRANSPORT`; which lag `FastStartFailoverLagLimit` is measured against; documented as maximum-performance-mode behaviour, and it did **not** follow the lag limit into MaxAvailability)](https://docs.oracle.com/en/database/oracle/oracle-database/26/dgbkr/faststartfailoverlagtype.html)
 - [FastStartFailoverLagGraceTime (26ai Data Guard Broker Properties — default 0 = off, minimum 5 s when set; how many seconds before the lag limit the primary asks permission to enter the `LAGGING` state, and the up-to-one-threshold wait at the crossing when it is 0)](https://docs.oracle.com/en/database/oracle/oracle-database/26/dgbkr/faststartfailoverlaggracetime.html)
-- [Fast-Start Failover (26ai broker guide — the section "What Happens if the Master Observer Fails?": the broker nominates a backup observer as the new master, and no fast-start failover can occur until it is observing. This nomination rule is what the both-sites column of the outcome matrix is built on, and the partition · both-sites cell is an **inference** from it, flagged as such at the matrix)](https://docs.oracle.com/en/database/oracle/oracle-database/26/dgbkr/fast-start-failover2.html)
-- [PreferredObserverHosts (26ai Data Guard Broker Properties — a per-database property ranking which registered observer host should be master for that database)](https://docs.oracle.com/en/database/oracle/oracle-database/26/dgbkr/preferredobserverhosts.html)
+- [Fast-Start Failover (26ai broker guide — the normative 26ai text the Reference chapter cites, including the section "What Happens if the Master Observer Fails?": with the primary and target standby still connected, the broker nominates a backup observer as the new master, and no fast-start failover can occur until it is observing. That is the 26ai half of the observer-lost prose in chapter 1)](https://docs.oracle.com/en/database/oracle/oracle-database/26/dgbkr/fast-start-failover2.html)
+- [PreferredObserverHosts (26ai Data Guard Broker Properties — a per-database property ranking which registered observer host should be master for that database; the source for the 26ai observer-lost prose naming it)](https://docs.oracle.com/en/database/oracle/oracle-database/26/dgbkr/preferredobserverhosts.html)
 - [PrimaryDatabaseCandidates (26ai Data Guard Broker Properties — the list of members the broker may make primary. It restricts `SWITCHOVER` and `FAILOVER` **while fast-start failover is disabled**, adds nothing once it is enabled because `FastStartFailoverTarget` already governs the target, defaults to an empty string that restricts nothing, and the broker adds the current primary itself if the list omits it. The 19.26 backport is **reported by the product manager's blog series only** — not in Oracle's release-update documentation)](https://docs.oracle.com/en/database/oracle/oracle-database/26/dgbkr/primarydatabasecandidates.html)
 - [VALIDATE FAST_START FAILOVER (26ai broker commands — the consolidated FSFO readiness checklist behind the simulator's 26ai config cards; note the underscore in the URL slug)](https://docs.oracle.com/en/database/oracle/oracle-database/26/dgbkr/validate-fast_start-failover.html)
 - [Oracle Data Guard Broker Properties (26ai — the property index the Reference chapter's change list links as normative)](https://docs.oracle.com/en/database/oracle/oracle-database/26/dgbkr/oracle-data-guard-broker-properties.html)
 - 26ai Database Reference pages for the new/extended views cited in the change list: [V$FAST_START_FAILOVER_CONFIG](https://docs.oracle.com/en/database/oracle/oracle-database/26/refrn/V-FAST_START_FAILOVER_CONFIG.html), [V$FS_LAG_HISTOGRAM](https://docs.oracle.com/en/database/oracle/oracle-database/26/refrn/V-FS_LAG_HISTOGRAM.html), [V$DG_BROKER_PROPERTY](https://docs.oracle.com/en/database/oracle/oracle-database/26/refrn/V-DG_BROKER_PROPERTY.html), [V$DG_BROKER_CONFIG](https://docs.oracle.com/en/database/oracle/oracle-database/26/refrn/V-DG_BROKER_CONFIG.html), [V$FS_FAILOVER_OBSERVERS](https://docs.oracle.com/en/database/oracle/oracle-database/26/refrn/V-FS_FAILOVER_OBSERVERS.html) (note two things on that page: `CURRENT_TIME` is **the time the query was run**, not an observer heartbeat, and the view's behaviour is defined only when it is queried **on the primary**); plus [DBMS_DG (26ai PL/SQL Packages Reference)](https://docs.oracle.com/en/database/oracle/oracle-database/26/arpls/DBMS_DG.html)
 - Scripting surfaces that **predate 26ai**, both linked from the change table's *Scripting surfaces* row: [SQLcl `DG` (SQL Developer Command Line 25.3 — the command's own scope note is "Oracle Database release 21c only")](https://docs.oracle.com/en/database/oracle/sql-developer-command-line/25.3/sqcug/dg-data-guard.html) and [ORDS Data Guard REST endpoints (Oracle REST Data Services 23.3)](https://docs.oracle.com/en/database/oracle/oracle-rest-data-services/23.3/orrst/api-data-guard.html). Listing them under "what 26ai changes" without a date qualifier overstates the novelty — the row and the table caption both say when they arrived.
-- [Ludovico Caldara's Data Guard 26ai blog series (ludovicocaldara.net — the practitioner walk-throughs of the 26ai broker changes behind the edition switch: the lag properties, multiple observers / `PreferredObserverHosts`, `VALIDATE FAST_START FAILOVER` and the new views. The simulator's Reference chapter "What changed in 26ai" table links the individual posts — #1 faster role transitions, #2 minimized stall, #3 lag type, #5/#6 observers, #8 multiple ASYNC connections, #10–#12/#14 scripting surfaces, #15 PrimaryDatabaseCandidates, #21/#23/#27 SQL-side visibility, #25 V$FAST_START_FAILOVER_CONFIG, #26 the lag histogram, #28 VALIDATE — from the series index)](https://www.ludovicocaldara.net/blog/dg-26ai-series/)
+- [Ludovico Caldara's Data Guard 26ai blog series (ludovicocaldara.net — the practitioner walk-throughs of the 26ai broker changes behind the edition switch: the lag properties, multiple observers / `PreferredObserverHosts`, `VALIDATE FAST_START FAILOVER` and the new views. The simulator's Reference chapter "What changed in 26ai" table links the individual posts — #1 faster role transitions, #2 minimized stall, #3 lag type, #8 multiple ASYNC connections, #10–#12/#14 scripting surfaces, #15 PrimaryDatabaseCandidates, #21/#23/#27 SQL-side visibility, #25 V$FAST_START_FAILOVER_CONFIG, #26 the lag histogram, #28 VALIDATE — from the series index)](https://www.ludovicocaldara.net/blog/dg-26ai-series/)

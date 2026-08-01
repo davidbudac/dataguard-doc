@@ -14,12 +14,12 @@ extend it without breaking consistency or accuracy.
 | `diagrams/fsfo-timeline-isolated.svg` (+`.png`) | Swimlane timeline, network partition: two independent threshold clocks, primary self-abort (split-brain protection) |
 | `diagrams/fsfo-sequence.svg` (+`.png`) | Sequence diagram of the crash case with an elapsed-time gutter |
 | `diagrams/fsfo-net-timeout.svg` (+`.png`) | Two panels separating NET_TIMEOUT (redo transport) from the broker failover clocks |
-| `diagrams/README.md` | Figure embeds, broker-property and redo-transport-property tables with verified defaults, the ping-properties quirk, the verified-facts sections behind the simulator's commit/reopen/observer/placement/side-topics views (including the observer-placement outcome matrix — 24 19c cells plus the 26ai both-sites column) and behind the 26ai edition switch (the MaxAvailability lag-limit semantics and Oracle's self-contradiction on them, `PrimaryDatabaseCandidates`, `V$FS_FAILOVER_OBSERVERS`), the drawing idealizations, Oracle doc links |
+| `diagrams/README.md` | Figure embeds, broker-property and redo-transport-property tables with verified defaults, the ping-properties quirk, the verified-facts sections behind the simulator's commit/reopen/observer/placement/side-topics views (including the 24-cell observer-placement outcome matrix) and behind the 26ai edition switch (the MaxAvailability lag-limit semantics and Oracle's self-contradiction on them, `PrimaryDatabaseCandidates`, `V$FS_FAILOVER_OBSERVERS`), the drawing idealizations, Oracle doc links |
 | `simulator/fsfo-simulator.html` | Source fragment of the interactive simulator, published at davidbudac.cz/dataguard. English only |
 | `simulator/i18n/cs.json` | Czech translation catalog, keyed by the English source strings. Real UTF-8 — deliberately outside the ASCII-only fragment |
 | `testing/README.md` | Test runbook: step-by-step drills verifying each documented situation against a real 19c configuration (crash, isolation, observer loss, NET_TIMEOUT, blocked failover, reopen/MaxFailure, client view, commit measurement), with an RTO/RPO probe harness and reinstate cleanup. Repo-only markdown — not part of the published site |
 | `site/build.mjs` | Wraps the fragment into a full page (doctype, charset, title, favicon, canonical + social meta), inlines `simulator/i18n/cs.json` as a JSON `<script>`, and enforces the ASCII-only guard — it exits non-zero on any byte above U+007E |
-| `site/test.mjs` | Standalone node test: extracts the four model marker blocks from the fragment and asserts the documented domain invariants — including the scenario × observer-location outcome matrix as literal tables (24 19c cells, the six 26ai both-sites cells, and the 19c-invariance loops over the version axis) — then checks the Czech catalog for dropped placeholders, unbalanced inline markup and bad plural forms. No dependencies; `node --test site/test.mjs`. `site/publish.sh` runs it after the build, so a model that contradicts the docs cannot be deployed |
+| `site/test.mjs` | Standalone node test: extracts the four model marker blocks from the fragment and asserts the documented domain invariants — including the scenario × observer-location outcome matrix as literal tables (24 cells, plus the 19c-invariance loops over the version axis) — then checks the Czech catalog for dropped placeholders, unbalanced inline markup and bad plural forms. No dependencies; `node --test site/test.mjs`. `site/publish.sh` runs it after the build, so a model that contradicts the docs cannot be deployed |
 | `site/publish.sh` | Builds, tests the models, and deploys to the VPS, then verifies the public URL |
 
 ## Publishing
@@ -149,15 +149,14 @@ agree on:
   handle the error. Application Continuity is the conditional-replay mechanism:
   replay-eligible requests only, and a replay it cannot verify is rejected. Never
   collapse the two into "TAF or Application Continuity resumes their work".
-- **The two 26ai both-sites cells the matrix flags with † are inferences.** Oracle
-  states the nomination rule with a precondition — the primary and target standby
-  stay connected while the master observer is lost — and both the **partition ·
-  both sites** and **isolated · both sites** cells are failures that separate
-  primary from standby, so neither is the documented case. They compose the
-  nomination rule with the quorum rules; the simulator says so in prose
-  (`MULTI_NOTES.nominate`, `MULTI_NOTES.partition`) and `diagrams/README.md`
-  carries the reasoning. The **observer-lost · both sites** cell needs no flag —
-  it is the documented case verbatim.
+- **The nomination rule carries a precondition — quote it with one.** Oracle's
+  wording is "if the primary and target standby databases stay connected but the
+  connection to the master observer is lost, then the broker tries to nominate a
+  backup observer as the new master observer", and, the other way, if either
+  database loses its connections to all backup observers the broker does *not*
+  nominate and reports the configuration unobserved. Never state the rule
+  unconditionally, and never extend it to a failure that separates the primary
+  from the target standby — that is not the documented case.
 - **The scripting surfaces in the 26ai change table predate 26ai.** The official
   SQLcl `DG` page is scoped "Oracle Database release 21c only" and the ORDS
   Data Guard REST endpoints are documented in ORDS 23.3, so the row names both
@@ -525,9 +524,8 @@ The workbench carries **six scenarios**, in rail order: primary **crash**,
 (`dc2down` — the whole standby data centre, and anything else in it), **observer
 lost** and planned **switchover**. Crossed with them is the **observer-location**
 control that sits directly beneath: **none** / **primary site** / **standby
-site** / **third site** (the default, and what the page always assumed), plus
-**both sites** under the 26ai edition (see The edition switch below). That is
-24 19c states plus the six-cell 26ai column, and the outcome of every one of
+site** / **third site** (the default, and what the page always assumed). That is
+24 states, and the outcome of every one of
 them is a literal table in `site/test.mjs` and a prose table in
 `diagrams/README.md` — change one and change all three. The radio labels are deliberately role-relative and static, never the
 configured site names: `.seg-row label` is in the i18n snapshot, so a
@@ -775,9 +773,7 @@ topics and Reference, and the two cross-links (chapter 2's commit caption to
 `#impactview`, the reopen caption to `#nettimeoutview`) open the other chapter
 *and* land on the section.
 
-**Observer placement, its own pass** — the axis is 24 states (30 with the 26ai
-both-sites column; walk that one under 26ai, then confirm switching back to 19c
-pushes the radio to the third site), so walk the cells
+**Observer placement, its own pass** — the axis is 24 states, so walk the cells
 that carry the lessons rather than all of them. Crash at each of the three
 deployed locations draws **identically** (a separate-host observer survives the
 database's death), so read the three timelines against each other and confirm the
@@ -856,34 +852,39 @@ fails silently — the page just shows the 19c sentence under 26ai, which is wha
 headless coverage probe (Languages below) surfaces.
 
 **Structure: the `.fsfo.is-v26` / `data-ver` split.** Whole blocks that exist in only one
-edition — reference-table rows, captions, the identity card's both-sites `<option>` —
-carry `data-ver="19"` or `data-ver="26"` in the markup, and the static pass toggles
+edition — reference-table rows, captions — carry `data-ver="19"` or `data-ver="26"` in the
+markup, and the static pass toggles
 `is-v26` on `.fsfo` *before* it renders strings, so one pass never leaves the two halves
 disagreeing. The CSS is keyed with `:not()` (`.fsfo:not(.is-v26) [data-ver="26"]
 {display:none}` and the inverse) so a page with no script is a complete 19c document —
 the same contract as the tabs. Print carries whichever edition is on screen, because here
 the class selects content, not navigation.
 
-**What 26ai adds behaviorally.** The fifth observer placement `dc1dc2` (radio `ol-both`,
-URL token `ol=both`): master beside the primary, backup beside the standby, ranked by
-`PreferredObserverHosts`, with the model's `nomination` flag driving the timeline brace,
-chips and topology. The `FastStartFailoverLagType` radio and `FastStartFailoverLagGraceTime`
-slider (URL keys `lt` / `lgt`) — broker properties, so unlike the edition they **do** ride
-in the `params` block of saved configurations. The reopen panel's LAGGING bands
+**What 26ai adds behaviorally.** The MaxAvailability lag policy (radios `lp-zero` /
+`lp-bounded`, URL key `lp`), which is what gives `FastStartFailoverLagLimit` a
+MaxAvailability role — `lagPolicy` in, `availBounded` / `lagGated` out of `computeFsfo`,
+and the one 26ai change that moves a number on the page. The `FastStartFailoverLagType`
+radio and `FastStartFailoverLagGraceTime` slider (URL keys `lt` / `lgt`) — broker
+properties, so unlike the edition they **do** ride in the `params` block of saved
+configurations. The reopen panel's LAGGING bands
 (`lagStallAt`/`lagStallMax`/`lagGraceArmed` from `computeReopen`, which now also takes
-`version`, `lagGraceTime` and `threshold`). Under 19c the both-sites radio is disabled and
-both lag controls gray out through `V19_NOTES` (borrow-and-restore, like observer-lost);
-the model, `applyConfig` and a `coerceObsloc` `onLang` subscriber all coerce `dc1dc2` back
-to `dc3`, so a crafted link, a 26ai-written export opened under 19c, or a switch back to
-19c mid-session each lands where the rail would push it — registered before the
-draw-subscriber so 19c never draws a placement it cannot offer.
+`version`, `lagGraceTime` and `threshold`). Under 19c all three controls gray out through
+`V19_NOTES` (borrow-and-restore, like observer-lost), and `computeFsfo` pins
+`lagStall:null` / `lagType:'apply'` / the zero-loss policy whatever a crafted link or a
+26ai-written export asks for.
 
-**The outcome matrix is now 30 cells**: the 19c 24 plus the 26ai both-sites column.
-`site/test.mjs` asserts both (`MATRIX26`, plus 19c-invariance loops pinning
-`version` absent/`'19c'` to the 24-cell table with `nomination:false`, `lagStall:null`,
-`lagType:'apply'`), and `diagrams/README.md` words the column — the partition · both-sites
-cell is flagged there as an **inference** from the documented nomination rule, not a quoted
-outcome. Change one and change all three.
+**The outcome matrix stays 24 cells in both editions.** `site/test.mjs` pins that with
+19c-invariance loops (`version` absent/`'19c'` must reproduce the 24-cell table with
+`lagStall:null` and `lagType:'apply'`, with every 26ai-only input passed in), and
+`diagrams/README.md` words it. Change one and change all three.
+
+There was once a fifth, 26ai-only observer placement — an observer beside each database,
+`dc1dc2`, ranked by `PreferredObserverHosts`, with a `nomination` flag on the model. It was
+removed deliberately (two of its six cells were inferences rather than quoted outcomes):
+do not reintroduce it. A stale `?ol=both` or a saved `observerLoc:'dc1dc2'` degrades
+silently to the third site through the existing unknown-value fallbacks — the `FIELDS`
+radio map ignores tokens it does not know and `serialize()` then drops the stale param,
+and the `applyConfig` whitelist drops values it does not list.
 
 ## Languages (English + Czech)
 
@@ -975,10 +976,10 @@ plus both protection modes on the cells where the mode changes the story, the
 ping properties, `FastStartFailoverPmyShutdown` off where the primary stalls, and
 chapter 4 open at each of the four locations, whose config cards and identity
 rows carry strings no other state asks for. Since the edition switch, the walk
-runs in **both editions** (`DG.setEd('26ai')`, then back): the both-sites
-placement, the two lag controls (`FastStartFailoverLagGraceTime` at 0 and ≥ 5,
-`FastStartFailoverLagType` both ways, in MaxPerformance) and the 26ai config
-cards all ask for strings 19c never does — and the V26 substitution means the
+runs in **both editions** (`DG.setEd('26ai')`, then back): the lag-policy radios
+in MaxAvailability, the two lag controls (`FastStartFailoverLagGraceTime` at 0
+and ≥ 5, `FastStartFailoverLagType` both ways, in MaxPerformance) and the 26ai
+config cards all ask for strings 19c never does — and the V26 substitution means the
 26ai English variants are catalog keys of their own.
 
 Three things that only a rendered page catches, all worth re-checking after
@@ -1019,8 +1020,7 @@ Keep that order: facts → spec → build → adversarial review → publish.
 - Scenarios covered so far: primary crash, isolated primary, severed link
   between the two database sites (`partition`), whole standby site lost
   (`dc2down`), observer lost and planned switchover — each crossed with the four
-  observer locations, 24 states in all, plus the 26ai-only both-sites placement
-  (six more cells behind the edition switch). Only the first two have static figures;
+  observer locations, 24 states in all. Only the first two have static figures;
   the other four are simulator-only, and the figures show the third-site
   placement throughout. Reinstate stays out of
   scope for the figures and the simulator; if the user asks for it, add it as a

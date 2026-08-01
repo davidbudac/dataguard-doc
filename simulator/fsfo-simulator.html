@@ -303,10 +303,6 @@ input[type="range"]:disabled::-moz-range-thumb{background:var(--ik3);box-shadow:
    is the last row. */
 .seg-row.cols2r label:nth-of-type(even){border-right:0}
 .seg-row.cols2r label:nth-last-of-type(n+3){border-bottom:1px solid var(--ln)}
-/* An odd fifth label breaks that even-count assumption, so it takes the whole
-   row instead of half of one and draws the rule above itself -- the pair on the
-   row above never gets a bottom border of its own. */
-.seg-row .seg-wide{grid-column:1/-1;border-right:0;border-top:1px solid var(--ln)}
 .seg-row input{position:absolute;opacity:0;width:1px;height:1px}
 .seg-row label{padding:7px 6px;text-align:center;font-size:12px;color:var(--ik2);background:var(--sf);cursor:pointer;border-right:1px solid var(--ln);user-select:none}
 .seg-row label:last-of-type{border-right:0}
@@ -862,8 +858,6 @@ window.DG = (function () {
             <label for="ol-dc2">Standby site</label>
             <input type="radio" name="obsloc" id="ol-dc3" value="dc3" checked>
             <label for="ol-dc3">Third site</label>
-            <input type="radio" name="obsloc" id="ol-both" value="dc1dc2">
-            <label for="ol-both" class="seg-wide">Both sites</label>
           </div>
         </fieldset>
         <p class="ctl-note" id="n-obsloc">The observer runs on its own host at a third site, independent of both database sites.</p>
@@ -1615,7 +1609,6 @@ window.DG = (function () {
               <option value="dc1">Primary site</option>
               <option value="dc2">Standby site</option>
               <option value="dc3" selected>Third site</option>
-              <option value="dc1dc2" data-ver="26">Both sites</option>
             </select></div>
           <div class="dep-row"><label for="dep-port">Listener port</label>
             <input class="dep-in" type="number" id="dep-port" min="1" max="65535" step="1" value="1521"></div>
@@ -2081,7 +2074,7 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
       <p class="eyebrow">Reference &middot; 26ai</p>
       <h2>What changed in 26ai</h2>
     </div>
-    <p class="caption">Everything Oracle AI Database 26ai changes about the machinery on this page, against the 19c baseline &mdash; including what arrived in 21c and 23ai, which a straight 19c-to-26ai upgrade picks up in the same step. The first four rows change behavior this page draws: the header&rsquo;s 19c / 26ai switch swaps them in, and prints the new commands in the chapter&nbsp;4 configuration cards. The rest change what you type and what you can query, never when a failover happens.</p>
+    <p class="caption">Everything Oracle AI Database 26ai changes about the machinery on this page, against the 19c baseline &mdash; including what arrived in 21c and 23ai, which a straight 19c-to-26ai upgrade picks up in the same step. The first three rows change behavior this page draws: the header&rsquo;s 19c / 26ai switch swaps them in, and prints the new commands in the chapter&nbsp;4 configuration cards. The rest change what you type and what you can query, never when a failover happens.</p>
     <div class="tbl-wrap">
       <table>
         <thead>
@@ -2097,9 +2090,6 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
           <tr><td><span class="mono">FastStartFailoverLagGraceTime</span></td>
             <td>New property, default 0 (off), minimum 5&nbsp;s when set. That many seconds before the lag limit, the primary asks the observer&rsquo;s permission to enter the <span class="mono">LAGGING</span> state; with the answer pre-granted, crossing the limit costs it nothing. Left at 0, it asks at the crossing and stalls there waiting for the answer &mdash; up to one <span class="mono">FastStartFailoverThreshold</span>. The reopen panel in chapter&nbsp;2 draws that stall, and this property removing it.</td>
             <td><a class="ext" href="https://docs.oracle.com/en/database/oracle/oracle-database/26/dgbkr/faststartfailoverlaggracetime.html">26ai docs</a> &middot; <a class="ext" href="https://www.ludovicocaldara.net/blog/dg26ai-minimized-stall/">Caldara #2</a></td></tr>
-          <tr><td>Four observers, with priorities</td>
-            <td>The registration limit rises from three to four (since 21c). A pair of observers per site is not new: 19c registers up to three, ranks them with <span class="mono">PreferredObserverHosts</span> &mdash; a per-database property naming the hosts preferred for the master while that database is primary &mdash; and already nominates a backup as the new master when the master is lost, with no fast-start failover possible until that new master is observing. What 26ai adds is the fourth observer and the automatic move: the master is changed to an observer running on a higher-priority host, where 19c applies the preference only at the next role change. That is what makes a pair on each site self-managing &mdash; and it is why this page draws the &ldquo;both sites&rdquo; placement in the chapter&nbsp;1 rail under 26ai only. A modeling choice, not a 19c impossibility.</td>
-            <td><a class="ext" href="https://docs.oracle.com/en/database/oracle/oracle-database/26/dgbkr/fast-start-failover2.html">26ai docs</a> &middot; <a class="ext" href="https://docs.oracle.com/en/database/oracle/oracle-database/26/dgbkr/preferredobserverhosts.html">property</a> &middot; <a class="ext" href="https://www.ludovicocaldara.net/blog/dg26ai-observer-priority/">Caldara #5</a> &middot; <a class="ext" href="https://www.ludovicocaldara.net/blog/dg26ai-4-observers/">#6</a></td></tr>
           <tr><td><span class="mono">VALIDATE FAST_START FAILOVER</span></td>
             <td>One DGMGRL command running the documented readiness checklist: fast-start failover properties that are set incorrectly, anything preventing fast-start failover from being enabled or initiated, anything affecting what happens once it is initiated, anything impacting the configuration&rsquo;s stability, and the syntax of <span class="mono">fsfocallout.ora</span> together with the accessibility of the callout scripts. The documented example output also flags an observer that has not been started and flashback logging that is off &mdash; the checks that 19c leaves spread across <span class="mono">SHOW</span> commands and views.</td>
             <td><a class="ext" href="https://docs.oracle.com/en/database/oracle/oracle-database/26/dgbkr/validate-fast_start-failover.html">26ai docs</a> &middot; <a class="ext" href="https://www.ludovicocaldara.net/blog/dg26ai-validate-fsfo/">Caldara #28</a></td></tr>
@@ -2517,7 +2507,7 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
   /**
    * computeFsfo(c) -> derived model
    * c = { scenario:'crash'|'isolated'|'partition'|'dc2down'|'observer-lost'|'switchover',
-   *       observerLoc:'none'|'dc1'|'dc2'|'dc3'|'dc1dc2', mode:'maxavail'|'maxperf',
+   *       observerLoc:'none'|'dc1'|'dc2'|'dc3', mode:'maxavail'|'maxperf',
    *       threshold:s, pingSet:bool, pingInterval:ms, pingRetry:n,
    *       standbyLag:s, lagLimit:s, roleTransition:s, pmyShutdown:bool,
    *       latency:ms (round trip between any two of the three hosts),
@@ -2544,27 +2534,12 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
     // which carry no placement at all, keep reading exactly as they did.
     var loc = c.observerLoc || 'dc3';
 
-    // Observers on both database sites is a 26ai placement: up to four of them,
-    // ranked by PreferredObserverHosts, so the master can sit beside the
-    // primary and a backup beside the standby. Asked for under 19c -- only a
-    // crafted link can -- it falls back to the third site, which is where the
-    // rail pushes the radio too.
-    if (!v26 && loc === 'dc1dc2') loc = 'dc3';
-    var multi = loc === 'dc1dc2';
-
     // "Observer lost" is an armed configuration whose observer died. With no
     // observer deployed at all there is nothing to lose and fast-start
     // failover was never armed, so that pairing is a plain crash. The
     // effective scenario is echoed back so the drawings never disagree.
     var sc = c.scenario;
     if (sc === 'observer-lost' && loc === 'none') sc = 'crash';
-
-    // A master observer the configuration can no longer reach is replaced: the
-    // broker nominates a backup, and no fast-start failover is possible until
-    // that backup is observing. Oracle gives no duration for it, so this is a
-    // flag and never a number -- no clock below moves because of it.
-    var nomination = multi && (sc === 'isolated' || sc === 'partition' ||
-      sc === 'observer-lost');
 
     // 26ai, MaxPerformance: the primary asks permission before it enters the
     // LAGGING state. Armed in advance by a grace time it holds the answer when
@@ -2604,17 +2579,13 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
     // alone is enough. But an unobserved configuration cannot fast-start fail
     // over: no clock starts, nothing is initiated, nothing opens. The exposure
     // is the next failure, which ifDiedNow measures.
-    //
-    // With observers on both sites this branch is skipped: only the master
-    // died, a backup is nominated in its place, and the configuration is armed
-    // again -- so the general machinery below decides that cell instead.
-    if (sc === 'observer-lost' && !multi) {
+    if (sc === 'observer-lost') {
       var oTick = pickTickStep(60);
       var oHorizon = Math.max(oTick, Math.ceil(60 / oTick) * oTick);
       return {
         outcome: 'observer-lost', scenario: sc, stalled: false,
         standbyGone: false, redoFlowing: true, pmyReachable: true,
-        switchover: false, nomination: nomination, lagStall: lagStall, lagType: lagType,
+        switchover: false, lagStall: lagStall, lagType: lagType,
         observerLost: true, pingSet: pingSet, detect: null, initiate: null,
         netHop: (c.latency || 0) / 2000, execStart: null,
         applyRemaining: 0, tOpen: null, blocked: false, abort: null,
@@ -2663,7 +2634,7 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
       return {
         outcome: 'switchover', scenario: sc, stalled: false,
         standbyGone: false, redoFlowing: true, pmyReachable: true,
-        nomination: nomination, lagStall: lagStall, lagType: lagType,
+        lagStall: lagStall, lagType: lagType,
         switchover: true, observerLost: false, pingSet: pingSet,
         detect: null, initiate: null, abort: null, execStart: null,
         // The DGMGRL command's own network hop is left out on purpose: it is a
@@ -2699,18 +2670,11 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
     // it still talking to a primary nobody else can reach. A third-site
     // observer keeps seeing the primary through a DC1-to-DC2 cut, which is
     // exactly the arbitration Oracle recommends the third site for.
-    //
-    // With observers on both sites the master is whichever one the side that
-    // still has the target standby can reach. Any cut that separates the two
-    // sites moves the role to the backup beside the standby, and that one has
-    // lost the primary; only the standby site's own loss leaves the master
-    // where it was.
-    var obsSeesPmy = obsAlive && pmyAlive && (multi
-      ? (sc === 'dc2down')
-      : (sc === 'crash' ? false
+    var obsSeesPmy = obsAlive && pmyAlive &&
+      (sc === 'crash' ? false
         : sc === 'isolated' ? loc === 'dc1'
           : sc === 'partition' ? (loc === 'dc1' || loc === 'dc3')
-            : true));
+            : true);
 
     // Redo transport, which is the standby's own view of the primary.
     var sbySeesPmy = sbyAlive && pmyAlive &&
@@ -2755,7 +2719,7 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
           outcome: 'manual', scenario: sc, stalled: false,
           standbyGone: standbyGone, redoFlowing: redoFlowing,
           pmyReachable: pmyReachable,
-          nomination: nomination, lagStall: lagStall, lagType: lagType,
+          lagStall: lagStall, lagType: lagType,
           switchover: false, observerLost: false, pingSet: pingSet,
           detect: null, initiate: null, netHop: (c.latency || 0) / 2000,
           execStart: null, applyRemaining: 0, tOpen: null, blocked: false,
@@ -2784,7 +2748,7 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
           outcome: 'stall-noone', scenario: sc, stalled: true,
           standbyGone: standbyGone, redoFlowing: redoFlowing,
           pmyReachable: pmyReachable,
-          nomination: nomination, lagStall: lagStall, lagType: lagType,
+          lagStall: lagStall, lagType: lagType,
           switchover: false, observerLost: false, pingSet: pingSet,
           detect: null, initiate: null, netHop: (c.latency || 0) / 2000,
           execStart: null, applyRemaining: 0, tOpen: null, blocked: false,
@@ -2806,7 +2770,7 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
         outcome: 'continues', scenario: sc, stalled: false,
         standbyGone: standbyGone, redoFlowing: redoFlowing,
         pmyReachable: pmyReachable,
-        nomination: nomination, lagStall: lagStall, lagType: lagType,
+        lagStall: lagStall, lagType: lagType,
         switchover: false, observerLost: false, pingSet: pingSet,
         detect: null, initiate: null, netHop: (c.latency || 0) / 2000,
         execStart: null, applyRemaining: 0, tOpen: null, blocked: false,
@@ -2866,7 +2830,7 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
       outcome: 'failover', scenario: sc, stalled: stalled,
       standbyGone: standbyGone, redoFlowing: redoFlowing,
       pmyReachable: pmyReachable,
-      nomination: nomination, lagStall: lagStall, lagType: lagType,
+      lagStall: lagStall, lagType: lagType,
       switchover: false,
       observerLost: false, pingSet: pingSet, detect: detect, initiate: initiate,
       netHop: netHop, execStart: execStart,
@@ -3338,7 +3302,7 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
     pingRetry: $('c-pingretry'), lag: $('c-lag'), lagLimit: $('c-laglimit'),
     role: $('c-role'), latency: $('c-latency'), shutdown: $('c-shutdown'), reset: $('c-reset'),
     topo: $('topo-wrap'),
-    lagGrace: $('c-laggrace'), vLagGrace: $('v-laggrace'), olBoth: $('ol-both'),
+    lagGrace: $('c-laggrace'), vLagGrace: $('v-laggrace'),
     ctlLagType: $('ctl-lagtype'), ctlLagGrace: $('ctl-laggrace'),
     nLagType: $('n-lagtype'), nLagGrace: $('n-laggrace'),
     ctlLagPolicy: $('ctl-lagpolicy'), nLagPolicy: $('n-lagpolicy'),
@@ -3457,8 +3421,7 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
   var V19_NOTES = {
     lagType: 'A 26ai property. In 19c the lag limit is always measured against the standby\u2019s apply point, so there is nothing to choose.',
     lagGrace: 'A 26ai property. In 19c the primary asks permission to enter the <span class="mono">LAGGING</span> state only once the limit has already been reached.',
-    lagPolicy: 'A 26ai behavior. In 19c <span class="mono">FastStartFailoverLagLimit</span> is not evaluated in MaxAvailability at all: readiness there is always a synchronized standby, so there is nothing to choose.',
-    obsBoth: '19c registers up to three observers and has <span class="mono">PreferredObserverHosts</span> too, so one beside each database is possible here as well. 26ai adds the fourth and moves the master to a higher-priority host on its own, where 19c waits for the next role change; this page draws that placement under 26ai only.'
+    lagPolicy: 'A 26ai behavior. In 19c <span class="mono">FastStartFailoverLagLimit</span> is not evaluated in MaxAvailability at all: readiness there is always a synchronized standby, so there is nothing to choose.'
   };
 
   /* 26ai, MaxAvailability: which FastStartFailoverLagLimit the mode runs on.
@@ -3486,15 +3449,6 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
     nofsfo: 'No fast-start failover is enabled here, so the primary never asks permission for anything and this grace time governs nothing.'
   };
 
-  /* Observers on both database sites -- 26ai. What it buys and what it costs. */
-  var MULTI_NOTES = {
-    obsloc: 'Observers on both database sites, ranked by <span class="mono">PreferredObserverHosts</span>: the master beside the primary, a backup beside the standby. Losing the master hands the role to the backup, and no fast-start failover is possible until that backup is observing.',
-    nominate: 'The master observer went with the primary\u2019s side of the cut. The broker nominates the backup in {0} as the new master; Oracle gives no duration for that interval, so the drawing marks it without one. Oracle documents that nomination for a master observer lost while the primary and target standby stay connected; extending it to a cut that separates them is an inference on this page, unverified against a live 26ai system.',
-    dc2down: 'The standby site takes its own observer with it, and the master beside the primary is untouched. The primary keeps committing \u2014 this placement is what stops a spare site from taking production down.',
-    partition: 'The same cut, and the same nomination: the standby\u2019s side has lost the primary and the master alike, so the backup is promoted and initiates a failover the primary never needed. With every observer on a database site, nothing arbitrates the cut \u2014 that is what the third site was for. The nomination rule Oracle documents covers a master lost while the primary and target standby stay connected, so this cell composes that rule with the quorum rules rather than quoting an outcome.',
-    obsLost: 'Only the master died. A backup is nominated, the configuration is armed again, and what it cost is the interval in between, during which no fast-start failover could have occurred.'
-  };
-
   /* ---------- timeline geometry (single time -> x scale) ---------- */
   var G = { padL: 138, padR: 30, topY: 16, braceY: 42, markY: 72, laneH: 46, laneTop: 80, braceRow: 50 };
   G.lane = [G.laneTop, G.laneTop + 92, G.laneTop + 190];   // gaps of 46 and 52
@@ -3511,9 +3465,6 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
   function obsSub() {
     var loc = C.observerLoc;
     if (loc === 'none') return t('not deployed');
-    /* Two of them, on two sites: a single configured observer host would name
-       one and hide the other, so this placement keeps the generic wording. */
-    if (loc === 'dc1dc2') return fitLabel([t('DGMGRL, both sites'), t('both sites')], 124) || t('both sites');
     var oh = String(ID.hostObserver || '').trim();
     if (oh) return fitLabel([t('DGMGRL, {0}', oh), oh], 124) || oh;
     if (loc === 'dc3') {
@@ -3563,10 +3514,8 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
     lanes[1].segs.push({ a: t0, b: 0, cls: 'b-sl', lc: 'f-sl', lab: [t('Pinging primary \u2014 connection healthy'), t('Pinging primary'), t('Pinging')] });
     lanes[1].segs.push({
       a: 0, b: m.initiate, cls: 'b-am', lc: 'f-am',
-      lab: m.nomination
-        ? [t('Backup nominated master \u2014 then the clock it inherits'), t('Backup nominated master'), t('Nomination')]
-        : m.pingSet ? [t('Ping retries \u2014 no answer'), t('Ping retries'), t('Retries')]
-                    : [t('Reconnect attempts \u2014 threshold clock running'), t('Reconnect attempts'), t('Reconnecting')]
+      lab: m.pingSet ? [t('Ping retries \u2014 no answer'), t('Ping retries'), t('Retries')]
+                     : [t('Reconnect attempts \u2014 threshold clock running'), t('Reconnect attempts'), t('Reconnecting')]
     });
     lanes[1].segs.push({
       a: m.initiate, b: t1, cls: 'b-sl', lc: 'f-sl',
@@ -3605,16 +3554,6 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
       braces.push({
         a: 0, b: m.abort, tone: 'br-rd', mono: true, name: 'FastStartFailoverThreshold',
         val: t('{0} s \u2014 primary stall clock, runs independently', fmt(C.threshold))
-      });
-    }
-    /* Drawn against the same span as the threshold above it, and deliberately
-       without a number: Oracle gives no duration for the nomination, so this
-       brace says what cannot happen during it rather than how long it is. */
-    if (m.nomination) {
-      braces.push({
-        a: 0, b: m.initiate, tone: 'br-rd', mono: false,
-        name: t('New master observer nomination'),
-        val: t('no fast-start failover until a backup is observing \u2014 no documented duration')
       });
     }
     if (!m.blocked) {
@@ -3904,15 +3843,8 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
     if (C.observerLoc !== 'none') {
       lanes[1].segs.push({ a: t0, b: 0, cls: 'b-sl', lc: 'f-sl',
         lab: [t('Pinging primary \u2014 connection healthy'), t('Pinging primary'), t('Pinging')] });
-      /* The master died and a backup takes the role: the lane is not holding
-         fire, it is changing hands. Only the both-sites placement reaches this
-         -- anywhere else, losing the observer is its own outcome. */
-      lanes[1].segs.push(m.nomination
-        ? { a: 0, b: t1, cls: 'b-vi', lc: 'f-vi',
-            lab: [t('Master lost \u2014 a backup is nominated and observes from here'),
-                  t('Backup nominated master'), t('Nomination')] }
-        : { a: 0, b: t1, cls: 'b-sl', lc: 'f-sl',
-            lab: [t('Still sees the primary \u2014 holds fire'), t('Still sees the primary'), t('Holds fire')] });
+      lanes[1].segs.push({ a: 0, b: t1, cls: 'b-sl', lc: 'f-sl',
+        lab: [t('Still sees the primary \u2014 holds fire'), t('Still sees the primary'), t('Holds fire')] });
     }
 
     lanes[2].segs.push({ a: t0, b: 0, cls: 'b-bl', lc: 'f-bl', lab: [t('Applying redo'), t('Applying')] });
@@ -3998,14 +3930,6 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
       push(ln('m-rd', xz + 7, sy - 7, xz - 7, sy + 7, ' stroke-width="2.5"'));
       push(txt('t-mark f-rd', xz + 12, G.lane[2] - 12, null,
         esc(t('The whole standby site is lost at t = 0'))));
-    } else if (m.nomination) {
-      /* The master observer's own host died. Nothing else on the drawing
-         changed, which is the point -- the cross goes on the observer lane. */
-      var oy = G.lane[1] + G.laneH / 2;
-      push(ln('m-rd', xz - 7, oy - 7, xz + 7, oy + 7, ' stroke-width="2.5"'));
-      push(ln('m-rd', xz + 7, oy - 7, xz - 7, oy + 7, ' stroke-width="2.5"'));
-      push(txt('t-mark f-rd', xz + 12, G.lane[1] - 12, null,
-        esc(t('The master observer host is lost at t = 0 \u2014 a backup is nominated in its place'))));
     } else {
       /* A link failure, not a host failure. The dashes sit on the two lanes
          that lost each other and leave the observer's alone -- in every cell
@@ -4034,11 +3958,9 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
       push(txt('t-mark f-sl', xz + 8, my - 8, null, esc(fLab)));
     }
 
-    push(txt('t-top ' + (manual || m.standbyGone || m.nomination || !m.pmyReachable ? 'f-am' : 'f-sl'), plotL, G.topY, null,
+    push(txt('t-top ' + (manual || m.standbyGone || !m.pmyReachable ? 'f-am' : 'f-sl'), plotL, G.topY, null,
       esc(manual
         ? t('No fast-start failover is armed \u2014 only a manual FAILOVER TO can promote the standby')
-        : m.nomination
-        ? t('Both databases keep running \u2014 what changed hands is the master observer')
         : m.standbyGone
           ? t('The primary keeps serving with no standby \u2014 nothing is protecting it now')
           : !m.pmyReachable
@@ -4480,9 +4402,7 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
          while nothing happens -- the second half is the whole risk. */
       case 'continues': {
         var k = chip('rd', t('Failover initiated'), t('never'), '',
-          m.nomination
-            ? t('The master observer died; the broker nominates a backup, and no fast-start failover is possible until that one is observing')
-            : loc === 'none'
+          loc === 'none'
             ? t('No observer is deployed, so fast-start failover is not enabled and nothing can initiate one')
             : m.standbyGone
               ? t('The target standby is gone, so there is nothing for the observer to promote')
@@ -4511,10 +4431,6 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
                   t('MaxPerformance leaves the current apply lag of <span class="mono">{0} s</span> of redo at risk', fmt(m.ifDiedNow)))
               : chip('ik', t('If the primary died right now'), '0', '',
                   t('A synchronized standby in MaxAvailability means zero data loss'));
-        if (m.nomination) {
-          k += chip('vi', t('New master observer'), t('nominated'), '',
-            t('Oracle gives no duration for the nomination, so this chip carries none \u2014 what it marks is an interval in which nothing could have failed over'));
-        }
         k += splitBrainChip(m);
         els.chips.innerHTML = k;
         return;
@@ -4599,10 +4515,6 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
         t('The observer is on a host of its own, so this crash leaves it running and the failover proceeds. A failure that took the whole of {0} would take the observer with it, and no automatic failover could follow.', idv('dc1')));
     }
 
-    if (m.nomination) {
-      out += chip('vi', t('New master observer'), t('nominated'), '',
-        t('The master went with the primary\u2019s side of the cut; the backup beside the standby is what ordered this failover'));
-    }
     out += splitBrainChip(m);
     els.chips.innerHTML = out;
   }
@@ -4614,16 +4526,12 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
     return sc === 'isolated' ? t('Timeline \u2014 isolated primary')
       : sc === 'partition' ? t('Timeline \u2014 {0} to {1} link down', idv('dc1'), idv('dc2'))
         : sc === 'dc2down' ? t('Timeline \u2014 standby site down')
-          /* Reached only where a backup observer survives the master, so the
-             scenario no longer has an outcome of its own. */
-          : sc === 'observer-lost' ? t('Timeline \u2014 master observer lost')
-            : t('Timeline \u2014 primary crash');
+          : t('Timeline \u2014 primary crash');
   }
   function tlEyebrow(sc, m) {
     return sc === 'partition' ? t('t = 0 is the link failure \u00b7 horizon {0} s', fmt(m.horizon))
       : sc === 'dc2down' ? t('t = 0 is the loss of the standby site \u00b7 horizon {0} s', fmt(m.horizon))
-        : sc === 'observer-lost' ? t('t = 0 is the master observer host failure \u00b7 horizon {0} s', fmt(m.horizon))
-          : t('t = 0 is the failure event \u00b7 horizon {0} s', fmt(m.horizon));
+        : t('t = 0 is the failure event \u00b7 horizon {0} s', fmt(m.horizon));
   }
 
   /* What the same cut looks like to redo transport. It lives in a caption and
@@ -4645,9 +4553,7 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
         ? t('The observer stays in {0} \u2014 which is the new <em>standby</em>\u2019s site once the roles have traded, and it goes on observing from there.', idv('dc1'))
         : loc === 'dc2'
           ? t('The observer stays in {0} \u2014 which is the new <em>primary</em>\u2019s site once the roles have traded, and it goes on observing from there.', idv('dc2'))
-          : loc === 'dc1dc2'
-            ? t('An observer sits at each end, so whichever site holds the primary after the swap has one beside it. Neither takes any part in the switchover: it never needs one.')
-            : t('The observer watches from {0} throughout and takes no part in it: a switchover never needs one.', idv('dc3'));
+          : t('The observer watches from {0} throughout and takes no part in it: a switchover never needs one.', idv('dc3'));
   }
 
   function renderProse(m) {
@@ -4715,13 +4621,7 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
         if (m.standbyGone) {
           els.calloutK.textContent = t('Unprotected');
           els.calloutBody.innerHTML = t('The standby site is gone, and the only failover target with it. The primary never lost the observer, so nothing stalls and nothing is initiated: it keeps committing, with nowhere to ship its redo. What the site took with it is the protection \u2014 a primary failure now is an outage, with no role change available to end it.') +
-            (loc === 'none' ? ' ' + t('Fast-start failover was not enabled here in any case: no observer is deployed.') : '') +
-            (loc === 'dc1dc2' ? ' ' + t(MULTI_NOTES.dc2down) : '');
-        } else if (m.nomination) {
-          /* 26ai, observers on both sites: the master died and the backup is
-             being made master. Nothing else on the drawing moved. */
-          els.calloutK.textContent = t('New master observer');
-          els.calloutBody.innerHTML = t(MULTI_NOTES.obsLost);
+            (loc === 'none' ? ' ' + t('Fast-start failover was not enabled here in any case: no observer is deployed.') : '');
         } else if (loc === 'none') {
           els.calloutK.textContent = t('Not enabled');
           els.calloutBody.innerHTML = t('With no observer deployed, fast-start failover is not enabled at all: no threshold starts, nothing is detected and nothing is promoted, whatever the network does. Only a DBA running <span class="mono">FAILOVER TO</span> can move the role, and only once somebody has noticed there is a reason to.');
@@ -4737,16 +4637,12 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
 
         var why = loc === 'none'
           ? t('No observer is deployed, so nothing is watching this and nothing can act on it.')
-          : m.nomination
-          ? t('The master observer is the host that died. A backup at the other site is nominated in its place, and no fast-start failover is possible until that one is observing.')
           : m.standbyGone
             ? t('The observer never lost the primary, so no threshold starts \u2014 and with the standby site gone there would be nothing to promote in any case.')
             : loc === 'dc1'
               ? t('The observer sits inside {0} with the primary, so it never loses sight of it and no threshold starts.', idv('dc1'))
               : t('From {0} the observer still sees the primary, and fast-start failover needs the observer and the standby to have both lost it.', idv('dc3'));
-        var meanwhile = m.nomination
-          ? t('Both databases carry on untouched \u2014 the primary commits, the standby applies. What the failure interrupted is the automation, and only for as long as the nomination takes.')
-          : m.standbyGone
+        var meanwhile = m.standbyGone
           ? t('The primary keeps committing with nowhere to ship its redo, and the exposure grows for as long as {0} is gone.', idv('dc2'))
           : !m.pmyReachable
             ? t('The primary keeps committing for whatever clients are still inside {0}; nothing outside the site can reach it, and the standby receives nothing.', idv('dc1'))
@@ -4757,11 +4653,9 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
         els.summary.textContent = t('Timeline: nothing on it moves. The primary stays open read-write and keeps committing, no fast-start failover clock starts, and no role changes.') +
           ' ' + (loc === 'none'
             ? t('No observer is deployed, so fast-start failover is not enabled here at all.')
-            : m.nomination
-              ? t('The master observer died and the broker nominates a backup as the new master; until that one is observing, no fast-start failover could occur.')
-              : m.standbyGone
-                ? t('The standby site is gone, so there is no failover target left.')
-                : t('The observer still sees the primary, so it holds fire.')) +
+            : m.standbyGone
+              ? t('The standby site is gone, so there is no failover target left.')
+              : t('The observer still sees the primary, so it holds fire.')) +
           ' ' + (m.ifDiedNow === null
             ? t('If the primary died now, there would be nothing to fail over to.')
             : !m.redoFlowing
@@ -4834,13 +4728,7 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
        standby's site exactly the way full isolation stalls one watched from a
        third site -- but only one of those two is a failure of the primary. */
     els.callout.hidden = !m.stalled;
-    if (m.stalled && sc === 'partition' && m.nomination) {
-      /* Same cut, one release later: with an observer at each end there is no
-         arbitrator outside the two sites, and the backup beside the standby is
-         the one that ends up ordering it. */
-      els.calloutK.textContent = t('False failover');
-      els.calloutBody.innerHTML = t(MULTI_NOTES.partition);
-    } else if (m.stalled && sc === 'partition') {
+    if (m.stalled && sc === 'partition') {
       els.calloutK.textContent = t('False failover');
       els.calloutBody.innerHTML = m.blocked
         ? t('Nothing is wrong with the primary here \u2014 the link between {0} and {1} is. The observer sits on the far side of it, so it loses the primary and counts the threshold like any other failure; only the readiness check stops the promotion. The primary is <span class="mono">STALLED</span> either way, because it can reach neither the observer nor the standby.', idv('dc1'), idv('dc2'))
@@ -4865,7 +4753,6 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
             fmt(C.pingInterval), C.pingRetry + 1, fmt(m.detect), fmt(m.tOpen), fmt(C.threshold))
         : t('The observer spends the full threshold trying to reconnect and initiates failover at <span class="mono">{0} s</span>; the standby is open read-write at <span class="mono">{1} s</span>. The <span class="mono">{2} s</span> in between is failover execution \u2014 applying the redo backlog and the role transition.',
             fmt(m.initiate), fmt(m.tOpen), fmt(m.tOpen - m.initiate));
-    if (m.nomination) els.caption.innerHTML += ' ' + t(MULTI_NOTES.nominate, esc(idv('dc2')));
 
     els.eyebrow.textContent = tlEyebrow(sc, m);
     els.summary.textContent = t('Timeline: failover initiated at {0} seconds; ', fmt(m.initiate)) +
@@ -4907,11 +4794,6 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
     els.vShutdown.textContent = C.pmyShutdown ? 'TRUE' : 'FALSE';
     els.vLagGrace.textContent = C.lagGraceTime === 0 ? t('0 s \u2014 off') : C.lagGraceTime + ' s';
 
-    /* The fifth placement is 26ai's: four registered observers ranked by
-       PreferredObserverHosts is what lets one sit beside each database. Under
-       19c the radio is inert and the note below says why. */
-    els.olBoth.disabled = !v26;
-
     /* The two 26ai lag properties. Both describe the lag rather than the
        failover, so their gate is the protection mode and whether fast-start
        failover is enabled at all -- not the scenario. That matches the reopen
@@ -4947,20 +4829,15 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
             : t(LAG26_NOTES.off);
 
     /* Where the observer runs. The radio labels are role-relative and static;
-       the configured site names arrive here, rewritten on every pass. The 19c
-       tail explains the one radio that release cannot offer -- an inert control
-       that says nothing is the one thing this rail never does. */
+       the configured site names arrive here, rewritten on every pass. */
     $('sc-obs').disabled = none;
-    els.nObsloc.innerHTML = (none
+    els.nObsloc.innerHTML = none
       ? t(NOFSFO_NOTES.obsloc)
-      : C.observerLoc === 'dc1dc2'
-        ? t(MULTI_NOTES.obsloc)
-        : C.observerLoc === 'dc1'
+      : C.observerLoc === 'dc1'
         ? t('The observer runs on its own host in {0}, beside the primary. Oracle\u2019s placement hierarchy does not list this one: a site failure takes the observer with the primary, and it cannot arbitrate a partition it is on one side of.', esc(idv('dc1')))
         : C.observerLoc === 'dc2'
           ? t('The observer runs on its own host in {0}, beside the standby. The documented last resort \u2014 isolate it as far as possible from whatever can take the standby down.', esc(idv('dc2')))
-          : t('The observer runs on its own host in {0}, independent of both database sites. This is the placement the HA guide recommends first.', esc(idv('dc3'))))
-      + (v26 ? '' : ' ' + t(V19_NOTES.obsBoth));
+          : t('The observer runs on its own host in {0}, independent of both database sites. This is the placement the HA guide recommends first.', esc(idv('dc3')));
 
     els.nScenario.innerHTML = obs
       ? t(OBS_NOTES.scenario)
@@ -5840,44 +5717,18 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
       o.push(cfgNote(t(' failover is disabled)')));
     } else {
       o.push(cfgCmd('CONNECT sys@' + dbP + ' AS SYSDBA;'));
-      if (loc === 'dc1dc2') {
-        /* Neither host is named on the identity card -- there is one field for
-           one observer -- and neither may be a database host, so these two stay
-           placeholders rather than borrowing a name that would be wrong.
-           A per-database property, not a configuration one: each database
-           ranks the masters allowed while IT is primary, which is what keeps
-           the master beside the primary through a role change. */
-        o.push(cfgCmd("EDIT DATABASE '" + dbP + "' SET PROPERTY 'PreferredObserverHosts' = " +
-          "'&lt;observer-host-1&gt;:1,&lt;observer-host-2&gt;:2';"));
-        o.push(cfgCmd("EDIT DATABASE '" + dbS + "' SET PROPERTY 'PreferredObserverHosts' = " +
-          "'&lt;observer-host-2&gt;:1,&lt;observer-host-1&gt;:2';"));
-        o.push(cfgNote(t('(host 1 stands in {0}, host 2 in {1}; each database ranks its own', esc(idv('dc1')), esc(idv('dc2')))));
-        o.push(cfgNote(t(' site\u2019s observer first, so the master sits beside whichever is primary)')));
-        o.push('');
-        o.push(cfgCmd('START OBSERVER IN BACKGROUND;'));
-        o.push(cfgNote(t('(run on the observer host in {0} \u2014 the preferred master)', esc(idv('dc1')))));
-        o.push(cfgCmd('START OBSERVER IN BACKGROUND;'));
-        o.push(cfgNote(t('(and again on the observer host in {0} \u2014 the backup)', esc(idv('dc2')))));
-      } else {
-        o.push(cfgCmd('START OBSERVER IN BACKGROUND;'));
-        o.push(cfgNote(t('(the prompt returns; the observer process keeps running)')));
-      }
+      o.push(cfgCmd('START OBSERVER IN BACKGROUND;'));
+      o.push(cfgNote(t('(the prompt returns; the observer process keeps running)')));
       o.push('');
       if (C.scenario === 'observer-lost') {
         o.push(cfgNote(t('(chapter 1 is currently killing this process at t = 0 \u2014'), 'bad'));
         o.push(cfgNote(t(' while it is gone, no fast-start failover is possible)'), 'bad'));
       } else if (C.pingSet) {
-        o.push(cfgNote(loc === 'dc1dc2'
-          ? t('(the master is the one that initiates failover, here after \u2248 {0} s)', fmt(detectS))
-          : t('(this is the process that initiates failover, here after \u2248 {0} s)', fmt(detectS))));
+        o.push(cfgNote(t('(this is the process that initiates failover, here after \u2248 {0} s)', fmt(detectS))));
       } else {
-        o.push(cfgNote(loc === 'dc1dc2'
-          ? t('(the master is the one that runs the {0} s reconnect clock)', C.threshold)
-          : t('(this is the process that runs the {0} s reconnect clock)', C.threshold)));
+        o.push(cfgNote(t('(this is the process that runs the {0} s reconnect clock)', C.threshold)));
       }
-      o.push(cfgNote(loc === 'dc1dc2'
-        ? t('({0} and {1} resolve through each observer host\u2019s tnsnames.ora)', dbP, dbS)
-        : t('({0} and {1} resolve through this host\u2019s tnsnames.ora)', dbP, dbS)));
+      o.push(cfgNote(t('({0} and {1} resolve through this host\u2019s tnsnames.ora)', dbP, dbS)));
       if (loc === 'dc3') {
         o.push(cfgNote(t('({0}, a third site \u2014 the HA guide\u2019s first recommendation)',
           esc(idv('dc3')))));
@@ -5885,12 +5736,6 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
         o.push(cfgNote(t('({0}, the standby\u2019s site \u2014 the documented last resort)',
           esc(idv('dc2')))));
         o.push(cfgNote(t('(on its own host, as isolated from the standby as possible)')));
-      } else if (loc === 'dc1dc2') {
-        o.push(cfgNote(t('(one beside each database \u2014 26ai registers up to four)')));
-        o.push(cfgNote(t('(losing the master hands the role to the backup; nothing can')));
-        o.push(cfgNote(t(' fast-start fail over until that backup is observing)')));
-        o.push(cfgNote(t('(no observer outside either database site, so a cut between'), 'bad'));
-        o.push(cfgNote(t(' them has nobody left to arbitrate it)'), 'bad'));
       } else {
         o.push(cfgNote(t('({0}: the primary\u2019s site \u2014 not a placement Oracle lists)',
           esc(idv('dc1'))), 'bad'));
@@ -6884,25 +6729,6 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
       };
     }
 
-    /* 26ai: one observer on each database site. Both panels grow tall to
-       hold an observer card above their database, the two observer links
-       collapse to short local hops, and there is no third panel at all --
-       which is exactly the placement's weakness, drawn. */
-    if (loc === 'dc1dc2') {
-      return {
-        obs: [103, 26, 184, 52], obsW: 124, obsX: [261, 34], obsEv: [300, 40, null],
-        obs2: [893, 26, 184, 52],
-        sites: [['dc1', 70, 10, 250, 204], ['dc2', 860, 10, 250, 204]],
-        links: [
-          { id: 'op', n: ['obs1', 'pmy'], d: 'M195,78 L195,118', pill: { l: [207, 98] } },
-          { id: 'os', n: ['obs2', 'sby'], d: 'M985,78 L985,118', pill: { r: [973, 98] } },
-          redo
-        ],
-        evPmy: [332, 120, null], evIso: [443, 16, null], isoY: [148],
-        evSw: [590, 192, 'middle'], evDc2: [850, 30, 'end'], noObs: null
-      };
-    }
-
     /* No observer at all: two panels, one link, and a line saying what is
        missing. The empty middle is the point. */
     if (loc === 'none') {
@@ -6938,10 +6764,7 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
      from one half of. */
   function topoLinkDown(nodes, sc, loc) {
     function site(n) {
-      return n === 'pmy' ? 'dc1' : n === 'sby' ? 'dc2'
-        /* the both-sites placement names its two observers, because they do not
-           share a site the way the single one does */
-        : n === 'obs1' ? 'dc1' : n === 'obs2' ? 'dc2' : loc;
+      return n === 'pmy' ? 'dc1' : n === 'sby' ? 'dc2' : loc;
     }
     var a = site(nodes[0]), b = site(nodes[1]);
     if (sc === 'crash') return nodes.indexOf('pmy') >= 0;
@@ -6971,11 +6794,7 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
     /* the effective scenario: with no observer deployed there is none to lose,
        and the model has already turned that pairing into a plain crash */
     var sc = m.scenario;
-    var multi = loc === 'dc1dc2';
-    /* Losing the observer means two different things now: every observer gone,
-       or only the master gone with a backup left at the other site. */
-    var obs = sc === 'observer-lost' && !multi;
-    var obsMaster = sc === 'observer-lost' && multi;
+    var obs = sc === 'observer-lost';
     var sw = sc === 'switchover';
     var iso = sc === 'isolated';
     var netFail = iso || sc === 'partition';
@@ -7025,12 +6844,7 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
        stays inside the card next to the badge */
     var subP = fitLabel([idv('subPrimary') + ', ' + idv('dc1'), idv('subPrimary'), idv('dc1')], 118) || idv('dc1');
     var subS = fitLabel([idv('subStandby') + ', ' + idv('dc2'), idv('subStandby'), idv('dc2')], 118) || idv('dc2');
-    var subO = multi
-      ? (fitLabel([t('master, in {0}', idv('dc1')), t('in {0}', idv('dc1')), idv('dc1')], L.obsW) || idv('dc1'))
-      : topoSubO(loc, L.obsW);
-    var subO2 = multi
-      ? (fitLabel([t('backup, in {0}', idv('dc2')), t('in {0}', idv('dc2')), idv('dc2')], L.obsW) || idv('dc2'))
-      : null;
+    var subO = topoSubO(loc, L.obsW);
 
     /* The ground panels, drawn behind everything. Only a lost site is filled
        with the hatch: a severed link leaves both data centres perfectly
@@ -7062,16 +6876,11 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
         return t('Topology: the primary database in {0}; the target standby and the observer, on hosts of their own, both in {1}.',
           idv('dc1'), idv('dc2'));
       }
-      if (loc === 'dc1dc2') {
-        return t('Topology: the primary database in {0} and the target standby in {1}, each with an observer on a host of its own beside it \u2014 the master in {0}, a backup in {1}. There is no third site.',
-          idv('dc1'), idv('dc2'));
-      }
       return t('Topology: the primary database in {0}, the target standby in {1}, the observer on {2}.',
         idv('dc1'), idv('dc2'), oh ? oh : t('a third host'));
     }
 
     function ariaEvent() {
-      if (obsMaster) return t('The master observer host dies at t = 0. The primary and the standby stay connected and redo keeps flowing; the broker nominates the backup observer as the new master, and until it is observing no fast-start failover can occur.');
       if (obs) return t('The observer host dies at t = 0. The primary and the standby stay connected, so redo keeps flowing, but the configuration is unobserved and nothing can fail over.');
       if (sw) return t('Every host stays up: at t = 0 the DBA issues a switchover, and the two databases trade roles.');
       if (iso) {
@@ -7087,9 +6896,7 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
       if (sc === 'dc2down') {
         return loc === 'dc2'
           ? t('The whole standby site {0} is lost at t = 0, taking the target standby and the observer with it.', idv('dc2'))
-          : loc === 'dc1dc2'
-            ? t('The whole standby site {0} is lost at t = 0, taking the target standby and the backup observer with it. The master observer in {1} is untouched.', idv('dc2'), idv('dc1'))
-            : t('The whole standby site {0} is lost at t = 0, taking the target standby with it.', idv('dc2'));
+          : t('The whole standby site {0} is lost at t = 0, taking the target standby with it.', idv('dc2'));
       }
       return t('The primary host crashes at t = 0.');
     }
@@ -7111,7 +6918,7 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
       '<circle cx="12" cy="12" r="3.1"></circle></g></defs>');
 
     /* the slate arrowhead exists only where the redo link survives */
-    if (obs || obsMaster || sw) {
+    if (obs || sw) {
       push('<defs><marker id="topoAs" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" ' +
         'orient="auto-start-reverse"><path d="M0,1 L10,5 L0,9 z" class="tp-ahs"></path></marker></defs>');
     }
@@ -7122,8 +6929,7 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
     var down = {};
     L.links.forEach(function (lk) {
       down[lk.id] = obs ? (lk.id !== 'ps')
-        : obsMaster ? (lk.id === 'op')
-          : sw ? false : topoLinkDown(lk.n, sc, loc);
+        : sw ? false : topoLinkDown(lk.n, sc, loc);
       push('<path class="' + (down[lk.id] ? 'tp-link-x' : 'tp-link') + '" d="' + lk.d + '"' +
         (lk.id === 'ps' ? ' marker-end="url(#topo' + (down.ps ? 'Ar' : 'As') + ')"' : '') + '></path>');
     });
@@ -7135,10 +6941,6 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
     L.links.forEach(function (lk) {
       if (obs && lk.id !== 'ps') {
         push(pill(lk.pill, lk.id === 'op' ? t('no observer to ping') : t('no readiness check'), null, true));
-        return;
-      }
-      if (obsMaster && lk.id === 'op') {
-        push(pill(lk.pill, t('master gone \u2014 backup nominated'), null, true));
         return;
       }
       var cap = lk.id === 'op' ? 'ping'
@@ -7156,24 +6958,19 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
       push(pill(lk.pill, cap, lat, !!down[lk.id]));
     });
 
-    /* cards; the master observer's card is the one that dies on observer-lost,
-       and the backup's dies only with its whole site */
+    /* cards */
     if (L.obs) {
-      var obsDown = obs || obsMaster || (sc === 'dc2down' && loc === 'dc2');
+      var obsDown = obs || (sc === 'dc2down' && loc === 'dc2');
       push(nodeCard(L.obs[0], L.obs[1], L.obs[2], L.obs[3], obsDown, true, 'Observer', subO));
-    }
-    if (L.obs2) {
-      push(nodeCard(L.obs2[0], L.obs2[1], L.obs2[2], L.obs2[3], sc === 'dc2down', true, 'Observer', subO2));
     }
     push(nodeCard(103, 118, 184, 60, sc === 'crash', false, 'Primary', subP));
     push(nodeCard(893, 118, 184, 60, sc === 'dc2down', false, 'Standby', subS));
 
     /* what happened at t = 0, in the vocabulary of the thing it happened to */
-    if (obs || obsMaster) {
+    if (obs) {
       push(ln('tp-x', L.obsX[0], L.obsX[1], L.obsX[0] + 14, L.obsX[1] + 14));
       push(ln('tp-x', L.obsX[0] + 14, L.obsX[1], L.obsX[0], L.obsX[1] + 14));
-      push(txt('tp-ev', L.obsEv[0], L.obsEv[1], L.obsEv[2],
-        esc(obsMaster ? t('master observer host down at t = 0') : t('observer host down at t = 0'))));
+      push(txt('tp-ev', L.obsEv[0], L.obsEv[1], L.obsEv[2], esc(t('observer host down at t = 0'))));
     } else if (sw) {
       push(txt('tp-ev', L.evSw[0], L.evSw[1], L.evSw[2],
         esc(t('roles trade places at t = 0 \u2014 both hosts stay up'))));
@@ -7239,9 +7036,10 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
     els.wrap.innerHTML = buildTimeline(m, lastW);
 
     /* The release is in the signature, unlike the language: an edition flip
-       changes the drawing (the nomination brace appears), not only its words. */
+       changes the drawing (MaxAvailability can become bounded-loss under a
+       26ai lag policy), not only its words. */
     var sig = [C.scenario, C.observerLoc, m.outcome, C.mode, C.pingSet, C.pmyShutdown,
-      m.blocked, m.applyRemaining > 0, C.version, !!m.nomination,
+      m.blocked, m.applyRemaining > 0, C.version,
       m.dataLossKind].join('|');
     if (sig !== lastSig) {
       if (els.wrap.firstChild && els.wrap.firstChild.classList) els.wrap.firstChild.classList.add('is-new');
@@ -7328,18 +7126,6 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
     crash.dispatchEvent(new Event('change', { bubbles: true }));
   }
 
-  /* Observers on both database sites exist only in 26ai. Switching back to 19c
-     while it is selected -- or arriving on a crafted link that asks for both at
-     once -- pushes the third-site radio through its own change event, the same
-     way the impossible scenario pairing above does, so the rail can never show
-     a placement the drawing is not drawing. */
-  function coerceObsloc() {
-    if (C.observerLoc !== 'dc1dc2' || window.DG.ed() === '26ai') return;
-    var d3 = $('ol-dc3');
-    d3.checked = true;
-    d3.dispatchEvent(new Event('change', { bubbles: true }));
-  }
-
   ['scenario', 'mode'].forEach(function (group) {
     Array.prototype.forEach.call(document.querySelectorAll('input[name="' + group + '"]'), function (r) {
       r.addEventListener('change', function () {
@@ -7354,7 +7140,6 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
     r.addEventListener('change', function () {
       if (!r.checked) return;
       C.observerLoc = r.value;
-      coerceObsloc();
       coerceScenario();
       schedule();
     });
@@ -7509,9 +7294,7 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
        failover, so it must not imply one. */
     els.cfgObserverHost.textContent = C.observerLoc === 'none'
       ? t('not deployed')
-      /* two of them, so a single configured name would only be half the truth */
-      : C.observerLoc === 'dc1dc2' ? t('two observer hosts')
-        : (oh || t('observer host'));
+      : (oh || t('observer host'));
   }
 
   function setField(el, v) {
@@ -7619,15 +7402,11 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
         sm.scenario === 'partition' || sm.scenario === 'dc2down' ||
         sm.scenario === 'observer-lost' || sm.scenario === 'switchover') c.scenario = sm.scenario;
     if (sm.observerLoc === 'none' || sm.observerLoc === 'dc1' ||
-        sm.observerLoc === 'dc2' || sm.observerLoc === 'dc3' ||
-        sm.observerLoc === 'dc1dc2') c.observerLoc = sm.observerLoc;
-    /* An older file carries no placement at all and lands on the third site,
-       which is what the page always assumed. The one pair the controls refuse
-       to offer is refused here too. */
+        sm.observerLoc === 'dc2' || sm.observerLoc === 'dc3') c.observerLoc = sm.observerLoc;
+    /* An older file carries no placement at all -- or one this page no longer
+       offers -- and lands on the third site, which is what the page always
+       assumed. The one pair the controls refuse to offer is refused here too. */
     if (c.observerLoc === 'none' && c.scenario === 'observer-lost') c.scenario = 'crash';
-    /* And a file written under 26ai, opened under 19c, lands where the rail
-       would push it: observers on both sites is a placement 19c cannot offer. */
-    if (c.observerLoc === 'dc1dc2' && window.DG.ed() !== '26ai') c.observerLoc = 'dc3';
     c.lagType = (p.lagType === 'transport') ? 'transport' : 'apply';
     /* A file written before this control existed carries no policy at all and
        lands on zero data loss, which is what the page always drew. */
@@ -7680,7 +7459,6 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
     $('ol-dc1').checked = C.observerLoc === 'dc1';
     $('ol-dc2').checked = C.observerLoc === 'dc2';
     $('ol-dc3').checked = C.observerLoc === 'dc3';
-    $('ol-both').checked = C.observerLoc === 'dc1dc2';
     $('lt-apply').checked = C.lagType !== 'transport';
     $('lt-xpt').checked = C.lagType === 'transport';
     $('lp-zero').checked = C.lagPolicy !== 'bounded';
@@ -7765,13 +7543,9 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
      control's own change event do the work -- the scenario coercion, the URL
      serializer and the config pill all hang off that one path, and none of
      them can be reached from here. */
-  var OBSLOC_RADIO = { none: 'ol-none', dc1: 'ol-dc1', dc2: 'ol-dc2', dc3: 'ol-dc3',
-    dc1dc2: 'ol-both' };
+  var OBSLOC_RADIO = { none: 'ol-none', dc1: 'ol-dc1', dc2: 'ol-dc2', dc3: 'ol-dc3' };
   els.depObsloc.addEventListener('change', function () {
     var r = $(OBSLOC_RADIO[els.depObsloc.value] || '');
-    /* A disabled radio is a placement this release does not have. The dispatch
-       below would take effect anyway -- that is the whole reason it is used
-       instead of click() -- so the guard belongs here. */
     if (!r || r.checked || r.disabled) return;
     r.checked = true;
     r.dispatchEvent(new Event('change', { bubbles: true }));
@@ -7937,12 +7711,6 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
     schedule();
     setMsg(t('Everything reset to the documented defaults'), false);
   });
-
-  /* Registered before the repaint below, because a switch back to 19c has to
-     put the placement radio somewhere 19c can draw before anything draws. The
-     dispatched change event schedules its own frame, so this costs nothing when
-     the placement is one both releases have. */
-  window.DG.onLang(coerceObsloc);
 
   /* A language switch is a full repaint: every string above is produced by
      draw(), so nothing else has to be re-labelled here. The signature vars are
@@ -8522,8 +8290,7 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
     /* Where the observer runs. 'ol' is applied after 'sc', so a link naming
        both an impossible pair lands on the coercion the rail performs. */
     { k: 'ol',  t: 'radio', name: 'obsloc', d: 'dc3',
-      map: { none: 'ol-none', dc1: 'ol-dc1', dc2: 'ol-dc2', dc3: 'ol-dc3',
-             both: 'ol-both' } },
+      map: { none: 'ol-none', dc1: 'ol-dc1', dc2: 'ol-dc2', dc3: 'ol-dc3' } },
     { k: 'pm',  t: 'radio', name: 'mode', d: 'avail',
       map: { avail: 'md-avail', perf: 'md-perf' } },
     { k: 'th',  t: 'range', id: 'c-threshold',    d: 30 },
