@@ -6720,8 +6720,8 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
           { id: 'os', n: ['obs', 'sby'], d: 'M287,52 L978,52 Q985,52 985,59 L985,118', pill: { c: [636, 52] } },
           redo
         ],
-        evPmy: [332, 120, null], evIso: [406, 16, null], evSw: [590, 192, 'middle'],
-        evDc2: [977, 88, 'end'], noObs: null
+        evPmy: [332, 120, null], evIso: [443, 16, null], isoY: [52, 148],
+        evSw: [590, 192, 'middle'], evDc2: [977, 88, 'end'], noObs: null
       };
     }
 
@@ -6735,8 +6735,8 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
           { id: 'os', n: ['obs', 'sby'], d: 'M985,78 L985,118', pill: { r: [973, 98] } },
           redo
         ],
-        evPmy: [70, 88, null], evIso: [386, 16, 'end'], evSw: [590, 192, 'middle'],
-        evDc2: [850, 30, 'end'], noObs: null
+        evPmy: [70, 88, null], evIso: [427, 16, 'end'], isoY: [52, 148],
+        evSw: [590, 192, 'middle'], evDc2: [850, 30, 'end'], noObs: null
       };
     }
 
@@ -6754,8 +6754,8 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
           { id: 'os', n: ['obs2', 'sby'], d: 'M985,78 L985,118', pill: { r: [973, 98] } },
           redo
         ],
-        evPmy: [332, 120, null], evIso: [406, 16, null], evSw: [590, 192, 'middle'],
-        evDc2: [850, 30, 'end'], noObs: null
+        evPmy: [332, 120, null], evIso: [443, 16, null], isoY: [148],
+        evSw: [590, 192, 'middle'], evDc2: [850, 30, 'end'], noObs: null
       };
     }
 
@@ -6766,8 +6766,8 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
         obs: null, obsW: 0, obsX: null, obsEv: null,
         sites: [['dc1', 70, 96, 250, 118], ['dc2', 860, 96, 250, 118]],
         links: [redo],
-        evPmy: [70, 88, null], evIso: [384, 16, 'end'], evSw: [590, 192, 'middle'],
-        evDc2: [977, 88, 'end'], noObs: [590, 50, 'middle']
+        evPmy: [70, 88, null], evIso: [427, 16, 'end'], isoY: [148],
+        evSw: [590, 192, 'middle'], evDc2: [977, 88, 'end'], noObs: [590, 50, 'middle']
       };
     }
 
@@ -6782,8 +6782,8 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
         { id: 'os', n: ['obs', 'sby'], d: 'M654,58 L978,58 Q985,58 985,65 L985,118', pill: { c: [820, 58] } },
         redo
       ],
-      evPmy: [70, 88, null], evIso: [384, 16, 'end'], evSw: [590, 192, 'middle'],
-      evDc2: [977, 88, 'end'], noObs: null
+      evPmy: [70, 88, null], evIso: [427, 16, 'end'], isoY: [58, 148],
+      evSw: [590, 192, 'middle'], evDc2: [977, 88, 'end'], noObs: null
     };
   }
 
@@ -7034,7 +7034,17 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
       push(txt('tp-ev', L.evSw[0], L.evSw[1], L.evSw[2],
         esc(t('roles trade places at t = 0 \u2014 both hosts stay up'))));
     } else if (iso) {
-      push('<path class="tp-part" d="M392,14 L366,222"></path>');
+      /* A straight vertical cut, at x=435: the whitespace between the ping
+         pill's right edge and the DC 3 panel, so the line reads as one clean
+         edge and lands on no pill in any placement. */
+      push('<path class="tp-part" d="M435,14 L435,222"></path>');
+      /* the same pair of slashes the partition scenario cuts its one link
+         with, repeated wherever this cut crosses a link -- which links those
+         are is a property of the placement, so the layout names their y */
+      L.isoY.forEach(function (y) {
+        push(ln('tp-x', 425, y + 8, 435, y - 8));
+        push(ln('tp-x', 435, y + 8, 445, y - 8));
+      });
       push(txt('tp-ev', L.evIso[0], L.evIso[1], L.evIso[2], esc(t('network partition at t = 0'))));
     } else if (sc === 'partition') {
       /* one cut, on the one link that failed -- both sites are intact. The
