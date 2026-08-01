@@ -187,26 +187,24 @@ white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 /* Capped at the viewBox width: at 1:1 the hairlines and 10-13px labels render
    as crisply as the timeline below, which draws at native pixels. Wider
    containers center the strip instead of scaling it soft. */
-.topo-svg{display:block;min-width:640px;width:100%;max-width:960px;margin:0 auto;height:auto}
+.topo-svg{display:block;min-width:800px;width:100%;max-width:1180px;margin:0 auto;height:auto}
 .topo-svg text{font-family:var(--sans)}
 .topo-svg .tp-name{fill:var(--ik);font-size:13px;font-weight:600}
 .topo-svg .tp-sub{fill:var(--ik3);font-size:10px}
 .topo-svg .tp-cap{fill:var(--ik2);font-size:10.5px}
 .topo-svg .tp-lat{fill:var(--vi);font-size:10.5px;font-weight:600;font-family:var(--mono);font-variant-numeric:tabular-nums}
 .topo-svg .tp-ev{fill:var(--rd);font-size:11px;font-weight:600}
-/* nodes are cards: a flat surface rectangle with a hairline border, a
-   role-colored top edge, and a tinted icon badge -- the same flat bordered
-   language as the rail and the readout tiles (no shadow: nothing else on the
-   page floats). All three cards share one treatment; the observer is told
-   apart by its violet accents alone, exactly as teal tells the primary. The
-   card body only ever changes on a host death; a severed link never touches
-   the cards at its ends. */
+/* nodes are cards: a flat surface rectangle with a hairline border and an
+   icon badge -- the same flat bordered language as the rail and the readout
+   tiles (no shadow: nothing else on the page floats). The cards are
+   monochrome; the glyphs say what a node is (database cylinder, observer
+   eye) and red is reserved for the one thing color must say -- this
+   component is down. */
 .topo-svg .tp-card{fill:var(--sf);stroke:var(--ln);stroke-width:1}
 .topo-svg .tp-down{fill:url(#topoHatch);stroke:var(--rd)}
-.topo-svg .tp-roleP{fill:var(--tl)} .topo-svg .tp-roleS{fill:var(--bl)} .topo-svg .tp-roleO{fill:var(--vi)}
-.topo-svg .tp-bdgP{fill:var(--tlf)} .topo-svg .tp-bdgS{fill:var(--blf)} .topo-svg .tp-bdgO{fill:var(--vif)}
+.topo-svg .tp-bdg{fill:var(--sf3)}
 .topo-svg .tp-bdg-down{fill:var(--rdf)}
-.topo-svg .tp-icoP{stroke:var(--tl)} .topo-svg .tp-icoS{stroke:var(--bl)} .topo-svg .tp-icoO{stroke:var(--vi)}
+.topo-svg .tp-ico{stroke:var(--ik2)}
 .topo-svg .tp-ico-down{stroke:var(--rd)}
 /* ground panels for the two (or three) data centres: which failures are
    site failures and which are only link failures is the whole lesson of the
@@ -6143,11 +6141,12 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
   /* The primary and standby cards, and the redo link between them, sit at the
      same coordinates in every drawing. Only the observer card, its ground
      panel and the two links it owns move with the placement. Links are routed
-     orthogonally and each carries one pill anchor (c/l/r = centered, left- or
-     right-edge-anchored); the event-label anchors move per placement because
-     the free whitespace does. */
+     orthogonally, every corner turned with a 7px arc so an elbow reads as one
+     bent wire rather than two butted segments, and each carries one pill
+     anchor (c/l/r = centered, left- or right-edge-anchored); the event-label
+     anchors move per placement because the free whitespace does. */
   function topoLayout(loc) {
-    var redo = { id: 'ps', n: ['pmy', 'sby'], d: 'M287,148 L673,148', pill: { c: [480, 148] } };
+    var redo = { id: 'ps', n: ['pmy', 'sby'], d: 'M287,148 L893,148', pill: { c: [590, 148] } };
 
     /* Observer on the primary's own site: the DC 1 panel grows upward to hold
        both cards, the ping collapses to a short vertical hop, and the
@@ -6156,29 +6155,29 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
     if (loc === 'dc1') {
       return {
         obs: [103, 26, 184, 52], obsW: 124, obsX: [261, 34], obsEv: [300, 40, null],
-        sites: [['dc1', 70, 10, 250, 204], ['dc2', 640, 96, 250, 118]],
+        sites: [['dc1', 70, 10, 250, 204], ['dc2', 860, 96, 250, 118]],
         links: [
           { id: 'op', n: ['obs', 'pmy'], d: 'M195,78 L195,118', pill: { l: [207, 98] } },
-          { id: 'os', n: ['obs', 'sby'], d: 'M287,52 L765,52 L765,118', pill: { c: [520, 52] } },
+          { id: 'os', n: ['obs', 'sby'], d: 'M287,52 L978,52 Q985,52 985,59 L985,118', pill: { c: [636, 52] } },
           redo
         ],
-        evPmy: [332, 120, null], evIso: [366, 16, null], evSw: [480, 192, 'middle'],
-        evDc2: [757, 88, 'end'], noObs: null
+        evPmy: [332, 120, null], evIso: [406, 16, null], evSw: [590, 192, 'middle'],
+        evDc2: [977, 88, 'end'], noObs: null
       };
     }
 
     /* Mirrored onto the standby's site. */
     if (loc === 'dc2') {
       return {
-        obs: [673, 26, 184, 52], obsW: 124, obsX: [827, 34], obsEv: [661, 40, 'end'],
-        sites: [['dc1', 70, 96, 250, 118], ['dc2', 640, 10, 250, 204]],
+        obs: [893, 26, 184, 52], obsW: 124, obsX: [1047, 34], obsEv: [881, 40, 'end'],
+        sites: [['dc1', 70, 96, 250, 118], ['dc2', 860, 10, 250, 204]],
         links: [
-          { id: 'op', n: ['obs', 'pmy'], d: 'M673,52 L195,52 L195,118', pill: { c: [430, 52] } },
-          { id: 'os', n: ['obs', 'sby'], d: 'M765,78 L765,118', pill: { r: [753, 98] } },
+          { id: 'op', n: ['obs', 'pmy'], d: 'M893,52 L202,52 Q195,52 195,59 L195,118', pill: { c: [544, 52] } },
+          { id: 'os', n: ['obs', 'sby'], d: 'M985,78 L985,118', pill: { r: [973, 98] } },
           redo
         ],
-        evPmy: [70, 88, null], evIso: [346, 16, 'end'], evSw: [480, 192, 'middle'],
-        evDc2: [630, 30, 'end'], noObs: null
+        evPmy: [70, 88, null], evIso: [386, 16, 'end'], evSw: [590, 192, 'middle'],
+        evDc2: [850, 30, 'end'], noObs: null
       };
     }
 
@@ -6187,10 +6186,10 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
     if (loc === 'none') {
       return {
         obs: null, obsW: 0, obsX: null, obsEv: null,
-        sites: [['dc1', 70, 96, 250, 118], ['dc2', 640, 96, 250, 118]],
+        sites: [['dc1', 70, 96, 250, 118], ['dc2', 860, 96, 250, 118]],
         links: [redo],
-        evPmy: [70, 88, null], evIso: [344, 16, 'end'], evSw: [480, 192, 'middle'],
-        evDc2: [757, 88, 'end'], noObs: [480, 50, 'middle']
+        evPmy: [70, 88, null], evIso: [384, 16, 'end'], evSw: [590, 192, 'middle'],
+        evDc2: [977, 88, 'end'], noObs: [590, 50, 'middle']
       };
     }
 
@@ -6198,15 +6197,15 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
        side margins around its card as the two database panels do -- tighter
        and it reads as a misdrawn halo, not a site. */
     return {
-      obs: [399, 24, 162, 52], obsW: 103, obsX: [530, 32], obsEv: [604, 34, null],
-      sites: [['dc1', 70, 96, 250, 118], ['dc2', 640, 96, 250, 118], ['dc3', 366, 6, 228, 100]],
+      obs: [509, 24, 162, 52], obsW: 103, obsX: [640, 32], obsEv: [714, 34, null],
+      sites: [['dc1', 70, 96, 250, 118], ['dc2', 860, 96, 250, 118], ['dc3', 476, 6, 228, 100]],
       links: [
-        { id: 'op', n: ['obs', 'pmy'], d: 'M416,58 L195,58 L195,118', pill: { c: [300, 58] } },
-        { id: 'os', n: ['obs', 'sby'], d: 'M544,58 L765,58 L765,118', pill: { c: [660, 58] } },
+        { id: 'op', n: ['obs', 'pmy'], d: 'M526,58 L202,58 Q195,58 195,65 L195,118', pill: { c: [360, 58] } },
+        { id: 'os', n: ['obs', 'sby'], d: 'M654,58 L978,58 Q985,58 985,65 L985,118', pill: { c: [820, 58] } },
         redo
       ],
-      evPmy: [70, 88, null], evIso: [344, 16, 'end'], evSw: [480, 192, 'middle'],
-      evDc2: [757, 88, 'end'], noObs: null
+      evPmy: [70, 88, null], evIso: [384, 16, 'end'], evSw: [590, 192, 'middle'],
+      evDc2: [977, 88, 'end'], noObs: null
     };
   }
 
@@ -6254,21 +6253,20 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
     var L = topoLayout(loc);
     var s = [], push = function (x) { s.push(x); };
 
-    /* A node is a card: a flat bordered surface, a role-colored top edge, a
-       tinted icon badge (database cylinder or observer eye), then two lines
-       of text. A dead card hatches and its badge goes red; the role bar
-       stays, because the identity of what died is half the caption. */
-    function nodeCard(x, y, w, h, role, isDown, isObs, name, sub) {
+    /* A node is a card: a flat bordered surface, a monochrome icon badge
+       (database cylinder or observer eye), then two lines of text. A dead
+       card hatches and its badge goes red; the name line keeps saying which
+       role died, because the identity of what died is half the caption. */
+    function nodeCard(x, y, w, h, isDown, isObs, name, sub) {
       var db = h === 60;
       var b = db ? 32 : 28, bx = x + 12, by = y + (db ? 14 : 12);
       var pad = Math.round((b - 24) / 2);
       var tx = x + (db ? 56 : 52);
       return '<rect class="tp-card' + (isDown ? ' tp-down' : '') +
         '" x="' + x + '" y="' + y + '" width="' + w + '" height="' + h + '" rx="5"></rect>' +
-        '<rect class="tp-role' + role + '" x="' + x + '" y="' + y + '" width="' + w + '" height="3" rx="1.5"></rect>' +
-        '<rect class="' + (isDown ? 'tp-bdg-down' : 'tp-bdg' + role) + '" x="' + bx + '" y="' + by +
+        '<rect class="tp-bdg' + (isDown ? '-down' : '') + '" x="' + bx + '" y="' + by +
         '" width="' + b + '" height="' + b + '" rx="7"></rect>' +
-        '<use href="#topoIco' + (isObs ? 'Eye' : 'Db') + '" class="' + (isDown ? 'tp-ico-down' : 'tp-ico' + role) +
+        '<use href="#topoIco' + (isObs ? 'Eye' : 'Db') + '" class="tp-ico' + (isDown ? '-down' : '') +
         '" transform="translate(' + (bx + pad) + ',' + (by + pad) + ')"></use>' +
         txt('tp-name', tx, y + (db ? 26 : 22), null, esc(name)) +
         txt('tp-sub', tx, y + (db ? 42 : 38), null, esc(sub));
@@ -6285,7 +6283,7 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
       var x = anchor.c ? anchor.c[0] - w / 2 : anchor.l ? anchor.l[0] : anchor.r[0] - w;
       var cy = (anchor.c || anchor.l || anchor.r)[1];
       var out = '<rect class="' + (bad ? 'tp-pill-x' : 'tp-pill') + '" x="' + r1(x) + '" y="' + r1(cy - 10) +
-        '" width="' + w + '" height="20" rx="10"></rect>' +
+        '" width="' + w + '" height="20" rx="3"></rect>' +
         txt('tp-cap', x + 10, cy + 3.5, null, esc(cap));
       if (lat) out += txt(bad ? 'tp-lat-x' : 'tp-lat', x + 10 + approxW(cap, 10.5) + 8, cy + 3.5, null, esc(lat));
       return out;
@@ -6354,7 +6352,7 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
 
     /* 10px of headroom above y=0 balances the 16px below the site panels,
        now that the strip renders 1:1 against the wrap's border */
-    push('<svg class="topo-svg" viewBox="0 -10 960 240" role="img" aria-label="' +
+    push('<svg class="topo-svg" viewBox="0 -10 1180 240" role="img" aria-label="' +
       esc(ariaPlace() + ' ' + ariaEvent() + ' ' +
           t('Every link carries {0} ms of round-trip latency.', C.latency)) + '">');
     push('<defs><pattern id="topoHatch" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">' +
@@ -6402,7 +6400,7 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
         psW = pillW(cap, lat);
         /* the SYNC cost, spelled out under the pill while commits still flow */
         if (sync && !down.ps) {
-          push(txt('tp-cap', 480, 170, 'middle', esc(t('each commit waits one standby RTT'))));
+          push(txt('tp-cap', 590, 170, 'middle', esc(t('each commit waits one standby RTT'))));
         }
       }
       push(pill(lk.pill, cap, lat, !!down[lk.id]));
@@ -6411,10 +6409,10 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
     /* cards */
     if (L.obs) {
       var obsDown = obs || (sc === 'dc2down' && loc === 'dc2');
-      push(nodeCard(L.obs[0], L.obs[1], L.obs[2], L.obs[3], 'O', obsDown, true, 'Observer', subO));
+      push(nodeCard(L.obs[0], L.obs[1], L.obs[2], L.obs[3], obsDown, true, 'Observer', subO));
     }
-    push(nodeCard(103, 118, 184, 60, 'P', sc === 'crash', false, 'Primary', subP));
-    push(nodeCard(673, 118, 184, 60, 'S', sc === 'dc2down', false, 'Standby', subS));
+    push(nodeCard(103, 118, 184, 60, sc === 'crash', false, 'Primary', subP));
+    push(nodeCard(893, 118, 184, 60, sc === 'dc2down', false, 'Standby', subS));
 
     /* what happened at t = 0, in the vocabulary of the thing it happened to */
     if (obs) {
@@ -6425,16 +6423,16 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
       push(txt('tp-ev', L.evSw[0], L.evSw[1], L.evSw[2],
         esc(t('roles trade places at t = 0 \u2014 both hosts stay up'))));
     } else if (iso) {
-      push('<path class="tp-part" d="M352,14 L326,222"></path>');
+      push('<path class="tp-part" d="M392,14 L366,222"></path>');
       push(txt('tp-ev', L.evIso[0], L.evIso[1], L.evIso[2], esc(t('network partition at t = 0'))));
     } else if (sc === 'partition') {
       /* one cut, on the one link that failed -- both sites are intact. The
          two slashes sit on the line just left of the redo pill, so they never
          land on it whatever width the pill's translation needs. */
-      var sx = 480 - psW / 2 - 26;
+      var sx = 590 - psW / 2 - 26;
       push(ln('tp-x', sx, 156, sx + 10, 140));
       push(ln('tp-x', sx + 10, 156, sx + 20, 140));
-      push(txt('tp-ev', 480, 190, 'middle',
+      push(txt('tp-ev', 590, 190, 'middle',
         esc(t('{0} to {1} link down at t = 0', idv('dc1'), idv('dc2')))));
     } else if (sc === 'dc2down') {
       push(txt('tp-ev', L.evDc2[0], L.evDc2[1], L.evDc2[2], esc(t('site down at t = 0'))));
