@@ -14,12 +14,12 @@ extend it without breaking consistency or accuracy.
 | `diagrams/fsfo-timeline-isolated.svg` (+`.png`) | Swimlane timeline, network partition: two independent threshold clocks, primary self-abort (split-brain protection) |
 | `diagrams/fsfo-sequence.svg` (+`.png`) | Sequence diagram of the crash case with an elapsed-time gutter |
 | `diagrams/fsfo-net-timeout.svg` (+`.png`) | Two panels separating NET_TIMEOUT (redo transport) from the broker failover clocks |
-| `diagrams/README.md` | Figure embeds, broker-property and redo-transport-property tables with verified defaults, the ping-properties quirk, the verified-facts sections behind the simulator's commit/reopen/observer/placement/side-topics views (including the 24-cell observer-placement outcome matrix), the drawing idealizations, Oracle doc links |
+| `diagrams/README.md` | Figure embeds, broker-property and redo-transport-property tables with verified defaults, the ping-properties quirk, the verified-facts sections behind the simulator's commit/reopen/observer/placement/side-topics views (including the observer-placement outcome matrix — 24 19c cells plus the 26ai both-sites column), the drawing idealizations, Oracle doc links |
 | `simulator/fsfo-simulator.html` | Source fragment of the interactive simulator, published at davidbudac.cz/dataguard. English only |
 | `simulator/i18n/cs.json` | Czech translation catalog, keyed by the English source strings. Real UTF-8 — deliberately outside the ASCII-only fragment |
 | `testing/README.md` | Test runbook: step-by-step drills verifying each documented situation against a real 19c configuration (crash, isolation, observer loss, NET_TIMEOUT, blocked failover, reopen/MaxFailure, client view, commit measurement), with an RTO/RPO probe harness and reinstate cleanup. Repo-only markdown — not part of the published site |
 | `site/build.mjs` | Wraps the fragment into a full page (doctype, charset, title, favicon, canonical + social meta), inlines `simulator/i18n/cs.json` as a JSON `<script>`, and enforces the ASCII-only guard — it exits non-zero on any byte above U+007E |
-| `site/test.mjs` | Standalone node test: extracts the four model marker blocks from the fragment and asserts the documented domain invariants — including the 24-cell scenario × observer-location outcome matrix as a literal table — then checks the Czech catalog for dropped placeholders, unbalanced inline markup and bad plural forms. No dependencies; `node --test site/test.mjs`. `site/publish.sh` runs it after the build, so a model that contradicts the docs cannot be deployed |
+| `site/test.mjs` | Standalone node test: extracts the four model marker blocks from the fragment and asserts the documented domain invariants — including the scenario × observer-location outcome matrix as literal tables (24 19c cells, the six 26ai both-sites cells, and the 19c-invariance loops over the version axis) — then checks the Czech catalog for dropped placeholders, unbalanced inline markup and bad plural forms. No dependencies; `node --test site/test.mjs`. `site/publish.sh` runs it after the build, so a model that contradicts the docs cannot be deployed |
 | `site/publish.sh` | Builds, tests the models, and deploys to the VPS, then verifies the public URL |
 
 ## Publishing
@@ -438,10 +438,11 @@ The workbench carries **six scenarios**, in rail order: primary **crash**,
 (`dc2down` — the whole standby data centre, and anything else in it), **observer
 lost** and planned **switchover**. Crossed with them is the **observer-location**
 control that sits directly beneath: **none** / **primary site** / **standby
-site** / **third site** (the default, and what the page always assumed). That is
-24 states, and the outcome of every one of them is a literal table in
-`site/test.mjs` and a prose table in `diagrams/README.md` — change one and change
-all three. The radio labels are deliberately role-relative and static, never the
+site** / **third site** (the default, and what the page always assumed), plus
+**both sites** under the 26ai edition (see The edition switch below). That is
+24 19c states plus the six-cell 26ai column, and the outcome of every one of
+them is a literal table in `site/test.mjs` and a prose table in
+`diagrams/README.md` — change one and change all three. The radio labels are deliberately role-relative and static, never the
 configured site names: `.seg-row label` is in the i18n snapshot, so a
 runtime-rewritten label would be clobbered on `setLang`; the configured names
 arrive in the `ctl-note` through `t()` placeholders instead.
@@ -687,7 +688,9 @@ topics and Reference, and the two cross-links (chapter 2's commit caption to
 `#impactview`, the reopen caption to `#nettimeoutview`) open the other chapter
 *and* land on the section.
 
-**Observer placement, its own pass** — the axis is 24 states, so walk the cells
+**Observer placement, its own pass** — the axis is 24 states (30 with the 26ai
+both-sites column; walk that one under 26ai, then confirm switching back to 19c
+pushes the radio to the third site), so walk the cells
 that carry the lessons rather than all of them. Crash at each of the three
 deployed locations draws **identically** (a separate-host observer survives the
 database's death), so read the three timelines against each other and confirm the
@@ -727,6 +730,73 @@ under the chapter bar. Focus a slider in a collapsed rail (note appears,
 disappears on blur) with an `.is-warn` note visible elsewhere, in both themes.
 After a publish, `curl -s https://davidbudac.cz/dataguard/ | grep -E
 'og:image|canonical|theme-color|rel="icon"'` finds all four.
+
+## The edition switch (19c / 26ai)
+
+The header carries a second toggle beside the language switch: **19c / 26ai**. 19c is the
+default and the page's source reading; 26ai is a second dimension layered over it, built
+from three mechanisms — one for state, one for prose, one for structure.
+
+**State: DG owns the edition, exactly the way it owns the language.** `DG.setEd` /
+`DG.ed()`, resolution order `?ver=` → `localStorage['dg-ed']` → 19c, unknown tokens
+normalized out of the URL on load, and `ver` deleted from the query while the edition is
+19c — a link carrying no `ver=` is the page exactly as it was before the switch existed.
+The edition is a **reading preference, not a control**: there is no `ver` key in the URL
+IIFE's `FIELDS` table, no entry in the workbench `DEFAULTS`, and saved/shared
+configurations do not carry it. The single bridge to the models is one line at the top of
+`draw()` — `C.version = window.DG.ed()` — which is what keeps "Reset defaults" and an
+imported file from flipping the reader's edition. `computeFsfo` and `computeReopen`
+default `c.version` to 19c internally (the same pattern as `observerLoc`), which is the
+whole back-compatibility story for old links, stored configurations and export files.
+An edition flip takes the language's own refresh path (`setStatic` first, then every
+`onLang` subscriber), so `draw()` repaints from one subscription — but unlike a language
+flip it *is* a state change, and `C.version` sits in the redraw signatures so the fade-in
+fires.
+
+**Prose: the `V26` source-string substitution table inside `DG.t()`.** Registered via
+`DG.addVariants(map)` from the static-translation IIFE, beside the markup the keys are
+copied out of. Under 26ai, `t()` first replaces the 19c English source string with its
+V26 value and only then consults the Czech catalog. Three consequences: the 26ai English
+variant is **itself a catalog key**, so Czech translates the 26ai sentence in its own
+right; a missing variant degrades to the 19c text; a missing translation degrades to
+26ai English. **V26 keys must byte-match the decoded snapshot strings.** For anything the
+static pass reaches through its CSS selectors the key is the *decoded* innerHTML — an
+`&mdash;` in the markup is a real U+2014 in the key, spelled `\u2014` in the ASCII-only
+fragment (entities do not decode inside a script). Editing an English sentence that has a
+variant therefore means editing three places in the same commit: the markup (or `t()`
+call), the V26 key, and the matching keys in `simulator/i18n/cs.json`. A stale V26 key
+fails silently — the page just shows the 19c sentence under 26ai, which is what the
+headless coverage probe (Languages below) surfaces.
+
+**Structure: the `.fsfo.is-v26` / `data-ver` split.** Whole blocks that exist in only one
+edition — reference-table rows, captions, the identity card's both-sites `<option>` —
+carry `data-ver="19"` or `data-ver="26"` in the markup, and the static pass toggles
+`is-v26` on `.fsfo` *before* it renders strings, so one pass never leaves the two halves
+disagreeing. The CSS is keyed with `:not()` (`.fsfo:not(.is-v26) [data-ver="26"]
+{display:none}` and the inverse) so a page with no script is a complete 19c document —
+the same contract as the tabs. Print carries whichever edition is on screen, because here
+the class selects content, not navigation.
+
+**What 26ai adds behaviorally.** The fifth observer placement `dc1dc2` (radio `ol-both`,
+URL token `ol=both`): master beside the primary, backup beside the standby, ranked by
+`PreferredObserverHosts`, with the model's `nomination` flag driving the timeline brace,
+chips and topology. The `FastStartFailoverLagType` radio and `FastStartFailoverLagGraceTime`
+slider (URL keys `lt` / `lgt`) — broker properties, so unlike the edition they **do** ride
+in the `params` block of saved configurations. The reopen panel's LAGGING bands
+(`lagStallAt`/`lagStallMax`/`lagGraceArmed` from `computeReopen`, which now also takes
+`version`, `lagGraceTime` and `threshold`). Under 19c the both-sites radio is disabled and
+both lag controls gray out through `V19_NOTES` (borrow-and-restore, like observer-lost);
+the model, `applyConfig` and a `coerceObsloc` `onLang` subscriber all coerce `dc1dc2` back
+to `dc3`, so a crafted link, a 26ai-written export opened under 19c, or a switch back to
+19c mid-session each lands where the rail would push it — registered before the
+draw-subscriber so 19c never draws a placement it cannot offer.
+
+**The outcome matrix is now 30 cells**: the 19c 24 plus the 26ai both-sites column.
+`site/test.mjs` asserts both (`MATRIX26`, plus 19c-invariance loops pinning
+`version` absent/`'19c'` to the 24-cell table with `nomination:false`, `lagStall:null`,
+`lagType:'apply'`), and `diagrams/README.md` words the column — the partition · both-sites
+cell is flagged there as an **inference** from the documented nomination rule, not a quoted
+outcome. Change one and change all three.
 
 ## Languages (English + Czech)
 
@@ -817,7 +887,12 @@ events on the radios — nothing outside the first IIFE may call into the models
 plus both protection modes on the cells where the mode changes the story, the
 ping properties, `FastStartFailoverPmyShutdown` off where the primary stalls, and
 chapter 4 open at each of the four locations, whose config cards and identity
-rows carry strings no other state asks for.
+rows carry strings no other state asks for. Since the edition switch, the walk
+runs in **both editions** (`DG.setEd('26ai')`, then back): the both-sites
+placement, the two lag controls (`FastStartFailoverLagGraceTime` at 0 and ≥ 5,
+`FastStartFailoverLagType` both ways, in MaxPerformance) and the 26ai config
+cards all ask for strings 19c never does — and the V26 substitution means the
+26ai English variants are catalog keys of their own.
 
 Three things that only a rendered page catches, all worth re-checking after
 translating: **lane labels live in a fixed 124 px gutter** (13 px for the name,
@@ -857,7 +932,8 @@ Keep that order: facts → spec → build → adversarial review → publish.
 - Scenarios covered so far: primary crash, isolated primary, severed link
   between the two database sites (`partition`), whole standby site lost
   (`dc2down`), observer lost and planned switchover — each crossed with the four
-  observer locations, 24 states in all. Only the first two have static figures;
+  observer locations, 24 states in all, plus the 26ai-only both-sites placement
+  (six more cells behind the edition switch). Only the first two have static figures;
   the other four are simulator-only, and the figures show the third-site
   placement throughout. Reinstate stays out of
   scope for the figures and the simulator; if the user asks for it, add it as a

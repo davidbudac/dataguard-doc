@@ -259,8 +259,13 @@ everything else intact. Nothing fails over, and that is the point.
 
 The simulator's second rail control crosses every scenario with four observer placements — **none**,
 the **primary's site**, the **standby's site**, and a **third site** (the default, and what the rest
-of this page assumes). The placement is not a broker property; the broker has nothing that records
-it, which is exactly why it belongs in the deployment identity rather than the parameter set.
+of this page assumes). Under the page's 26ai edition a fifth placement joins them — **both sites**:
+an observer on its own host beside each database, master and backup, ranked with
+`PreferredObserverHosts` (26ai registers up to four observers; losing the master is a *nomination*
+of a backup as the new master, and no fast-start failover can occur until that backup is observing —
+sources at the end of this file). The placement is not a broker property; the broker has nothing
+that records it, which is exactly why it belongs in the deployment identity rather than the
+parameter set.
 
 - **Oracle's hierarchy has three rungs.** First choice: "the observer should ideally be located at a
   third site or third data center so that the primary, observer, and standby have isolated power,
@@ -304,14 +309,14 @@ when it can reach *neither*, a stalled primary self-aborts at the threshold unde
 `FastStartFailoverPmyShutdown`, and a switchover never involves the observer at all. The placement
 is simply what decides which of those a given failure cuts.
 
-| scenario | none | primary's site | standby's site | third site |
-|---|---|---|---|---|
-| **crash** — the primary host dies | manual | failover | failover | failover |
-| **isolated** — every link out of the primary's site fails | continues | continues | failover (stall) | failover (stall) |
-| **partition** — only the link between the two database sites fails | continues | continues | **failover (stall)** | continues |
-| **dc2down** — the whole standby site is lost | continues | continues | **stall-noone** | continues |
-| **observer-lost** — the observer host dies | (a plain crash) | observer-lost | observer-lost | observer-lost |
-| **switchover** — a planned role reversal | switchover | switchover | switchover | switchover |
+| scenario | none | primary's site | standby's site | third site | both sites (26ai only) |
+|---|---|---|---|---|---|
+| **crash** — the primary host dies | manual | failover | failover | failover | failover |
+| **isolated** — every link out of the primary's site fails | continues | continues | failover (stall) | failover (stall) | failover (stall, nomination) |
+| **partition** — only the link between the two database sites fails | continues | continues | **failover (stall)** | continues | **failover (stall, nomination)** † |
+| **dc2down** — the whole standby site is lost | continues | continues | **stall-noone** | continues | continues |
+| **observer-lost** — the observer host dies | (a plain crash) | observer-lost | observer-lost | observer-lost | continues (nomination) |
+| **switchover** — a planned role reversal | switchover | switchover | switchover | switchover | switchover |
 
 Legend: **failover** — the standby is promoted; *(stall)* marks the cells where the primary is
 simultaneously cut off from both and self-aborts at the threshold. **continues** — nothing is
@@ -321,8 +326,24 @@ reachable standby to promote, and self-aborts one threshold later under
 primary is gone; only a DBA running `FAILOVER TO` moves the role, and no
 `FastStartFailoverLagLimit` bounds the loss, because that guarantee is fast-start failover's.
 **observer-lost** — the configuration is unobserved and nothing moves. **switchover** — the planned
-swap, identical at all four placements. The one coerced pairing is observer-lost with no observer
-deployed: there is nothing to lose, so it is the plain crash cell.
+swap, identical at every placement. *(nomination)* marks the 26ai cells where the master observer is
+on the lost side of the failure and the broker nominates the backup at the other site as the new
+master; Oracle gives no duration for that interval, so the simulator draws it as a flag, never a
+number, and no clock moves because of it. The one coerced pairing is observer-lost with no observer
+deployed: there is nothing to lose, so it is the plain crash cell. The both-sites column exists only
+under the 26ai edition — asked for under 19c (only a crafted link or an imported file can), the
+model coerces it to the third site.
+
+† **The partition · both-sites cell is an inference, not a quoted outcome.** Oracle documents the
+nomination rule — when the master observer fails or loses connectivity, the broker nominates a
+backup observer as the new master, and no fast-start failover can occur until it is observing — but
+no 26ai page walks through a DC1-to-DC2 cut with an observer on each database site. The cell follows
+from composing that rule with the 19c quorum rules: the standby's side has lost the primary and the
+master alike, the backup beside the standby is nominated, and that new master plus the standby are
+both halves of a quorum that has lost a primary which never stopped serving — the false failover
+again, with nothing outside the two sites left to arbitrate. The simulator words it as a
+consequence (`MULTI_NOTES.partition`); re-verify against the docs before relying on it anywhere
+else.
 
 Three cells are worth reading twice:
 
@@ -339,9 +360,12 @@ Three cells are worth reading twice:
   the only thing still talking to the primary, so it holds fire. Nothing is promoted, the standby is
   stranded with no redo arriving, and the primary serves an outside world that cannot reach it.
 
-`site/test.mjs` carries this same table as executable assertions — the 24 outcomes and the 24 stall
-flags, looped literally — so a model change that contradicts the matrix fails the build before it
-can be published. Change one and change all three: the model, the test table, and this section.
+`site/test.mjs` carries this same table as executable assertions — the 24 19c outcomes and the 24
+stall flags looped literally, plus the six 26ai both-sites cells (`MATRIX26`: outcome, stall and
+nomination per scenario) and the 19c-invariance loops that pin the version axis (no version, or
+`'19c'`, must reproduce the 24-cell table exactly, with `nomination:false`, `lagStall:null`,
+`lagType:'apply'` everywhere) — so a model change that contradicts the matrix fails the build before
+it can be published. Change one and change all three: the model, the test tables, and this section.
 
 ## Planned switchover (the simulator's switchover scenario)
 
@@ -580,3 +604,10 @@ Where the simulator draws something it cannot know, it is listed on the page its
 - [V$DATABASE (19c Database Reference — `FS_FAILOVER_STATUS`, `FS_FAILOVER_OBSERVER_PRESENT`)](https://docs.oracle.com/en/database/oracle/oracle-database/19/refrn/V-DATABASE.html)
 - [ORA-16820 — fast-start failover observer is no longer observing this database](https://docs.oracle.com/en/error-help/db/ora-16820/)
 - [ORA-16658 — unobserved fast-start failover configuration](https://docs.oracle.com/en/error-help/db/ora-16658/)
+
+### 26ai (the simulator's edition switch)
+
+- [FastStartFailoverLagType (26ai Data Guard Broker Properties — `APPLY` default / `TRANSPORT`; which lag `FastStartFailoverLagLimit` is measured against)](https://docs.oracle.com/en/database/oracle/oracle-database/26/dgbkr/faststartfailoverlagtype.html)
+- [FastStartFailoverLagGraceTime (26ai Data Guard Broker Properties — default 0 = off, minimum 5 s when set; how many seconds before the lag limit the primary asks permission to enter the `LAGGING` state, and the up-to-one-threshold wait at the crossing when it is 0)](https://docs.oracle.com/en/database/oracle/oracle-database/26/dgbkr/faststartfailoverlaggracetime.html)
+- [Fast-Start Failover (26ai broker guide — the section "What Happens if the Master Observer Fails?": the broker nominates a backup observer as the new master, and no fast-start failover can occur until it is observing. This nomination rule is what the both-sites column of the outcome matrix is built on, and the partition · both-sites cell is an **inference** from it, flagged as such at the matrix)](https://docs.oracle.com/en/database/oracle/oracle-database/26/dgbkr/fast-start-failover2.html)
+- [Ludovico Caldara's Data Guard 26ai blog series (ludovicocaldara.net — the practitioner walk-throughs of the 26ai broker changes behind the edition switch: the lag properties, multiple observers / `PreferredObserverHosts`, `VALIDATE FAST_START FAILOVER` and the new views)](https://www.ludovicocaldara.net/dba/)

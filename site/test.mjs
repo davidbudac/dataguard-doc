@@ -198,7 +198,11 @@ test('switchover runs no clocks: threshold and ping properties change nothing', 
 // fast-start failover was never armed. If a cell here has to change, check it
 // against docs.oracle.com first.
 
-const LOCS = ['none', 'dc1', 'dc2', 'dc3'];
+// The fifth location, 'dc1dc2', exists only under version '26ai': an observer
+// beside each database, master and backup, ranked by PreferredObserverHosts.
+// The 19c tables below stay four columns wide -- under 19c (or no version at
+// all) the model coerces 'dc1dc2' to 'dc3', which the invariance tests assert.
+const LOCS = ['none', 'dc1', 'dc2', 'dc3', 'dc1dc2'];
 
 const MATRIX = {
   //                none          dc1              dc2              dc3
@@ -420,6 +424,123 @@ test('the ping quirk moves the observer clock only, wherever the observer sits',
   assert.equal(m.abort, 30);       // the primary's stall clock is the threshold
 });
 
+// ---------- MODEL: the 26ai release ----------
+//
+// c.version opens a second axis: '26ai' unlocks the fifth placement (an
+// observer beside each database, master and backup, ranked by
+// PreferredObserverHosts) and the two lag properties. The six dc1dc2 cells
+// below are the executable form of the both-sites column in
+// diagrams/README.md. One of them is an inference, and the README says which:
+// partition/dc1dc2 follows from the documented nomination rule (the side that
+// lost the master nominates a backup, and with an observer on each database
+// site the standby's side holds one), not from a quoted outcome.
+
+const MATRIX26 = {
+  //                 outcome        stalled  nomination
+  'crash': ['failover', false, false],
+  'isolated': ['failover', true, true],
+  'partition': ['failover', true, true],
+  'dc2down': ['continues', false, false],
+  'observer-lost': ['continues', false, true],
+  'switchover': ['switchover', false, false],
+};
+
+test('26ai: the both-sites column, six cells of outcome, stall and nomination', () => {
+  for (const [scenario, [outcome, stalled, nomination]] of Object.entries(MATRIX26)) {
+    const m = fsfo({ scenario, observerLoc: 'dc1dc2', version: '26ai' });
+    assert.equal(m.outcome, outcome, `${scenario} outcome`);
+    assert.equal(m.stalled, stalled, `${scenario} stalled`);
+    assert.equal(m.nomination, nomination, `${scenario} nomination`);
+    // A stall plus FastStartFailoverPmyShutdown aborts on the threshold here
+    // exactly as it does in the 19c cells.
+    assert.equal(m.abort, stalled ? CDEF.threshold : null, `${scenario} abort`);
+    // No coercion under 26ai: even observer-lost keeps its own scenario,
+    // because only the master died and a backup remains to nominate.
+    assert.equal(m.scenario, scenario, `${scenario} effective scenario`);
+  }
+});
+
+test('26ai: a cut between the sites is the false failover again, ordered from the standby side', () => {
+  // The inferred cell (see diagrams/README.md): nothing is wrong with the
+  // primary, but the master went with the primary's side of the cut, the
+  // backup beside the standby is nominated, and that side has lost the
+  // primary -- so the standby is promoted and the healthy primary stalls.
+  const m = fsfo({ scenario: 'partition', observerLoc: 'dc1dc2', version: '26ai' });
+  assert.equal(m.initiate, 30);
+  assert.equal(m.tOpen, 55);
+  assert.equal(m.abort, 30);
+  assert.equal(m.pmyReachable, true);        // nothing was ever wrong with it
+  assert.equal(fsfo({ scenario: 'partition', observerLoc: 'dc1dc2', version: '26ai',
+    pmyShutdown: false }).abort, null);
+});
+
+test('26ai: losing the master is a nomination, never an unobserved configuration', () => {
+  const m = fsfo({ scenario: 'observer-lost', observerLoc: 'dc1dc2', version: '26ai' });
+  assert.equal(m.observerLost, false);       // the observer-lost branch is skipped
+  assert.equal(m.nomination, true);
+  assert.equal(m.redoFlowing, true);         // both databases carry on untouched
+  assert.equal(m.standbyGone, false);
+  assert.equal(m.initiate, null);            // and no clock runs meanwhile
+  assert.equal(m.tOpen, null);
+  // dc2down takes the backup with the site and leaves the master observing:
+  // no nomination, the primary carries on unprotected.
+  const d = fsfo({ scenario: 'dc2down', observerLoc: 'dc1dc2', version: '26ai' });
+  assert.equal(d.nomination, false);
+  assert.equal(d.standbyGone, true);
+});
+
+test('26ai: lagStall is MaxPerformance-only, and lagType echoes the property', () => {
+  // The flag prices a growing lag, not t = 0, so it is a shape for the prose
+  // and the reopen panel -- computeFsfo moves no clock for it.
+  assert.equal(fsfo({ version: '26ai' }).lagStall, null);                       // MaxAvailability
+  assert.equal(fsfo({ version: '26ai', mode: 'maxperf', observerLoc: 'none' }).lagStall, null);
+  assert.deepEqual(fsfo({ version: '26ai', mode: 'maxperf' }).lagStall,
+    { armed: false, graceTime: 0, maxSeconds: 30 });
+  assert.deepEqual(fsfo({ version: '26ai', mode: 'maxperf', lagGraceTime: 10, threshold: 45 }).lagStall,
+    { armed: true, graceTime: 10, maxSeconds: 45 });
+  assert.equal(fsfo({ version: '26ai', lagType: 'transport' }).lagType, 'transport');
+  assert.equal(fsfo({ version: '26ai' }).lagType, 'apply');
+});
+
+test('19c invariance: version absent and explicit 19c agree, cell for cell', () => {
+  for (const scenario of Object.keys(MATRIX)) {
+    for (const loc of LOCS) {
+      assert.deepEqual(fsfo({ scenario, observerLoc: loc, version: '19c' }),
+        fsfo({ scenario, observerLoc: loc }), `${scenario}/${loc}`);
+    }
+  }
+});
+
+test('19c invariance: every cell still reads off the 24-cell tables, new fields inert', () => {
+  for (const version of [undefined, '19c']) {
+    for (const [scenario, row] of Object.entries(MATRIX)) {
+      LOCS.forEach((loc, i) => {
+        const at = `${scenario}/${loc}/${version ?? 'absent'}`;
+        const m = fsfo({ scenario, observerLoc: loc, version });
+        // The fifth column is not a 19c placement: it lands on the third site.
+        const col = loc === 'dc1dc2' ? 3 : i;
+        assert.equal(m.outcome, row[col], at);
+        assert.equal(m.stalled, STALLED[scenario][col], `${at} stalled`);
+        assert.equal(m.nomination, false, `${at} nomination`);
+        assert.equal(m.lagStall, null, `${at} lagStall`);
+        assert.equal(m.lagType, 'apply', `${at} lagType`);
+      });
+    }
+  }
+});
+
+test('19c: the both-sites placement coerces to the third site, whole object', () => {
+  for (const scenario of Object.keys(MATRIX)) {
+    assert.deepEqual(fsfo({ scenario, observerLoc: 'dc1dc2' }),
+      fsfo({ scenario, observerLoc: 'dc3' }), scenario);
+  }
+  // And the two 26ai knobs change nothing under 19c, even set to non-defaults
+  // by a crafted link or an imported file.
+  assert.deepEqual(
+    fsfo({ mode: 'maxperf', lagType: 'transport', lagGraceTime: 30, version: '19c' }),
+    fsfo({ mode: 'maxperf' }));
+});
+
 // ---------- APPMODEL: the connect string ----------
 
 test('default string, default clocks: the lucky 60 s hang connects', () => {
@@ -602,6 +723,56 @@ test('FSFO disarms at t = 0 in MaxAvailability, at the lag limit in MaxPerforman
   assert.equal(mk('maxavail', 30).fsfoLostAt, 0);
   assert.equal(mk('maxperf', 30).fsfoLostAt, 30);
   assert.equal(mk('maxperf', 5).fsfoLostAt, 5);
+});
+
+test('26ai reopen: grace 0 pauses the primary at the crossing, one threshold at most', () => {
+  // FastStartFailoverLagGraceTime = 0: the primary asks permission to enter
+  // LAGGING at the moment the lag crosses the limit, and the band sits at the
+  // crossing -- fsfoLostAt -- one FastStartFailoverThreshold wide. The
+  // threshold is the bound the broker gives, never a measured duration.
+  const rp = M.computeReopen({ reopen: 300, maxFailure: 0, outage: 600, rate: 5,
+    mode: 'maxperf', lagLimit: 30, version: '26ai', lagGraceTime: 0, threshold: 30 });
+  assert.equal(rp.lagGraceArmed, false);
+  assert.equal(rp.lagStallAt, rp.fsfoLostAt);
+  assert.equal(rp.lagStallAt, 30);
+  assert.equal(rp.lagStallMax, 30);
+  // The band follows the limit and the threshold independently.
+  const other = M.computeReopen({ reopen: 300, maxFailure: 0, outage: 600, rate: 5,
+    mode: 'maxperf', lagLimit: 5, version: '26ai', lagGraceTime: 0, threshold: 45 });
+  assert.equal(other.lagStallAt, 5);
+  assert.equal(other.lagStallMax, 45);
+});
+
+test('26ai reopen: a grace time of 5 s or more is armed, and no stall band is drawn', () => {
+  for (const grace of [5, 60]) {
+    const rp = M.computeReopen({ reopen: 300, maxFailure: 0, outage: 600, rate: 5,
+      mode: 'maxperf', lagLimit: 30, version: '26ai', lagGraceTime: grace, threshold: 30 });
+    assert.equal(rp.lagGraceArmed, true, `grace ${grace}`);
+    assert.equal(rp.lagStallAt, null, `grace ${grace}`);
+    assert.equal(rp.lagStallMax, null, `grace ${grace}`);
+    assert.equal(rp.lagGraceTime, grace, `grace ${grace}`);
+  }
+  // MaxAvailability has no LAGGING state to ask permission for: neither the
+  // band nor the armed flag, whatever the grace time says.
+  const avail = M.computeReopen({ reopen: 300, maxFailure: 0, outage: 600, rate: 5,
+    mode: 'maxavail', lagLimit: 30, version: '26ai', lagGraceTime: 10, threshold: 30 });
+  assert.equal(avail.lagGraceArmed, false);
+  assert.equal(avail.lagStallAt, null);
+});
+
+test('19c reopen: neither the stall band nor the armed flag, and no drift', () => {
+  const bare = M.computeReopen({ reopen: 300, maxFailure: 0, outage: 600, rate: 5,
+    mode: 'maxperf', lagLimit: 30 });
+  assert.equal(bare.lagGraceArmed, false);
+  assert.equal(bare.lagStallAt, null);
+  assert.equal(bare.lagStallMax, null);
+  // Explicit '19c' with the 26ai keys along for the ride returns the same
+  // shape an old caller gets -- the grace time is echoed, nothing else moves.
+  const explicit = M.computeReopen({ reopen: 300, maxFailure: 0, outage: 600, rate: 5,
+    mode: 'maxperf', lagLimit: 30, version: '19c', lagGraceTime: 30, threshold: 30 });
+  assert.equal(explicit.lagGraceArmed, false);
+  assert.equal(explicit.lagStallAt, null);
+  assert.deepEqual({ ...explicit, lagGraceTime: 0 }, bare);
 });
 
 // ---------- the Czech catalog ----------
