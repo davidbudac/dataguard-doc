@@ -427,6 +427,16 @@ td .mono{font-size:12px;color:var(--ik)}
 .foot p{font-size:12px;color:var(--ik3);max-width:84ch}
 .foot .mono{font-size:11.5px;color:var(--ik2)}
 .foot sup{font-family:var(--mono);color:var(--ik2);margin-right:4px}
+
+/* Page footer -- outside every chapter, so it shows on all six tabs. The
+   header puts its eyebrow left and its switches right; this is the same row,
+   mirrored to the foot of the page. */
+.pgfoot{margin-top:40px;padding-top:16px;border-top:1px solid var(--ln);
+display:flex;flex-wrap:wrap;justify-content:space-between;align-items:baseline;gap:10px;
+font-size:12px;color:var(--ik3)}
+.pgfoot a{font-family:var(--mono);font-size:11px;letter-spacing:.06em;color:var(--ik2);
+text-decoration:none;border-bottom:1px solid var(--ln2);padding-bottom:1px}
+.pgfoot a:hover{color:var(--ik);border-bottom-color:currentColor}
 .sr{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
 
 /* app view -- the connect descriptor block */
@@ -2174,6 +2184,11 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
     <p><sup>4</sup>The reopen panel is idealized: retries are drawn at exact <span class="mono">ReopenSecs</span> multiples (transport really retries at the first log switch after the interval), the gap drains at five times the generation rate, and the apply lag grows from near zero at one second per second, which puts the MaxPerformance marker exactly one <span class="mono">FastStartFailoverLagLimit</span> after the break. The commit panel draws RFS processing as zero and lets <span class="mono">ASYNC</span> redo leave as soon as the local write finishes.</p>
   </div>
   </section>
+
+  <footer class="pgfoot">
+    <span>Made by David Budac, August 2026</span>
+    <a href="https://davidbudac.cz" rel="me">davidbudac.cz &#8599;</a>
+  </footer>
 </div>
 
 <script>
@@ -2275,6 +2290,9 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
     'thead th', 'tbody td',
     '.cfg-file', '.cfg-hd .eyebrow', '.cfg-copy',
     '.foot p',
+    /* the page footer's byline. The link beside it is a domain, not prose, so
+       it is deliberately not selected. */
+    '.pgfoot span',
     /* the deployment chapter's static form. The selects' option texts go
        through too: the placement names are prose, and the Oracle vocabulary in
        the other three selects (MaxAvailability, SYNC) is simply absent from the

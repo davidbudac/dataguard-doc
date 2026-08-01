@@ -383,7 +383,12 @@ It also measures the bar into `--navh` (the chapters' `scroll-margin-top` and
 the control rails' sticky offset both derive from it), and appends the prev/next
 pager at the foot of each panel, reading its titles off the nav links so a
 language switch just rebuilds it. New sections belong **inside** one of the six
-wrappers. Prose that points at another chapter uses an `<a class="xref">`; a
+wrappers. The one deliberate exception is the page footer (`.pgfoot`, the byline
+and the link to davidbudac.cz), which sits after the last chapter but inside
+`.fsfo` precisely so it is not a chapter's content and shows on all six tabs —
+note that the `.foot` footnote block is *not* the same thing: it lives in
+`#ch-reference` and is visible only there. Only the byline span is in the i18n
+snapshot; the domain beside it is not prose and carries no catalog entry. Prose that points at another chapter uses an `<a class="xref">`; a
 delegated handler in the same IIFE opens the target's chapter before scrolling,
 because the browser cannot scroll to an element that is still `hidden` — the
 `hashchange` path alone opens the chapter but leaves the reader where they were. Related: `.fsfo` uses `overflow-x:clip`, not `hidden`, because `hidden`

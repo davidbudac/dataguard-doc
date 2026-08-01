@@ -440,6 +440,7 @@
   "Loss exposure": "Expozice ztráty",
   "MAX_FAILURE=0: retried at every log switch, without limit": "MAX_FAILURE=0: zkouší se při každém log switch, bez limitu",
   "MAX_FAILURE={0}: disabled for good after {0} consecutive failed reopens": "MAX_FAILURE={0}: natrvalo zakázáno po {0} po sobě jdoucích neúspěšných reopenech",
+  "Made by David Budac, August 2026": "Vytvořil David Budáč, srpen 2026",
   "Manual failover, at any point": "Ruční failover, kdykoli",
   "Master lost — a backup is nominated and observes from here": "Master ztracen — nominuje se záloha a pozoruje odtud",
   "MaxAvailability: the standby is <span class=\"mono\">UNSYNCHRONIZED</span> the moment the link breaks — re-armed around {0} s, once it is back in sync": "MaxAvailability: standby je <span class=\"mono\">UNSYNCHRONIZED</span> v okamžiku, kdy se linka přeruší — znovu nabito kolem {0} s, jakmile je zpátky v syncu",
