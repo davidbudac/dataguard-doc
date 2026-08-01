@@ -772,17 +772,17 @@ window.DG = (function () {
 
   <nav class="chapnav" id="chapnav" aria-label="Chapters">
     <ol>
-      <li><a href="#ch-clocks" id="tab-ch-clocks" data-ch="ch-clocks" title="Press 1"><span class="cn-n">1</span><span class="cn-t">The failover clocks</span><span class="cn-s">Clocks</span></a></li>
+      <li><a href="#ch-clocks" id="tab-ch-clocks" data-ch="ch-clocks" title="Press 1"><span class="cn-n">1</span><span class="cn-t">Topology</span><span class="cn-s">Topology</span></a></li>
       <li><a href="#ch-transport" id="tab-ch-transport" data-ch="ch-transport" title="Press 2"><span class="cn-n">2</span><span class="cn-t">The transport layer</span><span class="cn-s">Transport</span></a></li>
       <li><a href="#ch-app" id="tab-ch-app" data-ch="ch-app" title="Press 3"><span class="cn-n">3</span><span class="cn-t">The application&rsquo;s view</span><span class="cn-s">App view</span></a></li>
       <li><a href="#ch-config" id="tab-ch-config" data-ch="ch-config" title="Press 4"><span class="cn-n">4</span><span class="cn-t">Configuration</span><span class="cn-s">Config</span></a></li>
-      <li><a href="#ch-side" id="tab-ch-side" data-ch="ch-side" title="Press 5"><span class="cn-n">5</span><span class="cn-t">Side topics</span><span class="cn-s">Side</span></a></li>
+      <li><a href="#ch-side" id="tab-ch-side" data-ch="ch-side" title="Press 5"><span class="cn-n">5</span><span class="cn-t">SYNC transport</span><span class="cn-s">SYNC</span></a></li>
       <li><a href="#ch-reference" id="tab-ch-reference" data-ch="ch-reference" title="Press 6"><span class="cn-n">6</span><span class="cn-t">Reference</span><span class="cn-s">Reference</span></a></li>
     </ol>
   </nav>
 
   <section class="chapter" id="ch-clocks" aria-labelledby="ch-clocks-h">
-  <h2 class="chdiv-t sr" id="ch-clocks-h"><span class="sr">Chapter 1 &mdash; </span>The failover clocks</h2>
+  <h2 class="chdiv-t sr" id="ch-clocks-h"><span class="sr">Chapter 1 &mdash; </span>Topology</h2>
 
   <section class="topo" aria-label="Cluster topology">
     <div class="tl-wrap" id="topo-wrap"></div>
@@ -1720,11 +1720,11 @@ window.DG = (function () {
   </section>
 
   <section class="chapter" id="ch-side" aria-labelledby="ch-side-h">
-  <h2 class="chdiv-t sr" id="ch-side-h"><span class="sr">Chapter 5 &mdash; </span>Side topics</h2>
+  <h2 class="chdiv-t sr" id="ch-side-h"><span class="sr">Chapter 5 &mdash; </span>SYNC transport</h2>
 
   <section class="sec" id="sduview">
     <div class="sec-hd">
-      <p class="eyebrow">Side topics &middot; before you turn SYNC on</p>
+      <p class="eyebrow">SYNC transport &middot; before you turn SYNC on</p>
       <h2>SDU, socket buffers, and measuring the network before Data Guard uses it</h2>
     </div>
     <p class="caption">Two Oracle Net settings and one measurement, worth doing before the first <span class="mono">SYNC</span> commit: the session data unit (the buffer Oracle Net fills before sending), the socket buffers underneath it (how much can be in flight at once), and <span class="mono">oratcptest</span>, which makes the same round trip redo transport will make.</p>
@@ -1885,7 +1885,7 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
     </div>
 
     <div class="sec-hd">
-      <p class="eyebrow">Side topics &middot; after you turn SYNC on</p>
+      <p class="eyebrow">SYNC transport &middot; after you turn SYNC on</p>
       <h2>What a commit waits for &mdash; log file sync and the events inside it</h2>
     </div>
     <p class="caption">Turn <span class="mono">SYNC</span> on and the <span class="mono">log file sync</span> average moves first &mdash; the number Oracle warns not to judge <span class="mono">SYNC</span> by. The events nest; reading an AWR report means knowing which contains which.</p>
@@ -2005,7 +2005,7 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
     </div>
 
     <div class="sec-hd">
-      <p class="eyebrow">Side topics &middot; when the ack stops coming</p>
+      <p class="eyebrow">SYNC transport &middot; when the ack stops coming</p>
       <h2>Where NET_TIMEOUT fits, and where it does not</h2>
     </div>
     <p class="caption"><span class="mono">NET_TIMEOUT</span> (broker property <span class="mono">NetTimeout</span>) is a <span class="mono">LOG_ARCHIVE_DEST_n</span> attribute on the primary, not a failover clock: it caps how long LGWR waits for a SYNC acknowledgement before the error is logged, the transport session terminated, and the destination dropped. Both it and <span class="mono">FastStartFailoverThreshold</span> default to 30 s, which is why the two get confused; the panels span the same window, and panel B shortens <span class="mono">NET_TIMEOUT</span> to 10 s to show why data still is not lost.</p>
