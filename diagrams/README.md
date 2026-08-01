@@ -78,7 +78,22 @@ failover decision.
 | `ObserverPingRetry` | 10 | 10 | Number of times the observer retries a failed ping (failed = no answer within `ObserverPingInterval`) before initiating failover. |
 | `FastStartFailoverLagLimit` | 30 s | 5 s | MaxPerformance mode only: maximum seconds the standby's apply point may lag the primary's redo generation point for fast-start failover to be permitted. Bounds data loss. |
 | `FastStartFailoverPmyShutdown` | TRUE | — | If TRUE, a primary whose `V$DATABASE.FS_FAILOVER_STATUS` has been STALLED for longer than `FastStartFailoverThreshold` seconds — and that cannot reach the observer or the target standby — shuts itself down (abort). |
-| `FastStartFailoverAutoReinstate` | TRUE | — | The old primary is automatically reinstated as a standby (via Flashback Database) when it returns. Reinstate is out of scope for these figures. |
+| `ObserverOverride` | FALSE | — | When TRUE, "allows an automatic failover to occur when the observer has lost connectivity to the primary. This is the behavior even if the standby has a healthy connection to the primary." At the default FALSE, a target standby that still reaches the primary is what prevents the attempt. |
+| `FastStartFailoverAutoReinstate` | TRUE | — | Reinstates the old primary as a standby (via Flashback Database) when it returns. Reinstate is out of scope for these figures. |
+
+**`ObserverOverride` = FALSE is a page-wide assumption**, not a derived result. Every figure here and
+every simulator cell reads the standby's own view as a veto on the failover, which is only the
+default behaviour; with TRUE, several **continues** cells in the outcome matrix would become
+failovers. Never present a cell outcome as unconditional without naming that assumption.
+
+**`FastStartFailoverAutoReinstate` is narrower than "the old primary comes back".** The broker
+reinstates only after a fast-start failover the observer initiated because the primary crashed or
+was isolated — never after a user-configurable health condition and never after a
+`DBMS_DG.INITIATE_FS_FAILOVER` call, which explicitly does not reinstate. It also needs Flashback
+Database on both databases, the former primary started and mounted (a manual restart when
+`FastStartFailoverPmyShutdown` aborted it), the master observer able to connect to it, and static
+service names where there is no Oracle Clusterware or Oracle Restart. Still out of scope for the
+figures; the simulator states it only in the reference table and the sequence-diagram footer.
 
 ### The ping-properties quirk
 
@@ -91,9 +106,12 @@ Curiously, the 19c edition of that page does not list these two properties at al
 they have existed since 12.2 and 19c DGMGRL accepts them — they appear in the 21c and later
 editions, linked below.)
 
-In other words: once a DBA explicitly sets both ping properties, detection is governed by
+In other words: once a DBA explicitly sets both ping properties, detection is governed by the ping
+loop instead of by the 30-second threshold. **The arithmetic is not documented.** The properties
+page states the ignore and says only that "the detection time can be reduced to nearly 1 second";
 *interval × (retries + 1)* — the first failed ping plus its retries, roughly one second at the
-minimum values — instead of by the 30-second threshold.
+minimum values — is this page's (and the simulator's) reading of that sentence, and every asset that
+draws the number labels it as a model rather than a quoted figure.
 The figures here show the default configuration, where the threshold is what you are waiting for.
 If you set the ping properties, the amber threshold window in figures 1 and 2 collapses to
 `ObserverPingInterval` × (`ObserverPingRetry` + 1). In the isolated-primary scenario the primary's own
@@ -171,8 +189,16 @@ trigger). Verified facts it relies on:
   DESCRIPTION_LIST.
 - A standby whose listener does not publish the role-based service refuses
   instantly with `ORA-12514`; established sessions are untouched by all of the
-  above (they need keepalives/`SQLNET.RECV_TIMEOUT`/FAN to die fast, and
-  TAF/Application Continuity to resume work).
+  above (they need keepalives/`SQLNET.RECV_TIMEOUT`/FAN to die fast).
+- **TAF and Application Continuity are not the same promise, and neither "resumes the work".**
+  Transparent Application Failover reconnects the session and, with `SELECT` failover, can carry on
+  fetching from an open cursor — but **active transactions are rolled back**: the documentation is
+  explicit that TAF cannot replay a transaction and that the application must be prepared for an
+  error and its own re-submission. Application Continuity, where it is configured, is the one that
+  can replay in-flight work, and only conditionally: the request must be replay-eligible, and a
+  replay whose result it cannot verify against the original is **rejected** rather than committed
+  twice. The simulator's chapter-3 note words it exactly that way; never collapse the two into
+  "TAF or Application Continuity resumes their work".
 
 ## Commit anatomy (the simulator's commit view)
 
@@ -238,9 +264,18 @@ everything else intact. Nothing fails over, and that is the point.
 - The primary stalls only when it can reach *neither* the observer *nor* the target standby. With
   the standby still reachable it keeps serving; "no new transactions are able to commit" describes
   the double-loss case, not this one.
-- While unobserved, `V$DATABASE.FS_FAILOVER_STATUS` reads `PRIMARY UNOBSERVED` and
-  `FS_FAILOVER_OBSERVER_PRESENT` reads `NO` — that column reports "whether the master observer is
-  currently connected to the local database".
+- **`PRIMARY UNOBSERVED` is a standby-side status, and which database you query decides what you
+  see.** `FS_FAILOVER_STATUS` is documented per role in the broker guide's Table 5-1: on a primary
+  it takes the values a primary can be in, and the status a *target standby* reports when the
+  observer is gone is `PRIMARY UNOBSERVED`. The chapter's own worked example prints the pair —
+  primary `SYNCHRONIZED` with `FS_FAILOVER_OBSERVER_PRESENT` = `NO`, target standby
+  `PRIMARY UNOBSERVED` with `FS_FAILOVER_OBSERVER_PRESENT` = `YES` (the standby still has the
+  observer; it is the primary that lost it). So on the primary it is `FS_FAILOVER_OBSERVER_PRESENT`
+  that flips, not `FS_FAILOVER_STATUS` — that column reports "whether the master observer is
+  currently connected to the local database". The simulator's timeline marker under the primary lane
+  therefore names `FS_FAILOVER_OBSERVER_PRESENT`, and the callout beside it spells both sides out.
+- **With no observer deployed at all**, `FS_FAILOVER_STATUS` reads `DISABLED` — fast-start failover
+  was never enabled, which is a different state from unobserved.
 - Two errors that are not interchangeable: `ORA-16820` ("fast-start failover observer is no longer
   observing this database") is a standing health condition on the configuration; `ORA-16658`
   ("unobserved fast-start failover configuration") is raised when a failover is *attempted* while
@@ -290,10 +325,21 @@ parameter set.
   application tier is local to the primary too — and even there the guide prefers the standby's site
   or a third one. Never present it as a recommendation.
 - **Deploying no observer is not the same as being unobserved.** *Unobserved* is an armed
-  configuration whose master observer is missing: `FS_FAILOVER_STATUS` = `PRIMARY UNOBSERVED`,
+  configuration whose master observer is missing: the target standby reports `FS_FAILOVER_STATUS` =
+  `PRIMARY UNOBSERVED` while the primary reports `FS_FAILOVER_OBSERVER_PRESENT` = `NO`,
   `ORA-16820`, and the broker's own list headed "Fast-start failover cannot occur if:" opening with
-  "The master observer is not running" — the observer-lost scenario above. Either way a manual
-  failover is untouched: "You can perform a manual failover even if fast-start failover is enabled."
+  "The master observer is not running" — the observer-lost scenario above.
+  **A manual failover is still possible with fast-start failover enabled, but not unconditionally.**
+  "You can perform a manual failover even if fast-start failover is enabled" — *as long as certain
+  conditions are met*, and the broker lists three: the role change is directed to the same standby
+  named in `FastStartFailoverTarget`; that standby is synchronized (maximum availability or maximum
+  protection) or within the lag limit (maximum performance); and, for a manual failover, "the
+  observer is started and communicating with the target standby database", with the primary shut
+  down first. So an *unobserved* configuration does not satisfy the third condition — the way out is
+  `DISABLE FAST_START FAILOVER FORCE` and then the manual failover, which is what the simulator's
+  stall caption already says. That is also why the page words the no-observer case as a manual
+  failover needing no observer *while fast-start failover is disabled*, rather than as one that is
+  unconditionally available.
   *No observer deployed* means fast-start failover was never enabled:
   the `FastStartFailover*` properties can be set and nothing arms them, and a manual `FAILOVER TO` —
   which never needed an observer — is the only thing that can promote the standby. One consequence
@@ -309,10 +355,17 @@ when it can reach *neither*, a stalled primary self-aborts at the threshold unde
 `FastStartFailoverPmyShutdown`, and a switchover never involves the observer at all. The placement
 is simply what decides which of those a given failure cuts.
 
+**Every cell assumes `ObserverOverride` = FALSE, the broker default.** The property, when set to
+TRUE, "allows an automatic failover to occur when the observer has lost connectivity to the primary.
+This is the behavior even if the standby has a healthy connection to the primary" — so with TRUE the
+standby's own view stops being a veto and several **continues** cells below would become failovers.
+Neither the simulator nor these figures model that; they model the default, where a target standby
+that still reaches the primary is what prevents the attempt.
+
 | scenario | none | primary's site | standby's site | third site | both sites (26ai only) |
 |---|---|---|---|---|---|
 | **crash** — the primary host dies | manual | failover | failover | failover | failover |
-| **isolated** — every link out of the primary's site fails | continues | continues | failover (stall) | failover (stall) | failover (stall, nomination) |
+| **isolated** — every link out of the primary's site fails | continues | continues | failover (stall) | failover (stall) | failover (stall, nomination) † |
 | **partition** — only the link between the two database sites fails | continues | continues | **failover (stall)** | continues | **failover (stall, nomination)** † |
 | **dc2down** — the whole standby site is lost | continues | continues | **stall-noone** | continues | continues |
 | **observer-lost** — the observer host dies | (a plain crash) | observer-lost | observer-lost | observer-lost | continues (nomination) |
@@ -334,16 +387,28 @@ deployed: there is nothing to lose, so it is the plain crash cell. The both-site
 under the 26ai edition — asked for under 19c (only a crafted link or an imported file can), the
 model coerces it to the third site.
 
-† **The partition · both-sites cell is an inference, not a quoted outcome.** Oracle documents the
-nomination rule — when the master observer fails or loses connectivity, the broker nominates a
-backup observer as the new master, and no fast-start failover can occur until it is observing — but
-no 26ai page walks through a DC1-to-DC2 cut with an observer on each database site. The cell follows
-from composing that rule with the 19c quorum rules: the standby's side has lost the primary and the
-master alike, the backup beside the standby is nominated, and that new master plus the standby are
-both halves of a quorum that has lost a primary which never stopped serving — the false failover
-again, with nothing outside the two sites left to arbitrate. The simulator words it as a
-consequence (`MULTI_NOTES.partition`); re-verify against the docs before relying on it anywhere
-else.
+† **The two flagged both-sites cells — partition and isolated — are inferences, not quoted
+outcomes.** Oracle states the nomination rule with a precondition, in the same words in the 19c and
+the 26ai fast-start failover chapters: "if the primary and target standby databases stay connected
+but the connection to the master observer is lost, then the broker tries to nominate a backup
+observer as the new master observer" — and, in the other direction, "if the primary or target
+standby databases lose connections to all backup observers, then the broker does not try to nominate
+a backup observer as the new master observer, and the broker reports that the configuration is not
+observed". Both flagged cells are failures that **separate the primary from the target standby**, so
+neither is the documented case, and no 26ai page walks through either one with an observer on each
+database site.
+
+They follow from composing the nomination rule with the quorum rules the rest of this matrix runs
+on. **partition · both sites**: the standby's side has lost the primary and the master alike, the
+backup beside the standby is nominated, and that new master plus the standby are both halves of a
+quorum that has lost a primary which never stopped serving — the false failover again, with nothing
+outside the two sites left to arbitrate. **isolated · both sites**: the same nomination on the
+standby's side, but here the primary really is cut off from everything, so the promotion is the
+right outcome and only the route to it is inferred. The simulator words both as consequences
+(`MULTI_NOTES.partition` and `MULTI_NOTES.nominate`, which carry the precondition and the
+inference in prose); re-verify against a live 26ai system before relying on either anywhere else.
+The **observer-lost · both sites** cell needs no flag: there the primary and the standby stay
+connected and only the master dies, which is the documented case verbatim.
 
 Three cells are worth reading twice:
 
@@ -550,6 +615,69 @@ the redo-transport troubleshooting page (the same page as the thirteen-step comm
 - Lag views: `V$DATAGUARD_STATS` for transport and apply lag (read `DATUM_TIME` beside them — it is
   when the value was computed), `V$STANDBY_EVENT_HISTOGRAM` for the history of those lag values.
 
+## What 26ai changes (the simulator's edition switch)
+
+The simulator's Reference chapter carries the full change list; the facts below are the ones the
+26ai edition actually *draws*, plus the two whose sourcing needs a caveat.
+
+### `FastStartFailoverLagLimit` in MaxAvailability
+
+**26ai gives the property a MaxAvailability role, and its broker default there is 0.** Zero is the
+19c rule written as a number — the standby must hold every change the primary generated, and the
+fast-start failover loses nothing. Any non-zero value (minimum 5 s, as in MaxPerformance) makes
+MaxAvailability a bounded-loss mode instead: failover is permitted while the standby's apply lag is
+at or below the limit, and the loss is bounded by it. `V$FAST_START_FAILOVER_CONFIG` names the two
+states `ZERO DATA LOSS` and `POTENTIAL DATA LOSS`. MaxPerformance is unchanged: default 30 s,
+minimum 5 s. The 26ai prerequisites table also lists `ASYNC` among the transports allowed for a
+MaxAvailability fast-start failover target, where 19c listed only `SYNC` and `FASTSYNC` — zero data
+loss there still wants one of those two.
+
+**Oracle's own 26ai pages contradict each other on this, so cite the right one.** The operative text
+is the fast-start failover chapter's *Fast-start Failover Protection Modes* section, together with
+the per-mode defaults and the `V$FAST_START_FAILOVER_CONFIG` mode values. The **stale** text — still
+carrying the 19c "used only in maximum performance mode" sentence — is that same chapter's *Task 3*
+and the **closing line of the `FastStartFailoverLagLimit` property page**. Never cite either of those
+two for this behaviour, and never quote the property page's last sentence as if it were current; the
+property page is a valid citation for the value ranges only. The simulator states the contradiction
+in footnote 5 rather than hiding it.
+
+Two neighbouring properties did **not** move: `FastStartFailoverLagType` and
+`FastStartFailoverLagGraceTime` are both documented as maximum-performance-mode behaviour, whatever
+the lag limit is doing in MaxAvailability. The simulator grays both out in MaxAvailability and says
+so.
+
+### `PrimaryDatabaseCandidates`
+
+**It is a fence for the fast-start-failover-*disabled* case, not an extra gate on FSFO.** The
+property lists the members the broker is allowed to make primary. While fast-start failover is
+disabled it restricts both `SWITCHOVER` and `FAILOVER` to that list, and a transition to a member
+that is not listed is refused with
+[`ORA-16529`](https://docs.oracle.com/en/error-help/db/ora-16529/). Once fast-start failover is
+enabled it adds no new restriction, because `FastStartFailoverTarget` already governs which member
+can become primary. The broker adds the current primary to the list itself if the list omits it, and
+the default — an empty string — restricts nothing. Never word it as "a fence around fast-start
+failover".
+
+**The 19.26 backport is unofficial.** It is reported by the Data Guard product manager's blog series
+and is not reflected in Oracle's release-update documentation, so state it as reported, never as
+documented.
+
+### `V$FS_FAILOVER_OBSERVERS`
+
+26ai adds per-observer diagnostics: seconds since the observer last pinged the primary and the
+target, and the full paths of the observer's log and state files. Two things to keep straight:
+`CURRENT_TIME` is **the time the query was run**, not an observer heartbeat, and the view's behaviour
+is defined only when it is queried **on the primary** — the reference page says so, so never present
+its output as queryable anywhere in the configuration.
+
+### Scripting surfaces predate 26ai
+
+The change table's *Scripting surfaces* row is the one place where "what 26ai changes" overstates
+novelty if left unqualified: the official SQLcl `DG` command page is scoped to "Oracle Database
+release 21c only" and the ORDS Data Guard REST endpoints are documented in ORDS 23.3. Both therefore
+arrived before 26ai, which the table's caption already frames ("including what arrived in 21c and
+23ai"); the row itself names the two releases so the caption does not have to carry it alone.
+
 ## Drawing idealizations (the simulator's footnote 4)
 
 Where the simulator draws something it cannot know, it is listed on the page itself and here:
@@ -577,7 +705,8 @@ Where the simulator draws something it cannot know, it is listed on the page its
 ## Oracle documentation
 
 - [Oracle Data Guard Broker Properties (19c)](https://docs.oracle.com/en/database/oracle/oracle-database/19/dgbkr/oracle-data-guard-broker-properties.html)
-- [Switchover and Failover Operations (19c, chapter 5 — the switchover prerequisites and step list, and the list headed "Fast-start failover cannot occur if:", whose first entry is "The master observer is not running". A manual failover needs none of that machinery: "You can perform a manual failover even if fast-start failover is enabled")](https://docs.oracle.com/en/database/oracle/oracle-database/19/dgbkr/using-data-guard-broker-to-manage-switchovers-failovers.html)
+- [Switchover and Failover Operations (19c, chapter 5 — the switchover prerequisites and step list, and the list headed "Fast-start failover cannot occur if:", whose first entry is "The master observer is not running". **Table 5-1** lists `FS_FAILOVER_STATUS` per role and is the source for `PRIMARY UNOBSERVED` being a **target-standby** status; the chapter's worked example prints the pair — primary `SYNCHRONIZED` with `FS_FAILOVER_OBSERVER_PRESENT` `NO`, target standby `PRIMARY UNOBSERVED` with `YES`. *Performing Manual Role Changes When Fast-Start Failover Is Enabled* qualifies "You can perform a manual failover even if fast-start failover is enabled" with three conditions: the target is the `FastStartFailoverTarget` standby; it is synchronized (maximum availability/protection) or within the lag limit (maximum performance); and, for a manual failover, "the observer is started and communicating with the target standby database", with the primary shut down first)](https://docs.oracle.com/en/database/oracle/oracle-database/19/dgbkr/using-data-guard-broker-to-manage-switchovers-failovers.html)
+- [ObserverOverride (19c Data Guard Broker Properties — default FALSE; TRUE allows an automatic failover once the observer has lost the primary, "even if the standby has a healthy connection to the primary". Every figure and every simulator cell here assumes the default)](https://docs.oracle.com/en/database/oracle/oracle-database/19/dgbkr/oracle-data-guard-broker-properties.html)
 - [Managing Oracle Data Guard Role Transitions (19c Data Guard Concepts and Administration — the two-phase switchover, `SWITCHOVER ... VERIFY`, duration factors, `COMMIT TO SWITCHOVER ... WITH SESSION SHUTDOWN`)](https://docs.oracle.com/en/database/oracle/oracle-database/19/sbydb/managing-oracle-data-guard-role-transitions.html)
 - [LOG_ARCHIVE_DEST_n parameter attributes (19c Data Guard Concepts and Administration)](https://docs.oracle.com/en/database/oracle/oracle-database/19/sbydb/LOG_ARCHIVE_DEST_n-parameter-attributes.html)
 - [LOG_ARCHIVE_DEST_n (19c Database Reference)](https://docs.oracle.com/en/database/oracle/oracle-database/19/refrn/LOG_ARCHIVE_DEST_n.html)
@@ -601,18 +730,30 @@ Where the simulator draws something it cannot know, it is listed on the page its
 - [Changes in Oracle Data Guard Broker 12c Release 2 (12.2 — automatic backup-observer promotion)](https://docs.oracle.com/en/database/oracle/oracle-database/12.2/dgbkr/release-changes.html)
 - [Scenarios Using the DGMGRL Utility (19c — Scenario 6, registering and managing multiple observers)](https://docs.oracle.com/en/database/oracle/oracle-database/19/dgbkr/examples-using-data-guard-broker-DGMGRL-utility.html)
 - [Oracle Data Guard Broker Commands (19c — `SET MASTEROBSERVER TO`; the `EDIT`/`ENABLE`/`CONNECT` syntax behind the chapter-5 config cards)](https://docs.oracle.com/en/database/oracle/oracle-database/19/dgbkr/oracle-data-guard-broker-commands.html)
-- [V$DATABASE (19c Database Reference — `FS_FAILOVER_STATUS`, `FS_FAILOVER_OBSERVER_PRESENT`)](https://docs.oracle.com/en/database/oracle/oracle-database/19/refrn/V-DATABASE.html)
+- [V$DATABASE (19c Database Reference — `FS_FAILOVER_STATUS`, `FS_FAILOVER_OBSERVER_PRESENT` "whether the master observer is currently connected to the local database"; `DISABLED` is what `FS_FAILOVER_STATUS` reads when fast-start failover was never enabled)](https://docs.oracle.com/en/database/oracle/oracle-database/19/refrn/V-DATABASE.html)
+- Transparent Application Failover and Application Continuity: the 26ai Net Services Administrator's
+  Guide TAF pages and the 19c *Real Application Clusters Administration and Deployment Guide*. TAF
+  reconnects and, with `SELECT` failover, continues an open fetch, but **cannot replay a
+  transaction** — an active transaction is rolled back and the application has to handle the error
+  and re-submit. Application Continuity is the conditional-replay mechanism beside it: replay-eligible
+  requests only, and a replay whose result cannot be verified against the original is rejected. Cited
+  by title rather than by URL because these pages move between editions; look them up in the edition
+  you are writing for.
 - [ORA-16820 — fast-start failover observer is no longer observing this database](https://docs.oracle.com/en/error-help/db/ora-16820/)
 - [ORA-16658 — unobserved fast-start failover configuration](https://docs.oracle.com/en/error-help/db/ora-16658/)
+- [ORA-16529 — invalid database for the operation (the refusal a `SWITCHOVER`/`FAILOVER` to a member outside `PrimaryDatabaseCandidates` gets while fast-start failover is disabled)](https://docs.oracle.com/en/error-help/db/ora-16529/)
 
 ### 26ai (the simulator's edition switch)
 
-- [FastStartFailoverLagType (26ai Data Guard Broker Properties — `APPLY` default / `TRANSPORT`; which lag `FastStartFailoverLagLimit` is measured against)](https://docs.oracle.com/en/database/oracle/oracle-database/26/dgbkr/faststartfailoverlagtype.html)
+- [Fast-Start Failover (26ai broker guide — the section **"Fast-start Failover Protection Modes"**, the operative text for `FastStartFailoverLagLimit` in MaxAvailability: 0 as the broker default there, zero data loss at 0 and bounded loss above it, the per-mode defaults, and the prerequisites table that lists `ASYNC` for a MaxAvailability target. Cite **this section**, never the same chapter's *Task 3*, which still carries the stale 19c "maximum performance mode only" sentence)](https://docs.oracle.com/en/database/oracle/oracle-database/26/dgbkr/fast-start-failover2.html)
+- [FastStartFailoverLagLimit (26ai Data Guard Broker Properties — the value ranges: 30 s default and 5 s minimum in MaxPerformance, 0 the default in MaxAvailability. **Its closing line still says the property is used only in maximum performance mode**, which the protection-modes section above contradicts; quote this page for ranges only, never for the mode question)](https://docs.oracle.com/en/database/oracle/oracle-database/26/dgbkr/faststartfailoverlaglimit.html)
+- [FastStartFailoverLagType (26ai Data Guard Broker Properties — `APPLY` default / `TRANSPORT`; which lag `FastStartFailoverLagLimit` is measured against; documented as maximum-performance-mode behaviour, and it did **not** follow the lag limit into MaxAvailability)](https://docs.oracle.com/en/database/oracle/oracle-database/26/dgbkr/faststartfailoverlagtype.html)
 - [FastStartFailoverLagGraceTime (26ai Data Guard Broker Properties — default 0 = off, minimum 5 s when set; how many seconds before the lag limit the primary asks permission to enter the `LAGGING` state, and the up-to-one-threshold wait at the crossing when it is 0)](https://docs.oracle.com/en/database/oracle/oracle-database/26/dgbkr/faststartfailoverlaggracetime.html)
 - [Fast-Start Failover (26ai broker guide — the section "What Happens if the Master Observer Fails?": the broker nominates a backup observer as the new master, and no fast-start failover can occur until it is observing. This nomination rule is what the both-sites column of the outcome matrix is built on, and the partition · both-sites cell is an **inference** from it, flagged as such at the matrix)](https://docs.oracle.com/en/database/oracle/oracle-database/26/dgbkr/fast-start-failover2.html)
 - [PreferredObserverHosts (26ai Data Guard Broker Properties — a per-database property ranking which registered observer host should be master for that database)](https://docs.oracle.com/en/database/oracle/oracle-database/26/dgbkr/preferredobserverhosts.html)
-- [PrimaryDatabaseCandidates (26ai Data Guard Broker Properties — restricts which members broker-initiated transitions may make primary; backported to 19.26)](https://docs.oracle.com/en/database/oracle/oracle-database/26/dgbkr/primarydatabasecandidates.html)
+- [PrimaryDatabaseCandidates (26ai Data Guard Broker Properties — the list of members the broker may make primary. It restricts `SWITCHOVER` and `FAILOVER` **while fast-start failover is disabled**, adds nothing once it is enabled because `FastStartFailoverTarget` already governs the target, defaults to an empty string that restricts nothing, and the broker adds the current primary itself if the list omits it. The 19.26 backport is **reported by the product manager's blog series only** — not in Oracle's release-update documentation)](https://docs.oracle.com/en/database/oracle/oracle-database/26/dgbkr/primarydatabasecandidates.html)
 - [VALIDATE FAST_START FAILOVER (26ai broker commands — the consolidated FSFO readiness checklist behind the simulator's 26ai config cards; note the underscore in the URL slug)](https://docs.oracle.com/en/database/oracle/oracle-database/26/dgbkr/validate-fast_start-failover.html)
 - [Oracle Data Guard Broker Properties (26ai — the property index the Reference chapter's change list links as normative)](https://docs.oracle.com/en/database/oracle/oracle-database/26/dgbkr/oracle-data-guard-broker-properties.html)
-- 26ai Database Reference pages for the new/extended views cited in the change list: [V$FAST_START_FAILOVER_CONFIG](https://docs.oracle.com/en/database/oracle/oracle-database/26/refrn/V-FAST_START_FAILOVER_CONFIG.html), [V$FS_LAG_HISTOGRAM](https://docs.oracle.com/en/database/oracle/oracle-database/26/refrn/V-FS_LAG_HISTOGRAM.html), [V$DG_BROKER_PROPERTY](https://docs.oracle.com/en/database/oracle/oracle-database/26/refrn/V-DG_BROKER_PROPERTY.html), [V$DG_BROKER_CONFIG](https://docs.oracle.com/en/database/oracle/oracle-database/26/refrn/V-DG_BROKER_CONFIG.html), [V$FS_FAILOVER_OBSERVERS](https://docs.oracle.com/en/database/oracle/oracle-database/26/refrn/V-FS_FAILOVER_OBSERVERS.html); plus [DBMS_DG (26ai PL/SQL Packages Reference)](https://docs.oracle.com/en/database/oracle/oracle-database/26/arpls/DBMS_DG.html)
+- 26ai Database Reference pages for the new/extended views cited in the change list: [V$FAST_START_FAILOVER_CONFIG](https://docs.oracle.com/en/database/oracle/oracle-database/26/refrn/V-FAST_START_FAILOVER_CONFIG.html), [V$FS_LAG_HISTOGRAM](https://docs.oracle.com/en/database/oracle/oracle-database/26/refrn/V-FS_LAG_HISTOGRAM.html), [V$DG_BROKER_PROPERTY](https://docs.oracle.com/en/database/oracle/oracle-database/26/refrn/V-DG_BROKER_PROPERTY.html), [V$DG_BROKER_CONFIG](https://docs.oracle.com/en/database/oracle/oracle-database/26/refrn/V-DG_BROKER_CONFIG.html), [V$FS_FAILOVER_OBSERVERS](https://docs.oracle.com/en/database/oracle/oracle-database/26/refrn/V-FS_FAILOVER_OBSERVERS.html) (note two things on that page: `CURRENT_TIME` is **the time the query was run**, not an observer heartbeat, and the view's behaviour is defined only when it is queried **on the primary**); plus [DBMS_DG (26ai PL/SQL Packages Reference)](https://docs.oracle.com/en/database/oracle/oracle-database/26/arpls/DBMS_DG.html)
+- Scripting surfaces that **predate 26ai**, both linked from the change table's *Scripting surfaces* row: [SQLcl `DG` (SQL Developer Command Line 25.3 — the command's own scope note is "Oracle Database release 21c only")](https://docs.oracle.com/en/database/oracle/sql-developer-command-line/25.3/sqcug/dg-data-guard.html) and [ORDS Data Guard REST endpoints (Oracle REST Data Services 23.3)](https://docs.oracle.com/en/database/oracle/oracle-rest-data-services/23.3/orrst/api-data-guard.html). Listing them under "what 26ai changes" without a date qualifier overstates the novelty — the row and the table caption both say when they arrived.
 - [Ludovico Caldara's Data Guard 26ai blog series (ludovicocaldara.net — the practitioner walk-throughs of the 26ai broker changes behind the edition switch: the lag properties, multiple observers / `PreferredObserverHosts`, `VALIDATE FAST_START FAILOVER` and the new views. The simulator's Reference chapter "What changed in 26ai" table links the individual posts — #1 faster role transitions, #2 minimized stall, #3 lag type, #5/#6 observers, #8 multiple ASYNC connections, #10–#12/#14 scripting surfaces, #15 PrimaryDatabaseCandidates, #21/#23/#27 SQL-side visibility, #25 V$FAST_START_FAILOVER_CONFIG, #26 the lag histogram, #28 VALIDATE — from the series index)](https://www.ludovicocaldara.net/blog/dg-26ai-series/)

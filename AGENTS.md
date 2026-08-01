@@ -14,7 +14,7 @@ extend it without breaking consistency or accuracy.
 | `diagrams/fsfo-timeline-isolated.svg` (+`.png`) | Swimlane timeline, network partition: two independent threshold clocks, primary self-abort (split-brain protection) |
 | `diagrams/fsfo-sequence.svg` (+`.png`) | Sequence diagram of the crash case with an elapsed-time gutter |
 | `diagrams/fsfo-net-timeout.svg` (+`.png`) | Two panels separating NET_TIMEOUT (redo transport) from the broker failover clocks |
-| `diagrams/README.md` | Figure embeds, broker-property and redo-transport-property tables with verified defaults, the ping-properties quirk, the verified-facts sections behind the simulator's commit/reopen/observer/placement/side-topics views (including the observer-placement outcome matrix — 24 19c cells plus the 26ai both-sites column), the drawing idealizations, Oracle doc links |
+| `diagrams/README.md` | Figure embeds, broker-property and redo-transport-property tables with verified defaults, the ping-properties quirk, the verified-facts sections behind the simulator's commit/reopen/observer/placement/side-topics views (including the observer-placement outcome matrix — 24 19c cells plus the 26ai both-sites column) and behind the 26ai edition switch (the MaxAvailability lag-limit semantics and Oracle's self-contradiction on them, `PrimaryDatabaseCandidates`, `V$FS_FAILOVER_OBSERVERS`), the drawing idealizations, Oracle doc links |
 | `simulator/fsfo-simulator.html` | Source fragment of the interactive simulator, published at davidbudac.cz/dataguard. English only |
 | `simulator/i18n/cs.json` | Czech translation catalog, keyed by the English source strings. Real UTF-8 — deliberately outside the ASCII-only fragment |
 | `testing/README.md` | Test runbook: step-by-step drills verifying each documented situation against a real 19c configuration (crash, isolation, observer loss, NET_TIMEOUT, blocked failover, reopen/MaxFailure, client view, commit measurement), with an RTO/RPO probe harness and reinstate cleanup. Repo-only markdown — not part of the published site |
@@ -73,14 +73,96 @@ agree on:
   observer and the target standby to have lost the primary for the threshold,
   plus the standby's readiness check (synchronized in MaxAvailability/
   MaxProtection; apply lag ≤ `FastStartFailoverLagLimit` in MaxPerformance).
+- **`ObserverOverride` default FALSE, and the whole page assumes the default.**
+  The "both the observer and the standby must have lost the primary" rule above
+  is that default's behavior: with TRUE, "an automatic failover [may] occur when
+  the observer has lost connectivity to the primary … even if the standby has a
+  healthy connection to the primary", and several **continues** cells in the
+  outcome matrix would become failovers. State the assumption wherever a cell
+  outcome is asserted; never present the standby's veto as unconditional.
 - `ObserverPingInterval` default 100 ms; `ObserverPingRetry` default 10.
   Documented quirk: when BOTH are explicitly set, the threshold is ignored for
   the observer's detection. The isolated primary's own stall clock still uses
-  the threshold. Detection is stated in every asset as
+  the threshold. **The ignore is documented; the arithmetic is not.** The docs say
+  only that detection "can be reduced to nearly 1 second", so
   pingInterval × (pingRetry + 1) — the first failed ping plus its retries,
-  ≈ 1.1 s at the minimums (the docs say only "nearly 1 second"). Docs gap: the 19c properties reference does not list these two
+  ≈ 1.1 s at the minimums — is **this page's model** of that sentence and every
+  asset that draws the number must label it as a model, never as a quoted figure.
+  Docs gap: the 19c properties reference does not list these two
   properties (they exist since 12.2); cite the 21c+ edition for them.
-- `FastStartFailoverLagLimit` default 30 s, min 5 s, MaxPerformance only.
+- `FastStartFailoverLagLimit` default 30 s, min 5 s, MaxPerformance only **under
+  19c**. **Under 26ai it also applies in MaxAvailability, where the broker default
+  is 0**: zero means the standby must have received everything and the failover
+  is zero-loss (the 19c rule written as a number), any non-zero value (min 5 s)
+  makes MaxAvailability bounded-loss, permitted while the apply lag is at or
+  below the limit. `V$FAST_START_FAILOVER_CONFIG` names the two `ZERO DATA LOSS`
+  and `POTENTIAL DATA LOSS`. **Cite the 26ai fast-start failover chapter's
+  *Fast-start Failover Protection Modes* section for this — never that chapter's
+  *Task 3* and never the closing line of the `FastStartFailoverLagLimit` property
+  page, both of which still carry the stale "maximum performance mode only"
+  sentence.** The property page is a valid citation for the value ranges only;
+  the page states the contradiction in footnote 5 rather than hiding it.
+  `FastStartFailoverLagType` and `FastStartFailoverLagGraceTime` did **not**
+  follow it: both stay documented as maximum-performance-mode behavior whatever
+  the lag limit is doing in MaxAvailability, and both gray out there.
+- **`PrimaryDatabaseCandidates` is a fast-start-failover-*disabled* fence.** It
+  lists the members the broker may make primary; while FSFO is disabled it
+  restricts `SWITCHOVER` and `FAILOVER` to that list and refuses anything else
+  with `ORA-16529`; once FSFO is enabled it adds nothing new, because
+  `FastStartFailoverTarget` already governs the target. Default is an empty
+  string (restricts nothing) and the broker adds the current primary itself if
+  the list omits it. Never word it as "a fence around fast-start failover". The
+  19.26 backport is reported by the Data Guard PM's blog series only — not in
+  Oracle's release-update documentation, so write it as reported, never as
+  documented.
+- **`PRIMARY UNOBSERVED` is a target-standby status** (broker Table 5-1, and the
+  chapter's worked example): the primary shows `FS_FAILOVER_STATUS` =
+  `SYNCHRONIZED` with `FS_FAILOVER_OBSERVER_PRESENT` = `NO`, and the target
+  standby is where `FS_FAILOVER_STATUS` reads `PRIMARY UNOBSERVED`. Never put
+  `PRIMARY UNOBSERVED` on the primary. With **no observer deployed at all**,
+  `FS_FAILOVER_STATUS` reads `DISABLED` — a third state, not "unobserved".
+- **A manual failover with FSFO enabled is conditional, not free.** "You can
+  perform a manual failover even if fast-start failover is enabled" holds only
+  where the target is the `FastStartFailoverTarget` standby, that standby is
+  synchronized (MaxAvailability/MaxProtection) or within the lag limit
+  (MaxPerformance), and "the observer is started and communicating with the
+  target standby database", with the primary shut down first. So an *unobserved*
+  configuration fails the third condition — `DISABLE FAST_START FAILOVER FORCE`
+  first. Word the no-observer case as a manual failover needing no observer
+  *while FSFO is disabled*, never as unconditionally available.
+- **`FastStartFailoverAutoReinstate` is narrower than "the old primary returns".**
+  It reinstates only after an observer-initiated failover caused by a primary
+  crash or isolation — never after a user-configurable health condition or a
+  `DBMS_DG.INITIATE_FS_FAILOVER` call — and needs Flashback Database on both
+  databases, the former primary started and mounted (a manual restart when
+  `FastStartFailoverPmyShutdown` aborted it), the master observer able to reach
+  it, and static service names without Clusterware/Oracle Restart. Reinstate
+  stays out of scope; this is the wording for the one reference row and the
+  sequence-diagram footer that mention it.
+- **`V$FS_FAILOVER_OBSERVERS`** (26ai diagnostics): `CURRENT_TIME` is the time the
+  query was run, not an observer heartbeat, and the view's behavior is defined
+  only when it is queried **on the primary**. Never present its output as
+  queryable anywhere in the configuration.
+- **TAF and Application Continuity are different promises.** TAF reconnects and,
+  with `SELECT` failover, continues an open fetch, but cannot replay a
+  transaction — active transactions are rolled back and the application must
+  handle the error. Application Continuity is the conditional-replay mechanism:
+  replay-eligible requests only, and a replay it cannot verify is rejected. Never
+  collapse the two into "TAF or Application Continuity resumes their work".
+- **The two 26ai both-sites cells the matrix flags with † are inferences.** Oracle
+  states the nomination rule with a precondition — the primary and target standby
+  stay connected while the master observer is lost — and both the **partition ·
+  both sites** and **isolated · both sites** cells are failures that separate
+  primary from standby, so neither is the documented case. They compose the
+  nomination rule with the quorum rules; the simulator says so in prose
+  (`MULTI_NOTES.nominate`, `MULTI_NOTES.partition`) and `diagrams/README.md`
+  carries the reasoning. The **observer-lost · both sites** cell needs no flag —
+  it is the documented case verbatim.
+- **The scripting surfaces in the 26ai change table predate 26ai.** The official
+  SQLcl `DG` page is scoped "Oracle Database release 21c only" and the ORDS
+  Data Guard REST endpoints are documented in ORDS 23.3, so the row names both
+  releases; the table caption's "including what arrived in 21c and 23ai" is what
+  it leans on.
 - `FastStartFailoverPmyShutdown` default TRUE: a primary STALLED
   (`V$DATABASE.FS_FAILOVER_STATUS`) longer than the threshold, unable to reach
   observer or target standby, aborts itself.
