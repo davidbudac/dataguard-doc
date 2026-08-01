@@ -333,6 +333,10 @@ input[type="range"]:disabled::-moz-range-thumb{background:var(--ik3);box-shadow:
    anchor already works; the tab script only adds the scroll. */
 .xref{color:var(--vi);text-decoration:none;border-bottom:1px dashed var(--vi)}
 .xref:hover{color:var(--ik);border-bottom-color:var(--ik)}
+/* External citations (the 26ai change list) -- solid underline where the
+   internal .xref is dashed, so the two kinds of leaving-the-spot read apart. */
+.ext{color:var(--vi);text-decoration:none;border-bottom:1px solid var(--vi)}
+.ext:hover{color:var(--ik);border-bottom-color:var(--ik)}
 .legend{display:flex;flex-wrap:wrap;gap:6px 18px;font-size:11.5px;color:var(--ik2)}
 .legend span{display:inline-flex;align-items:center;gap:7px}
 .legend i{width:15px;height:9px;border-radius:1px;border:1px solid;display:inline-block}
@@ -2031,6 +2035,58 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
 
   <section class="chapter" id="ch-reference" aria-labelledby="ch-reference-h">
   <h2 class="chdiv-t sr" id="ch-reference-h"><span class="sr">Chapter 6 &mdash; </span>Reference</h2>
+
+  <section class="sec">
+    <div class="sec-hd">
+      <p class="eyebrow">Reference &middot; 26ai</p>
+      <h2>What changed in 26ai</h2>
+    </div>
+    <p class="caption">Everything Oracle AI Database 26ai changes about the machinery on this page, against the 19c baseline &mdash; including what arrived in 21c and 23ai, which a straight 19c-to-26ai upgrade picks up in the same step. The first three rows change behavior this page draws: the header&rsquo;s 19c / 26ai switch swaps them in, and prints the new commands in the chapter&nbsp;4 configuration cards. The rest change what you type and what you can query, never when a failover happens.</p>
+    <div class="tbl-wrap">
+      <table>
+        <thead>
+          <tr><th scope="col">Change</th><th scope="col">What it does</th><th scope="col">Sources</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><span class="mono">FastStartFailoverLagType</span></td>
+            <td>New property, <span class="mono">APPLY</span> (the default, and the only 19c behavior) or <span class="mono">TRANSPORT</span>; MaxPerformance only. Chooses which lag <span class="mono">FastStartFailoverLagLimit</span> is measured against: the standby&rsquo;s apply point, or the redo it has received. Under <span class="mono">TRANSPORT</span> the limit bounds only redo that never arrived &mdash; redo already received is still applied during terminal recovery &mdash; so the same limit tolerates a deep apply queue without refusing the failover.</td>
+            <td><a class="ext" href="https://docs.oracle.com/en/database/oracle/oracle-database/26/dgbkr/faststartfailoverlagtype.html">26ai docs</a> &middot; <a class="ext" href="https://www.ludovicocaldara.net/blog/dg26ai-lag-type/">Caldara #3</a></td></tr>
+          <tr><td><span class="mono">FastStartFailoverLagGraceTime</span></td>
+            <td>New property, default 0 (off), minimum 5&nbsp;s when set. That many seconds before the lag limit, the primary asks the observer&rsquo;s permission to enter the <span class="mono">LAGGING</span> state; with the answer pre-granted, crossing the limit costs it nothing. Left at 0, it asks at the crossing and stalls there waiting for the answer &mdash; up to one <span class="mono">FastStartFailoverThreshold</span>. The reopen panel in chapter&nbsp;2 draws that stall, and this property removing it.</td>
+            <td><a class="ext" href="https://docs.oracle.com/en/database/oracle/oracle-database/26/dgbkr/faststartfailoverlaggracetime.html">26ai docs</a> &middot; <a class="ext" href="https://www.ludovicocaldara.net/blog/dg26ai-minimized-stall/">Caldara #2</a></td></tr>
+          <tr><td>Four observers, with priorities</td>
+            <td>The registration limit rises from three to four (since 21c), and <span class="mono">PreferredObserverHosts</span> &mdash; a per-database property &mdash; ranks which registered host should be master for that database, so a two-site deployment can keep a pair on each site. When the master observer fails, the broker nominates a backup as the new master; no fast-start failover can occur until the new master is observing. This is the &ldquo;both sites&rdquo; placement in the chapter&nbsp;1 rail under 26ai.</td>
+            <td><a class="ext" href="https://docs.oracle.com/en/database/oracle/oracle-database/26/dgbkr/fast-start-failover2.html">26ai docs</a> &middot; <a class="ext" href="https://docs.oracle.com/en/database/oracle/oracle-database/26/dgbkr/preferredobserverhosts.html">property</a> &middot; <a class="ext" href="https://www.ludovicocaldara.net/blog/dg26ai-observer-priority/">Caldara #5</a> &middot; <a class="ext" href="https://www.ludovicocaldara.net/blog/dg26ai-4-observers/">#6</a></td></tr>
+          <tr><td><span class="mono">VALIDATE FAST_START FAILOVER</span></td>
+            <td>One DGMGRL command running the whole fast-start failover readiness checklist: configuration health, observer presence and placement, flashback logging, target standby state, threshold and lag-limit sanity, and the <span class="mono">fsfocallout.ora</span> scripts &mdash; the checks that 19c leaves spread across <span class="mono">SHOW</span> commands and views.</td>
+            <td><a class="ext" href="https://docs.oracle.com/en/database/oracle/oracle-database/26/dgbkr/validate-fast_start-failover.html">26ai docs</a> &middot; <a class="ext" href="https://www.ludovicocaldara.net/blog/dg26ai-validate-fsfo/">Caldara #28</a></td></tr>
+          <tr><td><span class="mono">V$FAST_START_FAILOVER_CONFIG</span></td>
+            <td>New view carrying the fast-start failover configuration &mdash; state, targets, limits, observer presence &mdash; queryable on any member. The <span class="mono">V$DATABASE.FS_FAILOVER_*</span> columns this page&rsquo;s 19c edition cites are deprecated in its favor.</td>
+            <td><a class="ext" href="https://docs.oracle.com/en/database/oracle/oracle-database/26/refrn/V-FAST_START_FAILOVER_CONFIG.html">26ai docs</a> &middot; <a class="ext" href="https://www.ludovicocaldara.net/blog/dg26ai-fsfo-config-view/">Caldara #25</a></td></tr>
+          <tr><td><span class="mono">V$FS_LAG_HISTOGRAM</span></td>
+            <td>Per-minute samples of the lag that gates fast-start failover, bucketed into a histogram &mdash; the documented way to pick a <span class="mono">FastStartFailoverLagLimit</span> from measured behavior instead of guesswork.</td>
+            <td><a class="ext" href="https://docs.oracle.com/en/database/oracle/oracle-database/26/refrn/V-FS_LAG_HISTOGRAM.html">26ai docs</a> &middot; <a class="ext" href="https://www.ludovicocaldara.net/blog/dg26ai-fsfo-lag-histogram/">Caldara #26</a></td></tr>
+          <tr><td>SQL-side broker visibility</td>
+            <td>New view <span class="mono">V$DG_BROKER_PROPERTY</span> lists every broker property and value from SQL; <span class="mono">V$DG_BROKER_CONFIG</span> gains <span class="mono">SWITCHOVER_READY</span> and <span class="mono">FAILOVER_READY</span>, role-transition readiness as two columns; <span class="mono">V$FS_FAILOVER_OBSERVERS</span> gains per-observer diagnostics (last ping to primary and target, log and state file paths, the observer&rsquo;s clock).</td>
+            <td><a class="ext" href="https://docs.oracle.com/en/database/oracle/oracle-database/26/refrn/V-DG_BROKER_PROPERTY.html">26ai docs</a> &middot; <a class="ext" href="https://www.ludovicocaldara.net/blog/dg26ai-v-dg-broker-property/">Caldara #23</a> &middot; <a class="ext" href="https://www.ludovicocaldara.net/blog/dg26ai-switchover-readiness/">#21</a> &middot; <a class="ext" href="https://www.ludovicocaldara.net/blog/dg26ai-enhanced-observer-diagnostics/">#27</a></td></tr>
+          <tr><td><span class="mono">PrimaryDatabaseCandidates</span></td>
+            <td>New property restricting which members the broker may ever make primary &mdash; a fence around fast-start failover and every other broker-initiated transition (a manual failover to an excluded member still works). Backported to 19.26, so a patched 19c has it too.</td>
+            <td><a class="ext" href="https://docs.oracle.com/en/database/oracle/oracle-database/26/dgbkr/primarydatabasecandidates.html">26ai docs</a> &middot; <a class="ext" href="https://www.ludovicocaldara.net/blog/dg26ai-primarydatabasecandidates/">Caldara #15</a></td></tr>
+          <tr><td>Scripting surfaces</td>
+            <td>DGMGRL grows JSON output for its <span class="mono">SHOW</span> commands; the <span class="mono">DBMS_DG</span> package becomes a full PL/SQL configuration API rather than the single 19c failover-initiation call; SQLcl speaks the broker commands; ORDS exposes them over REST. Automation stops screen-scraping DGMGRL.</td>
+            <td><a class="ext" href="https://docs.oracle.com/en/database/oracle/oracle-database/26/arpls/DBMS_DG.html">26ai docs</a> &middot; <a class="ext" href="https://www.ludovicocaldara.net/blog/dg26ai-json-output/">Caldara #14</a> &middot; <a class="ext" href="https://www.ludovicocaldara.net/blog/dg26ai-pl-sql-api/">#10</a> &middot; <a class="ext" href="https://www.ludovicocaldara.net/blog/dg26ai-sqlcl/">#11</a> &middot; <a class="ext" href="https://www.ludovicocaldara.net/blog/dg26ai-ords/">#12</a></td></tr>
+          <tr><td>Faster role transitions</td>
+            <td>Switchover and failover internals are reworked; Oracle claims transitions up to several times faster than 19c, with nothing to configure. The role-transition slider in the chapter&nbsp;1 rail stays yours to set &mdash; measure your own transition and enter it.</td>
+            <td><a class="ext" href="https://www.ludovicocaldara.net/blog/dg-26ai-faster-role-transitions/">Caldara #1</a></td></tr>
+          <tr><td>Multiple ASYNC connections</td>
+            <td>A lagging ASYNC standby is caught up over several automatic network connections instead of one, with no configuration &mdash; the chapter&nbsp;2 gap-resolution story, only faster on wide links.</td>
+            <td><a class="ext" href="https://www.ludovicocaldara.net/blog/dg26ai-multiple-async-connections/">Caldara #8</a></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="caption">Deliberately unchanged in 26ai &mdash; every number this page draws: <span class="mono">FastStartFailoverThreshold</span> keeps its default 30&nbsp;s and minimum 6&nbsp;s, <span class="mono">FastStartFailoverLagLimit</span> its default 30&nbsp;s and minimum 5&nbsp;s, the <span class="mono">ObserverPingInterval</span> / <span class="mono">ObserverPingRetry</span> mechanics and defaults are identical, and so is <span class="mono">FastStartFailoverPmyShutdown</span>. A 19c timeline read on this page is still correct under 26ai.</p>
+    <p class="caption">The practitioner&rsquo;s walkthrough of all of it is <a class="ext" href="https://www.ludovicocaldara.net/blog/dg-26ai-series/">Ludovico Caldara&rsquo;s Data Guard 26ai mini-series</a> (he is the Data Guard product manager; the numbered links above are its posts). The normative text is the <a class="ext" href="https://docs.oracle.com/en/database/oracle/oracle-database/26/dgbkr/fast-start-failover2.html">26ai broker guide&rsquo;s fast-start failover chapter</a> and the <a class="ext" href="https://docs.oracle.com/en/database/oracle/oracle-database/26/dgbkr/oracle-data-guard-broker-properties.html">26ai broker properties reference</a>.</p>
+  </section>
 
   <section class="sec">
     <div class="sec-hd">
