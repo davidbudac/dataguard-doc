@@ -184,19 +184,24 @@ white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 
 /* topology strip */
 .topo{margin-top:20px}
-.topo-svg{display:block;min-width:640px;width:100%;height:auto}
+/* Capped at the viewBox width: at 1:1 the hairlines and 10-13px labels render
+   as crisply as the timeline below, which draws at native pixels. Wider
+   containers center the strip instead of scaling it soft. */
+.topo-svg{display:block;min-width:640px;width:100%;max-width:960px;margin:0 auto;height:auto}
 .topo-svg text{font-family:var(--sans)}
 .topo-svg .tp-name{fill:var(--ik);font-size:13px;font-weight:600}
 .topo-svg .tp-sub{fill:var(--ik3);font-size:10px}
 .topo-svg .tp-cap{fill:var(--ik2);font-size:10.5px}
 .topo-svg .tp-lat{fill:var(--vi);font-size:10.5px;font-weight:600;font-family:var(--mono);font-variant-numeric:tabular-nums}
 .topo-svg .tp-ev{fill:var(--rd);font-size:11px;font-weight:600}
-/* nodes are cards: a surface rectangle with a soft shadow, a role-colored top
-   edge, and a tinted icon badge. The card body only ever changes on a host
-   death; a severed link never touches the cards at its ends. */
-.topo-svg .tp-card{fill:var(--sf);stroke:var(--ln);stroke-width:1;
-filter:drop-shadow(0 2px 6px rgba(0,0,0,.12))}
-.topo-svg .tp-card-obs{stroke:var(--vi)}
+/* nodes are cards: a flat surface rectangle with a hairline border, a
+   role-colored top edge, and a tinted icon badge -- the same flat bordered
+   language as the rail and the readout tiles (no shadow: nothing else on the
+   page floats). All three cards share one treatment; the observer is told
+   apart by its violet accents alone, exactly as teal tells the primary. The
+   card body only ever changes on a host death; a severed link never touches
+   the cards at its ends. */
+.topo-svg .tp-card{fill:var(--sf);stroke:var(--ln);stroke-width:1}
 .topo-svg .tp-down{fill:url(#topoHatch);stroke:var(--rd)}
 .topo-svg .tp-roleP{fill:var(--tl)} .topo-svg .tp-roleS{fill:var(--bl)} .topo-svg .tp-roleO{fill:var(--vi)}
 .topo-svg .tp-bdgP{fill:var(--tlf)} .topo-svg .tp-bdgS{fill:var(--blf)} .topo-svg .tp-bdgO{fill:var(--vif)}
@@ -206,18 +211,18 @@ filter:drop-shadow(0 2px 6px rgba(0,0,0,.12))}
 /* ground panels for the two (or three) data centres: which failures are
    site failures and which are only link failures is the whole lesson of the
    observer-placement control */
-.topo-svg .tp-site{fill:var(--sf2);stroke:none}
+.topo-svg .tp-site{fill:var(--sf2);stroke:var(--ln);stroke-width:1}
 .topo-svg .tp-site-down{fill:url(#topoHatch);stroke:var(--rd);stroke-width:1;stroke-dasharray:3 3}
 /* the caption and latency of a link ride it in a pill; a dead link's pill
    flips to the red tint and trades the RTT for the failure word */
-.topo-svg .tp-pill{fill:var(--sf);stroke:var(--ln);stroke-width:1}
+.topo-svg .tp-pill{fill:var(--sf);stroke:var(--ln2);stroke-width:1}
 .topo-svg .tp-pill-x{fill:var(--rdf);stroke:var(--rd);stroke-width:1}
 .topo-svg .tp-lat-x{fill:var(--rd);font-size:10.5px;font-weight:600;font-family:var(--mono);font-variant-numeric:tabular-nums}
 .topo-svg .tp-sitelab{fill:var(--ik3);font-size:10px;font-weight:600;letter-spacing:.12em}
 .topo-svg .tp-link{stroke:var(--ln2);stroke-width:1.25;fill:none}
 .topo-svg .tp-link-x{stroke:var(--rd);stroke-width:1.25;stroke-dasharray:4 3;fill:none}
 .topo-svg .tp-part{stroke:var(--rd);stroke-width:1.5;stroke-dasharray:5 4;fill:none}
-.topo-svg .tp-x{stroke:var(--rd);stroke-width:2.5}
+.topo-svg .tp-x{stroke:var(--rd);stroke-width:2.5;stroke-linecap:round}
 .topo-svg .tp-ahr{fill:var(--rd)}
 .topo-svg .tp-ahs{fill:var(--ln2)}
 .topo-svg .hatch-bg{fill:var(--rdf)}
@@ -6189,10 +6194,12 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
       };
     }
 
-    /* The third site, and the default. */
+    /* The third site, and the default. The DC 3 panel carries the same 33px
+       side margins around its card as the two database panels do -- tighter
+       and it reads as a misdrawn halo, not a site. */
     return {
-      obs: [399, 24, 162, 52], obsW: 103, obsX: [530, 32], obsEv: [575, 34, null],
-      sites: [['dc1', 70, 96, 250, 118], ['dc2', 640, 96, 250, 118], ['dc3', 384, 10, 192, 96]],
+      obs: [399, 24, 162, 52], obsW: 103, obsX: [530, 32], obsEv: [604, 34, null],
+      sites: [['dc1', 70, 96, 250, 118], ['dc2', 640, 96, 250, 118], ['dc3', 366, 6, 228, 100]],
       links: [
         { id: 'op', n: ['obs', 'pmy'], d: 'M416,58 L195,58 L195,118', pill: { c: [300, 58] } },
         { id: 'os', n: ['obs', 'sby'], d: 'M544,58 L765,58 L765,118', pill: { c: [660, 58] } },
@@ -6247,16 +6254,16 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
     var L = topoLayout(loc);
     var s = [], push = function (x) { s.push(x); };
 
-    /* A node is a card: soft shadow, a role-colored top edge, a tinted icon
-       badge (database cylinder or observer eye), then two lines of text. A
-       dead card hatches and its badge goes red; the role bar stays, because
-       the identity of what died is half the caption. */
+    /* A node is a card: a flat bordered surface, a role-colored top edge, a
+       tinted icon badge (database cylinder or observer eye), then two lines
+       of text. A dead card hatches and its badge goes red; the role bar
+       stays, because the identity of what died is half the caption. */
     function nodeCard(x, y, w, h, role, isDown, isObs, name, sub) {
       var db = h === 60;
       var b = db ? 32 : 28, bx = x + 12, by = y + (db ? 14 : 12);
       var pad = Math.round((b - 24) / 2);
       var tx = x + (db ? 56 : 52);
-      return '<rect class="tp-card' + (isObs ? ' tp-card-obs' : '') + (isDown ? ' tp-down' : '') +
+      return '<rect class="tp-card' + (isDown ? ' tp-down' : '') +
         '" x="' + x + '" y="' + y + '" width="' + w + '" height="' + h + '" rx="5"></rect>' +
         '<rect class="tp-role' + role + '" x="' + x + '" y="' + y + '" width="' + w + '" height="3" rx="1.5"></rect>' +
         '<rect class="' + (isDown ? 'tp-bdg-down' : 'tp-bdg' + role) + '" x="' + bx + '" y="' + by +
@@ -6345,7 +6352,9 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
       return t('The primary host crashes at t = 0.');
     }
 
-    push('<svg class="topo-svg" viewBox="0 0 960 230" role="img" aria-label="' +
+    /* 10px of headroom above y=0 balances the 16px below the site panels,
+       now that the strip renders 1:1 against the wrap's border */
+    push('<svg class="topo-svg" viewBox="0 -10 960 240" role="img" aria-label="' +
       esc(ariaPlace() + ' ' + ariaEvent() + ' ' +
           t('Every link carries {0} ms of round-trip latency.', C.latency)) + '">');
     push('<defs><pattern id="topoHatch" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">' +
