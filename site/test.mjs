@@ -37,8 +37,8 @@ const near = (got, want, label) =>
   assert.ok(Math.abs(got - want) < 1e-9, `${label ?? 'value'}: ${got} != ${want}`);
 
 // Baselines mirror the page's control defaults.
-const CDEF = { scenario: 'crash', mode: 'maxavail', threshold: 30, pingSet: false,
-  pingInterval: 100, pingRetry: 10, standbyLag: 10, lagLimit: 30,
+const CDEF = { scenario: 'crash', observerLoc: 'dc3', mode: 'maxavail', threshold: 30,
+  pingSet: false, pingInterval: 100, pingRetry: 10, standbyLag: 10, lagLimit: 30,
   roleTransition: 15, pmyShutdown: true, latency: 0 };
 const ADEF = { tct: 60, ct: 0, rc: 0, rd: 0, dead: 'drop' };
 const fsfo = (over) => M.computeFsfo({ ...CDEF, ...over });
@@ -186,6 +186,240 @@ test('switchover runs no clocks: threshold and ping properties change nothing', 
   assert.equal(far.tOpen, m.tOpen);
 });
 
+// ---------- MODEL: where the observer runs ----------
+//
+// The observer's placement decides which half of a failure it lands on, and
+// therefore what the configuration does. These two tables are the executable
+// form of the placement matrix in diagrams/README.md: six scenarios by four
+// placements, outcome and stall state spelled out cell by cell. They restate
+// the same verified rules the accuracy notes do -- failover needs BOTH the
+// observer and a reachable target standby to have lost the primary, the
+// primary stalls only when it can reach NEITHER, and no observer at all means
+// fast-start failover was never armed. If a cell here has to change, check it
+// against docs.oracle.com first.
+
+const LOCS = ['none', 'dc1', 'dc2', 'dc3'];
+
+const MATRIX = {
+  //                none          dc1              dc2              dc3
+  'crash': ['manual', 'failover', 'failover', 'failover'],
+  'isolated': ['continues', 'continues', 'failover', 'failover'],
+  'partition': ['continues', 'continues', 'failover', 'continues'],
+  'dc2down': ['continues', 'continues', 'stall-noone', 'continues'],
+  'observer-lost': ['manual', 'observer-lost', 'observer-lost', 'observer-lost'],
+  'switchover': ['switchover', 'switchover', 'switchover', 'switchover'],
+};
+
+const STALLED = {
+  //                none    dc1     dc2     dc3
+  'crash': [false, false, false, false],
+  'isolated': [false, false, true, true],
+  'partition': [false, false, true, false],
+  'dc2down': [false, false, true, false],
+  'observer-lost': [false, false, false, false],
+  'switchover': [false, false, false, false],
+};
+
+test('the placement matrix: 24 cells, outcome by scenario and observer location', () => {
+  for (const [scenario, row] of Object.entries(MATRIX)) {
+    row.forEach((want, i) => {
+      const at = `${scenario}/${LOCS[i]}`;
+      const m = fsfo({ scenario, observerLoc: LOCS[i] });
+      assert.equal(m.outcome, want, at);
+      // Only one pairing is coerced: an observer that was never deployed
+      // cannot be lost, so that cell is the plain crash.
+      const eff = scenario === 'observer-lost' && LOCS[i] === 'none' ? 'crash' : scenario;
+      assert.equal(m.scenario, eff, `${at} effective scenario`);
+    });
+  }
+});
+
+test('the placement matrix: 24 cells, which of them stall the primary', () => {
+  for (const [scenario, row] of Object.entries(STALLED)) {
+    row.forEach((want, i) => {
+      const at = `${scenario}/${LOCS[i]}`;
+      const m = fsfo({ scenario, observerLoc: LOCS[i] });
+      assert.equal(m.stalled, want, at);
+      // A stall plus FastStartFailoverPmyShutdown is what aborts the primary,
+      // and the abort always runs on the threshold.
+      assert.equal(m.abort, want ? CDEF.threshold : null, `${at} abort`);
+      for (const f of ['standbyGone', 'redoFlowing', 'pmyReachable']) {
+        assert.equal(typeof m[f], 'boolean', `${at} ${f}`);
+      }
+    });
+  }
+});
+
+test('back-compat: a configuration with no placement at all is the third site', () => {
+  for (const scenario of Object.keys(MATRIX)) {
+    const bare = { ...CDEF, scenario };
+    delete bare.observerLoc;                 // an old share link or stored config
+    assert.deepEqual(M.computeFsfo(bare), fsfo({ scenario }), scenario);
+  }
+});
+
+test('crash: the observer is on its own host, so all three placements agree', () => {
+  const dc3 = fsfo({ scenario: 'crash' });
+  assert.equal(dc3.outcome, 'failover');
+  for (const loc of ['dc1', 'dc2']) {
+    assert.deepEqual(fsfo({ scenario: 'crash', observerLoc: loc }), dc3, loc);
+  }
+});
+
+test('crash with no observer: manual FAILOVER only, and nothing bounds the loss', () => {
+  const m = fsfo({ scenario: 'crash', observerLoc: 'none' });
+  assert.equal(m.outcome, 'manual');
+  assert.equal(m.detect, null);
+  assert.equal(m.initiate, null);
+  assert.equal(m.execStart, null);
+  assert.equal(m.tOpen, null);
+  assert.equal(m.abort, null);
+  assert.equal(m.blocked, false);
+  assert.equal(m.dataLossKind, 'manual');
+  assert.equal(m.dataLossSeconds, 0);        // MaxAvailability: synchronized
+  // MaxPerformance: the lag is the loss, and FastStartFailoverLagLimit does
+  // not bound it -- that guarantee belongs to fast-start failover.
+  const perf = fsfo({ scenario: 'crash', observerLoc: 'none', mode: 'maxperf',
+    standbyLag: 42, lagLimit: 30 });
+  assert.equal(perf.dataLossKind, 'manual');
+  assert.equal(perf.dataLossSeconds, 42);
+  assert.equal(perf.blocked, false);
+});
+
+test('isolated at the third site: the published baseline has not drifted', () => {
+  const m = fsfo({ scenario: 'isolated' });
+  assert.equal(m.outcome, 'failover');
+  assert.equal(m.stalled, true);
+  assert.equal(m.initiate, 30);
+  assert.equal(m.execStart, 30);
+  assert.equal(m.tOpen, 55);
+  assert.equal(m.abort, 30);
+  assert.equal(m.blocked, false);
+  assert.equal(m.dataLossKind, 'none');
+  assert.equal(m.pmyReachable, false);
+});
+
+test('isolated with the observer at the primary site: it holds fire', () => {
+  const m = fsfo({ scenario: 'isolated', observerLoc: 'dc1' });
+  assert.equal(m.outcome, 'continues');
+  assert.equal(m.stalled, false);            // the observer still answers
+  assert.equal(m.abort, null);
+  assert.equal(m.tOpen, null);
+  assert.equal(m.pmyReachable, false);       // serving, unreachable from outside
+  assert.equal(m.redoFlowing, false);        // and the standby is stranded
+  assert.equal(m.standbyGone, false);
+});
+
+test('a severed DC1-to-DC2 link fails a healthy primary over from the standby site', () => {
+  const m = fsfo({ scenario: 'partition', observerLoc: 'dc2' });
+  assert.equal(m.outcome, 'failover');
+  assert.equal(m.stalled, true);
+  assert.equal(m.initiate, 30);
+  assert.equal(m.tOpen, 55);
+  assert.equal(m.abort, 30);
+  assert.equal(m.pmyReachable, true);        // nothing was ever wrong with it
+  assert.equal(m.redoFlowing, false);
+  // FastStartFailoverPmyShutdown gates the self-abort here exactly as it does
+  // under full isolation; the failover happens either way.
+  const stay = fsfo({ scenario: 'partition', observerLoc: 'dc2', pmyShutdown: false });
+  assert.equal(stay.abort, null);
+  assert.equal(stay.outcome, 'failover');
+  assert.equal(stay.stalled, true);
+});
+
+test('a third-site observer arbitrates a severed DC1-to-DC2 link', () => {
+  const m = fsfo({ scenario: 'partition', observerLoc: 'dc3' });
+  assert.equal(m.outcome, 'continues');
+  assert.equal(m.stalled, false);
+  assert.equal(m.abort, null);
+  assert.equal(m.tOpen, null);
+  assert.equal(m.redoFlowing, false);        // transport is down, commits are not
+  assert.equal(m.pmyReachable, true);
+});
+
+test('losing the standby site takes a standby-site observer with it', () => {
+  const m = fsfo({ scenario: 'dc2down', observerLoc: 'dc2' });
+  assert.equal(m.outcome, 'stall-noone');
+  assert.equal(m.stalled, true);
+  assert.equal(m.standbyGone, true);
+  assert.equal(m.initiate, null);
+  assert.equal(m.execStart, null);
+  assert.equal(m.tOpen, null);
+  assert.equal(m.ifDiedNow, null);           // no target left to price
+  assert.equal(m.abort, 30);                 // stalled + PmyShutdown
+  assert.equal(fsfo({ scenario: 'dc2down', observerLoc: 'dc2', pmyShutdown: false }).abort, null);
+});
+
+test('losing the standby site elsewhere leaves the primary serving, unprotected', () => {
+  for (const loc of ['none', 'dc1', 'dc3']) {
+    const m = fsfo({ scenario: 'dc2down', observerLoc: loc });
+    assert.equal(m.outcome, 'continues', loc);
+    assert.equal(m.stalled, false, loc);
+    assert.equal(m.standbyGone, true, loc);
+    assert.equal(m.redoFlowing, false, loc);
+    assert.equal(m.pmyReachable, true, loc);
+    assert.equal(m.ifDiedNow, null, loc);    // nothing to fail over to
+  }
+});
+
+test('no observer deployed means no fast-start failover in any scenario', () => {
+  for (const scenario of ['crash', 'isolated', 'partition', 'dc2down', 'observer-lost']) {
+    const m = fsfo({ scenario, observerLoc: 'none' });
+    assert.notEqual(m.outcome, 'failover', scenario);
+    assert.equal(m.stalled, false, scenario);
+    assert.equal(m.initiate, null, scenario);
+    assert.equal(m.tOpen, null, scenario);
+    assert.equal(m.abort, null, scenario);
+  }
+  // The one role transition that never needed an observer still runs.
+  const sw = fsfo({ scenario: 'switchover', observerLoc: 'none' });
+  assert.equal(sw.outcome, 'switchover');
+  assert.equal(sw.tOpen, 1 + 2 + CDEF.standbyLag + CDEF.roleTransition);
+});
+
+test('a switchover never needs the observer, so the placement changes nothing', () => {
+  // Full-object deepEqual: the switchover branch has no per-placement field
+  // and its effective scenario is always 'switchover', so nothing legitimately
+  // differs between the four columns.
+  const dc3 = fsfo({ scenario: 'switchover' });
+  for (const loc of ['none', 'dc1', 'dc2']) {
+    assert.deepEqual(fsfo({ scenario: 'switchover', observerLoc: loc }), dc3, loc);
+  }
+  // The MaxPerformance lag-limit refusal is FSFO's own gate: it fires wherever
+  // an observer is deployed, and cannot fire where none is.
+  const past = { scenario: 'switchover', mode: 'maxperf', standbyLag: 45, lagLimit: 30 };
+  const refusedDc3 = fsfo(past);
+  assert.equal(refusedDc3.blocked, true);
+  for (const loc of ['dc1', 'dc2']) {
+    assert.deepEqual(fsfo({ ...past, observerLoc: loc }), refusedDc3, loc);
+  }
+  const unGated = fsfo({ ...past, observerLoc: 'none' });
+  assert.equal(unGated.blocked, false);
+  assert.equal(unGated.tOpen, 1 + 2 + 45 + CDEF.roleTransition);
+});
+
+test('observer lost with no observer deployed is just the crash', () => {
+  const m = fsfo({ scenario: 'observer-lost', observerLoc: 'none' });
+  assert.equal(m.scenario, 'crash');
+  assert.equal(m.outcome, 'manual');
+  assert.equal(m.observerLost, false);
+  assert.deepEqual(m, fsfo({ scenario: 'crash', observerLoc: 'none' }));
+  // Wherever an observer actually is, losing it is still its own story.
+  for (const loc of ['dc1', 'dc2', 'dc3']) {
+    const o = fsfo({ scenario: 'observer-lost', observerLoc: loc });
+    assert.equal(o.scenario, 'observer-lost', loc);
+    assert.equal(o.outcome, 'observer-lost', loc);
+    assert.equal(o.observerLost, true, loc);
+  }
+});
+
+test('the ping quirk moves the observer clock only, wherever the observer sits', () => {
+  const m = fsfo({ scenario: 'partition', observerLoc: 'dc2', pingSet: true });
+  near(m.initiate, 1.1, 'initiate');
+  near(m.detect, 1.1, 'detect');
+  assert.equal(m.abort, 30);       // the primary's stall clock is the threshold
+});
+
 // ---------- APPMODEL: the connect string ----------
 
 test('default string, default clocks: the lucky 60 s hang connects', () => {
@@ -218,7 +452,52 @@ test('a partition drops packets: no refusal even from a live-host string', () =>
   assert.equal(a.d1, 60);
   const quiet = app({}, { scenario: 'observer-lost' });
   assert.equal(quiet.noEvent, true);
+  assert.equal(quiet.noEventKind, 'observer-lost');
   assert.equal(quiet.attempts.length, 0);
+});
+
+test('app: with no observer the crash strands the connect string', () => {
+  const a = app({}, { scenario: 'crash', observerLoc: 'none' });
+  assert.equal(a.noEvent, false);
+  assert.equal(a.noEventKind, null);
+  assert.equal(a.tService, null);            // nothing ever opens read-write
+  assert.equal(a.tConn, null);
+  assert.equal(a.attempts.length, 1);
+  near(a.gaveUp, 60.2, 'gaveUp');            // and it does give up, not hang forever
+});
+
+test('app: an isolated primary with a DC1 observer strands the string too', () => {
+  const a = app({ dead: 'rst' }, { scenario: 'isolated', observerLoc: 'dc1' });
+  assert.equal(a.noEvent, false);
+  assert.equal(a.drop, true);                // a partition drops, whatever the toggle says
+  assert.equal(a.d1, 60);
+  assert.equal(a.tService, null);
+  assert.equal(a.tConn, null);
+  near(a.gaveUp, 60.2, 'gaveUp');
+});
+
+test('app: a configuration that carries on is a no-event for every client', () => {
+  for (const [scenario, observerLoc] of [['partition', 'dc3'], ['partition', 'dc1'],
+    ['partition', 'none'], ['dc2down', 'dc3'], ['dc2down', 'none']]) {
+    const a = app({}, { scenario, observerLoc });
+    const at = `${scenario}/${observerLoc}`;
+    assert.equal(a.noEvent, true, at);
+    assert.equal(a.noEventKind, 'continues', at);
+    assert.equal(a.attempts.length, 0, at);
+    assert.equal(a.tConn, null, at);
+    assert.equal(a.gaveUp, null, at);
+  }
+});
+
+test('app: a STALLED primary still answers the listener', () => {
+  // The outage is at commit level: the service is still published, so a new
+  // connection is accepted exactly as it was before.
+  const a = app({}, { scenario: 'dc2down', observerLoc: 'dc2' });
+  assert.equal(a.noEvent, true);
+  assert.equal(a.noEventKind, 'stalled');
+  assert.equal(a.attempts.length, 0);
+  assert.equal(a.tConn, null);
+  assert.equal(a.gaveUp, null);
 });
 
 test('switchover app: two instant refusals per traversal, no timeout anywhere', () => {
@@ -254,6 +533,7 @@ test('switchover app: enough retries always connect, never before the open', () 
 test('switchover app: a refused command is a no-event', () => {
   const a = app({}, { scenario: 'switchover', mode: 'maxperf', standbyLag: 45, lagLimit: 30 });
   assert.equal(a.noEvent, true);
+  assert.equal(a.noEventKind, 'switchover-refused');
   assert.equal(a.switchoverRefused, true);
   assert.equal(a.attempts.length, 0);
   assert.equal(a.tConn, null);

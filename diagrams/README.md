@@ -230,7 +230,7 @@ is receiving.
   reference, not the broker properties page, whose 19c edition mislabels `MaxFailure` as
   corresponding to `VALID_FOR`.
 
-## Observer loss and multiple observers (the simulator's third scenario)
+## Observer loss and multiple observers (the simulator's observer-lost scenario)
 
 The simulator's `observer-lost` scenario kills the only observer host at t = 0 and leaves
 everything else intact. Nothing fails over, and that is the point.
@@ -255,7 +255,95 @@ everything else intact. Nothing fails over, and that is the point.
   redundancy exists: no backup to promote, no failover possible, and `FastStartFailoverThreshold`
   counting nothing.
 
-## Planned switchover (the simulator's fourth scenario)
+## Where the observer runs (the simulator's observer-location control)
+
+The simulator's second rail control crosses every scenario with four observer placements — **none**,
+the **primary's site**, the **standby's site**, and a **third site** (the default, and what the rest
+of this page assumes). The placement is not a broker property; the broker has nothing that records
+it, which is exactly why it belongs in the deployment identity rather than the parameter set.
+
+- **Oracle's hierarchy has three rungs.** First choice: "the observer should ideally be located at a
+  third site or third data center so that the primary, observer, and standby have isolated power,
+  server, storage, and network infrastructure" (19c HA guide; the 12.1 guide words the same rung as
+  a host "not located in the same data center as the primary or standby database", ideally "equally
+  distant" from both). Second: "have the observer use the same path to connect to the production
+  database as is used by the application tier" — with the guide's own caveat that when the
+  application tier is local to the production database, deploying the observer beside it is unwise,
+  because "it could experience the same issues as the database"; put it "at either the standby
+  location or a third data center" instead. Third and last: "locate the observer in the standby data
+  center on a separate host and isolate the observer as much as possible from failures affecting the
+  standby database" (12.1 HA Best Practices, §8.5.2.3 *Fast-Start Failover Best Practices* — a
+  cross-edition citation on the same precedent as the 21c `ObserverPing*` pages, because that
+  edition states the hierarchy most completely).
+- **Never on a database server.** Achieving the same isolation with two sites is possible, "however,
+  when Data Guard is used for disaster recovery, the observer should never be deployed at the
+  primary database server or cluster, or on the standby database server or cluster". All four of the
+  simulator's placements therefore put it on a separate host; only the *site* changes.
+- **The primary's site is not on the hierarchy at all.** The simulator offers it because it is what
+  people actually do, and words it as a caution: a site failure takes the observer with the primary,
+  and an observer on one side of a cut cannot arbitrate that cut. It is arguable only where the
+  application tier is local to the primary too — and even there the guide prefers the standby's site
+  or a third one. Never present it as a recommendation.
+- **Deploying no observer is not the same as being unobserved.** *Unobserved* is an armed
+  configuration whose master observer is missing: `FS_FAILOVER_STATUS` = `PRIMARY UNOBSERVED`,
+  `ORA-16820`, and the broker's own list headed "Fast-start failover cannot occur if:" opening with
+  "The master observer is not running" — the observer-lost scenario above. Either way a manual
+  failover is untouched: "You can perform a manual failover even if fast-start failover is enabled."
+  *No observer deployed* means fast-start failover was never enabled:
+  the `FastStartFailover*` properties can be set and nothing arms them, and a manual `FAILOVER TO` —
+  which never needed an observer — is the only thing that can promote the standby. One consequence
+  the simulator has to keep straight: the MaxPerformance switchover refusal past
+  `FastStartFailoverLagLimit` is fast-start failover's **own** gate, so it cannot fire when no
+  observer is deployed.
+
+### The outcome matrix
+
+Every cell below follows from the derivation rules already on this page — failover needs *both* the
+observer and the target standby to have lost the primary for the threshold, the primary stalls only
+when it can reach *neither*, a stalled primary self-aborts at the threshold under
+`FastStartFailoverPmyShutdown`, and a switchover never involves the observer at all. The placement
+is simply what decides which of those a given failure cuts.
+
+| scenario | none | primary's site | standby's site | third site |
+|---|---|---|---|---|
+| **crash** — the primary host dies | manual | failover | failover | failover |
+| **isolated** — every link out of the primary's site fails | continues | continues | failover (stall) | failover (stall) |
+| **partition** — only the link between the two database sites fails | continues | continues | **failover (stall)** | continues |
+| **dc2down** — the whole standby site is lost | continues | continues | **stall-noone** | continues |
+| **observer-lost** — the observer host dies | (a plain crash) | observer-lost | observer-lost | observer-lost |
+| **switchover** — a planned role reversal | switchover | switchover | switchover | switchover |
+
+Legend: **failover** — the standby is promoted; *(stall)* marks the cells where the primary is
+simultaneously cut off from both and self-aborts at the threshold. **continues** — nothing is
+promoted and the primary keeps committing. **stall-noone** — the primary stalls from t = 0 with no
+reachable standby to promote, and self-aborts one threshold later under
+`FastStartFailoverPmyShutdown`; no failover is ever possible. **manual** — nothing is armed and the
+primary is gone; only a DBA running `FAILOVER TO` moves the role, and no
+`FastStartFailoverLagLimit` bounds the loss, because that guarantee is fast-start failover's.
+**observer-lost** — the configuration is unobserved and nothing moves. **switchover** — the planned
+swap, identical at all four placements. The one coerced pairing is observer-lost with no observer
+deployed: there is nothing to lose, so it is the plain crash cell.
+
+Three cells are worth reading twice:
+
+- **partition · standby's site** is a **false failover**. Only the link between the two database
+  sites is down, so the primary never stopped serving — but the observer is on the far side of that
+  cut with the standby, both halves of the quorum have lost the primary, and the standby is
+  promoted. The same cut leaves that healthy primary reaching neither, so it stalls and aborts at
+  the threshold. Compare the same row at the third site, where the observer still sees the primary,
+  holds fire, and nothing happens at all: this is what the third-site recommendation buys.
+- **dc2down · standby's site** takes production down by losing the *spare*. The observer dies with
+  the standby site, the primary reaches neither, and it stalls from t = 0 — with nothing left to
+  fail over to. Under `FastStartFailoverPmyShutdown` it aborts one threshold later.
+- **isolated · primary's site** is the mirror image: the observer is inside the isolated site and is
+  the only thing still talking to the primary, so it holds fire. Nothing is promoted, the standby is
+  stranded with no redo arriving, and the primary serves an outside world that cannot reach it.
+
+`site/test.mjs` carries this same table as executable assertions — the 24 outcomes and the 24 stall
+flags, looped literally — so a model change that contradicts the matrix fails the build before it
+can be published. Change one and change all three: the model, the test table, and this section.
+
+## Planned switchover (the simulator's switchover scenario)
 
 The `switchover` scenario is the only planned event on the page: `DGMGRL> SWITCHOVER TO 'sby01'`
 at t = 0, both hosts up throughout, and the two databases trading roles.
@@ -465,7 +553,7 @@ Where the simulator draws something it cannot know, it is listed on the page its
 ## Oracle documentation
 
 - [Oracle Data Guard Broker Properties (19c)](https://docs.oracle.com/en/database/oracle/oracle-database/19/dgbkr/oracle-data-guard-broker-properties.html)
-- [Switchover and Failover Operations (19c, chapter 5)](https://docs.oracle.com/en/database/oracle/oracle-database/19/dgbkr/using-data-guard-broker-to-manage-switchovers-failovers.html)
+- [Switchover and Failover Operations (19c, chapter 5 — the switchover prerequisites and step list, and the list headed "Fast-start failover cannot occur if:", whose first entry is "The master observer is not running". A manual failover needs none of that machinery: "You can perform a manual failover even if fast-start failover is enabled")](https://docs.oracle.com/en/database/oracle/oracle-database/19/dgbkr/using-data-guard-broker-to-manage-switchovers-failovers.html)
 - [Managing Oracle Data Guard Role Transitions (19c Data Guard Concepts and Administration — the two-phase switchover, `SWITCHOVER ... VERIFY`, duration factors, `COMMIT TO SWITCHOVER ... WITH SESSION SHUTDOWN`)](https://docs.oracle.com/en/database/oracle/oracle-database/19/sbydb/managing-oracle-data-guard-role-transitions.html)
 - [LOG_ARCHIVE_DEST_n parameter attributes (19c Data Guard Concepts and Administration)](https://docs.oracle.com/en/database/oracle/oracle-database/19/sbydb/LOG_ARCHIVE_DEST_n-parameter-attributes.html)
 - [LOG_ARCHIVE_DEST_n (19c Database Reference)](https://docs.oracle.com/en/database/oracle/oracle-database/19/refrn/LOG_ARCHIVE_DEST_n.html)
@@ -483,7 +571,8 @@ Where the simulator draws something it cannot know, it is listed on the page its
 - [Optimizing Performance (19c Net Services Administrator's Guide — "Configuring I/O Buffer Space": the bandwidth-delay product worked example and where the buffer parameters go in `sqlnet.ora`, `tnsnames.ora` and `listener.ora`)](https://docs.oracle.com/en/database/oracle/oracle-database/19/netag/optimizing-performance.html)
 - [Statistics Descriptions (19c Database Reference — `redo write time` "in 10s of milliseconds", `redo size`, `redo writes`)](https://docs.oracle.com/en/database/oracle/oracle-database/19/refrn/statistics-descriptions-2.html)
 - MOS note 2064368.1, "Assessing and Tuning Network Performance for Data Guard and RMAN" — the `oratcptest.jar` download and its `-length` / `-write` / `-file` options. **My Oracle Support, login required**, so it cannot be re-verified from a browser without an account; treat its flag spellings as unconfirmed against the vendor and check `-help` instead.
-- [Optimizing Automatic Failover (19c High Availability Overview — the primary's stall condition)](https://docs.oracle.com/en/database/oracle/oracle-database/19/haovw/optimizing-automatic-failover-common-scenarios-minimize-downtime1.html)
+- [Optimizing Automatic Failover (19c High Availability Overview — the primary's stall condition, and where the observer belongs: "ideally … at a third site or third data center so that the primary, observer, and standby have isolated power, server, storage, and network infrastructure"; "have the observer use the same path to connect to the production database as is used by the application tier"; and, whatever else, "the observer should never be deployed at the primary database server or cluster, or on the standby database server or cluster". Where the application tier is local to the production database it says to deploy the observer "at either the standby location or a third data center" instead)](https://docs.oracle.com/en/database/oracle/oracle-database/19/haovw/optimizing-automatic-failover-common-scenarios-minimize-downtime1.html)
+- [Configuring Data Guard (12.1 High Availability Best Practices, §8.5.2.3 "Fast-Start Failover Best Practices" — the observer-placement hierarchy: a host outside both data centres first, ideally "equally distant" from them, then "the same network as the application", then "locate the observer in the standby data center on a separate host and isolate the observer as much as possible from failures affecting the standby database". A cross-edition citation, the same precedent as the 21c `ObserverPing*` pages: the hierarchy is stated most completely in this edition)](https://docs.oracle.com/database/121/HABPT/config_dg.htm)
 - [Changes in Oracle Data Guard Broker 12c Release 1 (12.1 — the only edition that documents `FASTSYNC` as new)](https://docs.oracle.com/database/121/DGBKR/release_changes.htm)
 - [Changes in Oracle Data Guard Broker 12c Release 2 (12.2 — automatic backup-observer promotion)](https://docs.oracle.com/en/database/oracle/oracle-database/12.2/dgbkr/release-changes.html)
 - [Scenarios Using the DGMGRL Utility (19c — Scenario 6, registering and managing multiple observers)](https://docs.oracle.com/en/database/oracle/oracle-database/19/dgbkr/examples-using-data-guard-broker-DGMGRL-utility.html)

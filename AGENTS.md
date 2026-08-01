@@ -14,12 +14,12 @@ extend it without breaking consistency or accuracy.
 | `diagrams/fsfo-timeline-isolated.svg` (+`.png`) | Swimlane timeline, network partition: two independent threshold clocks, primary self-abort (split-brain protection) |
 | `diagrams/fsfo-sequence.svg` (+`.png`) | Sequence diagram of the crash case with an elapsed-time gutter |
 | `diagrams/fsfo-net-timeout.svg` (+`.png`) | Two panels separating NET_TIMEOUT (redo transport) from the broker failover clocks |
-| `diagrams/README.md` | Figure embeds, broker-property and redo-transport-property tables with verified defaults, the ping-properties quirk, the verified-facts sections behind the simulator's commit/reopen/observer/side-topics views, the drawing idealizations, Oracle doc links |
+| `diagrams/README.md` | Figure embeds, broker-property and redo-transport-property tables with verified defaults, the ping-properties quirk, the verified-facts sections behind the simulator's commit/reopen/observer/placement/side-topics views (including the 24-cell observer-placement outcome matrix), the drawing idealizations, Oracle doc links |
 | `simulator/fsfo-simulator.html` | Source fragment of the interactive simulator, published at davidbudac.cz/dataguard. English only |
 | `simulator/i18n/cs.json` | Czech translation catalog, keyed by the English source strings. Real UTF-8 — deliberately outside the ASCII-only fragment |
 | `testing/README.md` | Test runbook: step-by-step drills verifying each documented situation against a real 19c configuration (crash, isolation, observer loss, NET_TIMEOUT, blocked failover, reopen/MaxFailure, client view, commit measurement), with an RTO/RPO probe harness and reinstate cleanup. Repo-only markdown — not part of the published site |
 | `site/build.mjs` | Wraps the fragment into a full page (doctype, charset, title, favicon, canonical + social meta), inlines `simulator/i18n/cs.json` as a JSON `<script>`, and enforces the ASCII-only guard — it exits non-zero on any byte above U+007E |
-| `site/test.mjs` | Standalone node test: extracts the four model marker blocks from the fragment and asserts the documented domain invariants, then checks the Czech catalog for dropped placeholders, unbalanced inline markup and bad plural forms. No dependencies; `node --test site/test.mjs`. `site/publish.sh` runs it after the build, so a model that contradicts the docs cannot be deployed |
+| `site/test.mjs` | Standalone node test: extracts the four model marker blocks from the fragment and asserts the documented domain invariants — including the 24-cell scenario × observer-location outcome matrix as a literal table — then checks the Czech catalog for dropped placeholders, unbalanced inline markup and bad plural forms. No dependencies; `node --test site/test.mjs`. `site/publish.sh` runs it after the build, so a model that contradicts the docs cannot be deployed |
 | `site/publish.sh` | Builds, tests the models, and deploys to the VPS, then verifies the public URL |
 
 ## Publishing
@@ -96,7 +96,7 @@ agree on:
   clocks apart; the threshold/abort still runs 0 → 30 s.
 - Failover execution (terminal recovery + role change + open) is
   environment-dependent, not parameter-driven — always label it that way.
-- **Switchover** (the planned role reversal, simulator scenario four): zero data loss in
+- **Switchover** (the planned role reversal, the workbench's only planned scenario): zero data loss in
   **every** protection mode — never qualify it by mode. With FSFO enabled the broker permits a
   switchover only to the pre-specified target standby, and only while that standby is synchronized
   (MaxAvailability) or inside `FastStartFailoverLagLimit` (MaxPerformance); past the limit in
@@ -215,6 +215,54 @@ agree on:
   promotes a backup observer automatically (12.2+), with `SET MASTEROBSERVER TO`
   as the manual override. The "three" is 19c-specific — later releases allow
   more, so do not carry the number across editions.
+- **Observer placement** (the workbench's observer-location control). Oracle
+  documents a hierarchy, and it has exactly three rungs: **a third site or third
+  data center**, first, "so that the primary, observer, and standby have isolated
+  power, server, storage, and network infrastructure"; failing that, wherever the
+  observer uses "the same path to connect to the production database as is used
+  by the application tier" — with the guide's own caveat that when the app tier
+  is local to the production database, the observer belongs "at either the
+  standby location or a third data center" instead, because beside the app tier
+  "it could experience the same issues as the database"; failing that, the
+  **standby's data centre, on a separate host**, to "isolate the observer as much
+  as possible from failures affecting the standby database". The observer must
+  "never be deployed at the primary database server or cluster, or on the standby
+  database server or cluster", which is why all four simulator locations put it on
+  a host of its own and only the *site* varies. **The primary's site is not on
+  that hierarchy at all**: word it as a caution — a site failure takes the
+  observer with the primary, and an observer on one side of a cut cannot
+  arbitrate it — never as a recommendation, and only ever as defensible when the
+  application tier is local to the primary.
+  **Deploying no observer is not the same as being unobserved.** Unobserved
+  means FSFO is enabled and the master observer is missing:
+  `FS_FAILOVER_STATUS` = `PRIMARY UNOBSERVED`, `ORA-16820`, the observer-lost
+  scenario, and the broker's list headed "Fast-start failover cannot occur if:",
+  whose first entry is "The master observer is not running". No observer
+  deployed means FSFO was never enabled — the
+  `FastStartFailover*` properties can be set and nothing arms them, and a manual
+  `FAILOVER TO` is the only thing that promotes the standby. One corollary to
+  keep straight: the MaxPerformance switchover refusal past
+  `FastStartFailoverLagLimit` is FSFO's **own** gate, so it cannot fire with no
+  observer deployed. Sources: the 19c HA guide's *Optimizing Automatic Failover
+  in Common Scenarios* (rungs one and two, and the never-on-a-database-server
+  rule), 12.1 HABPT §8.5.2.3 *Fast-Start Failover Best Practices* (the third rung
+  and the isolate-quote — a cross-edition citation, same precedent as the 21c
+  `ObserverPing*` pages) and the 19c broker guide's switchover/failover chapter
+  (the master-observer condition).
+- **Three placement cells worth knowing by heart** — they are what the control
+  exists to show, and `site/test.mjs` asserts all 24 of them. (1) A partition of
+  only the primary-to-standby site link, watched by an observer in the
+  **standby's** site, is a **false failover**: both halves of the quorum have
+  lost a primary that never stopped serving, so the standby is promoted — and
+  the same cut leaves that healthy primary reaching neither observer nor
+  standby, so it stalls and, under `FastStartFailoverPmyShutdown`, aborts at the
+  threshold. (2) Losing the whole **standby site** with the observer in it stalls
+  the primary from t = 0 with nobody left to fail over to: it self-aborts one
+  threshold later and no failover is ever possible — losing the *standby* site
+  is what takes production down. (3) A fully isolated primary watched from its
+  **own** site is the mirror image: the observer still sees the primary and
+  holds fire, so nothing is promoted, the standby is stranded, and the primary
+  serves a world that cannot reach it.
 
 When adding new claims, verify against docs.oracle.com first and note the
 source in `diagrams/README.md`.
@@ -266,10 +314,22 @@ tick helpers because their ladders genuinely differ). `site/test.mjs` does
 exactly this and asserts the documented invariants; `site/publish.sh` runs it
 after every build. Timing model: initiate =
 threshold, or pingInterval × (pingRetry + 1) when the ping properties are set;
-blocked when MaxPerformance and lag > lag limit; the isolated primary's abort
+blocked when MaxPerformance and lag > lag limit; a stalled primary's abort
 always uses the threshold. `computeFsfo` also has an `observer-lost` branch
 (below) returning `observerLost` and `ifDiedNow`, and a `switchover` branch
 returning `switchover`, `tDown`, `tConvertEnd`, `downtime` and `tRestartDraw`.
+
+**Every return path carries `m.outcome`** — `failover` · `continues` ·
+`stall-noone` · `manual` · `observer-lost` · `switchover` — and the renderers
+branch on it, never on the scenario name, because the same failure tells a
+different story per observer placement. Between the scenario and the outcome sit
+five reachability facts the model derives once and the drawings read straight
+off it: `stalled`, `standbyGone`, `redoFlowing`, `pmyReachable`, plus the
+effective `scenario` echoed back (an `observer-lost` scenario with no observer
+deployed is a plain crash, and the model says so rather than letting the rail and
+the drawing disagree). `c.observerLoc` is defaulted to `dc3` **inside** the
+model: that one line is the whole back-compatibility story for shared links,
+stored configurations and export files written before the control existed.
 
 The page is split into six chapters — `#ch-clocks`, `#ch-transport`, `#ch-app`,
 `#ch-config`, `#ch-side`, `#ch-reference` — each a `<section class="chapter">` wrapper that opens with a
@@ -372,15 +432,42 @@ self-contained IIFE that injects its own DOM, degrades to nothing without JS,
 and never reaches into another IIFE's closure — push state via controls plus
 dispatched events only.
 
-The workbench carries four scenarios. The third, **observer lost**, kills the
-only observer host at t = 0: the primary keeps serving because it still reaches
-the target standby, the standby keeps applying, and no fast-start failover is
-possible at all — so every control that governs a failover clock grays out, the
-lanes stay flat, and the "What the timeline shows" grid explains why
-nothing happens. Its `ifDiedNow`
-value is what the primary's death during the blind window would cost.
+The workbench carries **six scenarios**, in rail order: primary **crash**,
+**isolated** primary (every link out of the primary's site fails), **partition**
+(only the link between the two database sites fails), **standby site down**
+(`dc2down` — the whole standby data centre, and anything else in it), **observer
+lost** and planned **switchover**. Crossed with them is the **observer-location**
+control that sits directly beneath: **none** / **primary site** / **standby
+site** / **third site** (the default, and what the page always assumed). That is
+24 states, and the outcome of every one of them is a literal table in
+`site/test.mjs` and a prose table in `diagrams/README.md` — change one and change
+all three. The radio labels are deliberately role-relative and static, never the
+configured site names: `.seg-row label` is in the i18n snapshot, so a
+runtime-rewritten label would be clobbered on `setLang`; the configured names
+arrive in the `ctl-note` through `t()` placeholders instead.
 
-The fourth, **switchover**, is the only planned event on the page: t = 0 is the DBA issuing
+**None means fast-start failover is not enabled at all** — not "enabled but
+unobserved" (see the accuracy rules). Every control that only a failover gives
+meaning to goes inert through the same borrow-and-restore pattern as the two sets
+below, with its own note table (`NOFSFO_NOTES`): the threshold, the
+`ObserverPing*` switch and sliders, `FastStartFailoverLagLimit`,
+`FastStartFailoverPmyShutdown`, the role-transition time — and the observer-lost
+radio itself, which is `disabled`, because there is no observer to lose. Two
+gates now key on the *model* rather than the scenario name, and must stay that
+way: the threshold is disabled when the ping properties are set **and the primary
+is not stalled** (a stalled primary still runs its stall clock off the
+threshold), and `FastStartFailoverPmyShutdown` is live exactly when
+`m.stalled` — which is true in the partition and standby-site-down cells too,
+not just under full isolation.
+
+**Observer lost** kills the only observer host at t = 0: the primary keeps
+serving because it still reaches the target standby, the standby keeps applying,
+and no fast-start failover is possible at all — so every control that governs a
+failover clock grays out, the lanes stay flat, and the "What the timeline shows"
+grid explains why nothing happens. Its `ifDiedNow` value is what the primary's
+death during the blind window would cost.
+
+**Switchover** is the only planned event on the page: t = 0 is the DBA issuing
 `SWITCHOVER TO` the target standby, not a failure. It has its own `computeFsfo` branch
 (`switchover: true`, returning `tDown`, `tConvertEnd`, `downtime`, `tRestartDraw` and the two
 nominal constants `SW_VERIFY`/`SW_CONVERT`), its own timeline builder and its own `computeApp`
@@ -392,7 +479,33 @@ borrow-and-restore pattern as observer lost (`SW_NOTES`): the threshold, both `O
 sliders and their switch, `FastStartFailoverPmyShutdown`, and — in chapter 3 — the dead-address
 behaviour toggle, which has nothing to describe when neither host is dead. The apply lag, the lag
 limit, the role-transition time and the protection mode all stay live, because each still changes
-the outcome.
+the outcome. The swap itself is identical at all four observer locations — the observer is a
+spectator here — so the placement contributes exactly one appended, role-relative sentence per
+location to the prose, and nothing else. With **none**, the lag limit joins the grayed set: the
+MaxPerformance refusal is FSFO's own gate, so with nothing armed the command is simply accepted.
+
+The four cells where no role is transferred get **two shared timeline builders**, one per shape, as
+the file's one-builder-per-shape convention requires. `buildFlatTimeline` draws `continues` and
+`manual`: three flat lanes, one event marker, no braces and no countdown, with the lane content
+coming from `flatLanes(m)`, which reads `standbyGone` / `redoFlowing` / `pmyReachable` off the model
+rather than the scenario name. `buildStallTimeline` draws `stall-noone`: the primary teal →
+`STALLED` → aborted, observer and standby lanes hatched, and a single brace over a stall clock that
+is counting down to nothing. Three constraints carried over: the **three lanes stay, always** — the
+observer lane sitting empty under `none`, labelled "not deployed", *is* the lesson; `NET_TIMEOUT` in
+the `continues` cells is **caption-only**, never a band and never a model field, because the
+accuracy rules forbid drawing it as a failover clock; and the stall visuals key on `m.stalled`, not
+on `scenario === 'isolated'`, which is what makes the partition cell draw its stall correctly.
+
+The **topology strip** carries the placement visually: `renderTopo` picks node positions out of a
+`LAYOUT[observerLoc]` table and wraps each data centre in a dashed `.tp-site` rectangle, so which
+failures are *site* failures and which are only *link* failures is legible at a glance — the third
+site's rectangle is drawn only when there is one, the standby site's is hatched `.tp-site-down` when
+it is gone, and under `none` the observer box is replaced by a caption saying fast-start failover is
+not enabled. Which links go down is one `linkState(link)` helper reading the scenario (crash: the
+links touching the primary; isolated: exactly one endpoint in the primary's site; partition: one
+endpoint in each database site; standby site down: the links touching it), so a new scenario is one
+clause there rather than a rewrite. Its aria sentence gains a per-location and a per-scenario
+clause, each a whole i18n key.
 
 The "application's view" section (`#appview`) has its own pure function
 `computeApp(a, m, scenario)` between `/* APPMODEL:START */` and
@@ -402,8 +515,14 @@ ladder (per-pass toll min(TCT, CT) on the dead address, instant ORA-12514 from
 the standby, RETRY_DELAY between traversals, success once a traversal reaches
 address 2 at/after tOpen). Attempts collapse into an aggregated band when they
 would be subpixel; horizons past ~160 s clip with a "gives up at" annotation.
-The isolated scenario forces drop (partition = no refusals); the observer-lost
-scenario returns `noEvent`, since nothing ever moves for a client to notice. Its
+The isolated scenario forces drop (a partition drops packets, so no refusal ever
+comes back). It branches on `m.outcome`, and every no-event return says
+which nothing it is describing in `noEventKind`, so the caption can explain the
+right one: `observer-lost` and `switchover-refused` as before, plus `continues`
+(no role change and the primary still answering — nobody dials anything unusual)
+and `stalled` (a `STALLED` primary still runs its listener and still publishes
+the service, so a new connection is accepted exactly as before; the outage is at
+commit level, one layer below anything this ladder can see — say so). Its
 state object is `A`; presets: Defaults (parameter defaults) and Tuned (3/90/30×3,
 HA-guide shape).
 
@@ -423,18 +542,31 @@ Two more sections sit on their own time scales, each with its own pure function:
   the destination for good, the unshipped-redo area with an MB readout off the
   redo-rate slider, catch-up at 5× the generation rate, and the FSFO disarm
   marker — t = 0 in MaxAvailability (unsynchronized immediately), t =
-  `FastStartFailoverLagLimit` in MaxPerformance. Controls: reopen interval, max
-  failures, outage length, redo rate. Footnote 4 on the page lists the
-  idealizations; `diagrams/README.md` repeats them.
+  `FastStartFailoverLagLimit` in MaxPerformance. With **no observer deployed**
+  there is nothing to disarm, and the marker, its chip and the caption all say
+  so — "not enabled in this topology", never "disarmed at". Controls: reopen
+  interval, max failures, outage length, redo rate. Footnote 4 on the page lists
+  the idealizations; `diagrams/README.md` repeats them.
 
 Chapter 4, upper half (`#ch-config`, section `#deployview`) makes the whole page
 configurable per deployment. Three static cards (never innerHTML-rendered, so
 typing keeps focus): **Deployment identity** — a fifth state object
 `ID`/`ID_DEFAULTS` (deployment name, DB unique names, hosts, observer host,
-service, port, site labels, subtitles); every renderer reads it through
+service, port, the three site labels `dc1`/`dc2`/`dc3`, subtitles); every
+renderer reads it through
 `idv(key)`, which trims and falls back to the fixture default on blank, and
 every value is `esc()`-escaped on innerHTML/SVG paths (or set via
-`textContent` into the `[data-name]` prose spans by `applyNames()`).
+`textContent` into the `[data-name]` prose spans by `applyNames()`). Two rows on
+that card are newer than the rest: **`#dep-obsloc`**, a `<select>` mirroring the
+chapter-1 observer-location radio in both directions — the one field on the card
+that changes what the page *draws*, rather than what it is called — and
+**`#dep-dc3`**, the third site's label, which carries `data-i18n-skip` like every
+other field whose placeholder is a fixture default. `#dep-host-o`'s placeholder is
+translated prose and is deliberately worded location-neutrally: it is never
+rewritten at runtime to name the current site, because the i18n attribute sweep
+would clobber the write on the next `setLang`. Where the observer runs rides in
+the config file's `sim` block, not `params` — the broker has no property that
+records it.
 **Data Guard parameters** — the same `C`/`A`/`K`/`R` state the chapter 1–3
 rails edit, synced both ways: field listeners write state and mirror the rail
 control; `syncDeployForm()` at the end of `draw()` refreshes every field that
@@ -478,7 +610,18 @@ MAXAVAILABILITY|MAXPERFORMANCE`, and `START OBSERVER IN BACKGROUND` is the
 documented preferred observer start. The dest card omits `NET_TIMEOUT` under
 ASYNC (it bounds the SYNC ack wait and never affects sessions under ASYNC) and
 is framed as the hand-set equivalent — never claim it is the literal string the
-broker composes.
+broker composes. **The observer card carries the placement**, because the broker
+has no property that records it: the third site is annotated as the HA guide's
+first recommendation, the standby's site as the documented last resort ("on its
+own host, as isolated from the standby as possible"), and the primary's site in
+the `bad` tone as a placement Oracle does not list — arguable only where the
+application tier is local too, and even then the guide prefers the standby's site
+or a third one. With **no observer deployed** there is no session to write down
+at all: the card is the manual `FAILOVER TO` and the note that it is always
+available, observer or not, and the broker card drops the four
+`FastStartFailover*` property commands and `ENABLE FAST_START FAILOVER` while
+keeping `LogXptMode` and the protection mode — the properties exist, nothing arms
+them.
 
 Chapter 5 (`#ch-side`, "Side topics") holds the three things that sit beside the
 mainline story, in the order *prepare · measure · what happens when it breaks*.
@@ -544,10 +687,38 @@ topics and Reference, and the two cross-links (chapter 2's commit caption to
 `#impactview`, the reopen caption to `#nettimeoutview`) open the other chapter
 *and* land on the section.
 
+**Observer placement, its own pass** — the axis is 24 states, so walk the cells
+that carry the lessons rather than all of them. Crash at each of the three
+deployed locations draws **identically** (a separate-host observer survives the
+database's death), so read the three timelines against each other and confirm the
+only difference is the primary-site placement warning in the readout. Partition
+with the observer at the standby's site is the false failover: the standby is
+promoted *and* the primary stalls and aborts, both on one drawing — against the
+same partition at the third site, where nothing happens at all and the primary
+keeps serving. Standby site down at the standby's site is the catastrophic cell:
+`STALLED` from t = 0, the self-abort at the threshold, no failover ever, and the
+standby lane hatched — against the same scenario anywhere else, where the primary
+simply carries on unprotected. With **none**, check the whole gray-out set at
+once, the observer-lost radio included (it is `disabled`, not just ignored), the
+empty "not deployed" observer lane, the manual-failover chips — and then **switch
+back to a deployed location and confirm nothing is left disabled and every note
+is restored**, the same borrow-and-restore trap the observer-lost and switchover
+scenarios already have. Switchover at all four locations: the bands, the clocks
+and the app ladder must be byte-identical, with exactly one appended sentence
+differing per location. Finally the topology strip in every cell: the dashed site
+rectangles, the hatched site under standby-site-down, the third site's rectangle
+appearing and disappearing with the placement, and no orphaned observer box under
+`none`.
+
 URL state and chrome, same pre-publish pass: move three controls and
 `location.search` shows exactly those keys; reload restores the identical
-state; Reset defaults leaves a bare URL with no `?`. Hostile params behave
-(`?th=999` clamps to 120; `?th=abc`, `?sc=bogus`, `?ps=7` are ignored);
+state; Reset defaults leaves a bare URL with no `?`. The placement keys are
+public contract like the rest: `ol=none|dc1|dc2|dc3` and the two new scenario
+tokens `sc=part` / `sc=dc2d`. Hostile params behave
+(`?th=999` clamps to 120; `?th=abc`, `?sc=bogus`, `?ol=bogus`, `?ps=7` are
+ignored; `?sc=obs&ol=none` lands on the coercion the rail performs, a plain
+crash); an old link or `#cfg=` file carrying no `ol` at all restores exactly as
+it did before the control existed, at the third site;
 `?pm=perf&lag=45#ch-app` lands on chapter 3 in a blocked MaxPerformance.
 Drag a slider for 20 s and the console shows no `replaceState` rate warning.
 Click at least one demo button per chapter: the controls take the demo's
@@ -623,7 +794,11 @@ the numeric slider-scale labels, and parameter values like `on`/`off`/`TRUE`.
   sweep — the two prose placeholders ("unnamed &mdash; …") still translate. Where
   a sentence names one of these values, the value arrives as a `{n}` placeholder
   (`t('Nowhere — nothing publishes {0}', idv('service'))`), never baked into the
-  key.
+  key. The identity card's `<select>` **option texts do** go through the sweep
+  (`.dep-row select option` is in the selector list): the observer-placement
+  names are prose, while the Oracle vocabulary in the other selects
+  (`MaxAvailability`, `SYNC`) is simply absent from the catalog and falls through
+  unchanged — which is the whole reason that selector is safe.
 - Adding a section: put its prose in the markup and its JS strings in `t()`, then
   re-run the extraction below and translate the new keys.
 
@@ -636,15 +811,25 @@ returns every key looked up with no translation. Build, then load
 `requestAnimationFrame` (the render loop wedges otherwise), calls
 `DG.setLang('cs')`, walks the key states, and dumps `JSON.stringify(DG.missing())`
 into the DOM for `--dump-dom` to pick up. Everything it reports must be a term
-from the never-translated list above.
+from the never-translated list above. "The key states" is now a **loop over all
+24 scenario × observer-location cells** (dispatch real `input` *and* `change`
+events on the radios — nothing outside the first IIFE may call into the models),
+plus both protection modes on the cells where the mode changes the story, the
+ping properties, `FastStartFailoverPmyShutdown` off where the primary stalls, and
+chapter 4 open at each of the four locations, whose config cards and identity
+rows carry strings no other state asks for.
 
-Two things that only a rendered page catches, both worth re-checking after
+Three things that only a rendered page catches, all worth re-checking after
 translating: **lane labels live in a fixed 124 px gutter** (13 px for the name,
 10 px for the sub-line) and a longer Czech string silently clips off the left
 edge — `Primary transport` had to become `Transport primary`, not
-`Transport na primary`. And **rail headers wrap** when the eyebrow plus the
+`Transport na primary`. **Rail headers wrap** when the eyebrow plus the
 buttons exceed 270 px, which is why `Reset defaults` is `Výchozí` and not
-`Zpět na výchozí`. Verify a `cs` → `en` round trip too: dump the DOM after
+`Zpět na výchozí`. And where a label is built through **`fitLabel`**, the source
+offers a ladder of candidates from longest to shortest and **every rung is its
+own catalog key**: translate them all, and keep the short rungs genuinely short
+(`not deployed` → `nenasazen`), or the ladder falls through to the bare value.
+Verify a `cs` → `en` round trip too: dump the DOM after
 `setLang('cs'); setLang('en')` and diff it against a plain English load. They
 must match except for the `is-new` fade-in class, which the language switch
 deliberately does not re-add.
@@ -669,9 +854,12 @@ Keep that order: facts → spec → build → adversarial review → publish.
 - Changing a documented default or a model formula means changing
   `site/test.mjs` in the same commit — the test gate exists to make the
   accuracy rules executable, not to be worked around.
-- Scenarios covered so far: primary crash, isolated primary, observer lost and
-  planned switchover (the last two are simulator only — there is no static figure
-  for either). Reinstate stays out of
+- Scenarios covered so far: primary crash, isolated primary, severed link
+  between the two database sites (`partition`), whole standby site lost
+  (`dc2down`), observer lost and planned switchover — each crossed with the four
+  observer locations, 24 states in all. Only the first two have static figures;
+  the other four are simulator-only, and the figures show the third-site
+  placement throughout. Reinstate stays out of
   scope for the figures and the simulator; if the user asks for it, add it as a
   new figure/scenario rather than crowding the existing ones. Exception: the
   test runbook (`testing/README.md`) uses `REINSTATE DATABASE` / auto-reinstate

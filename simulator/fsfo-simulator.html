@@ -100,7 +100,8 @@ padding:7px 14px 7px 12px;cursor:pointer;text-align:left}
 @media screen{
 .sec.prose-managed:not(.prose-on)>.sec-hd,
 .sec.prose-managed:not(.prose-on)>.notes,
-.sec.prose-managed:not(.prose-on)>.caption:not([id]){display:none}
+.sec.prose-managed:not(.prose-on)>.caption:not([id]),
+.sec.prose-managed:not(.prose-on)>.prose-block{display:none}
 }
 
 /* chapters -- the sticky chapter bar. Additive chrome: every existing section
@@ -193,6 +194,12 @@ white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .topo-svg .tp-node{fill:var(--sf2);stroke:var(--ln2);stroke-width:1}
 .topo-svg .tp-obs{fill:var(--vif);stroke:var(--vi)}
 .topo-svg .tp-down{fill:url(#topoHatch);stroke:var(--rd)}
+/* dashed containers for the two (or three) data centres: which failures are
+   site failures and which are only link failures is the whole lesson of the
+   observer-placement control */
+.topo-svg .tp-site{fill:none;stroke:var(--ln2);stroke-width:1;stroke-dasharray:3 3;opacity:.75}
+.topo-svg .tp-site-down{fill:url(#topoHatch);stroke:var(--rd);stroke-width:1;stroke-dasharray:3 3}
+.topo-svg .tp-sitelab{fill:var(--ik3);font-size:10px;font-weight:600;letter-spacing:.12em}
 .topo-svg .tp-link{stroke:var(--ln2);stroke-width:1.25;fill:none}
 .topo-svg .tp-link-x{stroke:var(--rd);stroke-width:1.25;stroke-dasharray:4 3;fill:none}
 .topo-svg .tp-part{stroke:var(--rd);stroke-width:1.5;stroke-dasharray:5 4;fill:none}
@@ -261,10 +268,13 @@ input[type="range"]:disabled::-moz-range-thumb{background:var(--ik3);box-shadow:
 .seg legend{padding:0}
 .seg-row{display:grid;grid-template-columns:1fr 1fr;border:1px solid var(--ln2);border-radius:2px;overflow:hidden}
 .seg-row.cols3{grid-template-columns:repeat(3,1fr)}
-/* four scenarios in two rows of two: four columns would clip "Observer lost"
-   in the 302 px rail, and a longer Czech label even sooner */
-.seg-row.cols2x2 label:nth-of-type(2){border-right:0}
-.seg-row.cols2x2 label:nth-of-type(-n+2){border-bottom:1px solid var(--ln)}
+/* Two columns, as many rows as there are labels: one column per row would be
+   tall, and four columns would clip "Observer lost" in the 302 px rail -- a
+   longer Czech label even sooner. Row-agnostic, so adding a pair adds a row.
+   Both users of the class have an even number of labels, so "the last two"
+   is the last row. */
+.seg-row.cols2r label:nth-of-type(even){border-right:0}
+.seg-row.cols2r label:nth-last-of-type(n+3){border-bottom:1px solid var(--ln)}
 .seg-row input{position:absolute;opacity:0;width:1px;height:1px}
 .seg-row label{padding:7px 6px;text-align:center;font-size:12px;color:var(--ik2);background:var(--sf);cursor:pointer;border-right:1px solid var(--ln);user-select:none}
 .seg-row label:last-of-type{border-right:0}
@@ -713,11 +723,15 @@ window.DG = (function () {
       <div class="ctl">
         <fieldset class="seg">
           <legend class="ctl-name is-prose">Scenario</legend>
-          <div class="seg-row cols2x2">
+          <div class="seg-row cols2r">
             <input type="radio" name="scenario" id="sc-crash" value="crash" checked>
             <label for="sc-crash">Crash</label>
             <input type="radio" name="scenario" id="sc-iso" value="isolated">
             <label for="sc-iso">Isolated</label>
+            <input type="radio" name="scenario" id="sc-part" value="partition">
+            <label for="sc-part">Partition</label>
+            <input type="radio" name="scenario" id="sc-sdown" value="dc2down">
+            <label for="sc-sdown">Standby site down</label>
             <input type="radio" name="scenario" id="sc-obs" value="observer-lost">
             <label for="sc-obs">Observer lost</label>
             <input type="radio" name="scenario" id="sc-switch" value="switchover">
@@ -725,6 +739,23 @@ window.DG = (function () {
           </div>
         </fieldset>
         <p class="ctl-note" id="n-scenario">The primary host dies outright. Observer and standby both lose it at the same instant.</p>
+      </div>
+
+      <div class="ctl">
+        <fieldset class="seg">
+          <legend class="ctl-name is-prose">Observer location</legend>
+          <div class="seg-row cols2r">
+            <input type="radio" name="obsloc" id="ol-none" value="none">
+            <label for="ol-none">None</label>
+            <input type="radio" name="obsloc" id="ol-dc1" value="dc1">
+            <label for="ol-dc1">Primary site</label>
+            <input type="radio" name="obsloc" id="ol-dc2" value="dc2">
+            <label for="ol-dc2">Standby site</label>
+            <input type="radio" name="obsloc" id="ol-dc3" value="dc3" checked>
+            <label for="ol-dc3">Third site</label>
+          </div>
+        </fieldset>
+        <p class="ctl-note" id="n-obsloc">The observer runs on its own host at a third site, independent of both database sites.</p>
       </div>
 
       <div class="ctl">
@@ -838,7 +869,7 @@ window.DG = (function () {
       </div>
 
       <div class="banner" id="banner" hidden>
-        <span class="banner-k">Blocked</span>
+        <span class="banner-k" id="banner-k">Blocked</span>
         <p class="banner-b" id="banner-body"></p>
       </div>
 
@@ -914,11 +945,24 @@ window.DG = (function () {
         <h3>No observer, no fast-start failover</h3>
         <p>The primary still commits and the standby still applies, but <span class="mono">V$DATABASE.FS_FAILOVER_STATUS</span> reads <span class="mono">PRIMARY UNOBSERVED</span>, <span class="mono">FS_FAILOVER_OBSERVER_PRESENT</span> reads <span class="mono">NO</span>, and the broker raises <span class="mono">ORA-16820</span>. 19c registers up to three observers; if the master is lost while primary and standby stay connected, the broker promotes a backup on its own.</p>
       </div>
+      <div class="note k-vi" data-demo="obs-third-site">
+        <h3>A third site is what arbitrates a partition</h3>
+        <p>When only the link between the two database sites fails, an observer at a third site still reaches the primary. No threshold ever starts, nothing is promoted, and a healthy primary keeps serving &mdash; the case Oracle&rsquo;s first placement recommendation is written for.</p>
+      </div>
+      <div class="note k-rd" data-demo="obs-false-failover">
+        <h3>The same partition, an observer beside the standby</h3>
+        <p>Move the observer into the standby&rsquo;s site and the cut takes it away with the standby. Both clocks run out and the standby is promoted; the primary, which never stopped serving, stalls and &mdash; with <span class="mono">FastStartFailoverPmyShutdown</span> TRUE &mdash; aborts itself at the threshold.</p>
+      </div>
+      <div class="note k-rd" data-demo="obs-standby-site">
+        <h3>Losing the standby site can stop the primary</h3>
+        <p>An observer in the standby&rsquo;s data centre dies with it. The primary then reaches neither the observer nor the standby, so it stalls from t = 0 and aborts itself one threshold later &mdash; with no standby left to promote. The spare site takes production down with it.</p>
+      </div>
+      <div class="note k-sl" data-demo="obs-none">
+        <h3>Deploying no observer is not the same as losing one</h3>
+        <p>With no observer in the topology, fast-start failover is never enabled: the <span class="mono">FastStartFailover*</span> properties can be set, but nothing arms them. <span class="mono">FAILOVER TO</span> still works &mdash; it is always available, and it is the only thing that promotes the standby.</p>
+      </div>
     </div>
-  </section>
-
-  <section class="sec">
-    <div class="sq-wrap">
+    <div class="sq-wrap prose-block">
       <svg class="sq-svg" viewBox="0 0 960 704" role="img"
            aria-label="Sequence diagram of fast-start failover after a primary crash: steady-state pings and redo shipping, the crash, failed pings and retries, the threshold clock, the observer to standby readiness exchange, threshold expiry, the failover command, standby activation, and the completion message.">
         <defs>
@@ -1401,7 +1445,7 @@ window.DG = (function () {
       <article class="cfg">
         <div class="cfg-hd">
           <span class="cfg-file">Deployment identity</span>
-          <span class="eyebrow">names only &mdash; nothing behavioral</span>
+          <span class="eyebrow">names, plus where the observer runs</span>
         </div>
         <div class="dep-grid">
           <div class="dep-row"><label for="dep-name">Deployment name</label>
@@ -1417,19 +1461,28 @@ window.DG = (function () {
           <div class="dep-row"><label for="dep-host-s">Standby host</label>
             <input class="dep-in" type="text" id="dep-host-s" maxlength="64" data-i18n-skip placeholder="dc2-sby01"></div>
           <div class="dep-row"><label for="dep-host-o">Observer host</label>
-            <input class="dep-in" type="text" id="dep-host-o" maxlength="64" placeholder="unnamed &mdash; the page says &ldquo;third host&rdquo;"></div>
+            <input class="dep-in" type="text" id="dep-host-o" maxlength="64" placeholder="unnamed &mdash; the page says where it runs instead"></div>
+          <div class="dep-row"><label for="dep-obsloc">Observer location</label>
+            <select class="dep-in" id="dep-obsloc">
+              <option value="none">None</option>
+              <option value="dc1">Primary site</option>
+              <option value="dc2">Standby site</option>
+              <option value="dc3" selected>Third site</option>
+            </select></div>
           <div class="dep-row"><label for="dep-port">Listener port</label>
             <input class="dep-in" type="number" id="dep-port" min="1" max="65535" step="1" value="1521"></div>
           <div class="dep-row"><label for="dep-dc1">Primary site label</label>
             <input class="dep-in" type="text" id="dep-dc1" maxlength="64" data-i18n-skip placeholder="DC 1"></div>
           <div class="dep-row"><label for="dep-dc2">Standby site label</label>
             <input class="dep-in" type="text" id="dep-dc2" maxlength="64" data-i18n-skip placeholder="DC 2"></div>
+          <div class="dep-row"><label for="dep-dc3">Third site label</label>
+            <input class="dep-in" type="text" id="dep-dc3" maxlength="64" data-i18n-skip placeholder="DC 3"></div>
           <div class="dep-row"><label for="dep-sub-p">Primary subtitle</label>
             <input class="dep-in" type="text" id="dep-sub-p" maxlength="64" data-i18n-skip placeholder="production"></div>
           <div class="dep-row"><label for="dep-sub-s">Standby subtitle</label>
             <input class="dep-in" type="text" id="dep-sub-s" maxlength="64" data-i18n-skip placeholder="failover target"></div>
         </div>
-        <p class="dep-cap">The two subtitles and site labels appear under the topology boxes in chapter&nbsp;1; the databases, hosts, port and service appear in the connect string and in every configuration card below.</p>
+        <p class="dep-cap">The two subtitles and the site labels appear under the topology boxes in chapter&nbsp;1; the databases, hosts, port and service appear in the connect string and in every configuration card below. Where the observer runs is the one choice on this card that changes what the page draws &mdash; it is the chapter&nbsp;1 rail&rsquo;s control, in both directions.</p>
       </article>
 
       <article class="cfg">
@@ -1975,8 +2028,11 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
     'thead th', 'tbody td',
     '.cfg-file', '.cfg-hd .eyebrow', '.cfg-copy',
     '.foot p',
-    /* the deployment chapter's static form */
-    '.dep-row label', '.dep-cap', '.dep-grp', '.dep-actions button',
+    /* the deployment chapter's static form. The selects' option texts go
+       through too: the placement names are prose, and the Oracle vocabulary in
+       the other three selects (MaxAvailability, SYNC) is simply absent from the
+       catalog, so it falls through unchanged. */
+    '.dep-row label', '.dep-row select option', '.dep-cap', '.dep-grp', '.dep-actions button',
     '.sq-svg text', '.tx-svg text'
   ].join(', ');
 
@@ -2062,7 +2118,7 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
   "use strict";
   var t = window.DG.t;
   /* the same set the hide rules cover, matched on direct children only */
-  var SEL = '.sec-hd, .notes, .caption:not([id])';
+  var SEL = '.sec-hd, .notes, .caption:not([id]), .prose-block';
   var btns = [];
 
   function label(b) {
@@ -2130,13 +2186,32 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
 
   /**
    * computeFsfo(c) -> derived model
-   * c = { scenario:'crash'|'isolated'|'observer-lost'|'switchover', mode:'maxavail'|'maxperf',
+   * c = { scenario:'crash'|'isolated'|'partition'|'dc2down'|'observer-lost'|'switchover',
+   *       observerLoc:'none'|'dc1'|'dc2'|'dc3', mode:'maxavail'|'maxperf',
    *       threshold:s, pingSet:bool, pingInterval:ms, pingRetry:n,
    *       standbyLag:s, lagLimit:s, roleTransition:s, pmyShutdown:bool,
    *       latency:ms (round trip between any two of the three hosts) }
+   *
+   * Every return path carries m.outcome -- 'failover' | 'continues' |
+   * 'stall-noone' | 'manual' | 'observer-lost' | 'switchover' -- plus the
+   * reachability facts the drawings need: stalled, standbyGone, redoFlowing,
+   * pmyReachable, and the effective scenario the model actually simulated.
    */
   function computeFsfo(c) {
     var pingSet = !!c.pingSet;
+
+    // Where the observer runs. Absent, it is the third site: the placement
+    // Oracle recommends first and the one this page was built around. The
+    // default lives here so older shared links and stored configurations,
+    // which carry no placement at all, keep reading exactly as they did.
+    var loc = c.observerLoc || 'dc3';
+
+    // "Observer lost" is an armed configuration whose observer died. With no
+    // observer deployed at all there is nothing to lose and fast-start
+    // failover was never armed, so that pairing is a plain crash. The
+    // effective scenario is echoed back so the drawings never disagree.
+    var sc = c.scenario;
+    if (sc === 'observer-lost' && loc === 'none') sc = 'crash';
 
     // Observer lost: the configuration's only observer host is gone (or every
     // registered observer is). The primary still reaches the target standby, so
@@ -2144,10 +2219,12 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
     // alone is enough. But an unobserved configuration cannot fast-start fail
     // over: no clock starts, nothing is initiated, nothing opens. The exposure
     // is the next failure, which ifDiedNow measures.
-    if (c.scenario === 'observer-lost') {
+    if (sc === 'observer-lost') {
       var oTick = pickTickStep(60);
       var oHorizon = Math.max(oTick, Math.ceil(60 / oTick) * oTick);
       return {
+        outcome: 'observer-lost', scenario: sc, stalled: false,
+        standbyGone: false, redoFlowing: true, pmyReachable: true,
         switchover: false,
         observerLost: true, pingSet: pingSet, detect: null, initiate: null,
         netHop: (c.latency || 0) / 2000, execStart: null,
@@ -2167,14 +2244,16 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
     // applying what it holds, then changes its role and opens it read-write.
     // Data loss is zero in EVERY protection mode: the roles swap only once the
     // standby has everything.
-    if (c.scenario === 'switchover') {
+    if (sc === 'switchover') {
       // With fast-start failover enabled the broker permits a switchover only
       // to the pre-specified target standby, and only while that standby is
       // synchronized (MaxAvailability) or inside the lag limit
       // (MaxPerformance). The MaxPerformance gate is the one the controls can
       // trip; failing it means the broker refuses the command outright, so
-      // nothing converts and the primary never stops serving.
-      var swBlocked = c.mode === 'maxperf' && c.standbyLag > c.lagLimit;
+      // nothing converts and the primary never stops serving. The gate is
+      // FSFO's own: with no observer deployed nothing is armed, so nothing
+      // refuses the command -- the swap just spends longer catching up.
+      var swBlocked = loc !== 'none' && c.mode === 'maxperf' && c.standbyLag > c.lagLimit;
       var swTick, swHorizon, swDown = null, swConvertEnd = null, swOpen = null, swRestart = null;
       if (swBlocked) {
         swTick = pickTickStep(60);
@@ -2193,6 +2272,8 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
         swHorizon = Math.max(swTick, Math.ceil(swRaw / swTick) * swTick);
       }
       return {
+        outcome: 'switchover', scenario: sc, stalled: false,
+        standbyGone: false, redoFlowing: true, pmyReachable: true,
         switchover: true, observerLost: false, pingSet: pingSet,
         detect: null, initiate: null, abort: null, execStart: null,
         // The DGMGRL command's own network hop is left out on purpose: it is a
@@ -2208,6 +2289,133 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
         horizon: swHorizon,
         preRoll: Math.max(2, Math.min(10, Math.round(swHorizon * 0.2))),
         tickStep: swTick
+      };
+    }
+
+    // ---- who can still see whom ----
+    //
+    // Everything below is derived from these. The rules they encode are the
+    // verified ones: fast-start failover needs an observer AND a reachable
+    // target standby that have BOTH lost the primary; the primary stalls only
+    // when it can reach NEITHER of them; losing the observer alone stalls
+    // nothing. The placement is what decides which of those the failure cuts.
+    var fsfoEnabled = loc !== 'none';        // no observer deployed = no FSFO
+    var pmyAlive = sc !== 'crash';
+    var sbyAlive = sc !== 'dc2down';
+    var obsAlive = fsfoEnabled && !(sc === 'dc2down' && loc === 'dc2');
+
+    // The observer's view of the primary. A DC1 observer sits on the primary's
+    // own side of every cut, so isolation and a severed DC1-to-DC2 link leave
+    // it still talking to a primary nobody else can reach. A third-site
+    // observer keeps seeing the primary through a DC1-to-DC2 cut, which is
+    // exactly the arbitration Oracle recommends the third site for.
+    var obsSeesPmy = obsAlive && pmyAlive && (
+      sc === 'crash' ? false
+        : sc === 'isolated' ? loc === 'dc1'
+          : sc === 'partition' ? (loc === 'dc1' || loc === 'dc3')
+            : true);
+
+    // Redo transport, which is the standby's own view of the primary.
+    var sbySeesPmy = sbyAlive && pmyAlive &&
+      !(sc === 'crash' || sc === 'isolated' || sc === 'partition');
+
+    // The observer has to reach the standby to order a failover at all. A DC1
+    // observer loses that link under a partition, and under full isolation too.
+    var obsSeesSby = obsAlive && sbyAlive &&
+      !(loc === 'dc1' && (sc === 'isolated' || sc === 'partition'));
+
+    // The primary stalls when it is cut off from both of them; it keeps
+    // committing while either one still answers.
+    var stalled = fsfoEnabled && pmyAlive && !obsSeesPmy && !sbySeesPmy;
+
+    // Both halves of the quorum have lost the primary, and the observer can
+    // still reach a live standby to promote.
+    var canFailover = fsfoEnabled && obsAlive && sbyAlive && obsSeesSby &&
+      !obsSeesPmy && !sbySeesPmy;
+
+    // Facts the drawings read straight off the model.
+    var standbyGone = !sbyAlive;
+    var redoFlowing = sbySeesPmy && pmyAlive;
+    var pmyReachable = pmyAlive && sc !== 'isolated';
+
+    // ---- the three outcomes where no fast-start failover happens ----
+    //
+    // All three share the failover shape with the clocks nulled out, because
+    // nothing is counting down to anything. Order matters: the primary being
+    // gone with nothing armed is a different story from a primary that is
+    // merely cut off.
+    if (!canFailover) {
+
+      // Nothing is armed and the primary is gone. Manual FAILOVER TO is still
+      // available -- it never needed an observer -- but nothing schedules it,
+      // so there is no clock to draw. The loss is whatever the standby was
+      // behind by, and no FastStartFailoverLagLimit bounds it: that guarantee
+      // belongs to fast-start failover, which is not enabled here.
+      if (!fsfoEnabled && !pmyAlive) {
+        var mTick = pickTickStep(60);
+        var mHorizon = Math.max(mTick, Math.ceil(60 / mTick) * mTick);
+        return {
+          outcome: 'manual', scenario: sc, stalled: false,
+          standbyGone: standbyGone, redoFlowing: redoFlowing,
+          pmyReachable: pmyReachable,
+          switchover: false, observerLost: false, pingSet: pingSet,
+          detect: null, initiate: null, netHop: (c.latency || 0) / 2000,
+          execStart: null, applyRemaining: 0, tOpen: null, blocked: false,
+          abort: null,
+          dataLossKind: 'manual',
+          dataLossSeconds: c.mode === 'maxperf' ? c.standbyLag : 0,
+          ifDiedNow: null,
+          horizon: mHorizon,
+          preRoll: Math.max(2, Math.min(10, Math.round(mHorizon * 0.2))),
+          tickStep: mTick
+        };
+      }
+
+      // The primary is cut off from observer and standby alike, and there is
+      // no reachable standby to promote -- so it stalls at t = 0 and nothing
+      // is ever going to end the stall. With FastStartFailoverPmyShutdown it
+      // aborts itself one threshold in; without it, it stays STALLED until an
+      // operator intervenes.
+      if (stalled) {
+        var snAbort = c.pmyShutdown ? c.threshold : null;
+        var snEnd = snAbort || 60;
+        var snRaw = snEnd * 1.12 + Math.max(2, snEnd * 0.06);
+        var snTick = pickTickStep(snRaw);
+        var snHorizon = Math.max(snTick, Math.ceil(snRaw / snTick) * snTick);
+        return {
+          outcome: 'stall-noone', scenario: sc, stalled: true,
+          standbyGone: standbyGone, redoFlowing: redoFlowing,
+          pmyReachable: pmyReachable,
+          switchover: false, observerLost: false, pingSet: pingSet,
+          detect: null, initiate: null, netHop: (c.latency || 0) / 2000,
+          execStart: null, applyRemaining: 0, tOpen: null, blocked: false,
+          abort: snAbort,
+          dataLossKind: 'none', dataLossSeconds: 0, ifDiedNow: null,
+          horizon: snHorizon,
+          preRoll: Math.max(2, Math.min(10, Math.round(snHorizon * 0.2))),
+          tickStep: snTick
+        };
+      }
+
+      // Somebody still reaches the primary, so it keeps committing and no
+      // role change is initiated. ifDiedNow prices what a failure right now
+      // would cost -- unless the standby is the thing that is gone, in which
+      // case there is no target to price at all.
+      var kTick = pickTickStep(60);
+      var kHorizon = Math.max(kTick, Math.ceil(60 / kTick) * kTick);
+      return {
+        outcome: 'continues', scenario: sc, stalled: false,
+        standbyGone: standbyGone, redoFlowing: redoFlowing,
+        pmyReachable: pmyReachable,
+        switchover: false, observerLost: false, pingSet: pingSet,
+        detect: null, initiate: null, netHop: (c.latency || 0) / 2000,
+        execStart: null, applyRemaining: 0, tOpen: null, blocked: false,
+        abort: null,
+        dataLossKind: 'none', dataLossSeconds: 0,
+        ifDiedNow: standbyGone ? null : (c.mode === 'maxperf' ? c.standbyLag : 0),
+        horizon: kHorizon,
+        preRoll: Math.max(2, Math.min(10, Math.round(kHorizon * 0.2))),
+        tickStep: kTick
       };
     }
 
@@ -2233,7 +2441,9 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
 
     // The primary's own stall clock always uses the threshold, even when the
     // ping properties are set: the quirk affects the observer's detection only.
-    var abort = (c.scenario === 'isolated' && c.pmyShutdown) ? c.threshold : null;
+    // It runs whenever the primary is actually stalled -- under full isolation,
+    // and under a severed DC1-to-DC2 link watched by a standby-site observer.
+    var abort = (stalled && c.pmyShutdown) ? c.threshold : null;
 
     var dataLossKind = blocked ? 'na' : (c.mode === 'maxavail' ? 'none' : 'bounded');
     var dataLossSeconds = dataLossKind === 'bounded' ? c.standbyLag : 0;
@@ -2250,6 +2460,9 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
     var preRoll = Math.max(2, Math.min(10, Math.round(horizon * 0.2)));
 
     return {
+      outcome: 'failover', scenario: sc, stalled: stalled,
+      standbyGone: standbyGone, redoFlowing: redoFlowing,
+      pmyReachable: pmyReachable,
       switchover: false,
       observerLost: false, pingSet: pingSet, detect: detect, initiate: initiate,
       netHop: netHop, execStart: execStart,
@@ -2266,6 +2479,11 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
    * a = { tct:s, ct:s (0 = not set), rc:n, rd:s, dead:'drop'|'rst' }
    * m = computeFsfo(C). One worst-case connection request starts dialing at
    * t = 0 and runs the string's full retry ladder.
+   *
+   * It branches on m.outcome, not on the scenario name, because the same
+   * scenario tells a different connection story per observer placement. Every
+   * no-event return says which kind it is in noEventKind, so the caption can
+   * explain the right nothing.
    */
   function computeApp(a, m, scenario) {
     var REFUSE = 0.2, ESTAB = 0.3, RST = 0.15;    // nominal, see footnote 3
@@ -2273,10 +2491,11 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
     // Observer lost: nothing fails over, so there is no connection story at all.
     // The descriptor never has to move, address 1 answers as always, and no
     // established session is touched. Same shape, every field neutral.
-    if (scenario === 'observer-lost') {
+    if (m.outcome === 'observer-lost') {
       var oTick = pickTickStep(60);
       var oHorizon = Math.max(oTick, Math.ceil(60 / oTick) * oTick);
-      return { noEvent: true, switchover: false, switchoverRefused: false,
+      return { noEvent: true, noEventKind: 'observer-lost',
+        switchover: false, switchoverRefused: false,
         d1: 0, drop: a.dead === 'drop', refuse: REFUSE, estab: ESTAB,
         passCost: 0, tService: null, attempts: [], tConn: null, gaveUp: null,
         startAt: 0, worst: 0, retryCost: 0, clipped: false,
@@ -2292,13 +2511,14 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
     // refusals -- about 0.4 s -- and RETRY_COUNT and RETRY_DELAY are the entire
     // story. The worst-case request starts dialing when the primary begins
     // converting: before that it connects as it always did.
-    if (scenario === 'switchover') {
+    if (m.outcome === 'switchover') {
       var swTick2, swHor2;
       if (m.blocked) {
         // The broker refused the command, so nothing ever moved.
         swTick2 = pickTickStep(60);
         swHor2 = Math.max(swTick2, Math.ceil(60 / swTick2) * swTick2);
-        return { noEvent: true, switchover: true, switchoverRefused: true,
+        return { noEvent: true, noEventKind: 'switchover-refused',
+          switchover: true, switchoverRefused: true,
           d1: 0, drop: false, refuse: REFUSE, estab: ESTAB,
           passCost: 0, tService: null, attempts: [], tConn: null, gaveUp: null,
           startAt: 0, worst: 0, retryCost: 0, clipped: false,
@@ -2329,7 +2549,8 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
       var swRaw2 = swNeed * 1.12 + Math.max(2, swNeed * 0.06);
       swTick2 = pickTickStep(swRaw2);
       swHor2 = Math.max(swTick2, Math.ceil(swRaw2 / swTick2) * swTick2);
-      return { noEvent: false, switchover: true, switchoverRefused: false,
+      return { noEvent: false, noEventKind: null,
+        switchover: true, switchoverRefused: false,
         d1: swD1, drop: false, refuse: REFUSE, estab: ESTAB, passCost: swPass,
         tService: swSvc, attempts: swAtt, tConn: swConn, gaveUp: swGave,
         startAt: swStart,
@@ -2340,13 +2561,48 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
         tickStep: swTick2 };
     }
 
+    // No role change, and the primary is still answering: the descriptor's
+    // first address keeps working and no client ever notices. This is the
+    // shape of every cell where the configuration simply carries on.
+    if (m.outcome === 'continues' && m.pmyReachable) {
+      var kTick2 = pickTickStep(60);
+      var kHor2 = Math.max(kTick2, Math.ceil(60 / kTick2) * kTick2);
+      return { noEvent: true, noEventKind: 'continues',
+        switchover: false, switchoverRefused: false,
+        d1: 0, drop: a.dead === 'drop', refuse: REFUSE, estab: ESTAB,
+        passCost: 0, tService: null, attempts: [], tConn: null, gaveUp: null,
+        startAt: 0, worst: 0, retryCost: 0, clipped: false,
+        horizon: kHor2,
+        preRoll: Math.max(2, Math.min(10, Math.round(kHor2 * 0.2))),
+        tickStep: kTick2 };
+    }
+
+    // A STALLED primary still runs its listener and still publishes the
+    // service, so a new connection is accepted exactly as before. The outage
+    // is at commit level, one layer below anything this ladder can see.
+    if (m.outcome === 'stall-noone') {
+      var snTick2 = pickTickStep(60);
+      var snHor2 = Math.max(snTick2, Math.ceil(60 / snTick2) * snTick2);
+      return { noEvent: true, noEventKind: 'stalled',
+        switchover: false, switchoverRefused: false,
+        d1: 0, drop: a.dead === 'drop', refuse: REFUSE, estab: ESTAB,
+        passCost: 0, tService: null, attempts: [], tConn: null, gaveUp: null,
+        startAt: 0, worst: 0, retryCost: 0, clipped: false,
+        horizon: snHor2,
+        preRoll: Math.max(2, Math.min(10, Math.round(snHor2 * 0.2))),
+        tickStep: snTick2 };
+    }
+
     // A partition drops packets, so no refusal ever comes back from address 1.
     var drop = scenario === 'isolated' || a.dead === 'drop';
     var cap = a.ct > 0 ? a.ct : Infinity;
     var d1 = drop ? Math.min(a.tct, cap) : Math.min(RST, cap);
 
     // The role-based service reappears when the new primary opens read-write.
-    var tService = m.blocked ? null : m.tOpen;
+    // With no failover coming, it never does: the ladder runs its whole budget
+    // and gives up, which is the honest picture of an unreachable primary that
+    // nothing is going to replace.
+    var tService = (m.blocked || m.tOpen === null) ? null : m.tOpen;
 
     var attempts = [], tConn = null, gaveUp = null, S = 0;
     for (var k = 0; k <= a.rc; k++) {
@@ -2370,14 +2626,15 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
     // Horizon: show the story, but never let a huge retry budget blow up the
     // axis. Anything past the cap is clipped and annotated instead.
     var capT = Math.max(160, (tService || 0) + 100);
-    var need = Math.max(Math.min(end, capT), m.initiate, tService || 0);
+    var need = Math.max(Math.min(end, capT), m.initiate || 0, tService || 0);
     var raw = need * 1.12 + Math.max(2, need * 0.06);
     var tickStep = pickTickStep(raw);
     var horizon = Math.max(tickStep, Math.ceil(raw / tickStep) * tickStep);
     var preRoll = Math.max(2, Math.min(10, Math.round(horizon * 0.2)));
     var clipped = end > horizon;
 
-    return { noEvent: false, switchover: false, switchoverRefused: false,
+    return { noEvent: false, noEventKind: null,
+      switchover: false, switchoverRefused: false,
       d1: d1, drop: drop, refuse: REFUSE, estab: ESTAB, passCost: passCost,
       tService: tService, attempts: attempts, tConn: tConn, gaveUp: gaveUp,
       startAt: 0, worst: worst, retryCost: retryCost, clipped: clipped,
@@ -2582,7 +2839,8 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
 
   /* ---------- control state ---------- */
   var DEFAULTS = {
-    scenario: 'crash', mode: 'maxavail', threshold: 30, pingSet: false,
+    scenario: 'crash', observerLoc: 'dc3', mode: 'maxavail', threshold: 30,
+    pingSet: false,
     pingInterval: 100, pingRetry: 10, standbyLag: 10, lagLimit: 30,
     roleTransition: 15, latency: 0, pmyShutdown: true
   };
@@ -2617,7 +2875,7 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
     dbPrimary: 'prm01', dbStandby: 'sby01',
     hostPrimary: 'dc1-prm01', hostStandby: 'dc2-sby01', hostObserver: '',
     service: 'app_svc', port: 1521,
-    dc1: 'DC 1', dc2: 'DC 2',
+    dc1: 'DC 1', dc2: 'DC 2', dc3: 'DC 3',
     subPrimary: 'production', subStandby: 'failover target'
   };
   var ID = Object.assign({}, ID_DEFAULTS);
@@ -2641,11 +2899,12 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
     ctlThreshold: $('ctl-threshold'), ctlPing: $('ctl-ping'), ctlLagLimit: $('ctl-laglimit'),
     ctlShutdown: $('ctl-shutdown'), ctlPingSet: $('ctl-pingset'), ctlLag: $('ctl-lag'),
     ctlRole: $('ctl-role'), wrap: $('tl-wrap'), chips: $('chips'),
-    banner: $('banner'), bannerBody: $('banner-body'), callout: $('callout'),
-    calloutK: $('callout-k'),
+    banner: $('banner'), bannerK: $('banner-k'), bannerBody: $('banner-body'),
+    callout: $('callout'), calloutK: $('callout-k'),
     calloutBody: $('callout-body'), caption: $('tl-caption'), heading: $('tl-heading'),
     eyebrow: $('tl-eyebrow'), summary: $('tl-summary'),
-    nScenario: $('n-scenario'), nMode: $('n-mode'), nThreshold: $('n-threshold'),
+    nScenario: $('n-scenario'), nObsloc: $('n-obsloc'),
+    nMode: $('n-mode'), nThreshold: $('n-threshold'),
     nLagLimit: $('n-laglimit'), nShutdown: $('n-shutdown'), nLatency: $('n-latency'),
     nPingSet: $('n-pingset'), nLag: $('n-lag'), nRole: $('n-role'),
     vThreshold: $('v-threshold'), vPingSet: $('v-pingset'), vPingInterval: $('v-pinginterval'),
@@ -2682,8 +2941,8 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
     hdDep: $('hd-dep'), depMsg: $('dep-msg'), cfgObserverHost: $('cfg-observer-host'),
     depName: $('dep-name'), depDbP: $('dep-db-p'), depDbS: $('dep-db-s'),
     depHostP: $('dep-host-p'), depHostS: $('dep-host-s'), depHostO: $('dep-host-o'),
-    depSvc: $('dep-svc'), depPort: $('dep-port'),
-    depDc1: $('dep-dc1'), depDc2: $('dep-dc2'),
+    depSvc: $('dep-svc'), depPort: $('dep-port'), depObsloc: $('dep-obsloc'),
+    depDc1: $('dep-dc1'), depDc2: $('dep-dc2'), depDc3: $('dep-dc3'),
     depSubP: $('dep-sub-p'), depSubS: $('dep-sub-s'),
     depMode: $('dep-mode'), depThreshold: $('dep-threshold'), depPingset: $('dep-pingset'),
     depPingInterval: $('dep-pinginterval'), depPingRetry: $('dep-pingretry'),
@@ -2716,6 +2975,19 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
     lag: 'Still live \u2014 in MaxPerformance it is what a manual failover would lose if the primary died right now.'
   };
 
+  /* No observer deployed: fast-start failover is not enabled at all, so every
+     control that only a failover gives meaning to says why it governs nothing.
+     Borrowed and given back exactly like the two sets above. */
+  var NOFSFO_NOTES = {
+    scenario: 'Whatever fails here, nothing is promoted automatically \u2014 with no observer deployed, fast-start failover is not enabled.',
+    obsloc: 'No observer is deployed, so fast-start failover is not enabled. A manual failover is always available and is the only thing that can promote the standby.',
+    threshold: 'Nothing counts this down: the property exists, but with no observer deployed there is no fast-start failover for it to govern.',
+    pingset: 'There is no observer to run the ping loop, and no fast-start failover for it to detect.',
+    lagLimit: 'Nothing evaluates the standby\u2019s readiness \u2014 no automatic promotion is ever considered here, so nothing is bounded by this.',
+    role: 'No automatic role transition happens \u2014 without an observer, nothing promotes the standby on its own.',
+    shutdown: 'Only a primary running under fast-start failover ever stalls, and it is not enabled here, so this property governs nothing.'
+  };
+
   /* Planned switchover: the same borrowing trick. Four controls go inert here
      because no failover clock runs and both hosts stay up; the rest keep their
      meaning and only change what they are measuring. */
@@ -2740,21 +3012,46 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
   G.axisY = G.lanesBottom + 24;
   G.braceTop = G.axisY + 34;
 
+  /* The observer lane's left-gutter subtitle. Where the observer runs is a
+     setting now, so the sub says which site -- and says so inside the fixed
+     124 px gutter, which is why every form goes through fitLabel. A configured
+     observer host wins over the site, the way the topology strip already
+     prefers it; the generic third-site wording stands until the third site is
+     given a name of its own. */
+  function obsSub() {
+    var loc = C.observerLoc;
+    if (loc === 'none') return t('not deployed');
+    var oh = String(ID.hostObserver || '').trim();
+    if (oh) return fitLabel([t('DGMGRL, {0}', oh), oh], 124) || oh;
+    if (loc === 'dc3') {
+      var d3 = idv('dc3');
+      if (d3 === ID_DEFAULTS.dc3) return t('DGMGRL, third host');
+      return fitLabel([t('DGMGRL, in {0}', d3), t('in {0}', d3), d3], 124) || d3;
+    }
+    var site = idv(loc === 'dc1' ? 'dc1' : 'dc2');
+    return fitLabel([t('DGMGRL, in {0}', site), t('in {0}', site), site], 124) || site;
+  }
+
   function buildTimeline(m, W) {
     if (m.observerLost) return buildObserverLostTimeline(m, W);
     if (m.switchover) return buildSwitchoverTimeline(m, W);
+    if (m.outcome === 'stall-noone') return buildStallTimeline(m, W);
+    if (m.outcome !== 'failover') return buildFlatTimeline(m, W);
 
     var plotL = G.padL, plotR = W - G.padR, plotW = plotR - plotL;
     var t0 = -m.preRoll, t1 = m.horizon;
     function X(t) { return plotL + (t - t0) / (t1 - t0) * plotW; }
 
-    var iso = C.scenario === 'isolated';
+    /* The stall, not the scenario name: a severed link between the two
+       database sites stalls a primary watched from the standby's site exactly
+       the way full isolation stalls one watched from a third site. */
+    var iso = m.stalled;
     var s = [], push = function (x) { s.push(x); };
 
     /* lane segments -- labels degrade to a shorter form when the bar is narrow */
     var lanes = [
       { name: 'Primary', sub: t('production database'), segs: [] },
-      { name: 'Observer', sub: t('DGMGRL, third host'), segs: [] },
+      { name: 'Observer', sub: obsSub(), segs: [] },
       { name: 'Standby', sub: t('failover target'), segs: [] }
     ];
 
@@ -2897,8 +3194,12 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
     /* the t = 0 event */
     var xz = X(0);
     if (iso) {
+      /* One divider across all three lanes: wherever the primary stalls, the
+         observer and the standby are both on the far side of the cut. */
       push(ln('partition', xz, G.laneTop - 4, xz, G.lanesBottom + 4));
-      push(txt('t-mark f-rd', xz + 8, G.markY, null, esc(t('Network partition \u2014 primary cut off from observer and standby'))));
+      push(txt('t-mark f-rd', xz + 8, G.markY, null, esc(C.scenario === 'partition'
+        ? t('The link between {0} and {1} fails \u2014 and the observer sits on the standby\u2019s side of it', idv('dc1'), idv('dc2'))
+        : t('Network partition \u2014 primary cut off from observer and standby'))));
     } else {
       var cy = G.lane[0] + G.laneH / 2;
       push(ln('m-rd', xz - 7, cy - 7, xz + 7, cy + 7, ' stroke-width="2.5"'));
@@ -2997,7 +3298,7 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
       { name: 'Primary', sub: t('production database'), segs: [
         { a: t0, b: t1, cls: 'b-tl', lc: 'f-tl',
           lab: [t('Open read-write \u2014 still shipping redo'), t('Open read-write'), t('Open')] }] },
-      { name: 'Observer', sub: t('DGMGRL, third host'), segs: [
+      { name: 'Observer', sub: obsSub(), segs: [
         { a: t0, b: 0, cls: 'b-sl', lc: 'f-sl',
           lab: [t('Pinging primary \u2014 connection healthy'), t('Pinging primary'), t('Pinging')] },
         { a: 0, b: t1, cls: 'b-hatch', lc: 'f-rd',
@@ -3061,6 +3362,292 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
     return s.join('');
   }
 
+  /* Lane content for the flat drawing below. Every branch reads a
+     reachability fact off the model rather than the scenario name, because the
+     same failure reads differently per observer placement: a severed site link
+     is business as usual from a third site and a stranded standby from the
+     primary's own. */
+  function flatLanes(m, t0, t1) {
+    var manual = m.outcome === 'manual';
+    var lanes = [
+      { name: 'Primary', sub: t('production database'), segs: [] },
+      { name: 'Observer', sub: obsSub(), segs: [] },
+      { name: 'Standby', sub: t('failover target'), segs: [] }
+    ];
+
+    if (manual) {
+      lanes[0].segs.push({ a: t0, b: 0, cls: 'b-tl', lc: 'f-tl',
+        lab: [t('Open read-write \u2014 shipping redo'), t('Shipping redo'), t('Open')] });
+      lanes[0].segs.push({ a: 0, b: t1, cls: 'b-hatch', lc: 'f-rd',
+        lab: [t('Down \u2014 host has crashed'), t('Down')] });
+    } else {
+      lanes[0].segs.push({ a: t0, b: t1, cls: 'b-tl', lc: 'f-tl',
+        lab: m.redoFlowing
+          ? [t('Open read-write \u2014 shipping redo'), t('Open read-write'), t('Open')]
+          : m.pmyReachable
+            ? [t('Open read-write \u2014 committing, with nothing receiving its redo'), t('Open read-write'), t('Open')]
+            : [t('Open read-write \u2014 serving, but unreachable from outside {0}', idv('dc1')),
+               t('Open, but unreachable'), t('Open')] });
+    }
+
+    /* With no observer deployed the lane is deliberately empty: the absence is
+       the lesson, and a bar saying "nothing here" would read as a state. */
+    if (C.observerLoc !== 'none') {
+      lanes[1].segs.push({ a: t0, b: 0, cls: 'b-sl', lc: 'f-sl',
+        lab: [t('Pinging primary \u2014 connection healthy'), t('Pinging primary'), t('Pinging')] });
+      lanes[1].segs.push({ a: 0, b: t1, cls: 'b-sl', lc: 'f-sl',
+        lab: [t('Still sees the primary \u2014 holds fire'), t('Still sees the primary'), t('Holds fire')] });
+    }
+
+    lanes[2].segs.push({ a: t0, b: 0, cls: 'b-bl', lc: 'f-bl', lab: [t('Applying redo'), t('Applying')] });
+    lanes[2].segs.push(m.standbyGone
+      ? { a: 0, b: t1, cls: 'b-hatch', lc: 'f-rd',
+          lab: [t('Site down \u2014 the standby is gone with it'), t('Site down'), t('Down')] }
+      : !m.redoFlowing
+        ? { a: 0, b: t1, cls: 'b-bl', lc: 'f-bl',
+            lab: [t('Lagging \u2014 no redo is arriving from the primary'), t('No redo arriving'), t('Lagging')] }
+        : { a: 0, b: t1, cls: 'b-bl', lc: 'f-bl', lab: [t('Applying redo'), t('Applying')] });
+
+    return lanes;
+  }
+
+  /* The cells where no role is transferred: the configuration carries on
+     (continues), or the primary is gone with nothing armed to replace it
+     (manual). Flat lanes and one event marker, no braces and no countdown --
+     the same shape, and the same reason for its own builder, as the
+     observer-lost drawing above: none of the failover machinery applies. */
+  function buildFlatTimeline(m, W) {
+    var plotL = G.padL, plotR = W - G.padR, plotW = plotR - plotL;
+    var t0 = -m.preRoll, t1 = m.horizon;
+    function X(t) { return plotL + (t - t0) / (t1 - t0) * plotW; }
+    var s = [], push = function (x) { s.push(x); };
+
+    var manual = m.outcome === 'manual';
+    var lanes = flatLanes(m, t0, t1);
+
+    /* no braces here, so the drawing ends just under the axis labels */
+    var H = G.axisY + 44;
+
+    push('<svg class="tl-svg" width="' + W + '" height="' + H + '" viewBox="0 0 ' + W + ' ' + H +
+      '" role="img" aria-labelledby="tl-summary">');
+    push('<defs><pattern id="fsfoHatch" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">' +
+      '<rect width="8" height="8" class="hatch-bg"></rect><line x1="0" y1="0" x2="0" y2="8" class="hatch-ln"></line></pattern>' +
+      '<marker id="tlAs" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,1 L10,5 L0,9 z" class="f-ar"></path></marker></defs>');
+
+    /* pre-failure zone, gridlines, axis */
+    push('<rect class="prezone" x="' + r1(plotL) + '" y="' + G.laneTop + '" width="' + r1(X(0) - plotL) +
+      '" height="' + (G.lanesBottom - G.laneTop) + '"></rect>');
+    var ssLab = t('Steady state');
+    if (X(0) - plotL >= approxW(ssLab, 10.5) + 12) push(txt('t-tick', plotL + 6, G.markY, null, esc(ssLab)));
+
+    for (var tk = Math.ceil(t0 / m.tickStep) * m.tickStep; tk <= t1 + 1e-9; tk += m.tickStep) {
+      push(ln('gridline', X(tk), G.laneTop, X(tk), G.axisY));
+      push(txt('t-tick t-mono', X(tk), G.axisY + 16, 'middle', esc(sign(tk))));
+    }
+    push(ln('ax', plotL, G.axisY, plotR, G.axisY));
+    push(txt('t-tick t-mono', plotR, G.axisY + 30, 'end', esc(t('seconds from the failure event'))));
+
+    /* lanes */
+    lanes.forEach(function (lane, i) {
+      var y = G.lane[i];
+      push('<rect class="lane-bg" x="' + r1(plotL) + '" y="' + y + '" width="' + r1(plotW) + '" height="' + G.laneH + '" rx="2"></rect>');
+      push(txt('t-lane', G.padL - 14, y + 20, 'end', esc(lane.name)));
+      push(txt('t-sub', G.padL - 14, y + 34, 'end', esc(lane.sub)));
+      lane.segs.forEach(function (sg) {
+        var x0 = Math.max(plotL, X(sg.a)), x1 = Math.min(plotR, X(sg.b)), w = x1 - x0;
+        if (w <= 0.5) return;
+        push('<rect class="bar ' + sg.cls + '" x="' + r1(x0) + '" y="' + (y + 6) + '" width="' + r1(w) +
+          '" height="' + (G.laneH - 12) + '"><title>' + esc(sg.lab[0]) + '</title></rect>');
+        var lab = fitLabel(sg.lab, w);
+        if (lab) push(txt('t-bar ' + sg.lc, (x0 + x1) / 2, y + 28, 'middle', esc(lab)));
+      });
+    });
+
+    /* the empty observer lane says why it is empty */
+    if (C.observerLoc === 'none') {
+      push(txt('t-bar f-sl', (plotL + plotR) / 2, G.lane[1] + 28, 'middle',
+        esc(t('no observer \u2014 fast-start failover is not enabled'))));
+    }
+
+    /* the t = 0 event, drawn on whatever it actually happened to */
+    var xz = X(0);
+    if (manual) {
+      var cy = G.lane[0] + G.laneH / 2;
+      push(ln('m-rd', xz - 7, cy - 7, xz + 7, cy + 7, ' stroke-width="2.5"'));
+      push(ln('m-rd', xz + 7, cy - 7, xz - 7, cy + 7, ' stroke-width="2.5"'));
+      push(txt('t-mark f-rd', xz + 8, G.markY, null, esc(t('Primary host crashes'))));
+    } else if (m.standbyGone) {
+      var sy = G.lane[2] + G.laneH / 2;
+      push(ln('m-rd', xz - 7, sy - 7, xz + 7, sy + 7, ' stroke-width="2.5"'));
+      push(ln('m-rd', xz + 7, sy - 7, xz - 7, sy + 7, ' stroke-width="2.5"'));
+      push(txt('t-mark f-rd', xz + 12, G.lane[2] - 12, null,
+        esc(t('The whole standby site is lost at t = 0'))));
+    } else {
+      /* A link failure, not a host failure. The dashes sit on the two lanes
+         that lost each other and leave the observer's alone -- in every cell
+         drawn here the observer still has the primary, which is exactly why
+         nothing is promoted. */
+      push(ln('partition', xz, G.lane[0] - 4, xz, G.lane[0] + G.laneH + 4));
+      push(ln('partition', xz, G.lane[2] - 4, xz, G.lane[2] + G.laneH + 4));
+      push(txt('t-mark f-rd', xz + 8, G.markY, null, esc(C.scenario === 'partition'
+        ? t('The link between {0} and {1} fails \u2014 both databases are otherwise healthy', idv('dc1'), idv('dc2'))
+        : t('Every link out of {0} fails \u2014 the primary is cut off from everything outside it', idv('dc1')))));
+    }
+
+    /* Manual failover: available from the first second and every second after
+       it, which is the whole point -- nothing is counting down to it. Drawn
+       open-ended for that reason. */
+    if (manual) {
+      var my = G.lane[2] - 8;
+      push(ln('rdy', xz, my, plotR - 2, my, ' marker-end="url(#tlAs)"'));
+      var fCands = [t("A DBA can run FAILOVER TO '{0}' at any point \u2014 nothing schedules it", idv('dbStandby')),
+                    t('A manual FAILOVER TO can be run at any point'),
+                    t('Manual failover, at any point')];
+      var fLab = fCands[fCands.length - 1];
+      for (var fi = 0; fi < fCands.length; fi++) {
+        if (xz + 8 + approxW(fCands[fi], 11.5) <= plotR) { fLab = fCands[fi]; break; }
+      }
+      push(txt('t-mark f-sl', xz + 8, my - 8, null, esc(fLab)));
+    }
+
+    push(txt('t-top ' + (manual || m.standbyGone || !m.pmyReachable ? 'f-am' : 'f-sl'), plotL, G.topY, null,
+      esc(manual
+        ? t('No fast-start failover is armed \u2014 only a manual FAILOVER TO can promote the standby')
+        : m.standbyGone
+          ? t('The primary keeps serving with no standby \u2014 nothing is protecting it now')
+          : !m.pmyReachable
+            ? t('The primary keeps serving, but nothing outside its site can reach it')
+            : t('Both databases keep running and no failover is initiated'))));
+
+    push('</svg>');
+    return s.join('');
+  }
+
+  /* The primary is cut off from observer and standby alike, and there is no
+     reachable standby for anyone to promote: it stalls at t = 0 and the stall
+     ends only in its own self-abort or in an operator's hands. Same two-segment
+     primary lane as the isolated drawing, but the two lanes below it are dead
+     hosts rather than counterparties, so no clock is drawn against them. */
+  function buildStallTimeline(m, W) {
+    var plotL = G.padL, plotR = W - G.padR, plotW = plotR - plotL;
+    var t0 = -m.preRoll, t1 = m.horizon;
+    function X(t) { return plotL + (t - t0) / (t1 - t0) * plotW; }
+    var s = [], push = function (x) { s.push(x); };
+
+    var lanes = [
+      { name: 'Primary', sub: t('production database'), segs: [] },
+      { name: 'Observer', sub: obsSub(), segs: [] },
+      { name: 'Standby', sub: t('failover target'), segs: [] }
+    ];
+
+    lanes[0].segs.push({ a: t0, b: 0, cls: 'b-tl', lc: 'f-tl',
+      lab: [t('Open read-write \u2014 shipping redo'), t('Shipping redo'), t('Open')] });
+    if (m.abort !== null) {
+      lanes[0].segs.push({ a: 0, b: m.abort, cls: 'b-hatch', lc: 'f-rd',
+        lab: [t('STALLED \u2014 redo generation halted'), 'STALLED'] });
+      lanes[0].segs.push({ a: m.abort, b: t1, cls: 'b-hatch', lc: 'f-rd',
+        lab: [t('Aborted \u2014 instance shut itself down'), t('Aborted')] });
+    } else {
+      lanes[0].segs.push({ a: 0, b: t1, cls: 'b-hatch', lc: 'f-rd',
+        lab: [t('STALLED indefinitely \u2014 no redo, no commits'), t('STALLED indefinitely'), 'STALLED'] });
+    }
+
+    lanes[1].segs.push({ a: t0, b: 0, cls: 'b-sl', lc: 'f-sl',
+      lab: [t('Pinging primary \u2014 connection healthy'), t('Pinging primary'), t('Pinging')] });
+    lanes[1].segs.push({ a: 0, b: t1, cls: 'b-hatch', lc: 'f-rd',
+      lab: [t('Host down \u2014 it sat in the standby\u2019s site'), t('Host down'), t('Down')] });
+
+    lanes[2].segs.push({ a: t0, b: 0, cls: 'b-bl', lc: 'f-bl', lab: [t('Applying redo'), t('Applying')] });
+    lanes[2].segs.push({ a: 0, b: t1, cls: 'b-hatch', lc: 'f-rd',
+      lab: [t('Site down \u2014 the standby is gone with it'), t('Site down'), t('Down')] });
+
+    /* one brace, and only when something bounds the stall */
+    var H = m.abort !== null ? G.braceTop + G.braceRow + 6 : G.axisY + 44;
+
+    push('<svg class="tl-svg" width="' + W + '" height="' + H + '" viewBox="0 0 ' + W + ' ' + H +
+      '" role="img" aria-labelledby="tl-summary">');
+    push('<defs><pattern id="fsfoHatch" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">' +
+      '<rect width="8" height="8" class="hatch-bg"></rect><line x1="0" y1="0" x2="0" y2="8" class="hatch-ln"></line></pattern></defs>');
+
+    /* pre-failure zone, gridlines, axis */
+    push('<rect class="prezone" x="' + r1(plotL) + '" y="' + G.laneTop + '" width="' + r1(X(0) - plotL) +
+      '" height="' + (G.lanesBottom - G.laneTop) + '"></rect>');
+    var ssLab = t('Steady state');
+    if (X(0) - plotL >= approxW(ssLab, 10.5) + 12) push(txt('t-tick', plotL + 6, G.markY, null, esc(ssLab)));
+
+    for (var tk = Math.ceil(t0 / m.tickStep) * m.tickStep; tk <= t1 + 1e-9; tk += m.tickStep) {
+      push(ln('gridline', X(tk), G.laneTop, X(tk), G.axisY));
+      push(txt('t-tick t-mono', X(tk), G.axisY + 16, 'middle', esc(sign(tk))));
+    }
+    push(ln('ax', plotL, G.axisY, plotR, G.axisY));
+    push(txt('t-tick t-mono', plotR, G.axisY + 30, 'end', esc(t('seconds from the failure event'))));
+
+    /* lanes */
+    lanes.forEach(function (lane, i) {
+      var y = G.lane[i];
+      push('<rect class="lane-bg" x="' + r1(plotL) + '" y="' + y + '" width="' + r1(plotW) + '" height="' + G.laneH + '" rx="2"></rect>');
+      push(txt('t-lane', G.padL - 14, y + 20, 'end', esc(lane.name)));
+      push(txt('t-sub', G.padL - 14, y + 34, 'end', esc(lane.sub)));
+      lane.segs.forEach(function (sg) {
+        var x0 = Math.max(plotL, X(sg.a)), x1 = Math.min(plotR, X(sg.b)), w = x1 - x0;
+        if (w <= 0.5) return;
+        push('<rect class="bar ' + sg.cls + '" x="' + r1(x0) + '" y="' + (y + 6) + '" width="' + r1(w) +
+          '" height="' + (G.laneH - 12) + '"><title>' + esc(sg.lab[0]) + '</title></rect>');
+        var lab = fitLabel(sg.lab, w);
+        if (lab) push(txt('t-bar ' + sg.lc, (x0 + x1) / 2, y + 28, 'middle', esc(lab)));
+      });
+    });
+
+    /* the t = 0 event took both hosts on the standby's side at once */
+    var xz = X(0);
+    [G.lane[1], G.lane[2]].forEach(function (ly) {
+      var cy = ly + G.laneH / 2;
+      push(ln('m-rd', xz - 7, cy - 7, xz + 7, cy + 7, ' stroke-width="2.5"'));
+      push(ln('m-rd', xz + 7, cy - 7, xz - 7, cy + 7, ' stroke-width="2.5"'));
+    });
+    push(txt('t-mark f-rd', xz + 8, G.markY, null,
+      esc(t('The whole standby site is lost \u2014 the target standby and the observer with it'))));
+
+    /* the primary's own stall clock, drawn the way the isolated one is */
+    var gapA = G.lane[0] + G.laneH;
+    if (m.abort !== null) {
+      var xa = X(m.abort);
+      push(ln('m-rd', xa, G.lane[0] + 2, xa, gapA + 8, ' stroke-width="2"'));
+      push('<circle class="f-rd" cx="' + r1(xa) + '" cy="' + (G.lane[0] + G.laneH / 2) + '" r="4"></circle>');
+      var aCands = [t('Self-abort at t = {0} s  (FastStartFailoverPmyShutdown = TRUE)', fmt(m.abort)),
+                    t('Self-abort at t = {0} s', fmt(m.abort)), t('Self-abort')];
+      var aLab = null;
+      for (var ai = 0; ai < aCands.length; ai++) {
+        if (xa + 8 + approxW(aCands[ai], 11.5) <= plotR) { aLab = aCands[ai]; break; }
+      }
+      push(aLab ? txt('t-mark f-rd', xa + 8, gapA + 16, null, esc(aLab))
+                : txt('t-mark f-rd', xa - 8, gapA + 16, 'end', esc(aCands[2])));
+    } else {
+      push(txt('t-mark f-rd', plotL + 8, gapA + 16, null,
+        esc(t('Stays STALLED until an operator intervenes \u2014 there is nothing left to fail over to'))));
+    }
+
+    push(txt('t-top f-rd', plotL, G.topY, null,
+      esc(t('No failover is possible \u2014 the observer died with the standby'))));
+
+    /* the one brace: the threshold, measuring the stall rather than a countdown
+       to anything. Centred like the packed braces above, minus the packing --
+       there is only ever one. */
+    if (m.abort !== null) {
+      var bx0 = X(0), bx1 = X(m.abort), by = G.braceTop;
+      var bName = 'FastStartFailoverThreshold';
+      var bVal = t('{0} s \u2014 the primary\u2019s own stall clock; nothing is counting down to a failover', fmt(C.threshold));
+      var bw = Math.max(approxW(bName, 11.5, true), approxW(bVal, 11, true), bx1 - bx0) + 18;
+      var blx = Math.min(Math.max((bx0 + bx1) / 2, bw / 2 + 6), W - bw / 2 - 6);
+      push(braceDown(bx0, bx1, by, 'br-rd'));
+      push(txt('t-brace-n t-mono', blx, by + 26, 'middle', esc(bName)));
+      push(txt('t-brace-v t-mono', blx, by + 41, 'middle', esc(bVal)));
+    }
+
+    push('</svg>');
+    return s.join('');
+  }
+
   /* Planned switchover: nothing failed, so this drawing is about a handover
      rather than a detection. The primary hands off at tDown and comes back as
      the standby; the target catches up, changes role and opens. Its own
@@ -3076,7 +3663,7 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
 
     var lanes = [
       { name: 'Primary', sub: blocked ? t('production database') : t('becomes the standby'), segs: [] },
-      { name: 'Observer', sub: t('DGMGRL, third host'), segs: [] },
+      { name: 'Observer', sub: obsSub(), segs: [] },
       { name: 'Standby', sub: blocked ? t('failover target') : t('becomes the primary'), segs: [] }
     ];
 
@@ -3271,25 +3858,41 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
      is STALLED and cannot commit anything further. (Under ASYNC the old
      primary may already hold in-flight commits the standby never received,
      bounded by the lag limit; the stall caps that divergence, it does not
-     erase it.) */
+     erase it.) The arms follow the outcome rather than the scenario name,
+     because the same failure ends in a role change under one observer
+     placement and in nothing at all under another. */
   function splitBrainChip(m) {
     var K_SB = 'Split brain', V_NO = 'no';
-    if (m.switchover) {
-      return chip('ik', t(K_SB), t(V_NO), '', m.blocked
-        ? t('The command was refused, so the roles never moved: one primary, one standby, exactly as before')
-        : t('The primary is a standby before the new one opens \u2014 the two roles never overlap'));
+    switch (m.outcome) {
+      case 'switchover':
+        return chip('ik', t(K_SB), t(V_NO), '', m.blocked
+          ? t('The command was refused, so the roles never moved: one primary, one standby, exactly as before')
+          : t('The primary is a standby before the new one opens \u2014 the two roles never overlap'));
+      case 'observer-lost':
+        return chip('ik', t(K_SB), t(V_NO), '',
+          t('Nothing diverged \u2014 one primary, one standby, and no failover was ever attempted'));
+      case 'continues':
+        return chip('ik', t(K_SB), t(V_NO), '',
+          t('Nothing was promoted, so nothing could diverge: the primary is the only database open read-write from end to end'));
+      case 'manual':
+        return chip('ik', t(K_SB), t(V_NO), '',
+          t('The primary is down and nothing promotes the standby on its own, so at most one database is ever open read-write'));
+      case 'stall-noone':
+        return chip('ik', t(K_SB), t(V_NO), '',
+          t('There is no standby left to promote, and the primary is <span class="mono">STALLED</span> \u2014 nothing can diverge from nothing'));
     }
-    if (m.observerLost) {
-      return chip('ik', t(K_SB), t(V_NO), '',
-        t('Nothing diverged \u2014 one primary, one standby, and no failover was ever attempted'));
-    }
-    if (C.scenario !== 'isolated') {
+
+    /* fast-start failover: the stall, not the scenario name, is what decides
+       whether a second instance is still up while the standby opens */
+    if (!m.stalled) {
       return chip('ik', t(K_SB), t(V_NO), '',
         t('The primary is down, so only one database is ever open read-write'));
     }
+    var part = m.scenario === 'partition';
     if (m.blocked) {
-      return chip('ik', t(K_SB), t(V_NO), '',
-        t('No failover is attempted and the isolated primary is <span class="mono">STALLED</span>, so there is nothing to diverge'));
+      return chip('ik', t(K_SB), t(V_NO), '', part
+        ? t('No failover is attempted and the cut-off primary is <span class="mono">STALLED</span>, so there is nothing to diverge')
+        : t('No failover is attempted and the isolated primary is <span class="mono">STALLED</span>, so there is nothing to diverge'));
     }
     if (m.abort === null) {
       return chip('am', t(K_SB), t(V_NO), '',
@@ -3300,47 +3903,131 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
       ? chip('am', t(K_SB), t(V_NO), '',
           t('Two instances overlap for {0} s, from {1} s to the self-abort at {2} s, but the old one is <span class="mono">STALLED</span> throughout',
             fmt(overlap), fmt(m.tOpen), fmt(m.abort)))
-      : chip('ik', t(K_SB), t(V_NO), '',
-          t('The isolated primary aborts at {0} s, before the standby opens at {1} s', fmt(m.abort), fmt(m.tOpen)));
+      : chip('ik', t(K_SB), t(V_NO), '', part
+          ? t('The cut-off primary aborts at {0} s, before the standby opens at {1} s', fmt(m.abort), fmt(m.tOpen))
+          : t('The isolated primary aborts at {0} s, before the standby opens at {1} s', fmt(m.abort), fmt(m.tOpen)));
   }
 
   function renderReadout(m) {
-    if (m.switchover) {
-      var w = '';
-      if (m.blocked) {
-        w += chip('rd', t('New primary open'), t('refused'), '',
-          t('The broker will not switch over while the apply lag exceeds <span class="mono">FastStartFailoverLagLimit</span>'));
-        w += chip('ik', t('Read-write downtime'), '0', '',
-          t('Nothing was converted \u2014 the primary never stopped serving'));
-      } else {
-        w += chip('tl', t('New primary open'), fmt(m.tOpen), 's',
-          t('{0} + {1} + {2} + {3} \u2014 pre-checks, conversion, catch-up, role change',
-            fmt(m.verify), fmt(m.convert), fmt(m.applyRemaining), fmt(C.roleTransition)));
-        w += chip('am', t('Read-write downtime'), fmt(m.downtime), 's',
-          t('From the conversion at {0} s to the new primary\u2019s open \u2014 the window nothing accepts work', fmt(m.tDown)));
+    var loc = C.observerLoc || 'dc3';
+
+    switch (m.outcome) {
+
+      case 'switchover': {
+        var w = '';
+        if (m.blocked) {
+          w += chip('rd', t('New primary open'), t('refused'), '',
+            t('The broker will not switch over while the apply lag exceeds <span class="mono">FastStartFailoverLagLimit</span>'));
+          w += chip('ik', t('Read-write downtime'), '0', '',
+            t('Nothing was converted \u2014 the primary never stopped serving'));
+        } else {
+          w += chip('tl', t('New primary open'), fmt(m.tOpen), 's',
+            t('{0} + {1} + {2} + {3} \u2014 pre-checks, conversion, catch-up, role change',
+              fmt(m.verify), fmt(m.convert), fmt(m.applyRemaining), fmt(C.roleTransition)));
+          w += chip('am', t('Read-write downtime'), fmt(m.downtime), 's',
+            t('From the conversion at {0} s to the new primary\u2019s open \u2014 the window nothing accepts work', fmt(m.tDown)));
+        }
+        w += chip('ik', t('Maximum data loss'), '0', '',
+          t('A switchover guarantees zero data loss, in every protection mode'));
+        w += splitBrainChip(m);
+        els.chips.innerHTML = w;
+        return;
       }
-      w += chip('ik', t('Maximum data loss'), '0', '',
-        t('A switchover guarantees zero data loss, in every protection mode'));
-      w += splitBrainChip(m);
-      els.chips.innerHTML = w;
-      return;
+
+      case 'observer-lost': {
+        var o = chip('rd', t('Failover initiated'), t('never'), '',
+          t('No observer is connected, so nothing can initiate fast-start failover'));
+        o += chip('ik', t('New primary open'), t('n/a'), '',
+          t('Nothing failed over \u2014 the standby is still a standby, and the primary is still the primary'));
+        o += m.ifDiedNow > 0
+          ? chip('am', t('If the primary died right now'), '\u2264 ' + fmt(m.ifDiedNow), t('s of redo'),
+              t('Failover would be manual, and MaxPerformance leaves the current apply lag of <span class="mono">{0} s</span> of redo at risk', fmt(m.ifDiedNow)))
+          : chip('ik', t('If the primary died right now'), '0', '',
+              t('Failover would be manual, but a synchronized standby in MaxAvailability means zero data loss'));
+        o += splitBrainChip(m);
+        els.chips.innerHTML = o;
+        return;
+      }
+
+      /* Somebody still reaches the primary, so no role moves. The chips have
+         to say why nothing happened AND what the configuration is exposed to
+         while nothing happens -- the second half is the whole risk. */
+      case 'continues': {
+        var k = chip('rd', t('Failover initiated'), t('never'), '',
+          loc === 'none'
+            ? t('No observer is deployed, so fast-start failover is not enabled and nothing can initiate one')
+            : m.standbyGone
+              ? t('The target standby is gone, so there is nothing for the observer to promote')
+              : t('The observer never lost the primary, so no <span class="mono">FastStartFailoverThreshold</span> ever starts counting'));
+        k += m.standbyGone
+          ? chip('ik', t('New primary open'), t('n/a'), '',
+              t('Nothing failed over, and with the standby site gone there is nothing to fail over to'))
+          : chip('ik', t('New primary open'), t('n/a'), '',
+              t('Nothing failed over \u2014 the standby is still a standby, and the primary is still the primary'));
+        if (!m.pmyReachable) {
+          k += chip('am', t('Primary'), t('serving, unreachable'), '',
+            t('Open read-write and committing, but every link out of {0} is down: no client and no standby outside the site can reach it', idv('dc1')));
+        }
+        /* No redo has reached the standby since t = 0 in any of these cells,
+           so the exposure is not a bounded number and must never be printed as
+           one: the lag limit bounds a standby that is still receiving. */
+        k += m.ifDiedNow === null
+          ? chip('rd', t('If the primary died right now'), t('no target'), '',
+              t('The standby site is gone, so a failure now is an outage with no role change available to end it'))
+          : !m.redoFlowing
+            ? chip('am', t('If the primary died right now'), t('growing'), '', C.mode === 'maxperf'
+                ? t('The standby was already <span class="mono">{0} s</span> behind at t = 0 and has received nothing since, so a failover now would lose that and everything committed after the cut \u2014 growing for as long as the cut lasts', fmt(m.ifDiedNow))
+                : t('The standby holds every change committed before t = 0 and nothing since, so a failover now would lose everything committed after the cut \u2014 growing for as long as the cut lasts'))
+            : m.ifDiedNow > 0
+              ? chip('am', t('If the primary died right now'), '\u2264 ' + fmt(m.ifDiedNow), t('s of redo'),
+                  t('MaxPerformance leaves the current apply lag of <span class="mono">{0} s</span> of redo at risk', fmt(m.ifDiedNow)))
+              : chip('ik', t('If the primary died right now'), '0', '',
+                  t('A synchronized standby in MaxAvailability means zero data loss'));
+        k += splitBrainChip(m);
+        els.chips.innerHTML = k;
+        return;
+      }
+
+      /* The primary is gone and nothing was armed to replace it. Manual
+         FAILOVER TO never needed an observer -- but nothing schedules it, and
+         no configured limit bounds what it loses. */
+      case 'manual': {
+        var mn = chip('rd', t('Failover initiated'), t('never'), '',
+          t('No observer is deployed, so fast-start failover is not enabled \u2014 nothing detects the crash and nothing initiates a failover'));
+        mn += chip('am', t('When the standby opens'), t('when a DBA runs it'), '',
+          t('A manual <span class="mono">FAILOVER TO \'{0}\'</span> is available from the first second and every second after it \u2014 no clock counts down to it', idv('dbStandby')));
+        mn += m.dataLossSeconds > 0
+          ? chip('am', t('Maximum data loss'), '\u2264 ' + fmt(m.dataLossSeconds), t('s of redo'),
+              t('MaxPerformance leaves the apply lag at the moment of the crash at risk, and no <span class="mono">FastStartFailoverLagLimit</span> bounds it \u2014 that guarantee belongs to fast-start failover, which is not enabled here'))
+          : chip('ik', t('Maximum data loss'), '0', '',
+              t('SYNC transport in MaxAvailability \u2014 the standby holds every committed change. No <span class="mono">FastStartFailoverLagLimit</span> is involved either: that bound belongs to fast-start failover, which is not enabled here'));
+        mn += splitBrainChip(m);
+        els.chips.innerHTML = mn;
+        return;
+      }
+
+      /* The primary reaches neither the observer nor the target standby, and
+         the standby is what it lost -- so the stall clock runs against
+         nothing. */
+      case 'stall-noone': {
+        var sn = chip('rd', t('Primary'), 'STALLED', '',
+          t('From t = 0: <span class="mono">V$DATABASE.FS_FAILOVER_STATUS</span> reads <span class="mono">STALLED</span> because the primary reaches neither the observer nor the target standby, so it stops committing'));
+        sn += m.abort !== null
+          ? chip('rd', t('Primary self-abort at'), fmt(m.abort), 's',
+              t('<span class="mono">FastStartFailoverPmyShutdown = TRUE</span> \u2014 stalled for one threshold'))
+          : chip('rd', t('Primary self-abort at'), t('never'), '',
+              t('<span class="mono">FastStartFailoverPmyShutdown = FALSE</span> \u2014 stays stalled indefinitely'));
+        sn += chip('rd', t('Failover initiated'), t('never'), '',
+          t('The observer and the target standby went down together, so nobody is left to initiate a failover and nothing is left to promote'));
+        sn += chip('am', t('Recovery'), t('manual'), '',
+          t('<span class="mono">DISABLE FAST_START FAILOVER FORCE</span> on the primary ends the stall \u2014 or the standby site comes back'));
+        sn += splitBrainChip(m);
+        els.chips.innerHTML = sn;
+        return;
+      }
     }
 
-    if (m.observerLost) {
-      var o = chip('rd', t('Failover initiated'), t('never'), '',
-        t('No observer is connected, so nothing can initiate fast-start failover'));
-      o += chip('ik', t('New primary open'), t('n/a'), '',
-        t('Nothing failed over \u2014 the standby is still a standby, and the primary is still the primary'));
-      o += m.ifDiedNow > 0
-        ? chip('am', t('If the primary died right now'), '\u2264 ' + fmt(m.ifDiedNow), t('s of redo'),
-            t('Failover would be manual, and MaxPerformance leaves the current apply lag of <span class="mono">{0} s</span> of redo at risk', fmt(m.ifDiedNow)))
-        : chip('ik', t('If the primary died right now'), '0', '',
-            t('Failover would be manual, but a synchronized standby in MaxAvailability means zero data loss'));
-      o += splitBrainChip(m);
-      els.chips.innerHTML = o;
-      return;
-    }
-
+    /* fast-start failover ran, or was stopped at the readiness check */
     var out = chip('vi', t('Failover initiated at'), fmt(m.initiate), 's', m.pingSet
       ? t('Detection by <span class="mono">ObserverPingInterval</span> \u00d7 (<span class="mono">ObserverPingRetry</span> + 1)')
       : t('One <span class="mono">FastStartFailoverThreshold</span> after the observer lost the primary'));
@@ -3363,7 +4050,7 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
       out += chip('rd', t('Maximum data loss'), '\u2014', '', t('No failover occurs, so nothing is lost and nothing is recovered'));
     }
 
-    if (C.scenario === 'isolated') {
+    if (m.stalled) {
       out += m.abort !== null
         ? chip('rd', t('Primary self-abort at'), fmt(m.abort), 's',
             t('<span class="mono">FastStartFailoverPmyShutdown = TRUE</span> \u2014 stalled for one threshold'))
@@ -3371,68 +4058,242 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
             t('<span class="mono">FastStartFailoverPmyShutdown = FALSE</span> \u2014 stays stalled indefinitely'));
     }
 
+    /* The one cell where the drawing cannot show the risk: this crash left the
+       observer running, and only because it was the database host that died. */
+    if (m.scenario === 'crash' && loc === 'dc1') {
+      out += chip('am', t('Observer placement'), idv('dc1'), '',
+        t('The observer is on a host of its own, so this crash leaves it running and the failover proceeds. A failure that took the whole of {0} would take the observer with it, and no automatic failover could follow.', idv('dc1')));
+    }
+
     out += splitBrainChip(m);
     els.chips.innerHTML = out;
   }
 
+  /* The heading names the scenario, because that is what the reader picked.
+     Everything under it follows the outcome instead, because the outcome is
+     what the observer placement changes. */
+  function tlHeading(sc) {
+    return sc === 'isolated' ? t('Timeline \u2014 isolated primary')
+      : sc === 'partition' ? t('Timeline \u2014 {0} to {1} link down', idv('dc1'), idv('dc2'))
+        : sc === 'dc2down' ? t('Timeline \u2014 standby site down')
+          : t('Timeline \u2014 primary crash');
+  }
+  function tlEyebrow(sc, m) {
+    return sc === 'partition' ? t('t = 0 is the link failure \u00b7 horizon {0} s', fmt(m.horizon))
+      : sc === 'dc2down' ? t('t = 0 is the loss of the standby site \u00b7 horizon {0} s', fmt(m.horizon))
+        : t('t = 0 is the failure event \u00b7 horizon {0} s', fmt(m.horizon));
+  }
+
+  /* What the same cut looks like to redo transport. It lives in a caption and
+     nowhere else: NET_TIMEOUT bounds an acknowledgement, never a failover, so
+     it never gets a band on a failover drawing. */
+  function netTimeoutNote() {
+    return (C.mode === 'maxavail'
+      ? t('On the transport side the same cut is a <span class="mono">NET_TIMEOUT</span>: under SYNC a commit waits up to that long for the standby\u2019s acknowledgement, then transport gives up on the destination and the primary carries on without it.')
+      : t('On the transport side the same cut is a <span class="mono">NET_TIMEOUT</span>: under ASYNC no session ever waits for it, and transport simply drops the destination and logs the error.')) +
+      ' ' + t('It bounds an acknowledgement, never a failover \u2014 <a class="xref" href="#nettimeoutview">where NET_TIMEOUT fits</a> draws it, and <a class="xref" href="#reopenview">the reopen panel</a> shows when the destination is tried again.');
+  }
+
+  /* The switchover is the one role change that never involves the observer,
+     which makes where the observer sits a question of where it wakes up. */
+  function swObserverNote(loc) {
+    return loc === 'none'
+      ? t('No observer is involved and none is needed: a switchover is a command a DBA issues, and it is the one role change fast-start failover has no part in.')
+      : loc === 'dc1'
+        ? t('The observer stays in {0} \u2014 which is the new <em>standby</em>\u2019s site once the roles have traded, and it goes on observing from there.', idv('dc1'))
+        : loc === 'dc2'
+          ? t('The observer stays in {0} \u2014 which is the new <em>primary</em>\u2019s site once the roles have traded, and it goes on observing from there.', idv('dc2'))
+          : t('The observer watches from {0} throughout and takes no part in it: a switchover never needs one.', idv('dc3'));
+  }
+
   function renderProse(m) {
-    var iso = C.scenario === 'isolated';
+    var sc = m.scenario, loc = C.observerLoc || 'dc3';
 
-    if (m.switchover) {
-      els.heading.textContent = t('Timeline \u2014 planned switchover');
-      els.eyebrow.textContent = t('t = 0 is the SWITCHOVER command \u00b7 horizon {0} s', fmt(m.horizon));
-      els.banner.hidden = !m.blocked;
-      if (m.blocked) {
-        els.bannerBody.innerHTML = t('The broker refuses the <span class="mono">SWITCHOVER</span>: with fast-start failover enabled, a switchover is permitted only to the target standby and only while it is inside <span class="mono">FastStartFailoverLagLimit = {1} s</span> in MaxPerformance. The apply lag is <span class="mono">{0} s</span>. Nothing converts, and the primary keeps serving.',
-          fmt(C.standbyLag), fmt(C.lagLimit));
+    switch (m.outcome) {
+
+      case 'switchover': {
+        els.heading.textContent = t('Timeline \u2014 planned switchover');
+        els.eyebrow.textContent = t('t = 0 is the SWITCHOVER command \u00b7 horizon {0} s', fmt(m.horizon));
+        els.banner.hidden = !m.blocked;
+        els.bannerK.textContent = t('Blocked');
+        if (m.blocked) {
+          els.bannerBody.innerHTML = t('The broker refuses the <span class="mono">SWITCHOVER</span>: with fast-start failover enabled, a switchover is permitted only to the target standby and only while it is inside <span class="mono">FastStartFailoverLagLimit = {1} s</span> in MaxPerformance. The apply lag is <span class="mono">{0} s</span>. Nothing converts, and the primary keeps serving.',
+            fmt(C.standbyLag), fmt(C.lagLimit));
+        }
+        els.callout.hidden = m.blocked;
+        els.calloutK.textContent = t('Role reversal');
+        if (!m.blocked) {
+          els.calloutBody.innerHTML = (loc === 'none'
+            ? t('The broker verifies both databases, converts the primary into a standby, restarts it in that role and starts Redo Apply, then opens the target read-write and reverses redo transport. Only the <em>former</em> primary restarts.')
+            : t('The broker verifies both databases, converts the primary into a standby, restarts it in that role and starts Redo Apply, then opens the target read-write and reverses redo transport. Only the <em>former</em> primary restarts. Fast-start failover stays enabled across the swap.')) +
+            ' ' + swObserverNote(loc);
+        }
+        els.caption.innerHTML = m.blocked
+          ? t('Nothing on this timeline moves. Lower the apply lag under <span class="mono">FastStartFailoverLagLimit</span>, or switch to MaxAvailability \u2014 there the standby counts as synchronized on the redo it has <em>received</em>, so an apply lag lengthens the catch-up instead of blocking the command.')
+          : t('The primary stops taking work at <span class="mono">{0} s</span>, when it starts converting; its sessions end there. The target finishes applying, changes role, and is open read-write at <span class="mono">{1} s</span> \u2014 a downtime window of <span class="mono">{2} s</span>. No configuration clock decided any of it; the length is unapplied redo, activity at the command, and online redo logs to clear.',
+              fmt(m.tDown), fmt(m.tOpen), fmt(m.downtime));
+        els.summary.textContent = m.blocked
+          ? t('Timeline: the broker refuses the switchover because the apply lag exceeds FastStartFailoverLagLimit. Both databases keep their roles and the primary keeps serving.')
+          : t('Timeline: the switchover command is issued at t = 0. The primary stops accepting work at {0} seconds as it converts to a standby, and the target standby is open read-write as the new primary at {1} seconds, a downtime window of {2} seconds, with zero data loss.',
+              fmt(m.tDown), fmt(m.tOpen), fmt(m.downtime));
+        return;
       }
-      els.callout.hidden = m.blocked;
-      els.calloutK.textContent = t('Role reversal');
-      if (!m.blocked) {
-        els.calloutBody.innerHTML = t('The broker verifies both databases, converts the primary into a standby, restarts it in that role and starts Redo Apply, then opens the target read-write and reverses redo transport. Only the <em>former</em> primary restarts. Fast-start failover stays enabled across the swap.');
+
+      case 'observer-lost': {
+        els.heading.textContent = t('Timeline \u2014 observer lost');
+        els.eyebrow.textContent = t('t = 0 is the observer host failure');
+        els.banner.hidden = true;
+        els.callout.hidden = false;
+        els.calloutK.textContent = t('Unobserved');
+        els.calloutBody.innerHTML = t('The configuration is running unobserved: <span class="mono">V$DATABASE.FS_FAILOVER_STATUS</span> reads <span class="mono">PRIMARY UNOBSERVED</span>, <span class="mono">FS_FAILOVER_OBSERVER_PRESENT</span> reads <span class="mono">NO</span>, in time the broker raises <span class="mono">ORA-16820</span>, and a failover attempt fails with <span class="mono">ORA-16658</span>. Restart the observer, or register up to three (19c) so the broker can promote a backup.');
+        els.caption.innerHTML = t('Nothing on this timeline moves: the primary keeps committing, the standby keeps applying, only the automation is gone. <span class="mono">FastStartFailoverThreshold</span> never starts counting \u2014 the observer is what counts it. If the primary died now, the failover would be manual.') +
+          (loc === 'dc2'
+            ? ' ' + t('The observer shares its site with the standby here, so a failure that took the whole of {0} would take both at once \u2014 the <em>Standby site down</em> scenario shows where that ends.', idv('dc2'))
+            : '');
+        els.summary.textContent = t('Timeline: the observer host is down at t = 0. The primary stays open read-write and keeps shipping redo, the standby keeps applying, and no fast-start failover can be initiated while the configuration is unobserved.') +
+          (m.ifDiedNow > 0
+            ? ' ' + t('If the primary died now, a manual failover would lose up to {0} seconds of redo.', fmt(m.ifDiedNow))
+            : ' ' + t('If the primary died now, a manual failover would lose nothing, because the standby is synchronized.'));
+        return;
       }
-      els.caption.innerHTML = m.blocked
-        ? t('Nothing on this timeline moves. Lower the apply lag under <span class="mono">FastStartFailoverLagLimit</span>, or switch to MaxAvailability \u2014 there the standby counts as synchronized on the redo it has <em>received</em>, so an apply lag lengthens the catch-up instead of blocking the command.')
-        : t('The primary stops taking work at <span class="mono">{0} s</span>, when it starts converting; its sessions end there. The target finishes applying, changes role, and is open read-write at <span class="mono">{1} s</span> \u2014 a downtime window of <span class="mono">{2} s</span>. No configuration clock decided any of it; the length is unapplied redo, activity at the command, and online redo logs to clear.',
-            fmt(m.tDown), fmt(m.tOpen), fmt(m.downtime));
-      els.summary.textContent = m.blocked
-        ? t('Timeline: the broker refuses the switchover because the apply lag exceeds FastStartFailoverLagLimit. Both databases keep their roles and the primary keeps serving.')
-        : t('Timeline: the switchover command is issued at t = 0. The primary stops accepting work at {0} seconds as it converts to a standby, and the target standby is open read-write as the new primary at {1} seconds, a downtime window of {2} seconds, with zero data loss.',
-            fmt(m.tDown), fmt(m.tOpen), fmt(m.downtime));
-      return;
+
+      /* Nothing moved, and the reason it did not is different in every cell.
+         The caption is assembled from whole sentences: one for why no clock
+         started, one for what the two databases are doing meanwhile, and --
+         wherever redo stopped flowing to a standby that is still there -- one
+         for what redo transport made of the same cut. */
+      case 'continues': {
+        els.heading.textContent = tlHeading(sc);
+        els.eyebrow.textContent = tlEyebrow(sc, m);
+        els.banner.hidden = true;
+        els.callout.hidden = false;
+
+        if (m.standbyGone) {
+          els.calloutK.textContent = t('Unprotected');
+          els.calloutBody.innerHTML = t('The standby site is gone, and the only failover target with it. The primary never lost the observer, so nothing stalls and nothing is initiated: it keeps committing, with nowhere to ship its redo. What the site took with it is the protection \u2014 a primary failure now is an outage, with no role change available to end it.') +
+            (loc === 'none' ? ' ' + t('Fast-start failover was not enabled here in any case: no observer is deployed.') : '');
+        } else if (loc === 'none') {
+          els.calloutK.textContent = t('Not enabled');
+          els.calloutBody.innerHTML = t('With no observer deployed, fast-start failover is not enabled at all: no threshold starts, nothing is detected and nothing is promoted, whatever the network does. Only a DBA running <span class="mono">FAILOVER TO</span> can move the role, and only once somebody has noticed there is a reason to.');
+        } else if (loc === 'dc1') {
+          els.calloutK.textContent = t('Stranded standby');
+          els.calloutBody.innerHTML = sc === 'isolated'
+            ? t('The observer is inside {0} with the primary, on its own side of the cut, so it never loses sight of it and starts no clock. Holding fire is the right answer here \u2014 the primary is open and committing \u2014 but the price is a standby that receives nothing and falls further behind for as long as the isolation lasts, while clients outside {0} cannot reach the primary either. The primary\u2019s own site is not on Oracle\u2019s list of observer placements, and this cell is what that omission is about.', idv('dc1'))
+            : t('The observer is in {0}, on the primary\u2019s side of the cut, so it keeps its connection and starts no clock. Nothing is promoted, which is right: the primary is up and serving clients exactly as before. What the placement costs is a standby drifting further behind for as long as the link is down \u2014 watched by an observer that could not have ordered a failover anyway, because it cannot reach the standby either.', idv('dc1'));
+        } else {
+          els.calloutK.textContent = t('Third site');
+          els.calloutBody.innerHTML = t('The observer watches from {0}, outside both database sites, so a cut between {1} and {2} leaves it still talking to the primary. Fast-start failover needs the observer <em>and</em> the target standby to have both lost the primary; here only the standby has, so nothing is initiated and a healthy primary keeps serving. This is the arbitration a third site is for, and why Oracle recommends that placement first.', idv('dc3'), idv('dc1'), idv('dc2'));
+        }
+
+        var why = loc === 'none'
+          ? t('No observer is deployed, so nothing is watching this and nothing can act on it.')
+          : m.standbyGone
+            ? t('The observer never lost the primary, so no threshold starts \u2014 and with the standby site gone there would be nothing to promote in any case.')
+            : loc === 'dc1'
+              ? t('The observer sits inside {0} with the primary, so it never loses sight of it and no threshold starts.', idv('dc1'))
+              : t('From {0} the observer still sees the primary, and fast-start failover needs the observer and the standby to have both lost it.', idv('dc3'));
+        var meanwhile = m.standbyGone
+          ? t('The primary keeps committing with nowhere to ship its redo, and the exposure grows for as long as {0} is gone.', idv('dc2'))
+          : !m.pmyReachable
+            ? t('The primary keeps committing for whatever clients are still inside {0}; nothing outside the site can reach it, and the standby receives nothing.', idv('dc1'))
+            : t('Clients reach the primary exactly as before; only the standby is cut off, and its lag grows for as long as the link is down.');
+        els.caption.innerHTML = why + ' ' + meanwhile +
+          ((!m.redoFlowing && !m.standbyGone) ? ' ' + netTimeoutNote() : '');
+
+        els.summary.textContent = t('Timeline: nothing on it moves. The primary stays open read-write and keeps committing, no fast-start failover clock starts, and no role changes.') +
+          ' ' + (loc === 'none'
+            ? t('No observer is deployed, so fast-start failover is not enabled here at all.')
+            : m.standbyGone
+              ? t('The standby site is gone, so there is no failover target left.')
+              : t('The observer still sees the primary, so it holds fire.')) +
+          ' ' + (m.ifDiedNow === null
+            ? t('If the primary died now, there would be nothing to fail over to.')
+            : !m.redoFlowing
+              ? t('If the primary died now, a failover would lose everything committed since t = 0, because no redo has reached the standby since the cut.')
+              : m.ifDiedNow > 0
+                ? t('If the primary died now, up to {0} seconds of redo would be at risk.', fmt(m.ifDiedNow))
+                : t('If the primary died now, a synchronized standby in MaxAvailability would mean zero data loss.'));
+        return;
+      }
+
+      /* The primary is gone and nothing was armed. Everything the rail can set
+         is inert here, which is the lesson. */
+      case 'manual': {
+        els.heading.textContent = tlHeading(sc);
+        els.eyebrow.textContent = tlEyebrow(sc, m);
+        els.banner.hidden = false;
+        els.bannerK.textContent = t('Not enabled');
+        els.bannerBody.innerHTML = t('Fast-start failover is not enabled in this configuration: no observer is deployed, so nothing detected the crash and nothing will promote the standby. The standby is intact and holds everything it received \u2014 but it stays a standby until a DBA runs <span class="mono">FAILOVER TO</span>.');
+        els.callout.hidden = true;
+        els.caption.innerHTML = t('Nothing on this timeline counts down. <span class="mono">FastStartFailoverThreshold</span>, the ping properties and <span class="mono">FastStartFailoverPmyShutdown</span> are all inert here: they belong to fast-start failover, and fast-start failover is not enabled. A manual failover is available from the first second and every second after it, so what decides the outage is how long it takes somebody to notice and act.') +
+          ' ' + (m.dataLossSeconds > 0
+            ? t('What it costs is the apply lag at the moment of the crash, <span class="mono">{0} s</span> of redo here, with no <span class="mono">FastStartFailoverLagLimit</span> bounding it.', fmt(m.dataLossSeconds))
+            : t('It costs nothing: SYNC transport in MaxAvailability means the standby already holds every committed change.'));
+        els.summary.textContent = t('Timeline: the primary host crashes at t = 0. No observer is deployed, so fast-start failover is not enabled: nothing detects the crash, no clock starts, and nothing promotes the standby.') +
+          ' ' + (m.dataLossSeconds > 0
+            ? t('A DBA can run FAILOVER TO at any point, losing up to {0} seconds of redo.', fmt(m.dataLossSeconds))
+            : t('A DBA can run FAILOVER TO at any point, losing nothing, because the standby is synchronized.'));
+        return;
+      }
+
+      /* The observer and the standby went down together. The stall clock runs
+         against nothing at all. */
+      case 'stall-noone': {
+        els.heading.textContent = tlHeading(sc);
+        els.eyebrow.textContent = tlEyebrow(sc, m);
+        els.banner.hidden = false;
+        els.bannerK.textContent = t('Site lost');
+        els.bannerBody.innerHTML = t('The observer was in {0}, so the site failure took it and the target standby together. The primary can now reach neither of them, which is the exact condition that stalls a primary: it is <span class="mono">STALLED</span> from t = 0 and commits nothing further. No failover follows, because what was lost is the only thing it could have failed over to.', idv('dc2'));
+        els.callout.hidden = false;
+        els.calloutK.textContent = t('Nothing left to promote');
+        els.calloutBody.innerHTML = (m.abort !== null
+          ? t('<span class="mono">FastStartFailoverPmyShutdown = TRUE</span> is doing here what it was written to do somewhere else. Its job is to keep an isolated primary from diverging from a standby that is being promoted \u2014 but nothing is being promoted, so one threshold after the site failure it shuts down a primary that was serving perfectly well, and the loss of one site becomes the loss of both.')
+          : t('<span class="mono">FastStartFailoverPmyShutdown = FALSE</span> keeps the instance up, but <span class="mono">STALLED</span> is not up in any useful sense: it is open and committing nothing. Commits stop at t = 0 either way \u2014 the setting only decides whether the instance is still running when somebody arrives to deal with it.')) +
+          ' ' + t('Either way the way out is manual: <span class="mono">DISABLE FAST_START FAILOVER FORCE</span> on the primary, or the return of {0}.', idv('dc2'));
+        els.caption.innerHTML = t('This stall is not a countdown to anything. A primary stalls when it can reach neither the observer nor the target standby, and here one failure took both \u2014 so the condition that starts the stall is the same one that makes a failover impossible.') +
+          ' ' + (m.abort !== null
+            ? t('At <span class="mono">{0} s</span> the instance shuts itself down. Until then it is still open, so connections still succeed; what stopped at t = 0 was commits.', fmt(m.abort))
+            : t('The instance stays open indefinitely, so connections still succeed; what stopped at t = 0 was commits.'));
+        els.summary.textContent = t('Timeline: the whole standby site is lost at t = 0, taking the target standby and the observer with it. The primary can reach neither, so it is STALLED from t = 0 and commits nothing further.') +
+          ' ' + (m.abort !== null
+            ? t('With FastStartFailoverPmyShutdown TRUE it aborts itself at {0} seconds.', fmt(m.abort))
+            : t('With FastStartFailoverPmyShutdown FALSE it stays STALLED indefinitely.')) +
+          ' ' + t('No failover is ever initiated, because there is nothing left to promote.');
+        return;
+      }
     }
 
-    if (m.observerLost) {
-      els.heading.textContent = t('Timeline \u2014 observer lost');
-      els.eyebrow.textContent = t('t = 0 is the observer host failure');
-      els.banner.hidden = true;
-      els.callout.hidden = false;
-      els.calloutK.textContent = t('Unobserved');
-      els.calloutBody.innerHTML = t('The configuration is running unobserved: <span class="mono">V$DATABASE.FS_FAILOVER_STATUS</span> reads <span class="mono">PRIMARY UNOBSERVED</span>, <span class="mono">FS_FAILOVER_OBSERVER_PRESENT</span> reads <span class="mono">NO</span>, in time the broker raises <span class="mono">ORA-16820</span>, and a failover attempt fails with <span class="mono">ORA-16658</span>. Restart the observer, or register up to three (19c) so the broker can promote a backup.');
-      els.caption.innerHTML = t('Nothing on this timeline moves: the primary keeps committing, the standby keeps applying, only the automation is gone. <span class="mono">FastStartFailoverThreshold</span> never starts counting \u2014 the observer is what counts it. If the primary died now, the failover would be manual.');
-      els.summary.textContent = t('Timeline: the observer host is down at t = 0. The primary stays open read-write and keeps shipping redo, the standby keeps applying, and no fast-start failover can be initiated while the configuration is unobserved.') +
-        (m.ifDiedNow > 0
-          ? ' ' + t('If the primary died now, a manual failover would lose up to {0} seconds of redo.', fmt(m.ifDiedNow))
-          : ' ' + t('If the primary died now, a manual failover would lose nothing, because the standby is synchronized.'));
-      return;
-    }
-
-    els.heading.textContent = iso ? t('Timeline \u2014 isolated primary') : t('Timeline \u2014 primary crash');
-    els.calloutK.textContent = t('Split brain');
+    /* fast-start failover ran, or was stopped at the readiness check */
+    els.heading.textContent = tlHeading(sc);
 
     els.banner.hidden = !m.blocked;
+    els.bannerK.textContent = t('Blocked');
     if (m.blocked) {
       els.bannerBody.innerHTML = t('Fast-start failover is not permitted: the standby\u2019s apply lag of <span class="mono">{0} s</span> exceeds <span class="mono">FastStartFailoverLagLimit = {1} s</span>. The observer still detects the loss and still counts the threshold, but the readiness check fails, so the standby stays a standby.',
         fmt(C.standbyLag), fmt(C.lagLimit));
     }
 
-    els.callout.hidden = !iso;
-    if (iso) {
+    /* The callout belongs to the stall, not to the scenario: a severed link
+       between the two database sites stalls a primary watched from the
+       standby's site exactly the way full isolation stalls one watched from a
+       third site -- but only one of those two is a failure of the primary. */
+    els.callout.hidden = !m.stalled;
+    if (m.stalled && sc === 'partition') {
+      els.calloutK.textContent = t('False failover');
+      els.calloutBody.innerHTML = m.blocked
+        ? t('Nothing is wrong with the primary here \u2014 the link between {0} and {1} is. The observer sits on the far side of it, so it loses the primary and counts the threshold like any other failure; only the readiness check stops the promotion. The primary is <span class="mono">STALLED</span> either way, because it can reach neither the observer nor the standby.', idv('dc1'), idv('dc2'))
+        : m.abort !== null
+          ? t('Nothing is wrong with the primary. The link between {0} and {1} is, and the observer sits on the far side of it, so observer and standby lose the primary together and count the same threshold. The standby is promoted \u2014 and a healthy primary is left in {0}, <span class="mono">STALLED</span> because it can reach neither of them, then shut down by <span class="mono">FastStartFailoverPmyShutdown</span> at <span class="mono">{2} s</span>. That is what this placement buys: a role change nobody needed. The old primary can be reinstated afterwards.', idv('dc1'), idv('dc2'), fmt(m.abort))
+          : t('Nothing is wrong with the primary. The link between {0} and {1} is, and the observer sits on the far side of it, so observer and standby lose the primary together and count the same threshold. The standby is promoted \u2014 and a healthy primary is left in {0}, open but <span class="mono">STALLED</span>, because it can reach neither of them. That is what this placement buys: a role change nobody needed. The old primary can be reinstated afterwards.', idv('dc1'), idv('dc2'));
+    } else if (m.stalled) {
+      els.calloutK.textContent = t('Split brain');
       els.calloutBody.innerHTML = m.abort !== null
         ? t('Two independent <span class="mono">FastStartFailoverThreshold</span> clocks are running, one on each side of the partition. The observer\u2019s clock decides when the standby is promoted; the primary\u2019s own stall clock decides when it aborts itself at <span class="mono">{0} s</span>. Neither side can see the other, so at most one database ends up open.', fmt(m.abort))
         : C.mode === 'maxperf'
         ? t('With <span class="mono">FastStartFailoverPmyShutdown = FALSE</span> the isolated primary never aborts. It stays <span class="mono">STALLED</span> \u2014 the stall is the split-brain protection. One MaxPerformance caveat: commits whose ASYNC redo was in flight at the partition exist on the old primary only, bounded by <span class="mono">FastStartFailoverLagLimit</span>; the stall bounds that divergence but does not remove it.')
         : t('With <span class="mono">FastStartFailoverPmyShutdown = FALSE</span> the isolated primary never aborts. It stays <span class="mono">STALLED</span>, which keeps it from committing anything the new primary will not have \u2014 the stall is the split-brain protection.');
+    } else {
+      els.calloutK.textContent = t('Split brain');
     }
 
     els.caption.innerHTML = m.blocked
@@ -3443,7 +4304,7 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
         : t('The observer spends the full threshold trying to reconnect and initiates failover at <span class="mono">{0} s</span>; the standby is open read-write at <span class="mono">{1} s</span>. The <span class="mono">{2} s</span> in between is failover execution \u2014 applying the redo backlog and the role transition.',
             fmt(m.initiate), fmt(m.tOpen), fmt(m.tOpen - m.initiate));
 
-    els.eyebrow.textContent = t('t = 0 is the failure event \u00b7 horizon {0} s', fmt(m.horizon));
+    els.eyebrow.textContent = tlEyebrow(sc, m);
     els.summary.textContent = t('Timeline: failover initiated at {0} seconds; ', fmt(m.initiate)) +
       (m.blocked ? t('failover not permitted because the apply lag exceeds FastStartFailoverLagLimit; ')
                  : t('new primary open at {0} seconds; ', fmt(m.tOpen))) +
@@ -3454,9 +4315,19 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
   }
 
   /* ---------- control enable / disable rules ---------- */
-  function renderControls() {
-    var obs = C.scenario === 'observer-lost', sw = C.scenario === 'switchover';
-    var iso = C.scenario === 'isolated', avail = C.mode === 'maxavail';
+  /* Takes the model, because what a control governs is now a property of the
+     outcome rather than of the scenario name: the same "isolated" reads as a
+     stall under one observer placement and as business as usual under another.
+     Everything below is set from state on every pass, never one-shot on a
+     change event, so leaving any of these states restores every control and
+     every note by itself. */
+  function renderControls(m) {
+    var none = C.observerLoc === 'none';
+    /* the model's outcome, not the radio: with no observer deployed the
+       observer-lost scenario is coerced to a plain crash, and the rail has to
+       agree with the drawing in the same frame */
+    var obs = m.outcome === 'observer-lost', sw = m.outcome === 'switchover';
+    var avail = C.mode === 'maxavail';
 
     els.vThreshold.textContent = C.threshold + ' s';
     els.vPingInterval.textContent = C.pingInterval + ' ms';
@@ -3468,13 +4339,32 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
     els.vPingSet.textContent = C.pingSet ? t('set explicitly') : t('not set');
     els.vShutdown.textContent = C.pmyShutdown ? 'TRUE' : 'FALSE';
 
+    /* Where the observer runs. The radio labels are role-relative and static;
+       the configured site names arrive here, rewritten on every pass. */
+    $('sc-obs').disabled = none;
+    els.nObsloc.innerHTML = none
+      ? t(NOFSFO_NOTES.obsloc)
+      : C.observerLoc === 'dc1'
+        ? t('The observer runs on its own host in {0}, beside the primary. Oracle\u2019s placement hierarchy does not list this one: a site failure takes the observer with the primary, and it cannot arbitrate a partition it is on one side of.', esc(idv('dc1')))
+        : C.observerLoc === 'dc2'
+          ? t('The observer runs on its own host in {0}, beside the standby. The documented last resort \u2014 isolate it as far as possible from whatever can take the standby down.', esc(idv('dc2')))
+          : t('The observer runs on its own host in {0}, independent of both database sites. This is the placement the HA guide recommends first.', esc(idv('dc3')));
+
     els.nScenario.innerHTML = obs
       ? t(OBS_NOTES.scenario)
       : sw
         ? t(SW_NOTES.scenario)
-        : iso
-          ? t('A network partition cuts the primary off from both the observer and the standby. The primary is still running.')
-          : t('The primary host dies outright. Observer and standby both lose it at the same instant.');
+        : none
+          ? t(NOFSFO_NOTES.scenario)
+          : C.scenario === 'isolated'
+            ? (C.observerLoc === 'dc1'
+              ? t('Every link out of the primary\u2019s site fails at t = 0. The observer is inside that site, so it alone still sees a primary nobody else can reach.')
+              : t('A network partition cuts the primary off from both the observer and the standby. The primary is still running.'))
+            : C.scenario === 'partition'
+              ? t('Only the link between the two database sites fails at t = 0. Both databases are still running, and everything else in both sites is healthy.')
+              : C.scenario === 'dc2down'
+                ? t('The whole standby site is lost at t = 0 \u2014 the standby database and every other host in it.')
+                : t('The primary host dies outright. Observer and standby both lose it at the same instant.');
     /* The protection mode reads differently in a planned swap: MaxPerformance
        is the one case where it costs nothing, because nothing is promoted
        before it has everything. */
@@ -3484,20 +4374,24 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
         ? t('SYNC redo transport. The standby must have been synchronized at failure time; data loss is zero.')
         : t('ASYNC redo transport. Failover is permitted only while the apply lag stays within <span class="mono">FastStartFailoverLagLimit</span>.');
 
-    /* Controls that only a failover gives meaning to. Everything below is set
-       from state on every draw, never one-shot on a change event, so switching
-       back to another scenario restores each control and each note. */
-    els.pingset.disabled = obs || sw;
-    els.pingInterval.disabled = obs || sw;
-    els.pingRetry.disabled = obs || sw;
-    els.ctlPingSet.classList.toggle('is-off', obs || sw);
-    els.nPingSet.textContent = t(obs ? OBS_NOTES.pingset : sw ? SW_NOTES.pingset : PINGSET_NOTE);
+    /* Controls that only a failover gives meaning to. */
+    var pingOff = obs || sw || none;
+    els.pingset.disabled = pingOff;
+    els.pingInterval.disabled = pingOff;
+    els.pingRetry.disabled = pingOff;
+    els.ctlPingSet.classList.toggle('is-off', pingOff);
+    els.nPingSet.textContent = t(obs ? OBS_NOTES.pingset : sw ? SW_NOTES.pingset
+      : none ? NOFSFO_NOTES.pingset : PINGSET_NOTE);
 
-    /* the role transition stays live in a switchover: it is the same role
-       change and read-write open, just on the standby that was asked nicely */
-    els.role.disabled = obs;
-    els.ctlRole.classList.toggle('is-off', obs);
-    els.nRole.textContent = t(obs ? OBS_NOTES.role : sw ? SW_NOTES.role : ROLE_NOTE);
+    /* the role transition stays live in a switchover -- it is the same role
+       change and read-write open, just on the standby that was asked nicely,
+       and that is true with no observer deployed as well, because a switchover
+       never needed one */
+    var roleOff = obs || (none && !sw);
+    els.role.disabled = roleOff;
+    els.ctlRole.classList.toggle('is-off', roleOff);
+    els.nRole.textContent = t(obs ? OBS_NOTES.role : sw ? SW_NOTES.role
+      : roleOff ? NOFSFO_NOTES.role : ROLE_NOTE);
 
     /* the apply lag stays live in every scenario -- here it is what a manual
        failover would cost, rather than what the readiness check looks at */
@@ -3525,20 +4419,23 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
 
     /* Switchover: no clock runs and nothing stalls, so the three failover-clock
        controls go inert. The lag limit stays live in MaxPerformance, because
-       there it is what the broker checks before it accepts the command. */
+       there it is what the broker checks before it accepts the command -- a
+       gate that is FSFO's own, so with no observer deployed it goes inert too. */
     if (sw) {
       els.ctlPing.hidden = true;
       els.threshold.disabled = true;
       els.ctlThreshold.classList.add('is-off');
       els.nThreshold.classList.remove('is-warn');
-      els.nThreshold.textContent = t(SW_NOTES.threshold);
+      els.nThreshold.textContent = t(none ? NOFSFO_NOTES.threshold : SW_NOTES.threshold);
 
       els.nLatency.classList.remove('is-warn');
       els.nLatency.innerHTML = t(LAT_NOTE);
 
-      els.lagLimit.disabled = avail;
-      els.ctlLagLimit.classList.toggle('is-off', avail);
-      els.nLagLimit.innerHTML = t(avail ? SW_NOTES.lagLimitAvail : SW_NOTES.lagLimitPerf);
+      var swLagOff = avail || none;
+      els.lagLimit.disabled = swLagOff;
+      els.ctlLagLimit.classList.toggle('is-off', swLagOff);
+      els.nLagLimit.innerHTML = t(none ? NOFSFO_NOTES.lagLimit
+        : avail ? SW_NOTES.lagLimitAvail : SW_NOTES.lagLimitPerf);
 
       els.shutdown.disabled = true;
       els.ctlShutdown.classList.add('is-off');
@@ -3546,14 +4443,37 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
       return;
     }
 
+    /* No observer deployed: fast-start failover is not enabled, so every clock
+       and every readiness check goes inert at once. Only a manual failover can
+       promote anything, and no property on this rail bounds it. */
+    if (none) {
+      els.ctlPing.hidden = true;
+      els.threshold.disabled = true;
+      els.ctlThreshold.classList.add('is-off');
+      els.nThreshold.classList.remove('is-warn');
+      els.nThreshold.textContent = t(NOFSFO_NOTES.threshold);
+
+      els.nLatency.classList.remove('is-warn');
+      els.nLatency.innerHTML = t(LAT_NOTE);
+
+      els.lagLimit.disabled = true;
+      els.ctlLagLimit.classList.add('is-off');
+      els.nLagLimit.textContent = t(NOFSFO_NOTES.lagLimit);
+
+      els.shutdown.disabled = true;
+      els.ctlShutdown.classList.add('is-off');
+      els.nShutdown.textContent = t(NOFSFO_NOTES.shutdown);
+      return;
+    }
+
     /* Ping properties set: the threshold no longer gates the observer's
-       detection, so it is grayed out. In the isolated scenario it still drives
-       the primary's stall clock, so there it stays adjustable. */
+       detection, so it is grayed out. Wherever the primary actually stalls it
+       still drives the stall clock, so there it stays adjustable. */
     els.ctlPing.hidden = !C.pingSet;
     els.ctlThreshold.classList.toggle('is-off', C.pingSet);
     els.nThreshold.classList.toggle('is-warn', C.pingSet);
-    els.threshold.disabled = C.pingSet && !iso;
-    if (C.pingSet) els.nThreshold.innerHTML = t(iso ? TH_IGNORED_ISO : TH_IGNORED);
+    els.threshold.disabled = C.pingSet && !m.stalled;
+    if (C.pingSet) els.nThreshold.innerHTML = t(m.stalled ? TH_IGNORED_ISO : TH_IGNORED);
     else els.nThreshold.textContent = t(TH_NOTE);
 
     /* An RTT at or above the ping window means a healthy ping can never be
@@ -3564,19 +4484,26 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
       ? t('RTT is at or above <span class="mono">ObserverPingInterval</span>: no ping can be answered inside its window, so the observer would count failures even against a healthy primary. Raise the interval above the RTT.')
       : t(LAT_NOTE);
 
-    els.lagLimit.disabled = avail;
-    els.ctlLagLimit.classList.toggle('is-off', avail);
+    /* The readiness check runs only where something is actually being
+       promoted, so the lag limit goes quiet in the cells where nobody is. */
+    var llOff = avail || (m.outcome !== 'failover' && m.outcome !== 'switchover');
+    els.lagLimit.disabled = llOff;
+    els.ctlLagLimit.classList.toggle('is-off', llOff);
     els.nLagLimit.innerHTML = avail
       ? t('Not evaluated in MaxAvailability. Readiness there means the standby was synchronized at failure time.')
-      : t('The standby is eligible for failover only while its apply lag is at or below this. Minimum 5 s.');
+      : llOff
+        ? t('Nothing is being promoted here, so no readiness check is run against this.')
+        : t('The standby is eligible for failover only while its apply lag is at or below this. Minimum 5 s.');
 
-    els.shutdown.disabled = !iso;
-    els.ctlShutdown.classList.toggle('is-off', !iso);
-    els.nShutdown.innerHTML = iso
+    /* The self-abort follows the stall, not the scenario: a primary cut off
+       from observer and standby alike stalls under a severed site link too. */
+    els.shutdown.disabled = !m.stalled;
+    els.ctlShutdown.classList.toggle('is-off', !m.stalled);
+    els.nShutdown.innerHTML = m.stalled
       ? (C.pmyShutdown
         ? t('The stalled primary aborts itself after one <span class="mono">FastStartFailoverThreshold</span>.')
         : t('The primary stays stalled indefinitely instead of aborting.'))
-      : t('Isolated-primary scenario only. A crashed host is already down.');
+      : t('Only a primary that has stalled can abort itself, and this one has not.');
   }
 
   /* ---------- application view ---------- */
@@ -3588,17 +4515,34 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
     return s + ' ' + String.fromCharCode(183) + ' role-based';
   }
 
-  /* Observer lost: the application never learns anything happened. Three flat
-     lanes, no markers, no braces -- the point is the absence of an event. */
+  /* The four states in which the application never learns anything happened:
+     the observer died, the switchover was refused, the configuration simply
+     carried on, or the primary is STALLED -- three flat lanes, no markers, no
+     braces. The last one is the odd one out and says so: the listener answers
+     and the service is published, but nothing commits. */
   function buildAppNoEventTimeline(ap, W) {
     var plotL = G.padL, plotR = W - G.padR, plotW = plotR - plotL;
     var t0 = -ap.preRoll, t1 = ap.horizon;
     function X(t) { return plotL + (t - t0) / (t1 - t0) * plotW; }
     var s = [], push = function (x) { s.push(x); };
 
+    var kind = ap.noEventKind || 'observer-lost';
     var refused = !!ap.switchoverRefused;
+    var stalled = kind === 'stalled';
 
-    var lanes = [
+    var lanes = stalled ? [
+      { name: t('Service'), sub: svcSub(), segs: [
+        { a: t0, b: t1, cls: 'b-tl', lc: 'f-tl',
+          lab: [t('Still published \u2014 on a STALLED primary'), t('Still published'), t('Published')] }] },
+      { name: t('Existing sessions'), sub: t('the connection pool'), segs: [
+        { a: t0, b: 0, cls: 'b-tl', lc: 'f-tl',
+          lab: [t('Committing normally'), t('Committing'), t('Working')] },
+        { a: 0, b: t1, cls: 'b-am', lc: 'f-am',
+          lab: [t('Commits hang \u2014 the primary cannot write redo anywhere'), t('Commits hang'), t('Hanging')] }] },
+      { name: t('New connections'), sub: t('the string at work'), segs: [
+        { a: t0, b: t1, cls: 'b-tl', lc: 'f-tl',
+          lab: [t('The listener still answers \u2014 connections are accepted throughout'), t('The listener still answers'), t('Connects')] }] }
+    ] : [
       { name: t('Service'), sub: svcSub(), segs: [
         { a: t0, b: t1, cls: 'b-tl', lc: 'f-tl',
           lab: [t('Published by the primary\u2019s listener \u2014 it never moves'), t('On the primary throughout'), t('On the primary')] }] },
@@ -3626,7 +4570,9 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
     }
     push(ln('ax', plotL, G.axisY, plotR, G.axisY));
     push(txt('t-tick t-mono', plotR, G.axisY + 30, 'end',
-      esc(refused ? t('seconds from the SWITCHOVER command') : t('seconds from the observer host failure'))));
+      esc(refused ? t('seconds from the SWITCHOVER command')
+        : kind === 'observer-lost' ? t('seconds from the observer host failure')
+          : t('seconds from the failure event'))));
 
     lanes.forEach(function (lane, i) {
       var y = G.lane[i];
@@ -3643,10 +4589,14 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
       });
     });
 
-    push(txt('t-top f-sl', plotL, G.topY, null,
+    push(txt('t-top ' + (stalled ? 'f-am' : 'f-sl'), plotL, G.topY, null,
       esc(refused
         ? t('Nothing to draw \u2014 the broker refused the switchover, so the service never left the primary')
-        : t('Nothing to draw \u2014 the observer is not in the application\u2019s path, and no failover moves the service'))));
+        : kind === 'observer-lost'
+          ? t('Nothing to draw \u2014 the observer is not in the application\u2019s path, and no failover moves the service')
+          : stalled
+            ? t('Nothing moves here \u2014 but every commit on the primary is hanging, one layer below anything this string can see')
+            : t('Nothing to draw \u2014 no role change happens, so the service never leaves the primary'))));
 
     push('</svg>');
     return s.join('');
@@ -4161,6 +5111,9 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
     var avail = C.mode === 'maxavail';
     var detectS = C.pingInterval * (C.pingRetry + 1) / 1000;
     var dbP = esc(idv('dbPrimary')), dbS = esc(idv('dbStandby')), svc = esc(idv('service'));
+    /* where the observer runs, and the one placement that means there is no
+       observer session to write down at all */
+    var loc = C.observerLoc || 'dc3', noObs = loc === 'none';
 
     /* one DGMGRL session sets everything; database-scoped first, then the
        configuration-wide clocks, then the switch that arms it all */
@@ -4183,49 +5136,83 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
     b.push(cfgCmd('EDIT CONFIGURATION SET PROTECTION MODE AS ' +
       (avail ? 'MAXAVAILABILITY' : 'MAXPERFORMANCE') + ';'));
     b.push('');
-    b.push(cfgCmd('EDIT CONFIGURATION SET PROPERTY FastStartFailoverThreshold = ' +
-      cfgVal(C.threshold, C.threshold === 30) + ';', C.threshold === 30 ? t('default') : null));
-    if (C.pingSet) {
-      b.push(cfgCmd('EDIT CONFIGURATION SET PROPERTY ObserverPingInterval = ' +
-        cfgVal(C.pingInterval, C.pingInterval === 100) + ';'));
-      b.push(cfgCmd('EDIT CONFIGURATION SET PROPERTY ObserverPingRetry = ' +
-        cfgVal(C.pingRetry, C.pingRetry === 10) + ';'));
-      b.push(cfgNote(t('(with both set, the threshold above is ignored for detection:')));
-      b.push(cfgNote(' ' + C.pingInterval + ' ms \u00d7 (' + C.pingRetry + ' + 1) \u2248 ' +
-        fmt(detectS) + ' s)'));
+    if (noObs) {
+      /* The clock properties are configuration-wide whether an observer exists
+         or not, so they can be set here. What is missing is the thing that
+         turns them into a failover. */
+      b.push(cfgNote(t('(the FastStartFailover* properties are configuration-wide and can be set,')));
+      b.push(cfgNote(t(' but nothing arms them without ENABLE FAST_START FAILOVER and a running observer)')));
     } else {
-      b.push(cfgNote(t('(ObserverPingInterval / ObserverPingRetry stay unset \u2014')));
-      b.push(cfgNote(t(' detection runs on the threshold)')));
+      b.push(cfgCmd('EDIT CONFIGURATION SET PROPERTY FastStartFailoverThreshold = ' +
+        cfgVal(C.threshold, C.threshold === 30) + ';', C.threshold === 30 ? t('default') : null));
+      if (C.pingSet) {
+        b.push(cfgCmd('EDIT CONFIGURATION SET PROPERTY ObserverPingInterval = ' +
+          cfgVal(C.pingInterval, C.pingInterval === 100) + ';'));
+        b.push(cfgCmd('EDIT CONFIGURATION SET PROPERTY ObserverPingRetry = ' +
+          cfgVal(C.pingRetry, C.pingRetry === 10) + ';'));
+        b.push(cfgNote(t('(with both set, the threshold above is ignored for detection:')));
+        b.push(cfgNote(' ' + C.pingInterval + ' ms \u00d7 (' + C.pingRetry + ' + 1) \u2248 ' +
+          fmt(detectS) + ' s)'));
+      } else {
+        b.push(cfgNote(t('(ObserverPingInterval / ObserverPingRetry stay unset \u2014')));
+        b.push(cfgNote(t(' detection runs on the threshold)')));
+      }
+      if (avail) {
+        b.push(cfgNote(t('(FastStartFailoverLagLimit not evaluated in MaxAvailability \u2014')));
+        b.push(cfgNote(t(' the standby must be synchronized instead)')));
+      } else {
+        b.push(cfgCmd('EDIT CONFIGURATION SET PROPERTY FastStartFailoverLagLimit = ' +
+          cfgVal(C.lagLimit, C.lagLimit === 30) + ';', C.lagLimit === 30 ? t('default') : null));
+      }
+      b.push(cfgCmd('EDIT CONFIGURATION SET PROPERTY FastStartFailoverPmyShutdown = ' +
+        cfgVal(C.pmyShutdown ? 'TRUE' : 'FALSE', C.pmyShutdown) + ';',
+        C.pmyShutdown ? t('default') : null));
+      b.push('');
+      b.push(cfgCmd('ENABLE FAST_START FAILOVER;'));
     }
-    if (avail) {
-      b.push(cfgNote(t('(FastStartFailoverLagLimit not evaluated in MaxAvailability \u2014')));
-      b.push(cfgNote(t(' the standby must be synchronized instead)')));
-    } else {
-      b.push(cfgCmd('EDIT CONFIGURATION SET PROPERTY FastStartFailoverLagLimit = ' +
-        cfgVal(C.lagLimit, C.lagLimit === 30) + ';', C.lagLimit === 30 ? t('default') : null));
-    }
-    b.push(cfgCmd('EDIT CONFIGURATION SET PROPERTY FastStartFailoverPmyShutdown = ' +
-      cfgVal(C.pmyShutdown ? 'TRUE' : 'FALSE', C.pmyShutdown) + ';',
-      C.pmyShutdown ? t('default') : null));
-    b.push('');
-    b.push(cfgCmd('ENABLE FAST_START FAILOVER;'));
     els.cfgBroker.innerHTML = b.join('\n');
 
-    /* the observer is just another DGMGRL client, on its own host */
+    /* The observer is just another DGMGRL client, on its own host -- and where
+       that host stands is the one decision here the broker has no property
+       for, so the card says it in the commentary. With no observer deployed
+       there is no session to write down at all: what is left is the manual
+       command, which never needed one. */
     var o = [];
-    o.push(cfgCmd('CONNECT sys@' + dbP + ' AS SYSDBA;'));
-    o.push(cfgCmd('START OBSERVER IN BACKGROUND;'));
-    o.push(cfgNote(t('(the prompt returns; the observer process keeps running)')));
-    o.push('');
-    if (C.scenario === 'observer-lost') {
-      o.push(cfgNote(t('(chapter 1 is currently killing this process at t = 0 \u2014'), 'bad'));
-      o.push(cfgNote(t(' while it is gone, no fast-start failover is possible)'), 'bad'));
-    } else if (C.pingSet) {
-      o.push(cfgNote(t('(this is the process that initiates failover, here after \u2248 {0} s)', fmt(detectS))));
+    if (noObs) {
+      o.push(cfgNote(t('(no observer deployed \u2014 fast-start failover is not enabled)'), 'bad'));
+      o.push('');
+      o.push(cfgCmd("FAILOVER TO '" + dbS + "';"));
+      o.push(cfgNote(t('(manual failover \u2014 always available, observer or not)')));
     } else {
-      o.push(cfgNote(t('(this is the process that runs the {0} s reconnect clock)', C.threshold)));
+      o.push(cfgCmd('CONNECT sys@' + dbP + ' AS SYSDBA;'));
+      o.push(cfgCmd('START OBSERVER IN BACKGROUND;'));
+      o.push(cfgNote(t('(the prompt returns; the observer process keeps running)')));
+      o.push('');
+      if (C.scenario === 'observer-lost') {
+        o.push(cfgNote(t('(chapter 1 is currently killing this process at t = 0 \u2014'), 'bad'));
+        o.push(cfgNote(t(' while it is gone, no fast-start failover is possible)'), 'bad'));
+      } else if (C.pingSet) {
+        o.push(cfgNote(t('(this is the process that initiates failover, here after \u2248 {0} s)', fmt(detectS))));
+      } else {
+        o.push(cfgNote(t('(this is the process that runs the {0} s reconnect clock)', C.threshold)));
+      }
+      o.push(cfgNote(t('({0} and {1} resolve through this host\u2019s tnsnames.ora)', dbP, dbS)));
+      if (loc === 'dc3') {
+        o.push(cfgNote(t('({0}, a third site \u2014 the HA guide\u2019s first recommendation)',
+          esc(idv('dc3')))));
+      } else if (loc === 'dc2') {
+        o.push(cfgNote(t('({0}, the standby\u2019s site \u2014 the documented last resort)',
+          esc(idv('dc2')))));
+        o.push(cfgNote(t('(on its own host, as isolated from the standby as possible)')));
+      } else {
+        o.push(cfgNote(t('({0}: the primary\u2019s site \u2014 not a placement Oracle lists)',
+          esc(idv('dc1'))), 'bad'));
+        o.push(cfgNote(t('(only arguable where the application tier is local too, and')));
+        o.push(cfgNote(t(' even then the guide prefers the standby\u2019s site or a third)')));
+        o.push(cfgNote(t('(a site failure takes the observer with the primary)'), 'bad'));
+        o.push(cfgNote(t('(nothing would be left to initiate a failover)'), 'bad'));
+      }
     }
-    o.push(cfgNote(t('({0} and {1} resolve through this host\u2019s tnsnames.ora)', dbP, dbS)));
     els.cfgObserver.innerHTML = o.join('\n');
 
     /* the destination parameter those transport properties translate to */
@@ -4312,11 +5299,17 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
 
   function renderAppReadout(ap, m) {
     if (ap.noEvent) {
-      els.apChips.innerHTML = ap.switchoverRefused
+      els.apChips.innerHTML = ap.noEventKind === 'switchover-refused'
         ? chip('tl', t('Application impact'), t('none'), '',
             t('The switchover was refused above, so the service never moved and no connection had to notice'))
-        : chip('tl', t('Application impact'), t('none'), '',
-            t('Nothing to replay \u2014 the observer\u2019s death is invisible to connected sessions and to new connections'));
+        : ap.noEventKind === 'stalled'
+          ? chip('am', t('Application impact'), t('commits hang'), '',
+              t('The listener still answers and the service is still published \u2014 but the primary is <span class="mono">STALLED</span>, so nothing it is asked to commit ever returns'))
+          : ap.noEventKind === 'continues'
+            ? chip('tl', t('Application impact'), t('none'), '',
+                t('Nothing was promoted, so the service never moved \u2014 no established session and no new connection has anything to notice'))
+            : chip('tl', t('Application impact'), t('none'), '',
+                t('Nothing to replay \u2014 the observer\u2019s death is invisible to connected sessions and to new connections'));
       return;
     }
 
@@ -4388,17 +5381,32 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
     }
 
     if (ap.noEvent) {
-      els.apHeading.textContent = t('Timeline \u2014 nothing for the application to experience');
-      els.apEyebrow.textContent = ap.switchoverRefused
+      var nk = ap.noEventKind;
+      els.apHeading.textContent = nk === 'stalled'
+        ? t('Timeline \u2014 what the application sees while the primary is STALLED')
+        : t('Timeline \u2014 nothing for the application to experience');
+      els.apEyebrow.textContent = nk === 'switchover-refused'
         ? t('t = 0 is the refused SWITCHOVER \u00b7 nothing changes for the application')
-        : t('t = 0 is the observer host failure \u00b7 nothing changes for the application');
+        : nk === 'observer-lost'
+          ? t('t = 0 is the observer host failure \u00b7 nothing changes for the application')
+          : nk === 'stalled'
+            ? t('t = 0 is the failure event \u00b7 the service never moves, and never commits again')
+            : t('t = 0 is the failure event \u00b7 nothing changes for the application');
       els.apBanner.hidden = true;
-      els.apCaption.innerHTML = ap.switchoverRefused
+      els.apCaption.innerHTML = nk === 'switchover-refused'
         ? t('The broker refused the command above, so <span class="mono">{0}</span> stays published where it was, the primary keeps serving, and no connection is disturbed. A refused switchover costs the application nothing. Bring the apply lag back inside the limit to see what one that proceeds costs.', esc(idv('service')))
-        : t('The descriptor never has to fail over: <span class="mono">{0}</span> stays published on the primary, address 1 answers as it always did, and no established session is disturbed. The observer is not in the connection path; it only decides whether a failover may happen, and while it is gone none may.', esc(idv('service')));
-      els.apSummary.textContent = ap.switchoverRefused
+        : nk === 'observer-lost'
+          ? t('The descriptor never has to fail over: <span class="mono">{0}</span> stays published on the primary, address 1 answers as it always did, and no established session is disturbed. The observer is not in the connection path; it only decides whether a failover may happen, and while it is gone none may.', esc(idv('service')))
+          : nk === 'stalled'
+            ? t('The primary is <span class="mono">STALLED</span>, not down: its listener still answers and <span class="mono">{0}</span> is still published there, so a new connection is accepted exactly as before. What no session can do is commit \u2014 a commit blocks for as long as the stall lasts, which is an outage a connect string cannot see, let alone route around.', esc(idv('service')))
+            : t('Nothing is promoted above, so <span class="mono">{0}</span> stays published on the primary, address 1 answers as it always did, and no established session is disturbed. There is no role change here for the descriptor to survive.', esc(idv('service')));
+      els.apSummary.textContent = nk === 'switchover-refused'
         ? t('Application view: the broker refused the switchover, so the service stays on the primary and neither existing sessions nor new connections notice anything.')
-        : t('Application view: the observer host is down, but nothing fails over, so the service stays on the primary and neither existing sessions nor new connections notice anything.');
+        : nk === 'observer-lost'
+          ? t('Application view: the observer host is down, but nothing fails over, so the service stays on the primary and neither existing sessions nor new connections notice anything.')
+          : nk === 'stalled'
+            ? t('Application view: the primary is stalled. Its listener still answers and the service is still published, so connections are still accepted, but every commit hangs until the stall ends.')
+            : t('Application view: nothing fails over, so the service stays on the primary and neither existing sessions nor new connections notice anything.');
       return;
     }
 
@@ -4957,9 +5965,15 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
                    t('MaxFailure reached')], 'f-rd');
     }
 
-    /* fast-start failover, in the gap between the redo lane and the standby */
+    /* fast-start failover, in the gap between the redo lane and the standby.
+       With no observer deployed there is no fast-start failover state for the
+       outage to move, so the markers would be drawing a thing that is not
+       there -- one line says so instead. */
     var gapB1 = G.lane[1] + G.laneH + 14, gapB2 = gapB1 + 15;
-    if (rp.mode === 'maxperf') {
+    if (C.observerLoc === 'none') {
+      push(txt('t-mark f-sl', plotL + 8, gapB1, null,
+        esc(t('No observer is deployed \u2014 fast-start failover is not enabled, so this outage disarms nothing'))));
+    } else if (rp.mode === 'maxperf') {
       var xf = X(rp.fsfoLostAt);
       push(ln('g-vi', xf, G.lane[1] - 6, xf, G.lane[2] + G.laneH + 4));
       push('<path class="f-vi" d="M' + r1(xf) + ',' + (G.lane[1] + G.laneH + 1) + ' l5,5 l-5,5 l-5,-5 z"></path>');
@@ -4973,7 +5987,7 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
       push(txt('t-mark f-rd', xz + 9, gapB1, null,
         esc(t('UNSYNCHRONIZED \u2014 fast-start failover disarmed immediately'))));
     }
-    if (rp.fsfoBackAt !== null) {
+    if (rp.fsfoBackAt !== null && C.observerLoc !== 'none') {
       var xk = X(rp.fsfoBackAt);
       if (xk <= plotR - 2) {
         push('<path class="f-vi" d="M' + r1(xk) + ',' + (gapB2 - 9) + ' l5,5 l-5,5 l-5,-5 z"></path>');
@@ -5045,7 +6059,12 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
         ? t('\u2248 {0} MB at {1} MB/s, drained by {2} s', fmt(rp.peakExposureMB), fmt(rp.rate), fmt(rp.resyncAt))
         : t('\u2248 {0} MB at {1} MB/s \u2014 and still growing past the right edge', fmt(rp.peakExposureMB), fmt(rp.rate))));
 
-    out += rp.mode === 'maxperf'
+    /* Nothing to disarm when nothing was armed: with no observer deployed the
+       outage costs the configuration its redo transport and nothing else. */
+    out += C.observerLoc === 'none'
+      ? chip('vi', t('Fast-start failover'), t('not enabled'), '',
+          t('No observer is deployed in this topology, so this outage disarms nothing \u2014 only a manual <span class="mono">FAILOVER TO</span> could move the role, before it or after it'))
+      : rp.mode === 'maxperf'
       ? chip('vi', t('Fast-start failover'), fmt(rp.fsfoLostAt), t('s to disarmed'),
           rp.fsfoBackAt !== null
             ? t('The apply lag passes <span class="mono">FastStartFailoverLagLimit = {0} s</span> while nothing arrives; re-armed around {1} s', fmt(rp.fsfoLostAt), fmt(rp.fsfoBackAt))
@@ -5068,7 +6087,9 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
         rp.maxFailure, fmt(rp.disabledAt), fmt(rp.outage));
     }
 
-    var fsfoLine = rp.mode === 'maxperf'
+    var fsfoLine = C.observerLoc === 'none'
+      ? t('Fast-start failover is not enabled in this topology, so the outage disarms nothing: no observer is deployed for it to disarm.')
+      : rp.mode === 'maxperf'
       ? t('Fast-start failover survives until <span class="mono">{0} s</span>, when the apply lag passes <span class="mono">FastStartFailoverLagLimit</span>.', fmt(rp.fsfoLostAt))
       : t('Fast-start failover is disarmed from the first second: in MaxAvailability the standby is <span class="mono">UNSYNCHRONIZED</span> as soon as the link breaks.');
 
@@ -5092,118 +6113,276 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
             fmt(rp.reconnectAt), rp.failedRetries, fmt(rp.resyncAt))
         : t('MaxFailure was reached at {0} seconds and the destination was disabled until it is manually reenabled; redo never resumes.', fmt(rp.disabledAt))) +
       ' ' + t('Peak unshipped redo {0} seconds, about {1} megabytes.', fmt(rp.peakExposureSecs), fmt(rp.peakExposureMB)) +
-      ' ' + (rp.mode === 'maxperf'
-        ? t('Fast-start failover is disarmed at {0} seconds.', fmt(rp.fsfoLostAt))
-        : t('Fast-start failover is disarmed immediately.'));
+      ' ' + (C.observerLoc === 'none'
+        ? t('Fast-start failover is not enabled in this topology.')
+        : rp.mode === 'maxperf'
+          ? t('Fast-start failover is disarmed at {0} seconds.', fmt(rp.fsfoLostAt))
+          : t('Fast-start failover is disarmed immediately.'));
   }
 
   /* ---------- topology strip ---------- */
-  function renderTopo() {
-    var obs = C.scenario === 'observer-lost', sw = C.scenario === 'switchover';
-    var iso = C.scenario === 'isolated';
+  /* The primary, the standby and the redo link between them sit at the same
+     coordinates in every drawing. Only the observer box and the two links it
+     owns move with the placement, so the third-site row of this table is
+     exactly the geometry the page was built around. Every link carries its own
+     caption and latency anchors, because a run that clears the boxes in one
+     placement cuts straight through them in another. */
+  function topoLayout(loc) {
+    var redo = { id: 'ps', n: ['pmy', 'sby'], d: 'M292,158 L664,158',
+      cap: [480, 146, 'middle'], lat: [480, 174, 'middle'] };
+
+    /* Observer on the primary's own site: one short hop to the database it
+       watches, and a long one to the standby -- which is the placement's whole
+       problem, because a single cut takes both of the links that matter. */
+    if (loc === 'dc1') {
+      return {
+        obs: [110, 14, 180, 46], obsW: 176, obsX: [129, 26], obsEv: [300, 40, null],
+        sites: [['dc1', 96, 4, 208, 192], ['dc2', 656, 112, 208, 84]],
+        links: [
+          { id: 'op', n: ['obs', 'pmy'], d: 'M250,60 L250,132',
+            cap: [242, 92, 'end'], lat: [242, 106, 'end'], olc: [242, 92, 'end'] },
+          { id: 'os', n: ['obs', 'sby'], d: 'M290,44 L664,150',
+            cap: [430, 62, null], lat: [430, 76, null], olc: [430, 76, null] },
+          redo
+        ],
+        evPmy: [170, 126, 'middle'], evIso: [366, 16, null], evSw: [480, 192, 'middle'],
+        noObs: null
+      };
+    }
+
+    /* Mirrored onto the standby's site. */
+    if (loc === 'dc2') {
+      return {
+        obs: [670, 14, 180, 46], obsW: 176, obsX: [689, 26], obsEv: [646, 40, 'end'],
+        sites: [['dc1', 96, 112, 208, 84], ['dc2', 656, 4, 208, 192]],
+        links: [
+          { id: 'op', n: ['obs', 'pmy'], d: 'M670,44 L296,150',
+            cap: [530, 62, 'end'], lat: [530, 76, 'end'], olc: [530, 76, 'end'] },
+          { id: 'os', n: ['obs', 'sby'], d: 'M710,60 L710,132',
+            cap: [718, 92, null], lat: [718, 106, null], olc: [718, 92, null] },
+          redo
+        ],
+        evPmy: [185, 126, 'middle'], evIso: [366, 16, null], evSw: [480, 192, 'middle'],
+        noObs: null
+      };
+    }
+
+    /* No observer at all: two sites, one link, and a line saying what is
+       missing. The empty middle is the point. */
+    if (loc === 'none') {
+      return {
+        obs: null, obsW: 0, obsX: null, obsEv: null,
+        sites: [['dc1', 96, 112, 208, 84], ['dc2', 656, 112, 208, 84]],
+        links: [redo],
+        evPmy: [185, 126, 'middle'], evIso: [346, 16, 'end'], evSw: [480, 122, 'middle'],
+        noObs: [500, 34, 'middle']
+      };
+    }
+
+    /* The third site, and the default. */
+    return {
+      obs: [405, 14, 150, 46], obsW: 146, obsX: [424, 26], obsEv: [395, 40, 'end'],
+      sites: [['dc1', 96, 112, 208, 84], ['dc2', 656, 112, 208, 84], ['dc3', 391, 4, 178, 66]],
+      links: [
+        { id: 'op', n: ['obs', 'pmy'], d: 'M430,64 L245,130',
+          cap: [318, 84, 'end'], lat: [318, 98, 'end'], olc: [318, 92, 'end'] },
+        { id: 'os', n: ['obs', 'sby'], d: 'M535,64 L715,130',
+          cap: [646, 84, null], lat: [646, 98, null], olc: [646, 92, null] },
+        redo
+      ],
+      evPmy: [185, 126, 'middle'], evIso: [346, 16, 'end'], evSw: [480, 122, 'middle'],
+      noObs: null
+    };
+  }
+
+  /* Which links the failure severed. Written against the sites the two ends
+     sit in rather than against the scenario's picture, because that is the
+     only thing the placement changes: a cut between the two database sites is
+     a cut the third site watches from outside and the standby's site watches
+     from one half of. */
+  function topoLinkDown(nodes, sc, loc) {
+    function site(n) { return n === 'pmy' ? 'dc1' : n === 'sby' ? 'dc2' : loc; }
+    var a = site(nodes[0]), b = site(nodes[1]);
+    if (sc === 'crash') return nodes.indexOf('pmy') >= 0;
+    if (sc === 'isolated') return (a === 'dc1') !== (b === 'dc1');
+    if (sc === 'partition') return (a === 'dc1' && b === 'dc2') || (a === 'dc2' && b === 'dc1');
+    if (sc === 'dc2down') return a === 'dc2' || b === 'dc2';
+    return false;
+  }
+
+  /* The observer box's second line. Falls back to the site it runs in when no
+     host name is configured, so the box never claims a third site it is not
+     on. */
+  function topoSubO(loc, w) {
+    var oh = String(ID.hostObserver || '').trim();
+    if (oh) return fitLabel([t('DGMGRL, {0}', oh), oh], w) || oh;
+    if (loc === 'dc3') {
+      var d3 = idv('dc3');
+      if (d3 === ID_DEFAULTS.dc3) return t('DGMGRL, third host');
+      return fitLabel([t('DGMGRL, in {0}', d3), t('in {0}', d3), d3], w) || d3;
+    }
+    var site = idv(loc);
+    return fitLabel([t('DGMGRL, in {0}', site), t('in {0}', site), site], w) || site;
+  }
+
+  function renderTopo(m) {
+    var loc = C.observerLoc || 'dc3';
+    /* the effective scenario: with no observer deployed there is none to lose,
+       and the model has already turned that pairing into a plain crash */
+    var sc = m.scenario;
+    var obs = sc === 'observer-lost', sw = sc === 'switchover';
+    var iso = sc === 'isolated';
     var sync = C.mode === 'maxavail';
     var latLab = C.latency + ' ms RTT';
+    var L = topoLayout(loc);
     var s = [], push = function (x) { s.push(x); };
-
-    /* configurable subtitles; a long pair degrades to its shorter parts so it
-       stays inside the 180 / 150 px boxes */
-    var subP = fitLabel([idv('subPrimary') + ', ' + idv('dc1'), idv('subPrimary'), idv('dc1')], 176) || idv('dc1');
-    var subS = fitLabel([idv('subStandby') + ', ' + idv('dc2'), idv('subStandby'), idv('dc2')], 176) || idv('dc2');
-    var oh = String(ID.hostObserver || '').trim();
-    var subO = oh ? (fitLabel(['DGMGRL, ' + oh, oh], 146) || oh) : 'DGMGRL, third host';
-
-    push('<svg class="topo-svg" viewBox="0 0 960 200" role="img" aria-label="' +
-      esc(t('Topology: the primary database in {0}, the target standby in {1}, the observer on {2}.',
-            idv('dc1'), idv('dc2'), oh ? oh : t('a third host')) + ' ' +
-          (obs ? t('The observer host dies at t = 0. The primary and the standby stay connected, so redo keeps flowing, but the configuration is unobserved and nothing can fail over.')
-               : sw ? t('Every host stays up: at t = 0 the DBA issues a switchover, and the two databases trade roles.')
-               : iso ? t('A network partition cuts the primary off from the observer and the standby at t = 0.')
-               : t('The primary host crashes at t = 0.')) + ' ' +
-          t('Every link carries {0} ms of round-trip latency.', C.latency)) + '">');
-    push('<defs><pattern id="topoHatch" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">' +
-      '<rect width="8" height="8" class="hatch-bg"></rect><line x1="0" y1="0" x2="0" y2="8" class="hatch-ln"></line></pattern>' +
-      '<marker id="topoAr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse"><path d="M0,1 L10,5 L0,9 z" class="tp-ahr"></path></marker></defs>');
-
-    /* Observer lost: the two links the observer owns are dead, and the redo
-       link between primary and standby is the one thing still healthy -- which
-       is exactly why the primary keeps committing. */
-    if (obs) {
-      push('<defs><marker id="topoAs" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" ' +
-        'orient="auto-start-reverse"><path d="M0,1 L10,5 L0,9 z" class="tp-ahs"></path></marker></defs>');
-      push('<path class="tp-link-x" d="M430,64 L245,130"></path>');
-      push('<path class="tp-link-x" d="M535,64 L715,130"></path>');
-      push('<path class="tp-link" d="M292,158 L664,158" marker-end="url(#topoAs)"></path>');
-
-      push(txt('tp-ev', 318, 92, 'end', esc(t('no observer to ping'))));
-      push(txt('tp-ev', 646, 92, null, esc(t('no readiness check'))));
-      push(txt('tp-cap', 480, 146, 'middle', esc(sync ? t('redo (SYNC): each commit waits one standby RTT') : t('redo (ASYNC)'))));
-      push(txt('tp-lat', 480, 174, 'middle', esc(latLab)));
-
-      push(nodeBox(405, 14, 150, 46, 'tp-node tp-down', 'Observer', subO));
-      push(nodeBox(110, 132, 180, 52, 'tp-node', 'Primary', subP));
-      push(nodeBox(670, 132, 180, 52, 'tp-node', 'Standby', subS));
-      push(ln('tp-x', 424, 26, 438, 40));
-      push(ln('tp-x', 438, 26, 424, 40));
-      push(txt('tp-ev', 395, 40, 'end', esc(t('observer host down at t = 0'))));
-      push('</svg>');
-      return s.join('');
-    }
-
-    /* Switchover: nothing is severed. Every link stays up, both databases stay
-       reachable, and the only thing that changes is which of them is primary. */
-    if (sw) {
-      push('<defs><marker id="topoAs" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" ' +
-        'orient="auto-start-reverse"><path d="M0,1 L10,5 L0,9 z" class="tp-ahs"></path></marker></defs>');
-      push('<path class="tp-link" d="M430,64 L245,130"></path>');
-      push('<path class="tp-link" d="M535,64 L715,130"></path>');
-      push('<path class="tp-link" d="M292,158 L664,158" marker-end="url(#topoAs)"></path>');
-
-      push(txt('tp-cap', 318, 84, 'end', 'ping'));
-      push(txt('tp-lat', 318, 98, 'end', esc(latLab)));
-      push(txt('tp-cap', 646, 84, null, esc(t('readiness check'))));
-      push(txt('tp-lat', 646, 98, null, esc(latLab)));
-      push(txt('tp-cap', 480, 146, 'middle', esc(sync ? t('redo (SYNC): each commit waits one standby RTT') : t('redo (ASYNC)'))));
-      push(txt('tp-lat', 480, 174, 'middle', esc(latLab)));
-
-      push(nodeBox(405, 14, 150, 46, 'tp-node tp-obs', 'Observer', subO));
-      push(nodeBox(110, 132, 180, 52, 'tp-node', 'Primary', subP));
-      push(nodeBox(670, 132, 180, 52, 'tp-node', 'Standby', subS));
-      push(txt('tp-ev', 480, 122, 'middle', esc(t('roles trade places at t = 0 \u2014 both hosts stay up'))));
-      push('</svg>');
-      return s.join('');
-    }
-
-    /* links first, nodes drawn over their ends. Both remaining scenarios sever
-       the two links touching the primary at t = 0; the observer-standby link
-       survives. */
-    push('<path class="tp-link-x" d="M430,64 L245,130"></path>');
-    push('<path class="tp-link" d="M535,64 L715,130"></path>');
-    push('<path class="tp-link-x" d="M292,158 L664,158" marker-end="url(#topoAr)"></path>');
-
-    push(txt('tp-cap', 318, 84, 'end', 'ping'));
-    push(txt('tp-lat', 318, 98, 'end', esc(latLab)));
-    push(txt('tp-cap', 646, 84, null, esc(t('readiness check'))));
-    push(txt('tp-lat', 646, 98, null, esc(latLab)));
-    push(txt('tp-cap', 480, 146, 'middle', esc(sync ? t('redo (SYNC): each commit waits one standby RTT') : t('redo (ASYNC)'))));
-    push(txt('tp-lat', 480, 174, 'middle', esc(latLab)));
 
     function nodeBox(x, y, w, h, cls, name, sub) {
       return '<rect class="' + cls + '" x="' + x + '" y="' + y + '" width="' + w + '" height="' + h + '" rx="2"></rect>' +
         txt('tp-name', x + w / 2, y + 22, 'middle', esc(name)) +
         txt('tp-sub', x + w / 2, y + 38, 'middle', esc(sub));
     }
-    push(nodeBox(405, 14, 150, 46, 'tp-node tp-obs', 'Observer', subO));
-    push(nodeBox(110, 132, 180, 52, 'tp-node' + (iso ? '' : ' tp-down'), 'Primary', subP));
-    push(nodeBox(670, 132, 180, 52, 'tp-node', 'Standby', subS));
 
-    if (iso) {
+    /* configurable subtitles; a long pair degrades to its shorter parts so it
+       stays inside the 180 / 150 px boxes */
+    var subP = fitLabel([idv('subPrimary') + ', ' + idv('dc1'), idv('subPrimary'), idv('dc1')], 176) || idv('dc1');
+    var subS = fitLabel([idv('subStandby') + ', ' + idv('dc2'), idv('subStandby'), idv('dc2')], 176) || idv('dc2');
+    var subO = topoSubO(loc, L.obsW);
+
+    /* The dashed containers, drawn behind everything. Only a lost site is
+       filled: a severed link leaves both data centres perfectly healthy, and
+       the drawing has to keep saying so. */
+    function sites() {
+      var out = '';
+      L.sites.forEach(function (st) {
+        var down = sc === 'dc2down' && st[0] === 'dc2';
+        out += '<rect class="' + (down ? 'tp-site-down' : 'tp-site') + '" x="' + st[1] + '" y="' + st[2] +
+          '" width="' + st[3] + '" height="' + st[4] + '" rx="3"></rect>';
+        var lab = idv(st[0]);
+        out += txt('tp-sitelab', st[1] + st[3] / 2, st[2] + st[4] - 2, 'middle',
+          esc(fitLabel([lab], st[3] - 40) || lab));
+      });
+      return out;
+    }
+
+    function ariaPlace() {
+      var oh = String(ID.hostObserver || '').trim();
+      if (loc === 'none') {
+        return t('Topology: the primary database in {0} and the target standby in {1}. No observer is deployed, so fast-start failover is not enabled.',
+          idv('dc1'), idv('dc2'));
+      }
+      if (loc === 'dc1') {
+        return t('Topology: the primary database and the observer, on hosts of their own, both in {0}; the target standby in {1}.',
+          idv('dc1'), idv('dc2'));
+      }
+      if (loc === 'dc2') {
+        return t('Topology: the primary database in {0}; the target standby and the observer, on hosts of their own, both in {1}.',
+          idv('dc1'), idv('dc2'));
+      }
+      return t('Topology: the primary database in {0}, the target standby in {1}, the observer on {2}.',
+        idv('dc1'), idv('dc2'), oh ? oh : t('a third host'));
+    }
+
+    function ariaEvent() {
+      if (obs) return t('The observer host dies at t = 0. The primary and the standby stay connected, so redo keeps flowing, but the configuration is unobserved and nothing can fail over.');
+      if (sw) return t('Every host stays up: at t = 0 the DBA issues a switchover, and the two databases trade roles.');
+      if (iso) {
+        return loc === 'dc1'
+          ? t('Every link out of {0} fails at t = 0: the primary and the observer keep each other, and the standby is cut off from both.', idv('dc1'))
+          : loc === 'none'
+            ? t('Every link out of {0} fails at t = 0, cutting the primary off from the standby.', idv('dc1'))
+            : t('A network partition cuts the primary off from the observer and the standby at t = 0.');
+      }
+      if (sc === 'partition') {
+        return t('The link between {0} and {1} fails at t = 0. Both databases stay up and every other link is intact.', idv('dc1'), idv('dc2'));
+      }
+      if (sc === 'dc2down') {
+        return loc === 'dc2'
+          ? t('The whole standby site {0} is lost at t = 0, taking the target standby and the observer with it.', idv('dc2'))
+          : t('The whole standby site {0} is lost at t = 0, taking the target standby with it.', idv('dc2'));
+      }
+      return t('The primary host crashes at t = 0.');
+    }
+
+    push('<svg class="topo-svg" viewBox="0 0 960 200" role="img" aria-label="' +
+      esc(ariaPlace() + ' ' + ariaEvent() + ' ' +
+          t('Every link carries {0} ms of round-trip latency.', C.latency)) + '">');
+    push('<defs><pattern id="topoHatch" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">' +
+      '<rect width="8" height="8" class="hatch-bg"></rect><line x1="0" y1="0" x2="0" y2="8" class="hatch-ln"></line></pattern>' +
+      '<marker id="topoAr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse"><path d="M0,1 L10,5 L0,9 z" class="tp-ahr"></path></marker></defs>');
+
+    /* the slate arrowhead exists only where the redo link survives */
+    if (obs || sw) {
+      push('<defs><marker id="topoAs" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" ' +
+        'orient="auto-start-reverse"><path d="M0,1 L10,5 L0,9 z" class="tp-ahs"></path></marker></defs>');
+    }
+
+    push(sites());
+
+    /* links first, nodes drawn over their ends */
+    var down = {};
+    L.links.forEach(function (lk) {
+      down[lk.id] = obs ? (lk.id !== 'ps') : sw ? false : topoLinkDown(lk.n, sc, loc);
+      push('<path class="' + (down[lk.id] ? 'tp-link-x' : 'tp-link') + '" d="' + lk.d + '"' +
+        (lk.id === 'ps' ? ' marker-end="url(#topo' + (down.ps ? 'Ar' : 'As') + ')"' : '') + '></path>');
+    });
+
+    /* One caption and one latency label per drawn link. While the observer is
+       gone its two links say what is missing instead: a round-trip time on a
+       link with nobody at the far end would be a number about nothing. */
+    L.links.forEach(function (lk) {
+      if (obs && lk.id !== 'ps') {
+        push(txt('tp-ev', lk.olc[0], lk.olc[1], lk.olc[2],
+          esc(lk.id === 'op' ? t('no observer to ping') : t('no readiness check'))));
+        return;
+      }
+      var cap = lk.id === 'op' ? 'ping'
+        : lk.id === 'os' ? esc(t('readiness check'))
+          : esc(sync ? t('redo (SYNC): each commit waits one standby RTT') : t('redo (ASYNC)'));
+      push(txt('tp-cap', lk.cap[0], lk.cap[1], lk.cap[2], cap));
+      push(txt('tp-lat', lk.lat[0], lk.lat[1], lk.lat[2], esc(latLab)));
+    });
+
+    /* nodes */
+    if (L.obs) {
+      var obsCls = (obs || (sc === 'dc2down' && loc === 'dc2')) ? 'tp-node tp-down' : 'tp-node tp-obs';
+      push(nodeBox(L.obs[0], L.obs[1], L.obs[2], L.obs[3], obsCls, 'Observer', subO));
+    }
+    push(nodeBox(110, 132, 180, 52, 'tp-node' + (sc === 'crash' ? ' tp-down' : ''), 'Primary', subP));
+    push(nodeBox(670, 132, 180, 52, 'tp-node' + (sc === 'dc2down' ? ' tp-down' : ''), 'Standby', subS));
+
+    /* what happened at t = 0, in the vocabulary of the thing it happened to */
+    if (obs) {
+      push(ln('tp-x', L.obsX[0], L.obsX[1], L.obsX[0] + 14, L.obsX[1] + 14));
+      push(ln('tp-x', L.obsX[0] + 14, L.obsX[1], L.obsX[0], L.obsX[1] + 14));
+      push(txt('tp-ev', L.obsEv[0], L.obsEv[1], L.obsEv[2], esc(t('observer host down at t = 0'))));
+    } else if (sw) {
+      push(txt('tp-ev', L.evSw[0], L.evSw[1], L.evSw[2],
+        esc(t('roles trade places at t = 0 \u2014 both hosts stay up'))));
+    } else if (iso) {
       push('<path class="tp-part" d="M356,6 L318,194"></path>');
-      push(txt('tp-ev', 346, 16, 'end', esc(t('network partition at t = 0'))));
+      push(txt('tp-ev', L.evIso[0], L.evIso[1], L.evIso[2], esc(t('network partition at t = 0'))));
+    } else if (sc === 'partition') {
+      /* one cut, on the one link that failed -- both sites are intact. The two
+         slashes sit in the band between the redo caption and its latency
+         label, so they never land on either. */
+      push(ln('tp-x', 470, 166, 480, 150));
+      push(ln('tp-x', 480, 166, 490, 150));
+      push(txt('tp-ev', 480, 190, 'middle',
+        esc(t('{0} to {1} link down at t = 0', idv('dc1'), idv('dc2')))));
+    } else if (sc === 'dc2down') {
+      push(txt('tp-ev', 775, 126, 'middle', esc(t('site down at t = 0'))));
     } else {
       push(ln('tp-x', 131, 151, 145, 165));
       push(ln('tp-x', 145, 151, 131, 165));
-      push(txt('tp-ev', 185, 126, 'middle', esc(t('host down at t = 0'))));
+      push(txt('tp-ev', L.evPmy[0], L.evPmy[1], L.evPmy[2], esc(t('host down at t = 0'))));
     }
+
+    if (L.noObs) {
+      push(txt('tp-cap', L.noObs[0], L.noObs[1], L.noObs[2],
+        esc(t('no observer \u2014 fast-start failover is not enabled'))));
+    }
+
     push('</svg>');
     return s.join('');
   }
@@ -5217,15 +6396,16 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
   function draw() {
     queued = false;
     var m = computeFsfo(C);
-    renderControls();
+    renderControls(m);
     renderProse(m);
     renderReadout(m);
-    els.topo.innerHTML = renderTopo();
+    els.topo.innerHTML = renderTopo(m);
 
     lastW = Math.max(880, Math.round(els.wrap.clientWidth) || 880);
     els.wrap.innerHTML = buildTimeline(m, lastW);
 
-    var sig = [C.scenario, C.mode, C.pingSet, C.pmyShutdown, m.blocked, m.applyRemaining > 0].join('|');
+    var sig = [C.scenario, C.observerLoc, m.outcome, C.mode, C.pingSet, C.pmyShutdown,
+      m.blocked, m.applyRemaining > 0].join('|');
     if (sig !== lastSig) {
       if (els.wrap.firstChild && els.wrap.firstChild.classList) els.wrap.firstChild.classList.add('is-new');
       lastSig = sig;
@@ -5239,7 +6419,8 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
     renderAppReadout(ap, m);
     lastWApp = Math.max(880, Math.round(els.apWrap.clientWidth) || 880);
     els.apWrap.innerHTML = buildAppTimeline(ap, m, lastWApp);
-    var sigApp = [C.scenario, m.blocked, ap.tConn !== null, ap.clipped, A.dead].join('|');
+    var sigApp = [C.scenario, C.observerLoc, m.outcome, ap.noEventKind, m.blocked,
+      ap.tConn !== null, ap.clipped, A.dead].join('|');
     if (sigApp !== lastSigApp) {
       if (els.apWrap.firstChild && els.apWrap.firstChild.classList) els.apWrap.firstChild.classList.add('is-new');
       lastSigApp = sigApp;
@@ -5267,7 +6448,7 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
     renderReopenReadout(rp);
     lastWRp = Math.max(880, Math.round(els.rpWrap.clientWidth) || 880);
     els.rpWrap.innerHTML = buildReopenTimeline(rp, lastWRp);
-    var sigRp = [C.mode, C.lagLimit, rp.disabledAt !== null, rp.reconnectAt !== null, rp.dense].join('|');
+    var sigRp = [C.mode, C.lagLimit, C.observerLoc, rp.disabledAt !== null, rp.reconnectAt !== null, rp.dense].join('|');
     if (sigRp !== lastSigRp) {
       if (els.rpWrap.firstChild && els.rpWrap.firstChild.classList) els.rpWrap.firstChild.classList.add('is-new');
       lastSigRp = sigRp;
@@ -5293,9 +6474,35 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
   });
   els.pingset.addEventListener('change', function () { C.pingSet = els.pingset.checked; schedule(); });
   els.shutdown.addEventListener('change', function () { C.pmyShutdown = els.shutdown.checked; schedule(); });
+  /* "Observer lost" is an armed configuration whose observer died, so it needs
+     an observer to lose. Picking either half of that impossible pair pushes
+     the crash radio through its own change event -- the model coerces the
+     pairing too, and the control must not be left showing something the
+     drawing is not drawing. Pushing the radio rather than assigning C.scenario
+     keeps the URL serializer and the config pill in step for free. */
+  function coerceScenario() {
+    if (C.observerLoc !== 'none' || C.scenario !== 'observer-lost') return;
+    var crash = $('sc-crash');
+    crash.checked = true;
+    crash.dispatchEvent(new Event('change', { bubbles: true }));
+  }
+
   ['scenario', 'mode'].forEach(function (group) {
     Array.prototype.forEach.call(document.querySelectorAll('input[name="' + group + '"]'), function (r) {
-      r.addEventListener('change', function () { if (r.checked) { C[group] = r.value; schedule(); } });
+      r.addEventListener('change', function () {
+        if (!r.checked) return;
+        C[group] = r.value;
+        if (group === 'scenario') coerceScenario();
+        schedule();
+      });
+    });
+  });
+  Array.prototype.forEach.call(document.querySelectorAll('input[name="obsloc"]'), function (r) {
+    r.addEventListener('change', function () {
+      if (!r.checked) return;
+      C.observerLoc = r.value;
+      coerceScenario();
+      schedule();
     });
   });
 
@@ -5307,6 +6514,7 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
     els.latency.value = C.latency;
     els.pingset.checked = C.pingSet; els.shutdown.checked = C.pmyShutdown;
     $('sc-crash').checked = true; $('md-avail').checked = true;
+    $('ol-dc3').checked = true;
     schedule();
   });
 
@@ -5423,7 +6631,12 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
     els.hdDep.textContent = nm;
     els.hdDep.hidden = nm === '';
     var oh = String(ID.hostObserver || '').trim();
-    els.cfgObserverHost.textContent = oh || t('observer host');
+    /* the card's eyebrow names the host the session below runs on. With no
+       observer deployed there is no such host, and the card is a manual
+       failover, so it must not imply one. */
+    els.cfgObserverHost.textContent = C.observerLoc === 'none'
+      ? t('not deployed')
+      : (oh || t('observer host'));
   }
 
   function setField(el, v) {
@@ -5437,7 +6650,8 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
     setField(els.depDbP, ID.dbPrimary); setField(els.depDbS, ID.dbStandby);
     setField(els.depHostP, ID.hostPrimary); setField(els.depHostS, ID.hostStandby);
     setField(els.depHostO, ID.hostObserver); setField(els.depPort, ID.port);
-    setField(els.depDc1, ID.dc1); setField(els.depDc2, ID.dc2);
+    setField(els.depObsloc, C.observerLoc);
+    setField(els.depDc1, ID.dc1); setField(els.depDc2, ID.dc2); setField(els.depDc3, ID.dc3);
     setField(els.depSubP, ID.subPrimary); setField(els.depSubS, ID.subStandby);
     setField(els.depMode, C.mode); setField(els.depThreshold, C.threshold);
     setField(els.depPingset, C.pingSet);
@@ -5465,7 +6679,7 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
         hostPrimary: idv('hostPrimary'), hostStandby: idv('hostStandby'),
         hostObserver: String(ID.hostObserver || '').trim(),
         service: idv('service'), port: idPort(),
-        dc1: idv('dc1'), dc2: idv('dc2'),
+        dc1: idv('dc1'), dc2: idv('dc2'), dc3: idv('dc3'),
         subPrimary: idv('subPrimary'), subStandby: idv('subStandby')
       },
       params: {
@@ -5477,7 +6691,9 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
         tct: A.tct, ct: A.ct, rc: A.rc, rd: A.rd
       },
       sim: {
-        scenario: C.scenario, standbyLag: C.standbyLag,
+        /* Where the observer runs is a what-if, not a broker property: the
+           broker has nothing that records it. */
+        scenario: C.scenario, observerLoc: C.observerLoc, standbyLag: C.standbyLag,
         roleTransition: C.roleTransition, latency: C.latency,
         localWrite: K.localWrite, sbWrite: K.sbWrite,
         outage: R.outage, rate: R.rate, dead: A.dead
@@ -5522,7 +6738,14 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
     c.pingRetry = clampToEl(els.pingRetry, p.pingRetry, c.pingRetry);
     c.lagLimit = clampToEl(els.lagLimit, p.lagLimit, c.lagLimit);
     if (sm.scenario === 'crash' || sm.scenario === 'isolated' ||
+        sm.scenario === 'partition' || sm.scenario === 'dc2down' ||
         sm.scenario === 'observer-lost' || sm.scenario === 'switchover') c.scenario = sm.scenario;
+    if (sm.observerLoc === 'none' || sm.observerLoc === 'dc1' ||
+        sm.observerLoc === 'dc2' || sm.observerLoc === 'dc3') c.observerLoc = sm.observerLoc;
+    /* An older file carries no placement at all and lands on the third site,
+       which is what the page always assumed. The one pair the controls refuse
+       to offer is refused here too. */
+    if (c.observerLoc === 'none' && c.scenario === 'observer-lost') c.scenario = 'crash';
     c.standbyLag = clampToEl(els.lag, sm.standbyLag, c.standbyLag);
     c.roleTransition = clampToEl(els.role, sm.roleTransition, c.roleTransition);
     c.latency = clampToEl(els.latency, sm.latency, c.latency);
@@ -5562,8 +6785,14 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
     els.pingset.checked = C.pingSet; els.shutdown.checked = C.pmyShutdown;
     $('sc-crash').checked = C.scenario === 'crash';
     $('sc-iso').checked = C.scenario === 'isolated';
+    $('sc-part').checked = C.scenario === 'partition';
+    $('sc-sdown').checked = C.scenario === 'dc2down';
     $('sc-obs').checked = C.scenario === 'observer-lost';
     $('sc-switch').checked = C.scenario === 'switchover';
+    $('ol-none').checked = C.observerLoc === 'none';
+    $('ol-dc1').checked = C.observerLoc === 'dc1';
+    $('ol-dc2').checked = C.observerLoc === 'dc2';
+    $('ol-dc3').checked = C.observerLoc === 'dc3';
     $('md-avail').checked = C.mode === 'maxavail';
     $('md-perf').checked = C.mode === 'maxperf';
     syncAppInputs();
@@ -5633,9 +6862,22 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
   [[els.depName, 'name'], [els.depDbP, 'dbPrimary'], [els.depDbS, 'dbStandby'],
    [els.depHostP, 'hostPrimary'], [els.depHostS, 'hostStandby'], [els.depHostO, 'hostObserver'],
    [els.depSvc, 'service'], [els.depPort, 'port'], [els.depDc1, 'dc1'], [els.depDc2, 'dc2'],
-   [els.depSubP, 'subPrimary'], [els.depSubS, 'subStandby']
+   [els.depDc3, 'dc3'], [els.depSubP, 'subPrimary'], [els.depSubS, 'subStandby']
   ].forEach(function (pr) {
     pr[0].addEventListener('input', function () { ID[pr[1]] = pr[0].value; schedule(); });
+  });
+
+  /* Where the observer runs is the one setting on the identity card that
+     changes what the page draws. It pushes the rail radio and lets that
+     control's own change event do the work -- the scenario coercion, the URL
+     serializer and the config pill all hang off that one path, and none of
+     them can be reached from here. */
+  var OBSLOC_RADIO = { none: 'ol-none', dc1: 'ol-dc1', dc2: 'ol-dc2', dc3: 'ol-dc3' };
+  els.depObsloc.addEventListener('change', function () {
+    var r = $(OBSLOC_RADIO[els.depObsloc.value] || '');
+    if (!r || r.checked) return;
+    r.checked = true;
+    r.dispatchEvent(new Event('change', { bubbles: true }));
   });
 
   /* Each numeric field clamps against its canonical rail control (or itself,
@@ -6370,7 +7612,12 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
      #c-latency ('lat'), reconciled to it on every draw. */
   var FIELDS = [
     { k: 'sc',  t: 'radio', name: 'scenario', d: 'crash',
-      map: { crash: 'sc-crash', iso: 'sc-iso', obs: 'sc-obs', sw: 'sc-switch' } },
+      map: { crash: 'sc-crash', iso: 'sc-iso', part: 'sc-part', dc2d: 'sc-sdown',
+             obs: 'sc-obs', sw: 'sc-switch' } },
+    /* Where the observer runs. 'ol' is applied after 'sc', so a link naming
+       both an impossible pair lands on the coercion the rail performs. */
+    { k: 'ol',  t: 'radio', name: 'obsloc', d: 'dc3',
+      map: { none: 'ol-none', dc1: 'ol-dc1', dc2: 'ol-dc2', dc3: 'ol-dc3' } },
     { k: 'pm',  t: 'radio', name: 'mode', d: 'avail',
       map: { avail: 'md-avail', perf: 'md-perf' } },
     { k: 'th',  t: 'range', id: 'c-threshold',    d: 30 },
@@ -6536,6 +7783,17 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
                        label: 'Show me the two clocks' },
     'no-observer':   { p: { sc: 'obs' }, to: 'ch-clocks',
                        label: 'Show me the blind window' },
+    /* The four placement demos. Each rides on the reset-to-defaults baseline,
+       so 'obs-third-site' gets the default third site and 'obs-none' the
+       default crash without naming either. */
+    'obs-third-site': { p: { sc: 'part' }, to: 'ch-clocks',
+                       label: 'Show me the arbitration' },
+    'obs-false-failover': { p: { sc: 'part', ol: 'dc2' }, to: 'ch-clocks',
+                       label: 'Show me the false failover' },
+    'obs-standby-site': { p: { sc: 'dc2d', ol: 'dc2' }, to: 'ch-clocks',
+                       label: 'Show me the outage' },
+    'obs-none':      { p: { ol: 'none' }, to: 'ch-clocks',
+                       label: 'Show me manual failover' },
     'switchover':    { p: { sc: 'sw' }, to: 'ch-clocks',
                        label: 'Show me the swap' },
     'switchover-refused': { p: { sc: 'sw', pm: 'perf', lag: 45, ll: 30 }, to: 'ch-clocks',
