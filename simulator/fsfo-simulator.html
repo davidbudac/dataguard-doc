@@ -6142,7 +6142,7 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
      right-edge-anchored); the event-label anchors move per placement because
      the free whitespace does. */
   function topoLayout(loc) {
-    var redo = { id: 'ps', n: ['pmy', 'sby'], d: 'M298,158 L662,158', pill: { c: [480, 158] } };
+    var redo = { id: 'ps', n: ['pmy', 'sby'], d: 'M287,148 L673,148', pill: { c: [480, 148] } };
 
     /* Observer on the primary's own site: the DC 1 panel grows upward to hold
        both cards, the ping collapses to a short vertical hop, and the
@@ -6150,29 +6150,29 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
        problem, because a single cut takes both of the links that matter. */
     if (loc === 'dc1') {
       return {
-        obs: [102, 26, 196, 52], obsW: 136, obsX: [270, 34], obsEv: [310, 40, null],
+        obs: [103, 26, 184, 52], obsW: 124, obsX: [261, 34], obsEv: [300, 40, null],
         sites: [['dc1', 70, 10, 250, 204], ['dc2', 640, 96, 250, 118]],
         links: [
-          { id: 'op', n: ['obs', 'pmy'], d: 'M200,78 L200,110', pill: { l: [212, 94] } },
-          { id: 'os', n: ['obs', 'sby'], d: 'M298,52 L760,52 L760,110', pill: { c: [520, 52] } },
+          { id: 'op', n: ['obs', 'pmy'], d: 'M195,78 L195,118', pill: { l: [207, 98] } },
+          { id: 'os', n: ['obs', 'sby'], d: 'M287,52 L765,52 L765,118', pill: { c: [520, 52] } },
           redo
         ],
-        evPmy: [332, 120, null], evIso: [366, 16, null], evSw: [480, 202, 'middle'],
-        evDc2: [765, 88, 'middle'], noObs: null
+        evPmy: [332, 120, null], evIso: [366, 16, null], evSw: [480, 192, 'middle'],
+        evDc2: [757, 88, 'end'], noObs: null
       };
     }
 
     /* Mirrored onto the standby's site. */
     if (loc === 'dc2') {
       return {
-        obs: [662, 26, 196, 52], obsW: 136, obsX: [830, 34], obsEv: [650, 40, 'end'],
+        obs: [673, 26, 184, 52], obsW: 124, obsX: [827, 34], obsEv: [661, 40, 'end'],
         sites: [['dc1', 70, 96, 250, 118], ['dc2', 640, 10, 250, 204]],
         links: [
-          { id: 'op', n: ['obs', 'pmy'], d: 'M662,52 L200,52 L200,110', pill: { c: [430, 52] } },
-          { id: 'os', n: ['obs', 'sby'], d: 'M760,78 L760,110', pill: { r: [748, 94] } },
+          { id: 'op', n: ['obs', 'pmy'], d: 'M673,52 L195,52 L195,118', pill: { c: [430, 52] } },
+          { id: 'os', n: ['obs', 'sby'], d: 'M765,78 L765,118', pill: { r: [753, 98] } },
           redo
         ],
-        evPmy: [70, 88, null], evIso: [346, 16, 'end'], evSw: [480, 202, 'middle'],
+        evPmy: [70, 88, null], evIso: [346, 16, 'end'], evSw: [480, 192, 'middle'],
         evDc2: [630, 30, 'end'], noObs: null
       };
     }
@@ -6184,22 +6184,22 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
         obs: null, obsW: 0, obsX: null, obsEv: null,
         sites: [['dc1', 70, 96, 250, 118], ['dc2', 640, 96, 250, 118]],
         links: [redo],
-        evPmy: [70, 88, null], evIso: [344, 16, 'end'], evSw: [480, 202, 'middle'],
-        evDc2: [765, 88, 'middle'], noObs: [480, 50, 'middle']
+        evPmy: [70, 88, null], evIso: [344, 16, 'end'], evSw: [480, 192, 'middle'],
+        evDc2: [757, 88, 'end'], noObs: [480, 50, 'middle']
       };
     }
 
     /* The third site, and the default. */
     return {
       obs: [399, 24, 162, 52], obsW: 103, obsX: [530, 32], obsEv: [575, 34, null],
-      sites: [['dc1', 70, 96, 250, 118], ['dc2', 640, 96, 250, 118], ['dc3', 392, 10, 176, 96]],
+      sites: [['dc1', 70, 96, 250, 118], ['dc2', 640, 96, 250, 118], ['dc3', 384, 10, 192, 96]],
       links: [
-        { id: 'op', n: ['obs', 'pmy'], d: 'M416,58 L200,58 L200,110', pill: { c: [300, 58] } },
-        { id: 'os', n: ['obs', 'sby'], d: 'M544,58 L760,58 L760,110', pill: { c: [660, 58] } },
+        { id: 'op', n: ['obs', 'pmy'], d: 'M416,58 L195,58 L195,118', pill: { c: [300, 58] } },
+        { id: 'os', n: ['obs', 'sby'], d: 'M544,58 L765,58 L765,118', pill: { c: [660, 58] } },
         redo
       ],
-      evPmy: [70, 88, null], evIso: [344, 16, 'end'], evSw: [480, 202, 'middle'],
-      evDc2: [765, 88, 'middle'], noObs: null
+      evPmy: [70, 88, null], evIso: [344, 16, 'end'], evSw: [480, 192, 'middle'],
+      evDc2: [757, 88, 'end'], noObs: null
     };
   }
 
@@ -6286,8 +6286,8 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
 
     /* configurable subtitles; a long pair degrades to its shorter parts so it
        stays inside the card next to the badge */
-    var subP = fitLabel([idv('subPrimary') + ', ' + idv('dc1'), idv('subPrimary'), idv('dc1')], 132) || idv('dc1');
-    var subS = fitLabel([idv('subStandby') + ', ' + idv('dc2'), idv('subStandby'), idv('dc2')], 132) || idv('dc2');
+    var subP = fitLabel([idv('subPrimary') + ', ' + idv('dc1'), idv('subPrimary'), idv('dc1')], 118) || idv('dc1');
+    var subS = fitLabel([idv('subStandby') + ', ' + idv('dc2'), idv('subStandby'), idv('dc2')], 118) || idv('dc2');
     var subO = topoSubO(loc, L.obsW);
 
     /* The ground panels, drawn behind everything. Only a lost site is filled
@@ -6393,7 +6393,7 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
         psW = pillW(cap, lat);
         /* the SYNC cost, spelled out under the pill while commits still flow */
         if (sync && !down.ps) {
-          push(txt('tp-cap', 480, 186, 'middle', esc(t('each commit waits one standby RTT'))));
+          push(txt('tp-cap', 480, 170, 'middle', esc(t('each commit waits one standby RTT'))));
         }
       }
       push(pill(lk.pill, cap, lat, !!down[lk.id]));
@@ -6404,8 +6404,8 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
       var obsDown = obs || (sc === 'dc2down' && loc === 'dc2');
       push(nodeCard(L.obs[0], L.obs[1], L.obs[2], L.obs[3], 'O', obsDown, true, 'Observer', subO));
     }
-    push(nodeCard(102, 110, 196, 60, 'P', sc === 'crash', false, 'Primary', subP));
-    push(nodeCard(662, 110, 196, 60, 'S', sc === 'dc2down', false, 'Standby', subS));
+    push(nodeCard(103, 118, 184, 60, 'P', sc === 'crash', false, 'Primary', subP));
+    push(nodeCard(673, 118, 184, 60, 'S', sc === 'dc2down', false, 'Standby', subS));
 
     /* what happened at t = 0, in the vocabulary of the thing it happened to */
     if (obs) {
@@ -6423,15 +6423,15 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
          two slashes sit on the line just left of the redo pill, so they never
          land on it whatever width the pill's translation needs. */
       var sx = 480 - psW / 2 - 26;
-      push(ln('tp-x', sx, 166, sx + 10, 150));
-      push(ln('tp-x', sx + 10, 166, sx + 20, 150));
-      push(txt('tp-ev', 480, 200, 'middle',
+      push(ln('tp-x', sx, 156, sx + 10, 140));
+      push(ln('tp-x', sx + 10, 156, sx + 20, 140));
+      push(txt('tp-ev', 480, 190, 'middle',
         esc(t('{0} to {1} link down at t = 0', idv('dc1'), idv('dc2')))));
     } else if (sc === 'dc2down') {
       push(txt('tp-ev', L.evDc2[0], L.evDc2[1], L.evDc2[2], esc(t('site down at t = 0'))));
     } else {
-      push(ln('tp-x', 268, 124, 282, 138));
-      push(ln('tp-x', 282, 124, 268, 138));
+      push(ln('tp-x', 257, 130, 271, 144));
+      push(ln('tp-x', 271, 130, 257, 144));
       push(txt('tp-ev', L.evPmy[0], L.evPmy[1], L.evPmy[2], esc(t('host down at t = 0'))));
     }
 
