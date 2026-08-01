@@ -209,11 +209,7 @@ test('switchover runs no clocks: threshold and ping properties change nothing', 
 // which would turn several 'continues' cells into failovers. The page models
 // the default only, and says so where it states the both-must-have-lost rule.
 
-// The fifth location, 'dc1dc2', exists only under version '26ai': an observer
-// beside each database, master and backup, ranked by PreferredObserverHosts.
-// The 19c tables below stay four columns wide -- under 19c (or no version at
-// all) the model coerces 'dc1dc2' to 'dc3', which the invariance tests assert.
-const LOCS = ['none', 'dc1', 'dc2', 'dc3', 'dc1dc2'];
+const LOCS = ['none', 'dc1', 'dc2', 'dc3'];
 
 const MATRIX = {
   //                none          dc1              dc2              dc3
@@ -445,74 +441,10 @@ test('the ping quirk moves the observer clock only, wherever the observer sits',
 
 // ---------- MODEL: the 26ai release ----------
 //
-// c.version opens a second axis: '26ai' unlocks the fifth placement (an
-// observer beside each database, master and backup, ranked by
-// PreferredObserverHosts) and the two lag properties. The six dc1dc2 cells
-// below are the executable form of the both-sites column in
-// diagrams/README.md. Two of them are inferences, and the README dagger says
-// which: partition/dc1dc2 and isolated/dc1dc2. Oracle states the nomination
-// rule with a precondition -- "if the primary and target standby databases
-// stay connected but the connection to the master observer is lost, then the
-// broker tries to nominate a backup observer as the new master observer" --
-// and both of those cells are cuts that separate the primary from the target
-// standby, so their outcomes compose that rule with the quorum rules rather
-// than quoting a documented case. observer-lost/dc1dc2 is the documented case
-// itself (both databases stay connected, only the master dies) and needs no
-// flag. The asserted outcomes stand: they are flagged, not withdrawn.
-
-const MATRIX26 = {
-  //                 outcome        stalled  nomination
-  'crash': ['failover', false, false],
-  'isolated': ['failover', true, true],
-  'partition': ['failover', true, true],
-  'dc2down': ['continues', false, false],
-  'observer-lost': ['continues', false, true],
-  'switchover': ['switchover', false, false],
-};
-
-test('26ai: the both-sites column, six cells of outcome, stall and nomination', () => {
-  for (const [scenario, [outcome, stalled, nomination]] of Object.entries(MATRIX26)) {
-    const m = fsfo({ scenario, observerLoc: 'dc1dc2', version: '26ai' });
-    assert.equal(m.outcome, outcome, `${scenario} outcome`);
-    assert.equal(m.stalled, stalled, `${scenario} stalled`);
-    assert.equal(m.nomination, nomination, `${scenario} nomination`);
-    // A stall plus FastStartFailoverPmyShutdown aborts on the threshold here
-    // exactly as it does in the 19c cells.
-    assert.equal(m.abort, stalled ? CDEF.threshold : null, `${scenario} abort`);
-    // No coercion under 26ai: even observer-lost keeps its own scenario,
-    // because only the master died and a backup remains to nominate.
-    assert.equal(m.scenario, scenario, `${scenario} effective scenario`);
-  }
-});
-
-test('26ai: a cut between the sites is the false failover again, ordered from the standby side', () => {
-  // One of the two inferred cells (see diagrams/README.md): nothing is wrong with the
-  // primary, but the master went with the primary's side of the cut, the
-  // backup beside the standby is nominated, and that side has lost the
-  // primary -- so the standby is promoted and the healthy primary stalls.
-  const m = fsfo({ scenario: 'partition', observerLoc: 'dc1dc2', version: '26ai' });
-  assert.equal(m.initiate, 30);
-  assert.equal(m.tOpen, 55);
-  assert.equal(m.abort, 30);
-  assert.equal(m.pmyReachable, true);        // nothing was ever wrong with it
-  assert.equal(fsfo({ scenario: 'partition', observerLoc: 'dc1dc2', version: '26ai',
-    pmyShutdown: false }).abort, null);
-});
-
-test('26ai: losing the master is a nomination, never an unobserved configuration', () => {
-  const m = fsfo({ scenario: 'observer-lost', observerLoc: 'dc1dc2', version: '26ai' });
-  assert.equal(m.observerLost, false);       // the observer-lost branch is skipped
-  assert.equal(m.nomination, true);
-  assert.equal(m.redoFlowing, true);         // both databases carry on untouched
-  assert.equal(m.standbyGone, false);
-  assert.equal(m.initiate, null);            // and no clock runs meanwhile
-  assert.equal(m.tOpen, null);
-  // dc2down takes the backup with the site and leaves the master observing:
-  // no nomination, the primary carries on unprotected.
-  const d = fsfo({ scenario: 'dc2down', observerLoc: 'dc1dc2', version: '26ai' });
-  assert.equal(d.nomination, false);
-  assert.equal(d.standbyGone, true);
-});
+// c.version opens a second axis: '26ai' unlocks the MaxAvailability lag policy
+// and the two lag properties. It changes nothing about the placement axis --
+// the 24-cell table above holds in both editions, which the invariance loops
+// below pin down.
 
 // 26ai gave FastStartFailoverLagLimit a MaxAvailability role. Source: the 26ai
 // broker guide's "Fast-start Failover Protection Modes" section -- MaxAvailability
@@ -596,11 +528,8 @@ test('19c invariance: every cell still reads off the 24-cell tables, new fields 
         // 19c cell, whatever a crafted link or a 26ai-written export says.
         const m = fsfo({ scenario, observerLoc: loc, version,
           lagPolicy: 'bounded', lagType: 'transport', lagGraceTime: 30 });
-        // The fifth column is not a 19c placement: it lands on the third site.
-        const col = loc === 'dc1dc2' ? 3 : i;
-        assert.equal(m.outcome, row[col], at);
-        assert.equal(m.stalled, STALLED[scenario][col], `${at} stalled`);
-        assert.equal(m.nomination, false, `${at} nomination`);
+        assert.equal(m.outcome, row[i], at);
+        assert.equal(m.stalled, STALLED[scenario][i], `${at} stalled`);
         assert.equal(m.lagStall, null, `${at} lagStall`);
         assert.equal(m.lagType, 'apply', `${at} lagType`);
       });
@@ -608,13 +537,9 @@ test('19c invariance: every cell still reads off the 24-cell tables, new fields 
   }
 });
 
-test('19c: the both-sites placement coerces to the third site, whole object', () => {
-  for (const scenario of Object.keys(MATRIX)) {
-    assert.deepEqual(fsfo({ scenario, observerLoc: 'dc1dc2' }),
-      fsfo({ scenario, observerLoc: 'dc3' }), scenario);
-  }
-  // And the three 26ai knobs change nothing under 19c, even set to non-defaults
-  // by a crafted link or an imported file.
+test('19c: the three 26ai knobs are inert', () => {
+  // Set to non-defaults by a crafted link or an imported file, they change
+  // nothing under 19c.
   assert.deepEqual(
     fsfo({ mode: 'maxperf', lagType: 'transport', lagGraceTime: 30,
       lagPolicy: 'bounded', version: '19c' }),
