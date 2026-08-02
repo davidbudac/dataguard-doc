@@ -452,6 +452,26 @@ configured site names: `.seg-row label` is in the i18n snapshot, so a
 runtime-rewritten label would be clobbered on `setLang`; the configured names
 arrive in the `ctl-note` through `t()` placeholders instead.
 
+**Every gray control carries a pill saying why.** `.ctl-pill` is a small
+uppercase chip at the top of the control (`ctlPill(ctl, why)`, created on
+demand), and `depPill(input, why)` puts the same chip under a field on the
+configuration card, where there are no notes to fall back on. It exists because
+the notes collapse with the rail and the pill does not — a shut rail still
+answers the question the gray raises. Three rules:
+
+- The wording lives in one table, `WHY`, because the same reason grays several
+  controls at once and the reader should recognize it as the same reason. Each
+  entry is the control's note compressed to its clause — never a new claim.
+- It is set from state on *every* pass, exactly like the `is-off` class, so a
+  null reason clears it. Every branch of `renderControls` that grays a control
+  must also set (or clear) its pill, including the three early-return branches.
+- `.ctl.is-off` fades its *children*, not itself, so the pill stays legible on a
+  faded control. Do not put the opacity back on the parent.
+
+Two pills name a single gray *radio* rather than a gray control — the
+observer-lost scenario under **none**, the both-sites placement under 19c — and
+so name the option they are talking about.
+
 **None means fast-start failover is not enabled at all** — not "enabled but
 unobserved" (see the accuracy rules). Every control that only a failover gives
 meaning to goes inert through the same borrow-and-restore pattern as the two sets
@@ -653,7 +673,8 @@ themes and the key states first — and, when the change touches prose, both
 languages (see Languages below): defaults, isolated scenario, MaxPerformance with lag > limit
 (blocked banner), ping properties set (threshold grayed out, ~1.1 s detection);
 observer-lost defaults (flat lanes, Unobserved callout, failover-clock controls
-grayed) and switching back out of it (no control left stuck disabled); switchover
+grayed, each with a pill naming the reason) and switching back out of it (no
+control left stuck disabled and no pill left behind); switchover
 defaults (verify/convert/catch-up/role-change bands, the downtime brace, the
 Role reversal callout, the four grayed controls), switchover in MaxPerformance
 with lag > limit (the refusal banner, flat lanes, no downtime), and switching

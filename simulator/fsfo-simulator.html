@@ -251,7 +251,16 @@ white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .rail-btns{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
 .ctl{padding:15px 16px;border-bottom:1px solid var(--ln);display:flex;flex-direction:column;gap:8px}
 .ctl:last-child{border-bottom:0}
-.ctl.is-off{opacity:.46}
+/* A gray control says why it is gray, on itself. The note under it already
+   explains it in full, but notes collapse with the rail and this does not, so
+   a shut rail still answers the question the gray raises. The fade moves from
+   the control to its children so the pill stays legible on a faded control --
+   opacity on the parent would take the pill down with everything else. */
+.ctl.is-off>*:not(.ctl-pill){opacity:.46}
+.ctl-pill{align-self:flex-start;font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--ik3);background:var(--sf2);border:1px solid var(--ln2);border-radius:999px;padding:2px 8px;line-height:1.45}
+/* The configuration card has no notes at all, so without a pill its gray
+   fields say nothing. There the pill sits under the field it explains. */
+.dep-row .ctl-pill{margin-top:1px}
 .ctl-hd{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
 .ctl-hd+.ctl-hd{margin-top:6px}
 .ctl-name{font-family:var(--mono);font-size:12px;color:var(--ik);word-break:break-word}
@@ -829,7 +838,7 @@ window.DG = (function () {
         </span>
       </div>
 
-      <div class="ctl">
+      <div class="ctl" id="ctl-scenario">
         <fieldset class="seg">
           <legend class="ctl-name is-prose">Scenario</legend>
           <div class="seg-row cols2r">
@@ -850,7 +859,7 @@ window.DG = (function () {
         <p class="ctl-note" id="n-scenario">The primary host dies outright. Observer and standby both lose it at the same instant.</p>
       </div>
 
-      <div class="ctl">
+      <div class="ctl" id="ctl-obsloc">
         <fieldset class="seg">
           <legend class="ctl-name is-prose">Observer location</legend>
           <div class="seg-row cols2r">
@@ -3254,6 +3263,7 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
     topo: $('topo-wrap'),
     lagGrace: $('c-laggrace'), vLagGrace: $('v-laggrace'), olBoth: $('ol-both'),
     ctlLagType: $('ctl-lagtype'), ctlLagGrace: $('ctl-laggrace'),
+    ctlScenario: $('ctl-scenario'), ctlObsloc: $('ctl-obsloc'),
     nLagType: $('n-lagtype'), nLagGrace: $('n-laggrace'),
     ctlThreshold: $('ctl-threshold'), ctlPing: $('ctl-ping'), ctlLagLimit: $('ctl-laglimit'),
     ctlShutdown: $('ctl-shutdown'), ctlPingSet: $('ctl-pingset'), ctlLag: $('ctl-lag'),
@@ -3394,6 +3404,28 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
     dc2down: 'The standby site takes its own observer with it, and the master beside the primary is untouched. The primary keeps committing \u2014 this placement is what stops a spare site from taking production down.',
     partition: 'The same cut, and the same nomination: the standby\u2019s side has lost the primary and the master alike, so the backup is promoted and initiates a failover the primary never needed. With every observer on a database site, nothing arbitrates the cut \u2014 that is what the third site was for.',
     obsLost: 'Only the master died. A backup is nominated, the configuration is armed again, and what it cost is the interval in between, during which no fast-start failover could have occurred.'
+  };
+
+  /* The pill vocabulary: one short phrase per reason a control goes gray, kept
+     in one place because the same reason grays several controls at once and
+     the reader should recognize it as the same reason. Each one is the note
+     under the control compressed to its clause -- never a new claim. */
+  var WHY = {
+    v19: 'a 26ai property',
+    nofsfo: 'no observer deployed',
+    obs: 'the observer died',
+    sw: 'planned switchover',
+    avail: 'not used in MaxAvailability',
+    ping: 'the ping loop detects instead',
+    pingStall: 'stall clock only',
+    noPromote: 'nothing is promoted here',
+    noStall: 'the primary is not stalled',
+    appObs: 'no connection is disturbed',
+    appSw: 'both listeners answer',
+    optBoth: 'both sites: a 26ai placement',
+    optObsLost: 'observer lost: needs an observer',
+    depPingSet: 'set the properties first',
+    depPerf: 'MaxPerformance only'
   };
 
   /* ---------- timeline geometry (single time -> x scale) ---------- */
@@ -4773,6 +4805,39 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
   }
 
   /* ---------- control enable / disable rules ---------- */
+  /* The pill that says why a control is gray. Created on demand and driven
+     from state on every pass exactly like the gray itself: a null reason hides
+     it, so leaving a state clears the pill without anyone remembering to. It
+     rides at the top of the control, ahead of the property name, because it is
+     the first thing to read about a control that cannot be touched. */
+  function ctlPill(ctl, why) {
+    var p = ctl.firstElementChild;
+    if (!p || !p.classList.contains('ctl-pill')) {
+      if (!why) return;
+      p = document.createElement('span');
+      p.className = 'ctl-pill';
+      ctl.insertBefore(p, ctl.firstChild);
+    }
+    if (why) p.textContent = t(why);
+    p.hidden = !why;
+  }
+
+  /* Same pill on the configuration card, where a field is a row rather than a
+     control and there is no note under it to fall back on. It goes after the
+     input rather than inside the label: the label's innerHTML is snapshotted
+     by the translation pass, which would overwrite anything living in it. */
+  function depPill(input, why) {
+    var row = input.parentNode, p = row.lastElementChild;
+    if (!p || !p.classList.contains('ctl-pill')) {
+      if (!why) return;
+      p = document.createElement('span');
+      p.className = 'ctl-pill';
+      row.appendChild(p);
+    }
+    if (why) p.textContent = t(why);
+    p.hidden = !why;
+  }
+
   /* Takes the model, because what a control governs is now a property of the
      outcome rather than of the scenario name: the same "isolated" reads as a
      stall under one observer placement and as business as usual under another.
@@ -4803,12 +4868,21 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
        PreferredObserverHosts is what lets one sit beside each database. Under
        19c the radio is inert and the note below says why. */
     els.olBoth.disabled = !v26;
+    /* Two pills name a single gray radio rather than a gray control, so each
+       one says which option it is talking about. */
+    ctlPill(els.ctlObsloc, v26 ? null : WHY.optBoth);
+    ctlPill(els.ctlScenario, none ? WHY.optObsLost : null);
 
     /* The two 26ai lag properties. Both describe the lag rather than the
        failover, so their gate is the protection mode and whether fast-start
        failover is enabled at all -- not the scenario. That matches the reopen
        panel in chapter 2, which draws them in every scenario. */
     var lagOff = !v26 || avail || none;
+    /* Read in the order the gate is written: the release first, then whether
+       fast-start failover exists at all, then the protection mode. */
+    var lagWhy = !v26 ? WHY.v19 : none ? WHY.nofsfo : avail ? WHY.avail : null;
+    ctlPill(els.ctlLagType, lagWhy);
+    ctlPill(els.ctlLagGrace, lagWhy);
     els.ctlLagType.classList.toggle('is-off', lagOff);
     $('lt-apply').disabled = lagOff;
     $('lt-xpt').disabled = lagOff;
@@ -4871,6 +4945,7 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
     els.pingInterval.disabled = pingOff;
     els.pingRetry.disabled = pingOff;
     els.ctlPingSet.classList.toggle('is-off', pingOff);
+    ctlPill(els.ctlPingSet, obs ? WHY.obs : sw ? WHY.sw : none ? WHY.nofsfo : null);
     els.nPingSet.textContent = t(obs ? OBS_NOTES.pingset : sw ? SW_NOTES.pingset
       : none ? NOFSFO_NOTES.pingset : PINGSET_NOTE);
 
@@ -4881,6 +4956,7 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
     var roleOff = obs || (none && !sw);
     els.role.disabled = roleOff;
     els.ctlRole.classList.toggle('is-off', roleOff);
+    ctlPill(els.ctlRole, !roleOff ? null : obs ? WHY.obs : WHY.nofsfo);
     els.nRole.textContent = t(obs ? OBS_NOTES.role : sw ? SW_NOTES.role
       : roleOff ? NOFSFO_NOTES.role : ROLE_NOTE);
 
@@ -4892,6 +4968,9 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
       els.ctlPing.hidden = true;
       els.threshold.disabled = true;
       els.ctlThreshold.classList.add('is-off');
+      ctlPill(els.ctlThreshold, WHY.obs);
+      ctlPill(els.ctlLagLimit, WHY.obs);
+      ctlPill(els.ctlShutdown, WHY.obs);
       els.nThreshold.classList.remove('is-warn');
       els.nThreshold.textContent = t(OBS_NOTES.threshold);
 
@@ -4918,6 +4997,8 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
       els.ctlThreshold.classList.add('is-off');
       els.nThreshold.classList.remove('is-warn');
       els.nThreshold.textContent = t(none ? NOFSFO_NOTES.threshold : SW_NOTES.threshold);
+      ctlPill(els.ctlThreshold, none ? WHY.nofsfo : WHY.sw);
+      ctlPill(els.ctlShutdown, WHY.sw);
 
       els.nLatency.classList.remove('is-warn');
       els.nLatency.innerHTML = t(LAT_NOTE);
@@ -4925,6 +5006,7 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
       var swLagOff = avail || none;
       els.lagLimit.disabled = swLagOff;
       els.ctlLagLimit.classList.toggle('is-off', swLagOff);
+      ctlPill(els.ctlLagLimit, !swLagOff ? null : none ? WHY.nofsfo : WHY.avail);
       els.nLagLimit.innerHTML = t(none ? NOFSFO_NOTES.lagLimit
         : avail ? SW_NOTES.lagLimitAvail : SW_NOTES.lagLimitPerf);
 
@@ -4943,6 +5025,9 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
       els.ctlThreshold.classList.add('is-off');
       els.nThreshold.classList.remove('is-warn');
       els.nThreshold.textContent = t(NOFSFO_NOTES.threshold);
+      ctlPill(els.ctlThreshold, WHY.nofsfo);
+      ctlPill(els.ctlLagLimit, WHY.nofsfo);
+      ctlPill(els.ctlShutdown, WHY.nofsfo);
 
       els.nLatency.classList.remove('is-warn');
       els.nLatency.innerHTML = t(LAT_NOTE);
@@ -4964,6 +5049,9 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
     els.ctlThreshold.classList.toggle('is-off', C.pingSet);
     els.nThreshold.classList.toggle('is-warn', C.pingSet);
     els.threshold.disabled = C.pingSet && !m.stalled;
+    /* Where the primary stalls the slider stays live, so the pill says which
+       clock is left rather than naming a reason it cannot be touched. */
+    ctlPill(els.ctlThreshold, !C.pingSet ? null : m.stalled ? WHY.pingStall : WHY.ping);
     if (C.pingSet) els.nThreshold.innerHTML = t(m.stalled ? TH_IGNORED_ISO : TH_IGNORED);
     else els.nThreshold.textContent = t(TH_NOTE);
 
@@ -4980,6 +5068,7 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
     var llOff = avail || (m.outcome !== 'failover' && m.outcome !== 'switchover');
     els.lagLimit.disabled = llOff;
     els.ctlLagLimit.classList.toggle('is-off', llOff);
+    ctlPill(els.ctlLagLimit, !llOff ? null : avail ? WHY.avail : WHY.noPromote);
     els.nLagLimit.innerHTML = avail
       ? t('Not evaluated in MaxAvailability. Readiness there means the standby was synchronized at failure time.')
       : llOff
@@ -4990,6 +5079,7 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
        from observer and standby alike stalls under a severed site link too. */
     els.shutdown.disabled = !m.stalled;
     els.ctlShutdown.classList.toggle('is-off', !m.stalled);
+    ctlPill(els.ctlShutdown, m.stalled ? null : WHY.noStall);
     els.nShutdown.innerHTML = m.stalled
       ? (C.pmyShutdown
         ? t('The stalled primary aborts itself after one <span class="mono">FastStartFailoverThreshold</span>.')
@@ -5809,6 +5899,7 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
     [els.apTct, els.apCt, els.apRc, els.apRd, els.apDrop].forEach(function (el) { el.disabled = obs; });
     [els.apCtlTct, els.apCtlCt, els.apCtlRc, els.apCtlRd, els.apCtlDead].forEach(function (el) {
       el.classList.toggle('is-off', obs);
+      ctlPill(el, obs ? WHY.appObs : null);
     });
     els.apDefaults.disabled = obs;
     els.apTuned.disabled = obs;
@@ -5826,6 +5917,7 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
       els.apDrop.disabled = true;
       els.apRst.disabled = true;
       els.apCtlDead.classList.add('is-off');
+      ctlPill(els.apCtlDead, WHY.appSw);
       els.apNDead.textContent = t(SW_NOTES.dead);
       return;
     }
@@ -7386,6 +7478,9 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
     els.depPingInterval.disabled = !C.pingSet;
     els.depPingRetry.disabled = !C.pingSet;
     els.depLagLimit.disabled = C.mode === 'maxavail';
+    depPill(els.depPingInterval, C.pingSet ? null : WHY.depPingSet);
+    depPill(els.depPingRetry, C.pingSet ? null : WHY.depPingSet);
+    depPill(els.depLagLimit, C.mode === 'maxavail' ? WHY.depPerf : null);
   }
 
   /* ---------- serialization ---------- */
