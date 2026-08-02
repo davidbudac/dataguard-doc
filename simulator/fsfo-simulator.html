@@ -312,10 +312,6 @@ input[type="range"]:disabled::-moz-range-thumb{background:var(--ik3);box-shadow:
    is the last row. */
 .seg-row.cols2r label:nth-of-type(even){border-right:0}
 .seg-row.cols2r label:nth-last-of-type(n+3){border-bottom:1px solid var(--ln)}
-/* An odd fifth label breaks that even-count assumption, so it takes the whole
-   row instead of half of one and draws the rule above itself -- the pair on the
-   row above never gets a bottom border of its own. */
-.seg-row .seg-wide{grid-column:1/-1;border-right:0;border-top:1px solid var(--ln)}
 .seg-row input{position:absolute;opacity:0;width:1px;height:1px}
 .seg-row label{padding:7px 6px;text-align:center;font-size:12px;color:var(--ik2);background:var(--sf);cursor:pointer;border-right:1px solid var(--ln);user-select:none}
 .seg-row label:last-of-type{border-right:0}
@@ -871,8 +867,6 @@ window.DG = (function () {
             <label for="ol-dc2">Standby site</label>
             <input type="radio" name="obsloc" id="ol-dc3" value="dc3" checked>
             <label for="ol-dc3">Third site</label>
-            <input type="radio" name="obsloc" id="ol-both" value="dc1dc2">
-            <label for="ol-both" class="seg-wide">Both sites</label>
           </div>
         </fieldset>
         <p class="ctl-note" id="n-obsloc">The observer runs on its own host at a third site, independent of both database sites.</p>
@@ -947,6 +941,19 @@ window.DG = (function () {
         <input type="range" id="c-laglimit" min="5" max="90" step="1" value="30">
         <div class="ctl-scale"><span>5 s</span><span>90 s</span></div>
         <p class="ctl-note" id="n-laglimit">MaxPerformance only. Not evaluated in MaxAvailability, where the standby must be synchronized instead.</p>
+      </div>
+
+      <div class="ctl" id="ctl-lagpolicy">
+        <fieldset class="seg">
+          <legend class="ctl-name is-prose">MaxAvailability data-loss policy</legend>
+          <div class="seg-row">
+            <input type="radio" name="lagpolicy" id="lp-zero" value="zero" checked>
+            <label for="lp-zero">Zero data loss</label>
+            <input type="radio" name="lagpolicy" id="lp-bounded" value="bounded">
+            <label for="lp-bounded">Bounded</label>
+          </div>
+        </fieldset>
+        <p class="ctl-note" id="n-lagpolicy">Which <span class="mono">FastStartFailoverLagLimit</span> MaxAvailability runs on: 0, or the value above.</p>
       </div>
 
       <div class="ctl" id="ctl-lagtype">
@@ -1054,7 +1061,7 @@ window.DG = (function () {
       </div>
       <div class="note k-vi">
         <h3>Both the observer and the standby must have lost the primary</h3>
-        <p>Fast-start failover requires the observer <em>and</em> the target standby to have both lost the primary for the threshold. If the standby can still reach the primary, there is no failover.</p>
+        <p>Fast-start failover requires the observer <em>and</em> the target standby to have both lost the primary for the threshold. If the standby can still reach the primary, there is no failover. That is the default <span class="mono">ObserverOverride</span> = FALSE behavior; set it TRUE and the observer may initiate a failover once it has lost the primary even while the standby still reaches it. Everything on this page assumes the default.</p>
       </div>
       <div class="note k-bl" data-demo="ready-modes">
         <h3>Readiness depends on the protection mode</h3>
@@ -1066,7 +1073,7 @@ window.DG = (function () {
       </div>
       <div class="note k-rd" data-demo="ping-override">
         <h3>The ping properties override the threshold</h3>
-        <p>Per the broker documentation, <span class="mono">FastStartFailoverThreshold</span> is ignored when <span class="mono">ObserverPingRetry</span> and <span class="mono">ObserverPingInterval</span> are set. Detection then costs interval &times; (retries + 1), about a second at the minimums.</p>
+        <p>Per the broker documentation, <span class="mono">FastStartFailoverThreshold</span> is ignored when <span class="mono">ObserverPingRetry</span> and <span class="mono">ObserverPingInterval</span> are set. That much is documented; the arithmetic is not. The documentation says only that detection can be reduced to nearly one second, and interval &times; (retries + 1) &mdash; the first failed ping plus its retries &mdash; is this page&rsquo;s model of it.</p>
       </div>
       <div class="note k-rd" data-demo="iso-two-clocks">
         <h3>An isolated primary runs its own clock</h3>
@@ -1085,8 +1092,8 @@ window.DG = (function () {
         <p>Sessions on the primary are terminated when it converts to a standby; the downtime window runs from that moment to the new primary&rsquo;s read-write open. The broker restarts the old primary in its new role and starts Redo Apply &mdash; the documentation is explicit that the <em>new</em> primary does not need to be restarted and does not wait for the old one.</p>
       </div>
       <div class="note k-vi" data-demo="no-observer">
-        <h3>No observer, no fast-start failover</h3>
-        <p>The primary still commits and the standby still applies, but <span class="mono">V$DATABASE.FS_FAILOVER_STATUS</span> reads <span class="mono">PRIMARY UNOBSERVED</span>, <span class="mono">FS_FAILOVER_OBSERVER_PRESENT</span> reads <span class="mono">NO</span>, and the broker raises <span class="mono">ORA-16820</span>. 19c registers up to three observers; if the master is lost while primary and standby stay connected, the broker promotes a backup on its own.</p>
+        <h3>An unobserved configuration cannot fail over</h3>
+        <p>The primary still commits and the standby still applies, and which database you query decides what you see: on the primary <span class="mono">V$DATABASE.FS_FAILOVER_STATUS</span> stays <span class="mono">SYNCHRONIZED</span> while <span class="mono">FS_FAILOVER_OBSERVER_PRESENT</span> reads <span class="mono">NO</span>; the target standby is where <span class="mono">FS_FAILOVER_STATUS</span> reads <span class="mono">PRIMARY UNOBSERVED</span>. In time the broker raises <span class="mono">ORA-16820</span>. 19c registers up to three observers; if the master is lost while primary and standby stay connected, the broker promotes a backup on its own.</p>
       </div>
       <div class="note k-vi" data-demo="obs-third-site">
         <h3>A third site is what arbitrates a partition</h3>
@@ -1102,7 +1109,7 @@ window.DG = (function () {
       </div>
       <div class="note k-sl" data-demo="obs-none">
         <h3>Deploying no observer is not the same as losing one</h3>
-        <p>With no observer in the topology, fast-start failover is never enabled: the <span class="mono">FastStartFailover*</span> properties can be set, but nothing arms them. <span class="mono">FAILOVER TO</span> still works &mdash; it is always available, and it is the only thing that promotes the standby.</p>
+        <p>With no observer in the topology, fast-start failover is never enabled: the <span class="mono">FastStartFailover*</span> properties can be set, but nothing arms them, and <span class="mono">V$DATABASE.FS_FAILOVER_STATUS</span> simply reads <span class="mono">DISABLED</span>. <span class="mono">FAILOVER TO</span> is then the only thing that promotes the standby &mdash; it needs no observer while fast-start failover is disabled, subject to the broker&rsquo;s ordinary failover prerequisites.</p>
       </div>
     </div>
     <div class="sq-wrap prose-block">
@@ -1174,7 +1181,7 @@ window.DG = (function () {
         <text class="s-msg s-tl" x="600" y="646" text-anchor="middle">failover complete &mdash; new primary open</text>
         <line class="s-ar-tl" x1="656" y1="654" x2="488" y2="654" marker-end="url(#sqAt)"></line>
 
-        <text class="s-small" x="20" y="694"><tspan class="s-mono">FastStartFailoverAutoReinstate = TRUE</tspan> &mdash; the old primary is reinstated as a standby via Flashback Database when it returns. Reinstate is out of scope here.</text>
+        <text class="s-small" x="20" y="694"><tspan class="s-mono">FastStartFailoverAutoReinstate = TRUE</tspan> &mdash; a crash or isolation failover reinstates the old primary as a standby, given Flashback Database and a restart to mount. Out of scope here.</text>
       </svg>
     </div>
     <div class="sec-hd">
@@ -1536,7 +1543,7 @@ window.DG = (function () {
       </div>
       <div class="note k-bl">
         <h3>These parameters govern new connections only</h3>
-        <p>Already-connected sessions end by TCP rules &mdash; instant resets from a reachable host, long hangs across a partition &mdash; unless keepalives, <span class="mono">SQLNET.RECV_TIMEOUT</span> or FAN break them faster; TAF or Application Continuity resumes their work. This panel models <em>new</em> connections only.</p>
+        <p>Already-connected sessions end by TCP rules &mdash; instant resets from a reachable host, long hangs across a partition &mdash; unless keepalives, <span class="mono">SQLNET.RECV_TIMEOUT</span> or FAN break them faster. TAF reconnects and can carry on a <span class="mono">SELECT</span> fetch, but active transactions are rolled back; Application Continuity, where it is configured, can replay eligible in-flight work, and a replay it cannot verify is rejected. This panel models <em>new</em> connections only.</p>
       </div>
       <div class="note k-sl" data-demo="switchover-app">
         <h3>In a switchover nothing is unreachable</h3>
@@ -1611,7 +1618,6 @@ window.DG = (function () {
               <option value="dc1">Primary site</option>
               <option value="dc2">Standby site</option>
               <option value="dc3" selected>Third site</option>
-              <option value="dc1dc2" data-ver="26">Both sites</option>
             </select></div>
           <div class="dep-row"><label for="dep-port">Listener port</label>
             <input class="dep-in" type="number" id="dep-port" min="1" max="65535" step="1" value="1521"></div>
@@ -2061,7 +2067,7 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
       </div>
       <div class="note k-tl">
         <h3>Why the failover still loses nothing</h3>
-        <p>Under SYNC a commit is not acknowledged until the standby holds its redo, so every acknowledged transaction is on the standby when it opens. Commits issued during the stall hang until the old primary aborts, then get errors &mdash; nothing is lost silently. A shorter <span class="mono">NET_TIMEOUT</span> only moves when the hanging starts.</p>
+        <p>Under SYNC a commit is not acknowledged until the standby holds its redo, so every acknowledged transaction is on the standby when it opens. Commits issued during the stall hang until the old primary aborts, then get errors &mdash; nothing is lost silently. The acknowledgement wait begins the moment the acknowledgements stop, so a shorter <span class="mono">NET_TIMEOUT</span> only moves the transport-error / <span class="mono">STALLED</span> boundary inside the stall, never the outcome.</p>
       </div>
     </div>
 
@@ -2084,17 +2090,17 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
           <tr><th scope="col">Change</th><th scope="col">What it does</th><th scope="col">Sources</th></tr>
         </thead>
         <tbody>
+          <tr><td><span class="mono">FastStartFailoverLagLimit</span> in MaxAvailability</td>
+            <td>The property is no longer MaxPerformance-only. In MaxAvailability its broker default becomes <span class="mono">0</span>, which is the 19c rule spelled as a number: the standby must have received all the redo the primary generated, and a fast-start failover loses nothing. Set it non-zero (minimum 5&nbsp;s) and MaxAvailability becomes bounded-loss instead &mdash; failover is permitted whenever the standby&rsquo;s apply lag is at or below the limit, and the loss is bounded by it. <span class="mono">V$FAST_START_FAILOVER_CONFIG</span> reports the two as <span class="mono">ZERO DATA LOSS</span> and <span class="mono">POTENTIAL DATA LOSS</span>. The 26ai prerequisites table also lists <span class="mono">ASYNC</span> among the transports allowed for a MaxAvailability target, where 19c listed only <span class="mono">SYNC</span> and <span class="mono">FASTSYNC</span>. The chapter&nbsp;1 rail carries the choice as a two-state control under 26ai.<sup>5</sup></td>
+            <td><a class="ext" href="https://docs.oracle.com/en/database/oracle/oracle-database/26/dgbkr/fast-start-failover2.html">26ai docs, &ldquo;Fast-start Failover Protection Modes&rdquo;</a> &middot; <a class="ext" href="https://docs.oracle.com/en/database/oracle/oracle-database/26/dgbkr/faststartfailoverlaglimit.html">property</a></td></tr>
           <tr><td><span class="mono">FastStartFailoverLagType</span></td>
             <td>New property, <span class="mono">APPLY</span> (the default, and the only 19c behavior) or <span class="mono">TRANSPORT</span>; MaxPerformance only. Chooses which lag <span class="mono">FastStartFailoverLagLimit</span> is measured against: the standby&rsquo;s apply point, or the redo it has received. Under <span class="mono">TRANSPORT</span> the limit bounds only redo that never arrived &mdash; redo already received is still applied during terminal recovery &mdash; so the same limit tolerates a deep apply queue without refusing the failover.</td>
             <td><a class="ext" href="https://docs.oracle.com/en/database/oracle/oracle-database/26/dgbkr/faststartfailoverlagtype.html">26ai docs</a> &middot; <a class="ext" href="https://www.ludovicocaldara.net/blog/dg26ai-lag-type/">Caldara #3</a></td></tr>
           <tr><td><span class="mono">FastStartFailoverLagGraceTime</span></td>
             <td>New property, default 0 (off), minimum 5&nbsp;s when set. That many seconds before the lag limit, the primary asks the observer&rsquo;s permission to enter the <span class="mono">LAGGING</span> state; with the answer pre-granted, crossing the limit costs it nothing. Left at 0, it asks at the crossing and stalls there waiting for the answer &mdash; up to one <span class="mono">FastStartFailoverThreshold</span>. The reopen panel in chapter&nbsp;2 draws that stall, and this property removing it.</td>
             <td><a class="ext" href="https://docs.oracle.com/en/database/oracle/oracle-database/26/dgbkr/faststartfailoverlaggracetime.html">26ai docs</a> &middot; <a class="ext" href="https://www.ludovicocaldara.net/blog/dg26ai-minimized-stall/">Caldara #2</a></td></tr>
-          <tr><td>Four observers, with priorities</td>
-            <td>The registration limit rises from three to four (since 21c), and <span class="mono">PreferredObserverHosts</span> &mdash; a per-database property &mdash; ranks which registered host should be master for that database, so a two-site deployment can keep a pair on each site. When the master observer fails, the broker nominates a backup as the new master; no fast-start failover can occur until the new master is observing. This is the &ldquo;both sites&rdquo; placement in the chapter&nbsp;1 rail under 26ai.</td>
-            <td><a class="ext" href="https://docs.oracle.com/en/database/oracle/oracle-database/26/dgbkr/fast-start-failover2.html">26ai docs</a> &middot; <a class="ext" href="https://docs.oracle.com/en/database/oracle/oracle-database/26/dgbkr/preferredobserverhosts.html">property</a> &middot; <a class="ext" href="https://www.ludovicocaldara.net/blog/dg26ai-observer-priority/">Caldara #5</a> &middot; <a class="ext" href="https://www.ludovicocaldara.net/blog/dg26ai-4-observers/">#6</a></td></tr>
           <tr><td><span class="mono">VALIDATE FAST_START FAILOVER</span></td>
-            <td>One DGMGRL command running the whole fast-start failover readiness checklist: configuration health, observer presence and placement, flashback logging, target standby state, threshold and lag-limit sanity, and the <span class="mono">fsfocallout.ora</span> scripts &mdash; the checks that 19c leaves spread across <span class="mono">SHOW</span> commands and views.</td>
+            <td>One DGMGRL command running the documented readiness checklist: fast-start failover properties that are set incorrectly, anything preventing fast-start failover from being enabled or initiated, anything affecting what happens once it is initiated, anything impacting the configuration&rsquo;s stability, and the syntax of <span class="mono">fsfocallout.ora</span> together with the accessibility of the callout scripts. The documented example output also flags an observer that has not been started and flashback logging that is off &mdash; the checks that 19c leaves spread across <span class="mono">SHOW</span> commands and views.</td>
             <td><a class="ext" href="https://docs.oracle.com/en/database/oracle/oracle-database/26/dgbkr/validate-fast_start-failover.html">26ai docs</a> &middot; <a class="ext" href="https://www.ludovicocaldara.net/blog/dg26ai-validate-fsfo/">Caldara #28</a></td></tr>
           <tr><td><span class="mono">V$FAST_START_FAILOVER_CONFIG</span></td>
             <td>New view carrying the fast-start failover configuration &mdash; state, targets, limits, observer presence &mdash; queryable on any member. The <span class="mono">V$DATABASE.FS_FAILOVER_*</span> columns this page&rsquo;s 19c edition cites are deprecated in its favor.</td>
@@ -2103,14 +2109,14 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
             <td>Per-minute samples of the lag that gates fast-start failover, bucketed into a histogram &mdash; the documented way to pick a <span class="mono">FastStartFailoverLagLimit</span> from measured behavior instead of guesswork.</td>
             <td><a class="ext" href="https://docs.oracle.com/en/database/oracle/oracle-database/26/refrn/V-FS_LAG_HISTOGRAM.html">26ai docs</a> &middot; <a class="ext" href="https://www.ludovicocaldara.net/blog/dg26ai-fsfo-lag-histogram/">Caldara #26</a></td></tr>
           <tr><td>SQL-side broker visibility</td>
-            <td>New view <span class="mono">V$DG_BROKER_PROPERTY</span> lists every broker property and value from SQL; <span class="mono">V$DG_BROKER_CONFIG</span> gains <span class="mono">SWITCHOVER_READY</span> and <span class="mono">FAILOVER_READY</span>, role-transition readiness as two columns; <span class="mono">V$FS_FAILOVER_OBSERVERS</span> gains per-observer diagnostics (last ping to primary and target, log and state file paths, the observer&rsquo;s clock).</td>
+            <td>New view <span class="mono">V$DG_BROKER_PROPERTY</span> lists every broker property and value from SQL; <span class="mono">V$DG_BROKER_CONFIG</span> gains <span class="mono">SWITCHOVER_READY</span> and <span class="mono">FAILOVER_READY</span>, role-transition readiness as two columns; <span class="mono">V$FS_FAILOVER_OBSERVERS</span> gains per-observer diagnostics &mdash; seconds since the observer last pinged the primary and the target, and the full paths of its log and state files &mdash; with the caveat that the view&rsquo;s behavior is defined only when it is queried on the primary.</td>
             <td><a class="ext" href="https://docs.oracle.com/en/database/oracle/oracle-database/26/refrn/V-DG_BROKER_PROPERTY.html">26ai docs</a> &middot; <a class="ext" href="https://www.ludovicocaldara.net/blog/dg26ai-v-dg-broker-property/">Caldara #23</a> &middot; <a class="ext" href="https://www.ludovicocaldara.net/blog/dg26ai-switchover-readiness/">#21</a> &middot; <a class="ext" href="https://www.ludovicocaldara.net/blog/dg26ai-enhanced-observer-diagnostics/">#27</a></td></tr>
           <tr><td><span class="mono">PrimaryDatabaseCandidates</span></td>
-            <td>New property restricting which members the broker may ever make primary &mdash; a fence around fast-start failover and every other broker-initiated transition (a manual failover to an excluded member still works). Backported to 19.26, so a patched 19c has it too.</td>
-            <td><a class="ext" href="https://docs.oracle.com/en/database/oracle/oracle-database/26/dgbkr/primarydatabasecandidates.html">26ai docs</a> &middot; <a class="ext" href="https://www.ludovicocaldara.net/blog/dg26ai-primarydatabasecandidates/">Caldara #15</a></td></tr>
+            <td>New property listing the members the broker is allowed to make primary. It bites only while fast-start failover is <em>disabled</em>: there it restricts both <span class="mono">SWITCHOVER</span> and <span class="mono">FAILOVER</span> to the listed databases, and a transition to a member that is not listed is refused with <span class="mono">ORA-16529</span>. With fast-start failover enabled it adds no new restriction, because <span class="mono">FastStartFailoverTarget</span> already governs which member can become primary. The broker adds the current primary itself if the list omits it, and the default &mdash; an empty string &mdash; restricts nothing. Reported as backported to 19.26 by the Data&nbsp;Guard product manager&rsquo;s blog series; not reflected in Oracle&rsquo;s release-update documentation.</td>
+            <td><a class="ext" href="https://docs.oracle.com/en/database/oracle/oracle-database/26/dgbkr/primarydatabasecandidates.html">26ai docs</a> &middot; <a class="ext" href="https://docs.oracle.com/en/error-help/db/ora-16529/">ORA-16529</a> &middot; <a class="ext" href="https://www.ludovicocaldara.net/blog/dg26ai-primarydatabasecandidates/">Caldara #15</a></td></tr>
           <tr><td>Scripting surfaces</td>
-            <td>DGMGRL grows JSON output for its <span class="mono">SHOW</span> commands; the <span class="mono">DBMS_DG</span> package becomes a full PL/SQL configuration API rather than the single 19c failover-initiation call; SQLcl speaks the broker commands; ORDS exposes them over REST. Automation stops screen-scraping DGMGRL.</td>
-            <td><a class="ext" href="https://docs.oracle.com/en/database/oracle/oracle-database/26/arpls/DBMS_DG.html">26ai docs</a> &middot; <a class="ext" href="https://www.ludovicocaldara.net/blog/dg26ai-json-output/">Caldara #14</a> &middot; <a class="ext" href="https://www.ludovicocaldara.net/blog/dg26ai-pl-sql-api/">#10</a> &middot; <a class="ext" href="https://www.ludovicocaldara.net/blog/dg26ai-sqlcl/">#11</a> &middot; <a class="ext" href="https://www.ludovicocaldara.net/blog/dg26ai-ords/">#12</a></td></tr>
+            <td>DGMGRL grows JSON output for its <span class="mono">SHOW</span> commands; the <span class="mono">DBMS_DG</span> package becomes a full PL/SQL configuration API rather than the single 19c failover-initiation call; SQLcl speaks the broker commands; ORDS exposes them over REST. Those last two arrived before 26ai &mdash; the SQLcl <span class="mono">DG</span> command is documented for 21c and the ORDS endpoints ship in 23.3 &mdash; so a 19c site picks them up in the same upgrade. Automation stops screen-scraping DGMGRL.</td>
+            <td><a class="ext" href="https://docs.oracle.com/en/database/oracle/oracle-database/26/arpls/DBMS_DG.html">26ai docs</a> &middot; <a class="ext" href="https://docs.oracle.com/en/database/oracle/sql-developer-command-line/25.3/sqcug/dg-data-guard.html">SQLcl <span class="mono">DG</span></a> &middot; <a class="ext" href="https://docs.oracle.com/en/database/oracle/oracle-rest-data-services/23.3/orrst/api-data-guard.html">ORDS Data Guard REST</a> &middot; <a class="ext" href="https://www.ludovicocaldara.net/blog/dg26ai-json-output/">Caldara #14</a> &middot; <a class="ext" href="https://www.ludovicocaldara.net/blog/dg26ai-pl-sql-api/">#10</a> &middot; <a class="ext" href="https://www.ludovicocaldara.net/blog/dg26ai-sqlcl/">#11</a> &middot; <a class="ext" href="https://www.ludovicocaldara.net/blog/dg26ai-ords/">#12</a></td></tr>
           <tr><td>Faster role transitions</td>
             <td>Switchover and failover internals are reworked; Oracle claims transitions up to several times faster than 19c, with nothing to configure. The role-transition slider in the chapter&nbsp;1 rail stays yours to set &mdash; measure your own transition and enter it.</td>
             <td><a class="ext" href="https://www.ludovicocaldara.net/blog/dg-26ai-faster-role-transitions/">Caldara #1</a></td></tr>
@@ -2120,7 +2126,7 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
         </tbody>
       </table>
     </div>
-    <p class="caption">Deliberately unchanged in 26ai &mdash; every number this page draws: <span class="mono">FastStartFailoverThreshold</span> keeps its default 30&nbsp;s and minimum 6&nbsp;s, <span class="mono">FastStartFailoverLagLimit</span> its default 30&nbsp;s and minimum 5&nbsp;s, the <span class="mono">ObserverPingInterval</span> / <span class="mono">ObserverPingRetry</span> mechanics and defaults are identical, and so is <span class="mono">FastStartFailoverPmyShutdown</span>. A 19c timeline read on this page is still correct under 26ai.</p>
+    <p class="caption">Deliberately unchanged in 26ai &mdash; most of the numbers this page draws: <span class="mono">FastStartFailoverThreshold</span> keeps its default 30&nbsp;s and minimum 6&nbsp;s, the <span class="mono">ObserverPingInterval</span> / <span class="mono">ObserverPingRetry</span> mechanics and defaults are identical, and so is <span class="mono">FastStartFailoverPmyShutdown</span>. <span class="mono">FastStartFailoverLagLimit</span> is the one that moved: 30&nbsp;s default and 5&nbsp;s minimum still, but only in MaxPerformance &mdash; in MaxAvailability it now applies as well, with a broker default of 0. A 19c timeline read on this page is still correct under 26ai as long as MaxAvailability is left at that 0.</p>
     <p class="caption">The practitioner&rsquo;s walkthrough of all of it is <a class="ext" href="https://www.ludovicocaldara.net/blog/dg-26ai-series/">Ludovico Caldara&rsquo;s Data Guard 26ai mini-series</a> (he is the Data Guard product manager; the numbered links above are its posts). The normative text is the <a class="ext" href="https://docs.oracle.com/en/database/oracle/oracle-database/26/dgbkr/fast-start-failover2.html">26ai broker guide&rsquo;s fast-start failover chapter</a> and the <a class="ext" href="https://docs.oracle.com/en/database/oracle/oracle-database/26/dgbkr/oracle-data-guard-broker-properties.html">26ai broker properties reference</a>.</p>
   </section>
 
@@ -2141,22 +2147,26 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
             <td>How frequently the observer pings the primary.</td></tr>
           <tr><td><span class="mono">ObserverPingRetry</span></td><td class="n">10</td><td class="n">10</td>
             <td>Number of times the observer retries a failed ping before initiating failover. A ping counts as failed when there is no answer within <span class="mono">ObserverPingInterval</span>.</td></tr>
-          <tr><td><span class="mono">FastStartFailoverLagLimit</span></td><td class="n">30 s</td><td class="n">5 s</td>
+          <tr><td><span class="mono">FastStartFailoverLagLimit</span></td>
+            <td class="n" data-ver="19">30 s</td><td class="n" data-ver="26">30 s MaxPerf &middot; 0 MaxAvail</td>
+            <td class="n" data-ver="19">5 s</td><td class="n" data-ver="26">0, or 5 s</td>
             <td>MaxPerformance only. Maximum seconds the standby's apply point may lag the primary's redo generation point for fast-start failover to be permitted. Bounds the data loss.</td></tr>
           <tr data-ver="26"><td><span class="mono">FastStartFailoverLagType</span></td><td class="n">APPLY</td><td class="n">&mdash;</td>
             <td>26ai. Which lag <span class="mono">FastStartFailoverLagLimit</span> is measured against: <span class="mono">APPLY</span>, the standby&rsquo;s apply point, or <span class="mono">TRANSPORT</span>, the redo it has received. Under <span class="mono">TRANSPORT</span> the limit bounds redo that never arrived; redo already received is still applied during terminal recovery.</td></tr>
           <tr data-ver="26"><td><span class="mono">FastStartFailoverLagGraceTime</span></td><td class="n">0 &mdash; off</td><td class="n">5 s</td>
             <td>26ai. Seconds before the lag limit at which the primary asks permission to enter the <span class="mono">LAGGING</span> state. With the answer already granted the crossing costs it nothing; left at 0 it asks at the crossing and waits there for the answer.</td></tr>
           <tr data-ver="26"><td><span class="mono">PrimaryDatabaseCandidates</span></td><td class="n">&mdash;</td><td class="n">&mdash;</td>
-            <td>Restricts which members the broker may make primary. It governs broker-initiated transitions only, and it was backported to 19.26.</td></tr>
+            <td>26ai. Lists the members the broker may make primary. While fast-start failover is disabled it restricts switchover and failover to that list, and an excluded target is refused with <span class="mono">ORA-16529</span>; once fast-start failover is enabled it adds nothing, because <span class="mono">FastStartFailoverTarget</span> already governs the target. Reported as backported to 19.26 by the product manager&rsquo;s blog, not by Oracle&rsquo;s release-update notes.</td></tr>
           <tr><td><span class="mono">FastStartFailoverPmyShutdown</span></td><td class="n">TRUE</td><td class="n">&mdash;</td>
             <td>When TRUE, a primary whose <span class="mono">V$DATABASE.FS_FAILOVER_STATUS</span> has been <span class="mono">STALLED</span> for longer than <span class="mono">FastStartFailoverThreshold</span> seconds, and that cannot reach the observer or the target standby, shuts itself down with an abort.</td></tr>
+          <tr><td><span class="mono">ObserverOverride</span></td><td class="n">FALSE</td><td class="n">&mdash;</td>
+            <td>When TRUE, an automatic failover may occur once the observer has lost connectivity to the primary &mdash; the documentation says this holds even if the standby has a healthy connection to the primary. At the default FALSE, a target standby that still reaches the primary is what prevents the attempt.</td></tr>
           <tr><td><span class="mono">FastStartFailoverAutoReinstate</span></td><td class="n">TRUE</td><td class="n">&mdash;</td>
-            <td>The old primary is automatically reinstated as a standby when it returns.</td></tr>
+            <td>Reinstates the old primary as a standby, but only after a failover the observer initiated because the primary crashed or was isolated &mdash; never after a user-configurable health condition or a <span class="mono">DBMS_DG.INITIATE_FS_FAILOVER</span> call. It needs Flashback Database enabled on both databases and the former primary started and mounted, which is a manual restart when <span class="mono">FastStartFailoverPmyShutdown</span> aborted it, with the master observer able to connect to it. Without Oracle Clusterware or Oracle Restart, static service names are required.</td></tr>
         </tbody>
       </table>
     </div>
-    <p class="caption">Documented quirk: the <span class="mono">FastStartFailoverThreshold</span> property is ignored when the <span class="mono">ObserverPingRetry</span> and <span class="mono">ObserverPingInterval</span> properties are set. Toggle the ping properties on in the rail to see detection collapse to about a second.</p>
+    <p class="caption">Documented quirk: the <span class="mono">FastStartFailoverThreshold</span> property is ignored when the <span class="mono">ObserverPingRetry</span> and <span class="mono">ObserverPingInterval</span> properties are set. The ignore is documented; the exact arithmetic drawn here, interval &times; (retries + 1), is this page&rsquo;s model of the documentation&rsquo;s &ldquo;nearly 1 second.&rdquo; Toggle the ping properties on in the rail to see detection collapse to about a second.</p>
     <p class="caption" data-ver="26">Where 26ai reports it: <span class="mono">V$FAST_START_FAILOVER_CONFIG</span> is the view for the fast-start failover configuration, replacing the deprecated <span class="mono">V$DATABASE.FS_FAILOVER_*</span> columns; <span class="mono">V$FS_LAG_HISTOGRAM</span> samples the lag per minute into buckets and is the tuning aid for <span class="mono">FastStartFailoverLagLimit</span>; <span class="mono">V$DG_BROKER_PROPERTY</span> lists the broker properties; and <span class="mono">V$DG_BROKER_CONFIG</span> gains <span class="mono">SWITCHOVER_READY</span> and <span class="mono">FAILOVER_READY</span>. <span class="mono">VALIDATE FAST_START FAILOVER</span> in DGMGRL runs the readiness checks in one command.</p>
 
     <div class="sec-hd" style="margin-top:24px">
@@ -2187,10 +2197,11 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
   </section>
 
   <div class="foot">
-    <p><sup>1</sup>The threshold is skipped entirely for user-configurable health conditions and for application-initiated failover through <span class="mono">DBMS_DG.INITIATE_FS_FAILOVER</span>. Neither is drawn on the timeline.</p>
+    <p><sup>1</sup>The threshold is skipped entirely for user-configurable health conditions and for application-initiated failover through <span class="mono">DBMS_DG.INITIATE_FS_FAILOVER</span>. Neither is drawn on the timeline. The detection time drawn when the two <span class="mono">ObserverPing*</span> properties are set &mdash; interval &times; (retries + 1) &mdash; is this page&rsquo;s model as well: the documentation states only that the threshold is then ignored and that detection can be reduced to nearly one second.</p>
     <p><sup>2</sup>Apply-time figures are illustrative. Terminal recovery is modelled one-to-one against the apply lag at failure time so the relationship is visible; real duration depends on the redo volume left and on the environment.</p>
     <p><sup>3</sup>Client-side constants in the application view are nominal: an <span class="mono">ORA-12514</span> refusal is drawn as 0.2 s, an OS-level refusal as 0.15 s, session establishment as 0.3 s, the broker&rsquo;s pre-switchover checks as 1 s, and the primary&rsquo;s conversion to a standby as 2 s. The role-based service is assumed registered the instant the new primary opens. The former primary&rsquo;s restart band deliberately ends without a marker; the new primary&rsquo;s open never waits for it.</p>
     <p><sup>4</sup>The reopen panel is idealized: retries are drawn at exact <span class="mono">ReopenSecs</span> multiples (transport really retries at the first log switch after the interval), the gap drains at five times the generation rate, and the apply lag grows from near zero at one second per second, which puts the MaxPerformance marker exactly one <span class="mono">FastStartFailoverLagLimit</span> after the break. The commit panel draws RFS processing as zero and lets <span class="mono">ASYNC</span> redo leave as soon as the local write finishes.</p>
+    <p><sup>5</sup>Oracle&rsquo;s own 26ai pages disagree with themselves about <span class="mono">FastStartFailoverLagLimit</span>. The fast-start failover chapter&rsquo;s <em>Fast-start Failover Protection Modes</em> section, the per-mode defaults and the <span class="mono">V$FAST_START_FAILOVER_CONFIG</span> modes all describe the MaxAvailability behavior above; the chapter&rsquo;s <em>Task 3</em> and the closing line of the property page still carry the 19c sentence saying the property is used only in maximum performance mode. This page follows the protection-modes section.</p>
   </div>
   </section>
 
@@ -2234,15 +2245,43 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
     /* the page eyebrow */
     'Oracle 19c Data Guard broker': 'Oracle 26ai Data Guard broker',
 
-    /* chapter 1, "No observer, no fast-start failover". Four registered
-       observers since 21c, ranked by PreferredObserverHosts, and losing the
-       master is a nomination rather than a straight promotion. */
-    'The primary still commits and the standby still applies, but <span class="mono">V$DATABASE.FS_FAILOVER_STATUS</span> reads <span class="mono">PRIMARY UNOBSERVED</span>, <span class="mono">FS_FAILOVER_OBSERVER_PRESENT</span> reads <span class="mono">NO</span>, and the broker raises <span class="mono">ORA-16820</span>. 19c registers up to three observers; if the master is lost while primary and standby stay connected, the broker promotes a backup on its own.':
-      'The primary still commits and the standby still applies, but <span class="mono">V$DATABASE.FS_FAILOVER_STATUS</span> reads <span class="mono">PRIMARY UNOBSERVED</span>, <span class="mono">FS_FAILOVER_OBSERVER_PRESENT</span> reads <span class="mono">NO</span>, and the broker raises <span class="mono">ORA-16820</span>. 26ai registers up to four observers and ranks them with <span class="mono">PreferredObserverHosts</span>; if the master is lost while primary and standby stay connected, the broker nominates a backup as the new master, and no fast-start failover can occur until it is observing.',
+    /* chapter 1, "An unobserved configuration cannot fail over". Four
+       registered observers since 21c, ranked by PreferredObserverHosts, and
+       losing the master is a nomination rather than a straight promotion. The
+       query-side split -- SYNCHRONIZED plus OBSERVER_PRESENT NO on the primary,
+       PRIMARY UNOBSERVED on the target standby -- is the same in both editions
+       and is carried through the variant unchanged. */
+    'The primary still commits and the standby still applies, and which database you query decides what you see: on the primary <span class="mono">V$DATABASE.FS_FAILOVER_STATUS</span> stays <span class="mono">SYNCHRONIZED</span> while <span class="mono">FS_FAILOVER_OBSERVER_PRESENT</span> reads <span class="mono">NO</span>; the target standby is where <span class="mono">FS_FAILOVER_STATUS</span> reads <span class="mono">PRIMARY UNOBSERVED</span>. In time the broker raises <span class="mono">ORA-16820</span>. 19c registers up to three observers; if the master is lost while primary and standby stay connected, the broker promotes a backup on its own.':
+      'The primary still commits and the standby still applies, and which database you query decides what you see: on the primary <span class="mono">V$DATABASE.FS_FAILOVER_STATUS</span> stays <span class="mono">SYNCHRONIZED</span> while <span class="mono">FS_FAILOVER_OBSERVER_PRESENT</span> reads <span class="mono">NO</span>; the target standby is where <span class="mono">FS_FAILOVER_STATUS</span> reads <span class="mono">PRIMARY UNOBSERVED</span>. In time the broker raises <span class="mono">ORA-16820</span>. 26ai registers up to four observers and ranks them with <span class="mono">PreferredObserverHosts</span>; if the master is lost while primary and standby stay connected, the broker nominates a backup as the new master, and no fast-start failover can occur until it is observing.',
+
+    /* chapter 1, the lag-limit rail note in the markup. 26ai gave the property
+       a MaxAvailability role: 0 there is the 19c zero-loss rule written as a
+       number, non-zero makes MaxAvailability bounded-loss. renderControls
+       rewrites this note from state as soon as the models run; this variant is
+       what a reader sees before that and in a printout. */
+    'MaxPerformance only. Not evaluated in MaxAvailability, where the standby must be synchronized instead.':
+      'MaxPerformance always, and MaxAvailability too since 26ai: 0 there, the broker default, means the standby must hold all the redo and the failover loses nothing, while a non-zero limit permits failover while the apply lag is within it and bounds the loss by it.',
+
+    /* chapter 1, "Readiness depends on the protection mode". MaxAvailability is
+       now either check, depending on the limit. */
+    'In MaxAvailability and MaxProtection the standby must have been synchronized at failure time. In MaxPerformance its apply lag must be at or below <span class="mono">FastStartFailoverLagLimit</span>. If the check fails, failover is not permitted.':
+      'In MaxProtection the standby must have been synchronized at failure time, and so must it in MaxAvailability while <span class="mono">FastStartFailoverLagLimit</span> is 0, its default there. In MaxPerformance, and in MaxAvailability with a non-zero limit, the standby is ready while its apply lag is at or below <span class="mono">FastStartFailoverLagLimit</span>. If the check fails, failover is not permitted.',
+
+    /* chapter 2, "The lag limit expires during the outage" */
+    'With nothing arriving the standby falls behind in real time: <span class="mono">UNSYNCHRONIZED</span> from the first second in MaxAvailability, past <span class="mono">FastStartFailoverLagLimit</span> (default 30 s) in MaxPerformance. Either way, no failover is permitted until the destination ships again and the standby resynchronizes.':
+      'With nothing arriving the standby falls behind in real time: past <span class="mono">FastStartFailoverLagLimit</span> (default 30 s) in MaxPerformance, and in MaxAvailability either <span class="mono">UNSYNCHRONIZED</span> from the first second, where the limit is 0, or past that same limit where it is non-zero. Either way, no failover is permitted until the destination ships again and the standby resynchronizes.',
+
+    /* chapter 2, the NET_TIMEOUT caption */
+    'In MaxPerformance (ASYNC) commits never wait for the standby, so <span class="mono">NET_TIMEOUT</span> never touches user sessions and never appears on the failover timeline; eligibility and data loss are bounded by <span class="mono">FastStartFailoverLagLimit</span> instead.':
+      'In MaxPerformance (ASYNC) commits never wait for the standby, so <span class="mono">NET_TIMEOUT</span> never touches user sessions and never appears on the failover timeline; eligibility and data loss are bounded by <span class="mono">FastStartFailoverLagLimit</span> instead. A 26ai MaxAvailability configuration with a non-zero limit is bounded the same way, on the same property.',
+
+    /* chapter 6, the broker-properties row */
+    "MaxPerformance only. Maximum seconds the standby's apply point may lag the primary's redo generation point for fast-start failover to be permitted. Bounds the data loss.":
+      "Maximum seconds the standby's apply point may lag the primary's redo generation point for fast-start failover to be permitted; it bounds the data loss. The broker default is 30 s in MaxPerformance and 0 in MaxAvailability, where 0 means the standby must have received everything and the failover is zero-loss. Any non-zero value, minimum 5 s, makes MaxAvailability bounded-loss as well.",
 
     /* chapter 2, the ASYNC card */
     'Under <span class="mono">ASYNC</span> + <span class="mono">NOAFFIRM</span>, the broker default, a commit never waits for the destination: it costs the local write alone. Redo still on the wire is the exposure, which is why MaxPerformance gates fast-start failover on <span class="mono">FastStartFailoverLagLimit</span>. The broker lists <span class="mono">ASYNC</span> for MaxPerformance and <span class="mono">SYNC</span>/<span class="mono">FASTSYNC</span> for MaxAvailability; MaxProtection is out of scope here.':
-      'Under <span class="mono">ASYNC</span> + <span class="mono">NOAFFIRM</span>, the broker default, a commit never waits for the destination: it costs the local write alone. Redo still on the wire is the exposure, which is why MaxPerformance gates fast-start failover on <span class="mono">FastStartFailoverLagLimit</span>. In 26ai a standby that has fallen behind is fed over several automatic <span class="mono">ASYNC</span> connections at once, with nothing to configure, so the gap closes on more than one stream. The broker lists <span class="mono">ASYNC</span> for MaxPerformance and <span class="mono">SYNC</span>/<span class="mono">FASTSYNC</span> for MaxAvailability; MaxProtection is out of scope here.',
+      'Under <span class="mono">ASYNC</span> + <span class="mono">NOAFFIRM</span>, the broker default, a commit never waits for the destination: it costs the local write alone. Redo still on the wire is the exposure, which is why MaxPerformance gates fast-start failover on <span class="mono">FastStartFailoverLagLimit</span>. In 26ai a standby that has fallen behind is fed over several automatic <span class="mono">ASYNC</span> connections at once, with nothing to configure, so the gap closes on more than one stream. The 26ai prerequisites table lists <span class="mono">ASYNC</span> among the transports allowed for a MaxAvailability fast-start failover target as well, where 19c listed only <span class="mono">SYNC</span> and <span class="mono">FASTSYNC</span>; zero data loss there still wants one of those two. MaxProtection is out of scope here.',
 
     /* chapter 3, the connect-string table caption. The second citation is
        generalized rather than renamed: the section exists across releases, its
@@ -2274,8 +2313,8 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
       'Environment-dependent, not a broker parameter. Covers the role change and the read-write open once the redo is applied. Oracle reports role transitions completing faster in 26ai; the duration is still the environment\u2019s, which is why it stays a number you set.',
 
     /* the unobserved callout, chapter 1 */
-    'The configuration is running unobserved: <span class="mono">V$DATABASE.FS_FAILOVER_STATUS</span> reads <span class="mono">PRIMARY UNOBSERVED</span>, <span class="mono">FS_FAILOVER_OBSERVER_PRESENT</span> reads <span class="mono">NO</span>, in time the broker raises <span class="mono">ORA-16820</span>, and a failover attempt fails with <span class="mono">ORA-16658</span>. Restart the observer, or register up to three (19c) so the broker can promote a backup.':
-      'The configuration is running unobserved: <span class="mono">V$DATABASE.FS_FAILOVER_STATUS</span> reads <span class="mono">PRIMARY UNOBSERVED</span>, <span class="mono">FS_FAILOVER_OBSERVER_PRESENT</span> reads <span class="mono">NO</span>, in time the broker raises <span class="mono">ORA-16820</span>, and a failover attempt fails with <span class="mono">ORA-16658</span>. Restart the observer, or register up to four (26ai) so the broker has a backup to nominate.',
+    'The configuration is running unobserved: on the primary <span class="mono">V$DATABASE.FS_FAILOVER_STATUS</span> stays <span class="mono">SYNCHRONIZED</span> with <span class="mono">FS_FAILOVER_OBSERVER_PRESENT</span> reading <span class="mono">NO</span>, while the target standby reports <span class="mono">PRIMARY UNOBSERVED</span>; in time the broker raises <span class="mono">ORA-16820</span>, and a failover attempt fails with <span class="mono">ORA-16658</span>. Restart the observer, or register up to three (19c) so the broker can promote a backup.':
+      'The configuration is running unobserved: on the primary <span class="mono">V$DATABASE.FS_FAILOVER_STATUS</span> stays <span class="mono">SYNCHRONIZED</span> with <span class="mono">FS_FAILOVER_OBSERVER_PRESENT</span> reading <span class="mono">NO</span>, while the target standby reports <span class="mono">PRIMARY UNOBSERVED</span>; in time the broker raises <span class="mono">ORA-16820</span>, and a failover attempt fails with <span class="mono">ORA-16658</span>. Restart the observer, or register up to four (26ai) so the broker has a backup to nominate.',
 
     /* the hand-written destination card's closing comment */
     'in 19c \u2014 set the attributes via EDIT DATABASE ... SET PARAMETER':
@@ -2477,11 +2516,12 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
   /**
    * computeFsfo(c) -> derived model
    * c = { scenario:'crash'|'isolated'|'partition'|'dc2down'|'observer-lost'|'switchover',
-   *       observerLoc:'none'|'dc1'|'dc2'|'dc3'|'dc1dc2', mode:'maxavail'|'maxperf',
+   *       observerLoc:'none'|'dc1'|'dc2'|'dc3', mode:'maxavail'|'maxperf',
    *       threshold:s, pingSet:bool, pingInterval:ms, pingRetry:n,
    *       standbyLag:s, lagLimit:s, roleTransition:s, pmyShutdown:bool,
    *       latency:ms (round trip between any two of the three hosts),
-   *       version:'19c'|'26ai', lagType:'apply'|'transport', lagGraceTime:s }
+   *       version:'19c'|'26ai', lagType:'apply'|'transport', lagGraceTime:s,
+   *       lagPolicy:'zero'|'bounded' (26ai MaxAvailability only) }
    *
    * Every return path carries m.outcome -- 'failover' | 'continues' |
    * 'stall-noone' | 'manual' | 'observer-lost' | 'switchover' -- plus the
@@ -2503,27 +2543,12 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
     // which carry no placement at all, keep reading exactly as they did.
     var loc = c.observerLoc || 'dc3';
 
-    // Observers on both database sites is a 26ai placement: up to four of them,
-    // ranked by PreferredObserverHosts, so the master can sit beside the
-    // primary and a backup beside the standby. Asked for under 19c -- only a
-    // crafted link can -- it falls back to the third site, which is where the
-    // rail pushes the radio too.
-    if (!v26 && loc === 'dc1dc2') loc = 'dc3';
-    var multi = loc === 'dc1dc2';
-
     // "Observer lost" is an armed configuration whose observer died. With no
     // observer deployed at all there is nothing to lose and fast-start
     // failover was never armed, so that pairing is a plain crash. The
     // effective scenario is echoed back so the drawings never disagree.
     var sc = c.scenario;
     if (sc === 'observer-lost' && loc === 'none') sc = 'crash';
-
-    // A master observer the configuration can no longer reach is replaced: the
-    // broker nominates a backup, and no fast-start failover is possible until
-    // that backup is observing. Oracle gives no duration for it, so this is a
-    // flag and never a number -- no clock below moves because of it.
-    var nomination = multi && (sc === 'isolated' || sc === 'partition' ||
-      sc === 'observer-lost');
 
     // 26ai, MaxPerformance: the primary asks permission before it enters the
     // LAGGING state. Armed in advance by a grace time it holds the answer when
@@ -2536,6 +2561,22 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
       ? { armed: lagGrace >= 5, graceTime: lagGrace, maxSeconds: c.threshold }
       : null;
 
+    // 26ai gave FastStartFailoverLagLimit a MaxAvailability role, which is the
+    // one behavioral change on this page that the edition switch has to carry.
+    // 0 -- the broker default in MaxAvailability from 26ai on -- is the 19c
+    // rule spelled as a number: the standby must have received all the redo,
+    // and the failover loses nothing. A non-zero limit makes MaxAvailability
+    // bounded-loss instead, permitted while the apply lag is at or below it.
+    // Defaulted to the zero-loss case here, exactly the way the placement above
+    // is, so an older shared link, stored configuration or export file -- none
+    // of which carries this at all -- keeps drawing what it always drew.
+    // Sources: the 26ai broker guide's "Fast-start Failover Protection Modes"
+    // section and the per-mode defaults, NOT the property page's closing line
+    // or Task 3, which both still carry the stale MaxPerformance-only sentence.
+    var availBounded = v26 && c.mode === 'maxavail' && c.lagPolicy === 'bounded';
+    // Where the lag limit is the readiness gate and what bounds the loss.
+    var lagGated = c.mode === 'maxperf' || availBounded;
+
     // Echoed for the prose only. Under TRANSPORT the limit gates redo the
     // standby has received rather than redo it has applied -- a second quantity
     // this page does not have and must not invent, so no arithmetic changes.
@@ -2547,17 +2588,13 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
     // alone is enough. But an unobserved configuration cannot fast-start fail
     // over: no clock starts, nothing is initiated, nothing opens. The exposure
     // is the next failure, which ifDiedNow measures.
-    //
-    // With observers on both sites this branch is skipped: only the master
-    // died, a backup is nominated in its place, and the configuration is armed
-    // again -- so the general machinery below decides that cell instead.
-    if (sc === 'observer-lost' && !multi) {
+    if (sc === 'observer-lost') {
       var oTick = pickTickStep(60);
       var oHorizon = Math.max(oTick, Math.ceil(60 / oTick) * oTick);
       return {
         outcome: 'observer-lost', scenario: sc, stalled: false,
         standbyGone: false, redoFlowing: true, pmyReachable: true,
-        switchover: false, nomination: nomination, lagStall: lagStall, lagType: lagType,
+        switchover: false, lagStall: lagStall, lagType: lagType,
         observerLost: true, pingSet: pingSet, detect: null, initiate: null,
         netHop: (c.latency || 0) / 2000, execStart: null,
         applyRemaining: 0, tOpen: null, blocked: false, abort: null,
@@ -2606,7 +2643,7 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
       return {
         outcome: 'switchover', scenario: sc, stalled: false,
         standbyGone: false, redoFlowing: true, pmyReachable: true,
-        nomination: nomination, lagStall: lagStall, lagType: lagType,
+        lagStall: lagStall, lagType: lagType,
         switchover: true, observerLost: false, pingSet: pingSet,
         detect: null, initiate: null, abort: null, execStart: null,
         // The DGMGRL command's own network hop is left out on purpose: it is a
@@ -2642,18 +2679,11 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
     // it still talking to a primary nobody else can reach. A third-site
     // observer keeps seeing the primary through a DC1-to-DC2 cut, which is
     // exactly the arbitration Oracle recommends the third site for.
-    //
-    // With observers on both sites the master is whichever one the side that
-    // still has the target standby can reach. Any cut that separates the two
-    // sites moves the role to the backup beside the standby, and that one has
-    // lost the primary; only the standby site's own loss leaves the master
-    // where it was.
-    var obsSeesPmy = obsAlive && pmyAlive && (multi
-      ? (sc === 'dc2down')
-      : (sc === 'crash' ? false
+    var obsSeesPmy = obsAlive && pmyAlive &&
+      (sc === 'crash' ? false
         : sc === 'isolated' ? loc === 'dc1'
           : sc === 'partition' ? (loc === 'dc1' || loc === 'dc3')
-            : true));
+            : true);
 
     // Redo transport, which is the standby's own view of the primary.
     var sbySeesPmy = sbyAlive && pmyAlive &&
@@ -2698,7 +2728,7 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
           outcome: 'manual', scenario: sc, stalled: false,
           standbyGone: standbyGone, redoFlowing: redoFlowing,
           pmyReachable: pmyReachable,
-          nomination: nomination, lagStall: lagStall, lagType: lagType,
+          lagStall: lagStall, lagType: lagType,
           switchover: false, observerLost: false, pingSet: pingSet,
           detect: null, initiate: null, netHop: (c.latency || 0) / 2000,
           execStart: null, applyRemaining: 0, tOpen: null, blocked: false,
@@ -2727,7 +2757,7 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
           outcome: 'stall-noone', scenario: sc, stalled: true,
           standbyGone: standbyGone, redoFlowing: redoFlowing,
           pmyReachable: pmyReachable,
-          nomination: nomination, lagStall: lagStall, lagType: lagType,
+          lagStall: lagStall, lagType: lagType,
           switchover: false, observerLost: false, pingSet: pingSet,
           detect: null, initiate: null, netHop: (c.latency || 0) / 2000,
           execStart: null, applyRemaining: 0, tOpen: null, blocked: false,
@@ -2749,7 +2779,7 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
         outcome: 'continues', scenario: sc, stalled: false,
         standbyGone: standbyGone, redoFlowing: redoFlowing,
         pmyReachable: pmyReachable,
-        nomination: nomination, lagStall: lagStall, lagType: lagType,
+        lagStall: lagStall, lagType: lagType,
         switchover: false, observerLost: false, pingSet: pingSet,
         detect: null, initiate: null, netHop: (c.latency || 0) / 2000,
         execStart: null, applyRemaining: 0, tOpen: null, blocked: false,
@@ -2770,8 +2800,11 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
     // connection. The ping properties, when set, replace it for detection.
     var initiate = pingSet ? detect : c.threshold;
 
-    // MaxPerformance readiness check. Failing it forbids fast-start failover.
-    var blocked = c.mode === 'maxperf' && c.standbyLag > c.lagLimit;
+    // The lag readiness check. Failing it forbids fast-start failover. It runs
+    // in MaxPerformance always, and in a 26ai MaxAvailability whose lag limit
+    // is non-zero; MaxAvailability at 0 requires a synchronized standby, which
+    // is what every 19c cell on this page draws.
+    var blocked = lagGated && c.standbyLag > c.lagLimit;
 
     // One-way network hop, seconds. Timers (threshold, ping windows) are not
     // stretched by latency; the only place it enters the failover clock is the
@@ -2788,7 +2821,7 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
     // and under a severed DC1-to-DC2 link watched by a standby-site observer.
     var abort = (stalled && c.pmyShutdown) ? c.threshold : null;
 
-    var dataLossKind = blocked ? 'na' : (c.mode === 'maxavail' ? 'none' : 'bounded');
+    var dataLossKind = blocked ? 'na' : (lagGated ? 'bounded' : 'none');
     var dataLossSeconds = dataLossKind === 'bounded' ? c.standbyLag : 0;
 
     // Adaptive horizon: whatever is actually drawn, plus a margin.
@@ -2806,7 +2839,7 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
       outcome: 'failover', scenario: sc, stalled: stalled,
       standbyGone: standbyGone, redoFlowing: redoFlowing,
       pmyReachable: pmyReachable,
-      nomination: nomination, lagStall: lagStall, lagType: lagType,
+      lagStall: lagStall, lagType: lagType,
       switchover: false,
       observerLost: false, pingSet: pingSet, detect: detect, initiate: initiate,
       netHop: netHop, execStart: execStart,
@@ -3072,7 +3105,8 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
    *
    * r = { reopen:s, maxFailure:n (0 = unlimited), outage:s, rate:MB/s,
    *       mode:'maxavail'|'maxperf', lagLimit:s,
-   *       version:'19c'|'26ai', lagGraceTime:s, threshold:s }
+   *       version:'19c'|'26ai', lagGraceTime:s, threshold:s,
+   *       lagPolicy:'zero'|'bounded' (26ai MaxAvailability only) }
    *
    * REOPEN gates eligibility and the log switch supplies the trigger: redo
    * transport attempts to reopen failed destinations at log switch time, when
@@ -3118,8 +3152,15 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
 
     // Apply lag is assumed near 0 at t = 0 and grows one second per second
     // while nothing arrives -- footnote 4. MaxAvailability needs the standby
-    // synchronized, and it is unsynchronized the instant the link breaks.
-    var fsfoLostAt = mode === 'maxperf' ? Math.max(0, r.lagLimit || 0) : 0;
+    // synchronized, and it is unsynchronized the instant the link breaks --
+    // unless this is 26ai and its FastStartFailoverLagLimit is non-zero, in
+    // which case the lag limit is what disarms it, exactly as in
+    // MaxPerformance. Defaulted to the zero-loss case, so a caller that knows
+    // nothing about the policy gets what it always got.
+    var availBoundedR = r.version === '26ai' && mode === 'maxavail' &&
+      r.lagPolicy === 'bounded';
+    var lagGatedR = mode === 'maxperf' || availBoundedR;
+    var fsfoLostAt = lagGatedR ? Math.max(0, r.lagLimit || 0) : 0;
     var fsfoBackAt = resyncAt;                       // null when disabled
 
     // 26ai, MaxPerformance: entering the LAGGING state needs the primary's
@@ -3156,7 +3197,7 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
       disabledAt: disabledAt, reconnectAt: reconnectAt,
       catchupSecs: catchupSecs, resyncAt: resyncAt,
       peakExposureSecs: peakExposureSecs, peakExposureMB: rate * peakExposureSecs,
-      fsfoLostAt: fsfoLostAt, fsfoBackAt: fsfoBackAt,
+      fsfoLostAt: fsfoLostAt, fsfoBackAt: fsfoBackAt, lagGated: lagGatedR,
       lagGraceArmed: lagGraceArmed, lagGraceTime: lagGraceR,
       lagStallAt: lagStallAt, lagStallMax: lagStallMax,
       horizon: horizon, preRoll: preRoll, tickStep: tickStep
@@ -3207,9 +3248,18 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
     pingSet: false,
     pingInterval: 100, pingRetry: 10, standbyLag: 10, lagLimit: 30,
     roleTransition: 15, latency: 0, pmyShutdown: true,
-    lagType: 'apply', lagGraceTime: 0
+    lagType: 'apply', lagGraceTime: 0, lagPolicy: 'zero'
   };
   var C = Object.assign({}, DEFAULTS);
+
+  /* The 26ai MaxAvailability lag policy, read the way the models read it: only
+     26ai has it, only MaxAvailability uses it, and "zero" is the release's own
+     default there. Everything on the page that used to test for MaxPerformance
+     alone asks lagGated() instead. */
+  function availBounded() {
+    return C.version === '26ai' && C.mode === 'maxavail' && C.lagPolicy === 'bounded';
+  }
+  function lagGated() { return C.mode === 'maxperf' || availBounded(); }
 
   /* connect-string state -- defaults mirror the parameters' real defaults;
      "Tuned" applies the HA guide's shape (short transport timeout, generous
@@ -3261,10 +3311,11 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
     pingRetry: $('c-pingretry'), lag: $('c-lag'), lagLimit: $('c-laglimit'),
     role: $('c-role'), latency: $('c-latency'), shutdown: $('c-shutdown'), reset: $('c-reset'),
     topo: $('topo-wrap'),
-    lagGrace: $('c-laggrace'), vLagGrace: $('v-laggrace'), olBoth: $('ol-both'),
+    lagGrace: $('c-laggrace'), vLagGrace: $('v-laggrace'),
     ctlLagType: $('ctl-lagtype'), ctlLagGrace: $('ctl-laggrace'),
     ctlScenario: $('ctl-scenario'), ctlObsloc: $('ctl-obsloc'),
     nLagType: $('n-lagtype'), nLagGrace: $('n-laggrace'),
+    ctlLagPolicy: $('ctl-lagpolicy'), nLagPolicy: $('n-lagpolicy'),
     ctlThreshold: $('ctl-threshold'), ctlPing: $('ctl-ping'), ctlLagLimit: $('ctl-laglimit'),
     ctlShutdown: $('ctl-shutdown'), ctlPingSet: $('ctl-pingset'), ctlLag: $('ctl-lag'),
     ctlRole: $('ctl-role'), wrap: $('tl-wrap'), chips: $('chips'),
@@ -3349,7 +3400,7 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
      Borrowed and given back exactly like the two sets above. */
   var NOFSFO_NOTES = {
     scenario: 'Whatever fails here, nothing is promoted automatically \u2014 with no observer deployed, fast-start failover is not enabled.',
-    obsloc: 'No observer is deployed, so fast-start failover is not enabled. A manual failover is always available and is the only thing that can promote the standby.',
+    obsloc: 'No observer is deployed, so fast-start failover is not enabled. A manual failover needs no observer while it is disabled, and is the only thing that can promote the standby.',
     threshold: 'Nothing counts this down: the property exists, but with no observer deployed there is no fast-start failover for it to govern.',
     pingset: 'There is no observer to run the ping loop, and no fast-start failover for it to detect.',
     lagLimit: 'Nothing evaluates the standby\u2019s readiness \u2014 no automatic promotion is ever considered here, so nothing is bounded by this.',
@@ -3380,30 +3431,32 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
   var V19_NOTES = {
     lagType: 'A 26ai property. In 19c the lag limit is always measured against the standby\u2019s apply point, so there is nothing to choose.',
     lagGrace: 'A 26ai property. In 19c the primary asks permission to enter the <span class="mono">LAGGING</span> state only once the limit has already been reached.',
-    obsBoth: '26ai registers up to four observers and ranks them with <span class="mono">PreferredObserverHosts</span>, which is what puts one beside each database. 19c registers up to three and this page models a single one, so the placement is a choice of site.'
+    lagPolicy: 'A 26ai behavior. In 19c <span class="mono">FastStartFailoverLagLimit</span> is not evaluated in MaxAvailability at all: readiness there is always a synchronized standby, so there is nothing to choose.'
+  };
+
+  /* 26ai, MaxAvailability: which FastStartFailoverLagLimit the mode runs on.
+     Zero is the release's own default there and reproduces every 19c drawing
+     on this page; bounded is the new behavior. Borrowed and given back like
+     every other note table here. */
+  var LAGPOLICY_NOTES = {
+    zero: '<span class="mono">FastStartFailoverLagLimit = 0</span>, the broker default for MaxAvailability in 26ai: the standby must have received all the redo the primary generated, and the failover loses nothing. <span class="mono">V$FAST_START_FAILOVER_CONFIG</span> calls this <span class="mono">ZERO DATA LOSS</span>.',
+    bounded: 'The limit above applies in MaxAvailability too: failover is permitted while the apply lag is at or below <span class="mono">{0} s</span>, and that is what the loss is bounded by. <span class="mono">V$FAST_START_FAILOVER_CONFIG</span> calls this <span class="mono">POTENTIAL DATA LOSS</span>.',
+    perf: 'MaxAvailability only. In MaxPerformance the limit above is always the gate, and the loss is always bounded by it.',
+    nofsfo: 'No observer is deployed, so no fast-start failover is armed and nothing evaluates a lag limit or a data-loss policy here.'
   };
 
   var LAGTYPE_NOTES = {
     apply: 'The default. <span class="mono">FastStartFailoverLagLimit</span> is measured against the standby\u2019s apply point \u2014 the same quantity the slider above sets.',
     xpt: 'The limit is measured against the redo the standby has received rather than what it has applied. What it bounds is redo that never arrived; redo already received is still applied during terminal recovery, so the drawings above do not change.',
-    avail: 'Not evaluated in MaxAvailability, where readiness means the standby was synchronized at failure time \u2014 so there is no lag for this to pick.',
+    avail: 'MaxPerformance only, whatever the lag limit is doing in MaxAvailability: Oracle documents this property as used in maximum performance mode, so there is nothing for it to pick here.',
     nofsfo: 'Nothing evaluates a lag limit here, so nothing picks which lag it means: with no observer deployed, fast-start failover is not enabled.'
   };
 
   var LAG26_NOTES = {
     off: 'Off. The primary asks permission to enter the <span class="mono">LAGGING</span> state at the moment the limit is crossed, and pauses there until the answer arrives or one <span class="mono">FastStartFailoverThreshold</span> has passed.',
     armed: 'The primary asks {0} s before the limit is reached, so it already holds the answer when the lag crosses and nothing pauses. Minimum 5 s when set.',
-    avail: 'Not evaluated in MaxAvailability: there is no <span class="mono">LAGGING</span> state to ask permission for, because readiness there means synchronized.',
+    avail: 'MaxPerformance only. Oracle documents the <span class="mono">LAGGING</span> state and this grace time as maximum performance mode behavior, so nothing asks permission for anything in MaxAvailability, whatever its lag limit is set to.',
     nofsfo: 'No fast-start failover is enabled here, so the primary never asks permission for anything and this grace time governs nothing.'
-  };
-
-  /* Observers on both database sites -- 26ai. What it buys and what it costs. */
-  var MULTI_NOTES = {
-    obsloc: 'Observers on both database sites, ranked by <span class="mono">PreferredObserverHosts</span>: the master beside the primary, a backup beside the standby. Losing the master hands the role to the backup, and no fast-start failover is possible until that backup is observing.',
-    nominate: 'The master observer went with the primary\u2019s side of the cut. The broker nominates the backup in {0} as the new master; Oracle gives no duration for that interval, so the drawing marks it without one.',
-    dc2down: 'The standby site takes its own observer with it, and the master beside the primary is untouched. The primary keeps committing \u2014 this placement is what stops a spare site from taking production down.',
-    partition: 'The same cut, and the same nomination: the standby\u2019s side has lost the primary and the master alike, so the backup is promoted and initiates a failover the primary never needed. With every observer on a database site, nothing arbitrates the cut \u2014 that is what the third site was for.',
-    obsLost: 'Only the master died. A backup is nominated, the configuration is armed again, and what it cost is the interval in between, during which no fast-start failover could have occurred.'
   };
 
   /* The pill vocabulary: a hint, not an explanation. One or two words naming
@@ -3411,19 +3464,20 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
      where the reason is spelled out, and every one of these is a phrase from
      it. Kept in one place because the same state grays several controls at
      once and the reader should recognize it as the same state: WHY.obs is the
-     scenario radio's own label, WHY.perf is what the lag properties say of
-     themselves. */
+     scenario radio's own label, WHY.perf is what the lag grace time says of
+     itself. */
   var WHY = {
     v19: '26ai only',
     nofsfo: 'no observer',
     obs: 'observer lost',
     sw: 'switchover',
     perf: 'MaxPerformance only',
+    avail: 'MaxAvailability only',
+    zeroLoss: 'zero data loss',
     ping: 'ping properties set',
     pingStall: 'stall clock only',
     noPromote: 'no promotion',
     noStall: 'no stall',
-    optBoth: 'both sites: 26ai only',
     optObsLost: 'observer lost: no observer',
     depPingSet: 'not set explicitly'
   };
@@ -3444,9 +3498,6 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
   function obsSub() {
     var loc = C.observerLoc;
     if (loc === 'none') return t('not deployed');
-    /* Two of them, on two sites: a single configured observer host would name
-       one and hide the other, so this placement keeps the generic wording. */
-    if (loc === 'dc1dc2') return fitLabel([t('DGMGRL, both sites'), t('both sites')], 124) || t('both sites');
     var oh = String(ID.hostObserver || '').trim();
     if (oh) return fitLabel([t('DGMGRL, {0}', oh), oh], 124) || oh;
     if (loc === 'dc3') {
@@ -3496,10 +3547,8 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
     lanes[1].segs.push({ a: t0, b: 0, cls: 'b-sl', lc: 'f-sl', lab: [t('Pinging primary \u2014 connection healthy'), t('Pinging primary'), t('Pinging')] });
     lanes[1].segs.push({
       a: 0, b: m.initiate, cls: 'b-am', lc: 'f-am',
-      lab: m.nomination
-        ? [t('Backup nominated master \u2014 then the clock it inherits'), t('Backup nominated master'), t('Nomination')]
-        : m.pingSet ? [t('Ping retries \u2014 no answer'), t('Ping retries'), t('Retries')]
-                    : [t('Reconnect attempts \u2014 threshold clock running'), t('Reconnect attempts'), t('Reconnecting')]
+      lab: m.pingSet ? [t('Ping retries \u2014 no answer'), t('Ping retries'), t('Retries')]
+                     : [t('Reconnect attempts \u2014 threshold clock running'), t('Reconnect attempts'), t('Reconnecting')]
     });
     lanes[1].segs.push({
       a: m.initiate, b: t1, cls: 'b-sl', lc: 'f-sl',
@@ -3538,16 +3587,6 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
       braces.push({
         a: 0, b: m.abort, tone: 'br-rd', mono: true, name: 'FastStartFailoverThreshold',
         val: t('{0} s \u2014 primary stall clock, runs independently', fmt(C.threshold))
-      });
-    }
-    /* Drawn against the same span as the threshold above it, and deliberately
-       without a number: Oracle gives no duration for the nomination, so this
-       brace says what cannot happen during it rather than how long it is. */
-    if (m.nomination) {
-      braces.push({
-        a: 0, b: m.initiate, tone: 'br-rd', mono: false,
-        name: t('New master observer nomination'),
-        val: t('no fast-start failover until a backup is observing \u2014 no documented duration')
       });
     }
     if (!m.blocked) {
@@ -3789,9 +3828,13 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
     push(ln('m-rd', xz + 7, cy - 7, xz - 7, cy + 7, ' stroke-width="2.5"'));
     push(txt('t-mark f-rd', xz + 12, G.lane[1] + G.laneH + 16, null, esc(t('Observer host dies at t = 0'))));
 
-    /* what the primary reports about it, in the gap above the observer lane */
+    /* what the primary reports about it, in the gap above the observer lane.
+       The label sits under the PRIMARY lane, so it has to carry the primary's
+       own columns: FS_FAILOVER_STATUS stays SYNCHRONIZED there and it is
+       OBSERVER_PRESENT that flips. PRIMARY UNOBSERVED is the TARGET STANDBY's
+       status -- the callout beside the drawing spells both sides out. */
     push(txt('t-mark f-vi', xz + 12, G.lane[0] + G.laneH + 18, null,
-      t('<tspan class="t-mono">FS_FAILOVER_STATUS = PRIMARY UNOBSERVED</tspan> on the primary from here on')));
+      t('<tspan class="t-mono">FS_FAILOVER_OBSERVER_PRESENT = NO</tspan> on the primary from here on')));
 
     push(txt('t-top f-am', plotL, G.topY, null,
       esc(t('No automatic failover possible while unobserved \u2014 primary and standby carry on'))));
@@ -3833,15 +3876,8 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
     if (C.observerLoc !== 'none') {
       lanes[1].segs.push({ a: t0, b: 0, cls: 'b-sl', lc: 'f-sl',
         lab: [t('Pinging primary \u2014 connection healthy'), t('Pinging primary'), t('Pinging')] });
-      /* The master died and a backup takes the role: the lane is not holding
-         fire, it is changing hands. Only the both-sites placement reaches this
-         -- anywhere else, losing the observer is its own outcome. */
-      lanes[1].segs.push(m.nomination
-        ? { a: 0, b: t1, cls: 'b-vi', lc: 'f-vi',
-            lab: [t('Master lost \u2014 a backup is nominated and observes from here'),
-                  t('Backup nominated master'), t('Nomination')] }
-        : { a: 0, b: t1, cls: 'b-sl', lc: 'f-sl',
-            lab: [t('Still sees the primary \u2014 holds fire'), t('Still sees the primary'), t('Holds fire')] });
+      lanes[1].segs.push({ a: 0, b: t1, cls: 'b-sl', lc: 'f-sl',
+        lab: [t('Still sees the primary \u2014 holds fire'), t('Still sees the primary'), t('Holds fire')] });
     }
 
     lanes[2].segs.push({ a: t0, b: 0, cls: 'b-bl', lc: 'f-bl', lab: [t('Applying redo'), t('Applying')] });
@@ -3927,14 +3963,6 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
       push(ln('m-rd', xz + 7, sy - 7, xz - 7, sy + 7, ' stroke-width="2.5"'));
       push(txt('t-mark f-rd', xz + 12, G.lane[2] - 12, null,
         esc(t('The whole standby site is lost at t = 0'))));
-    } else if (m.nomination) {
-      /* The master observer's own host died. Nothing else on the drawing
-         changed, which is the point -- the cross goes on the observer lane. */
-      var oy = G.lane[1] + G.laneH / 2;
-      push(ln('m-rd', xz - 7, oy - 7, xz + 7, oy + 7, ' stroke-width="2.5"'));
-      push(ln('m-rd', xz + 7, oy - 7, xz - 7, oy + 7, ' stroke-width="2.5"'));
-      push(txt('t-mark f-rd', xz + 12, G.lane[1] - 12, null,
-        esc(t('The master observer host is lost at t = 0 \u2014 a backup is nominated in its place'))));
     } else {
       /* A link failure, not a host failure. The dashes sit on the two lanes
          that lost each other and leave the observer's alone -- in every cell
@@ -3963,11 +3991,9 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
       push(txt('t-mark f-sl', xz + 8, my - 8, null, esc(fLab)));
     }
 
-    push(txt('t-top ' + (manual || m.standbyGone || m.nomination || !m.pmyReachable ? 'f-am' : 'f-sl'), plotL, G.topY, null,
+    push(txt('t-top ' + (manual || m.standbyGone || !m.pmyReachable ? 'f-am' : 'f-sl'), plotL, G.topY, null,
       esc(manual
         ? t('No fast-start failover is armed \u2014 only a manual FAILOVER TO can promote the standby')
-        : m.nomination
-        ? t('Both databases keep running \u2014 what changed hands is the master observer')
         : m.standbyGone
           ? t('The primary keeps serving with no standby \u2014 nothing is protecting it now')
           : !m.pmyReachable
@@ -4409,9 +4435,7 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
          while nothing happens -- the second half is the whole risk. */
       case 'continues': {
         var k = chip('rd', t('Failover initiated'), t('never'), '',
-          m.nomination
-            ? t('The master observer died; the broker nominates a backup, and no fast-start failover is possible until that one is observing')
-            : loc === 'none'
+          loc === 'none'
             ? t('No observer is deployed, so fast-start failover is not enabled and nothing can initiate one')
             : m.standbyGone
               ? t('The target standby is gone, so there is nothing for the observer to promote')
@@ -4440,10 +4464,6 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
                   t('MaxPerformance leaves the current apply lag of <span class="mono">{0} s</span> of redo at risk', fmt(m.ifDiedNow)))
               : chip('ik', t('If the primary died right now'), '0', '',
                   t('A synchronized standby in MaxAvailability means zero data loss'));
-        if (m.nomination) {
-          k += chip('vi', t('New master observer'), t('nominated'), '',
-            t('Oracle gives no duration for the nomination, so this chip carries none \u2014 what it marks is an interval in which nothing could have failed over'));
-        }
         k += splitBrainChip(m);
         els.chips.innerHTML = k;
         return;
@@ -4506,7 +4526,9 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
       out += chip('ik', t('Maximum data loss'), '0', '', t('SYNC transport in MaxAvailability \u2014 zero data loss'));
     } else if (m.dataLossKind === 'bounded') {
       out += chip('am', t('Maximum data loss'), '\u2264 ' + fmt(m.dataLossSeconds), t('s of redo'),
-        t('ASYNC transport, bounded by <span class="mono">FastStartFailoverLagLimit</span> = {0} s', fmt(C.lagLimit)));
+        C.mode === 'maxavail'
+          ? t('MaxAvailability on a non-zero <span class="mono">FastStartFailoverLagLimit</span> = {0} s: 26ai permits the failover inside the limit and bounds the loss by it', fmt(C.lagLimit))
+          : t('ASYNC transport, bounded by <span class="mono">FastStartFailoverLagLimit</span> = {0} s', fmt(C.lagLimit)));
     } else {
       out += chip('rd', t('Maximum data loss'), '\u2014', '', t('No failover occurs, so nothing is lost and nothing is recovered'));
     }
@@ -4526,10 +4548,6 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
         t('The observer is on a host of its own, so this crash leaves it running and the failover proceeds. A failure that took the whole of {0} would take the observer with it, and no automatic failover could follow.', idv('dc1')));
     }
 
-    if (m.nomination) {
-      out += chip('vi', t('New master observer'), t('nominated'), '',
-        t('The master went with the primary\u2019s side of the cut; the backup beside the standby is what ordered this failover'));
-    }
     out += splitBrainChip(m);
     els.chips.innerHTML = out;
   }
@@ -4541,16 +4559,12 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
     return sc === 'isolated' ? t('Timeline \u2014 isolated primary')
       : sc === 'partition' ? t('Timeline \u2014 {0} to {1} link down', idv('dc1'), idv('dc2'))
         : sc === 'dc2down' ? t('Timeline \u2014 standby site down')
-          /* Reached only where a backup observer survives the master, so the
-             scenario no longer has an outcome of its own. */
-          : sc === 'observer-lost' ? t('Timeline \u2014 master observer lost')
-            : t('Timeline \u2014 primary crash');
+          : t('Timeline \u2014 primary crash');
   }
   function tlEyebrow(sc, m) {
     return sc === 'partition' ? t('t = 0 is the link failure \u00b7 horizon {0} s', fmt(m.horizon))
       : sc === 'dc2down' ? t('t = 0 is the loss of the standby site \u00b7 horizon {0} s', fmt(m.horizon))
-        : sc === 'observer-lost' ? t('t = 0 is the master observer host failure \u00b7 horizon {0} s', fmt(m.horizon))
-          : t('t = 0 is the failure event \u00b7 horizon {0} s', fmt(m.horizon));
+        : t('t = 0 is the failure event \u00b7 horizon {0} s', fmt(m.horizon));
   }
 
   /* What the same cut looks like to redo transport. It lives in a caption and
@@ -4572,9 +4586,7 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
         ? t('The observer stays in {0} \u2014 which is the new <em>standby</em>\u2019s site once the roles have traded, and it goes on observing from there.', idv('dc1'))
         : loc === 'dc2'
           ? t('The observer stays in {0} \u2014 which is the new <em>primary</em>\u2019s site once the roles have traded, and it goes on observing from there.', idv('dc2'))
-          : loc === 'dc1dc2'
-            ? t('An observer sits at each end, so whichever site holds the primary after the swap has one beside it. Neither takes any part in the switchover: it never needs one.')
-            : t('The observer watches from {0} throughout and takes no part in it: a switchover never needs one.', idv('dc3'));
+          : t('The observer watches from {0} throughout and takes no part in it: a switchover never needs one.', idv('dc3'));
   }
 
   function renderProse(m) {
@@ -4616,7 +4628,7 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
         els.banner.hidden = true;
         els.callout.hidden = false;
         els.calloutK.textContent = t('Unobserved');
-        els.calloutBody.innerHTML = t('The configuration is running unobserved: <span class="mono">V$DATABASE.FS_FAILOVER_STATUS</span> reads <span class="mono">PRIMARY UNOBSERVED</span>, <span class="mono">FS_FAILOVER_OBSERVER_PRESENT</span> reads <span class="mono">NO</span>, in time the broker raises <span class="mono">ORA-16820</span>, and a failover attempt fails with <span class="mono">ORA-16658</span>. Restart the observer, or register up to three (19c) so the broker can promote a backup.');
+        els.calloutBody.innerHTML = t('The configuration is running unobserved: on the primary <span class="mono">V$DATABASE.FS_FAILOVER_STATUS</span> stays <span class="mono">SYNCHRONIZED</span> with <span class="mono">FS_FAILOVER_OBSERVER_PRESENT</span> reading <span class="mono">NO</span>, while the target standby reports <span class="mono">PRIMARY UNOBSERVED</span>; in time the broker raises <span class="mono">ORA-16820</span>, and a failover attempt fails with <span class="mono">ORA-16658</span>. Restart the observer, or register up to three (19c) so the broker can promote a backup.');
         els.caption.innerHTML = t('Nothing on this timeline moves: the primary keeps committing, the standby keeps applying, only the automation is gone. <span class="mono">FastStartFailoverThreshold</span> never starts counting \u2014 the observer is what counts it. If the primary died now, the failover would be manual.') +
           (loc === 'dc2'
             ? ' ' + t('The observer shares its site with the standby here, so a failure that took the whole of {0} would take both at once \u2014 the <em>Standby site down</em> scenario shows where that ends.', idv('dc2'))
@@ -4642,13 +4654,7 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
         if (m.standbyGone) {
           els.calloutK.textContent = t('Unprotected');
           els.calloutBody.innerHTML = t('The standby site is gone, and the only failover target with it. The primary never lost the observer, so nothing stalls and nothing is initiated: it keeps committing, with nowhere to ship its redo. What the site took with it is the protection \u2014 a primary failure now is an outage, with no role change available to end it.') +
-            (loc === 'none' ? ' ' + t('Fast-start failover was not enabled here in any case: no observer is deployed.') : '') +
-            (loc === 'dc1dc2' ? ' ' + t(MULTI_NOTES.dc2down) : '');
-        } else if (m.nomination) {
-          /* 26ai, observers on both sites: the master died and the backup is
-             being made master. Nothing else on the drawing moved. */
-          els.calloutK.textContent = t('New master observer');
-          els.calloutBody.innerHTML = t(MULTI_NOTES.obsLost);
+            (loc === 'none' ? ' ' + t('Fast-start failover was not enabled here in any case: no observer is deployed.') : '');
         } else if (loc === 'none') {
           els.calloutK.textContent = t('Not enabled');
           els.calloutBody.innerHTML = t('With no observer deployed, fast-start failover is not enabled at all: no threshold starts, nothing is detected and nothing is promoted, whatever the network does. Only a DBA running <span class="mono">FAILOVER TO</span> can move the role, and only once somebody has noticed there is a reason to.');
@@ -4664,16 +4670,12 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
 
         var why = loc === 'none'
           ? t('No observer is deployed, so nothing is watching this and nothing can act on it.')
-          : m.nomination
-          ? t('The master observer is the host that died. A backup at the other site is nominated in its place, and no fast-start failover is possible until that one is observing.')
           : m.standbyGone
             ? t('The observer never lost the primary, so no threshold starts \u2014 and with the standby site gone there would be nothing to promote in any case.')
             : loc === 'dc1'
               ? t('The observer sits inside {0} with the primary, so it never loses sight of it and no threshold starts.', idv('dc1'))
               : t('From {0} the observer still sees the primary, and fast-start failover needs the observer and the standby to have both lost it.', idv('dc3'));
-        var meanwhile = m.nomination
-          ? t('Both databases carry on untouched \u2014 the primary commits, the standby applies. What the failure interrupted is the automation, and only for as long as the nomination takes.')
-          : m.standbyGone
+        var meanwhile = m.standbyGone
           ? t('The primary keeps committing with nowhere to ship its redo, and the exposure grows for as long as {0} is gone.', idv('dc2'))
           : !m.pmyReachable
             ? t('The primary keeps committing for whatever clients are still inside {0}; nothing outside the site can reach it, and the standby receives nothing.', idv('dc1'))
@@ -4684,11 +4686,9 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
         els.summary.textContent = t('Timeline: nothing on it moves. The primary stays open read-write and keeps committing, no fast-start failover clock starts, and no role changes.') +
           ' ' + (loc === 'none'
             ? t('No observer is deployed, so fast-start failover is not enabled here at all.')
-            : m.nomination
-              ? t('The master observer died and the broker nominates a backup as the new master; until that one is observing, no fast-start failover could occur.')
-              : m.standbyGone
-                ? t('The standby site is gone, so there is no failover target left.')
-                : t('The observer still sees the primary, so it holds fire.')) +
+            : m.standbyGone
+              ? t('The standby site is gone, so there is no failover target left.')
+              : t('The observer still sees the primary, so it holds fire.')) +
           ' ' + (m.ifDiedNow === null
             ? t('If the primary died now, there would be nothing to fail over to.')
             : !m.redoFlowing
@@ -4761,13 +4761,7 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
        standby's site exactly the way full isolation stalls one watched from a
        third site -- but only one of those two is a failure of the primary. */
     els.callout.hidden = !m.stalled;
-    if (m.stalled && sc === 'partition' && m.nomination) {
-      /* Same cut, one release later: with an observer at each end there is no
-         arbitrator outside the two sites, and the backup beside the standby is
-         the one that ends up ordering it. */
-      els.calloutK.textContent = t('False failover');
-      els.calloutBody.innerHTML = t(MULTI_NOTES.partition);
-    } else if (m.stalled && sc === 'partition') {
+    if (m.stalled && sc === 'partition') {
       els.calloutK.textContent = t('False failover');
       els.calloutBody.innerHTML = m.blocked
         ? t('Nothing is wrong with the primary here \u2014 the link between {0} and {1} is. The observer sits on the far side of it, so it loses the primary and counts the threshold like any other failure; only the readiness check stops the promotion. The primary is <span class="mono">STALLED</span> either way, because it can reach neither the observer nor the standby.', idv('dc1'), idv('dc2'))
@@ -4792,7 +4786,6 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
             fmt(C.pingInterval), C.pingRetry + 1, fmt(m.detect), fmt(m.tOpen), fmt(C.threshold))
         : t('The observer spends the full threshold trying to reconnect and initiates failover at <span class="mono">{0} s</span>; the standby is open read-write at <span class="mono">{1} s</span>. The <span class="mono">{2} s</span> in between is failover execution \u2014 applying the redo backlog and the role transition.',
             fmt(m.initiate), fmt(m.tOpen), fmt(m.tOpen - m.initiate));
-    if (m.nomination) els.caption.innerHTML += ' ' + t(MULTI_NOTES.nominate, esc(idv('dc2')));
 
     els.eyebrow.textContent = tlEyebrow(sc, m);
     els.summary.textContent = t('Timeline: failover initiated at {0} seconds; ', fmt(m.initiate)) +
@@ -4852,6 +4845,9 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
     var obs = m.outcome === 'observer-lost', sw = m.outcome === 'switchover';
     var avail = C.mode === 'maxavail';
     var v26 = C.version === '26ai';
+    /* 26ai MaxAvailability run on a non-zero FastStartFailoverLagLimit: the lag
+       is the gate and the loss is bounded by it, exactly as in MaxPerformance. */
+    var bounded = availBounded();
 
     els.vThreshold.textContent = C.threshold + ' s';
     els.vPingInterval.textContent = C.pingInterval + ' ms';
@@ -4864,13 +4860,8 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
     els.vShutdown.textContent = C.pmyShutdown ? 'TRUE' : 'FALSE';
     els.vLagGrace.textContent = C.lagGraceTime === 0 ? t('0 s \u2014 off') : C.lagGraceTime + ' s';
 
-    /* The fifth placement is 26ai's: four registered observers ranked by
-       PreferredObserverHosts is what lets one sit beside each database. Under
-       19c the radio is inert and the note below says why. */
-    els.olBoth.disabled = !v26;
-    /* Two pills name a single gray radio rather than a gray control, so each
-       one says which option it is talking about. */
-    ctlPill(els.ctlObsloc, v26 ? null : WHY.optBoth);
+    /* This pill names a single gray radio rather than a gray control, so it
+       says which option it is talking about. */
     ctlPill(els.ctlScenario, none ? WHY.optObsLost : null);
 
     /* The two 26ai lag properties. Both describe the lag rather than the
@@ -4891,6 +4882,23 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
         : avail ? LAGTYPE_NOTES.avail
           : C.lagType === 'transport' ? LAGTYPE_NOTES.xpt : LAGTYPE_NOTES.apply);
 
+    /* 26ai's MaxAvailability lag policy. The mirror image of the two controls
+       above: those two are MaxPerformance-only, this one is MaxAvailability-
+       only, and all three are inert under 19c. */
+    var lpOff = !v26 || !avail || none;
+    /* Same reading order as the two above: release, then whether fast-start
+       failover exists at all, then the protection mode -- which is the one
+       clause that reverses, this control being the MaxAvailability half. */
+    ctlPill(els.ctlLagPolicy, !v26 ? WHY.v19 : none ? WHY.nofsfo : !avail ? WHY.avail : null);
+    els.ctlLagPolicy.classList.toggle('is-off', lpOff);
+    $('lp-zero').disabled = lpOff;
+    $('lp-bounded').disabled = lpOff;
+    els.nLagPolicy.innerHTML = !v26 ? t(V19_NOTES.lagPolicy)
+      : none ? t(LAGPOLICY_NOTES.nofsfo)
+        : !avail ? t(LAGPOLICY_NOTES.perf)
+          : C.lagPolicy === 'bounded' ? t(LAGPOLICY_NOTES.bounded, fmt(C.lagLimit))
+            : t(LAGPOLICY_NOTES.zero);
+
     els.ctlLagGrace.classList.toggle('is-off', lagOff);
     els.lagGrace.disabled = lagOff;
     els.nLagGrace.innerHTML = !v26 ? t(V19_NOTES.lagGrace)
@@ -4900,20 +4908,15 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
             : t(LAG26_NOTES.off);
 
     /* Where the observer runs. The radio labels are role-relative and static;
-       the configured site names arrive here, rewritten on every pass. The 19c
-       tail explains the one radio that release cannot offer -- an inert control
-       that says nothing is the one thing this rail never does. */
+       the configured site names arrive here, rewritten on every pass. */
     $('sc-obs').disabled = none;
-    els.nObsloc.innerHTML = (none
+    els.nObsloc.innerHTML = none
       ? t(NOFSFO_NOTES.obsloc)
-      : C.observerLoc === 'dc1dc2'
-        ? t(MULTI_NOTES.obsloc)
-        : C.observerLoc === 'dc1'
+      : C.observerLoc === 'dc1'
         ? t('The observer runs on its own host in {0}, beside the primary. Oracle\u2019s placement hierarchy does not list this one: a site failure takes the observer with the primary, and it cannot arbitrate a partition it is on one side of.', esc(idv('dc1')))
         : C.observerLoc === 'dc2'
           ? t('The observer runs on its own host in {0}, beside the standby. The documented last resort \u2014 isolate it as far as possible from whatever can take the standby down.', esc(idv('dc2')))
-          : t('The observer runs on its own host in {0}, independent of both database sites. This is the placement the HA guide recommends first.', esc(idv('dc3'))))
-      + (v26 ? '' : ' ' + t(V19_NOTES.obsBoth));
+          : t('The observer runs on its own host in {0}, independent of both database sites. This is the placement the HA guide recommends first.', esc(idv('dc3')));
 
     els.nScenario.innerHTML = obs
       ? t(OBS_NOTES.scenario)
@@ -4935,7 +4938,9 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
        before it has everything. */
     els.nMode.innerHTML = sw
       ? t(avail ? SW_NOTES.modeAvail : SW_NOTES.modePerf)
-      : avail
+      : bounded
+        ? t('SYNC redo transport, run on a non-zero <span class="mono">FastStartFailoverLagLimit</span>: 26ai permits the failover while the apply lag stays within the limit, and the loss is bounded by it rather than zero.')
+        : avail
         ? t('SYNC redo transport. The standby must have been synchronized at failure time; data loss is zero.')
         : t('ASYNC redo transport. Failover is permitted only while the apply lag stays within <span class="mono">FastStartFailoverLagLimit</span>.');
 
@@ -5006,6 +5011,10 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
       var swLagOff = avail || none;
       els.lagLimit.disabled = swLagOff;
       els.ctlLagLimit.classList.toggle('is-off', swLagOff);
+      /* WHY.perf here and WHY.zeroLoss on the failover path, because this branch
+         still gates on the mode alone: SW_NOTES.lagLimitAvail says the switchover
+         readiness check is not run in MaxAvailability at all, whatever 26ai does
+         with the limit on a failover. The pill says what the note says. */
       ctlPill(els.ctlLagLimit, !swLagOff ? null : none ? WHY.nofsfo : WHY.perf);
       els.nLagLimit.innerHTML = t(none ? NOFSFO_NOTES.lagLimit
         : avail ? SW_NOTES.lagLimitAvail : SW_NOTES.lagLimitPerf);
@@ -5065,15 +5074,21 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
 
     /* The readiness check runs only where something is actually being
        promoted, so the lag limit goes quiet in the cells where nobody is. */
-    var llOff = avail || (m.outcome !== 'failover' && m.outcome !== 'switchover');
+    var llOff = (avail && !bounded) ||
+      (m.outcome !== 'failover' && m.outcome !== 'switchover');
     els.lagLimit.disabled = llOff;
     els.ctlLagLimit.classList.toggle('is-off', llOff);
-    ctlPill(els.ctlLagLimit, !llOff ? null : avail ? WHY.perf : WHY.noPromote);
-    els.nLagLimit.innerHTML = avail
+    /* Not WHY.perf: since 26ai the property is evaluated in MaxAvailability too,
+       so what grays it is the zero-loss policy rather than the mode. Under 19c
+       MaxAvailability is zero-loss by definition, and the pill reads the same. */
+    ctlPill(els.ctlLagLimit, !llOff ? null : (avail && !bounded) ? WHY.zeroLoss : WHY.noPromote);
+    els.nLagLimit.innerHTML = (avail && !bounded)
       ? t('Not evaluated in MaxAvailability. Readiness there means the standby was synchronized at failure time.')
       : llOff
         ? t('Nothing is being promoted here, so no readiness check is run against this.')
-        : t('The standby is eligible for failover only while its apply lag is at or below this. Minimum 5 s.');
+        : bounded
+          ? t('The standby is eligible for failover only while its apply lag is at or below this, and the loss is bounded by it. Minimum 5 s; set the policy below back to zero data loss to require a synchronized standby instead.')
+          : t('The standby is eligible for failover only while its apply lag is at or below this. Minimum 5 s.');
 
     /* The self-abort follows the stall, not the scenario: a primary cut off
        from observer and standby alike stalls under a severed site link too. */
@@ -5724,6 +5739,7 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
          turns them into a failover. */
       b.push(cfgNote(t('(the FastStartFailover* properties are configuration-wide and can be set,')));
       b.push(cfgNote(t(' but nothing arms them without ENABLE FAST_START FAILOVER and a running observer)')));
+      b.push(cfgNote(t('(V$DATABASE.FS_FAILOVER_STATUS simply reads DISABLED here)')));
     } else {
       b.push(cfgCmd('EDIT CONFIGURATION SET PROPERTY FastStartFailoverThreshold = ' +
         cfgVal(C.threshold, C.threshold === 30) + ';', C.threshold === 30 ? t('default') : null));
@@ -5732,16 +5748,30 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
           cfgVal(C.pingInterval, C.pingInterval === 100) + ';'));
         b.push(cfgCmd('EDIT CONFIGURATION SET PROPERTY ObserverPingRetry = ' +
           cfgVal(C.pingRetry, C.pingRetry === 10) + ';'));
-        b.push(cfgNote(t('(with both set, the threshold above is ignored for detection:')));
+        b.push(cfgNote(t('(with both set, the threshold above is ignored for detection;')));
+        b.push(cfgNote(t(' this page models the detection time as:')));
         b.push(cfgNote(' ' + C.pingInterval + ' ms \u00d7 (' + C.pingRetry + ' + 1) \u2248 ' +
           fmt(detectS) + ' s)'));
       } else {
         b.push(cfgNote(t('(ObserverPingInterval / ObserverPingRetry stay unset \u2014')));
         b.push(cfgNote(t(' detection runs on the threshold)')));
       }
-      if (avail) {
+      if (avail && !v26) {
         b.push(cfgNote(t('(FastStartFailoverLagLimit not evaluated in MaxAvailability \u2014')));
         b.push(cfgNote(t(' the standby must be synchronized instead)')));
+      } else if (avail) {
+        /* 26ai: the property applies in MaxAvailability too, and its value is
+           the whole difference between zero-loss and bounded-loss fast-start
+           failover -- so the command is written out here, 0 included. */
+        var llAvail = C.lagPolicy === 'bounded' ? C.lagLimit : 0;
+        b.push(cfgCmd('EDIT CONFIGURATION SET PROPERTY FastStartFailoverLagLimit = ' +
+          cfgVal(llAvail, llAvail === 0) + ';', llAvail === 0 ? t('default') : null));
+        b.push(cfgNote(llAvail === 0
+          ? t('(0 is the MaxAvailability default in 26ai: the standby must have')
+          : t('(non-zero in MaxAvailability: fast-start failover is permitted')));
+        b.push(cfgNote(llAvail === 0
+          ? t(' received every change, so the failover loses nothing)')
+          : t(' while the apply lag is within it, and loses at most that much)')));
       } else {
         b.push(cfgCmd('EDIT CONFIGURATION SET PROPERTY FastStartFailoverLagLimit = ' +
           cfgVal(C.lagLimit, C.lagLimit === 30) + ';', C.lagLimit === 30 ? t('default') : null));
@@ -5767,8 +5797,10 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
       b.push(cfgCmd('ENABLE FAST_START FAILOVER;'));
       if (v26) {
         b.push(cfgCmd('VALIDATE FAST_START FAILOVER;'));
-        b.push(cfgNote(t('(26ai: one command for the readiness checks \u2014 state,')));
-        b.push(cfgNote(t(' transport, observer connectivity, flashback, the target)')));
+        b.push(cfgNote(t('(26ai: one command for the documented readiness checks \u2014 the')));
+        b.push(cfgNote(t(' FSFO properties, whatever blocks enabling or initiating it,')));
+        b.push(cfgNote(t(' configuration stability, the observer started, flashback')));
+        b.push(cfgNote(t(' logging, and the fsfocallout.ora scripts)')));
       }
     }
     els.cfgBroker.innerHTML = b.join('\n');
@@ -5783,47 +5815,22 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
       o.push(cfgNote(t('(no observer deployed \u2014 fast-start failover is not enabled)'), 'bad'));
       o.push('');
       o.push(cfgCmd("FAILOVER TO '" + dbS + "';"));
-      o.push(cfgNote(t('(manual failover \u2014 always available, observer or not)')));
+      o.push(cfgNote(t('(manual failover \u2014 no observer needed while fast-start')));
+      o.push(cfgNote(t(' failover is disabled)')));
     } else {
       o.push(cfgCmd('CONNECT sys@' + dbP + ' AS SYSDBA;'));
-      if (loc === 'dc1dc2') {
-        /* Neither host is named on the identity card -- there is one field for
-           one observer -- and neither may be a database host, so these two stay
-           placeholders rather than borrowing a name that would be wrong.
-           A per-database property, not a configuration one: each database
-           ranks the masters allowed while IT is primary, which is what keeps
-           the master beside the primary through a role change. */
-        o.push(cfgCmd("EDIT DATABASE '" + dbP + "' SET PROPERTY 'PreferredObserverHosts' = " +
-          "'&lt;observer-host-1&gt;:1,&lt;observer-host-2&gt;:2';"));
-        o.push(cfgCmd("EDIT DATABASE '" + dbS + "' SET PROPERTY 'PreferredObserverHosts' = " +
-          "'&lt;observer-host-2&gt;:1,&lt;observer-host-1&gt;:2';"));
-        o.push(cfgNote(t('(host 1 stands in {0}, host 2 in {1}; each database ranks its own', esc(idv('dc1')), esc(idv('dc2')))));
-        o.push(cfgNote(t(' site\u2019s observer first, so the master sits beside whichever is primary)')));
-        o.push('');
-        o.push(cfgCmd('START OBSERVER IN BACKGROUND;'));
-        o.push(cfgNote(t('(run on the observer host in {0} \u2014 the preferred master)', esc(idv('dc1')))));
-        o.push(cfgCmd('START OBSERVER IN BACKGROUND;'));
-        o.push(cfgNote(t('(and again on the observer host in {0} \u2014 the backup)', esc(idv('dc2')))));
-      } else {
-        o.push(cfgCmd('START OBSERVER IN BACKGROUND;'));
-        o.push(cfgNote(t('(the prompt returns; the observer process keeps running)')));
-      }
+      o.push(cfgCmd('START OBSERVER IN BACKGROUND;'));
+      o.push(cfgNote(t('(the prompt returns; the observer process keeps running)')));
       o.push('');
       if (C.scenario === 'observer-lost') {
         o.push(cfgNote(t('(chapter 1 is currently killing this process at t = 0 \u2014'), 'bad'));
         o.push(cfgNote(t(' while it is gone, no fast-start failover is possible)'), 'bad'));
       } else if (C.pingSet) {
-        o.push(cfgNote(loc === 'dc1dc2'
-          ? t('(the master is the one that initiates failover, here after \u2248 {0} s)', fmt(detectS))
-          : t('(this is the process that initiates failover, here after \u2248 {0} s)', fmt(detectS))));
+        o.push(cfgNote(t('(this is the process that initiates failover, here after \u2248 {0} s)', fmt(detectS))));
       } else {
-        o.push(cfgNote(loc === 'dc1dc2'
-          ? t('(the master is the one that runs the {0} s reconnect clock)', C.threshold)
-          : t('(this is the process that runs the {0} s reconnect clock)', C.threshold)));
+        o.push(cfgNote(t('(this is the process that runs the {0} s reconnect clock)', C.threshold)));
       }
-      o.push(cfgNote(loc === 'dc1dc2'
-        ? t('({0} and {1} resolve through each observer host\u2019s tnsnames.ora)', dbP, dbS)
-        : t('({0} and {1} resolve through this host\u2019s tnsnames.ora)', dbP, dbS)));
+      o.push(cfgNote(t('({0} and {1} resolve through this host\u2019s tnsnames.ora)', dbP, dbS)));
       if (loc === 'dc3') {
         o.push(cfgNote(t('({0}, a third site \u2014 the HA guide\u2019s first recommendation)',
           esc(idv('dc3')))));
@@ -5831,12 +5838,6 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
         o.push(cfgNote(t('({0}, the standby\u2019s site \u2014 the documented last resort)',
           esc(idv('dc2')))));
         o.push(cfgNote(t('(on its own host, as isolated from the standby as possible)')));
-      } else if (loc === 'dc1dc2') {
-        o.push(cfgNote(t('(one beside each database \u2014 26ai registers up to four)')));
-        o.push(cfgNote(t('(losing the master hands the role to the backup; nothing can')));
-        o.push(cfgNote(t(' fast-start fail over until that backup is observing)')));
-        o.push(cfgNote(t('(no observer outside either database site, so a cut between'), 'bad'));
-        o.push(cfgNote(t(' them has nobody left to arbitrate it)'), 'bad'));
       } else {
         o.push(cfgNote(t('({0}: the primary\u2019s site \u2014 not a placement Oracle lists)',
           esc(idv('dc1'))), 'bad'));
@@ -6626,7 +6627,7 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
     if (C.observerLoc === 'none') {
       push(txt('t-mark f-sl', plotL + 8, gapB1, null,
         esc(t('No observer is deployed \u2014 fast-start failover is not enabled, so this outage disarms nothing'))));
-    } else if (rp.mode === 'maxperf') {
+    } else if (rp.lagGated) {
       var xf = X(rp.fsfoLostAt);
       push(ln('g-vi', xf, G.lane[1] - 6, xf, G.lane[2] + G.laneH + 4));
       push('<path class="f-vi" d="M' + r1(xf) + ',' + (G.lane[1] + G.laneH + 1) + ' l5,5 l-5,5 l-5,-5 z"></path>');
@@ -6717,7 +6718,7 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
     out += C.observerLoc === 'none'
       ? chip('vi', t('Fast-start failover'), t('not enabled'), '',
           t('No observer is deployed in this topology, so this outage disarms nothing \u2014 only a manual <span class="mono">FAILOVER TO</span> could move the role, before it or after it'))
-      : rp.mode === 'maxperf'
+      : rp.lagGated
       ? chip('vi', t('Fast-start failover'), fmt(rp.fsfoLostAt), t('s to disarmed'),
           rp.fsfoBackAt !== null
             ? t('The apply lag passes <span class="mono">FastStartFailoverLagLimit = {0} s</span> while nothing arrives; re-armed around {1} s', fmt(rp.fsfoLostAt), fmt(rp.fsfoBackAt))
@@ -6752,7 +6753,7 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
 
     var fsfoLine = C.observerLoc === 'none'
       ? t('Fast-start failover is not enabled in this topology, so the outage disarms nothing: no observer is deployed for it to disarm.')
-      : rp.mode === 'maxperf'
+      : rp.lagGated
       ? t('Fast-start failover survives until <span class="mono">{0} s</span>, when the apply lag passes <span class="mono">FastStartFailoverLagLimit</span>.', fmt(rp.fsfoLostAt))
       : t('Fast-start failover is disarmed from the first second: in MaxAvailability the standby is <span class="mono">UNSYNCHRONIZED</span> as soon as the link breaks.');
     if (rp.lagStallAt !== null) {
@@ -6783,7 +6784,7 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
       ' ' + t('Peak unshipped redo {0} seconds, about {1} megabytes.', fmt(rp.peakExposureSecs), fmt(rp.peakExposureMB)) +
       ' ' + (C.observerLoc === 'none'
         ? t('Fast-start failover is not enabled in this topology.')
-        : rp.mode === 'maxperf'
+        : rp.lagGated
           ? t('Fast-start failover is disarmed at {0} seconds.', fmt(rp.fsfoLostAt))
           : t('Fast-start failover is disarmed immediately.'));
   }
@@ -6832,25 +6833,6 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
       };
     }
 
-    /* 26ai: one observer on each database site. Both panels grow tall to
-       hold an observer card above their database, the two observer links
-       collapse to short local hops, and there is no third panel at all --
-       which is exactly the placement's weakness, drawn. */
-    if (loc === 'dc1dc2') {
-      return {
-        obs: [103, 26, 184, 52], obsW: 124, obsX: [261, 34], obsEv: [300, 40, null],
-        obs2: [893, 26, 184, 52],
-        sites: [['dc1', 70, 10, 250, 204], ['dc2', 860, 10, 250, 204]],
-        links: [
-          { id: 'op', n: ['obs1', 'pmy'], d: 'M195,78 L195,118', pill: { l: [207, 98] } },
-          { id: 'os', n: ['obs2', 'sby'], d: 'M985,78 L985,118', pill: { r: [973, 98] } },
-          redo
-        ],
-        evPmy: [332, 120, null], evIso: [443, 16, null], isoY: [148],
-        evSw: [590, 192, 'middle'], evDc2: [850, 30, 'end'], noObs: null
-      };
-    }
-
     /* No observer at all: two panels, one link, and a line saying what is
        missing. The empty middle is the point. */
     if (loc === 'none') {
@@ -6886,10 +6868,7 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
      from one half of. */
   function topoLinkDown(nodes, sc, loc) {
     function site(n) {
-      return n === 'pmy' ? 'dc1' : n === 'sby' ? 'dc2'
-        /* the both-sites placement names its two observers, because they do not
-           share a site the way the single one does */
-        : n === 'obs1' ? 'dc1' : n === 'obs2' ? 'dc2' : loc;
+      return n === 'pmy' ? 'dc1' : n === 'sby' ? 'dc2' : loc;
     }
     var a = site(nodes[0]), b = site(nodes[1]);
     if (sc === 'crash') return nodes.indexOf('pmy') >= 0;
@@ -6919,11 +6898,7 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
     /* the effective scenario: with no observer deployed there is none to lose,
        and the model has already turned that pairing into a plain crash */
     var sc = m.scenario;
-    var multi = loc === 'dc1dc2';
-    /* Losing the observer means two different things now: every observer gone,
-       or only the master gone with a backup left at the other site. */
-    var obs = sc === 'observer-lost' && !multi;
-    var obsMaster = sc === 'observer-lost' && multi;
+    var obs = sc === 'observer-lost';
     var sw = sc === 'switchover';
     var iso = sc === 'isolated';
     var netFail = iso || sc === 'partition';
@@ -6973,12 +6948,7 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
        stays inside the card next to the badge */
     var subP = fitLabel([idv('subPrimary') + ', ' + idv('dc1'), idv('subPrimary'), idv('dc1')], 118) || idv('dc1');
     var subS = fitLabel([idv('subStandby') + ', ' + idv('dc2'), idv('subStandby'), idv('dc2')], 118) || idv('dc2');
-    var subO = multi
-      ? (fitLabel([t('master, in {0}', idv('dc1')), t('in {0}', idv('dc1')), idv('dc1')], L.obsW) || idv('dc1'))
-      : topoSubO(loc, L.obsW);
-    var subO2 = multi
-      ? (fitLabel([t('backup, in {0}', idv('dc2')), t('in {0}', idv('dc2')), idv('dc2')], L.obsW) || idv('dc2'))
-      : null;
+    var subO = topoSubO(loc, L.obsW);
 
     /* The ground panels, drawn behind everything. Only a lost site is filled
        with the hatch: a severed link leaves both data centres perfectly
@@ -7010,16 +6980,11 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
         return t('Topology: the primary database in {0}; the target standby and the observer, on hosts of their own, both in {1}.',
           idv('dc1'), idv('dc2'));
       }
-      if (loc === 'dc1dc2') {
-        return t('Topology: the primary database in {0} and the target standby in {1}, each with an observer on a host of its own beside it \u2014 the master in {0}, a backup in {1}. There is no third site.',
-          idv('dc1'), idv('dc2'));
-      }
       return t('Topology: the primary database in {0}, the target standby in {1}, the observer on {2}.',
         idv('dc1'), idv('dc2'), oh ? oh : t('a third host'));
     }
 
     function ariaEvent() {
-      if (obsMaster) return t('The master observer host dies at t = 0. The primary and the standby stay connected and redo keeps flowing; the broker nominates the backup observer as the new master, and until it is observing no fast-start failover can occur.');
       if (obs) return t('The observer host dies at t = 0. The primary and the standby stay connected, so redo keeps flowing, but the configuration is unobserved and nothing can fail over.');
       if (sw) return t('Every host stays up: at t = 0 the DBA issues a switchover, and the two databases trade roles.');
       if (iso) {
@@ -7035,9 +7000,7 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
       if (sc === 'dc2down') {
         return loc === 'dc2'
           ? t('The whole standby site {0} is lost at t = 0, taking the target standby and the observer with it.', idv('dc2'))
-          : loc === 'dc1dc2'
-            ? t('The whole standby site {0} is lost at t = 0, taking the target standby and the backup observer with it. The master observer in {1} is untouched.', idv('dc2'), idv('dc1'))
-            : t('The whole standby site {0} is lost at t = 0, taking the target standby with it.', idv('dc2'));
+          : t('The whole standby site {0} is lost at t = 0, taking the target standby with it.', idv('dc2'));
       }
       return t('The primary host crashes at t = 0.');
     }
@@ -7059,7 +7022,7 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
       '<circle cx="12" cy="12" r="3.1"></circle></g></defs>');
 
     /* the slate arrowhead exists only where the redo link survives */
-    if (obs || obsMaster || sw) {
+    if (obs || sw) {
       push('<defs><marker id="topoAs" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" ' +
         'orient="auto-start-reverse"><path d="M0,1 L10,5 L0,9 z" class="tp-ahs"></path></marker></defs>');
     }
@@ -7070,8 +7033,7 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
     var down = {};
     L.links.forEach(function (lk) {
       down[lk.id] = obs ? (lk.id !== 'ps')
-        : obsMaster ? (lk.id === 'op')
-          : sw ? false : topoLinkDown(lk.n, sc, loc);
+        : sw ? false : topoLinkDown(lk.n, sc, loc);
       push('<path class="' + (down[lk.id] ? 'tp-link-x' : 'tp-link') + '" d="' + lk.d + '"' +
         (lk.id === 'ps' ? ' marker-end="url(#topo' + (down.ps ? 'Ar' : 'As') + ')"' : '') + '></path>');
     });
@@ -7083,10 +7045,6 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
     L.links.forEach(function (lk) {
       if (obs && lk.id !== 'ps') {
         push(pill(lk.pill, lk.id === 'op' ? t('no observer to ping') : t('no readiness check'), null, true));
-        return;
-      }
-      if (obsMaster && lk.id === 'op') {
-        push(pill(lk.pill, t('master gone \u2014 backup nominated'), null, true));
         return;
       }
       var cap = lk.id === 'op' ? 'ping'
@@ -7104,24 +7062,19 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
       push(pill(lk.pill, cap, lat, !!down[lk.id]));
     });
 
-    /* cards; the master observer's card is the one that dies on observer-lost,
-       and the backup's dies only with its whole site */
+    /* cards */
     if (L.obs) {
-      var obsDown = obs || obsMaster || (sc === 'dc2down' && loc === 'dc2');
+      var obsDown = obs || (sc === 'dc2down' && loc === 'dc2');
       push(nodeCard(L.obs[0], L.obs[1], L.obs[2], L.obs[3], obsDown, true, 'Observer', subO));
-    }
-    if (L.obs2) {
-      push(nodeCard(L.obs2[0], L.obs2[1], L.obs2[2], L.obs2[3], sc === 'dc2down', true, 'Observer', subO2));
     }
     push(nodeCard(103, 118, 184, 60, sc === 'crash', false, 'Primary', subP));
     push(nodeCard(893, 118, 184, 60, sc === 'dc2down', false, 'Standby', subS));
 
     /* what happened at t = 0, in the vocabulary of the thing it happened to */
-    if (obs || obsMaster) {
+    if (obs) {
       push(ln('tp-x', L.obsX[0], L.obsX[1], L.obsX[0] + 14, L.obsX[1] + 14));
       push(ln('tp-x', L.obsX[0] + 14, L.obsX[1], L.obsX[0], L.obsX[1] + 14));
-      push(txt('tp-ev', L.obsEv[0], L.obsEv[1], L.obsEv[2],
-        esc(obsMaster ? t('master observer host down at t = 0') : t('observer host down at t = 0'))));
+      push(txt('tp-ev', L.obsEv[0], L.obsEv[1], L.obsEv[2], esc(t('observer host down at t = 0'))));
     } else if (sw) {
       push(txt('tp-ev', L.evSw[0], L.evSw[1], L.evSw[2],
         esc(t('roles trade places at t = 0 \u2014 both hosts stay up'))));
@@ -7187,9 +7140,11 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
     els.wrap.innerHTML = buildTimeline(m, lastW);
 
     /* The release is in the signature, unlike the language: an edition flip
-       changes the drawing (the nomination brace appears), not only its words. */
+       changes the drawing (MaxAvailability can become bounded-loss under a
+       26ai lag policy), not only its words. */
     var sig = [C.scenario, C.observerLoc, m.outcome, C.mode, C.pingSet, C.pmyShutdown,
-      m.blocked, m.applyRemaining > 0, C.version, !!m.nomination].join('|');
+      m.blocked, m.applyRemaining > 0, C.version,
+      m.dataLossKind].join('|');
     if (sig !== lastSig) {
       if (els.wrap.firstChild && els.wrap.firstChild.classList) els.wrap.firstChild.classList.add('is-new');
       lastSig = sig;
@@ -7227,14 +7182,16 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
        workbench radio and the lag-limit slider repaint it too */
     var rp = computeReopen({ reopen: R.reopen, maxFailure: R.maxFailure, outage: R.outage,
       rate: R.rate, mode: C.mode, lagLimit: C.lagLimit,
-      version: C.version, lagGraceTime: C.lagGraceTime, threshold: C.threshold });
+      version: C.version, lagGraceTime: C.lagGraceTime, threshold: C.threshold,
+      lagPolicy: C.lagPolicy });
     renderReopenControls();
     renderReopenProse(rp);
     renderReopenReadout(rp);
     lastWRp = Math.max(880, Math.round(els.rpWrap.clientWidth) || 880);
     els.rpWrap.innerHTML = buildReopenTimeline(rp, lastWRp);
     var sigRp = [C.mode, C.lagLimit, C.observerLoc, rp.disabledAt !== null, rp.reconnectAt !== null,
-      rp.dense, C.version, rp.lagStallAt !== null, rp.lagGraceArmed].join('|');
+      rp.dense, C.version, rp.lagStallAt !== null, rp.lagGraceArmed,
+      rp.lagGated].join('|');
     if (sigRp !== lastSigRp) {
       if (els.rpWrap.firstChild && els.rpWrap.firstChild.classList) els.rpWrap.firstChild.classList.add('is-new');
       lastSigRp = sigRp;
@@ -7273,18 +7230,6 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
     crash.dispatchEvent(new Event('change', { bubbles: true }));
   }
 
-  /* Observers on both database sites exist only in 26ai. Switching back to 19c
-     while it is selected -- or arriving on a crafted link that asks for both at
-     once -- pushes the third-site radio through its own change event, the same
-     way the impossible scenario pairing above does, so the rail can never show
-     a placement the drawing is not drawing. */
-  function coerceObsloc() {
-    if (C.observerLoc !== 'dc1dc2' || window.DG.ed() === '26ai') return;
-    var d3 = $('ol-dc3');
-    d3.checked = true;
-    d3.dispatchEvent(new Event('change', { bubbles: true }));
-  }
-
   ['scenario', 'mode'].forEach(function (group) {
     Array.prototype.forEach.call(document.querySelectorAll('input[name="' + group + '"]'), function (r) {
       r.addEventListener('change', function () {
@@ -7299,7 +7244,6 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
     r.addEventListener('change', function () {
       if (!r.checked) return;
       C.observerLoc = r.value;
-      coerceObsloc();
       coerceScenario();
       schedule();
     });
@@ -7314,6 +7258,14 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
       schedule();
     });
   });
+  /* Same reason for its own loop: the state key is lagPolicy. */
+  Array.prototype.forEach.call(document.querySelectorAll('input[name="lagpolicy"]'), function (r) {
+    r.addEventListener('change', function () {
+      if (!r.checked) return;
+      C.lagPolicy = r.value;
+      schedule();
+    });
+  });
 
   els.reset.addEventListener('click', function () {
     C = Object.assign({}, DEFAULTS);
@@ -7324,6 +7276,7 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
     els.pingset.checked = C.pingSet; els.shutdown.checked = C.pmyShutdown;
     $('sc-crash').checked = true; $('md-avail').checked = true;
     $('ol-dc3').checked = true; $('lt-apply').checked = true;
+    $('lp-zero').checked = true;
     schedule();
   });
 
@@ -7445,9 +7398,7 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
        failover, so it must not imply one. */
     els.cfgObserverHost.textContent = C.observerLoc === 'none'
       ? t('not deployed')
-      /* two of them, so a single configured name would only be half the truth */
-      : C.observerLoc === 'dc1dc2' ? t('two observer hosts')
-        : (oh || t('observer host'));
+      : (oh || t('observer host'));
   }
 
   function setField(el, v) {
@@ -7473,14 +7424,14 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
     setField(els.depTct, A.tct); setField(els.depCt, A.ct);
     setField(els.depRc, A.rc); setField(els.depRd, A.rd);
     /* same gates as the rail: the ping numbers need their checkbox, the lag
-       limit is MaxPerformance-only. The scenario gray-outs deliberately do
+       limit is evaluated only where it gates something. The scenario gray-outs deliberately do
        not reach in here -- this card is configuration, not simulation. */
     els.depPingInterval.disabled = !C.pingSet;
     els.depPingRetry.disabled = !C.pingSet;
-    els.depLagLimit.disabled = C.mode === 'maxavail';
+    els.depLagLimit.disabled = !lagGated();
     depPill(els.depPingInterval, C.pingSet ? null : WHY.depPingSet);
     depPill(els.depPingRetry, C.pingSet ? null : WHY.depPingSet);
-    depPill(els.depLagLimit, C.mode === 'maxavail' ? WHY.perf : null);
+    depPill(els.depLagLimit, lagGated() ? null : WHY.zeroLoss);
   }
 
   /* ---------- serialization ---------- */
@@ -7502,7 +7453,7 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
         lagLimit: C.lagLimit, pmyShutdown: C.pmyShutdown,
         /* Broker properties, so they belong in params. The release is not one:
            it is a reading preference, and it stays in DG's own storage key. */
-        lagType: C.lagType, lagGraceTime: C.lagGraceTime,
+        lagType: C.lagType, lagGraceTime: C.lagGraceTime, lagPolicy: C.lagPolicy,
         logXptMode: K.xpt, netTimeout: K.netTimeout,
         reopen: R.reopen, maxFailure: R.maxFailure,
         tct: A.tct, ct: A.ct, rc: A.rc, rd: A.rd
@@ -7558,16 +7509,15 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
         sm.scenario === 'partition' || sm.scenario === 'dc2down' ||
         sm.scenario === 'observer-lost' || sm.scenario === 'switchover') c.scenario = sm.scenario;
     if (sm.observerLoc === 'none' || sm.observerLoc === 'dc1' ||
-        sm.observerLoc === 'dc2' || sm.observerLoc === 'dc3' ||
-        sm.observerLoc === 'dc1dc2') c.observerLoc = sm.observerLoc;
-    /* An older file carries no placement at all and lands on the third site,
-       which is what the page always assumed. The one pair the controls refuse
-       to offer is refused here too. */
+        sm.observerLoc === 'dc2' || sm.observerLoc === 'dc3') c.observerLoc = sm.observerLoc;
+    /* An older file carries no placement at all -- or one this page no longer
+       offers -- and lands on the third site, which is what the page always
+       assumed. The one pair the controls refuse to offer is refused here too. */
     if (c.observerLoc === 'none' && c.scenario === 'observer-lost') c.scenario = 'crash';
-    /* And a file written under 26ai, opened under 19c, lands where the rail
-       would push it: observers on both sites is a placement 19c cannot offer. */
-    if (c.observerLoc === 'dc1dc2' && window.DG.ed() !== '26ai') c.observerLoc = 'dc3';
     c.lagType = (p.lagType === 'transport') ? 'transport' : 'apply';
+    /* A file written before this control existed carries no policy at all and
+       lands on zero data loss, which is what the page always drew. */
+    c.lagPolicy = (p.lagPolicy === 'bounded') ? 'bounded' : 'zero';
     c.lagGraceTime = clampToEl(els.lagGrace, p.lagGraceTime, c.lagGraceTime);
     c.standbyLag = clampToEl(els.lag, sm.standbyLag, c.standbyLag);
     c.roleTransition = clampToEl(els.role, sm.roleTransition, c.roleTransition);
@@ -7616,9 +7566,10 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
     $('ol-dc1').checked = C.observerLoc === 'dc1';
     $('ol-dc2').checked = C.observerLoc === 'dc2';
     $('ol-dc3').checked = C.observerLoc === 'dc3';
-    $('ol-both').checked = C.observerLoc === 'dc1dc2';
     $('lt-apply').checked = C.lagType !== 'transport';
     $('lt-xpt').checked = C.lagType === 'transport';
+    $('lp-zero').checked = C.lagPolicy !== 'bounded';
+    $('lp-bounded').checked = C.lagPolicy === 'bounded';
     els.lagGrace.value = C.lagGraceTime;
     $('md-avail').checked = C.mode === 'maxavail';
     $('md-perf').checked = C.mode === 'maxperf';
@@ -7699,13 +7650,9 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
      control's own change event do the work -- the scenario coercion, the URL
      serializer and the config pill all hang off that one path, and none of
      them can be reached from here. */
-  var OBSLOC_RADIO = { none: 'ol-none', dc1: 'ol-dc1', dc2: 'ol-dc2', dc3: 'ol-dc3',
-    dc1dc2: 'ol-both' };
+  var OBSLOC_RADIO = { none: 'ol-none', dc1: 'ol-dc1', dc2: 'ol-dc2', dc3: 'ol-dc3' };
   els.depObsloc.addEventListener('change', function () {
     var r = $(OBSLOC_RADIO[els.depObsloc.value] || '');
-    /* A disabled radio is a placement this release does not have. The dispatch
-       below would take effect anyway -- that is the whole reason it is used
-       instead of click() -- so the guard belongs here. */
     if (!r || r.checked || r.disabled) return;
     r.checked = true;
     r.dispatchEvent(new Event('change', { bubbles: true }));
@@ -7871,12 +7818,6 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
     schedule();
     setMsg(t('Everything reset to the documented defaults'), false);
   });
-
-  /* Registered before the repaint below, because a switch back to 19c has to
-     put the placement radio somewhere 19c can draw before anything draws. The
-     dispatched change event schedules its own frame, so this costs nothing when
-     the placement is one both releases have. */
-  window.DG.onLang(coerceObsloc);
 
   /* A language switch is a full repaint: every string above is produced by
      draw(), so nothing else has to be re-labelled here. The signature vars are
@@ -8456,8 +8397,7 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
     /* Where the observer runs. 'ol' is applied after 'sc', so a link naming
        both an impossible pair lands on the coercion the rail performs. */
     { k: 'ol',  t: 'radio', name: 'obsloc', d: 'dc3',
-      map: { none: 'ol-none', dc1: 'ol-dc1', dc2: 'ol-dc2', dc3: 'ol-dc3',
-             both: 'ol-both' } },
+      map: { none: 'ol-none', dc1: 'ol-dc1', dc2: 'ol-dc2', dc3: 'ol-dc3' } },
     { k: 'pm',  t: 'radio', name: 'mode', d: 'avail',
       map: { avail: 'md-avail', perf: 'md-perf' } },
     { k: 'th',  t: 'range', id: 'c-threshold',    d: 30 },
@@ -8474,6 +8414,10 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
     { k: 'lt',  t: 'radio', name: 'lagtype', d: 'apply',
       map: { apply: 'lt-apply', transport: 'lt-xpt' } },
     { k: 'lgt', t: 'range', id: 'c-laggrace',    d: 0 },
+    /* Which FastStartFailoverLagLimit 26ai MaxAvailability runs on. Zero data
+       loss is the default, so a link that says nothing is the page as it was. */
+    { k: 'lp',  t: 'radio', name: 'lagpolicy', d: 'zero',
+      map: { zero: 'lp-zero', bounded: 'lp-bounded' } },
     { k: 'xpt', t: 'radio', name: 'cm-xpt', d: 'sync',
       map: { sync: 'cm-sync', fastsync: 'cm-fastsync', async: 'cm-async' } },
     { k: 'lw',  t: 'range', id: 'cm-lw',  d: 2 },

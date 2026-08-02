@@ -83,6 +83,11 @@ test('threshold floor: the documented 6 s minimum still initiates', () => {
   assert.equal(m.tOpen, 11);
 });
 
+// interval x (retry + 1) is the PAGE'S MODEL, not a published formula. What the
+// documentation states is that the threshold is ignored once both ping
+// properties are set, and that detection can be reduced to "nearly 1 second";
+// no arithmetic appears anywhere in it. The 1.1 s below is that model at the
+// minimums (100 ms x 11), and the prose that quotes it says so.
 test('ping override: pingInterval x (pingRetry + 1), not the threshold', () => {
   const m = fsfo({ pingSet: true });
   near(m.detect, 1.1, 'detect');
@@ -197,12 +202,14 @@ test('switchover runs no clocks: threshold and ping properties change nothing', 
 // primary stalls only when it can reach NEITHER, and no observer at all means
 // fast-start failover was never armed. If a cell here has to change, check it
 // against docs.oracle.com first.
+//
+// Every cell assumes ObserverOverride = FALSE, the broker default. Set TRUE,
+// the property lets the observer initiate a failover once IT has lost the
+// primary "even if the standby has a healthy connection to the primary" --
+// which would turn several 'continues' cells into failovers. The page models
+// the default only, and says so where it states the both-must-have-lost rule.
 
-// The fifth location, 'dc1dc2', exists only under version '26ai': an observer
-// beside each database, master and backup, ranked by PreferredObserverHosts.
-// The 19c tables below stay four columns wide -- under 19c (or no version at
-// all) the model coerces 'dc1dc2' to 'dc3', which the invariance tests assert.
-const LOCS = ['none', 'dc1', 'dc2', 'dc3', 'dc1dc2'];
+const LOCS = ['none', 'dc1', 'dc2', 'dc3'];
 
 const MATRIX = {
   //                none          dc1              dc2              dc3
@@ -366,6 +373,14 @@ test('losing the standby site elsewhere leaves the primary serving, unprotected'
   }
 });
 
+// observerLoc 'none' means fast-start failover was never ENABLED, which is an
+// explicit simulator convention -- and a documented state, not an invention:
+// Table 5-1 gives FS_FAILOVER_STATUS = DISABLED for a configuration with
+// fast-start failover disabled. It is deliberately NOT the unobserved state,
+// whose status is PRIMARY UNOBSERVED -- and that one is a TARGET STANDBY-side
+// reading: the primary in an unobserved configuration still reports
+// SYNCHRONIZED, with FS_FAILOVER_OBSERVER_PRESENT = NO. The observer-lost
+// scenario is where the model puts unobserved; 'none' never reaches it.
 test('no observer deployed means no fast-start failover in any scenario', () => {
   for (const scenario of ['crash', 'isolated', 'partition', 'dc2down', 'observer-lost']) {
     const m = fsfo({ scenario, observerLoc: 'none' });
@@ -426,73 +441,66 @@ test('the ping quirk moves the observer clock only, wherever the observer sits',
 
 // ---------- MODEL: the 26ai release ----------
 //
-// c.version opens a second axis: '26ai' unlocks the fifth placement (an
-// observer beside each database, master and backup, ranked by
-// PreferredObserverHosts) and the two lag properties. The six dc1dc2 cells
-// below are the executable form of the both-sites column in
-// diagrams/README.md. One of them is an inference, and the README says which:
-// partition/dc1dc2 follows from the documented nomination rule (the side that
-// lost the master nominates a backup, and with an observer on each database
-// site the standby's side holds one), not from a quoted outcome.
+// c.version opens a second axis: '26ai' unlocks the MaxAvailability lag policy
+// and the two lag properties. It changes nothing about the placement axis --
+// the 24-cell table above holds in both editions, which the invariance loops
+// below pin down.
 
-const MATRIX26 = {
-  //                 outcome        stalled  nomination
-  'crash': ['failover', false, false],
-  'isolated': ['failover', true, true],
-  'partition': ['failover', true, true],
-  'dc2down': ['continues', false, false],
-  'observer-lost': ['continues', false, true],
-  'switchover': ['switchover', false, false],
-};
-
-test('26ai: the both-sites column, six cells of outcome, stall and nomination', () => {
-  for (const [scenario, [outcome, stalled, nomination]] of Object.entries(MATRIX26)) {
-    const m = fsfo({ scenario, observerLoc: 'dc1dc2', version: '26ai' });
-    assert.equal(m.outcome, outcome, `${scenario} outcome`);
-    assert.equal(m.stalled, stalled, `${scenario} stalled`);
-    assert.equal(m.nomination, nomination, `${scenario} nomination`);
-    // A stall plus FastStartFailoverPmyShutdown aborts on the threshold here
-    // exactly as it does in the 19c cells.
-    assert.equal(m.abort, stalled ? CDEF.threshold : null, `${scenario} abort`);
-    // No coercion under 26ai: even observer-lost keeps its own scenario,
-    // because only the master died and a backup remains to nominate.
-    assert.equal(m.scenario, scenario, `${scenario} effective scenario`);
+// 26ai gave FastStartFailoverLagLimit a MaxAvailability role. Source: the 26ai
+// broker guide's "Fast-start Failover Protection Modes" section -- MaxAvailability
+// is "guaranteed to either lose no data (when the FastStartFailoverLagLimit
+// configuration property is set to zero) or lose no more than the amount of data
+// (in seconds) specified by" it, and with a non-zero value "failover is possible
+// any time the standby database's apply lag is less than or equal to the value".
+// The broker default there is 0; in MaxPerformance it stays 30 s. Do NOT cite the
+// property page's closing line or the chapter's Task 3: both still carry the stale
+// 19c sentence saying the property is used in maximum performance mode only.
+test('26ai: MaxAvailability at lag limit 0 is the 19c story, whatever the lag', () => {
+  // 'zero' is the in-model default, so an input that says nothing about the
+  // policy -- every old link, stored config and export file -- lands here.
+  for (const over of [{}, { lagPolicy: 'zero' }, { lagPolicy: 'nonsense' }]) {
+    const at = JSON.stringify(over);
+    const m = fsfo({ version: '26ai', standbyLag: 80, lagLimit: 30, ...over });
+    assert.equal(m.blocked, false, at);
+    assert.equal(m.dataLossKind, 'none', at);
+    assert.equal(m.dataLossSeconds, 0, at);
+    assert.equal(m.outcome, 'failover', at);
   }
 });
 
-test('26ai: a cut between the sites is the false failover again, ordered from the standby side', () => {
-  // The inferred cell (see diagrams/README.md): nothing is wrong with the
-  // primary, but the master went with the primary's side of the cut, the
-  // backup beside the standby is nominated, and that side has lost the
-  // primary -- so the standby is promoted and the healthy primary stalls.
-  const m = fsfo({ scenario: 'partition', observerLoc: 'dc1dc2', version: '26ai' });
-  assert.equal(m.initiate, 30);
-  assert.equal(m.tOpen, 55);
-  assert.equal(m.abort, 30);
-  assert.equal(m.pmyReachable, true);        // nothing was ever wrong with it
-  assert.equal(fsfo({ scenario: 'partition', observerLoc: 'dc1dc2', version: '26ai',
-    pmyShutdown: false }).abort, null);
+test('26ai: MaxAvailability set to bounded is gated by the lag limit', () => {
+  const at = fsfo({ version: '26ai', lagPolicy: 'bounded', standbyLag: 30, lagLimit: 30 });
+  assert.equal(at.blocked, false);                 // at the limit is still eligible
+  assert.equal(at.dataLossKind, 'bounded');
+  assert.equal(at.dataLossSeconds, 30);
+  assert.equal(at.initiate, 30);                   // and no clock moved for any of it
+  assert.equal(at.tOpen, 75);                      // 30 + 30 apply + 15 role change
+  const over = fsfo({ version: '26ai', lagPolicy: 'bounded', standbyLag: 31, lagLimit: 30 });
+  assert.equal(over.blocked, true);
+  assert.equal(over.dataLossKind, 'na');
+  assert.equal(over.dataLossSeconds, 0);
+  // The same policy in MaxPerformance changes nothing: the limit already gated it.
+  assert.deepEqual(fsfo({ version: '26ai', mode: 'maxperf', lagPolicy: 'bounded' }),
+    fsfo({ version: '26ai', mode: 'maxperf' }));
 });
 
-test('26ai: losing the master is a nomination, never an unobserved configuration', () => {
-  const m = fsfo({ scenario: 'observer-lost', observerLoc: 'dc1dc2', version: '26ai' });
-  assert.equal(m.observerLost, false);       // the observer-lost branch is skipped
-  assert.equal(m.nomination, true);
-  assert.equal(m.redoFlowing, true);         // both databases carry on untouched
-  assert.equal(m.standbyGone, false);
-  assert.equal(m.initiate, null);            // and no clock runs meanwhile
-  assert.equal(m.tOpen, null);
-  // dc2down takes the backup with the site and leaves the master observing:
-  // no nomination, the primary carries on unprotected.
-  const d = fsfo({ scenario: 'dc2down', observerLoc: 'dc1dc2', version: '26ai' });
-  assert.equal(d.nomination, false);
-  assert.equal(d.standbyGone, true);
+test('19c: the MaxAvailability lag policy is 26ai-only, so it moves nothing', () => {
+  for (const version of [undefined, '19c']) {
+    assert.deepEqual(fsfo({ version, lagPolicy: 'bounded', standbyLag: 80, lagLimit: 30 }),
+      fsfo({ version, standbyLag: 80, lagLimit: 30 }), `${version ?? 'absent'}`);
+  }
 });
 
 test('26ai: lagStall is MaxPerformance-only, and lagType echoes the property', () => {
   // The flag prices a growing lag, not t = 0, so it is a shape for the prose
-  // and the reopen panel -- computeFsfo moves no clock for it.
+  // and the reopen panel -- computeFsfo moves no clock for it. It stays
+  // MaxPerformance-only in 26ai whatever the MaxAvailability lag limit is
+  // doing: both FastStartFailoverLagType and FastStartFailoverLagGraceTime are
+  // documented as "used when fast-start failover is enabled and the
+  // configuration is operating in maximum performance mode".
   assert.equal(fsfo({ version: '26ai' }).lagStall, null);                       // MaxAvailability
+  assert.equal(fsfo({ version: '26ai', lagPolicy: 'bounded', lagGraceTime: 30 }).lagStall, null);
+  assert.equal(fsfo({ version: '26ai', lagPolicy: 'bounded' }).lagType, 'apply');
   assert.equal(fsfo({ version: '26ai', mode: 'maxperf', observerLoc: 'none' }).lagStall, null);
   assert.deepEqual(fsfo({ version: '26ai', mode: 'maxperf' }).lagStall,
     { armed: false, graceTime: 0, maxSeconds: 30 });
@@ -516,12 +524,12 @@ test('19c invariance: every cell still reads off the 24-cell tables, new fields 
     for (const [scenario, row] of Object.entries(MATRIX)) {
       LOCS.forEach((loc, i) => {
         const at = `${scenario}/${loc}/${version ?? 'absent'}`;
-        const m = fsfo({ scenario, observerLoc: loc, version });
-        // The fifth column is not a 19c placement: it lands on the third site.
-        const col = loc === 'dc1dc2' ? 3 : i;
-        assert.equal(m.outcome, row[col], at);
-        assert.equal(m.stalled, STALLED[scenario][col], `${at} stalled`);
-        assert.equal(m.nomination, false, `${at} nomination`);
+        // Every 26ai-only input along for the ride: none of them may move a
+        // 19c cell, whatever a crafted link or a 26ai-written export says.
+        const m = fsfo({ scenario, observerLoc: loc, version,
+          lagPolicy: 'bounded', lagType: 'transport', lagGraceTime: 30 });
+        assert.equal(m.outcome, row[i], at);
+        assert.equal(m.stalled, STALLED[scenario][i], `${at} stalled`);
         assert.equal(m.lagStall, null, `${at} lagStall`);
         assert.equal(m.lagType, 'apply', `${at} lagType`);
       });
@@ -529,15 +537,12 @@ test('19c invariance: every cell still reads off the 24-cell tables, new fields 
   }
 });
 
-test('19c: the both-sites placement coerces to the third site, whole object', () => {
-  for (const scenario of Object.keys(MATRIX)) {
-    assert.deepEqual(fsfo({ scenario, observerLoc: 'dc1dc2' }),
-      fsfo({ scenario, observerLoc: 'dc3' }), scenario);
-  }
-  // And the two 26ai knobs change nothing under 19c, even set to non-defaults
-  // by a crafted link or an imported file.
+test('19c: the three 26ai knobs are inert', () => {
+  // Set to non-defaults by a crafted link or an imported file, they change
+  // nothing under 19c.
   assert.deepEqual(
-    fsfo({ mode: 'maxperf', lagType: 'transport', lagGraceTime: 30, version: '19c' }),
+    fsfo({ mode: 'maxperf', lagType: 'transport', lagGraceTime: 30,
+      lagPolicy: 'bounded', version: '19c' }),
     fsfo({ mode: 'maxperf' }));
 });
 
@@ -723,6 +728,28 @@ test('FSFO disarms at t = 0 in MaxAvailability, at the lag limit in MaxPerforman
   assert.equal(mk('maxavail', 30).fsfoLostAt, 0);
   assert.equal(mk('maxperf', 30).fsfoLostAt, 30);
   assert.equal(mk('maxperf', 5).fsfoLostAt, 5);
+});
+
+test('26ai reopen: bounded MaxAvailability disarms at the lag limit, not at t = 0', () => {
+  const mk = (over) => M.computeReopen({ reopen: 300, maxFailure: 0, outage: 600, rate: 5,
+    mode: 'maxavail', lagLimit: 30, version: '26ai', ...over });
+  // Zero data loss is the default and the 19c drawing: unsynchronized at once.
+  assert.equal(mk({}).fsfoLostAt, 0);
+  assert.equal(mk({}).lagGated, false);
+  assert.equal(mk({ lagPolicy: 'zero' }).fsfoLostAt, 0);
+  // Bounded: the apply lag is what disarms it, exactly as in MaxPerformance.
+  assert.equal(mk({ lagPolicy: 'bounded' }).fsfoLostAt, 30);
+  assert.equal(mk({ lagPolicy: 'bounded' }).lagGated, true);
+  assert.equal(mk({ lagPolicy: 'bounded', lagLimit: 5 }).fsfoLostAt, 5);
+  // FastStartFailoverLagGraceTime stays MaxPerformance-only, so no stall band
+  // is drawn here whatever the policy and grace time say.
+  assert.equal(mk({ lagPolicy: 'bounded', lagGraceTime: 10, threshold: 30 }).lagStallAt, null);
+  assert.equal(mk({ lagPolicy: 'bounded', lagGraceTime: 10, threshold: 30 }).lagGraceArmed, false);
+  // And under 19c the policy is not a thing: t = 0, as it always was.
+  const c19 = M.computeReopen({ reopen: 300, maxFailure: 0, outage: 600, rate: 5,
+    mode: 'maxavail', lagLimit: 30, lagPolicy: 'bounded' });
+  assert.equal(c19.fsfoLostAt, 0);
+  assert.equal(c19.lagGated, false);
 });
 
 test('26ai reopen: grace 0 pauses the primary at the crossing, one threshold at most', () => {
