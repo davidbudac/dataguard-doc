@@ -6322,7 +6322,7 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
 
     els.cmNXpt.classList.toggle('is-warn', cm.modeConflict);
     els.cmNXpt.innerHTML = t(CM_XPT_NOTE[cm.xpt]) + (cm.modeConflict
-      ? ' ' + t('The workbench above is set to MaxAvailability, for which the broker documents <span class="mono">SYNC</span> or <span class="mono">FASTSYNC</span>.')
+      ? ' ' + t('The protection mode is set to MaxAvailability, for which the broker documents <span class="mono">SYNC</span> or <span class="mono">FASTSYNC</span>.')
       : '');
 
     els.cmNSbw.innerHTML = t('How long the standby takes to write the received redo to its standby redo log.') + ' ' +
@@ -6371,7 +6371,7 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
 
     els.cmBanner.hidden = !cm.modeConflict;
     if (cm.modeConflict) {
-      els.cmBannerBody.innerHTML = t('The workbench above is set to MaxAvailability, for which the broker\u2019s protection-mode table lists <span class="mono">SYNC</span> or <span class="mono">FASTSYNC</span>; <span class="mono">ASYNC</span> is listed for MaxPerformance. The commit is drawn anyway so the shape is comparable \u2014 switch the workbench to MaxPerformance for the documented pairing.');
+      els.cmBannerBody.innerHTML = t('The protection mode set to MaxAvailability, for which the broker\u2019s protection-mode table lists <span class="mono">SYNC</span> or <span class="mono">FASTSYNC</span>; <span class="mono">ASYNC</span> is listed for MaxPerformance. The commit is drawn anyway so the shape is comparable \u2014 switch the workbench to MaxPerformance for the documented pairing.');
     }
 
     els.cmEyebrow.textContent = t('t = 0 is the COMMIT \u00b7 horizon {0} ms', fmt(cm.horizonMs));
