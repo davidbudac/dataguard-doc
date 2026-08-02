@@ -943,6 +943,42 @@ window.DG = (function () {
         <p class="ctl-note" id="n-laglimit">MaxPerformance only. Not evaluated in MaxAvailability, where the standby must be synchronized instead.</p>
       </div>
 
+      <div class="ctl" id="ctl-role">
+        <div class="ctl-hd">
+          <label class="ctl-name is-prose" for="c-role">Role transition + open time</label>
+          <output class="ctl-val" id="v-role" for="c-role">15 s</output>
+        </div>
+        <input type="range" id="c-role" min="5" max="60" step="1" value="15">
+        <div class="ctl-scale"><span>5 s</span><span>60 s</span></div>
+        <p class="ctl-note" id="n-role">Environment-dependent, not a broker parameter. Covers the role change and the read-write open once the redo is applied.</p>
+      </div>
+
+      <div class="ctl">
+        <div class="ctl-hd">
+          <label class="ctl-name is-prose" for="c-latency">Inter-node network latency (RTT)</label>
+          <output class="ctl-val" id="v-latency" for="c-latency">0 ms</output>
+        </div>
+        <input type="range" id="c-latency" min="0" max="100" step="1" value="0" aria-describedby="n-latency">
+        <div class="ctl-scale"><span>0 ms</span><span>100 ms</span></div>
+        <p class="ctl-note" id="n-latency">One round trip between any two hosts, drawn on the topology above. The FAILOVER command pays half an RTT; under SYNC every commit waits one standby round trip. Not a broker parameter.</p>
+      </div>
+
+      <div class="ctl" id="ctl-shutdown">
+        <label class="sw" for="c-shutdown">
+          <input type="checkbox" id="c-shutdown" checked>
+          <span class="sw-track" aria-hidden="true"></span>
+          <span class="sw-text">
+            <span class="ctl-name">FastStartFailoverPmyShutdown</span>
+            <span class="sw-state" id="v-shutdown">TRUE</span>
+          </span>
+        </label>
+        <p class="ctl-note" id="n-shutdown">Isolated-primary scenario only.</p>
+      </div>
+
+      <!-- The three 26ai-only properties, kept together at the foot of the rail.
+           They are inert for every reader on 19c, and mid-rail they split the
+           controls that are not. Each one still says "above" of something above
+           it: the lag limit and the apply-lag slider both stay upstream. -->
       <div class="ctl" id="ctl-lagpolicy">
         <fieldset class="seg">
           <legend class="ctl-name is-prose">MaxAvailability data-loss policy</legend>
@@ -977,38 +1013,6 @@ window.DG = (function () {
         <input type="range" id="c-laggrace" min="0" max="60" step="5" value="0" aria-describedby="n-laggrace">
         <div class="ctl-scale"><span>0 s</span><span>60 s</span></div>
         <p class="ctl-note" id="n-laggrace">Seconds before the limit at which the primary asks permission to enter the lagging state. 0 is off.</p>
-      </div>
-
-      <div class="ctl" id="ctl-role">
-        <div class="ctl-hd">
-          <label class="ctl-name is-prose" for="c-role">Role transition + open time</label>
-          <output class="ctl-val" id="v-role" for="c-role">15 s</output>
-        </div>
-        <input type="range" id="c-role" min="5" max="60" step="1" value="15">
-        <div class="ctl-scale"><span>5 s</span><span>60 s</span></div>
-        <p class="ctl-note" id="n-role">Environment-dependent, not a broker parameter. Covers the role change and the read-write open once the redo is applied.</p>
-      </div>
-
-      <div class="ctl">
-        <div class="ctl-hd">
-          <label class="ctl-name is-prose" for="c-latency">Inter-node network latency (RTT)</label>
-          <output class="ctl-val" id="v-latency" for="c-latency">0 ms</output>
-        </div>
-        <input type="range" id="c-latency" min="0" max="100" step="1" value="0" aria-describedby="n-latency">
-        <div class="ctl-scale"><span>0 ms</span><span>100 ms</span></div>
-        <p class="ctl-note" id="n-latency">One round trip between any two hosts, drawn on the topology above. The FAILOVER command pays half an RTT; under SYNC every commit waits one standby round trip. Not a broker parameter.</p>
-      </div>
-
-      <div class="ctl" id="ctl-shutdown">
-        <label class="sw" for="c-shutdown">
-          <input type="checkbox" id="c-shutdown" checked>
-          <span class="sw-track" aria-hidden="true"></span>
-          <span class="sw-text">
-            <span class="ctl-name">FastStartFailoverPmyShutdown</span>
-            <span class="sw-state" id="v-shutdown">TRUE</span>
-          </span>
-        </label>
-        <p class="ctl-note" id="n-shutdown">Isolated-primary scenario only.</p>
       </div>
     </aside>
 
