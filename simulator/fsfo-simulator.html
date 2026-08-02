@@ -3406,26 +3406,26 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
     obsLost: 'Only the master died. A backup is nominated, the configuration is armed again, and what it cost is the interval in between, during which no fast-start failover could have occurred.'
   };
 
-  /* The pill vocabulary: one short phrase per reason a control goes gray, kept
-     in one place because the same reason grays several controls at once and
-     the reader should recognize it as the same reason. Each one is the note
-     under the control compressed to its clause -- never a new claim. */
+  /* The pill vocabulary: a hint, not an explanation. One or two words naming
+     the state that took the control away -- the note under the control is
+     where the reason is spelled out, and every one of these is a phrase from
+     it. Kept in one place because the same state grays several controls at
+     once and the reader should recognize it as the same state: WHY.obs is the
+     scenario radio's own label, WHY.perf is what the lag properties say of
+     themselves. */
   var WHY = {
-    v19: 'a 26ai property',
-    nofsfo: 'no observer deployed',
-    obs: 'the observer died',
-    sw: 'planned switchover',
-    avail: 'not used in MaxAvailability',
-    ping: 'the ping loop detects instead',
+    v19: '26ai only',
+    nofsfo: 'no observer',
+    obs: 'observer lost',
+    sw: 'switchover',
+    perf: 'MaxPerformance only',
+    ping: 'ping properties set',
     pingStall: 'stall clock only',
-    noPromote: 'nothing is promoted here',
-    noStall: 'the primary is not stalled',
-    appObs: 'no connection is disturbed',
-    appSw: 'both listeners answer',
-    optBoth: 'both sites: a 26ai placement',
-    optObsLost: 'observer lost: needs an observer',
-    depPingSet: 'set the properties first',
-    depPerf: 'MaxPerformance only'
+    noPromote: 'no promotion',
+    noStall: 'no stall',
+    optBoth: 'both sites: 26ai only',
+    optObsLost: 'observer lost: no observer',
+    depPingSet: 'not set explicitly'
   };
 
   /* ---------- timeline geometry (single time -> x scale) ---------- */
@@ -4880,7 +4880,7 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
     var lagOff = !v26 || avail || none;
     /* Read in the order the gate is written: the release first, then whether
        fast-start failover exists at all, then the protection mode. */
-    var lagWhy = !v26 ? WHY.v19 : none ? WHY.nofsfo : avail ? WHY.avail : null;
+    var lagWhy = !v26 ? WHY.v19 : none ? WHY.nofsfo : avail ? WHY.perf : null;
     ctlPill(els.ctlLagType, lagWhy);
     ctlPill(els.ctlLagGrace, lagWhy);
     els.ctlLagType.classList.toggle('is-off', lagOff);
@@ -5006,7 +5006,7 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
       var swLagOff = avail || none;
       els.lagLimit.disabled = swLagOff;
       els.ctlLagLimit.classList.toggle('is-off', swLagOff);
-      ctlPill(els.ctlLagLimit, !swLagOff ? null : none ? WHY.nofsfo : WHY.avail);
+      ctlPill(els.ctlLagLimit, !swLagOff ? null : none ? WHY.nofsfo : WHY.perf);
       els.nLagLimit.innerHTML = t(none ? NOFSFO_NOTES.lagLimit
         : avail ? SW_NOTES.lagLimitAvail : SW_NOTES.lagLimitPerf);
 
@@ -5068,7 +5068,7 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
     var llOff = avail || (m.outcome !== 'failover' && m.outcome !== 'switchover');
     els.lagLimit.disabled = llOff;
     els.ctlLagLimit.classList.toggle('is-off', llOff);
-    ctlPill(els.ctlLagLimit, !llOff ? null : avail ? WHY.avail : WHY.noPromote);
+    ctlPill(els.ctlLagLimit, !llOff ? null : avail ? WHY.perf : WHY.noPromote);
     els.nLagLimit.innerHTML = avail
       ? t('Not evaluated in MaxAvailability. Readiness there means the standby was synchronized at failure time.')
       : llOff
@@ -5899,7 +5899,7 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
     [els.apTct, els.apCt, els.apRc, els.apRd, els.apDrop].forEach(function (el) { el.disabled = obs; });
     [els.apCtlTct, els.apCtlCt, els.apCtlRc, els.apCtlRd, els.apCtlDead].forEach(function (el) {
       el.classList.toggle('is-off', obs);
-      ctlPill(el, obs ? WHY.appObs : null);
+      ctlPill(el, obs ? WHY.obs : null);
     });
     els.apDefaults.disabled = obs;
     els.apTuned.disabled = obs;
@@ -5917,7 +5917,7 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
       els.apDrop.disabled = true;
       els.apRst.disabled = true;
       els.apCtlDead.classList.add('is-off');
-      ctlPill(els.apCtlDead, WHY.appSw);
+      ctlPill(els.apCtlDead, WHY.sw);
       els.apNDead.textContent = t(SW_NOTES.dead);
       return;
     }
@@ -7480,7 +7480,7 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
     els.depLagLimit.disabled = C.mode === 'maxavail';
     depPill(els.depPingInterval, C.pingSet ? null : WHY.depPingSet);
     depPill(els.depPingRetry, C.pingSet ? null : WHY.depPingSet);
-    depPill(els.depLagLimit, C.mode === 'maxavail' ? WHY.depPerf : null);
+    depPill(els.depLagLimit, C.mode === 'maxavail' ? WHY.perf : null);
   }
 
   /* ---------- serialization ---------- */

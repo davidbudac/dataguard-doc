@@ -9,28 +9,32 @@ with them shut sees a dead control and no reason.
 So every gray control now carries a small pill naming the reason, and the pill does
 not collapse.
 
+The pill is a hint, not an explanation: one or two words naming the *state* that took
+the control away, in the state's own vocabulary. `OBSERVER LOST` is the scenario
+radio's own label; `MAXPERFORMANCE ONLY` is what the lag properties say of themselves.
+The note underneath is still where the reason is spelled out.
+
 ## What shows up where
 
 | State | Controls | Pill |
 |---|---|---|
-| Observer lost | threshold, `ObserverPing*`, lag limit, role transition, `FastStartFailoverPmyShutdown` | `THE OBSERVER DIED` |
-| Switchover | threshold, `ObserverPing*`, `FastStartFailoverPmyShutdown` | `PLANNED SWITCHOVER` |
-| Observer location = none | the same set, plus the lag limit | `NO OBSERVER DEPLOYED` |
-| 19c edition | `FastStartFailoverLagType`, `FastStartFailoverLagGraceTime` | `A 26AI PROPERTY` |
-| MaxAvailability | lag limit, and the two 26ai lag properties | `NOT USED IN MAXAVAILABILITY` |
-| Ping properties set | threshold | `THE PING LOOP DETECTS INSTEAD` |
+| Observer lost | threshold, `ObserverPing*`, lag limit, role transition, `FastStartFailoverPmyShutdown`; in chapter 3, the four connect-string timeouts and the dead-address toggle | `OBSERVER LOST` |
+| Switchover | threshold, `ObserverPing*`, `FastStartFailoverPmyShutdown`; in chapter 3, the dead-address toggle | `SWITCHOVER` |
+| Observer location = none | the same chapter-1 set, plus the lag limit | `NO OBSERVER` |
+| 19c edition | `FastStartFailoverLagType`, `FastStartFailoverLagGraceTime` | `26AI ONLY` |
+| MaxAvailability | lag limit and the two 26ai lag properties, on the rail and on the configuration card alike | `MAXPERFORMANCE ONLY` |
+| Ping properties set | threshold | `PING PROPERTIES SET` |
 | Ping properties set, primary stalls | threshold (still adjustable) | `STALL CLOCK ONLY` |
-| Nothing being promoted | lag limit | `NOTHING IS PROMOTED HERE` |
-| Primary never stalls | `FastStartFailoverPmyShutdown` | `THE PRIMARY IS NOT STALLED` |
-| Observer lost, chapter 3 | the four connect-string timeouts, dead-address toggle | `NO CONNECTION IS DISTURBED` |
-| Switchover, chapter 3 | dead-address toggle | `BOTH LISTENERS ANSWER` |
-| Configuration card | `ObserverPingInterval` / `ObserverPingRetry` | `SET THE PROPERTIES FIRST` |
-| Configuration card | `FastStartFailoverLagLimit` | `MAXPERFORMANCE ONLY` |
+| Nothing being promoted | lag limit | `NO PROMOTION` |
+| Primary never stalls | `FastStartFailoverPmyShutdown` | `NO STALL` |
+| Configuration card | `ObserverPingInterval` / `ObserverPingRetry` | `NOT SET EXPLICITLY` |
 
 Two pills name a single gray **radio** rather than a whole gray control, so they say
-which option they mean: `BOTH SITES: A 26AI PLACEMENT` (the placement 19c cannot
-offer) and `OBSERVER LOST: NEEDS AN OBSERVER` (the scenario that needs an observer to
-lose).
+which option they mean: `BOTH SITES: 26AI ONLY` (the placement 19c cannot offer) and
+`OBSERVER LOST: NO OBSERVER` (the scenario that needs an observer to lose).
+
+One state, one pill, wherever it reaches — the chapter-3 rail and the configuration
+card use the same twelve strings as chapter 1 rather than a wording of their own.
 
 ## How it works
 
@@ -40,9 +44,9 @@ lose).
   configuration card, which has no notes at all to fall back on. It appends after
   the input rather than inside the label, because the label's `innerHTML` is in the
   i18n snapshot and anything living there would be clobbered on `setLang`.
-- The wording lives in one `WHY` table. The same reason grays several controls at
-  once, and the reader should recognize it as the same reason; each entry is the
-  control's own note compressed to its clause, never a new claim.
+- The wording lives in one `WHY` table of twelve entries. The same state grays several
+  controls at once, and the reader should recognize it as the same state; each entry
+  is a phrase lifted from the control's own note, never a new claim.
 - Pills are set from state on every render pass, exactly like the `is-off` class, so
   a `null` reason clears one and leaving a state cannot strand a pill. Every branch
   of `renderControls` that grays a control also sets or clears its pill — including
@@ -53,11 +57,13 @@ lose).
 
 ## Checks
 
-- Every scenario / placement / mode / ping-properties transition driven in a headless
-  Chromium, listing the visible pills in each state: correct set every time, nothing
-  stranded on the way back out, no console errors.
-- Czech strings added to `simulator/i18n/cs.json`; verified the pills translate on a
-  language switch and translate back.
+- Every scenario / placement / mode / edition / ping-properties transition driven in a
+  headless Chromium, listing the visible pills in each state: all twelve appear where
+  they should, nothing stranded on the way back out, no console errors.
+- Czech strings in `simulator/i18n/cs.json`; verified the pills translate on a language
+  switch and translate back. `switchover` is the same word in both, so it carries no
+  catalog entry &mdash; `t()` falls through to the key, which is what the catalog test
+  requires.
 - `node site/build.mjs` (ASCII guard) and the 65 model tests in `site/test.mjs` pass.
   The fragment stays pure ASCII.
 
