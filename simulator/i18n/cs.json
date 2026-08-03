@@ -825,6 +825,7 @@
   "Still the standby": "Pořád standby",
   "Stranded standby": "Uvízlá standby",
   "String exhausted": "String vyčerpán",
+  "Switch theme": "Přepnout motiv",
   "Switchover and failover internals are reworked; Oracle claims transitions up to several times faster than 19c, with nothing to configure. The role-transition slider in the chapter&nbsp;1 rail stays yours to set — measure your own transition and enter it.": "Vnitřek switchoveru a failoveru je přepracovaný; Oracle udává změny rolí až několikrát rychlejší než v 19c, bez čehokoli ke konfiguraci. Posuvník změny role v liště kapitoly&nbsp;1 zůstává na vás — změřte vlastní přechod a zadejte ho.",
   "TCP connect budget per ADDRESS. Default 60 s — the clock that runs, in full, on every visit to a silently unreachable host.": "Rozpočet na TCP spojení pro jednu ADDRESS. Výchozí 60 s — hodiny, které běží celé při každé návštěvě mlčky nedosažitelného hosta.",
   "TRUE — a stalled primary aborts itself": "TRUE — zastavená primary se sama ukončí",

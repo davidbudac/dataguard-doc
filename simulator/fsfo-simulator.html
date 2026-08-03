@@ -62,8 +62,10 @@ background:var(--bg);color:var(--ik);font-family:var(--sans);font-size:15px;line
    page's top-right without leaving the header's flow. */
 .hd-top{display:flex;justify-content:space-between;align-items:center;gap:16px}
 
-/* Language switch -- EN / CS, styled after the segmented controls in the rails.
-   The labels are language tags, not words, so they need no translation. */
+/* Language switch -- EN / CZ, styled after the segmented controls in the rails.
+   The labels are short country-style tags, not words, so they need no
+   translation. The value behind the CZ button is still the language code cs --
+   that is what data-lang, the lang attribute, ?lang= and the catalog all use. */
 .langsw{display:flex;flex:0 0 auto;border:1px solid var(--ln2);border-radius:2px;overflow:hidden}
 .langsw button{font-family:var(--mono);font-size:11px;letter-spacing:.1em;color:var(--ik3);
 background:var(--sf);border:0;border-right:1px solid var(--ln);padding:4px 10px;cursor:pointer}
@@ -76,6 +78,28 @@ box-shadow:inset 0 -2px 0 var(--vi)}
 /* The release switch is the language switch's twin -- same class, so no button
    styling of its own -- and the two share one box at the header's right edge. */
 .hd-sw{display:flex;flex:0 0 auto;align-items:center;gap:10px}
+
+/* Theme switch -- one square button beside the two segmented switches. It shows
+   the theme a press would move to, so the moon stands for "go dark". Which of
+   the two icons is visible is decided in CSS, off the same three conditions the
+   token blocks use (system preference, then either data-theme override), which
+   means the glyph stays right even when the attribute is flipped by the host
+   page rather than by this button. */
+.themesw{flex:0 0 auto;display:flex;align-items:center;justify-content:center;
+width:26px;height:24px;padding:0;cursor:pointer;color:var(--ik3);
+background:var(--sf);border:1px solid var(--ln2);border-radius:2px}
+.themesw:hover{color:var(--ik);background:var(--sf2)}
+.themesw svg{display:block;width:14px;height:14px;fill:none;stroke:currentColor;
+stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+.themesw .th-sun{display:none}
+@media (prefers-color-scheme:dark){
+.themesw .th-moon{display:none}.themesw .th-sun{display:block}}
+:root[data-theme="dark"] .themesw .th-moon{display:none}
+:root[data-theme="dark"] .themesw .th-sun{display:block}
+:root[data-theme="light"] .themesw .th-moon{display:block}
+:root[data-theme="light"] .themesw .th-sun{display:none}
+@media (prefers-reduced-motion:no-preference){
+.themesw{transition:background-color .16s ease,color .16s ease}}
 
 /* Editions. 19c is the page's default reading and the 26ai-only blocks stay
    hidden until the header switch puts .is-v26 on .fsfo. Keyed with :not() so a
@@ -786,6 +810,24 @@ window.DG = (function () {
 })();
 </script>
 
+<script>
+/* Theme, part one: put a remembered choice on the root before the page below
+   is parsed, so a reader who picked dark never sees a light frame first. Only
+   an explicit choice is stored -- with nothing remembered the attribute stays
+   off and prefers-color-scheme keeps deciding, which is also what the host
+   page's own toggle expects to find. The button that writes this lives further
+   down, wired after the markup exists. */
+(function () {
+  "use strict";
+  try {
+    var saved = localStorage.getItem('dg-theme');
+    if (saved === 'dark' || saved === 'light') {
+      document.documentElement.setAttribute('data-theme', saved);
+    }
+  } catch (e) { /* private mode */ }
+})();
+</script>
+
 <div class="fsfo">
 
   <header class="hd">
@@ -798,8 +840,12 @@ window.DG = (function () {
         </div>
         <div class="langsw" id="langsw" role="group" aria-label="Language">
           <button type="button" data-lang="en" aria-pressed="true" title="English">EN</button>
-          <button type="button" data-lang="cs" aria-pressed="false" title="Czech">CS</button>
+          <button type="button" data-lang="cs" aria-pressed="false" title="Czech">CZ</button>
         </div>
+        <button type="button" class="themesw" id="themesw" aria-label="Switch theme" title="Switch theme">
+          <svg class="th-moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20.5 14.6A8.5 8.5 0 0 1 9.4 3.5a8.5 8.5 0 1 0 11.1 11.1z"/></svg>
+          <svg class="th-sun" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4.2"/><path d="M12 2.4v2.2M12 19.4v2.2M4.2 4.2l1.6 1.6M18.2 18.2l1.6 1.6M2.4 12h2.2M19.4 12h2.2M4.2 19.8l1.6-1.6M18.2 5.8l1.6-1.6"/></svg>
+        </button>
       </div>
     </div>
     <h1>Data Guard configuration</h1>
@@ -2229,7 +2275,7 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
 </div>
 
 <script>
-/* Static markup translation, plus the EN / CS switch.
+/* Static markup translation, plus the EN / CZ switch.
 
    Deliberately placed between the markup and the models: it snapshots the
    English source out of the DOM, and it has to do that before the models'
@@ -2444,6 +2490,32 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
 
   DG.setStatic(apply);
   apply();
+})();
+</script>
+
+<script>
+/* Theme, part two: the button. A press resolves what is on screen right now --
+   the override if one is set, the system preference otherwise -- and writes the
+   opposite, which is why the first press always visibly changes something. The
+   choice is remembered, and from then on it outranks the system: there is no
+   way back to "follow the system" from this button, only from clearing the
+   site's storage, which is the trade a one-button switch makes for staying one
+   button. The icon needs no updating here; CSS reads the same attribute. */
+(function () {
+  "use strict";
+  var btn = document.getElementById('themesw');
+  if (!btn) return;
+  var root = document.documentElement;
+  btn.addEventListener('click', function () {
+    var now = root.getAttribute('data-theme');
+    if (now !== 'dark' && now !== 'light') {
+      now = window.matchMedia && window.matchMedia('(prefers-color-scheme:dark)').matches
+        ? 'dark' : 'light';
+    }
+    var next = now === 'dark' ? 'light' : 'dark';
+    root.setAttribute('data-theme', next);
+    try { localStorage.setItem('dg-theme', next); } catch (e) { /* private mode */ }
+  });
 })();
 </script>
 

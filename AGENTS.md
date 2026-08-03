@@ -909,7 +909,7 @@ and the `applyConfig` whitelist drops values it does not list.
 
 ## Languages (English + Czech)
 
-The page ships in English and Czech, chosen with an `EN` / `CS` toggle in the
+The page ships in English and Czech, chosen with an `EN` / `CZ` toggle in the
 header. **English is the source language and the only one in the fragment.**
 Czech lives in `simulator/i18n/cs.json`, which `site/build.mjs` inlines into the
 built page's `<head>` as `<script type="application/json" id="dg-i18n-cs">`. That
