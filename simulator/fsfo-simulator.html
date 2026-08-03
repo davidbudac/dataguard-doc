@@ -4427,7 +4427,10 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
         o += m.ifDiedNow > 0
           ? chip('am', t('If the primary died right now'), '\u2264 ' + fmt(m.ifDiedNow), t('s of redo'),
               t('Failover would be manual, and MaxPerformance leaves the current apply lag of <span class="mono">{0} s</span> of redo at risk', fmt(m.ifDiedNow)))
-          : chip('ik', t('If the primary died right now'), '0', '',
+          : C.mode === 'maxperf'
+            ? chip('am', t('If the primary died right now'), '\u2248 0', '',
+                t('Failover would be manual, and the apply lag reads 0 \u2014 but MaxPerformance (ASYNC) still leaves redo in flight at risk, so zero loss is never guaranteed'))
+            : chip('ik', t('If the primary died right now'), '0', '',
               t('Failover would be manual, but a synchronized standby in MaxAvailability means zero data loss'));
         o += splitBrainChip(m);
         els.chips.innerHTML = o;
@@ -4466,7 +4469,10 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
             : m.ifDiedNow > 0
               ? chip('am', t('If the primary died right now'), '\u2264 ' + fmt(m.ifDiedNow), t('s of redo'),
                   t('MaxPerformance leaves the current apply lag of <span class="mono">{0} s</span> of redo at risk', fmt(m.ifDiedNow)))
-              : chip('ik', t('If the primary died right now'), '0', '',
+              : C.mode === 'maxperf'
+                ? chip('am', t('If the primary died right now'), '\u2248 0', '',
+                    t('The apply lag reads 0, but MaxPerformance (ASYNC) still leaves redo in flight at risk \u2014 zero loss is never guaranteed'))
+                : chip('ik', t('If the primary died right now'), '0', '',
                   t('A synchronized standby in MaxAvailability means zero data loss'));
         k += splitBrainChip(m);
         els.chips.innerHTML = k;
@@ -4484,7 +4490,10 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
         mn += m.dataLossSeconds > 0
           ? chip('am', t('Maximum data loss'), '\u2264 ' + fmt(m.dataLossSeconds), t('s of redo'),
               t('MaxPerformance leaves the apply lag at the moment of the crash at risk, and no <span class="mono">FastStartFailoverLagLimit</span> bounds it \u2014 that guarantee belongs to fast-start failover, which is not enabled here'))
-          : chip('ik', t('Maximum data loss'), '0', '',
+          : C.mode === 'maxperf'
+            ? chip('am', t('Maximum data loss'), '\u2248 0', '',
+                t('The modelled apply lag is 0, but ASYNC never guarantees zero loss \u2014 redo in flight at the crash is the exposure, and no <span class="mono">FastStartFailoverLagLimit</span> bounds it: that guarantee belongs to fast-start failover, which is not enabled here'))
+            : chip('ik', t('Maximum data loss'), '0', '',
               t('SYNC transport in MaxAvailability \u2014 the standby holds every committed change. No <span class="mono">FastStartFailoverLagLimit</span> is involved either: that bound belongs to fast-start failover, which is not enabled here'));
         mn += splitBrainChip(m);
         els.chips.innerHTML = mn;
@@ -4529,10 +4538,16 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
     if (m.dataLossKind === 'none') {
       out += chip('ik', t('Maximum data loss'), '0', '', t('SYNC transport in MaxAvailability \u2014 zero data loss'));
     } else if (m.dataLossKind === 'bounded') {
-      out += chip('am', t('Maximum data loss'), '\u2264 ' + fmt(m.dataLossSeconds), t('s of redo'),
-        C.mode === 'maxavail'
-          ? t('MaxAvailability on a non-zero <span class="mono">FastStartFailoverLagLimit</span> = {0} s: 26ai permits the failover inside the limit and bounds the loss by it', fmt(C.lagLimit))
-          : t('ASYNC transport, bounded by <span class="mono">FastStartFailoverLagLimit</span> = {0} s', fmt(C.lagLimit)));
+      /* A modelled lag of exactly 0 must not print as a zero-loss guarantee:
+         the transport is still ASYNC, and redo in flight at the crash is not
+         bounded by any lag reading -- only by the lag limit. */
+      out += m.dataLossSeconds > 0
+        ? chip('am', t('Maximum data loss'), '\u2264 ' + fmt(m.dataLossSeconds), t('s of redo'),
+            C.mode === 'maxavail'
+              ? t('MaxAvailability on a non-zero <span class="mono">FastStartFailoverLagLimit</span> = {0} s: 26ai permits the failover inside the limit and bounds the loss by it', fmt(C.lagLimit))
+              : t('ASYNC transport, bounded by <span class="mono">FastStartFailoverLagLimit</span> = {0} s', fmt(C.lagLimit)))
+        : chip('am', t('Maximum data loss'), '\u2248 0', '',
+            t('The modelled apply lag is 0, but a bounded-loss configuration never guarantees zero \u2014 redo still in flight at the crash is the exposure; the guaranteed bound stays <span class="mono">FastStartFailoverLagLimit</span> = {0} s', fmt(C.lagLimit)));
     } else {
       out += chip('rd', t('Maximum data loss'), '\u2014', '', t('No failover occurs, so nothing is lost and nothing is recovered'));
     }
