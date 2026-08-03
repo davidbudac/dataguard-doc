@@ -450,6 +450,7 @@ text-decoration:none;border-bottom:1px solid var(--ln2);padding-bottom:1px}
 .tns .svc{color:var(--tl);font-weight:600}
 .tns .dim{color:var(--ik3)}
 .tns .bad{color:var(--rd);font-weight:600}
+.tns-jdbc{margin-top:10px}
 /* chapter 4, lower half -- the generated config blocks */
 .cfg-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;align-items:start;margin-top:18px}
 .cfg{background:var(--sf);border:1px solid var(--ln);border-radius:3px;min-width:0}
@@ -1496,6 +1497,7 @@ window.DG = (function () {
         </div>
 
         <div class="tns" id="ap-tns"></div>
+        <div class="tns tns-jdbc" id="ap-jdbc"></div>
 
         <div class="banner" id="ap-banner" hidden>
           <span class="banner-k">ORA-12514</span>
@@ -1762,6 +1764,17 @@ window.DG = (function () {
           </div>
         </div>
         <div class="tns" id="cfg-tns"></div>
+      </article>
+
+      <article class="cfg cfg-wide">
+        <div class="cfg-hd">
+          <span class="cfg-file">JDBC &mdash; the same connect string as a thin URL</span>
+          <div class="cfg-hd-r">
+            <span class="eyebrow">no client files</span>
+            <button type="button" class="cfg-copy" data-copy="cfg-jdbc" aria-label="Copy the JDBC connection URL">Copy</button>
+          </div>
+        </div>
+        <div class="tns" id="cfg-jdbc"></div>
       </article>
     </div>
 
@@ -3340,9 +3353,9 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
     apDefaults: $('ap-defaults'), apTuned: $('ap-tuned'),
     apCtlTct: $('ap-ctl-tct'), apCtlCt: $('ap-ctl-ct'), apCtlRc: $('ap-ctl-rc'),
     apCtlRd: $('ap-ctl-rd'), apCtlDead: $('ap-ctl-dead'),
-    apTns: $('ap-tns'), apWrap: $('ap-wrap'), apChips: $('ap-chips'),
+    apTns: $('ap-tns'), apJdbc: $('ap-jdbc'), apWrap: $('ap-wrap'), apChips: $('ap-chips'),
     cfgBroker: $('cfg-broker'), cfgObserver: $('cfg-observer'),
-    cfgDest: $('cfg-dest'), cfgTns: $('cfg-tns'),
+    cfgDest: $('cfg-dest'), cfgTns: $('cfg-tns'), cfgJdbc: $('cfg-jdbc'),
     apBanner: $('ap-banner'), apBannerBody: $('ap-banner-body'),
     apCaption: $('ap-caption'), apEyebrow: $('ap-eyebrow'), apSummary: $('ap-summary'),
     apHeading: $('ap-heading'),
@@ -5702,7 +5715,48 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
     }
     return lines.join('\n');
   }
-  function renderTns() { els.apTns.innerHTML = buildTns(); }
+  /* The same descriptor as a thin-driver URL. Oracle's JDBC guide documents
+     exactly this form -- the connect descriptor inline after
+     jdbc:oracle:thin:@ -- so the two blocks are one configuration written
+     twice, never two configurations that can drift apart. Built from the same
+     A state as buildTns(), collapsed onto one line because that is how it
+     lands in a properties file. The lead comment is chapter 3's, where the two
+     blocks sit unlabelled under one another; chapter 4's card carries its own
+     header and passes false. */
+  function buildJdbc(lead) {
+    var set = [];
+    if (A.tct !== 60) set.push('(TRANSPORT_CONNECT_TIMEOUT=' + A.tct + ')');
+    if (A.ct > 0) set.push('(CONNECT_TIMEOUT=' + A.ct + ')');
+    if (A.rc > 0) set.push('(RETRY_COUNT=' + A.rc + ')');
+    if (A.rd > 0) set.push('(RETRY_DELAY=' + A.rd + ')');
+    var svc = esc(idv('service')), port = idPort();
+    var url = 'jdbc:oracle:thin:@(DESCRIPTION=' +
+      (set.length ? '<span class="hl">' + set.join('') + '</span>' : '') +
+      '(ADDRESS_LIST=(FAILOVER=on)' +
+      '(ADDRESS=(PROTOCOL=tcp)(HOST=' + esc(idv('hostPrimary')) + ')(PORT=' + port + '))' +
+      '(ADDRESS=(PROTOCOL=tcp)(HOST=' + esc(idv('hostStandby')) + ')(PORT=' + port + ')))' +
+      '(CONNECT_DATA=(SERVICE_NAME=<span class="svc">' + svc + '</span>)))';
+    var lines = [];
+    if (lead) {
+      lines.push('<span class="dim"># ' +
+        t('the same descriptor as a JDBC thin URL \u2014 nothing on the client to resolve') +
+        '</span>');
+    }
+    lines.push(url);
+    if (A.tct !== 60 || A.ct > 0) {
+      lines.push('<span class="dim">#   ' +
+        t('a bare timeout is not read as seconds by every driver release \u2014 18.1 and later take an ms / sec / min suffix') +
+        '</span>');
+    }
+    lines.push('<span class="dim">#   ' +
+      t('or keep the alias: jdbc:oracle:thin:@{0}, with oracle.net.tns_admin pointing at the tnsnames.ora directory', svc) +
+      '</span>');
+    return lines.join('\n');
+  }
+  function renderTns() {
+    els.apTns.innerHTML = buildTns();
+    els.apJdbc.innerHTML = buildJdbc(true);
+  }
 
   /* ---------- chapter 4, lower half: the configuration, written out ----------
      Pure presentation over C, K, R and the tns builder above; rewritten on
@@ -5904,6 +5958,7 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
     els.cfgTns.innerHTML = buildTns() + '\n\n' +
       '<span class="dim"># ' + t('{0} is published only where the database runs as primary:', svc) + '</span>\n' +
       '<span class="dim">#   srvctl add service -db ' + dbP + ' -service ' + svc + ' -role PRIMARY</span>';
+    els.cfgJdbc.innerHTML = buildJdbc(false);
   }
 
   function renderAppControls() {
