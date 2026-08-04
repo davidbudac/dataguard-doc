@@ -506,8 +506,36 @@ test('26ai: lagStall is MaxPerformance-only, and lagType echoes the property', (
     { armed: false, graceTime: 0, maxSeconds: 30 });
   assert.deepEqual(fsfo({ version: '26ai', mode: 'maxperf', lagGraceTime: 10, threshold: 45 }).lagStall,
     { armed: true, graceTime: 10, maxSeconds: 45 });
-  assert.equal(fsfo({ version: '26ai', lagType: 'transport' }).lagType, 'transport');
+  // TRANSPORT is documented for maximum performance mode only, so the echo
+  // reads APPLY everywhere else -- including 26ai MaxAvailability.
+  assert.equal(fsfo({ version: '26ai', mode: 'maxperf', lagType: 'transport' }).lagType, 'transport');
+  assert.equal(fsfo({ version: '26ai', lagType: 'transport' }).lagType, 'apply');
   assert.equal(fsfo({ version: '26ai' }).lagType, 'apply');
+});
+
+test('26ai TRANSPORT: the readiness gate follows the transport lag, not the apply lag', () => {
+  const base = { version: '26ai', mode: 'maxperf', lagType: 'transport',
+    standbyLag: 80, lagLimit: 30 };
+  // Transport lag within the limit: failover permitted despite the deep apply
+  // queue -- redo already received is applied during terminal recovery.
+  const ok = fsfo({ ...base, transportLag: 5 });
+  assert.equal(ok.blocked, false);
+  assert.equal(ok.gateLagSeconds, 5);
+  assert.equal(ok.dataLossSeconds, 5);           // the loss bound is the gated lag
+  assert.equal(ok.applyRemaining, 80);           // terminal recovery still pays the apply lag
+  // Transport lag beyond the limit blocks, exactly like apply lag under APPLY.
+  assert.equal(fsfo({ ...base, transportLag: 40 }).blocked, true);
+  // Clamped: transport lag can never exceed the apply lag.
+  assert.equal(fsfo({ ...base, standbyLag: 10, transportLag: 40 }).gateLagSeconds, 10);
+  // Absent (an older link or export): falls back to the apply lag, which is
+  // exactly the pre-slider behavior.
+  assert.equal(fsfo(base).blocked, true);
+  // The switchover gate follows the same selected lag.
+  assert.equal(fsfo({ ...base, scenario: 'switchover', transportLag: 5 }).blocked, false);
+  assert.equal(fsfo({ ...base, scenario: 'switchover', transportLag: 40 }).blocked, true);
+  // Under APPLY the transport lag input moves nothing.
+  assert.deepEqual(fsfo({ version: '26ai', mode: 'maxperf', standbyLag: 80, lagLimit: 30, transportLag: 5 }),
+    fsfo({ version: '26ai', mode: 'maxperf', standbyLag: 80, lagLimit: 30 }));
 });
 
 test('19c invariance: version absent and explicit 19c agree, cell for cell', () => {
@@ -527,7 +555,7 @@ test('19c invariance: every cell still reads off the 24-cell tables, new fields 
         // Every 26ai-only input along for the ride: none of them may move a
         // 19c cell, whatever a crafted link or a 26ai-written export says.
         const m = fsfo({ scenario, observerLoc: loc, version,
-          lagPolicy: 'bounded', lagType: 'transport', lagGraceTime: 30 });
+          lagPolicy: 'bounded', lagType: 'transport', lagGraceTime: 30, transportLag: 3 });
         assert.equal(m.outcome, row[i], at);
         assert.equal(m.stalled, STALLED[scenario][i], `${at} stalled`);
         assert.equal(m.lagStall, null, `${at} lagStall`);
@@ -537,12 +565,12 @@ test('19c invariance: every cell still reads off the 24-cell tables, new fields 
   }
 });
 
-test('19c: the three 26ai knobs are inert', () => {
+test('19c: the four 26ai knobs are inert', () => {
   // Set to non-defaults by a crafted link or an imported file, they change
   // nothing under 19c.
   assert.deepEqual(
     fsfo({ mode: 'maxperf', lagType: 'transport', lagGraceTime: 30,
-      lagPolicy: 'bounded', version: '19c' }),
+      lagPolicy: 'bounded', transportLag: 3, version: '19c' }),
     fsfo({ mode: 'maxperf' }));
 });
 
@@ -694,12 +722,25 @@ test('ASYNC never waits: local write is the whole commit, exposure begins', () =
   assert.equal(cm.srlDoneMs, 2 + 10 + 10);
 });
 
-test('mode conflict flags exactly ASYNC under MaxAvailability', () => {
-  const mk = (xpt, mode) => M.computeCommit({ xpt, rttMs: 0, localWriteMs: 2, sbWriteMs: 2, mode });
+test('mode conflict flags exactly ASYNC under MaxAvailability, and only before 26ai', () => {
+  const mk = (xpt, mode, version) =>
+    M.computeCommit({ xpt, rttMs: 0, localWriteMs: 2, sbWriteMs: 2, mode, version });
+  // 19c (and version absent): broker Table 4-2 lists SYNC/FASTSYNC for
+  // MaxAvailability, so ASYNC there is a conflict.
   assert.equal(mk('async', 'maxavail').modeConflict, true);
+  assert.equal(mk('async', 'maxavail', '19c').modeConflict, true);
   assert.equal(mk('async', 'maxperf').modeConflict, false);
   assert.equal(mk('sync', 'maxavail').modeConflict, false);
   assert.equal(mk('fastsync', 'maxavail').modeConflict, false);
+  assert.equal(mk('async', 'maxavail').modeAllowed26, false);
+  // 26ai: the prerequisites list ASYNC for a MaxAvailability target as well,
+  // so the pairing is allowed -- flagged as a caveat, never as a conflict.
+  assert.equal(mk('async', 'maxavail', '26ai').modeConflict, false);
+  assert.equal(mk('async', 'maxavail', '26ai').modeAllowed26, true);
+  assert.equal(mk('async', 'maxperf', '26ai').modeAllowed26, false);
+  assert.equal(mk('sync', 'maxavail', '26ai').modeAllowed26, false);
+  // Version absent and explicit 19c agree field for field.
+  assert.deepEqual(mk('async', 'maxavail'), mk('async', 'maxavail', '19c'));
 });
 
 // ---------- REOPENMODEL: after the drop ----------
@@ -785,6 +826,22 @@ test('26ai reopen: a grace time of 5 s or more is armed, and no stall band is dr
     mode: 'maxavail', lagLimit: 30, version: '26ai', lagGraceTime: 10, threshold: 30 });
   assert.equal(avail.lagGraceArmed, false);
   assert.equal(avail.lagStallAt, null);
+});
+
+test('26ai reopen: no observer means nothing is armed, so no LAGGING stall or grace band', () => {
+  // Oracle defines FastStartFailoverLagGraceTime only while fast-start
+  // failover is enabled in maximum performance mode. With no observer
+  // deployed nothing is enabled, so the crossing costs the primary nothing
+  // and neither output may fire -- whatever the grace time says.
+  const mk = (over) => M.computeReopen({ reopen: 300, maxFailure: 0, outage: 600, rate: 5,
+    mode: 'maxperf', lagLimit: 30, version: '26ai', threshold: 30, fsfoEnabled: false, ...over });
+  assert.equal(mk({ lagGraceTime: 0 }).lagStallAt, null);
+  assert.equal(mk({ lagGraceTime: 0 }).lagStallMax, null);
+  assert.equal(mk({ lagGraceTime: 10 }).lagGraceArmed, false);
+  // Absent, the flag defaults to enabled -- the pre-existing behavior every
+  // old caller (and the tests above) relies on.
+  assert.equal(mk({ lagGraceTime: 0, fsfoEnabled: undefined }).lagStallAt, 30);
+  assert.equal(mk({ lagGraceTime: 10, fsfoEnabled: true }).lagGraceArmed, true);
 });
 
 test('19c reopen: neither the stall band nor the armed flag, and no drift', () => {

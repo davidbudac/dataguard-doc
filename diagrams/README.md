@@ -44,9 +44,13 @@ expire together (figure 4, panel B, walks through this distinction).
 ### 3. Message sequence
 
 The same crash scenario as a sequence diagram, with an elapsed-time gutter on the left that maps
-each exchange back to the timeline figures.
+each exchange back to the timeline figures. The message order follows the documented flow: during
+the threshold window the observer only confirms that the standby has also lost the primary (the
+quorum the `ObserverOverride = FALSE` default requires); the readiness check — synchronized, or
+apply lag within `FastStartFailoverLagLimit` — is verified by the observer **when it initiates the
+failover**, after the threshold expires, which is why the FAILOVER arrow carries that label.
 
-![Sequence diagram of fast-start failover: steady-state ping/ack and redo shipping, the primary crash, unanswered pings, the threshold clock, the observer's readiness exchange with the target standby, the failover command, and the standby's terminal recovery, role change and read-write open.](fsfo-sequence.svg)
+![Sequence diagram of fast-start failover: steady-state ping/ack and redo shipping, the primary crash, unanswered pings, the threshold clock, the observer confirming the standby also lost the primary, threshold expiry, the readiness verification, the failover command, and the standby's terminal recovery, role change and read-write open.](fsfo-sequence.svg)
 
 ### 4. Where NET_TIMEOUT fits (and where it doesn't)
 
@@ -76,7 +80,7 @@ failover decision.
 | `FastStartFailoverThreshold` | 30 s | 6 s | Seconds the master observer attempts to reconnect to the primary before initiating fast-start failover. The interval starts when the observer **first** loses its connection to the primary. |
 | `ObserverPingInterval` | 100 ms | 100 ms | How frequently the observer pings the primary. |
 | `ObserverPingRetry` | 10 | 10 | Number of times the observer retries a failed ping (failed = no answer within `ObserverPingInterval`) before initiating failover. |
-| `FastStartFailoverLagLimit` | 30 s | 5 s | MaxPerformance mode only: maximum seconds the standby's apply point may lag the primary's redo generation point for fast-start failover to be permitted. Bounds data loss. |
+| `FastStartFailoverLagLimit` | 30 s | 5 s | MaxPerformance mode only: maximum seconds the standby's apply point may lag the primary's redo generation point for fast-start failover to be permitted. Bounds data loss. Oracle recommends keeping it at or below `FastStartFailoverThreshold` (see below). |
 | `FastStartFailoverPmyShutdown` | TRUE | — | If TRUE, a primary whose `V$DATABASE.FS_FAILOVER_STATUS` has been STALLED for longer than `FastStartFailoverThreshold` seconds — and that cannot reach the observer or the target standby — shuts itself down (abort). |
 | `ObserverOverride` | FALSE | — | When TRUE, "allows an automatic failover to occur when the observer has lost connectivity to the primary. This is the behavior even if the standby has a healthy connection to the primary." At the default FALSE, a target standby that still reaches the primary is what prevents the attempt. |
 | `FastStartFailoverAutoReinstate` | TRUE | — | Reinstates the old primary as a standby (via Flashback Database) when it returns. Reinstate is out of scope for these figures. |
@@ -85,6 +89,13 @@ failover decision.
 every simulator cell reads the standby's own view as a veto on the failover, which is only the
 default behaviour; with TRUE, several **continues** cells in the outcome matrix would become
 failovers. Never present a cell outcome as unconditional without naming that assumption.
+
+**`FastStartFailoverLagLimit` should stay at or below `FastStartFailoverThreshold`.** The property
+page recommends exactly that, and warns that with a larger limit "the primary will keep committing
+after the Fast-Start Failover is initiated, exposing the configuration to the risk of having two
+primary databases for a short period of time". The simulator warns on the slider when the limit
+exceeds the threshold, and its split-brain callout carries the same proviso — never present "at
+most one database ends up open" as unconditional.
 
 **`FastStartFailoverAutoReinstate` is narrower than "the old primary comes back".** The broker
 reinstates only after a fast-start failover the observer initiated because the primary crashed or
@@ -104,7 +115,11 @@ figures; the simulator states it only in the reference table and the sequence-di
 `ObserverPingInterval` / `ObserverPingRetry` descriptions in the broker properties reference.
 Curiously, the 19c edition of that page does not list these two properties at all, even though
 they have existed since 12.2 and 19c DGMGRL accepts them — they appear in the 21c and later
-editions, linked below.)
+editions, linked below. **26ai muddies the defaults**: the 26ai property pages give the *broker
+defaults* as 0 — the properties not set, detection governed by the threshold — while the 26ai
+FSFO chapter's table still shows 100 ms / 10, an upstream contradiction. The simulator's 26ai
+edition shows 0 (not set) in its defaults column and the caption names the disagreement; the
+minimums when the properties are explicitly set stay 100 ms and 10 in every edition.)
 
 In other words: once a DBA explicitly sets both ping properties, detection is governed by the ping
 loop instead of by the 30-second threshold. **The arithmetic is not documented.** The properties
@@ -176,7 +191,17 @@ trigger). Verified facts it relies on:
 
 - `TRANSPORT_CONNECT_TIMEOUT` — TCP connect budget **per ADDRESS**, default
   60 s (19c connect descriptor). The clock that runs while a host is silently
-  unreachable.
+  unreachable. Oracle applies it (and `CONNECT_TIMEOUT`) per ADDRESS **and per
+  IP address a host name resolves to** — the simulator draws single-IP hosts
+  and says so; a multi-record DNS name multiplies the toll.
+- **The JDBC thin driver does not inherit Oracle Net's 60 s default.** Its own
+  connect-timeout default is 0 (no timeout) in the 19c driver and 20 s
+  (20 000 ms) in current releases, which is why the simulator's generated thin
+  URL always spells `TRANSPORT_CONNECT_TIMEOUT` out — with an explicit `sec`
+  suffix, because older thin releases read a bare value as milliseconds.
+  (The "changed in 23.6" attribution circulating for the new 20 s default is
+  not verifiable on the API reference pages; the 0 → 20 000 ms change between
+  the 19c and current pages is.)
 - `CONNECT_TIMEOUT` — caps one complete attempt to one ADDRESS (transport +
   listener handshake), applied per address; no default in the descriptor. The
   HA guide's example uses 90 s.
@@ -605,13 +630,24 @@ the per-mode defaults and the `V$FAST_START_FAILOVER_CONFIG` mode values. The **
 carrying the 19c "used only in maximum performance mode" sentence — is that same chapter's *Task 3*
 and the **closing line of the `FastStartFailoverLagLimit` property page**. Never cite either of those
 two for this behaviour, and never quote the property page's last sentence as if it were current; the
-property page is a valid citation for the value ranges only. The simulator states the contradiction
-in footnote 5 rather than hiding it.
+property page is a valid citation for the value ranges only. Task 3 is stale on the transports too —
+it still says MaxAvailability takes `SYNC` or `FASTSYNC`, against the prerequisites list's
+`SYNC or FASTSYNC or ASYNC`. The simulator states the contradiction in footnote 5 rather than
+hiding it, and its commit view flags `ASYNC` under MaxAvailability as a mode **conflict only under
+19c**; under 26ai the same pairing draws an informational "allowed" note that zero data loss still
+wants `SYNC` or `FASTSYNC`.
 
 Two neighbouring properties did **not** move: `FastStartFailoverLagType` and
 `FastStartFailoverLagGraceTime` are both documented as maximum-performance-mode behaviour, whatever
 the lag limit is doing in MaxAvailability. The simulator grays both out in MaxAvailability and says
-so.
+so. Two of their finer points, verified on the 26ai property pages: the `LAGGING` permission may be
+granted **by the observer or by the target standby** — never word it as the observer's alone — and
+`FastStartFailoverLagGraceTime` is defined only **while fast-start failover is enabled** in maximum
+performance mode, so with no observer deployed the simulator's reopen panel draws no stall and no
+grace band (`computeReopen` takes `fsfoEnabled` for exactly this). Under `TRANSPORT` the simulator
+models the selected lag honestly: a transport-lag slider (clamped to the apply lag, since applied
+redo must have arrived) is what the readiness gate, the loss bound and the refusal banners follow,
+while terminal recovery still pays the apply lag.
 
 ### `PrimaryDatabaseCandidates`
 
@@ -635,7 +671,9 @@ documented.
 target, and the full paths of the observer's log and state files. Two things to keep straight:
 `CURRENT_TIME` is **the time the query was run**, not an observer heartbeat, and the view's behaviour
 is defined only when it is queried **on the primary** — the reference page says so, so never present
-its output as queryable anywhere in the configuration.
+its output as queryable anywhere in the configuration. The same scoping applies to
+**`V$FAST_START_FAILOVER_CONFIG`**: the Data Guard views applicability table marks it *Primary*
+("query this view on the primary database"), so never describe it as queryable on any member.
 
 ### Scripting surfaces predate 26ai
 
@@ -678,7 +716,8 @@ Where the simulator draws something it cannot know, it is listed on the page its
 - [LOG_ARCHIVE_DEST_n parameter attributes (19c Data Guard Concepts and Administration)](https://docs.oracle.com/en/database/oracle/oracle-database/19/sbydb/LOG_ARCHIVE_DEST_n-parameter-attributes.html)
 - [LOG_ARCHIVE_DEST_n (19c Database Reference)](https://docs.oracle.com/en/database/oracle/oracle-database/19/refrn/LOG_ARCHIVE_DEST_n.html)
 - [Oracle Data Guard Broker Properties (21c — documents `ObserverPingInterval` / `ObserverPingRetry`)](https://docs.oracle.com/en/database/oracle/oracle-database/21/dgbkr/oracle-data-guard-broker-properties.html)
-- [Local Naming Parameters in the tnsnames.ora File (19c Net Services Reference — connect-descriptor timeout parameters)](https://docs.oracle.com/en/database/oracle/oracle-database/19/netrf/local-naming-parameters-in-tns-ora-file.html)
+- [Local Naming Parameters in the tnsnames.ora File (19c Net Services Reference — connect-descriptor timeout parameters. The current edition of this page is also the source for the per-IP scope: the timeout "is applicable for each ADDRESS in an ADDRESS_LIST description, and each IP address that a host name is mapped to", with a bare value read as seconds and `ms`/`sec`/`min` suffixes accepted)](https://docs.oracle.com/en/database/oracle/oracle-database/19/netrf/local-naming-parameters-in-tns-ora-file.html)
+- JDBC thin driver connect-timeout defaults, behind the generated thin URL always spelling `TRANSPORT_CONNECT_TIMEOUT` with a `sec` suffix: [OracleConnection (19c JDBC API Reference — `oracle.net.CONNECT_TIMEOUT` default 0, no timeout)](https://docs.oracle.com/en/database/oracle/oracle-database/19/jajdb/oracle/jdbc/OracleConnection.html) versus [OracleConnection (current JDBC API Reference — the same property's default is now 20000 ms)](https://docs.oracle.com/en/database/oracle/oracle-database/26/jajdb/oracle/jdbc/OracleConnection.html). The exact release that changed the default is not stated on either page, so these assets do not name one.
 - [Oracle Net TNS String Parameters (19c High Availability Overview — recommended client failover settings)](https://docs.oracle.com/en/database/oracle/oracle-database/19/haovw/oracle-net-tns-string-parameters.html)
 - [Connection Time Estimates During Data Guard Switchover or Failover (19c High Availability Overview)](https://docs.oracle.com/en/database/oracle/oracle-database/19/haovw/connection-time-estimates-data-guard-switchover-or-failover.html)
 - [Managing Broker Configuration Members (19c — protection modes vs. redo transport modes, Table 4-2)](https://docs.oracle.com/en/database/oracle/oracle-database/19/dgbkr/managing-oracle-data-guard-broker-configuration-members.html)
@@ -713,9 +752,11 @@ Where the simulator draws something it cannot know, it is listed on the page its
 ### 26ai (the simulator's edition switch)
 
 - [Fast-Start Failover (26ai broker guide — the section **"Fast-start Failover Protection Modes"**, the operative text for `FastStartFailoverLagLimit` in MaxAvailability: 0 as the broker default there, zero data loss at 0 and bounded loss above it, the per-mode defaults, and the prerequisites table that lists `ASYNC` for a MaxAvailability target. Cite **this section**, never the same chapter's *Task 3*, which still carries the stale 19c "maximum performance mode only" sentence)](https://docs.oracle.com/en/database/oracle/oracle-database/26/dgbkr/fast-start-failover2.html)
-- [FastStartFailoverLagLimit (26ai Data Guard Broker Properties — the value ranges: 30 s default and 5 s minimum in MaxPerformance, 0 the default in MaxAvailability. **Its closing line still says the property is used only in maximum performance mode**, which the protection-modes section above contradicts; quote this page for ranges only, never for the mode question)](https://docs.oracle.com/en/database/oracle/oracle-database/26/dgbkr/faststartfailoverlaglimit.html)
+- [FastStartFailoverLagLimit (26ai Data Guard Broker Properties — the value ranges: 30 s default and 5 s minimum in MaxPerformance, 0 the default in MaxAvailability. Also the source for the **keep-it-at-or-below-the-threshold recommendation**: "It is recommended to set the FastStartFailoverLagLimit lower than or equal to FastStartFailoverThreshold", with the warning that a larger limit lets the primary "keep committing after the Fast-Start Failover is initiated, exposing the configuration to the risk of having two primary databases for a short period of time". **Its closing line still says the property is used only in maximum performance mode**, which the protection-modes section above contradicts; quote this page for ranges and the recommendation only, never for the mode question)](https://docs.oracle.com/en/database/oracle/oracle-database/26/dgbkr/faststartfailoverlaglimit.html)
 - [FastStartFailoverLagType (26ai Data Guard Broker Properties — `APPLY` default / `TRANSPORT`; which lag `FastStartFailoverLagLimit` is measured against; documented as maximum-performance-mode behaviour, and it did **not** follow the lag limit into MaxAvailability)](https://docs.oracle.com/en/database/oracle/oracle-database/26/dgbkr/faststartfailoverlagtype.html)
-- [FastStartFailoverLagGraceTime (26ai Data Guard Broker Properties — default 0 = off, minimum 5 s when set; how many seconds before the lag limit the primary asks permission to enter the `LAGGING` state, and the up-to-one-threshold wait at the crossing when it is 0)](https://docs.oracle.com/en/database/oracle/oracle-database/26/dgbkr/faststartfailoverlaggracetime.html)
+- [FastStartFailoverLagGraceTime (26ai Data Guard Broker Properties — default 0 = off, minimum 5 s when set; how many seconds before the lag limit the primary asks permission to enter the `LAGGING` state, and the up-to-one-threshold wait at the crossing when it is 0. The permission is granted "by the observer or target standby" — either one — and the page scopes the property to "when fast-start failover is enabled and the configuration is operating in maximum performance mode", which is why no observer means no stall)](https://docs.oracle.com/en/database/oracle/oracle-database/26/dgbkr/faststartfailoverlaggracetime.html)
+- [ObserverPingInterval](https://docs.oracle.com/en/database/oracle/oracle-database/26/dgbkr/observerpinginterval.html) and [ObserverPingRetry (26ai Data Guard Broker Properties — the pages giving the **broker defaults as 0** — not set — while retaining the explicitly-set minimums of 100 ms and 10; the 26ai FSFO chapter's table still shows 100 ms / 10, an upstream contradiction the simulator's 26ai defaults column notes)](https://docs.oracle.com/en/database/oracle/oracle-database/26/dgbkr/observerpingretry.html)
+- [Oracle Data Guard views applicability table (26ai Concepts and Administration — marks `V$FAST_START_FAILOVER_CONFIG` as **Primary**: "query this view on the primary database", the source for the simulator's query-it-on-the-primary wording)](https://docs.oracle.com/en/database/oracle/oracle-database/26/sbydb/oracle-data-guard-in-oracle-database-views.html)
 - [Fast-Start Failover (26ai broker guide — the normative 26ai text the Reference chapter cites, including the section "What Happens if the Master Observer Fails?": with the primary and target standby still connected, the broker nominates a backup observer as the new master, and no fast-start failover can occur until it is observing. That is the 26ai half of the observer-lost prose in chapter 1)](https://docs.oracle.com/en/database/oracle/oracle-database/26/dgbkr/fast-start-failover2.html)
 - [PreferredObserverHosts (26ai Data Guard Broker Properties — a per-database property ranking which registered observer host should be master for that database; the source for the 26ai observer-lost prose naming it)](https://docs.oracle.com/en/database/oracle/oracle-database/26/dgbkr/preferredobserverhosts.html)
 - [PrimaryDatabaseCandidates (26ai Data Guard Broker Properties — the list of members the broker may make primary. It restricts `SWITCHOVER` and `FAILOVER` **while fast-start failover is disabled**, adds nothing once it is enabled because `FastStartFailoverTarget` already governs the target, defaults to an empty string that restricts nothing, and the broker adds the current primary itself if the list omits it. The 19.26 backport is **reported by the product manager's blog series only** — not in Oracle's release-update documentation)](https://docs.oracle.com/en/database/oracle/oracle-database/26/dgbkr/primarydatabasecandidates.html)

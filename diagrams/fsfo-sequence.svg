@@ -18,7 +18,7 @@
 -->
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 820" width="1000" height="820" role="img" aria-labelledby="ttl desc">
   <title id="ttl">Fast-start failover message sequence (primary host crash)</title>
-  <desc id="desc">Sequence diagram with three lifelines: Primary, Observer and Target standby. In steady state the observer pings the primary and the primary ships redo to the standby. The primary host crashes; the observer's pings go unanswered and the FastStartFailoverThreshold clock starts. The observer asks the standby whether it also lost contact and is ready, the standby replies yes, the threshold expires at 30 seconds and the observer sends the failover command. The standby performs terminal recovery, converts to the primary role, opens read-write and reports completion.</desc>
+  <desc id="desc">Sequence diagram with three lifelines: Primary, Observer and Target standby. In steady state the observer pings the primary and the primary ships redo to the standby. The primary host crashes; the observer's pings go unanswered and the FastStartFailoverThreshold clock starts. The observer asks the standby whether it also lost contact, the standby replies yes, the threshold expires at 30 seconds, and the observer verifies the standby is ready and sends the failover command. The standby performs terminal recovery, converts to the primary role, opens read-write and reports completion.</desc>
 
   <defs>
     <style>
@@ -138,16 +138,15 @@
 
   <!-- ==================== readiness exchange with the standby ==================== -->
   <line x1="552" y1="412" x2="757" y2="412" stroke="#475569" stroke-width="1.5" marker-end="url(#arrEndSlate)"/>
-  <text class="s" x="656" y="390" font-size="12" fill="#334155" text-anchor="middle">have you lost contact too?</text>
-  <text class="s" x="656" y="404" font-size="12" fill="#334155" text-anchor="middle">are you ready to fail over?</text>
+  <text class="s" x="656" y="404" font-size="12" fill="#334155" text-anchor="middle">have you lost contact too?</text>
 
   <line x1="757" y1="442" x2="554" y2="442" stroke="#475569" stroke-width="1.5" stroke-dasharray="5 4" marker-end="url(#arrEndSlate)"/>
-  <text class="s" x="656" y="434" font-size="12" fill="#334155" text-anchor="middle">yes — no contact either; ready</text>
+  <text class="s" x="656" y="434" font-size="12" fill="#334155" text-anchor="middle">yes — no contact either</text>
 
   <!-- ============================ note: readiness check ============================ -->
   <rect x="170" y="454" width="570" height="66" rx="4" fill="#F8FAFC" stroke="#CBD5E1" stroke-width="1"/>
   <rect x="170" y="454" width="4" height="66" fill="#475569"/>
-  <text class="s" x="186" y="472" font-size="12" font-weight="600" fill="#334155">readiness check</text>
+  <text class="s" x="186" y="472" font-size="12" font-weight="600" fill="#334155">readiness check — verified by the observer when it initiates the failover, below</text>
   <text class="s" x="186" y="490" font-size="12" fill="#334155">MaxAvailability / MaxProtection — the standby must have been synchronized at failure time.</text>
   <text class="s" x="186" y="508" font-size="12" fill="#334155">MaxPerformance — the standby's apply lag must be ≤ <tspan class="m">FastStartFailoverLagLimit</tspan>.</text>
 
@@ -158,7 +157,7 @@
 
   <!-- ============================ failover command ============================ -->
   <line x1="552" y1="572" x2="757" y2="572" stroke="#6D5AE6" stroke-width="2" marker-end="url(#arrEndViolet)"/>
-  <text class="s" x="656" y="562" font-size="13" font-weight="600" fill="#6D5AE6" text-anchor="middle">FAILOVER — fast-start failover</text>
+  <text class="s" x="656" y="562" font-size="13" font-weight="600" fill="#6D5AE6" text-anchor="middle">FAILOVER — after verifying the target is ready</text>
 
   <!-- ============ standby activation phases: labels to the right ============ -->
   <text class="s" x="782" y="598" font-size="12" fill="#9A5B04">terminal recovery —</text>

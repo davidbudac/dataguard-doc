@@ -255,3 +255,39 @@ guarantees.
 2. Add the LagLimit/Threshold safety warning and correct the JDBC generator.
 3. Correct the sequence/manual-failover and 26ai defaults/view claims.
 4. Apply the remaining qualification edits.
+
+## Resolution — 2026-08-04
+
+All findings were independently re-verified against the cited code locations
+and the live Oracle documentation pages before any fix was applied. Every code
+citation was accurate; the doc claims were confirmed with the exceptions noted
+under finding 5 and finding 15 below. Fixes landed in the same-day commit that
+carries this section; `node --test site/test.mjs` passes (68 tests, up from
+66), `site/build.mjs` passes the ASCII guard, and the changed states were
+verified in the rendered page in both editions.
+
+| # | Status | How it was resolved |
+|---|---|---|
+| 1 | **Fixed** | `computeCommit` takes `version`; ASYNC + MaxAvailability is `modeConflict` under 19c and a new informational `modeAllowed26` under 26ai (warn note, chip and DGMGRL note per edition). Tests are edition-parameterized. |
+| 2 | **Fixed** | TRANSPORT is now a modeled quantity: a transport-lag slider (26ai + MaxPerformance + TRANSPORT only, URL key `tla`, clamped to the apply lag, falling back to it when absent) is what the readiness gate, loss bound, `ifDiedNow` and every blocked/refused banner follow; the TRANSPORT echo also requires MaxPerformance now. |
+| 3 | **Fixed** | `computeReopen` takes `fsfoEnabled` (false when no observer is deployed); `lagStallAt`/`lagGraceArmed` stay null then, so the brace, the chips and the appended prose sentence all go inert. Regression test added. One correction to this finding: `site/test.mjs:504` already covered the no-observer case for the FSFO timeline model — the gap was specific to the reopen model. |
+| 4 | **Fixed** | The lag-limit note warns (is-warn) when the limit exceeds the threshold, quoting Oracle's recommendation; the split-brain callout's "at most one database ends up open" is now conditional on limit &le; threshold. |
+| 5 | **Fixed, with a correction to the report** | The JDBC URL now always emits `TRANSPORT_CONNECT_TIMEOUT` with an explicit `sec` suffix. The report's side-claims were not adopted: the "18.1 added suffixes" and "changed in 23.6" version attributions could not be verified on Oracle's pages (the 0 vs 20 000 ms default difference between the 19c and current `OracleConnection` pages could), and the comment the report called misleading is defensible — older thin releases did read a bare value as milliseconds — so it was reworded, not deleted. |
+| 6 | **Fixed** | The 26ai defaults column shows "0 — not set" for both ping properties and the caption names the property-page/chapter contradiction instead of claiming identical defaults. |
+| 7 | **Fixed** | "Queryable on any member" replaced with the views reference's Primary scoping ("query it there"). |
+| 8 | **Fixed** | The ASYNC commit caption now calls the window one commit's exposure and names `FastStartFailoverLagLimit` as the configuration-wide bound. |
+| 9 | **Fixed** | Both sequence diagrams (the simulator's inline SVG and `diagrams/fsfo-sequence.svg` + PNG) now draw: quorum check during the threshold window, threshold expiry, readiness verification, then FAILOVER — matching the documented order, which was confirmed from the chapter text. |
+| 10 | **Fixed** | The observer-lost caption, summary and chips now say a failover needs `DISABLE FAST_START FAILOVER FORCE` first (unobserved fails the documented manual-failover conditions; bare attempt raises ORA-16658). |
+| 11 | **Fixed** | The change-table row says the observer *or the target standby* may grant the `LAGGING` permission. |
+| 12 | **Fixed** | All four spots (including both V26 keys) now say the broker *tries to nominate* a backup, with the connected-pair precondition. |
+| 13 | **Fixed** | The per-ADDRESS-and-per-IP semantics are stated in the control note, the parameter table and the traversal note; the single-IP drawing assumption is explicit. |
+| 14 | **Fixed** | MaxFailure's 0 default is scoped to the default log-archive destination group (non-default groups default to 1) in both the note and the transport table. |
+| 15 | **Deliberately not fixed** | Skipped per instruction. Additional verification note: the SQLcl `DG` page neither claims full DGMGRL parity nor documents a subset — it scopes itself to "Oracle Database release 21c only" and defers to the broker command reference — so the report's proposed "documented subset" wording is itself unsupported; if this is ever revisited, use a neutral phrasing. The `V$DG_BROKER_PROPERTY` "(monitorable)" half of the finding was confirmed and remains open. |
+
+Documentation updated in the same pass: `AGENTS.md` accuracy rules (26ai
+ObserverPing defaults contradiction, MaxAvailability-ASYNC edition split,
+LagLimit-vs-threshold recommendation, LAGGING permission grantors,
+`fsfoEnabled`/`version`/transport-lag model inputs, JDBC thin defaults,
+per-IP timeout scope, nomination wording) and `diagrams/README.md` (sequence
+order, MaxFailure table cell, ping-defaults sourcing note, LagLimit
+recommendation, 26ai section, client-view facts, new sources).

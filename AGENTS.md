@@ -90,6 +90,12 @@ agree on:
   asset that draws the number must label it as a model, never as a quoted figure.
   Docs gap: the 19c properties reference does not list these two
   properties (they exist since 12.2); cite the 21c+ edition for them.
+  **26ai defaults contradiction:** the 26ai property pages give the broker
+  defaults as 0 — not set, detection governed by the threshold — while the
+  26ai FSFO chapter's table still shows 100 ms / 10. The simulator's 26ai
+  defaults column shows "0 — not set" and its caption names the
+  disagreement; never write "defaults identical in 26ai" unqualified. The
+  explicitly-set minimums stay 100 ms / 10 in every edition.
 - `FastStartFailoverLagLimit` default 30 s, min 5 s, MaxPerformance only **under
   19c**. **Under 26ai it also applies in MaxAvailability, where the broker default
   is 0**: zero means the standby must have received everything and the failover
@@ -102,9 +108,27 @@ agree on:
   page, both of which still carry the stale "maximum performance mode only"
   sentence.** The property page is a valid citation for the value ranges only;
   the page states the contradiction in footnote 5 rather than hiding it.
+  Task 3 is stale on the transports too: it still says MaxAvailability takes
+  SYNC or FASTSYNC, against the prerequisites list's "SYNC or FASTSYNC or
+  ASYNC" — so **ASYNC under MaxAvailability is a mode conflict only under
+  19c**; under 26ai the commit view draws an informational "allowed" note
+  instead (`computeCommit` takes `version`, and zero data loss still wants
+  SYNC/FASTSYNC). **Oracle recommends `FastStartFailoverLagLimit` at or below
+  `FastStartFailoverThreshold`**: past it the old primary can keep committing
+  after fast-start failover is initiated, briefly risking two primaries — the
+  rail warns when the sliders cross, and no asset may present "at most one
+  database ends up open" as unconditional.
   `FastStartFailoverLagType` and `FastStartFailoverLagGraceTime` did **not**
   follow it: both stay documented as maximum-performance-mode behavior whatever
-  the lag limit is doing in MaxAvailability, and both gray out there.
+  the lag limit is doing in MaxAvailability, and both gray out there. The
+  `LAGGING` permission is granted **by the observer or the target standby** —
+  never word it as the observer's alone — and `FastStartFailoverLagGraceTime`
+  is defined only **while fast-start failover is enabled**, so with no
+  observer deployed the reopen panel draws no stall and no grace band
+  (`computeReopen` takes `fsfoEnabled`). Under TRANSPORT the gated quantity is
+  the **transport-lag slider** (clamped to the apply lag; absent in an old
+  link it falls back to the apply lag), which the readiness gate, loss bound
+  and refusal banners follow, while terminal recovery still pays the apply lag.
 - **`PrimaryDatabaseCandidates` is a fast-start-failover-*disabled* fence.** It
   lists the members the broker may make primary; while FSFO is disabled it
   restricts `SWITCHOVER` and `FAILOVER` to that list and refuses anything else
@@ -194,12 +218,19 @@ agree on:
   deliberately out of scope; at most a footnote.
 - Client connect-string facts (simulator "application's view" section; sources
   in `diagrams/README.md`): `TRANSPORT_CONNECT_TIMEOUT` default 60 s per
-  ADDRESS; `CONNECT_TIMEOUT` per ADDRESS, no default (HA guide example 90 s);
+  ADDRESS — and per IP address a host name resolves to; the page draws
+  single-IP hosts and says so; `CONNECT_TIMEOUT` per ADDRESS, no default (HA guide example 90 s);
   `RETRY_COUNT` default 0 (extra traversals of the whole list), `RETRY_DELAY`
   no default; `FAILOVER` default on; `LOAD_BALANCE` default off inside an
   ADDRESS_LIST. Role-based services make the standby refuse instantly with
   ORA-12514. These parameters affect only NEW connections, never established
-  sessions. Nominal drawing constants (footnote 3): refusal 0.2 s, OS refusal
+  sessions. **The JDBC thin driver does not inherit Oracle Net's 60 s
+  transport default** — its own connect-timeout default is 0 in the 19c
+  driver and 20 s in current ones — so `buildJdbc()` always spells
+  `TRANSPORT_CONNECT_TIMEOUT` out with an explicit `sec` suffix (older thin
+  releases read a bare value as milliseconds). Never "simplify" the thin URL
+  back to the TNS omission rule, and never name the release that changed the
+  thin default — it is not stated on the API reference pages. Nominal drawing constants (footnote 3): refusal 0.2 s, OS refusal
   0.15 s, establish 0.3 s; service assumed published the instant the new
   primary opens.
 - `LogXptMode` takes SYNC | FASTSYNC | ASYNC, broker default ASYNC, mapping to
@@ -293,8 +324,9 @@ agree on:
   while unobserved — never use the two interchangeably. 19c registers up to
   three observers, one of them master, and only the master coordinates FSFO; if
   the master dies while primary and standby still see each other, the broker
-  promotes a backup observer automatically (12.2+), with `SET MASTEROBSERVER TO`
-  as the manual override. The "three" is 19c-specific — later releases allow
+  **tries to nominate** a backup observer as the new master (12.2+; an attempt
+  under that precondition, never a guarantee — see the nomination rule above),
+  with `SET MASTEROBSERVER TO` as the manual override. The "three" is 19c-specific — later releases allow
   more, so do not carry the number across editions.
 - **Observer placement** (the workbench's observer-location control). Oracle
   documents a hierarchy, and it has exactly three rungs: **a third site or third
@@ -767,7 +799,8 @@ second in) and switchover with the Tuned preset (it rides through, with the
 wasted tail between the open and the connecting pass), switchover refused
 (no-event state with its own wording) — in the commit view: SYNC at RTT 0 (local write is the whole
 commit), FASTSYNC (ack lands before the standby's write finishes), ASYNC (the
-wait bar disappears, plus the conflict warning under MaxAvailability) — and in
+wait bar disappears, plus the conflict warning under MaxAvailability in 19c and
+the "allowed" caveat chip under 26ai) — and in
 the reopen view: defaults, a tripped `MaxFailure` (disabled banner, no
 reconnect), a short reopen interval against a long outage (dense ticks
 aggregate), and MaxAvailability vs. MaxPerformance (disarm marker at t = 0 vs.
@@ -775,7 +808,8 @@ at the lag limit) — and in the config chapter: defaults (every `(default)`
 marker present, no highlights), MaxPerformance (the `FastStartFailoverLagLimit`
 line replaces the not-evaluated note), ping properties on (the two
 `ObserverPing*` lines plus the threshold-ignored math), ASYNC under
-MaxAvailability (red mismatch note), FASTSYNC under MaxPerformance (red
+MaxAvailability (red mismatch note under 19c; the allowed-since-26ai note under
+26ai), FASTSYNC under MaxPerformance (red
 MaxAvailability-only note), observer lost (red note in the observer card), and
 non-default reopen/max-failure values flowing into `REOPEN`/`MAX_FAILURE` —
 and in the deployment chapter: a storage-free load renders identically to the
@@ -887,12 +921,23 @@ MaxAvailability role — `lagPolicy` in, `availBounded` / `lagGated` out of `com
 and the one 26ai change that moves a number on the page. The `FastStartFailoverLagType`
 radio and `FastStartFailoverLagGraceTime` slider (URL keys `lt` / `lgt`) — broker
 properties, so unlike the edition they **do** ride in the `params` block of saved
-configurations. The reopen panel's LAGGING bands
+configurations. The **transport-lag slider** (`#c-translag`, URL key `tla`, state
+`C.transportLag`, `sim` block of saved configurations — a what-if, not a broker property):
+visible only under 26ai MaxPerformance with TRANSPORT selected (hidden like the ping
+sliders, never grayed); `computeFsfo` gates readiness, the loss bound and `ifDiedNow` on
+it there (`gateLagSeconds` in every return), clamps it to the apply lag, and falls back to
+the apply lag when the input is absent — the whole back-compatibility story for pre-slider
+links and exports. `computeCommit` takes `version`: ASYNC + MaxAvailability is
+`modeConflict` under 19c and `modeAllowed26` under 26ai (the prerequisites list ASYNC
+there; Task 3 is stale). The reopen panel's LAGGING bands
 (`lagStallAt`/`lagStallMax`/`lagGraceArmed` from `computeReopen`, which now also takes
-`version`, `lagGraceTime` and `threshold`). Under 19c all three controls gray out through
-`V19_NOTES` (borrow-and-restore, like observer-lost), and `computeFsfo` pins
+`version`, `lagGraceTime`, `threshold` and `fsfoEnabled` — passed false when no observer
+is deployed, and both LAGGING outputs stay null then). Under 19c these controls gray out
+through `V19_NOTES` (borrow-and-restore, like observer-lost) — the transport-lag slider
+hides instead — and `computeFsfo` pins
 `lagStall:null` / `lagType:'apply'` / the zero-loss policy whatever a crafted link or a
-26ai-written export asks for.
+26ai-written export asks for; the TRANSPORT echo additionally requires MaxPerformance,
+per the property's documented scope.
 
 **The outcome matrix stays 24 cells in both editions.** `site/test.mjs` pins that with
 19c-invariance loops (`version` absent/`'19c'` must reproduce the 24-cell table with
