@@ -226,6 +226,10 @@ white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .topo-svg text{font-family:var(--sans)}
 .topo-svg .tp-name{fill:var(--ik);font-size:13px;font-weight:600}
 .topo-svg .tp-sub{fill:var(--ik3);font-size:10px}
+/* the third line of a database card: the host the instance runs on, in the
+   mono face every other host name on the page wears (connect string, DGMGRL
+   cards), so the drawing and the configuration read as the same deployment */
+.topo-svg .tp-host{fill:var(--ik2);font-size:10px;font-family:var(--mono)}
 .topo-svg .tp-cap{fill:var(--ik2);font-size:10.5px}
 .topo-svg .tp-lat{fill:var(--vi);font-size:10.5px;font-weight:600;font-family:var(--mono);font-variant-numeric:tabular-nums}
 .topo-svg .tp-ev{fill:var(--rd);font-size:11px;font-weight:600}
@@ -1697,7 +1701,7 @@ window.DG = (function () {
           <div class="dep-row"><label for="dep-sub-s">Standby subtitle</label>
             <input class="dep-in" type="text" id="dep-sub-s" maxlength="64" data-i18n-skip placeholder="failover target"></div>
         </div>
-        <p class="dep-cap">The two subtitles and the site labels appear under the topology boxes in chapter&nbsp;1; the databases, hosts, port and service appear in the connect string and in every configuration card below. Where the observer runs is the one choice on this card that changes what the page draws &mdash; it is the chapter&nbsp;1 rail&rsquo;s control, in both directions.</p>
+        <p class="dep-cap">The two subtitles, the two database hosts and the site labels appear on the topology boxes in chapter&nbsp;1; the databases, hosts, port and service appear in the connect string and in every configuration card below. Where the observer runs is the one choice on this card that changes what the page draws &mdash; it is the chapter&nbsp;1 rail&rsquo;s control, in both directions.</p>
       </article>
 
       <article class="cfg">
@@ -7059,8 +7063,8 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
         obs: [103, 26, 184, 52], obsW: 124, obsX: [261, 34], obsEv: [300, 40, null],
         sites: [['dc1', 70, 10, 250, 204], ['dc2', 860, 96, 250, 118]],
         links: [
-          { id: 'op', n: ['obs', 'pmy'], d: 'M195,78 L195,118', pill: { l: [207, 98] } },
-          { id: 'os', n: ['obs', 'sby'], d: 'M287,52 L978,52 Q985,52 985,59 L985,118', pill: { c: [636, 52] } },
+          { id: 'op', n: ['obs', 'pmy'], d: 'M195,78 L195,112', pill: { l: [207, 95] } },
+          { id: 'os', n: ['obs', 'sby'], d: 'M287,52 L978,52 Q985,52 985,59 L985,112', pill: { c: [636, 52] } },
           redo
         ],
         evPmy: [332, 120, null], evIso: [443, 16, null], isoY: [52, 148],
@@ -7074,8 +7078,8 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
         obs: [893, 26, 184, 52], obsW: 124, obsX: [1047, 34], obsEv: [881, 40, 'end'],
         sites: [['dc1', 70, 96, 250, 118], ['dc2', 860, 10, 250, 204]],
         links: [
-          { id: 'op', n: ['obs', 'pmy'], d: 'M893,52 L202,52 Q195,52 195,59 L195,118', pill: { c: [544, 52] } },
-          { id: 'os', n: ['obs', 'sby'], d: 'M985,78 L985,118', pill: { r: [973, 98] } },
+          { id: 'op', n: ['obs', 'pmy'], d: 'M893,52 L202,52 Q195,52 195,59 L195,112', pill: { c: [544, 52] } },
+          { id: 'os', n: ['obs', 'sby'], d: 'M985,78 L985,112', pill: { r: [973, 95] } },
           redo
         ],
         evPmy: [70, 88, null], evIso: [427, 16, 'end'], isoY: [52, 148],
@@ -7102,8 +7106,8 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
       obs: [509, 24, 162, 52], obsW: 103, obsX: [640, 32], obsEv: [714, 34, null],
       sites: [['dc1', 70, 96, 250, 118], ['dc2', 860, 96, 250, 118], ['dc3', 476, 6, 228, 100]],
       links: [
-        { id: 'op', n: ['obs', 'pmy'], d: 'M526,58 L202,58 Q195,58 195,65 L195,118', pill: { c: [360, 58] } },
-        { id: 'os', n: ['obs', 'sby'], d: 'M654,58 L978,58 Q985,58 985,65 L985,118', pill: { c: [820, 58] } },
+        { id: 'op', n: ['obs', 'pmy'], d: 'M526,58 L202,58 Q195,58 195,65 L195,112', pill: { c: [360, 58] } },
+        { id: 'os', n: ['obs', 'sby'], d: 'M654,58 L978,58 Q985,58 985,65 L985,112', pill: { c: [820, 58] } },
         redo
       ],
       evPmy: [70, 88, null], evIso: [427, 16, 'end'], isoY: [58, 148],
@@ -7159,22 +7163,30 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
     var s = [], push = function (x) { s.push(x); };
 
     /* A node is a card: a flat bordered surface, a monochrome icon badge
-       (database cylinder or observer eye), then two lines of text. A dead
-       card hatches and its badge goes red; the name line keeps saying which
-       role died, because the identity of what died is half the caption. */
-    function nodeCard(x, y, w, h, isDown, isObs, name, sub) {
-      var db = h === 60;
-      var b = db ? 32 : 28, bx = x + 12, by = y + (db ? 14 : 12);
+       (database cylinder or observer eye), then two or three lines of text. A
+       dead card hatches and its badge goes red; the name line keeps saying
+       which role died, because the identity of what died is half the caption.
+       The badge is centred on the card whatever the line count, so the two
+       database cards and the shorter observer card share one axis. */
+    function nodeCard(x, y, w, h, isDown, isObs, name, sub, host) {
+      var db = !isObs;
+      var b = db ? 32 : 28, bx = x + 12, by = y + Math.round((h - b) / 2);
       var pad = Math.round((b - 24) / 2);
       var tx = x + (db ? 56 : 52);
+      /* three lines sit 4px higher than two so the text block stays optically
+         centred against the badge beside it */
+      var y1 = y + (host ? 24 : db ? 26 : 22);
       return '<rect class="tp-card' + (isDown ? ' tp-down' : '') +
         '" x="' + x + '" y="' + y + '" width="' + w + '" height="' + h + '" rx="5"></rect>' +
         '<rect class="tp-bdg' + (isDown ? '-down' : '') + '" x="' + bx + '" y="' + by +
         '" width="' + b + '" height="' + b + '" rx="7"></rect>' +
         '<use href="#topoIco' + (isObs ? 'Eye' : 'Db') + '" class="tp-ico' + (isDown ? '-down' : '') +
         '" transform="translate(' + (bx + pad) + ',' + (by + pad) + ')"></use>' +
-        txt('tp-name', tx, y + (db ? 26 : 22), null, esc(name)) +
-        txt('tp-sub', tx, y + (db ? 42 : 38), null, esc(sub));
+        txt('tp-name', tx, y1, null, esc(name)) +
+        /* the host is the identity, the subtitle is the gloss on it, so the
+           host reads directly under the role and the subtitle closes the card */
+        (host ? txt('tp-host', tx, y1 + 16, null, esc(host)) : '') +
+        txt('tp-sub', tx, y1 + (host ? 30 : 16), null, esc(sub));
     }
 
     /* The caption and the latency of a link ride it in one pill. A dead
@@ -7199,6 +7211,17 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
     var subP = fitLabel([idv('subPrimary') + ', ' + idv('dc1'), idv('subPrimary'), idv('dc1')], 118) || idv('dc1');
     var subS = fitLabel([idv('subStandby') + ', ' + idv('dc2'), idv('subStandby'), idv('dc2')], 118) || idv('dc2');
     var subO = topoSubO(loc, L.obsW);
+
+    /* The host each database runs on, third line of its card. A host name has
+       no shorter form to degrade to the way the subtitles do, so an
+       over-long one elides -- the full value stays in the aria sentence, the
+       connect string and the configuration card. 128px of card is free beside
+       the badge; 19 mono characters at 10px is what fits with a margin. */
+    function hostLine(k) {
+      var h = idv(k);
+      return h.length > 19 ? h.slice(0, 18) + '\u2026' : h;
+    }
+    var hostP = hostLine('hostPrimary'), hostS = hostLine('hostStandby');
 
     /* The ground panels, drawn behind everything. Only a lost site is filled
        with the hatch: a severed link leaves both data centres perfectly
@@ -7234,6 +7257,13 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
         idv('dc1'), idv('dc2'), oh ? oh : t('a third host'));
     }
 
+    /* The host names the two database cards now carry, spoken in full: the
+       cards elide an over-long one, the aria sentence never does. */
+    function ariaHosts() {
+      return t('The primary runs on host {0}, the target standby on host {1}.',
+        idv('hostPrimary'), idv('hostStandby'));
+    }
+
     function ariaEvent() {
       if (obs) return t('The observer host dies at t = 0. The primary and the standby stay connected, so redo keeps flowing, but the configuration is unobserved and nothing can fail over.');
       if (sw) return t('Every host stays up: at t = 0 the DBA issues a switchover, and the two databases trade roles.');
@@ -7258,7 +7288,7 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
     /* 10px of headroom above y=0 balances the 16px below the site panels,
        now that the strip renders 1:1 against the wrap's border */
     push('<svg class="topo-svg" viewBox="0 -10 1180 240" role="img" aria-label="' +
-      esc(ariaPlace() + ' ' + ariaEvent() + ' ' +
+      esc(ariaPlace() + ' ' + ariaHosts() + ' ' + ariaEvent() + ' ' +
           t('Every link carries {0} ms of round-trip latency.', C.latency)) + '">');
     push('<defs><pattern id="topoHatch" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">' +
       '<rect width="8" height="8" class="hatch-bg"></rect><line x1="0" y1="0" x2="0" y2="8" class="hatch-ln"></line></pattern>' +
@@ -7317,8 +7347,8 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
       var obsDown = obs || (sc === 'dc2down' && loc === 'dc2');
       push(nodeCard(L.obs[0], L.obs[1], L.obs[2], L.obs[3], obsDown, true, 'Observer', subO));
     }
-    push(nodeCard(103, 118, 184, 60, sc === 'crash', false, 'Primary', subP));
-    push(nodeCard(893, 118, 184, 60, sc === 'dc2down', false, 'Standby', subS));
+    push(nodeCard(103, 112, 184, 72, sc === 'crash', false, 'Primary', subP, hostP));
+    push(nodeCard(893, 112, 184, 72, sc === 'dc2down', false, 'Standby', subS, hostS));
 
     /* what happened at t = 0, in the vocabulary of the thing it happened to */
     if (obs) {
@@ -7353,8 +7383,11 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
     } else if (sc === 'dc2down') {
       push(txt('tp-ev', L.evDc2[0], L.evDc2[1], L.evDc2[2], esc(t('site down at t = 0'))));
     } else {
-      push(ln('tp-x', 257, 130, 271, 144));
-      push(ln('tp-x', 271, 130, 257, 144));
+      /* on the card's name line, the short one: the subtitle and the host
+         line beneath it both run further right, and the cross has to stay out
+         of a configured name's way */
+      push(ln('tp-x', 257, 122, 271, 136));
+      push(ln('tp-x', 271, 122, 257, 136));
       push(txt('tp-ev', L.evPmy[0], L.evPmy[1], L.evPmy[2], esc(t('host down at t = 0'))));
     }
 

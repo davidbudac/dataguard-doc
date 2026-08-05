@@ -645,6 +645,18 @@ endpoint in each database site; standby site down: the links touching it), so a 
 clause there rather than a rewrite. Its aria sentence gains a per-location and a per-scenario
 clause, each a whole i18n key.
 
+Each database card carries **three** lines — role, then the host the instance runs on in the mono
+face every other host name on the page wears, then the subtitle — so the drawing names the same two
+hosts as the connect string and the DGMGRL cards. The host sits directly under the role because it
+is the identity; the subtitle is the gloss on it and closes the card. That is why the two database cards are 72px tall
+against the observer's 52 and why the vertical links drop to y = 112 rather than 118: `nodeCard`
+centres the badge on whatever height it is given, so the two card shapes still share one axis. A
+host name has no shorter form to degrade to the way the subtitles do (`fitLabel` has nothing to
+fall back on), so an over-long one elides at 19 characters; the un-elided value stays in the aria
+sentence, which gains one more key naming both hosts, and in the configuration card. The crashed
+primary's cross sits on the *name* line, the short one — the subtitle and the host line beneath it
+both run further right.
+
 The "application's view" section (`#appview`) has its own pure function
 `computeApp(a, m, scenario)` between `/* APPMODEL:START */` and
 `/* APPMODEL:END */` — it consumes computeFsfo's output and simulates one
