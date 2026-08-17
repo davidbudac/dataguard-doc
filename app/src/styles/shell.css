@@ -1,0 +1,313 @@
+/* The shell: the grid, the two bars, the readout and the small controls every
+   mode shares (ui.md SS3, SS8).
+
+   No component in this application carries a style attribute -- the CSP that
+   ships with the page forbids inline styles outright -- so everything dynamic
+   here is a class, and everything geometric in the canvas is an SVG
+   presentation attribute. */
+
+/* ---------------- grid ---------------- */
+
+.app{
+  display:grid;
+  height:100dvh;
+  /* clip, not hidden: overflow-x:hidden forces overflow-y to auto, which turns
+     this element into a scroll container and breaks every sticky inside it. */
+  overflow:clip;
+  grid-template-columns:minmax(320px,1fr) var(--w-inspector);
+  /* The two bars size themselves (48 / 36 px wide, taller once they wrap on
+     a narrow screen); a fixed track would let a wrapped bar paint over the
+     row beneath it. The stage track carries a floor: a drawing scaled into
+     150 px is a diagram of itself, so a dock with a dozen lanes scrolls
+     before the canvas stops being readable. */
+  grid-template-rows:auto auto minmax(260px,1fr) auto;
+  grid-template-areas:
+    "top    top"
+    "status status"
+    "stage  rail"
+    "dock   dock";
+  background:var(--bg);
+}
+.app.m-configure{grid-template-rows:auto auto clamp(180px,24vh,260px) minmax(0,1fr)}
+/* Configure's dock is the mode's main surface, so it takes the whole track;
+   the 64vh cap below is for docks that share the height with the canvas. */
+.app.m-configure .app-dock{max-height:none}
+/* The stage hands its height to the drawing: the canvas scales to fit the
+   room the dock (and, in Break, the event menu under it) leaves, instead of
+   running off the bottom edge; it stays centred when there is more room than
+   drawing. A column flexbox, so the event menu takes its own room below the
+   drawing rather than floating over the card it was opened for. */
+.app.m-build .app-stage,.app.m-break .app-stage,.app.m-configure .app-stage{
+  display:flex;flex-direction:column}
+.app-stage>.tp-wrap{flex:1 1 0;min-height:200px}
+.app-stage>.tp-wrap>.topo-svg{flex:0 1 auto;min-height:0}
+.app-stage>.empty{flex:0 0 auto}
+.app.m-learn{
+  grid-template-rows:auto auto minmax(0,1fr);
+  grid-template-areas:
+    "top    top"
+    "status status"
+    "stage  rail";
+  grid-template-columns:minmax(0,60ch) minmax(360px,1fr);
+}
+.app-top{grid-area:top;min-width:0}
+.app-status{grid-area:status;min-width:0}
+.app-stage{grid-area:stage;min-width:0;min-height:0;overflow:auto;position:relative}
+.app-rail{grid-area:rail;min-width:0;min-height:0;overflow:auto;
+  background:var(--sf);border-left:1px solid var(--ln);box-shadow:var(--sh);
+  /* A scroll region that says so. Configure gives the rail a 180-260 px
+     strip, and a row cut by the bottom of that strip with nothing to mark
+     the edge reads as a drawing error rather than as "there is more". The
+     two shading bands are painted by the scroll position itself -- they are
+     `local`-attached, so each one is there only while content is hidden
+     behind it and gone at the end of the scroll. Nothing is hidden by them:
+     they shade the surface, they do not cover a row. */
+  scrollbar-gutter:stable;
+  background-image:
+    linear-gradient(to bottom,var(--sf),rgba(0,0,0,0)),
+    linear-gradient(to top,var(--sf),rgba(0,0,0,0)),
+    linear-gradient(to bottom,var(--ln2),rgba(0,0,0,0)),
+    linear-gradient(to top,var(--ln2),rgba(0,0,0,0));
+  background-repeat:no-repeat;
+  background-size:100% 26px,100% 26px,100% 12px,100% 12px;
+  background-position:top,bottom,top,bottom;
+  background-attachment:local,local,scroll,scroll}
+/* Configure's rail is the short one, so it is where the end has to be legible:
+   a hairline under the last row, and the header staying put above it. */
+.app.m-configure .app-rail{border-bottom:1px solid var(--ln)}
+.app-dock{grid-area:dock;min-width:0;display:flex;flex-direction:column;position:relative;
+  border-top:1px solid var(--ln);background:var(--sf);overflow:auto;
+  /* Never so tall that the canvas above it stops being a drawing: on a short
+     window the dock scrolls before the stage drops under ~240 px. */
+  max-height:min(64vh,calc(100dvh - 380px))}
+/* The dock scrolls as a whole; its parts keep their natural height rather
+   than squeezing each other (a readout squeezed to its min-height lets the
+   timeline paint over its second row of chips). */
+.app-dock>*{flex:0 0 auto}
+.app-dock>.issues{flex:0 1 auto}
+
+/* ---------------- top bar ---------------- */
+
+.topbar{display:flex;align-items:center;gap:8px 14px;min-height:var(--h-top);padding:4px 14px;
+  flex-wrap:wrap;background:var(--sf);border-bottom:1px solid var(--ln)}
+.topbar-brand{display:flex;flex-direction:column;gap:0;min-width:0;flex:0 0 auto}
+.topbar-brand b{font-size:13px;font-weight:620;letter-spacing:-.01em;white-space:nowrap}
+.topbar-brand span{font-family:var(--mono);font-size:10px;letter-spacing:.12em;
+  text-transform:uppercase;color:var(--ik3);white-space:nowrap}
+.topbar-spacer{flex:1 1 auto;min-width:0}
+.topbar-group{display:flex;align-items:center;gap:8px;flex:0 1 auto;flex-wrap:wrap;
+  justify-content:flex-end}
+/* Undo and redo name the edit they would reverse, not just the verb. */
+.undo-label{font-family:var(--mono);font-size:10.5px;letter-spacing:.02em;color:var(--ik3);
+  max-width:22ch;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* ---------------- status bar ---------------- */
+
+.statusbar{display:flex;align-items:center;gap:10px;min-height:var(--h-status);padding:0 14px;
+  background:var(--sf2);border-bottom:1px solid var(--ln);
+  font-size:12px;color:var(--ik2);overflow-x:auto;scrollbar-width:none}
+.statusbar::-webkit-scrollbar{display:none}
+/* One row: the bar scrolls sideways sooner than any item wraps into a second line. */
+.statusbar>*{flex:0 0 auto;white-space:nowrap}
+.statusbar>#preset-picker{flex:1 1 20ch;min-width:14ch;max-width:46ch;overflow:hidden;
+  text-overflow:ellipsis}
+.statusbar-spacer{flex:1 1 auto;min-width:0}
+.statusbar .count{font-family:var(--mono);font-variant-numeric:tabular-nums;color:var(--ik)}
+.statusbar .count.is-error{color:var(--rd)}
+.statusbar .count.is-warn{color:var(--am)}
+.statusbar .count.is-clean{color:var(--tl)}
+
+/* ---------------- buttons ---------------- */
+
+.btn{display:inline-flex;align-items:center;gap:7px;flex:0 0 auto;
+  font-family:var(--mono);font-size:11px;letter-spacing:.04em;
+  color:var(--ik2);background:transparent;border:1px solid var(--ln2);border-radius:2px;
+  padding:4px 10px;cursor:pointer;white-space:nowrap}
+.btn:hover:not(:disabled){color:var(--ik);border-color:var(--ik3);background:var(--sf)}
+.btn:disabled{opacity:.46;cursor:not-allowed}
+.btn.is-primary{color:var(--ik);border-color:var(--vi);background:var(--vif)}
+.btn.is-icon{width:26px;height:24px;padding:0;justify-content:center;background:var(--sf)}
+.btn.is-icon svg{display:block;width:14px;height:14px;fill:none;stroke:currentColor;
+  stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+@media (prefers-reduced-motion:no-preference){
+  .btn{transition:background-color .16s ease,color .16s ease,border-color .16s ease}}
+
+/* A disabled control is never mute: the pill beside it says why. The fade
+   moves to the children so the pill stays legible on a faded control. */
+.ctl-off{display:inline-flex;align-items:center;gap:8px}
+.ctl-off>.is-faded{opacity:.46}
+
+.why{align-self:flex-start;font-family:var(--mono);font-size:10px;letter-spacing:.08em;
+  text-transform:uppercase;color:var(--ik3);background:var(--sf2);
+  border:1px solid var(--ln2);border-radius:999px;padding:2px 8px;line-height:1.45;
+  white-space:normal}
+
+/* ---------------- segmented control ---------------- */
+
+.seg{display:inline-flex;flex:0 0 auto;border:1px solid var(--ln2);border-radius:2px;
+  overflow:hidden;background:var(--sf)}
+.seg button{font-family:var(--mono);font-size:11px;letter-spacing:.1em;color:var(--ik3);
+  background:var(--sf);border:0;border-right:1px solid var(--ln);padding:4px 10px;
+  cursor:pointer;white-space:nowrap}
+.seg button:last-child{border-right:0}
+.seg button:hover:not(:disabled){color:var(--ik);background:var(--sf2)}
+.seg button[aria-pressed="true"]{background:var(--vif);color:var(--ik);font-weight:600;
+  box-shadow:inset 0 -2px 0 var(--vi)}
+.seg button:disabled{opacity:.45;cursor:not-allowed}
+/* The control clips its corners, so a keyboard focus ring drawn outside the
+   button would be cut off: draw it inside instead. */
+.seg button:focus-visible{outline-offset:-2px;border-radius:0}
+@media (prefers-reduced-motion:no-preference){
+  .seg button{transition:background-color .16s ease,color .16s ease}}
+
+/* ---------------- fields ---------------- */
+
+.field{display:flex;flex-direction:column;gap:5px;min-width:0;
+  padding:11px 16px;border-bottom:1px solid var(--ln)}
+.field:last-child{border-bottom:0}
+.field-hd{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
+.field-name{font-family:var(--mono);font-size:12px;color:var(--ik);word-break:break-word}
+.field-name.is-prose{font-family:var(--sans);font-size:12.5px;color:var(--ik2);
+  letter-spacing:.01em}
+.field-val{font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:13px;
+  font-weight:600;color:var(--vi);white-space:nowrap}
+.field-note{font-size:11.5px;line-height:1.45;color:var(--ik3)}
+.field-note .mono{font-size:11px;color:var(--ik2)}
+.field-note.is-warn{color:var(--am)}
+.field-in{font-family:var(--mono);font-size:13px;color:var(--vi);background:var(--sf2);
+  border:1px solid var(--ln2);border-radius:2px;padding:5px 8px;width:100%;min-width:0}
+.field-in:focus{outline:none;border-color:var(--vi)}
+/* Keyboard focus keeps the ring a mouse click does not need. */
+.field-in:focus-visible{outline:2px solid var(--fc);outline-offset:1px}
+.field-in:disabled{opacity:.45;cursor:not-allowed}
+.field.is-off>*:not(.why){opacity:.46}
+
+/* ---------------- readout chips ---------------- */
+
+.readout{min-height:var(--h-readout);border-bottom:1px solid var(--ln);background:var(--sf)}
+.chips{display:grid;grid-template-columns:repeat(auto-fit,minmax(196px,1fr));gap:1px;
+  background:var(--ln);border-bottom:1px solid var(--ln)}
+.chip{background:var(--sf);padding:10px 14px;display:flex;flex-direction:column;gap:3px;
+  min-width:0}
+@supports (grid-template-rows:subgrid){
+  .chips{grid-auto-rows:auto}
+  .chip{display:grid;grid-template-rows:subgrid;grid-row:span 3;align-content:start}
+  .chip-v{margin-top:2px}
+  .chip-s{margin-top:2px}
+}
+.chip-k{font-family:var(--mono);font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;
+  color:var(--ik3)}
+.chip-v{font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:26px;
+  font-weight:620;letter-spacing:-.03em;line-height:1.15;color:var(--ik)}
+.chip-v small{font-size:14px;font-weight:500;color:var(--ik2);letter-spacing:0}
+.chip-s{font-size:11.5px;color:var(--ik3);line-height:1.4;overflow-wrap:anywhere}
+.chip-s .mono{font-size:10.5px;color:var(--ik2)}
+.chip.t-tl .chip-v{color:var(--tl)}
+.chip.t-bl .chip-v{color:var(--bl)}
+.chip.t-vi .chip-v{color:var(--vi)}
+.chip.t-am .chip-v{color:var(--am)}
+.chip.t-rd .chip-v{color:var(--rd)}
+.chip.t-sl .chip-v{color:var(--sl)}
+/* Small inline chip -- the badge form, not the readout tile. */
+.tag{display:inline-flex;align-items:center;gap:5px;font-family:var(--mono);font-size:10.5px;
+  letter-spacing:.12em;text-transform:uppercase;color:var(--ik3);background:var(--sf2);
+  border:1px solid var(--ln2);border-radius:2px;padding:2px 7px;line-height:1.5;
+  white-space:nowrap}
+.tag.t-tl{color:var(--tl);background:var(--tlf);border-color:var(--tl)}
+.tag.t-bl{color:var(--bl);background:var(--blf);border-color:var(--bl)}
+.tag.t-am{color:var(--am);background:var(--amf);border-color:var(--am)}
+.tag.t-rd{color:var(--rd);background:var(--rdf);border-color:var(--rd)}
+.tag.t-vi{color:var(--vi);background:var(--vif);border-color:var(--vi)}
+.tag.t-sl{color:var(--sl);background:var(--sf3);border-color:var(--ln2)}
+
+/* ---------------- validation issues ---------------- */
+
+.issues{display:flex;flex-direction:column;min-height:0;overflow:auto}
+.issues-hd{display:flex;align-items:baseline;gap:10px;padding:9px 16px;
+  border-bottom:1px solid var(--ln);background:var(--sf2)}
+.issue{display:grid;grid-template-columns:auto minmax(0,1fr);gap:4px 10px;
+  padding:9px 16px;border-bottom:1px solid var(--ln);align-items:baseline}
+.issue:last-child{border-bottom:0}
+.issue-b{font-size:13px;color:var(--ik2)}
+.issue-b .mono{font-size:12px;color:var(--ik)}
+.issue-id{font-family:var(--mono);font-size:10px;letter-spacing:.1em;color:var(--ik3);
+  grid-column:2}
+.issue.sv-error{border-left:3px solid var(--rd)}
+.issue.sv-warning{border-left:3px solid var(--am)}
+.issue.sv-info{border-left:3px solid var(--ln2)}
+
+/* ---------------- sheet / drawer ---------------- */
+
+.sheet{position:fixed;z-index:60;background:var(--sf);border:1px solid var(--ln2);
+  box-shadow:var(--sh);display:flex;flex-direction:column;min-height:0}
+.sheet.p-right{top:0;right:0;bottom:0;width:min(360px,92vw);border-right:0}
+.sheet.p-bottom{left:0;right:0;bottom:0;max-height:70vh;border-bottom:0}
+.sheet-hd{display:flex;align-items:center;gap:10px;padding:10px 14px;
+  border-bottom:1px solid var(--ln);background:var(--sf2)}
+.sheet-hd .title{flex:1 1 auto;min-width:0}
+.sheet-body{min-height:0;overflow:auto}
+.scrim{position:fixed;inset:0;z-index:59;background:rgba(16,25,34,.28)}
+
+/* ---------------- toast / restore strip ---------------- */
+
+.strip{display:flex;align-items:center;gap:12px;padding:7px 14px;font-size:12px;
+  color:var(--ik2);background:var(--vif);border-bottom:1px solid var(--vi)}
+.strip.is-warn{background:var(--amf);border-bottom-color:var(--am)}
+.strip.is-error{background:var(--rdf);border-bottom-color:var(--rd)}
+.strip-spacer{flex:1 1 auto}
+
+/* ---------------- placeholder slots ---------------- */
+
+/* A slot another agent has not filled yet says so in words: an empty box the
+   reader cannot name is worse than a labelled one. */
+.slot{display:flex;flex-direction:column;gap:6px;padding:16px;color:var(--ik3);
+  font-size:13px}
+.slot .eyebrow{color:var(--ik3)}
+
+/* ---------------- degradation (ui.md SS3) ---------------- */
+
+/* 1024-1279: the inspector leaves the grid and becomes an overlay drawer. */
+@media (max-width:1279px){
+  .app,.app.m-learn{grid-template-columns:minmax(0,1fr);
+    grid-template-areas:"top" "status" "stage" "dock"}
+  .app.m-learn{grid-template-areas:"top" "status" "stage"}
+  /* The inspector is not hidden here -- App stops rendering it into the grid
+     and renders it as a drawer instead, so the rail is genuinely absent from
+     the document rather than painted out of view. */
+}
+@media (max-width:1023px){
+  .app-dock{max-height:min(70vh,calc(100dvh - 340px))}
+  .chips{grid-template-columns:repeat(auto-fit,minmax(152px,1fr))}
+  .chip-v{font-size:23px}
+}
+@media (max-width:767px){
+  .app,.app.m-configure,.app.m-learn{height:auto;min-height:100dvh;overflow:visible;
+    grid-template-rows:auto auto auto auto}
+  .app-stage,.app-dock,.app-rail{overflow:visible;max-height:none}
+  .app.m-build .app-stage,.app.m-break .app-stage,.app.m-configure .app-stage{display:block}
+  .topbar{padding:8px 12px;gap:8px}
+  .topbar-spacer{display:none}
+  .topbar-group{justify-content:flex-start}
+  /* One chip per row on a phone: two columns of 152 px cannot hold
+     MAXAVAILABILITY at 23 px, and a readout that clips its own word is worse
+     than a readout that takes another line. */
+  .chips{grid-template-columns:minmax(0,1fr)}
+  .chip-v{font-size:21px;overflow-wrap:anywhere}
+}
+
+/* The toast/notice strip rides above the stage without taking a grid row, so
+   a message never reflows the workbench under the reader's cursor. */
+/* Anchored to the measured bottom of the status bar, not to the nominal
+   heights of the two bars: both wrap on a narrow window, and a toast pinned
+   to 48 + 36 px paints over a wrapped bar. `--bar-bottom` is written by a
+   ResizeObserver in App.tsx through `el.style.setProperty` -- the one escape
+   hatch `style-src 'self'` leaves -- and the calc() is the fallback for the
+   first frame and for a host with no ResizeObserver. */
+.toast{position:fixed;left:0;right:0;z-index:50;
+  top:var(--bar-bottom,calc(var(--h-top) + var(--h-status)))}
+@media (max-width:767px){.toast{position:static}}
+
+/* A notice that has a better place to send the reader sends them with a link,
+   not a button: `?lang=cs` belongs on the page that has the Czech reading. */
+.strip-link{font-family:var(--mono);font-size:11px;letter-spacing:.04em;color:var(--vi);
+  white-space:nowrap}

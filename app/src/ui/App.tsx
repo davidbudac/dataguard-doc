@@ -1,0 +1,240 @@
+/**
+ * The shell (ui.md SS3): two bars, one persistent canvas, a right rail and a
+ * bottom dock, arranged by the mode.
+ *
+ * The canvas never blinks -- switching modes changes what is around it, not
+ * what it is. Nothing here is hidden with CSS: a rail that does not fit is not
+ * rendered into the grid at all, it is rendered into a drawer, and a mode that
+ * is not open is not in the document.
+ *
+ * Slots other agents own are imported by path and rendered with the props they
+ * declare. `TimelineSlot` below is the one adapter the shell keeps: the
+ * timeline wants a `Trace` and a measured width, and both are the shell's to
+ * supply.
+ */
+
+import { useEffect, useRef, useState } from 'preact/hooks';
+import { topology, trace } from '@/state/derived';
+import {
+  canEdit, inspectorOpen, mode, playing, selection, speed, tNow, toast, viewport,
+} from '@/state/view';
+import type { Mode } from '@/state/view';
+import { TopBar } from './TopBar';
+import { StatusBar } from './StatusBar';
+import { Readout } from './Readout';
+import { IssuePanel } from './IssuePanel';
+import { Sheet } from './common/Sheet';
+import { CanvasSlot } from './canvas/CanvasSlot';
+import { EventMenu } from './canvas/EventMenu';
+import { Inspector } from './inspector/Inspector';
+import { BreakRail } from './break/BreakRail';
+import { Panels } from './panels/Panels';
+import { LearnShell } from './learn/LearnShell';
+import { Timeline } from './timeline/Timeline';
+
+/** Which modes keep a rail beside the canvas. Learn's right half is the workbench. */
+const HAS_RAIL: Record<Mode, boolean> = {
+  build: true, break: true, configure: true, learn: true,
+};
+
+const RAIL_TITLE: Record<Mode, string> = {
+  build: 'Inspector', break: 'Events', configure: 'Inspector', learn: 'Workbench',
+};
+
+/** Measure an element without ever writing a style attribute. */
+function useWidth(): [(el: HTMLElement | null) => void, number] {
+  const [width, setWidth] = useState(880);
+  const observer = useRef<ResizeObserver | null>(null);
+  useEffect(() => () => observer.current?.disconnect(), []);
+  const ref = (el: HTMLElement | null): void => {
+    observer.current?.disconnect();
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    setWidth(el.clientWidth);
+    const ro = new ResizeObserver(() => setWidth(el.clientWidth));
+    ro.observe(el);
+    observer.current = ro;
+  };
+  return [ref, width];
+}
+
+/**
+ * Anchor the toast to the measured bottom of the status bar.
+ *
+ * The two bars wrap on a narrow window, so their nominal 48 + 36 px is a
+ * guess, and a toast pinned to that guess paints over the wrapped bar. This
+ * writes the measured value into `--bar-bottom` through `el.style.setProperty`
+ * -- the one escape hatch `style-src 'self'` leaves open (ui.md SS1) -- rather
+ * than through a style attribute, which the policy would drop. It observes the
+ * top bar as well: a bar that grows a row moves the one below it without
+ * changing its own size.
+ */
+function useBarAnchor(): (el: HTMLElement | null) => void {
+  const observer = useRef<ResizeObserver | null>(null);
+  useEffect(() => () => observer.current?.disconnect(), []);
+  return (el: HTMLElement | null): void => {
+    observer.current?.disconnect();
+    observer.current = null;
+    if (!el) return;
+    const write = (): void => {
+      const bottom = Math.round(el.getBoundingClientRect().bottom);
+      if (bottom > 0) {
+        el.ownerDocument.documentElement.style.setProperty('--bar-bottom', `${bottom}px`);
+      }
+    };
+    write();
+    if (typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(write);
+    ro.observe(el);
+    const above = el.previousElementSibling;
+    if (above) ro.observe(above);
+    observer.current = ro;
+  };
+}
+
+const MIN_TIMELINE_W = 640;
+
+function TimelineSlot() {
+  const [ref, width] = useWidth();
+  const t = trace.value;
+  const learn = mode.value === 'learn';
+  return (
+    <div ref={ref}>
+      {t === null ? (
+        <div class="empty">
+          <span class="empty-k">Timeline</span>
+          <p>
+            {learn
+              ? 'Steady state -- this step injects no event. A step whose "Show me" breaks something draws its clocks here.'
+              : 'Steady state -- no events injected. Click a card on the canvas to inject one.'}
+          </p>
+        </div>
+      ) : (
+        <Timeline
+          trace={t}
+          doc={topology.value}
+          /* Never narrower than the plot needs to stay legible: below that the
+             timeline scrolls sideways inside its own box (ui.md SS1). */
+          width={Math.max(width, MIN_TIMELINE_W)}
+          tNow={tNow.value}
+          playing={playing.value}
+          speed={speed.value}
+          onSeek={(t2) => { tNow.value = t2; }}
+          onPlayToggle={() => { playing.value = !playing.value; }}
+          onSpeed={(s) => { speed.value = s; }}
+          selection={selection.value[0] ?? null}
+          onSelect={(id) => { selection.value = id === null ? [] : [id]; }}
+          showTransport
+        />
+      )}
+    </div>
+  );
+}
+
+/* Learn's right half: the drawing, the readout and the clocks, so a step
+   that breaks something shows its timeline beside the prose that explains it. */
+function Workbench() {
+  return (
+    <>
+      <CanvasSlot />
+      <Readout />
+      <TimelineSlot />
+    </>
+  );
+}
+
+/* The event menu has one home per layout: at the head of the Break rail when
+   the rail is beside the canvas (the drawing keeps its whole stage), under the
+   drawing when the rail has become a drawer (a menu inside a closed drawer is
+   a menu nobody finds). It is never both. */
+function Rail({ m, wide }: { m: Mode; wide: boolean }) {
+  switch (m) {
+    case 'build': return <Inspector />;
+    case 'break': return <>{wide ? <EventMenu /> : null}<BreakRail /></>;
+    case 'configure': return <Inspector />;
+    case 'learn': return <Workbench />;
+  }
+}
+
+function Stage({ m, wide }: { m: Mode; wide: boolean }) {
+  if (m === 'learn') return <LearnShell />;
+  return (
+    <>
+      <CanvasSlot />
+      {m === 'break' && !wide ? <EventMenu /> : null}
+    </>
+  );
+}
+
+function Dock({ m, railInDock }: { m: Mode; railInDock: boolean }) {
+  if (m === 'learn') return railInDock ? <Workbench /> : null;
+  return (
+    <>
+      {m === 'configure' ? null : <Readout />}
+      {m === 'build' ? <IssuePanel /> : null}
+      {m === 'break' ? <TimelineSlot /> : null}
+      {m === 'configure' ? <Panels /> : null}
+    </>
+  );
+}
+
+export function App() {
+  const m = mode.value;
+  const wide = viewport.value === 'wide';
+  const railInGrid = wide && HAS_RAIL[m];
+  const t = toast.value;
+  const barRef = useBarAnchor();
+
+  return (
+    <div class={`app m-${m}`}>
+      <TopBar />
+      <StatusBar hostRef={barRef} />
+
+      {t === null ? null : (
+        <p class={`strip toast ${t.kind === 'info' ? '' : `is-${t.kind}`}`} role="status">
+          <span>{t.text}</span>
+          <span class="strip-spacer" />
+          {t.link ? <a class="strip-link" href={t.link.href}>{t.link.label}</a> : null}
+          {t.action ? (
+            <button type="button" class="btn" onClick={() => { t.action?.run(); toast.value = null; }}>
+              {t.action.label}
+            </button>
+          ) : null}
+          <button type="button" class="btn" onClick={() => { toast.value = null; }}>Dismiss</button>
+        </p>
+      )}
+
+      <main class="app-stage">
+        {/* Said once, here, and nowhere else: the rail, the drawing and the
+            event menu below all report that they are read-only without
+            repeating the reason (ui.md SS3). */}
+        {canEdit(viewport.value) ? null : (
+          <div class="empty">
+            <span class="empty-k">Viewer</span>
+            <p>
+              Editing needs a wider screen. Everything below is the configuration this link
+              carries, drawn and simulated -- only the controls that change it are absent.
+            </p>
+          </div>
+        )}
+        <Stage m={m} wide={wide} />
+      </main>
+
+      {railInGrid ? <aside class="app-rail" aria-label={RAIL_TITLE[m]}><Rail m={m} wide /></aside> : null}
+
+      {m === 'learn' && wide ? null : (
+        <div class="app-dock"><Dock m={m} railInDock={!wide} /></div>
+      )}
+
+      {!wide && HAS_RAIL[m] && m !== 'learn' ? (
+        <Sheet
+          open={inspectorOpen.value}
+          title={RAIL_TITLE[m]}
+          position={viewport.value === 'compact' || viewport.value === 'narrow' ? 'bottom' : 'right'}
+          onClose={() => { inspectorOpen.value = false; }}
+        >
+          <Rail m={m} wide={false} />
+        </Sheet>
+      ) : null}
+    </div>
+  );
+}

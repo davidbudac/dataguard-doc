@@ -1,0 +1,171 @@
+/* The topology canvas.
+   Every colour here is a token from tokens.css -- teal serving, blue applying,
+   amber waiting, red down (hatched, never flat), violet the observer's voice,
+   slate neutral -- so light and dark, and the [data-theme] override, are
+   handled once for the whole page. Nothing in this file sets a colour of its
+   own, and nothing sets geometry: the layout module owns every coordinate and
+   passes it as an SVG presentation attribute, because the page ships with no
+   'unsafe-inline' in its CSP. */
+
+.tp-wrap {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+/* Capped at the drawing's own size: the width/height attributes are the
+   viewBox's, so at 1:1 the hairlines and 10-13px labels render crisply. A
+   larger container centres the drawing instead of scaling it soft; a smaller
+   one -- narrower OR shorter, the Configure strip and a tall Break dock both
+   shorten it -- scales it down to fit, keeping the aspect ratio. */
+.topo-svg {
+  display: block;
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  max-height: 100%;
+  margin: 0 auto;
+  overflow: visible;
+  font-family: var(--sans);
+}
+
+.tp-empty {
+  margin: 0;
+  padding: 24px;
+  color: var(--ik2);
+  font-size: 14px;
+  border: 1px dashed var(--ln2);
+  border-radius: 4px;
+  background: var(--sf2);
+}
+
+/* ---- text ---- */
+.topo-svg .tp-name { fill: var(--ik); font-size: 13px; font-weight: 600; }
+.topo-svg .tp-host {
+  fill: var(--ik2); font-size: 10px;
+  font-family: var(--mono); font-variant-numeric: tabular-nums;
+}
+.topo-svg .tp-sub {
+  fill: var(--ik3); font-size: 10px;
+  font-family: var(--mono); font-variant-numeric: tabular-nums;
+}
+.topo-svg .tp-cap { fill: var(--ik2); font-size: 10.5px; }
+.topo-svg .tp-lat {
+  fill: var(--vi); font-size: 10.5px; font-weight: 600;
+  font-family: var(--mono); font-variant-numeric: tabular-nums;
+}
+.topo-svg .tp-lat.is-x { fill: var(--rd); }
+.topo-svg .tp-sitelab {
+  fill: var(--ik3); font-size: 10px; font-weight: 600; letter-spacing: .12em;
+}
+
+/* ---- cards ---- */
+/* A node is a card: a flat bordered surface, a monochrome icon badge, then two
+   or three lines of text. Colour arrives only with a frame from the trace. */
+.topo-svg .tp-card { fill: var(--sf); stroke: var(--ln); stroke-width: 1; }
+.topo-svg .tp-hatchfill { stroke: none; }
+.topo-svg .tp-card.is-down { fill: none; stroke: var(--rd); stroke-width: 1.25; }
+.topo-svg .tp-card.is-stalled { stroke: var(--rd); stroke-width: 1.5; }
+.topo-svg .tp-card.is-unreached { stroke-dasharray: 4 3; }
+.topo-svg .tp-card.is-degraded { stroke: var(--am); stroke-width: 1.25; }
+.topo-svg .tp-card.is-tl { fill: var(--tlf); stroke: var(--tl); }
+.topo-svg .tp-card.is-bl { fill: var(--blf); stroke: var(--bl); }
+.topo-svg .tp-card.is-am { fill: var(--amf); stroke: var(--am); }
+.topo-svg .tp-card.is-vi { fill: var(--vif); stroke: var(--vi); }
+.topo-svg .tp-card.is-sl { fill: var(--sf2); stroke: var(--ln2); }
+.topo-svg .tp-card.is-hov { stroke: var(--ik3); }
+.topo-svg .tp-card.is-sel { stroke: var(--fc); stroke-width: 2; }
+.topo-svg .tp-card.is-drag { stroke: var(--fc); stroke-width: 2; stroke-dasharray: 5 3; }
+
+.topo-svg .tp-bdg { fill: var(--sf3); }
+.topo-svg .tp-bdg.is-down { fill: var(--rdf); }
+.topo-svg .tp-ico { stroke: var(--ik2); fill: none; }
+.topo-svg .tp-ico.is-down { stroke: var(--rd); }
+
+.topo-svg .tp-node.is-live { cursor: pointer; }
+.topo-svg .tp-node:focus { outline: none; }
+.topo-svg .tp-node:focus-visible .tp-card {
+  stroke: var(--fc); stroke-width: 2;
+}
+.topo-svg .tp-node:focus-visible { outline: 2px solid var(--fc); outline-offset: 3px; }
+
+/* ---- chips ---- */
+.topo-svg .tp-chip-bg { fill: var(--sf3); stroke: none; }
+.topo-svg .tp-chip-tx {
+  font-family: var(--mono); font-size: 9px; letter-spacing: .12em;
+  text-transform: uppercase; fill: var(--ik2);
+}
+.topo-svg .tp-chip.is-violet .tp-chip-bg { fill: var(--vif); }
+.topo-svg .tp-chip.is-violet .tp-chip-tx { fill: var(--vi); }
+.topo-svg .tp-chip.is-slate .tp-chip-bg { fill: var(--sf2); }
+.topo-svg .tp-chip.is-slate .tp-chip-tx { fill: var(--sl); }
+
+/* ---- site panels ---- */
+/* Which failures are site failures and which are only link failures is half
+   the lesson, so only a lost site carries the hatch. */
+.topo-svg .tp-site { fill: var(--sf2); stroke: var(--ln); stroke-width: 1; }
+.topo-svg .tp-site.is-down {
+  fill: none; stroke: var(--rd); stroke-width: 1; stroke-dasharray: 3 3;
+}
+.topo-svg .tp-site.is-sel { stroke: var(--fc); stroke-width: 1.5; }
+.topo-svg .hatch-bg { fill: var(--rdf); }
+.topo-svg .hatch-ln { stroke: var(--rd); stroke-width: 2; opacity: .5; }
+
+/* ---- links ---- */
+/* The line says the transport: SYNC and FASTSYNC solid, ASYNC dashed, the
+   observer's ping dotted violet, its readiness check dashed slate. Arrowheads
+   mean redo flow and nothing else. */
+.topo-svg .tp-link { fill: none; stroke: var(--ln2); stroke-width: 1.25; }
+.topo-svg .tp-link.is-sync { stroke: var(--ln2); }
+.topo-svg .tp-link.is-async { stroke: var(--ln2); stroke-dasharray: 6 3; }
+.topo-svg .tp-link.is-ping { stroke: var(--vi); stroke-dasharray: 1.5 3; stroke-linecap: round; }
+.topo-svg .tp-link.is-check { stroke: var(--sl); stroke-dasharray: 5 4; }
+.topo-svg .tp-link.is-x { stroke: var(--rd); stroke-dasharray: 4 3; }
+.topo-svg .tp-link.is-inactive { opacity: .55; }
+.topo-svg .tp-linkwrap.is-dim { opacity: .45; }
+.topo-svg .tp-linkwrap.is-hov .tp-link { stroke-width: 2; }
+.topo-svg .tp-x { stroke: var(--rd); stroke-width: 2.5; stroke-linecap: round; }
+.topo-svg .tp-ahs { fill: var(--ln2); }
+.topo-svg .tp-ahh { fill: none; stroke: var(--ln2); stroke-width: 1.4; }
+.topo-svg .tp-ahr { fill: var(--rd); }
+.topo-svg .tp-aha { fill: var(--ln2); opacity: .55; }
+
+/* The caption and the value of a link ride it in one pill; a severed link's
+   pill flips to the red tint and trades its round trip for the failure word. */
+.topo-svg .tp-pill { fill: var(--sf); stroke: var(--ln2); stroke-width: 1; }
+.topo-svg .tp-pill.is-x { fill: var(--rdf); stroke: var(--rd); }
+.topo-svg .tp-pill.is-inactive { fill: var(--sf2); stroke: var(--ln); }
+.topo-svg .tp-linkwrap.is-live { cursor: pointer; }
+
+/* Undocumented is labelled where it is asserted, never in a footnote only. */
+.topo-svg .tp-model-bg { fill: var(--sf3); stroke: var(--ln2); stroke-width: 1; }
+.topo-svg .tp-model-tx {
+  font-family: var(--mono); font-size: 8.5px; letter-spacing: .1em;
+  text-transform: uppercase; fill: var(--ik3);
+}
+
+/* ---- legend ---- */
+.tp-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 18px;
+  margin: 0;
+  color: var(--ik3);
+  font-size: 11.5px;
+  line-height: 1.45;
+}
+.tp-legend-item { max-width: 62ch; }
+
+/* Screen-reader copy of the drawing. base.css defines the same helper; the
+   rule is repeated here so the canvas is never shipped without it. */
+.tp-wrap .sr {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+
+@media print {
+  .topo-svg { max-width: 100%; }
+  .tp-legend { color: var(--ik2); }
+}

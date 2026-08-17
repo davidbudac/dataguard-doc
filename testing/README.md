@@ -10,10 +10,10 @@ It assumes a **working** broker configuration — primary, target standby, one o
 fast-start failover already enabled. It uses the same fixture as every other asset in this
 repo: primary `prm01` on host `dc1-prm01`, standby `sby01` on host `dc2-sby01`, role-based
 service `app_svc`. The observer host, which the other assets never need to name, is
-`dc3-obs01` here. Substitute your own names throughout. (The simulator's chapter 4, "Configuration",
-can carry your real names and parameter values, export them as a JSON config
-file, and share them as a link — handy for keeping a drill's parameter set next to the page
-that explains it.)
+`dc3-obs01` here. Substitute your own names throughout. (The workbench's Build and Configure modes can
+carry your real names and parameter values, export them as a `.dgtopo.json` file, and
+share them as a link — handy for keeping a drill's parameter set next to the page that
+explains it. Drills 9–12 need more members than this fixture; each says which.)
 
 **Run this only in a test environment.** The drills abort instances, cut networks with
 firewall rules, and deliberately trip failure limits. Nothing here is safe on a system
@@ -29,6 +29,10 @@ anyone else depends on.
 | 6 | ReopenSecs and the MaxFailure tripwire | The simulator's reopen view |
 | 7 | The application's view | Simulator chapter 3 |
 | 8 | Commit anatomy (measurement, not a drill) | The simulator's commit view |
+| 9 | Far sync loss: the protection level drops, the primary does not | Workbench preset `far-sync-zero-loss` |
+| 10 | Manual failover to a cascaded terminal standby (unsent redo) | Workbench preset `cascade-terminal` |
+| 11 | Multiple FSFO targets with the first candidate down | Workbench preset `multi-target-three-observers` |
+| 12 | Master observer lost, with and without the nomination precondition | Workbench preset `multi-target-three-observers` |
 
 Baseline for every drill unless it says otherwise: **MaxAvailability, `LogXptMode=SYNC`,
 all broker properties at their defaults** — the same configuration the figures draw.
@@ -573,10 +577,250 @@ local and remote writes as running "in parallel" — the documented 13-step orde
 the entire evidence for `max()` — and the `log file parallel write` wait event is
 **not** evidence for any of this; it concerns multiplexed online-redo members.
 
+## Topology drills (9–12) — far sync, cascading, multiple targets, multiple observers
+
+Drills 1–8 exercise the 1+1+1 deployment the figures draw. The four below exercise the
+topologies the workbench added, and each one needs more than the three hosts in §0:
+
+| Drill | Extra members needed | Workbench preset |
+|---|---|---|
+| 9 | A far sync instance (`fs01` on `dc3-fs01`) between the primary and `sby01` | `far-sync-zero-loss` |
+| 10 | A second physical standby (`rmt01`) cascaded behind `sby01` | `cascade-terminal` |
+| 11 | A second physical standby (`sby02`) receiving redo directly | `multi-target-three-observers` |
+| 12 | Two more observers (`dc1-obs01`, `dc2-obs01` — never on a database host) | `multi-target-three-observers` |
+
+**Read the "engine-verified" line in each drill.** These are new drills; unlike 1–8 they
+have not all been run against real hardware here. Where a step says *engine-verified*,
+the expectation is reproduced by the workbench's simulator and by a test in
+`app/test/`, which means it follows from the documented facts as this repo reads them —
+it does **not** mean anyone has watched Oracle do it. Where a step says
+*to verify on hardware*, that is exactly what it is asking for. If a drill contradicts
+the workbench, the hardware wins: file it, fix `app/design/facts.md` and the rule that
+rests on it, and change the accuracy rules in `AGENTS.md` in the same commit.
+
+## Drill 9 — losing the far sync instance
+
+**Claim under test:** a far sync instance is where the primary's SYNC acknowledgement
+comes from, and losing it drops the protection level rather than the primary. Oracle's
+documented remedy is an additional destination shipping straight to the terminal
+standby, "in ASYNC mode instead of SYNC mode" — which is a *reduced* protection level,
+said out loud. Fast-start failover cannot proceed while the target's only feed is a dead
+far sync.
+
+Setup (once): `fs01` on `dc3-fs01`, MaxAvailability, and the routes pre-declared **both
+ways**, because nothing rewrites them on a role change:
+
+```
+DGMGRL> ADD FAR_SYNC fs01 AS CONNECT IDENTIFIER IS fs01.example.com;
+DGMGRL> ENABLE FAR_SYNC fs01;
+DGMGRL> EDIT FAR_SYNC 'fs01' SET PROPERTY 'LogXptMode' = 'SYNC';
+DGMGRL> EDIT DATABASE 'prm01' SET PROPERTY 'RedoRoutes' = '(LOCAL : fs01 SYNC)';
+DGMGRL> EDIT FAR_SYNC 'fs01' SET PROPERTY 'RedoRoutes' = '(prm01 : sby01 ASYNC)';
+DGMGRL> EDIT DATABASE 'sby01' SET PROPERTY 'LogXptMode' = 'ASYNC';
+DGMGRL> SHOW CONFIGURATION;   -- fs01 appears; SUCCESS before you break anything
+```
+
+Steps:
+
+1. Baseline, with the probe loop from §0 running: `SHOW CONFIGURATION` says `SUCCESS`,
+   the protection mode is `MaxAvailability`, and `V$DATABASE.PROTECTION_LEVEL` on the
+   primary reads `MAXIMUM AVAILABILITY`. *Engine-verified* (preset `far-sync-zero-loss`
+   opens at `MAXAVAILABILITY` with zero data loss).
+2. Kill the far sync host uncleanly — `shutdown -h now` on `dc3-fs01`, or drop its
+   traffic with `iptables` from `dc1-prm01`. This is a host loss, not a clean
+   `DISABLE FAR_SYNC`.
+3. **Expected within `NetTimeout` seconds: committing sessions hang, then resume.** The
+   primary drops the destination and carries on open. *To verify on hardware:* the exact
+   hang length against `NetTimeout` (default 30 s), and whether the first session to
+   commit after the failure pays the full timeout.
+4. On the primary:
+
+   ```sql
+   SELECT protection_mode, protection_level FROM v$database;
+   SELECT dest_id, status, error, fail_date FROM v$archive_dest_status WHERE status != 'INACTIVE';
+   ```
+
+   **Expected: `PROTECTION_MODE` still `MAXIMUM AVAILABILITY`, `PROTECTION_LEVEL`
+   degraded** (`RESYNCHRONIZATION` or `MAXIMUM PERFORMANCE`). Oracle documents the
+   degradation; **the exact level string and the moment it changes are not documented**,
+   which is why the workbench labels that instant as its own model. *To verify on
+   hardware — this is the single most useful observation in this drill.*
+5. `SHOW FAST_START FAILOVER` on the primary. **Expected: no failover happens**, and the
+   configuration reports the target as not synchronized. A fast-start failover here would
+   contradict the readiness gate. *Engine-verified.*
+6. The documented remedy: add the direct destination to the terminal standby and watch
+   the protection level come back only as far as ASYNC allows.
+
+   ```
+   DGMGRL> EDIT DATABASE 'prm01' SET PROPERTY 'RedoRoutes' = '(LOCAL : fs01 SYNC, sby01 ASYNC)';
+   ```
+
+   **Expected: redo flows again, and the configuration is explicitly *not* zero-loss
+   while it does.** Do not word this as "protection restored". *To verify on hardware.*
+
+Cleanup: restore `dc3-fs01`, put `RedoRoutes` back to `(LOCAL : fs01 SYNC)`, confirm
+`SUCCESS` and a `MAXIMUM AVAILABILITY` protection level.
+
+## Drill 10 — manual failover to a cascaded terminal standby
+
+**Claim under test:** a terminal standby — one that receives redo from a cascading
+standby rather than from the primary — is a **valid manual failover target**, and Oracle
+documents the price on the same page: "no attempt is made to transmit any unsent redo
+from the cascader to the terminal standby". It is **not** a valid fast-start failover
+target, because the target must receive redo directly from the primary (a deduction from
+two documented sentences, not a literal prohibition — so the broker's own refusal
+wording is worth capturing).
+
+Setup: `rmt01` cascaded behind `sby01`, real-time cascading (which needs Active Data
+Guard on the cascader), with the ASYNC attribute spelled out because that is what makes
+cascading real-time:
+
+```
+DGMGRL> EDIT DATABASE 'prm01'  SET PROPERTY 'RedoRoutes' = '(LOCAL : sby01 SYNC)';
+DGMGRL> EDIT DATABASE 'sby01'  SET PROPERTY 'RedoRoutes' = '(prm01 : rmt01 ASYNC)';
+DGMGRL> SHOW CONFIGURATION;   -- rmt01 is indented under sby01, "(receiving current redo)"
+```
+
+Steps:
+
+1. **First, the refusal.** With fast-start failover enabled and `sby01` as its target:
+
+   ```
+   DGMGRL> EDIT CONFIGURATION SET PROPERTY FastStartFailoverTarget = 'rmt01';
+   ```
+
+   **Expected: the broker refuses.** *To verify on hardware — capture the exact ORA
+   number and message*; this repo has not found a documented one, and the workbench
+   therefore raises the finding without an ORA number. Getting a real one here would be
+   a genuine addition to `app/design/facts.md`.
+2. Confirm the cascade is live: on `rmt01`, `SELECT process, status, sequence# FROM
+   v$managed_standby;` shows RFS receiving, and the apply is at or near the primary's
+   current sequence. *To verify on hardware.*
+3. Now the manual failover. Disable fast-start failover first (a manual failover to a
+   non-target is not one of the three conditions under which it is allowed while FSFO is
+   enabled):
+
+   ```
+   DGMGRL> DISABLE FAST_START FAILOVER;
+   DGMGRL> FAILOVER TO 'rmt01';
+   ```
+
+4. **Expected: the failover succeeds, and redo that had reached `sby01` but not `rmt01`
+   is lost.** Measure it — that is the whole point of the drill. Before step 3, record
+   `SELECT MAX(sequence#) FROM v$archived_log WHERE applied='YES';` on both `sby01` and
+   `rmt01`, and the primary's `V$DATABASE.CURRENT_SCN`; afterwards, compare against
+   `rmt01`'s open SCN. **The gap is the documented "no attempt is made to transmit any
+   unsent redo".** *Engine-verified as a warning* (preset `cascade-terminal` raises it);
+   *to verify on hardware* as a number.
+5. `SHOW CONFIGURATION` afterwards. **Expected: `sby01` needs reinstating**, exactly like
+   the old primary does.
+
+Cleanup: `REINSTATE DATABASE 'prm01';` and `REINSTATE DATABASE 'sby01';` (Flashback
+Database on all three), then switch back to `prm01` per drill 1 and restore the
+`RedoRoutes` pair.
+
+## Drill 11 — multiple fast-start failover targets, first candidate down
+
+**Claim under test:** `FastStartFailoverTarget` takes a list, and "the broker selects a
+target based on the order in which they are specified". If the designated target develops
+a problem, the broker changes the target to one of the other candidates. **Never phrase
+what you observe as "it picks the first viable one"** — order is what Oracle documents,
+and which candidate a given failure lands on is exactly what this drill measures.
+
+Setup: `sby02` receiving redo directly from the primary (not cascaded — a cascaded
+standby fails the direct-redo prerequisite, drill 10), both standbys physical, both
+synchronized:
+
+```
+DGMGRL> EDIT CONFIGURATION SET PROPERTY FastStartFailoverTarget = 'sby01,sby02';
+DGMGRL> ENABLE FAST_START FAILOVER;
+DGMGRL> SHOW FAST_START FAILOVER;   -- Active Target, Potential Targets, per-target valid flag
+```
+
+Steps:
+
+1. Record the baseline: `SHOW FAST_START FAILOVER` names one **Active Target** and lists
+   the other as a potential one with its own valid flag. Note which is which — that
+   ordering is the documented behaviour under test. *Engine-verified* (preset
+   `multi-target-three-observers`).
+2. Take the **first** candidate down: `SHUTDOWN ABORT` `sby01`, or drop its host.
+3. **Expected: no failover** (the primary is healthy), and within a short time
+   `SHOW FAST_START FAILOVER` shows the active target has moved to `sby02`. *To verify on
+   hardware:* how long "a short time" is. The workbench models the retarget as immediate
+   at the next epoch and labels that as its model; a documented interval would replace
+   the label.
+4. With `sby01` still down, crash the primary host. **Expected: fast-start failover to
+   `sby02`**, with the same clocks drill 1 measured. *Engine-verified;* the RTO probe
+   from §0 gives the number.
+5. The negative case, worth one extra run: bring `sby01` back, let both synchronize, and
+   check that a fast-start failover with **both** candidates healthy goes to the one the
+   order names. *To verify on hardware* — this is the observation that decides whether
+   "order" ever behaves like anything else.
+
+Cleanup: reinstate the old primary, switch back to `prm01`, and restore
+`FastStartFailoverTarget` to the single-target value the other drills assume.
+
+## Drill 12 — losing the master observer, with the precondition
+
+**Claim under test:** the nomination rule carries a precondition and only works inside
+it. Oracle's wording is "if the primary and target standby databases stay connected but
+the connection to the master observer is lost, then the broker tries to nominate a backup
+observer as the new master observer" — **tries**, and only under that precondition. Drill
+3 is the same failure with only one observer deployed; this one is what changes when
+there are three. Also under test: only the master observer coordinates fast-start
+failover, and while fast-start failover is *disabled* "all observers have the same
+functionality" — there is no master then at all.
+
+Setup: three observers (19c registers up to three; 21c and later allow four, and 26ai
+contradicts itself on the number — see `app/design/facts.md`), each on a host of its own
+and **never** on a database server or cluster:
+
+```
+DGMGRL> START OBSERVER obs3 FILE IS '/home/oracle/fsfo3.dat' LOGFILE IS '/home/oracle/obs3.log' IN BACKGROUND;
+DGMGRL> SHOW OBSERVER;
+```
+
+Note the spelling: **`FILE IS`, not `FILE=`** — `FILE=` is the single most common way to
+get this command rejected, and the workbench's generated script is pinned by a test for
+exactly that reason.
+
+Steps:
+
+1. `SHOW OBSERVER` names one observer as Master and the others as backups, each with its
+   host and its last ping to the primary and to the target. Last-ping information is
+   documented as correct only while fast-start failover is enabled. *Engine-verified*
+   (the `SHOW OBSERVER` mock the workbench generates carries the same fields).
+2. **The precondition case.** With primary and target standby healthy and connected to
+   each other, kill the **master** observer's process (`pkill -9 -f "dgmgrl.*observer"`).
+   **Expected: the broker nominates a backup as the new master**, and `SHOW OBSERVER`
+   shows the Master role has moved. *To verify on hardware:* how long the nomination
+   takes, and what the observer log says on both sides. The workbench models the timing
+   and labels it as a model.
+3. **The out-of-precondition case, which is the point of the drill.** Restore the master,
+   then cut the link between the two database sites (drill 2's firewall rules) *and* kill
+   the master observer. **Expected: no nomination** — the documented rule does not cover a
+   failure that separates the primary from the target standby, and the configuration
+   reports itself unobserved (`ORA-16820`, `FS_FAILOVER_STATUS` = `PRIMARY UNOBSERVED` on
+   the target). *To verify on hardware.* Whatever you observe, do not write the nomination
+   rule without its precondition.
+4. **The disabled case.** `DISABLE FAST_START FAILOVER;` then `SHOW OBSERVER`.
+   **Expected: no observer is called the master** — all three have the same
+   functionality. *Engine-verified* (the workbench drops the `MASTER` badge whenever
+   fast-start failover is not enabled).
+5. Optional: `SET MASTEROBSERVER TO 'obs2';` and confirm the role moves on command. Its
+   preconditions are undocumented, so record what refuses and why.
+
+Cleanup: restart every observer with its log file, re-enable fast-start failover, and
+confirm `SYNCHRONIZED` / `YES` and a `SUCCESS` configuration.
+
 ## Sources
 
 The drills' expected observations rest on the same verified facts as the figures and
-the simulator (see [diagrams/README.md](../diagrams/README.md) for the full list).
+both pages (see [diagrams/README.md](../diagrams/README.md) for the full list). Drills
+9–12 rest on the topology fact sheet, [app/design/facts.md](../app/design/facts.md),
+which marks every claim documented / documented-later / undocumented / conflicting and
+is the only permitted source of a "documented" claim in the workbench — the
+*to verify on hardware* steps above are precisely its `[UNDOC]` entries.
 Referenced directly by this runbook:
 
 - [Switchover and Failover Operations (19c broker, chapter 5)](https://docs.oracle.com/en/database/oracle/oracle-database/19/dgbkr/using-data-guard-broker-to-manage-switchovers-failovers.html)

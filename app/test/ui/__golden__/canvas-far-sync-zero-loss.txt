@@ -1,0 +1,22 @@
+-- sites
+dc1  0,66 212x236
+dc3  412,-14 212x98
+dc2  824,125 212x118
+-- cards
+North_Sales  col 0 row 0  14,80 184x72
+FS1  col 0 row 1  14,198 184x72
+obs01  col 1 row 0  426,0 184x52
+South_Sales  col 2 row 0  838,139 184x72
+-- links
+check:obs01:South_Sales  readiness check [20 ms]
+  path 610,26 -> 930,26 -> 930,139
+  pill 699,16 143x20
+ping:obs01:North_Sales  ping [20 ms]
+  path 426,26 -> 106,26 -> 106,80
+  pill 225,16 82x20
+redo:FS1:South_Sales  redo (ASYNC) [40 ms RTT]
+  path 198,234 -> 312,234 -> 312,175 -> 838,175
+  pill 500,165 151x20
+redo:North_Sales:FS1  redo (SYNC) [0 ms RTT]
+  path 106,152 -> 106,198
+  pill 36,165 140x20

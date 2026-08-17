@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 #
-# Publish the FSFO simulator to https://davidbudac.cz/dataguard/
+# Publish the Data Guard workbench to https://davidbudac.cz/dataguard/
+#
+# What goes out: the application (app/, built by Vite) at the root, and the
+# page it replaced at /dataguard/legacy/ -- every link in the handover
+# document, the wiki page and the Czech reading list points at that one, and
+# `?lang=cs` still lands there.
 #
 # Replaces the old GitHub Pages deploy (.github/workflows/pages.yml, removed):
 # the repo is private now, so publishing is this explicit push instead of a
@@ -33,32 +38,47 @@ dry_run=0
 say() { printf '\033[1;34m==>\033[0m %s\n' "$*"; }
 die() { printf '\033[1;31mERROR:\033[0m %s\n' "$*" >&2; exit 1; }
 
-# --- 1. build (site/build.mjs also enforces the ASCII-only rule; see CLAUDE.md)
+# --- 1. build. site/build.mjs builds the app, then the legacy page (whose
+# builder still enforces the ASCII-only rule; see CLAUDE.md), then refuses to
+# hand over an index.html carrying anything the content security policy forbids.
 say "Building _site/"
 command -v node >/dev/null || die "node not found"
 rm -rf _site
 node site/build.mjs
 
 [[ -s _site/index.html ]] || die "_site/index.html missing or empty after build"
+[[ -s _site/legacy/index.html ]] || die "_site/legacy/index.html missing or empty after build"
 
-# --- 1b. the models must still say what the docs say. A red assertion here
-# means the fragment contradicts a documented Oracle fact -- never deploy that.
-say "Testing the models"
+# --- 1b. three gates, in the order that fails fastest.
+#
+# The application's own suite is the engine's invariants and the interface's
+# contracts; site/test.mjs is the same kind of assertion against the legacy
+# fragment, which still ships; site/smoke.mjs is the built bundle in a real
+# browser, which is the only one of the three that can catch a page that builds
+# and does not run. A red assertion in any of them means something on this page
+# contradicts a documented Oracle fact or does not work -- never deploy that.
+say "Testing the application"
+npm --prefix app run test
+
+say "Testing the legacy models"
 node --test site/test.mjs
+
+say "Smoke-testing the built page in a browser"
+node site/smoke.mjs
 
 # --- 2. say out loud which version is going out.
 # The working tree is what ships, so an uncommitted edit publishes silently
 # unless we mention it. Warn, do not block: previewing uncommitted work on the
 # real URL is a legitimate reason to run this.
 rev="$(git rev-parse --short HEAD 2>/dev/null || echo '?')"
-if ! git diff --quiet HEAD -- simulator/fsfo-simulator.html 2>/dev/null; then
-  printf '\033[1;33mNOTE:\033[0m simulator/fsfo-simulator.html has uncommitted changes; publishing the working-tree version, not %s.\n' "$rev"
+if ! git diff --quiet HEAD -- app site simulator diagrams 2>/dev/null; then
+  printf '\033[1;33mNOTE:\033[0m app/, site/, simulator/ or diagrams/ has uncommitted changes; publishing the working-tree version, not %s.\n' "$rev"
   rev="${rev}+dirty"
 fi
 say "Publishing $(wc -c < _site/index.html | tr -d ' ') bytes from ${rev}"
 
 if (( dry_run )); then
-  say "--dry-run: built only, nothing deployed"
+  say "--dry-run: built and tested, nothing deployed"
   say "Preview locally: python3 -m http.server -d _site 8000"
   exit 0
 fi
@@ -82,22 +102,39 @@ COPYFILE_DISABLE=1 tar -C _site --no-xattrs --exclude '.DS_Store' -czf - . \
     "
 
 # --- 4. verify the public URL, not just the upload.
+#
+# What is compared is the bundle, not the page. The HTML is a few hundred bytes
+# of head that Cloudflare may minify, gzip or serve with an injected header,
+# and a byte-for-byte comparison of it fails for reasons that have nothing to
+# do with what shipped. The hashed asset is the deploy: its name changes with
+# every byte of source, the served HTML names the one it wants, and if that
+# file comes back byte-equal to the local build then the code that is live is
+# the code that was built here.
+#
 # Cache-bust: Cloudflare fronts the origin and will happily serve the old page.
 say "Verifying ${DG_URL}"
-local_bytes="$(wc -c < _site/index.html | tr -d ' ')"
-# No Accept-Encoding is sent, so size_download is the real byte count and can be
-# compared against the build. Keep it that way if you touch this.
-probe="$(curl -sS -o /tmp/dg-verify.html \
-  -w '%{http_code} %{size_download}' \
-  -H 'Cache-Control: no-cache' "${DG_URL}?cb=$$" || echo '000 0')"
-code="${probe%% *}"
-live_bytes="${probe##* }"
+probe="$(curl -sS -o /tmp/dg-verify.html -w '%{http_code}' \
+  -H 'Cache-Control: no-cache' "${DG_URL}?cb=$$" || echo '000')"
+[[ "$probe" == "200" ]] || die "expected HTTP 200 from ${DG_URL}, got ${probe}"
 
-[[ "$code" == "200" ]] || die "expected HTTP 200 from ${DG_URL}, got ${code}"
-if [[ "$live_bytes" != "$local_bytes" ]]; then
-  die "size mismatch: served ${live_bytes} bytes, built ${local_bytes}"
-fi
-grep -q '<script' /tmp/dg-verify.html || die "served page has no <script> block"
-rm -f /tmp/dg-verify.html
+# The legacy page still ships, and every published link points at it.
+legacy_code="$(curl -sS -o /dev/null -w '%{http_code}' \
+  -H 'Cache-Control: no-cache' "${DG_URL}legacy/?cb=$$" || echo '000')"
+[[ "$legacy_code" == "200" ]] || die "expected HTTP 200 from ${DG_URL}legacy/, got ${legacy_code}"
 
-say "Published: ${DG_URL} (${live_bytes} bytes, HTTP ${code})"
+bundle="$(grep -o 'assets/index-[A-Za-z0-9_-]*\.js' /tmp/dg-verify.html | head -1)"
+[[ -n "$bundle" ]] || die "the served page references no hashed assets/index-*.js"
+[[ -f "_site/${bundle}" ]] || die "the served page asks for ${bundle}, which this build did not produce"
+
+# No Accept-Encoding is sent, so what comes back is the file itself and `cmp`
+# is comparing like with like. Keep it that way if you touch this.
+asset_code="$(curl -sS -o /tmp/dg-verify.js -w '%{http_code}' \
+  -H 'Cache-Control: no-cache' "${DG_URL}${bundle}?cb=$$" || echo '000')"
+[[ "$asset_code" == "200" ]] || die "expected HTTP 200 for ${bundle}, got ${asset_code}"
+cmp -s /tmp/dg-verify.js "_site/${bundle}" \
+  || die "the served ${bundle} is not the one built here"
+
+served_bytes="$(wc -c < /tmp/dg-verify.js | tr -d ' ')"
+rm -f /tmp/dg-verify.html /tmp/dg-verify.js
+
+say "Published: ${DG_URL} (HTTP 200, ${bundle}, ${served_bytes} bytes, byte-equal to the build)"

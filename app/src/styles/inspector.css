@@ -1,0 +1,128 @@
+/* The rails: the inspector, the Break rail and the event menu over the canvas.
+
+   Dense where the shell is airy (ui.md SS8), and built out of the same tokens
+   as everything else, so a colour that means "observer" on the drawing means
+   it here too. No rule in this file hides anything: what the reader cannot see
+   is not in the document. */
+
+.insp{display:flex;flex-direction:column;min-width:0}
+
+.insp-hd{display:flex;align-items:center;gap:10px;padding:10px 16px;
+  border-bottom:1px solid var(--ln);background:var(--sf2);position:sticky;top:0;z-index:2}
+.insp-hd .title{min-width:0;overflow-wrap:anywhere}
+
+/* ---------------- groups ---------------- */
+
+.grp{display:flex;flex-direction:column;min-width:0;border-bottom:1px solid var(--ln)}
+.grp:last-child{border-bottom:0}
+.grp-hd{display:flex;align-items:center;gap:10px;padding:10px 16px 6px;background:var(--sf)}
+.grp-act{margin-left:auto;display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+.grp-note{padding:9px 16px 12px;font-size:11.5px;line-height:1.45;color:var(--ik3);
+  border-top:1px solid var(--ln)}
+.grp-note.is-warn{color:var(--am)}
+.grp-note .mono{font-size:11px;color:var(--ik2)}
+.grp .empty{padding:6px 16px 14px}
+
+/* ---------------- controls ---------------- */
+
+.opt{display:inline-flex;align-items:center;gap:7px;font-size:12.5px;color:var(--ik2);
+  padding:2px 0;cursor:pointer}
+.opt input{accent-color:var(--vi);margin:0}
+.opt .mono{font-size:12px;color:var(--ik)}
+.field select.field-in,.rr-dest select.field-in,.rr-row select.field-in{cursor:pointer}
+input[type="range"].field-in{padding:0;background:transparent;border:0;accent-color:var(--vi)}
+input[type="range"].field-in:focus{outline:none}
+input[type="range"].field-in:focus-visible{outline:2px solid var(--fc);outline-offset:3px}
+
+/* ---------------- RedoRoutes ---------------- */
+
+.rr-rule{display:flex;flex-direction:column;gap:6px;padding:10px 16px;
+  border-top:1px solid var(--ln)}
+.rr-line{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:2px 0}
+.rr-spacer{flex:1 1 auto;min-width:0}
+.rr-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.rr-row .field-in{width:auto;min-width:96px;flex:0 1 auto}
+.rr-k{font-family:var(--mono);font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;
+  color:var(--ik3);flex:0 0 auto}
+.rr-grp{display:flex;flex-direction:column;gap:6px;padding:8px 0 8px 10px;
+  border-left:2px solid var(--ln2)}
+.rr-dest{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:2px 0}
+.rr-dest .field-in{width:auto;min-width:104px;flex:0 1 auto}
+.rr-dest .mono{font-size:12px;color:var(--ik)}
+.rr-text{font-size:12px}
+
+/* ---------------- destinations ---------------- */
+
+.dest{border-top:1px solid var(--ln)}
+.dest .rr-line{padding:9px 16px 0}
+.dest .field{border-bottom:0;padding-bottom:6px}
+.dest .field:last-child{padding-bottom:12px}
+
+/* ---------------- the summary ---------------- */
+
+.sum{display:flex;flex-direction:column;margin:0;padding:0 16px 10px}
+.sum-row{display:grid;grid-template-columns:minmax(0,11ch) minmax(0,1fr);gap:10px;
+  padding:4px 0;border-bottom:1px solid var(--ln);align-items:baseline}
+.sum-row:last-child{border-bottom:0}
+.sum dt{font-size:11px;font-family:var(--mono);letter-spacing:.1em;text-transform:uppercase;
+  color:var(--ik3)}
+.sum dd{margin:0;font-size:12.5px;color:var(--ik);overflow-wrap:anywhere}
+
+/* ---------------- the palette ---------------- */
+
+.pal{display:flex;align-items:flex-end;gap:8px;flex-wrap:wrap;padding:4px 16px 8px}
+.pal .field{padding:0;border-bottom:0;flex:0 1 auto;min-width:120px}
+.pal .field-in{width:auto;min-width:110px}
+
+/* ---------------- Break rail ---------------- */
+
+.tmpl{display:flex;flex-direction:column;gap:4px;padding:8px 16px;
+  border-top:1px solid var(--ln)}
+.tmpl .caption{max-width:44ch}
+.evt{display:grid;grid-template-columns:auto minmax(0,1fr) auto auto;gap:8px;
+  align-items:center;padding:7px 16px;border-top:1px solid var(--ln)}
+.evt-n{font-family:var(--mono);font-size:10.5px;color:var(--ik3);
+  border:1px solid var(--ln2);border-radius:999px;width:20px;height:20px;
+  display:inline-flex;align-items:center;justify-content:center}
+.evt-b{font-family:var(--mono);font-size:12px;color:var(--ik);overflow-wrap:anywhere}
+.evt-at{display:inline-flex;align-items:center;gap:5px}
+.evt-at .field-in{width:70px;font-size:12px;padding:3px 6px}
+.evt-u{font-family:var(--mono);font-size:11px;color:var(--ik3)}
+
+/* ---------------- the event menu over the canvas ---------------- */
+
+/* In the stage's flow, under the drawing (shell.css makes the stage a
+   column): a menu floating over the canvas covered the very card it was
+   opened for. */
+.evmenu{flex:0 0 auto;align-self:flex-start;margin:0 14px 12px;
+  width:min(320px,calc(100% - 28px));
+  display:flex;flex-direction:column;gap:2px;padding-bottom:8px;
+  background:var(--sf);border:1px solid var(--ln2);border-radius:3px;box-shadow:var(--sh);
+  max-height:min(50%,360px);overflow:auto}
+.evmenu.is-shut{width:auto;padding:6px;border-radius:3px}
+.evmenu-hd{display:flex;align-items:center;gap:8px;padding:8px 10px;
+  border-bottom:1px solid var(--ln);background:var(--sf2);position:sticky;top:0}
+.evmenu-row{padding:3px 10px}
+.evmenu-row .btn{width:100%;justify-content:flex-start;text-align:left}
+.evmenu-row .ctl-off{display:flex;flex-direction:column;align-items:stretch;gap:4px}
+.evmenu-empty{padding:10px;font-size:12px;line-height:1.45;color:var(--ik3)}
+.evmenu-note{padding:8px 10px 2px;font-size:11px;line-height:1.4;color:var(--ik3)}
+
+/* At the head of the Break rail it is a rail group, not a floating card. */
+.app-rail .evmenu{align-self:stretch;margin:0;width:auto;max-height:none;overflow:visible;
+  border:0;border-bottom:1px solid var(--ln);border-radius:0;box-shadow:none}
+.app-rail .evmenu.is-shut{padding:8px 16px}
+@media (max-width:767px){
+  .evmenu{width:auto;max-height:none;margin:12px}
+}
+
+/* ---------------- validation rows as buttons ---------------- */
+
+/* The row is a real button: it is focusable, it answers Enter, and it reads
+   as one thing to a screen reader. It keeps the look the shell gives .issue. */
+button.issue{width:100%;text-align:left;background:var(--sf);border-top:0;border-right:0;
+  border-bottom:1px solid var(--ln);cursor:pointer;font:inherit;color:inherit}
+button.issue:hover{background:var(--sf2)}
+button.issue.sv-error{border-left:3px solid var(--rd)}
+button.issue.sv-warning{border-left:3px solid var(--am)}
+button.issue.sv-info{border-left:3px solid var(--ln2)}

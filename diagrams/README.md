@@ -143,15 +143,18 @@ belongs here and not among the failover clocks (figure 4 exists to make that poi
 | Broker property | `LOG_ARCHIVE_DEST_n` attribute | Default | Governs |
 |---|---|---|---|
 | `LogXptMode` | `SYNC AFFIRM` · `SYNC NOAFFIRM` (FASTSYNC) · `ASYNC NOAFFIRM` | `ASYNC` | How the commit waits, or does not wait, for the standby's acknowledgment. Legal per protection mode: MaxProtection `SYNC`; MaxAvailability `SYNC` or `FASTSYNC`; MaxPerformance `ASYNC`. |
-| `ReopenSecs` (deprecated in 19c) | `REOPEN` | 300 s | Minimum seconds before a failed destination is retried — at the first log switch after the interval has elapsed. Valid values 0 or greater; applies to all errors, not only connection failures. |
-| `MaxFailure` (deprecated in 19c) | `MAX_FAILURE` | 0 — unlimited | Consecutive attempts to reestablish a failed destination before it is disabled, with no further access until it is manually reenabled. |
+| `ReopenSecs` | `REOPEN` | 300 s | Minimum seconds before a failed destination is retried — at the first log switch after the interval has elapsed. Valid values 0 or greater; applies to all errors, not only connection failures. |
+| `MaxFailure` | `MAX_FAILURE` | 0 — unlimited | Consecutive attempts to reestablish a failed destination before it is disabled, with no further access until it is manually reenabled. |
 | `NetTimeout` | `NET_TIMEOUT` | 30 s (minimum 1 s) | Seconds LGWR blocks waiting for a SYNC acknowledgment. Never a failover clock — see figure 4. |
 
-`ReopenSecs` and `MaxFailure` are deprecated as broker properties in 19c and still functional;
-Oracle points to `EDIT DATABASE ... SET PARAMETER` for setting the underlying attributes instead.
-Their semantics here follow the `LOG_ARCHIVE_DEST_n` attribute reference rather than the broker
-properties page: the 19c broker page describes `MaxFailure` as "Corresponds to: VALID_FOR", which
-is a documentation defect.
+Neither `ReopenSecs` nor `MaxFailure` is on 19c's list of deprecated broker properties (the 19c
+broker release-changes page names nine initialization-parameter-backed properties, `ArchiveLagTarget`
+through `LogFileNameConvert`, and their own property rows carry no deprecation note — re-verified
+2026-08-17; earlier revisions of this file, and the legacy simulator, called them deprecated). Both
+are documented properties the broker writes into `REOPEN` and `MAX_FAILURE`; `EDIT DATABASE ... SET
+PARAMETER` is a second route to the same attributes. Their semantics here follow the
+`LOG_ARCHIVE_DEST_n` attribute reference rather than the broker properties page, whose rows state only
+the interval and the count.
 
 ## Reading the figures
 
@@ -707,10 +710,92 @@ Where the simulator draws something it cannot know, it is listed on the page its
   which, nothing else, and the drawing says so on its face. The one relationship it does assert is
   that the remote leg is drawn longer than the local one, which is the case the picture is about.
 
+## Topology features (the workbench's far sync, cascading, multi-target and multi-observer views)
+
+Everything above this section is the 1+1+1 deployment the four figures draw: one primary, one
+standby, one observer. The workbench in [`app/`](../app/README.md) generalizes it, and the facts
+behind that generalization live in a second verified fact sheet —
+**[`app/design/facts.md`](../app/design/facts.md)**, researched 2026-08-16 against docs.oracle.com
+and re-verified 2026-08-17, marking every claim `[D]` documented / `[D-later]` documented in a
+later edition / `[UNDOC]` not found / `[CONFLICT]` two Oracle pages disagree. That file, not this
+one, is the source of record for far sync, cascading, `RedoRoutes`, multiple standbys, multiple
+fast-start failover targets and multiple observers; every citation in it is an entry in
+`app/src/engine/citations.ts` (URL plus the quoted sentence), and the application's accuracy
+labelling resolves through it. The condensed rules — including what must never be written — are in
+[AGENTS.md](../AGENTS.md), in the accuracy-rules section.
+
+**The static figures in this directory still draw only the classic 1+1+1 with the observer at a
+third site.** They were not regenerated for the new topologies and they do not claim to cover
+them; when a figure and the workbench disagree about scope, the figure is the narrower statement,
+not the wrong one.
+
+What the new fact sheet pins, in one line each:
+
+- **Far sync** — an instance that receives redo into SRLs and archives them, has no user data
+  files, cannot be opened, cannot apply redo, and can never be primary or become a standby. It has
+  no broker state. A far sync edge does **not** replace the primary↔standby link: Oracle requires a
+  direct connection between them for health checks and switchover. Primary→far sync is SYNC (or
+  ASYNC in maximum performance); far sync→terminal is documented as ASYNC. Under fast-start failover
+  the far sync must be SYNC or FASTSYNC and the target standby ASYNC, and the target itself can
+  never be a far sync instance. Protection-mode support is a documented **conflict** between the
+  Concepts and Administration far-sync chapter and the broker guide's fast-start failover
+  prerequisites.
+- **Cascading** — a terminal standby receives redo indirectly from a cascading standby; only
+  physical standbys cascade; real-time cascading needs Active Data Guard; the fan-out limit is 30
+  terminal destinations. On the cascader's own destinations 1–10, ASYNC ships in real time while
+  SYNC or an unspecified mode ships non-real-time; 11–31 are ASYNC only. Cascade *depth* is
+  undocumented. A terminal standby is a documented **manual** failover target — with the documented
+  warning that no attempt is made to transmit unsent redo from the cascader — and fails the
+  fast-start failover prerequisite that the target receive redo directly from the primary.
+- **Multiple standbys and multiple targets** — `FastStartFailoverTarget` takes a list of physical or
+  logical standbys (never a snapshot standby, far sync instance or Zero Data Loss Recovery
+  Appliance) or `ANY`; the broker "selects a target based on the order in which they are specified"
+  (never "the first viable one"); with more than one standby the property must be set explicitly;
+  targets are verified when fast-start failover is enabled. `BystandersFollowRoleChange` defaults to
+  ALL. For maximum protection, the "at least one synchronized standby" sentence is on the broker
+  guide's configuration-members page — the protection-modes page spells it out only for maximum
+  availability.
+- **`RedoRoutes`** — `(source : destination)` with `LOCAL | ANY | name[,name]` sources,
+  `ALL | name` destinations, `SYNC | FASTSYNC | ASYNC` attributes, `PRIORITY=n` groups (1–8, default
+  1 for far sync members and 8 otherwise, and 19c documents this, not just 26ai), and 12.1's
+  `ALT=(… FALLBACK)` as the older spelling. `GROUP` is a `LOG_ARCHIVE_DEST_n` attribute, **not**
+  `RedoRoutes` syntax. Routes are pre-declared in both directions and nothing rewrites them on a
+  role change.
+- **Multiple observers** — three in 19c, four from 21c, and 26ai contradicts itself (four in the
+  fast-start failover chapter and on `START OBSERVER`, three on `SHOW OBSERVER` and on the
+  `V$FS_FAILOVER_OBSERVERS` reference page). Only the master observer coordinates fast-start
+  failover, and while fast-start failover is disabled "all observers have the same functionality" —
+  so no master badge then. The nomination of a backup observer carries its documented precondition
+  (primary and target standby still connected). `START OBSERVER … FILE IS …`, never `FILE=`.
+- **Member types and destination counts** — physical standbys cascade and may be targets; logical
+  standbys may be targets but do not cascade; snapshot standbys do neither; far sync instances
+  forward redo and are never targets. `LOG_ARCHIVE_DEST_n` runs 1–31, with `LOCATION` or `SERVICE`
+  on 1–10 and `SERVICE` only on 11–31; the cascading limit is 30 **terminal destinations**, which is
+  not the same claim as "30 remote destinations".
+
+### Oracle pages the application cites for these
+
+Beyond the links in the section below, `app/src/engine/citations.ts` cites:
+
+- [Creating a Far Sync Instance (19c Data Guard Concepts and Administration)](https://docs.oracle.com/en/database/oracle/oracle-database/19/sbydb/creating-oracle-data-guard-far-sync-instance.html)
+- [Managing Broker Configuration Members (19c broker, chapter 4 — far sync management, the cascading and PRIORITY examples, and the maximum-protection "at least one synchronized standby database" wording)](https://docs.oracle.com/en/database/oracle/oracle-database/19/dgbkr/managing-oracle-data-guard-broker-configuration-members.html)
+- [Oracle Data Guard Broker Properties (19c — `RedoRoutes` including the `PRIORITY=n` grammar, `PreferredObserverHosts`, `TransportDisconnectedThreshold`, `ConfigurationWideServiceName`)](https://docs.oracle.com/en/database/oracle/oracle-database/19/dgbkr/oracle-data-guard-broker-properties.html)
+- [Oracle Data Guard Broker Commands (19c — `ADD FAR_SYNC`, `ENABLE FAR_SYNC`, `VALIDATE FAR_SYNC`, `START OBSERVER … FILE IS … IN BACKGROUND`, `SHOW OBSERVER`, `SHOW CONFIGURATION WHEN PRIMARY IS`)](https://docs.oracle.com/en/database/oracle/oracle-database/19/dgbkr/oracle-data-guard-broker-commands.html)
+- [Using the Broker to Manage Switchovers and Failovers (19c, chapter 5 — the far-sync transport prerequisite, the direct-redo prerequisite, multiple observers and the master-observer rules)](https://docs.oracle.com/en/database/oracle/oracle-database/19/dgbkr/using-data-guard-broker-to-manage-switchovers-failovers.html)
+- [Scenarios Using the DGMGRL Utility (19c — Scenario 6, the nomination precondition; Scenario 16, observe-only mode)](https://docs.oracle.com/en/database/oracle/oracle-database/19/dgbkr/examples-using-data-guard-broker-DGMGRL-utility.html)
+- [Redo Transport Services (19c Data Guard Concepts and Administration, §7.3 — cascading, the 30 terminal destinations, real-time vs. non-real-time by destination number)](https://docs.oracle.com/en/database/oracle/oracle-database/19/sbydb/oracle-data-guard-redo-transport-services.html)
+- [Redo Routing Rules (12.1 broker, chapter 4 — the original `RedoRoutes` grammar and `ALT=(… FALLBACK)`)](https://docs.oracle.com/database/121/DGBKR/dbresource.htm)
+- [Changes in Oracle Data Guard Broker 12c Release 2 (12.2 — multiple fast-start failover targets, observer configuration groups, `ConfigurationWideServiceName`)](https://docs.oracle.com/en/database/oracle/oracle-database/12.2/dgbkr/release-changes.html)
+- [Using the Broker to Manage Switchovers and Failovers (21c — "There can be up to four observers for a single Data Guard configuration")](https://docs.oracle.com/en/database/oracle/oracle-database/21/dgbkr/using-data-guard-broker-to-manage-switchovers-failovers.html)
+- [Redo Routing Rules (26ai — the parenthesised `PRIORITY` groups, with no `ALT`/`FALLBACK`)](https://docs.oracle.com/en/database/oracle/oracle-database/26/dgbkr/redo-routing-rules.html) and [the 26ai `RedoRoutes` property page ("a member whose MaxFailure property is set to zero cannot be part of a RedoRoutes group")](https://docs.oracle.com/en/database/oracle/oracle-database/26/dgbkr/redoroutes.html)
+- [Fast-Start Failover (26ai broker — four observers)](https://docs.oracle.com/en/database/oracle/oracle-database/26/dgbkr/fast-start-failover2.html) against [SHOW OBSERVER (26ai — still "up to 3")](https://docs.oracle.com/en/database/oracle/oracle-database/26/dgbkr/show-observer.html) and [V$FS_FAILOVER_OBSERVERS (26ai — "returns three rows")](https://docs.oracle.com/en/database/oracle/oracle-database/26/refrn/V-FS_FAILOVER_OBSERVERS.html) — the conflict the page shows rather than resolves
+- [LOG_ARCHIVE_DEST_n parameter attributes (19c — `GROUP`, `PRIORITY`, `ALTERNATE`, `MAX_FAILURE`, the 1–31 range)](https://docs.oracle.com/en/database/oracle/oracle-database/19/sbydb/LOG_ARCHIVE_DEST_n-parameter-attributes.html)
+- Error-help pages for the refusals the application names: [ORA-16529](https://docs.oracle.com/en/error-help/db/ora-16529/), [ORA-16654](https://docs.oracle.com/en/error-help/db/ora-16654/), [ORA-16658](https://docs.oracle.com/en/error-help/db/ora-16658/), [ORA-16820](https://docs.oracle.com/en/error-help/db/ora-16820/), [ORA-16867](https://docs.oracle.com/en/error-help/db/ora-16867/)
+
 ## Oracle documentation
 
 - [Oracle Data Guard Broker Properties (19c)](https://docs.oracle.com/en/database/oracle/oracle-database/19/dgbkr/oracle-data-guard-broker-properties.html)
-- [Switchover and Failover Operations (19c, chapter 5 — the switchover prerequisites and step list, and the list headed "Fast-start failover cannot occur if:", whose first entry is "The master observer is not running". **Table 5-1** lists `FS_FAILOVER_STATUS` per role and is the source for `PRIMARY UNOBSERVED` being a **target-standby** status; the chapter's worked example prints the pair — primary `SYNCHRONIZED` with `FS_FAILOVER_OBSERVER_PRESENT` `NO`, target standby `PRIMARY UNOBSERVED` with `YES`. *Performing Manual Role Changes When Fast-Start Failover Is Enabled* qualifies "You can perform a manual failover even if fast-start failover is enabled" with three conditions: the target is the `FastStartFailoverTarget` standby; it is synchronized (maximum availability/protection) or within the lag limit (maximum performance); and, for a manual failover, "the observer is started and communicating with the target standby database", with the primary shut down first)](https://docs.oracle.com/en/database/oracle/oracle-database/19/dgbkr/using-data-guard-broker-to-manage-switchovers-failovers.html)
+- [Switchover and Failover Operations (19c, chapter 5 — the switchover prerequisites and step list, and the list headed "Fast-start failover cannot occur if:", one of whose ten entries is "The master observer is not running" (the fourth; the list opens with "Fast-start failover is no longer enabled"). **Table 5-1** lists `FS_FAILOVER_STATUS` per role and is the source for `PRIMARY UNOBSERVED` being a **target-standby** status; the chapter's worked example prints the pair — primary `SYNCHRONIZED` with `FS_FAILOVER_OBSERVER_PRESENT` `NO`, target standby `PRIMARY UNOBSERVED` with `YES`. *Performing Manual Role Changes When Fast-Start Failover Is Enabled* qualifies "You can perform a manual failover even if fast-start failover is enabled" with three conditions: the target is the `FastStartFailoverTarget` standby; it is synchronized (maximum availability/protection) or within the lag limit (maximum performance); and, for a manual failover, "the observer is started and communicating with the target standby database", with the primary shut down first)](https://docs.oracle.com/en/database/oracle/oracle-database/19/dgbkr/using-data-guard-broker-to-manage-switchovers-failovers.html)
 - [ObserverOverride (19c Data Guard Broker Properties — default FALSE; TRUE allows an automatic failover once the observer has lost the primary, "even if the standby has a healthy connection to the primary". Every figure and every simulator cell here assumes the default)](https://docs.oracle.com/en/database/oracle/oracle-database/19/dgbkr/oracle-data-guard-broker-properties.html)
 - [Managing Oracle Data Guard Role Transitions (19c Data Guard Concepts and Administration — the two-phase switchover, `SWITCHOVER ... VERIFY`, duration factors, `COMMIT TO SWITCHOVER ... WITH SESSION SHUTDOWN`)](https://docs.oracle.com/en/database/oracle/oracle-database/19/sbydb/managing-oracle-data-guard-role-transitions.html)
 - [LOG_ARCHIVE_DEST_n parameter attributes (19c Data Guard Concepts and Administration)](https://docs.oracle.com/en/database/oracle/oracle-database/19/sbydb/LOG_ARCHIVE_DEST_n-parameter-attributes.html)

@@ -1,0 +1,152 @@
+===== dgmgrl -- DGMGRL -- the broker configuration =====
+
+CONNECT sys@prm01 AS SYSDBA;
+
+CREATE CONFIGURATION 'dg_config' AS PRIMARY DATABASE IS 'prm01' CONNECT IDENTIFIER IS prm01;
+ADD DATABASE 'sby01' AS CONNECT IDENTIFIER IS sby01;
+ADD DATABASE 'sby02' AS CONNECT IDENTIFIER IS sby02;
+
+EDIT DATABASE 'sby01' SET PROPERTY 'LogXptMode' = 'SYNC';
+EDIT DATABASE 'sby02' SET PROPERTY 'LogXptMode' = 'SYNC';
+EDIT DATABASE 'prm01' SET PROPERTY 'LogXptMode' = 'SYNC';
+(prm01 ships redo with it once a role swap makes it the standby)
+
+EDIT DATABASE 'sby01' SET PROPERTY 'NetTimeout' = 30;
+(default)
+EDIT DATABASE 'sby02' SET PROPERTY 'NetTimeout' = 30;
+(default)
+(ReopenSecs and MaxFailure stay documented broker properties in 19c (neither is on the 19c deprecation list); their values are the REOPEN and MAX_FAILURE attributes, so this script sets them once, in the LOG_ARCHIVE_DEST_n block)
+
+ENABLE CONFIGURATION;
+
+EDIT CONFIGURATION SET PROTECTION MODE AS MAXAVAILABILITY;
+(if the primary does not receive acknowledgement from at least one synchronized standby, then it operates as if it were in maximum performance mode)
+
+EDIT CONFIGURATION SET PROPERTY FastStartFailoverThreshold = 30;
+(default)
+(the clock starts when the observer first loses its connection to the primary, and a failover needs BOTH the observer and the target standby to have lost the primary for that long -- ObserverOverride is FALSE, the broker default, and this page models the default only)
+(ObserverPingInterval and ObserverPingRetry stay unset -- detection runs on the threshold)
+(FastStartFailoverLagLimit is not evaluated in maximum availability under 19c -- the standby must be synchronized instead, which is about redo received, so an apply lag does not block it)
+EDIT CONFIGURATION SET PROPERTY FastStartFailoverPmyShutdown = TRUE;
+(default)
+(TRUE is the default: a primary stalled longer than the threshold, able to reach neither the observer nor the target standby, aborts itself)
+EDIT CONFIGURATION SET PROPERTY FastStartFailoverAutoReinstate = TRUE;
+(it reinstates only after an observer-initiated failover caused by a primary crash or isolation -- never after a user-configurable health condition or a DBMS_DG.INITIATE_FS_FAILOVER call -- and it needs Flashback Database on both databases, the former primary started and mounted, and the master observer able to reach it)
+EDIT DATABASE 'prm01' SET PROPERTY 'FastStartFailoverTarget' = 'sby01,sby02';
+(candidate targets: the broker selects a target based on the order in which they are specified, and if the designated fast-start failover target develops a problem the broker automatically changes the target to one of the other candidate targets)
+(more than one fast-start failover target is a 12.2 feature)
+(with more than one standby database the property must be set explicitly)
+(the target can only be the name of a physical or logical standby -- never a snapshot standby, a far sync instance or a Zero Data Loss Recovery Appliance -- and it must receive redo directly from the primary database; receiving it from a far sync instance is the sanctioned exception)
+(targets are verified when fast-start failover is enabled, and the reciprocal value is set on the target automatically)
+
+ENABLE FAST_START FAILOVER;
+
+START OBSERVER obs01 FILE IS /u01/app/oracle/dg/obs01/fsfo.dat LOGFILE IS /u01/app/oracle/dg/obs01/observer.log CONNECT IDENTIFIER IS prm01 IN BACKGROUND;
+START OBSERVER obs02 FILE IS /u01/app/oracle/dg/obs02/fsfo.dat LOGFILE IS /u01/app/oracle/dg/obs02/observer.log CONNECT IDENTIFIER IS prm01 IN BACKGROUND;
+START OBSERVER obs03 FILE IS /u01/app/oracle/dg/obs03/fsfo.dat LOGFILE IS /u01/app/oracle/dg/obs03/observer.log CONNECT IDENTIFIER IS prm01 IN BACKGROUND;
+(IN BACKGROUND is the form the documentation prefers: the prompt returns and the observer process keeps running)
+(the observer belongs on a host of its own, ideally at a third site or third data center -- it should never be deployed at the primary database server or cluster, or on the standby database server or cluster)
+
+SET MASTEROBSERVER TO obs01;
+(only the master observer can coordinate fast-start failover; if the primary and target standby databases stay connected but the connection to the master observer is lost, then the broker tries to nominate a backup observer as the new master observer)
+(the command is documented; what has to be true for it to succeed is not)
+
+===== initora.prm01 -- LOG_ARCHIVE_DEST_n on prm01 -- where the transport properties land =====
+
+# broker-owned on prm01: LogXptMode, NetTimeout, ReopenSecs
+# and MaxFailure all land in these attributes. By hand it
+# would read:
+
+log_archive_dest_2 =
+   'SERVICE=sby01 SYNC AFFIRM NET_TIMEOUT=30
+    REOPEN=300 MAX_FAILURE=0
+    VALID_FOR=(ONLINE_LOGFILES,PRIMARY_ROLE)
+    DB_UNIQUE_NAME=sby01'
+
+log_archive_dest_3 =
+   'SERVICE=sby02 SYNC AFFIRM NET_TIMEOUT=30
+    REOPEN=300 MAX_FAILURE=0
+    VALID_FOR=(ONLINE_LOGFILES,PRIMARY_ROLE)
+    DB_UNIQUE_NAME=sby02'
+
+# NET_TIMEOUT=30 is the default, spelled out -- seconds LGWR waits
+# for the standby's acknowledgement; it is never a failover clock
+# MAX_FAILURE=0: retried at every log switch, without limit
+# whether a successful reopen resets that counter is not documented
+# REOPEN only gates eligibility: transport retries a failed destination at
+# log switch time, once the last error plus REOPEN is in the past
+
+# LOG_ARCHIVE_DEST_n takes n = 1..31; 1-10 accept LOCATION or SERVICE,
+# 11-31 SERVICE only
+
+# ReopenSecs / MaxFailure are the broker properties behind REOPEN / MAX_FAILURE --
+# not deprecated in 19c; EDIT DATABASE ... SET PARAMETER reaches the same attributes
+
+===== show.configuration.verbose -- SHOW CONFIGURATION VERBOSE =====
+
+(rendered from this page's model of DGMGRL output -- not a transcript of a real broker configuration)
+(lines marked (model) use spellings the verified documentation does not carry)
+
+DGMGRL> SHOW CONFIGURATION VERBOSE;
+
+Configuration - dg_config
+
+  Protection Mode: MaxAvailability
+  Members:
+  prm01 - Primary database
+    sby01 - Physical standby database
+    sby02 - Physical standby database
+
+Fast-Start Failover:  Enabled
+
+Configuration Status:
+SUCCESS
+
+(VERBOSE also prints every member's properties; this mock draws only the members, the alternates and the status)
+
+===== show.fast_start_failover -- SHOW FAST_START FAILOVER =====
+
+(rendered from this page's model of DGMGRL output -- not a transcript of a real broker configuration)
+(lines marked (model) use spellings the verified documentation does not carry)
+
+DGMGRL> SHOW FAST_START FAILOVER;
+
+Fast-Start Failover: ENABLED
+
+  Threshold:            30 seconds
+  Active Target:        sby01
+  Potential Targets:    "sby01,sby02"
+    sby01:              valid   (model)
+    sby02:              valid   (model)
+(the broker selects a target based on the order in which they are specified)
+  Observer:             obs01
+  Lag Limit:            30 seconds (not evaluated in this mode)
+  Shutdown Primary:     TRUE
+  Auto-reinstate:       TRUE
+  Observer Override:    FALSE
+(ObserverOverride is FALSE, the broker default, and this page models the default only: a failover needs both the observer and the target standby to have lost the primary)
+
+===== show.observer -- SHOW OBSERVER =====
+
+(rendered from this page's model of DGMGRL output -- not a transcript of a real broker configuration)
+(lines marked (model) use spellings the verified documentation does not carry)
+
+DGMGRL> SHOW OBSERVER;
+
+Observer "obs01" - Master
+  Host Name:            dc3-obs01
+  Last Ping to Primary: (not modelled)   (model)
+  Last Ping to Target:  (not modelled)   (model)
+
+Observer "obs02" - Backup
+  Host Name:            dc4-obs02
+  Last Ping to Primary: (not modelled)   (model)
+  Last Ping to Target:  (not modelled)   (model)
+
+Observer "obs03" - Backup
+  Host Name:            dc5-obs03
+  Last Ping to Primary: (not modelled)   (model)
+  Last Ping to Target:  (not modelled)   (model)
+
+(only the master observer can coordinate fast-start failover)
+(19c registers up to three observers, one of them master)

@@ -1,0 +1,120 @@
+/* Configure mode: the tabbed panels that render what the generators emit and
+   the three figures ported from the published fragment (ui.md SS3, SS6).
+
+   Two rules the whole file obeys. Nothing here is hidden by CSS: a panel that
+   is not open is not rendered, and the tabs are real links. And no rule sets
+   geometry that a component would otherwise write as a style attribute -- the
+   figures are SVG presentation attributes throughout, because the page ships
+   under style-src 'self'. */
+
+/* ---------------- the shell of the row ---------------- */
+
+.panels{display:flex;flex-direction:column;min-height:0;min-width:0;flex:1 1 auto}
+
+.panel-tabs{display:flex;align-items:stretch;gap:0;overflow-x:auto;scrollbar-width:none;
+  background:var(--sf2);border-bottom:1px solid var(--ln)}
+.panel-tabs::-webkit-scrollbar{display:none}
+.panel-tab{display:inline-flex;align-items:center;gap:7px;flex:0 0 auto;
+  font-family:var(--mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--ik3);background:transparent;border:0;border-bottom:2px solid transparent;
+  padding:8px 14px;white-space:nowrap;cursor:pointer;text-decoration:none}
+.panel-tab:hover{color:var(--ik);background:var(--sf)}
+/* The tab strip scrolls sideways, which clips an outside ring: draw it inside. */
+.panel-tab:focus-visible{outline-offset:-2px}
+.panel-tab[aria-current="page"]{color:var(--ik);background:var(--sf);
+  border-bottom-color:var(--vi);font-weight:600}
+.panel-tab .n{font-variant-numeric:tabular-nums;color:var(--ik3);letter-spacing:0}
+@media (prefers-reduced-motion:no-preference){
+  .panel-tab{transition:color .16s ease,background-color .16s ease}}
+
+.panel{display:flex;flex-direction:column;min-height:0;min-width:0;overflow:auto;
+  background:var(--sf)}
+.panel-hd{display:flex;flex-direction:column;gap:5px;padding:12px 16px 0}
+.panel-hd .row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.panel-hd .row .grow{flex:1 1 auto;min-width:0}
+.panel-body{display:flex;flex-direction:column;gap:14px;padding:12px 16px 20px;min-width:0}
+
+/* ---------------- generated files ---------------- */
+
+.cb{border:1px solid var(--ln);border-radius:3px;background:var(--sf);min-width:0}
+.cb-hd{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:8px 12px;
+  background:var(--sf2);border-bottom:1px solid var(--ln)}
+.cb-hd .grow{flex:1 1 auto;min-width:0}
+.cb-file{font-family:var(--mono);font-size:10.5px;color:var(--ik3)}
+
+.cb-cap{padding:8px 12px 0;margin:0}
+.cb-code{list-style:none;margin:0;padding:8px 0;overflow-x:auto;
+  font-family:var(--mono);font-size:12.5px;line-height:1.55;
+  background:var(--sf);counter-reset:none}
+.cb-ln{display:grid;grid-template-columns:34px minmax(0,1fr);gap:10px;
+  padding:0 12px;border-left:2px solid transparent}
+.cb-ln .cb-g{font-size:10px;color:var(--ik3);text-align:right;user-select:none;
+  padding-top:2px;font-variant-numeric:tabular-nums}
+.cb-ln .cb-t{white-space:pre-wrap;overflow-wrap:anywhere;color:var(--ik)}
+.cb-ln.k-blank{min-height:9px}
+.cb-ln.k-note .cb-t,.cb-ln.k-comment .cb-t{font-family:var(--sans);font-size:11.5px;
+  color:var(--ik3);line-height:1.45}
+.cb-ln.k-note.b-model .cb-g,.cb-ln.k-note.b-conflict .cb-g{color:var(--vi)}
+.cb-ln.has-subject{cursor:default}
+.cb-ln.is-hot{background:var(--vif);border-left-color:var(--vi)}
+.cb-ln.is-sel{background:var(--sf2);border-left-color:var(--ik3)}
+@media (prefers-reduced-motion:no-preference){
+  .cb-ln{transition:background-color .12s ease-out}}
+
+.cb-t .sp-value{color:var(--vi)}
+.cb-t .sp-service{color:var(--tl)}
+.cb-t .sp-dim{color:var(--ik3)}
+.cb-t .sp-warn{color:var(--am)}
+.cb-t .is-hl{background:var(--vif);border-radius:2px;padding:0 2px}
+
+.cb-foot{display:flex;flex-direction:column;gap:6px;padding:9px 12px;
+  border-top:1px solid var(--ln);background:var(--sf2)}
+.cb-foot .cb-claim{font-size:11.5px;line-height:1.45;color:var(--ik3)}
+
+/* ---------------- figures ---------------- */
+
+.fig{display:flex;flex-direction:column;gap:8px;min-width:0}
+.fig-hd{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.fig-plot{overflow-x:auto;min-width:0}
+.fig-defs{display:block;width:0;height:0;position:absolute}
+.fig-svg{display:block}
+.fig-svg .area-am{fill:var(--amf);stroke:var(--am);stroke-width:1}
+.fig-svg .area-rd{fill:url(#figHatch);stroke:var(--rd);stroke-width:1}
+.fig-svg .b-hatch{fill:url(#figHatch);stroke:var(--rd)}
+.fig-svg .w-send{stroke:var(--bl);stroke-width:1.6}
+.fig-svg .w-ack{stroke:var(--vi);stroke-width:1.6}
+.fig-svg .g-vi{stroke:var(--vi);stroke-width:1.5;stroke-dasharray:5 4}
+.fig-svg .g-rd{stroke:var(--rd);stroke-width:1.5;stroke-dasharray:5 4}
+.fig-svg .m-am{stroke:var(--am)}
+
+/* ---------------- panel-local controls ---------------- */
+
+.panel-ctl{display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+  padding:9px 12px;border:1px solid var(--ln);border-radius:3px;background:var(--sf2)}
+.panel-ctl label{display:inline-flex;align-items:center;gap:7px;font-size:11.5px;
+  color:var(--ik2)}
+.panel-ctl input[type="range"]{accent-color:var(--vi);max-width:220px}
+.panel-ctl .v{font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:12px;
+  color:var(--vi)}
+
+/* A block of figures that share one scale sits in one column, so the reader
+   compares them by eye without a second axis to reconcile. */
+.fig-stack{display:flex;flex-direction:column;gap:18px;min-width:0}
+
+@media (max-width:1023px){
+  .panel-body{padding:10px 12px 16px}
+  .cb-ln{grid-template-columns:26px minmax(0,1fr);gap:8px;padding:0 8px}
+}
+
+/* Print. The tab bar is navigation, and navigation does not print; everything
+   that carries information unrolls at full height. `Panels` renders all seven
+   panels while the print media query is on, so nothing is missing here. */
+@media print{
+  .panels,.panel,.panel-body,.fig-plot,.cb-code,.panel-tabs{overflow:visible}
+  .panel-tabs{display:none}
+  .panel{break-before:page}
+  .panel:first-of-type{break-before:auto}
+  .cb,.fig,.panel-ctl{break-inside:avoid}
+  .cb-ln.is-hot,.cb-ln.is-sel{background:none;border-left-color:#000000}
+  .panel-ctl input[type="range"]{display:none}
+}

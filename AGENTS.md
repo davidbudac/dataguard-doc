@@ -1,10 +1,15 @@
 # Agent handoff — dataguard_doc
 
-This repo documents Oracle 19c Data Guard. The simulator started as a
-fast-start failover (FSFO) explainer and is now a general Data Guard
-configuration + visualization tool, published as "Data Guard configuration".
-This file tells a future agent what exists, how it was produced, and how to
-extend it without breaking consistency or accuracy.
+This repo documents Oracle 19c Data Guard. It carries **two** pages and the
+assets around them. The one being worked on is the workbench in `app/` — a
+topology simulator you draw a Data Guard configuration in, break, and watch the
+clocks of — a TypeScript/Vite/Preact application with a pure domain engine,
+served at **https://davidbudac.cz/dataguard/**. Beside it, frozen, sits the page
+it grew out of: the single-file fast-start failover (FSFO) explainer in
+`simulator/`, still served at **/dataguard/legacy/** because every link the
+handover document, the Confluence page and the Czech reading list ever handed
+out points there. This file tells a future agent what exists, how it was
+produced, and how to extend it without breaking consistency or accuracy.
 
 ## What exists
 
@@ -14,53 +19,170 @@ extend it without breaking consistency or accuracy.
 | `diagrams/fsfo-timeline-isolated.svg` (+`.png`) | Swimlane timeline, network partition: two independent threshold clocks, primary self-abort (split-brain protection) |
 | `diagrams/fsfo-sequence.svg` (+`.png`) | Sequence diagram of the crash case with an elapsed-time gutter |
 | `diagrams/fsfo-net-timeout.svg` (+`.png`) | Two panels separating NET_TIMEOUT (redo transport) from the broker failover clocks |
-| `diagrams/README.md` | Figure embeds, broker-property and redo-transport-property tables with verified defaults, the ping-properties quirk, the verified-facts sections behind the simulator's commit/reopen/observer/placement/side-topics views (including the 24-cell observer-placement outcome matrix) and behind the 26ai edition switch (the MaxAvailability lag-limit semantics and Oracle's self-contradiction on them, `PrimaryDatabaseCandidates`, `V$FS_FAILOVER_OBSERVERS`), the drawing idealizations, Oracle doc links |
-| `simulator/fsfo-simulator.html` | Source fragment of the interactive simulator, published at davidbudac.cz/dataguard. English only |
-| `simulator/i18n/cs.json` | Czech translation catalog, keyed by the English source strings. Real UTF-8 — deliberately outside the ASCII-only fragment |
-| `testing/README.md` | Test runbook: step-by-step drills verifying each documented situation against a real 19c configuration (crash, isolation, observer loss, NET_TIMEOUT, blocked failover, reopen/MaxFailure, client view, commit measurement), with an RTO/RPO probe harness and reinstate cleanup. Repo-only markdown — not part of the published site |
-| `site/build.mjs` | Wraps the fragment into a full page (doctype, charset, title, favicon, canonical + social meta), inlines `simulator/i18n/cs.json` as a JSON `<script>`, and enforces the ASCII-only guard — it exits non-zero on any byte above U+007E |
-| `site/test.mjs` | Standalone node test: extracts the four model marker blocks from the fragment and asserts the documented domain invariants — including the scenario × observer-location outcome matrix as literal tables (24 cells, plus the 19c-invariance loops over the version axis) — then checks the Czech catalog for dropped placeholders, unbalanced inline markup and bad plural forms. No dependencies; `node --test site/test.mjs`. `site/publish.sh` runs it after the build, so a model that contradicts the docs cannot be deployed |
-| `site/publish.sh` | Builds, tests the models, and deploys to the VPS, then verifies the public URL |
+| `diagrams/README.md` | Figure embeds, broker-property and redo-transport-property tables with verified defaults, the ping-properties quirk, the verified-facts sections behind the commit/reopen/observer/placement/side-topics views (including the 24-cell observer-placement outcome matrix) and behind the 26ai edition switch (the MaxAvailability lag-limit semantics and Oracle's self-contradiction on them, `PrimaryDatabaseCandidates`, `V$FS_FAILOVER_OBSERVERS`), the drawing idealizations, Oracle doc links. Its *Topology features* section points at `app/design/facts.md` for far sync, cascading, RedoRoutes, multi-target and multi-observer sources |
+| `app/` | The workbench: TypeScript + Vite + Preact + signals. A pure, DOM-free engine in `app/src/engine` (types, citation catalogue, validation rules, redo-graph resolver, epoch-loop simulator, generators, the legacy adapter), the interface in `app/src/ui`, state in `app/src/state`, eleven presets in `app/src/presets`, nine lessons and the reference tables in `app/src/content`, 1114 vitest tests across 50 files in `app/src/**/__tests__` and `app/test`. Built to `_site/` and served at `/dataguard/`. Zero external requests, no inline script and no inline style — the page is meant to run under `script-src 'self'; style-src 'self'` |
+| `app/design/facts.md` | The verified Oracle fact sheet for the topology features (far sync, cascading, multiple standbys and FSFO targets, multiple observers, RedoRoutes, member types, destination counts), researched 2026-08-16 against docs.oracle.com and re-verified 2026-08-17, marked `[D]` / `[D-later]` / `[UNDOC]` / `[CONFLICT]` per claim. **The only permitted source of a "documented" claim in the application.** Its top-five traps are restated in the accuracy rules below |
+| `app/design/engine.md` | The engine design: `Claim`/`Basis` labelling, the topology data model, the validation catalogue, the redo-graph resolver, the epoch-loop failure engine, the compat adapter and the 24-cell matrix gate, the generators, the module layout — plus §10, *Deviations from the design as built*, which is where the code and the specification differ |
+| `app/design/ui.md` | The application architecture: premises carried over from the legacy page, project structure and the CSP goal, Document-vs-View state, the four modes, canvas layout/routing, timeline, the migration table from the six legacy chapters, and the taste notes. Its as-built notes (event-menu placement, the mode-aware readout, the drawer's focus contract, the print pass) are the record of what the code does where it went past the design |
+| `app/README.md` | The short version of the three above: what it is, dev commands, structure, testing, deploy pointer |
+| `simulator/fsfo-simulator.html` | **Frozen.** Source fragment of the page that used to be published at `/dataguard/`; now served at `/dataguard/legacy/`. English only, pure ASCII (see [CLAUDE.md](CLAUDE.md)). Bug-fix territory only — new work goes into `app/` |
+| `simulator/i18n/cs.json` | Czech translation catalog for the legacy fragment, keyed by the English source strings. Real UTF-8 — deliberately outside the ASCII-only fragment. **The application is English only**; Czech readers keep the legacy page |
+| `testing/README.md` | Test runbook: step-by-step drills verifying each documented situation against a real 19c configuration (crash, isolation, observer loss, NET_TIMEOUT, blocked failover, reopen/MaxFailure, client view, commit measurement, plus four topology drills for far sync, cascading, multi-target and multiple observers), with an RTO/RPO probe harness and reinstate cleanup. Repo-only markdown — not part of the published site |
+| `site/build.mjs` | The site build, in three steps: `npm run build` in `app/` (which empties `_site/` and writes the hashed bundle), then `site/build-legacy.mjs`, then `assertNoInline(_site/index.html)` — a built page carrying a `<script>` with a body, an `on*=` handler or a `style=` attribute fails the build rather than the browser's content security policy. The guard proves it can fail (three fixtures it must reject, one it must accept) before it is trusted to pass |
+| `site/build-legacy.mjs` | What `site/build.mjs` used to be: wraps the fragment into a full page (doctype, charset, title, favicon, canonical + social meta), inlines `simulator/i18n/cs.json` as a JSON `<script>`, and enforces the ASCII-only guard — it exits non-zero on any byte above U+007E, naming the offending lines. Writes `_site/legacy/index.html` and copies `diagrams/` to `_site/diagrams`, which both pages share |
+| `site/smoke.mjs` | Dependency-free browser check of the built tree: serves `_site/` over `node:http`, loads it in headless Chrome (`--dump-dom`, console messages captured through `--enable-logging=stderr`), takes the page's own `#t=` permalink for the `classic` and `far-sync-zero-loss` presets and reloads it cold, asserts the node cards, the timeline lanes and the outcome chip, opens each of the four modes by name, and checks that a published-page link (`?sc=iso&lat=2&lang=cs#ch-clocks`) upgrades into Break mode and offers the Czech page. Exits non-zero on any failed check, any console message, or any file the page asked for and did not get |
+| `site/test.mjs` | Standalone node test for the **legacy** fragment: extracts its four model marker blocks and asserts the documented domain invariants — including the scenario × observer-location outcome matrix as literal tables (24 cells, plus the 19c-invariance loops over the version axis) — then checks the Czech catalog for dropped placeholders, unbalanced inline markup and bad plural forms. No dependencies; `node --test site/test.mjs`, 68 tests. The application reproduces the same 24 cells through its compat adapter (`app/test/legacy-matrix.test.ts`) |
+| `site/publish.sh` | Builds, runs the three test gates (`npm --prefix app run test`, `node --test site/test.mjs`, `node site/smoke.mjs`), deploys to the VPS, then verifies the public URL |
+
+`_site/` is generated — never edit it, never commit it — and its shape is a
+contract the deploy and the nginx configuration both depend on:
+
+```
+_site/
+  index.html            the workbench; references one hashed bundle
+  assets/index-*.js     the bundle, and style-*.css beside it (cssCodeSplit off)
+  legacy/index.html     the frozen fragment, wrapped, Czech catalog inlined
+  diagrams/             the four figures (SVG + PNG) and diagrams/README.md,
+                        shared by both pages -- the og:image lives here
+```
 
 ## Publishing
 
-The simulator is served at **https://davidbudac.cz/dataguard/** from the user's
-own VPS. To publish:
+Both pages are served from the user's own VPS. To publish:
 
 ```bash
 ./site/publish.sh
 ```
 
-It builds `_site/`, tars it over ssh to `root@dbhetz-ubu26:/var/www/dataguard`
-(unpacking beside the live tree and renaming it in, so a half-uploaded tree is
-never live), then re-fetches the public URL and fails unless it gets HTTP 200
-with exactly the byte count it just built. `--dry-run` builds without deploying.
-Overridable via `DG_HOST`, `DG_DEST`, `DG_URL`.
+It builds `_site/` (application first, because the Vite build empties the
+directory; then the legacy page into the tree it leaves behind), runs three
+gates in the order that fails fastest, tars the result over ssh to
+`root@dbhetz-ubu26:/var/www/dataguard` (unpacking beside the live tree and
+renaming it in, so a half-uploaded tree is never live), and then verifies the
+public URL.
+
+The three gates, and what each one can catch that the others cannot:
+
+1. `npm --prefix app run test` — the application's own suite (**1114 tests
+   across 50 files**): the engine's invariants, the 24-cell matrix through the
+   compat adapter, the validation catalogue, the generator goldens, the canvas
+   and timeline geometry, the URL and file round trips.
+2. `node --test site/test.mjs` — the same kind of assertion against the legacy
+   fragment's four model blocks, which still ship (68 tests).
+3. `node site/smoke.mjs` — the built bundle in a real browser. The only gate
+   that can catch a page that builds, passes every unit test and does not run.
+   **It cannot run inside an agent sandbox** — it spawns Chrome and binds a
+   local HTTP port — so an agent's "tests pass" means gates 1 and 2 only; run
+   this one on a desktop before publishing.
+
+Verification after the upload compares **the bundle, not the page**: the script
+re-fetches the public URL, requires HTTP 200 from `/dataguard/` *and* from
+`/dataguard/legacy/`, reads the hashed `assets/index-*.js` the served page asks
+for, and fails unless that file comes back byte-equal to the one just built.
+The HTML itself is a few hundred bytes of head that a CDN may minify or
+re-encode, while the hashed asset changes with every byte of source — so the
+asset is the honest witness that what is live is what was built. `--dry-run`
+builds and tests without deploying. Overridable via `DG_HOST`, `DG_DEST`,
+`DG_URL`.
+
+Old links keep working, two different ways. `?lang=cs` and anything pointing at
+`/dataguard/legacy/` land on the frozen page. A link to `/dataguard/` itself is
+upgraded by the application on load: the legacy query keys become a topology,
+the six chapter anchors become modes and panels, and `?lang=cs` raises a notice
+offering the Czech page rather than being silently dropped.
 
 Two things to know:
 
-- **Publishing is explicit now.** It is no longer a side effect of `git push`.
+- **Publishing is explicit.** It is not a side effect of `git push`.
   Committing changes nothing about what is live until you run the script.
 - **The script ships the working tree, not `HEAD`** — deliberately, so you can
   preview an edit on the real URL before committing. It prints a warning when
-  the fragment has uncommitted changes; read that warning.
+  `app/`, `site/`, `simulator/` or `diagrams/` has uncommitted changes; read
+  that warning.
 
-nginx serves it from a dedicated `location ^~ /dataguard/` block in
+### nginx, and the one change the server still needs
+
+nginx serves both pages from a dedicated `location ^~ /dataguard/` block in
 `/etc/nginx/sites-enabled/dbudac.conf` on the VPS. That block sets its own
 security headers instead of including `snippets/dbudac-headers.conf`, because
-the shared snippet's CSP is `script-src 'self'` and the page needs
-`'unsafe-inline'` for its single inline `<script>`; two CSP headers are enforced
-as their intersection, so including the snippet would silently break the page.
-The block's comments say so on the server too. Note that on that box
-`sites-enabled/dbudac.conf` is a **regular file, not a symlink** — the
-`sites-available/` copy is stale, so edit the enabled one.
+two CSP headers are enforced as their intersection and the shared snippet would
+silently break whichever page needs more.
+
+**TODO for the operator — not something an agent can do from this repo.** The
+block's CSP still carries `'unsafe-inline'`, inherited from the days when the
+single-file page *was* `/dataguard/`. The application needs none of it: it has
+no inline `<script>`, no `on*=` handler and no `style=` attribute, and
+`site/build.mjs` fails the build if one ever appears. Once the header below is
+in place the policy is the one `app/design/ui.md` §1 specifies, and the guard
+in the build is what keeps it true:
+
+```nginx
+# /dataguard/  -- the workbench. No inline anything; site/build.mjs enforces it.
+add_header Content-Security-Policy "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'; font-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; object-src 'none'" always;
+```
+
+The legacy page is one inline `<script>` and cannot live under that policy, so
+it keeps its own **nested** location with the old header:
+
+```nginx
+# /dataguard/legacy/  -- the frozen fragment. One inline <script>, by design.
+location ^~ /dataguard/legacy/ {
+    add_header Content-Security-Policy "default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; object-src 'none'" always;
+}
+```
+
+A nested `location` replaces the parent's `add_header` set entirely rather than
+adding to it, so the nested block must repeat every header the parent sets, not
+just the CSP. Note that on that box `sites-enabled/dbudac.conf` is a **regular
+file, not a symlink** — the `sites-available/` copy is stale, so edit the
+enabled one. Until the header is changed the application still works; it is
+simply running under a policy laxer than the one it was built for.
 
 Two earlier publishing routes are retired — do not resurrect either:
 
 - A Claude artifact, retired 2026-07-29 (do not republish as an artifact).
 - GitHub Pages (`.github/workflows/pages.yml`), removed 2026-07-30 when the repo
   went private. The ASCII guard that lived in that workflow now lives in
-  `site/build.mjs`, so it still runs on every publish.
+  `site/build-legacy.mjs`, which `site/build.mjs` runs, so it still runs on
+  every publish.
+
+### Pre-publish checklist
+
+`./site/publish.sh --dry-run` is the automated half (and on a desktop, where
+`site/smoke.mjs` can start a browser). The rest is looking at the page, because
+none of the three gates can see a drawing that is wrong. Walk it in **both
+themes** and **both editions** — the theme toggle and the 19c/26ai toggle are in
+the top bar, and both are reading preferences that survive a reload:
+
+- **All four modes on the classic preset.** Build: select a member, edit a
+  property, undo it, watch the issue list and the steady-state readout follow.
+  Break: inject a crash from the event menu, scrub the timeline, read the
+  outcome chip. Configure: all seven tabs render, Copy works, hovering a
+  generated line highlights the member it belongs to. Learn: the lesson list,
+  a "Show me" step, and the workbench beside the prose reacting to it.
+- **Every preset opens.** Eleven of them (`classic`, `observe-only`,
+  `far-sync-zero-loss`, `far-sync-ha-pair`, `far-sync-role-change`,
+  `cascade-terminal`, `priority-alternates`, `multi-target-three-observers`,
+  `rac-primary`, `bystanders`, `max-protection`). Each one draws without a
+  crossing link or a caption over a card, opens at the protection level it was
+  configured in, and raises only issues that are true of it.
+- **The share link round-trips.** Copy it, open it in a fresh tab, and get the
+  same document — including injected events and canvas drags. Then check the
+  honest refusal: a document too large for a link says so and points at Export.
+- **Legacy links.** `?sc=iso&lat=2#ch-clocks`, `?pm=perf&lag=45#ch-app` and a
+  `#cfg=` payload each land on the right mode and panel with the knobs applied,
+  and the address bar is rewritten to the canonical URL. `?lang=cs` shows the
+  notice with a working link to `/dataguard/legacy/`, and `/dataguard/legacy/`
+  itself still serves the frozen page in both languages.
+- **Both themes, both editions, and the narrow shell.** Nothing hidden by CSS
+  alone; every gray control still carries the pill saying why; the drawer and
+  the sheet still close on `Escape` and hand focus back; below 768 px the
+  read-only card says editing needs a wider screen, once, not four times.
+- **Print.** `Ctrl+P` on Configure: all seven panels stack, the citation chips
+  wrap rather than pushing the page sideways.
+- **After the deploy**, `curl -s https://davidbudac.cz/dataguard/ | grep -E
+  'og:image|canonical|theme-color|rel="icon"'` finds all four, and
+  `curl -sI https://davidbudac.cz/dataguard/legacy/` still returns 200.
 
 ## Accuracy rules (non-negotiable)
 
@@ -266,11 +388,22 @@ agree on:
   destination is then treated as if `REOPEN` had not been specified. Whether a
   successful reopen resets the counter is NOT documented ("consecutive" implies
   it; do not state it as fact). Exception: 12.2+ GROUP/PRIORITY destinations
-  re-enter service when found accessible. Both are deprecated as broker
-  properties in 19c (`EDIT DATABASE ... SET PARAMETER` instead). Documentation
-  defect: the 19c broker-properties page lists `MaxFailure` as "Corresponds to:
-  VALID_FOR" — always cite the sbydb `LOG_ARCHIVE_DEST_n` attributes page for
-  `MAX_FAILURE` semantics, never the broker page.
+  re-enter service when found accessible. **Neither `ReopenSecs` nor `MaxFailure`
+  is deprecated in 19c** — the 19c broker release-changes deprecation list names
+  nine initialization-parameter-backed properties (`ArchiveLagTarget`,
+  `DataGuardSyncLatency`, `LogArchiveMaxProcesses`, `LogArchiveMinSucceedDest`,
+  `LogArchiveTrace`, `StandbyFileManagement`, `DbFileNameConvert`,
+  `LogArchiveFormat`, `LogFileNameConvert`) and their 19c property rows carry no
+  deprecation note (re-verified 2026-08-17); an earlier revision of these rules
+  called them deprecated, and the legacy simulator fragment still does — do not
+  copy that. `EDIT DATABASE ... SET PARAMETER` is a second route to the same
+  `REOPEN` / `MAX_FAILURE` attributes, not a replacement. The 19c broker row for
+  `MaxFailure` states only "the maximum number of contiguous archiving failures"
+  and its default — always cite the sbydb `LOG_ARCHIVE_DEST_n` attributes page for
+  `MAX_FAILURE` semantics, never the broker page. (The "Corresponds to: VALID_FOR"
+  defect an earlier revision recorded for that row was not reproducible on
+  2026-08-17 in the 12.2, 18c, 19c, 21c or 26ai pages, which all read
+  "MAX_FAILURE attribute for the LOG_ARCHIVE_DEST_n initialization parameter".)
 - **SDU** (chapter 5): the HA guide recommends 65535 **for synchronous
   transport only** — a best practice, never a requirement, and the guide says
   nothing about ASYNC, so neither do these assets. `DEFAULT_SDU_SIZE` defaults
@@ -350,7 +483,7 @@ agree on:
   means FSFO is enabled and the master observer is missing:
   `FS_FAILOVER_STATUS` = `PRIMARY UNOBSERVED`, `ORA-16820`, the observer-lost
   scenario, and the broker's list headed "Fast-start failover cannot occur if:",
-  whose first entry is "The master observer is not running". No observer
+  one of whose entries is "The master observer is not running" (the fourth; the list opens with "Fast-start failover is no longer enabled"). No observer
   deployed means FSFO was never enabled — the
   `FastStartFailover*` properties can be set and nothing arms them, and a manual
   `FAILOVER TO` is the only thing that promotes the standby. One corollary to
@@ -377,13 +510,188 @@ agree on:
   holds fire, so nothing is promoted, the standby is stranded, and the primary
   serves a world that cannot reach it.
 
+The topology features the workbench added — far sync, cascading, multiple
+standbys, multiple FSFO targets, multiple observers — rest on a second verified
+fact sheet, `app/design/facts.md`, researched 2026-08-16 against docs.oracle.com
+and re-verified 2026-08-17. That file is the **only** permitted source of a
+"documented" claim in the application, and every citation it carries is an entry
+in `app/src/engine/citations.ts` (URL + the quoted sentence). The rules
+condensed out of it:
+
+- **A far sync instance is not a database and never becomes one.** Documented:
+  it "manages a control file, receives redo into standby redo logs (SRLs), and
+  archives those SRLs to local archived redo logs", and it "does not have user
+  data files, cannot be opened for access, cannot run redo apply, and can never
+  function in the primary role or be converted to any type of standby database"
+  (19c C&A, *Creating a Far Sync Instance*). It has no broker *state*, no apply
+  lag and no open mode, and its SRLs "cannot be shared with other databases".
+  It needs an Active Data Guard licence. **Never draw a far sync edge as
+  replacing the primary↔standby link**: the same chapter requires "a direct
+  network connection between the primary database and the remote standby
+  database … used to perform health checks and switchover processing tasks".
+  Transport: primary→far sync SYNC (all committed redo on disk at the far sync)
+  or ASYNC in MaxPerformance; far sync→terminal is documented as ASYNC — SYNC
+  onward is undocumented, so word it "documented as ASYNC", **never
+  "forbidden"**. Under FSFO the broker requires far sync SYNC or FASTSYNC and
+  the target standby ASYNC. When the far sync dies, the documented remedy is an
+  additional destination shipping straight to the terminal standby, and Oracle
+  says plainly that "this does reduce the protection level because redo
+  transmission is then in ASYNC mode instead of SYNC mode" — the *timing* of
+  MaxAvailability's drop is a composition of that sentence with `NET_TIMEOUT`
+  and is this page's model. How SYNCHRONIZED is computed across the far-sync hop
+  is undocumented: label it a model. Protection modes are a **[CONFLICT]** — the
+  C&A far sync chapter says "maximum performance or maximum availability", the
+  19c broker FSFO prerequisites say a far sync instance "cannot be used in
+  maximum protection mode or maximum performance mode", and 26ai drops only
+  MaxProtection. Cite both sides and say which edition you are drawing.
+- **Cascading has documented limits and one documented silence.** A terminal
+  destination "receives primary database redo indirectly from a standby
+  database"; only physical standbys cascade; real-time cascading needs Active
+  Data Guard; a cascading standby feeds **up to 30 terminal destinations**.
+  Transport out of the cascader is its own `LOG_ARCHIVE_DEST_n`: ASYNC on
+  destinations 1–10 ships in real time, no mode or SYNC on 1–10 ships
+  non-real-time, and 11–31 "operate only in ASYNC (real-time) transport mode".
+  The **cascade depth limit is undocumented** — say so rather than inventing
+  one, and whether protection mode counts cascaded destinations is likewise
+  undocumented (the engine's "no" is an inference and is labelled).
+- **A terminal standby is a legal manual failover target and an illegal
+  fast-start failover one.** Documented, for the manual case, with its own
+  warning: "no attempt is made to transmit any unsent redo from the cascader to
+  the terminal standby" — draw that warning, never a silent success. The FSFO
+  refusal is an **inference from two documented sentences**, not a literal
+  prohibition: the target "must receive redo directly from the primary
+  database", and the far sync feed is the one sanctioned exception. Never write
+  it as a quoted rule; never drop the unsent-redo warning from the manual path.
+  Switchover to a terminal standby is undocumented.
+- **`FastStartFailoverTarget` takes a list, and the broker "selects a target
+  based on the order in which they are specified".** Multi-target arrived in
+  12.2. **Never write "the first viable target"** — order is what Oracle
+  documents, and which candidate a given failure ends on is this page's model
+  (`FSFO.TARGET_SELECTION`). Also documented: the property takes member names or
+  `ANY`; with more than one standby it must be set explicitly; "targets are
+  verified when fast-start failover is enabled"; the reciprocal value is set on
+  the target automatically; and it "can only be set to the name of physical or
+  logical standbys. It cannot be set to the name of a snapshot standby database,
+  far sync instance, or Zero Data Loss Recovery Appliance." `SHOW FAST_START
+  FAILOVER` prints Active Target and Potential Targets with a per-target valid
+  flag; `SET FAST_START FAILOVER TARGET TO name [NOWAIT]` retargets live.
+  Bystanders follow `BystandersFollowRoleChange` (default ALL). How the observer
+  treats a non-target standby is undocumented — it is documented as pinging the
+  primary and the target only.
+- **The "at least one synchronized standby" sentence belongs to two different
+  pages, and only one of them is the C&A protection-modes page.** For
+  **MaxAvailability** it is explicit there: "If the primary does not receive
+  acknowledgement from at least one synchronized standby, then it operates as if
+  it were in maximum performance mode." For **MaxProtection** that page does not
+  spell it out; the wording lives on the 19c broker guide's configuration-members
+  page — "the primary database will shut down, rather than continue processing
+  transactions, if it cannot write its redo stream to at least one synchronized
+  standby database" — so **cite the broker page for the MaxProtection case,
+  never the C&A one**. Same page: "If only one standby database is supporting
+  maximum protection mode, Oracle Data Guard broker will disallow the shutdown
+  of the apply instance", and Oracle recommends a minimum of two standbys "to
+  prevent a single standby database failure from causing the primary database to
+  shut down". MaxProtection cannot be used when the only member receiving SYNC
+  redo is a far sync instance, nor when the only standby is a snapshot standby;
+  logical standbys are not supported in MaxProtection under FSFO.
+- **RedoRoutes grammar, spelled the way the broker spells it.** `(redo source :
+  redo destination)`; source `LOCAL | ANY | name[,name]`; destination
+  `ALL [attr] | name [attr][, name [attr]]`; attribute `ASYNC | SYNC | FASTSYNC`.
+  A source may appear in only one rule per member; an unspecified attribute
+  falls back to the destination's `LogXptMode`; the NULL default at a primary
+  means `(LOCAL : ALL)`; "a redo routing rule is active if its redo source field
+  specifies the current primary database"; "LOCAL … cannot be used at a far sync
+  instance"; "the ASYNC redo transport attribute must be explicitly specified for
+  a cascaded destination to enable real-time cascading". The property cannot be
+  set on a snapshot standby. **`PRIORITY=n` (n = 1…8, default 1 for far sync
+  members and 8 otherwise) is a 19c fact** — it is on the 19c broker properties
+  page word for word, together with "if a primary ships redo to a destination
+  with PRIORITY=8, then it must ship to every PRIORITY=8 destination"; 12.1's
+  `ALT=(name [xpt] [FALLBACK])` is the older spelling and is absent from 26ai.
+  **`GROUP` is a `LOG_ARCHIVE_DEST_n` attribute, not RedoRoutes syntax** — it
+  belongs in the generated `LOG_ARCHIVE_DEST_n` block and nowhere else. Which
+  group a destination is in decides more than routing: a destination inside a
+  parenthesised PRIORITY group re-enters service when it is found accessible
+  (documented, 12.2+), while an ordinary one disabled at `MaxFailure` stays
+  disabled until it is manually reenabled. 26ai adds "a member whose MaxFailure
+  property is set to zero cannot be part of a RedoRoutes group"; that sentence
+  is not on the 19c page, so it is a later-edition claim. Routes are
+  **pre-declared in both directions and nothing rewrites them on a role change**
+  — that is what the documented far-sync examples do, and it is why a standby's
+  `(prm : x ASYNC)` rule is active *now* while its `(LOCAL : …)` rule waits for
+  the role to change.
+- **Member types, as a table, because the differences are the point.** Physical
+  standby: cascades, may be an FSFO target, may be primary. Logical standby: does
+  not cascade, may be an FSFO target, may be primary (and a RedoRoutes rule on
+  one is documented only with a LOCAL destination — the 19c property page
+  contradicts itself here, so it is a `[CONFLICT]`). Snapshot standby: neither
+  cascades nor may be a target. Far sync: forwards redo, never a target, never
+  primary. Zero Data Loss Recovery Appliance: never a target.
+- **Destination counts.** `LOG_ARCHIVE_DEST_n` runs n = 1…31; destinations 1–10
+  take `LOCATION` or `SERVICE`, 11–31 `SERVICE` only. The cascading fan-out limit
+  is **30 terminal destinations** — **never write "30 remote destinations"**,
+  which is a different and wrong claim. The 253-members-per-configuration figure
+  is documented in 12.1 only and is not restated in 19c or 26ai: carry it as a
+  cross-edition citation or not at all.
+- **Multiple observers: three in 19c, four from 21c, and 26ai contradicts
+  itself.** 19c: "There can be up to three observers for a single Data Guard
+  configuration. One is the master observer and the others are backup
+  observers." 21c and the 26ai FSFO chapter say four, and 26ai's `START OBSERVER`
+  page says "you can register up to four observers" with `ORA-16647` for the
+  refusal — while the 26ai `SHOW OBSERVER` page still says "up to 3", as does
+  the 26ai `V$FS_FAILOVER_OBSERVERS` page ("returns three rows"). Draw the
+  edition's number, name the conflict where 26ai is on screen, and never write
+  "three observers" as an edition-independent fact. Also documented: "only the
+  master observer can coordinate fast-start failover with Data Guard broker",
+  and "when fast-start failover is disabled, no observer is called the master
+  observer; all observers have the same functionality" — so a `MASTER` badge
+  while FSFO is disabled is wrong. `SET MASTEROBSERVER TO name` exists; its
+  preconditions are undocumented. `PreferredObserverHosts` (19c) ranks hosts
+  1–8, lower wins, default 8, broker default Null, and "the change does not
+  affect the location of the master observer until the next role change".
+  `ObserverPingInterval`/`ObserverPingRetry`, `ObserverReconnect` and
+  `ObserverConnectIdentifier` are the knobs; there is no `SET OBSERVER`
+  heartbeat command.
+- **`START OBSERVER` spells its file arguments `FILE IS`, never `FILE=`.** The
+  documented form is `START OBSERVER [name] [FILE IS f] [LOGFILE IS l]
+  [CONNECT IDENTIFIER IS ci] [IN BACKGROUND];`, `IN BACKGROUND` preferred, and
+  `-logfile` deprecated since 12.2. `SHOW OBSERVER` "displays the observer name,
+  the host name where the observer is running, whether the observer is the master
+  observer, and the last time the observer pinged the primary and standby", and
+  reports correct last-ping information only while FSFO is enabled.
+- **Observe-only mode is documented and does not fail anything over.**
+  `ENABLE FAST_START FAILOVER OBSERVE ONLY;` — "the primary database can be
+  opened even if there is no acknowledgement from the observer or target
+  standby", "you can switch over or manual failover to a bystander database",
+  the observer log says "Unable to failover since this observer is in
+  observe-only mode", and `V$DATABASE.FS_FAILOVER_MODE` reads `OBSERVE-ONLY`.
+- **Three more spellings worth pinning.** `ConfigurationWideServiceName`
+  defaults to `primarydbname_CFG` and "the service name does not change after a
+  role transition" (19c, introduced 12.2). `TransportDisconnectedThreshold`
+  (19c, broker default 30 s, 0 = no warnings) generates a **warning status**
+  when the last communication from the primary exceeds it — it is never a
+  failover clock. The 19c list headed "Fast-start failover cannot occur if:"
+  opens with "Fast-start failover is no longer enabled"; "The master observer is
+  not running" is its **fourth** of ten entries — never call it the first.
+
+The traps that have caught this repo before, in one line each — `facts.md`
+carries them as its top-five list: `FILE IS`, not `FILE=` · `GROUP` is a
+`LOG_ARCHIVE_DEST_n` attribute, not RedoRoutes syntax · "selects a target based
+on the order in which they are specified", never "first viable" ·
+MaxAvailability's "at least one synchronized standby" sentence is on the C&A
+protection-modes page and MaxProtection's is on the 19c broker members page, so
+cite the right one · a terminal standby is a valid **manual** failover target
+(with the unsent-redo warning) and fails the FSFO direct-redo prerequisite ·
+and the observer count, which 26ai gives as four in its FSFO chapter and three
+on its `SHOW OBSERVER` page.
+
 When adding new claims, verify against docs.oracle.com first and note the
 source in `diagrams/README.md`.
 
 ## Shared visual language
 
 Lanes top to bottom: Primary, Observer, Standby. t = 0 is the failure event.
-Phase colors (light-mode hexes; the simulator maps them to theme tokens):
+Phase colors (light-mode hexes; both pages map them to theme tokens):
 teal `#0E7C6B` serving/open · blue `#2563EB` standby applying · amber `#D97706`
 waiting/countdown · red `#D64545` down/stalled (hatched fills) · violet
 `#6D5AE6` observer decisions · slate `#475569` neutral. Parameter names always
@@ -405,575 +713,358 @@ Regenerate a PNG after editing an SVG:
 
 (W×H = the SVG's viewBox size.)
 
-## The simulator
+## The topology simulator (app/)
 
-`simulator/fsfo-simulator.html` is a self-contained fragment (no doctype/html/
-head/body; `<title>` first). **It must stay pure ASCII** — because it has no
-`<head>`, it carries no `<meta charset>`, so any raw em dash or `×` renders as
-mojibake (`Timeline â€” primary crash`). Escape by region: named entities in
-markup, `\uXXXX` in JS strings, plain ASCII in comments. Full rule and the
-verification command are in [CLAUDE.md](CLAUDE.md). Other constraints: zero
-external requests (artifact CSP),
-vanilla JS, token-based theming — palette custom properties on `:root`,
-redefined under `@media (prefers-color-scheme: dark)` AND under
-`:root[data-theme="dark"]` / `:root[data-theme="light"]` so the host toggle wins
-both ways. Every section is driven by a pure function inside a marker pair —
-`computeFsfo(c)` in `/* MODEL:START */`…`/* MODEL:END */`, plus `APPMODEL`,
-`COMMITMODEL` and `REOPENMODEL` below. The four blocks are DOM-free and
-closure-free, so a standalone node test is their concatenation, extracted
-between the markers — concatenate `MODEL` first: `computeApp` shares its
-`pickTickStep` (the millisecond- and minutes-scale blocks carry their own
-tick helpers because their ladders genuinely differ). `site/test.mjs` does
-exactly this and asserts the documented invariants; `site/publish.sh` runs it
-after every build. Timing model: initiate =
-threshold, or pingInterval × (pingRetry + 1) when the ping properties are set;
-blocked when MaxPerformance and lag > lag limit; a stalled primary's abort
-always uses the threshold. `computeFsfo` also has an `observer-lost` branch
-(below) returning `observerLost` and `ifDiedNow`, and a `switchover` branch
-returning `switchover`, `tDown`, `tConvertEnd`, `downtime` and `tRestartDraw`.
+`app/` is the current page: draw a Data Guard configuration, break it, watch the
+clocks. It is TypeScript + Vite + Preact + `@preact/signals`, English only, with
+zero external requests at runtime. The three design documents in `app/design/`
+are the specification — `engine.md` for the domain engine (including §10,
+*Deviations from the design as built*), `ui.md` for the application (including
+its as-built notes), `facts.md` for the Oracle facts — and this section is the
+map, not a replacement for them.
 
-**Every return path carries `m.outcome`** — `failover` · `continues` ·
-`stall-noone` · `manual` · `observer-lost` · `switchover` — and the renderers
-branch on it, never on the scenario name, because the same failure tells a
-different story per observer placement. Between the scenario and the outcome sit
-five reachability facts the model derives once and the drawings read straight
-off it: `stalled`, `standbyGone`, `redoFlowing`, `pmyReachable`, plus the
-effective `scenario` echoed back (an `observer-lost` scenario with no observer
-deployed is a plain crash, and the model says so rather than letting the rail and
-the drawing disagree). `c.observerLoc` is defaulted to `dc3` **inside** the
-model: that one line is the whole back-compatibility story for shared links,
-stored configurations and export files written before the control existed.
+Commands, all from `app/`: `npm run dev` (Vite dev server), `npm run build`
+(`tsc --noEmit` then `vite build`, straight into `../_site/`), `npm test`
+(vitest, one pass), `npm run test:watch`, `npm run typecheck`.
 
-The page is split into six chapters — `#ch-clocks`, `#ch-transport`, `#ch-app`,
-`#ch-config`, `#ch-side`, `#ch-reference` — each a `<section class="chapter">` wrapper that opens with a
-screen-reader-only `h2` (class `chdiv-t sr`, the `aria-labelledby` target and
-the translation hook; the old visible divider bands are gone) and is listed
-in the sticky `<nav class="chapnav">` sitting between the hero and chapter 1.
+### The engine (`app/src/engine`, pure and DOM-free)
 
-**Prose is opt-in, per section.** In the visual sections the `.sec-hd` header
-and intro caption sit *below* the workbench/drawing (chapter 4's card sections
-keep theirs on top — moved below, a header reads as the next block's label), and
-each section's `.sec-hd`, `.notes` grid and static `.caption` (those without an
-`id`; dynamic state captions all have ids) hide behind one **"Explain more"**
-button. A small IIFE injects that button at the position of the first hidden
-block, so the control *is* the explanation's place on the page — no global
-switch to find, and nothing silently missing. It adds `.prose-managed` to the
-section (the hide rules key on it, so without JS nothing is hidden — the same
-contract as the tabs), `.prose-only` where the section is nothing but prose
-(chapter 1's note grid, which then collapses to the button alone), and toggles
-`.prose-on` on click, relabelling the button `Hide` and flipping its arrow.
-Exempt: the Reference chapter, skipped in the script because its headers caption
-tables, and print (a printout always carries everything, and the buttons do not
-print). State is deliberately not persisted: the affordance is visible at every
-spot, so re-opening costs one click.
+Everything the page asserts is computed here, and nothing here touches the DOM,
+does I/O, reads a clock or calls `Math.random`. `app/src/engine/__tests__/purity.test.ts`
+walks the import graph and fails if `preact`, `@preact/signals` or a browser
+global appears in it; `app/test/import-boundary.test.ts` keeps the layering
+(the UI imports from `engine/index.ts`, never from a module deeper in).
 
-**The chapters are tabs.** A second, self-contained IIFE at the end of the file
-turns the bar into a tablist: one chapter is in the document at a time, the
-others carry `hidden`. Four things follow from that, and each is load-bearing:
+- **Types** (`types/topology.ts`, `types/events.ts`, `types/trace.ts`,
+  `types/claims.ts`). The authored document is `TopologyDoc`: sites, hosts,
+  links, members (`DatabaseMember` | `FarSyncMember`), observers, one
+  `Configuration` with its `FsfoConfig`, a `ClientDescriptor`, environment
+  params and the event list. Derived output — `RedoEdge`, `ResolvedMember`,
+  `RedoGraph`, `Epoch`, `Lane`, `Segment`, `Trace`, `DerivedFacts` — lives in
+  `types/trace.ts`, because it is output rather than something anyone authors.
+- **Accuracy labelling is a data type.** `Claim<T> = { value, basis, cite[],
+  note? }` with `basis` one of `documented` · `doc-later` · `conflict` ·
+  `inferred` · `model`, and `Finding` (a validation or run-time issue) carries
+  the same three fields beside its severity. A claim that is not `documented`
+  must carry a note; a `documented` claim must carry a citation. `severity` and
+  `basis` are orthogonal — an `error` can rest on a model, and often does.
+  **This is the mechanism the accuracy rules run on**: an unlabelled model is a
+  type error, not a review finding.
+- **The citation catalogue** (`citations.ts`) is 127 entries of URL + the
+  quoted sentence + which edition's page it is + `verified: 'primary' |
+  'cross-edition'`. Some entries also carry `forbiddenFor`: a source the
+  accuracy rules rule *out* for a named fact (`FORBIDDEN_FACTS` — the 26ai
+  `FastStartFailoverLagLimit` property page for the mode question, the broker
+  page for `MAX_FAILURE` semantics, `log file parallel write` for the
+  max-not-sum rule, Task 3 for the MaxAvailability transports).
+  `assertCitesAllowed(fact, cites)` throws when one is used there, and
+  `app/src/engine/__tests__/citations.test.ts` walks every entry. Adding a
+  documented claim means adding its citation here first.
+- **The redo resolver** (`redo/parse.ts`, `redo/resolve.ts`). A
+  recursive-descent parser round-trips the DGMGRL spelling of `RedoRoutes` in
+  both dialects (12.1 `ALT=(… FALLBACK)`, 19c/26ai `PRIORITY=n`).
+  `resolveRedoGraph` activates the rules whose source names the current primary,
+  expands `ALL`, resolves each destination's transport (`dest.xpt ??
+  receiver.logXptMode`), picks the priority group, walks BFS from the primary
+  and returns edges with their role (`primary-direct`, `primary-to-farsync`,
+  `farsync-onward`, `cascade`), each member's synchronized/counts-toward-ack
+  `Claim`, and the configuration's protection level.
+- **The failure engine** (`sim/*`) is an epoch loop over a closed-form kernel: the
+  timeline is cut into epochs by external events and internal deadlines, the
+  network and redo graph are constant inside an epoch, and each pending clock
+  contributes one closed-form deadline. `simulate(doc, events, params)` returns
+  a `Trace` — epochs, lanes, `Decision`s (one per branch, each carrying its
+  `Claim`, which is what the prose is generated from), `DerivedFacts` and
+  findings. `stateAt(trace, t)` is a binary search over the epochs, which is why
+  scrubbing is free. `sim/dests.ts` is where the destination bookkeeping lives:
+  REOPEN attempts counted per destination, `MaxFailure` disabling one for good,
+  an alternate latching, a PRIORITY-group destination re-entering service.
+- **The compat adapter** (`compat/classic.ts`) rebuilds the published 1+1+1
+  deployment out of the general model — `classicTopology(knobs)`,
+  `scenarioEvents`, `legacyComputeFsfo`, `toLegacyModel` — and
+  **`app/test/legacy-matrix.test.ts` runs the legacy fragment's 24-cell
+  scenario × observer-location outcome matrix against it, cell for cell, plus
+  the stall table, the clock invariants and the 19c-invariance loops.** That
+  test is the gate: the general engine may not "improve" on the verified
+  outcomes. Change a cell there and you are changing `site/test.mjs`,
+  `diagrams/README.md` and the fragment in the same commit, or you are wrong.
+- **Validation** (`validate/*`) is 47 rules in one catalogue (`RULE_CATALOGUE`,
+  two of them 26ai-only), each with an id, a severity, a permitted set of bases
+  and its citations: far sync never primary, FSFO target kind and direct-redo,
+  multi-target explicitness, the protection-mode/transport table, the RedoRoutes
+  grammar rules, cascading restrictions, observer count and placement,
+  destination ranges, the ORA-numbered edit refusals. `validate(doc)` returns a
+  sorted `Finding[]`; the UI's issue list, the generated scripts' notes and the
+  inspector's refusals all read that one list, so a rule is worded once.
+- **The other three models** (`models/*`) are the ported legacy views:
+  `computeApp` (the client's retry ladder over N addresses), `computeCommit`
+  (one commit under SYNC/FASTSYNC/ASYNC, `max(local write, remote ack path)`,
+  the far sync hop terminating the commit) and `computeReopen` (the
+  `ReopenSecs`/`MaxFailure` aftermath), plus `models/axis.ts`, which is the
+  legacy tick-step and horizon arithmetic unchanged.
+- **The generators** (`generate/*`) emit structured `Line`s rather than text —
+  `cmd`/`note`/`comment`/`blank`, a tone, a highlight flag and `data-member`
+  spans — which is what makes the Configure panels able to cross-highlight
+  against the canvas. Files: DGMGRL script, `LOG_ARCHIVE_DEST_n`,
+  `tnsnames.ora` + JDBC, and the `SHOW CONFIGURATION` / `SHOW FAST_START
+  FAILOVER` / `SHOW OBSERVER` mocks. Every mock block carries a generated header
+  saying it is rendered from this page's model, and the undocumented spellings
+  inside it are marked. Goldens in `app/test/__golden__/` pin five topologies.
 
-- **Nothing is hidden by markup or by CSS alone.** The script adds `is-tabbed`
-  to `.fsfo`, and only then does `.chapter[hidden]` become `display:none`. With
-  no script the six chapters read top to bottom exactly as they did before
-  tabs, and the bar is a list of in-page anchors. The print rule takes the same
-  route back — it un-hides all six, so a printout, and a find-in-page over it,
-  still carries the whole document.
-- **Opening a chapter repaints its drawings.** A sketch built while its wrapper
-  measured zero fell back to 880 px, so `show()` dispatches a `resize` event
-  and lets the model block's own width comparison repaint what moved. The
-  `ResizeObserver` there fires on *some* of these visibility flips but not all
-  of them — verified — so the event is what makes it certain.
-- **Anything that jumps to an element measures a rect, so the chapter has to be
-  open first.** `window.DGTabs.reveal(node)` opens the chapter containing a
-  node; `jump()` in the URL IIFE calls it, and the config pill skips
-  workbenches whose `offsetParent` is null (a closed chapter has no box, and an
-  all-zero rect otherwise reads as "scrolled past").
-- **Never measure the bar's own position with `getBoundingClientRect`.** It is
-  sticky, so once pinned its rect top reads 0 and "how far down the document is
-  it" always comes back as the current scroll position. `show()` measures the
-  panel instead.
+### State (`app/src/state`)
 
-It also measures the bar into `--navh` (the chapters' `scroll-margin-top` and
-the control rails' sticky offset both derive from it), and appends the prev/next
-pager at the foot of each panel, reading its titles off the nav links so a
-language switch just rebuilds it. New sections belong **inside** one of the six
-wrappers. The one deliberate exception is the page footer (`.pgfoot`, the byline
-and the link to davidbudac.cz), which sits after the last chapter but inside
-`.fsfo` precisely so it is not a chapter's content and shows on all six tabs —
-note that the `.foot` footnote block is *not* the same thing: it lives in
-`#ch-reference` and is visible only there. Only the byline span is in the i18n
-snapshot; the domain beside it is not prose and carries no catalog entry. Prose that points at another chapter uses an `<a class="xref">`; a
-delegated handler in the same IIFE opens the target's chapter before scrolling,
-because the browser cannot scroll to an element that is still `hidden` — the
-`hashchange` path alone opens the chapter but leaves the reader where they were. Related: `.fsfo` uses `overflow-x:clip`, not `hidden`, because `hidden`
-forces `overflow-y` to `auto`, which makes `.fsfo` a scroll container and
-silently kills every `position:sticky` inside it (the control rails included).
+**Document versus View.** The Document is what a share link, an export file and
+undo contain: the topology, the events, the params and the canvas drag
+overrides. The View is what a reload may forget: mode, selection, hover,
+playhead, panel tab, lesson, theme, edition, drawer state, toast. `doc.ts` holds
+the one `doc` signal, `view.ts` the view signals, `derived.ts` every computed
+value in one file and one direction (`primaryId` → `issues` → `redoGraph` →
+`geometry` → `trace` → `frame` → `readout` → the generated scripts). **No
+component computes domain state locally.**
 
-**URL state.** A fourth self-contained IIFE at the end of the file keeps the
-address bar holding a shareable link to the current configuration: every
-non-default control value rides as a short query parameter (`?pm=perf&lag=45`,
-composing with the `#chapter` anchors), restored on load. Its `FIELDS` table is
-the single source of truth for the key vocabulary — hand-assigned short keys
-decoupled from element ids, radio maps doubling as the validation whitelist.
-Values from the URL are clamped to the control's live min/max, snapped to its
-step, and anything else is ignored; nothing from the URL reaches `innerHTML` or
-state unclamped. Serialization is rAF-collapsed **plus a ~300 ms trailing
-debounce — mandatory, not polish: WebKit rate-limits `history.replaceState` to
-about 100 calls per 30 s and a slider drag alone would trip it.** Listeners sit
-on `document` in the capture phase so they also catch non-bubbling programmatic
-dispatches (the click-to-type commit was one until it gained `bubbles:true`).
-The load-bearing architectural rule: `C`/`K`/`R`/`A` live inside the first
-IIFE's closure and are unreachable — anything outside pushes state by setting
-`.value`/`.checked` and dispatching the control's own `input`/`change` event,
-never by calling into the models. There is no URL key for `#cm-rtt`; it is a
-second face of `#c-latency` (`lat`), reconciled on every draw.
+- **Undo/redo** (`history.ts`): immutable Document snapshots through
+  `edit(label, fn, coalesceKey?)`, 700 ms coalescing per gesture, cap 100, and
+  user-facing labels ("Undo: set LogXptMode to FASTSYNC on stby01"). Layout
+  drags and event injection are edits; view state never enters history.
+- **URL** (`url.ts`, `codec.ts`): the document rides the fragment as
+  `#t=<base64url(deflate-raw(JSON))>`, with `#t0=` as the uncompressed fallback
+  and `#cfg2=`/`#cfg=` read for older payloads. There is an 8000-character cap
+  and an honest refusal when it is exceeded — the page says the document is too
+  large for a link and points at Export, rather than handing out a truncated
+  one. Query keys are human-readable and defined exactly once, in the
+  `URL_FIELDS` table: `ed`, `mode`, `panel`, `sel`, `t`, `preset`, `lesson`,
+  `step`, `theme`. Values are clamped on read and unknown tokens are ignored and
+  then dropped from the address bar. Writes go through rAF plus a 300 ms
+  trailing debounce — WebKit rate-limits `replaceState` to roughly 100 calls per
+  30 s and a scrub would trip it.
+- **Persistence** (`persist.ts`): `dg-doc-v1` (the Document, debounced),
+  `dg-theme` and `dg-ed` (the two reading preferences, same keys the legacy page
+  uses, so a reader who set them there keeps them here). `dg-fsfo-cfg-v1`, the
+  legacy page's key, is read once and migrated, never deleted. Every access is
+  wrapped, because private-mode Safari throws on `localStorage`.
+- **Legacy URL upgrade** (`legacy-url.ts`): the old query keys (`sc`, `ol`,
+  `pm`, `th`, `ps`, `pi`, `pr`, `lag`, `ll`, `lt`, `tla`, `lgt`, `lp`, `rt`,
+  `lat`, `xpt`, `rs`, `mf`, `tct`, `ct`, `rc`, `rd`, …, plus `ver` for the
+  edition) become a topology
+  through `migrateLegacyQuery`, and the six chapter anchors become a mode and a
+  panel — `ch-clocks` → Break, `ch-transport` → Configure/Commit, `ch-app` →
+  Configure/Application view, `ch-config` → Configure/DGMGRL, `ch-side` →
+  Learn/SYNC transport, `ch-reference` → Learn/Reference. `#cfg=` payloads go
+  through `migrateV1`. The canonical URL is then written with `replaceState`.
+  `?lang=cs` is **not** silently dropped: it raises a notice offering
+  `/dataguard/legacy/`, because that is where the Czech reading lives.
+  `app/test/ui/legacy-url.test.ts` and `legacy-anchors.test.ts` pin the mapping,
+  and `site/smoke.mjs` checks one real published link end to end.
 
-**Demo links.** Prose cards that assert something the workbench can demonstrate
-carry a `data-demo` attribute; the fourth IIFE's `DEMOS` table maps each slug to
-the parameters that prove the claim plus the workbench to jump to, and injects a
-"Show me ..." button. A demo applies **over the defaults baseline**, resetting
-every unlisted control — reproducibility is the point — and the URL serializer
-then makes the address bar that demo's permalink by itself. The jump waits two
-rAFs (the redraw queued in the first can change page height above the target).
+### The interface (`app/src/ui`)
 
-**Page chrome (the third IIFE).** Two injected pieces, no markup of their own:
-the **Notes toggles** — every `.rail` containing a `.ctl-note` gets
-`notes-managed` plus a Notes button toggling `notes-open`; collapsed rails hide
-notes and tighten `.ctl` padding so the rail fits the viewport, but `.is-warn`
-notes always punch through (they are state, not documentation, and several
-appear only mid-interaction), and a focused control reveals its own note
-(`:focus-within`, deliberately never `:hover`) — and the **config pill**
-(`.cfgpill`), a fixed chip shown while no workbench is on screen and one has
-been passed, restating the last workbench's headline settings and first readout
-chip from the rendered DOM (so it can never contradict the controls) and
-jumping back on click. Standing rule for anything similar: new chrome is a
-self-contained IIFE that injects its own DOM, degrades to nothing without JS,
-and never reaches into another IIFE's closure — push state via controls plus
-dispatched events only.
+Four modes over one persistent canvas — **Build** (inspector, validation issues,
+steady-state readout), **Break** (event menu and event list, timeline,
+transport, outcome readout), **Configure** (seven generated panels: DGMGRL ·
+`LOG_ARCHIVE_DEST_n` · tnsnames/JDBC · SHOW · Application view · Commit ·
+Reopen) and **Learn** (nine lessons: the six ported chapters plus Far sync,
+Cascading, Multiple observers and targets). The canvas never blinks: switching
+modes changes what is around it.
 
-The workbench carries **six scenarios**, in rail order: primary **crash**,
-**isolated** primary (every link out of the primary's site fails), **partition**
-(only the link between the two database sites fails), **standby site down**
-(`dc2down` — the whole standby data centre, and anything else in it), **observer
-lost** and planned **switchover**. Crossed with them is the **observer-location**
-control that sits directly beneath: **none** / **primary site** / **standby
-site** / **third site** (the default, and what the page always assumed). That is
-24 states, and the outcome of every one of
-them is a literal table in `site/test.mjs` and a prose table in
-`diagrams/README.md` — change one and change all three. The radio labels are deliberately role-relative and static, never the
-configured site names: `.seg-row label` is in the i18n snapshot, so a
-runtime-rewritten label would be clobbered on `setLang`; the configured names
-arrive in the `ctl-note` through `t()` placeholders instead.
+- **Canvas** (`ui/canvas/`): `layout.ts` ranks members by BFS over the resolved
+  redo graph, columns them by site, packs rows and draws the site rectangles —
+  pure and deterministic, so it has goldens. `routing.ts` routes the links with
+  at most two bends, allocates channels per corridor, and places each link's
+  caption on a four-rung ladder that keeps it out of cards, other captions, site
+  rectangles and other links' lines. Routing and drawing both run in two passes
+  (every route, then every caption; every line, then every card, then every
+  caption) so a caption is never painted over by a line routed after it.
+  `app/test/ui/canvas-presets.test.ts` holds all eleven presets to the collision
+  rules and to a geometry golden.
+- **Timeline** (`ui/timeline/`): `build.ts` is a pure
+  `buildTimeline(trace, topology, view) → TimelineModel`; the component maps it
+  to VNodes. Lane order is primary, observers (master first, and no master at
+  all while FSFO is disabled), far syncs, then standbys in BFS order with
+  cascaded ones indented. The playhead is its own component subscribing to
+  `tNow` alone.
+- **Panels** (`ui/panels/`): the generated files, rendered from the engine's
+  structured lines, with copy buttons and line ⇄ canvas cross-highlighting. On
+  paper all seven stack: `Panels` listens for `beforeprint` and for a
+  `matchMedia('print')` change, because a tab that is not open is not in the
+  document and no CSS rule can bring it back.
+- **Lessons** (`ui/learn/`, `src/content/`): prose in TSX, ported by copy rather
+  than rewritten (the accuracy rules travel with the sentences), steps that
+  apply a document patch so "Show me" is reproducible, and the reference tables
+  and footnotes as data. `app/test/content/*` renders every lesson and every
+  reference table.
+- **The WhyPill contract.** `WhyState = { state: 'on' } | { state: 'off'; why: string }`.
+  `{ state: 'off' }` does not type-check without a reason, so a disabled control
+  that explains nothing cannot be written by accident — the legacy page's "every
+  gray control carries a pill saying why" rule, enforced by the compiler instead
+  of by review.
+- **No inline style, no inline script.** `style-src 'self'` means **no `style`
+  props anywhere**: dynamic geometry goes through SVG presentation attributes
+  (`x`/`y`/`width`/`transform`), dynamic theming through classes. The one escape
+  hatch is `el.style.setProperty` through a ref, used in exactly one place —
+  `App.tsx` writing the measured bottom of the status bar into `--bar-bottom`,
+  because both bars wrap on a narrow window and a toast pinned to their nominal
+  height paints over them. `site/build.mjs` fails the build on an inline
+  `<script>`, an `on*=` handler or a `style=` attribute in the built page.
+- **The event menu has one home per layout, never two.** On a wide screen it is
+  the first group at the head of the Break rail; once the rail has become a
+  drawer it moves under the drawing, because a menu inside a closed drawer is a
+  menu nobody finds. It is a panel with a fixed place, not a popup at the
+  pointer — `style-src 'self'` forbids positioning anything from script, and a
+  panel that stays put is one the reader can find again.
+- **The readout is mode-aware**: Build and Configure read the steady state even
+  when the Document carries events; Break and Learn read the outcome at `tNow`.
+- **Keyboard and aria**: the canvas is a `role="group"` with a generated
+  sentence set and a visually hidden structural table; one card per site is the
+  tab stop (a roving `tabindex`, spelled lower case — the camel-cased JSX
+  spelling lands on an SVG `<g>` as an attribute SVG has never heard of, and the
+  card silently takes no focus). `E` opens the event menu in Break, `Delete`
+  removes in Build with the same refusals the inspector's button gives. The
+  drawer and the sheet are modal dialogs and keep a dialog's promises: `Escape`
+  closes, opening moves focus in, closing hands it back.
 
-**Every gray control carries a pill saying why.** `.ctl-pill` is a small
-uppercase chip at the top of the control (`ctlPill(ctl, why)`, created on
-demand), and `depPill(input, why)` puts the same chip under a field on the
-configuration card, where there are no notes to fall back on. It exists because
-the notes collapse with the rail and the pill does not — a shut rail still
-answers the question the gray raises. Three rules:
+### Tests
 
-- The wording lives in one table, `WHY`, because the same reason grays several
-  controls at once and the reader should recognize it as the same reason. Each
-  entry is the control's note compressed to its clause — never a new claim.
-- It is set from state on *every* pass, exactly like the `is-off` class, so a
-  null reason clears it. Every branch of `renderControls` that grays a control
-  must also set (or clear) its pill, including the three early-return branches.
-- `.ctl.is-off` fades its *children*, not itself, so the pill stays legible on a
-  faded control. Do not put the opacity back on the parent.
+`npm --prefix app run test` is **1114 tests across 50 files**. What is where:
 
-Two pills name a single gray *radio* rather than a gray control — the
-observer-lost scenario under **none**, the both-sites placement under 19c — and
-so name the option they are talking about.
+- `app/src/engine/__tests__/` — the engine's own unit tests (purity, citations,
+  claims, schema, migrate, URL codec, parse, resolve, graph, axis, classic).
+- `app/src/engine/validate/__tests__/` — the rule catalogue and the rules.
+- `app/test/legacy-matrix.test.ts` — **the 24-cell gate** described above.
+- `app/test/legacy-models.test.ts`, `legacy-fragment-parity.test.ts` — the three
+  ported models and the fragment's numbers.
+- `app/test/sim-*.test.ts`, `models-general.test.ts`, `presets.test.ts` —
+  scenario, property and invariant tests over the general engine and all eleven
+  presets.
+- `app/test/generate.test.ts` + `app/test/__golden__/` — the generated DGMGRL,
+  `LOG_ARCHIVE_DEST_n`, tnsnames/JDBC and SHOW output for five topologies.
+- `app/test/ui/` + `app/test/ui/__golden__/` — canvas layout and routing
+  goldens for all eleven presets, keyboard and aria, the timeline model, the
+  panels, the inspector, the shell, history, the share-link round trip, the
+  legacy-URL upgrade.
+- `app/test/content/` — every lesson and reference table renders.
+- `site/smoke.mjs` — the built bundle in a browser (see Publishing).
 
-**None means fast-start failover is not enabled at all** — not "enabled but
-unobserved" (see the accuracy rules). Every control that only a failover gives
-meaning to goes inert through the same borrow-and-restore pattern as the two sets
-below, with its own note table (`NOFSFO_NOTES`): the threshold, the
-`ObserverPing*` switch and sliders, `FastStartFailoverLagLimit`,
-`FastStartFailoverPmyShutdown`, the role-transition time — and the observer-lost
-radio itself, which is `disabled`, because there is no observer to lose. Two
-gates now key on the *model* rather than the scenario name, and must stay that
-way: the threshold is disabled when the ping properties are set **and the primary
-is not stalled** (a stalled primary still runs its stall clock off the
-threshold), and `FastStartFailoverPmyShutdown` is live exactly when
-`m.stalled` — which is true in the partition and standby-site-down cells too,
-not just under full isolation.
+A golden is a record of geometry or of generated text, not of a domain fact.
+When a golden changes, say in the commit message which of the two it was.
 
-**Observer lost** kills the only observer host at t = 0: the primary keeps
-serving because it still reaches the target standby, the standby keeps applying,
-and no fast-start failover is possible at all — so every control that governs a
-failover clock grays out, the lanes stay flat, and the "What the timeline shows"
-grid explains why nothing happens. Its `ifDiedNow` value is what the primary's
-death during the blind window would cost.
+### The edition switch (19c / 26ai), as it works now
 
-**Switchover** is the only planned event on the page: t = 0 is the DBA issuing
-`SWITCHOVER TO` the target standby, not a failure. It has its own `computeFsfo` branch
-(`switchover: true`, returning `tDown`, `tConvertEnd`, `downtime`, `tRestartDraw` and the two
-nominal constants `SW_VERIFY`/`SW_CONVERT`), its own timeline builder and its own `computeApp`
-branch — the ladder there starts at `tDown` and every address refuses instantly, because both
-hosts stay up. `blocked` means the broker **refused** the command (MaxPerformance, lag beyond the
-limit) and then nothing else happens: no conversion, no downtime, and the app view is a no-event
-with its own wording (`switchoverRefused`). Four controls gray out through the same
-borrow-and-restore pattern as observer lost (`SW_NOTES`): the threshold, both `ObserverPing*`
-sliders and their switch, `FastStartFailoverPmyShutdown`, and — in chapter 3 — the dead-address
-behaviour toggle, which has nothing to describe when neither host is dead. The apply lag, the lag
-limit, the role-transition time and the protection mode all stay live, because each still changes
-the outcome. The swap itself is identical at all four observer locations — the observer is a
-spectator here — so the placement contributes exactly one appended, role-relative sentence per
-location to the prose, and nothing else. With **none**, the lag limit joins the grayed set: the
-MaxPerformance refusal is FSFO's own gate, so with nothing armed the command is simply accepted.
+The top bar carries a 19c/26ai toggle. It is a **reading preference, not part of
+the Document**: it lives in its own `edition` signal, is persisted under
+`dg-ed`, rides the URL as `?ed=26ai`, and is deliberately absent from the
+exported file and the share payload — so "Reset", an import and a shared link
+all leave the reader's edition alone. `TopologyDoc.config.edition` is what the
+engine reads, and the boot path writes the preference into it.
 
-The four cells where no role is transferred get **two shared timeline builders**, one per shape, as
-the file's one-builder-per-shape convention requires. `buildFlatTimeline` draws `continues` and
-`manual`: three flat lanes, one event marker, no braces and no countdown, with the lane content
-coming from `flatLanes(m)`, which reads `standbyGone` / `redoFlowing` / `pmyReachable` off the model
-rather than the scenario name. `buildStallTimeline` draws `stall-noone`: the primary teal →
-`STALLED` → aborted, observer and standby lanes hatched, and a single brace over a stall clock that
-is counting down to nothing. Three constraints carried over: the **three lanes stay, always** — the
-observer lane sitting empty under `none`, labelled "not deployed", *is* the lesson; `NET_TIMEOUT` in
-the `continues` cells is **caption-only**, never a band and never a model field, because the
-accuracy rules forbid drawing it as a failover clock; and the stall visuals key on `m.stalled`, not
-on `scenario === 'isolated'`, which is what makes the partition cell draw its stall correctly.
+What the edition actually changes: the two `RULES_26AI_ONLY` validation rules;
+the far-sync-with-FSFO protection-mode conflict (19c excludes MaxProtection and
+MaxPerformance, 26ai only MaxProtection); `FastStartFailoverLagLimit`'s
+MaxAvailability role and with it the readiness gate; `computeCommit`'s verdict on
+ASYNC under MaxAvailability (a mode conflict under 19c, an informational
+"allowed" under 26ai); the observer count ceiling; the two RedoRoutes rules
+that exist only in 26ai (`ROUTES.GROUP_NEEDS_MAXFAILURE`,
+`ROUTES.ALT_NOT_IN_26AI`); and the notes the generators and the reopen model
+attach. Everything it changes is a documented difference with a
+citation on both sides, and where 26ai contradicts itself — the observer count,
+the `ObserverPing*` defaults, the lag-limit mode question — the page shows the
+conflict rather than picking a side.
 
-The **topology strip** carries the placement visually: `renderTopo` picks node positions out of a
-`LAYOUT[observerLoc]` table and wraps each data centre in a dashed `.tp-site` rectangle, so which
-failures are *site* failures and which are only *link* failures is legible at a glance — the third
-site's rectangle is drawn only when there is one, the standby site's is hatched `.tp-site-down` when
-it is gone, and under `none` the observer box is replaced by a caption saying fast-start failover is
-not enabled. Which links go down is one `linkState(link)` helper reading the scenario (crash: the
-links touching the primary; isolated: exactly one endpoint in the primary's site; partition: one
-endpoint in each database site; standby site down: the links touching it), so a new scenario is one
-clause there rather than a rewrite. Its aria sentence gains a per-location and a per-scenario
-clause, each a whole i18n key.
+## The legacy fragment (simulator/)
 
-Each database card carries **three** lines — role, then the host the instance runs on in the mono
-face every other host name on the page wears, then the subtitle — so the drawing names the same two
-hosts as the connect string and the DGMGRL cards. The host sits directly under the role because it
-is the identity; the subtitle is the gloss on it and closes the card. That is why the two database cards are 72px tall
-against the observer's 52 and why the vertical links drop to y = 112 rather than 118: `nodeCard`
-centres the badge on whatever height it is given, so the two card shapes still share one axis. A
-host name has no shorter form to degrade to the way the subtitles do (`fitLabel` has nothing to
-fall back on), so an over-long one elides at 19 characters; the un-elided value stays in the aria
-sentence, which gains one more key naming both hosts, and in the configuration card. The crashed
-primary's cross sits on the *name* line, the short one — the subtitle and the host line beneath it
-both run further right.
+`simulator/fsfo-simulator.html` is the page the workbench grew out of: one
+self-contained fragment (no doctype/html/head/body; `<title>` first), vanilla JS,
+zero external requests. It is **frozen** — bug fixes only, new work goes into
+`app/` — but it still ships, at `/dataguard/legacy/`, because every link the
+handover document, the Confluence page and the Czech reading list handed out
+points there, and because it is the only Czech reading of this material.
+`site/build-legacy.mjs` is what wraps it into a page.
 
-The "application's view" section (`#appview`) has its own pure function
-`computeApp(a, m, scenario)` between `/* APPMODEL:START */` and
-`/* APPMODEL:END */` — it consumes computeFsfo's output and simulates one
-worst-case connection request walking the two-address descriptor's retry
-ladder (per-pass toll min(TCT, CT) on the dead address, instant ORA-12514 from
-the standby, RETRY_DELAY between traversals, success once a traversal reaches
-address 2 at/after tOpen). Attempts collapse into an aggregated band when they
-would be subpixel; horizons past ~160 s clip with a "gives up at" annotation.
-The isolated scenario forces drop (a partition drops packets, so no refusal ever
-comes back). It branches on `m.outcome`, and every no-event return says
-which nothing it is describing in `noEventKind`, so the caption can explain the
-right one: `observer-lost` and `switchover-refused` as before, plus `continues`
-(no role change and the primary still answering — nobody dials anything unusual)
-and `stalled` (a `STALLED` primary still runs its listener and still publishes
-the service, so a new connection is accepted exactly as before; the outage is at
-commit level, one layer below anything this ladder can see — say so). Its
-state object is `A`; presets: Defaults (parameter defaults) and Tuned (3/90/30×3,
-HA-guide shape).
+**It must stay pure ASCII.** With no `<head>` it carries no `<meta charset>`, so
+a raw em dash or `×` renders as mojibake (`Timeline â€” primary crash`). Escape
+by region: named entities in markup, `\uXXXX` in JS strings, plain ASCII in
+comments — entities do not decode inside `<script>` or `<style>`. The guard now
+lives in `site/build-legacy.mjs` (which `site/build.mjs` runs, so it still runs
+on every publish) and exits non-zero naming the offending lines. Full rule and
+the by-hand check are in [CLAUDE.md](CLAUDE.md).
 
-Two more sections sit on their own time scales, each with its own pure function:
+Other constraints that still bind anyone touching the file:
 
-- **`#commitview`** — the millisecond-scale anatomy of one commit under SYNC /
-  FASTSYNC / ASYNC. `computeCommit(k)` (`COMMITMODEL` markers) takes the transport
-  mode, the local redo write (0–25 ms), the standby SRL write (0–25 ms) and the
-  network RTT, and returns commit latency as max(local write, remote ack path) —
-  the overlap rule above, not a sum. Chips: commit latency, standby wait,
-  SYNC-vs-FASTSYNC delta, loss exposure. Picking ASYNC while the workbench is in
-  MaxAvailability raises a conflict warning. Its RTT slider is two-way bound to
-  the topology strip's RTT (`C.latency`) — moving either moves both.
-- **`#reopenview`** — the minutes-scale aftermath, starting after the destination
-  is already closed. `computeReopen(r)` (`REOPENMODEL` markers) draws the
-  `ReopenSecs` retries at exact multiples, the `MaxFailure` tripwire that disables
-  the destination for good, the unshipped-redo area with an MB readout off the
-  redo-rate slider, catch-up at 5× the generation rate, and the FSFO disarm
-  marker — t = 0 in MaxAvailability (unsynchronized immediately), t =
-  `FastStartFailoverLagLimit` in MaxPerformance. With **no observer deployed**
-  there is nothing to disarm, and the marker, its chip and the caption all say
-  so — "not enabled in this topology", never "disarmed at". Controls: reopen
-  interval, max failures, outage length, redo rate. Footnote 4 on the page lists
-  the idealizations; `diagrams/README.md` repeats them.
+- **Token-based theming**: the palette custom properties on `:root`, redefined
+  under `@media (prefers-color-scheme: dark)` **and** under
+  `:root[data-theme="dark"]` / `:root[data-theme="light"]`, so the toggle wins
+  both ways. `app/src/styles/tokens.css` carries the same palette.
+- **Four model marker blocks.** Every section is driven by a pure function
+  inside a marker pair — `computeFsfo(c)` in `/* MODEL:START */`…`/* MODEL:END */`,
+  plus `APPMODEL`, `COMMITMODEL` and `REOPENMODEL`. The blocks are DOM-free and
+  closure-free, so a standalone node test is their concatenation, extracted
+  between the markers (concatenate `MODEL` first — `computeApp` shares its
+  `pickTickStep`). **`site/test.mjs` does exactly that**, asserts the documented
+  invariants including the 24-cell scenario × observer-location outcome matrix
+  as literal tables and the 19c-invariance loops, and checks the Czech catalog
+  for dropped placeholders, unbalanced inline markup and bad plural forms
+  (`node --test site/test.mjs`, 68 tests). `site/publish.sh` runs it on every
+  publish. The application reproduces the same 24 cells through its compat
+  adapter, so **that matrix now has three homes — `site/test.mjs`,
+  `app/test/legacy-matrix.test.ts` and `diagrams/README.md` — and a change to
+  one is a change to all three.**
+- **Every return path carries `m.outcome`** — `failover` · `continues` ·
+  `stall-noone` · `manual` · `observer-lost` · `switchover` — and the renderers
+  branch on the outcome, never on the scenario name, because the same failure
+  tells a different story per observer placement. Five reachability facts
+  (`stalled`, `standbyGone`, `redoFlowing`, `pmyReachable`, plus the effective
+  `scenario`) sit between the two and the drawings read them straight off the
+  model.
+- **Six chapters, six IIFEs, one rule.** The page is `#ch-clocks`,
+  `#ch-transport`, `#ch-app`, `#ch-config`, `#ch-side`, `#ch-reference`, turned
+  into tabs by a self-contained IIFE; the "Explain more" prose toggles, the URL
+  state (`FIELDS`), the demo links (`DEMOS`) and the page chrome (Notes buttons,
+  config pill) are four more. **Nothing is hidden by markup or CSS alone** — the
+  script adds the class the hiding rules key on, so a page with no script is the
+  whole document, and printing takes the same route back. **New chrome is a
+  self-contained IIFE that injects its own DOM, degrades to nothing without JS,
+  and never reaches into another IIFE's closure** — push state by setting a
+  control's `.value`/`.checked` and dispatching its own `input`/`change` event,
+  never by calling into the models.
+- **Every gray control carries a pill saying why** (`.ctl-pill` / `WHY` table),
+  set from state on every pass so a null reason clears it. The application
+  enforces the same rule with the `WhyPill` prop type.
+- **The edition switch inside the fragment** is `DG.setEd` / `DG.ed()`,
+  resolution `?ver=` → `localStorage['dg-ed']` → 19c, with prose handled by the
+  `V26` source-string substitution table inside `DG.t()` and structure by the
+  `.fsfo.is-v26` / `data-ver` split. The 26ai English variant is itself a
+  catalog key, so editing a sentence that has a variant means editing the
+  markup, the `V26` key and `simulator/i18n/cs.json` in one commit. A stale
+  variant fails silently — the page shows the 19c sentence.
+- The **fifth, 26ai-only observer placement** (`dc1dc2`, an observer beside each
+  database) was removed deliberately, because two of its six cells were
+  inferences rather than quoted outcomes. Do not reintroduce it; a stale
+  `?ol=both` degrades to the third site through the existing unknown-value
+  fallbacks.
 
-Chapter 4, upper half (`#ch-config`, section `#deployview`) makes the whole page
-configurable per deployment. Three static cards (never innerHTML-rendered, so
-typing keeps focus): **Deployment identity** — a fifth state object
-`ID`/`ID_DEFAULTS` (deployment name, DB unique names, hosts, observer host,
-service, port, the three site labels `dc1`/`dc2`/`dc3`, subtitles); every
-renderer reads it through
-`idv(key)`, which trims and falls back to the fixture default on blank, and
-every value is `esc()`-escaped on innerHTML/SVG paths (or set via
-`textContent` into the `[data-name]` prose spans by `applyNames()`). Two rows on
-that card are newer than the rest: **`#dep-obsloc`**, a `<select>` mirroring the
-chapter-1 observer-location radio in both directions — the one field on the card
-that changes what the page *draws*, rather than what it is called — and
-**`#dep-dc3`**, the third site's label, which carries `data-i18n-skip` like every
-other field whose placeholder is a fixture default. `#dep-host-o`'s placeholder is
-translated prose and is deliberately worded location-neutrally: it is never
-rewritten at runtime to name the current site, because the i18n attribute sweep
-would clobber the write on the next `setLang`. Where the observer runs rides in
-the config file's `sim` block, not `params` — the broker has no property that
-records it.
-**Data Guard parameters** — the same `C`/`A`/`K`/`R` state the chapter 1–3
-rails edit, synced both ways: field listeners write state and mirror the rail
-control; `syncDeployForm()` at the end of `draw()` refreshes every field that
-is not `document.activeElement`, and mirrors the gates (ping fields need the
-checkbox, lag limit is MaxPerformance-only). `K.netTimeout` (default 30,
-bounds 1–120) is edited only here and is **presentation-only**: it lands in
-the dest card's `NET_TIMEOUT` and must never enter `computeCommit`, a
-failover clock, or the broker-properties table. **Save, share, reuse** —
-versioned JSON (`{v:1, deployment:{...}, params:{...}, sim:{...}}`; `sim`
-holds the chapter 1–3 what-if knobs) with file export/import
-(Blob / FileReader, inline `#dep-msg` errors, never `alert()`) and a share
-link that packs the JSON base64url-encoded into `#cfg=`. `applyConfig()`
-starts from the defaults, whitelists keys, clamps numbers against the
-canonical control's min/max/step and ignores unknown keys. Persistence:
-debounced save to localStorage `dg-fsfo-cfg-v1` at the end of every `draw()`;
-boot precedence is `#cfg=` hash > localStorage > defaults, and an applied
-hash is stripped via `history.replaceState` (it is read once at load only, so
-`#ch-*` anchor navigation is unaffected). "Reset everything" restores all
-five state objects, clears the stored key and strips the hash. The config
-pill registers `.dep-cards` as a workbench, which hides the pill while the
-chapter 4 cards are on screen.
-
-Chapter 4, lower half (section `#configview`) is the configuration written
-out: four live code cards — the DGMGRL broker session, the observer start, the
-hand-set `LOG_ARCHIVE_DEST_2` equivalent, and chapter 3's `tnsnames.ora` — all
-regenerated by `renderConfig()` at the end of every `draw()` from C, K, R and
-the shared `buildTns()` builder (no model function of its own; pure
-presentation). Fixture names: primary `prm01` on `dc1-prm01`, standby `sby01`
-on `dc2-sby01`, service `app_svc` — these are **defaults, not literals**: every
-name-bearing renderer reads them through `idv()` (see chapter 4 above), so a
-configured deployment substitutes its own names everywhere at once. Values
-differing from documented defaults
-are highlighted; the DGMGRL cards are transcripts, so their grey commentary is
-parenthetical and unprefixed (DGMGRL has no comment syntax to imitate), while
-the init.ora/tnsnames cards use real `#` comments. Verified command facts
-behind it (sources in `diagrams/README.md`): the FSFO clock properties and
-both `ObserverPing*` are configuration-wide (`EDIT CONFIGURATION SET
-PROPERTY`), `LogXptMode`/`NetTimeout` are per-database (`EDIT DATABASE ... SET
-PROPERTY`), protection mode is `EDIT CONFIGURATION SET PROTECTION MODE AS
-MAXAVAILABILITY|MAXPERFORMANCE`, and `START OBSERVER IN BACKGROUND` is the
-documented preferred observer start. The dest card omits `NET_TIMEOUT` under
-ASYNC (it bounds the SYNC ack wait and never affects sessions under ASYNC) and
-is framed as the hand-set equivalent — never claim it is the literal string the
-broker composes. **The observer card carries the placement**, because the broker
-has no property that records it: the third site is annotated as the HA guide's
-first recommendation, the standby's site as the documented last resort ("on its
-own host, as isolated from the standby as possible"), and the primary's site in
-the `bad` tone as a placement Oracle does not list — arguable only where the
-application tier is local too, and even then the guide prefers the standby's site
-or a third one. With **no observer deployed** there is no session to write down
-at all: the card is the manual `FAILOVER TO` and the note that it is always
-available, observer or not, and the broker card drops the four
-`FastStartFailover*` property commands and `ENABLE FAST_START FAILOVER` while
-keeping `LogXptMode` and the protection mode — the properties exist, nothing arms
-them.
-
-Chapter 5 (`#ch-side`, "Side topics") holds the three things that sit beside the
-mainline story, in the order *prepare · measure · what happens when it breaks*.
-`#sduview` is static: SDU sizing for SYNC, the `SEND_BUF_SIZE`/`RECV_BUF_SIZE`
-socket buffers and the BDP arithmetic behind them, and Oracle's `oratcptest`
-network probe (whose output is where the buffer sizes are read back), with two
-config cards (`cfg-sdu`, `cfg-oratcp`) that get their Copy
-buttons from the config-card wiring for free, because it runs document-wide over
-`.cfg-copy`. Their panes are hand-written and deliberately use `<standby-host>`
-placeholders rather than the `idv()` fixture names — a static pane cannot follow
-a configured deployment identity, so it does not pretend to. `#impactview` is
-static too: a hand-authored containment drawing (reusing `tl-svg tx-svg`, plus
-one added fill token `.b-vi`), the wait-event cards and a table of the AWR
-metrics to capture before and after enabling SYNC. `#nettimeoutview` is the
-NET_TIMEOUT explainer, moved here from chapter 2 unchanged apart from its
-eyebrow and its new id. The facts and the phrasing constraints behind all of it
-are in `diagrams/README.md`; the load-bearing ones are in the accuracy rules
-above.
-
-The simulator is live at davidbudac.cz/dataguard; run `./site/publish.sh` to push
-changes (see Publishing above). Before publishing simulator changes, verify both
-themes and the key states first — and, when the change touches prose, both
-languages (see Languages below): defaults, isolated scenario, MaxPerformance with lag > limit
-(blocked banner), ping properties set (threshold grayed out, ~1.1 s detection);
-observer-lost defaults (flat lanes, Unobserved callout, failover-clock controls
-grayed, each with a pill naming the reason) and switching back out of it (no
-control left stuck disabled and no pill left behind); switchover
-defaults (verify/convert/catch-up/role-change bands, the downtime brace, the
-Role reversal callout, the four grayed controls), switchover in MaxPerformance
-with lag > limit (the refusal banner, flat lanes, no downtime), and switching
-back out of switchover (again, nothing left disabled and every note restored) — in the
-app view: defaults (lucky 60 s hang), defaults + threshold 90 (ORA-12514
-banner), Tuned preset (discrete retry ladder), Refused + RETRY_COUNT 100
-(aggregated band), blocked (budget exhausted, "never" chip), observer-lost
-(no-event state), switchover at the defaults (the give-up banner about half a
-second in) and switchover with the Tuned preset (it rides through, with the
-wasted tail between the open and the connecting pass), switchover refused
-(no-event state with its own wording) — in the commit view: SYNC at RTT 0 (local write is the whole
-commit), FASTSYNC (ack lands before the standby's write finishes), ASYNC (the
-wait bar disappears, plus the conflict warning under MaxAvailability in 19c and
-the "allowed" caveat chip under 26ai) — and in
-the reopen view: defaults, a tripped `MaxFailure` (disabled banner, no
-reconnect), a short reopen interval against a long outage (dense ticks
-aggregate), and MaxAvailability vs. MaxPerformance (disarm marker at t = 0 vs.
-at the lag limit) — and in the config chapter: defaults (every `(default)`
-marker present, no highlights), MaxPerformance (the `FastStartFailoverLagLimit`
-line replaces the not-evaluated note), ping properties on (the two
-`ObserverPing*` lines plus the threshold-ignored math), ASYNC under
-MaxAvailability (red mismatch note under 19c; the allowed-since-26ai note under
-26ai), FASTSYNC under MaxPerformance (red
-MaxAvailability-only note), observer lost (red note in the observer card), and
-non-default reopen/max-failure values flowing into `REOPEN`/`MAX_FAILURE` —
-and in the deployment chapter: a storage-free load renders identically to the
-defaults, typing in a chapter 4 field keeps focus while everything redraws,
-identity values flow into the topology strip / tnsnames / DGMGRL cards / dest
-card / app view with hostile markup neutralized (`<b>x&y</b>` as a DB name
-renders as literal text), a cleared field falls back to its placeholder
-default, NetTimeout 45 highlights in the dest card under SYNC and disappears
-under ASYNC, export → reset → import round-trips, a `#cfg=` link applies on a
-fresh load and strips itself from the address bar, reload restores the last
-state, "Reset everything" clears it, and a garbage import shows the inline
-error without touching state — and in the side-topics chapter: the two new Copy
-buttons put their pane's text on the clipboard, the containment drawing and the
-AWR table render in both themes and both languages, keys `6` and `7` open Side
-topics and Reference, and the two cross-links (chapter 2's commit caption to
-`#impactview`, the reopen caption to `#nettimeoutview`) open the other chapter
-*and* land on the section.
-
-**Observer placement, its own pass** — the axis is 24 states, so walk the cells
-that carry the lessons rather than all of them. Crash at each of the three
-deployed locations draws **identically** (a separate-host observer survives the
-database's death), so read the three timelines against each other and confirm the
-only difference is the primary-site placement warning in the readout. Partition
-with the observer at the standby's site is the false failover: the standby is
-promoted *and* the primary stalls and aborts, both on one drawing — against the
-same partition at the third site, where nothing happens at all and the primary
-keeps serving. Standby site down at the standby's site is the catastrophic cell:
-`STALLED` from t = 0, the self-abort at the threshold, no failover ever, and the
-standby lane hatched — against the same scenario anywhere else, where the primary
-simply carries on unprotected. With **none**, check the whole gray-out set at
-once, the observer-lost radio included (it is `disabled`, not just ignored), the
-empty "not deployed" observer lane, the manual-failover chips — and then **switch
-back to a deployed location and confirm nothing is left disabled and every note
-is restored**, the same borrow-and-restore trap the observer-lost and switchover
-scenarios already have. Switchover at all four locations: the bands, the clocks
-and the app ladder must be byte-identical, with exactly one appended sentence
-differing per location. Finally the topology strip in every cell: the dashed site
-rectangles, the hatched site under standby-site-down, the third site's rectangle
-appearing and disappearing with the placement, and no orphaned observer box under
-`none`.
-
-URL state and chrome, same pre-publish pass: move three controls and
-`location.search` shows exactly those keys; reload restores the identical
-state; Reset defaults leaves a bare URL with no `?`. The placement keys are
-public contract like the rest: `ol=none|dc1|dc2|dc3` and the two new scenario
-tokens `sc=part` / `sc=dc2d`. Hostile params behave
-(`?th=999` clamps to 120; `?th=abc`, `?sc=bogus`, `?ol=bogus`, `?ps=7` are
-ignored; `?sc=obs&ol=none` lands on the coercion the rail performs, a plain
-crash); an old link or `#cfg=` file carrying no `ol` at all restores exactly as
-it did before the control existed, at the third site;
-`?pm=perf&lag=45#ch-app` lands on chapter 3 in a blocked MaxPerformance.
-Drag a slider for 20 s and the console shows no `replaceState` rate warning.
-Click at least one demo button per chapter: the controls take the demo's
-values, the URL becomes its permalink, and the jump lands the workbench just
-under the chapter bar. Focus a slider in a collapsed rail (note appears,
-disappears on blur) with an `.is-warn` note visible elsewhere, in both themes.
-After a publish, `curl -s https://davidbudac.cz/dataguard/ | grep -E
-'og:image|canonical|theme-color|rel="icon"'` finds all four.
-
-## The edition switch (19c / 26ai)
-
-The header carries a second toggle beside the language switch: **19c / 26ai**. 19c is the
-default and the page's source reading; 26ai is a second dimension layered over it, built
-from three mechanisms — one for state, one for prose, one for structure.
-
-**State: DG owns the edition, exactly the way it owns the language.** `DG.setEd` /
-`DG.ed()`, resolution order `?ver=` → `localStorage['dg-ed']` → 19c, unknown tokens
-normalized out of the URL on load, and `ver` deleted from the query while the edition is
-19c — a link carrying no `ver=` is the page exactly as it was before the switch existed.
-The edition is a **reading preference, not a control**: there is no `ver` key in the URL
-IIFE's `FIELDS` table, no entry in the workbench `DEFAULTS`, and saved/shared
-configurations do not carry it. The single bridge to the models is one line at the top of
-`draw()` — `C.version = window.DG.ed()` — which is what keeps "Reset defaults" and an
-imported file from flipping the reader's edition. `computeFsfo` and `computeReopen`
-default `c.version` to 19c internally (the same pattern as `observerLoc`), which is the
-whole back-compatibility story for old links, stored configurations and export files.
-An edition flip takes the language's own refresh path (`setStatic` first, then every
-`onLang` subscriber), so `draw()` repaints from one subscription — but unlike a language
-flip it *is* a state change, and `C.version` sits in the redraw signatures so the fade-in
-fires.
-
-**Prose: the `V26` source-string substitution table inside `DG.t()`.** Registered via
-`DG.addVariants(map)` from the static-translation IIFE, beside the markup the keys are
-copied out of. Under 26ai, `t()` first replaces the 19c English source string with its
-V26 value and only then consults the Czech catalog. Three consequences: the 26ai English
-variant is **itself a catalog key**, so Czech translates the 26ai sentence in its own
-right; a missing variant degrades to the 19c text; a missing translation degrades to
-26ai English. **V26 keys must byte-match the decoded snapshot strings.** For anything the
-static pass reaches through its CSS selectors the key is the *decoded* innerHTML — an
-`&mdash;` in the markup is a real U+2014 in the key, spelled `\u2014` in the ASCII-only
-fragment (entities do not decode inside a script). Editing an English sentence that has a
-variant therefore means editing three places in the same commit: the markup (or `t()`
-call), the V26 key, and the matching keys in `simulator/i18n/cs.json`. A stale V26 key
-fails silently — the page just shows the 19c sentence under 26ai, which is what the
-headless coverage probe (Languages below) surfaces.
-
-**Structure: the `.fsfo.is-v26` / `data-ver` split.** Whole blocks that exist in only one
-edition — reference-table rows, captions — carry `data-ver="19"` or `data-ver="26"` in the
-markup, and the static pass toggles
-`is-v26` on `.fsfo` *before* it renders strings, so one pass never leaves the two halves
-disagreeing. The CSS is keyed with `:not()` (`.fsfo:not(.is-v26) [data-ver="26"]
-{display:none}` and the inverse) so a page with no script is a complete 19c document —
-the same contract as the tabs. Print carries whichever edition is on screen, because here
-the class selects content, not navigation.
-
-**What 26ai adds behaviorally.** The MaxAvailability lag policy (radios `lp-zero` /
-`lp-bounded`, URL key `lp`), which is what gives `FastStartFailoverLagLimit` a
-MaxAvailability role — `lagPolicy` in, `availBounded` / `lagGated` out of `computeFsfo`,
-and the one 26ai change that moves a number on the page. The `FastStartFailoverLagType`
-radio and `FastStartFailoverLagGraceTime` slider (URL keys `lt` / `lgt`) — broker
-properties, so unlike the edition they **do** ride in the `params` block of saved
-configurations. The **transport-lag slider** (`#c-translag`, URL key `tla`, state
-`C.transportLag`, `sim` block of saved configurations — a what-if, not a broker property):
-visible only under 26ai MaxPerformance with TRANSPORT selected (hidden like the ping
-sliders, never grayed); `computeFsfo` gates readiness, the loss bound and `ifDiedNow` on
-it there (`gateLagSeconds` in every return), clamps it to the apply lag, and falls back to
-the apply lag when the input is absent — the whole back-compatibility story for pre-slider
-links and exports. `computeCommit` takes `version`: ASYNC + MaxAvailability is
-`modeConflict` under 19c and `modeAllowed26` under 26ai (the prerequisites list ASYNC
-there; Task 3 is stale). The reopen panel's LAGGING bands
-(`lagStallAt`/`lagStallMax`/`lagGraceArmed` from `computeReopen`, which now also takes
-`version`, `lagGraceTime`, `threshold` and `fsfoEnabled` — passed false when no observer
-is deployed, and both LAGGING outputs stay null then). Under 19c these controls gray out
-through `V19_NOTES` (borrow-and-restore, like observer-lost) — the transport-lag slider
-hides instead — and `computeFsfo` pins
-`lagStall:null` / `lagType:'apply'` / the zero-loss policy whatever a crafted link or a
-26ai-written export asks for; the TRANSPORT echo additionally requires MaxPerformance,
-per the property's documented scope.
-
-**The outcome matrix stays 24 cells in both editions.** `site/test.mjs` pins that with
-19c-invariance loops (`version` absent/`'19c'` must reproduce the 24-cell table with
-`lagStall:null` and `lagType:'apply'`, with every 26ai-only input passed in), and
-`diagrams/README.md` words it. Change one and change all three.
-
-There was once a fifth, 26ai-only observer placement — an observer beside each database,
-`dc1dc2`, ranked by `PreferredObserverHosts`, with a `nomination` flag on the model. It was
-removed deliberately (two of its six cells were inferences rather than quoted outcomes):
-do not reintroduce it. A stale `?ol=both` or a saved `observerLoc:'dc1dc2'` degrades
-silently to the third site through the existing unknown-value fallbacks — the `FIELDS`
-radio map ignores tokens it does not know and `serialize()` then drops the stale param,
-and the `applyConfig` whitelist drops values it does not list.
+The detail behind each of those — what each chapter contains, which controls
+gray out in which cell, how the topology strip decides which links are down, the
+per-chapter pre-publish walk — is in the git history of this file (the section
+was written out in full while the fragment was the published page). It is not
+repeated here because the fragment is frozen: read the file, and `site/test.mjs`
+beside it, before changing anything in it.
 
 ## Languages (English + Czech)
 
-The page ships in English and Czech, chosen with an `EN` / `CZ` toggle in the
-header. **English is the source language and the only one in the fragment.**
-Czech lives in `simulator/i18n/cs.json`, which `site/build.mjs` inlines into the
-built page's `<head>` as `<script type="application/json" id="dg-i18n-cs">`. That
-split exists because the fragment must stay pure ASCII (CLAUDE.md) and a Czech
-catalog spelled in `\uXXXX` escapes would be unmaintainable; the wrapper declares
-the charset, so the JSON block can hold real accented characters. Consequence:
-opening the raw fragment on its own gives English and hides the toggle.
+**This applies to the legacy page only. The application in `app/` is English
+only** — a Czech reader is sent to `/dataguard/legacy/`, and the legacy-URL
+upgrade raises that notice rather than dropping `?lang=cs`. Never add a Czech
+string to `app/`, and never add one to the fragment either: translations belong
+in the catalog.
+
+The legacy page ships in English and Czech, chosen with an `EN` / `CZ` toggle in
+the header. **English is the source language and the only one in the fragment.**
+Czech lives in `simulator/i18n/cs.json`, which `site/build-legacy.mjs` inlines
+into the built page's `<head>` as `<script type="application/json"
+id="dg-i18n-cs">`. That split exists because the fragment must stay pure ASCII
+(CLAUDE.md) and a Czech catalog spelled in `\uXXXX` escapes would be
+unmaintainable; the wrapper declares the charset, so the JSON block can hold real
+accented characters. Consequence: opening the raw fragment on its own gives
+English and hides the toggle.
 
 **Catalog keys are the English source strings**, not invented ids. A string with
 no entry falls through untranslated — which is exactly what keeps the technical
@@ -1035,19 +1126,18 @@ the numeric slider-scale labels, and parameter values like `on`/`off`/`TRUE`.
   names are prose, while the Oracle vocabulary in the other selects
   (`MaxAvailability`, `SYNC`) is simply absent from the catalog and falls through
   unchanged — which is the whole reason that selector is safe.
-- Adding a section: put its prose in the markup and its JS strings in `t()`, then
-  re-run the extraction below and translate the new keys.
 
 ### Extracting and verifying
 
 There is no extraction script in the repo — the reliable way is to ask the page,
 because it knows which strings a given state actually asks for. `DG.missing()`
 returns every key looked up with no translation. Build, then load
-`_site/index.html` in headless Chrome with a probe appended that stubs
+`_site/legacy/index.html` (the Czech catalog ships with the legacy page; the
+application is English only) in headless Chrome with a probe appended that stubs
 `requestAnimationFrame` (the render loop wedges otherwise), calls
 `DG.setLang('cs')`, walks the key states, and dumps `JSON.stringify(DG.missing())`
 into the DOM for `--dump-dom` to pick up. Everything it reports must be a term
-from the never-translated list above. "The key states" is now a **loop over all
+from the never-translated list above. "The key states" is a **loop over all
 24 scenario × observer-location cells** (dispatch real `input` *and* `change`
 events on the radios — nothing outside the first IIFE may call into the models),
 plus both protection modes on the cells where the mode changes the story, the
@@ -1086,23 +1176,51 @@ deliberately does not re-add.
    edge states), checked domain claims sentence by sentence, fixed wording, and
    only then published and delivered.
 
-Keep that order: facts → spec → build → adversarial review → publish.
+Keep that order: facts → spec → build → adversarial review → publish. The
+workbench in `app/` was produced the same way one layer up: a second verified
+fact sheet (`app/design/facts.md`) first, then the two design documents beside
+it, then the code, with the 24-cell matrix carried forward as the regression
+gate so the new engine had to reproduce the old page's verified outcomes before
+it was allowed to add anything.
 
 ## Conventions
 
 - Nothing is committed without the user asking. Commit messages end with
   `Co-Authored-By:` per the harness rules.
-- Changing a documented default or a model formula means changing
-  `site/test.mjs` in the same commit — the test gate exists to make the
-  accuracy rules executable, not to be worked around.
-- Scenarios covered so far: primary crash, isolated primary, severed link
-  between the two database sites (`partition`), whole standby site lost
-  (`dc2down`), observer lost and planned switchover — each crossed with the four
-  observer locations, 24 states in all. Only the first two have static figures;
-  the other four are simulator-only, and the figures show the third-site
-  placement throughout. Reinstate stays out of
-  scope for the figures and the simulator; if the user asks for it, add it as a
-  new figure/scenario rather than crowding the existing ones. Exception: the
-  test runbook (`testing/README.md`) uses `REINSTATE DATABASE` / auto-reinstate
-  as drill *cleanup* so drills are repeatable — that does not document the
-  mechanism and does not lift the out-of-scope rule.
+- **Nothing is published without the user asking either.** `./site/publish.sh`
+  is a deliberate act; running it is never part of "finish this change".
+- **Changing a documented default or a model formula means changing its
+  citation and its test in the same commit.** In `app/` that is the entry in
+  `app/src/engine/citations.ts` plus the vitest that pins the number; for the
+  legacy fragment it is `site/test.mjs`. The test gates exist to make the
+  accuracy rules executable, not to be worked around. If a change makes a golden
+  move, say in the commit message whether the golden recorded geometry or a
+  domain fact — only the second kind is allowed to move for a reason other than
+  layout.
+- **`app/` is ordinary UTF-8.** The ASCII-only rule is the legacy fragment's
+  alone (see CLAUDE.md): `app/index.html` declares its charset, so em dashes,
+  `×` and `≤` are written as themselves. Do not carry `\uXXXX` escapes or
+  `&mdash;` into TSX or CSS.
+- **The application is English only.** Czech lives in the legacy catalog and the
+  handover documents; a reader who asks for `?lang=cs` is offered
+  `/dataguard/legacy/`.
+- Presets are the scenario tests: a new topology worth drawing is a preset in
+  `app/src/presets` with a canvas golden and a `presets.test.ts` entry, not a
+  one-off fixture inside a test.
+- Scenarios covered so far, in the legacy 1+1+1 deployment: primary crash,
+  isolated primary, severed link between the two database sites (`partition`),
+  whole standby site lost (`dc2down`), observer lost and planned switchover —
+  each crossed with the four observer locations, 24 states in all, and that
+  matrix is pinned in three places (see the legacy section). The workbench adds
+  the topologies the presets name: far sync (zero-loss, HA pair, role-change
+  readiness), cascading (terminal standby, PRIORITY alternates), multiple
+  targets with three observers, a RAC primary, bystanders and maximum
+  protection. **The static figures in `diagrams/` still draw only the classic
+  1+1+1 with the observer at a third site** — they were not regenerated for the
+  new topologies, and they say what they show.
+- Reinstate stays out of scope for the figures and for both pages; if the user
+  asks for it, add it as a new figure/preset rather than crowding the existing
+  ones. Exception: the test runbook (`testing/README.md`) uses
+  `REINSTATE DATABASE` / auto-reinstate as drill *cleanup* so drills are
+  repeatable — that does not document the mechanism and does not lift the
+  out-of-scope rule.

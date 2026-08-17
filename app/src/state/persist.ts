@@ -1,0 +1,177 @@
+/**
+ * Persistence and files (ui.md SS2).
+ *
+ *   `dg-doc-v1`      the Document, debounced 500 ms
+ *   `dg-theme`       light / dark / auto -- same key the published page uses
+ *   `dg-ed`          19c / 26ai -- likewise, so a reader who set the release
+ *                    on the old page finds it set here
+ *   `dg-fsfo-cfg-v1` the published page's stored configuration. Read once when
+ *                    there is nothing newer, and never deleted: the old page
+ *                    is still serving from /legacy/ and still owns that key.
+ *
+ * A restored session announces itself for 8 seconds with a way out ("Start
+ * fresh"), because a page that silently reopens yesterday's edit is a page
+ * that lies about what it is showing.
+ *
+ * Every access is wrapped: private-mode Safari throws on `localStorage`, and
+ * losing autosave is not a reason to lose the page.
+ */
+
+import { effect, signal } from '@preact/signals';
+import type { SchemaIssue } from '@/engine';
+import type { Doc } from './doc';
+import { classicDoc, doc, exportFileName } from './doc';
+import { fromWire, parseJsonText, toJsonText } from './codec';
+import type { DecodeResult } from './codec';
+import type { ThemePref } from './view';
+
+export const DOC_KEY = 'dg-doc-v1';
+export const THEME_KEY = 'dg-theme';
+export const EDITION_KEY = 'dg-ed';
+export const LEGACY_DOC_KEY = 'dg-fsfo-cfg-v1';
+
+export const AUTOSAVE_MS = 500;
+export const RESTORE_NOTICE_MS = 8000;
+
+/** Set while the "Restored your last configuration" strip is up. */
+export const restored = signal<boolean>(false);
+
+const store = (): Storage | null => {
+  try {
+    return typeof localStorage === 'undefined' ? null : localStorage;
+  } catch {
+    return null;
+  }
+};
+
+const read = (key: string): string | null => {
+  try { return store()?.getItem(key) ?? null; } catch { return null; }
+};
+
+const write = (key: string, value: string): void => {
+  try { store()?.setItem(key, value); } catch { /* private mode: not fatal */ }
+};
+
+/* ---------------- reading preferences ---------------- */
+
+export function loadTheme(): ThemePref | null {
+  const v = read(THEME_KEY);
+  return v === 'light' || v === 'dark' || v === 'auto' ? v : null;
+}
+
+export const saveTheme = (v: ThemePref): void => write(THEME_KEY, v);
+
+export function loadEdition(): '19c' | '26ai' | null {
+  const v = read(EDITION_KEY);
+  return v === '19c' || v === '26ai' ? v : null;
+}
+
+export const saveEdition = (v: '19c' | '26ai'): void => write(EDITION_KEY, v);
+
+/* ---------------- the Document ---------------- */
+
+/**
+ * The last autosave, or the published page's stored configuration when there
+ * is no autosave yet. Returns null when there is nothing to restore.
+ */
+export function loadDoc(): DecodeResult | null {
+  const own = read(DOC_KEY);
+  if (own !== null) return parseJsonText(own);
+  const legacy = read(LEGACY_DOC_KEY);
+  if (legacy === null) return null;
+  /* The v1 shape goes through the same migration chain a `#cfg=` link takes. */
+  const upgraded = parseJsonText(legacy);
+  return upgraded.doc ? upgraded : null;
+}
+
+export const saveDoc = (d: Doc): void => write(DOC_KEY, toJsonText(d));
+
+export function clearSavedDoc(): void {
+  try { store()?.removeItem(DOC_KEY); } catch { /* private mode */ }
+}
+
+/** Autosave, debounced. Returns a teardown. */
+export function startAutosave(): () => void {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  const stop = effect(() => {
+    const current = doc.value;
+    if (timer !== null) clearTimeout(timer);
+    timer = setTimeout(() => { timer = null; saveDoc(current); }, AUTOSAVE_MS);
+  });
+  return () => {
+    stop();
+    if (timer !== null) { clearTimeout(timer); timer = null; }
+  };
+}
+
+/** Show the restore strip, then take it down on its own. */
+export function announceRestore(): () => void {
+  restored.value = true;
+  const timer = setTimeout(() => { restored.value = false; }, RESTORE_NOTICE_MS);
+  return () => { clearTimeout(timer); restored.value = false; };
+}
+
+/** "Start fresh": the classic preset, and the autosave gone with it. */
+export function startFresh(edition: '19c' | '26ai' = '19c'): Doc {
+  clearSavedDoc();
+  restored.value = false;
+  return classicDoc(edition);
+}
+
+/* ---------------- files ---------------- */
+
+/**
+ * Download the Document as `<name>.dgtopo.json`. Verbose JSON on purpose: the
+ * file is meant to be read, diffed and pasted into a ticket.
+ */
+export function exportDoc(d: Doc = doc.value): void {
+  if (typeof document === 'undefined' || typeof URL.createObjectURL !== 'function') return;
+  const blob = new Blob([toJsonText(d)], { type: 'application/json' });
+  const href = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = href;
+  a.download = exportFileName(d);
+  a.rel = 'noopener';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  /* Revoking immediately races the download in Safari; one frame is enough. */
+  setTimeout(() => URL.revokeObjectURL(href), 1000);
+}
+
+export interface ImportReport extends DecodeResult {
+  /** Everything worth telling the reader, already worded. */
+  message: string;
+}
+
+export async function importFile(file: File): Promise<ImportReport> {
+  const text = await file.text();
+  return describeImport(parseJsonText(text));
+}
+
+/** Import from an object already in memory (drag and drop, paste, tests). */
+export const importRaw = (raw: unknown): ImportReport => describeImport(fromWire(raw));
+
+function describeImport(result: DecodeResult): ImportReport {
+  if (!result.doc) {
+    const first = result.issues.find((i: SchemaIssue) => i.severity === 'error');
+    return {
+      ...result,
+      message: first
+        ? `This file is not a topology document: ${first.path === '' ? '' : `${first.path}: `}${first.message}`
+        : 'This file is not a topology document.',
+    };
+  }
+  const repaired = result.issues.filter((i) => i.severity === 'repaired').length;
+  const parts: string[] = [];
+  if (result.source === 'legacy-v1' || result.source === 'legacy-query') {
+    parts.push('Upgraded a configuration written by the published page.');
+  }
+  if (repaired > 0) {
+    parts.push(`${repaired} value${repaired === 1 ? ' was' : 's were'} out of range and clamped.`);
+  }
+  if (result.dropped.length > 0) {
+    parts.push(`Dropped ${result.dropped.length} key${result.dropped.length === 1 ? '' : 's'} this page does not know: ${result.dropped.join(', ')}.`);
+  }
+  return { ...result, message: parts.length === 0 ? 'Imported.' : parts.join(' ') };
+}

@@ -1,0 +1,261 @@
+/* Content styling: lesson prose, reference tables, figures, fact chips.
+   Every colour comes from the palette tokens (`--bg/--sf/--ik/--tl/--am/...`)
+   defined by the shell's tokens.css, redefined there under both
+   `prefers-color-scheme` and `[data-theme]`. The fallbacks in the var() calls
+   are the light-mode values, so this file renders correctly even if it is
+   loaded on its own. Classes only -- no inline styles anywhere (CSP). */
+
+.ct-p,
+.ct-caption {
+  margin: 0 0 10px;
+  max-width: 62ch;
+}
+.ct-p {
+  font-size: 15px;
+  line-height: 1.55;
+  color: var(--ik, #101922);
+}
+.ct-caption {
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--ik2, #46566A);
+}
+.ct-eyebrow {
+  margin: 0 0 6px;
+  font-family: var(--mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+  font-size: 11px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ik3, #6E7F93);
+}
+.mono {
+  font-family: var(--mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+  font-variant-numeric: tabular-nums;
+}
+
+/* note cards ------------------------------------------------------------- */
+.ct-note {
+  border: 1px solid var(--ln, #DCE2EA);
+  border-left-width: 3px;
+  border-radius: 3px;
+  background: var(--sf, #FFF);
+  padding: 10px 12px;
+  margin: 0 0 10px;
+}
+.ct-note-h {
+  margin: 0 0 4px;
+  font-size: 13px;
+  font-weight: 620;
+  color: var(--ik, #101922);
+}
+.ct-k-tl { border-left-color: var(--tl, #0E7C6B); }
+.ct-k-bl { border-left-color: var(--bl, #2563EB); }
+.ct-k-am { border-left-color: var(--am, #D97706); }
+.ct-k-rd { border-left-color: var(--rd, #D64545); }
+.ct-k-vi { border-left-color: var(--vi, #6D5AE6); }
+.ct-k-sl { border-left-color: var(--sl, #475569); }
+
+/* fact chips ------------------------------------------------------------- */
+.ct-fact-block { display: block; }
+.ct-fact-marks {
+  display: inline-flex;
+  gap: 4px;
+  align-items: baseline;
+  margin-left: 5px;
+  white-space: nowrap;
+}
+.ct-chip {
+  font-family: var(--mono, ui-monospace, Menlo, monospace);
+  font-size: 10.5px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  border: 1px solid var(--ln2, #BFC9D6);
+  border-radius: 2px;
+  padding: 0 4px;
+  color: var(--ik2, #46566A);
+  background: var(--sf2, #EDF1F5);
+  cursor: help;
+}
+.ct-chip-model,
+.ct-chip-inferred { border-color: var(--am, #D97706); color: var(--am, #D97706); }
+.ct-chip-conflict { border-color: var(--rd, #D64545); color: var(--rd, #D64545); }
+.ct-chip-doc-later { border-color: var(--vi, #6D5AE6); color: var(--vi, #6D5AE6); }
+.ct-chip-edition {
+  border-color: var(--sl, #475569);
+  color: var(--sl, #475569);
+  margin-right: 6px;
+}
+.ct-cite,
+.ct-ext {
+  font-family: var(--mono, ui-monospace, Menlo, monospace);
+  font-size: 10.5px;
+  color: var(--bl, #2563EB);
+  text-decoration: none;
+  border-bottom: 1px solid currentColor;
+}
+.ct-ext { font-size: inherit; font-family: inherit; }
+.ct-cite:hover,
+.ct-ext:hover { color: var(--fc, #2563EB); }
+
+/* code blocks ------------------------------------------------------------ */
+.ct-code-wrap { margin: 0 0 12px; }
+.ct-code-label {
+  margin: 0 0 4px;
+  font-family: var(--mono, ui-monospace, Menlo, monospace);
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ik3, #6E7F93);
+}
+.ct-code {
+  margin: 0;
+  padding: 10px 12px;
+  overflow-x: auto;
+  background: var(--sf2, #EDF1F5);
+  border: 1px solid var(--ln, #DCE2EA);
+  border-radius: 3px;
+  font-family: var(--mono, ui-monospace, Menlo, monospace);
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--ik, #101922);
+  white-space: pre;
+  tab-size: 2;
+}
+.ct-dim { color: var(--ik3, #6E7F93); }
+.ct-hl {
+  background: var(--amf, #FAEAD2);
+  border-bottom: 1px solid var(--am, #D97706);
+}
+
+/* tables ----------------------------------------------------------------- */
+.ct-table-wrap {
+  overflow-x: auto;
+  margin: 0 0 12px;
+  border: 1px solid var(--ln, #DCE2EA);
+  border-radius: 3px;
+  background: var(--sf, #FFF);
+}
+.ct-table {
+  border-collapse: collapse;
+  width: 100%;
+  min-width: 640px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--ik, #101922);
+}
+.ct-table-caption {
+  text-align: left;
+  padding: 8px 12px;
+  font-size: 11px;
+  font-family: var(--mono, ui-monospace, Menlo, monospace);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ik3, #6E7F93);
+  border-bottom: 1px solid var(--ln, #DCE2EA);
+}
+.ct-table th,
+.ct-table td {
+  text-align: left;
+  vertical-align: top;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--ln, #DCE2EA);
+}
+.ct-table th {
+  font-size: 11.5px;
+  font-weight: 620;
+  color: var(--ik2, #46566A);
+  background: var(--sf2, #EDF1F5);
+}
+.ct-table tr:last-child td { border-bottom: 0; }
+.ct-table .ct-n {
+  font-family: var(--mono, ui-monospace, Menlo, monospace);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.ct-ed-pair { display: block; }
+.ct-ed { display: block; }
+.ct-ed-k {
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ik3, #6E7F93);
+}
+
+/* footnotes -------------------------------------------------------------- */
+.ct-fn {
+  font-family: var(--mono, ui-monospace, Menlo, monospace);
+  font-size: 9.5px;
+  color: var(--ik3, #6E7F93);
+}
+.ct-footnotes { border-top: 1px solid var(--ln, #DCE2EA); padding-top: 10px; }
+.ct-footnote {
+  display: grid;
+  grid-template-columns: 22px 1fr;
+  gap: 6px;
+  margin-bottom: 8px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--ik2, #46566A);
+}
+.ct-footnote p { margin: 0; max-width: 68ch; }
+.ct-fn-n {
+  font-family: var(--mono, ui-monospace, Menlo, monospace);
+  font-size: 11px;
+  color: var(--ik3, #6E7F93);
+}
+
+/* figures ---------------------------------------------------------------- */
+.ct-figure { margin: 0 0 14px; }
+.ct-figure-scroll { overflow-x: auto; }
+.ct-svg {
+  display: block;
+  min-width: 840px;
+  width: 100%;
+  height: auto;
+}
+.ct-svg text {
+  font-family: var(--sans, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif);
+  fill: var(--ik2, #46566A);
+}
+.ct-svg .t-mono {
+  font-family: var(--mono, ui-monospace, Menlo, monospace);
+  font-variant-numeric: tabular-nums;
+}
+.ct-svg .t-lane { fill: var(--ik, #101922); font-size: 13px; font-weight: 600; }
+.ct-svg .t-sub { fill: var(--ik3, #6E7F93); font-size: 10px; }
+.ct-svg .t-bar { font-size: 11px; }
+.ct-svg .t-mark { font-size: 11.5px; font-weight: 560; }
+.ct-svg .t-brace-n { font-size: 11.5px; fill: var(--ik, #101922); }
+.ct-svg .t-brace-v { font-size: 11px; fill: var(--ik2, #46566A); }
+.ct-svg .t-top { font-size: 12px; font-weight: 560; fill: var(--ik, #101922); }
+.ct-svg .ax { stroke: var(--ln2, #BFC9D6); stroke-width: 1; }
+.ct-svg .gridline { stroke: var(--gd, #E7ECF2); stroke-width: 1; }
+.ct-svg .bar { stroke-width: 1.25; rx: 2; }
+.ct-svg .b-tl { fill: var(--tlf, #D5EDE8); stroke: var(--tl, #0E7C6B); }
+.ct-svg .b-bl { fill: var(--blf, #DBE6FE); stroke: var(--bl, #2563EB); }
+.ct-svg .b-am { fill: var(--amf, #FAEAD2); stroke: var(--am, #D97706); }
+.ct-svg .b-sl { fill: var(--sf3, #E4E9EF); stroke: var(--ln2, #BFC9D6); }
+.ct-svg .b-vi { fill: var(--vif, #E3DFFB); stroke: var(--vi, #6D5AE6); }
+/* b-hatch takes its fill from the pattern in the presentation attribute:
+   a CSS fill here would win over it and flatten the hatch. */
+.ct-svg .b-hatch { stroke: var(--rd, #D64545); }
+.ct-svg .hatch-bg { fill: var(--rdf, #FADEDE); }
+.ct-svg .hatch-ln { stroke: var(--rd, #D64545); stroke-width: 2; opacity: 0.5; }
+.ct-svg .f-tl { fill: var(--tl, #0E7C6B); }
+.ct-svg .f-bl { fill: var(--bl, #2563EB); }
+.ct-svg .f-am { fill: var(--am, #D97706); }
+.ct-svg .f-rd { fill: var(--rd, #D64545); }
+.ct-svg .f-vi { fill: var(--vi, #6D5AE6); }
+.ct-svg .f-sl { fill: var(--ik2, #46566A); }
+.ct-svg .m-rd { stroke: var(--rd, #D64545); }
+.ct-svg .brace { fill: none; stroke-width: 1.35; }
+.ct-svg .br-am { stroke: var(--am, #D97706); }
+.ct-svg .br-rd { stroke: var(--rd, #D64545); }
+
+@media print {
+  .ct-table-wrap,
+  .ct-figure-scroll,
+  .ct-code { overflow: visible; }
+  .ct-cite,
+  .ct-ext { border-bottom: 0; }
+}

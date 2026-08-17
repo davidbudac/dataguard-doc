@@ -1,0 +1,237 @@
+/*
+  Timeline styles.
+
+  Tokens only -- every colour here is a custom property defined in
+  `tokens.css`, so light, dark and the explicit `[data-theme]` override all
+  work without a rule of their own. The `.tl-svg` block is the published
+  fragment's (simulator/fsfo-simulator.html lines 496-540) carried over
+  unchanged, because the drawing's visual language is the accuracy baseline:
+  teal serving, blue applying, amber waiting, red down (hatched, never flat),
+  violet observer decisions, slate monitoring.
+
+  No geometry lives here. Positions and sizes arrive as SVG presentation
+  attributes from `build.ts`, because the page ships under `style-src 'self'`
+  and carries no inline style.
+*/
+
+/* ---------------- shell ---------------- */
+
+.tl {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+  min-height: 0;
+  /* The screen-reader table positions against the timeline, not the page. */
+  position: relative;
+}
+
+.tl-plot {
+  position: relative;
+  overflow-x: auto;
+  overflow-y: hidden;
+  min-width: 0;
+}
+
+.tl-svg {
+  display: block;
+  touch-action: none;
+}
+
+/* ---------------- the drawing (ported) ---------------- */
+
+.tl-svg text { font-family: var(--sans); fill: var(--ik2); }
+.tl-svg .t-mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.tl-svg .t-lane { fill: var(--ik); font-size: 12.5px; font-weight: 600; }
+.tl-svg .t-sub { fill: var(--ik3); font-size: 10px; }
+.tl-svg .t-bar { font-size: 11px; }
+.tl-svg .t-tick { fill: var(--ik3); font-size: 10.5px; }
+.tl-svg .t-mark { font-size: 11.5px; font-weight: 560; }
+.tl-svg .t-brace-n { font-size: 11.5px; fill: var(--ik); }
+.tl-svg .t-brace-v { font-size: 11px; fill: var(--ik2); }
+.tl-svg .t-top { font-size: 12px; font-weight: 560; fill: var(--ik); }
+
+.tl-svg .ax { stroke: var(--ln2); stroke-width: 1; }
+.tl-svg .gridline { stroke: var(--gd); stroke-width: 1; }
+.tl-svg .prezone { fill: var(--sf2); }
+.tl-svg .lane-bg { fill: var(--sf2); stroke: var(--ln); stroke-width: 1; }
+
+.tl-svg .bar { stroke-width: 1.25; rx: 2; }
+.tl-svg .b-tl { fill: var(--tlf); stroke: var(--tl); }
+.tl-svg .b-bl { fill: var(--blf); stroke: var(--bl); }
+.tl-svg .b-am { fill: var(--amf); stroke: var(--am); }
+.tl-svg .b-sl { fill: var(--sf3); stroke: var(--ln2); }
+.tl-svg .b-vi { fill: var(--vif); stroke: var(--vi); }
+.tl-svg .b-hatch { fill: url(#tlHatch); stroke: var(--rd); }
+/* An open band has no documented end: it fades out rather than squaring off. */
+.tl-svg .bar.is-open { stroke-dasharray: 4 3; }
+.tl-svg .hatch-bg { fill: var(--rdf); }
+.tl-svg .hatch-ln { stroke: var(--rd); stroke-width: 2; opacity: .5; }
+
+.tl-svg .f-tl { fill: var(--tl); }
+.tl-svg .f-bl { fill: var(--bl); }
+.tl-svg .f-am { fill: var(--am); }
+.tl-svg .f-rd { fill: var(--rd); }
+.tl-svg .f-vi { fill: var(--vi); }
+.tl-svg .f-sl { fill: var(--ik2); }
+
+.tl-svg .m-rd { stroke: var(--rd); }
+.tl-svg .m-vi { stroke: var(--vi); }
+.tl-svg .m-tl { stroke: var(--tl); }
+.tl-svg .partition { stroke: var(--rd); stroke-width: 1.5; stroke-dasharray: 5 4; }
+
+.tl-svg .brace { fill: none; stroke-width: 1.35; }
+.tl-svg .br-am { stroke: var(--am); }
+.tl-svg .br-bl { stroke: var(--bl); }
+.tl-svg .br-rd { stroke: var(--rd); }
+.tl-svg .br-sl { stroke: var(--ln2); }
+
+/* numbered event markers: the number ties the drawing to the Break rail */
+.tl-svg .tl-marker-nb { fill: var(--sf); stroke: var(--rd); stroke-width: 1.25; }
+.tl-svg .tl-marker-nt { font-size: 9.5px; font-weight: 600; fill: var(--rd); }
+
+/* ---------------- lanes: selection and hover ---------------- */
+
+.tl-svg .tl-lane { cursor: default; }
+.tl-svg .tl-lane .lane-bg { transition: stroke .12s ease-out; }
+.tl-svg .tl-lane.is-selected .lane-bg { stroke: var(--ik3); stroke-width: 1.5; }
+.tl-svg .tl-lane.is-selected .t-lane { fill: var(--vi); }
+.tl-svg .tl-seg { cursor: default; }
+
+@media (prefers-reduced-motion: reduce) {
+  .tl-svg .tl-lane .lane-bg { transition: none; }
+}
+
+/* ---------------- playhead ---------------- */
+
+.tl-svg .tl-scrub-hit { fill: transparent; cursor: ew-resize; }
+.tl-svg .tl-playhead-ln { stroke: var(--ik); stroke-width: 1; stroke-dasharray: 2 3; }
+.tl-svg .tl-playhead-grip { fill: var(--ik); }
+.tl-svg .tl-playhead-badge { fill: var(--sf); stroke: var(--ln2); stroke-width: 1; }
+.tl-svg .tl-playhead-t { font-size: 10.5px; fill: var(--ik); dominant-baseline: middle; }
+.tl-svg .tl-playhead-g { cursor: ew-resize; outline: none; }
+.tl-svg .tl-playhead-g:focus-visible .tl-playhead-grip { fill: var(--vi); }
+.tl-svg .tl-playhead-g:focus-visible .tl-playhead-ln { stroke: var(--vi); stroke-dasharray: none; }
+.tl-svg .tl-playhead.is-playing .tl-playhead-ln { stroke-dasharray: none; }
+
+/* ---------------- tooltip ---------------- */
+
+.tl-tip {
+  position: absolute;
+  left: var(--tip-x, 0);
+  top: var(--tip-y, 0);
+  transform: translate(12px, -50%);
+  max-width: 34ch;
+  padding: 5px 9px;
+  border: 1px solid var(--ln2);
+  border-radius: 3px;
+  background: var(--sf);
+  box-shadow: var(--sh);
+  color: var(--ik);
+  font-family: var(--sans);
+  font-size: 11.5px;
+  line-height: 1.4;
+  pointer-events: none;
+  z-index: 5;
+}
+
+/* What the drawing left out, said out loud rather than dropped. */
+.tl-note {
+  margin: 0;
+  font-size: 11.5px;
+  color: var(--ik3);
+}
+
+/* ---------------- legend ---------------- */
+
+.tl-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 18px;
+  font-size: 11.5px;
+  color: var(--ik2);
+}
+
+.tl-legend span { display: inline-flex; align-items: center; gap: 7px; }
+.tl-legend i {
+  width: 15px;
+  height: 9px;
+  border-radius: 1px;
+  border: 1px solid;
+  display: inline-block;
+}
+
+.tl-legend .lg-tl { background: var(--tlf); border-color: var(--tl); }
+.tl-legend .lg-bl { background: var(--blf); border-color: var(--bl); }
+.tl-legend .lg-am { background: var(--amf); border-color: var(--am); }
+.tl-legend .lg-rd { background: var(--rdf); border-color: var(--rd); }
+.tl-legend .lg-vi { background: var(--vif); border-color: var(--vi); }
+.tl-legend .lg-sl { background: var(--sf3); border-color: var(--ln2); }
+
+/* ---------------- transport ---------------- */
+
+.tl-transport {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+}
+
+.tl-tp-slot { display: inline-flex; align-items: center; gap: 6px; }
+
+.tl-tp-btn {
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 1;
+  min-width: 30px;
+  padding: 5px 8px;
+  color: var(--ik);
+  background: var(--sf);
+  border: 1px solid var(--ln2);
+  border-radius: 2px;
+  cursor: pointer;
+}
+
+.tl-tp-btn:hover:not(:disabled) { border-color: var(--ik3); }
+.tl-tp-btn:disabled { color: var(--ik3); border-color: var(--ln); cursor: default; }
+
+.tl-tp-time { display: inline-flex; align-items: baseline; gap: 5px; font-size: 11.5px; color: var(--ik2); }
+.tl-tp-k { font-family: var(--mono); color: var(--ik3); }
+.tl-tp-u { font-family: var(--mono); color: var(--ik3); }
+
+.tl-tp-in {
+  font-family: var(--mono);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  width: 6ch;
+  padding: 4px 6px;
+  color: var(--ik);
+  background: var(--sf);
+  border: 1px solid var(--ln2);
+  border-radius: 2px;
+}
+
+.tl-tp-in:focus-visible { outline: 2px solid var(--fc); outline-offset: 1px; }
+
+.tl-tp-speeds { display: inline-flex; align-items: center; gap: 6px; }
+
+.tl-tp-speed {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: .04em;
+  padding: 4px 7px;
+  color: var(--ik2);
+  background: transparent;
+  border: 1px solid var(--ln2);
+  border-radius: 2px;
+  cursor: pointer;
+}
+
+.tl-tp-speed.is-on { color: var(--ik); border-color: var(--vi); background: var(--vif); }
+.tl-tp-speed:disabled { color: var(--ik3); border-color: var(--ln); cursor: default; }
+
+/* Every gray control says why it is gray, in place -- `.why` is the one pill,
+   styled in shell.css. Beside a transport button it stays on one line. */
+.tl-transport .why { white-space: nowrap; }
+
+/* The screen-reader table uses base.css's `.sr`; nothing extra is needed. */

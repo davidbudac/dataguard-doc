@@ -1,0 +1,213 @@
+/**
+ * One bounds table and the broker defaults per edition.
+ *
+ * BOUNDS is the single source of numeric truth: the serializer clamps against
+ * it, the migration clamps against it, and the DOM reads its min/max/step off
+ * it rather than carrying ranges of its own (engine design SS1.7).
+ *
+ * Every range mirrors the published simulator's control, except where a range
+ * is deliberately wider in the new app; those two are marked.
+ */
+
+import type { Edition, Millis, Seconds } from './ids';
+import type { Claim } from './types/claims';
+import { conflict, docLater, documented } from './types/claims';
+import type { LagType, ProtectionMode, XptMode } from './types/topology';
+
+export interface Bound {
+  min: number;
+  max: number;
+  step: number;
+  /** The value a fresh document starts from. */
+  default: number;
+  unit: 's' | 'ms' | 'count' | 'MB/s' | 'port';
+  label: string;
+}
+
+export const BOUNDS = {
+  /* ---- fast-start failover ---- */
+  thresholdSeconds: { min: 6, max: 120, step: 1, default: 30, unit: 's', label: 'FastStartFailoverThreshold' },
+  lagLimitSeconds: { min: 5, max: 90, step: 1, default: 30, unit: 's', label: 'FastStartFailoverLagLimit' },
+  lagGraceTimeSeconds: { min: 0, max: 60, step: 5, default: 0, unit: 's', label: 'FastStartFailoverLagGraceTime' },
+  pingIntervalMs: { min: 100, max: 5000, step: 100, default: 100, unit: 'ms', label: 'ObserverPingInterval' },
+  pingRetry: { min: 10, max: 50, step: 1, default: 10, unit: 'count', label: 'ObserverPingRetry' },
+
+  /* ---- simulated conditions ---- */
+  applyLagSeconds: { min: 0, max: 90, step: 1, default: 10, unit: 's', label: 'apply lag' },
+  transportLagSeconds: { min: 0, max: 90, step: 1, default: 2, unit: 's', label: 'transport lag' },
+  roleTransitionSeconds: { min: 5, max: 60, step: 1, default: 15, unit: 's', label: 'role transition' },
+  latencyMs: { min: 0, max: 100, step: 1, default: 0, unit: 'ms', label: 'round-trip latency' },
+  outageSeconds: { min: 60, max: 1800, step: 30, default: 600, unit: 's', label: 'outage length' },
+  redoRateMBs: { min: 1, max: 50, step: 1, default: 5, unit: 'MB/s', label: 'redo rate' },
+
+  /* ---- destination attributes ---- */
+  netTimeoutSeconds: { min: 1, max: 120, step: 1, default: 30, unit: 's', label: 'NetTimeout' },
+  /* Wider than the published simulator's 30-900: the new app lets a destination
+     sit out a full hour. The 30 s floor is unchanged and deliberate -- the
+     meaning of REOPEN = 0 is not documented, so the slider never offers it. */
+  reopenSeconds: { min: 30, max: 3600, step: 15, default: 300, unit: 's', label: 'ReopenSecs' },
+  /* Wider than the published simulator's 0-10. 0 stays "unlimited". */
+  maxFailure: { min: 0, max: 20, step: 1, default: 0, unit: 'count', label: 'MaxFailure' },
+
+  /* ---- commit anatomy ---- */
+  localWriteMs: { min: 0, max: 25, step: 1, default: 2, unit: 'ms', label: 'local redo write' },
+  standbyWriteMs: { min: 0, max: 25, step: 1, default: 2, unit: 'ms', label: 'standby redo log write' },
+
+  /* ---- client connect descriptor ---- */
+  transportConnectTimeoutSeconds: { min: 1, max: 60, step: 1, default: 60, unit: 's', label: 'TRANSPORT_CONNECT_TIMEOUT' },
+  connectTimeoutSeconds: { min: 0, max: 120, step: 1, default: 0, unit: 's', label: 'CONNECT_TIMEOUT' },
+  retryCount: { min: 0, max: 100, step: 1, default: 0, unit: 'count', label: 'RETRY_COUNT' },
+  retryDelaySeconds: { min: 0, max: 30, step: 1, default: 0, unit: 's', label: 'RETRY_DELAY' },
+
+  /* ---- identity ---- */
+  listenerPort: { min: 1, max: 65535, step: 1, default: 1521, unit: 'port', label: 'listener port' },
+} as const satisfies Record<string, Bound>;
+
+export type BoundKey = Extract<keyof typeof BOUNDS, string>;
+
+export const boundOf = (key: BoundKey): Bound => BOUNDS[key];
+
+/**
+ * Clamp to a bound the way the published simulator's `clampToEl` does: snap to
+ * the step grid first, then clamp to the range, and fall back to `dflt` (the
+ * bound's own default unless the caller supplies one) on anything unparseable.
+ */
+export function clamp(key: BoundKey, value: unknown, dflt?: number): number {
+  const b = BOUNDS[key];
+  const fallback = dflt === undefined ? b.default : dflt;
+  const n = typeof value === 'number' ? value : parseFloat(String(value));
+  if (!isFinite(n)) return fallback;
+  let v = n;
+  if (b.step > 0) v = Math.round(v / b.step) * b.step;
+  if (v < b.min) v = b.min;
+  if (v > b.max) v = b.max;
+  /* Steps like 15 on a 30-floor range can round off the grid at the ends. */
+  return roundTo(v, 6);
+}
+
+const roundTo = (n: number, digits: number): number => {
+  const f = 10 ** digits;
+  return Math.round(n * f) / f;
+};
+
+/** Is the value already legal for its bound? */
+export function withinBounds(key: BoundKey, value: number): boolean {
+  const b = BOUNDS[key];
+  return isFinite(value) && value >= b.min && value <= b.max;
+}
+
+/* ---------------- broker defaults ---------------- */
+
+export interface BrokerDefaults {
+  protectionMode: ProtectionMode;
+  logXptMode: XptMode;
+  thresholdSeconds: Seconds;
+  /** MaxPerformance value; MaxAvailability differs under 26ai (see lagLimitMaxAvail). */
+  lagLimitSeconds: Seconds;
+  /** 26ai gives MaxAvailability its own default of 0 -- zero data loss. */
+  lagLimitMaxAvailSeconds: Seconds | null;
+  lagType: LagType;
+  lagGraceTimeSeconds: Seconds;
+  /** null = "not set", so the threshold governs the observer's detection. */
+  pingIntervalMs: Claim<Millis | null>;
+  pingRetry: Claim<number | null>;
+  pmyShutdown: boolean;
+  autoReinstate: boolean;
+  netTimeoutSeconds: Seconds;
+  reopenSeconds: Seconds;
+  maxFailure: number;
+  bystandersFollowRoleChange: 'ALL' | 'NONE';
+  transportDisconnectedThresholdSeconds: Seconds;
+  observerCount: Claim<number>;
+}
+
+/* The properties exist since 12.2, but the 19c properties reference does not
+   list them: 19c is silent and a later edition states the default, which is
+   what doc-later means. Same precedent as the 12.1 FASTSYNC notice. */
+const PING_INTERVAL_19C = docLater<Millis | null>(100, ['FSFO.PING_PROPS_21C'],
+  'The 19c properties reference does not list ObserverPingInterval, so the default is cited to the 21c page.');
+const PING_RETRY_19C = docLater<number | null>(10, ['FSFO.PING_PROPS_21C'],
+  'The 19c properties reference does not list ObserverPingRetry, so the default is cited to the 21c page.');
+
+/* The 26ai contradiction, carried rather than resolved: the property pages give
+   the broker defaults as 0 -- not set, detection governed by the threshold --
+   while the 26ai fast-start failover chapter's table still shows 100 ms / 10.
+   The engine takes "not set" and names the disagreement; the explicitly-set
+   minimums stay 100 ms and 10 in every edition. */
+const PING_INTERVAL_26AI = conflict<Millis | null>(null,
+  ['FSFO.PING_DEFAULTS_26AI_ZERO', 'FSFO.PING_DEFAULTS_26AI_TABLE'],
+  '26ai disagrees with itself: the ObserverPingInterval property page gives the broker default as 0 -- not set -- while the fast-start failover chapter table still shows 100 ms. The engine reads it as not set, so the threshold governs detection; never write "defaults identical in 26ai" unqualified.');
+const PING_RETRY_26AI = conflict<number | null>(null,
+  ['FSFO.PING_RETRY_26AI', 'FSFO.PING_DEFAULTS_26AI_TABLE'],
+  'Same disagreement as ObserverPingInterval: the property page gives 0 -- not set -- and the chapter table still shows 10. The explicitly-set minimum stays 10.');
+
+const OBSERVERS_19C = documented(3, ['OBS.THREE_19C'],
+  'The "three" is 19c-specific; later releases allow more, so it is not carried across editions.');
+const OBSERVERS_26AI = conflict(4, ['OBS.FOUR_26AI', 'OBS.THREE_26AI_SHOW'],
+  'The 26ai fast-start failover chapter says four; the 26ai SHOW OBSERVER page still says three. Which release moved three to four is unsettled, so the engine reads four for 26ai and three for 19c.');
+
+const COMMON = {
+  protectionMode: 'MAXAVAILABILITY',
+  logXptMode: 'ASYNC',
+  thresholdSeconds: 30,
+  lagLimitSeconds: 30,
+  lagType: 'APPLY',
+  lagGraceTimeSeconds: 0,
+  pmyShutdown: true,
+  autoReinstate: true,
+  netTimeoutSeconds: 30,
+  reopenSeconds: 300,
+  maxFailure: 0,
+  bystandersFollowRoleChange: 'ALL',
+  transportDisconnectedThresholdSeconds: 30,
+} as const;
+
+export const BROKER_DEFAULTS: Record<Edition, BrokerDefaults> = {
+  '19c': {
+    ...COMMON,
+    lagLimitMaxAvailSeconds: null,
+    pingIntervalMs: PING_INTERVAL_19C,
+    pingRetry: PING_RETRY_19C,
+    observerCount: OBSERVERS_19C,
+  },
+  '26ai': {
+    ...COMMON,
+    /* 26ai gave FastStartFailoverLagLimit a MaxAvailability role, where the
+       broker default is 0: the standby must have received everything and the
+       failover is zero-loss. Source: the 26ai fast-start failover chapter's
+       "Fast-start Failover Protection Modes" section -- never that chapter's
+       Task 3 and never the property page's closing line. */
+    lagLimitMaxAvailSeconds: 0,
+    pingIntervalMs: PING_INTERVAL_26AI,
+    pingRetry: PING_RETRY_26AI,
+    observerCount: OBSERVERS_26AI,
+  },
+};
+
+/** Are both ping properties explicitly set? That is the documented trigger. */
+export const pingSet = (intervalMs: Millis | null, retry: number | null): boolean =>
+  intervalMs !== null && retry !== null;
+
+/**
+ * The lag limit that applies to a mode in an edition. Under 19c the limit is a
+ * maximum-performance property; under 26ai maximum availability has one too,
+ * defaulting to 0.
+ */
+export function defaultLagLimit(edition: Edition, mode: ProtectionMode): Seconds {
+  const d = BROKER_DEFAULTS[edition];
+  if (mode === 'MAXAVAILABILITY' && d.lagLimitMaxAvailSeconds !== null) {
+    return d.lagLimitMaxAvailSeconds;
+  }
+  return d.lagLimitSeconds;
+}
+
+/** Nominal drawing constants -- footnote 3 of the published page, not documented numbers. */
+export const NOMINAL = {
+  switchoverVerifySeconds: 1,
+  switchoverConvertSeconds: 2,
+  refuseSeconds: 0.2,
+  osRefuseSeconds: 0.15,
+  establishSeconds: 0.3,
+  /** The first failed ping with the ping properties unset. */
+  firstPingSeconds: 0.3,
+} as const;

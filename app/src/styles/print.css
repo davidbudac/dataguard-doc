@@ -1,0 +1,61 @@
+/* Print is a first-class view, not an afterthought (ui.md SS3).
+
+   On paper the four modes collapse into one document: the grid stops being a
+   viewport-height grid, every rail and dock unrolls in full, and the controls
+   that only make sense under a cursor -- the two bars, the transport, the
+   drawer scrim -- drop out. Nothing that carries information is dropped. */
+@media print{
+  :root{--sh:none}
+  body{background:#FFFFFF;color:#000000}
+  .app{display:block;height:auto;overflow:visible}
+  .app-stage,.app-rail,.app-dock{overflow:visible;max-height:none;height:auto;
+    border:0;box-shadow:none}
+  .app-rail{border-top:1px solid var(--ln)}
+  .topbar,.statusbar,.scrim,.strip{display:none}
+  /* A drawer on paper is just the next block. */
+  .sheet{position:static;width:auto;max-height:none;box-shadow:none;border:0;
+    border-top:1px solid var(--ln)}
+  .chips{break-inside:avoid}
+  .issue,.chip,.field{break-inside:avoid}
+  a{color:#000000;border-bottom-color:#000000}
+  a[href^="http"]::after{content:" (" attr(href) ")";font-family:var(--mono);font-size:10px}
+  /* Those appended URLs are long and have nowhere to break, and the citation
+     chips sit in a `white-space: nowrap` row so that a chip never splits from
+     the sentence it marks. On paper that row becomes a single unbreakable run
+     of ~1500 px and pushes the whole page sideways -- verified by rendering
+     the page with the print media emulated, which is the only way this shows.
+     So: on paper the row wraps, and a URL may break inside itself. */
+  .ct-fact-marks{white-space:normal}
+  .ct-cite,.ct-ext,.lesson-fn a,.cb-claim a{overflow-wrap:anywhere}
+  /* Gestures, not information: the clipboard button on a generated file and
+     the palette that adds members to a configuration nobody can edit here. */
+  .cb-hd .ctl-off,.pal{display:none}
+}
+
+/* Learn mode on paper (ui.md SS3: "print expands everything").
+
+   Two collapses exist on screen and both must open here: the "Explain more"
+   blocks, whose prose stays in the document precisely so a printout can carry
+   it, and the shell's columns, which stack. A step is kept whole where the
+   paper allows it, because half a step is worse than a page break above it. */
+@media print{
+  .explain{display:none}
+  .explain-wrap:not(.is-open)>.explain-body{display:block}
+  .explain-body{border-left-color:#000000}
+
+  .learn{padding:0;gap:18px}
+  .ls{break-inside:avoid;border-left-color:#000000}
+  .ls-actions,.ls-anchor,.learn-back{display:none}
+  .lesson-fn,.ct-footnote,.ct-figure,.ct-note,.ct-table-wrap{break-inside:avoid}
+  .ct-code{white-space:pre-wrap;word-break:break-word}
+  .ct-table{width:100%}
+
+  /* Panels and rails print one after another, at full width, with every tab
+     open: on paper there is no "current tab". A panel that renders only its
+     open tab into the document stays partial here -- that is the component's
+     call to make, not a rule CSS can fake. */
+  .app-rail,.app-dock,.app-stage{width:auto;max-width:none}
+  [role="tabpanel"]{display:block}
+  .tl-transport,.tl-tip{display:none}
+  .tl-svg,.topo-svg{max-width:100%;height:auto}
+}
