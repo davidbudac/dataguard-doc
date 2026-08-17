@@ -25,6 +25,29 @@ export const MODE_LABEL: Record<Mode, string> = {
   build: 'Build', break: 'Break', configure: 'Configure', learn: 'Learn',
 };
 
+/**
+ * The one line under the active mode in the header: what this step of the
+ * workbench is for, said once, where the reader has just pressed the button.
+ */
+export const MODE_SUB: Record<Mode, string> = {
+  build: 'Build — draw the configuration',
+  break: 'Break — inject failures and watch the clocks',
+  configure: 'Configure — the same deployment as you would type it',
+  learn: 'Learn — guided lessons',
+};
+
+/**
+ * The guidance line directly under the header: the first gesture, per mode.
+ * A newcomer's complaint about this page was never that it lacked controls --
+ * it was that nothing said which one to touch first.
+ */
+export const MODE_GUIDE: Record<Mode, string> = {
+  build: 'Click a card, a data centre or a link to edit it; add members with the + buttons in the panel.',
+  break: 'Click a host to crash it or a link to cut it, or pick a scenario in the panel, then scrub the timeline.',
+  configure: 'Pick a tab; hover a line to see which member it configures.',
+  learn: 'Each step sets up the workbench beside it.',
+};
+
 export const PANEL_LABEL: Record<PanelTab, string> = {
   dgmgrl: 'DGMGRL',
   dests: 'LOG_ARCHIVE_DEST_n',
@@ -73,6 +96,10 @@ export const proseOpen = signal<boolean>(false);
 export const theme = signal<ThemePref>('auto');
 export const edition = signal<Edition>('19c');
 export const inspectorOpen = signal<boolean>(false);
+/** The "How this page works" card, opened again from the header's ? button. */
+export const introOpen = signal<boolean>(false);
+/** Validation's INFO rows, collapsed until the reader asks for them. */
+export const notesOpen = signal<boolean>(false);
 export const toast = signal<Toast | null>(null);
 export const viewport = signal<Viewport>('wide');
 

@@ -5,6 +5,7 @@
  *
  *   theme      ?theme=  ->  localStorage  ->  auto
  *   edition    ?ed=     ->  localStorage  ->  19c
+ *   intro card localStorage dg-intro-v1 (shown when it is not set)
  *   document   #t= / #t0= / #cfg2= / #cfg=
  *                       ->  ?preset= / ?lesson=
  *                       ->  a published-page link (?sc=...#ch-clocks)
@@ -23,7 +24,9 @@ import type { Doc } from './state/doc';
 import { findPreset } from './presets';
 import { resetHistory } from './state/history';
 import { decodeFragment, fragmentKind } from './state/codec';
-import { announceRestore, loadDoc, loadEdition, loadTheme, startAutosave } from './state/persist';
+import {
+  announceRestore, loadDoc, loadEdition, loadIntro, loadTheme, startAutosave,
+} from './state/persist';
 import { upgradeLegacyUrl } from './state/legacy-url';
 import { applyLearnRoute, openLessonStep, startLearnRouting } from './ui/learn/route';
 import { lessonById } from './content';
@@ -51,6 +54,9 @@ async function boot(): Promise<void> {
   if (!present.has('theme')) state.theme = loadTheme() ?? URL_DEFAULTS.theme;
   if (!present.has('ed')) state.ed = loadEdition() ?? URL_DEFAULTS.ed;
   applyTheme(state.theme);
+  /* Whether the reader has already been told how the page works. Read once,
+     here, so no component reaches into localStorage while it renders. */
+  loadIntro();
 
   let restoredFromStorage = false;
   let notice: string | null = null;

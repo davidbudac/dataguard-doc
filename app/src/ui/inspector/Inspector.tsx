@@ -103,6 +103,26 @@ function Summary({ doc }: { doc: TopologyDoc }) {
   );
 }
 
+/**
+ * What to do first, in the one place a reader looks when nothing is selected.
+ *
+ * The empty rail used to open with a table of what the configuration already
+ * is -- true, and no help at all to somebody who has just arrived and wants to
+ * know where to click. Three numbered steps go above it; the summary keeps its
+ * place underneath.
+ */
+function StartHere() {
+  return (
+    <Group title="Start here">
+      <ol class="steps">
+        <li>Click a card, a data centre or a line on the drawing to edit it.</li>
+        <li>Add a standby, a far sync or an observer with the buttons below.</li>
+        <li>Switch to Break to fail something and watch the clocks.</li>
+      </ol>
+    </Group>
+  );
+}
+
 function Palette({ doc }: { doc: TopologyDoc }) {
   const [site, setSite] = useState<string>(doc.sites[0]?.id as string ?? '');
   const [from, setFrom] = useState<string>(doc.sites[0]?.id as string ?? '');
@@ -239,6 +259,7 @@ export function Inspector() {
 
       {subject === null ? (
         <>
+          {narrowed ? null : <StartHere />}
           <Summary doc={doc} />
           {narrowed ? null : <Palette doc={doc} />}
           <ConfigForm doc={doc} />

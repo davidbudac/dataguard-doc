@@ -244,7 +244,12 @@ for (const { preset, cards, lanes } of CASES) {
   if (!first.ok) { fail(`${preset}: ${first.why}`); continue; }
   for (const line of first.console) fail(`${preset}: console said ${line}`);
 
-  const href = /<a\b[^>]*\bid="permalink"[^>]*\bhref="([^"]*)"/i.exec(first.dom)?.[1];
+  /* The canonical address of what is on screen. Share is one button now: it
+     copies the link and then shows it as an anchor, so before any click the
+     address lives on the button as `data-permalink` -- which is what a dumped
+     DOM can read and a machine can follow. */
+  const href = /\bdata-permalink="([^"]+)"/i.exec(first.dom)?.[1]
+    ?? /<a\b[^>]*\bid="permalink"[^>]*\bhref="([^"]*)"/i.exec(first.dom)?.[1];
   if (!href) {
     fail(`${preset}: the page published no permalink to follow`);
     continue;

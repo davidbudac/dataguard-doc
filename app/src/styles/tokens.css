@@ -46,5 +46,7 @@
 --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,"Liberation Mono",monospace;
 /* Shell metrics, so the grid rows and the components that measure against them
    cannot drift apart. */
---h-top:48px;--h-status:36px;--h-readout:62px;--w-inspector:360px;
+--h-top:48px;--h-status:34px;--h-readout:38px;--w-inspector:360px;
+/* The shell's cap. The page ground shows in the gutters beside it. */
+--w-app:1360px;
 }

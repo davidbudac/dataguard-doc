@@ -17,6 +17,7 @@ import { PRESETS, findPreset } from '@/presets';
 import { classicDoc, makeDoc } from '@/state/doc';
 import { resetHistory } from '@/state/history';
 import { parseUrlQuery, shareHref, shareTooLarge } from '@/state/url';
+import { findingCount, share, sharedUrl } from '@/ui/StatusBar';
 import { parseTopologyDoc } from '@/engine';
 import { viewport } from '@/state/view';
 
@@ -33,6 +34,7 @@ beforeEach(() => {
   viewport.value = 'wide';
   shareHref.value = '';
   shareTooLarge.value = false;
+  sharedUrl.value = null;
 });
 
 describe('the preset picker', () => {
@@ -65,25 +67,50 @@ describe('the preset picker', () => {
 });
 
 describe('the share link', () => {
-  it('is a real anchor once the address bar has been written', () => {
-    shareHref.value = '?mode=break#t=abc';
+  /* One control, not two: Share copies, and then leaves the link in the bar
+     as a real anchor for a browser that refused the clipboard. */
+  it('shows nothing until Share has been pressed', () => {
+    const root = mount();
+    expect(root.querySelector('a#permalink')).toBeNull();
+    expect([...root.querySelectorAll('button')].some((b) => b.textContent === 'Share')).toBe(true);
+  });
+
+  it('is a real anchor once Share has produced one', async () => {
+    sharedUrl.value = '?mode=break#t=abc';
     const root = mount();
     const a = root.querySelector('a#permalink');
     expect(a).not.toBeNull();
     expect(a?.getAttribute('href')).toBe('?mode=break#t=abc');
   });
 
+  it('copies to the clipboard and leaves the address behind', async () => {
+    const written: string[] = [];
+    Object.defineProperty(globalThis.navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText: (t: string) => { written.push(t); return Promise.resolve(); } },
+    });
+    await share();
+    expect(written.length).toBe(1);
+    expect(sharedUrl.value).toBe(written[0]);
+    expect(sharedUrl.value).toBeTruthy();
+  });
+
   it('is a reason, not a dead link, when the configuration does not fit', () => {
-    shareHref.value = '?mode=break#t=abc';
+    sharedUrl.value = '?mode=break#t=abc';
     shareTooLarge.value = true;
     const root = mount();
     expect(root.querySelector('a#permalink')).toBeNull();
     expect(root.querySelector('.why')?.textContent).toContain('export');
   });
+});
 
-  it('says so rather than offering an empty href before the first write', () => {
-    const root = mount();
-    expect(root.querySelector('a#permalink')).toBeNull();
-    expect(root.querySelector('.why')?.textContent).toBeTruthy();
+describe('the finding count', () => {
+  /* Six INFO rows are six notes, not six issues: the count that alarmed a
+     reader about a healthy configuration is the one thing this wording fixes. */
+  it('counts errors and warnings as issues and information as notes', () => {
+    expect(findingCount(0, 0, 6)).toBe('0 issues · 6 notes');
+    expect(findingCount(0, 0, 0)).toBe('No issues');
+    expect(findingCount(1, 2, 0)).toBe('3 issues');
+    expect(findingCount(1, 0, 1)).toBe('1 issue · 1 note');
   });
 });

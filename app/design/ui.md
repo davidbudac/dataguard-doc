@@ -89,6 +89,60 @@ As built, three things in that table are worth spelling out:
   read the outcome at `tNow`. The outcome belongs to the modes that draw the run.
 
 Desktop shell (≥1280): top bar 48 (brand, mode segmented control, 19c/26ai, theme, undo/redo with labels) · status bar 36 (preset picker, issue count, Share/Export/Import/Reset) · canvas (min 320) + inspector 360 · readout 62 (chips: outcome, RTO, per-member RPO, loss kind, observer state, issues) · timeline `clamp(220px, lanes*48+120, 46vh)`. Grid on `100dvh`, `overflow: clip` (not hidden).
+
+**The polish pass (as built) changed six things in that paragraph.** The verdict
+it answers was one sentence — *"too wide, not really clear, I was confused how to
+use it"* — and every item below is one reading of it:
+
+- **The shell is capped and centred.** `--w-app: 1360px`, `margin-inline: auto`, a
+  hairline down each side and the page ground (`--bg`) showing in the gutters, the
+  way the published page capped `.fsfo` at 1240. Edge to edge at 1440 there was no
+  line for the eye to come back to. The toast is centred on the same cap
+  (`left: 50%` + `translateX(-50%)`, `width: min(var(--w-app), 100%)`) rather than
+  pinned to the viewport, or it would hang past the shell it belongs to. Prose
+  columns are capped where they are read, not globally: findings 80ch, rail notes
+  80ch, the guidance line 104ch, lesson prose 60ch.
+- **The stage fits the drawing; the dock takes the rest.** Rows are
+  `auto / fit-content(46vh) / minmax(0,1fr)` with `min-height: 260px` on the stage,
+  and the rail spans **both** the stage and the dock rows (`"stage rail" / "dock rail"`)
+  — otherwise shrinking the stage would shrink the inspector with it. A 1+1+1
+  topology is 210 px tall, and it used to float in a 550 px stage while the timeline
+  underneath ran out of room. The drawing is centred in what is left
+  (`justify-content: center` on `.tp-wrap`) and is never scaled up past its own
+  viewBox. In Build the leftover height belongs to the validation panel
+  (`.app-dock > .issues { flex: 1 1 auto }`), because empty surface has to be part
+  of a panel with a heading rather than a nameless band.
+- **One header, three bands, one element.** `<header class="app-head">` holds the
+  top bar, the quieter document row and the guidance line, and the toast measures
+  *it* — not the status bar plus a sibling. Modes carry a one-line subtitle
+  (`MODE_SUB`), undo/redo are small buttons whose `title` carries the edit they
+  would reverse, and the two `WhyPill` chips beside them are gone: NOTHING TO UNDO
+  YET, shouted at a reader who had not yet done anything, was the loudest text on
+  the page. Share and Permalink are one control — Share copies, then leaves the
+  address in the bar as a real anchor for a few seconds, so copying still does not
+  depend on `navigator.clipboard`. The canonical address rides on the button as
+  `data-permalink` at all times, which is what `site/smoke.mjs` follows and what a
+  machine can read without pressing anything.
+- **The page says what to do.** A guidance line under the header, per mode
+  (`MODE_GUIDE` in `state/view.ts`); a "How this page works" card with one bullet
+  per working mode and a link to Learn, shown on the first visit, dismissed into
+  `localStorage` under `dg-intro-v1` (`loadIntro()` at boot, never read during a
+  render) and brought back by the `?` in the header; and a numbered "Start here"
+  group at the head of the empty Build inspector, above the configuration summary.
+- **The readout is a strip of chips, not four billboards.** Label (sans, sentence
+  case) + value (mono, 14 px, semantic colour) + an optional quieter second value,
+  separated by hairlines, with the sentence behind each number in the chip's
+  `title`. Build and Configure read Protection level · Members · Fast-start
+  failover · Findings; Break adds Outcome, New primary open, **Data loss** (the new
+  primary's RPO — zero is the whole promise of SYNC and of a far sync) and Observer.
+  Four 26 px numerals were the loudest thing on a page where nothing had happened
+  yet.
+- **Errors and warnings are open; information is folded.** `IssuePanel` (Build's
+  dock and now also the foot of the Break rail) shows errors and warnings expanded
+  and puts INFO behind a `6 notes ▸` toggle whose rows are genuinely absent until
+  it is pressed. The count everywhere reads `0 issues · 6 notes`, never `6 issues`:
+  errors and warnings are issues, information is a note, and a healthy preset
+  raising six notes was being reported as six things wrong.
 Configure: generated blocks mono, scrollable, Copy button (reuse `.cfg` styling), **line ⇄ canvas cross-highlighting** via `data-member` on emitted lines (generators emit structured lines).
 Learn: lesson list + prose column, steps drive the workbench beside it (descendant of `DEMOS`).
 Degradation: 1024–1279 inspector as overlay drawer; 768–1023 single column with bottom-sheet inspector; <768 read-only viewer with an explicit "Editing needs a wider screen" card (nothing silently missing); print expands everything (`print.css` first-class).
@@ -157,4 +211,4 @@ Lessons: 1 Failover clocks · 2 The transport layer · 3 The application's view 
 M1 shell + canvas drawing the classic 1+1+1 from the engine · M2 Build mode (inspector, validation, undo, persistence, share) · M3 Break mode (events, timeline, scrubber, readout; six templates reproduce the six legacy outcomes) · M4 Configure (generators, panels, cross-highlight, goldens) · M5 Learn (nine lessons, reference, legacy URLs, print; deploy flip; drop 'unsafe-inline') · M6 polish/a11y/perf.
 
 ## 8. Taste notes
-Two faces only: system sans for prose, mono for everything Oracle/terminal (property names, modes, statuses, ORA numbers, DGMGRL, names, hosts, numerals with units). Prose 15/1.55, captions 11.5, eyebrows 11 mono uppercase .16em, chips 10.5 mono uppercase .12em, readout numbers 26/620 tabular. Canvas airy, rails dense; elevation only on rail/sheet/drawer. Colour semantic never decorative; cards monochrome in Build, tinted only in Break at a t; red = down only; violet = app's voice + observer semantics. Empty states say something true (inspector → configuration summary; Break → "Nothing has happened yet…"; timeline → "steady state — no events injected"; validation → "No issues … as modelled here"). Five invariants: WhyPill on every disabled control (`{state:'on'} | {state:'off', why}` prop); captions branch on outcome; nothing hidden by CSS alone; every demonstrable claim has "Show me"; undocumented labelled in place (`<Fact id>` chip). New principle: the drawing and the text are the same object seen twice (hover a generated line → highlight the member; select a member → scroll to its lines).
+Two faces only: system sans for prose, mono for everything Oracle/terminal (property names, modes, statuses, ORA numbers, DGMGRL, names, hosts, numerals with units). Prose 15/1.55, captions 11.5, eyebrows 11 mono uppercase .16em, chips 10.5 mono uppercase .12em, readout numbers 26/620 tabular. **As built the eyebrow is quieter and rarer** — 10.5 mono uppercase .08em, and only for a *section* label. It is not a chip label (the readout's are sans, sentence case), and it is not a title that reads as a sentence: the event menu says `Inject at t = 40 s` in mono sentence case, because AT T = 40 S was a shout. Readout values are 14/620 tabular mono, and the site label under a data centre rectangle is 11 px, not 10 — it names a column of the drawing, not a footnote to it. Canvas airy, rails dense; elevation only on rail/sheet/drawer. Colour semantic never decorative; cards monochrome in Build, tinted only in Break at a t; red = down only; violet = app's voice + observer semantics. Empty states say something true (inspector → configuration summary; Break → "Nothing has happened yet…"; timeline → "steady state — no events injected"; validation → "No issues … as modelled here"). Five invariants: WhyPill on every disabled control (`{state:'on'} | {state:'off', why}` prop); captions branch on outcome; nothing hidden by CSS alone; every demonstrable claim has "Show me"; undocumented labelled in place (`<Fact id>` chip). New principle: the drawing and the text are the same object seen twice (hover a generated line → highlight the member; select a member → scroll to its lines).

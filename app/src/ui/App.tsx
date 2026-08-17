@@ -21,6 +21,8 @@ import {
 import type { Mode } from '@/state/view';
 import { TopBar } from './TopBar';
 import { StatusBar } from './StatusBar';
+import { Guidance } from './Guidance';
+import { usePrintExpand } from './print';
 import { Readout } from './Readout';
 import { IssuePanel } from './IssuePanel';
 import { Sheet } from './common/Sheet';
@@ -58,15 +60,16 @@ function useWidth(): [(el: HTMLElement | null) => void, number] {
 }
 
 /**
- * Anchor the toast to the measured bottom of the status bar.
+ * Anchor the toast to the measured bottom of the header.
  *
- * The two bars wrap on a narrow window, so their nominal 48 + 36 px is a
- * guess, and a toast pinned to that guess paints over the wrapped bar. This
- * writes the measured value into `--bar-bottom` through `el.style.setProperty`
- * -- the one escape hatch `style-src 'self'` leaves open (ui.md SS1) -- rather
- * than through a style attribute, which the policy would drop. It observes the
- * top bar as well: a bar that grows a row moves the one below it without
- * changing its own size.
+ * The header is three bands -- modes, document row, guidance -- and every one
+ * of them wraps on a narrow window, so their nominal heights are a guess and a
+ * toast pinned to that guess paints over the header. This writes the measured
+ * value into `--bar-bottom` through `el.style.setProperty` -- the one escape
+ * hatch `style-src 'self'` leaves open (ui.md SS1) -- rather than through a
+ * style attribute, which the policy would drop. The whole header is one
+ * element now, so observing it is enough: the intro card opening inside it
+ * moves the bottom without any sibling changing size.
  */
 function useBarAnchor(): (el: HTMLElement | null) => void {
   const observer = useRef<ResizeObserver | null>(null);
@@ -85,8 +88,6 @@ function useBarAnchor(): (el: HTMLElement | null) => void {
     if (typeof ResizeObserver === 'undefined') return;
     const ro = new ResizeObserver(write);
     ro.observe(el);
-    const above = el.previousElementSibling;
-    if (above) ro.observe(above);
     observer.current = ro;
   };
 }
@@ -183,11 +184,22 @@ export function App() {
   const railInGrid = wide && HAS_RAIL[m];
   const t = toast.value;
   const barRef = useBarAnchor();
+  /* Installed by the shell, not by a mode: `beforeprint` fires once on the
+     window, and both the Configure panels and Build's folded notes expand off
+     the same signal (ui/print.ts). */
+  usePrintExpand();
 
   return (
     <div class={`app m-${m}`}>
-      <TopBar />
-      <StatusBar hostRef={barRef} />
+      {/* One header, three bands: the modes and the small controls, then the
+          quieter document row, then the line that says what to do in the mode
+          that is open. It is one element so the toast can be anchored to the
+          bottom of all three (ui.md SS3, "as built"). */}
+      <header class="app-head" ref={barRef}>
+        <TopBar />
+        <StatusBar />
+        <Guidance />
+      </header>
 
       {t === null ? null : (
         <p class={`strip toast ${t.kind === 'info' ? '' : `is-${t.kind}`}`} role="status">

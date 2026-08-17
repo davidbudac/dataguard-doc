@@ -15,12 +15,12 @@
  * Nothing here is hidden by CSS. The panel that is not open is not rendered.
  */
 
-import { signal } from '@preact/signals';
 import { useEffect } from 'preact/hooks';
 import { errors, issues } from '@/state/derived';
 import { currentUrlState, serializeUrlQuery } from '@/state/url';
 import { mode, panelTab, PANEL_LABEL, PANEL_TABS } from '@/state/view';
 import type { PanelTab } from '@/state/view';
+import { printing, usePrintExpand } from '../print';
 import { FigDefs } from './figure';
 import { Dgmgrl } from './Dgmgrl';
 import { Dests } from './Dests';
@@ -71,28 +71,14 @@ export function useHashRoute(): void {
 /**
  * On paper there is no current tab. The tab bar is navigation and drops out,
  * and all seven panels print one after another -- which no CSS rule can fake,
- * because the panel that is not open is not in the document at all. This is
- * the component making that call, as `print.css` says it must.
+ * because the panel that is not open is not in the document at all.
+ *
+ * The signal and its listener moved to `ui/print.ts` when the validation
+ * panel grew a fold of its own: `beforeprint` fires on the window once, and a
+ * collapsible in Build cannot hang off a hook only Configure mounts. Re-exported
+ * here because this is where callers learned to look for it.
  */
-export const printing = signal<boolean>(false);
-
-export function usePrintExpand(): void {
-  useEffect(() => {
-    if (typeof window === 'undefined') return undefined;
-    const on = (): void => { printing.value = true; };
-    const off = (): void => { printing.value = false; };
-    window.addEventListener('beforeprint', on);
-    window.addEventListener('afterprint', off);
-    const mq = typeof window.matchMedia === 'function' ? window.matchMedia('print') : null;
-    const onChange = (e: MediaQueryListEvent): void => { printing.value = e.matches; };
-    mq?.addEventListener?.('change', onChange);
-    return () => {
-      window.removeEventListener('beforeprint', on);
-      window.removeEventListener('afterprint', off);
-      mq?.removeEventListener?.('change', onChange);
-    };
-  }, []);
-}
+export { printing, usePrintExpand } from '../print';
 
 /* ---------------- the row ---------------- */
 

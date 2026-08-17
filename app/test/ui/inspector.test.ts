@@ -18,11 +18,12 @@ import type { DatabaseMember, MemberId } from '@/engine';
 import { memberId } from '@/engine';
 import { classicDoc, doc } from '@/state/doc';
 import { resetHistory, undo } from '@/state/history';
-import { clearSelection, edition, mode, selection, viewport } from '@/state/view';
+import { clearSelection, edition, mode, notesOpen, selection, viewport } from '@/state/view';
 import { Inspector } from '@/ui/inspector/Inspector';
 import { IssuePanel } from '@/ui/IssuePanel';
 import { addDatabase, addFarSync, addObserver, renameMember, setPrimary } from '@/ui/inspector/edits';
 import { WHY } from '@/ui/inspector/why';
+import { printing } from '@/ui/print';
 
 const mount = (component: () => unknown): HTMLElement => {
   const root = document.createElement('div');
@@ -45,6 +46,7 @@ beforeEach(() => {
   viewport.value = 'wide';
   mode.value = 'build';
   edition.value = '19c';
+  notesOpen.value = false;
   clearSelection();
 });
 
@@ -258,6 +260,8 @@ describe('identity and roles', () => {
 
 describe('the issue panel', () => {
   it('renders what validate() found, with its basis beside it', async () => {
+    /* Information is folded by default; this is the panel with the fold open. */
+    notesOpen.value = true;
     const root = mount(IssuePanel);
     await tick();
     const found = validate(doc.value.topology);
@@ -270,6 +274,7 @@ describe('the issue panel', () => {
   });
 
   it('selects what a finding is about', async () => {
+    notesOpen.value = true;
     const root = mount(IssuePanel);
     await tick();
     /* The row whose *subject* is a member, not merely one whose sentence
@@ -279,6 +284,48 @@ describe('the issue panel', () => {
     row?.click();
     await tick();
     expect(selection.value.length).toBeGreaterThan(0);
+  });
+
+  it('folds information behind a toggle, and never colours it as a warning', async () => {
+    const root = mount(IssuePanel);
+    await tick();
+    const notes = validate(doc.value.topology).filter((f) => f.severity === 'info');
+    expect(notes.length).toBeGreaterThan(0);
+
+    /* Folded: the rows are absent from the document, not painted out of view. */
+    expect(root.querySelectorAll('.issue.sv-info').length).toBe(0);
+    const tog = root.querySelector<HTMLButtonElement>('.notes-tog');
+    expect(tog).not.toBeNull();
+    expect(tog?.textContent).toContain(`${notes.length} note`);
+    expect(tog?.getAttribute('aria-expanded')).toBe('false');
+    /* The header counts what is wrong, and information is not wrong: the
+       tally names errors and warnings and leaves the notes to the toggle. */
+    const head = root.querySelector('.issues-hd')?.textContent ?? '';
+    expect(head).not.toContain('information');
+    expect(head).not.toContain(`${notes.length} note`);
+
+    tog?.click();
+    await tick();
+    expect(root.querySelectorAll('.issue.sv-info').length).toBe(notes.length);
+    expect(root.querySelector('.notes-tog')?.getAttribute('aria-expanded')).toBe('true');
+    /* Slate, never amber: an INFO row that wears the warning colour is a
+       warning however its severity is spelled. */
+    for (const row of root.querySelectorAll('.issue.sv-info')) {
+      expect(row.querySelector('.tag')?.className).toContain('t-sl');
+      expect(row.querySelector('.tag')?.className).not.toContain('t-am');
+    }
+  });
+
+  it('unfolds the notes on paper -- there is no toggle to press on a printout', async () => {
+    printing.value = true;
+    try {
+      const root = mount(IssuePanel);
+      await tick();
+      const notes = validate(doc.value.topology).filter((f) => f.severity === 'info');
+      expect(root.querySelectorAll('.issue.sv-info').length).toBe(notes.length);
+    } finally {
+      printing.value = false;
+    }
   });
 
   it('says something true when there is nothing to report', async () => {

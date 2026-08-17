@@ -120,7 +120,13 @@ export interface ReadoutChip {
   /** The number or the word. */
   v: string;
   unit?: string;
-  /** One sentence, branching on the outcome and never on the event name. */
+  /** A quieter second value on the same line ("6 notes" beside "0 issues"). */
+  v2?: string;
+  /**
+   * One sentence, branching on the outcome and never on the event name. The
+   * strip reads at a glance, so the sentence rides in the chip's `title`
+   * rather than under it -- it is in the document, not hidden by CSS.
+   */
   sub: string;
   /** Present when the value is this page's model rather than documented. */
   basis?: Claim<unknown>['basis'];
@@ -139,6 +145,26 @@ const OUTCOME_WORD: Record<Outcome, string> = {
 };
 
 const fmt = (n: number): string => (Number.isInteger(n) ? String(n) : n.toFixed(1));
+
+/**
+ * One chip for the validator's answer, worded the way the header words it:
+ * errors and warnings are issues, information is a note, and a healthy
+ * configuration with six notes reads "0 issues", not "6 issues".
+ */
+function findingsChip(): ReadoutChip {
+  const errs = errors.value.length;
+  const warns = warnings.value.length;
+  const notes = issues.value.length - errs - warns;
+  const loud = errs + warns;
+  return {
+    id: 'findings', tone: errs > 0 ? 'rd' : warns > 0 ? 'am' : 'tl', k: 'Findings',
+    v: loud === 0 ? 'no issues' : `${loud} issue${loud === 1 ? '' : 's'}`,
+    ...(notes > 0 ? { v2: `${notes} note${notes === 1 ? '' : 's'}` } : {}),
+    sub: loud === 0
+      ? 'No errors and no warnings in this configuration, as modelled here.'
+      : `${errs} error${errs === 1 ? '' : 's'}, ${warns} warning${warns === 1 ? '' : 's'}.`,
+  };
+}
 
 /**
  * The chips under the canvas. Two readings, and the code says which one it is
@@ -167,6 +193,8 @@ export const readout = computed<ReadoutChip[]>(() => {
       ...(farSyncs > 0 ? [`${farSyncs} far sync`] : []),
       '1 primary',
     ];
+    const fsfo = topo.config.fsfo;
+    const observersRunning = topo.observers.filter((o) => o.running).length;
     const chips: ReadoutChip[] = [
       {
         id: 'protection', tone: level && level.value !== modeWord ? 'am' : 'tl',
@@ -188,12 +216,19 @@ export const readout = computed<ReadoutChip[]>(() => {
         sub: `${parts.join(', ')}, as configured.`,
       },
       {
-        id: 'issues', tone: errors.value.length > 0 ? 'rd' : 'ik', k: 'Issues',
-        v: String(issues.value.length),
-        sub: issues.value.length === 0
-          ? 'No issues in this configuration, as modelled here.'
-          : `${errors.value.length} error${errors.value.length === 1 ? '' : 's'}, ${warnings.value.length} warning${warnings.value.length === 1 ? '' : 's'}.`,
+        /* The one property a reader looks for before anything else: whether
+           this configuration fails over on its own, and whether an observer
+           is there to make it. */
+        id: 'fsfo', tone: fsfo.state === 'enabled' ? 'vi' : 'sl',
+        k: 'Fast-start failover', v: fsfo.state,
+        ...(observersRunning > 0
+          ? { v2: `${observersRunning} observer${observersRunning === 1 ? '' : 's'} running` }
+          : {}),
+        sub: fsfo.state === 'enabled'
+          ? 'The broker fails over on its own when the observer and the target agree the primary is gone.'
+          : 'Nothing fails over on its own; a failover here is one somebody types.',
       },
+      findingsChip(),
     ];
     return chips;
   }
@@ -221,6 +256,22 @@ export const readout = computed<ReadoutChip[]>(() => {
       id: 'open', tone: 'tl', k: 'New primary open', v: fmt(f.tOpen), unit: 's',
       sub: 'Measured from the first injected event.',
     });
+  }
+  /* What the failover cost, in seconds of redo. Zero is the whole promise of
+     SYNC and of a far sync, so the strip says it out loud rather than leaving
+     the reader to infer it from a transport mode. */
+  if (moved && f.newPrimary !== null) {
+    const rpo = f.perMember[f.newPrimary]?.rpoSeconds ?? null;
+    if (rpo !== null) {
+      chips.push({
+        id: 'loss', tone: rpo.value === 0 ? 'tl' : 'am', k: 'Data loss',
+        v: rpo.value === 0 ? 'none' : fmt(rpo.value), ...(rpo.value === 0 ? {} : { unit: 's' }),
+        sub: rpo.value === 0
+          ? 'The new primary opened with every acknowledged commit.'
+          : 'Redo the new primary never received, in seconds.',
+        basis: rpo.basis,
+      });
+    }
   }
   if (f.abortAt !== null) {
     /* Two different shutdowns, and the chip never confuses them. A stalled
@@ -254,12 +305,6 @@ export const readout = computed<ReadoutChip[]>(() => {
         : 'The state the observer ends in.',
     });
   }
-  chips.push({
-    id: 'issues', tone: errors.value.length > 0 ? 'rd' : 'ik', k: 'Issues',
-    v: String(issues.value.length),
-    sub: issues.value.length === 0
-      ? 'No issues in this configuration, as modelled here.'
-      : `${errors.value.length} error${errors.value.length === 1 ? '' : 's'}, ${warnings.value.length} warning${warnings.value.length === 1 ? '' : 's'}.`,
-  });
+  chips.push(findingsChip());
   return chips;
 });

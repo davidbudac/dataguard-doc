@@ -31,16 +31,22 @@ export function Tag(
   return <span class={`tag t-${tone}`} title={title}>{children}</span>;
 }
 
+/**
+ * One reading of the configuration, on one line: the label, the value, and --
+ * where there is one -- a quieter second value beside it. The sentence behind
+ * the number is the chip's `title`, so the strip reads at a glance without
+ * shrinking a paragraph into a tile (ui.md SS3, "as built").
+ */
 export function Chip({ chip }: { chip: ReadoutChip }) {
   return (
-    <div class={`chip t-${chip.tone}`}>
+    <div class={`chip t-${chip.tone}`} title={chip.sub}>
       <span class="chip-k">{chip.k}</span>
       <span class="chip-v">
         {chip.v}
         {chip.unit ? <small> {chip.unit}</small> : null}
         {chip.basis ? <Fact basis={chip.basis} id={chip.id} /> : null}
       </span>
-      <span class="chip-s">{chip.sub}</span>
+      {chip.v2 ? <span class="chip-s">{chip.v2}</span> : null}
     </div>
   );
 }

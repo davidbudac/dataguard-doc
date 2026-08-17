@@ -52,9 +52,11 @@ export function EventMenu() {
       <header class="evmenu-hd">
         {/* Names what the actions below are for: a menu titled only by the
             clock reads as a list of things to do to nothing in particular. */}
-        <span class="eyebrow">
-          {keys.length === 0 ? '' : <><span class="mono">{keys.join(', ')}</span> &middot; </>}
-          At t = {at} s
+        {/* Not an eyebrow: this names an action at a clock reading, and the
+            all-caps mono form turned "Inject at t = 40 s" into a shout. */}
+        <span class="evmenu-title mono">
+          {keys.length === 0 ? '' : <>{keys.join(', ')} &middot; </>}
+          Inject at t = {at} s
         </span>
         <span class="rr-spacer" />
         <button type="button" class="btn" onClick={() => { menuOpen.value = false; }}>

@@ -11,24 +11,32 @@
 .app{
   display:grid;
   height:100dvh;
+  /* Capped and centred, with the page ground showing in the gutters: at 1440
+     the shell ran edge to edge and the eye had no line to come back to. The
+     cap is the drawing's, not a fashion -- a 1+1+1 topology is ~1040 px wide,
+     and a rail beside it wants 360. */
+  max-width:var(--w-app);
+  margin-inline:auto;
+  border-inline:1px solid var(--ln);
   /* clip, not hidden: overflow-x:hidden forces overflow-y to auto, which turns
      this element into a scroll container and breaks every sticky inside it. */
   overflow:clip;
   grid-template-columns:minmax(320px,1fr) var(--w-inspector);
-  /* The two bars size themselves (48 / 36 px wide, taller once they wrap on
-     a narrow screen); a fixed track would let a wrapped bar paint over the
-     row beneath it. The stage track carries a floor: a drawing scaled into
-     150 px is a diagram of itself, so a dock with a dozen lanes scrolls
-     before the canvas stops being readable. */
-  grid-template-rows:auto auto minmax(260px,1fr) auto;
+  /* The header sizes itself (three bands, taller once they wrap on a narrow
+     screen); a fixed track would let a wrapped bar paint over the row beneath
+     it. The stage fits the drawing rather than stretching it -- a 1+1+1
+     topology is 210 px tall, and a 550 px stage left the reader staring at
+     empty surface while the timeline underneath ran out of room. The floor
+     keeps a dense preset legible; the dock takes everything left over. The
+     rail spans both rows, so shrinking the stage never shrinks the inspector. */
+  grid-template-rows:auto fit-content(46vh) minmax(0,1fr);
   grid-template-areas:
-    "top    top"
-    "status status"
+    "head   head"
     "stage  rail"
-    "dock   dock";
-  background:var(--bg);
+    "dock   rail";
+  background:var(--sf);
 }
-.app.m-configure{grid-template-rows:auto auto clamp(180px,24vh,260px) minmax(0,1fr)}
+.app.m-configure{grid-template-rows:auto fit-content(26vh) minmax(0,1fr)}
 /* Configure's dock is the mode's main surface, so it takes the whole track;
    the 64vh cap below is for docks that share the height with the canvas. */
 .app.m-configure .app-dock{max-height:none}
@@ -43,16 +51,15 @@
 .app-stage>.tp-wrap>.topo-svg{flex:0 1 auto;min-height:0}
 .app-stage>.empty{flex:0 0 auto}
 .app.m-learn{
-  grid-template-rows:auto auto minmax(0,1fr);
+  grid-template-rows:auto minmax(0,1fr);
   grid-template-areas:
-    "top    top"
-    "status status"
+    "head   head"
     "stage  rail";
   grid-template-columns:minmax(0,60ch) minmax(360px,1fr);
 }
-.app-top{grid-area:top;min-width:0}
-.app-status{grid-area:status;min-width:0}
-.app-stage{grid-area:stage;min-width:0;min-height:0;overflow:auto;position:relative}
+.app-head{grid-area:head;min-width:0;background:var(--sf)}
+.app-stage{grid-area:stage;min-width:0;min-height:260px;overflow:auto;position:relative;
+  background:var(--sf)}
 .app-rail{grid-area:rail;min-width:0;min-height:0;overflow:auto;
   background:var(--sf);border-left:1px solid var(--ln);box-shadow:var(--sh);
   /* A scroll region that says so. Configure gives the rail a 180-260 px
@@ -75,35 +82,37 @@
 /* Configure's rail is the short one, so it is where the end has to be legible:
    a hairline under the last row, and the header staying put above it. */
 .app.m-configure .app-rail{border-bottom:1px solid var(--ln)}
-.app-dock{grid-area:dock;min-width:0;display:flex;flex-direction:column;position:relative;
-  border-top:1px solid var(--ln);background:var(--sf);overflow:auto;
-  /* Never so tall that the canvas above it stops being a drawing: on a short
-     window the dock scrolls before the stage drops under ~240 px. */
-  max-height:min(64vh,calc(100dvh - 380px))}
+.app-dock{grid-area:dock;min-width:0;min-height:0;display:flex;flex-direction:column;
+  position:relative;border-top:1px solid var(--ln);background:var(--sf);overflow:auto}
 /* The dock scrolls as a whole; its parts keep their natural height rather
    than squeezing each other (a readout squeezed to its min-height lets the
-   timeline paint over its second row of chips). */
+   timeline paint over its second row of chips). The validation panel is the
+   exception: it takes whatever the dock has left, so the room under the last
+   finding belongs to a panel with a heading rather than being a nameless
+   band of empty surface. */
 .app-dock>*{flex:0 0 auto}
-.app-dock>.issues{flex:0 1 auto}
+.app-dock>.issues{flex:1 1 auto}
 
 /* ---------------- top bar ---------------- */
 
-.topbar{display:flex;align-items:center;gap:8px 14px;min-height:var(--h-top);padding:4px 14px;
+.topbar{display:flex;align-items:center;gap:6px 16px;min-height:var(--h-top);padding:6px 16px;
   flex-wrap:wrap;background:var(--sf);border-bottom:1px solid var(--ln)}
 .topbar-brand{display:flex;flex-direction:column;gap:0;min-width:0;flex:0 0 auto}
 .topbar-brand b{font-size:13px;font-weight:620;letter-spacing:-.01em;white-space:nowrap}
 .topbar-brand span{font-family:var(--mono);font-size:10px;letter-spacing:.12em;
   text-transform:uppercase;color:var(--ik3);white-space:nowrap}
+/* The modes are the one loud thing in the bar, and the line under them says
+   what the mode in hand is for. */
+.topbar-modes{display:flex;flex-direction:column;align-items:flex-start;gap:3px;
+  flex:0 0 auto;min-width:0}
+.topbar-sub{font-size:11.5px;line-height:1.3;color:var(--ik3);max-width:52ch}
 .topbar-spacer{flex:1 1 auto;min-width:0}
 .topbar-group{display:flex;align-items:center;gap:8px;flex:0 1 auto;flex-wrap:wrap;
   justify-content:flex-end}
-/* Undo and redo name the edit they would reverse, not just the verb. */
-.undo-label{font-family:var(--mono);font-size:10.5px;letter-spacing:.02em;color:var(--ik3);
-  max-width:22ch;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
 /* ---------------- status bar ---------------- */
 
-.statusbar{display:flex;align-items:center;gap:10px;min-height:var(--h-status);padding:0 14px;
+.statusbar{display:flex;align-items:center;gap:10px;min-height:var(--h-status);padding:0 16px;
   background:var(--sf2);border-bottom:1px solid var(--ln);
   font-size:12px;color:var(--ik2);overflow-x:auto;scrollbar-width:none}
 .statusbar::-webkit-scrollbar{display:none}
@@ -116,6 +125,30 @@
 .statusbar .count.is-error{color:var(--rd)}
 .statusbar .count.is-warn{color:var(--am)}
 .statusbar .count.is-clean{color:var(--tl)}
+/* Share leaves the link behind for a moment: an address to copy or middle
+   click, for a browser that refuses the clipboard. */
+.sharelink{font-size:11px;letter-spacing:.04em;color:var(--vi);border-bottom-color:var(--vi);
+  white-space:nowrap}
+
+/* ---------------- guidance ---------------- */
+
+/* The third band: what to do first, in the mode that is open. */
+.guide{display:flex;flex-direction:column;gap:0;background:var(--sf);
+  border-bottom:1px solid var(--ln)}
+.guide-line{padding:6px 16px 7px;font-size:11.5px;line-height:1.45;color:var(--ik3);
+  max-width:104ch}
+
+/* Shown once, on the first visit, and afterwards only when the ? asks for it.
+   It sits in the flow rather than over the page: a card that covers the
+   workbench teaches nothing about the workbench. */
+.intro{display:flex;flex-direction:column;gap:6px;margin:0 16px 12px;padding:10px 14px 12px;
+  max-width:80ch;background:var(--sf2);border:1px solid var(--ln2);border-radius:3px}
+.intro-hd{display:flex;align-items:center;gap:10px}
+.intro-list{margin:0;padding-left:16px;display:flex;flex-direction:column;gap:3px;
+  font-size:12.5px;line-height:1.45;color:var(--ik2)}
+.intro-list b{font-weight:620;color:var(--ik)}
+.intro-list li::marker{color:var(--ik3)}
+.intro-foot{margin-top:2px}
 
 /* ---------------- buttons ---------------- */
 
@@ -126,6 +159,9 @@
 .btn:hover:not(:disabled){color:var(--ik);border-color:var(--ik3);background:var(--sf)}
 .btn:disabled{opacity:.46;cursor:not-allowed}
 .btn.is-primary{color:var(--ik);border-color:var(--vi);background:var(--vif)}
+/* Secondary: present, legible, and not competing with the control beside it. */
+.btn.is-quiet{border-color:var(--ln);color:var(--ik3)}
+.btn.is-quiet:hover:not(:disabled){color:var(--ik);border-color:var(--ik3)}
 .btn.is-icon{width:26px;height:24px;padding:0;justify-content:center;background:var(--sf)}
 .btn.is-icon svg{display:block;width:14px;height:14px;fill:none;stroke:currentColor;
   stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
@@ -184,24 +220,24 @@
 
 /* ---------------- readout chips ---------------- */
 
+/* One strip of readings, not four billboards. Four 26 px numerals were the
+   loudest thing on a page where nothing had happened yet; the strip still
+   reads at a glance, and the sentence behind each number is the chip's title
+   (ui.md SS3, "as built"). The label is sans and sentence case on purpose:
+   the mono uppercase eyebrow is for section labels, not for chip labels. */
 .readout{min-height:var(--h-readout);border-bottom:1px solid var(--ln);background:var(--sf)}
-.chips{display:grid;grid-template-columns:repeat(auto-fit,minmax(196px,1fr));gap:1px;
-  background:var(--ln);border-bottom:1px solid var(--ln)}
-.chip{background:var(--sf);padding:10px 14px;display:flex;flex-direction:column;gap:3px;
-  min-width:0}
-@supports (grid-template-rows:subgrid){
-  .chips{grid-auto-rows:auto}
-  .chip{display:grid;grid-template-rows:subgrid;grid-row:span 3;align-content:start}
-  .chip-v{margin-top:2px}
-  .chip-s{margin-top:2px}
-}
-.chip-k{font-family:var(--mono);font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;
-  color:var(--ik3)}
-.chip-v{font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:26px;
-  font-weight:620;letter-spacing:-.03em;line-height:1.15;color:var(--ik)}
-.chip-v small{font-size:14px;font-weight:500;color:var(--ik2);letter-spacing:0}
-.chip-s{font-size:11.5px;color:var(--ik3);line-height:1.4;overflow-wrap:anywhere}
-.chip-s .mono{font-size:10.5px;color:var(--ik2)}
+.chips{display:flex;flex-wrap:wrap;align-items:baseline;row-gap:4px;padding:9px 16px}
+.chip{display:inline-flex;align-items:baseline;gap:8px;min-width:0;padding:0 16px;
+  border-left:1px solid var(--ln)}
+.chip:first-child{padding-left:0;border-left:0}
+.chip-k{font-size:11.5px;line-height:1.4;color:var(--ik3);white-space:nowrap}
+.chip-v{font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:14px;
+  font-weight:620;letter-spacing:-.01em;line-height:1.4;color:var(--ik);
+  overflow-wrap:anywhere}
+.chip-v small{font-size:11px;font-weight:500;color:var(--ik2);letter-spacing:0}
+.chip-s{font-family:var(--mono);font-size:11px;color:var(--ik3);line-height:1.4;
+  white-space:nowrap}
+.chip-s::before{content:"· "}
 .chip.t-tl .chip-v{color:var(--tl)}
 .chip.t-bl .chip-v{color:var(--bl)}
 .chip.t-vi .chip-v{color:var(--vi)}
@@ -228,13 +264,24 @@
 .issue{display:grid;grid-template-columns:auto minmax(0,1fr);gap:4px 10px;
   padding:9px 16px;border-bottom:1px solid var(--ln);align-items:baseline}
 .issue:last-child{border-bottom:0}
-.issue-b{font-size:13px;color:var(--ik2)}
+/* A finding is prose: 80ch, whatever the window does. A sentence that runs
+   1400 px is a sentence nobody's eye tracks back to the start of. */
+.issue-b{font-size:13px;color:var(--ik2);max-width:80ch}
 .issue-b .mono{font-size:12px;color:var(--ik)}
 .issue-id{font-family:var(--mono);font-size:10px;letter-spacing:.1em;color:var(--ik3);
   grid-column:2}
 .issue.sv-error{border-left:3px solid var(--rd)}
 .issue.sv-warning{border-left:3px solid var(--am)}
 .issue.sv-info{border-left:3px solid var(--ln2)}
+/* The fold. Information is never an alarm, so the toggle is slate and quiet,
+   and what it hides is genuinely absent from the document until it is open. */
+.notes-tog{display:flex;align-items:center;gap:8px;width:100%;text-align:left;
+  padding:8px 16px;background:var(--sf);border:0;border-bottom:1px solid var(--ln);
+  border-left:3px solid var(--ln2);cursor:pointer;
+  font-family:var(--mono);font-size:11px;letter-spacing:.04em;color:var(--ik2)}
+.notes-tog:hover{background:var(--sf2);color:var(--ik)}
+.notes-caret{color:var(--ik3);width:9px}
+.notes-hint{font-family:var(--sans);font-size:11.5px;letter-spacing:0;color:var(--ik3)}
 
 /* ---------------- sheet / drawer ---------------- */
 
@@ -269,16 +316,14 @@
 /* 1024-1279: the inspector leaves the grid and becomes an overlay drawer. */
 @media (max-width:1279px){
   .app,.app.m-learn{grid-template-columns:minmax(0,1fr);
-    grid-template-areas:"top" "status" "stage" "dock"}
-  .app.m-learn{grid-template-areas:"top" "status" "stage"}
+    grid-template-areas:"head" "stage" "dock"}
+  .app.m-learn{grid-template-areas:"head" "stage"}
   /* The inspector is not hidden here -- App stops rendering it into the grid
      and renders it as a drawer instead, so the rail is genuinely absent from
      the document rather than painted out of view. */
 }
 @media (max-width:1023px){
-  .app-dock{max-height:min(70vh,calc(100dvh - 340px))}
-  .chips{grid-template-columns:repeat(auto-fit,minmax(152px,1fr))}
-  .chip-v{font-size:23px}
+  .app{border-inline:0}
 }
 @media (max-width:767px){
   .app,.app.m-configure,.app.m-learn{height:auto;min-height:100dvh;overflow:visible;
@@ -288,11 +333,9 @@
   .topbar{padding:8px 12px;gap:8px}
   .topbar-spacer{display:none}
   .topbar-group{justify-content:flex-start}
-  /* One chip per row on a phone: two columns of 152 px cannot hold
-     MAXAVAILABILITY at 23 px, and a readout that clips its own word is worse
-     than a readout that takes another line. */
-  .chips{grid-template-columns:minmax(0,1fr)}
-  .chip-v{font-size:21px;overflow-wrap:anywhere}
+  /* On a phone a chip takes its own line rather than clipping MAXAVAILABILITY:
+     a readout that cuts its own word off is worse than one more line. */
+  .chip{padding-left:0;border-left:0;flex:1 0 100%}
 }
 
 /* The toast/notice strip rides above the stage without taking a grid row, so
@@ -303,7 +346,8 @@
    ResizeObserver in App.tsx through `el.style.setProperty` -- the one escape
    hatch `style-src 'self'` leaves -- and the calc() is the fallback for the
    first frame and for a host with no ResizeObserver. */
-.toast{position:fixed;left:0;right:0;z-index:50;
+.toast{position:fixed;left:50%;transform:translateX(-50%);
+  width:min(var(--w-app),100%);z-index:50;
   top:var(--bar-bottom,calc(var(--h-top) + var(--h-status)))}
 @media (max-width:767px){.toast{position:static}}
 

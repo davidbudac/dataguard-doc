@@ -7,11 +7,14 @@
 @media print{
   :root{--sh:none}
   body{background:#FFFFFF;color:#000000}
-  .app{display:block;height:auto;overflow:visible}
+  .app{display:block;height:auto;overflow:visible;max-width:none;margin:0;border:0}
   .app-stage,.app-rail,.app-dock{overflow:visible;max-height:none;height:auto;
     border:0;box-shadow:none}
   .app-rail{border-top:1px solid var(--ln)}
-  .topbar,.statusbar,.scrim,.strip{display:none}
+  /* Instructions for a cursor, not information about the deployment: the two
+     bars, the guidance line and the "How this page works" card all address a
+     reader who can click, and paper has nobody to click. */
+  .topbar,.statusbar,.guide,.scrim,.strip{display:none}
   /* A drawer on paper is just the next block. */
   .sheet{position:static;width:auto;max-height:none;box-shadow:none;border:0;
     border-top:1px solid var(--ln)}

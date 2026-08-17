@@ -1,10 +1,12 @@
 /**
- * The status bar (ui.md SS3): where the Document came from, what is wrong with
- * it, and the four things you can do to it as a whole.
+ * The second, quieter header row (ui.md SS3): where the Document came from,
+ * what is wrong with it, and the four things you can do to it as a whole.
  *
- * Share is honest about its one limit: past 8000 characters a configuration
- * does not fit in a link, and the answer is the file, not a silently truncated
- * URL.
+ * Share is one control, not two. It copies the link and then puts the link
+ * itself in the bar for a few seconds — a real anchor, so a reader whose
+ * browser refuses the clipboard (an insecure origin, a headless run) still has
+ * an address to middle-click. Past 8000 characters a configuration does not
+ * fit in a link at all, and the answer is the file, not a truncated URL.
  */
 
 import { signal } from '@preact/signals';
@@ -20,7 +22,19 @@ import { WhyPill } from './common/WhyPill';
 
 const busy = signal(false);
 
-async function share(): Promise<void> {
+/** The link the last Share produced, shown in the bar while it is fresh. */
+export const sharedUrl = signal<string | null>(null);
+export const SHARED_MS = 12000;
+
+let sharedTimer: ReturnType<typeof setTimeout> | null = null;
+
+function showShared(url: string): void {
+  sharedUrl.value = url;
+  if (sharedTimer !== null) clearTimeout(sharedTimer);
+  sharedTimer = setTimeout(() => { sharedTimer = null; sharedUrl.value = null; }, SHARED_MS);
+}
+
+export async function share(): Promise<void> {
   busy.value = true;
   try {
     const { url, tooLarge } = await buildShareUrl();
@@ -28,11 +42,11 @@ async function share(): Promise<void> {
       toast.value = { kind: 'warn', text: TOO_LARGE_MESSAGE };
       return;
     }
+    /* The link is shown either way; the clipboard is the convenience, not the
+       contract. A browser that refuses it leaves the reader an anchor. */
+    showShared(url);
     if (typeof navigator !== 'undefined' && navigator.clipboard) {
       await navigator.clipboard.writeText(url);
-      toast.value = { kind: 'info', text: 'Link copied. It carries the whole configuration.' };
-    } else {
-      toast.value = { kind: 'info', text: url };
     }
   } catch {
     toast.value = { kind: 'error', text: 'The link could not be copied. It is in the address bar.' };
@@ -54,9 +68,24 @@ async function onImport(file: File | null): Promise<void> {
   toast.value = { kind: 'info', text: report.message };
 }
 
+/**
+ * "0 issues · 6 notes", never "6 issues".
+ *
+ * Six INFO rows are six things worth knowing about a healthy configuration,
+ * and counting them as issues told the reader their deployment was broken in
+ * six ways. Errors and warnings are issues; information is a note.
+ */
+export function findingCount(errs: number, warns: number, notes: number): string {
+  const loud = errs + warns;
+  const head = loud === 0 && notes === 0
+    ? 'No issues'
+    : `${loud} issue${loud === 1 ? '' : 's'}`;
+  return notes === 0 ? head : `${head} · ${notes} note${notes === 1 ? '' : 's'}`;
+}
+
 export interface StatusBarProps {
   /**
-   * The shell measures this bar to anchor the toast under it. A ref, not a
+   * The shell measures the header to anchor the toast under it. A ref, not a
    * layout constant: the bar wraps on a narrow window and a toast pinned to
    * the nominal height would paint over it.
    */
@@ -64,8 +93,11 @@ export interface StatusBarProps {
 }
 
 export function StatusBar({ hostRef }: StatusBarProps) {
-  const n = issues.value.length;
-  const tone = errors.value.length > 0 ? 'is-error' : warnings.value.length > 0 ? 'is-warn' : 'is-clean';
+  const errs = errors.value.length;
+  const warns = warnings.value.length;
+  const notes = issues.value.length - errs - warns;
+  const tone = errs > 0 ? 'is-error' : warns > 0 ? 'is-warn' : 'is-clean';
+  const link = sharedUrl.value;
   return (
     <div class="statusbar app-status" ref={hostRef}>
       <label class="mono" for="preset-picker">Preset</label>
@@ -88,9 +120,7 @@ export function StatusBar({ hostRef }: StatusBarProps) {
         {PRESETS.map((p) => <option key={p.id} value={p.id}>{p.title}</option>)}
       </select>
 
-      <span class={`count ${tone}`}>
-        {n === 0 ? 'No issues' : `${n} issue${n === 1 ? '' : 's'}`}
-      </span>
+      <span class={`count ${tone}`}>{findingCount(errs, warns, notes)}</span>
 
       {restored.value ? (
         <span class="mono">
@@ -98,7 +128,7 @@ export function StatusBar({ hostRef }: StatusBarProps) {
           {' '}
           <button
             type="button"
-            class="btn"
+            class="btn is-quiet"
             onClick={() => { resetHistory(startFresh(edition.value)); presetId.value = 'classic'; }}
           >
             Start fresh
@@ -119,29 +149,35 @@ export function StatusBar({ hostRef }: StatusBarProps) {
         </button>
       )}
 
-      <button type="button" class="btn" disabled={busy.value} onClick={() => void share()}>
+      {/* `data-permalink` is the canonical address of what is on screen,
+          carried on the control that copies it. It is there before the click
+          because a machine -- the smoke check, a scraper, a bookmarklet --
+          cannot press a button, and because the address the page is at should
+          never be a secret only the clipboard knows. */}
+      <button
+        type="button"
+        class="btn"
+        disabled={busy.value}
+        title="Copy a link that carries the whole configuration"
+        data-permalink={shareHref.value}
+        onClick={() => void share()}
+      >
         Share
       </button>
-      {shareTooLarge.value || shareHref.value === ''
-        ? (
-          <WhyPill
-            why={{
-              state: 'off',
-              why: shareTooLarge.value
-                ? 'too large for a link -- export instead'
-                : 'the link is still being written',
-            }}
-          />
-        )
-        : (
-          /* A real link, not a button: the address the reader can copy without
-             a clipboard permission, and the one this page is at. */
-          <a class="btn" id="permalink" rel="bookmark" href={shareHref.value}>Permalink</a>
-        )}
+      {shareTooLarge.value ? (
+        <WhyPill why={{ state: 'off', why: 'too large for a link -- export instead' }} />
+      ) : null}
+      {link === null || shareTooLarge.value ? null : (
+        /* A real link, not a receipt: the address the reader can copy without
+           a clipboard permission, and the one this page is at. */
+        <a class="sharelink mono" id="permalink" rel="bookmark" href={link}>
+          Link copied
+        </a>
+      )}
 
-      <button type="button" class="btn" onClick={() => exportDoc(doc.value)}>Export</button>
+      <button type="button" class="btn is-quiet" onClick={() => exportDoc(doc.value)}>Export</button>
 
-      <label class="btn">
+      <label class="btn is-quiet">
         Import
         <input
           type="file"
@@ -156,7 +192,7 @@ export function StatusBar({ hostRef }: StatusBarProps) {
 
       <button
         type="button"
-        class="btn"
+        class="btn is-quiet"
         title="Back to the classic 1+1+1 configuration"
         onClick={() => {
           edit('Reset to the classic configuration', () => classicDoc(edition.value));

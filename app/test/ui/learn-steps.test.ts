@@ -242,6 +242,6 @@ describe('print', () => {
     expect(print).toContain('.explain-wrap:not(.is-open)>.explain-body{display:block}');
     expect(print).toMatch(/\.explain\{display:none\}/);
     /* The shell stops being a viewport-height grid: rails and dock stack. */
-    expect(print).toContain('.app{display:block;height:auto;overflow:visible}');
+    expect(print).toMatch(/\.app\{display:block;height:auto;overflow:visible[^}]*\}/);
   });
 });

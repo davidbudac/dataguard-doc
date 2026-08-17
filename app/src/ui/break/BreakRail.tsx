@@ -12,6 +12,7 @@
 
 import { events, topology } from '@/state/derived';
 import { canEdit, tNow, viewport } from '@/state/view';
+import { IssuePanel } from '../IssuePanel';
 import { Action, Group, Note } from '../inspector/controls';
 import { WHY } from '../inspector/why';
 import {
@@ -27,7 +28,7 @@ export function BreakRail() {
 
   return (
     <div class="insp">
-      <Group title="Scenarios">
+      <Group title="One-click scenarios">
         {templates(doc, 0).map((t) => (
           <div class="tmpl" key={t.id}>
             <Action
@@ -99,6 +100,11 @@ export function BreakRail() {
           </Note>
         )}
       </Group>
+
+      {/* The same validation the Build dock shows, worded and folded the same
+          way: what is wrong with a configuration does not stop being true
+          because the reader switched to breaking it. */}
+      <IssuePanel />
     </div>
   );
 }

@@ -77,11 +77,17 @@ describe('the steady state, with nothing injected', () => {
     expect([...ranks].sort((a, b) => a - b)).toEqual(ranks);
   });
 
-  it('reads out the steady state: level, members, issues -- and no clock', () => {
+  it('reads out the steady state: level, members, failover, findings -- and no clock', () => {
     const ids = readout.value.map((c) => c.id);
-    expect(ids).toEqual(['protection', 'members', 'issues']);
+    expect(ids).toEqual(['protection', 'members', 'fsfo', 'findings']);
     expect(readout.value.find((c) => c.id === 'protection')?.v).toBe('MAXAVAILABILITY');
-    expect(readout.value.find((c) => c.id === 'issues')?.v).toBe(String(issues.value.length));
+    /* Errors and warnings are issues; information is a note, and a healthy
+       configuration with six notes reads "no issues" rather than "6". */
+    const findings = readout.value.find((c) => c.id === 'findings');
+    const loud = issues.value.filter((f) => f.severity !== 'info').length;
+    expect(findings?.v).toBe(loud === 0 ? 'no issues' : `${loud} issue${loud === 1 ? '' : 's'}`);
+    const notes = issues.value.length - loud;
+    expect(findings?.v2 ?? '').toBe(notes === 0 ? '' : `${notes} note${notes === 1 ? '' : 's'}`);
   });
 });
 
@@ -95,9 +101,9 @@ describe('with a failure injected, the engine runs', () => {
 
   it('keeps the steady-state readout in Build mode even with events in the Document', () => {
     mode.value = 'build';
-    expect(readout.value.map((c) => c.id)).toEqual(['protection', 'members', 'issues']);
+    expect(readout.value.map((c) => c.id)).toEqual(['protection', 'members', 'fsfo', 'findings']);
     mode.value = 'configure';
-    expect(readout.value.map((c) => c.id)).toEqual(['protection', 'members', 'issues']);
+    expect(readout.value.map((c) => c.id)).toEqual(['protection', 'members', 'fsfo', 'findings']);
     mode.value = 'learn';
     expect(readout.value.map((c) => c.id)).toContain('outcome');
   });

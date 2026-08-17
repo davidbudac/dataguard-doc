@@ -5,6 +5,7 @@
  *   `dg-theme`       light / dark / auto -- same key the published page uses
  *   `dg-ed`          19c / 26ai -- likewise, so a reader who set the release
  *                    on the old page finds it set here
+ *   `dg-intro-v1`    set once the "How this page works" card has been dismissed
  *   `dg-fsfo-cfg-v1` the published page's stored configuration. Read once when
  *                    there is nothing newer, and never deleted: the old page
  *                    is still serving from /legacy/ and still owns that key.
@@ -29,6 +30,7 @@ export const DOC_KEY = 'dg-doc-v1';
 export const THEME_KEY = 'dg-theme';
 export const EDITION_KEY = 'dg-ed';
 export const LEGACY_DOC_KEY = 'dg-fsfo-cfg-v1';
+export const INTRO_KEY = 'dg-intro-v1';
 
 export const AUTOSAVE_MS = 500;
 export const RESTORE_NOTICE_MS = 8000;
@@ -38,6 +40,10 @@ export const restored = signal<boolean>(false);
 
 const store = (): Storage | null => {
   try {
+    /* Every browser and jsdom hang storage off `window`; Node has a global of
+       the same name that throws unless the process was started with a backing
+       file, so the window's is the one to ask for first. */
+    if (typeof window !== 'undefined' && window.localStorage) return window.localStorage;
     return typeof localStorage === 'undefined' ? null : localStorage;
   } catch {
     return null;
@@ -67,6 +73,27 @@ export function loadEdition(): '19c' | '26ai' | null {
 }
 
 export const saveEdition = (v: '19c' | '26ai'): void => write(EDITION_KEY, v);
+
+/* ---------------- the intro card ---------------- */
+
+/**
+ * Whether the reader has already been told how the page works.
+ *
+ * A signal rather than a read at render time: the card is shown on the first
+ * visit and never again, and a component that reached into `localStorage`
+ * while rendering would be reading storage on every keystroke. Boot calls
+ * `loadIntro()` once; the tests call it to stand in for a reload.
+ */
+export const introDismissed = signal<boolean>(false);
+
+export function loadIntro(): void {
+  introDismissed.value = read(INTRO_KEY) === '1';
+}
+
+export function dismissIntro(): void {
+  introDismissed.value = true;
+  write(INTRO_KEY, '1');
+}
 
 /* ---------------- the Document ---------------- */
 
