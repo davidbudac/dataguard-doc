@@ -36,7 +36,7 @@ the literal seven characters. That is why JS gets `\uXXXX` and comments get ASCI
 **`site/build-legacy.mjs` enforces this** — it exits non-zero, naming the offending
 lines, on any byte above U+007E. `site/build.mjs` runs it, and `site/publish.sh`
 builds before it deploys, so a non-ASCII fragment cannot reach
-davidbudac.cz/dataguard/legacy/. To check by hand before committing:
+dataguard.davidbudac.cz/legacy/. To check by hand before committing:
 
 ```bash
 LC_ALL=C grep -nP '[^\x00-\x7F]' simulator/fsfo-simulator.html && echo "NON-ASCII FOUND" || echo "ASCII clean"

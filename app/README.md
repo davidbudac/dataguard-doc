@@ -2,7 +2,7 @@
 
 A workbench for Oracle Data Guard configurations: **draw** a topology, **break**
 it, and watch the clocks. It is the page served at
-[davidbudac.cz/dataguard](https://davidbudac.cz/dataguard/), and it replaces the
+[dataguard.davidbudac.cz](https://dataguard.davidbudac.cz/), and it replaces the
 single-file fast-start failover explainer that used to live there (still served,
 frozen, at `/dataguard/legacy/`).
 

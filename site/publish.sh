@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Publish the Data Guard workbench to https://davidbudac.cz/dataguard/
+# Publish the Data Guard workbench to https://dataguard.davidbudac.cz/
 #
 # What goes out: the application (app/, built by Vite) at the root, and the
 # page it replaced at /dataguard/legacy/ -- every link in the handover
@@ -27,7 +27,7 @@ set -euo pipefail
 DG_HOST="${DG_HOST:-root@dbhetz-ubu26}"
 DG_DEST="${DG_DEST:-/var/www/dataguard}"
 DG_OWNER="${DG_OWNER:-db:db}"
-DG_URL="${DG_URL:-https://davidbudac.cz/dataguard/}"
+DG_URL="${DG_URL:-https://dataguard.davidbudac.cz/}"
 
 repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$repo"

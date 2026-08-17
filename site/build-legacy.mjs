@@ -109,7 +109,7 @@ if (catalog) {
 // The application at /dataguard/ is the canonical reading of this document now,
 // so the canonical link keeps pointing there; SITE stays the site root because
 // og:image and the figures live beside it in diagrams/.
-const SITE = 'https://davidbudac.cz/dataguard/';
+const SITE = 'https://dataguard.davidbudac.cz/';
 const HERE = `${SITE}legacy/`;
 const DESC =
   'Interactive Oracle Data Guard configuration tool: broker properties, failover clocks, ' +

@@ -16,16 +16,19 @@
 
 import { spawn } from 'node:child_process';
 import { createServer } from 'node:http';
-import { createReadStream, existsSync, mkdtempSync, rmSync, statSync } from 'node:fs';
+import { createReadStream, existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, normalize } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const site = join(root, '_site');
 const CHROME = process.env['CHROME'] ?? '/usr/bin/google-chrome';
 /** One page load's ceiling. Past this the browser is not slow, it is stuck. */
 const TIMEOUT_MS = 90_000;
+/** The HTTP probe's ceiling: a one-line page over loopback either loads at
+    once or the browser cannot fetch over HTTP at all on this machine. */
+const PROBE_MS = 20_000;
 
 /* The two links this checks. `#t=` is the share link's own spelling -- the
    compressed document in the fragment -- and it is produced by the page
@@ -69,6 +72,13 @@ function serve(dir) {
     const url = new URL(req.url ?? '/', 'http://127.0.0.1');
     let rel = decodeURIComponent(url.pathname);
     if (rel.endsWith('/')) rel += 'index.html';
+    /* A synthetic page for the probe below: it never touches the disk, so a
+       browser that cannot show it cannot fetch over HTTP, full stop. */
+    if (rel === '/__probe') {
+      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+      res.end('<!doctype html><title>probe</title><p id="probe">smoke-probe-ok</p>');
+      return;
+    }
     const path = normalize(join(dir, rel));
     requested.push(rel);
     if (!path.startsWith(dir) || !existsSync(path) || !statSync(path).isFile()) {
@@ -100,7 +110,7 @@ function serve(dir) {
  * so the 300 ms debounce behind the address bar has fired by then without this
  * script sleeping for a real 300 ms.
  */
-function load(url) {
+function load(url, timeoutMs = TIMEOUT_MS) {
   const profile = mkdtempSync(join(tmpdir(), 'dg-smoke-'));
   const args = [
     '--headless=new',
@@ -136,7 +146,7 @@ function load(url) {
     child.stderr.on('data', (b) => { err += b; });
 
     /* A browser that never finishes is a failure with a name, not a hang. */
-    const killer = setTimeout(() => { child.kill('SIGKILL'); }, TIMEOUT_MS);
+    const killer = setTimeout(() => { child.kill('SIGKILL'); }, timeoutMs);
 
     const done = (result) => {
       clearTimeout(killer);
@@ -147,7 +157,7 @@ function load(url) {
     child.on('error', (e) => done({ ok: false, dom: '', console: [], why: `chrome could not run: ${e.message}` }));
     child.on('close', (code, signal) => {
       if (signal === 'SIGKILL') {
-        done({ ok: false, dom: out, console: [], why: `chrome did not finish within ${TIMEOUT_MS / 1000} s` });
+        done({ ok: false, dom: out, console: [], why: `chrome did not finish within ${timeoutMs / 1000} s` });
         return;
       }
       if (code !== 0) {
@@ -183,8 +193,46 @@ if (!existsSync(CHROME)) {
 }
 
 const server = await serve(site);
-const base = `http://127.0.0.1:${server.port}/`;
+let base = `http://127.0.0.1:${server.port}/`;
 console.log(`serving _site/ at ${base}`);
+
+/* ---------------- can this browser fetch over HTTP at all? ---------------- */
+
+/* Some machines' headless Chrome opens the TCP connection to a loopback server
+   and then never sends the request (seen with Chrome 151: the netlog shows the
+   socket closed with "Cert verifier changed" and the navigation stalls until
+   the timeout, for a one-line page and for https://example.com alike). That
+   is the browser, not the site -- but a smoke check that reports it as the
+   site's failure is worse than none. So: probe with a synthetic page first.
+   If the probe fails, fall back to the same bundle inlined into one HTML file
+   and loaded over file://, which the module loader accepts because there is
+   nothing left to import; asset serving is then verified statically instead. */
+let inlineDir = null;
+const probe = await load(`${base}__probe`, PROBE_MS);
+if (probe.ok && probe.dom.includes('smoke-probe-ok')) {
+  pass('headless Chrome fetches over HTTP');
+} else {
+  console.error(`  NOTE  headless Chrome could not load a one-line page over HTTP (${probe.why ?? 'empty DOM'});`);
+  console.error('        checking the same bundle inlined into one file over file:// instead.');
+  console.error('        (This is the browser on this machine, not the site -- an interactive');
+  console.error('        Chrome pointed at the URL above renders it. Asset serving is checked statically.)');
+  const html = readFileSync(join(site, 'index.html'), 'utf8');
+  const cssRef = /<link rel="stylesheet"[^>]*href="\.\/(assets\/[^"]+\.css)"[^>]*>/.exec(html);
+  const jsRef = /<script type="module"[^>]*src="\.\/(assets\/[^"]+\.js)"[^>]*><\/script>/.exec(html);
+  if (!cssRef || !jsRef) {
+    fail('index.html does not reference one stylesheet and one module bundle');
+  } else {
+    const css = readFileSync(join(site, cssRef[1]), 'utf8');
+    const js = readFileSync(join(site, jsRef[1]), 'utf8').replace(/<\/script>/g, '<\\/script>');
+    const one = html
+      .replace(cssRef[0], `<style>${css}</style>`)
+      .replace(jsRef[0], `<script type="module">${js}</script>`);
+    inlineDir = mkdtempSync(join(tmpdir(), 'dg-smoke-inline-'));
+    writeFileSync(join(inlineDir, 'index.html'), one);
+    base = pathToFileURL(join(inlineDir, 'index.html')).href;
+    pass(`inlined ${cssRef[1]} and ${jsRef[1]} into ${base}`);
+  }
+}
 
 for (const { preset, cards, lanes } of CASES) {
   console.log(`\n${preset}`);
@@ -278,10 +326,22 @@ if (!legacy.ok) {
 }
 
 /* An asset the page asked for and did not get is a broken deploy, whatever the
-   DOM looked like afterwards. */
-const missing = [...new Set(server.missing)].filter((p) => p !== '/favicon.ico');
-if (missing.length > 0) fail(`the page requested files the build does not have: ${missing.join(', ')}`);
-else pass('every file the page requested was served');
+   DOM looked like afterwards. Over file:// nothing is requested, so the check
+   is static: every asset index.html names must exist in the tree. */
+if (inlineDir === null) {
+  const missing = [...new Set(server.missing)].filter((p) => p !== '/favicon.ico');
+  if (missing.length > 0) fail(`the page requested files the build does not have: ${missing.join(', ')}`);
+  else pass('every file the page requested was served');
+} else {
+  const html = readFileSync(join(site, 'index.html'), 'utf8');
+  const refs = [...html.matchAll(/(?:src|href)="\.\/(assets\/[^"]+)"/g)].map((m) => m[1]);
+  const absent = refs.filter((r) => !existsSync(join(site, r)));
+  if (refs.length === 0) fail('index.html references no assets/ file');
+  else if (absent.length > 0) fail(`index.html references files the build does not have: ${absent.join(', ')}`);
+  else pass(`every asset index.html references exists (${refs.join(', ')})`);
+  if (!existsSync(join(site, 'legacy', 'index.html'))) fail('_site/legacy/index.html is missing');
+  rmSync(inlineDir, { recursive: true, force: true });
+}
 
 server.close();
 

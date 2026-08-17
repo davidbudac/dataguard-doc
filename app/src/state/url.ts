@@ -10,7 +10,7 @@
  *    the tests exercise. Values are clamped on read, unknown keys are ignored
  *    and then dropped from the address bar, and nothing from a URL reaches
  *    state unclamped.
- *  - a **write path** behind requestAnimationFrame plus a 300 ms trailing
+ *  - a **write path** behind a one-frame timer plus a 300 ms trailing
  *    debounce. That debounce is mandatory, not polish: WebKit rate-limits
  *    `history.replaceState` to roughly 100 calls per 30 s, and one slider drag
  *    would trip it. `replaceState` only -- undo must never become the Back
@@ -267,14 +267,17 @@ async function flush(): Promise<void> {
 function schedule(): void {
   if (typeof window === 'undefined') return;
   if (rafHandle !== 0) return;
-  const raf = typeof requestAnimationFrame === 'function'
-    ? requestAnimationFrame
-    : (fn: () => void): number => setTimeout(fn, 16) as unknown as number;
-  rafHandle = raf(() => {
+  /* A one-frame collapse of synchronous bursts, then the 300 ms trailing
+     debounce (WebKit rate-limits replaceState to about 100 calls per 30 s).
+     Deliberately a timer and not requestAnimationFrame: rAF stops firing in a
+     background tab and never fires in a headless dump, and the permalink is a
+     reading of the state that must exist in both -- a share link that only
+     appears once the tab is painted is a link the smoke test cannot see. */
+  rafHandle = setTimeout(() => {
     rafHandle = 0;
     if (timerHandle !== null) clearTimeout(timerHandle);
     timerHandle = setTimeout(() => { timerHandle = null; void flush(); }, 300);
-  });
+  }, 16) as unknown as number;
 }
 
 /**
@@ -291,6 +294,6 @@ export function startUrlSync(): () => void {
   return () => {
     stop();
     if (timerHandle !== null) { clearTimeout(timerHandle); timerHandle = null; }
-    rafHandle = 0;
+    if (rafHandle !== 0) { clearTimeout(rafHandle as unknown as ReturnType<typeof setTimeout>); rafHandle = 0; }
   };
 }

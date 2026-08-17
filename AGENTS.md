@@ -4,7 +4,7 @@ This repo documents Oracle 19c Data Guard. It carries **two** pages and the
 assets around them. The one being worked on is the workbench in `app/` — a
 topology simulator you draw a Data Guard configuration in, break, and watch the
 clocks of — a TypeScript/Vite/Preact application with a pure domain engine,
-served at **https://davidbudac.cz/dataguard/**. Beside it, frozen, sits the page
+served at **https://dataguard.davidbudac.cz/**. Beside it, frozen, sits the page
 it grew out of: the single-file fast-start failover (FSFO) explainer in
 `simulator/`, still served at **/dataguard/legacy/** because every link the
 handover document, the Confluence page and the Czech reading list ever handed
@@ -30,7 +30,7 @@ produced, and how to extend it without breaking consistency or accuracy.
 | `testing/README.md` | Test runbook: step-by-step drills verifying each documented situation against a real 19c configuration (crash, isolation, observer loss, NET_TIMEOUT, blocked failover, reopen/MaxFailure, client view, commit measurement, plus four topology drills for far sync, cascading, multi-target and multiple observers), with an RTO/RPO probe harness and reinstate cleanup. Repo-only markdown — not part of the published site |
 | `site/build.mjs` | The site build, in three steps: `npm run build` in `app/` (which empties `_site/` and writes the hashed bundle), then `site/build-legacy.mjs`, then `assertNoInline(_site/index.html)` — a built page carrying a `<script>` with a body, an `on*=` handler or a `style=` attribute fails the build rather than the browser's content security policy. The guard proves it can fail (three fixtures it must reject, one it must accept) before it is trusted to pass |
 | `site/build-legacy.mjs` | What `site/build.mjs` used to be: wraps the fragment into a full page (doctype, charset, title, favicon, canonical + social meta), inlines `simulator/i18n/cs.json` as a JSON `<script>`, and enforces the ASCII-only guard — it exits non-zero on any byte above U+007E, naming the offending lines. Writes `_site/legacy/index.html` and copies `diagrams/` to `_site/diagrams`, which both pages share |
-| `site/smoke.mjs` | Dependency-free browser check of the built tree: serves `_site/` over `node:http`, loads it in headless Chrome (`--dump-dom`, console messages captured through `--enable-logging=stderr`), takes the page's own `#t=` permalink for the `classic` and `far-sync-zero-loss` presets and reloads it cold, asserts the node cards, the timeline lanes and the outcome chip, opens each of the four modes by name, and checks that a published-page link (`?sc=iso&lat=2&lang=cs#ch-clocks`) upgrades into Break mode and offers the Czech page. Exits non-zero on any failed check, any console message, or any file the page asked for and did not get |
+| `site/smoke.mjs` | Dependency-free browser check of the built tree: serves `_site/` over `node:http`, loads it in headless Chrome (`--dump-dom`, console messages captured through `--enable-logging=stderr`), takes the page's own `#t=` permalink for the `classic` and `far-sync-zero-loss` presets and reloads it cold, asserts the node cards, the timeline lanes and the outcome chip, opens each of the four modes by name, and checks that a published-page link (`?sc=iso&lat=2&lang=cs#ch-clocks`) upgrades into Break mode and offers the Czech page. Probes HTTP first and falls back to an inlined single-file copy over `file://` where the machine's headless Chrome cannot fetch over HTTP. Exits non-zero on any failed check, any console message, or any file the page asked for and did not get |
 | `site/test.mjs` | Standalone node test for the **legacy** fragment: extracts its four model marker blocks and asserts the documented domain invariants — including the scenario × observer-location outcome matrix as literal tables (24 cells, plus the 19c-invariance loops over the version axis) — then checks the Czech catalog for dropped placeholders, unbalanced inline markup and bad plural forms. No dependencies; `node --test site/test.mjs`, 68 tests. The application reproduces the same 24 cells through its compat adapter (`app/test/legacy-matrix.test.ts`) |
 | `site/publish.sh` | Builds, runs the three test gates (`npm --prefix app run test`, `node --test site/test.mjs`, `node site/smoke.mjs`), deploys to the VPS, then verifies the public URL |
 
@@ -71,13 +71,16 @@ The three gates, and what each one can catch that the others cannot:
    fragment's four model blocks, which still ship (68 tests).
 3. `node site/smoke.mjs` — the built bundle in a real browser. The only gate
    that can catch a page that builds, passes every unit test and does not run.
-   **It cannot run inside an agent sandbox** — it spawns Chrome and binds a
-   local HTTP port — so an agent's "tests pass" means gates 1 and 2 only; run
-   this one on a desktop before publishing.
+   It serves `_site/` over loopback and probes first whether the headless
+   Chrome on the machine can fetch over HTTP at all; where it cannot (seen with
+   Chrome 151 on the dev box: the socket opens and the request never goes out,
+   for a one-line page and for example.com alike), it says so and checks the
+   same bundle inlined into one file over `file://`, verifying asset serving
+   statically instead. Either way it exits non-zero on a failed check.
 
 Verification after the upload compares **the bundle, not the page**: the script
-re-fetches the public URL, requires HTTP 200 from `/dataguard/` *and* from
-`/dataguard/legacy/`, reads the hashed `assets/index-*.js` the served page asks
+re-fetches the public URL, requires HTTP 200 from `/` *and* from
+`/legacy/`, reads the hashed `assets/index-*.js` the served page asks
 for, and fails unless that file comes back byte-equal to the one just built.
 The HTML itself is a few hundred bytes of head that a CDN may minify or
 re-encode, while the hashed asset changes with every byte of source — so the
@@ -102,22 +105,24 @@ Two things to know:
 
 ### nginx, and the one change the server still needs
 
-nginx serves both pages from a dedicated `location ^~ /dataguard/` block in
-`/etc/nginx/sites-enabled/dbudac.conf` on the VPS. That block sets its own
-security headers instead of including `snippets/dbudac-headers.conf`, because
+Both pages are served by their own virtual host, **`dataguard.davidbudac.cz`**,
+on the VPS; the old path `https://davidbudac.cz/dataguard/…` answers with a 301
+to the same path on that host (query string included), which is what keeps
+every link the handover documents ever handed out alive. The vhost sets its own
+security headers rather than including `snippets/dbudac-headers.conf`, because
 two CSP headers are enforced as their intersection and the shared snippet would
 silently break whichever page needs more.
 
 **TODO for the operator — not something an agent can do from this repo.** The
-block's CSP still carries `'unsafe-inline'`, inherited from the days when the
-single-file page *was* `/dataguard/`. The application needs none of it: it has
-no inline `<script>`, no `on*=` handler and no `style=` attribute, and
-`site/build.mjs` fails the build if one ever appears. Once the header below is
-in place the policy is the one `app/design/ui.md` §1 specifies, and the guard
-in the build is what keeps it true:
+vhost's CSP still carries `'unsafe-inline'` for scripts and styles, inherited
+from the days when the single-file page *was* the site. The application needs
+none of it: it has no inline `<script>`, no `on*=` handler and no `style=`
+attribute, and `site/build.mjs` fails the build if one ever appears. Once the
+header below is in place the policy is the one `app/design/ui.md` §1 specifies,
+and the guard in the build is what keeps it true:
 
 ```nginx
-# /dataguard/  -- the workbench. No inline anything; site/build.mjs enforces it.
+# /  -- the workbench. No inline anything; site/build.mjs enforces it.
 add_header Content-Security-Policy "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'; font-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; object-src 'none'" always;
 ```
 
@@ -125,18 +130,19 @@ The legacy page is one inline `<script>` and cannot live under that policy, so
 it keeps its own **nested** location with the old header:
 
 ```nginx
-# /dataguard/legacy/  -- the frozen fragment. One inline <script>, by design.
-location ^~ /dataguard/legacy/ {
+# /legacy/  -- the frozen fragment. One inline <script>, by design.
+location ^~ /legacy/ {
     add_header Content-Security-Policy "default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; object-src 'none'" always;
 }
 ```
 
 A nested `location` replaces the parent's `add_header` set entirely rather than
 adding to it, so the nested block must repeat every header the parent sets, not
-just the CSP. Note that on that box `sites-enabled/dbudac.conf` is a **regular
-file, not a symlink** — the `sites-available/` copy is stale, so edit the
-enabled one. Until the header is changed the application still works; it is
-simply running under a policy laxer than the one it was built for.
+just the CSP. Note that on that box the enabled config under
+`sites-enabled/` is a **regular file, not a symlink** — the `sites-available/`
+copy is stale, so edit the enabled one. Until the header is changed the
+application still works; it is simply running under a policy laxer than the one
+it was built for.
 
 Two earlier publishing routes are retired — do not resurrect either:
 
@@ -148,8 +154,7 @@ Two earlier publishing routes are retired — do not resurrect either:
 
 ### Pre-publish checklist
 
-`./site/publish.sh --dry-run` is the automated half (and on a desktop, where
-`site/smoke.mjs` can start a browser). The rest is looking at the page, because
+`./site/publish.sh --dry-run` is the automated half. The rest is looking at the page, because
 none of the three gates can see a drawing that is wrong. Walk it in **both
 themes** and **both editions** — the theme toggle and the 19c/26ai toggle are in
 the top bar, and both are reading preferences that survive a reload:
@@ -180,9 +185,9 @@ the top bar, and both are reading preferences that survive a reload:
   read-only card says editing needs a wider screen, once, not four times.
 - **Print.** `Ctrl+P` on Configure: all seven panels stack, the citation chips
   wrap rather than pushing the page sideways.
-- **After the deploy**, `curl -s https://davidbudac.cz/dataguard/ | grep -E
+- **After the deploy**, `curl -s https://dataguard.davidbudac.cz/ | grep -E
   'og:image|canonical|theme-color|rel="icon"'` finds all four, and
-  `curl -sI https://davidbudac.cz/dataguard/legacy/` still returns 200.
+  `curl -sI https://dataguard.davidbudac.cz/legacy/` still returns 200.
 
 ## Accuracy rules (non-negotiable)
 
@@ -834,9 +839,12 @@ component computes domain state locally.**
   one. Query keys are human-readable and defined exactly once, in the
   `URL_FIELDS` table: `ed`, `mode`, `panel`, `sel`, `t`, `preset`, `lesson`,
   `step`, `theme`. Values are clamped on read and unknown tokens are ignored and
-  then dropped from the address bar. Writes go through rAF plus a 300 ms
-  trailing debounce — WebKit rate-limits `replaceState` to roughly 100 calls per
-  30 s and a scrub would trip it.
+  then dropped from the address bar. Writes go through a one-frame timer plus
+  a 300 ms trailing debounce — WebKit rate-limits `replaceState` to roughly 100
+  calls per 30 s and a scrub would trip it. A timer, deliberately not
+  `requestAnimationFrame`: rAF stops in a background tab and never fires in a
+  headless dump, and the permalink is a reading of the state that has to exist
+  in both.
 - **Persistence** (`persist.ts`): `dg-doc-v1` (the Document, debounced),
   `dg-theme` and `dg-ed` (the two reading preferences, same keys the legacy page
   uses, so a reader who set them there keeps them here). `dg-fsfo-cfg-v1`, the
