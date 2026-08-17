@@ -31,7 +31,7 @@ import { EventMenu } from './canvas/EventMenu';
 import { Inspector } from './inspector/Inspector';
 import { BreakRail } from './break/BreakRail';
 import { Panels } from './panels/Panels';
-import { LearnShell } from './learn/LearnShell';
+import { LearnShell, LearnWorkbenchHeader } from './learn/LearnShell';
 import { Timeline } from './timeline/Timeline';
 
 /** Which modes keep a rail beside the canvas. Learn's right half is the workbench. */
@@ -132,10 +132,13 @@ function TimelineSlot() {
 }
 
 /* Learn's right half: the drawing, the readout and the clocks, so a step
-   that breaks something shows its timeline beside the prose that explains it. */
+   that breaks something shows its timeline beside the prose that explains it.
+   The header above them names the step the drawing is set up for and carries
+   the two ways out of Learn with it (learn/LearnShell.tsx). */
 function Workbench() {
   return (
     <>
+      <LearnWorkbenchHeader />
       <CanvasSlot />
       <Readout />
       <TimelineSlot />

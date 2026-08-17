@@ -26,26 +26,26 @@ export const MODE_LABEL: Record<Mode, string> = {
 };
 
 /**
- * The one line under the active mode in the header: what this step of the
- * workbench is for, said once, where the reader has just pressed the button.
+ * What each mode is for, in one sentence -- the `title` of its button in the
+ * header.
+ *
+ * It used to be printed under the mode buttons as well, one line above a
+ * guidance line that said nearly the same thing ("Build — draw the
+ * configuration" over "Click a card ... to edit it"). Two lines of chrome for
+ * one idea: the sentence stayed, as the tooltip, and the mode word became the
+ * lead-in of the guidance line instead (`modeGuide`, and `Guidance.tsx`).
+ *
+ * A `title` is one string for every viewport, so nothing here may name a screen
+ * edge: where the inspector is depends on how much fits, and that sentence
+ * belongs to `modeGuide`, which knows.
  */
 export const MODE_SUB: Record<Mode, string> = {
-  build: 'Build — draw the configuration',
-  break: 'Break — inject failures and watch the clocks',
-  configure: 'Configure — the same deployment as you would type it',
-  learn: 'Learn — guided lessons',
-};
-
-/**
- * The guidance line directly under the header: the first gesture, per mode.
- * A newcomer's complaint about this page was never that it lacked controls --
- * it was that nothing said which one to touch first.
- */
-export const MODE_GUIDE: Record<Mode, string> = {
-  build: 'Click a card, a data centre or a link to edit it; add members with the + buttons in the panel.',
-  break: 'Click a host to crash it or a link to cut it, or pick a scenario in the panel, then scrub the timeline.',
-  configure: 'Pick a tab; hover a line to see which member it configures.',
-  learn: 'Each step sets up the workbench beside it.',
+  build: 'Build — draw the configuration: sites, members, redo routes, observers',
+  break: 'Break — inject failures and watch the clocks run',
+  configure:
+    'Configure — generated from the drawing: DGMGRL, init parameters and connect strings; '
+    + 'hover a line to see which member it configures.',
+  learn: 'Learn — nine lessons, and the reference tables behind them',
 };
 
 export const PANEL_LABEL: Record<PanelTab, string> = {
@@ -161,3 +161,51 @@ export function startViewportWatch(): () => void {
 
 /** Editing needs a wider screen; below `compact` the app is a viewer. */
 export const canEdit = (v: Viewport = viewport.value): boolean => v !== 'narrow';
+
+/* ---------------- the guidance line ---------------- */
+
+/**
+ * The mode's rail, named for where it actually is.
+ *
+ * It is a column beside the drawing only while the viewport is `wide`
+ * (`App.tsx`, `railInGrid`). Below 1280 it is a `Sheet` -- off the right edge
+ * at `medium`, up from the bottom at `compact` and `narrow` -- and either way
+ * the way in is the status bar's Inspector button. A line that says "the panel
+ * on the right" at every width points two of the four viewport classes at the
+ * wrong edge, which is the one thing this page's chrome is not allowed to do.
+ *
+ * One helper, because two guidance lines name the same rail and they must not
+ * drift apart.
+ */
+export function railWhere(v: Viewport = viewport.value): string {
+  return v === 'wide'
+    ? 'the panel on the right'
+    : 'the Inspector drawer, from the Inspector button above';
+}
+
+/**
+ * The guidance line directly under the header: the first gesture, per mode,
+ * read after the mode word that leads it in ("Build · Click a card ...").
+ * A newcomer's complaint about this page was never that it lacked controls --
+ * it was that nothing said which one to touch first.
+ *
+ * Configure's line says what the mode *is* before it says what to do in it:
+ * the word reads as "settings", and the panels are generated output. The
+ * settings are in the inspector, which is what the second half points at --
+ * wherever the inspector currently is (`railWhere`).
+ */
+export function modeGuide(m: Mode, v: Viewport = viewport.value): string {
+  switch (m) {
+    case 'build':
+      return 'Click a card, a data centre or a link to edit it; add members with the + '
+        + `buttons on the drawing and at the top of ${railWhere(v)}.`;
+    case 'break':
+      return 'Click a host to crash it or a link to cut it, or pick a scenario in the panel; '
+        + 'the timeline below runs the clocks.';
+    case 'configure':
+      return 'Generated from the drawing — DGMGRL, init parameters, connect strings. '
+        + `Settings are in ${railWhere(v)}.`;
+    case 'learn':
+      return 'Each step sets up the workbench beside it.';
+  }
+}

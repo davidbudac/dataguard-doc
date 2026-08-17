@@ -1,15 +1,28 @@
 /**
- * The Break rail: the six scenarios as one-click templates, and the events
- * that are actually in this configuration.
+ * The Break rail: what is actually injected into this configuration, and the
+ * six scenarios as one-click templates.
+ *
+ * **The reader's own work comes first.** The event list is the head of the
+ * rail, under the event menu, because injecting an event and then finding no
+ * record of it on screen -- six scenario blurbs pushed the list a thousand
+ * pixels down -- reads as "nothing happened". The scenarios are the shelf you
+ * take something off once; the list is where the thing you took stays.
  *
  * A template replaces the event list rather than adding to it. That is
  * deliberate: a scenario is a claim about what a deployment does, and a claim
  * is only worth anything if the reader can reproduce it -- so picking one
  * always lands on exactly the events the engine's own regression matrix runs.
- * Anything hand-injected from the canvas sits in the list below, where its
+ * Anything hand-injected from the canvas sits in the list above, where its
  * time can be moved and it can be taken out again.
+ *
+ * Each scenario is one row: the button, and its description on one line,
+ * clipped. The full sentence is in the DOM either way -- it is the row's
+ * `title`, it unclips while anything in the row has focus, one toggle at the
+ * group head opens all six, and print opens them too. Nothing here is hidden
+ * by CSS with no way back.
  */
 
+import { signal } from '@preact/signals';
 import { events, topology } from '@/state/derived';
 import { canEdit, tNow, viewport } from '@/state/view';
 import { IssuePanel } from '../IssuePanel';
@@ -20,32 +33,18 @@ import {
 } from './events';
 import '@/styles/inspector.css';
 
+/** Open the six scenario descriptions. View state, so it is not undoable. */
+export const scenarioNotesOpen = signal(false);
+
 export function BreakRail() {
   const doc = topology.value;
   const list = events.value;
   const editable = canEdit(viewport.value);
   const at = Math.round(tNow.value * 10) / 10;
+  const open = scenarioNotesOpen.value;
 
   return (
     <div class="insp">
-      <Group title="One-click scenarios">
-        {templates(doc, 0).map((t) => (
-          <div class="tmpl" key={t.id}>
-            <Action
-              label={t.label}
-              enabled={editable ? t.enabled : { state: 'off', why: WHY.readOnlyHere }}
-              onClick={() => applyTemplate(t)}
-            />
-            <p class="caption">{t.caption}</p>
-          </div>
-        ))}
-        <Note>
-          Each one replaces whatever is injected now, so the same scenario always draws
-          the same thing. The observer placement is not a control here: it is wherever the
-          observer card sits.
-        </Note>
-      </Group>
-
       <Group
         title={list.length === 0 ? 'Events' : `Events (${list.length})`}
         action={list.length === 0
@@ -56,8 +55,8 @@ export function BreakRail() {
           <div class="empty">
             <span class="empty-k">Nothing has happened yet</span>
             <p>
-              The configuration is in its steady state. Pick a scenario above, or select a
-              card on the drawing and use the menu over the canvas.
+              The configuration is in its steady state. Pick a scenario below, or select a
+              card on the drawing and use the Actions menu that opens with it.
             </p>
           </div>
         ) : null}
@@ -99,6 +98,39 @@ export function BreakRail() {
             event there.
           </Note>
         )}
+      </Group>
+
+      <Group
+        title="One-click scenarios"
+        action={(
+          <button
+            type="button"
+            class="btn is-quiet tmpl-tog"
+            aria-expanded={open}
+            onClick={() => { scenarioNotesOpen.value = !open; }}
+          >
+            <span class="tmpl-car">{open ? '▾' : '▸'}</span>
+            Show descriptions
+          </button>
+        )}
+      >
+        <p class="caption tmpl-lede">
+          Each one replaces whatever is injected now — the observer stays wherever its
+          card sits.
+        </p>
+
+        <div class={open ? 'tmpls is-open' : 'tmpls'}>
+          {templates(doc, 0).map((t) => (
+            <div class="tmpl" key={t.id}>
+              <Action
+                label={t.label}
+                enabled={editable ? t.enabled : { state: 'off', why: WHY.readOnlyHere }}
+                onClick={() => applyTemplate(t)}
+              />
+              <p class="tmpl-cap" title={t.caption}>{t.caption}</p>
+            </div>
+          ))}
+        </div>
       </Group>
 
       {/* The same validation the Build dock shows, worded and folded the same

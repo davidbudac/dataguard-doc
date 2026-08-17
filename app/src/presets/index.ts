@@ -13,10 +13,12 @@ import { cascadeTerminal, priorityAlternates } from './cascade';
 import {
   bystanders, maxProtection, multiTargetThreeObservers, racPrimary,
 } from './multi';
-import type { Preset, PresetId } from './types';
+import type { Preset, PresetGroup, PresetId } from './types';
+import { PRESET_GROUPS } from './types';
 import type { TimedEvent, TopologyDoc } from '../engine';
 
-export type { Preset, PresetId } from './types';
+export type { Preset, PresetGroup, PresetId } from './types';
+export { PRESET_GROUPS } from './types';
 export * from './build';
 export {
   bystanders, cascadeTerminal, classic, farSyncHaPair, farSyncRoleChange, farSyncZeroLoss,
@@ -39,6 +41,18 @@ export const PRESETS: readonly Preset[] = [
 ];
 
 export const PRESET_IDS: readonly PresetId[] = PRESETS.map((p) => p.id);
+
+/**
+ * The same eleven, filed under their headings -- what the picker offers.
+ *
+ * Groups keep the order `PRESET_GROUPS` declares and presets keep registry
+ * order inside a group, so the list is stable whatever a member's group is
+ * changed to. A heading with nothing under it is not offered.
+ */
+export const GROUPED_PRESETS: readonly { group: PresetGroup; presets: readonly Preset[] }[] =
+  PRESET_GROUPS
+    .map((group) => ({ group, presets: PRESETS.filter((p) => p.group === group) }))
+    .filter((g) => g.presets.length > 0);
 
 export function findPreset(id: string): Preset | undefined {
   return PRESETS.find((p) => p.id === id);

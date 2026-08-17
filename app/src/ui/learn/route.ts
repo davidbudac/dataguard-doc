@@ -83,6 +83,21 @@ export function openLessonStep(lesson: Lesson, step: number, how: 'boot' | 'live
   presetId.value = pid;
 }
 
+/**
+ * Take one lesson step out of Learn, into the mode that draws it.
+ *
+ * The step is set up first and the mode is switched after, so Break opens on
+ * the step's own document rather than on whatever was there before -- which is
+ * what the legacy fragment's `jump()` did. Two callers say it now (the button
+ * under a step's prose and the one at the head of the workbench beside it),
+ * and they say it through here rather than each keeping its own copy: two
+ * copies of "open this step over there" is how the two drift apart.
+ */
+export function openStepInMode(lesson: Lesson, step: number, target: 'break' | 'build'): void {
+  openLessonStep(lesson, step, 'live');
+  mode.value = target;
+}
+
 /** Apply the route in `hash`, if it is one. Returns what it applied. */
 export function applyLearnRoute(hash: string, how: 'boot' | 'live' = 'live'): LearnRoute | null {
   const route = parseLearnRoute(hash);

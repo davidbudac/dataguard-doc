@@ -248,21 +248,33 @@ for (const { preset, cards, lanes } of CASES) {
      copies the link and then shows it as an anchor, so before any click the
      address lives on the button as `data-permalink` -- which is what a dumped
      DOM can read and a machine can follow. */
-  const href = /\bdata-permalink="([^"]+)"/i.exec(first.dom)?.[1]
+  const raw = /\bdata-permalink="([^"]+)"/i.exec(first.dom)?.[1]
     ?? /<a\b[^>]*\bid="permalink"[^>]*\bhref="([^"]*)"/i.exec(first.dom)?.[1];
-  if (!href) {
+  if (!raw) {
     fail(`${preset}: the page published no permalink to follow`);
     continue;
   }
-  if (!href.includes('#t=')) {
-    fail(`${preset}: the permalink carries no #t= document: ${href}`);
+  /* An attribute in a dumped DOM, so `&` arrives as `&amp;`. */
+  const href = raw.replace(/&amp;/g, '&');
+  /* An untouched preset is its own address: `?preset=` loads the whole
+     document, events and all, so the page writes no `#t=` beside it and the
+     link stays short enough to read. Either spelling is a permalink; what
+     matters is that phase two can load it cold and get the same page.
+     The `#t=` round trip through the real encoder and the real decoder is
+     checked on the legacy link below, whose document comes from no preset. */
+  if (href.includes('#t=')) {
+    pass(`${preset}: permalink carries a #t= document (${href.length} chars)`);
+  } else if (new RegExp(`[?&]preset=${preset}(?:&|$)`).test(href)) {
+    if (href.length < 200) pass(`${preset}: untouched, the permalink is the preset (${href})`);
+    else fail(`${preset}: the permalink names the preset and is still ${href.length} chars: ${href}`);
+  } else {
+    fail(`${preset}: the permalink carries neither a #t= document nor the preset: ${href}`);
     continue;
   }
-  pass(`${preset}: permalink carries a #t= document (${href.length} chars)`);
 
   /* Phase two: throw the preset away and load that link cold. Everything below
-     is drawn from the document the fragment carries. */
-  const link = base + href.replace(/&amp;/g, '&').replace(/^\.?\//, '');
+     is drawn from the document the query and the fragment carry. */
+  const link = base + href.replace(/^\.?\//, '');
   const run = await load(link);
   if (!run.ok) { fail(`${preset}: ${run.why}`); continue; }
   for (const line of run.console) fail(`${preset}: console said ${line}`);
@@ -328,6 +340,26 @@ if (!legacy.ok) {
   const href = /<a\b[^>]*class="strip-link"[^>]*\bhref="([^"]*)"/i.exec(legacy.dom)?.[1];
   if (href && href.startsWith('legacy/')) pass(`legacy link: ?lang=cs offers the Czech page (${href})`);
   else fail(`legacy link: ?lang=cs offered no link to legacy/ (got ${href ?? 'nothing'})`);
+
+  /* The `#t=` round trip, in a real browser: this document came from the old
+     query keys rather than from a preset, so there is no shorter way to say it
+     and the permalink has to carry the whole compressed thing. Following it
+     cold is the one check that exercises the page's own CompressionStream on
+     the way out and DecompressionStream on the way back in. */
+  const perma = /\bdata-permalink="([^"]+)"/i.exec(legacy.dom)?.[1]?.replace(/&amp;/g, '&');
+  if (!perma || !perma.includes('#t=')) {
+    fail(`legacy link: the upgraded document published no #t= permalink (got ${perma ?? 'nothing'})`);
+  } else {
+    const cold = await load(base + perma.replace(/^\.?\//, ''));
+    if (!cold.ok) {
+      fail(`legacy link, reloaded: ${cold.why}`);
+    } else {
+      for (const line of cold.console) fail(`legacy link, reloaded: console said ${line}`);
+      const drawn = countCards(cold.dom);
+      if (drawn === 3) pass(`legacy link: its #t= permalink reloads to the same 3 cards (${perma.length} chars)`);
+      else fail(`legacy link: its #t= permalink drew ${drawn} node cards, expected 3`);
+    }
+  }
 }
 
 /* An asset the page asked for and did not get is a broken deploy, whatever the

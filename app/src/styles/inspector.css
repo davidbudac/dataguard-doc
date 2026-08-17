@@ -17,6 +17,22 @@
 .grp:last-child{border-bottom:0}
 .grp-hd{display:flex;align-items:center;gap:10px;padding:10px 16px 6px;background:var(--sf)}
 .grp-act{margin-left:auto;display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+
+/* A group that folds. The eyebrow keeps its look and becomes the label of a
+   real button that fills the header row, so the whole row is the hit target;
+   the padding moves off the header and onto the button for exactly that
+   reason. A closed section renders no children at all -- there is no rule
+   here that hides one. */
+.grp-fold>.grp-hd{padding:0}
+.grp-tog{display:flex;align-items:center;gap:8px;width:100%;text-align:left;
+  padding:10px 16px 8px;background:transparent;border:0;cursor:pointer}
+.grp-tog:hover{background:var(--sf2)}
+.grp-tog:hover .eyebrow{color:var(--ik2)}
+.grp-caret{font-family:var(--mono);font-size:10px;color:var(--ik3);width:9px;flex:0 0 auto}
+.grp-sum{margin-left:auto;font-size:11px;color:var(--ik3);min-width:0;text-align:right;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+@media (prefers-reduced-motion:no-preference){
+  .grp-tog{transition:background-color .16s ease}}
 .grp-note{padding:9px 16px 12px;font-size:11.5px;line-height:1.45;color:var(--ik3);
   border-top:1px solid var(--ln);max-width:80ch}
 .grp-note.is-warn{color:var(--am)}
@@ -73,6 +89,9 @@ input[type="range"].field-in:focus-visible{outline:2px solid var(--fc);outline-o
 .pal{display:flex;align-items:flex-end;gap:8px;flex-wrap:wrap;padding:4px 16px 8px}
 .pal .field{padding:0;border-bottom:0;flex:0 1 auto;min-width:120px}
 .pal .field-in{width:auto;min-width:110px}
+/* A refusal is a sentence, so a palette button that is off stacks its pill
+   under itself rather than pushing the row sideways. */
+.pal .ctl-off{flex-direction:column;align-items:flex-start;gap:4px}
 
 /* ---------------- Break rail ---------------- */
 
@@ -128,3 +147,39 @@ button.issue:hover{background:var(--sf2)}
 button.issue.sv-error{border-left:3px solid var(--rd)}
 button.issue.sv-warning{border-left:3px solid var(--am)}
 button.issue.sv-info{border-left:3px solid var(--ln2)}
+
+/* Break rail ---------------------------------------------------------------
+
+   The event list is the head of the rail and the scenarios are rows under it,
+   so these rules come after -- and override -- the older Break rail block
+   above. Nothing here hides anything without a way back: a clipped
+   description is in the DOM, is the row's title, unclips on focus-within,
+   opens with the group head's toggle, and is open on paper. */
+
+/* The number beside an injected event is the number on the timeline's axis --
+   same circle, same red, same mono, so the rail and the drawing are one
+   object seen twice. */
+.evt-n{border-color:var(--rd);color:var(--rd);font-size:10px;font-weight:600;
+  width:19px;height:19px}
+
+/* One quiet line under the eyebrow, not a paragraph at the foot of the group. */
+.tmpl-lede{padding:2px 16px 8px;max-width:80ch}
+
+/* One row per scenario: the button, and one clipped line under it. The line
+   is under the button rather than beside it because beside it, in a 360 px
+   rail behind a 200 px button, a description got about twenty characters --
+   an ellipsis where a sentence was, which is worse than nothing. Full width
+   it carries a readable clause, and the rest is one keystroke away. */
+.tmpl{gap:3px;padding:7px 16px}
+.tmpl-cap{min-width:0;max-width:80ch;font-size:11.5px;line-height:1.45;color:var(--ik3);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tmpl:focus-within .tmpl-cap,.tmpls.is-open .tmpl-cap{overflow:visible;white-space:normal}
+
+/* The toggle is a real button in the group head, quiet enough not to compete
+   with the six rows it opens. */
+.tmpl-tog{letter-spacing:.04em}
+.tmpl-car{color:var(--ik3);width:9px}
+
+@media print{
+  .tmpl-cap{overflow:visible;white-space:normal}
+}

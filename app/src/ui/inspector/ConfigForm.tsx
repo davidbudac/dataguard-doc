@@ -11,12 +11,15 @@
  * role, where its broker default is 0 -- zero data loss.
  */
 
+import { useLayoutEffect } from 'preact/hooks';
 import { BOUNDS } from '@/engine';
 import type { FsfoConfig, MemberId, RoutePriority, TopologyDoc } from '@/engine';
 import { hostId, isDatabase } from '@/engine';
+import { errors } from '@/state/derived';
 import { Fact } from '../common/Chip';
-import { Action, Check, Choice, Group, Note, Num, Pick, Text } from './controls';
+import { Action, Check, Choice, Fold, Note, Num, Pick, Text } from './controls';
 import { patchConfig, patchEnvironment, patchFsfo } from './edits';
+import { revealForFlagged, sectionsWithErrors } from './sections';
 import { gateOff, off, ON, WHY } from './why';
 
 export interface ConfigFormProps {
@@ -63,9 +66,26 @@ export function ConfigForm({ doc }: ConfigFormProps) {
     ? (f.pingIntervalMs * (f.pingRetry + 1)) / 1000
     : null;
 
+  /* A fold that hid the very property `validate()` is complaining about would
+     be the page hiding its own answer, so an error opens its section. Once,
+     when the error appears: the reader may fold it away again. */
+  const flagged = sectionsWithErrors(errors.value);
+  const flaggedKey = flagged.join('|');
+  /* A layout effect rather than an ordinary one: the section has to be open in
+     the same frame the error arrives in, and preact defers `useEffect` until
+     after paint -- which is a fold that opens itself a beat late. `revealFor-
+     Flagged` rather than `revealSections` because this effect also runs on
+     every mount, and this form unmounts on every card selection: without it, a
+     fold the reader closed re-opened the next time they cleared the selection. */
+  useLayoutEffect(() => { revealForFlagged(flaggedKey, flagged); }, [flaggedKey]);
+
+  const candidates = c.primaryDatabaseCandidates ?? [];
+  const preferred = f.preferredObserverHosts ?? [];
+  const targetWord = f.target.kind === 'ANY' ? 'ANY' : (targetList.join(', ') || 'not set');
+
   return (
     <>
-      <Group title="Configuration">
+      <Fold id="Configuration" title="Configuration" hint={c.protectionMode}>
         <Text
           name="Name"
           value={c.name}
@@ -103,11 +123,15 @@ export function ConfigForm({ doc }: ConfigFormProps) {
           })}
           note="One name for the configuration, as an alternative to listing every address. A later edition documents it."
         />
-      </Group>
+      </Fold>
 
-      <Group title="PrimaryDatabaseCandidates">
+      <Fold
+        id="PrimaryDatabaseCandidates"
+        title="PrimaryDatabaseCandidates"
+        hint={candidates.length === 0 ? 'empty' : candidates.join(', ')}
+      >
         {databases.map((m) => {
-          const list = c.primaryDatabaseCandidates ?? [];
+          const list = candidates;
           const on = list.includes(m.id);
           return (
             <label class="opt" key={m.id as string}>
@@ -140,9 +164,13 @@ export function ConfigForm({ doc }: ConfigFormProps) {
           The default is empty, which restricts nothing, and the broker adds the current
           primary itself if the list omits it.
         </Note>
-      </Group>
+      </Fold>
 
-      <Group title="Fast-start failover">
+      <Fold
+        id="Fast-start failover"
+        title="Fast-start failover"
+        hint={`${f.state === 'observe-only' ? 'OBSERVE ONLY' : f.state.toUpperCase()} → ${targetWord}`}
+      >
         <Choice
           name="FAST_START FAILOVER"
           value={f.state}
@@ -356,10 +384,16 @@ export function ConfigForm({ doc }: ConfigFormProps) {
           )}
           note="Only after an observer-initiated failover caused by a primary crash or isolation, and only with Flashback Database on both databases, the former primary mounted, the master observer able to reach it, and static service names."
         />
-      </Group>
+      </Fold>
 
-      <Group title="PreferredObserverHosts">
-        {(f.preferredObserverHosts ?? []).map((p, i) => (
+      <Fold
+        id="PreferredObserverHosts"
+        title="PreferredObserverHosts"
+        hint={preferred.length === 0
+          ? 'not set'
+          : `${preferred.length} host${preferred.length === 1 ? '' : 's'}`}
+      >
+        {preferred.map((p, i) => (
           <div class="rr-dest" key={`${p.host as string}-${i}`}>
             <span class="mono">{p.host as string}</span>
             <select
@@ -413,9 +447,13 @@ export function ConfigForm({ doc }: ConfigFormProps) {
           Lower wins, 1 to 8, default 8. A later edition documents it.
           <Fact basis="doc-later" id="OBS.PREFERRED_HOSTS" />
         </Note>
-      </Group>
+      </Fold>
 
-      <Group title="Environment">
+      <Fold
+        id="Environment"
+        title="Environment"
+        hint={`${doc.environment.roleTransitionSeconds} s role transition · ${doc.environment.redoRateMBs} MB/s`}
+      >
         <Num
           name="Role transition"
           bound="roleTransitionSeconds"
@@ -454,7 +492,7 @@ export function ConfigForm({ doc }: ConfigFormProps) {
             `Set the redo rate to ${v} MB/s`, (e) => ({ ...e, redoRateMBs: v }), 'env:rate',
           )}
         />
-      </Group>
+      </Fold>
     </>
   );
 }

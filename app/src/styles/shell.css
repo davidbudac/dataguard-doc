@@ -101,11 +101,10 @@
 .topbar-brand b{font-size:13px;font-weight:620;letter-spacing:-.01em;white-space:nowrap}
 .topbar-brand span{font-family:var(--mono);font-size:10px;letter-spacing:.12em;
   text-transform:uppercase;color:var(--ik3);white-space:nowrap}
-/* The modes are the one loud thing in the bar, and the line under them says
-   what the mode in hand is for. */
-.topbar-modes{display:flex;flex-direction:column;align-items:flex-start;gap:3px;
-  flex:0 0 auto;min-width:0}
-.topbar-sub{font-size:11.5px;line-height:1.3;color:var(--ik3);max-width:52ch}
+/* The modes are the one loud thing in the bar. The line that used to sit
+   under them said what the guidance line one band lower already said; the
+   sentence is the button's title now, and the band is 15 px shorter. */
+.topbar-modes{display:flex;align-items:center;flex:0 0 auto;min-width:0}
 .topbar-spacer{flex:1 1 auto;min-width:0}
 .topbar-group{display:flex;align-items:center;gap:8px;flex:0 1 auto;flex-wrap:wrap;
   justify-content:flex-end}
@@ -121,7 +120,13 @@
 .statusbar>#preset-picker{flex:1 1 20ch;min-width:14ch;max-width:46ch;overflow:hidden;
   text-overflow:ellipsis}
 .statusbar-spacer{flex:1 1 auto;min-width:0}
-.statusbar .count{font-family:var(--mono);font-variant-numeric:tabular-nums;color:var(--ik)}
+/* The tally is a button: it goes to the findings it counts. Quiet enough to
+   stay a reading of the document rather than a control competing with Share,
+   loud enough on hover and on focus to be one. */
+.statusbar .count{font-family:var(--mono);font-size:12px;font-variant-numeric:tabular-nums;
+  color:var(--ik);background:transparent;border:0;border-bottom:1px solid transparent;
+  padding:2px 0;cursor:pointer}
+.statusbar .count:hover{border-bottom-color:currentColor}
 .statusbar .count.is-error{color:var(--rd)}
 .statusbar .count.is-warn{color:var(--am)}
 .statusbar .count.is-clean{color:var(--tl)}
@@ -132,15 +137,27 @@
 
 /* ---------------- guidance ---------------- */
 
-/* The third band: what to do first, in the mode that is open. */
+/* The third band: which mode is open and what to do first in it, on one line.
+   The mode word is the lead-in of that sentence rather than a heading of its
+   own -- the band above used to carry the same idea as a second line. */
 .guide{display:flex;flex-direction:column;gap:0;background:var(--sf);
   border-bottom:1px solid var(--ln)}
 .guide-line{padding:6px 16px 7px;font-size:11.5px;line-height:1.45;color:var(--ik3);
-  max-width:104ch}
+  max-width:112ch}
+.guide-mode{font-weight:620;color:var(--ik2)}
 
-/* Shown once, on the first visit, and afterwards only when the ? asks for it.
-   It sits in the flow rather than over the page: a card that covers the
-   workbench teaches nothing about the workbench. */
+/* The first visit gets one row, not a card: the three clauses, the way to the
+   lessons, and the way out. It sits in the flow rather than over the page --
+   a card that covers the workbench teaches nothing about the workbench -- and
+   it goes as soon as the reader does anything at all (Guidance.tsx). */
+.intro-strip{display:flex;align-items:baseline;gap:12px;padding:0 16px 8px;
+  font-size:12px;line-height:1.45;color:var(--ik2)}
+/* No prose cap here, unlike the guidance line: this is one row by design, and
+   a cap is what turns it into two. It wraps only where the window makes it. */
+.intro-strip-b{min-width:0}
+.intro-strip-b b{font-weight:620;color:var(--ik)}
+
+/* The whole explanation, brought back by the ? in the header. */
 .intro{display:flex;flex-direction:column;gap:6px;margin:0 16px 12px;padding:10px 14px 12px;
   max-width:80ch;background:var(--sf2);border:1px solid var(--ln2);border-radius:3px}
 .intro-hd{display:flex;align-items:center;gap:10px}
@@ -149,6 +166,17 @@
 .intro-list b{font-weight:620;color:var(--ik)}
 .intro-list li::marker{color:var(--ik3)}
 .intro-foot{margin-top:2px}
+/* The keys the page binds and nothing else announces. Two columns: the key in
+   mono, because it is something typed, and what it does in prose. */
+.intro-keys{display:flex;flex-direction:column;gap:6px;margin-top:6px;padding-top:9px;
+  border-top:1px solid var(--ln2)}
+.keys{display:flex;flex-direction:column;gap:3px}
+.keys-where{color:var(--ik3)}
+.keys-dl{display:flex;flex-direction:column;gap:2px;margin:0}
+.keys-row{display:grid;grid-template-columns:minmax(96px,auto) minmax(0,1fr);gap:4px 12px;
+  align-items:baseline}
+.keys-row dt{font-size:11.5px;color:var(--ik);white-space:nowrap}
+.keys-row dd{margin:0;font-size:12px;line-height:1.45;color:var(--ik2)}
 
 /* ---------------- buttons ---------------- */
 
@@ -317,7 +345,13 @@
 @media (max-width:1279px){
   .app,.app.m-learn{grid-template-columns:minmax(0,1fr);
     grid-template-areas:"head" "stage" "dock"}
-  .app.m-learn{grid-template-areas:"head" "stage"}
+  /* Learn keeps the dock row here, and it has to be named: below 1280 App
+     renders the workbench into `.app-dock` (there is no rail to put it in),
+     and Learn's own two-row template upstairs has no `dock` area at all. An
+     unnamed grid-area is auto-placed into an implicit column, which took the
+     whole width and left the prose and the header at zero. The rows are the
+     base ones, because `.app.m-learn` overrode them with a two-row list. */
+  .app.m-learn{grid-template-rows:auto fit-content(46vh) minmax(0,1fr)}
   /* The inspector is not hidden here -- App stops rendering it into the grid
      and renders it as a drawer instead, so the rail is genuinely absent from
      the document rather than painted out of view. */

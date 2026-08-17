@@ -26,10 +26,11 @@ multi-target). English only. Zero external requests. No inline script or style
 |---|---|
 | `69ac437` | the whole app + engine + docs; legacy frozen at `/legacy/`; site build reworked |
 | `557b9b8` | `site/smoke.mjs` probes HTTP and falls back to an inlined `file://` copy; URL/permalink write path moved off `requestAnimationFrame`; canonical/verify URLs → `https://dataguard.davidbudac.cz/` |
-| (this commit) | the UI polish pass described in §3, plus this file |
+| `9517d7c` | the first UI polish pass described in §3, plus this file |
+| (this commit) | the second usability pass described in §3b — 15 items + 24 review findings |
 
 **Gates** at the last green run: `cd app && npm run typecheck && npx vitest run &&
-npm run build` → 51 files / 1274 tests; `node site/build.mjs` → `_site/`;
+npm run build` → 54 files / 1443 tests; `node site/build.mjs` → `_site/`;
 `node --test site/test.mjs` → 68 (legacy fragment's model blocks);
 `./site/publish.sh --dry-run` → build + all three test gates incl. smoke.
 
@@ -109,6 +110,40 @@ what landed in this commit:
 | 7 | Quieter eyebrows (10.5 px / .08em / `--ik3`), only as section labels; canvas site labels 11 px; stage fits content (min 260 px) | landed |
 | 8 | Both themes × four modes × classic / far-sync-zero-loss / multi-target-three-observers × 900 px, before/after screenshots | done once by the polish agent (screenshots lived in its scratchpad, not kept); redo before publishing |
 
+## 3b. The second usability pass (2026-08-17)
+
+Verdict this time: *"quite confusing to use, not very intuitive."* Read as a newcomer
+at 1280×720 and 1440×900, fifteen findings, all landed; the as-built record is
+`app/design/ui.md` §3b (one bullet per item — read that, not this table, for the
+mechanism). In one line each:
+
+| # | what was wrong | what is there now |
+|---|---|---|
+| 1 | ▶ / speed / `t =` sat below the fold in Break, even at 900 px tall | `.tl-foot` is a sticky footer of the scrolling dock; the legend scrolls with the lanes |
+| 2 | `+ Add` was 4,000 px down the Build rail; "Start here" pointed at buttons off screen | `Add` group first in the empty inspector; config groups are folds (only *Configuration* open, error opens its fold); an in-flow add toolbar on the stage in Build |
+| 3 | selecting a card hid every way to add | `Add ▾` disclosure in the rail header, same `ADD_ACTIONS` table for all three surfaces |
+| 4 | the injected-events list was under six scenario blurbs | Break rail: Events → one-line scenarios (`Show descriptions`) → validation |
+| 5 | drawing at *t* and run-as-a-whole readout with no label | `Drawing at t = n s` chip + `Run` group; playhead rests at the end after an injection (`restPlayhead`) |
+| 6 | "Inject at t = 0 s" was a trap | the reading is an editable field; hint under it |
+| 7 | ~250 px of chrome before the drawing | one guidance line (mode word leads it), compact intro strip auto-dismissed on first real interaction, `?` toggles the full card |
+| 8 | "Configure" read as settings | guidance says generated output, and where the settings are (viewport-aware `railWhere`) |
+| 9 | picker said "Current configuration" for a pristine preset; eleven long sentences | preset name / `(edited)`; optgroups; `Preset.short` titles |
+| 10 | three shouted `NOTHING HAS TAKEN IT DOWN…` pills | restore rows only when something is down; containment-aware `isDownAt`; one quiet three-way sentence that cannot contradict the drawing |
+| 11 | `#t=` written for an untouched preset | `isPristinePreset`: `?preset=` alone until the first edit (undo/Reset provenance rides in history) |
+| 12 | findings count was text | a button that reveals the validation panel (Learn hands over with a toast) |
+| 13 | seven flat tabs | *Files* / *Behaviour* group labels in one tablist |
+| 14 | no "Open in Break" above the fold in Learn | workbench header with Open in Break / Open in Build |
+| 15 | shortcuts undiscoverable | `?` card lists the real keyboard map |
+
+Found by the review of that batch and fixed with it: **▶ Play had never advanced the
+playhead** (`ui/timeline/playback.ts` — a UI-layer rAF loop with a timer fallback;
+stops on the axis end, ▶ at the end rewinds); Learn at 1024–1279 px laid the grid out
+at zero width; `+ Data centre` minted a duplicate id and a self-link; `+ Link` could
+write to a nonexistent site; a hidden 1084 px a11y `<table>` gave the dock a
+horizontal scrollbar. Two minor leftovers, deliberately not done: `ui/panels/Show.tsx`
+prints `tNow` unclamped (the readout's fix, `clampToAxis`, is the one to reuse), and
+the event menu names a site by id in the member branch and by name in the site branch.
+
 **How to look at the page from an agent sandbox.** Headless Chrome on the dev box
 cannot fetch from a loopback HTTP server (it opens the socket and never sends the
 request; `example.com` fails the same way headlessly). Build, then inline the hashed
@@ -148,8 +183,10 @@ write path is a timer, and anything else that must exist in a dump must not wait
 
 ## 5. Suggested next steps, in order
 
-1. **Finish/verify the polish** (§3): screenshot the eight states before and after,
-   fix what still reads wrong; keep every test green; update `ui.md` as-built notes.
+1. **Look again as a newcomer** after §3b: the remaining leftovers are listed there;
+   the pane used for verification cannot fire `requestAnimationFrame` (hidden tab),
+   so check playback in a visible or headless Chrome (a script that does this is
+   described in `ui.md` §3b item 1), not through a screenshot harness.
 2. **Publish** when the owner asks: `./site/publish.sh` (it runs the three gates and
    verifies the served bundle byte-for-byte). Then apply the CSP change on the server.
 3. **Fact-check anything you reword** against docs.oracle.com before it ships;

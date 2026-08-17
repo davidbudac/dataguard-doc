@@ -142,6 +142,49 @@
   color: var(--ik3);
 }
 
+/* ---------------- the sticky foot ---------------- */
+
+/*
+  The transport, pinned to the bottom of whatever is scrolling.
+
+  Measured at 1280x720 and 1440x900, a twelve-lane run draws ~540 px of
+  timeline into a dock that is 320-500 px tall, so the transport sat below the
+  fold and the page read as a static picture: nothing said it animates. The
+  foot is `.tl`'s last flow child and no ancestor between it and the scroll box
+  clips, so `bottom: 0` sticks it against the bottom edge of the bottom dock in
+  Break and of the rail in Learn, and releases it at the end of the scroll.
+
+  Only the controls. The colour key used to share the band and wrapped to a
+  second row at every dock width the shell actually uses, which spent 67 px of
+  a 226 px scrollport on something that is read once; it is now a flow child
+  above the band and scrolls with the drawing it explains. The hairline is what
+  says the band is not part of that drawing.
+*/
+.tl-foot {
+  position: sticky;
+  bottom: 0;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  padding: 8px 0 4px;
+  background: var(--sf);
+  border-top: 1px solid var(--ln);
+}
+
+.tl-foot > .tl-transport { flex: 1 1 auto; min-width: 0; }
+
+/* On a phone the dock is not a scroll box -- the page is -- so a sticky foot
+   would ride the whole document rather than the drawing it belongs to. */
+@media (max-width: 767px) {
+  .tl-foot { position: static; }
+}
+
+/* On paper nothing scrolls and there is nothing to drive, so the band goes
+   with the transport print.css already takes out. */
+@media print {
+  .tl-foot { display: none; }
+}
+
 /* ---------------- legend ---------------- */
 
 .tl-legend {

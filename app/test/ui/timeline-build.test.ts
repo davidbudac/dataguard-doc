@@ -10,7 +10,8 @@ import { classicTopology, scenarioEvents, simulate } from '@/engine';
 import type { TopologyDoc, Trace } from '@/engine';
 import { preset } from '@/presets';
 import {
-  approxW, buildTimeline, describeEvent, fitLabel, packBraces, PINNED, snapNice, TL,
+  approxW, axisSpan, buildTimeline, clampToAxis, describeEvent, fitLabel, packBraces,
+  PINNED, snapNice, TL,
 } from '@/ui/timeline/build';
 import type { BraceInput, TimelineModel } from '@/ui/timeline/build';
 
@@ -339,6 +340,32 @@ describe('axis', () => {
     const m = build();
     const neg = m.ticks.filter((t) => t.t < 0);
     for (const t of neg) expect(t.label.startsWith('−')).toBe(true);
+  });
+
+  /**
+   * The axis is not the timeline's private business: the readout strip prints
+   * the playhead too, and while it clamped with a formula of its own it read
+   * "Drawing at t = 500 s" over a drawing whose badge said "t = 63.25". One
+   * exported formula, so nothing can drift from the drawing's own scale.
+   */
+  it('exports the same two ends the drawing is built on', () => {
+    const { doc, trace } = classic();
+    const m = buildTimeline(trace, doc, { width: 980 });
+    const span = axisSpan(trace, doc.events);
+    expect(span.t1).toBe(m.scale.t1);
+    expect(span.t0).toBe(m.scale.t0);
+  });
+
+  it('clamps a reading to those ends, both of them', () => {
+    const { doc, trace } = classic();
+    const m = buildTimeline(trace, doc, { width: 980 });
+    expect(clampToAxis(500, trace, doc.events)).toBe(m.scale.t1);
+    expect(clampToAxis(-60, trace, doc.events)).toBe(m.scale.t0);
+    expect(clampToAxis(12.5, trace, doc.events)).toBe(12.5);
+    /* The same answer the drawing's own clamp gives, at every one of them. */
+    for (const t of [-60, -1, 0, 12.5, 500]) {
+      expect(clampToAxis(t, trace, doc.events)).toBe(m.scale.clampT(t));
+    }
   });
 });
 

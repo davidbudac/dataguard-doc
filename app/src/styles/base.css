@@ -38,9 +38,14 @@ button,input,select,textarea{font:inherit;color:inherit}
    hidden by CSS alone -- this class only moves text off the visual canvas. */
 .sr{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;
   clip:rect(0 0 0 0);clip-path:inset(50%);white-space:nowrap;border:0}
-/* A table cannot be narrower than its content, so a screen-reader table
-   would still widen the page: pin it to the corner of its own container. */
-table.sr{left:0;top:0;max-width:1px}
+/* A table's used width can never fall below its min-content width, so `.sr` on
+   a <table> cannot make it 1 px wide: the timeline's a11y table laid out
+   ~1084 px, gave the bottom dock a horizontal scrollbar at 1280x720 and --
+   `position:sticky` pinning on one axis only -- carried the sticky transport
+   sideways out of view with it. A screen-reader table gets a `.sr` block
+   *around* it, which does honour `width:1px` and whose `overflow:hidden`
+   really clips. If some future table has to carry `.sr` itself, add
+   `.sr > table{max-width:none}` rather than bringing `table.sr` back. */
 
 /* Links are real links (chrome rule): they carry an href and survive a
    middle click. */

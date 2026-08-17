@@ -17,6 +17,7 @@ import { breakCoalescing, edit } from '@/state/history';
 import {
   canEdit, clearSelection, hovered, mode, select, selection, toast, viewport,
 } from '@/state/view';
+import { AddToolbar } from '../inspector/adds';
 import { removeMember, removeObserver } from '../inspector/edits';
 import { WHY } from '../inspector/why';
 import { menuOpen } from './EventMenu';
@@ -63,50 +64,66 @@ export function CanvasSlot({ interactive = true }: CanvasSlotProps) {
   const graph = redoGraph.value;
   const geo = geometry.value;
   const editable = interactive && canEdit(viewport.value);
+  /* Build's additions, in the corner of the stage: the reader looking at the
+     drawing should not have to find the rail -- or clear a selection -- to add
+     a standby. It is the inspector's own table of actions (inspector/adds), so
+     a label and a refusal are the same on both surfaces. Absent where the page
+     is read-only, and absent in Break, Configure and Learn, which do not add.
+     It is drawn before the drawing so the tab order reaches it first and so
+     canvas.css can give the drawing room for it without a `:has()`. */
+  const toolbar = editable && mode.value === 'build'
+    ? <AddToolbar doc={topology.value} />
+    : null;
   if (graph === null) {
     return (
-      <div class="empty">
-        <span class="empty-k">Canvas</span>
-        <p>
-          No member carries the primary role, so there is no redo to draw. Give one
-          database <span class="mono">role: primary</span> and the drawing comes back.
-        </p>
-      </div>
+      <>
+        {toolbar}
+        <div class="empty">
+          <span class="empty-k">Canvas</span>
+          <p>
+            No member carries the primary role, so there is no redo to draw. Give one
+            database <span class="mono">role: primary</span> and the drawing comes back.
+          </p>
+        </div>
+      </>
     );
   }
   return (
-    <TopoCanvas
-      doc={topology.value}
-      graph={graph}
-      {...(geo ? { geometry: geo } : {})}
-      frame={mode.value === 'break' ? frame.value : null}
-      overrides={doc.value.layout}
-      selection={selection.value}
-      hovered={hovered.value}
-      interactive={editable}
-      /* Why it is read-only is said once, on the stage card above (App.tsx);
-         the drawing says only that it is. */
-      readOnlyWhy={interactive
-        ? 'This drawing is a read-only view here.'
-        : 'This drawing is a live view of the configuration; the workbench beside it is where it is edited.'}
-      onSelect={(key: string, additive: boolean) => select(key, additive)}
-      onHover={(key: string | null) => { hovered.value = key; }}
-      onClear={() => clearSelection()}
-      /* Break: a click on a card, and `E` on a focused one, open the menu of
-         what can be done to it. The menu has a fixed home (rail head on a wide
-         screen, under the drawing otherwise), so this opens it rather than
-         positioning it -- `style-src 'self'` forbids positioning anything from
-         script anyway. */
-      {...(editable && mode.value === 'break'
-        ? { onEventMenu: (): void => { menuOpen.value = true; } }
-        : {})}
-      {...(editable && mode.value === 'build'
-        ? { onDelete: (key: string): void => deleteFromCanvas(key) }
-        : {})}
-      onDrag={(key: string, offset: { dx: number; dy: number }) => {
-        edit(`Move the ${key} card`, (d) => withLayout(d, key, offset), `drag:${key}`);
-      }}
-      onDragEnd={() => breakCoalescing()}
-    />
+    <>
+      {toolbar}
+      <TopoCanvas
+        doc={topology.value}
+        graph={graph}
+        {...(geo ? { geometry: geo } : {})}
+        frame={mode.value === 'break' ? frame.value : null}
+        overrides={doc.value.layout}
+        selection={selection.value}
+        hovered={hovered.value}
+        interactive={editable}
+        /* Why it is read-only is said once, on the stage card above (App.tsx);
+           the drawing says only that it is. */
+        readOnlyWhy={interactive
+          ? 'This drawing is a read-only view here.'
+          : 'This drawing is a live view of the configuration; the workbench beside it is where it is edited.'}
+        onSelect={(key: string, additive: boolean) => select(key, additive)}
+        onHover={(key: string | null) => { hovered.value = key; }}
+        onClear={() => clearSelection()}
+        /* Break: a click on a card, and `E` on a focused one, open the menu of
+           what can be done to it. The menu has a fixed home (rail head on a wide
+           screen, under the drawing otherwise), so this opens it rather than
+           positioning it -- `style-src 'self'` forbids positioning anything from
+           script anyway. */
+        {...(editable && mode.value === 'break'
+          ? { onEventMenu: (): void => { menuOpen.value = true; } }
+          : {})}
+        {...(editable && mode.value === 'build'
+          ? { onDelete: (key: string): void => deleteFromCanvas(key) }
+          : {})}
+        onDrag={(key: string, offset: { dx: number; dy: number }) => {
+          edit(`Move the ${key} card`, (d) => withLayout(d, key, offset), `drag:${key}`);
+        }}
+        onDragEnd={() => breakCoalescing()}
+      />
+    </>
   );
 }

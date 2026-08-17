@@ -48,6 +48,11 @@ export function Playhead({ model, tNow, playing = false, onSeek, onTogglePlay }:
   const flip = model.markers.some((m) =>
     m.index !== null && m.labelAnchor === 'start' && m.labelX >= x - 8 && m.labelX <= x + 64);
 
+  /* Reaching for the playhead means "let me look at this moment", so it stops
+     the run: playback owns the playhead while it is running (see playback.ts)
+     and would otherwise overwrite the seek on the next frame. */
+  const takeOver = (): void => { if (playing && onTogglePlay) onTogglePlay(); };
+
   const seekFromClient = (el: SVGGraphicsElement, clientX: number): void => {
     if (!onSeek) return;
     const svg = el.ownerSVGElement ?? (el as unknown as SVGSVGElement);
@@ -61,6 +66,7 @@ export function Playhead({ model, tNow, playing = false, onSeek, onTogglePlay }:
     e.preventDefault();
     const el = e.currentTarget;
     el.setPointerCapture(e.pointerId);
+    takeOver();
     seekFromClient(el, e.clientX);
   };
 
@@ -81,6 +87,7 @@ export function Playhead({ model, tNow, playing = false, onSeek, onTogglePlay }:
     const go = (v: number | null): void => {
       if (v === null || !onSeek) return;
       e.preventDefault();
+      takeOver();
       onSeek(scale.clampT(v));
     };
     switch (e.key) {

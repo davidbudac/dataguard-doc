@@ -32,6 +32,42 @@
   font-family: var(--sans);
 }
 
+/* ---- the add toolbar above the stage ---- */
+/* Build's additions, at the top right of the stage. It is drawn before the
+   drawing, so the tab order reaches the additions before the cards.
+
+   In the stage's own flow, not floating over it. The strip has no fixed
+   height -- it wraps to a second row, and a refused button stacks a sentence
+   of up to 30ch under itself, which takes it past 150px -- so any constant of
+   clearance handed to the drawing is a number that is wrong in some state, and
+   the first one (34px against a 39px strip) was wrong in every state. The
+   stage is a column flexbox in Build (shell.css) and gives `.tp-wrap` whatever
+   height is left, so the drawing scales down instead of being covered, at any
+   strip height, and the `graph === null` card beside it is clear for free. */
+.cv-add {
+  align-self: flex-end;
+  flex: 0 0 auto;
+  margin: 10px 14px 0;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+  max-width: min(440px, 70%);
+  padding: 5px 6px;
+  /* Raised, so it is made of the raised surface: --sf with --ln2 and --sh is
+     how every other shadowed thing here is built (.tl-tip, .sheet). --sf2 is
+     the sunken token, and a sunken fill under a drop shadow is a hole that
+     claims to be a panel. */
+  background: var(--sf);
+  border: 1px solid var(--ln2);
+  border-radius: 3px;
+  box-shadow: var(--sh);
+}
+/* A refusal is a sentence: it stacks under its button instead of stretching
+   the strip along the top of the drawing. */
+.cv-add .ctl-off { flex-direction: column; align-items: flex-start; gap: 4px; }
+.cv-add .why { max-width: 30ch; }
+
 .tp-empty {
   margin: 0;
   padding: 24px;
@@ -171,4 +207,6 @@
 @media print {
   .topo-svg { max-width: 100%; }
   .tp-legend { color: var(--ik2); }
+  /* There is nothing to press on a printout. */
+  .cv-add { display: none; }
 }

@@ -10,16 +10,30 @@
  *
  * View state is never in here. Layout drags and event injection are, because
  * both ride the share link and the file.
+ *
+ * The one thing in here that is not the Document is its **provenance**:
+ * `presetId`, the preset a document came from. It travels with the snapshot
+ * because two edits change both at once -- Reset lands on the classic
+ * deployment and drops the id, opening a lesson step lands on the step's
+ * topology and takes the lesson's id -- and restoring half of that is a
+ * document that *is* a preset while the address bar and the picker say it is
+ * not. "Undoing back to the preset drops the fragment again" (`state/url.ts`)
+ * is only true if the id comes back with the bytes.
  */
 
 import { batch, computed, signal } from '@preact/signals';
 import type { Doc } from './doc';
 import { doc } from './doc';
+import { presetId } from './url';
 
-/** One reversible step: the label of the edit, and the Document before it. */
+/**
+ * One reversible step: the label of the edit, the Document before it, and
+ * where that Document came from (`?preset=<id>`, or null).
+ */
 export interface HistoryEntry {
   label: string;
   doc: Doc;
+  preset: string | null;
 }
 
 /** Consecutive edits with the same coalesce key fold together inside this. */
@@ -50,6 +64,9 @@ export function edit(
   label: string, fn: (d: Doc) => Doc, coalesceKey?: string, at?: number,
 ): void {
   const before = doc.value;
+  /* Read before `fn` runs, and stored beside the snapshot: a caller that
+     changes the provenance does it around the `edit()`, not inside it. */
+  const beforePreset = presetId.value;
   const next = fn(before);
   /* An edit that changes nothing is not an edit -- it must not cost an undo. */
   if (next === before) return;
@@ -67,9 +84,9 @@ export function edit(
          from -- and take the newer label, which describes where it ended. */
       const head = stack.slice(0, -1);
       const top = stack[stack.length - 1] as HistoryEntry;
-      undoStack.value = [...head, { label, doc: top.doc }];
+      undoStack.value = [...head, { label, doc: top.doc, preset: top.preset }];
     } else {
-      const grown = [...stack, { label, doc: before }];
+      const grown = [...stack, { label, doc: before, preset: beforePreset }];
       undoStack.value = grown.length > HISTORY_CAP
         ? grown.slice(grown.length - HISTORY_CAP)
         : grown;
@@ -88,8 +105,11 @@ export function undo(): void {
   if (!entry) return;
   batch(() => {
     undoStack.value = stack.slice(0, -1);
-    redoStack.value = [...redoStack.value, { label: entry.label, doc: doc.value }];
+    redoStack.value = [
+      ...redoStack.value, { label: entry.label, doc: doc.value, preset: presetId.value },
+    ];
     doc.value = entry.doc;
+    presetId.value = entry.preset;
   });
   breakCoalescing();
 }
@@ -100,8 +120,11 @@ export function redo(): void {
   if (!entry) return;
   batch(() => {
     redoStack.value = stack.slice(0, -1);
-    undoStack.value = [...undoStack.value, { label: entry.label, doc: doc.value }];
+    undoStack.value = [
+      ...undoStack.value, { label: entry.label, doc: doc.value, preset: presetId.value },
+    ];
     doc.value = entry.doc;
+    presetId.value = entry.preset;
   });
   breakCoalescing();
 }

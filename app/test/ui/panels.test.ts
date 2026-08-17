@@ -6,15 +6,18 @@
  * @vitest-environment jsdom
  */
 
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { h, render } from 'preact';
 import { PRESETS, classic } from '@/presets';
 import { classicDoc, makeDoc } from '@/state/doc';
 import { resetHistory } from '@/state/history';
 import { hovered, mode, panelTab, selection, toast, viewport } from '@/state/view';
-import { PANEL_TABS } from '@/state/view';
+import { PANEL_LABEL, PANEL_TABS } from '@/state/view';
 import type { PanelTab } from '@/state/view';
-import { Panels, panelFromHash, panelHref, printing } from '@/ui/panels/Panels';
+import { PANEL_GROUPS, Panels, panelFromHash, panelHref, printing } from '@/ui/panels/Panels';
 import { mentionIndex, subjectOf } from '@/ui/panels/CodeBlock';
 import { rpDur, rpOrd, rpTickLabel } from '@/ui/panels/Reopen';
 import { commitLegs } from '@/ui/panels/Commit';
@@ -119,6 +122,89 @@ describe('the panels render', () => {
     const legs = commitLegs(topology.value, topology.value.members[0]?.id ?? null);
     expect(legs.length).toBeGreaterThan(0);
     expect(root.querySelectorAll('.fig-svg')).toHaveLength(legs.length);
+  });
+});
+
+describe('the two groups of tabs', () => {
+  it('covers every tab exactly once, in the order the row draws them', () => {
+    const flat = PANEL_GROUPS.flatMap((g) => g.tabs);
+    expect(flat).toEqual([...PANEL_TABS]);
+    expect(new Set(flat).size).toBe(PANEL_TABS.length);
+  });
+
+  it('separates the generated files from the behaviour figures', () => {
+    expect(PANEL_GROUPS.map((g) => g.label)).toEqual(['Files', 'Behaviour']);
+    expect(PANEL_GROUPS[0]?.tabs).toEqual(['dgmgrl', 'dests', 'tns', 'show']);
+    expect(PANEL_GROUPS[1]?.tabs).toEqual(['app', 'commit', 'reopen']);
+  });
+
+  it('labels each group in the row, before the tabs it names', () => {
+    const root = mount();
+    const groups = [...root.querySelectorAll('.panel-tabs .panel-group')];
+    expect(groups).toHaveLength(PANEL_GROUPS.length);
+    groups.forEach((g, i) => {
+      const label = g.firstElementChild;
+      expect(label?.className).toBe('panel-group-lbl');
+      expect(label?.textContent).toBe(PANEL_GROUPS[i]?.label);
+      expect([...g.querySelectorAll('a.panel-tab')]).toHaveLength(
+        PANEL_GROUPS[i]?.tabs.length ?? 0,
+      );
+    });
+  });
+
+  it('stays one navigation, with each group named by its own label', () => {
+    const root = mount();
+    expect(root.querySelectorAll('nav.panel-tabs')).toHaveLength(1);
+    for (const g of root.querySelectorAll('.panel-group')) {
+      expect(g.getAttribute('role')).toBe('group');
+      const id = g.getAttribute('aria-labelledby');
+      expect(id).toBeTruthy();
+      expect(root.querySelector(`#${id}`)?.textContent)
+        .toBe(g.querySelector('.panel-group-lbl')?.textContent);
+    }
+  });
+
+  /* The label is a heading over a row of tabs, and the only thing that can
+     make it read as one is its own form -- which a rendered tree says nothing
+     about. Asserted against the stylesheet, the way the print rules are. */
+  describe('the label reads as a heading, not as another tab', () => {
+    /* `fileURLToPath` is given the string, not a `new URL(...)`: under the
+       jsdom environment `URL` is jsdom's, and Node will not take a path from
+       one of those. */
+    const panels = readFileSync(
+      join(dirname(fileURLToPath(import.meta.url)), '../../src/styles/panels.css'),
+      'utf8',
+    );
+    const rule = /\.panel-group-lbl\{([\s\S]*?)\}/.exec(panels)?.[1] ?? '';
+
+    it('is set as prose: sans, sentence case, no tracking', () => {
+      expect(rule).toContain('font-family:var(--sans)');
+      expect(rule).toContain('font-size:11px');
+      /* Case does the separating. The face alone cannot: three of the seven
+         tab labels are this page's words too, and the tabs are mono
+         uppercase, which is what these must not look like. */
+      expect(rule).not.toContain('text-transform');
+      expect(panels).not.toMatch(/\.panel-group-lbl\{[^}]*letter-spacing:\.\d/);
+    });
+
+    it('carries no opacity -- in this application a faded thing is a switched-off thing', () => {
+      expect(rule).toContain('color:var(--ik3)');
+      expect(rule).not.toContain('opacity');
+    });
+
+    it('names its group in sentence case in the markup too', () => {
+      expect(PANEL_GROUPS.map((g) => g.label)).toEqual(['Files', 'Behaviour']);
+    });
+  });
+
+  it('leaves the tabs, their addresses and the issue count where they were', () => {
+    resetHistory(makeDoc(classic.doc()));
+    const root = mount();
+    const tabs = [...root.querySelectorAll('a.panel-tab')];
+    expect(tabs.map((a) => a.textContent?.replace(/\d+$/, '')))
+      .toEqual(PANEL_TABS.map((t) => PANEL_LABEL[t]));
+    expect(root.querySelector('a.panel-tab[aria-current="page"]')?.textContent)
+      .toContain('DGMGRL');
   });
 });
 

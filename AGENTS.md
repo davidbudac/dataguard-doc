@@ -31,7 +31,7 @@ produced, and how to extend it without breaking consistency or accuracy.
 | `testing/README.md` | Test runbook: step-by-step drills verifying each documented situation against a real 19c configuration (crash, isolation, observer loss, NET_TIMEOUT, blocked failover, reopen/MaxFailure, client view, commit measurement, plus four topology drills for far sync, cascading, multi-target and multiple observers), with an RTO/RPO probe harness and reinstate cleanup. Repo-only markdown — not part of the published site |
 | `site/build.mjs` | The site build, in three steps: `npm run build` in `app/` (which empties `_site/` and writes the hashed bundle), then `site/build-legacy.mjs`, then `assertNoInline(_site/index.html)` — a built page carrying a `<script>` with a body, an `on*=` handler or a `style=` attribute fails the build rather than the browser's content security policy. The guard proves it can fail (three fixtures it must reject, one it must accept) before it is trusted to pass |
 | `site/build-legacy.mjs` | What `site/build.mjs` used to be: wraps the fragment into a full page (doctype, charset, title, favicon, canonical + social meta), inlines `simulator/i18n/cs.json` as a JSON `<script>`, and enforces the ASCII-only guard — it exits non-zero on any byte above U+007E, naming the offending lines. Writes `_site/legacy/index.html` and copies `diagrams/` to `_site/diagrams`, which both pages share |
-| `site/smoke.mjs` | Dependency-free browser check of the built tree: serves `_site/` over `node:http`, loads it in headless Chrome (`--dump-dom`, console messages captured through `--enable-logging=stderr`), takes the page's own `#t=` permalink for the `classic` and `far-sync-zero-loss` presets and reloads it cold, asserts the node cards, the timeline lanes and the outcome chip, opens each of the four modes by name, and checks that a published-page link (`?sc=iso&lat=2&lang=cs#ch-clocks`) upgrades into Break mode and offers the Czech page. Probes HTTP first and falls back to an inlined single-file copy over `file://` where the machine's headless Chrome cannot fetch over HTTP. Exits non-zero on any failed check, any console message, or any file the page asked for and did not get |
+| `site/smoke.mjs` | Dependency-free browser check of the built tree: serves `_site/` over `node:http`, loads it in headless Chrome (`--dump-dom`, console messages captured through `--enable-logging=stderr`), takes the page's own `data-permalink` for the `classic` and `far-sync-zero-loss` presets and reloads it cold — an untouched preset now carries no `#t=` at all, so the check accepts either a `#t=` document or a short link naming the preset (and asserts the latter is under 200 characters) — asserts the node cards, the timeline lanes and the outcome chip, opens each of the four modes by name, and checks that a published-page link (`?sc=iso&lat=2&lang=cs#ch-clocks`) upgrades into Break mode and offers the Czech page, following *that* permalink cold to keep one real-browser `CompressionStream` → `DecompressionStream` round trip (an upgraded legacy link names no preset, so it must carry `#t=`). Probes HTTP first and falls back to an inlined single-file copy over `file://` where the machine's headless Chrome cannot fetch over HTTP. Exits non-zero on any failed check, any console message, or any file the page asked for and did not get |
 | `site/test.mjs` | Standalone node test for the **legacy** fragment: extracts its four model marker blocks and asserts the documented domain invariants — including the scenario × observer-location outcome matrix as literal tables (24 cells, plus the 19c-invariance loops over the version axis) — then checks the Czech catalog for dropped placeholders, unbalanced inline markup and bad plural forms. No dependencies; `node --test site/test.mjs`, 68 tests. The application reproduces the same 24 cells through its compat adapter (`app/test/legacy-matrix.test.ts`) |
 | `site/publish.sh` | Builds, runs the three test gates (`npm --prefix app run test`, `node --test site/test.mjs`, `node site/smoke.mjs`), deploys to the VPS, then verifies the public URL |
 
@@ -840,7 +840,13 @@ component computes domain state locally.**
   one. Query keys are human-readable and defined exactly once, in the
   `URL_FIELDS` table: `ed`, `mode`, `panel`, `sel`, `t`, `preset`, `lesson`,
   `step`, `theme`. Values are clamped on read and unknown tokens are ignored and
-  then dropped from the address bar. Writes go through a one-frame timer plus
+  then dropped from the address bar. The fragment is written **only when the
+  Document differs from the preset it names** — compared by value on the codec's
+  wire form (`isPristinePreset`), so `?preset=classic` alone is the whole address
+  until the first edit and again after undoing back to it; `?preset=` stays on
+  after an edit, as provenance. `canonicalTail()` is the one place that composes
+  `?query#fragment`, so the address bar and the Share button cannot disagree.
+  Writes go through a one-frame timer plus
   a 300 ms trailing debounce — WebKit rate-limits `replaceState` to roughly 100
   calls per 30 s and a scrub would trip it. A timer, deliberately not
   `requestAnimationFrame`: rAF stops in a background tab and never fires in a
@@ -922,6 +928,10 @@ modes changes what is around it.
   panel that stays put is one the reader can find again.
 - **The readout is mode-aware**: Build and Configure read the steady state even
   when the Document carries events; Break and Learn read the outcome at `tNow`.
+  Those two lead the strip with a `Drawing at t = <n> s` chip and file the rest
+  behind a `Run` label, because there are **two clocks on the strip** — the
+  moment the drawing is frozen at, and the run as a whole — and unlabelled they
+  read as one reading taken at one instant.
 - **Keyboard and aria**: the canvas is a `role="group"` with a generated
   sentence set and a visually hidden structural table; one card per site is the
   tab stop (a roving `tabindex`, spelled lower case — the camel-cased JSX

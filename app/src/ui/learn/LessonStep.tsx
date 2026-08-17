@@ -21,12 +21,11 @@ import { useEffect, useRef } from 'preact/hooks';
 import type { Lesson } from '@/content';
 import { WhyPill } from '@/ui/common/WhyPill';
 import type { WhyState } from '@/ui/common/WhyPill';
-import { mode } from '@/state/view';
 import { findPreset } from '@/presets';
 import {
   baselineTopology, describeEvent, describePatch, presetIdFor, stepSetsUp,
 } from './apply';
-import { openLessonStep, learnHref } from './route';
+import { openLessonStep, openStepInMode, learnHref } from './route';
 import { Explain } from './Explain';
 
 export interface LessonStepProps {
@@ -67,7 +66,7 @@ export function LessonStep({ lesson, index, active }: LessonStepProps) {
   }, [active]);
 
   const show = (): void => { openLessonStep(lesson, index, 'live'); };
-  const openInBreak = (): void => { openLessonStep(lesson, index, 'live'); mode.value = 'break'; };
+  const openInBreak = (): void => { openStepInMode(lesson, index, 'break'); };
 
   const base = baselineTopology(lesson);
   const changes = step.apply?.patches ? describePatch(step.apply.patches) : [];

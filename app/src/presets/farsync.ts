@@ -45,6 +45,8 @@ function zeroLossDoc(): TopologyDoc {
 export const farSyncZeroLoss: Preset = {
   id: 'far-sync-zero-loss',
   title: 'Zero data loss over distance with a far sync instance',
+  short: 'Far sync, zero loss',
+  group: 'Far sync',
   source: '19c C&A chapter 5, Example 5-2',
   summary:
     'The primary ships SYNC to a far sync instance beside it, so that "all committed redo '
@@ -114,6 +116,8 @@ function haPairDoc(): TopologyDoc {
 export const farSyncHaPair: Preset = {
   id: 'far-sync-ha-pair',
   title: 'A high-availability far sync pair',
+  short: 'Far sync HA pair',
+  group: 'Far sync',
   source: '19c C&A chapter 5, Example 5-4',
   summary:
     'One far sync instance in the redo path is a single point of failure for zero data loss: '
@@ -180,6 +184,8 @@ function roleChangeDoc(): TopologyDoc {
 export const farSyncRoleChange: Preset = {
   id: 'far-sync-role-change',
   title: 'A second far sync near the standby, for the role change',
+  short: 'Far sync for the role change',
+  group: 'Far sync',
   source: '19c C&A chapter 5, Example 5-5',
   summary:
     'A far sync instance beside the primary buys zero data loss in one direction only: after a '

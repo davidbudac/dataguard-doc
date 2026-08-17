@@ -48,6 +48,8 @@ function multiTargetDoc(): TopologyDoc {
 export const multiTargetThreeObservers: Preset = {
   id: 'multi-target-three-observers',
   title: 'Two candidate targets, three observers',
+  short: 'Two targets, three observers',
+  group: 'Multiple targets',
   source: '19c broker chapter 5, multiple fast-start failover targets (12.2+)',
   summary:
     'Fast-start failover with more than one candidate target, which arrived in 12.2. With more '
@@ -102,6 +104,8 @@ function racDoc(): TopologyDoc {
 export const racPrimary: Preset = {
   id: 'rac-primary',
   title: 'A RAC primary losing one instance',
+  short: 'RAC primary',
+  group: 'RAC',
   summary:
     'The primary is a two-instance cluster; the observer, as always, runs on a host of its own, '
     + 'because it "should never be deployed at the primary database server or cluster, or on '
@@ -160,6 +164,8 @@ function bystanderDoc(): TopologyDoc {
 export const bystanders: Preset = {
   id: 'bystanders',
   title: 'Snapshot and logical standbys as bystanders',
+  short: 'Snapshot & logical bystanders',
+  group: 'Cascading & bystanders',
   summary:
     'One physical standby is the fast-start failover target; a logical standby and a snapshot '
     + 'standby sit beside it as bystanders. FastStartFailoverTarget "can only be set to the '
@@ -228,6 +234,8 @@ function maxProtectionDoc(): TopologyDoc {
 export const maxProtection: Preset = {
   id: 'max-protection',
   title: 'Maximum protection with two synchronous standbys',
+  short: 'MAXPROTECTION, two SYNC standbys',
+  group: 'Protection modes',
   summary:
     'Maximum protection is the mode that "shuts the primary database down rather than allowing '
     + 'it to continue" when it can no longer be certain a standby has the redo, which is '

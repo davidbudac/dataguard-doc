@@ -1,6 +1,14 @@
 /**
  * Configure mode's bottom row: seven panels behind one tab bar (ui.md SS3).
  *
+ * The seven stand in two groups, and the row says so. Four of them are *files*
+ * -- text you would type or paste somewhere else, and could diff against what
+ * a real deployment carries -- and three are *behaviour*: figures this page
+ * draws from the same configuration. Seven mono labels in one undifferentiated
+ * row read as seven of one kind, and a reader looking for the commit figure
+ * hunted through the file names to find it. The labels are the only new thing:
+ * the tabs, their ids and their addresses are unchanged.
+ *
  * The tabs are real links. Each one carries an `href` to the canonical address
  * for that panel, so it survives a middle click, a right-click-copy and a
  * bookmark; the click handler sets the signals directly and lets the debounced
@@ -80,6 +88,26 @@ export function useHashRoute(): void {
  */
 export { printing, usePrintExpand } from '../print';
 
+/* ---------------- the two groups ---------------- */
+
+export interface PanelGroup {
+  /** Only ever an element id, so the label can name its own group. */
+  readonly id: string;
+  readonly label: string;
+  readonly tabs: readonly PanelTab[];
+}
+
+/**
+ * The groups, in the order the row draws them. Together they are `PANEL_TABS`,
+ * exactly once each and in the same order -- a test pins that, because a tab
+ * added to `state/view.ts` and not to a group here would be a panel with an
+ * address and no way in.
+ */
+export const PANEL_GROUPS: readonly PanelGroup[] = [
+  { id: 'files', label: 'Files', tabs: ['dgmgrl', 'dests', 'tns', 'show'] },
+  { id: 'behaviour', label: 'Behaviour', tabs: ['app', 'commit', 'reopen'] },
+];
+
 /* ---------------- the row ---------------- */
 
 function Body({ tab }: { tab: PanelTab }) {
@@ -94,36 +122,54 @@ function Body({ tab }: { tab: PanelTab }) {
   }
 }
 
+function Tab({ tab, current }: { tab: PanelTab; current: PanelTab }) {
+  const nIssues = issues.value.length;
+  const nErrors = errors.value.length;
+  return (
+    <a
+      class="panel-tab"
+      href={panelHref(tab)}
+      aria-current={tab === current ? 'page' : undefined}
+      onClick={(e) => {
+        /* Let the reader open a panel in a new tab if that is what they
+           asked for; otherwise stay on the page and keep the fragment. */
+        if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
+        e.preventDefault();
+        panelTab.value = tab;
+      }}
+    >
+      {PANEL_LABEL[tab]}
+      {tab === 'dgmgrl' && nIssues > 0 ? (
+        <span class="n" title={`${nErrors} error${nErrors === 1 ? '' : 's'}`}>{nIssues}</span>
+      ) : null}
+    </a>
+  );
+}
+
 export function Panels() {
   useHashRoute();
   usePrintExpand();
   const tab = panelTab.value;
-  const nIssues = issues.value.length;
-  const nErrors = errors.value.length;
 
   return (
     <section class="panels" aria-label="Configuration">
       <FigDefs />
+      {/* One row, one `nav`, two groups. The group is a `role="group"` named by
+          the label inside it rather than a second navigation landmark, so a
+          screen reader hears "Files, group" on the way in and the seven links
+          stay one list; and the label is a real element, so nothing about the
+          grouping lives in CSS alone. */}
       <nav class="panel-tabs" aria-label="Configuration panels">
-        {PANEL_TABS.map((t) => (
-          <a
-            key={t}
-            class="panel-tab"
-            href={panelHref(t)}
-            aria-current={t === tab ? 'page' : undefined}
-            onClick={(e) => {
-              /* Let the reader open a panel in a new tab if that is what they
-                 asked for; otherwise stay on the page and keep the fragment. */
-              if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
-              e.preventDefault();
-              panelTab.value = t;
-            }}
+        {PANEL_GROUPS.map((g) => (
+          <div
+            key={g.id}
+            class="panel-group"
+            role="group"
+            aria-labelledby={`panel-group-${g.id}`}
           >
-            {PANEL_LABEL[t]}
-            {t === 'dgmgrl' && nIssues > 0 ? (
-              <span class="n" title={`${nErrors} error${nErrors === 1 ? '' : 's'}`}>{nIssues}</span>
-            ) : null}
-          </a>
+            <span class="panel-group-lbl" id={`panel-group-${g.id}`}>{g.label}</span>
+            {g.tabs.map((t) => <Tab key={t} tab={t} current={tab} />)}
+          </div>
         ))}
       </nav>
       {printing.value

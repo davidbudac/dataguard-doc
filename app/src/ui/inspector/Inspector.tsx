@@ -13,22 +13,31 @@
  * to precisely one subject.
  */
 
-import { useState } from 'preact/hooks';
+import { signal } from '@preact/signals';
+import { useLayoutEffect } from 'preact/hooks';
 import type { Link, Member, Observer, Site, TopologyDoc } from '@/engine';
-import { siteId as toSiteId } from '@/engine';
 import { errors, issues, redoGraph, topology, warnings } from '@/state/derived';
 import { canEdit, clearSelection, mode, selection, viewport } from '@/state/view';
 import { Action, Group, Note, Text } from './controls';
-import { Pick } from './controls';
+import { AddPalette } from './adds';
 import { ConfigForm } from './ConfigForm';
 import { LinkForm } from './LinkForm';
 import { MemberForm } from './MemberForm';
 import { ObserverForm } from './ObserverForm';
-import {
-  addDatabase, addFarSync, addHost, addLink, addObserver, addSite, mutate, removeHost, removeSite,
-} from './edits';
+import { addHost, mutate, removeHost, removeSite } from './edits';
 import { off, ON, WHY } from './why';
 import '@/styles/inspector.css';
+
+/**
+ * Whether the header's `Add` disclosure is open, for this session.
+ *
+ * Selecting a card used to replace the whole rail, palette included, so the
+ * only way back to `+ Standby database` was to find `Clear` first. The
+ * disclosure sits beside `Clear` and opens the same palette in flow -- never a
+ * popup: `style-src 'self'` forbids positioning anything from script, and a
+ * panel with a fixed place is one the reader can find again (ui.md SS3).
+ */
+export const addOpen = signal(false);
 
 type Subject =
   | { kind: 'member'; member: Member }
@@ -123,56 +132,6 @@ function StartHere() {
   );
 }
 
-function Palette({ doc }: { doc: TopologyDoc }) {
-  const [site, setSite] = useState<string>(doc.sites[0]?.id as string ?? '');
-  const [from, setFrom] = useState<string>(doc.sites[0]?.id as string ?? '');
-  const [to, setTo] = useState<string>(doc.sites[1]?.id as string ?? '');
-  const siteOptions = doc.sites.map((s) => ({ value: s.id as string, label: s.name }));
-  const linked = doc.links.some((l) => l.scope === 'site'
-    && (l.ends as [string, string]).includes(from) && (l.ends as [string, string]).includes(to));
-
-  return (
-    <Group title="Add">
-      <div class="pal">
-        <Action label="+ Standby database" onClick={() => addDatabase()} />
-        <Action label="+ Far sync instance" onClick={() => addFarSync()} />
-        <Action label="+ Observer" onClick={() => addObserver()} />
-        <Action label="+ Data centre" onClick={() => addSite()} />
-      </div>
-      <div class="pal">
-        <Pick
-          name="Host in"
-          prose
-          value={site}
-          options={siteOptions}
-          onChange={setSite}
-        />
-        <Action
-          label="+ Host"
-          enabled={site === '' ? off('There is no data centre to put it in yet.') : ON}
-          onClick={() => addHost(toSiteId(site))}
-        />
-      </div>
-      <div class="pal">
-        <Pick name="Link from" prose value={from} options={siteOptions} onChange={setFrom} />
-        <Pick name="to" prose value={to} options={siteOptions} onChange={setTo} />
-        <Action
-          label="+ Link"
-          enabled={from === to
-            ? off('A link runs between two different data centres.')
-            : linked ? off('These two data centres are linked already.') : ON}
-          onClick={() => addLink(toSiteId(from), toSiteId(to))}
-        />
-      </div>
-      <Note>
-        A new database lands in a data centre that has none, on a host of its own, and
-        the primary is given destination properties for it. A new observer gets a host of
-        its own too: an observer is never deployed on a database server or cluster.
-      </Note>
-    </Group>
-  );
-}
-
 function SiteForm({ site, doc }: { site: Site; doc: TopologyDoc }) {
   const hosts = doc.hosts.filter((h) => h.site === site.id);
   const used = new Set<string>();
@@ -230,6 +189,13 @@ export function Inspector() {
   const graph = redoGraph.value;
   const narrowed = mode.value === 'configure';
 
+  /* The disclosure belongs to the card it was opened over: its header says
+     which subject it sits under, and selecting another one is a new question.
+     A palette left hanging open above the next card's properties is a panel
+     the reader did not ask for -- and it pushes those properties down the
+     rail. Before the read-only return, because a hook is not conditional. */
+  useLayoutEffect(() => { addOpen.value = false; }, [sel[0] ?? '']);
+
   if (!canEdit(viewport.value)) {
     return (
       <div class="insp">
@@ -239,6 +205,10 @@ export function Inspector() {
     );
   }
 
+  /* The palette is Build's; Configure narrows the rail to the properties. */
+  const canAdd = !narrowed;
+  const menuOpen = canAdd && subject !== null && addOpen.value;
+
   return (
     <div class="insp">
       {subject === null ? null : (
@@ -246,9 +216,30 @@ export function Inspector() {
           <span class="eyebrow">{SUBJECT_WORD[subject.kind]}</span>
           <span class="title mono">{sel[0]}</span>
           <span class="rr-spacer" />
+          {canAdd ? (
+            <button
+              type="button"
+              class="btn"
+              /* `aria-expanded` alone, exactly as `Fold` does it: the palette
+                 is genuinely absent while this is shut, and an `aria-controls`
+                 naming an element that is not in the document is a reference
+                 to nothing rather than a collapsed disclosure. */
+              aria-expanded={addOpen.value}
+              title="The same additions the empty rail offers, without clearing the selection first"
+              onClick={() => { addOpen.value = !addOpen.value; }}
+            >
+              {`Add ${addOpen.value ? '▾' : '▸'}`}
+            </button>
+          ) : null}
           <button type="button" class="btn" onClick={() => clearSelection()}>Clear</button>
         </header>
       )}
+
+      {menuOpen ? (
+        <Group id="insp-add" title="Add">
+          <AddPalette doc={doc} onAdded={() => { addOpen.value = false; }} />
+        </Group>
+      ) : null}
 
       {sel.length > 1 ? (
         <Note>
@@ -260,8 +251,14 @@ export function Inspector() {
       {subject === null ? (
         <>
           {narrowed ? null : <StartHere />}
+          {/* Adding is what a reader arrives to do, so it is above the summary
+              of what is already there rather than four screens below it. */}
+          {canAdd ? (
+            <Group title="Add">
+              <AddPalette doc={doc} />
+            </Group>
+          ) : null}
           <Summary doc={doc} />
-          {narrowed ? null : <Palette doc={doc} />}
           <ConfigForm doc={doc} />
         </>
       ) : null}

@@ -42,6 +42,8 @@ function classicDoc(fsfoState: 'enabled' | 'observe-only'): TopologyDoc {
 export const classic: Preset = {
   id: 'classic',
   title: 'Primary, standby, observer at a third site',
+  short: '1+1+1 with observer',
+  group: 'Classic',
   source: '19c HA guide, Optimizing Automatic Failover in Common Scenarios',
   summary:
     'One primary, one physical standby in a second data centre, and one observer on a host of '
@@ -68,6 +70,8 @@ export const classic: Preset = {
 export const observeOnly: Preset = {
   id: 'observe-only',
   title: 'Observe-only: the observer that never fails over',
+  short: 'Observe-only observer',
+  group: 'Classic',
   source: '19c broker, ENABLE FAST_START FAILOVER OBSERVE ONLY',
   summary:
     'The same configuration with ENABLE FAST_START FAILOVER OBSERVE ONLY. The observer watches '

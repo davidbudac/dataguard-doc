@@ -85,6 +85,24 @@
   .explain-wrap:not(.is-open)>.explain-body{display:none}
 }
 
+/* ---------------- the head of the workbench (the right column) ---------------- */
+
+/* Above the drawing, and staying there: the rail and the dock are both scroll
+   regions, and a row that scrolls away is a row the reader has to remember
+   rather than see. Opaque, because it rides over the drawing. */
+.lwh{
+  position:sticky;top:0;z-index:2;
+  display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;
+  padding:8px 12px;background:var(--sf);border-bottom:1px solid var(--ln);
+}
+.lwh-what{display:flex;align-items:baseline;gap:9px;min-width:0;flex:1 1 auto}
+.lwh-what .eyebrow{flex:0 0 auto;white-space:nowrap}
+/* One line: a long step title is elided here and read in full in the prose
+   column, which is where the step is. The full string stays in `title`. */
+.lwh-t{font-size:13px;font-weight:600;letter-spacing:-.01em;color:var(--ik);
+  min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lwh-go{display:inline-flex;align-items:center;flex:0 0 auto;flex-wrap:wrap;gap:8px}
+
 /* ---------------- degradation ---------------- */
 
 /* Below 1280 the shell drops the rail: Learn becomes one column, and the
@@ -92,4 +110,20 @@
    the shell renders it into the dock instead. */
 @media (max-width:1279px){
   .learn{padding:16px 16px 32px}
+}
+
+/* On a phone the dock is not a scroll box -- the page is (shell.css) -- so a
+   sticky head would pin to the viewport and ride over the drawing it names
+   rather than staying with it. Same reason the timeline foot goes static at
+   this width (timeline.css). */
+@media (max-width:767px){
+  .lwh{position:static}
+}
+
+/* On paper the workbench header keeps the step it names and drops the two
+   buttons, the way the step's own actions go (print.css): "Open in Break" is
+   an instruction to a cursor, and the sheet it would open is the next page. */
+@media print{
+  .lwh{position:static;border-bottom-color:#000000}
+  .lwh-go{display:none}
 }

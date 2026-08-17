@@ -17,13 +17,18 @@
  *    button.
  *
  * The Document itself rides the fragment (`#t=`, codec.ts); the query carries
- * only what the reader is looking at.
+ * only what the reader is looking at -- with one shorthand: while the Document
+ * is still, value for value, the preset it was opened from, `?preset=<id>` is
+ * already a complete address for it and the fragment is not written at all.
+ * See `isPristinePreset` below.
  */
 
 import { effect, signal } from '@preact/signals';
 import type { Edition } from '@/engine';
-import { doc } from './doc';
-import { encodeDoc } from './codec';
+import { findPreset } from '@/presets';
+import { doc, makeDoc } from './doc';
+import type { Doc } from './doc';
+import { encodeDoc, toWire } from './codec';
 import type { Mode, PanelTab, ThemePref } from './view';
 import {
   MODES, PANEL_TABS, edition, lessonId, lessonStep, mode, panelTab, playing, scrubbing,
@@ -232,30 +237,131 @@ export function applyUrlState(s: UrlState): void {
   theme.value = s.theme;
 }
 
+/* ---------------- when a preset is already the whole address ---------------- */
+
+/**
+ * `JSON.stringify` with the object keys sorted, all the way down.
+ *
+ * The comparison below is between two Documents that mean the same thing but
+ * were not built the same way -- one straight from `preset.doc()`, one carried
+ * here through the codec, the migration chain or a dozen `{ ...d, x }` spreads
+ * -- and plain `JSON.stringify` would call those different because a key came
+ * back in another order. Arrays keep their order, because in a Document order
+ * *is* meaning: members, links and events are sequences, not sets.
+ */
+export function stableJson(value: unknown): string {
+  if (value === null || typeof value !== 'object') return JSON.stringify(value) ?? 'null';
+  if (Array.isArray(value)) return `[${value.map(stableJson).join(',')}]`;
+  const src = value as Record<string, unknown>;
+  const parts: string[] = [];
+  for (const key of Object.keys(src).sort()) {
+    const v = src[key];
+    /* What `JSON.stringify` itself drops from an object. */
+    if (v === undefined || typeof v === 'function') continue;
+    parts.push(`${JSON.stringify(key)}:${stableJson(v)}`);
+  }
+  return `{${parts.join(',')}}`;
+}
+
+/**
+ * One fingerprint per Document *object*, so asking the question is cheap.
+ *
+ * Two callers ask it -- the write path below, on every flush, and the preset
+ * picker (`ui/StatusBar.tsx`), on every render of the status bar -- and
+ * serializing the whole configuration for each of them is work nobody asked
+ * for. Keyed on identity, which is sound here because a `Doc` is immutable:
+ * every edit produces a new object, so a hit is a document that has not
+ * changed. A `WeakMap`, so an undone snapshot is not kept alive by its
+ * fingerprint.
+ */
+const docWire = new WeakMap<Doc, string>();
+
+function docFingerprint(d: Doc): string {
+  const hit = docWire.get(d);
+  if (hit !== undefined) return hit;
+  const wire = stableJson(toWire(d));
+  docWire.set(d, wire);
+  return wire;
+}
+
+/** One fingerprint per preset, built once: `preset.doc()` is a fresh object every call. */
+const presetWire = new Map<string, string | null>();
+
+function presetFingerprint(id: string): string | null {
+  const cached = presetWire.get(id);
+  if (cached !== undefined) return cached;
+  const p = findPreset(id);
+  /* Exactly what boot builds from `?preset=<id>` -- the comparison is only
+     worth anything if the two sides are the same construction. */
+  const wire = p ? stableJson(toWire(makeDoc(p.doc()))) : null;
+  presetWire.set(id, wire);
+  return wire;
+}
+
+/**
+ * True when the Document is still, value for value, the preset it names.
+ *
+ * `?preset=classic` loads the whole preset -- events, parameters and all -- so
+ * while nothing has been changed it is already a complete address, and a
+ * 700-character `#t=` beside it says the same thing twice. The moment anything
+ * differs, and a layout drag, an injected event or a parameter *is* a
+ * difference because all three live in the Document, the fragment comes back:
+ * it is the only thing that can carry an edit.
+ *
+ * Compared by value, not by a dirty flag, so undoing back to the preset drops
+ * the fragment again. A document that came back through a link or a file has
+ * been round-tripped by the codec, and the codec does not promise the key
+ * order the preset factory happened to write -- which is what `stableJson`
+ * above is for. Without it a shared preset would read as edited the moment it
+ * was reopened.
+ *
+ * **The only comparator.** The preset picker asks the same question of the
+ * same document ("is this still the preset it names?"), and it asks it here:
+ * a second implementation beside this one is how the address bar and the
+ * picker come to disagree about one document.
+ */
+export function isPristinePreset(d: Doc, id: string | null): boolean {
+  if (id === null) return false;
+  const wire = presetFingerprint(id);
+  return wire !== null && wire === docFingerprint(d);
+}
+
 /* ---------------- the write path ---------------- */
 
 let rafHandle = 0;
 let timerHandle: ReturnType<typeof setTimeout> | null = null;
 let generation = 0;
 
+/**
+ * The `?query#fragment` half of the canonical address, for the state as it
+ * stands. The one place that decides whether the fragment is written, so the
+ * address bar and the Share button can never disagree about it.
+ */
+async function canonicalTail(): Promise<{ tail: string; tooLarge: boolean }> {
+  const state = currentUrlState();
+  const query = serializeUrlQuery(state);
+  const head = query ? `?${query}` : '';
+  /* An untouched preset needs no fragment: `?preset=` already loads it, and a
+     link that carries the configuration twice is a link nobody can read. */
+  if (isPristinePreset(doc.value, state.preset)) return { tail: head, tooLarge: false };
+  const encoded = await encodeDoc(doc.value);
+  return { tail: head + (encoded.tooLarge ? '' : `#${encoded.fragment}`), tooLarge: encoded.tooLarge };
+}
+
 /** Build the canonical URL for the state as it stands. */
 export async function buildShareUrl(): Promise<{ url: string; tooLarge: boolean }> {
-  const query = serializeUrlQuery(currentUrlState());
-  const encoded = await encodeDoc(doc.value);
+  const { tail, tooLarge } = await canonicalTail();
   const base = typeof location === 'undefined' ? '' : location.origin + location.pathname;
-  const url = `${base}${query ? `?${query}` : ''}${encoded.tooLarge ? '' : `#${encoded.fragment}`}`;
-  return { url, tooLarge: encoded.tooLarge };
+  return { url: `${base}${tail}`, tooLarge };
 }
 
 async function flush(): Promise<void> {
   if (typeof window === 'undefined' || !window.history?.replaceState) return;
   const mine = ++generation;
-  const query = serializeUrlQuery(currentUrlState());
-  const encoded = await encodeDoc(doc.value);
+  const { tail, tooLarge } = await canonicalTail();
   /* A newer flush started while this one was compressing: that one wins. */
   if (mine !== generation) return;
-  shareTooLarge.value = encoded.tooLarge;
-  const tail = (query ? `?${query}` : '') + (encoded.tooLarge ? '' : `#${encoded.fragment}`);
+  shareTooLarge.value = tooLarge;
   /* The permalink is published even when the address bar needs no rewrite --
      it is a reading of the state, not a record of the last write. */
   shareHref.value = tail === '' ? '.' : tail;

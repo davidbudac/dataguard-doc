@@ -305,8 +305,15 @@ function makeScale(t0: Seconds, t1: Seconds, plotL: number, plotR: number): Time
   };
 }
 
-/** The last moment worth drawing: an event, a segment edge or a derived clock. */
-function lastInterestingT(trace: Trace, events: readonly TimedEvent[]): Seconds {
+/**
+ * The last moment worth drawing: an event, a segment edge or a derived clock.
+ *
+ * Exported because the playhead lands here after an injection (ui/break/events)
+ * -- the horizon and the resting place of the playhead have to be the same
+ * reading of the run, or the drawing would settle at a moment the axis calls
+ * uninteresting.
+ */
+export function lastInterestingT(trace: Trace, events: readonly TimedEvent[]): Seconds {
   let last = 0;
   for (const e of events) last = Math.max(last, e.at);
   for (const lane of trace.lanes) {
@@ -321,6 +328,30 @@ function lastInterestingT(trace: Trace, events: readonly TimedEvent[]): Seconds 
   }
   return last;
 }
+
+/**
+ * The two ends of the seconds axis a live run is drawn on: the last
+ * interesting moment plus a margin (never shorter than 30 s, never longer
+ * than 15 minutes), and a snapped pre-roll before zero.
+ *
+ * Exported because the axis is not the timeline's private business. Anything
+ * that prints or accepts a playhead reading has to clamp to the same two ends,
+ * or the page shows two clocks for one instant -- the readout strip said
+ * "Drawing at t = 500 s" while the badge on the playhead said "t = 51.75",
+ * because only one of them clamped. One formula, one axis.
+ */
+export function axisSpan(trace: Trace, events: readonly TimedEvent[]): { t0: Seconds; t1: Seconds } {
+  const t1 = clampNum(1.15 * lastInterestingT(trace, events), 30, 900);
+  return { t0: -snapNice(0.15 * t1), t1 };
+}
+
+/** `axisSpan`'s clamp, for anything that only has to hold a reading on the axis. */
+export const clampToAxis = (
+  t: Seconds, trace: Trace, events: readonly TimedEvent[],
+): Seconds => {
+  const { t0, t1 } = axisSpan(trace, events);
+  return clampNum(t, t0, t1);
+};
 
 /* ---------------- lane ordering ---------------- */
 
@@ -849,8 +880,7 @@ export function buildTimeline(trace: Trace, doc: TopologyDoc, view: TimelineView
     t1 = PINNED.t1;
     tickStep = PINNED.tickStep;
   } else {
-    t1 = clampNum(1.15 * lastInterestingT(trace, events), 30, 900);
-    t0 = -snapNice(0.15 * t1);
+    ({ t0, t1 } = axisSpan(trace, events));
     tickStep = pickTickStep(t1 - t0);
   }
   const scale = pinned

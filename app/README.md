@@ -59,7 +59,9 @@ may forget (mode, selection, playhead, panel, theme, edition). The document
 rides the URL fragment as `#t=` (deflate-raw + base64url, 8000-char cap with an
 honest refusal), the view rides readable query keys (`ed`, `mode`, `panel`,
 `sel`, `t`, `preset`, `lesson`, `step`, `theme`), and `dg-doc-v1` / `dg-theme` /
-`dg-ed` are the localStorage keys. Old links to the legacy page are upgraded on
+`dg-ed` are the localStorage keys. An untouched preset needs no fragment at
+all: while the document is still, value for value, the preset it names,
+`?preset=<id>` is the whole address. Old links to the legacy page are upgraded on
 load by `src/state/legacy-url.ts`.
 
 ## Testing

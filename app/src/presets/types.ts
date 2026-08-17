@@ -27,9 +27,35 @@ export type PresetId =
   | 'max-protection'
   | 'observe-only';
 
+/**
+ * The headings the picker groups the eleven under. Order is the order they are
+ * offered in: the shapes a reader meets first, then the ones that answer a
+ * question they have already asked.
+ */
+export const PRESET_GROUPS = [
+  'Classic',
+  'Far sync',
+  'Cascading & bystanders',
+  'Multiple targets',
+  'RAC',
+  'Protection modes',
+] as const;
+
+export type PresetGroup = typeof PRESET_GROUPS[number];
+
 export interface Preset {
   id: PresetId;
   title: string;
+  /**
+   * The title as a picker offers it: six words at most, and no sentence --
+   * the bound `test/ui/statusbar.test.ts` holds every one of them to.
+   * `title` is the sentence -- it is what a lesson prints and what the
+   * option's `title` carries -- and eleven of those in a dropdown is eleven
+   * lines of prose to read before choosing one.
+   */
+  short: string;
+  /** Which heading the picker files it under. */
+  group: PresetGroup;
   /** One paragraph: what this configuration shows. */
   summary: string;
   /** The catalogue ids behind the paragraph. Anything undocumented in it says so in words. */

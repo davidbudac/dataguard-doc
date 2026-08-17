@@ -55,7 +55,7 @@ doc = signal<Doc>(PRESETS.classic); edition = signal<'19c'|'26ai'>('19c')  // NO
 View signals: `mode: 'build'|'break'|'configure'|'learn'`, `selection`, `hovered`, `tNow`, `playing`, `speed`, `panelTab`, `lessonId`, `lessonStep`, `proseOpen`, `theme`, `inspectorOpen`, `toast`.
 Derived (one file, one direction): `primaryId`, `issues = validate(...)`, `errors`, `redoGraph`, `geometry = layoutTopology(...)`, `trace = simulate(...)`, `frame = stateAt(trace, tNow)`, `outcome`, `readout`, `scripts = {dgmgrl, dests, tns, show(frame)}` — `SHOW CONFIGURATION` takes `frame` so scrubbing walks it through states. No component computes domain state locally. `trace` budget ~8 ms; if slow, compute in an idle effect and mark `.is-stale` (never a spinner).
 
-**URL**: fragment `#t=<base64url(deflate-raw(JSON(compact doc)))>` (fallback `#t0=` plain), 8000-char cap with an honest refusal ("too large for a link — export the file"); query keys human-readable: `ed`, `mode`, `panel`, `sel`, `t`, `preset`, `lesson`/`step`, `theme`; one exported FIELDS-style table with parse/serialize/default/clamp; unknown tokens ignored then dropped. Write path: effect → 16 ms timer → 300 ms debounce → `replaceState`; `tNow` excluded while playing/scrubbing. Undo never uses `pushState`.
+**URL**: fragment `#t=<base64url(deflate-raw(JSON(compact doc)))>` (fallback `#t0=` plain), 8000-char cap with an honest refusal ("too large for a link — export the file"); query keys human-readable: `ed`, `mode`, `panel`, `sel`, `t`, `preset`, `lesson`/`step`, `theme`; one exported FIELDS-style table with parse/serialize/default/clamp; unknown tokens ignored then dropped. The fragment is written **only when the Doc differs from the preset it names** — compared by value on the codec's wire form, so `?preset=classic` alone is the whole address until the first edit and again after undoing back to it; `?preset=` stays on as provenance once it does differ. Write path: effect → 16 ms timer → 300 ms debounce → `replaceState`; `tNow` excluded while playing/scrubbing. Undo never uses `pushState`.
 
 **Undo/redo**: immutable Doc snapshots (`edit(label, fn, coalesceKey?)`, 700 ms coalescing per gesture, cap 100, user-facing labels "Undo: set LogXptMode to FASTSYNC on stby01"). View state never in history; layout drags and event injection are edits.
 
@@ -69,10 +69,10 @@ Four modes, one persistent canvas (the canvas never blinks):
 
 | Mode | Right rail | Bottom row | Canvas |
 |---|---|---|---|
-| Build | Inspector | Validation issues + steady-state readout | select, drag, `+` palette |
-| Break | Event menu, then the event list + palette (six legacy scenarios as one-click templates) | Timeline + transport + readout | click or `E` → event menu; cards tinted by `frame` |
-| Configure | Inspector narrowed | Tabs: DGMGRL · LOG_ARCHIVE_DEST_n · tnsnames/JDBC · SHOW · Application view · Commit · Reopen | 180 px live strip |
-| Learn | — | — | prose-left (60ch) / live workbench-right (drawing + readout + timeline) |
+| Build | Inspector: `Add` group, then the summary and the config form (folded sections) | Validation issues + steady-state readout | select, drag, `Add` toolbar in the corner |
+| Break | Event menu, then the event list, then the scenarios (six legacy ones as one-click templates), then validation | Timeline + sticky transport + readout | click or `E` → event menu; cards tinted by `frame` |
+| Configure | Inspector narrowed | Tabs under two headings — **Files**: DGMGRL · LOG_ARCHIVE_DEST_n · tnsnames/JDBC · SHOW; **Behaviour**: Application view · Commit · Reopen | 180 px live strip |
+| Learn | — | — | prose-left (60ch) / live workbench-right (step header + drawing + readout + timeline) |
 
 As built, three things in that table are worth spelling out:
 
@@ -101,7 +101,7 @@ use it"* — and every item below is one reading of it:
   (`left: 50%` + `translateX(-50%)`, `width: min(var(--w-app), 100%)`) rather than
   pinned to the viewport, or it would hang past the shell it belongs to. Prose
   columns are capped where they are read, not globally: findings 80ch, rail notes
-  80ch, the guidance line 104ch, lesson prose 60ch.
+  80ch, the guidance line 112ch, lesson prose 60ch.
 - **The stage fits the drawing; the dock takes the rest.** Rows are
   `auto / fit-content(46vh) / minmax(0,1fr)` with `min-height: 260px` on the stage,
   and the rail spans **both** the stage and the dock rows (`"stage rail" / "dock rail"`)
@@ -114,8 +114,10 @@ use it"* — and every item below is one reading of it:
   of a panel with a heading rather than a nameless band.
 - **One header, three bands, one element.** `<header class="app-head">` holds the
   top bar, the quieter document row and the guidance line, and the toast measures
-  *it* — not the status bar plus a sibling. Modes carry a one-line subtitle
-  (`MODE_SUB`), undo/redo are small buttons whose `title` carries the edit they
+  *it* — not the status bar plus a sibling. The mode sentence (`MODE_SUB`) is the
+  mode button's `title`, not a fourth band: printed under the buttons it said what
+  the guidance line said one band lower, and the two of them plus the first-visit
+  card put ~250 px of chrome over a 260 px stage. Undo/redo are small buttons whose `title` carries the edit they
   would reverse, and the two `WhyPill` chips beside them are gone: NOTHING TO UNDO
   YET, shouted at a reader who had not yet done anything, was the loudest text on
   the page. Share and Permalink are one control — Share copies, then leaves the
@@ -123,12 +125,32 @@ use it"* — and every item below is one reading of it:
   depend on `navigator.clipboard`. The canonical address rides on the button as
   `data-permalink` at all times, which is what `site/smoke.mjs` follows and what a
   machine can read without pressing anything.
-- **The page says what to do.** A guidance line under the header, per mode
-  (`MODE_GUIDE` in `state/view.ts`); a "How this page works" card with one bullet
-  per working mode and a link to Learn, shown on the first visit, dismissed into
-  `localStorage` under `dg-intro-v1` (`loadIntro()` at boot, never read during a
-  render) and brought back by the `?` in the header; and a numbered "Start here"
-  group at the head of the empty Build inspector, above the configuration summary.
+- **The page says what to do, on one line.** The guidance line under the header
+  leads with the mode word and then says the first gesture: "Build · Click a card,
+  a data centre or a link to edit it …" (`MODE_GUIDE` in `state/view.ts`, rendered
+  by `Guidance.tsx`). Configure's line says what the mode *is* before it says what
+  to do in it — the word reads as "settings" and the panels are generated output,
+  so the line names the settings' actual home, the inspector. The first visit gets
+  a one-row **strip** of the same three clauses with a link to Learn and "Got it";
+  the `?` in the header opens the whole explanation, which is also the only place
+  the **keyboard map** is written down (the card keys from `TopoCanvas`, the
+  playhead keys from `Playhead`, Escape from `Sheet` — nothing that is not bound).
+  Dismissal is `localStorage` under `dg-intro-v1` (`loadIntro()` at boot, never
+  read during a render), written by "Got it" *and* by the reader's first real
+  gesture — an edit, an injected event, a change of mode — because a reader who is
+  already working has either read the strip or does not need it. And a numbered
+  "Start here" group at the head of the empty Build inspector, above the
+  configuration summary.
+- **The status bar names what it is showing and goes where it points.** The preset
+  picker files the eleven under six headings (`GROUPED_PRESETS`) with a title of
+  five words at most (`Preset.short`; the sentence is the option's own `title`),
+  and it compares rather than trusting `?preset=`: the picker names the preset
+  while the document still *is* that preset and says "Current configuration
+  (edited)" once it is not. The finding count is a button — it takes the reader to
+  the panel it counts, which means Build's dock, the foot of the Break rail (its
+  drawer below 1280) or, from Configure and Learn, a hand-over to Build; when
+  notes are all there is, it unfolds them, because a folded note is a panel with
+  nothing in it.
 - **The readout is a strip of chips, not four billboards.** Label (sans, sentence
   case) + value (mono, 14 px, semantic colour) + an optional quieter second value,
   separated by hairlines, with the sentence behind each number in the chip's
@@ -153,6 +175,312 @@ Degradation: 1024–1279 inspector as overlay drawer; 768–1023 single column w
 - **The toast is anchored to the measured bottom of the status bar**, through a `--bar-bottom` custom property written by a `ResizeObserver` in `App.tsx` (`el.style.setProperty` through a ref — the one escape hatch the policy leaves), with `calc(var(--h-top) + var(--h-status))` as the fallback. Both bars wrap on a narrow window, so their nominal heights are a guess and a toast pinned to that guess paints over the bar.
 - **On paper the panels stack.** `Panels` listens for `beforeprint` and for a `matchMedia('print')` change and renders all seven tabs while either is on; no CSS rule can do it, because the tab that is not open is not in the document. Two print traps are pinned by that verification: the citation chips' `white-space: nowrap` row plus the appended `a[href]::after` URL push the page ~90 px sideways unless the row is allowed to wrap on paper, and headless `--print-to-pdf` fires neither event, so print has to be checked with the media emulated (`Emulation.setEmulatedMedia`), not with a PDF.
 Chrome rules: collapsibles leave their button in place; panels are real links; `:focus-within`, never `:hover`, for notes.
+
+## 3b. Second usability pass (as built, 2026-08-17)
+
+Fifteen findings from reading the page as a newcomer would, fixed in one batch.
+The theme running through them: *the reader must be able to see the thing they
+just did, and the control that does it must sit where they are looking.*
+
+1. **The transport is never scrolled away — and it now drives something.**
+   `.tl-foot` carries the transport and nothing else, and `timeline.css` makes it
+   `position: sticky; bottom: 0` on an opaque `--sf` ground with a top hairline.
+   `.tl` is the sticky containing block and the scrollport is `.app-dock` in Break
+   (`.app-rail` in wide Learn), so the foot stays pinned for the whole scroll and
+   releases only at the end. Below 768 px the *page* scrolls, so the foot goes
+   `position: static`, and `@media print` takes the band out beside `print.css`'s
+   `.tl-transport { display: none }`. The band does not draw at all when there is
+   no transport to put in it. Play was under the fold at 1280×720 and a reader
+   with no visible play button reads a static picture as the whole answer.
+   **The colour key is not in the band.** It shared it at first and wrapped to a
+   second row at every dock width the shell uses, spending 67 px of a 226 px
+   scrollport to keep permanently on screen a thing that is read once; `.tl-legend`
+   is a flow child *above* the band now and scrolls with the drawing it explains.
+   The hairline is what says the band is not part of that drawing.
+   **And the pin only works because `.sr` moved off the `<table>`.** A table's used
+   width can never fall below its min-content width, so `.sr` on the timeline's
+   screen-reader table laid out ~1084 px inside a 903 px dock, gave the dock a
+   horizontal scrollbar at 1280×720 and — `position: sticky` pins on one axis only
+   — carried the foot sideways out of view. The clip is a block wrapper now, the
+   shape `TopoCanvas` already used, and `table.sr` is gone from `base.css`.
+   Measured after: dock `scrollWidth === clientWidth` (903), no horizontal
+   scrollbar, the foot's first button stays put.
+   **`timeline/playback.ts` is the half that was missing.** The transport had drawn
+   a ▶ since the timeline landed, `playing` had always flipped its glyph and Space
+   had always been bound to it, but nothing ever advanced `tNow`: the button
+   changed its own label and the drawing stayed exactly where it was, so the band
+   this item pins was pinning the proof of its own justification. `usePlayback` is
+   a UI-layer frame loop — the engine is pure and has no clock — and it leaves
+   through the same `onSeek` a drag uses, so playback is not a second way to move
+   the playhead. Two behaviours are choices, not consequences: the end **stops**
+   (the playhead lands on `t1` and `playing` goes false, because a button that
+   stayed "Pause" at the end is the same lie in a smaller form), and ▶ *at* the end
+   rewinds to the start of the axis, because doing nothing there is
+   indistinguishable from the bug. While it runs it owns the playhead and writes
+   its own position out every frame rather than reading `tNow` back in — `tNow` is
+   a render behind the frame that wrote it — so reaching for the playhead (a drag,
+   an arrow key, a step button, the time field) **pauses** rather than being
+   overwritten a frame later. `prefers-reduced-motion` is deliberately not a gate:
+   this motion starts because the reader pressed a button and is pausable,
+   stoppable and scrubbable (WCAG 2.2.2).
+2. **Adding something is offered where the reader is looking, three ways from one
+   table.** `inspector/adds.tsx` holds `ADD_ACTIONS`, `AddPalette` and
+   `AddToolbar`, so a label and a refusal cannot drift between surfaces. What the
+   buttons *write* has to be true too: `+ Data centre` minted an id the document
+   already held, because `nextName` returns the two-digit `dc01` beside
+   `dc1,dc2,dc3` and stripping the zero handed back the taken `dc1` — a second
+   card answering to one id, a `dc1-dc1` self-link, and a `removeSite('dc1')` that
+   took both. It scans the whole id namespace for a free name now, and `addLink`
+   refuses an end no data centre answers to. (a) The
+   empty Build inspector renders `Start here` → **Add** → `This configuration` →
+   `ConfigForm`; "…with the buttons below" is now true, and the empty rail's
+   scroll height fell 4 177 → 1 692 px. (b) `ConfigForm`'s five groups are `Fold`s
+   (`controls.tsx`) — a real `<button class="grp-tog" aria-expanded>` filling the
+   header row, a caret, and a right-aligned mono hint while shut
+   (`ENABLED → sby01`, `MAXAVAILABILITY`). Children are `{open ? children : null}`,
+   genuinely absent, never hidden by CSS; state is the module-level `openSections`
+   in `inspector/sections.ts`, never in the Document, the undo stack or the URL.
+   `sectionOfRule()` maps rule-id prefixes to sections and a `useLayoutEffect`
+   unions the flagged ones open (layout, not ordinary: preact defers `useEffect`
+   past paint), union-only so the reader can fold them shut again; every fold
+   opens under `printing`. `revealForFlagged()` keys that on the last flagged set
+   in module state, because `ConfigForm` unmounts on every card selection and a
+   remount is not a new error — without it a fold the reader closed re-opened the
+   next time they cleared the selection. Clicking a row in `IssuePanel` opens its
+   section too, at *every* severity: errors get it as a side effect of that
+   effect, and a warning or a note that lands the reader on a rail the property
+   is genuinely absent from is a button that does not go where it points.
+   (c) `AddToolbar` is a `role="toolbar"` at the top right of the stage
+   (`.cv-add`, Build only, pure CSS), drawn *before* the drawing so tab order
+   reaches it first. It is in `.app-stage`'s own column flow, not floating over
+   it: the strip wraps to a second row and stacks a refusal of up to 30ch under
+   any button it greys, so it has no fixed height and any constant of clearance
+   handed to the drawing is wrong in some state. `flex:1 1 0` on `.tp-wrap` scales
+   the drawing down instead, at any strip height, and the `graph === null` card
+   is clear for free. It carries the keyboard contract its role announces (APG):
+   one tab stop, roving `tabindex`, ArrowLeft/Right and Home/End, with the stop
+   parked on the first *enabled* action so a disabled button cannot swallow it.
+3. **`Add ▾` sits beside `Clear` in the inspector header** (`addOpen` in
+   `Inspector.tsx`), and opens `AddPalette` as a `Group` in flow directly under the
+   sticky header — a disclosure, not a popup. Selection survives it; adding from it
+   closes it, and so does selecting another card: the disclosure belongs to the
+   subject its header names. `aria-expanded` alone carries the contract, no
+   `aria-controls`, exactly as `Fold` does it — the palette is genuinely absent
+   while the disclosure is shut, so the reference would name nothing. Before this,
+   a reader with a card selected had no way to add anything without first clearing
+   the selection. `AddPalette`'s three pickers hold the reader's last choice as a
+   *preference* and take their value from the document every render, because the
+   document moves under an open palette (undo, a removal) and a `<select>` naming
+   something gone renders blank while the button beside it stays live; `+ Link`
+   refuses in four rungs — no data centre, only one, the same one twice, already
+   linked — so the blank is never the live half of that pair.
+4. **The Break rail leads with the reader's own work.** Order is now
+   **Events → One-click scenarios → Validation** (`BreakRail.tsx`). Injecting an
+   event and finding no record of it — six scenario blurbs had pushed the list a
+   thousand pixels down — reads as "nothing happened". The event numerals match
+   the timeline's markers (`--rd`, 19 px, 10 px/600 mono). Each scenario is one
+   row: the button, and its description on one clipped line with the full sentence
+   as the row's `title`, unclipping on `:focus-within` (never on `:hover` alone —
+   a hover rule reflows the rows below and moves the button out from under the
+   cursor), with one `Show descriptions` toggle (`scenarioNotesOpen`) opening all
+   six and print opening them too. Six rows: ~700 → 458 px.
+5. **Two clocks on the readout strip, each named** (`Readout.tsx`,
+   `styles/readout.css`). Break and Learn lead with a `Drawing at t = <n> s` chip
+   and move the run's chips into `<div class="ro-run">` behind a sans `Run` label.
+   Unlabelled, "Outcome failover / New primary open 45 s" beside a drawing frozen
+   at t = 0 read as one reading taken at one instant. `fmt` **and `clampToAxis`**
+   are imported from `timeline/build`, so the readout, the playhead badge and the
+   transport's time field cannot print the playhead differently. Sharing only the
+   formatter was not enough: the strip printed `tNow` raw while the other two
+   clamped, so `?t=200` on a 63 s axis read "Drawing at t = 200 s" over a badge
+   saying 63.25. `axisSpan`/`clampToAxis` are one formula for the axis, exported
+   beside `fmt`. **Findings sits outside the `Run` group**, beside the playhead
+   reading: it is the validator's answer about the *configuration* — `derived.ts`
+   keeps the run's own findings deliberately out of `issues` — and under the label
+   it would say "Run · Findings no issues" at the very moment the run raised the
+   warning that blocked the failover. The partition is by chip id, which is
+   stable, not by position. And the playhead now **lands on the
+   result**: `lastInterestingT` is exported from `timeline/build`, and
+   `restPlayhead()` (`break/events.ts`) sets `tNow` to it at the end of `runAction`
+   (timed events only — a property holds from the first frame), `applyTemplate` and
+   `clearEvents` (which sends it back to 0). Injecting a crash and being left
+   staring at the pre-crash frame was the single most common way to misread the page.
+6. **The event menu's clock reading *is* the control.** `EventMenu.tsx`'s title
+   still reads `<selection> · Inject at t = [n] s`, but `[n]` is a
+   `type="number"` input that snaps to a tenth, floors at 0 and writes `tNow`, so
+   the drawing and the number can never disagree; read-only renders the number as
+   plain text and drops the input (a disabled box with no reason on it is what the
+   WhyPill contract forbids). Under it, one hint: "Events land at the playhead —
+   scrub the timeline to inject later." *Deviation from the brief, deliberate:* the
+   spec asked for a fixed title **and** a separate `at [ n ] s` field; two
+   always-equal numbers for one moment on one line is the disease item 5 cures.
+7. **Less chrome over the stage.** The mode subtitle band is gone — `MODE_SUB` is
+   the mode button's `title` now, because printed under the buttons it said what
+   the guidance line one band lower already said. `Guidance.tsx` renders one line,
+   `<b class="guide-mode">Build</b> · Click a card, …`. The first visit gets a
+   one-row `IntroStrip`, not a card; the whole explanation is what the header's `?`
+   opens. `useDismissOnFirstUse` installs a signals effect after the first paint
+   (so boot's document restore cannot trip it) and the first edit, injected event,
+   preset load or mode change writes the same `dg-intro-v1` "Got it" writes — a
+   reader already working has either read the strip or does not need it. Header on
+   a first visit: 250 → 147 px, and 113 px once the strip goes. The header's `?` is
+   a **toggle** and says so through `aria-expanded` — a second press closes the
+   card — and closing it that way writes nothing to `dg-intro-v1`: opening an
+   explanation and shutting it again is not the same as having read it, and "Got
+   it" stays the only control that claims otherwise.
+8. **Configure says what it is before it says what to do in it — and the line
+   names the rail where the rail actually is.** `modeGuide(m, v)` and `railWhere(v)`
+   (`state/view.ts`) replaced the constant `MODE_GUIDE`. Configure reads "Generated
+   from the drawing — DGMGRL, init parameters, connect strings. Settings are in
+   *<railWhere>*": the mode name reads as "settings" while the panels are generated
+   *output*, so the line names the settings' actual home. That home moves. The rail
+   is a column beside the drawing only at `wide`; below 1280 it is a `Sheet` reached
+   from the status bar's Inspector button, so a fixed "the panel on the right"
+   pointed two of the four viewport classes at the wrong edge. `railWhere` is one
+   helper because Build's "+ buttons at the top of …" names the same rail and the
+   two must not drift. `Guidance.tsx` reads `viewport.value` in the component body,
+   so the line re-renders when the window crosses a breakpoint. `MODE_SUB` — a
+   `title`, one string for every width — no longer names an edge at all. Mode name
+   and URL value unchanged.
+9. **The preset picker names a preset only while the document is one.**
+   `presetState()` (`StatusBar.tsx`) delegates to `isPristinePreset()`
+   (`state/url.ts`) and keeps only the lookup, which is the picker's alone: an id
+   no build of this page knows is not an edited preset, it is no preset at all. The
+   first option reads "Current configuration (edited)" the moment the document
+   differs. It had its own key-sorted canonicaliser and its own per-id cache beside
+   the write path's — two answers to the one question "is this still the preset it
+   names?", which is exactly how the picker and the address bar come to disagree
+   about one document (see item 11). The eleven are filed under six `<optgroup>`s
+   (`PRESET_GROUPS` / `GROUPED_PRESETS`) with `Preset.short` (≤ 6 words, which is
+   what the data and `test/ui/statusbar.test.ts` both hold every one of them to) as
+   the label and the old sentence as the option's `title`; ids unchanged. Reset and "Start fresh" set `presetId` to `null` rather than
+   `'classic'` — both build the classic *deployment* in its steady state, while the
+   `classic` preset carries a crash at t = 0, so claiming the id made the picker say
+   "edited" about a document nobody had edited.
+10. **A refusal that would be said three times is said once, quietly.** With
+    nothing down, every restore in the event menu refuses for the same reason and
+    three copies of the shout were the loudest thing on the drawing. `isRestore()`
+    (`break/events.ts`) and a filter on `WHY.nothingDown` drop those *entries* and
+    put one `.evmenu-quiet` line in their place — the reason stated, not hidden.
+    The action table is unchanged, so `actionsFor` still reports them.
+    **The sentence is read off the subjects, never off the list it stands in for**,
+    because the list is an intersection that keeps the first *blocked* subject's
+    reason — one cut link selected beside a whole one collapsed both restores to
+    `WHY.nothingDown` and printed "nothing here is down" over a drawing showing a
+    cut line. `anythingDownUnder()` (`break/events.ts`) answers that question about
+    the selection, and the line branches four ways: "The other restores are not
+    listed — nothing else here is down." when a restore is live, "Restoring is not
+    offered for all of these at once…" when only part of a multiple selection is
+    down, "This one is up — what is down sits inside it…" for a single subject that
+    is up but contains something down, and "Nothing to restore — nothing here is
+    down." only when nothing is.
+    **`isDownAt()` folds containment**, because it read event *kinds* alone: a
+    `host.down` left the database on that host looking up while the canvas drew it
+    hatched red and dropped "Start prm01" into the silent group. A data centre holds
+    its hosts, a host holds the instances and the observer on it, a member is down
+    once every instance is; sites and links have nothing above them. A restore whose
+    *container* is still down is not in the silent group at all — the simulator keeps
+    down hosts, sites and members in separate sets, so `member.up` under a dead host
+    would draw nothing — it stays listed, grey, naming what to bring back first
+    ("dc1-prm01 is down: restore the host first."). And `observer.start` refuses with
+    `WHY.nothingDown` like the other five restores rather than its own "It is running
+    already.", which had kept a grey restore drawn directly above the line that
+    replaces it.
+11. **An untouched preset is its own address.** `state/url.ts` writes `#t=` only
+    when the Doc differs, by value, from the preset it names: `stableJson()` sorts
+    keys recursively (arrays keep their order — in a Doc, order *is* meaning),
+    `presetFingerprint()` caches exactly what boot builds from `?preset=<id>`, and
+    `canonicalTail()` is the one place that composes `?query#fragment`, so the
+    address bar and the Share button can no longer disagree. `isPristinePreset()`
+    is **the only comparator** — the picker asks the same question of the same
+    document and asks it here (item 9) — and it memoises the Document's fingerprint
+    on object identity, so the status bar no longer serializes the whole
+    configuration on every render. `?preset=` **stays on** after an edit — the
+    field's contract is provenance, and both the picker and the learn route read it
+    that way. Undoing back to the preset drops the fragment again, and that is only
+    true because **provenance travels with the undo snapshot**: `HistoryEntry`
+    carries the `presetId` the edit started from and undo/redo restore it
+    (`state/history.ts`), read before the mutator runs. Two edits move the document
+    and its id at once — Reset lands on the classic deployment and drops the id, a
+    live lesson-step open lands on the step's topology and takes the lesson's — and
+    restoring half of that is a document that *is* a preset while the picker and the
+    address bar say it is not. `site/smoke.mjs` follows `data-permalink`; it now unescapes before
+    matching, accepts either a `#t=` document or a short preset link, and takes the
+    legacy-link phase's permalink to keep the real-browser CompressionStream
+    round trip.
+12. **The finding count is a button that goes where it points.** `revealFindings()`
+    (`IssuePanel.tsx`) unfolds the notes when notes are all there is (sending
+    somebody to a panel whose whole content is behind a toggle is sending them to an
+    empty panel), hands over to Build from Configure and Learn, opens the drawer in
+    Break below 1280, then scrolls `.issues` into view on the next task. It was a
+    piece of text about a panel the reader had to go and find — and in two modes
+    about a panel that is not on screen at all. **Leaving Learn is the one hand-over
+    that costs the reader something** — the lesson they were reading goes off
+    screen — so it says exactly that in a toast and offers "Back to the lesson"
+    rather than swapping the page out from under them in silence. Nothing is lost:
+    `lessonId`/`lessonStep` are session state, so Learn comes back on the step it
+    was left on. And **clicking a finding row opens the fold its property lives in
+    at every severity** (`sectionOfRule` → `revealSections`), not only for errors:
+    `ConfigForm` opens an errored section by itself and nothing played that part for
+    a warning or a note, which left those rows landing the reader on a rail the
+    property is genuinely absent from. Purely additive, so it never fights that
+    effect and is a no-op on an open section.
+13. **The seven Configure tabs are filed under two headings.** `PANEL_GROUPS` —
+    **Files** (DGMGRL · `LOG_ARCHIVE_DEST_n` · tnsnames/JDBC · SHOW) and
+    **Behaviour** (Application view · Commit · Reopen) — inside the one existing
+    `<nav class="panel-tabs">`, each an `role="group"` opened by a real visible
+    `<span class="panel-group-lbl">`, so nothing is grouped by styling alone.
+    **Case does the separating, not the face.** "Files"/"Behaviour" are this page's
+    words about the tabs rather than Oracle vocabulary, so they are set the way this
+    page sets prose — sans, sentence case, 11 px, no tracking — against a row of
+    mono uppercase tabs. The face alone could not carry it: three of the seven tab
+    labels ("Application view", "Commit", "Reopen") are this page's words too, and
+    system-ui against ui-monospace is not legible as a distinction at label size.
+    No opacity either — in this application a faded thing is a *switched-off* thing
+    (`shell.css`), and it costs contrast a 3.6:1 ink token has none to spare. Tab
+    ids, `panelHref()`, the `panel=` key, the dgmgrl badge and print are untouched.
+14. **Learn's workbench names the step it is set up for.** `LearnWorkbenchHeader`
+    (`learn/LearnShell.tsx`) is a sticky `.lwh` above the drawing: `Step 3/14` plus
+    the step's title on the left, `Open in Break` / `Open in Build` on the right.
+    Both go through `openStepInMode()` (`learn/route.ts`), which is exactly what
+    `LessonStep`'s own button already did, so the prose button and the header button
+    are one function. With no lesson open it says "No lesson open — the current
+    document" and the buttons only switch mode. The header's buttons used to refuse
+    on the narrow read-only viewer with `WHY.readOnlyHere` while `LessonStep`'s did
+    not, so on a phone one was grey and one was live; **the gate is gone, and the
+    ungated pair is the one that was right.** `canEdit` is about the controls that
+    *change* a configuration — the inspector, the canvas, the event menu — which a
+    phone has no room for. Following a lesson step is not one of them: the step's
+    own "Show me" and "Open in Break" in the prose column are ungated at every
+    width, and so is arriving on `#/learn/<lesson>/<step>` from a link, so greying
+    these two refused the reader an address they reach by scrolling down the same
+    page. A refusal that restricts nothing is not a refusal. Two layout facts the
+    header depends on: `.lwh` goes `position: static` at ≤ 767 px, where the page
+    and not the dock is the scroll box, matching `.tl-foot` (item 1) and `.cv-add`;
+    and Learn's ≤ 1279 override in `shell.css` had dropped the `dock` grid area, so
+    `.app-dock` was auto-placed into an implicit third column and head and stage
+    laid out at zero width — Learn inherits the one-column head/stage/dock areas and
+    the base three-row template now.
+15. **The keyboard map is written down where the page explains itself.** The `?`
+    card carries a `Keyboard` section — three two-column definition lists, keys in
+    mono — read out of the handlers first: `TopoCanvas`'s `onCardKey` (arrows,
+    Enter/Space, `E`, Delete/Backspace, Escape), `Playhead`'s `onKeyDown` (Space,
+    ←/→ with the Shift 0.1 s step, Home/End, `.` and `,`) and `Sheet`'s document
+    Escape. Nothing is listed that is not bound, and no handler was changed to
+    match the list. A key bound in one mode says which one: `E` reads "open the
+    event menu for it (Break)", the way the `Delete` row beside it already named
+    Build, because `onEventMenu` reaches the canvas in Break alone
+    (`canvas/CanvasSlot.tsx`).
+
+Two new stylesheets came out of this, on purpose: `styles/readout.css` (imported
+by `Readout.tsx`) and `styles/evmenu.css` (imported by `EventMenu.tsx`). Each
+contains only new class names and overrides nothing in `shell.css` or
+`inspector.css`, so cascade order against them does not matter.
+
+One new module came out of it too, and it is the only one that is not chrome:
+`timeline/playback.ts` (item 1). It is a hook, not an engine addition — the
+engine has no clock and is not allowed one — so nothing under `engine/` changed
+to make the page move.
 
 ## 4. Topology canvas
 

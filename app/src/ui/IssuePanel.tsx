@@ -23,12 +23,67 @@
 
 import type { Finding } from '@/engine';
 import { errors, issues, warnings } from '@/state/derived';
-import { inspectorOpen, notesOpen, selection, viewport } from '@/state/view';
+import {
+  inspectorOpen, lessonId, mode, notesOpen, selection, toast, viewport,
+} from '@/state/view';
 import { Fact } from './common/Chip';
+import { revealSections, sectionOfRule } from './inspector/sections';
 import { printing } from './print';
 import '@/styles/inspector.css';
 
 const TONE = { error: 'rd', warning: 'am', info: 'sl' } as const;
+
+/**
+ * Take the reader to the findings, wherever this mode keeps them.
+ *
+ * The count in the status bar was a piece of text: it said "1 issue · 3 notes"
+ * about a panel the reader had to go and find, and in Configure and Learn
+ * about a panel that is not on screen at all. This is what the count does when
+ * it is pressed -- Build docks the panel under the drawing, Break keeps it at
+ * the foot of its rail (a drawer below 1280), and the two modes that host no
+ * panel hand over to Build, which does.
+ *
+ * A healthy configuration raises only notes, and notes are folded: sending
+ * somebody to a panel whose whole content is behind a toggle is sending them
+ * to an empty panel, so the toggle is opened for them.
+ *
+ * Leaving Learn is the one hand-over that costs the reader something: the
+ * lesson they were reading goes off screen. It is not lost -- `lessonId` and
+ * `lessonStep` are session state, so Learn comes back on the step it was left
+ * on -- so this says exactly that, and offers the way back, rather than
+ * swapping the page out from under them without a word.
+ */
+export function revealFindings(): void {
+  const loud = errors.value.length + warnings.value.length;
+  const notes = issues.value.length - loud;
+  if (loud === 0 && notes > 0) notesOpen.value = true;
+  if (mode.value === 'learn') {
+    const open = lessonId.value !== null;
+    mode.value = 'build';
+    toast.value = {
+      kind: 'info',
+      text: open
+        ? 'The findings are in Build. Your lesson is where you left it.'
+        : 'The findings are in Build.',
+      ...(open ? { action: { label: 'Back to the lesson', run: () => { mode.value = 'learn'; } } } : {}),
+    };
+  } else if (mode.value === 'configure') mode.value = 'build';
+  else if (mode.value === 'break' && viewport.value !== 'wide') inspectorOpen.value = true;
+  scrollFindingsIntoView();
+}
+
+/* After the render the mode change above schedules, not before it. */
+function scrollFindingsIntoView(): void {
+  if (typeof document === 'undefined') return;
+  setTimeout(() => {
+    const el = document.querySelector('.issues');
+    /* jsdom has no layout and no `scrollIntoView`; the reveal is still real
+       there, it just has nothing to scroll. */
+    if (el instanceof HTMLElement && typeof el.scrollIntoView === 'function') {
+      el.scrollIntoView({ block: 'nearest' });
+    }
+  }, 0);
+}
 
 function Row({ f }: { f: Finding }) {
   return (
@@ -38,6 +93,14 @@ function Row({ f }: { f: Finding }) {
       aria-label={`${f.severity}: ${f.message}`}
       onClick={() => {
         if (f.subject.id === undefined) { selection.value = []; } else { selection.value = [f.subject.id]; }
+        /* A finding about a configuration property has to open the fold that
+           property lives in, or the row lands the reader on a rail the
+           property is genuinely absent from. Every severity, not only errors:
+           `ConfigForm` opens an errored section by itself, and nothing played
+           that part for a warning or a note. Purely additive, so it never
+           fights that effect and is a no-op on an open section. */
+        const section = sectionOfRule(f.id as string);
+        if (section !== null) revealSections([section]);
         if (viewport.value !== 'wide') inspectorOpen.value = true;
       }}
     >

@@ -46,6 +46,8 @@ function cascadeDoc(): TopologyDoc {
 export const cascadeTerminal: Preset = {
   id: 'cascade-terminal',
   title: 'Cascading to a remote terminal standby',
+  short: 'Cascade to a terminal standby',
+  group: 'Cascading & bystanders',
   source: '19c broker chapter 4, Example 4-2',
   summary:
     'The primary ships SYNC to a standby one metro hop away, and that standby forwards to a '
@@ -117,6 +119,8 @@ function priorityDoc(): TopologyDoc {
 export const priorityAlternates: Preset = {
   id: 'priority-alternates',
   title: 'PRIORITY groups and the stood-down destination',
+  short: 'PRIORITY alternates',
+  group: 'Cascading & bystanders',
   source: '19c broker chapter 4, Example 4-3',
   summary:
     'Two destinations, one at a time. The primary declares them in parenthesised destination '

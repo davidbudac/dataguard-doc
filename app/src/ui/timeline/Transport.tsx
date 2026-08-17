@@ -78,10 +78,18 @@ export function Transport({
     ? emptyWhy
     : next === null ? { state: 'off', why: WHY.atEnd } : { state: 'on' };
 
+  /* Every control here except ▶ moves the reader to a moment they chose, and
+     playback owns the playhead while it runs (playback.ts), so choosing a
+     moment stops the run rather than being overwritten a frame later. */
+  const seek = (v: number): void => {
+    if (playing) onPlayToggle();
+    onSeek(v);
+  };
+
   const onTimeInput = (e: JSX.TargetedEvent<HTMLInputElement>): void => {
     const raw = e.currentTarget.value.replace(',', '.').trim();
     const v = Number.parseFloat(raw);
-    if (Number.isFinite(v)) onSeek(scale.clampT(v));
+    if (Number.isFinite(v)) seek(scale.clampT(v));
     e.currentTarget.value = fmt(scale.clampT(Number.isFinite(v) ? v : t));
   };
 
@@ -91,7 +99,7 @@ export function Transport({
         label="Previous state change"
         glyph="|◀"
         why={prevWhy}
-        onClick={() => { if (prev !== null) onSeek(prev); }}
+        onClick={() => { if (prev !== null) seek(prev); }}
       />
       <TransportButton
         label={playing ? 'Pause' : 'Play'}
@@ -103,13 +111,13 @@ export function Transport({
         label="Next state change"
         glyph="▶|"
         why={nextWhy}
-        onClick={() => { if (next !== null) onSeek(next); }}
+        onClick={() => { if (next !== null) seek(next); }}
       />
       <TransportButton
         label="Back to the start"
         glyph="↺"
         why={emptyWhy}
-        onClick={() => onSeek(scale.t0)}
+        onClick={() => seek(scale.t0)}
       />
 
       <label class="tl-tp-time">

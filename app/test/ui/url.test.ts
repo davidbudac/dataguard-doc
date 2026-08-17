@@ -5,8 +5,11 @@
 
 import { describe, expect, it } from 'vitest';
 import {
-  clampStep, clampT, parseUrlQuery, serializeUrlQuery, splitQuery, URL_DEFAULTS, URL_FIELDS,
+  clampStep, clampT, isPristinePreset, parseUrlQuery, serializeUrlQuery, splitQuery, stableJson,
+  URL_DEFAULTS, URL_FIELDS,
 } from '@/state/url';
+import { makeDoc, withMeta } from '@/state/doc';
+import { classic, PRESETS } from '@/presets';
 
 describe('url table', () => {
   it('has one entry per key, and no duplicates', () => {
@@ -73,5 +76,32 @@ describe('url table', () => {
 
   it('splits a query without a host global', () => {
     expect(splitQuery('?a=1&b=two+words&c&=x')).toEqual([['a', '1'], ['b', 'two words'], ['c', '']]);
+  });
+});
+
+describe('the document the preset key stands for', () => {
+  it('serializes objects by key order and arrays by position', () => {
+    expect(stableJson({ b: 1, a: { d: 2, c: 3 } })).toBe(stableJson({ a: { c: 3, d: 2 }, b: 1 }));
+    expect(stableJson([1, 2])).not.toBe(stableJson([2, 1]));
+    expect(stableJson({ a: undefined, b: 1 })).toBe('{"b":1}');
+    expect(stableJson({ a: null, b: [1, { y: 1, x: 2 }] })).toBe('{"a":null,"b":[1,{"x":2,"y":1}]}');
+  });
+
+  for (const p of PRESETS) {
+    it(`${p.id}: a fresh copy of it matches the preset it names`, () => {
+      expect(isPristinePreset(makeDoc(p.doc()), p.id)).toBe(true);
+    });
+  }
+
+  it('is false for another preset, for no preset and for an id this build has not got', () => {
+    const d = makeDoc(classic.doc());
+    expect(isPristinePreset(d, 'far-sync-zero-loss')).toBe(false);
+    expect(isPristinePreset(d, null)).toBe(false);
+    expect(isPristinePreset(d, 'from-the-future')).toBe(false);
+  });
+
+  it('counts everything the Document carries, down to a renamed configuration', () => {
+    expect(isPristinePreset(withMeta(makeDoc(classic.doc()), { name: 'Mine' }), 'classic')).toBe(false);
+    expect(isPristinePreset(withMeta(makeDoc(classic.doc()), { notes: 'why' }), 'classic')).toBe(false);
   });
 });

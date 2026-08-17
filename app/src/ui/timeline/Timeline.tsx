@@ -14,6 +14,7 @@ import { buildTimeline, TL } from './build';
 import type { TimelineLane, TimelineMarker, TimelineModel } from './build';
 import { Brace, TopBrace } from './Brace';
 import { Playhead } from './Playhead';
+import { usePlayback } from './playback';
 import { Transport } from './Transport';
 import { Tooltip, tipFromEvent } from './Tooltip';
 import type { TooltipState } from './Tooltip';
@@ -192,6 +193,21 @@ export function Timeline(props: TimelineProps) {
   );
   const [tip, setTip] = useState<TooltipState | null>(null);
 
+  /* ▶ moves the playhead. The loop lives in the UI layer -- the engine has no
+     clock (CLAUDE.md) -- and leaves through the same `onSeek` a drag uses, so
+     there is one way for the playhead to move and playback is a timer on it.
+     Nothing to play in the steady state or at the export scale. */
+  usePlayback({
+    playing,
+    speed,
+    tNow,
+    t0: model.scale.t0,
+    t1: model.scale.t1,
+    enabled: !pinnedScale && !model.empty && onSeek !== undefined && onPlayToggle !== undefined,
+    ...(onSeek ? { onSeek } : {}),
+    ...(onPlayToggle ? { onEnd: onPlayToggle } : {}),
+  });
+
   const onPointerMove = (e: JSX.TargetedPointerEvent<HTMLDivElement>): void => {
     const text = tipFromEvent(e.target);
     if (text === null) { if (tip !== null) setTip(null); return; }
@@ -295,44 +311,68 @@ export function Timeline(props: TimelineProps) {
         </p>
       ) : null}
 
+      {/* The colour key reads once and then stays read, so it scrolls with the
+          drawing it explains. Pinning it cost a second row of the sticky band
+          -- 32 px of a 226 px dock at 1280x720, every scroll position -- and
+          the transport is what has to stay reachable. */}
       <div class="legend tl-legend">
         {model.legend.map((l) => (
           <span key={l.swatch}><i class={l.swatch} />{l.label}</span>
         ))}
       </div>
 
+      {/* The foot of the drawing: the controls, and nothing else. It is the
+          timeline's last flow child, so `position: sticky` inside `.tl` pins it
+          to the bottom of whichever box is scrolling -- the bottom dock in
+          Break, the rail in Learn -- while the lanes and the braces scroll
+          behind it. A twelve-lane run is taller than the dock, and a transport
+          nobody ever sees is a page that looks like a static picture
+          (timeline.css, `.tl-foot`). No transport, no band: an empty hairline
+          strip pinned to the bottom says nothing. */}
       {showTransport && !pinnedScale && onSeek && onPlayToggle && onSpeed ? (
-        <Transport
-          model={model}
-          tNow={tNow}
-          playing={playing}
-          speed={speed}
-          onSeek={onSeek}
-          onPlayToggle={onPlayToggle}
-          onSpeed={onSpeed}
-        />
+        <div class="tl-foot">
+          <Transport
+            model={model}
+            tNow={tNow}
+            playing={playing}
+            speed={speed}
+            onSeek={onSeek}
+            onPlayToggle={onPlayToggle}
+            onSpeed={onSpeed}
+          />
+        </div>
       ) : null}
 
       {/* The same drawing as a table, for anyone reading it with a screen
           reader. It is a duplicate, not a substitute: nothing here is content
-          the drawing does not also carry. */}
-      <table class="sr">
-        <caption>{summary}</caption>
-        <thead>
-          <tr><th scope="col">Lane</th><th scope="col">Role</th><th scope="col">From</th><th scope="col">To</th><th scope="col">State</th></tr>
-        </thead>
-        <tbody>
-          {model.lanes.flatMap((lane) => lane.segments.map((sg) => (
-            <tr key={sg.key}>
-              <td>{lane.name}</td>
-              <td>{lane.sub}</td>
-              <td>{sg.t0}</td>
-              <td>{sg.t1}</td>
-              <td>{sg.title}</td>
-            </tr>
-          )))}
-        </tbody>
-      </table>
+          the drawing does not also carry.
+
+          `.sr` goes on the wrapping <div>, never on the <table>: a table's used
+          width can never fall below its min-content width, so `.sr` on the
+          table itself left a ~1080 px box inside the dock, gave the dock a
+          horizontal scrollbar at 1280x720 and -- because `position: sticky`
+          pins on one axis only -- carried the sticky foot sideways out of view
+          with it. A block box honours `width: 1px` and its `overflow: hidden`
+          really does clip. Same shape as TopoCanvas's a11y table. */}
+      <div class="sr">
+        <table>
+          <caption>{summary}</caption>
+          <thead>
+            <tr><th scope="col">Lane</th><th scope="col">Role</th><th scope="col">From</th><th scope="col">To</th><th scope="col">State</th></tr>
+          </thead>
+          <tbody>
+            {model.lanes.flatMap((lane) => lane.segments.map((sg) => (
+              <tr key={sg.key}>
+                <td>{lane.name}</td>
+                <td>{lane.sub}</td>
+                <td>{sg.t0}</td>
+                <td>{sg.t1}</td>
+                <td>{sg.title}</td>
+              </tr>
+            )))}
+          </tbody>
+        </table>
+      </div>
     </section>
   );
 }

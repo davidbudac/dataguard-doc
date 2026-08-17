@@ -1,8 +1,14 @@
 /**
- * The header (ui.md SS3): brand, the four modes as steps with one line saying
- * what the active one is for, and — pushed to the right, where nothing
- * competes with the modes — the release, the theme, undo/redo and the ? that
- * brings the "How this page works" card back.
+ * The header (ui.md SS3): brand, the four modes as steps, and — pushed to the
+ * right, where nothing competes with the modes — the release, the theme,
+ * undo/redo and the ? that brings the "How this page works" card back and,
+ * pressed again, takes it away.
+ *
+ * The mode subtitle that used to sit under the buttons is gone: it said what
+ * the guidance line one band below already said, and two lines of chrome for
+ * one idea is what pushed the drawing down to 260 px. The sentence itself is
+ * not gone — it is each mode button's `title` (`MODE_SUB`), and the mode word
+ * now leads the guidance line in.
  *
  * Undo and redo are small buttons that say only "Undo" and "Redo": the edit
  * they would reverse rides in the `title`, and a disabled one carries its
@@ -18,13 +24,6 @@ import { saveEdition, saveTheme } from '@/state/persist';
 import { applyTheme } from '@/state/view';
 import { Segmented } from './common/Segmented';
 
-const MODE_TITLE: Record<Mode, string> = {
-  build: 'Draw the configuration: sites, members, redo routes, observers',
-  break: 'Inject failures and watch the clocks run',
-  configure: 'The same deployment as DGMGRL commands, init parameters and connect strings',
-  learn: 'Nine lessons, and the reference tables behind them',
-};
-
 export function TopBar() {
   const m = mode.value;
   return (
@@ -38,10 +37,9 @@ export function TopBar() {
         <Segmented<Mode>
           label="Mode"
           value={m}
-          options={MODES.map((x) => ({ value: x, label: MODE_LABEL[x], title: MODE_TITLE[x] }))}
+          options={MODES.map((x) => ({ value: x, label: MODE_LABEL[x], title: MODE_SUB[x] }))}
           onChange={(x) => { mode.value = x; }}
         />
-        <p class="topbar-sub">{MODE_SUB[m]}</p>
       </div>
 
       <div class="topbar-spacer" />
@@ -88,12 +86,17 @@ export function TopBar() {
           Redo
         </button>
 
+        {/* A toggle, and it says which way it is pointing. Closing the card
+            from here writes nothing to `dg-intro-v1`: opening an explanation
+            and shutting it again is not the same as having read it, and only
+            "Got it" (Guidance.tsx) claims that. */}
         <button
           type="button"
           class="btn is-icon"
           title="How this page works"
           aria-label="How this page works"
-          onClick={() => { introOpen.value = true; }}
+          aria-expanded={introOpen.value}
+          onClick={() => { introOpen.value = !introOpen.value; }}
         >
           ?
         </button>

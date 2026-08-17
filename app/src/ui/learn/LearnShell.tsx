@@ -10,12 +10,16 @@
  * the per-step anchors all carry an `href` of the form `#/learn/<lesson>/<step>`
  * (route.ts), so a lesson step can be sent to somebody, opened in a new tab and
  * bookmarked -- and so the reading position survives with no script at all.
+ *
+ * `LearnWorkbenchHeader` at the foot of this file is the other half of the
+ * mode: the row the shell puts at the head of the workbench, which is the only
+ * part of Learn that lives in the right column.
  */
 
 import { useEffect } from 'preact/hooks';
 import { LESSONS, lessonById } from '@/content';
-import { lessonId, lessonStep } from '@/state/view';
-import { applyLearnRoute, lessonHref } from './route';
+import { lessonId, lessonStep, mode } from '@/state/view';
+import { applyLearnRoute, lessonHref, openStepInMode } from './route';
 import { Lesson } from './Lesson';
 
 import '@/styles/learn.css';
@@ -53,13 +57,82 @@ function Intro() {
         can be demonstrated carries a &ldquo;Show me&rdquo; button: it loads the lesson&rsquo;s
         configuration, applies exactly the properties and events that step is about, and leaves
         everything else at its default &mdash; so a step shows the same thing however you
-        reached it. &ldquo;Open in Break&rdquo; takes the same document to the timeline.
+        reached it. &ldquo;Open in Break&rdquo; &mdash; under the step, or at the head of
+        the workbench beside it &mdash; takes the same document to the timeline.
       </p>
       <p class="caption">
         The first six lessons are the chapters of the published document, carried over
         sentence by sentence. The last three cover shapes the earlier page could not draw:
         far sync, cascading standbys, and several observers with several failover targets.
       </p>
+    </header>
+  );
+}
+
+/**
+ * The head of Learn's workbench -- the right column, above the drawing.
+ *
+ * Two things were only findable by reading: which step the drawing under it is
+ * set up for, and the way out of Learn with that document. The step's own
+ * "Open in Break" sits in the prose column, several screens down in a long
+ * lesson, so the reader looking at the drawing had no way out of it in sight.
+ * This row puts both above the fold, and adds Build, because "now let me
+ * change it" is the other thing a reader wants from a drawing.
+ *
+ * It is the same function the prose button calls (`openStepInMode`), not a
+ * second implementation of it. With no lesson open there is no step to set up,
+ * so the buttons only switch mode -- and the row says that is what the drawing
+ * is, rather than naming a step that is not there.
+ *
+ * Neither button is gray on the narrow viewer, and that is deliberate. The
+ * read-only gate (`canEdit`) is about the controls that *change* a
+ * configuration -- the inspector, the canvas, the event menu -- which a phone
+ * has no room for. Following a lesson step is not one of them: the step's own
+ * "Show me" and "Open in Break" in the prose column are ungated at every
+ * width, and so is arriving on `#/learn/<lesson>/<step>` from a link. Graying
+ * these two would refuse the reader an address they can reach by scrolling
+ * down the same page, which is a refusal that restricts nothing.
+ *
+ * The shell renders this at the top of the workbench in both layouts: beside
+ * the prose on a wide screen, under it once the rail has become the dock.
+ */
+export function LearnWorkbenchHeader() {
+  const id = lessonId.value;
+  const lesson = id === null ? undefined : lessonById(id);
+  const index = lessonStep.value;
+  const step = lesson?.steps[index];
+
+  const open = (target: 'break' | 'build') => (): void => {
+    if (lesson !== undefined && step !== undefined) openStepInMode(lesson, index, target);
+    else mode.value = target;
+  };
+
+  return (
+    <header class="lwh">
+      <p class="lwh-what">
+        {step === undefined || lesson === undefined ? (
+          <>
+            <span class="eyebrow">Workbench</span>
+            <span class="lwh-t">No lesson open &mdash; the current document</span>
+          </>
+        ) : (
+          <>
+            <span class="eyebrow">
+              Step {index + 1}/{lesson.steps.length}
+            </span>
+            <span class="lwh-t" title={step.title}>{step.title}</span>
+          </>
+        )}
+      </p>
+      <span class="lwh-go">
+        <button type="button" class="btn" onClick={open('break')}>
+          Open in Break
+        </button>
+        {' '}
+        <button type="button" class="btn" onClick={open('build')}>
+          Open in Build
+        </button>
+      </span>
     </header>
   );
 }

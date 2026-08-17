@@ -241,19 +241,55 @@ export function addObserver(): ObserverId | null {
   return id;
 }
 
+/**
+ * Every id in this document, in one set.
+ *
+ * Ids are one namespace here, exactly as they are on the canvas and in the
+ * inspector: a member, an observer, a link and a site cannot share a name, or
+ * a selection key resolves to two subjects and `remove` takes both.
+ */
+function takenIds(t: TopologyDoc): Set<string> {
+  return new Set<string>([
+    ...t.sites.map((s) => s.id as string),
+    ...t.hosts.map((h) => h.id as string),
+    ...t.members.map((m) => m.id as string),
+    ...t.observers.map((o) => o.id as string),
+    ...t.links.map((l) => l.id as string),
+  ]);
+}
+
 /** Add a data centre, and a site link from it to every data centre already there. */
 export function addSite(): SiteId | null {
   const t = doc.value.topology;
-  const name = nextName('dc', t.sites.map((s) => s.id as string)).replace(/^dc0/, 'dc');
+  /* Sites are named `dc1`, not `dc01`, so `nextName`'s two-digit form is not
+     the house style here -- and its zero cannot merely be stripped: beside
+     `dc1,dc2,dc3` the free two-digit name is `dc01`, which strips back to the
+     taken `dc1`. That minted a duplicate site id on every press, a self-link
+     `dc1-dc1`, and a card that could be neither selected nor removed on its
+     own. Scan for a name that is free in the whole namespace instead. */
+  const taken = takenIds(t);
+  /* `dc1..dc(n+1)` is one more name than the namespace holds, so one of them is
+     always free -- the loop needs no bail-out and cannot mint a second `dc1`. */
+  let name = '';
+  for (let i = 1; name === '' && i <= taken.size + 1; i++) {
+    if (!taken.has(`dc${i}`)) name = `dc${i}`;
+  }
   const id = siteId(name);
   mutate(`Add the site ${name}`, (cur) => {
-    const links: Link[] = cur.sites.map((s) => ({
-      id: linkId(`${s.id as string}-${name}`),
-      scope: 'site' as const,
-      ends: [s.id, id] as [SiteId, SiteId],
-      rttMs: 0,
-      up: true,
-    }));
+    /* `name` is free, so `dcA-<name>` is a new link id in all but one case: a
+       document loaded from a share link may already carry a link literally
+       named that while having no such site. A second link with the same id
+       would be the same defect one level down, so that pair simply keeps the
+       link it has. */
+    const links: Link[] = cur.sites
+      .filter((s) => !cur.links.some((l) => (l.id as string) === `${s.id as string}-${name}`))
+      .map((s) => ({
+        id: linkId(`${s.id as string}-${name}`),
+        scope: 'site' as const,
+        ends: [s.id, id] as [SiteId, SiteId],
+        rttMs: 0,
+        up: true,
+      }));
     return {
       ...cur,
       sites: [...cur.sites, { id, name } as Site],
@@ -301,6 +337,11 @@ export function patchInstance(
 /** A site link between two data centres, when there is not one already. */
 export function addLink(a: SiteId, b: SiteId): LinkId | null {
   const t = doc.value.topology;
+  /* Both ends have to be data centres this document actually has. The palette
+     refuses before it gets here, but a link with a dangling end is in every
+     derived computation, the share link and the Export the moment it is
+     written, so no caller gets to put one there. */
+  if (!t.sites.some((s) => s.id === a) || !t.sites.some((s) => s.id === b)) return null;
   const exists = t.links.some((l) => l.scope === 'site'
     && (l.ends as [SiteId, SiteId]).includes(a) && (l.ends as [SiteId, SiteId]).includes(b));
   if (exists || a === b) return null;

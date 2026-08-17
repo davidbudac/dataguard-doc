@@ -10,14 +10,17 @@
  */
 
 import { signal } from '@preact/signals';
+import type { Doc } from '@/state/doc';
 import { classicDoc, doc, makeDoc } from '@/state/doc';
 import { edit, resetHistory } from '@/state/history';
 import { errors, issues, warnings } from '@/state/derived';
 import { exportDoc, importFile, restored, startFresh } from '@/state/persist';
-import { buildShareUrl, presetId, shareHref, shareTooLarge } from '@/state/url';
-import { PRESETS } from '@/presets';
+import { buildShareUrl, isPristinePreset, presetId, shareHref, shareTooLarge } from '@/state/url';
+import type { Preset } from '@/presets';
+import { findPreset, GROUPED_PRESETS, PRESETS } from '@/presets';
 import { edition, inspectorOpen, mode, toast, viewport } from '@/state/view';
 import { TOO_LARGE_MESSAGE } from '@/state/codec';
+import { revealFindings } from './IssuePanel';
 import { WhyPill } from './common/WhyPill';
 
 const busy = signal(false);
@@ -83,6 +86,35 @@ export function findingCount(errs: number, warns: number, notes: number): string
   return notes === 0 ? head : `${head} · ${notes} note${notes === 1 ? '' : 's'}`;
 }
 
+/* ---------------- which document is on screen ---------------- */
+
+/**
+ * What the picker is looking at: the preset this document *is*, or the preset
+ * it started from and has since been changed away from, or neither.
+ *
+ * `?preset=` says where the document came from and keeps saying it after an
+ * edit, which is right for the address bar and wrong for a picker: a reader
+ * who has moved a card and changed a transport is no longer looking at the
+ * preset the option names. So the picker compares.
+ *
+ * It compares with `isPristinePreset` (`state/url.ts`) rather than with a
+ * comparator of its own, because that is the same question the write path
+ * asks about the same document, and two answers to one question is how the
+ * picker and the address bar come to disagree. What is left here is the
+ * lookup, which is the picker's alone: an id no build of this page knows is
+ * not an edited preset, it is no preset at all.
+ */
+export interface PresetState {
+  preset: Preset | null;
+  edited: boolean;
+}
+
+export function presetState(d: Doc, id: string | null): PresetState {
+  const preset = id === null ? null : findPreset(id) ?? null;
+  if (preset === null) return { preset: null, edited: false };
+  return { preset, edited: !isPristinePreset(d, preset.id) };
+}
+
 export interface StatusBarProps {
   /**
    * The shell measures the header to anchor the toast under it. A ref, not a
@@ -98,13 +130,17 @@ export function StatusBar({ hostRef }: StatusBarProps) {
   const notes = issues.value.length - errs - warns;
   const tone = errs > 0 ? 'is-error' : warns > 0 ? 'is-warn' : 'is-clean';
   const link = sharedUrl.value;
+  const { preset, edited } = presetState(doc.value, presetId.value);
+  const showing = preset !== null && !edited;
   return (
     <div class="statusbar app-status" ref={hostRef}>
       <label class="mono" for="preset-picker">Preset</label>
       <select
         id="preset-picker"
         class="btn"
-        value={presetId.value ?? ''}
+        /* The preset's own option while the document still is that preset;
+           the first option, which then says so, once it is not. */
+        value={showing ? (preset as Preset).id : ''}
         onChange={(e) => {
           const id = (e.currentTarget as HTMLSelectElement).value;
           const chosen = PRESETS.find((p) => p.id === id);
@@ -116,11 +152,33 @@ export function StatusBar({ hostRef }: StatusBarProps) {
           presetId.value = chosen.id;
         }}
       >
-        <option value="">Current configuration</option>
-        {PRESETS.map((p) => <option key={p.id} value={p.id}>{p.title}</option>)}
+        <option value="">
+          {edited ? 'Current configuration (edited)' : 'Current configuration'}
+        </option>
+        {/* Short titles under headings: eleven sentences in a dropdown is
+            eleven lines of prose to read before choosing one. The sentence is
+            still there, as the option's title. */}
+        {GROUPED_PRESETS.map(({ group, presets }) => (
+          <optgroup key={group} label={group}>
+            {presets.map((p) => (
+              <option key={p.id} value={p.id} title={p.title}>{p.short}</option>
+            ))}
+          </optgroup>
+        ))}
       </select>
 
-      <span class={`count ${tone}`}>{findingCount(errs, warns, notes)}</span>
+      {/* The tally is the way in, not a label: it takes the reader to the
+          findings it counts, in whichever mode they are (IssuePanel.tsx). */}
+      <button
+        type="button"
+        class={`count ${tone}`}
+        title={mode.value === 'build' || mode.value === 'break'
+          ? 'Show the validation findings'
+          : 'Show the validation findings, in Build'}
+        onClick={() => { revealFindings(); }}
+      >
+        {findingCount(errs, warns, notes)}
+      </button>
 
       {restored.value ? (
         <span class="mono">
@@ -129,7 +187,11 @@ export function StatusBar({ hostRef }: StatusBarProps) {
           <button
             type="button"
             class="btn is-quiet"
-            onClick={() => { resetHistory(startFresh(edition.value)); presetId.value = 'classic'; }}
+            /* Not `classic`: the starting document is the classic 1+1+1
+               deployment in its steady state, and the preset of that name
+               carries the crash at t = 0 as well. Naming it would make the
+               picker say "edited" about a document nobody has edited. */
+            onClick={() => { resetHistory(startFresh(edition.value)); presetId.value = null; }}
           >
             Start fresh
           </button>
@@ -196,7 +258,9 @@ export function StatusBar({ hostRef }: StatusBarProps) {
         title="Back to the classic 1+1+1 configuration"
         onClick={() => {
           edit('Reset to the classic configuration', () => classicDoc(edition.value));
-          presetId.value = 'classic';
+          /* Same reason as Start fresh: this is the classic deployment, not
+             the `classic` preset, which brings its own event. */
+          presetId.value = null;
         }}
       >
         Reset

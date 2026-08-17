@@ -19,9 +19,23 @@ import { scenarioEvents } from '@/engine';
 import type { ClassicScenario, HostId, TimedEvent, TopologyDoc } from '@/engine';
 import { isDatabase } from '@/engine';
 import { withEvents } from '@/state/doc';
+import { topology, trace } from '@/state/derived';
 import { edit } from '@/state/history';
+import { tNow } from '@/state/view';
+import { lastInterestingT } from '@/ui/timeline/build';
 import type { WhyState } from '../common/WhyPill';
 import { off, ON, WHY } from '../inspector/why';
+
+/* ---------------- names ---------------- */
+
+const hostName = (doc: TopologyDoc, id: HostId): string =>
+  doc.hosts.find((h) => h.id === id)?.name ?? (id as string);
+
+const siteName = (doc: TopologyDoc, id: string): string =>
+  doc.sites.find((s) => (s.id as string) === id)?.name ?? id;
+
+const siteOfHost = (doc: TopologyDoc, id: HostId): string | undefined =>
+  doc.hosts.find((h) => h.id === id)?.site as string | undefined;
 
 /* ---------------- what is down at t ---------------- */
 
@@ -34,8 +48,11 @@ type Thing = { kind: 'host'; id: string } | { kind: 'site'; id: string }
  * last event before `t` that names it wins, and its own flag in the document
  * is where it starts. This is the rail's own reading, not the simulator's --
  * it decides which actions to offer, never what the configuration does.
+ *
+ * On its own it is not enough to decide what is down, because it only ever
+ * sees the events that *name* a thing: see `isDownAt` below.
  */
-export function isDownAt(doc: TopologyDoc, thing: Thing, t: number): boolean {
+function literalDownAt(doc: TopologyDoc, thing: Thing, t: number): boolean {
   let down = false;
   if (thing.kind === 'link') {
     down = doc.links.find((l) => (l.id as string) === thing.id)?.up === false;
@@ -68,6 +85,86 @@ export function isDownAt(doc: TopologyDoc, thing: Thing, t: number): boolean {
   return down;
 }
 
+/**
+ * Whether a thing is down at `t`, containment included.
+ *
+ * The literal reading above asks only which events name the object, and that
+ * is not what the reader is looking at. Crash `dc1-prm01` and the simulator
+ * has `prm01` down -- the canvas draws the card hatched red with a cross --
+ * while a reading of the event kinds alone still calls the database up. The
+ * menu then dropped "Start prm01" into the silent group and printed "nothing
+ * else here is down" one line under a card drawn down.
+ *
+ * So the containment folds in, downward from the outside: a data centre holds
+ * its hosts, a host holds the instances and the observer running on it, and a
+ * member is down once every instance of it is. Sites and links have nothing
+ * above them, so for those the literal reading is the whole of it.
+ */
+export function isDownAt(doc: TopologyDoc, thing: Thing, t: number): boolean {
+  if (literalDownAt(doc, thing, t)) return true;
+  switch (thing.kind) {
+    case 'host': {
+      const site = siteOfHost(doc, thing.id as HostId);
+      return site !== undefined && isDownAt(doc, { kind: 'site', id: site }, t);
+    }
+    case 'instance': {
+      const host = doc.members.find((m) => (m.id as string) === thing.member)
+        ?.instances.find((i) => i.name === thing.id)?.host;
+      return host !== undefined && isDownAt(doc, { kind: 'host', id: host as string }, t);
+    }
+    case 'member': {
+      const m = doc.members.find((x) => (x.id as string) === thing.id);
+      if (m === undefined || m.instances.length === 0) return false;
+      return m.instances.every(
+        (i) => isDownAt(doc, { kind: 'instance', member: thing.id, id: i.name }, t),
+      );
+    }
+    case 'observer': {
+      const host = doc.observers.find((o) => (o.id as string) === thing.id)?.host;
+      return host !== undefined && isDownAt(doc, { kind: 'host', id: host as string }, t);
+    }
+    default: return false;
+  }
+}
+
+/**
+ * Whether the object a key names, or anything inside it, is down at `t`.
+ *
+ * The quiet line under the menu is a statement about the *selection*, and the
+ * menu's own list cannot answer it. `actionsFor` intersects, keeping the first
+ * *blocked* subject's reason, so one cut link selected beside a whole one
+ * collapses `link.heal` to "nothing has taken it down" -- true of the pair,
+ * false of the drawing. And a data centre offers only its own two actions, so
+ * a crashed host inside it leaves nothing on the list to notice. Both printed
+ * "nothing here is down" over a drawing that showed something down.
+ */
+export function anythingDownUnder(doc: TopologyDoc, key: string, t: number): boolean {
+  if (doc.sites.some((s) => (s.id as string) === key)) {
+    if (isDownAt(doc, { kind: 'site', id: key }, t)) return true;
+    const hosts = doc.hosts.filter((h) => (h.site as string) === key);
+    const inSite = (h: HostId): boolean => hosts.some((x) => x.id === h);
+    return hosts.some((h) => isDownAt(doc, { kind: 'host', id: h.id as string }, t))
+      || doc.observers.some((o) => inSite(o.host)
+        && isDownAt(doc, { kind: 'observer', id: o.id as string }, t))
+      || doc.members.some((m) => m.instances.some((i) => inSite(i.host)
+        && isDownAt(doc, { kind: 'instance', member: m.id as string, id: i.name }, t)));
+  }
+  const member = doc.members.find((m) => (m.id as string) === key);
+  if (member) {
+    return isDownAt(doc, { kind: 'member', id: key }, t)
+      || member.instances.some(
+        (i) => isDownAt(doc, { kind: 'instance', member: key, id: i.name }, t),
+      );
+  }
+  if (doc.observers.some((o) => (o.id as string) === key)) {
+    return isDownAt(doc, { kind: 'observer', id: key }, t);
+  }
+  if (doc.links.some((l) => (l.id as string) === key)) {
+    return isDownAt(doc, { kind: 'link', id: key }, t);
+  }
+  return false;
+}
+
 /* ---------------- the action table ---------------- */
 
 export interface EventAction {
@@ -83,11 +180,28 @@ export interface EventAction {
   run?: () => void;
 }
 
-const hostName = (doc: TopologyDoc, id: HostId): string =>
-  doc.hosts.find((h) => h.id === id)?.name ?? (id as string);
+/**
+ * The container still holding this host down, named, or `null`.
+ *
+ * The simulator keeps down hosts, down sites and down members in separate
+ * sets, so `host.up` on a host inside a downed data centre injects an event
+ * that changes not one pixel of the drawing. The restore stays on the list --
+ * the host really is down, and dropping the restore of something that is down
+ * is exactly the lie item 10 set out to stop -- and says which one to bring
+ * back first instead of firing into nothing.
+ */
+const heldBySite = (doc: TopologyDoc, host: HostId, at: number): string | null => {
+  const s = siteOfHost(doc, host);
+  return s !== undefined && isDownAt(doc, { kind: 'site', id: s }, at)
+    ? `${siteName(doc, s)} is down: bring the whole data centre back first.`
+    : null;
+};
 
-const siteOfHost = (doc: TopologyDoc, id: HostId): string | undefined =>
-  doc.hosts.find((h) => h.id === id)?.site as string | undefined;
+/** The same, one level in: nothing starts on a host that is not there. */
+const heldByHost = (doc: TopologyDoc, host: HostId, at: number): string | null =>
+  (isDownAt(doc, { kind: 'host', id: host as string }, at)
+    ? `${hostName(doc, host)} is down: restore the host first.`
+    : null);
 
 /** Every action the one selected object offers at `at`. */
 export function actionsForKey(doc: TopologyDoc, key: string, at: number): EventAction[] {
@@ -103,6 +217,7 @@ export function actionsForKey(doc: TopologyDoc, key: string, at: number): EventA
     const first = hosts[0];
     const allDown = hosts.length > 0 && hosts.every((h) => isDownAt(doc, { kind: 'host', id: h as string }, at));
     const anyDown = hosts.some((h) => isDownAt(doc, { kind: 'host', id: h as string }, at));
+    const hostHeld = hosts.map((h) => heldBySite(doc, h, at)).find((r) => r !== null) ?? null;
     out.push({
       id: 'host.down',
       label: hosts.length > 1
@@ -118,7 +233,7 @@ export function actionsForKey(doc: TopologyDoc, key: string, at: number): EventA
       id: 'host.up',
       label: hosts.length > 1 ? `Restore the hosts of ${key}` : 'Restore the host',
       plural: 'Restore the hosts',
-      enabled: anyDown ? ON : off(WHY.nothingDown),
+      enabled: hostHeld !== null ? off(hostHeld) : (anyDown ? ON : off(WHY.nothingDown)),
       events: hosts
         .filter((h) => isDownAt(doc, { kind: 'host', id: h as string }, at))
         .map((h) => ({ at, kind: 'host.up', host: h })),
@@ -133,16 +248,18 @@ export function actionsForKey(doc: TopologyDoc, key: string, at: number): EventA
           enabled: down ? off(WHY.alreadyDown) : ON,
           events: [{ at, kind: 'instance.down', member: member.id, instance: inst.name }],
         });
+        const held = heldByHost(doc, inst.host, at);
         out.push({
           id: `instance.up:${inst.name}`,
           label: `Start the instance ${inst.name}`,
           plural: 'Start the instance',
-          enabled: down ? ON : off(WHY.nothingDown),
+          enabled: held !== null ? off(held) : (down ? ON : off(WHY.nothingDown)),
           events: [{ at, kind: 'instance.up', member: member.id, instance: inst.name }],
         });
       }
     } else {
       const down = isDownAt(doc, { kind: 'member', id: key }, at);
+      const held = first === undefined ? null : heldByHost(doc, first, at);
       out.push({
         id: 'member.down',
         label: `SHUTDOWN ABORT ${key}`,
@@ -154,7 +271,7 @@ export function actionsForKey(doc: TopologyDoc, key: string, at: number): EventA
         id: 'member.up',
         label: `Start ${key}`,
         plural: 'Start the database',
-        enabled: down ? ON : off(WHY.nothingDown),
+        enabled: held !== null ? off(held) : (down ? ON : off(WHY.nothingDown)),
         events: [{ at, kind: 'member.up', member: member.id }],
       });
     }
@@ -226,6 +343,7 @@ export function actionsForKey(doc: TopologyDoc, key: string, at: number): EventA
 
   if (observer) {
     const stopped = isDownAt(doc, { kind: 'observer', id: key }, at);
+    const held = heldByHost(doc, observer.host, at);
     out.push({
       id: 'observer.stop',
       label: `Stop the observer ${key}`,
@@ -237,10 +355,15 @@ export function actionsForKey(doc: TopologyDoc, key: string, at: number): EventA
       id: 'observer.start',
       label: `Start the observer ${key}`,
       plural: 'Start the observers',
-      enabled: stopped ? ON : off('It is running already.'),
+      /* One reason per class, from the WHY table: this is a restore like the
+         other five, and a bespoke "It is running already." kept it out of the
+         group the menu says the reason once for -- so a grey restore was drawn
+         directly above the line whose whole job is to stand in for it. */
+      enabled: held !== null ? off(held) : (stopped ? ON : off(WHY.nothingDown)),
       events: [{ at, kind: 'observer.start', observer: observer.id }],
     });
     const hDown = isDownAt(doc, { kind: 'host', id: observer.host as string }, at);
+    const hostHeld = heldBySite(doc, observer.host, at);
     out.push({
       id: 'host.down',
       label: `Crash ${hostName(doc, observer.host)}`,
@@ -252,7 +375,7 @@ export function actionsForKey(doc: TopologyDoc, key: string, at: number): EventA
       id: 'host.up',
       label: `Restore ${hostName(doc, observer.host)}`,
       plural: 'Restore the hosts',
-      enabled: hDown ? ON : off(WHY.nothingDown),
+      enabled: hostHeld !== null ? off(hostHeld) : (hDown ? ON : off(WHY.nothingDown)),
       events: [{ at, kind: 'host.up', host: observer.host }],
     });
     out.push({
@@ -304,6 +427,21 @@ export function actionsForKey(doc: TopologyDoc, key: string, at: number): EventA
 }
 
 /**
+ * The actions that put something back. They are the one group whose whole
+ * point is that it is usually refused, so the menu treats them together rather
+ * than pinning the same refusal to each of them in turn.
+ *
+ * Keyed off the ids the table above hands out, with the instance actions'
+ * `:name` suffix taken off first.
+ */
+const RESTORE_IDS: readonly string[] = [
+  'host.up', 'member.up', 'instance.up', 'site.up', 'link.heal', 'observer.start',
+];
+
+export const isRestore = (a: EventAction): boolean =>
+  RESTORE_IDS.includes(a.id.split(':')[0] as string);
+
+/**
  * The actions a whole selection offers: the intersection by id, with the
  * events of every subject folded into one entry, so one click is one undo.
  */
@@ -331,12 +469,36 @@ export function actionsFor(doc: TopologyDoc, keys: readonly string[], at: number
   return out;
 }
 
+/**
+ * Move the playhead to the end of what there is to see.
+ *
+ * The default playhead sat at t = 0 after an injection, so the drawing showed
+ * the instant before anything had happened while the readout beside it
+ * reported the whole run -- two clocks, neither of them named. Landing on
+ * `lastInterestingT` (the same reading the axis takes for its horizon) shows
+ * the result, and scrubbing back is then the exploration rather than the only
+ * way to see anything at all.
+ *
+ * The injection time is never read from here: an action already carries `at`
+ * on every event it will add, decided before this runs.
+ */
+export function restPlayhead(): void {
+  const t = trace.value;
+  if (t === null) { tNow.value = 0; return; }
+  const end = lastInterestingT(t, topology.value.events);
+  /* A tenth of a second, the way the axis is read (EventMenu's `snapT`). */
+  tNow.value = Math.max(0, Math.round(end * 10) / 10);
+}
+
 /** Inject an action's events under one undo entry. */
 export function runAction(action: EventAction): void {
   if (action.enabled.state === 'off') return;
+  /* A property holds from the first frame, so there is no new moment to move
+     the playhead to. */
   if (action.property === true) { action.run?.(); return; }
   if (action.events.length === 0) return;
   edit(action.label, (d) => withEvents(d, [...d.topology.events, ...action.events]));
+  restPlayhead();
 }
 
 /* ---------------- the six templates ---------------- */
@@ -348,9 +510,6 @@ export interface Template {
   enabled: WhyState;
   events: TimedEvent[];
 }
-
-const siteName = (doc: TopologyDoc, id: string): string =>
-  doc.sites.find((s) => (s.id as string) === id)?.name ?? id;
 
 /**
  * The six scenarios the published workbench carries, as one-click templates.
@@ -439,10 +598,14 @@ export function templates(doc: TopologyDoc, at = 0): Template[] {
 export function applyTemplate(t: Template): void {
   if (t.enabled.state === 'off') return;
   edit(`Apply the scenario: ${t.label}`, (d) => withEvents(d, t.events));
+  restPlayhead();
 }
 
 export function clearEvents(): void {
   edit('Clear the injected events', (d) => withEvents(d, []));
+  /* Nothing is left to be at the end of: the playhead goes back to the start
+     rather than resting on a clock reading that no longer means anything. */
+  restPlayhead();
 }
 
 export function removeEventAt(index: number): void {

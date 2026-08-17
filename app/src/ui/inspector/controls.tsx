@@ -19,21 +19,62 @@ import { Segmented } from '../common/Segmented';
 import type { SegmentedOption } from '../common/Segmented';
 import { WhyPill } from '../common/WhyPill';
 import type { WhyState } from '../common/WhyPill';
+import { printing } from '../print';
+import { isSectionOpen, toggleSection } from './sections';
 import { ON } from './why';
 
 /* ---------------- structure ---------------- */
 
 export function Group(
-  { title, children, action }:
-  { title: string; children: ComponentChildren; action?: ComponentChildren },
+  { title, children, action, id }:
+  { title: string; children: ComponentChildren; action?: ComponentChildren; id?: string },
 ) {
   return (
-    <section class="grp">
+    <section class="grp" {...(id === undefined ? {} : { id })}>
       <header class="grp-hd">
         <span class="eyebrow">{title}</span>
-        {action === undefined ? null : <span class="grp-act">{action}</span>}
+        {action === undefined ? undefined : <span class="grp-act">{action}</span>}
       </header>
       {children}
+    </section>
+  );
+}
+
+/**
+ * A group that folds.
+ *
+ * The eyebrow keeps its look and becomes the label of a real
+ * `<button aria-expanded>` that fills the header row, so the whole row is the
+ * hit target and a screen reader reads one control rather than a caret beside
+ * a heading. A folded section renders no children at all -- the properties are
+ * absent from the document, not painted out of view -- and `hint` says in one
+ * mono phrase what is inside, so folding never costs the reader the answer to
+ * "what is this configuration set to".
+ *
+ * On paper every fold is open: there is no toggle to press on a printout, and
+ * a printed configuration that omits its own properties is not a record of it
+ * (ui.md SS3, "on paper the panels stack").
+ */
+export function Fold(
+  { id, title, hint, children }:
+  { id: string; title: string; hint?: string; children: ComponentChildren },
+) {
+  const open = isSectionOpen(id) || printing.value;
+  return (
+    <section class={`grp grp-fold${open ? ' is-open' : ''}`}>
+      <header class="grp-hd">
+        <button
+          type="button"
+          class="grp-tog"
+          aria-expanded={open}
+          onClick={() => toggleSection(id)}
+        >
+          <span class="grp-caret" aria-hidden="true">{open ? '▾' : '▸'}</span>
+          <span class="eyebrow">{title}</span>
+          {hint === undefined || open ? null : <span class="grp-sum mono">{hint}</span>}
+        </button>
+      </header>
+      {open ? children : null}
     </section>
   );
 }
