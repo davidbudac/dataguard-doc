@@ -20,8 +20,10 @@ import { TopBar } from '@/ui/TopBar';
 import { Guidance } from '@/ui/Guidance';
 import { classicDoc } from '@/state/doc';
 import { edit, resetHistory } from '@/state/history';
-import { INTRO_KEY, dismissIntro, introDismissed, loadIntro } from '@/state/persist';
-import { MODE_SUB, introOpen, mode, modeGuide, railWhere, viewport } from '@/state/view';
+import { INTRO_KEY, dismissIntro, introDismissed, loadHints, loadIntro } from '@/state/persist';
+import {
+  MODE_SUB, hintsOn, introOpen, mode, modeGuide, railWhere, splitGuide, viewport,
+} from '@/state/view';
 import type { Viewport } from '@/state/view';
 
 const VIEWPORTS: readonly Viewport[] = ['wide', 'medium', 'compact', 'narrow'];
@@ -87,6 +89,9 @@ beforeEach(() => {
   mode.value = 'build';
   introOpen.value = false;
   loadIntro();
+  /* Hints are off unless a test says otherwise: that is what a first visit
+     reads, and the guidance line is one clause long there. */
+  loadHints();
 });
 
 describe('the header', () => {
@@ -160,11 +165,11 @@ describe('the header', () => {
   });
 
   /* Opening an explanation and shutting it again is not the same as having
-     read it: only "Got it" writes the key, so the strip is still owed on the
-     next visit. */
+     been shown the Introduction, which is what `dg-intro-v1` now records
+     (ui.md SS3e): the page is still owed on the next visit. */
   it('does not call the page understood because the ? was closed again', async () => {
     const bar = mount(TopBar);
-    const guide = mount(Guidance);
+    mount(Guidance);
     const help = (): HTMLButtonElement => [...bar.querySelectorAll('button')]
       .find((b) => b.textContent === '?') as HTMLButtonElement;
     help().click();
@@ -173,7 +178,17 @@ describe('the header', () => {
     await tick();
     expect(memory.get(INTRO_KEY)).toBeUndefined();
     expect(introDismissed.value).toBe(false);
-    expect(guide.querySelector('.intro-strip')).not.toBeNull();
+  });
+
+  /* The card is the short form; the page is the long one, and the card is one
+     of the two places that offer it (the other is the brand corner). */
+  it('offers the Introduction from the card, as a real link', async () => {
+    introOpen.value = true;
+    const root = mount(Guidance);
+    await tick();
+    const link = [...root.querySelectorAll('a')]
+      .find((a) => (a.textContent ?? '').includes('introduction'));
+    expect(link?.getAttribute('href')).toBe('?intro=1');
   });
 });
 
@@ -181,16 +196,53 @@ describe('the guidance line', () => {
   it('is one line: the mode word, then what to do first', async () => {
     const root = mount(Guidance);
     const line = (): string => root.querySelector('.guide-line')?.textContent ?? '';
-    expect(line()).toBe(`Build · ${modeGuide('build', 'wide')}`);
+    /* One clause by default -- the gesture. The sentence behind it is
+       explanation and waits for `Hints`. */
+    expect(line()).toBe(`Build · ${splitGuide('build', 'wide').lead}`);
     for (const m of ['break', 'configure', 'learn'] as const) {
       mode.value = m;
       await tick();
-      expect(line()).toContain(modeGuide(m, 'wide'));
+      expect(line()).toContain(splitGuide(m, 'wide').lead);
     }
   });
 
+  it('gives the whole sentence back with hints on, and takes it away again', async () => {
+    mode.value = 'build';
+    const root = mount(Guidance);
+    const line = (): string => root.querySelector('.guide-line')?.textContent ?? '';
+    const { lead, rest } = splitGuide('build', 'wide');
+    expect(rest).not.toBe('');
+    expect(line()).not.toContain(rest);
+
+    hintsOn.value = true;
+    await tick();
+    expect(line()).toBe(`Build · ${lead} ${rest}`);
+    /* The second half is the second half of `modeGuide`, promoted to its own
+       sentence -- nothing is dropped on the way. */
+    expect(modeGuide('build', 'wide')).toContain('the + buttons add members');
+    expect(line()).toContain('The full properties are in');
+
+    hintsOn.value = false;
+    await tick();
+    expect(line()).toBe(`Build · ${lead}`);
+  });
+
+  /* The cut is made at a clause boundary, and Configure's first sentence names
+     its own output rather than being trimmed to four words. */
+  it('leads with a whole clause in every mode', () => {
+    for (const m of ['build', 'break', 'configure', 'learn'] as const) {
+      const { lead, rest } = splitGuide(m, 'wide');
+      expect(lead.endsWith('.'), m).toBe(true);
+      expect(modeGuide(m, 'wide').startsWith(lead.slice(0, -1)), m).toBe(true);
+      expect(rest.endsWith(' '), m).toBe(false);
+    }
+    expect(splitGuide('configure', 'wide').lead)
+      .toBe('Generated from the drawing — DGMGRL, init parameters, connect strings.');
+    expect(splitGuide('learn', 'wide').rest).toBe('');
+  });
+
   it('says where the + buttons and the settings actually are', () => {
-    expect(modeGuide('build', 'wide')).toContain('on the drawing and at the top of the panel on the right');
+    expect(modeGuide('build', 'wide')).toContain('the full properties are in the panel on the right');
     expect(modeGuide('configure', 'wide')).toContain('Generated from the drawing');
     expect(modeGuide('configure', 'wide')).toContain('Settings are in the panel on the right');
   });
@@ -217,6 +269,9 @@ describe('the guidance line', () => {
 
   it('follows the window across a breakpoint', async () => {
     mode.value = 'configure';
+    /* The clause that names the inspector is the second half of Configure's
+       line, so this is a test about the half hints bring back. */
+    hintsOn.value = true;
     const root = mount(Guidance);
     const line = (): string => root.querySelector('.guide-line')?.textContent ?? '';
     expect(line()).toContain('the panel on the right');
@@ -227,69 +282,49 @@ describe('the guidance line', () => {
   });
 });
 
-describe('the first-visit strip', () => {
-  it('is one row naming the three working modes, and the way to the lessons', () => {
-    const root = mount(Guidance);
-    const strip = root.querySelector('.intro-strip');
-    expect(strip).not.toBeNull();
-    /* One row, not a card: the five-row card is what the ? brings back. */
-    expect(root.querySelector('.intro')).toBeNull();
-    const text = strip?.textContent ?? '';
-    for (const word of ['Build', 'Break', 'Configure', 'Learn']) {
-      expect(text).toContain(word);
-    }
-    expect(strip?.querySelector('a')?.getAttribute('href')).toBe('?mode=learn');
-  });
-
-  it('goes away when it is dismissed, and stays away across a reload', async () => {
-    const root = mount(Guidance);
-    const got = [...root.querySelectorAll('button')].find((b) => b.textContent === 'Got it');
-    expect(got).toBeDefined();
-    got?.click();
-    await tick();
-    expect(root.querySelector('.intro-strip')).toBeNull();
-    expect(memory.get(INTRO_KEY)).toBe('1');
-
-    /* A reload is `loadIntro()` reading the key again from a clean signal. */
-    introDismissed.value = false;
-    loadIntro();
-    expect(introDismissed.value).toBe(true);
-    const second = mount(Guidance);
-    expect(second.querySelector('.intro-strip')).toBeNull();
-  });
-
-  it('takes itself away at the first edit', async () => {
-    const root = mount(Guidance);
+describe('what writes dg-intro-v1', () => {
+  /* The key used to mean "the first-visit strip has been dismissed". It now
+     means "this reader has been shown the Introduction" (ui.md SS3e), and the
+     strip itself is gone: the page replaced it. */
+  it('no longer renders a strip anywhere', async () => {
+    const guide = mount(Guidance);
     await paint();
-    expect(root.querySelector('.intro-strip')).not.toBeNull();
+    expect(guide.querySelector('.intro-strip')).toBeNull();
+    const shell = mount(App);
+    await tick();
+    expect(shell.querySelector('.intro-strip')).toBeNull();
+  });
+
+  it('is written by the first edit, so a reader already working is not sent back', async () => {
+    mount(Guidance);
+    await paint();
     edit('rename', (d) => ({ ...d, meta: { ...d.meta, name: 'renamed' } }));
     await paint();
-    expect(root.querySelector('.intro-strip')).toBeNull();
-    /* And it does not come back on the next visit, same key as "Got it". */
     expect(memory.get(INTRO_KEY)).toBe('1');
   });
 
-  it('takes itself away at the first change of mode', async () => {
-    const root = mount(Guidance);
+  it('is written by the first change of mode', async () => {
+    mount(Guidance);
     await paint();
     mode.value = 'break';
     await paint();
-    expect(root.querySelector('.intro-strip')).toBeNull();
     expect(memory.get(INTRO_KEY)).toBe('1');
   });
 
-  it('is not taken away by a render, or by reading the guidance', async () => {
-    const root = mount(Guidance);
+  it('is not written by a render, or by reading the guidance', async () => {
+    mount(Guidance);
     await paint();
     await paint();
-    expect(root.querySelector('.intro-strip')).not.toBeNull();
     expect(memory.get(INTRO_KEY)).toBeUndefined();
   });
 
-  it('is in the shell on the first visit, and only there', async () => {
-    const root = mount(App);
-    await tick();
-    expect(root.querySelectorAll('.intro-strip').length).toBe(1);
+  it('survives a reload: `loadIntro` reads it back', async () => {
+    mount(Guidance);
+    await paint();
+    dismissIntro();
+    introDismissed.value = false;
+    loadIntro();
+    expect(introDismissed.value).toBe(true);
   });
 });
 
@@ -329,7 +364,7 @@ describe('the keyboard map', () => {
     expect(said.get('Delete')).toContain('(Build)');
   });
 
-  it('is not in the first-visit strip, which is one line', () => {
+  it('is behind the ?, not printed under the header', () => {
     const root = mount(Guidance);
     expect(root.querySelector('.intro-keys')).toBeNull();
   });

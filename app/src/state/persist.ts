@@ -5,7 +5,12 @@
  *   `dg-theme`       light / dark / auto -- same key the published page uses
  *   `dg-ed`          19c / 26ai -- likewise, so a reader who set the release
  *                    on the old page finds it set here
- *   `dg-intro-v1`    set once the "How this page works" card has been dismissed
+ *   `dg-intro-v1`    set once the reader has been shown the Introduction
+ *                    (ui.md SS3e) -- by leaving that page, or by their first
+ *                    real gesture if they arrived through a link and never saw
+ *                    it. It used to mean "the first-visit strip was dismissed";
+ *                    the strip is gone and the page replaced it.
+ *   `dg-hints`       whether the sentence under each control is shown
  *   `dg-fsfo-cfg-v1` the published page's stored configuration. Read once when
  *                    there is nothing newer, and never deleted: the old page
  *                    is still serving from /legacy/ and still owns that key.
@@ -24,6 +29,7 @@ import type { Doc } from './doc';
 import { classicDoc, doc, exportFileName } from './doc';
 import { fromWire, parseJsonText, toJsonText } from './codec';
 import type { DecodeResult } from './codec';
+import { hintsOn } from './view';
 import type { ThemePref } from './view';
 
 export const DOC_KEY = 'dg-doc-v1';
@@ -31,6 +37,7 @@ export const THEME_KEY = 'dg-theme';
 export const EDITION_KEY = 'dg-ed';
 export const LEGACY_DOC_KEY = 'dg-fsfo-cfg-v1';
 export const INTRO_KEY = 'dg-intro-v1';
+export const HINTS_KEY = 'dg-hints';
 
 export const AUTOSAVE_MS = 500;
 export const RESTORE_NOTICE_MS = 8000;
@@ -77,12 +84,12 @@ export const saveEdition = (v: '19c' | '26ai'): void => write(EDITION_KEY, v);
 /* ---------------- the intro card ---------------- */
 
 /**
- * Whether the reader has already been told how the page works.
+ * Whether the reader has already been shown the Introduction (ui.md SS3e).
  *
- * A signal rather than a read at render time: the card is shown on the first
- * visit and never again, and a component that reached into `localStorage`
- * while rendering would be reading storage on every keystroke. Boot calls
- * `loadIntro()` once; the tests call it to stand in for a reload.
+ * A signal rather than a read at render time: the page is opened on the first
+ * visit and never again on its own, and a component that reached into
+ * `localStorage` while rendering would be reading storage on every keystroke.
+ * Boot calls `loadIntro()` once; the tests call it to stand in for a reload.
  */
 export const introDismissed = signal<boolean>(false);
 
@@ -94,6 +101,27 @@ export function dismissIntro(): void {
   introDismissed.value = true;
   write(INTRO_KEY, '1');
 }
+
+/* ---------------- the hints ---------------- */
+
+/**
+ * The explanation under each control, on or off -- `hintsOn` in `view.ts`,
+ * remembered here.
+ *
+ * Read once at boot, exactly as the intro card is: a component that asked
+ * `localStorage` while it rendered would be asking it on every keystroke, and
+ * the answer is a reading preference that changes at most once a session.
+ */
+export function loadHints(): void {
+  hintsOn.value = read(HINTS_KEY) === '1';
+}
+
+export function setHints(on: boolean): void {
+  hintsOn.value = on;
+  write(HINTS_KEY, on ? '1' : '0');
+}
+
+export const toggleHints = (): void => setHints(!hintsOn.value);
 
 /* ---------------- the Document ---------------- */
 

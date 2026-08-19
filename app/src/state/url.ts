@@ -31,13 +31,15 @@ import type { Doc } from './doc';
 import { encodeDoc, toWire } from './codec';
 import type { Mode, PanelTab, ThemePref } from './view';
 import {
-  MODES, PANEL_TABS, edition, lessonId, lessonStep, mode, panelTab, playing, scrubbing,
-  selection, theme, tNow,
+  MODES, PANEL_TABS, edition, introPage, lessonId, lessonStep, mode, panelTab, playing,
+  scrubbing, selection, theme, tNow,
 } from './view';
 
 export interface UrlState {
   ed: Edition;
   mode: Mode;
+  /** The Introduction, instead of the workbench. */
+  intro: boolean;
   panel: PanelTab;
   sel: readonly string[];
   t: number;
@@ -50,6 +52,7 @@ export interface UrlState {
 export const URL_DEFAULTS: UrlState = {
   ed: '19c',
   mode: 'build',
+  intro: false,
   panel: 'dgmgrl',
   sel: [],
   t: 0,
@@ -96,6 +99,15 @@ export const URL_FIELDS: readonly UrlField[] = [
     k: 'mode', what: 'Build / Break / Configure / Learn',
     parse: (raw, out) => { if ((MODES as readonly string[]).includes(raw)) out.mode = raw as Mode; },
     write: (s) => (s.mode === URL_DEFAULTS.mode ? null : s.mode),
+  },
+  {
+    /* A page rather than a mode: the workbench is still behind it, with the
+       mode buttons live in the header, so this is a key of its own instead of
+       a fifth value of `mode`. `1` and nothing else -- an address that means
+       "show the Introduction" has exactly one spelling. */
+    k: 'intro', what: 'the Introduction page',
+    parse: (raw, out) => { if (raw === '1') out.intro = true; },
+    write: (s) => (s.intro ? '1' : null),
   },
   {
     k: 'panel', what: 'the Configure tab',
@@ -213,6 +225,7 @@ export function currentUrlState(): UrlState {
   return {
     ed: edition.value,
     mode: mode.value,
+    intro: introPage.value,
     panel: panelTab.value,
     sel: selection.value,
     /* The playhead is deliberately absent while it is moving: one drag would
@@ -228,6 +241,7 @@ export function currentUrlState(): UrlState {
 export function applyUrlState(s: UrlState): void {
   edition.value = s.ed;
   mode.value = s.mode;
+  introPage.value = s.intro;
   panelTab.value = s.panel;
   selection.value = [...s.sel];
   tNow.value = s.t;

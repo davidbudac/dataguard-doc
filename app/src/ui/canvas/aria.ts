@@ -15,6 +15,7 @@ import type { AnyState, Member, RedoGraph, Snapshot, TopologyDoc } from '@/engin
 import { isFarSync, linkRttMs } from '@/engine';
 import type { NodeBox } from './layout';
 import { roleWord } from './layout';
+import { siteIsDown } from './routing';
 
 export interface AriaRow {
   site: string;
@@ -281,4 +282,43 @@ export function cardLabel(
   const st = frame ? frame.members[m.id] : undefined;
   const kind = isFarSync(m) ? 'Far sync instance' : roleWord(m);
   return `${kind} ${m.name} on host ${host} in ${site}${rac}. ${feed}${st ? ` It is ${stateWords(st)}.` : ''}`;
+}
+
+/**
+ * The label a data centre's rectangle carries.
+ *
+ * A site rect became a control in the same pass that gave the drawing its
+ * action bar, and a control with no name is a control a screen reader reads as
+ * "button". What it says is what the drawing shows about it: the name, what is
+ * standing in it, and -- only when a frame says so -- that it is gone. The
+ * count is of members and observers rather than of hosts, because those are
+ * the things drawn inside the rectangle.
+ */
+export function siteLabel(
+  doc: TopologyDoc, site: { id: string; name: string }, frame?: Snapshot | null,
+): string {
+  const hosts = new Set(
+    doc.hosts.filter((h) => (h.site as string) === site.id).map((h) => h.id as string),
+  );
+  const members = doc.members.filter(
+    (m) => m.instances.some((i) => hosts.has(i.host as string)),
+  ).length;
+  const observers = doc.observers.filter((o) => hosts.has(o.host as string)).length;
+  const count = [
+    `${members} ${members === 1 ? 'member' : 'members'}`,
+    `${observers} ${observers === 1 ? 'observer' : 'observers'}`,
+  ].join(', ');
+  const down = siteIsDown(doc, site.id, frame) ? ' It is down.' : '';
+  return `Data centre ${site.name}: ${count}.${down}`;
+}
+
+/**
+ * The label a link's caption pill carries.
+ *
+ * The pill already has a `<title>` -- the sentence the router composed for the
+ * tooltip -- and this is that sentence and not a second one: two descriptions
+ * of one line is exactly the drift the action tables are shaped to prevent.
+ */
+export function linkLabel(_doc: TopologyDoc, link: { title: string }): string {
+  return link.title;
 }

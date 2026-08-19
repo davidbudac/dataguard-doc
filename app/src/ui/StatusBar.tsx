@@ -134,10 +134,17 @@ export function StatusBar({ hostRef }: StatusBarProps) {
   const showing = preset !== null && !edited;
   return (
     <div class="statusbar app-status" ref={hostRef}>
-      <label class="mono" for="preset-picker">Preset</label>
+      {/* The word "Preset" is gone from the bar: the picker's first option
+          names what is on screen ("1+1+1 with observer", "Current
+          configuration (edited)"), the control's own title says what it is,
+          and a label that repeats the control beside it is one more word in a
+          bar the reader reads sideways. The name stays in the accessibility
+          tree, where the control genuinely needs one. */}
+      <label class="sr" for="preset-picker">Preset</label>
       <select
         id="preset-picker"
         class="btn"
+        title="Load one of the eleven configurations this page ships with"
         /* The preset's own option while the document still is that preset;
            the first option, which then says so, once it is not. */
         value={showing ? (preset as Preset).id : ''}

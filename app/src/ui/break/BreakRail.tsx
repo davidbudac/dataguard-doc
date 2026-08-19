@@ -15,11 +15,20 @@
  * Anything hand-injected from the canvas sits in the list above, where its
  * time can be moved and it can be taken out again.
  *
- * Each scenario is one row: the button, and its description on one line,
- * clipped. The full sentence is in the DOM either way -- it is the row's
- * `title`, it unclips while anything in the row has focus, one toggle at the
- * group head opens all six, and print opens them too. Nothing here is hidden
- * by CSS with no way back.
+ * The **empty state stays** whatever the `Hints` switch says -- a panel with
+ * nothing in it has to say something true (ui.md SS8) -- and so does every
+ * refusal. What rides with the switch is the prose that explains: the note
+ * under the event list, and the one-line rule over the scenarios. The six
+ * scenario descriptions keep their own mechanism ("Show descriptions"); they
+ * are not gated twice.
+ *
+ * The scenarios are a shelf: six names in two columns, and nothing else. The
+ * descriptions are behind the group head's own `Show descriptions` toggle --
+ * six clipped one-line captions under six buttons were twelve rows of text
+ * for a shelf a reader takes one thing off (ui.md SS3f). What is folded is
+ * genuinely absent rather than clipped by CSS, the sentence is the button's
+ * `title` at every setting, the toggle that brings it back is the row above
+ * it, and print renders every description.
  */
 
 import { signal } from '@preact/signals';
@@ -27,6 +36,8 @@ import { events, topology } from '@/state/derived';
 import { canEdit, tNow, viewport } from '@/state/view';
 import { IssuePanel } from '../IssuePanel';
 import { Action, Group, Note } from '../inspector/controls';
+import { hintsShown, HintsToggle } from '../hints';
+import { printing } from '../print';
 import { WHY } from '../inspector/why';
 import {
   applyTemplate, clearEvents, describeEvent, removeEventAt, setEventTime, templates,
@@ -42,14 +53,21 @@ export function BreakRail() {
   const editable = canEdit(viewport.value);
   const at = Math.round(tNow.value * 10) / 10;
   const open = scenarioNotesOpen.value;
+  /* On paper there is no toggle to press, exactly as every `Fold` opens. */
+  const shown = open || printing.value;
 
   return (
     <div class="insp">
       <Group
         title={list.length === 0 ? 'Events' : `Events (${list.length})`}
-        action={list.length === 0
-          ? undefined
-          : <Action label="Clear" onClick={() => clearEvents()} />}
+        action={(
+          <>
+            <HintsToggle />
+            {list.length === 0
+              ? null
+              : <Action label="Clear" onClick={() => clearEvents()} />}
+          </>
+        )}
       >
         {list.length === 0 ? (
           <div class="empty">
@@ -114,20 +132,27 @@ export function BreakRail() {
           </button>
         )}
       >
-        <p class="caption tmpl-lede">
-          Each one replaces whatever is injected now — the observer stays wherever its
-          card sits.
-        </p>
+        {/* The rule the six buttons obey, which is explanation and not state:
+            it rides with the `Hints` switch like every other sentence of prose
+            on a rail. Replacing the list is undoable, and the button that does
+            it names itself. */}
+        {hintsShown() ? (
+          <p class="caption tmpl-lede">
+            Each one replaces whatever is injected now — the observer stays wherever its
+            card sits.
+          </p>
+        ) : null}
 
-        <div class={open ? 'tmpls is-open' : 'tmpls'}>
+        <div class={shown ? 'tmpls is-open' : 'tmpls'}>
           {templates(doc, 0).map((t) => (
             <div class="tmpl" key={t.id}>
               <Action
                 label={t.label}
+                title={t.caption}
                 enabled={editable ? t.enabled : { state: 'off', why: WHY.readOnlyHere }}
                 onClick={() => applyTemplate(t)}
               />
-              <p class="tmpl-cap" title={t.caption}>{t.caption}</p>
+              {shown ? <p class="tmpl-cap" title={t.caption}>{t.caption}</p> : null}
             </div>
           ))}
         </div>

@@ -32,6 +32,89 @@
   font-family: var(--sans);
 }
 
+/* A zoomed drawing is bigger than its room on purpose, so the cap that keeps
+   it inside that room comes off -- and **the wrap becomes the scroll port**,
+   rather than the stage. That is what keeps the strips above the drawing where
+   the reader left them: they are the wrap's siblings in the stage's flow, so a
+   drawing scrolled two screens to the right does not take the zoom control
+   with it. (`position: sticky` cannot do this job: a sticky box may not leave
+   its containing block, and the flex container's content box is only the
+   stage's *client* width.)
+
+   Anchored top left rather than centred: a drawing that re-centres itself as
+   it grows moves out from under the reader's cursor. The `flex` override is
+   against shell.css's `.app-stage>.tp-wrap>.topo-svg`, which lets the drawing
+   shrink to the stage's height -- exactly what a zoom must not do; the wrap
+   itself keeps that rule's `flex: 1 1 0`, so it stays inside the stage and
+   scrolls internally instead of pushing the stage taller.
+
+   At 1:1 none of this applies and the drawing is centred in its room as it
+   always was. */
+.tp-wrap.is-zoomed {
+  justify-content: flex-start;
+  align-items: flex-start;
+  overflow: auto;
+}
+/* Specific enough to beat shell.css's `.app-stage>.tp-wrap{min-height:200px}`,
+   which is a floor for a drawing that is scaled to fit and a *push* for one
+   that scrolls: with a tall strip above it the floor made the wrap 13 px
+   taller than the room left, and the stage grew a scrollbar of its own -- the
+   one thing the wrap owning the scroll is here to prevent. */
+.app-stage > .tp-wrap.is-zoomed { min-height: 0; }
+.tp-wrap.is-zoomed .topo-svg { max-width: none; max-height: none; margin: 0; }
+.app-stage > .tp-wrap.is-zoomed > .topo-svg { flex: 0 0 auto; }
+/* The ground between the cards is draggable only when there is somewhere to
+   drag it to. The cards, links and data centres keep their own `pointer`. */
+.tp-wrap.is-pannable .topo-svg { cursor: grab; }
+.topo-svg.is-pan, .topo-svg.is-pan * { cursor: grabbing; }
+
+/* ---- the strips above the stage ---- */
+/* One row along the top of the stage, holding Build's additions and the zoom
+   ladder. In the stage's own flow rather than floating over it, for the reason
+   `.cv-add` gives below: the strips have no fixed height, so no constant of
+   clearance handed to the drawing would be right in every state. */
+.cv-tools {
+  align-self: flex-end;
+  flex: 0 0 auto;
+  /* No stickiness needed, and that is the point of the wrap owning the scroll:
+     the strips are the wrap's siblings, so they hold their place in the
+     stage's flow however far the drawing inside it has been panned. */
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: flex-end;
+  gap: 8px;
+  margin: 12px 16px 0;
+  max-width: 100%;
+}
+.cv-tools .cv-add { margin: 0; align-self: flex-start; }
+
+/* The zoom ladder: the same raised surface as `.cv-add`, narrower, with the
+   rung it is on printed beside the buttons in mono so the digits do not shift
+   the strip as they change. */
+.cv-zoom {
+  flex: 0 0 auto;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 6px 8px;
+  background: var(--sf);
+  border: 1px solid var(--ln);
+  border-radius: 3px;
+  box-shadow: var(--sh);
+}
+.cv-zoom-pct {
+  align-self: center;
+  min-width: 4.5ch;
+  padding: 0 2px;
+  text-align: right;
+  color: var(--ik2);
+  font-family: var(--mono);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
 /* ---- the add toolbar above the stage ---- */
 /* Build's additions, at the top right of the stage. It is drawn before the
    drawing, so the tab order reaches the additions before the cards.
@@ -51,18 +134,22 @@
   display: flex;
   flex-wrap: wrap;
   justify-content: flex-end;
-  gap: 6px;
-  max-width: min(440px, 70%);
-  padding: 5px 6px;
+  gap: 8px;
+  max-width: min(480px, 74%);
+  padding: 6px 8px;
   /* Raised, so it is made of the raised surface: --sf with --ln2 and --sh is
      how every other shadowed thing here is built (.tl-tip, .sheet). --sf2 is
      the sunken token, and a sunken fill under a drop shadow is a hole that
      claims to be a panel. */
   background: var(--sf);
-  border: 1px solid var(--ln2);
+  border: 1px solid var(--ln);
   border-radius: 3px;
   box-shadow: var(--sh);
 }
+/* The strip over the drawing is the one place buttons stay compact: it is
+   chrome over the workbench, not a rail (ui.md SS3f, "canvas airy, rails
+   dense" cuts both ways). */
+.cv-add .btn, .cv-zoom .btn { padding: 5px 10px; }
 /* A refusal is a sentence: it stacks under its button instead of stretching
    the strip along the top of the drawing. */
 .cv-add .ctl-off { flex-direction: column; align-items: flex-start; gap: 4px; }
@@ -149,6 +236,16 @@
   fill: none; stroke: var(--rd); stroke-width: 1; stroke-dasharray: 3 3;
 }
 .topo-svg .tp-site.is-sel { stroke: var(--fc); stroke-width: 1.5; }
+.topo-svg .tp-site.is-hov { stroke: var(--ik3); }
+/* A data centre is a control, so it says so under the cursor and shows where
+   the focus is. The ring is a stroke change rather than an `outline`: an
+   outline on an SVG child is not painted by every engine, and a focus ring
+   that renders in one browser is not a focus ring. */
+.topo-svg .tp-sitewrap.is-live { cursor: pointer; }
+.topo-svg .tp-sitewrap:focus { outline: none; }
+.topo-svg .tp-sitewrap:focus-visible .tp-site {
+  stroke: var(--fc); stroke-width: 1.5; stroke-dasharray: none;
+}
 .topo-svg .hatch-bg { fill: var(--rdf); }
 .topo-svg .hatch-ln { stroke: var(--rd); stroke-width: 2; opacity: .5; }
 
@@ -177,12 +274,74 @@
 .topo-svg .tp-pill.is-x { fill: var(--rdf); stroke: var(--rd); }
 .topo-svg .tp-pill.is-inactive { fill: var(--sf2); stroke: var(--ln); }
 .topo-svg .tp-linkwrap.is-live { cursor: pointer; }
+/* The caption is the half of a link that takes focus, so the ring goes round
+   the pill: a ring round a 600 px diagonal is a ring round the drawing. */
+.topo-svg .tp-linkwrap:focus { outline: none; }
+.topo-svg .tp-linkwrap:focus-visible .tp-pill { stroke: var(--fc); stroke-width: 1.5; }
 
 /* Undocumented is labelled where it is asserted, never in a footnote only. */
 .topo-svg .tp-model-bg { fill: var(--sf3); stroke: var(--ln2); stroke-width: 1; }
 .topo-svg .tp-model-tx {
   font-family: var(--mono); font-size: 8.5px; letter-spacing: .1em;
   text-transform: uppercase; fill: var(--ik3);
+}
+
+/* ---- the action bar on the drawing ---- */
+/* HTML inside the SVG (a `<foreignObject>` drawn last, so it paints over
+   everything) and made of the same raised surface as `.cv-add` and `.sheet`:
+   --sf with --ln2 and --sh. It undoes the drawing's scale in a transform, so
+   every length here is a CSS pixel at any stage width -- `ActionBar.tsx`
+   estimates the box from these numbers, and Firefox clips a foreignObject to
+   its declared box whatever `overflow` says, so the two have to agree. */
+.cv-bar {
+  background: var(--sf);
+  border: 1px solid var(--ln2);
+  border-radius: 3px;
+  box-shadow: var(--sh);
+  padding: 6px;
+  font-size: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: max-content;
+  max-width: 240px;
+}
+/* Denser than the rail's buttons: the bar sits over the drawing, and every
+   row of height it takes is a row the placement has to find room for inside
+   a view that, in Break, is already short. `ActionBar.ROW` is this height. */
+.cv-bar .btn { padding: 3px 9px; }
+.cv-bar-hd {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding-bottom: 2px;
+  font-size: 11px;
+  color: var(--ik3);
+}
+.cv-bar-x {
+  flex: 0 0 auto;
+  background: none;
+  border: 0;
+  padding: 0 2px;
+  cursor: pointer;
+  color: var(--ik3);
+  font-size: 13px;
+  line-height: 1;
+}
+.cv-bar-x:hover { color: var(--ik); }
+/* A refusal is a sentence: it stacks under its button rather than pushing the
+   bar out to the width of the reason. */
+.cv-bar .ctl-off { flex-direction: column; align-items: flex-start; gap: 4px; }
+.cv-bar .why { max-width: 100%; }
+/* The event menu's own quiet line, to the pixel: it stands in for the same
+   dropped restores and may not read as a different kind of remark. */
+.cv-bar-quiet {
+  margin: 0;
+  padding: 3px 2px 0;
+  font-size: 11.5px;
+  line-height: 1.4;
+  color: var(--ik3);
 }
 
 /* ---- legend ---- */
@@ -207,6 +366,8 @@
 @media print {
   .topo-svg { max-width: 100%; }
   .tp-legend { color: var(--ik2); }
-  /* There is nothing to press on a printout. */
-  .cv-add { display: none; }
+  /* There is nothing to press on a printout, and nothing to scroll: a zoomed
+     drawing prints at the size the paper gives it. */
+  .cv-tools, .cv-add, .cv-zoom, .tp-actions { display: none; }
+  .tp-wrap.is-zoomed .topo-svg { max-width: 100%; max-height: none; }
 }

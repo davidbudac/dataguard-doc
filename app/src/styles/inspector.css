@@ -7,42 +7,77 @@
 
 .insp{display:flex;flex-direction:column;min-width:0}
 
-.insp-hd{display:flex;align-items:center;gap:10px;padding:10px 16px;
+.insp-hd{display:flex;align-items:center;gap:10px;padding:12px var(--gut);
   border-bottom:1px solid var(--ln);background:var(--sf2);position:sticky;top:0;z-index:2}
-.insp-hd .title{min-width:0;overflow-wrap:anywhere}
+/* The subject's name, on one line. `overflow-wrap: anywhere` broke `prm01`
+   across two rows once the header carried three buttons -- a name split
+   mid-word is a name the reader has to reassemble. It shrinks and ellipses
+   instead, and the whole name is the header's `title`. */
+.insp-hd{flex-wrap:wrap;row-gap:8px}
+.insp-subj{display:flex;align-items:center;gap:10px;flex:1 1 auto;min-width:0}
+.insp-acts{display:flex;align-items:center;gap:8px;flex:0 0 auto;margin-left:auto}
+.insp-hd .title{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* The rail header is the one row where the shell's button padding does not
+   fit: `Hints`, `Add` and `Clear` beside a name inside 360 px. */
+.insp-hd .btn{padding:5px 10px;font-size:11px}
+
+/* The `Hints` switch: the quietest control in the header until it is on, when
+   it takes the accent it is turning on elsewhere. It is a toggle, not a
+   disclosure, so it carries `aria-pressed` -- and it is the one thing on the
+   rail that says the explanations still exist while they are not rendered. */
+.hint-tog[aria-pressed="true"]{color:var(--ik);border-color:var(--ik3);background:var(--sf)}
 
 /* ---------------- groups ---------------- */
 
-.grp{display:flex;flex-direction:column;min-width:0;border-bottom:1px solid var(--ln)}
+/* A group of the rail. 20 px of gutter, and 28 px of air between one group
+   and the next (ui.md SS3f): the rail is dense on purpose, but at 10 px of
+   head padding the label of the next group sat closer to the last row of the
+   previous one than to its own first row. */
+.grp{display:flex;flex-direction:column;min-width:0;padding-bottom:10px;
+  border-bottom:1px solid var(--ln)}
 .grp:last-child{border-bottom:0}
-.grp-hd{display:flex;align-items:center;gap:10px;padding:10px 16px 6px;background:var(--sf)}
-.grp-act{margin-left:auto;display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+.grp-hd{display:flex;align-items:center;gap:10px;padding:18px var(--gut) 10px;
+  background:var(--sf)}
+.grp-act{margin-left:auto;display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+/* A group whose first child draws its own top hairline (a field, a fold)
+   needs no padding of its own under the label. */
+.grp>.field:first-of-type{padding-top:2px}
 
 /* A group that folds. The eyebrow keeps its look and becomes the label of a
    real button that fills the header row, so the whole row is the hit target;
    the padding moves off the header and onto the button for exactly that
    reason. A closed section renders no children at all -- there is no rule
    here that hides one. */
+.grp-fold{padding-bottom:0}
+.grp-fold.is-open{padding-bottom:10px}
 .grp-fold>.grp-hd{padding:0}
-.grp-tog{display:flex;align-items:center;gap:8px;width:100%;text-align:left;
-  padding:10px 16px 8px;background:transparent;border:0;cursor:pointer}
+.grp-tog{display:flex;align-items:center;gap:10px;width:100%;text-align:left;
+  padding:16px var(--gut) 14px;background:transparent;border:0;cursor:pointer}
 .grp-tog:hover{background:var(--sf2)}
 .grp-tog:hover .eyebrow{color:var(--ik2)}
 .grp-caret{font-family:var(--mono);font-size:10px;color:var(--ik3);width:9px;flex:0 0 auto}
-.grp-sum{margin-left:auto;font-size:11px;color:var(--ik3);min-width:0;text-align:right;
+.grp-sum{margin-left:auto;font-size:11.5px;color:var(--ik3);min-width:0;text-align:right;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 @media (prefers-reduced-motion:no-preference){
   .grp-tog{transition:background-color .16s ease}}
-.grp-note{padding:9px 16px 12px;font-size:11.5px;line-height:1.45;color:var(--ik3);
+.grp-note{padding:11px var(--gut) 13px;font-size:12px;line-height:1.5;color:var(--ik3);
   border-top:1px solid var(--ln);max-width:80ch}
 .grp-note.is-warn{color:var(--am)}
 .grp-note .mono{font-size:11px;color:var(--ik2)}
-.grp .empty{padding:6px 16px 14px}
+.grp .empty{padding:4px var(--gut) 12px}
 
 /* ---------------- controls ---------------- */
 
-.opt{display:inline-flex;align-items:center;gap:7px;font-size:12.5px;color:var(--ik2);
-  padding:2px 0;cursor:pointer}
+/* A segmented control inside a 360 px rail is the one place the shell's
+   button rhythm has to give: MAXPROTECTION | MAXAVAILABILITY | MAXPERFORMANCE
+   is 40 characters of mono, and the control clips its own corners, so a
+   segment past the edge is a segment nobody can read or press. It goes a size
+   down here, and it wraps rather than clipping when even that will not do. */
+.field .seg{flex-wrap:wrap;max-width:100%}
+.field .seg button{padding:6px 9px;font-size:11px;letter-spacing:.06em}
+
+.opt{display:inline-flex;align-items:center;gap:8px;font-size:13px;color:var(--ik2);
+  padding:3px 0;cursor:pointer}
 .opt input{accent-color:var(--vi);margin:0}
 .opt .mono{font-size:12px;color:var(--ik)}
 .field select.field-in,.rr-dest select.field-in,.rr-row select.field-in{cursor:pointer}
@@ -52,11 +87,11 @@ input[type="range"].field-in:focus-visible{outline:2px solid var(--fc);outline-o
 
 /* ---------------- RedoRoutes ---------------- */
 
-.rr-rule{display:flex;flex-direction:column;gap:6px;padding:10px 16px;
+.rr-rule{display:flex;flex-direction:column;gap:8px;padding:12px var(--gut);
   border-top:1px solid var(--ln)}
 .rr-line{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:2px 0}
 .rr-spacer{flex:1 1 auto;min-width:0}
-.rr-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.rr-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;row-gap:10px}
 .rr-row .field-in{width:auto;min-width:96px;flex:0 1 auto}
 .rr-k{font-family:var(--mono);font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;
   color:var(--ik3);flex:0 0 auto}
@@ -70,15 +105,15 @@ input[type="range"].field-in:focus-visible{outline:2px solid var(--fc);outline-o
 /* ---------------- destinations ---------------- */
 
 .dest{border-top:1px solid var(--ln)}
-.dest .rr-line{padding:9px 16px 0}
-.dest .field{border-bottom:0;padding-bottom:6px}
-.dest .field:last-child{padding-bottom:12px}
+.dest .rr-line{padding:12px var(--gut) 0}
+.dest .field{border-bottom:0;padding-bottom:8px}
+.dest .field:last-child{padding-bottom:14px}
 
 /* ---------------- the summary ---------------- */
 
-.sum{display:flex;flex-direction:column;margin:0;padding:0 16px 10px}
-.sum-row{display:grid;grid-template-columns:minmax(0,11ch) minmax(0,1fr);gap:10px;
-  padding:4px 0;border-bottom:1px solid var(--ln);align-items:baseline}
+.sum{display:flex;flex-direction:column;margin:0;padding:0 var(--gut) 12px}
+.sum-row{display:grid;grid-template-columns:minmax(0,11ch) minmax(0,1fr);gap:12px;
+  padding:6px 0;border-bottom:1px solid var(--ln);align-items:baseline}
 .sum-row:last-child{border-bottom:0}
 .sum dt{font-size:11px;font-family:var(--mono);letter-spacing:.1em;text-transform:uppercase;
   color:var(--ik3)}
@@ -86,26 +121,47 @@ input[type="range"].field-in:focus-visible{outline:2px solid var(--fc);outline-o
 
 /* ---------------- the palette ---------------- */
 
-.pal{display:flex;align-items:flex-end;gap:8px;flex-wrap:wrap;padding:4px 16px 8px}
+.pal{display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap;
+  padding:2px var(--gut) 10px}
 .pal .field{padding:0;border-bottom:0;flex:0 1 auto;min-width:120px}
 .pal .field-in{width:auto;min-width:110px}
 /* A refusal is a sentence, so a palette button that is off stacks its pill
    under itself rather than pushing the row sideways. */
-.pal .ctl-off{flex-direction:column;align-items:flex-start;gap:4px}
+.pal .ctl-off{flex-direction:column;align-items:flex-start;gap:6px}
+
+/* The four additions, 2x2 (ui.md SS3f). They are what a reader arrives to do,
+   so they are the first thing on the empty rail and they are targets rather
+   than links in a row: a 360 px rail fits two 160 px buttons a side, which is
+   also what stops "+ Far sync instance" from wrapping mid-noun. */
+.pal-adds{display:grid;grid-template-columns:1fr 1fr;gap:10px;align-items:stretch}
+.pal-adds .ctl-off{flex-direction:column;align-items:stretch;gap:6px;min-width:0}
+.pal-adds .btn{width:100%;justify-content:flex-start;padding:10px 12px;
+  white-space:normal;text-align:left}
+/* The second rank: a host and a link both need a data centre named first, so
+   they are pickers with a button beside them rather than one press. Quieter,
+   under a hairline, because they are the additions a reader reaches for
+   second. */
+.pal-more{padding-top:12px;border-top:1px solid var(--ln)}
+.pal-more+.pal{padding-top:2px}
+.pal-more .btn,.pal-more+.pal .btn{color:var(--ik3)}
+.pal-more .field-name.is-prose,.pal-more+.pal .field-name.is-prose{font-size:11.5px;
+  color:var(--ik3)}
+.pal-more .field-in,.pal-more+.pal .field-in{padding:5px 8px;font-size:12px}
+.pal-more .btn:hover:not(:disabled),.pal-more+.pal .btn:hover:not(:disabled){color:var(--ik)}
 
 /* ---------------- Break rail ---------------- */
 
-.tmpl{display:flex;flex-direction:column;gap:4px;padding:8px 16px;
+.tmpl{display:flex;flex-direction:column;gap:6px;padding:10px var(--gut);
   border-top:1px solid var(--ln)}
 .tmpl .caption{max-width:44ch}
-.evt{display:grid;grid-template-columns:auto minmax(0,1fr) auto auto;gap:8px;
-  align-items:center;padding:7px 16px;border-top:1px solid var(--ln)}
+.evt{display:grid;grid-template-columns:auto minmax(0,1fr) auto auto;gap:10px;
+  align-items:center;padding:11px var(--gut);border-top:1px solid var(--ln)}
 .evt-n{font-family:var(--mono);font-size:10.5px;color:var(--ik3);
   border:1px solid var(--ln2);border-radius:999px;width:20px;height:20px;
   display:inline-flex;align-items:center;justify-content:center}
 .evt-b{font-family:var(--mono);font-size:12px;color:var(--ik);overflow-wrap:anywhere}
 .evt-at{display:inline-flex;align-items:center;gap:5px}
-.evt-at .field-in{width:70px;font-size:12px;padding:3px 6px}
+.evt-at .field-in{width:72px;font-size:12px;padding:5px 7px}
 .evt-u{font-family:var(--mono);font-size:11px;color:var(--ik3)}
 
 /* ---------------- the event menu over the canvas ---------------- */
@@ -123,7 +179,7 @@ input[type="range"].field-in:focus-visible{outline:2px solid var(--fc);outline-o
   border-bottom:1px solid var(--ln);background:var(--sf2);position:sticky;top:0}
 .evmenu-title{font-size:11.5px;letter-spacing:.02em;color:var(--ik2);min-width:0;
   overflow-wrap:anywhere}
-.evmenu-row{padding:3px 10px}
+.evmenu-row{padding:4px 10px}
 .evmenu-row .btn{width:100%;justify-content:flex-start;text-align:left}
 .evmenu-row .ctl-off{display:flex;flex-direction:column;align-items:stretch;gap:4px}
 .evmenu-empty{padding:10px;font-size:12px;line-height:1.45;color:var(--ik3)}
@@ -132,7 +188,7 @@ input[type="range"].field-in:focus-visible{outline:2px solid var(--fc);outline-o
 /* At the head of the Break rail it is a rail group, not a floating card. */
 .app-rail .evmenu{align-self:stretch;margin:0;width:auto;max-height:none;overflow:visible;
   border:0;border-bottom:1px solid var(--ln);border-radius:0;box-shadow:none}
-.app-rail .evmenu.is-shut{padding:8px 16px}
+.app-rail .evmenu.is-shut{padding:10px var(--gut)}
 @media (max-width:767px){
   .evmenu{width:auto;max-height:none;margin:12px}
 }
@@ -165,15 +221,23 @@ button.issue.sv-info{border-left:3px solid var(--ln2)}
 /* One quiet line under the eyebrow, not a paragraph at the foot of the group. */
 .tmpl-lede{padding:2px 16px 8px;max-width:80ch}
 
-/* One row per scenario: the button, and one clipped line under it. The line
-   is under the button rather than beside it because beside it, in a 360 px
-   rail behind a 200 px button, a description got about twenty characters --
-   an ellipsis where a sentence was, which is worse than nothing. Full width
-   it carries a readable clause, and the rest is one keystroke away. */
-.tmpl{gap:3px;padding:7px 16px}
-.tmpl-cap{min-width:0;max-width:80ch;font-size:11.5px;line-height:1.45;color:var(--ik3);
-  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.tmpl:focus-within .tmpl-cap,.tmpls.is-open .tmpl-cap{overflow:visible;white-space:normal}
+/* The six scenarios as a shelf, not as six paragraphs (ui.md SS3f).
+   Closed, the group is a two-column grid of the six names and nothing else:
+   six clipped one-line descriptions under six buttons were 12 rows of text
+   for a shelf the reader takes one thing off. `Show descriptions` opens the
+   sentences -- and then the grid becomes one column, because a sentence in a
+   170 px cell is not a sentence. The description is never painted out of
+   view: with the group closed it is not rendered, and the button that would
+   render it is the group's own toggle, right above. */
+.tmpls{display:grid;grid-template-columns:1fr 1fr;gap:8px;
+  padding:2px var(--gut) 12px}
+.tmpls.is-open{grid-template-columns:1fr;gap:14px}
+.tmpl{gap:5px;padding:0;border-top:0;min-width:0}
+.tmpl .ctl-off{flex-direction:column;align-items:stretch;gap:6px;min-width:0}
+.tmpl .btn{width:100%;justify-content:flex-start;padding:9px 12px;
+  white-space:normal;text-align:left}
+.tmpl-cap{min-width:0;max-width:80ch;font-size:12px;line-height:1.5;color:var(--ik3);
+  margin:0}
 
 /* The toggle is a real button in the group head, quiet enough not to compete
    with the six rows it opens. */
@@ -181,5 +245,7 @@ button.issue.sv-info{border-left:3px solid var(--ln2)}
 .tmpl-car{color:var(--ik3);width:9px}
 
 @media print{
-  .tmpl-cap{overflow:visible;white-space:normal}
+  /* On paper every scenario carries its sentence: there is no toggle to press
+     on a printout (the rail renders them all while `printing` is on). */
+  .tmpls{grid-template-columns:1fr;gap:14px}
 }

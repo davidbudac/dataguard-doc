@@ -17,15 +17,17 @@ import { signal } from '@preact/signals';
 import { useLayoutEffect } from 'preact/hooks';
 import type { Link, Member, Observer, Site, TopologyDoc } from '@/engine';
 import { errors, issues, redoGraph, topology, warnings } from '@/state/derived';
-import { canEdit, clearSelection, mode, selection, viewport } from '@/state/view';
-import { Action, Group, Note, Text } from './controls';
+import { canEdit, clearSelection, hintsOn, mode, selection, viewport } from '@/state/view';
+import { Fold, Group, Note } from './controls';
 import { AddPalette } from './adds';
+import { hintsShown, HintsToggle } from '../hints';
+import { revealSections, SUMMARY_ID } from './sections';
 import { ConfigForm } from './ConfigForm';
 import { LinkForm } from './LinkForm';
 import { MemberForm } from './MemberForm';
 import { ObserverForm } from './ObserverForm';
-import { addHost, mutate, removeHost, removeSite } from './edits';
-import { off, ON, WHY } from './why';
+import { SiteForm } from './SiteForm';
+import { WHY } from './why';
 import '@/styles/inspector.css';
 
 /**
@@ -94,8 +96,13 @@ function Summary({ doc }: { doc: TopologyDoc }) {
         : `${errors.value.length} error${errors.value.length === 1 ? '' : 's'}, ${warnings.value.length} warning${warnings.value.length === 1 ? '' : 's'}, ${issues.value.length} in all`,
     ],
   ];
+  /* Folded, and named for what it is. The empty rail used to open with a
+     ten-row table of what the configuration already is -- true, and not what
+     somebody who has just arrived is looking for. The hint on the closed fold
+     carries the one row that is nowhere else on screen (the readout strip
+     already reads the protection level, the member count and the findings). */
   return (
-    <Group title="This configuration">
+    <Fold id={SUMMARY_ID} title="Configuration summary" hint={doc.config.name}>
       <dl class="sum">
         {rows.map(([k, v]) => (
           <div class="sum-row" key={k}>
@@ -108,77 +115,14 @@ function Summary({ doc }: { doc: TopologyDoc }) {
         Select a card, a site or a line on the drawing to edit it. Nothing here is hidden:
         what a control cannot do, it says.
       </Note>
-    </Group>
+    </Fold>
   );
 }
 
-/**
- * What to do first, in the one place a reader looks when nothing is selected.
- *
- * The empty rail used to open with a table of what the configuration already
- * is -- true, and no help at all to somebody who has just arrived and wants to
- * know where to click. Three numbered steps go above it; the summary keeps its
- * place underneath.
- */
-function StartHere() {
-  return (
-    <Group title="Start here">
-      <ol class="steps">
-        <li>Click a card, a data centre or a line on the drawing to edit it.</li>
-        <li>Add a standby, a far sync or an observer with the buttons below.</li>
-        <li>Switch to Break to fail something and watch the clocks.</li>
-      </ol>
-    </Group>
-  );
-}
-
-function SiteForm({ site, doc }: { site: Site; doc: TopologyDoc }) {
-  const hosts = doc.hosts.filter((h) => h.site === site.id);
-  const used = new Set<string>();
-  for (const m of doc.members) for (const i of m.instances) used.add(i.host as string);
-  for (const o of doc.observers) used.add(o.host as string);
-  return (
-    <>
-      <Group title="Data centre">
-        <Text
-          name="Name"
-          value={site.name}
-          onCommit={(v) => mutate(`Rename ${site.id as string}`, (t) => ({
-            ...t,
-            sites: t.sites.map((s) => (s.id === site.id ? { ...s, name: v.trim() || s.name } : s)),
-          }))}
-          note="The label under the site rectangle. The site's identity does not change with it."
-        />
-      </Group>
-      <Group
-        title={`Hosts (${hosts.length})`}
-        action={<Action label="+ Host" onClick={() => addHost(site.id)} />}
-      >
-        {hosts.length === 0 ? <Note>No hosts in this data centre yet.</Note> : null}
-        {hosts.map((h) => (
-          <div class="rr-dest" key={h.id as string}>
-            <span class="mono">{h.name}</span>
-            <span class="tag t-sl">{used.has(h.id as string) ? 'in use' : 'free'}</span>
-            <Action
-              label="Remove"
-              enabled={used.has(h.id as string) ? off(WHY.hostInUse) : ON}
-              onClick={() => removeHost(h.id)}
-            />
-          </div>
-        ))}
-      </Group>
-      <Group title="This data centre">
-        <div class="rr-line">
-          <Action
-            label={`Remove ${site.id as string}`}
-            enabled={hosts.length > 0 ? off(WHY.siteHasHosts) : ON}
-            onClick={() => removeSite(site.id)}
-          />
-        </div>
-      </Group>
-    </>
-  );
-}
+/* `Start here` used to sit above the palette: three numbered sentences saying
+   what the guidance line under the header says in one, and what the
+   Introduction page says at length. The palette itself is the answer to "where
+   do I click", so it is what the empty rail opens with now (ui.md SS3f). */
 
 /* ---------------- the rail ---------------- */
 
@@ -196,9 +140,21 @@ export function Inspector() {
      rail. Before the read-only return, because a hook is not conditional. */
   useLayoutEffect(() => { addOpen.value = false; }, [sel[0] ?? '']);
 
+  /* Asking for the explanations is asking for the page to say more about
+     itself, and the summary is the rail's own statement of what is drawn --
+     so turning `Hints` on opens it. Additive, exactly like the reveal a
+     finding does: the fold stays a real toggle the reader can shut again. */
+  useLayoutEffect(() => {
+    if (hintsShown()) revealSections([SUMMARY_ID]);
+  }, [hintsOn.value]);
+
   if (!canEdit(viewport.value)) {
     return (
       <div class="insp">
+        <header class="insp-hd">
+          <span class="rr-spacer" />
+          <HintsToggle />
+        </header>
         <Summary doc={doc} />
         <Note warn>{WHY.readOnlyView}</Note>
       </div>
@@ -211,29 +167,45 @@ export function Inspector() {
 
   return (
     <div class="insp">
-      {subject === null ? null : (
-        <header class="insp-hd">
-          <span class="eyebrow">{SUBJECT_WORD[subject.kind]}</span>
-          <span class="title mono">{sel[0]}</span>
-          <span class="rr-spacer" />
-          {canAdd ? (
-            <button
-              type="button"
-              class="btn"
-              /* `aria-expanded` alone, exactly as `Fold` does it: the palette
-                 is genuinely absent while this is shut, and an `aria-controls`
-                 naming an element that is not in the document is a reference
-                 to nothing rather than a collapsed disclosure. */
-              aria-expanded={addOpen.value}
-              title="The same additions the empty rail offers, without clearing the selection first"
-              onClick={() => { addOpen.value = !addOpen.value; }}
-            >
-              {`Add ${addOpen.value ? '▾' : '▸'}`}
-            </button>
-          ) : null}
-          <button type="button" class="btn" onClick={() => clearSelection()}>Clear</button>
-        </header>
-      )}
+      {/* The header is the rail's one fixed row, so it is where the `Hints`
+          switch lives -- including on the empty rail, which is exactly where a
+          reader who wants the prose back is looking. With nothing selected it
+          carries that button and nothing else. */}
+      <header class="insp-hd">
+        {subject === null ? null : (
+          <span class="insp-subj">
+            <span class="eyebrow">{SUBJECT_WORD[subject.kind]}</span>
+            {/* Ellipsed rather than wrapped mid-word (inspector.css), so the
+                whole name rides in the tooltip -- and the buttons wrap to a
+                second row before a five-letter name has to give way. */}
+            <span class="title mono" title={sel[0]}>{sel[0]}</span>
+          </span>
+        )}
+        <span class="rr-spacer" />
+        <span class="insp-acts">
+        <HintsToggle />
+        {subject === null ? null : (
+          <>
+            {canAdd ? (
+              <button
+                type="button"
+                class="btn"
+                /* `aria-expanded` alone, exactly as `Fold` does it: the palette
+                   is genuinely absent while this is shut, and an `aria-controls`
+                   naming an element that is not in the document is a reference
+                   to nothing rather than a collapsed disclosure. */
+                aria-expanded={addOpen.value}
+                title="The same additions the empty rail offers, without clearing the selection first"
+                onClick={() => { addOpen.value = !addOpen.value; }}
+              >
+                {`Add ${addOpen.value ? '▾' : '▸'}`}
+              </button>
+            ) : null}
+            <button type="button" class="btn" onClick={() => clearSelection()}>Clear</button>
+          </>
+        )}
+        </span>
+      </header>
 
       {menuOpen ? (
         <Group id="insp-add" title="Add">
@@ -242,7 +214,10 @@ export function Inspector() {
       ) : null}
 
       {sel.length > 1 ? (
-        <Note>
+        /* A count, not an explanation: it stays whatever the Hints toggle
+           says, because nothing else on the rail says the properties below
+           belong to only one of the selected cards. */
+        <Note always>
           {sel.length} objects are selected. The properties below are the first one&rsquo;s;
           an action that applies to all of them is on the canvas menu.
         </Note>
@@ -250,9 +225,8 @@ export function Inspector() {
 
       {subject === null ? (
         <>
-          {narrowed ? null : <StartHere />}
-          {/* Adding is what a reader arrives to do, so it is above the summary
-              of what is already there rather than four screens below it. */}
+          {/* Adding is what a reader arrives to do, so it is the first thing
+              on the rail rather than four screens below a summary table. */}
           {canAdd ? (
             <Group title="Add">
               <AddPalette doc={doc} />

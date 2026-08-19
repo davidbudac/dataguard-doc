@@ -38,9 +38,9 @@ import type { JSX } from 'preact';
 import { topology } from '@/state/derived';
 import { canEdit, selection, tNow, viewport } from '@/state/view';
 import { Action } from '../inspector/controls';
+import { hintsShown } from '../hints';
 import { WHY } from '../inspector/why';
-import { actionsFor, anythingDownUnder, isRestore, runAction } from '../break/events';
-import type { EventAction } from '../break/events';
+import { actionsFor, nothingToRestore, restoreQuietLine, runAction } from '../break/events';
 import '@/styles/evmenu.css';
 
 /** Open by default; the button that closes it stays in place when it is shut. */
@@ -48,14 +48,6 @@ export const menuOpen = signal(true);
 
 /** Events land on a tenth of a second: the axis is read to that, not finer. */
 export const snapT = (t: number): number => Math.round(t * 10) / 10;
-
-/**
- * A restore that has nothing to restore. The test is the reason, not the
- * action id, so a new restore added to the table joins this group by saying
- * the same thing rather than by being listed here twice.
- */
-const nothingToRestore = (a: EventAction): boolean =>
-  a.enabled.state === 'off' && a.enabled.why === WHY.nothingDown;
 
 export function EventMenu() {
   const doc = topology.value;
@@ -77,18 +69,10 @@ export function EventMenu() {
   const events = actions.filter((a) => a.property !== true);
   const props = actions.filter((a) => a.property === true);
   const offered = events.filter((a) => !nothingToRestore(a));
-  const dropped = events.length - offered.length;
-  /* The line under the list branches on whether *any* restore survived: with
-     the host down and the site up, "nothing here is down" would be a lie. */
-  const anyRestore = events.some((a) => isRestore(a) && a.enabled.state === 'on');
-  /* Whether something is down is a fact about the subjects, not about the
-     list: `actionsFor` intersects and keeps the first *blocked* subject's
-     reason, so one cut link beside a whole one collapses the restore of both
-     to "nothing has taken it down" -- and a data centre offers only its own
-     two actions, so a crashed host inside it never reaches the list at all.
-     Read on the list, the sentence said "nothing here is down" over a drawing
-     that showed something down. */
-  const anyDown = keys.some((k) => anythingDownUnder(doc, k, at));
+  /* The four readings of the line that stands in for the dropped restores are
+     the table's own (`break/events`), so the bar on the canvas prints the same
+     sentence for the same selection rather than a second opinion of it. */
+  const quiet = restoreQuietLine(doc, keys, at, events);
 
   /* The injection time is the playhead: setting one sets the other, so the
      drawing under the menu always shows the moment the menu is aimed at. */
@@ -135,7 +119,11 @@ export function EventMenu() {
         </button>
       </header>
 
-      {editable ? (
+      {/* Explanation, not state: it rides with the `Hints` switch, while the
+          quiet restore line and every refusal below stay whatever that says.
+          The header's clock reading is the fact this sentence spells out, and
+          that reading is on screen either way. */}
+      {editable && hintsShown() ? (
         <p class="evmenu-hint">
           Events land at the playhead — scrub the timeline to inject later.
         </p>
@@ -161,17 +149,7 @@ export function EventMenu() {
         </div>
       ))}
 
-      {dropped === 0 ? null : (
-        <p class="evmenu-quiet">
-          {anyRestore
-            ? 'The other restores are not listed — nothing else here is down.'
-            : !anyDown
-              ? 'Nothing to restore — nothing here is down.'
-              : keys.length > 1
-                ? 'Restoring is not offered for all of these at once — only part of this selection is down. Select the one that is down.'
-                : 'This one is up — what is down sits inside it and carries its own restore. Select it on the drawing.'}
-        </p>
-      )}
+      {quiet === null ? null : <p class="evmenu-quiet">{quiet}</p>}
 
       {props.length === 0 ? null : (
         <>

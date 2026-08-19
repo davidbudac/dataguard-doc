@@ -17,14 +17,15 @@ import type { TimedEvent, TopologyDoc } from '@/engine';
 import { classicDoc, doc, withEvents } from '@/state/doc';
 import { trace } from '@/state/derived';
 import { edit, resetHistory, undo } from '@/state/history';
-import { clearSelection, mode, selection, tNow, viewport } from '@/state/view';
+import { clearSelection, hintsOn, mode, selection, tNow, viewport } from '@/state/view';
 import { BreakRail, scenarioNotesOpen } from '@/ui/break/BreakRail';
 import { EventMenu, menuOpen } from '@/ui/canvas/EventMenu';
 import {
   actionsFor, anythingDownUnder, applyTemplate, clearEvents, describeEvent, isDownAt,
-  removeEventAt, runAction, setEventTime, templates,
+  removeEventAt, restoreQuietLine, runAction, setEventTime, templates,
 } from '@/ui/break/events';
 import { WHY } from '@/ui/inspector/why';
+import { printing } from '@/ui/print';
 
 const mount = (component: () => unknown): HTMLElement => {
   const root = document.createElement('div');
@@ -59,6 +60,7 @@ beforeEach(() => {
   tNow.value = 0;
   menuOpen.value = true;
   scenarioNotesOpen.value = false;
+  hintsOn.value = false;
   clearSelection();
 });
 
@@ -210,17 +212,39 @@ describe('the order of the rail', () => {
 });
 
 describe('the scenario descriptions', () => {
-  it('gives every scenario one row, with the whole sentence on the row', async () => {
+  it('is a shelf of names, with every sentence one press away', async () => {
     const root = mount(BreakRail);
     await tick();
     const rows = [...root.querySelectorAll('.tmpl')];
     expect(rows).toHaveLength(templates(doc.value.topology, 0).length);
     for (const [i, row] of rows.entries()) {
-      const txt = row.querySelector('.tmpl-cap');
       const caption = templates(doc.value.topology, 0)[i]!.caption;
-      /* Clipped by CSS, never absent: the sentence is text and title alike. */
+      /* Closed, the description is genuinely absent rather than clipped by a
+         CSS rule -- and the sentence still rides on the button it belongs to,
+         so a reader who hovers one row does not have to open all six. */
+      expect(row.querySelector('.tmpl-cap')).toBeNull();
+      expect(row.querySelector('button')?.getAttribute('title')).toBe(caption);
+    }
+
+    root.querySelector<HTMLButtonElement>('button.tmpl-tog')!.click();
+    await tick();
+    for (const [i, row] of [...root.querySelectorAll('.tmpl')].entries()) {
+      const caption = templates(doc.value.topology, 0)[i]!.caption;
+      const txt = row.querySelector('.tmpl-cap');
       expect(txt?.textContent).toBe(caption);
       expect(txt?.getAttribute('title')).toBe(caption);
+    }
+  });
+
+  it('renders every description on paper, where there is no toggle to press', async () => {
+    printing.value = true;
+    try {
+      const root = mount(BreakRail);
+      await tick();
+      const caps = [...root.querySelectorAll('.tmpl-cap')].map((el) => el.textContent);
+      expect(caps).toEqual(templates(doc.value.topology, 0).map((t) => t.caption));
+    } finally {
+      printing.value = false;
     }
   });
 
@@ -245,7 +269,11 @@ describe('the scenario descriptions', () => {
     expect(root.querySelector('.tmpls.is-open')).toBeNull();
   });
 
-  it('says the replace rule once, quietly, under the eyebrow', async () => {
+  it('says the replace rule once, quietly, under the eyebrow -- with hints on', async () => {
+    /* Explanation, so it is not on screen by default: the reader asks for it
+       with `Hints`, and then it is exactly where it always was. */
+    expect(mount(BreakRail).querySelectorAll('.tmpl-lede')).toHaveLength(0);
+    hintsOn.value = true;
     const root = mount(BreakRail);
     await tick();
     const lede = root.querySelectorAll('.tmpl-lede');
@@ -356,8 +384,15 @@ describe('the menu says where an event will land', () => {
     const root = mount(EventMenu);
     await tick();
     const title = root.querySelector('.evmenu-title')?.textContent ?? '';
+    /* The clock reading is the fact, and it is in the header at every
+       setting; the sentence that spells it out is a hint. */
     expect(title).toContain('Inject at t =');
-    expect(root.textContent).toContain('Events land at the playhead');
+    expect(root.textContent).not.toContain('Events land at the playhead');
+
+    hintsOn.value = true;
+    const withHints = mount(EventMenu);
+    await tick();
+    expect(withHints.textContent).toContain('Events land at the playhead');
   });
 
   it('makes the clock reading the control, and moving it moves the playhead', async () => {
@@ -471,6 +506,53 @@ describe('restores nothing has taken down', () => {
     expect(start?.disabled).toBe(true);
     expect(root.textContent).toContain('dc3-obs01 is down: restore the host first.');
     expect(root.querySelectorAll('.evmenu-quiet')).toHaveLength(0);
+  });
+});
+
+/**
+ * The quiet line is the table's, not the menu's.
+ *
+ * A second surface -- the bar on the drawing -- offers the same actions and
+ * drops the same restores, and a sentence written twice is a sentence that can
+ * come to differ. `restoreQuietLine` is what the menu prints, so this asserts
+ * exactly that: for the same selection at the same moment, the string and the
+ * paragraph are the same thing.
+ */
+describe('restoreQuietLine is what the menu prints', () => {
+  const printed = async (keys: string[]): Promise<string | null> => {
+    selection.value = keys;
+    const root = mount(EventMenu);
+    await tick();
+    const q = root.querySelectorAll('.evmenu-quiet');
+    expect(q.length).toBeLessThanOrEqual(1);
+    return q[0]?.textContent ?? null;
+  };
+
+  const line = (keys: string[]): string | null => {
+    const t = doc.value.topology;
+    return restoreQuietLine(t, keys, tNow.value, actionsFor(t, keys, tNow.value));
+  };
+
+  it('agrees on every branch of the sentence', async () => {
+    /* Nothing down; one host down inside a data centre that is up; a whole
+       site down, where no restore is dropped at all; and a pair of links of
+       which only one is cut. */
+    expect(await printed(['prm01'])).toBe(line(['prm01']));
+
+    inject([{ at: 5, kind: 'host.down', host: 'dc1-prm01' }]);
+    tNow.value = 12;
+    expect(await printed(['prm01'])).toBe(line(['prm01']));
+    expect(await printed(['dc1'])).toBe(line(['dc1']));
+
+    inject([{ at: 5, kind: 'site.down', site: 'dc1' }]);
+    expect(await printed(['prm01'])).toBe(line(['prm01']));
+    /* Nothing was dropped there, so both say nothing rather than nothing much. */
+    expect(line(['prm01'])).toBeNull();
+
+    inject([{ at: 0, kind: 'link.cut', link: 'dc1-dc2' }]);
+    tNow.value = 10;
+    expect(await printed(['dc1-dc2', 'dc1-dc3'])).toBe(line(['dc1-dc2', 'dc1-dc3']));
+    expect(line(['dc1-dc2', 'dc1-dc3'])).toContain('only part of this selection is down');
   });
 });
 

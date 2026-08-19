@@ -1,0 +1,131 @@
+/* The Introduction (ui.md SS3e).
+
+   The one page here that is mostly words, so it is the one page that has to be
+   read by scanning: a 64ch column, air between the bands rather than boxes
+   around them, and a left gutter carrying the band number so the eye can find
+   its place again. Two faces, semantic colour only, no rule in this file hides
+   anything -- what is not rendered is not in the document.
+
+   No component on this page carries a style attribute either: the policy the
+   page ships with is `style-src 'self'`, and that holds for the Introduction
+   exactly as it holds for the workbench. */
+
+/* ---------------- the shell, with the page in place of the workbench ---------------- */
+
+/* One column and two rows: the header, and the Introduction under it. The
+   stage keeps its own scrolling (shell.css), so the header stays put and the
+   modes stay one click away while the page is read. */
+.app.m-intro{
+  grid-template-columns:minmax(0,1fr);
+  grid-template-rows:auto minmax(0,1fr);
+  grid-template-areas:
+    "head"
+    "stage";
+}
+/* The sunken ground the mode cards sit on: `--sf` cards on an `--sf` stage
+   would be four rectangles nobody can see. */
+.app.m-intro .app-stage{background:var(--sf2)}
+
+/* The quiet way back in, in the brand corner of the header. A real link, so it
+   survives a middle click; violet because it is this page's own voice. */
+.topbar-brand a{color:var(--vi);border-bottom-color:transparent}
+.topbar-brand a:hover,.topbar-brand a:focus-visible{color:var(--ik);
+  border-bottom-color:currentColor}
+
+/* ---------------- the page ---------------- */
+
+.ip{
+  /* Where prose is measured. Everything wider than this -- the drawing, the
+     mode cards, the two-column rows -- is a layout, not a paragraph. */
+  --ip-col:64ch;
+  display:flex;flex-direction:column;gap:44px;
+  max-width:1000px;margin-inline:auto;min-width:0;
+  padding:38px 32px 72px;
+}
+
+/* ---------------- hero ---------------- */
+
+.ip-hero{display:flex;flex-direction:column;gap:10px;max-width:var(--ip-col)}
+.ip-h1{font-size:30px;line-height:1.18;font-weight:620;letter-spacing:-.025em;color:var(--ik);
+  max-width:24ch}
+.ip-sub{font-size:16px;line-height:1.55;color:var(--ik2)}
+.ip-cta{display:flex;flex-wrap:wrap;gap:10px;margin-top:8px}
+.ip-cta .btn{font-size:11.5px;padding:8px 14px}
+.ip-hero-note{margin-top:6px}
+
+/* ---------------- a band ---------------- */
+
+.ip-band{display:flex;flex-direction:column;gap:18px;min-width:0}
+/* The number lives in a gutter beside the heading rather than on a line of its
+   own: one row of chrome for a two-character label is one row too many. */
+.ip-bandhd{display:grid;grid-template-columns:auto minmax(0,1fr);gap:6px 14px;
+  align-items:baseline;border-top:1px solid var(--ln);padding-top:14px}
+.ip-bandhd .eyebrow{grid-column:1;grid-row:1}
+.ip-h2{grid-column:2;grid-row:1;font-size:19px;font-weight:620;letter-spacing:-.015em;
+  color:var(--ik)}
+.ip-lead{grid-column:2;font-size:14.5px;line-height:1.55;color:var(--ik2);max-width:var(--ip-col)}
+
+/* ---------------- what you are looking at ---------------- */
+
+/* The drawing over its legend rather than beside it: a 1+1+1 topology is wide
+   and 200 px tall, so a column beside it is a column of air next to five short
+   rows. Full width, then the callouts in two columns under it. */
+.ip-figure{display:flex;flex-direction:column;gap:18px;min-width:0}
+.ip-drawing{min-width:0;padding:16px 14px 12px;background:var(--sf);
+  border:1px solid var(--ln);border-radius:3px}
+.ip-drawing .tp-wrap{gap:12px}
+
+.ip-callouts{list-style:none;margin:0;padding:0;
+  display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px 34px}
+.ip-callouts li{display:grid;grid-template-columns:auto minmax(0,1fr);gap:1px 10px;
+  align-items:baseline}
+.ip-callout-k{grid-column:1;grid-row:1;font-size:10.5px;letter-spacing:.12em;color:var(--ik3)}
+.ip-callout-t{grid-column:2;grid-row:1;font-size:13.5px;font-weight:620;color:var(--ik)}
+.ip-callout-d{grid-column:2;font-size:13px;line-height:1.5;color:var(--ik2)}
+
+/* ---------------- the four modes ---------------- */
+
+.ip-modes{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+.ip-mode{display:flex;flex-direction:column;align-items:flex-start;gap:7px;min-width:0;
+  padding:16px 16px 15px;background:var(--sf);border:1px solid var(--ln);border-radius:3px}
+.ip-mode-t{display:flex;align-items:center;gap:9px;font-size:15px;font-weight:620;color:var(--ik)}
+.ip-glyph{display:block;width:17px;height:17px;flex:0 0 auto;fill:none;stroke:var(--vi);
+  stroke-width:1.4;stroke-linecap:round;stroke-linejoin:round}
+.ip-mode-w{font-size:13.5px;line-height:1.5;color:var(--ik2)}
+.ip-mode-y{font-size:12.5px;line-height:1.5;color:var(--ik3)}
+.ip-mode .btn{margin-top:auto}
+
+/* ---------------- the two lists ---------------- */
+
+.ip-rows{margin:0;max-width:84ch}
+.ip-row{display:grid;grid-template-columns:minmax(140px,190px) minmax(0,1fr);gap:3px 22px;
+  padding:11px 0;border-top:1px solid var(--ln)}
+.ip-rows>.ip-row:last-child{border-bottom:1px solid var(--ln)}
+.ip-row dt{font-size:13.5px;font-weight:620;color:var(--ik)}
+.ip-row dd{margin:0;font-size:13.5px;line-height:1.55;color:var(--ik2)}
+.ip-after{margin-top:2px}
+
+/* A button worded as a link, because what it opens has no address of its own:
+   the `?` card is view state, not a page. It reads as a link so nobody hunts
+   for a control that is not there. */
+.ip-inline{font:inherit;font-size:inherit;color:var(--vi);background:transparent;border:0;
+  border-bottom:1px solid var(--ln2);padding:0;cursor:pointer}
+.ip-inline:hover{color:var(--ik);border-bottom-color:currentColor}
+
+/* ---------------- foot ---------------- */
+
+.ip-foot{display:flex;flex-direction:column;gap:6px;max-width:var(--ip-col);
+  border-top:1px solid var(--ln);padding-top:14px}
+
+/* ---------------- narrow ---------------- */
+
+/* One column under 900: the callouts go under the drawing they annotate, the
+   mode cards stack, and a row's term sits over its sentence. */
+@media (max-width:900px){
+  .ip{gap:34px;padding:26px 18px 56px}
+  .ip-h1{font-size:25px}
+  .ip-sub{font-size:15px}
+  .ip-callouts{grid-template-columns:minmax(0,1fr)}
+  .ip-modes{grid-template-columns:minmax(0,1fr)}
+  .ip-row{grid-template-columns:minmax(0,1fr);gap:2px}
+}

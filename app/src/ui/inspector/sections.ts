@@ -36,6 +36,19 @@ export const SECTION_IDS = [
 
 export type SectionId = (typeof SECTION_IDS)[number];
 
+/**
+ * The other folds, which are not `ConfigForm`'s five.
+ *
+ * They live in the same open set, so a reader who opens the destinations on
+ * one member finds them open on the next: which drawers are open is a habit,
+ * not a property of a card. Both start closed -- the summary is what the rail
+ * *was* before this pass and the destinations are the tallest group in the
+ * application (four properties per destination).
+ */
+export const SUMMARY_ID = 'Configuration summary';
+export const INSTANCES_ID = 'Instances';
+export const DESTS_ID = 'Destinations';
+
 /** Configuration is the one that opens with the rail; the rest are folded. */
 export const DEFAULT_OPEN: SectionId = 'Configuration';
 

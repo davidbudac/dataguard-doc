@@ -14,7 +14,7 @@
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
-  row-gap: 4px;
+  row-gap: 8px;
   min-width: 0;
 }
 
@@ -25,13 +25,13 @@
   line-height: 1.4;
   color: var(--ik3);
   white-space: nowrap;
-  padding-left: 16px;
+  padding-left: 22px;
   border-left: 1px solid var(--ln);
 }
 
 /* The first chip of the group belongs to the label, not to a rule of its own. */
 .ro-run > .ro-run-k + .chip {
-  padding-left: 8px;
+  padding-left: 10px;
   border-left: 0;
 }
 

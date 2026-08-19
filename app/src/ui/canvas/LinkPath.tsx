@@ -21,6 +21,8 @@ export interface LinkPathProps {
   link: RoutedLink;
   prefix: string;
   highlighted: boolean;
+  /** Selected in the document, which hover is not: it is what `aria-pressed` says. */
+  selected?: boolean;
   dimmed: boolean;
   interactive: boolean;
   /**
@@ -30,8 +32,16 @@ export interface LinkPathProps {
    * the same `data-node`, so either one hovers and selects the whole link.
    */
   part?: 'line' | 'pill';
+  /**
+   * Said out loud on the pill: the sentence the router already composed for
+   * the tooltip, so the line has one description rather than two.
+   */
+  label?: string;
+  tabIndex?: number;
   onSelect?: (key: string, additive: boolean) => void;
   onHover?: (key: string | null) => void;
+  onKeyDown?: (key: string, ev: JSX.TargetedKeyboardEvent<SVGGElement>) => void;
+  nodeRef?: (key: string, el: SVGGElement | null) => void;
 }
 
 /**
@@ -71,11 +81,27 @@ export function LinkPath(props: LinkPathProps): JSX.Element {
   const chipX = link.pill.x + link.pill.w - MODEL_CHIP_W + 2;
   const key = linkKey(link);
   const part = props.part ?? 'both';
+  /* The caption is the control. Both halves hover and select -- a line is a
+     wide, thin hit target and the reader aims at it -- but the focus stop, the
+     name and the keys live on the pill: it is the half with an area, and a
+     focus ring around a 600 px diagonal is a ring around the whole drawing. */
+  const control = part !== 'line' && props.interactive;
 
   return (
     <g
-      class={`tp-linkwrap${props.highlighted ? ' is-hov' : ''}${props.dimmed ? ' is-dim' : ''}`}
+      class={`tp-linkwrap${props.interactive ? ' is-live' : ''}${props.highlighted ? ' is-hov' : ''}${props.dimmed ? ' is-dim' : ''}`}
       data-node={key}
+      {...(control
+        ? {
+          role: 'button',
+          'aria-label': props.label ?? link.title,
+          'aria-pressed': props.selected === true,
+          /* `tabindex`, lower case: see `NodeCard`. */
+          tabindex: props.tabIndex ?? -1,
+          ref: (el: SVGGElement | null) => props.nodeRef?.(key, el),
+          onKeyDown: (ev: JSX.TargetedKeyboardEvent<SVGGElement>) => props.onKeyDown?.(key, ev),
+        }
+        : {})}
       onClick={props.interactive
         ? (ev) => props.onSelect?.(key, ev.shiftKey || ev.metaKey || ev.ctrlKey)
         : undefined}

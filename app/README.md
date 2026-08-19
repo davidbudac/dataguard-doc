@@ -11,6 +11,11 @@ requests at runtime — no CDN, no web fonts, no network calls — and no inline
 `<script>` or `style=` anywhere, so the page runs under
 `script-src 'self'; style-src 'self'`.
 
+A first visit opens on the **Introduction** (`?intro=1`, `src/ui/intro/`) — what
+the tool is, what the drawing shows, what the four modes are for and how to do
+things — and every button on it loads a real configuration and lands in the mode
+it names. It is one link away in the header afterwards; see `design/ui.md` §3e.
+
 Everything the page asserts about Oracle is either arithmetic over what you
 typed, a documented fact with a citation you can open, or labelled on screen as
 this page's model. That is enforced by types, not by review: see
@@ -23,7 +28,7 @@ this page's model. That is enforced by types, not by review: see
 npm install          # first time only
 npm run dev          # Vite dev server
 npm run build        # tsc --noEmit, then vite build -> ../_site/
-npm test             # vitest, one pass (1114 tests, 50 files)
+npm test             # vitest, one pass (1578 tests, 58 files)
 npm run test:watch
 npm run typecheck
 ```
@@ -45,7 +50,7 @@ src/
     generate/    DGMGRL, LOG_ARCHIVE_DEST_n, tnsnames/JDBC, SHOW mocks
     compat/      the 1+1+1 adapter the legacy 24-cell matrix runs against
   state/       Document vs View signals, undo, URL, persistence, legacy URLs
-  ui/          shell, canvas, timeline, inspector, panels, learn
+  ui/          shell, canvas, timeline, inspector, panels, learn, intro
   content/     the nine lessons, the reference tables, the footnotes
   presets/     eleven worked topologies
   styles/      tokens.css and the per-area stylesheets
@@ -57,9 +62,9 @@ design/        engine.md, ui.md, facts.md
 undo carry (topology, events, params, canvas drags); the View is what a reload
 may forget (mode, selection, playhead, panel, theme, edition). The document
 rides the URL fragment as `#t=` (deflate-raw + base64url, 8000-char cap with an
-honest refusal), the view rides readable query keys (`ed`, `mode`, `panel`,
-`sel`, `t`, `preset`, `lesson`, `step`, `theme`), and `dg-doc-v1` / `dg-theme` /
-`dg-ed` are the localStorage keys. An untouched preset needs no fragment at
+honest refusal), the view rides readable query keys (`ed`, `mode`, `intro`,
+`panel`, `sel`, `t`, `preset`, `lesson`, `step`, `theme`), and `dg-doc-v1` /
+`dg-theme` / `dg-ed` are the localStorage keys. An untouched preset needs no fragment at
 all: while the document is still, value for value, the preset it names,
 `?preset=<id>` is the whole address. Old links to the legacy page are upgraded on
 load by `src/state/legacy-url.ts`.

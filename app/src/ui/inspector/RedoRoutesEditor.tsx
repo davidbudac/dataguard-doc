@@ -24,6 +24,7 @@ import type {
 import { memberId } from '@/engine';
 import { setRedoRoutes } from './edits';
 import { Action, Group, Note } from './controls';
+import { FieldNote } from '../common/Field';
 import { off, ON } from './why';
 
 const PRIORITIES: RoutePriority[] = [1, 2, 3, 4, 5, 6, 7, 8];
@@ -110,18 +111,20 @@ export function RedoRoutesEditor({ member, doc }: RedoRoutesEditorProps) {
           value={text}
           onChange={(e) => parseText((e.currentTarget as HTMLInputElement).value)}
         />
-        {error === null ? null : <p class="field-note is-warn">RedoRoutes: {error}</p>}
+        {error === null ? null : <FieldNote warn>RedoRoutes: {error}</FieldNote>}
         {rules.length === 0 ? (
-          <p class="field-note">
+          /* An empty state, so it stays: an empty box says nothing about what
+             the property is doing while it is empty. */
+          <FieldNote always>
             The property is NULL. At a database that is{' '}
             <span class="mono">(LOCAL : ALL)</span>; a far sync instance with a NULL
             property forwards nothing.
-          </p>
+          </FieldNote>
         ) : (
-          <p class="field-note">
+          <FieldNote>
             Typed here, the property is parsed with the same grammar the generated
             DGMGRL script is printed with. Both spellings round-trip.
-          </p>
+          </FieldNote>
         )}
       </div>
 
@@ -176,11 +179,13 @@ export function RedoRoutesEditor({ member, doc }: RedoRoutesEditorProps) {
               </select>
             </label>
             {multi ? (
-              <p class="field-note">
+              /* Always: the picker beside it shows one source out of several,
+                 and only this line says so -- and where to edit them. */
+              <FieldNote always>
                 This rule names {(rule.source as MemberId[]).length} sources
                 (<span class="mono">{(rule.source as MemberId[]).join(', ')}</span>). Edit the
                 property text above to change them.
-              </p>
+              </FieldNote>
             ) : null}
 
             {rule.groups.map((g, gi) => (

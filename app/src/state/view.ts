@@ -98,8 +98,39 @@ export const edition = signal<Edition>('19c');
 export const inspectorOpen = signal<boolean>(false);
 /** The "How this page works" card, opened again from the header's ? button. */
 export const introOpen = signal<boolean>(false);
+/**
+ * The Introduction, in place of the workbench (ui.md SS3e).
+ *
+ * A page, not a card: it takes the stage, the rail and the dock, the header
+ * stays above it with the modes still clickable, and it is addressable as
+ * `?intro=1` so it can be linked to and reloaded. Boot opens it on a first
+ * visit -- `dg-intro-v1` unset, and nothing in the address naming something
+ * else to look at -- and any mode button leaves it (`ui/intro/route.ts`).
+ */
+export const introPage = signal<boolean>(false);
 /** Validation's INFO rows, collapsed until the reader asks for them. */
 export const notesOpen = signal<boolean>(false);
+/**
+ * Whether the sentence under each control is shown.
+ *
+ * Off by default: the rail explained every control with a line of prose, and
+ * a reader who already knows what LogXptMode is was reading four screens of
+ * documentation to reach three sliders. The prose is not deleted and it is not
+ * painted out of view -- a hidden hint is not rendered at all, and the `Hints`
+ * button in the rail header is the affordance that says it still exists.
+ *
+ * Remembered in localStorage under `dg-hints` (persist.ts), read once at boot
+ * exactly as `dg-intro-v1` is, never during a render.
+ */
+export const hintsOn = signal<boolean>(false);
+/**
+ * A field the rail should focus on its next render, then forget.
+ *
+ * Double-clicking a card on the drawing means "rename it": the rail opens on
+ * the member and its name field takes the focus, with the text selected.
+ * One-shot, so a later re-render of the same form does not steal focus again.
+ */
+export const focusField = signal<string | null>(null);
 export const toast = signal<Toast | null>(null);
 export const viewport = signal<Viewport>('wide');
 
@@ -197,8 +228,8 @@ export function railWhere(v: Viewport = viewport.value): string {
 export function modeGuide(m: Mode, v: Viewport = viewport.value): string {
   switch (m) {
     case 'build':
-      return 'Click a card, a data centre or a link to edit it; add members with the + '
-        + `buttons on the drawing and at the top of ${railWhere(v)}.`;
+      return 'Click a card, a data centre or a link — its actions open on the drawing; '
+        + `the full properties are in ${railWhere(v)}, and the + buttons add members.`;
     case 'break':
       return 'Click a host to crash it or a link to cut it, or pick a scenario in the panel; '
         + 'the timeline below runs the clocks.';
@@ -208,4 +239,29 @@ export function modeGuide(m: Mode, v: Viewport = viewport.value): string {
     case 'learn':
       return 'Each step sets up the workbench beside it.';
   }
+}
+
+/**
+ * The guidance line in two halves: the gesture, and the sentence behind it.
+ *
+ * The first clause is what a reader needs to touch something -- "Click a card,
+ * a data centre or a link to edit it." -- and it is always on screen. The rest
+ * is explanation and rides with `hintsOn`, the same toggle the rail notes use,
+ * so there is one switch for the page's prose rather than two.
+ *
+ * The cut is made at the first `; ` where there is one, and at the first
+ * sentence end otherwise: Configure's line names its own output before it says
+ * where the settings are, and splitting it at the em dash would leave
+ * "Generated from the drawing." standing for the whole mode.
+ */
+export function splitGuide(m: Mode, v: Viewport = viewport.value): { lead: string; rest: string } {
+  const full = modeGuide(m, v);
+  const semi = full.indexOf('; ');
+  if (semi !== -1) {
+    const tail = full.slice(semi + 2);
+    return { lead: `${full.slice(0, semi)}.`, rest: tail.charAt(0).toUpperCase() + tail.slice(1) };
+  }
+  const stop = full.indexOf('. ');
+  if (stop === -1) return { lead: full, rest: '' };
+  return { lead: full.slice(0, stop + 1), rest: full.slice(stop + 2) };
 }

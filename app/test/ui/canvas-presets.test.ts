@@ -30,6 +30,12 @@ import type { Geometry } from '@/ui/canvas/layout';
 import { routeTopology } from '@/ui/canvas/routing';
 import type { RoutedLink } from '@/ui/canvas/routing';
 import { overlaps } from '@/ui/canvas/measure';
+import type { Rect } from '@/ui/canvas/measure';
+import { unionViewBox } from '@/ui/canvas/routing';
+import { anchorFor, fittedScale, placeBar } from '@/ui/canvas/anchor';
+import { barFootprint } from '@/ui/canvas/ActionBar';
+import { linkKey } from '@/ui/canvas/LinkPath';
+import { WHY } from '@/ui/inspector/why';
 
 const GOLDEN = join(dirname(fileURLToPath(import.meta.url)), '__golden__');
 
@@ -265,6 +271,68 @@ describe('the dense presets keep their captions out of the site rectangles', () 
           from?.col === to?.col,
           `pill of ${l.id} sits inside ${inside.map((s) => s.id as string).join(', ')}`,
         ).toBe(true);
+      }
+    });
+  }
+});
+
+/**
+ * The action bar, on every preset, at every scale the drawing renders at.
+ *
+ * `.app-stage` is `overflow: auto` and clips whatever leaves the viewBox with
+ * no scrollbar and no other sign that it did, so a bar that hangs off the
+ * drawing is a menu whose last row -- which is the destructive one -- simply
+ * is not there. It may overlap a card: it is a menu, it is meant to be over
+ * something. It may never leave the view.
+ */
+describe('the action bar stays on the drawing', () => {
+  /* The widest thing the bar can be: six rows, one of them refused with a
+     sentence that wraps, and a quiet line under them. */
+  const worst = barFootprint(
+    [
+      { id: 'edit', label: 'Edit prm01', enabled: { state: 'on' }, run: () => {} },
+      { id: 'a', label: 'SYNC', enabled: { state: 'on' }, run: () => {} },
+      { id: 'b', label: 'FASTSYNC', enabled: { state: 'off', why: WHY.fastsyncMode }, run: () => {} },
+      { id: 'c', label: 'ASYNC', enabled: { state: 'on' }, run: () => {} },
+      { id: 'd', label: 'Make it the primary', enabled: { state: 'on' }, run: () => {} },
+      { id: 'remove', label: 'Remove prm01', enabled: { state: 'off', why: WHY.primaryMember }, run: () => {} },
+    ],
+    'Nothing to restore — nothing here is down.',
+  );
+
+  /* 1:1, the 1280 stage, the widest preset, and the floor the measurement is
+     clamped to. */
+  const SCALES = [1, 0.8, 0.61, 0.5];
+
+  const keysOf = (d: Drawn): string[] => [
+    ...d.geo.nodes.map((n) => n.key),
+    ...d.geo.sites.map((s) => s.id as string),
+    ...d.links.map((l) => linkKey(l)),
+  ];
+
+  const check = (d: Drawn, where: string): void => {
+    const view = unionViewBox(d.geo.viewBox, routeTopology(d.doc, d.graph, d.geo, null).bounds);
+    for (const key of keysOf(d)) {
+      const anchor = anchorFor(key, d.geo, d.links);
+      expect(anchor, `${where}: ${key} has no anchor`).not.toBeNull();
+      for (const k of SCALES) {
+        const scale = fittedScale(worst, view, k);
+        const size = { w: worst.w / scale, h: worst.h / scale };
+        const at = placeBar(anchor as Rect, size, view);
+        const inside = at.x >= view.x && at.y >= view.y
+          && at.x + size.w <= view.x + view.w
+          && at.y + size.h <= view.y + view.h;
+        expect(inside, `${where}: ${key} at scale ${k} -> ${at.x},${at.y} ${size.w}x${size.h} outside ${view.x},${view.y} ${view.w}x${view.h}`).toBe(true);
+      }
+    }
+  };
+
+  for (const preset of PRESETS) {
+    it(`${preset.id} keeps it inside the view, at rest and while it plays`, () => {
+      const doc = preset.doc();
+      check(draw(doc), `${preset.id} at rest`);
+      for (const { t, frame } of framesOf(doc, preset.events())) {
+        check(draw(doc, frame), `${preset.id} at t=${t}`);
       }
     });
   }

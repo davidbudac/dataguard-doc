@@ -12,12 +12,12 @@
  * `WhyState` union does not admit an `off` with nothing to say.
  */
 
-import type { JSX } from 'preact';
-import { useRef, useState } from 'preact/hooks';
+import { useState } from 'preact/hooks';
 import type { TopologyDoc } from '@/engine';
 import { siteId as toSiteId } from '@/engine';
 import { WhyPill } from '../common/WhyPill';
 import type { WhyState } from '../common/WhyPill';
+import { useRovingToolbar } from '../common/useRovingToolbar';
 import { Action, Note, Pick } from './controls';
 import { addDatabase, addFarSync, addHost, addLink, addObserver, addSite } from './edits';
 import { off, ON } from './why';
@@ -135,7 +135,11 @@ export function AddPalette({ doc, onAdded }: AddPaletteProps) {
 
   return (
     <>
-      <div class="pal">
+      {/* The four one-press additions, 2x2 and full width: they are the reason
+          the empty rail exists, and a row of four small buttons read as a
+          toolbar of the group above them rather than as the group's content
+          (ui.md SS3f). What each one does is still the button's `title`. */}
+      <div class="pal pal-adds">
         {ADD_ACTIONS.map((a) => (
           <Action
             key={a.key}
@@ -146,7 +150,9 @@ export function AddPalette({ doc, onAdded }: AddPaletteProps) {
           />
         ))}
       </div>
-      <div class="pal">
+      {/* The second rank, under a hairline: both of these need a data centre
+          named before the button means anything. */}
+      <div class="pal pal-more">
         <Pick
           name="Host in"
           prose
@@ -198,12 +204,9 @@ export function AddPalette({ doc, onAdded }: AddPaletteProps) {
  * to clear a selection first, which is what the rail used to demand.
  *
  * A real `role="toolbar"` of real buttons, with the keyboard contract that
- * role announces (WAI-ARIA APG): **one tab stop** for the whole strip, and
- * ArrowLeft/ArrowRight, Home and End to move between the additions inside it.
- * Telling a screen reader "toolbar" and then handing it four tab stops and
- * dead arrow keys is the same class of lie as a grey button with no reason --
- * and the strip is the first thing in the stage's tab order, so four stops is
- * four presses before the drawing on every visit.
+ * role announces -- one tab stop, arrows between the additions inside it. The
+ * contract itself lives in `common/useRovingToolbar`, because the zoom ladder
+ * beside this strip has to keep exactly the same one.
  *
  * Every button carries what it will do as a `title`, and a refusal still rides
  * beside the button rather than living only in the tooltip.
@@ -213,35 +216,14 @@ export function AddToolbar({ doc }: { doc: TopologyDoc }) {
   /* A disabled button cannot be focused, so parking the tab stop on one would
      make the whole strip unreachable by Tab. `+ Data centre` is never off, so
      there is always somewhere to park it. */
-  const live = states.map((w, i) => (w.state === 'off' ? -1 : i)).filter((i) => i >= 0);
-  const [want, setWant] = useState(0);
-  const stop = live.includes(want) ? want : (live[0] ?? -1);
-  const refs = useRef<(HTMLButtonElement | null)[]>([]);
-
-  const moveTo = (i: number | undefined): void => {
-    if (i === undefined) return;
-    setWant(i);
-    refs.current[i]?.focus();
-  };
-
-  const onKeyDown = (ev: JSX.TargetedKeyboardEvent<HTMLDivElement>): void => {
-    if (live.length === 0) return;
-    const at = live.indexOf(stop);
-    switch (ev.key) {
-      case 'ArrowRight': ev.preventDefault(); moveTo(live[(at + 1) % live.length]); return;
-      case 'ArrowLeft': ev.preventDefault(); moveTo(live[(at - 1 + live.length) % live.length]); return;
-      case 'Home': ev.preventDefault(); moveTo(live[0]); return;
-      case 'End': ev.preventDefault(); moveTo(live[live.length - 1]); return;
-      default:
-    }
-  };
+  const roving = useRovingToolbar(states.map((w) => w.state !== 'off'));
 
   return (
     <div
       class="cv-add"
       role="toolbar"
       aria-label="Add to the configuration"
-      onKeyDown={onKeyDown}
+      onKeyDown={roving.onKeyDown}
     >
       {ADD_ACTIONS.map((a, i) => {
         const why = states[i] as WhyState;
@@ -253,9 +235,9 @@ export function AddToolbar({ doc }: { doc: TopologyDoc }) {
               class={`btn${isOff ? ' is-faded' : ''}`}
               disabled={isOff}
               title={a.title}
-              tabIndex={i === stop ? 0 : -1}
-              ref={(el) => { refs.current[i] = el; }}
-              onFocus={() => setWant(i)}
+              tabIndex={roving.tabIndex(i)}
+              ref={roving.itemRef(i)}
+              onFocus={() => roving.onFocus(i)}
               onClick={() => a.run()}
             >
               {a.short}

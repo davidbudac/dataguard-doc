@@ -442,6 +442,48 @@ export const isRestore = (a: EventAction): boolean =>
   RESTORE_IDS.includes(a.id.split(':')[0] as string);
 
 /**
+ * A restore that has nothing to restore. The test is the reason, not the
+ * action id, so a new restore added to the table joins this group by saying
+ * the same thing rather than by being listed here twice.
+ */
+export const nothingToRestore = (a: EventAction): boolean =>
+  a.enabled.state === 'off' && a.enabled.why === WHY.nothingDown;
+
+/**
+ * The one line that stands where a column of identical refusals used to be,
+ * or `null` when nothing was dropped and there is nothing to stand in for.
+ *
+ * Four readings, and the branches are the whole point: with something still
+ * down it may not say "nothing here is down", and the fact of what is down is
+ * read off the *subjects* (`anythingDownUnder`), never off the list -- the
+ * list is an intersection that keeps the first blocked subject's reason, and
+ * reading it made the sentence contradict the drawing beside it.
+ *
+ * It lives here rather than in the menu because the menu is no longer the only
+ * surface that offers these actions: a bar on the canvas that dropped the same
+ * entries and wrote its own sentence would be a second place for this to go
+ * wrong.
+ */
+export function restoreQuietLine(
+  doc: TopologyDoc, keys: readonly string[], at: number, actions: readonly EventAction[],
+): string | null {
+  const events = actions.filter((a) => a.property !== true);
+  const dropped = events.filter(nothingToRestore).length;
+  if (dropped === 0) return null;
+  /* With the host down and the site up, "nothing here is down" would be a lie:
+     the branch is on whether *any* restore survived the drop. */
+  if (events.some((a) => isRestore(a) && a.enabled.state === 'on')) {
+    return 'The other restores are not listed — nothing else here is down.';
+  }
+  if (!keys.some((k) => anythingDownUnder(doc, k, at))) {
+    return 'Nothing to restore — nothing here is down.';
+  }
+  return keys.length > 1
+    ? 'Restoring is not offered for all of these at once — only part of this selection is down. Select the one that is down.'
+    : 'This one is up — what is down sits inside it and carries its own restore. Select it on the drawing.';
+}
+
+/**
  * The actions a whole selection offers: the intersection by id, with the
  * events of every subject folded into one entry, so one click is one undo.
  */

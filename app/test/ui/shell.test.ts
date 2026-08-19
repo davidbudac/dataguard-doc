@@ -123,6 +123,15 @@ describe('the grid below 1280', () => {
       .toMatch(/\.app\.m-learn\{grid-template-rows:auto fit-content\(46vh\) minmax\(0,1fr\)\}/);
   });
 
+  it('lets the Build stage take the room and caps the dock', () => {
+    /* The HANDOFF SS4 leftover: a healthy preset drew at 60 % over an empty
+       band. Build's stage is the flexible row; the dock sizes to content. */
+    expect(shell).toMatch(/\.app\.m-build\{grid-template-rows:auto minmax\(260px,1fr\) minmax\(0,auto\)\}/);
+    expect(shell).toMatch(/\.app\.m-build \.app-dock\{max-height:46vh\}/);
+    /* ...and the 1279 block still resets every mode to one column. */
+    expect(narrow).toContain('grid-template-areas:"head" "stage" "dock"');
+  });
+
   it('leaves the wide Learn template two rows and two columns', () => {
     const wide = /\n\.app\.m-learn\{([\s\S]*?)\n\}/.exec(shell)?.[1] ?? '';
     expect(wide).toContain('grid-template-rows:auto minmax(0,1fr)');

@@ -482,6 +482,257 @@ One new module came out of it too, and it is the only one that is not chrome:
 engine has no clock and is not allowed one — so nothing under `engine/` changed
 to make the page move.
 
+## 3c. Pruning the prose (as built, 2026-08-19)
+
+**One switch for every sentence that explains a control.** The verdict was
+"prune the visible text a lot more -- it should still be there optionally
+visible": the rail carried a line of documentation
+under every field, all of it true and all of it on screen at once, so a reader
+who came to move three sliders read four screens to reach them.
+`hintsOn` (`state/view.ts`, default **false**, remembered under `dg-hints`
+and read once at boot by `loadHints()`, never during a render) gates
+`Note`, `Field`'s note, `FieldNote` and the second clause of the guidance
+line (`splitGuide`). A hidden hint is **not rendered at all** — there is no
+rule anywhere that paints one out of view — and `hintsShown()` is
+`hintsOn || printing`, so paper gets every word, exactly as every `Fold`
+opens there. Three kinds of line are not hints and never leave: a caution
+(`warn`, which reports the state the reader is looking at), an empty state
+or a count (`always`), and a refusal — `WhyPill` is untouched by the
+toggle. The switch itself is a quiet `aria-pressed` button in the inspector
+header, beside `Add ▾` / `Clear` and present on the empty rail too, which
+is where a reader who wants the prose back is looking; the `?` card
+explains it and offers a second copy of the same button. With hints off the
+button is the only thing that says the explanations still exist, so its
+`title` is "Show the explanation under each control".
+
+## 3d. The drawing as the workbench (as built, 2026-08-19)
+
+The verdict this round: *"the topology diagram should be the main centre point
+… a user could click on each component and modify its properties or remove
+it."* Five things landed, and one rule bent:
+
+- **An action bar opens on the drawing itself.** Clicking a card, a data
+  centre's name band or a link's caption selects it *and* opens a small menu
+  anchored to it — Build offers the Build table's entries (Edit · the
+  transport as three pressed/unpressed chips · Make it the primary · the RTT
+  nudges · Remove, each with its `WhyPill` refusal), Break offers exactly the
+  event menu's list for that subject, quiet restore line included
+  (`restoreQuietLine`, one function feeding both surfaces). `Edit` puts the
+  rail on the subject — and below 1280 it also opens the drawer
+  (`openInspectorFor`), which a bare selection deliberately does not.
+  The bar caps at six rows and hands the rest to the panel; it closes on
+  Escape (before the selection clears), on a background click, on a mode
+  change, or by selecting something else. `Shift+F10`, the ContextMenu key
+  and the right button open it with focus inside; a plain click opens it
+  without stealing focus from the card.
+- **The "never a popup" rule bent, inside its own justification.** §3's ban
+  was argued from `style-src 'self'`: nothing can be *positioned from
+  script*. The bar is not: it is a `<foreignObject>` inside the SVG, placed
+  by `x`/`y` presentation attributes in the drawing's own coordinates
+  (`canvas/anchor.ts` — below the anchor, flipped above, stepped beside when
+  neither fits, always clamped into the viewBox because the stage clips ink
+  silently), wrapped in a `scale(1/k)` group so its text stays ~12 px however
+  far the drawing is scaled down (`fittedScale` caps the magnification at
+  what still fits the view; `k` is measured by a `ResizeObserver` in
+  `CanvasSlot`, 1 in jsdom). The fixed homes survive: the event menu keeps
+  its place in the rail, the inspector keeps the full forms — the bar is a
+  second surface over the same tables (`build/actions.ts`, `break/events.ts`),
+  never the only place an action lives.
+- **One Build action table.** `ui/build/actions.ts` is the sibling of
+  `break/events.ts`: label, refusal and act written once, consumed by the
+  rail's Remove buttons, the bar, the context menu and the Delete key
+  (`deleteFromCanvas` shrank to a lookup — and gained sites and links, which
+  used to swallow Delete silently).
+- **Sites and links are controls now.** The site rect and the link's caption
+  pill carry `role="button"`, a lower-case `tabindex`, an `aria-label`
+  (`siteLabel`/`linkLabel` in `canvas/aria.ts`), hover/focus styles and the
+  same key handler as the cards. Tab bands: one stop per site rect, one per
+  site's cards (roving, as before), one for the whole link set (the arrows
+  walk the captions in routed order).
+- **A real mouse click never selected anything — fixed.** Pointer capture on
+  `pointerdown` retargets the pointerup *and the derived click* to the svg,
+  so the card's own `onClick` never fired for a genuine mouse; every test
+  passed because tests dispatch `click` directly. Capture now waits for the
+  drag threshold (`onPointerMove`), which is the only moment the pointer can
+  leave the drawing mid-gesture. If a drag ever feels lost on a fast flick,
+  this is the line to look at.
+- **The drawing zooms and pans.** `canvas/zoom.ts` holds a six-rung ladder
+  (50–140 %) as view state — not in the Document, the undo stack or the URL.
+  Zoom multiplies the svg's `width`/`height` *attributes* and leaves the
+  viewBox alone, so routing, goldens and the bar's arithmetic see the same
+  drawing; at 1:1 nothing changes and the crispness rule holds. Past 1:1 the
+  `.tp-wrap.is-zoomed` becomes the scroll port (not the stage, so the `+`
+  toolbar and the zoom strip stay put in both axes), a background drag pans
+  it (lazy pointer capture, same threshold as a card drag), and ctrl/⌘-wheel
+  — a trackpad pinch — steps the ladder; a plain wheel still scrolls. The
+  `−`/`+` buttons go grey at the ends with the reason in their `title`, the
+  one grey control that explains itself in a tooltip rather than a `WhyPill`
+  beside it: a sentence under a one-glyph button doubled the strip's height
+  on every reach for 140 %. In Configure and Learn the factor is forced to 1
+  and the strip is absent.
+- **Double-click a card to rename it**: the rail opens on the member and the
+  name field takes the caret (`focusField`, a one-shot signal the `Text`
+  control reads and clears). A rename to a name already taken is refused out
+  loud now (`WHY.nameTaken` in a toast) instead of silently snapping back.
+- **Build's stage takes the room** (`.app.m-build` rows
+  `auto minmax(260px,1fr) minmax(0,auto)`, dock capped at 46vh): the drawing
+  renders at 1:1 in Build instead of the ~60 % the fit-content row forced.
+  Break keeps the fit-content stage — the timeline is that mode's point.
+
+## 3e. The Introduction (as built, 2026-08-19)
+
+The verdict: *"make an Introduction website which would kinda explain what's
+going on and explain more in detail what to do"*, and of the first draft,
+*"it's again a lot of text still — make it a little bit more useful, usable and
+nicer"*. So it is a **page**, not another band of chrome over the workbench,
+and it is read by scanning.
+
+- **What it is.** `ui/intro/IntroPage.tsx` — six bands: a hero with the one
+  sentence and two buttons; *What you are looking at* (the classic preset drawn
+  by `TopoCanvas` with `interactive={false}`, and five numbered callouts under
+  it); *The four modes* (four cards, each with a concrete "Try it"); *How to do
+  things* (eight one-line gestures as a `<dl>`); *Five words* (the glossary);
+  and a foot pointing at the frozen page. Prose is capped at 64ch (`--ip-col`),
+  bands are 44 px apart, and the band number sits in a left gutter beside the
+  heading rather than on a line of its own. `styles/intro.css`, tokens only, no
+  new colour, both themes, single column under 900 px.
+- **It takes the whole workbench area.** `App.tsx` renders `<IntroPage/>` inside
+  `.app-stage` and renders no rail, no dock and no drawer while it is open;
+  the grid becomes `.app.m-intro` (one column, `head` / `stage`, rule in
+  `intro.css` — `shell.css` is untouched). The header stays, with the modes
+  live, because the way out of an introduction should be the way around the
+  application. The document row and the guidance line do not: over a page whose
+  drawing is a picture they would be a preset picker and a "click a card" for
+  nothing. The `?` still works — `IntroCard` is exported from `Guidance.tsx`
+  and rendered in the header here, because a control that silently does nothing
+  on one page is worse than one that is not there.
+- **It has an address: `?intro=1`.** A key in the `URL_FIELDS` table like any
+  other (`intro`, parsed only as `1`, written only when true), carried by
+  `introPage` in `state/view.ts`, round-tripping through
+  `currentUrlState`/`applyUrlState`. It is a page rather than a fifth `mode`
+  because the mode buttons stay live underneath it.
+- **Three ways in.** (a) the first visit — boot opens it when `dg-intro-v1` is
+  unset **and** the address names nothing else to look at (`introOnBoot` in
+  `ui/intro/route.ts`: no fragment, and no `mode`/`panel`/`sel`/`t`/`preset`/
+  `lesson`/`step`; `ed` and `theme` say how to render what is shown, not what
+  to show, so they do not count). A share link is therefore never hijacked.
+  (b) a quiet `Introduction` link in the header's brand corner — a real
+  `<a href="?intro=1">`, so a middle click opens it in a tab. (c) the same link
+  in the `?` card.
+- **`dg-intro-v1` changed meaning, and the strip is gone.** The key used to say
+  "the first-visit strip has been dismissed"; it now says "this reader has been
+  shown the Introduction". It is written by leaving the page — every mode
+  button (`TopBar`), both hero buttons and every "Try it" go through
+  `leaveIntro()` — and, for a reader who arrived through a share link and never
+  saw the page, by their first real gesture (the effect in `Guidance.tsx`).
+  Closing the `?` card writes nothing, as before: its button says **Close**
+  now, not "Got it", because reading a keyboard map is not being shown the
+  Introduction. The one-row `.intro-strip` and its `CLAUSES` are deleted;
+  `header.test.ts`'s "first-visit strip" suite is now "what writes
+  dg-intro-v1", and `test/ui/intro.test.ts` pins the rest.
+- **Every button loads before it switches.** `route.ts` owns the jumps: preset
+  first (`resetHistory(makeDoc(preset.doc()))` + `presetId`), then the Break
+  template if the button named one (`templates`/`applyTemplate`, so the
+  scenario is the engine's own `scenarioEvents` and the playhead rests on the
+  outcome), then the panel tab, then the mode — the same order
+  `learn/route.ts` uses, for the same reason. *Start with the classic 1+1+1* →
+  classic in Build; *Watch a failover* → classic + `crash` in Break; Build →
+  classic; Break → far sync zero-loss + `isolated`; Configure → classic on the
+  DGMGRL tab; Learn → lesson 1, step 1.
+- **The claims are labelled here too.** Two `<Fact>` chips carry the only two
+  Oracle sentences the page quotes (observer placement, and what fast-start
+  failover waits for); everything else on the page describes the *tool*, which
+  needs no citation. The foot says it in one line: everything here is a model,
+  documented facts carry their source.
+
+## 3f. Density pass (as built, 2026-08-19)
+
+The verdict: *"please space it out a little bit more. It looks kinda cramped.
+It's again a lot of text still. Make it a little bit more useful, usable and
+nicer."* Two readings of one sentence — a rhythm that never chose a number
+twice, and text that a `Hints` toggle had made optional without making it
+fewer. One bullet per change.
+
+- **One ladder, in `tokens.css`.** `--s1..--s7` (4–28) and `--gut: 20px`, and
+  every gutter in the shell and the rails is now that one property rather than
+  a 16 typed in forty places. The three header metrics grew with it:
+  `--h-top` 48 → **56**, `--h-status` 34 → **40**, `--h-readout` 38 → **44**.
+  A 48 px band around a 24 px control is 12 px of air; at that ratio a band
+  reads as a rule, not as a row.
+- **The button is the unit.** `.btn` 4/10 at 11 px → **6/12 at 11.5 px**, and
+  `.seg button` with it, so a button, a segment and a field box are the same
+  height wherever they sit. Two places contradict it on purpose and say so in
+  the stylesheet: the rail header (`Hints · Add ▸ · Clear` beside a name in
+  360 px) and the strips over the drawing, which are chrome over the
+  workbench. `.field` 11/16 → **12/20**, `.grp-hd` → **18/20/10**, `.grp`
+  gains 10 px of foot: **28 px between two groups**, where the label of the
+  next one used to sit closer to the last row of the previous.
+- **Prose went up, not down.** `body` and `.prose` 15/1.55 → **15/1.6**,
+  `.caption` 11.5 → 12/1.5, `.field-note` → 12/1.5, `.issue-b` 13 → 13.5/1.55,
+  `.empty` 13 → 13.5. The eyebrow keeps 10.5/.08em and gains its air from the
+  group header, not from a margin of its own.
+- **The readout is a strip with room in it.** 9/16 → **12/20** padding,
+  chips 16 → **22 px apart**, row gap 4 → 8. Label and value stay on one line;
+  the second value keeps its quieter mono.
+- **Hierarchy in the header, in three sizes.** The mode tabs are the largest
+  control on the page (12.5 px, 8/16) and the current one carries a **solid
+  `--vi` fill with `--sf` text** — both tokens invert with the theme, so the
+  pair is legible in light and dark without a new colour. The preset picker is
+  second (12 px on `--sf`, the one control in that bar that changes the
+  drawing). The release, theme, undo/redo and `?` are third: 10.5 px and
+  `--ik3`.
+- **A refusal is set as a sentence.** `.why` was mono uppercase 10 px:
+  A PRIMARY APPLIES NO REDO OF ITS OWN. three times down one rail, in the
+  loudest voice on the page, for a remark read once. Same pill, same place,
+  same words, sans 11.5 sentence case. No `WhyPill` was removed — the
+  invariant is untouched.
+- **The empty Build rail opens on the palette.** `Start here` — three numbered
+  sentences saying what the guidance line says in one and the Introduction
+  page says at length — is gone, `.steps` with it. The four one-press
+  additions are a **2×2 of full-width buttons** (`.pal-adds`); `+ Host` and
+  `+ Link` are a quieter second rank under a hairline (`.pal-more`), because
+  both need a data centre named before the button means anything.
+- **The configuration summary is a fold.** `Configuration summary ▸`
+  (`SUMMARY_ID` in `sections.ts`), shut when the rail opens, with the
+  configuration's name as the closed fold's hint — the readout strip already
+  reads the protection level, the member count and the findings. Turning
+  `Hints` on *opens* it (an additive `revealSections`, exactly like the reveal
+  a finding does), so the switch that asks the page to say more about itself
+  opens the rail's own statement of what is drawn — and the fold stays a real
+  toggle the reader can shut again.
+- **A member's tail folds.** `Instance`/`Instances (RAC, n)` and
+  `Destinations` are `Fold`s now, keyed in the same open set as the
+  configuration's five, so which drawers are open is a habit rather than a
+  property of a card. Identity, role/apply and transport stay open: they are
+  what the reader clicked the card for. `RedoRoutes` is still a plain group —
+  it is `RedoRoutesEditor`'s own, and this pass did not open that file.
+- **The scenarios are a shelf.** Two columns of names, and nothing else
+  (`.tmpls` grid; `is-open` drops it to one column). Six clipped one-line
+  captions under six buttons were twelve rows of text for a shelf a reader
+  takes one thing off. The sentence is the button's `title` at every setting,
+  `Show descriptions` renders all six, and print renders them regardless —
+  what is folded is **absent**, never clipped by CSS.
+- **Three words dropped, and only three.** The status bar's `Preset` label is
+  now `.sr` (the picker's first option names what is on screen, and the select
+  carries a `title`); the validation panel's `NOTHING TO FIX` eyebrow is gone
+  over a heading that already says "No errors and no warnings", leaving the
+  one true sentence; the notes toggle says "documented behaviour worth
+  knowing" in both states, because the caret and `aria-expanded` say which way
+  it points and ", folded away" wrapped the row to two lines to say it a
+  third time.
+- **Two fits the 360 px rail forced.** A segmented control inside a `.field`
+  goes a size down (11 px, 6/9) and may wrap, because
+  `MAXPROTECTION | MAXAVAILABILITY | MAXPERFORMANCE` is 40 characters of mono
+  and the control clips its own corners — a segment past the edge is one
+  nobody can press. And `.insp-hd .title` ellipses on one line instead of
+  `overflow-wrap: anywhere`, which broke `prm01` into `prm0` / `1` once the
+  header carried three buttons; the whole name is the span's `title`.
+- **Verified** at 1440×900 and 1280×720, light and dark, on classic,
+  far-sync-zero-loss and multi-target-three-observers, in Build, Break and
+  Configure, through the §3b inline-bundle recipe. Nothing overflows: the
+  Break dock still ends in its transport bar at 1280×720, and the rail is
+  still in the grid there.
+
 ## 4. Topology canvas
 
 **Node card** (generalised `nodeCard`): flat `--sf` rect, hairline, rx 5, badge rx 7 centred; role word / host mono (19-char elision, full value in aria) / subtitle; width clamp(184, measured, 260); height 72 (3-line DB) / 52 (observer). Glyphs: db cylinder, observer eye, far sync = cylinder + chevron (no base), snapshot = cylinder + shutter tick. RAC `⌗2` chip top-right (absent = single instance, legend says so once). Master observer `MASTER` violet chip only while FSFO is enabled ("all observers have the same functionality" when disabled); observe-only slate chip. Break-mode state: phase tint fill/border; down = hatch + red border; crashed host = two-stroke red cross on the name line; stalled primary = red border, no cross.

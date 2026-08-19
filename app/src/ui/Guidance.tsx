@@ -1,6 +1,6 @@
 /**
- * The one line that tells a newcomer what to touch first, and the two forms of
- * the "How this page works" explanation behind it.
+ * The one line that tells a newcomer what to touch first, and the "How this
+ * page works" card behind the `?`.
  *
  * The verdict this answers was "I was confused how to use it": the page had a
  * drawing, a rail, a timeline and eleven controls, and nothing at all that
@@ -12,38 +12,42 @@
  *  - **One line, with the mode word as its lead-in.** "Build · Click a card,
  *    a data centre or a link to edit it ...". The subtitle moved into the mode
  *    button's `title` (`MODE_SUB`).
- *  - **The first visit gets a strip, not a card**: the three mode clauses on
- *    one line, the link to Learn, and "Got it".
+ *  - **The first visit no longer gets a strip here.** The three clauses on one
+ *    row, with "Got it" at the end, were the previous answer; a whole
+ *    Introduction page is the current one (`ui/intro/`, ui.md SS3e), and it
+ *    opens instead of the workbench rather than on top of it. `dg-intro-v1`
+ *    now records that the reader has been shown that page.
  *  - **The `?` in the header still opens the whole explanation**, which is
  *    where the keyboard map lives -- shortcuts nothing else on the page
- *    announces. It is a toggle, and it says so through `aria-expanded`: a
- *    second press closes the card. Closing it that way writes nothing --
- *    "Got it" is the only control that claims the reader has read the thing.
- *  - **The strip dismisses itself at the first real interaction** -- an edit,
- *    an injected event, a change of mode -- because a reader who is already
- *    working has read it or does not need it. Either way it is remembered in
- *    `localStorage` under `dg-intro-v1` (persist.ts), the same contract the
- *    "Got it" button writes.
+ *    announces -- and it is where the Introduction is offered a second time.
+ *    It is a toggle, and it says so through `aria-expanded`: a second press
+ *    closes the card. Closing it writes nothing: opening an explanation and
+ *    shutting it again is not the same as having read the Introduction.
+ *  - **A reader who is already working stops being owed the page.** An edit or
+ *    a change of mode writes `dg-intro-v1` (the mode buttons do it in
+ *    `TopBar.tsx`, an edit in the effect below), because somebody who arrived
+ *    through a share link and started editing has answered the question the
+ *    Introduction exists to answer.
+ *  - **The line itself is two halves.** The gesture -- "Click a card, a data
+ *    centre or a link to edit it." -- is always on screen; the clause behind
+ *    it is explanation and rides with `Hints` (`ui/hints.tsx`), the one switch
+ *    that governs the page's prose. `splitGuide` in `state/view.ts` makes the
+ *    cut, so the line and the mode button's `title` cannot drift.
  */
 
 import { effect } from '@preact/signals';
 import { useEffect } from 'preact/hooks';
 import { doc } from '@/state/doc';
 import { dismissIntro, introDismissed } from '@/state/persist';
-import { introOpen, mode, modeGuide, MODE_LABEL, viewport } from '@/state/view';
+import { introOpen, mode, MODE_LABEL, splitGuide, viewport } from '@/state/view';
+import { HINTS_LABEL, HintsToggle, hintsShown } from './hints';
+import { INTRO_HREF, openIntro } from './intro/route';
 
 /** The three working modes, one clause each; Learn is the link at the foot. */
 const BULLETS: [string, string][] = [
   ['Build', 'draws the deployment — data centres, databases, far syncs, observers and the redo between them.'],
   ['Break', 'injects a failure into that deployment and runs the clocks: detection, threshold, role change, open.'],
   ['Configure', 'prints the same deployment as DGMGRL commands, init parameters and connect strings.'],
-];
-
-/** The same three, shortened until they fit on one line together. */
-const CLAUSES: [string, string][] = [
-  ['Build', 'draws the deployment'],
-  ['Break', 'runs the clocks on it'],
-  ['Configure', 'prints it as DGMGRL, init parameters, connect strings'],
 ];
 
 /**
@@ -56,16 +60,17 @@ const CLAUSES: [string, string][] = [
  */
 const KEYS: { where: string; rows: [string, string][] }[] = [
   {
-    where: 'On the drawing, with a card focused',
+    where: 'On the drawing, with a card, a data centre or a link caption focused',
     rows: [
-      ['↑ ↓ ← →', 'move to the next card in the same data centre'],
-      ['Enter · Space', 'select it — in Break, that offers its events'],
+      ['↑ ↓ ← →', 'move to the next card in the same data centre — on a link caption, the next link'],
+      ['Enter · Space', 'select it, and its actions open beside it'],
+      ['Shift+F10 · ☰', 'open its actions and move the focus into them — the right button does too'],
       /* `onEventMenu` is spread onto the canvas only in Break
          (`canvas/CanvasSlot.tsx`), exactly as `onDelete` is only in Build:
          a key that is bound in one mode says which one. */
       ['E', 'open the event menu for it (Break)'],
       ['Delete', 'remove it (Build)'],
-      ['Esc', 'clear the selection'],
+      ['Esc', 'close the actions first, then clear the selection'],
     ],
   },
   {
@@ -95,26 +100,42 @@ function LearnLink() {
   );
 }
 
-function GotIt({ quiet }: { quiet?: boolean }) {
+/**
+ * The card's own way out. It closes and writes nothing: `dg-intro-v1` says
+ * the reader has been shown the Introduction, and reading the keyboard map is
+ * not that.
+ */
+function CloseCard() {
   return (
-    <button
-      type="button"
-      class={quiet === true ? 'btn is-quiet' : 'btn'}
-      onClick={() => { dismissIntro(); introOpen.value = false; }}
-    >
-      Got it
+    <button type="button" class="btn is-quiet" onClick={() => { introOpen.value = false; }}>
+      Close
     </button>
   );
 }
 
-/** The whole explanation, opened from the ? in the header. */
-function IntroCard() {
+/** The way to the whole thing, from the short explanation. */
+function IntroLink() {
+  return (
+    <a href={INTRO_HREF} onClick={(e) => { e.preventDefault(); openIntro(); }}>
+      Open the introduction
+    </a>
+  );
+}
+
+/**
+ * The whole explanation, opened from the ? in the header.
+ *
+ * Exported because the Introduction has no guidance line under its header and
+ * the `?` has to keep working there: a control that does nothing on one page
+ * is the one thing the header may not carry (`App.tsx`).
+ */
+export function IntroCard() {
   return (
     <aside class="intro" aria-label="How this page works">
       <div class="intro-hd">
         <span class="eyebrow">How this page works</span>
         <span class="strip-spacer" />
-        <GotIt />
+        <CloseCard />
       </div>
       <ul class="intro-list">
         {BULLETS.map(([k, v]) => (
@@ -128,9 +149,22 @@ function IntroCard() {
       <p class="intro-foot caption">
         Everything is one configuration seen four ways, and every link carries it.
         {' '}
+        <IntroLink />
+        {' — what this is, what the drawing shows and how to do things. '}
         <LearnLink />
         {' '}
         walks through it in nine lessons.
+      </p>
+
+      {/* The one place the toggle is explained rather than merely offered. The
+          rail header carries the same button; this is where a reader who never
+          noticed it finds out what it does -- and can press it here. */}
+      <p class="intro-foot caption">
+        <b>{HINTS_LABEL}</b>
+        {', in the inspector header, adds the sentence under each control and the '}
+        {'rest of the line above. It is off by default, and it is remembered.'}
+        {' '}
+        <HintsToggle />
       </p>
 
       <div class="intro-keys">
@@ -153,37 +187,17 @@ function IntroCard() {
   );
 }
 
-/** The first visit: one row, the same three clauses, and a way out. */
-function IntroStrip() {
-  return (
-    <aside class="intro-strip" aria-label="How this page works">
-      <p class="intro-strip-b">
-        {CLAUSES.map(([k, v], i) => (
-          <span key={k}>
-            {i === 0 ? null : ' · '}
-            <b>{k}</b>
-            {' '}
-            {v}
-          </span>
-        ))}
-        {'. '}
-        <LearnLink />
-        {' '}
-        walks through it.
-      </p>
-      <span class="strip-spacer" />
-      <GotIt quiet />
-    </aside>
-  );
-}
-
 /**
- * The first meaningful interaction takes the strip away.
+ * The first meaningful interaction settles the debt.
  *
- * An edit, an injected event and a preset load all replace `doc`; a change of
- * mode replaces `mode`. The baseline is read when the strip mounts rather than
- * at import time, so the boot path -- which restores a document and applies
- * the URL's mode before the first render -- is not mistaken for a gesture.
+ * A reader who arrived through a share link never saw the Introduction, so it
+ * is still owed to them -- until they do something, at which point the
+ * question it answers has been answered. An edit, an injected event and a
+ * preset load all replace `doc`; a change of mode replaces `mode` (and
+ * `TopBar` writes the key for that one directly). The baseline is read when
+ * this mounts rather than at import time, so the boot path -- which restores a
+ * document and applies the URL's mode before the first render -- is not
+ * mistaken for a gesture.
  */
 function useDismissOnFirstUse(active: boolean): void {
   useEffect(() => {
@@ -203,17 +217,20 @@ export function Guidance() {
      line says so (`modeGuide`). */
   const v = viewport.value;
   const full = introOpen.value;
-  const strip = !full && !introDismissed.value;
-  useDismissOnFirstUse(strip);
+  useDismissOnFirstUse(!introDismissed.value);
+  const { lead, rest } = splitGuide(m, v);
   return (
     <div class="guide">
       <p class="guide-line">
         <b class="guide-mode">{MODE_LABEL[m]}</b>
         {' · '}
-        {modeGuide(m, v)}
+        {lead}
+        {/* The rest of the sentence is explanation, and it rides with the same
+            `Hints` switch the rail notes do -- one toggle for the page's prose,
+            not a second mechanism for this line. */}
+        {rest === '' || !hintsShown() ? null : ` ${rest}`}
       </p>
       {full ? <IntroCard /> : null}
-      {strip ? <IntroStrip /> : null}
     </div>
   );
 }

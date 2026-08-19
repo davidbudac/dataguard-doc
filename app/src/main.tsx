@@ -5,7 +5,8 @@
  *
  *   theme      ?theme=  ->  localStorage  ->  auto
  *   edition    ?ed=     ->  localStorage  ->  19c
- *   intro card localStorage dg-intro-v1 (shown when it is not set)
+ *   the page  ?intro=1, or -- with dg-intro-v1 unset and nothing in the
+ *             address naming something else to look at -- the Introduction
  *   document   #t= / #t0= / #cfg2= / #cfg=
  *                       ->  ?preset= / ?lesson=
  *                       ->  a published-page link (?sc=...#ch-clocks)
@@ -25,16 +26,18 @@ import { findPreset } from './presets';
 import { resetHistory } from './state/history';
 import { decodeFragment, fragmentKind } from './state/codec';
 import {
-  announceRestore, loadDoc, loadEdition, loadIntro, loadTheme, startAutosave,
+  announceRestore, introDismissed, loadDoc, loadEdition, loadHints, loadIntro, loadTheme,
+  startAutosave,
 } from './state/persist';
 import { upgradeLegacyUrl } from './state/legacy-url';
 import { applyLearnRoute, openLessonStep, startLearnRouting } from './ui/learn/route';
+import { introOnBoot } from './ui/intro/route';
 import { lessonById } from './content';
 import {
   applyUrlState, parseUrlQuery, presetId, splitQuery, startUrlSync, URL_DEFAULTS,
 } from './state/url';
 import type { UrlState } from './state/url';
-import { applyTheme, startViewportWatch, toast } from './state/view';
+import { applyTheme, introPage, startViewportWatch, toast } from './state/view';
 
 import './styles/tokens.css';
 import './styles/base.css';
@@ -57,6 +60,9 @@ async function boot(): Promise<void> {
   /* Whether the reader has already been told how the page works. Read once,
      here, so no component reaches into localStorage while it renders. */
   loadIntro();
+  /* And whether they want the sentence under each control. Same contract:
+     read once, here, never from inside a render. */
+  loadHints();
 
   let restoredFromStorage = false;
   let notice: string | null = null;
@@ -127,6 +133,17 @@ async function boot(): Promise<void> {
      way in, `?lesson=&step=` once the canonical URL is written. Either form
      sets the workbench up for that step, so a link to a step shows what the
      step is about rather than whatever was last open. */
+  /* The Introduction, when it is asked for or when this reader has never been
+     shown it and the address is not already a link to something (ui.md SS3e).
+     Read after `applyUrlState`, which has just put `?intro=1` into the signal:
+     this is the rule that can also open the page when the query is silent. */
+  introPage.value = introOnBoot({
+    asked: state.intro,
+    seen: introDismissed.value,
+    hasDocument: fragmentKind(hash) !== null,
+    keys: [...present],
+  });
+
   const route = applyLearnRoute(hash, 'boot');
   if (route === null && state.lesson !== null) {
     const lesson = lessonById(state.lesson);

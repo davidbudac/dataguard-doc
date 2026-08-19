@@ -11,10 +11,11 @@
 
 import type { Observer, TopologyDoc } from '@/engine';
 import { hostId } from '@/engine';
+import { removeAction } from '../build/actions';
 import { Action, Check, Group, Note, Text } from './controls';
 import { Pick } from './controls';
-import { patchObserver, removeObserver, renameObserver, setMasterObserver } from './edits';
-import { off, ON } from './why';
+import { patchObserver, renameObserver, setMasterObserver } from './edits';
+import { off, ON, WHY } from './why';
 
 export interface ObserverFormProps {
   observer: Observer;
@@ -25,6 +26,7 @@ export function ObserverForm({ observer, doc }: ObserverFormProps) {
   const id = observer.id;
   const dbHosts = new Set<string>();
   for (const m of doc.members) for (const i of m.instances) dbHosts.add(i.host as string);
+  const remove = removeAction(doc, id as string);
 
   return (
     <>
@@ -33,6 +35,7 @@ export function ObserverForm({ observer, doc }: ObserverFormProps) {
           name="Name"
           value={id as string}
           onCommit={(v) => renameObserver(id, v)}
+          focusKey={`name:${id as string}`}
           note="The name START OBSERVER gives it, and how SET MASTEROBSERVER TO names it."
         />
         <Pick
@@ -58,9 +61,7 @@ export function ObserverForm({ observer, doc }: ObserverFormProps) {
         <div class="rr-line">
           <Action
             label="Make it the master"
-            enabled={observer.role === 'master'
-              ? off('It is the master observer already.')
-              : ON}
+            enabled={observer.role === 'master' ? off(WHY.alreadyMaster) : ON}
             onClick={() => setMasterObserver(id)}
           />
           <span class="tag t-vi">{observer.role}</span>
@@ -122,7 +123,9 @@ export function ObserverForm({ observer, doc }: ObserverFormProps) {
 
       <Group title="This observer">
         <div class="rr-line">
-          <Action label={`Remove ${id as string}`} onClick={() => removeObserver(id)} />
+          {remove === null ? null : (
+            <Action label={remove.label} enabled={remove.enabled} onClick={remove.run} />
+          )}
         </div>
         <Note>
           Removing the last observer is not the same as being unobserved: with no observer

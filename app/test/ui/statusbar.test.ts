@@ -68,6 +68,18 @@ describe('the preset picker', () => {
     }
   });
 
+  it('drops the word "Preset" from the bar and keeps the name for the a11y tree', () => {
+    /* The picker's own first option names what is on screen, and the control
+       carries a title -- a visible label repeating the control beside it is
+       one more word in a bar the reader reads sideways (ui.md SS3f). The
+       label element stays: a select still needs an accessible name. */
+    const root = mount();
+    const label = root.querySelector('label[for="preset-picker"]');
+    expect(label?.textContent).toBe('Preset');
+    expect(label?.className).toBe('sr');
+    expect(root.querySelector('#preset-picker')?.getAttribute('title')).toBeTruthy();
+  });
+
   it('names the preset the document is, and says so when it is no longer that', async () => {
     presetId.value = 'far-sync-zero-loss';
     const chosen = findPreset('far-sync-zero-loss');

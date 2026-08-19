@@ -60,6 +60,10 @@ export const WHY = {
     'The primary is not a failover target of itself.',
   primaryNoApply:
     'A primary applies no redo of its own.',
+  alreadyPrimary:
+    'It holds the primary role already.',
+  alreadyMaster:
+    'It is the master observer already.',
   pingUnset:
     'The two ObserverPing properties are not set, so the threshold governs detection.',
 
@@ -83,6 +87,15 @@ export const WHY = {
   noTarget:
     'No physical or logical standby is configured to move the role to.',
   /**
+   * The two ends of a range this page models, said without the numbers: the
+   * range itself lives in the engine's `BOUNDS`, and a sentence here carrying
+   * `0 ms` or `100 ms` of its own is a second place to change it.
+   */
+  rttAtFloor:
+    'The round trip is at the floor of the range this page models.',
+  rttAtCeiling:
+    'The round trip is at the ceiling of the range this page models.',
+  /**
    * The reason is spelled out once, on the stage card the shell draws above
    * the drawing (App.tsx). Everywhere else says only that it is read-only:
    * three copies of the same sentence on one phone screen is not three times
@@ -94,6 +107,8 @@ export const WHY = {
     'This is a read-only view here.',
   nameTaken:
     'Another member already carries that db_unique_name.',
+  observerNameTaken:
+    'Another observer already carries that name.',
 } as const;
 
 export type WhyKey = keyof typeof WHY;

@@ -19,6 +19,9 @@ import { Segmented } from '../common/Segmented';
 import type { SegmentedOption } from '../common/Segmented';
 import { WhyPill } from '../common/WhyPill';
 import type { WhyState } from '../common/WhyPill';
+import { useLayoutEffect, useRef } from 'preact/hooks';
+import { focusField } from '@/state/view';
+import { hintsShown } from '../hints';
 import { printing } from '../print';
 import { isSectionOpen, toggleSection } from './sections';
 import { ON } from './why';
@@ -79,8 +82,27 @@ export function Fold(
   );
 }
 
-/** A line of prose inside a rail -- an empty state, a caveat, a scope note. */
-export function Note({ children, warn = false }: { children: ComponentChildren; warn?: boolean }) {
+/**
+ * A line of prose inside a rail -- an empty state, a caveat, a scope note.
+ *
+ * A note that *explains* rides with the `Hints` toggle and is not rendered at
+ * all while that is off (`ui/hints.tsx`); print renders it regardless, the way
+ * every `Fold` opens on paper. Two kinds stay on screen at every setting:
+ *
+ *  - `always` -- a note that reports rather than explains: an empty state, the
+ *    count of a multiple selection, what the rail is standing in for. Hiding
+ *    it would hide a fact no control on the rail carries.
+ *  - `warn` -- a caution about the state the reader is looking at. It is
+ *    implicitly `always`: a caution nobody asked to see is a caution.
+ *
+ * Refusals are not notes. `WhyPill` is untouched by the toggle -- a grey
+ * control says why it is grey whatever the reader has chosen to read.
+ */
+export function Note(
+  { children, warn = false, always = false }:
+  { children: ComponentChildren; warn?: boolean; always?: boolean },
+) {
+  if (!(always || warn || hintsShown())) return null;
   return <p class={warn ? 'grp-note is-warn' : 'grp-note'}>{children}</p>;
 }
 
@@ -146,17 +168,33 @@ export interface TextProps {
   note?: string;
   enabled?: WhyState;
   mono?: boolean;
+  /** When `focusField` holds this key, the input takes the focus once. */
+  focusKey?: string;
 }
 
 /**
  * Committed on change, not on every keystroke: a rename rewrites every
  * reference in the document, and half a name is not a document.
  */
-export function Text({ name, value, onCommit, placeholder, note, enabled = ON }: TextProps) {
+export function Text({
+  name, value, onCommit, placeholder, note, enabled = ON, focusKey,
+}: TextProps) {
   const off = enabled.state === 'off';
+  const ref = useRef<HTMLInputElement | null>(null);
+  /* A one-shot focus request from the drawing (a double-click on a card):
+     read the signal, act once, clear it -- so the form re-rendering for any
+     other reason never pulls the caret back here. */
+  const wanted = focusKey !== undefined && focusField.value === focusKey;
+  useLayoutEffect(() => {
+    if (!wanted || off) return;
+    focusField.value = null;
+    ref.current?.focus();
+    ref.current?.select();
+  }, [wanted, off]);
   return (
     <Field name={name} note={note} enabled={enabled}>
       <input
+        ref={ref}
         class="field-in"
         type="text"
         value={value}

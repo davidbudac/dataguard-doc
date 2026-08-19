@@ -23,6 +23,7 @@ import type { Mode, ThemePref } from '@/state/view';
 import { saveEdition, saveTheme } from '@/state/persist';
 import { applyTheme } from '@/state/view';
 import { Segmented } from './common/Segmented';
+import { INTRO_HREF, leaveIntro, openIntro } from './intro/route';
 
 export function TopBar() {
   const m = mode.value;
@@ -30,7 +31,20 @@ export function TopBar() {
     <header class="topbar app-top">
       <div class="topbar-brand">
         <b>Data Guard topology</b>
-        <span>simulator</span>
+        {/* A real `<a href>` and not a button, so it can be middle-clicked,
+            bookmarked and copied: `?intro=1` is the page's own address, and
+            the click handler only saves the reload. */}
+        <span>
+          simulator
+          {' · '}
+          <a
+            href={INTRO_HREF}
+            title="What this is, and what to do with it"
+            onClick={(e) => { e.preventDefault(); openIntro(); }}
+          >
+            Introduction
+          </a>
+        </span>
       </div>
 
       <div class="topbar-modes">
@@ -38,7 +52,10 @@ export function TopBar() {
           label="Mode"
           value={m}
           options={MODES.map((x) => ({ value: x, label: MODE_LABEL[x], title: MODE_SUB[x] }))}
-          onChange={(x) => { mode.value = x; }}
+          /* A mode button is also the way out of the Introduction, and taking
+             it means the reader has seen the page: `dg-intro-v1` is written
+             here exactly as "Start building" writes it (intro/route.ts). */
+          onChange={(x) => { mode.value = x; leaveIntro(); }}
         />
       </div>
 

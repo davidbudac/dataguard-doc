@@ -19,7 +19,10 @@ import type { RedoGraph, Snapshot, TopologyDoc } from '@/engine';
 import type { Geometry, LayoutOffset, NodeBox } from './layout';
 import { layoutTopology } from './layout';
 import { cardFrameFor, chipsFor, routeTopology, siteIsDown, unionViewBox } from './routing';
-import { describeTopology, cardLabel } from './aria';
+import { describeTopology, cardLabel, linkLabel, siteLabel } from './aria';
+import { anchorFor, fittedScale, placeBar } from './anchor';
+import { ActionBar, barFootprint } from './ActionBar';
+import type { BarAction } from './ActionBar';
 import { NodeCard } from './NodeCard';
 import { LinkPath, linkKey } from './LinkPath';
 import { SiteRect, siteKey } from './SiteRect';
@@ -58,9 +61,60 @@ export interface TopoCanvasProps {
   onDragEnd?: (key: string, offset: LayoutOffset) => void;
   onDelete?: (key: string) => void;
   onClear?: () => void;
+  /**
+   * The action bar, anchored on `key`. Absent means nothing is offered on the
+   * drawing; the caller decides what a click opens, this only draws it.
+   */
+  bar?: {
+    key: string;
+    actions: readonly BarAction[];
+    quiet?: string | null;
+    /** Opened by a keyboard-shaped gesture: the bar takes the focus. */
+    focus?: boolean;
+    /** Where the rows past the bar's cap live, named for this viewport. */
+    moreWhere?: string;
+    /** The cap on rows, when the caller's stage is shorter than Build's. */
+    maxRows?: number;
+  } | null;
+  /**
+   * How far below 1:1 the drawing is rendering, measured by the caller.
+   *
+   * The bar undoes it so its text stays readable at any stage width; nothing
+   * else on the drawing needs it, because everything else *is* the drawing.
+   */
+  scale?: number;
+  /**
+   * How large the drawing is asked to be drawn, 1 being its own size.
+   *
+   * It is the rendered `width`/`height` and nothing else: the viewBox is
+   * untouched, so every coordinate on the drawing, every golden and every
+   * placement arithmetic keeps meaning exactly what it meant. Above 1 the
+   * drawing outgrows the stage and the stage scrolls, which is the whole point
+   * -- a 12-site configuration at 1:1 has cards the size of a caption.
+   */
+  zoomFactor?: number;
+  /** Ctrl/Cmd + wheel, one rung of the caller's ladder per notch. */
+  onZoomStep?: (dir: 1 | -1) => void;
+  onCloseBar?: () => void;
+  /** `Shift+F10`, the context-menu key, or the right button on an entity. */
+  onContextMenu?: (key: string) => void;
+  /** A double click: the reader wants the whole form, not six buttons. */
+  onOpen?: (key: string) => void;
+  /** The `<figure>`, for a caller that has to measure the drawing. */
+  wrapRef?: (el: HTMLElement | null) => void;
 }
 
-interface DragState {
+/**
+ * A pointer held down on the drawing, in one of its two meanings.
+ *
+ * `card` moves an object and writes an edit; `pan` moves the *view* and writes
+ * nothing -- it scrolls the port the drawing sits in. One state machine for
+ * both, because the parts that matter are the parts they share: the 4 px
+ * threshold that keeps a click a click, and the capture that is taken only
+ * once that threshold is crossed.
+ */
+interface CardDrag {
+  kind: 'card';
   key: string;
   startX: number;
   startY: number;
@@ -70,11 +124,54 @@ interface DragState {
   moved: boolean;
 }
 
+interface PanDrag {
+  kind: 'pan';
+  startX: number;
+  startY: number;
+  /** Where the scroll port was scrolled to when the pointer went down. */
+  left: number;
+  top: number;
+  stage: Element;
+  moved: boolean;
+}
+
+type DragState = CardDrag | PanDrag;
+
 const DRAG_THRESHOLD = 4;
+
+/** The entity a pointer or context-menu event landed on, or `null` for ground. */
+const keyAt = (target: EventTarget | null): string | null => {
+  if (!(target instanceof Element)) return null;
+  return target.closest('[data-node]')?.getAttribute('data-node') ?? null;
+};
+
+/** True inside the action bar, which is HTML painted into the drawing. */
+const insideBar = (target: EventTarget | null): boolean =>
+  target instanceof Element && target.closest('.tp-actions') !== null;
+
+/**
+ * The element a pan actually scrolls.
+ *
+ * The wrap, whenever the drawing has been zoomed: `.tp-wrap.is-zoomed` is
+ * `overflow: auto` in canvas.css, and the class and that rule are the same
+ * fact, so asking for the class is asking whether the wrap is the scroll port.
+ * It has to be the wrap rather than the stage, because the strips above the
+ * drawing are the wrap's siblings -- scrolling the stage instead would carry
+ * the zoom control off the screen with the drawing it zooms.
+ *
+ * At 1:1 the wrap does not scroll and the stage is the fallback: a drawing can
+ * still be taller than a short stage without any zoom at all. In Learn there
+ * is neither, and the press stays what it already was -- a click on the ground.
+ */
+const scrollerFor = (svg: SVGSVGElement): Element | null => {
+  const wrap = svg.closest('.tp-wrap');
+  if (wrap !== null && wrap.classList.contains('is-zoomed')) return wrap;
+  return svg.closest('.app-stage');
+};
 
 export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
   const {
-    doc, graph, frame = null, prefix = 'tp', interactive = true,
+    doc, graph, frame = null, prefix = 'tp', interactive = true, zoomFactor = 1,
   } = props;
   const overrides = props.overrides ?? {};
   const selection = props.selection ?? [];
@@ -89,12 +186,24 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
   const view = unionViewBox(geo.viewBox, routed.bounds);
 
   const svgRef = useRef<SVGSVGElement | null>(null);
+  /* Every focusable thing on the drawing, by key: cards, site panels and the
+     caption pill of each link. One map, because the ids share one namespace --
+     a broker configuration cannot hold a member and a data centre called the
+     same thing -- and because the key handlers are the same handlers. */
   const cards = useRef(new Map<string, SVGGElement>());
   const drag = useRef<DragState | null>(null);
   /* Which card in each site is the site's tab stop. It follows the arrows, so
      tabbing away from a site and back again returns to the card the reader
      left, not to the top of the column. */
   const [visited, setVisited] = useState<string | null>(null);
+  /* The same, for the links: the whole set of them is *one* tab stop, so Tab
+     does not walk twelve captions before it reaches the drawing's other half,
+     and the arrows walk them in routed order once the focus is on one. */
+  const [visitedLink, setVisitedLink] = useState<string | null>(null);
+  /* A live pan, which is a cursor and nothing else -- but a cursor that has to
+     survive the pointer leaving the ground it was pressed on, so it is state
+     rather than a `:active` rule. */
+  const [panning, setPanning] = useState(false);
 
   const cardRef = useCallback((key: string, el: SVGGElement | null) => {
     if (el) cards.current.set(key, el);
@@ -102,28 +211,92 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
   }, []);
 
   const isSelected = (key: string): boolean => selection.includes(key);
+  const linkAt = (key: string): number => routed.links.findIndex((l) => linkKey(l) === key);
 
-  /* A click always selects. Where the caller has an event menu, the same click
-     offers it, anchored under the card it belongs to. */
-  const onCardSelect = (key: string, additive: boolean): void => {
-    setVisited(key);
-    props.onSelect?.(key, additive);
-    if (!props.onEventMenu || additive) return;
+  /* The tab stop follows the focus, per kind: a card is its site's stop, a
+     link is the one stop the whole set of them shares. */
+  const remember = (key: string): void => {
+    if (geo.byKey[key]) setVisited(key);
+    else if (linkAt(key) >= 0) setVisitedLink(key);
+  };
+
+  const askEventMenu = (key: string): void => {
     const box = cards.current.get(key)?.getBoundingClientRect();
-    props.onEventMenu(key, box
+    props.onEventMenu?.(key, box
       ? { x: box.left + box.width / 2, y: box.top + box.height }
       : { x: 0, y: 0 });
   };
 
+  /* A click always selects. Where the caller has an event menu, the same click
+     offers it, anchored under the card it belongs to. */
+  const onCardSelect = (key: string, additive: boolean): void => {
+    remember(key);
+    props.onSelect?.(key, additive);
+    if (!props.onEventMenu || additive) return;
+    askEventMenu(key);
+  };
+
   /* ---- keyboard: arrows walk one site, Tab steps between them ---- */
   const focusNode = (key: string): void => {
-    setVisited(key);
+    remember(key);
     cards.current.get(key)?.focus();
   };
 
   const siblings = (node: NodeBox): NodeBox[] => geo.nodes
     .filter((n) => (n.site as string) === (node.site as string))
     .sort((a, b) => a.y - b.y || a.x - b.x);
+
+  /**
+   * The keys every focusable thing on the drawing answers.
+   *
+   * One handler for cards, data centres and captions, because they are one
+   * contract: a data centre that could be selected with the mouse and not with
+   * `Enter`, or removed from a card and not from its own rectangle, is the
+   * drawing telling two stories about one object. The arrows are the part that
+   * differs per kind, and they are handled above this.
+   */
+  const onEntityKey = (key: string, ev: JSX.TargetedKeyboardEvent<SVGGElement>): void => {
+    switch (ev.key) {
+      case 'Enter':
+      case ' ': {
+        ev.preventDefault();
+        onCardSelect(key, ev.shiftKey);
+        return;
+      }
+      case 'e':
+      case 'E': {
+        ev.preventDefault();
+        askEventMenu(key);
+        return;
+      }
+      case 'Delete':
+      case 'Backspace': {
+        ev.preventDefault();
+        props.onDelete?.(key);
+        return;
+      }
+      case 'Escape': {
+        /* The bar first, the selection second: closing a menu and forgetting
+           what it was about are two presses, not one. */
+        ev.preventDefault();
+        if (props.bar) props.onCloseBar?.();
+        else props.onClear?.();
+        return;
+      }
+      case 'F10': {
+        if (!ev.shiftKey) return;
+        ev.preventDefault();
+        props.onContextMenu?.(key);
+        return;
+      }
+      case 'ContextMenu': {
+        ev.preventDefault();
+        props.onContextMenu?.(key);
+        return;
+      }
+      default:
+    }
+  };
 
   const onCardKey = (key: string, ev: JSX.TargetedKeyboardEvent<SVGGElement>): void => {
     const node = geo.byKey[key];
@@ -143,33 +316,30 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
         if (prev) { ev.preventDefault(); focusNode(prev.key); }
         return;
       }
-      case 'Enter':
-      case ' ': {
-        ev.preventDefault();
-        onCardSelect(key, ev.shiftKey);
+      default:
+        onEntityKey(key, ev);
+    }
+  };
+
+  /** The captions are one stop and a list: the arrows walk them in routed order. */
+  const onLinkKey = (key: string, ev: JSX.TargetedKeyboardEvent<SVGGElement>): void => {
+    const at = linkAt(key);
+    if (at < 0) { onEntityKey(key, ev); return; }
+    switch (ev.key) {
+      case 'ArrowDown':
+      case 'ArrowRight': {
+        const next = routed.links[Math.min(routed.links.length - 1, at + 1)];
+        if (next) { ev.preventDefault(); focusNode(linkKey(next)); }
         return;
       }
-      case 'e':
-      case 'E': {
-        ev.preventDefault();
-        const box = cards.current.get(key)?.getBoundingClientRect();
-        props.onEventMenu?.(key, box
-          ? { x: box.left + box.width / 2, y: box.top + box.height }
-          : { x: 0, y: 0 });
-        return;
-      }
-      case 'Delete':
-      case 'Backspace': {
-        ev.preventDefault();
-        props.onDelete?.(key);
-        return;
-      }
-      case 'Escape': {
-        ev.preventDefault();
-        props.onClear?.();
+      case 'ArrowUp':
+      case 'ArrowLeft': {
+        const prev = routed.links[Math.max(0, at - 1)];
+        if (prev) { ev.preventDefault(); focusNode(linkKey(prev)); }
         return;
       }
       default:
+        onEntityKey(key, ev);
     }
   };
 
@@ -184,6 +354,7 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
     const scale = rect.width > 0 ? view.w / rect.width : 1;
     const base = overrides[key] ?? { dx: 0, dy: 0 };
     drag.current = {
+      kind: 'card',
       key,
       startX: ev.clientX,
       startY: ev.clientY,
@@ -192,15 +363,56 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
       scale,
       moved: false,
     };
-    svg.setPointerCapture(ev.pointerId);
+    /* Capture waits for the drag threshold (onPointerMove). Capturing here
+       retargets the pointerup -- and with it the mouseup and the click -- to
+       the svg, so a plain click never reached the card's own onClick and
+       selecting with a mouse silently did nothing. A drag still captures the
+       moment it becomes one, which is the only time the pointer can leave. */
+  };
+
+  /**
+   * A press on the ground between the cards: the reader is grabbing the paper.
+   *
+   * Only where there is paper to grab -- a scrolling ancestor, which
+   * `scrollerFor` names.
+   */
+  const onSvgPointerDown = (ev: JSX.TargetedPointerEvent<SVGSVGElement>): void => {
+    if (ev.button !== 0 || drag.current !== null) return;
+    if (keyAt(ev.target) !== null || insideBar(ev.target)) return;
+    const svg = svgRef.current;
+    const stage = svg === null ? null : scrollerFor(svg);
+    if (stage === null) return;
+    drag.current = {
+      kind: 'pan',
+      startX: ev.clientX,
+      startY: ev.clientY,
+      left: stage.scrollLeft,
+      top: stage.scrollTop,
+      stage,
+      moved: false,
+    };
   };
 
   const onPointerMove = (ev: JSX.TargetedPointerEvent<SVGSVGElement>): void => {
     const d = drag.current;
     if (!d) return;
+    if (d.kind === 'pan') {
+      const dx = ev.clientX - d.startX;
+      const dy = ev.clientY - d.startY;
+      if (!d.moved && Math.hypot(dx, dy) < DRAG_THRESHOLD) return;
+      /* Capture on the same terms as a card drag: only once this has become a
+         pan, so a plain click on the ground still reaches its own handler. */
+      if (!d.moved) { svgRef.current?.setPointerCapture?.(ev.pointerId); setPanning(true); }
+      d.moved = true;
+      /* The paper follows the pointer, so the scroll goes the other way. */
+      d.stage.scrollLeft = d.left - dx;
+      d.stage.scrollTop = d.top - dy;
+      return;
+    }
     const dx = (ev.clientX - d.startX) * d.scale;
     const dy = (ev.clientY - d.startY) * d.scale;
     if (!d.moved && Math.hypot(dx, dy) < DRAG_THRESHOLD) return;
+    if (!d.moved) svgRef.current?.setPointerCapture?.(ev.pointerId);
     d.moved = true;
     props.onDrag?.(d.key, { dx: snap8(d.baseX + dx), dy: snap8(d.baseY + dy) });
   };
@@ -210,10 +422,55 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
     if (!d) return;
     drag.current = null;
     svgRef.current?.releasePointerCapture?.(ev.pointerId);
+    if (d.kind === 'pan') { if (d.moved) setPanning(false); return; }
     if (!d.moved) return;
     const dx = (ev.clientX - d.startX) * d.scale;
     const dy = (ev.clientY - d.startY) * d.scale;
     props.onDragEnd?.(d.key, { dx: snap8(d.baseX + dx), dy: snap8(d.baseY + dy) });
+  };
+
+  /**
+   * Ctrl (or Cmd) and the wheel: the browser's own zoom gesture, and what a
+   * trackpad pinch sends. A plain wheel is left alone -- it scrolls the stage,
+   * which is how a reader reaches the rest of a drawing bigger than its room.
+   */
+  const onSvgWheel = (ev: JSX.TargetedWheelEvent<SVGSVGElement>): void => {
+    if (!ev.ctrlKey && !ev.metaKey) return;
+    if (!props.onZoomStep) return;
+    ev.preventDefault();
+    props.onZoomStep(ev.deltaY < 0 ? 1 : -1);
+  };
+
+  /**
+   * A pointer-up that landed on nothing.
+   *
+   * The ground between the cards is a target too: it is where a reader clicks
+   * to mean "never mind". A drag that has just ended is not that click, and
+   * neither is a press inside the action bar -- which is HTML inside the
+   * drawing, so it bubbles through here on its way to its own button.
+   */
+  const onSvgPointerUp = (ev: JSX.TargetedPointerEvent<SVGSVGElement>): void => {
+    const d = drag.current;
+    const wasCard = d !== null && d.kind === 'card';
+    const panned = d !== null && d.kind === 'pan' && d.moved;
+    endDrag(ev);
+    if (wasCard || panned) return;
+    if (keyAt(ev.target) !== null || insideBar(ev.target)) return;
+    props.onClear?.();
+  };
+
+  const onSvgContextMenu = (ev: JSX.TargetedMouseEvent<SVGSVGElement>): void => {
+    const key = keyAt(ev.target);
+    if (key === null) return;
+    ev.preventDefault();
+    props.onContextMenu?.(key);
+  };
+
+  const onSvgDblClick = (ev: JSX.TargetedMouseEvent<SVGSVGElement>): void => {
+    const key = keyAt(ev.target);
+    if (key === null) return;
+    ev.preventDefault();
+    props.onOpen?.(key);
   };
 
   /* ---- one tab stop per site: Tab steps between sites, arrows walk one ---- */
@@ -225,6 +482,28 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
     const stop = own.find((n) => n.key === visited) ?? own[0];
     if (stop) tabStops.add(stop.key);
   }
+  /* One stop for every caption on the drawing, not one per caption. */
+  const linkStop = Math.max(0, routed.links.findIndex((l) => linkKey(l) === visitedLink));
+
+  /* ---- the action bar: placed here, drawn last ---- */
+  const bar = interactive ? props.bar ?? null : null;
+  const k = Math.min(1, Math.max(0.5, props.scale ?? 1));
+  const barAnchor = bar === null ? null : anchorFor(bar.key, geo, routed.links);
+  const barSize = bar === null ? null : barFootprint(bar.actions, bar.quiet ?? null, bar.maxRows);
+  /* In user units, and larger than the CSS size when the drawing is shrunk:
+     the bar undoes the drawing's scale, so its footprint on the drawing grows
+     as that scale falls. Placing against the CSS size put it off the stage. */
+  const barScale = barSize === null ? k : fittedScale(barSize, view, k);
+  const barPlace = bar === null || barAnchor === null || barSize === null
+    ? null
+    : placeBar(barAnchor, { w: barSize.w / barScale, h: barSize.h / barScale }, view);
+
+  const closeBar = (): void => {
+    props.onCloseBar?.();
+    /* Back to the thing the bar was about: a menu that closes and leaves the
+       focus on the document body has lost the reader's place. */
+    if (bar) cards.current.get(bar.key)?.focus();
+  };
 
   const legend = legendLines(doc, geo, routed.links.some((l) => !l.active));
   if (!interactive) {
@@ -245,20 +524,31 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
   }
 
   return (
-    <figure class="tp-wrap">
+    <figure
+      /* `is-zoomed` releases the CSS cap that keeps the drawing inside its
+         room; `is-pannable` is the grab cursor, and only where there is
+         something to grab -- below 1:1 the drawing fits and dragging it would
+         scroll nothing, so the cursor would be a promise the page cannot keep. */
+      class={`tp-wrap${zoomFactor === 1 ? '' : ' is-zoomed'}${zoomFactor > 1 ? ' is-pannable' : ''}`}
+      ref={props.wrapRef}
+    >
       <svg
-        class="topo-svg"
+        class={`topo-svg${panning ? ' is-pan' : ''}`}
         ref={svgRef}
         viewBox={`${view.x} ${view.y} ${view.w} ${view.h}`}
-        width={view.w}
-        height={view.h}
+        width={Math.round(view.w * zoomFactor)}
+        height={Math.round(view.h * zoomFactor)}
         preserveAspectRatio="xMidYMid meet"
         role="group"
         aria-labelledby={sumId}
         aria-describedby={descId}
+        onPointerDown={interactive ? onSvgPointerDown : undefined}
         onPointerMove={interactive ? onPointerMove : undefined}
-        onPointerUp={interactive ? endDrag : undefined}
+        onPointerUp={interactive ? onSvgPointerUp : undefined}
         onPointerCancel={interactive ? endDrag : undefined}
+        onWheel={interactive && props.onZoomStep ? onSvgWheel : undefined}
+        onContextMenu={interactive && props.onContextMenu ? onSvgContextMenu : undefined}
+        onDblClick={interactive && props.onOpen ? onSvgDblClick : undefined}
       >
         <defs>
           <pattern
@@ -322,8 +612,14 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
               prefix={prefix}
               down={siteIsDown(doc, s.id as string, frame)}
               selected={isSelected(siteKey(s.id as string))}
+              hovered={hovered === siteKey(s.id as string)}
+              label={siteLabel(doc, { id: s.id as string, name: s.name }, frame)}
+              tabIndex={0}
               interactive={interactive}
-              onSelect={props.onSelect}
+              onSelect={onCardSelect}
+              onHover={props.onHover}
+              onKeyDown={onEntityKey}
+              nodeRef={cardRef}
             />
           ))}
         </g>
@@ -339,9 +635,10 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
               part="line"
               interactive={interactive}
               highlighted={hovered === linkKey(l) || isSelected(linkKey(l))}
+              selected={isSelected(linkKey(l))}
               dimmed={hovered !== null && hovered !== linkKey(l)
                 && hovered !== l.from && hovered !== l.to}
-              onSelect={props.onSelect}
+              onSelect={onCardSelect}
               onHover={props.onHover}
             />
           ))}
@@ -358,7 +655,7 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
               label={cardLabel(doc, graph, n, frame)}
               selected={isSelected(n.key)}
               hovered={hovered === n.key}
-              dragging={drag.current?.key === n.key}
+              dragging={drag.current?.kind === 'card' && drag.current.key === n.key}
               interactive={interactive}
               tabIndex={tabStops.has(n.key) ? 0 : -1}
               onSelect={onCardSelect}
@@ -371,7 +668,7 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
         </g>
 
         <g class="tp-pills">
-          {routed.links.map((l) => (
+          {routed.links.map((l, i) => (
             <LinkPath
               key={l.id}
               link={l}
@@ -379,13 +676,35 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
               part="pill"
               interactive={interactive}
               highlighted={hovered === linkKey(l) || isSelected(linkKey(l))}
+              selected={isSelected(linkKey(l))}
               dimmed={hovered !== null && hovered !== linkKey(l)
                 && hovered !== l.from && hovered !== l.to}
-              onSelect={props.onSelect}
+              label={linkLabel(doc, l)}
+              tabIndex={i === linkStop ? 0 : -1}
+              onSelect={onCardSelect}
               onHover={props.onHover}
+              onKeyDown={onLinkKey}
+              nodeRef={cardRef}
             />
           ))}
         </g>
+
+        {/* Last, so it paints over everything: an action bar that a caption
+            can cross is a menu with a line through it. */}
+        {bar === null || barPlace === null ? null : (
+          <ActionBar
+            x={barPlace.x}
+            y={barPlace.y}
+            scale={barScale}
+            subject={bar.key}
+            actions={bar.actions}
+            quiet={bar.quiet ?? null}
+            focusOnOpen={bar.focus === true}
+            {...(bar.moreWhere !== undefined ? { moreWhere: bar.moreWhere } : {})}
+            {...(bar.maxRows !== undefined ? { maxRows: bar.maxRows } : {})}
+            onClose={closeBar}
+          />
+        )}
       </svg>
 
       <p class="sr" id={sumId}>{aria.summary}</p>

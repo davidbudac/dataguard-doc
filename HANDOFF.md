@@ -1,6 +1,6 @@
 # Implementation handoff — Data Guard topology simulator
 
-Written 2026-08-17 for the next agent taking over `app/`. It is a *situation report*
+Written 2026-08-17, updated 2026-08-19 (§3c) for the next agent taking over `app/`. It is a *situation report*
 and a *work order*; the durable rules live in [AGENTS.md](AGENTS.md) (accuracy rules,
 what exists, publishing, conventions), [CLAUDE.md](CLAUDE.md) (per-tree rules), and the
 three design documents in `app/design/` — read those before touching anything, this
@@ -27,12 +27,17 @@ multi-target). English only. Zero external requests. No inline script or style
 | `69ac437` | the whole app + engine + docs; legacy frozen at `/legacy/`; site build reworked |
 | `557b9b8` | `site/smoke.mjs` probes HTTP and falls back to an inlined `file://` copy; URL/permalink write path moved off `requestAnimationFrame`; canonical/verify URLs → `https://dataguard.davidbudac.cz/` |
 | `9517d7c` | the first UI polish pass described in §3, plus this file |
-| (this commit) | the second usability pass described in §3b — 15 items + 24 review findings |
+| `6e01232` | the second usability pass described in §3b — 15 items + 24 review findings |
+| (this commit) | the third pass described in §3c — the drawing as the workbench: on-canvas action bar, Build action table, hints toggle, zoom/pan, Introduction page, density pass |
 
-**Gates** at the last green run: `cd app && npm run typecheck && npx vitest run &&
-npm run build` → 54 files / 1443 tests; `node site/build.mjs` → `_site/`;
-`node --test site/test.mjs` → 68 (legacy fragment's model blocks);
-`./site/publish.sh --dry-run` → build + all three test gates incl. smoke.
+**Gates** at the last green run (2026-08-19): `cd app && npm run typecheck && npx vitest run &&
+npm run build` → **58 files / 1578 tests**; `node site/build.mjs` → `_site/` (no-inline guard
+passes with the `<foreignObject>` bar); `node --test site/test.mjs` → 68. **`node site/smoke.mjs`
+did not complete on the owner's Mac**: it needs `CHROME="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"`,
+and then every check times out at 90 s because that headless Chrome writes its output and never
+exits (the same quirk the screenshot recipe in §3b works around by polling for the PNG and killing
+the process). Fix `smoke.mjs` the same way — or run it on the dev box where it last passed —
+before `publish.sh`, which runs it as the third gate.
 
 **Not published.** The live host `dataguard.davidbudac.cz` still serves the *old*
 legacy page. `davidbudac.cz/dataguard/…` 301-redirects to it (path + query kept), so
@@ -156,15 +161,54 @@ stand in for clicks (`mode`, `preset`, `sel=<member id>`, `t`, `panel`, `lesson`
 `requestAnimationFrame` never fires in that dump — that is why the URL/permalink
 write path is a timer, and anything else that must exist in a dump must not wait on rAF.
 
+## 3c. The third pass — the drawing as the workbench (2026-08-19)
+
+Owner's ask: *"click on each component and modify its properties or remove it; the
+topology diagram should be the main centre point; much more interactive"*, then
+*"prune the visible text a lot more, it should still be there optionally visible"*,
+then *"an Introduction website … explain more in detail what to do; space it out, it
+looks cramped, still a lot of text"*. The as-built record is `app/design/ui.md`
+§3c (hints), §3d (action bar, parity, zoom, the mouse-click bug), §3e
+(Introduction), §3f (density) — read those for mechanism; this is the map:
+
+| piece | where | notes |
+|---|---|---|
+| On-canvas action bar | `ui/canvas/ActionBar.tsx`, `anchor.ts` (pure placement), `bar.ts` (open/focus signals), wired in `CanvasSlot.tsx`, drawn last in `TopoCanvas.tsx` | A `<foreignObject>` inside the SVG, placed by `x`/`y` attributes in drawing units (no CSSOM, CSP intact), `scale(1/k)`-compensated (`k` measured by a `ResizeObserver` in `CanvasSlot`, 1 in jsdom), always kept inside the viewBox because `.app-stage` clips ink silently. Build → `build/actions.ts`; Break → `break/events.ts` (`actionsFor`, `restoreQuietLine`). Caps at 6 rows (4 in Break). Opens on click; right-click / Shift+F10 / ContextMenu open it with focus inside; Esc closes it before clearing the selection |
+| One Build action table | `ui/build/actions.ts` | Sibling of `break/events.ts`; feeds the bar, the rail's Remove buttons, the context menu and the Delete key (`deleteFromCanvas` is a lookup now, and covers sites/links). `openInspectorFor(key)` opens the Sheet below 1280 |
+| Sites and links are controls | `SiteRect.tsx`, `LinkPath.tsx` (pill half), `aria.ts` (`siteLabel`, `linkLabel`) | Lower-case `tabindex` (the SVG trap), one tab stop per site rect, one roving stop for all link captions |
+| Zoom / pan | `ui/canvas/zoom.ts`, `CanvasSlot` `ZoomStrip`, `common/useRovingToolbar.ts` | Ladder 50–140 % as view state; multiplies `width`/`height` attributes only; `.tp-wrap.is-zoomed` is the scroll port; background drag pans; ctrl/⌘-wheel steps. Ladder-end refusals ride in `title` (the one documented WhyPill exception) |
+| Hints toggle | `ui/hints.tsx`, `state/view.ts` `hintsOn`, `persist.ts` `dg-hints` | Default off; `Note`/`Field` notes/`FieldNote` and the guidance line's second clause render only when on (or printing). Toggle in the inspector header, the Break rail header and the `?` card |
+| Introduction page | `ui/intro/{IntroPage.tsx,route.ts}`, `styles/intro.css`, URL key `intro` | `?intro=1`; first visit lands on it (`introOnBoot`: `dg-intro-v1` unset and the address names nothing); header brand link and `?` card open it. `dg-intro-v1` now means "has seen the Introduction"; the old intro strip is gone |
+| Density pass | `styles/tokens.css` (`--s1…--s7`, `--gut`, `--h-top` 56, `--h-status` 40), `base/shell/inspector/readout/canvas/timeline.css`, `Inspector.tsx`, `MemberForm.tsx`, `sections.ts`, `StatusBar`, `IssuePanel`, `BreakRail` | Summary folded; Instances/Destinations folds; scenarios as a two-column grid; "Start here" and the `NOTHING TO FIX` eyebrow gone |
+| Build stage sizing | `shell.css` `.app.m-build{grid-template-rows:auto minmax(260px,1fr) minmax(0,auto)}` + dock cap 46vh | The HANDOFF §4 leftover; `shell.test.ts` asserts it |
+| Bug fixed on the way | `TopoCanvas.tsx` pointer capture | `setPointerCapture` on `pointerdown` retargeted the click to the svg, so a **real mouse click never selected a card** while every jsdom test (which dispatches `click`) passed. Capture is lazy now (on the drag threshold). **Verify mouse gestures in a real browser, not only in jsdom.** |
+| Renames refuse out loud | `edits.ts` `renameMember`/`renameObserver` | `WHY.nameTaken` / `WHY.observerNameTaken` in a toast; double-click a card → rail + name field focused (`focusField`) |
+
+Judgement calls worth knowing: the rail stays the home of the full forms, the bar
+is the shortcut (a 25-field MemberForm does not fit a popover); the event menu keeps
+its fixed home in the Break rail (ui.md §3's "never a popup" rule bent only for an
+anchor drawn inside the drawing — see §3d); Break's stage is still `fit-content(46vh)`,
+so on dense presets the drawing (and the bar's text, ~9 px) is small there — raising the
+Break stage or auto-fitting the zoom (`zoom.ts` B1b) is the obvious next step.
+
+**Not done (Phase C of the plan, deliberately):** dragging a card onto another data
+centre (`moveHost`, refusal `WHY.hostShared`), and drag-to-add-destination (edges come
+from `redoRoutes` with the `(LOCAL : ALL)` fallback — the honest first step is a
+`+ Destination` bar action that materialises `defaultRules(m)` and appends a `RouteDest`
+via `setRedoRoutes`, then hands over to `RedoRoutesEditor`). Both can rewrite a document
+the reader did not mean to write; own phase.
+
 ## 4. Known gaps and judgement calls (documented, not hidden)
 
-- **Polish leftovers worth a second look** (my own read of the after-shots): in Break
-  the drawing scales down noticeably to fit the shorter stage (`fit-content(46vh)`) —
-  a wider preset such as `far-sync-zero-loss` renders at roughly 60 %; consider letting
-  the stage grow to the drawing's natural height before the dock takes the rest, or
-  capping the dock lower on tall windows. In Build a healthy preset still leaves an
-  empty band under the folded notes. At 900 px the header is three bands (top bar
-  wraps to two rows + guidance line).
+- ~~Polish leftovers~~ **Done 2026-08-19** (the third pass, ui.md §3c/§3d): Build's
+  stage now takes the room (`auto minmax(260px,1fr) minmax(0,auto)`, dock capped at
+  46vh) so the drawing renders 1:1 there; Break keeps the fit-content stage and the
+  on-canvas action bar compensates its own scale. The same pass added the anchored
+  action bar over the Build/Break action tables, made sites and links focusable
+  controls, fixed the pointer-capture bug that ate every real mouse click on a card,
+  pruned the rail prose behind the `Hints` toggle (`dg-hints`), and added zoom/pan.
+  At 900 px the header is still three bands (top bar wraps to two rows + guidance
+  line).
 
 - After a role change the canvas keeps the *declared* redo layout (drawing the reversed
   path on that layout ran lines through cards); the timeline, readout, `SHOW` mocks and
@@ -183,17 +227,21 @@ write path is a timer, and anything else that must exist in a dump must not wait
 
 ## 5. Suggested next steps, in order
 
-1. **Look again as a newcomer** after §3b: the remaining leftovers are listed there;
-   the pane used for verification cannot fire `requestAnimationFrame` (hidden tab),
-   so check playback in a visible or headless Chrome (a script that does this is
-   described in `ui.md` §3b item 1), not through a screenshot harness.
-2. **Publish** when the owner asks: `./site/publish.sh` (it runs the three gates and
+1. **Make `site/smoke.mjs` finish on a Mac** (see Gates above: poll for Chrome's output
+   and kill it, and accept `CHROME` pointing at the `.app` binary) — `publish.sh` needs it.
+2. **Look again as a newcomer** after §3c: the Introduction (`?intro=1`) first, then
+   Build → click a card → the bar; Break on `far-sync-zero-loss`; check the bar's
+   text size in Break on `multi-target-three-observers` and decide about the Break
+   stage height / auto-fit zoom. Mouse gestures in a real browser (the pointer-capture
+   lesson); playback in a visible or headless Chrome, not a screenshot harness.
+3. **Phase C** (drag semantics) if the owner still wants it — see §3c.
+4. **Publish** when the owner asks: `./site/publish.sh` (it runs the three gates and
    verifies the served bundle byte-for-byte). Then apply the CSP change on the server.
-3. **Fact-check anything you reword** against docs.oracle.com before it ships;
+5. **Fact-check anything you reword** against docs.oracle.com before it ships;
    `curl` the page whole (WebFetch truncates the big broker chapters), grep for the
    verbatim sentence, and add/repoint the citation in `citations.ts`. The citations
    test pins verified quotes.
-4. Nice-to-haves that were scoped out: `cmd.enableDest`; role-change-aware canvas
+6. Nice-to-haves that were scoped out: `cmd.enableDest`; role-change-aware canvas
    layout; code splitting; a real e2e (Playwright) suite once a browser can fetch
    over HTTP in the sandbox used.
 

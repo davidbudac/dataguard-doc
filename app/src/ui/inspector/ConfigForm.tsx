@@ -18,6 +18,7 @@ import { hostId, isDatabase } from '@/engine';
 import { errors } from '@/state/derived';
 import { Fact } from '../common/Chip';
 import { Action, Check, Choice, Fold, Note, Num, Pick, Text } from './controls';
+import { FieldNote } from '../common/Field';
 import { patchConfig, patchEnvironment, patchFsfo } from './edits';
 import { revealForFlagged, sectionsWithErrors } from './sections';
 import { gateOff, off, ON, WHY } from './why';
@@ -209,10 +210,10 @@ export function ConfigForm({ doc }: ConfigFormProps) {
             />
           </div>
           {f.target.kind === 'ANY' ? (
-            <p class="field-note">
+            <FieldNote>
               Every valid standby is a candidate. With more than one standby the property
               must be set explicitly for fast-start failover to be enabled.
-            </p>
+            </FieldNote>
           ) : (
             <>
               {targetList.map((id, i) => (
@@ -254,11 +255,11 @@ export function ConfigForm({ doc }: ConfigFormProps) {
                   <Action label="Add as a target" enabled={off(WHY.farSyncNotTarget)} onClick={() => undefined} />
                 </div>
               ))}
-              <p class="field-note">
+              <FieldNote>
                 The order is the order the broker walks: it takes the candidates in the
                 order the property lists them, never "the first viable one".
                 <Fact basis="model" id="FSFO.TARGET_SELECTION" />
-              </p>
+              </FieldNote>
             </>
           )}
         </div>

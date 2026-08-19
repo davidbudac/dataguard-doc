@@ -11,12 +11,14 @@
 
 import type { Member, MemberId, RedoGraph, TopologyDoc, XptMode } from '@/engine';
 import { hostId, isDatabase } from '@/engine';
+import { removeAction } from '../build/actions';
 import { Fact } from '../common/Chip';
-import { Action, Check, Choice, Group, Note, Num, Pick, Text } from './controls';
+import { Action, Check, Choice, Fold, Group, Note, Num, Pick, Text } from './controls';
+import { DESTS_ID, INSTANCES_ID } from './sections';
 import { RedoRoutesEditor } from './RedoRoutesEditor';
 import {
   addInstance, destPropsOf, patchDatabase, patchDest, patchInstance, patchMember, removeInstance,
-  removeMember, renameMember, setLogXptMode, setPrimary,
+  renameMember, setLogXptMode, setPrimary,
 } from './edits';
 import { gateOff, off, ON, WHY } from './why';
 
@@ -57,7 +59,9 @@ export function MemberForm({ member, doc, graph }: MemberFormProps) {
   const dests = others.filter((m) => fed.has(m.id as string));
   const notDests = others.filter((m) => !fed.has(m.id as string));
 
-  const lastDatabase = doc.members.filter(isDatabase).length <= 1;
+  /* The removal is the Build table's own entry, not a second reading of the
+     same two rules: the Delete key on the drawing presses this very object. */
+  const remove = removeAction(doc, id as string);
 
   return (
     <>
@@ -66,6 +70,7 @@ export function MemberForm({ member, doc, graph }: MemberFormProps) {
           name="db_unique_name"
           value={id as string}
           onCommit={(v) => renameMember(id, v)}
+          focusKey={`name:${id as string}`}
           note="The member's identity. Renaming it rewrites every reference in this configuration in the same edit."
         />
         <Text
@@ -221,9 +226,16 @@ export function MemberForm({ member, doc, graph }: MemberFormProps) {
         />
       </Group>
 
-      <Group
+      {/* The tail of the form folds (ui.md SS3f). Everything above is what the
+          member *is*; instances and destinations are lists that grow, and a
+          two-destination primary put six screens of properties under the four
+          the reader came for. The fold's hint says what is inside, the state
+          is remembered for the session, and a closed fold renders nothing --
+          it is not painted out of view. */}
+      <Fold
+        id={INSTANCES_ID}
         title={member.instances.length > 1 ? `Instances (RAC, ${member.instances.length})` : 'Instance'}
-        action={<Action label="+ Instance" onClick={() => addInstance(id)} />}
+        hint={member.instances.map((inst) => inst.name).join(', ')}
       >
         {member.instances.map((inst, i) => (
           <div class="rr-dest" key={`inst-${i}`}>
@@ -256,19 +268,28 @@ export function MemberForm({ member, doc, graph }: MemberFormProps) {
             />
           </div>
         ))}
+        <div class="rr-line">
+          <Action label="+ Instance" onClick={() => addInstance(id)} />
+        </div>
         <Note>
           More than one instance is RAC: the member is reachable while any instance host
           is up and reachable, and losing some of them leaves it degraded rather than
           down. Which instance owns the redo transport is out of scope here.
           <Fact basis="model" id="RAC.INSTANCE_SCOPE" />
         </Note>
-      </Group>
+      </Fold>
 
       <RedoRoutesEditor member={member} doc={doc} />
 
-      <Group title="Destinations">
+      <Fold
+        id={DESTS_ID}
+        title="Destinations"
+        hint={dests.length === 0 ? 'none' : dests.map((m) => m.id as string).join(', ')}
+      >
         {dests.length === 0 ? (
-          <Note>
+          /* An empty state: with the sentence gone the group would be a
+             heading over nothing at all. */
+          <Note always>
             This member feeds nothing in the configuration as it stands. Destination
             properties appear here for every member it sends redo to.
           </Note>
@@ -362,17 +383,13 @@ export function MemberForm({ member, doc, graph }: MemberFormProps) {
             note="Properties can be set for a member this one does not feed today: RedoRoutes decides who receives, these decide how."
           />
         )}
-      </Group>
+      </Fold>
 
       <Group title="This member">
         <div class="rr-line">
-          <Action
-            label={`Remove ${id as string}`}
-            enabled={isPrimary
-              ? off(WHY.primaryMember)
-              : (lastDatabase && db !== null ? off(WHY.lastMember) : ON)}
-            onClick={() => removeMember(id)}
-          />
+          {remove === null ? null : (
+            <Action label={remove.label} enabled={remove.enabled} onClick={remove.run} />
+          )}
         </div>
       </Group>
     </>

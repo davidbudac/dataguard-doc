@@ -20,7 +20,8 @@ import { classicDoc, doc } from '@/state/doc';
 import { resetHistory, undo } from '@/state/history';
 import { errors } from '@/state/derived';
 import {
-  clearSelection, edition, lessonId, lessonStep, mode, notesOpen, selection, toast, viewport,
+  clearSelection, edition, hintsOn, lessonId, lessonStep, mode, notesOpen, selection, toast,
+  viewport,
 } from '@/state/view';
 import { CanvasSlot } from '@/ui/canvas/CanvasSlot';
 import { addOpen, Inspector } from '@/ui/inspector/Inspector';
@@ -32,7 +33,7 @@ import {
   ADD_ACTIONS, AddToolbar, WHY_NO_SITE, WHY_ONE_SITE, WHY_SAME_SITE,
 } from '@/ui/inspector/adds';
 import {
-  DEFAULT_OPEN, isSectionOpen, openSections, resetSections, SECTION_IDS, sectionOfRule,
+  DEFAULT_OPEN, isSectionOpen, openSections, resetSections, SECTION_IDS, sectionOfRule, SUMMARY_ID,
 } from '@/ui/inspector/sections';
 import { WHY } from '@/ui/inspector/why';
 import { printing } from '@/ui/print';
@@ -84,6 +85,7 @@ beforeEach(() => {
   lessonId.value = null;
   lessonStep.value = 0;
   resetSections();
+  hintsOn.value = false;
   clearSelection();
 });
 
@@ -228,9 +230,12 @@ describe('the foldable configuration groups', () => {
     const root = mount(Inspector);
     await tick();
     const togs = [...root.querySelectorAll<HTMLButtonElement>('button.grp-tog')];
-    expect(togs.map((b) => b.querySelector('.eyebrow')?.textContent)).toEqual([...SECTION_IDS]);
+    /* The summary is a fold of its own now, above the five, and it starts
+       shut: the rail opens on the palette, not on a table of what is drawn. */
+    expect(togs.map((b) => b.querySelector('.eyebrow')?.textContent))
+      .toEqual([SUMMARY_ID, ...SECTION_IDS]);
     expect(togs.map((b) => b.getAttribute('aria-expanded')))
-      .toEqual(['true', 'false', 'false', 'false', 'false']);
+      .toEqual(['false', 'true', 'false', 'false', 'false', 'false']);
     /* Folded means absent, not painted out of view (ui.md SS8). */
     expect(root.querySelector('input[aria-label="FastStartFailoverThreshold"]')).toBeNull();
     expect(root.querySelector('input[aria-label="Redo rate"]')).toBeNull();
@@ -307,7 +312,7 @@ describe('the foldable configuration groups', () => {
       await tick();
       expect([...root.querySelectorAll('button.grp-tog')]
         .map((b) => b.getAttribute('aria-expanded')))
-        .toEqual(SECTION_IDS.map(() => 'true'));
+        .toEqual([SUMMARY_ID, ...SECTION_IDS].map(() => 'true'));
       expect(root.querySelector('input[aria-label="Redo rate"]')).not.toBeNull();
     } finally {
       printing.value = false;
@@ -326,11 +331,29 @@ describe('the foldable configuration groups', () => {
 describe('the three ways to add something', () => {
   const RAIL = ADD_ACTIONS.map((a) => a.label);
 
-  it('puts the additions above the summary of what is there already', async () => {
+  it('opens the empty rail on the palette, above the folded summary', async () => {
+    /* `Start here` -- three numbered sentences repeating the guidance line --
+       is gone, and the summary table is behind a fold: what a reader arrives
+       to do is the first thing the rail offers (ui.md SS3f). */
     const root = mount(Inspector);
     await tick();
     const eyebrows = [...root.querySelectorAll('.eyebrow')].map((el) => el.textContent);
-    expect(eyebrows.slice(0, 3)).toEqual(['Start here', 'Add', 'This configuration']);
+    expect(eyebrows.slice(0, 2)).toEqual(['Add', SUMMARY_ID]);
+    expect(eyebrows).not.toContain('Start here');
+    expect(root.querySelector('.sum')).toBeNull();
+  });
+
+  it('opens that summary when the reader asks for the explanations', async () => {
+    const root = mount(Inspector);
+    await tick();
+    expect(root.querySelector('.sum')).toBeNull();
+    hintsOn.value = true;
+    await tick();
+    expect(root.querySelector('.sum')).not.toBeNull();
+    /* Still a real toggle: hints opened it, they do not hold it open. */
+    await unfold(root, SUMMARY_ID);
+    expect(root.querySelector('.sum')).toBeNull();
+    hintsOn.value = false;
   });
 
   it('offers the same four labels in the rail and on the drawing', async () => {
@@ -704,9 +727,11 @@ describe('identity and roles', () => {
     expect(isTopologyDoc(t)).toBe(true);
   });
 
-  it('refuses a name another member already carries', () => {
+  it('refuses a name another member already carries, and says so', () => {
+    toast.value = null;
     renameMember(memberId('sby01'), 'prm01');
     expect(doc.value.topology.members.map((m) => m.id as string)).toEqual(['prm01', 'sby01']);
+    expect((toast.value as { text: string } | null)?.text).toContain(WHY.nameTaken);
   });
 
   it('moves the primary role rather than allowing two', () => {

@@ -22,7 +22,8 @@ import type { HostId, LinkId, ObserverId, SiteId } from '@/engine';
 import { doc, withTopology } from '@/state/doc';
 import type { Doc } from '@/state/doc';
 import { edit } from '@/state/history';
-import { select } from '@/state/view';
+import { select, toast } from '@/state/view';
+import { WHY } from './why';
 
 /* ---------------- the two primitives ---------------- */
 
@@ -138,6 +139,10 @@ function siteForNewMember(t: TopologyDoc): SiteId | null {
   return free?.id ?? t.sites.at(-1)?.id ?? null;
 }
 
+/** The data centre a caller named, when this document actually has it. */
+const placeIn = (t: TopologyDoc, where: SiteId | undefined): SiteId | null =>
+  (where !== undefined && t.sites.some((s) => s.id === where) ? where : null);
+
 /** `dc2-sby01`, or `dc2-sby01-2` where that name is taken. */
 function uniqueHost(t: TopologyDoc, base: string): string {
   const taken = new Set(hostNames(t));
@@ -154,10 +159,20 @@ function withHost(t: TopologyDoc, name: string, site: SiteId): TopologyDoc {
   return { ...t, hosts: [...t.hosts, host] };
 }
 
-/** Add a physical standby on a host of its own, and give the primary a destination to it. */
-export function addDatabase(): MemberId | null {
+/**
+ * Add a physical standby on a host of its own, and give the primary a
+ * destination to it.
+ *
+ * `where` is the data centre the reader asked for -- "Add a standby here", on
+ * a selected site -- and it wins over the automatic placement, because a
+ * reader who names a place and gets another one has been ignored. Omitted, the
+ * placement is `siteForNewMember`'s, which is what the palette has always
+ * done. A data centre this document does not have is not one to put anything
+ * in, so it falls back rather than writing a dangling host.
+ */
+export function addDatabase(where?: SiteId): MemberId | null {
   const t = doc.value.topology;
-  const site = siteForNewMember(t);
+  const site = placeIn(t, where) ?? siteForNewMember(t);
   if (site === null) return null;
   const name = nextName('sby', memberNames(t));
   const hname = uniqueHost(t, `${site as string}-${name}`);
@@ -186,9 +201,9 @@ export function addDatabase(): MemberId | null {
 }
 
 /** Add a far sync instance: no role, no apply, no open mode. */
-export function addFarSync(): MemberId | null {
+export function addFarSync(where?: SiteId): MemberId | null {
   const t = doc.value.topology;
-  const site = siteForNewMember(t) ?? t.sites.at(-1)?.id ?? null;
+  const site = placeIn(t, where) ?? siteForNewMember(t) ?? t.sites.at(-1)?.id ?? null;
   if (site === null) return null;
   const name = nextName('fs', memberNames(t));
   const hname = uniqueHost(t, `${site as string}-${name}`);
@@ -212,7 +227,7 @@ export function addFarSync(): MemberId | null {
  * Add an observer on a host of its own. Oracle's rule is that an observer is
  * never deployed on a database server or cluster, so this never reuses one.
  */
-export function addObserver(): ObserverId | null {
+export function addObserver(where?: SiteId): ObserverId | null {
   const t = doc.value.topology;
   const dbSites = new Set<string>();
   const siteOf = new Map<string, string>();
@@ -223,7 +238,8 @@ export function addObserver(): ObserverId | null {
       if (s) dbSites.add(s);
     }
   }
-  const site = t.sites.find((s) => !dbSites.has(s.id as string))?.id ?? t.sites.at(-1)?.id ?? null;
+  const site = placeIn(t, where)
+    ?? t.sites.find((s) => !dbSites.has(s.id as string))?.id ?? t.sites.at(-1)?.id ?? null;
   if (site === null) return null;
   const name = nextName('obs', t.observers.map((o) => o.id as string));
   const id = observerId(name);
@@ -481,7 +497,12 @@ export function renameMember(id: MemberId, raw: string): void {
   const name = raw.trim();
   const t = doc.value.topology;
   if (name === '' || name === (id as string)) return;
-  if (t.members.some((m) => (m.id as string) === name)) return;
+  /* A refusal is said, not swallowed: the field snaps back to the old name,
+     and a reader who typed a taken one should hear why. */
+  if (t.members.some((m) => (m.id as string) === name)) {
+    toast.value = { kind: 'warn', text: `${id as string} keeps its name: ${WHY.nameTaken}` };
+    return;
+  }
   const to = memberId(name);
   const swap = (m: MemberId): MemberId => (m === id ? to : m);
   edit(`Rename ${id as string} to ${name}`, (d) => {
@@ -569,7 +590,10 @@ export function renameObserver(id: ObserverId, raw: string): void {
   const name = raw.trim();
   const t = doc.value.topology;
   if (name === '' || name === (id as string)) return;
-  if (t.observers.some((o) => (o.id as string) === name)) return;
+  if (t.observers.some((o) => (o.id as string) === name)) {
+    toast.value = { kind: 'warn', text: `${id as string} keeps its name: ${WHY.observerNameTaken}` };
+    return;
+  }
   const to = observerId(name);
   edit(`Rename the observer ${id as string} to ${name}`, (d) => {
     const cur = d.topology;

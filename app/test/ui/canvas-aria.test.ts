@@ -8,14 +8,14 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { hostId, memberId, simulate, stateAt } from '@/engine';
+import { hostId, memberId, simulate, siteId, stateAt } from '@/engine';
 import type { Snapshot, TopologyDoc } from '@/engine';
 import { layoutTopology } from '@/ui/canvas/layout';
 import {
-  cardLabel, describeTopology, latencySentence, observerSentences, redoSentences,
-  shapeSentence, stateWords, structuralRows,
+  cardLabel, describeTopology, latencySentence, linkLabel, observerSentences, redoSentences,
+  shapeSentence, siteLabel, stateWords, structuralRows,
 } from '@/ui/canvas/aria';
-import { cardFrameFor, chipsFor, siteIsDown } from '@/ui/canvas/routing';
+import { cardFrameFor, chipsFor, routeTopology, siteIsDown } from '@/ui/canvas/routing';
 import {
   cascadeFixture, classic, farSyncFixture, graphOf, threeObserverFixture,
 } from './canvas-fixtures';
@@ -246,5 +246,33 @@ describe('the frame on the cards', () => {
     expect(stateWords('mounted-apply')).toBe('mounted, applying redo');
     expect(stateWords('forwarding-stalled')).toBe('not forwarding');
     expect(stateWords(undefined)).toBe('unknown');
+  });
+});
+
+describe('aria: the controls the drawing grew', () => {
+  it('names a data centre by what is standing in it', () => {
+    const doc = classic('dc3');
+    expect(siteLabel(doc, { id: 'dc1', name: 'DC 1' }))
+      .toBe('Data centre DC 1: 1 member, 0 observers.');
+    expect(siteLabel(doc, { id: 'dc3', name: 'DC 3' }))
+      .toBe('Data centre DC 3: 0 members, 1 observer.');
+  });
+
+  it('says a data centre is down only when the frame says it is', () => {
+    const doc = classic('dc3');
+    const trace = simulate(doc, [{ at: 0, kind: 'site.down', site: siteId('dc1') }]);
+    const frame = stateAt(trace, 5);
+    expect(siteLabel(doc, { id: 'dc1', name: 'DC 1' }, frame)).toContain('It is down.');
+    expect(siteLabel(doc, { id: 'dc2', name: 'DC 2' }, frame)).not.toContain('down');
+  });
+
+  it('names a link with the sentence the drawing already had for it', () => {
+    const doc = classic('dc3');
+    const geo = layoutTopology(doc, graphOf(doc));
+    const link = routeTopology(doc, graphOf(doc), geo, null).links
+      .find((l) => l.kind === 'redo');
+    expect(link).toBeDefined();
+    expect(linkLabel(doc, link!)).toBe(link!.title);
+    expect(linkLabel(doc, link!)).toContain('prm01');
   });
 });

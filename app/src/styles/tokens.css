@@ -45,8 +45,17 @@
 --sans:system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
 --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,"Liberation Mono",monospace;
 /* Shell metrics, so the grid rows and the components that measure against them
-   cannot drift apart. */
---h-top:48px;--h-status:34px;--h-readout:38px;--w-inspector:360px;
+   cannot drift apart. The three bands grew in the density pass (ui.md SS3f):
+   a 48 px bar around a 24 px control had 12 px of air over and under it, and
+   at that ratio every band reads as a rule rather than as a row. */
+--h-top:56px;--h-status:40px;--h-readout:44px;--w-inspector:360px;
+/* The one rhythm. Everything in the shell and the rails pads by a multiple of
+   4 out of this ladder, so a row, a chip strip and a field can be lined up by
+   name rather than by eye: --gut is the page's left/right gutter (bars, rail
+   rows, dock rows), --s2/--s3 the small gaps inside a row, and --s7 the air
+   between two groups of a rail. */
+--s1:4px;--s2:8px;--s3:12px;--s4:16px;--s5:20px;--s6:24px;--s7:28px;
+--gut:20px;
 /* The shell's cap. The page ground shows in the gutters beside it. */
 --w-app:1360px;
 }

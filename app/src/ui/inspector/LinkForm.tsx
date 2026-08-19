@@ -10,8 +10,10 @@
  */
 
 import type { Link, TopologyDoc } from '@/engine';
+import { removeAction } from '../build/actions';
 import { Action, Check, Group, Note, Num } from './controls';
-import { patchLink, removeLink } from './edits';
+import { FieldNote } from '../common/Field';
+import { patchLink } from './edits';
 
 export interface LinkFormProps {
   link: Link;
@@ -30,6 +32,7 @@ export function LinkForm({ link, doc }: LinkFormProps) {
   const id = link.id;
   const a = endName(doc, link, 0);
   const b = endName(doc, link, 1);
+  const remove = removeAction(doc, id as string);
   return (
     <>
       <Group title={link.scope === 'site' ? 'Site link' : 'Host link'}>
@@ -38,11 +41,11 @@ export function LinkForm({ link, doc }: LinkFormProps) {
             <span class="field-name">{a} to {b}</span>
             <span class="tag t-sl">{link.scope}</span>
           </div>
-          <p class="field-note">
+          <FieldNote>
             {link.scope === 'site'
               ? 'A site link stands for every host pair across the two data centres.'
               : 'A host link stands for the path between exactly these two hosts.'}
-          </p>
+          </FieldNote>
         </div>
         <Num
           name="Round trip"
@@ -89,15 +92,19 @@ export function LinkForm({ link, doc }: LinkFormProps) {
               });
             }}
           />
-          <p class="field-note">
+          {/* Always: an input that changes nothing in the run is a lie
+              without this line, and the control itself cannot say it. */}
+          <FieldNote always>
             Recorded for the socket-buffer arithmetic; nothing in the failure model reads it.
-          </p>
+          </FieldNote>
         </div>
       </Group>
 
       <Group title="This link">
         <div class="rr-line">
-          <Action label={`Remove ${id as string}`} onClick={() => removeLink(id)} />
+          {remove === null ? null : (
+            <Action label={remove.label} enabled={remove.enabled} onClick={remove.run} />
+          )}
         </div>
         <Note>
           Removing a link removes the path: two data centres with no link between them

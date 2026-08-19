@@ -37,6 +37,12 @@
   background:var(--sf);
 }
 .app.m-configure{grid-template-rows:auto fit-content(26vh) minmax(0,1fr)}
+/* Build is the drawing's mode: the stage takes the room and the dock takes
+   its content, capped -- the other way round, a healthy preset rendered a
+   drawing at 60 % over an empty band under six folded notes. Break keeps the
+   fit-content stage: the timeline is the point of that mode. */
+.app.m-build{grid-template-rows:auto minmax(260px,1fr) minmax(0,auto)}
+.app.m-build .app-dock{max-height:46vh}
 /* Configure's dock is the mode's main surface, so it takes the whole track;
    the 64vh cap below is for docks that share the height with the canvas. */
 .app.m-configure .app-dock{max-height:none}
@@ -95,10 +101,11 @@
 
 /* ---------------- top bar ---------------- */
 
-.topbar{display:flex;align-items:center;gap:6px 16px;min-height:var(--h-top);padding:6px 16px;
+.topbar{display:flex;align-items:center;gap:8px 20px;min-height:var(--h-top);
+  padding:8px var(--gut);
   flex-wrap:wrap;background:var(--sf);border-bottom:1px solid var(--ln)}
 .topbar-brand{display:flex;flex-direction:column;gap:0;min-width:0;flex:0 0 auto}
-.topbar-brand b{font-size:13px;font-weight:620;letter-spacing:-.01em;white-space:nowrap}
+.topbar-brand b{font-size:13.5px;font-weight:620;letter-spacing:-.01em;white-space:nowrap}
 .topbar-brand span{font-family:var(--mono);font-size:10px;letter-spacing:.12em;
   text-transform:uppercase;color:var(--ik3);white-space:nowrap}
 /* The modes are the one loud thing in the bar. The line that used to sit
@@ -109,9 +116,25 @@
 .topbar-group{display:flex;align-items:center;gap:8px;flex:0 1 auto;flex-wrap:wrap;
   justify-content:flex-end}
 
+/* Hierarchy in the bar (ui.md SS3f). The modes are what the page is *for*, so
+   they are the largest control on it and the one that is on carries a solid
+   fill rather than a tint with an underline. Everything on the right -- the
+   release, the theme, undo/redo, the ? -- answers a question the reader asks
+   once a session, so it is a size smaller and an ink quieter. --sf as the
+   pressed foreground rather than a white: the surface token inverts with the
+   theme exactly as --vi does, so the pair stays legible in both. */
+.topbar-modes .seg button{font-size:12.5px;letter-spacing:.06em;padding:8px 16px}
+.topbar-modes .seg button[aria-pressed="true"]{background:var(--vi);color:var(--sf);
+  box-shadow:none}
+.topbar-modes .seg button[aria-pressed="true"]:hover{background:var(--vi);color:var(--sf)}
+.topbar-group .seg button{font-size:10.5px;padding:4px 9px;letter-spacing:.08em}
+.topbar-group .btn{font-size:10.5px;padding:5px 10px;color:var(--ik3)}
+.topbar-group .btn:hover:not(:disabled){color:var(--ik)}
+
 /* ---------------- status bar ---------------- */
 
-.statusbar{display:flex;align-items:center;gap:10px;min-height:var(--h-status);padding:0 16px;
+.statusbar{display:flex;align-items:center;gap:12px;min-height:var(--h-status);
+  padding:0 var(--gut);
   background:var(--sf2);border-bottom:1px solid var(--ln);
   font-size:12px;color:var(--ik2);overflow-x:auto;scrollbar-width:none}
 .statusbar::-webkit-scrollbar{display:none}
@@ -123,6 +146,10 @@
 /* The tally is a button: it goes to the findings it counts. Quiet enough to
    stay a reading of the document rather than a control competing with Share,
    loud enough on hover and on focus to be one. */
+/* Second in the hierarchy: the picker is the one control in this bar that
+   changes what is on the drawing, so it is the one with a surface under it. */
+.statusbar>#preset-picker{font-size:12px;padding:5px 10px;color:var(--ik);
+  background:var(--sf)}
 .statusbar .count{font-family:var(--mono);font-size:12px;font-variant-numeric:tabular-nums;
   color:var(--ik);background:transparent;border:0;border-bottom:1px solid transparent;
   padding:2px 0;cursor:pointer}
@@ -142,23 +169,14 @@
    own -- the band above used to carry the same idea as a second line. */
 .guide{display:flex;flex-direction:column;gap:0;background:var(--sf);
   border-bottom:1px solid var(--ln)}
-.guide-line{padding:6px 16px 7px;font-size:11.5px;line-height:1.45;color:var(--ik3);
+.guide-line{padding:10px var(--gut);font-size:12px;line-height:1.5;color:var(--ik3);
   max-width:112ch}
 .guide-mode{font-weight:620;color:var(--ik2)}
 
-/* The first visit gets one row, not a card: the three clauses, the way to the
-   lessons, and the way out. It sits in the flow rather than over the page --
-   a card that covers the workbench teaches nothing about the workbench -- and
-   it goes as soon as the reader does anything at all (Guidance.tsx). */
-.intro-strip{display:flex;align-items:baseline;gap:12px;padding:0 16px 8px;
-  font-size:12px;line-height:1.45;color:var(--ik2)}
-/* No prose cap here, unlike the guidance line: this is one row by design, and
-   a cap is what turns it into two. It wraps only where the window makes it. */
-.intro-strip-b{min-width:0}
-.intro-strip-b b{font-weight:620;color:var(--ik)}
 
 /* The whole explanation, brought back by the ? in the header. */
-.intro{display:flex;flex-direction:column;gap:6px;margin:0 16px 12px;padding:10px 14px 12px;
+.intro{display:flex;flex-direction:column;gap:8px;margin:0 var(--gut) 14px;
+  padding:12px 16px 14px;
   max-width:80ch;background:var(--sf2);border:1px solid var(--ln2);border-radius:3px}
 .intro-hd{display:flex;align-items:center;gap:10px}
 .intro-list{margin:0;padding-left:16px;display:flex;flex-direction:column;gap:3px;
@@ -181,16 +199,16 @@
 /* ---------------- buttons ---------------- */
 
 .btn{display:inline-flex;align-items:center;gap:7px;flex:0 0 auto;
-  font-family:var(--mono);font-size:11px;letter-spacing:.04em;
+  font-family:var(--mono);font-size:11.5px;letter-spacing:.04em;
   color:var(--ik2);background:transparent;border:1px solid var(--ln2);border-radius:2px;
-  padding:4px 10px;cursor:pointer;white-space:nowrap}
+  padding:6px 12px;cursor:pointer;white-space:nowrap}
 .btn:hover:not(:disabled){color:var(--ik);border-color:var(--ik3);background:var(--sf)}
 .btn:disabled{opacity:.46;cursor:not-allowed}
 .btn.is-primary{color:var(--ik);border-color:var(--vi);background:var(--vif)}
 /* Secondary: present, legible, and not competing with the control beside it. */
 .btn.is-quiet{border-color:var(--ln);color:var(--ik3)}
 .btn.is-quiet:hover:not(:disabled){color:var(--ik);border-color:var(--ik3)}
-.btn.is-icon{width:26px;height:24px;padding:0;justify-content:center;background:var(--sf)}
+.btn.is-icon{width:28px;height:26px;padding:0;justify-content:center;background:var(--sf)}
 .btn.is-icon svg{display:block;width:14px;height:14px;fill:none;stroke:currentColor;
   stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
 @media (prefers-reduced-motion:no-preference){
@@ -201,17 +219,21 @@
 .ctl-off{display:inline-flex;align-items:center;gap:8px}
 .ctl-off>.is-faded{opacity:.46}
 
-.why{align-self:flex-start;font-family:var(--mono);font-size:10px;letter-spacing:.08em;
-  text-transform:uppercase;color:var(--ik3);background:var(--sf2);
-  border:1px solid var(--ln2);border-radius:999px;padding:2px 8px;line-height:1.45;
+/* The refusal is a sentence, so it is set as one (ui.md SS3f). It used to be
+   mono uppercase, which put A PRIMARY APPLIES NO REDO OF ITS OWN. three times
+   down one rail in the loudest voice on the page -- for a remark that is only
+   ever read once. Same pill, same place, same words: a quieter face. */
+.why{align-self:flex-start;font-size:11.5px;letter-spacing:0;
+  color:var(--ik3);background:var(--sf2);
+  border:1px solid var(--ln);border-radius:999px;padding:3px 10px;line-height:1.45;
   white-space:normal}
 
 /* ---------------- segmented control ---------------- */
 
 .seg{display:inline-flex;flex:0 0 auto;border:1px solid var(--ln2);border-radius:2px;
   overflow:hidden;background:var(--sf)}
-.seg button{font-family:var(--mono);font-size:11px;letter-spacing:.1em;color:var(--ik3);
-  background:var(--sf);border:0;border-right:1px solid var(--ln);padding:4px 10px;
+.seg button{font-family:var(--mono);font-size:11.5px;letter-spacing:.08em;color:var(--ik3);
+  background:var(--sf);border:0;border-right:1px solid var(--ln);padding:6px 12px;
   cursor:pointer;white-space:nowrap}
 .seg button:last-child{border-right:0}
 .seg button:hover:not(:disabled){color:var(--ik);background:var(--sf2)}
@@ -226,8 +248,8 @@
 
 /* ---------------- fields ---------------- */
 
-.field{display:flex;flex-direction:column;gap:5px;min-width:0;
-  padding:11px 16px;border-bottom:1px solid var(--ln)}
+.field{display:flex;flex-direction:column;gap:7px;min-width:0;
+  padding:12px var(--gut);border-bottom:1px solid var(--ln)}
 .field:last-child{border-bottom:0}
 .field-hd{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
 .field-name{font-family:var(--mono);font-size:12px;color:var(--ik);word-break:break-word}
@@ -235,11 +257,11 @@
   letter-spacing:.01em}
 .field-val{font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:13px;
   font-weight:600;color:var(--vi);white-space:nowrap}
-.field-note{font-size:11.5px;line-height:1.45;color:var(--ik3)}
+.field-note{font-size:12px;line-height:1.5;color:var(--ik3)}
 .field-note .mono{font-size:11px;color:var(--ik2)}
 .field-note.is-warn{color:var(--am)}
 .field-in{font-family:var(--mono);font-size:13px;color:var(--vi);background:var(--sf2);
-  border:1px solid var(--ln2);border-radius:2px;padding:5px 8px;width:100%;min-width:0}
+  border:1px solid var(--ln2);border-radius:2px;padding:6px 9px;width:100%;min-width:0}
 .field-in:focus{outline:none;border-color:var(--vi)}
 /* Keyboard focus keeps the ring a mouse click does not need. */
 .field-in:focus-visible{outline:2px solid var(--fc);outline-offset:1px}
@@ -254,8 +276,9 @@
    (ui.md SS3, "as built"). The label is sans and sentence case on purpose:
    the mono uppercase eyebrow is for section labels, not for chip labels. */
 .readout{min-height:var(--h-readout);border-bottom:1px solid var(--ln);background:var(--sf)}
-.chips{display:flex;flex-wrap:wrap;align-items:baseline;row-gap:4px;padding:9px 16px}
-.chip{display:inline-flex;align-items:baseline;gap:8px;min-width:0;padding:0 16px;
+.chips{display:flex;flex-wrap:wrap;align-items:baseline;row-gap:8px;
+  padding:12px var(--gut)}
+.chip{display:inline-flex;align-items:baseline;gap:8px;min-width:0;padding:0 22px;
   border-left:1px solid var(--ln)}
 .chip:first-child{padding-left:0;border-left:0}
 .chip-k{font-size:11.5px;line-height:1.4;color:var(--ik3);white-space:nowrap}
@@ -287,14 +310,14 @@
 /* ---------------- validation issues ---------------- */
 
 .issues{display:flex;flex-direction:column;min-height:0;overflow:auto}
-.issues-hd{display:flex;align-items:baseline;gap:10px;padding:9px 16px;
+.issues-hd{display:flex;align-items:baseline;gap:12px;padding:11px var(--gut);
   border-bottom:1px solid var(--ln);background:var(--sf2)}
-.issue{display:grid;grid-template-columns:auto minmax(0,1fr);gap:4px 10px;
-  padding:9px 16px;border-bottom:1px solid var(--ln);align-items:baseline}
+.issue{display:grid;grid-template-columns:auto minmax(0,1fr);gap:6px 12px;
+  padding:12px var(--gut);border-bottom:1px solid var(--ln);align-items:baseline}
 .issue:last-child{border-bottom:0}
 /* A finding is prose: 80ch, whatever the window does. A sentence that runs
    1400 px is a sentence nobody's eye tracks back to the start of. */
-.issue-b{font-size:13px;color:var(--ik2);max-width:80ch}
+.issue-b{font-size:13.5px;line-height:1.55;color:var(--ik2);max-width:80ch}
 .issue-b .mono{font-size:12px;color:var(--ik)}
 .issue-id{font-family:var(--mono);font-size:10px;letter-spacing:.1em;color:var(--ik3);
   grid-column:2}
@@ -303,13 +326,13 @@
 .issue.sv-info{border-left:3px solid var(--ln2)}
 /* The fold. Information is never an alarm, so the toggle is slate and quiet,
    and what it hides is genuinely absent from the document until it is open. */
-.notes-tog{display:flex;align-items:center;gap:8px;width:100%;text-align:left;
-  padding:8px 16px;background:var(--sf);border:0;border-bottom:1px solid var(--ln);
+.notes-tog{display:flex;align-items:center;gap:10px;width:100%;text-align:left;
+  padding:11px var(--gut);background:var(--sf);border:0;border-bottom:1px solid var(--ln);
   border-left:3px solid var(--ln2);cursor:pointer;
-  font-family:var(--mono);font-size:11px;letter-spacing:.04em;color:var(--ik2)}
+  font-family:var(--mono);font-size:11.5px;letter-spacing:.04em;color:var(--ik2)}
 .notes-tog:hover{background:var(--sf2);color:var(--ik)}
 .notes-caret{color:var(--ik3);width:9px}
-.notes-hint{font-family:var(--sans);font-size:11.5px;letter-spacing:0;color:var(--ik3)}
+.notes-hint{font-family:var(--sans);font-size:12px;letter-spacing:0;color:var(--ik3)}
 
 /* ---------------- sheet / drawer ---------------- */
 
@@ -317,7 +340,7 @@
   box-shadow:var(--sh);display:flex;flex-direction:column;min-height:0}
 .sheet.p-right{top:0;right:0;bottom:0;width:min(360px,92vw);border-right:0}
 .sheet.p-bottom{left:0;right:0;bottom:0;max-height:70vh;border-bottom:0}
-.sheet-hd{display:flex;align-items:center;gap:10px;padding:10px 14px;
+.sheet-hd{display:flex;align-items:center;gap:12px;padding:12px 16px;
   border-bottom:1px solid var(--ln);background:var(--sf2)}
 .sheet-hd .title{flex:1 1 auto;min-width:0}
 .sheet-body{min-height:0;overflow:auto}
@@ -325,7 +348,7 @@
 
 /* ---------------- toast / restore strip ---------------- */
 
-.strip{display:flex;align-items:center;gap:12px;padding:7px 14px;font-size:12px;
+.strip{display:flex;align-items:center;gap:12px;padding:9px 16px;font-size:12.5px;
   color:var(--ik2);background:var(--vif);border-bottom:1px solid var(--vi)}
 .strip.is-warn{background:var(--amf);border-bottom-color:var(--am)}
 .strip.is-error{background:var(--rdf);border-bottom-color:var(--rd)}
@@ -360,11 +383,11 @@
   .app{border-inline:0}
 }
 @media (max-width:767px){
-  .app,.app.m-configure,.app.m-learn{height:auto;min-height:100dvh;overflow:visible;
+  .app,.app.m-build,.app.m-configure,.app.m-learn{height:auto;min-height:100dvh;overflow:visible;
     grid-template-rows:auto auto auto auto}
-  .app-stage,.app-dock,.app-rail{overflow:visible;max-height:none}
+  .app-stage,.app-dock,.app-rail,.app.m-build .app-dock{overflow:visible;max-height:none}
   .app.m-build .app-stage,.app.m-break .app-stage,.app.m-configure .app-stage{display:block}
-  .topbar{padding:8px 12px;gap:8px}
+  .topbar{padding:10px 14px;gap:10px}
   .topbar-spacer{display:none}
   .topbar-group{justify-content:flex-start}
   /* On a phone a chip takes its own line rather than clipping MAXAVAILABILITY:

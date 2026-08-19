@@ -140,10 +140,11 @@ export function IssuePanel() {
       </div>
 
       {/* An empty list says something true rather than nothing at all -- and
-          says it once: the count above is the tally, this is the sentence. */}
+          says it once. One line: the eyebrow over it shouted NOTHING TO FIX
+          at a reader whose configuration is healthy, above a heading that had
+          already said "No errors and no warnings" (ui.md SS3f). */}
       {loud.length === 0 ? (
         <div class="empty">
-          <span class="empty-k">Nothing to fix</span>
           <p>No issues in this configuration, as modelled here.</p>
         </div>
       ) : null}
@@ -162,7 +163,10 @@ export function IssuePanel() {
           <span class="notes-caret">{open ? '▾' : '▸'}</span>
           {`${notes.length} note${notes.length === 1 ? '' : 's'}`}
           <span class="notes-hint">
-            {open ? 'documented behaviour worth knowing' : 'documented behaviour worth knowing, folded away'}
+            {/* One phrase in both states: the caret and `aria-expanded` say
+                which way the fold is pointing, and ", folded away" wrapped
+                the row to two lines in a 360 px rail to say it a third time. */}
+            documented behaviour worth knowing
           </span>
         </button>
       )}

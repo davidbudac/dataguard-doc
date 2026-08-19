@@ -16,12 +16,13 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { topology, trace } from '@/state/derived';
 import {
-  canEdit, inspectorOpen, mode, playing, selection, speed, tNow, toast, viewport,
+  canEdit, inspectorOpen, introOpen, introPage, mode, playing, selection, speed, tNow, toast,
+  viewport,
 } from '@/state/view';
 import type { Mode } from '@/state/view';
 import { TopBar } from './TopBar';
 import { StatusBar } from './StatusBar';
-import { Guidance } from './Guidance';
+import { Guidance, IntroCard } from './Guidance';
 import { usePrintExpand } from './print';
 import { Readout } from './Readout';
 import { IssuePanel } from './IssuePanel';
@@ -32,6 +33,7 @@ import { Inspector } from './inspector/Inspector';
 import { BreakRail } from './break/BreakRail';
 import { Panels } from './panels/Panels';
 import { LearnShell, LearnWorkbenchHeader } from './learn/LearnShell';
+import { IntroPage } from './intro/IntroPage';
 import { Timeline } from './timeline/Timeline';
 
 /** Which modes keep a rail beside the canvas. Learn's right half is the workbench. */
@@ -183,6 +185,10 @@ function Dock({ m, railInDock }: { m: Mode; railInDock: boolean }) {
 
 export function App() {
   const m = mode.value;
+  /* The Introduction takes the stage, the rail and the dock; the header stays,
+     with the modes live, because the way out of an introduction has to be the
+     same control as the way around the application (ui.md SS3e). */
+  const intro = introPage.value;
   const wide = viewport.value === 'wide';
   const railInGrid = wide && HAS_RAIL[m];
   const t = toast.value;
@@ -193,15 +199,23 @@ export function App() {
   usePrintExpand();
 
   return (
-    <div class={`app m-${m}`}>
+    <div class={intro ? 'app m-intro' : `app m-${m}`}>
       {/* One header, three bands: the modes and the small controls, then the
           quieter document row, then the line that says what to do in the mode
           that is open. It is one element so the toast can be anchored to the
           bottom of all three (ui.md SS3, "as built"). */}
       <header class="app-head" ref={barRef}>
         <TopBar />
-        <StatusBar />
-        <Guidance />
+        {/* The document row and the guidance line are about the workbench:
+            over the Introduction they would be a preset picker and a "click a
+            card" for a drawing that is a picture. */}
+        {intro ? null : <StatusBar />}
+        {intro ? null : <Guidance />}
+        {/* The `?` is in the header on every page, so it opens the same card
+            on every page -- the Introduction has no guidance line to hang it
+            under, and a control that silently does nothing is worse than one
+            that is not there. */}
+        {intro && introOpen.value ? <IntroCard /> : null}
       </header>
 
       {t === null ? null : (
@@ -218,29 +232,37 @@ export function App() {
         </p>
       )}
 
-      <main class="app-stage">
-        {/* Said once, here, and nowhere else: the rail, the drawing and the
-            event menu below all report that they are read-only without
-            repeating the reason (ui.md SS3). */}
-        {canEdit(viewport.value) ? null : (
-          <div class="empty">
-            <span class="empty-k">Viewer</span>
-            <p>
-              Editing needs a wider screen. Everything below is the configuration this link
-              carries, drawn and simulated -- only the controls that change it are absent.
-            </p>
-          </div>
-        )}
-        <Stage m={m} wide={wide} />
-      </main>
+      {intro ? <main class="app-stage"><IntroPage /></main> : null}
 
-      {railInGrid ? <aside class="app-rail" aria-label={RAIL_TITLE[m]}><Rail m={m} wide /></aside> : null}
+      {intro ? null : (
+        <>
+          <main class="app-stage">
+            {/* Said once, here, and nowhere else: the rail, the drawing and
+                the event menu below all report that they are read-only
+                without repeating the reason (ui.md SS3). */}
+            {canEdit(viewport.value) ? null : (
+              <div class="empty">
+                <span class="empty-k">Viewer</span>
+                <p>
+                  Editing needs a wider screen. Everything below is the configuration this link
+                  carries, drawn and simulated -- only the controls that change it are absent.
+                </p>
+              </div>
+            )}
+            <Stage m={m} wide={wide} />
+          </main>
 
-      {m === 'learn' && wide ? null : (
-        <div class="app-dock"><Dock m={m} railInDock={!wide} /></div>
+          {railInGrid
+            ? <aside class="app-rail" aria-label={RAIL_TITLE[m]}><Rail m={m} wide /></aside>
+            : null}
+
+          {m === 'learn' && wide ? null : (
+            <div class="app-dock"><Dock m={m} railInDock={!wide} /></div>
+          )}
+        </>
       )}
 
-      {!wide && HAS_RAIL[m] && m !== 'learn' ? (
+      {!intro && !wide && HAS_RAIL[m] && m !== 'learn' ? (
         <Sheet
           open={inspectorOpen.value}
           title={RAIL_TITLE[m]}
