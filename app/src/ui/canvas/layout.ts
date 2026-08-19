@@ -23,6 +23,8 @@ export const LAYOUT = {
   colPad: 14,
   /** Free space between two column boxes -- the corridor links and pills ride. */
   corridor: 200,
+  /** Before an empty panel, which no link reaches: room to see it is a panel, no more. */
+  emptyGap: 40,
   /** Between two rows in one column. */
   rowGap: 18,
   /** Between two stacked members that ship redo to each other: room for the
@@ -79,6 +81,8 @@ export interface SiteBox extends Rect {
   labelX: number;
   labelY: number;
   col: number;
+  /** Nothing stands in it yet: drawn as an empty panel a card can be dropped into. */
+  empty: boolean;
 }
 
 /**
@@ -238,20 +242,28 @@ export function layoutTopology(
   }
 
   /* ---- 2. column order: sites by the shallowest rank they hold ---- */
-  const siteIds = doc.sites
-    .map((s) => s.id as string)
-    .filter((s) => (membersBySite.get(s)?.length ?? 0) + (observersBySite.get(s)?.length ?? 0) > 0);
+  const occupied = (s: string): boolean =>
+    (membersBySite.get(s)?.length ?? 0) + (observersBySite.get(s)?.length ?? 0) > 0;
+  const siteIds = doc.sites.map((s) => s.id as string).filter(occupied);
+  /* A data centre with nothing in it yet is still drawn -- as an empty panel
+     past the last occupied column, so "Add a data centre" puts something on
+     the drawing and a card can be dragged into it. Last, so it moves nothing
+     that was already placed. */
+  const emptySites = doc.sites.map((s) => s.id as string).filter((s) => !occupied(s));
 
   const columnKey = (s: string): number => {
     const ms = membersBySite.get(s) ?? [];
     if (ms.length === 0) return 0.5; /* observers only: the third site sits between */
     return Math.min(...ms.map((m) => rank.get(m.id as string) ?? unreachableRank));
   };
-  const ordered = [...siteIds].sort((a, b) => {
-    const ka = columnKey(a); const kb = columnKey(b);
-    if (ka !== kb) return ka - kb;
-    return (siteIndex.get(a) ?? 0) - (siteIndex.get(b) ?? 0);
-  });
+  const ordered = [
+    ...[...siteIds].sort((a, b) => {
+      const ka = columnKey(a); const kb = columnKey(b);
+      if (ka !== kb) return ka - kb;
+      return (siteIndex.get(a) ?? 0) - (siteIndex.get(b) ?? 0);
+    }),
+    ...emptySites,
+  ];
 
   /* ---- 3. rows inside a column ---- */
   const columns = ordered.map((s, col) => {
@@ -296,7 +308,8 @@ export function layoutTopology(
   let cursor = 0;
   for (let i = 0; i < columns.length; i++) {
     colX.push(cursor);
-    cursor += (colW[i] ?? 0) + LAYOUT.corridor;
+    const nextEmpty = (columns[i + 1]?.mems.length ?? 1) + (columns[i + 1]?.obs.length ?? 1) === 0;
+    cursor += (colW[i] ?? 0) + (nextEmpty ? LAYOUT.emptyGap : LAYOUT.corridor);
   }
 
   /* ---- 5. bands ---- */
@@ -409,11 +422,23 @@ export function layoutTopology(
   const sites: SiteBox[] = [];
   columns.forEach((c, ci) => {
     const own = nodes.filter((n) => (n.site as string) === (c.site as string));
-    if (own.length === 0) return;
-    const x0 = Math.min(...own.map((n) => n.x)) - LAYOUT.colPad;
-    const y0 = Math.min(...own.map((n) => n.y)) - LAYOUT.colPad;
-    const x1 = Math.max(...own.map((n) => n.x + n.w)) + LAYOUT.colPad;
-    const y1 = Math.max(...own.map((n) => n.y + n.h)) + LAYOUT.colPad + LAYOUT.labelBand;
+    let x0: number; let y0: number; let x1: number; let y1: number;
+    if (own.length === 0) {
+      /* The empty panel: one column wide, the member band tall -- or one card
+         tall when there is no member band to match. */
+      const cx = colX[ci] ?? 0;
+      const cw = colW[ci] ?? CARD.minW + LAYOUT.colPad * 2;
+      const top = memberBandTop;
+      const tall = Math.max(memberBandH, CARD.dbH);
+      x0 = cx; x1 = cx + cw;
+      y0 = top - LAYOUT.colPad;
+      y1 = top + tall + LAYOUT.colPad + LAYOUT.labelBand;
+    } else {
+      x0 = Math.min(...own.map((n) => n.x)) - LAYOUT.colPad;
+      y0 = Math.min(...own.map((n) => n.y)) - LAYOUT.colPad;
+      x1 = Math.max(...own.map((n) => n.x + n.w)) + LAYOUT.colPad;
+      y1 = Math.max(...own.map((n) => n.y + n.h)) + LAYOUT.colPad + LAYOUT.labelBand;
+    }
     const site = doc.sites.find((s) => (s.id as string) === (c.site as string));
     const name = site?.name ?? (c.site as string);
     sites.push({
@@ -424,6 +449,7 @@ export function layoutTopology(
       labelX: Math.round(x0 + (x1 - x0) / 2),
       labelY: y1 - 5,
       col: ci,
+      empty: own.length === 0,
     });
   });
 

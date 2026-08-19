@@ -111,6 +111,17 @@ export const introPage = signal<boolean>(false);
 /** Validation's INFO rows, collapsed until the reader asks for them. */
 export const notesOpen = signal<boolean>(false);
 /**
+ * Whether Build's validation panel is unfolded past its heading.
+ *
+ * Open by default -- a configuration with an error in it should show the
+ * error -- and remembered under `dg-issues` (persist.ts) once the reader
+ * folds it, because a reader who folded it to get the room back for the
+ * drawing has said so for the session after this one too. The heading, with
+ * its counts, is what stays: the fold hides the rows, never the fact that
+ * there are rows.
+ */
+export const issuesOpen = signal<boolean>(true);
+/**
  * Whether the sentence under each control is shown.
  *
  * Off by default: the rail explained every control with a line of prose, and

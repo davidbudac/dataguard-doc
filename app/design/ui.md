@@ -733,6 +733,94 @@ fewer. One bullet per change.
   Break dock still ends in its transport bar at 1280×720, and the rail is
   still in the grid there.
 
+## 3g. Drops and lines on the drawing (as built, 2026-08-19)
+
+Phase C of §3d, plus two defects the bar had grown.
+
+- **The bar declares the box it paints.** `barFootprint` stayed the estimate
+  the placement runs on, but `.btn` had drifted to 28 px a row against the
+  25 the constants said, and the sixth row was cut off at the bottom of the
+  `foreignObject`. `ActionBar` now measures its own `div` in a layout effect
+  and reports up (`onMeasure`); `TopoCanvas` declares `max(estimate,
+  measured)` and re-places against it. `.cv-bar .btn` carries an explicit
+  `line-height: 1.3` so the estimate is near the truth again (`HEAD` 20,
+  `ROW` 25), and the measurement is the guarantee.
+- **A press anywhere else closes the bar.** `CanvasSlot` registers one
+  `pointerdown` listener on the document, capture phase, while a bar is open:
+  a press that is not inside `.tp-actions` and not on a `[data-node]` closes
+  it (the rail, the header, the ground outside the drawing, the panels
+  below). A press on an entity is left to that entity's click, which
+  re-offers the bar there. The selection is kept — "never mind the menu" is
+  not "forget what I picked"; the click on the ground between cards still
+  clears both.
+- **Empty data centres are drawn.** `layoutTopology` appends sites with no
+  hosts-with-anything-on-them as empty columns after the last occupied one
+  (`LAYOUT.emptyGap` 40 before them, not the 200 px corridor no link rides),
+  one column wide and the member band tall, flagged `SiteBox.empty` and
+  dashed (`.tp-site.is-empty`) with “Nothing here yet” in the middle. "Add a
+  data centre" now puts something on the drawing, and that something is a
+  drop target.
+- **Drag a card into another data centre to move it.** A card drag keeps its
+  meaning; while the pointer is over *another* site's panel (geometry
+  hit-test against `geo.sites`, pointer in user units through
+  `getScreenCTM`, proportional fallback in jsdom) that panel goes `is-drop`
+  and says “Drop it here”, and the drop calls `onMoveToSite`. `moveToSite`
+  (`inspector/edits.ts`) gives the mover a host of its own in the new site
+  (`<site>-<name>`, the old host's port and cluster carried), remaps every
+  instance of a RAC member together, removes the host left behind when
+  nothing else stands on it (with its host links, addresses and events, as
+  Remove does) and leaves it when something does, and drops the drag
+  override so the card lands where the new column puts it. It coalesces under
+  `drag:<key>`, so the drag and the move are one undo. Build only; in Break a
+  drag is a drag.
+- **Drag from a card's port to another card to connect them.** Every card
+  in Build carries a port (`.tp-port`, right edge, visible on hover/selection/
+  focus) whose press starts a `link` drag instead of a `card` drag: a dashed
+  rubber band follows the pointer, the card under it goes `is-target`, and
+  the drop calls `onConnect(from, to)`. `connectFromCanvas` decides the
+  meaning: member → member is `shipRedo` — the target added to the sender's
+  RedoRoutes rule that is active for the current primary, or a new rule
+  (`LOCAL` at the primary, `ANY` elsewhere, the cascading form), with the
+  receiver's `LogXptMode` named on a cascaded destination so
+  `ROUTES.CASCADE_RT_ASYNC` does not fire on the very thing the reader just
+  asked for; a primary on the default `(LOCAL : ALL)` already ships there,
+  and that is a toast, not an edit. Member ↔ observer is `addFsfoTarget`:
+  the member joins `FastStartFailoverTarget`, refused for a far sync, a
+  snapshot standby or the primary in `WHY`'s words. Observer → observer is a
+  sentence. The destination's `dests` row is minted at defaults so the rail
+  has a row to show. `routesWith` is the one pure helper behind both, and
+  `addDatabase` now runs the new standby through it on the primary: under a
+  primary with explicit RedoRoutes a "+ Standby" used to arrive reached by
+  nothing, which was the "why is it not connected?" of every far sync preset.
+- **The line says what it will do before it lands.** `connectVerdict`
+  (`inspector/edits.ts`) is the one table for the three meanings of a drawn
+  line; `TopoCanvas` asks it (`connectWhat`) while the line hovers a card or
+  another data centre's panel and prints the label beside the pointer
+  (`.tp-rubber-tip`), or the refusal in red with the target card dashed red
+  (`.is-target-no`); the drop runs the same verdict, so the toast and the tip
+  never disagree. Dropped on another data centre's panel, the line adds a
+  standby there and ships to it (two named undos). The panel the line started
+  in is never a target — the port sits inside it.
+- **A cut link has a way back whatever the clock says.** Break's link rows
+  name what is holding it down: an injected cut at the playhead's own instant
+  makes `Restore` take the cut back (no heal stacked on a cut in the same
+  instant); a cut earlier gets the heal here *and* `Take back the cut at t =
+  5 s`; scrubbed back before one's own cut the take-back is still offered; a
+  link marked down in Build (`up: false`) gets `Mark dc1-dc2 up in the
+  configuration` as a property row, and a stopped observer (`running: false`)
+  the same. `runAction` runs a row with no events as an edit of the event list.
+- New data centres are named `DC 4` (id `dc4`), like the presets' own.
+- **The validation panel folds to its heading.** `.issues-hd` is a button
+  (`aria-expanded`, `aria-controls="issues-body"`); folded, the panel stops
+  stretching to fill the dock and the drawing takes the room. The counts stay
+  on the heading — "1 error · 6 notes" — so the fold hides the rows, never
+  the fact of them. `issuesOpen` (view.ts) is remembered under `dg-issues`
+  (persist.ts; unset means open); the status bar's count (`revealFindings`)
+  unfolds it, because sending somebody to a heading is sending them nowhere.
+- Tests: `test/ui/canvas-gestures.test.ts` (edits on the document; the drop,
+  the line and the click-away through the mounted app). The layout test for
+  `classic('none')` now expects the empty third site as a panel.
+
 ## 4. Topology canvas
 
 **Node card** (generalised `nodeCard`): flat `--sf` rect, hairline, rx 5, badge rx 7 centred; role word / host mono (19-char elision, full value in aria) / subtitle; width clamp(184, measured, 260); height 72 (3-line DB) / 52 (observer). Glyphs: db cylinder, observer eye, far sync = cylinder + chevron (no base), snapshot = cylinder + shutter tick. RAC `⌗2` chip top-right (absent = single instance, legend says so once). Master observer `MASTER` violet chip only while FSFO is enabled ("all observers have the same functionality" when disabled); observe-only slate chip. Break-mode state: phase tint fill/border; down = hatch + red border; crashed host = two-stroke red cross on the name line; stalled primary = red border, no cross.

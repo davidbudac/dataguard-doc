@@ -26,7 +26,7 @@ import { findPreset } from './presets';
 import { resetHistory } from './state/history';
 import { decodeFragment, fragmentKind } from './state/codec';
 import {
-  announceRestore, introDismissed, loadDoc, loadEdition, loadHints, loadIntro, loadTheme,
+  announceRestore, introDismissed, loadDoc, loadEdition, loadHints, loadIntro, loadIssuesOpen, loadTheme,
   startAutosave,
 } from './state/persist';
 import { upgradeLegacyUrl } from './state/legacy-url';
@@ -63,6 +63,7 @@ async function boot(): Promise<void> {
   /* And whether they want the sentence under each control. Same contract:
      read once, here, never from inside a render. */
   loadHints();
+  loadIssuesOpen();
 
   let restoredFromStorage = false;
   let notice: string | null = null;

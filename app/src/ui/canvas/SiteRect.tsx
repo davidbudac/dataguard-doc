@@ -20,6 +20,8 @@ export interface SiteRectProps {
   down: boolean;
   selected: boolean;
   hovered: boolean;
+  /** A card is being dragged over it: it is about to take that card. */
+  drop?: boolean;
   interactive: boolean;
   /** Said out loud: the name, what stands in it, and whether it is gone. */
   label: string;
@@ -41,6 +43,8 @@ export function SiteRect(props: SiteRectProps): JSX.Element {
     props.down ? 'is-down' : '',
     props.selected ? 'is-sel' : '',
     props.hovered ? 'is-hov' : '',
+    props.drop ? 'is-drop' : '',
+    site.empty ? 'is-empty' : '',
   ].filter(Boolean).join(' ');
   const key = siteKey(site.id as string);
   return (
@@ -73,6 +77,14 @@ export function SiteRect(props: SiteRectProps): JSX.Element {
       <text class="tp-sitelab" x={site.labelX} y={site.labelY} text-anchor="middle">
         {site.label}
       </text>
+      {site.empty ? (
+        <text
+          class="tp-siteempty" x={site.x + site.w / 2} y={site.y + site.h / 2 - 4}
+          text-anchor="middle"
+        >
+          {props.drop ? 'Drop it here' : 'Nothing here yet'}
+        </text>
+      ) : null}
     </g>
   );
 }

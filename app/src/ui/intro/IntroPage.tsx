@@ -178,6 +178,16 @@ const HOWTO: { k: string; d: JSX.Element }[] = [
     d: <>The <span class="mono">+</span> strip on the drawing, or &ldquo;Add &hellip; here&rdquo; on a data centre.</>,
   },
   {
+    k: 'Move and connect',
+    d: (
+      <>
+        Drag a card into another data centre and it moves there, host and all. Drag from
+        the port on a card&rsquo;s right edge to another card: member to member ships redo
+        (RedoRoutes), member to observer names a fast-start failover target.
+      </>
+    ),
+  },
+  {
     k: 'Remove something',
     d: (
       <>

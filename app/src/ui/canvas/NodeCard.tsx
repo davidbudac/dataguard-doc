@@ -31,11 +31,16 @@ export interface NodeCardProps {
   selected: boolean;
   hovered: boolean;
   dragging: boolean;
+  /** A line from another card is over it: about to be connected, or refused. */
+  target?: 'yes' | 'no' | null;
+  /** Draw the port a line can be dragged from. */
+  port?: boolean;
   interactive: boolean;
   tabIndex: number;
   onSelect?: (key: string, additive: boolean) => void;
   onHover?: (key: string | null) => void;
   onPointerDown?: (key: string, ev: JSX.TargetedPointerEvent<SVGGElement>) => void;
+  onPortPointerDown?: (key: string, ev: JSX.TargetedPointerEvent<SVGGElement>) => void;
   onKeyDown?: (key: string, ev: JSX.TargetedKeyboardEvent<SVGGElement>) => void;
   cardRef?: (key: string, el: SVGGElement | null) => void;
 }
@@ -71,7 +76,10 @@ export function NodeCard(props: NodeCardProps): JSX.Element {
     props.selected ? 'is-sel' : '',
     props.hovered ? 'is-hov' : '',
     props.dragging ? 'is-drag' : '',
+    props.target === 'yes' ? 'is-target' : props.target === 'no' ? 'is-target-no' : '',
   ].filter(Boolean).join(' ');
+  const portX = node.x + node.w;
+  const portY = node.y + Math.round(node.h / 2);
 
   const crossX = node.x + node.w - 30;
   const crossY = nameY - 14;
@@ -135,6 +143,19 @@ export function NodeCard(props: NodeCardProps): JSX.Element {
         <text class="tp-sub" x={tx} y={nameY + 30}>{node.lines.sub}</text>
       )}
       {chipNodes}
+      {props.port ? (
+        /* The port: a handle on the card's right edge a line is dragged from.
+           Part of the card's own group, so the focus, the hover and the
+           selection it lives under are the card's; only its pointer press is
+           its own. */
+        <g class="tp-port" data-port={node.key} onPointerDown={(ev) => props.onPortPointerDown?.(node.key, ev)}>
+          <title>Drag to another card to connect them</title>
+          <circle class="tp-port-hit" cx={portX} cy={portY} r={11} />
+          <circle class="tp-port-dot" cx={portX} cy={portY} r={5} />
+          <line class="tp-port-x" x1={portX - 2.5} y1={portY} x2={portX + 2.5} y2={portY} />
+          <line class="tp-port-x" x1={portX} y1={portY - 2.5} x2={portX} y2={portY + 2.5} />
+        </g>
+      ) : null}
       {frame.crashed ? (
         <g class="tp-cross" aria-hidden="true">
           <line class="tp-x" x1={crossX} y1={crossY} x2={crossX + 14} y2={crossY + 14} />

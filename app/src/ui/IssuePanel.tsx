@@ -24,8 +24,9 @@
 import type { Finding } from '@/engine';
 import { errors, issues, warnings } from '@/state/derived';
 import {
-  inspectorOpen, lessonId, mode, notesOpen, selection, toast, viewport,
+  inspectorOpen, issuesOpen, lessonId, mode, notesOpen, selection, toast, viewport,
 } from '@/state/view';
+import { setIssuesOpen, toggleIssues } from '@/state/persist';
 import { Fact } from './common/Chip';
 import { revealSections, sectionOfRule } from './inspector/sections';
 import { printing } from './print';
@@ -57,6 +58,8 @@ export function revealFindings(): void {
   const loud = errors.value.length + warnings.value.length;
   const notes = issues.value.length - loud;
   if (loud === 0 && notes > 0) notesOpen.value = true;
+  /* Sending somebody to a folded panel is sending them to a heading. */
+  setIssuesOpen(true);
   if (mode.value === 'learn') {
     const open = lessonId.value !== null;
     mode.value = 'build';
@@ -124,20 +127,37 @@ export function IssuePanel() {
   const notes = list.filter((f) => f.severity === 'info');
   /* On paper nothing is folded: a printed page has no toggle to press. */
   const open = notesOpen.value || printing.value;
+  const unfolded = issuesOpen.value || printing.value;
 
   const counts = [
     errors.value.length === 0 ? null : `${errors.value.length} error${errors.value.length === 1 ? '' : 's'}`,
     warnings.value.length === 0 ? null : `${warnings.value.length} warning${warnings.value.length === 1 ? '' : 's'}`,
   ].filter((x) => x !== null);
 
+  /* The heading is the fold's handle. The counts stay on it either way, so a
+     folded panel still says "2 errors" -- what the fold hides is the rows, not
+     the fact of them. `aria-controls` names the list it folds. */
+  const summary = counts.length === 0 ? 'No errors and no warnings' : counts.join(' · ');
+  const noteWord = notes.length === 0 ? null : `${notes.length} note${notes.length === 1 ? '' : 's'}`;
   return (
-    <div class="issues">
-      <div class="issues-hd">
+    <div class={`issues${unfolded ? '' : ' is-folded'}`}>
+      <button
+        type="button"
+        class="issues-hd"
+        aria-expanded={unfolded}
+        aria-controls="issues-body"
+        title={unfolded ? 'Fold the validation panel to its heading' : 'Unfold the validation panel'}
+        onClick={toggleIssues}
+      >
+        <span class="notes-caret">{unfolded ? '▾' : '▸'}</span>
         <span class="eyebrow">Validation</span>
         <span class="caption">
-          {counts.length === 0 ? 'No errors and no warnings' : counts.join(' · ')}
+          {summary}
+          {!unfolded && noteWord !== null ? ` · ${noteWord}` : ''}
         </span>
-      </div>
+      </button>
+      {unfolded ? (
+        <div class="issues-body" id="issues-body">
 
       {/* An empty list says something true rather than nothing at all -- and
           says it once. One line: the eyebrow over it shouted NOTHING TO FIX
@@ -176,6 +196,8 @@ export function IssuePanel() {
           <Row key={`${f.id}:${f.subject.kind}:${f.subject.id ?? ''}`} f={f} />
         ))
         : null}
+        </div>
+      ) : null}
     </div>
   );
 }

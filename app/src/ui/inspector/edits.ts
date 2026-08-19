@@ -12,18 +12,19 @@
  */
 
 import {
-  defaultDestProps, hostId, linkId, memberId, observerId, siteId,
+  activeRule, defaultDestProps, hostId, linkId, memberId, observerId, siteId,
 } from '@/engine';
 import type {
-  DatabaseMember, DestProps, FarSyncMember, Host, Instance, Link, Member, MemberId, Observer,
-  RedoRouteRule, Site, TimedEvent, TopologyDoc, XptMode,
+  DatabaseMember, DestGroup, DestProps, FarSyncMember, Host, Instance, Link, Member, MemberId,
+  Observer, RedoRouteRule, RouteDest, Site, TimedEvent, TopologyDoc, XptMode,
 } from '@/engine';
 import type { HostId, LinkId, ObserverId, SiteId } from '@/engine';
 import { doc, withTopology } from '@/state/doc';
 import type { Doc } from '@/state/doc';
 import { edit } from '@/state/history';
 import { select, toast } from '@/state/view';
-import { WHY } from './why';
+import type { WhyState } from '../common/WhyPill';
+import { off, ON, WHY } from './why';
 
 /* ---------------- the two primitives ---------------- */
 
@@ -190,9 +191,17 @@ export function addDatabase(where?: SiteId): MemberId | null {
       openMode: 'mount', staticServices: false,
     };
     const primary = withH.members.find((m) => m.kind === 'database' && m.role === 'primary');
+    /* The primary ships to it: on the default `(LOCAL : ALL)` it already does,
+       and a primary with RedoRoutes of its own gets the new standby in its
+       active rule -- a standby added to the drawing and reached by nothing is
+       the question "why is it not connected?" asked every time. */
     const members = [...withH.members, member].map((m) =>
       (primary && m.id === primary.id
-        ? { ...m, dests: { ...m.dests, [id]: defaultDestProps() } }
+        ? {
+          ...m,
+          dests: { ...m.dests, [id]: defaultDestProps() },
+          redoRoutes: routesWith(m, primary.id, { target: id }),
+        }
         : m));
     return { ...withH, members };
   });
@@ -291,7 +300,10 @@ export function addSite(): SiteId | null {
     if (!taken.has(`dc${i}`)) name = `dc${i}`;
   }
   const id = siteId(name);
-  mutate(`Add the site ${name}`, (cur) => {
+  /* The id is `dc4`; the name on the drawing is `DC 4`, the way the presets
+     name theirs -- a panel labelled `dc4` beside `DC 1` reads as a typo. */
+  const label = `DC ${name.slice(2)}`;
+  mutate(`Add the site ${label}`, (cur) => {
     /* `name` is free, so `dcA-<name>` is a new link id in all but one case: a
        document loaded from a share link may already carry a link literally
        named that while having no such site. A second link with the same id
@@ -308,7 +320,7 @@ export function addSite(): SiteId | null {
       }));
     return {
       ...cur,
-      sites: [...cur.sites, { id, name } as Site],
+      sites: [...cur.sites, { id, name: label } as Site],
       links: [...cur.links, ...links],
     };
   });
@@ -455,14 +467,17 @@ export function removeObserver(id: ObserverId): void {
   });
 }
 
+/** A host and every reference to it: its host links, client addresses and events. */
+const withoutHost = (t: TopologyDoc, id: HostId): TopologyDoc => ({
+  ...t,
+  hosts: t.hosts.filter((h) => h.id !== id),
+  links: t.links.filter((l) => !(l.scope === 'host' && (l.ends as [HostId, HostId]).includes(id))),
+  client: { ...t.client, addresses: t.client.addresses.filter((a) => a.host !== id) },
+  events: t.events.filter((e) => !eventMentionsHost(e, id)),
+});
+
 export function removeHost(id: HostId): void {
-  mutate(`Remove the host ${id as string}`, (t) => ({
-    ...t,
-    hosts: t.hosts.filter((h) => h.id !== id),
-    links: t.links.filter((l) => !(l.scope === 'host' && (l.ends as [HostId, HostId]).includes(id))),
-    client: { ...t.client, addresses: t.client.addresses.filter((a) => a.host !== id) },
-    events: t.events.filter((e) => !eventMentionsHost(e, id)),
-  }));
+  mutate(`Remove the host ${id as string}`, (t) => withoutHost(t, id));
 }
 
 export function removeSite(id: SiteId): void {
@@ -579,6 +594,241 @@ export function setPrimary(id: MemberId): void {
 /** Rewrite one member's RedoRoutes property. */
 export function setRedoRoutes(id: MemberId, rules: readonly RedoRouteRule[], label: string): void {
   patchMember(id, label, (m) => ({ ...m, redoRoutes: [...rules] }));
+}
+
+/* ---------------- the drawing's own gestures ---------------- */
+
+/** The hosts a member runs on, once each, in instance order. */
+const hostsOf = (m: Member): HostId[] => {
+  const out: HostId[] = [];
+  for (const i of m.instances) if (!out.includes(i.host)) out.push(i.host);
+  return out;
+};
+
+/** True when anything other than `except` stands on this host. */
+function hostShared(t: TopologyDoc, host: HostId, except: string): boolean {
+  return t.members.some((m) => (m.id as string) !== except && m.instances.some((i) => i.host === host))
+    || t.observers.some((o) => (o.id as string) !== except && o.host === host);
+}
+
+/**
+ * Move a member or an observer to another data centre -- the card dragged
+ * from one site panel into another.
+ *
+ * A card lives where its hosts live, so this moves hosts: the mover gets a
+ * host of its own in the new place, named the way every host here is named
+ * (`<site>-<name>`), with the old host's port and cluster name; the old host
+ * goes if nothing else stands on it, taking its host links, client addresses
+ * and events with it the way Remove does, and stays put if something else
+ * does -- taking a shared host along would silently move the other thing
+ * too. Every instance of a RAC member moves together: a cluster does not
+ * straddle two data centres. The drag offset is dropped at the same time, so
+ * the card lands where the new column puts it rather than floating over the
+ * old one.
+ *
+ * One undo: the drag that carried the card there coalesces into this entry
+ * under the same key, so "Undo" puts the card back where it was picked up.
+ */
+export function moveToSite(key: string, site: SiteId): void {
+  const t = doc.value.topology;
+  const target = t.sites.find((s) => s.id === site);
+  if (!target) return;
+  const member = t.members.find((m) => (m.id as string) === key);
+  const observer = member ? undefined : t.observers.find((o) => (o.id as string) === key);
+  if (!member && !observer) return;
+  const siteOf = (h: HostId): SiteId | undefined => t.hosts.find((x) => x.id === h)?.site;
+  const hosts = member ? hostsOf(member) : observer ? [observer.host] : [];
+  if (hosts.length === 0 || hosts.every((h) => siteOf(h) === site)) return;
+  const name = member ? member.name : observer?.name ?? key;
+
+  edit(`Move ${key} to ${target.name}`, (d) => {
+    let cur = d.topology;
+    const remap = new Map<HostId, HostId>();
+    for (const h of hosts) {
+      if (siteOf(h) === site) continue;
+      const old = cur.hosts.find((x) => x.id === h);
+      const hname = uniqueHost(cur, `${site as string}-${name}`);
+      cur = withHost(cur, hname, site);
+      if (old !== undefined) {
+        cur = {
+          ...cur,
+          hosts: cur.hosts.map((x) => (x.id === hostId(hname)
+            ? { ...x, listenerPort: old.listenerPort, ...(old.cluster === undefined ? {} : { cluster: old.cluster }) }
+            : x)),
+        };
+      }
+      remap.set(h, hostId(hname));
+    }
+    const moved = (h: HostId): HostId => remap.get(h) ?? h;
+    cur = {
+      ...cur,
+      members: cur.members.map((m) => (m.id === member?.id
+        ? { ...m, instances: m.instances.map((i) => ({ ...i, host: moved(i.host) })) }
+        : m)),
+      observers: cur.observers.map((o) => (o.id === observer?.id ? { ...o, host: moved(o.host) } : o)),
+    };
+    /* The hosts left behind, when nothing else stands on them. */
+    for (const h of remap.keys()) {
+      if (hostShared(cur, h, key)) continue;
+      cur = withoutHost(cur, h);
+    }
+    return dropLayout(withTopology(d, cur), [key]);
+  }, `drag:${key}`);
+}
+
+/**
+ * One member's RedoRoutes with `dest` added: to the rule active for
+ * `primary` when there is one, as a new rule otherwise -- `(LOCAL : to)` at
+ * the primary, `(ANY : to)` anywhere else, the cascading form that survives
+ * a role change. Unchanged when the active rule already names the target or
+ * ALL. Pure, so both the palette and the drawn line can use it.
+ */
+function routesWith(m: Member, primary: MemberId, dest: RouteDest): RedoRouteRule[] {
+  const act = activeRule(m, primary);
+  const names = (g: DestGroup): boolean =>
+    g.dests.some((dd) => dd.target === 'ALL' || dd.target === dest.target);
+  if (act && act.rule.groups.some(names)) return m.redoRoutes;
+  if (act && m.redoRoutes.length > 0) {
+    return m.redoRoutes.map((r, i) => (i !== act.index ? r : {
+      ...r,
+      groups: r.groups.map((g, gi) => (gi !== 0 ? g : { ...g, dests: [...g.dests, dest] })),
+    }));
+  }
+  const source: RedoRouteRule['source'] = m.id === primary ? 'LOCAL' : 'ANY';
+  return [...m.redoRoutes, { source, groups: [{ dests: [dest] }] }];
+}
+
+/**
+ * Ship redo from one member to another -- a line drawn from a card to a card.
+ *
+ * It edits RedoRoutes, because that is what decides who ships to whom: the
+ * rule active for the current primary gets the target added to its first
+ * group, and a member with no active rule gets one -- `(LOCAL : to)` at the
+ * primary, `(ANY : to)` anywhere else, which is the cascading form that
+ * survives a role change. A primary on the default `(LOCAL : ALL)` already
+ * ships to every member, so that drag is a sentence rather than an edit. The
+ * destination's own properties are minted at their defaults so the
+ * inspector's destination table has a row to show.
+ */
+export function shipRedo(from: MemberId, to: MemberId): void {
+  const t = doc.value.topology;
+  const sender = t.members.find((m) => m.id === from);
+  const receiver = t.members.find((m) => m.id === to);
+  if (!sender || !receiver || from === to) return;
+  const primary = t.members.find((m) => m.kind === 'database' && m.role === 'primary');
+  if (!primary) return;
+  if (receiver.kind === 'database' && receiver.role === 'primary') {
+    toast.value = { kind: 'warn', text: `${to as string} is the primary: redo starts there, nothing ships to it.` };
+    return;
+  }
+  if (receiver.kind === 'database' && receiver.role === 'snapshot') {
+    toast.value = { kind: 'warn', text: `${to as string} is a snapshot standby: it receives redo but applies none until it is converted back.` };
+  }
+  /* A cascaded destination names its transport: the ASYNC attribute has to be
+     explicit for real-time cascading (ROUTES.CASCADE_RT_ASYNC), and the
+     receiver's LogXptMode is what it would have fallen back to anyway. */
+  const dest: RouteDest = sender.id === primary.id
+    ? { target: to }
+    : { target: to, xpt: receiver.logXptMode };
+  const routes = routesWith(sender, primary.id, dest);
+  if (routes === sender.redoRoutes) {
+    toast.value = {
+      kind: 'info',
+      text: sender.redoRoutes.length === 0
+        ? `${from as string} already ships to ${to as string}: its RedoRoutes are the default (LOCAL : ALL).`
+        : `${from as string} already ships to ${to as string}.`,
+    };
+    return;
+  }
+  patchMember(from, `Ship redo from ${from as string} to ${to as string}`, (m) => ({
+    ...m,
+    redoRoutes: routes,
+    dests: to in m.dests ? m.dests : { ...m.dests, [to]: defaultDestProps() },
+  }));
+}
+
+/**
+ * What a line drawn from `from` to `to` would do, and whether it may.
+ *
+ * One table for the three meanings a drawn line has -- redo between members,
+ * a failover target between a member and an observer, a new standby in a
+ * data centre -- so the label under the pointer while the line is being
+ * drawn, the refusal on the card it hovers, and the edit the drop runs are
+ * the same sentence. `to` is a card key or a site id. Pure over the document.
+ */
+export function connectVerdict(
+  t: TopologyDoc, from: string, to: string,
+): { label: string; enabled: WhyState } {
+  const member = (k: string): Member | undefined => t.members.find((m) => (m.id as string) === k);
+  const observer = (k: string): Observer | undefined => t.observers.find((o) => (o.id as string) === k);
+  const site = (k: string): Site | undefined => t.sites.find((x) => (x.id as string) === k);
+  const a = member(from); const b = member(to);
+  const primary = t.members.find((m) => m.kind === 'database' && m.role === 'primary');
+  if (a && b) {
+    if (b.kind === 'database' && b.role === 'primary') {
+      return { label: `Ship redo to ${to}`, enabled: off(`${to} is the primary: redo starts there, nothing ships to it.`) };
+    }
+    if (primary && routesWith(a, primary.id, { target: b.id }) === a.redoRoutes) {
+      return {
+        label: `Ship redo to ${to}`,
+        enabled: off(a.redoRoutes.length === 0
+          ? `${from} already ships to ${to}: its RedoRoutes are the default (LOCAL : ALL).`
+          : `${from} already ships to ${to}.`),
+      };
+    }
+    return { label: `Ship redo to ${to}`, enabled: ON };
+  }
+  const targetOf = (m: Member): { label: string; enabled: WhyState } => {
+    const label = `Make ${m.id as string} a fast-start failover target`;
+    if (m.kind === 'farsync') return { label, enabled: off(WHY.farSyncNotTarget) };
+    if (m.role === 'snapshot') return { label, enabled: off(WHY.snapshotNotTarget) };
+    if (m.role === 'primary') return { label, enabled: off(WHY.primaryNotTarget) };
+    const target = t.config.fsfo.target;
+    if (target.kind === 'ANY') return { label, enabled: off(`FastStartFailoverTarget is ANY, which already includes ${m.id as string}.`) };
+    if (target.members.includes(m.id)) return { label, enabled: off(`${m.id as string} is a fast-start failover target already.`) };
+    return { label, enabled: ON };
+  };
+  if (a && observer(to)) return targetOf(a);
+  if (observer(from) && b) return targetOf(b);
+  if (observer(from) && observer(to)) {
+    return { label: 'Connect the observers', enabled: off('Two observers have no link between them: each watches the primary and the failover target.') };
+  }
+  const s = site(to);
+  if (s && a) {
+    return { label: `Add a standby in ${s.name} and ship redo to it`, enabled: ON };
+  }
+  if (s && observer(from)) {
+    return { label: `Connect to ${s.name}`, enabled: off('An observer watches databases, not data centres: drag the card there to move it.') };
+  }
+  return { label: 'Connect', enabled: off('Nothing to connect here.') };
+}
+
+/**
+ * Name a standby as a fast-start failover target -- a line drawn between a
+ * card and an observer, in either direction. Far sync instances, snapshot
+ * standbys and the primary are refused in the words the configuration form
+ * uses; a target already named is a sentence, not an edit.
+ */
+export function addFsfoTarget(id: MemberId): void {
+  const t = doc.value.topology;
+  const m = t.members.find((x) => x.id === id);
+  if (!m) return;
+  const refuse = (why: string): void => { toast.value = { kind: 'warn', text: `${id as string} is not made a target: ${why}` }; };
+  if (m.kind === 'farsync') { refuse(WHY.farSyncNotTarget); return; }
+  if (m.role === 'snapshot') { refuse(WHY.snapshotNotTarget); return; }
+  if (m.role === 'primary') { refuse(WHY.primaryNotTarget); return; }
+  const target = t.config.fsfo.target;
+  if (target.kind === 'ANY') {
+    toast.value = { kind: 'info', text: `FastStartFailoverTarget is ANY, which already includes ${id as string}.` };
+    return;
+  }
+  if (target.members.includes(id)) {
+    toast.value = { kind: 'info', text: `${id as string} is a fast-start failover target already.` };
+    return;
+  }
+  patchFsfo(`Add ${id as string} to FastStartFailoverTarget`, (f) => ({
+    ...f, target: { kind: 'list', members: [...target.members, id] },
+  }));
 }
 
 export function setLogXptMode(id: MemberId, xpt: XptMode): void {

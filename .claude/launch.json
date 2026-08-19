@@ -2,6 +2,18 @@
   "version": "0.0.1",
   "configurations": [
     {
+      "name": "dataguard-dev",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": [
+        "vite",
+        "--port",
+        "5179",
+        "--strictPort"
+      ],
+      "cwd": "app",
+      "port": 5179
+    },
+    {
       "name": "dataguard-site",
       "runtimeExecutable": "python3",
       "runtimeArgs": [

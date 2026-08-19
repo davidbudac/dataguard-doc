@@ -23,6 +23,8 @@ import { describeTopology, cardLabel, linkLabel, siteLabel } from './aria';
 import { anchorFor, fittedScale, placeBar } from './anchor';
 import { ActionBar, barFootprint } from './ActionBar';
 import type { BarAction } from './ActionBar';
+import type { WhyState } from '../common/WhyPill';
+import { approxW } from './measure';
 import { NodeCard } from './NodeCard';
 import { LinkPath, linkKey } from './LinkPath';
 import { SiteRect, siteKey } from './SiteRect';
@@ -59,6 +61,24 @@ export interface TopoCanvasProps {
   onEventMenu?: (key: string, at: { x: number; y: number }) => void;
   onDrag?: (key: string, offset: LayoutOffset) => void;
   onDragEnd?: (key: string, offset: LayoutOffset) => void;
+  /**
+   * A card dropped inside another data centre's panel. Passing it makes the
+   * panels drop targets; without it a drag is a drag and the card stays in
+   * the site it came from, wherever it is let go.
+   */
+  onMoveToSite?: (key: string, site: string) => void;
+  /**
+   * A line drawn from one card's port to another card. Passing it draws the
+   * ports; the caller decides what a member-to-member or a member-to-observer
+   * line means.
+   */
+  onConnect?: (from: string, to: string) => void;
+  /**
+   * What the line being drawn would do if dropped here, and whether it may:
+   * the label under the pointer while it hovers a card or a panel, and the
+   * refusal on the target when it may not. `to` is a card key or a site id.
+   */
+  connectWhat?: (from: string, to: string) => { label: string; enabled: WhyState };
   onDelete?: (key: string) => void;
   onClear?: () => void;
   /**
@@ -122,6 +142,20 @@ interface CardDrag {
   baseY: number;
   scale: number;
   moved: boolean;
+  /** The other data centre the pointer is over, when the caller takes drops. */
+  over: string | null;
+}
+
+/** A line being drawn from a card's port: nothing moves until it lands. */
+interface LinkDrag {
+  kind: 'link';
+  from: string;
+  startX: number;
+  startY: number;
+  scale: number;
+  moved: boolean;
+  /** The card under the pointer, other than the one the line came from. */
+  over: string | null;
 }
 
 interface PanDrag {
@@ -135,7 +169,7 @@ interface PanDrag {
   moved: boolean;
 }
 
-type DragState = CardDrag | PanDrag;
+type DragState = CardDrag | PanDrag | LinkDrag;
 
 const DRAG_THRESHOLD = 4;
 
@@ -204,6 +238,58 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
      survive the pointer leaving the ground it was pressed on, so it is state
      rather than a `:active` rule. */
   const [panning, setPanning] = useState(false);
+  /* A drag in flight, as the drawing shows it: the panel about to take the
+     card, or the line from a port to the pointer and the card it is over. State
+     rather than a ref, because the drawing has to repaint on every move. */
+  const [dropSite, setDropSite] = useState<string | null>(null);
+  const [rubber, setRubber] = useState<{
+    from: string; x: number; y: number; over: string | null;
+    what: { label: string; enabled: WhyState } | null;
+  } | null>(null);
+  /* The bar's real height, once it has been painted: the estimate in
+     `barFootprint` places it, the measurement sizes the box so a row the
+     estimate did not count is not cut off at the bottom. */
+  const [barMeasured, setBarMeasured] = useState<{ key: string; w: number; h: number } | null>(null);
+
+  /**
+   * The pointer in the drawing's own units.
+   *
+   * Through the screen CTM where there is one, which is exact whatever the
+   * stage did to the box; by proportion where there is not (jsdom), which is
+   * exact whenever the box keeps the viewBox's aspect -- and it does, because
+   * the width and height attributes are the viewBox scaled by one factor.
+   */
+  const toUser = (clientX: number, clientY: number, scale: number): { x: number; y: number } => {
+    const svg = svgRef.current;
+    if (svg === null) return { x: 0, y: 0 };
+    const ctm = typeof svg.getScreenCTM === 'function' ? svg.getScreenCTM() : null;
+    if (ctm !== null && typeof DOMPoint === 'function') {
+      const p = new DOMPoint(clientX, clientY).matrixTransform(ctm.inverse());
+      return { x: p.x, y: p.y };
+    }
+    const rect = svg.getBoundingClientRect();
+    return { x: view.x + (clientX - rect.left) * scale, y: view.y + (clientY - rect.top) * scale };
+  };
+  const inside = (r: { x: number; y: number; w: number; h: number }, p: { x: number; y: number }): boolean =>
+    p.x >= r.x && p.x <= r.x + r.w && p.y >= r.y && p.y <= r.y + r.h;
+  /** The other site panel under the point, or null. */
+  const siteUnder = (p: { x: number; y: number }, own: string): string | null =>
+    geo.sites.find((s) => (s.id as string) !== own && inside(s, p))?.id as string | undefined ?? null;
+  /** The other card under the point, or null: cards only, never a panel or a caption. */
+  const cardUnder = (p: { x: number; y: number }, own: string): string | null =>
+    geo.nodes.find((n) => n.key !== own && inside(n, p))?.key ?? null;
+  /**
+   * Where a drawn line may land: another card first, another data centre's
+   * panel otherwise. Never the panel the line started in -- the port sits
+   * inside it, so a line barely past the drag threshold would already be
+   * "over" it, and a slip of the hand would add a standby.
+   */
+  const linkTargetUnder = (p: { x: number; y: number }, own: string): string | null => {
+    const card = cardUnder(p, own);
+    if (card !== null) return card;
+    const ownSite = geo.byKey[own]?.site as string | undefined;
+    return geo.sites.find((s) => (s.id as string) !== ownSite && inside(s, p))?.id as string | undefined ?? null;
+  };
 
   const cardRef = useCallback((key: string, el: SVGGElement | null) => {
     if (el) cards.current.set(key, el);
@@ -350,6 +436,8 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
     const svg = svgRef.current;
     const node = geo.byKey[key];
     if (!svg || !node) return;
+    /* A press on the card's port starts a line, not a move. */
+    if (ev.target instanceof Element && ev.target.closest('.tp-port') !== null) return;
     const rect = svg.getBoundingClientRect();
     const scale = rect.width > 0 ? view.w / rect.width : 1;
     const base = overrides[key] ?? { dx: 0, dy: 0 };
@@ -362,12 +450,31 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
       baseY: base.dy,
       scale,
       moved: false,
+      over: null,
     };
     /* Capture waits for the drag threshold (onPointerMove). Capturing here
        retargets the pointerup -- and with it the mouseup and the click -- to
        the svg, so a plain click never reached the card's own onClick and
        selecting with a mouse silently did nothing. A drag still captures the
        moment it becomes one, which is the only time the pointer can leave. */
+  };
+
+  /** A press on a card's port: the start of a line to another card. */
+  const onPortPointerDown = (key: string, ev: JSX.TargetedPointerEvent<SVGGElement>): void => {
+    if (!props.onConnect || ev.button !== 0) return;
+    const svg = svgRef.current;
+    if (!svg || !geo.byKey[key]) return;
+    ev.stopPropagation();
+    const rect = svg.getBoundingClientRect();
+    drag.current = {
+      kind: 'link',
+      from: key,
+      startX: ev.clientX,
+      startY: ev.clientY,
+      scale: rect.width > 0 ? view.w / rect.width : 1,
+      moved: false,
+      over: null,
+    };
   };
 
   /**
@@ -409,12 +516,29 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
       d.stage.scrollTop = d.top - dy;
       return;
     }
+    if (d.kind === 'link') {
+      const dx = ev.clientX - d.startX;
+      const dy = ev.clientY - d.startY;
+      if (!d.moved && Math.hypot(dx, dy) < DRAG_THRESHOLD) return;
+      if (!d.moved) svgRef.current?.setPointerCapture?.(ev.pointerId);
+      d.moved = true;
+      const p = toUser(ev.clientX, ev.clientY, d.scale);
+      d.over = linkTargetUnder(p, d.from);
+      const what = d.over === null ? null : props.connectWhat?.(d.from, d.over) ?? null;
+      setRubber({ from: d.from, x: p.x, y: p.y, over: d.over, what });
+      return;
+    }
     const dx = (ev.clientX - d.startX) * d.scale;
     const dy = (ev.clientY - d.startY) * d.scale;
     if (!d.moved && Math.hypot(dx, dy) < DRAG_THRESHOLD) return;
     if (!d.moved) svgRef.current?.setPointerCapture?.(ev.pointerId);
     d.moved = true;
     props.onDrag?.(d.key, { dx: snap8(d.baseX + dx), dy: snap8(d.baseY + dy) });
+    if (props.onMoveToSite) {
+      const own = geo.byKey[d.key]?.site as string | undefined;
+      const over = own === undefined ? null : siteUnder(toUser(ev.clientX, ev.clientY, d.scale), own);
+      if (over !== d.over) { d.over = over; setDropSite(over); }
+    }
   };
 
   const endDrag = (ev: JSX.TargetedPointerEvent<SVGSVGElement>): void => {
@@ -423,10 +547,27 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
     drag.current = null;
     svgRef.current?.releasePointerCapture?.(ev.pointerId);
     if (d.kind === 'pan') { if (d.moved) setPanning(false); return; }
+    if (d.kind === 'link') {
+      setRubber(null);
+      if (!d.moved) return;
+      /* Read at the drop, not from the last move: a drop is where the pointer
+         is, and a pointer that stops moving still sends the up somewhere. */
+      const over = linkTargetUnder(toUser(ev.clientX, ev.clientY, d.scale), d.from);
+      if (over !== null) props.onConnect?.(d.from, over);
+      return;
+    }
     if (!d.moved) return;
+    if (d.over !== null) setDropSite(null);
     const dx = (ev.clientX - d.startX) * d.scale;
     const dy = (ev.clientY - d.startY) * d.scale;
     props.onDragEnd?.(d.key, { dx: snap8(d.baseX + dx), dy: snap8(d.baseY + dy) });
+    /* Dropped in another data centre: the move is the caller's edit, and it
+       runs after the offset is committed so the two fold into one undo. */
+    if (d.over !== null) {
+      const own = geo.byKey[d.key]?.site as string | undefined;
+      const over = own === undefined ? null : siteUnder(toUser(ev.clientX, ev.clientY, d.scale), own);
+      if (over !== null) props.onMoveToSite?.(d.key, over);
+    }
   };
 
   /**
@@ -451,7 +592,7 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
    */
   const onSvgPointerUp = (ev: JSX.TargetedPointerEvent<SVGSVGElement>): void => {
     const d = drag.current;
-    const wasCard = d !== null && d.kind === 'card';
+    const wasCard = d !== null && (d.kind === 'card' || d.kind === 'link');
     const panned = d !== null && d.kind === 'pan' && d.moved;
     endDrag(ev);
     if (wasCard || panned) return;
@@ -489,7 +630,22 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
   const bar = interactive ? props.bar ?? null : null;
   const k = Math.min(1, Math.max(0.5, props.scale ?? 1));
   const barAnchor = bar === null ? null : anchorFor(bar.key, geo, routed.links);
-  const barSize = bar === null ? null : barFootprint(bar.actions, bar.quiet ?? null, bar.maxRows);
+  const barEstimate = bar === null ? null : barFootprint(bar.actions, bar.quiet ?? null, bar.maxRows);
+  /* The larger of the estimate and what was painted: the estimate is what the
+     placement can know before the render, the measurement is what the box
+     has to be. Never smaller than the estimate, so a measurement that has not
+     happened yet (jsdom, the first frame) declares the generous box. */
+  const barSize = barEstimate === null || bar === null ? null : {
+    w: barMeasured?.key === bar.key ? Math.max(barEstimate.w, barMeasured.w) : barEstimate.w,
+    h: barMeasured?.key === bar.key ? Math.max(barEstimate.h, barMeasured.h) : barEstimate.h,
+  };
+  const onBarMeasure = (m: { w: number; h: number }): void => {
+    if (bar === null) return;
+    setBarMeasured((prev) => (
+      prev !== null && prev.key === bar.key && prev.w === m.w && prev.h === m.h
+        ? prev
+        : { key: bar.key, w: m.w, h: m.h }));
+  };
   /* In user units, and larger than the CSS size when the drawing is shrunk:
      the bar undoes the drawing's scale, so its footprint on the drawing grows
      as that scale falls. Placing against the CSS size put it off the stage. */
@@ -613,6 +769,7 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
               down={siteIsDown(doc, s.id as string, frame)}
               selected={isSelected(siteKey(s.id as string))}
               hovered={hovered === siteKey(s.id as string)}
+              drop={dropSite === (s.id as string) || (rubber !== null && rubber.over === (s.id as string))}
               label={siteLabel(doc, { id: s.id as string, name: s.name }, frame)}
               tabIndex={0}
               interactive={interactive}
@@ -656,16 +813,54 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
               selected={isSelected(n.key)}
               hovered={hovered === n.key}
               dragging={drag.current?.kind === 'card' && drag.current.key === n.key}
+              target={rubber !== null && rubber.over === n.key
+                ? (rubber.what?.enabled.state === 'off' ? 'no' : 'yes')
+                : null}
+              port={interactive && props.onConnect !== undefined}
               interactive={interactive}
               tabIndex={tabStops.has(n.key) ? 0 : -1}
               onSelect={onCardSelect}
               onHover={props.onHover}
               onPointerDown={onCardPointerDown}
+              onPortPointerDown={onPortPointerDown}
               onKeyDown={onCardKey}
               cardRef={cardRef}
             />
           ))}
         </g>
+
+        {/* The line being drawn from a port, while it is being drawn. */}
+        {rubber === null ? null : (() => {
+          const from = geo.byKey[rubber.from];
+          if (!from) return null;
+          const x1 = from.x + from.w;
+          const y1 = from.y + Math.round(from.h / 2);
+          const what = rubber.what;
+          const refused = what !== null && what.enabled.state === 'off';
+          const tip = what === null ? null : (what.enabled.state === 'off' ? what.enabled.why : what.label);
+          /* The label rides beside the pointer: what the drop would do, or
+             why it will not. Kept short on the drawing -- a refusal is a
+             sentence, and the toast after the drop carries the whole of it. */
+          const tipText = tip === null ? null : (tip.length > 64 ? `${tip.slice(0, 61)}…` : tip);
+          const tipW = tipText === null ? 0 : Math.round(approxW(tipText, 10.5, true) + 14);
+          return (
+            <g class="tp-rubber" aria-hidden="true">
+              <line
+                class={`tp-rubber-ln${rubber.over !== null ? (refused ? ' is-no' : ' is-on') : ''}`}
+                x1={x1} y1={y1} x2={rubber.x} y2={rubber.y}
+              />
+              {tipText === null ? null : (
+                <g class={`tp-rubber-tip${refused ? ' is-no' : ''}`}>
+                  <rect
+                    class="tp-rubber-tip-bg"
+                    x={rubber.x + 12} y={rubber.y - 22} width={tipW} height={18} rx={3}
+                  />
+                  <text class="tp-rubber-tip-tx" x={rubber.x + 19} y={rubber.y - 9}>{tipText}</text>
+                </g>
+              )}
+            </g>
+          );
+        })()}
 
         <g class="tp-pills">
           {routed.links.map((l, i) => (
@@ -702,6 +897,8 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
             focusOnOpen={bar.focus === true}
             {...(bar.moreWhere !== undefined ? { moreWhere: bar.moreWhere } : {})}
             {...(bar.maxRows !== undefined ? { maxRows: bar.maxRows } : {})}
+            {...(barSize !== null ? { box: barSize } : {})}
+            onMeasure={onBarMeasure}
             onClose={closeBar}
           />
         )}

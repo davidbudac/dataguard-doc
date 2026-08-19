@@ -60,11 +60,18 @@ describe('layoutTopology: the classic 1+1+1', () => {
     expect(node(geo, 'obs01').y).toBeLessThan(node(geo, 'sby01').y);
   });
 
-  it('draws two sites and no observer band when none is deployed', () => {
+  it('draws no observer band when none is deployed, and the empty third site as an empty panel', () => {
     const geo = geometryOf(classic('none'));
     expect(geo.nodes.map((n) => n.key)).toEqual(['prm01', 'sby01']);
-    expect(geo.sites).toHaveLength(2);
+    expect(geo.sites.map((s) => [s.id as string, s.empty])).toEqual([['dc1', false], ['dc2', false], ['dc3', true]]);
     expect(node(geo, 'prm01').y).toBe(0);
+    /* The empty panel is last and moves nothing: the two occupied columns
+       sit where they sit without it. */
+    const without = geometryOf({ ...classic('none'), sites: classic('none').sites.filter((s) => (s.id as string) !== 'dc3') });
+    expect(without.sites.map((s) => [s.x, s.y, s.w, s.h])).toEqual(geo.sites.slice(0, 2).map((s) => [s.x, s.y, s.w, s.h]));
+    const dc3 = geo.sites[2]!;
+    expect(dc3.x).toBeGreaterThan(geo.sites[1]!.x + geo.sites[1]!.w);
+    expect(dc3.h).toBeGreaterThanOrEqual(72);
   });
 
   it('keeps the redo edge horizontal in all four placements', () => {

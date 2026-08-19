@@ -85,6 +85,23 @@ function literalDownAt(doc: TopologyDoc, thing: Thing, t: number): boolean {
   return down;
 }
 
+/** The index of the latest `link.cut` on this link at or before `t`, unless a heal after it put it back. */
+function lastCutIndex(doc: TopologyDoc, link: string, t: number): number | null {
+  let idx: number | null = null;
+  doc.events.forEach((e, i) => {
+    if (e.at > t) return;
+    if (e.kind === 'link.cut' && (e.link as string) === link) idx = i;
+    if (e.kind === 'link.heal' && (e.link as string) === link) idx = null;
+  });
+  return idx;
+}
+
+/** The index of the first `link.cut` on this link after `t`, or null. */
+function nextCutIndex(doc: TopologyDoc, link: string, t: number): number | null {
+  const i = doc.events.findIndex((e) => e.at > t && e.kind === 'link.cut' && (e.link as string) === link);
+  return i < 0 ? null : i;
+}
+
 /**
  * Whether a thing is down at `t`, containment included.
  *
@@ -362,6 +379,23 @@ export function actionsForKey(doc: TopologyDoc, key: string, at: number): EventA
       enabled: held !== null ? off(held) : (stopped ? ON : off(WHY.nothingDown)),
       events: [{ at, kind: 'observer.start', observer: observer.id }],
     });
+    if (observer.running === false) {
+      out.push({
+        id: 'observer.markRunning',
+        label: `Mark ${key} running in the configuration`,
+        plural: 'Mark the observers running',
+        enabled: ON,
+        events: [],
+        property: true,
+        run: () => edit(`Mark ${key} running`, (d) => ({
+          ...d,
+          topology: {
+            ...d.topology,
+            observers: d.topology.observers.map((o) => (o.id === observer.id ? { ...o, running: true } : o)),
+          },
+        })),
+      });
+    }
     const hDown = isDownAt(doc, { kind: 'host', id: observer.host as string }, at);
     const hostHeld = heldBySite(doc, observer.host, at);
     out.push({
@@ -396,13 +430,74 @@ export function actionsForKey(doc: TopologyDoc, key: string, at: number): EventA
       enabled: cut ? off(WHY.alreadyDown) : ON,
       events: [{ at, kind: 'link.cut', link: link.id }],
     });
-    out.push({
-      id: 'link.heal',
-      label: `Restore ${key}`,
-      plural: 'Restore the links',
-      enabled: cut ? ON : off(WHY.nothingDown),
-      events: [{ at, kind: 'link.heal', link: link.id }],
-    });
+    /* What is holding it down, named -- because "Restore" means three
+       different things and the reader cannot tell them apart on the drawing:
+       an injected cut at this very instant is simply taken back; a cut
+       earlier on the clock gets a heal here *and* the offer to take the cut
+       back wherever it is; a link marked down in the configuration (Build's
+       "Mark it down", `up: false`) is healed here as an event, and the row
+       under it says where the mark lives and offers to lift it. */
+    const cutIdx = lastCutIndex(doc, link.id as string, at);
+    const cutAt = cutIdx === null ? null : doc.events[cutIdx]?.at ?? null;
+    if (cut && cutAt !== null && cutAt === at) {
+      out.push({
+        id: 'link.heal',
+        label: `Restore ${key}`,
+        plural: 'Restore the links',
+        enabled: ON,
+        events: [],
+        run: () => removeEventAt(cutIdx as number),
+      });
+    } else {
+      out.push({
+        id: 'link.heal',
+        label: `Restore ${key}`,
+        plural: 'Restore the links',
+        enabled: cut ? ON : off(WHY.nothingDown),
+        events: [{ at, kind: 'link.heal', link: link.id }],
+      });
+    }
+    if (cut && cutAt !== null && cutAt !== at) {
+      out.push({
+        id: 'link.uncut',
+        label: `Take back the cut at t = ${cutAt} s`,
+        plural: 'Take back the cuts',
+        enabled: ON,
+        events: [],
+        run: () => removeEventAt(cutIdx as number),
+      });
+    }
+    /* Cut later on the clock than the playhead: not down *here*, but the
+       reader scrubbing back to before their own cut still wants a way out
+       that is not the rail's event list. */
+    const laterCut = !cut ? nextCutIndex(doc, link.id as string, at) : null;
+    if (laterCut !== null) {
+      out.push({
+        id: 'link.uncut',
+        label: `Take back the cut at t = ${doc.events[laterCut]?.at ?? 0} s`,
+        plural: 'Take back the cuts',
+        enabled: ON,
+        events: [],
+        run: () => removeEventAt(laterCut),
+      });
+    }
+    if (link.up === false) {
+      out.push({
+        id: 'link.markUp',
+        label: `Mark ${key} up in the configuration`,
+        plural: 'Mark the links up',
+        enabled: ON,
+        events: [],
+        property: true,
+        run: () => edit(`Mark ${key} up`, (d) => ({
+          ...d,
+          topology: {
+            ...d.topology,
+            links: d.topology.links.map((l) => (l.id === link.id ? { ...l, up: true } : l)),
+          },
+        })),
+      });
+    }
   }
 
   if (site) {
@@ -538,7 +633,9 @@ export function runAction(action: EventAction): void {
   /* A property holds from the first frame, so there is no new moment to move
      the playhead to. */
   if (action.property === true) { action.run?.(); return; }
-  if (action.events.length === 0) return;
+  /* An action on the event list itself -- taking a cut back -- edits the
+     list rather than adding to it, and leaves the playhead where it is. */
+  if (action.events.length === 0) { action.run?.(); return; }
   edit(action.label, (d) => withEvents(d, [...d.topology.events, ...action.events]));
   restPlayhead();
 }

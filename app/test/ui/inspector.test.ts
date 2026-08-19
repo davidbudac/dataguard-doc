@@ -20,8 +20,8 @@ import { classicDoc, doc } from '@/state/doc';
 import { resetHistory, undo } from '@/state/history';
 import { errors } from '@/state/derived';
 import {
-  clearSelection, edition, hintsOn, lessonId, lessonStep, mode, notesOpen, selection, toast,
-  viewport,
+  clearSelection, edition, hintsOn, issuesOpen, lessonId, lessonStep, mode, notesOpen, selection,
+  toast, viewport,
 } from '@/state/view';
 import { CanvasSlot } from '@/ui/canvas/CanvasSlot';
 import { addOpen, Inspector } from '@/ui/inspector/Inspector';
@@ -857,6 +857,31 @@ describe('the issue panel', () => {
     row?.click();
     await tick();
     expect(isSectionOpen(section)).toBe(true);
+  });
+
+  it('folds to its heading, keeps the counts on it, and unfolds for the status-bar count', async () => {
+    notesOpen.value = true;
+    issuesOpen.value = true;
+    const root = mount(IssuePanel);
+    await tick();
+    const hd = root.querySelector<HTMLButtonElement>('button.issues-hd')!;
+    expect(hd.getAttribute('aria-expanded')).toBe('true');
+    expect(root.querySelector('.issues-body')).not.toBeNull();
+    hd.click();
+    await tick();
+    expect(issuesOpen.value).toBe(false);
+    expect(root.querySelector('.issues-body')).toBeNull();
+    expect(root.querySelector('.issue')).toBeNull();
+    expect(root.querySelector('.issues')?.classList.contains('is-folded')).toBe(true);
+    /* Folded, the heading still counts: the rows are hidden, their existence is not. */
+    expect(root.querySelector('.issues-hd .caption')?.textContent).toMatch(/note/);
+    /* Remembered, so the fold survives a reload (where there is storage to remember in). */
+    const store = typeof window !== 'undefined' ? window.localStorage : undefined;
+    if (store) expect(store.getItem('dg-issues')).toBe('0');
+    revealFindings();
+    await tick();
+    expect(issuesOpen.value).toBe(true);
+    expect(root.querySelector('.issues-body')).not.toBeNull();
   });
 
   it('says what it does when the findings pull the reader out of a lesson', async () => {

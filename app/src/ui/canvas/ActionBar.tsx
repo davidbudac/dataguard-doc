@@ -29,7 +29,7 @@
  */
 
 import type { JSX } from 'preact';
-import { useEffect, useRef } from 'preact/hooks';
+import { useEffect, useLayoutEffect, useRef } from 'preact/hooks';
 import { WhyPill } from '../common/WhyPill';
 import type { WhyState } from '../common/WhyPill';
 import { Action } from '../inspector/controls';
@@ -61,7 +61,7 @@ export const BAR_W = 240;
    denser than the rail's) with the 2 px flex gap under it. Guessing them left
    the declared box 15 px short of the content. */
 const PAD = 14;
-const HEAD = 19;
+const HEAD = 20;
 const ROW = 25;
 const MORE = 21;
 
@@ -111,6 +111,14 @@ export interface ActionBarProps {
   moreWhere?: string;
   /** The cap on rows; `MAX_ROWS` unless the caller's stage is short. */
   maxRows?: number;
+  /**
+   * The box to declare, when the caller knows better than the estimate --
+   * which it does once `onMeasure` has told it what was painted. Never
+   * smaller than `barFootprint`'s estimate.
+   */
+  box?: { w: number; h: number };
+  /** What the bar actually measures once painted, in CSS pixels. */
+  onMeasure?: (size: { w: number; h: number }) => void;
   onClose: () => void;
 }
 
@@ -148,8 +156,26 @@ export function ActionBar(props: ActionBarProps): JSX.Element {
   const maxRows = props.maxRows ?? MAX_ROWS;
   const shown = props.actions.slice(0, maxRows);
   const more = props.actions.length > maxRows;
-  const size = barFootprint(props.actions, quiet, maxRows);
+  const estimate = barFootprint(props.actions, quiet, maxRows);
+  const size = props.box === undefined
+    ? estimate
+    : { w: Math.max(estimate.w, props.box.w), h: Math.max(estimate.h, props.box.h) };
   const box = useRef<HTMLDivElement | null>(null);
+
+  /* The estimate is arithmetic over constants that have drifted before
+     (ui.md SS3d: "15 px short of the content"); the painted height is the
+     truth. Measured before the paint, so a box declared too short is never
+     shown short, and reported up so the placement can re-run against the
+     real footprint. `offsetHeight` is in CSS pixels whatever the group's
+     transform, which is the unit the declaration is in. +2 for the shadow's
+     first pixel and the rounding. */
+  useLayoutEffect(() => {
+    const el = box.current;
+    if (!el || !props.onMeasure) return;
+    const h = el.offsetHeight;
+    const w = el.offsetWidth;
+    if (h > 0 && w > 0) props.onMeasure({ w: w + 2, h: h + 2 });
+  });
 
   /* The focus moves only when the gesture asked for it. A plain click leaves
      it where the reader put it -- taking the focus off the drawing on every

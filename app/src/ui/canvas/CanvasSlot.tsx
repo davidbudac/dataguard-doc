@@ -12,6 +12,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
 import type { TopologyDoc } from '@/engine';
+import { siteId } from '@/engine';
 import { frame, geometry, redoGraph, topology } from '@/state/derived';
 import { doc, withLayout } from '@/state/doc';
 import { breakCoalescing, edit } from '@/state/history';
@@ -20,6 +21,7 @@ import {
   viewport,
 } from '@/state/view';
 import { buildActionsFor, openInspectorFor, removeAction } from '../build/actions';
+import { addDatabase, addFsfoTarget, connectVerdict, moveToSite, shipRedo } from '../inspector/edits';
 import {
   actionsFor, nothingToRestore, restoreQuietLine, runAction,
 } from '../break/events';
@@ -48,6 +50,35 @@ import {
  * swallowed, because a key that silently does nothing is the one thing this
  * page may not do.
  */
+/**
+ * A line drawn from one card to another, in Build mode.
+ *
+ * Member to member is redo: the source ships to the target. Member to
+ * observer, in either direction, is fast-start failover: the member becomes
+ * a target the observer watches. Two observers have nothing between them
+ * that the drawing could draw, and the page says so rather than doing nothing.
+ */
+export function connectFromCanvas(from: string, to: string): void {
+  const t = topology.value;
+  const verdict = connectVerdict(t, from, to);
+  if (verdict.enabled.state === 'off') {
+    toast.value = { kind: 'info', text: verdict.enabled.why };
+    return;
+  }
+  const member = (k: string) => t.members.find((m) => (m.id as string) === k);
+  const observer = (k: string) => t.observers.find((o) => (o.id as string) === k);
+  const a = member(from); const b = member(to);
+  if (a && b) { shipRedo(a.id, b.id); return; }
+  if (a && observer(to)) { addFsfoTarget(a.id); return; }
+  if (observer(from) && b) { addFsfoTarget(b.id); return; }
+  /* A line dropped on a data centre's panel: a new standby there, fed by
+     the card the line came from. Two edits, two undos, each named. */
+  if (a && t.sites.some((s) => (s.id as string) === to)) {
+    const id = addDatabase(siteId(to));
+    if (id !== null) shipRedo(a.id, id);
+  }
+}
+
 export function deleteFromCanvas(key: string): void {
   const action = removeAction(topology.value, key);
   if (action === null) return;
@@ -271,6 +302,22 @@ export function CanvasSlot({ interactive = true }: CanvasSlotProps) {
     wasMode.current = m;
     closeBar();
   }, [m]);
+  /* A press anywhere that is not the bar closes it -- the rail, the header,
+     the ground outside the drawing, the panels below it. On the drawing a
+     press on an entity is left to its own click, which re-offers the bar on
+     that entity; anything else is "never mind". Registered on the document
+     in the capture phase, so no surface has to know the bar exists. */
+  useEffect(() => {
+    if (anchored === null) return;
+    const onPress = (ev: PointerEvent): void => {
+      const t = ev.target;
+      if (!(t instanceof Element)) return;
+      if (t.closest('.tp-actions') !== null || t.closest('[data-node]') !== null) return;
+      closeBar();
+    };
+    document.addEventListener('pointerdown', onPress, true);
+    return () => document.removeEventListener('pointerdown', onPress, true);
+  }, [anchored]);
 
   const built = !editable || anchored === null || keys.length === 0
     ? null
@@ -383,7 +430,14 @@ export function CanvasSlot({ interactive = true }: CanvasSlotProps) {
           ? { onEventMenu: (): void => { menuOpen.value = true; } }
           : {})}
         {...(editable && mode.value === 'build'
-          ? { onDelete: (key: string): void => deleteFromCanvas(key) }
+          ? {
+            onDelete: (key: string): void => deleteFromCanvas(key),
+            /* A card dropped in another data centre moves there -- hosts and
+               all, one undo with the drag that carried it. */
+            onMoveToSite: (key: string, site: string): void => moveToSite(key, siteId(site)),
+            onConnect: connectFromCanvas,
+            connectWhat: (from: string, to: string) => connectVerdict(topology.value, from, to),
+          }
           : {})}
         onDrag={(key: string, offset: { dx: number; dy: number }) => {
           edit(`Move the ${key} card`, (d) => withLayout(d, key, offset), `drag:${key}`);

@@ -11,6 +11,7 @@
  *                    it. It used to mean "the first-visit strip was dismissed";
  *                    the strip is gone and the page replaced it.
  *   `dg-hints`       whether the sentence under each control is shown
+ *   `dg-issues`      whether Build's validation panel is unfolded ('0' = folded)
  *   `dg-fsfo-cfg-v1` the published page's stored configuration. Read once when
  *                    there is nothing newer, and never deleted: the old page
  *                    is still serving from /legacy/ and still owns that key.
@@ -29,7 +30,7 @@ import type { Doc } from './doc';
 import { classicDoc, doc, exportFileName } from './doc';
 import { fromWire, parseJsonText, toJsonText } from './codec';
 import type { DecodeResult } from './codec';
-import { hintsOn } from './view';
+import { hintsOn, issuesOpen } from './view';
 import type { ThemePref } from './view';
 
 export const DOC_KEY = 'dg-doc-v1';
@@ -38,6 +39,7 @@ export const EDITION_KEY = 'dg-ed';
 export const LEGACY_DOC_KEY = 'dg-fsfo-cfg-v1';
 export const INTRO_KEY = 'dg-intro-v1';
 export const HINTS_KEY = 'dg-hints';
+export const ISSUES_KEY = 'dg-issues';
 
 export const AUTOSAVE_MS = 500;
 export const RESTORE_NOTICE_MS = 8000;
@@ -122,6 +124,20 @@ export function setHints(on: boolean): void {
 }
 
 export const toggleHints = (): void => setHints(!hintsOn.value);
+
+/* ---------------- the validation panel ---------------- */
+
+/** Folded or not -- `issuesOpen` in `view.ts`, remembered here; unset means open. */
+export function loadIssuesOpen(): void {
+  issuesOpen.value = read(ISSUES_KEY) !== '0';
+}
+
+export function setIssuesOpen(on: boolean): void {
+  issuesOpen.value = on;
+  write(ISSUES_KEY, on ? '1' : '0');
+}
+
+export const toggleIssues = (): void => setIssuesOpen(!issuesOpen.value);
 
 /* ---------------- the Document ---------------- */
 

@@ -310,8 +310,17 @@
 /* ---------------- validation issues ---------------- */
 
 .issues{display:flex;flex-direction:column;min-height:0;overflow:auto}
-.issues-hd{display:flex;align-items:baseline;gap:12px;padding:11px var(--gut);
-  border-bottom:1px solid var(--ln);background:var(--sf2)}
+/* The heading is a button: it folds the panel to itself. Folded, the panel
+   gives the room back to the drawing -- it stops stretching to fill the dock
+   (`.app-dock>.issues` flex below is overridden) and is exactly its heading. */
+.issues-hd{display:flex;align-items:baseline;gap:12px;width:100%;text-align:left;
+  padding:11px var(--gut);border:0;border-bottom:1px solid var(--ln);background:var(--sf2);
+  cursor:pointer;color:inherit;font:inherit}
+.issues-hd:hover{background:var(--sf)}
+.issues-hd .notes-caret{align-self:center}
+.issues.is-folded{flex:0 0 auto}
+.issues.is-folded .issues-hd{border-bottom:0}
+.issues-body{display:flex;flex-direction:column;min-height:0}
 .issue{display:grid;grid-template-columns:auto minmax(0,1fr);gap:6px 12px;
   padding:12px var(--gut);border-bottom:1px solid var(--ln);align-items:baseline}
 .issue:last-child{border-bottom:0}
