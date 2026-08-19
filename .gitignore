@@ -2,3 +2,4 @@
 _site/
 .claude/worktrees/
 ~$*
+node_modules/

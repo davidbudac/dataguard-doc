@@ -9,6 +9,16 @@ single-file legacy fragment in `simulator/`, served at `/dataguard/legacy/`. The
 rules below are split accordingly: the ASCII rule is the **legacy fragment's
 alone**.
 
+## Agent skills
+
+### Issue tracker
+
+Issues live in GitHub Issues (github.com/davidbudac/dataguard-doc), via the `gh` CLI. See `docs/agents/issue-tracker.md`.
+
+### Domain docs
+
+Single-context: root `CONTEXT.md` + `docs/adr/`. See `docs/agents/domain.md`.
+
 ## Keep `simulator/fsfo-simulator.html` pure ASCII
 
 **Never write a raw non-ASCII character into that file.** No em dashes, middle dots,
