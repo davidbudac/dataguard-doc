@@ -76,7 +76,7 @@ app/test/              vitest: legacy-matrix (24-cell gate, verbatim from site/t
                        sim-*, presets, generate + __golden__/, ui/*, state/*, content/*
 site/build.mjs         orchestrator: app build → _site/, then build-legacy.mjs → _site/legacy/,
                        diagrams copy, assertNoInline guard
-site/build-legacy.mjs  the old build (ASCII guard, Czech catalog inlined)
+site/build-legacy.mjs  the old build (ASCII guard)
 site/smoke.mjs         headless-Chrome check; HTTP probe → file:// fallback
 site/publish.sh        build, three test gates, tar-over-ssh deploy, bundle-byte-equal verify
 ```

@@ -7,8 +7,7 @@ clocks of — a TypeScript/Vite/Preact application with a pure domain engine,
 served at **https://dataguard.davidbudac.cz/**. Beside it, frozen, sits the page
 it grew out of: the single-file fast-start failover (FSFO) explainer in
 `simulator/`, still served at **/dataguard/legacy/** because every link the
-handover document, the Confluence page and the Czech reading list ever handed
-out points there. This file tells a future agent what exists, how it was
+handover document and the Confluence page ever handed out points there. This file tells a future agent what exists, how it was
 produced, and how to extend it without breaking consistency or accuracy.
 
 ## What exists
@@ -27,12 +26,11 @@ produced, and how to extend it without breaking consistency or accuracy.
 | `HANDOFF.md` | Situation report + work order for the next agent (state of the app, the in-flight UI polish brief, how to screenshot from a sandbox, known gaps, next steps). A snapshot — this file wins where they disagree |
 | `app/README.md` | The short version of the three above: what it is, dev commands, structure, testing, deploy pointer |
 | `simulator/fsfo-simulator.html` | **Frozen.** Source fragment of the page that used to be published at `/dataguard/`; now served at `/dataguard/legacy/`. English only, pure ASCII (see [CLAUDE.md](CLAUDE.md)). Bug-fix territory only — new work goes into `app/` |
-| `simulator/i18n/cs.json` | Czech translation catalog for the legacy fragment, keyed by the English source strings. Real UTF-8 — deliberately outside the ASCII-only fragment. **The application is English only**; Czech readers keep the legacy page |
 | `testing/README.md` | Test runbook: step-by-step drills verifying each documented situation against a real 19c configuration (crash, isolation, observer loss, NET_TIMEOUT, blocked failover, reopen/MaxFailure, client view, commit measurement, plus four topology drills for far sync, cascading, multi-target and multiple observers), with an RTO/RPO probe harness and reinstate cleanup. Repo-only markdown — not part of the published site |
 | `site/build.mjs` | The site build, in three steps: `npm run build` in `app/` (which empties `_site/` and writes the hashed bundle), then `site/build-legacy.mjs`, then `assertNoInline(_site/index.html)` — a built page carrying a `<script>` with a body, an `on*=` handler or a `style=` attribute fails the build rather than the browser's content security policy. The guard proves it can fail (three fixtures it must reject, one it must accept) before it is trusted to pass |
-| `site/build-legacy.mjs` | What `site/build.mjs` used to be: wraps the fragment into a full page (doctype, charset, title, favicon, canonical + social meta), inlines `simulator/i18n/cs.json` as a JSON `<script>`, and enforces the ASCII-only guard — it exits non-zero on any byte above U+007E, naming the offending lines. Writes `_site/legacy/index.html` and copies `diagrams/` to `_site/diagrams`, which both pages share |
-| `site/smoke.mjs` | Dependency-free browser check of the built tree: serves `_site/` over `node:http`, loads it in headless Chrome (`--dump-dom`, console messages captured through `--enable-logging=stderr`), takes the page's own `data-permalink` for the `classic` and `far-sync-zero-loss` presets and reloads it cold — an untouched preset now carries no `#t=` at all, so the check accepts either a `#t=` document or a short link naming the preset (and asserts the latter is under 200 characters) — asserts the node cards, the timeline lanes and the outcome chip, opens each of the four modes by name, and checks that a published-page link (`?sc=iso&lat=2&lang=cs#ch-clocks`) upgrades into Break mode and offers the Czech page, following *that* permalink cold to keep one real-browser `CompressionStream` → `DecompressionStream` round trip (an upgraded legacy link names no preset, so it must carry `#t=`). Probes HTTP first and falls back to an inlined single-file copy over `file://` where the machine's headless Chrome cannot fetch over HTTP. Exits non-zero on any failed check, any console message, or any file the page asked for and did not get |
-| `site/test.mjs` | Standalone node test for the **legacy** fragment: extracts its four model marker blocks and asserts the documented domain invariants — including the scenario × observer-location outcome matrix as literal tables (24 cells, plus the 19c-invariance loops over the version axis) — then checks the Czech catalog for dropped placeholders, unbalanced inline markup and bad plural forms. No dependencies; `node --test site/test.mjs`, 68 tests. The application reproduces the same 24 cells through its compat adapter (`app/test/legacy-matrix.test.ts`) |
+| `site/build-legacy.mjs` | What `site/build.mjs` used to be: wraps the fragment into a full page (doctype, charset, title, favicon, canonical + social meta) and enforces the ASCII-only guard — it exits non-zero on any byte above U+007E, naming the offending lines. Writes `_site/legacy/index.html` and copies `diagrams/` to `_site/diagrams`, which both pages share |
+| `site/smoke.mjs` | Dependency-free browser check of the built tree: serves `_site/` over `node:http`, loads it in headless Chrome (`--dump-dom`, console messages captured through `--enable-logging=stderr`), takes the page's own `data-permalink` for the `classic` and `far-sync-zero-loss` presets and reloads it cold — an untouched preset now carries no `#t=` at all, so the check accepts either a `#t=` document or a short link naming the preset (and asserts the latter is under 200 characters) — asserts the node cards, the timeline lanes and the outcome chip, opens each of the four modes by name, and checks that a published-page link (`?sc=iso&lat=2&lang=cs#ch-clocks`) upgrades into Break mode like any other old link, following *that* permalink cold to keep one real-browser `CompressionStream` → `DecompressionStream` round trip (an upgraded legacy link names no preset, so it must carry `#t=`). Probes HTTP first and falls back to an inlined single-file copy over `file://` where the machine's headless Chrome cannot fetch over HTTP. Exits non-zero on any failed check, any console message, or any file the page asked for and did not get |
+| `site/test.mjs` | Standalone node test for the **legacy** fragment: extracts its four model marker blocks and asserts the documented domain invariants — including the scenario × observer-location outcome matrix as literal tables (24 cells, plus the 19c-invariance loops over the version axis). No dependencies; `node --test site/test.mjs`, 63 tests. The application reproduces the same 24 cells through its compat adapter (`app/test/legacy-matrix.test.ts`) |
 | `site/publish.sh` | Builds, runs the three test gates (`npm --prefix app run test`, `node --test site/test.mjs`, `node site/smoke.mjs`), deploys to the VPS, then verifies the public URL |
 
 `_site/` is generated — never edit it, never commit it — and its shape is a
@@ -42,7 +40,7 @@ contract the deploy and the nginx configuration both depend on:
 _site/
   index.html            the workbench; references one hashed bundle
   assets/index-*.js     the bundle, and style-*.css beside it (cssCodeSplit off)
-  legacy/index.html     the frozen fragment, wrapped, Czech catalog inlined
+  legacy/index.html     the frozen fragment, wrapped
   diagrams/             the four figures (SVG + PNG) and diagrams/README.md,
                         shared by both pages -- the og:image lives here
 ```
@@ -69,7 +67,7 @@ The three gates, and what each one can catch that the others cannot:
    compat adapter, the validation catalogue, the generator goldens, the canvas
    and timeline geometry, the URL and file round trips.
 2. `node --test site/test.mjs` — the same kind of assertion against the legacy
-   fragment's four model blocks, which still ship (68 tests).
+   fragment's four model blocks, which still ship (63 tests).
 3. `node site/smoke.mjs` — the built bundle in a real browser. The only gate
    that can catch a page that builds, passes every unit test and does not run.
    It serves `_site/` over loopback and probes first whether the headless
@@ -89,11 +87,11 @@ asset is the honest witness that what is live is what was built. `--dry-run`
 builds and tests without deploying. Overridable via `DG_HOST`, `DG_DEST`,
 `DG_URL`.
 
-Old links keep working, two different ways. `?lang=cs` and anything pointing at
-`/dataguard/legacy/` land on the frozen page. A link to `/dataguard/` itself is
-upgraded by the application on load: the legacy query keys become a topology,
-the six chapter anchors become modes and panels, and `?lang=cs` raises a notice
-offering the Czech page rather than being silently dropped.
+Old links keep working, two different ways. Anything pointing at
+`/dataguard/legacy/` lands on the frozen page. A link to `/dataguard/` itself is
+upgraded by the application on load: the legacy query keys become a topology and
+the six chapter anchors become modes and panels. A `?lang=cs` left over from the
+Czech reading the site used to have is ignored.
 
 Two things to know:
 
@@ -177,9 +175,9 @@ the top bar, and both are reading preferences that survive a reload:
   honest refusal: a document too large for a link says so and points at Export.
 - **Legacy links.** `?sc=iso&lat=2#ch-clocks`, `?pm=perf&lag=45#ch-app` and a
   `#cfg=` payload each land on the right mode and panel with the knobs applied,
-  and the address bar is rewritten to the canonical URL. `?lang=cs` shows the
-  notice with a working link to `/dataguard/legacy/`, and `/dataguard/legacy/`
-  itself still serves the frozen page in both languages.
+  and the address bar is rewritten to the canonical URL. `?lang=cs` upgrades like
+  any other old link, and `/dataguard/legacy/` itself still serves the frozen
+  page.
 - **Both themes, both editions, and the narrow shell.** Nothing hidden by CSS
   alone; every gray control still carries the pill saying why; the drawer and
   the sheet still close on `Escape` and hand focus back; below 768 px the
@@ -866,8 +864,7 @@ component computes domain state locally.**
   Configure/Application view, `ch-config` → Configure/DGMGRL, `ch-side` →
   Learn/SYNC transport, `ch-reference` → Learn/Reference. `#cfg=` payloads go
   through `migrateV1`. The canonical URL is then written with `replaceState`.
-  `?lang=cs` is **not** silently dropped: it raises a notice offering
-  `/dataguard/legacy/`, because that is where the Czech reading lives.
+  `lang` is a recognised key and is ignored: there is no Czech reading any more.
   `app/test/ui/legacy-url.test.ts` and `legacy-anchors.test.ts` pin the mapping,
   and `site/smoke.mjs` checks one real published link end to end.
 
@@ -994,8 +991,7 @@ conflict rather than picking a side.
 self-contained fragment (no doctype/html/head/body; `<title>` first), vanilla JS,
 zero external requests. It is **frozen** — bug fixes only, new work goes into
 `app/` — but it still ships, at `/dataguard/legacy/`, because every link the
-handover document, the Confluence page and the Czech reading list handed out
-points there, and because it is the only Czech reading of this material.
+handover document and the Confluence page handed out points there.
 `site/build-legacy.mjs` is what wraps it into a page.
 
 **It must stay pure ASCII.** With no `<head>` it carries no `<meta charset>`, so
@@ -1019,9 +1015,8 @@ Other constraints that still bind anyone touching the file:
   between the markers (concatenate `MODEL` first — `computeApp` shares its
   `pickTickStep`). **`site/test.mjs` does exactly that**, asserts the documented
   invariants including the 24-cell scenario × observer-location outcome matrix
-  as literal tables and the 19c-invariance loops, and checks the Czech catalog
-  for dropped placeholders, unbalanced inline markup and bad plural forms
-  (`node --test site/test.mjs`, 68 tests). `site/publish.sh` runs it on every
+  as literal tables and the 19c-invariance loops
+  (`node --test site/test.mjs`, 63 tests). `site/publish.sh` runs it on every
   publish. The application reproduces the same 24 cells through its compat
   adapter, so **that matrix now has three homes — `site/test.mjs`,
   `app/test/legacy-matrix.test.ts` and `diagrams/README.md` — and a change to
@@ -1050,9 +1045,8 @@ Other constraints that still bind anyone touching the file:
 - **The edition switch inside the fragment** is `DG.setEd` / `DG.ed()`,
   resolution `?ver=` → `localStorage['dg-ed']` → 19c, with prose handled by the
   `V26` source-string substitution table inside `DG.t()` and structure by the
-  `.fsfo.is-v26` / `data-ver` split. The 26ai English variant is itself a
-  catalog key, so editing a sentence that has a variant means editing the
-  markup, the `V26` key and `simulator/i18n/cs.json` in one commit. A stale
+  `.fsfo.is-v26` / `data-ver` split. Editing a sentence that has a variant
+  means editing the markup and the `V26` key in one commit. A stale
   variant fails silently — the page shows the 19c sentence.
 - The **fifth, 26ai-only observer placement** (`dc1dc2`, an observer beside each
   database) was removed deliberately, because two of its six cells were
@@ -1067,122 +1061,33 @@ was written out in full while the fragment was the published page). It is not
 repeated here because the fragment is frozen: read the file, and `site/test.mjs`
 beside it, before changing anything in it.
 
-## Languages (English + Czech)
+## Language: English only
 
-**This applies to the legacy page only. The application in `app/` is English
-only** — a Czech reader is sent to `/dataguard/legacy/`, and the legacy-URL
-upgrade raises that notice rather than dropping `?lang=cs`. Never add a Czech
-string to `app/`, and never add one to the fragment either: translations belong
-in the catalog.
+Both pages are English only. The legacy page used to ship a Czech reading (an
+`EN` / `CZ` toggle and a catalog in `simulator/i18n/cs.json`); both were removed
+in September 2026, and a `?lang=` left in an old link is normalized away by
+either page. Do not reintroduce a translation layer.
 
-The legacy page ships in English and Czech, chosen with an `EN` / `CZ` toggle in
-the header. **English is the source language and the only one in the fragment.**
-Czech lives in `simulator/i18n/cs.json`, which `site/build-legacy.mjs` inlines
-into the built page's `<head>` as `<script type="application/json"
-id="dg-i18n-cs">`. That split exists because the fragment must stay pure ASCII
-(CLAUDE.md) and a Czech catalog spelled in `\uXXXX` escapes would be
-unmaintainable; the wrapper declares the charset, so the JSON block can hold real
-accented characters. Consequence: opening the raw fragment on its own gives
-English and hides the toggle.
-
-**Catalog keys are the English source strings**, not invented ids. A string with
-no entry falls through untranslated — which is exactly what keeps the technical
-vocabulary English, and it means adding English prose never breaks the Czech
-page, it just leaves that sentence English until someone translates it.
-
-### What is translated and what is not
-
-Translated: prose, headings, captions, control labels, chip labels and
-sub-lines, bar and brace labels in the drawings, screen-reader summaries, the
-grey commentary inside the config cards, `title`/`aria-label` text.
-
-**Never translated** — a Czech reader must be able to match every term against
-the Oracle documentation: property names (`FastStartFailoverThreshold`,
-`ReopenSecs`, …), `LOG_ARCHIVE_DEST_n` attributes, protection modes
-(`MaxAvailability`), transport modes (`SYNC`/`FASTSYNC`/`ASYNC`/`AFFIRM`/
-`NOAFFIRM`), Oracle statuses (`STALLED`, `UNSYNCHRONIZED`, `PRIMARY UNOBSERVED`),
-`ORA-` numbers, view and column names, DGMGRL and SQL, the fixture names
-(`prm01`, `app_svc`, `dc1-prm01`), and the role words *primary*, *standby* and
-*observer*, which Czech DBAs use in English anyway. Also untranslated on purpose:
-the numeric slider-scale labels, and parameter values like `on`/`off`/`TRUE`.
-
-### The mechanism
+What is left of that machinery in the fragment serves the 19c / 26ai switch:
 
 - `window.DG` (first `<script>` on the page, before the markup): `t(source, …)`
-  translates and substitutes `{0}`, `{1}`, …; `tp(forms, n, …)` picks a plural
-  form; `dec()` is the decimal separator; `setLang`, `lang()`, `onLang(cb)`.
-  Resolution order is `?lang=` → `localStorage['dg-lang']` → English, and an
-  unknown token is normalized out of the URL on load.
+  applies the `V26` release variant and substitutes `{0}`, `{1}`, …;
+  `tp(forms, n, …)` picks the singular or plural of a `|`-separated string;
+  `setEd`, `ed()`, `onRefresh(cb)`.
 - **Sentences are keyed whole and take placeholders** — never concatenated from
-  fragments, because Czech puts the numbers elsewhere than English does. When you
-  add a sentence built from a condition, give each branch its own full key rather
-  than gluing a translated tail onto a translated head.
-- **Plurals**: Czech has three cardinal forms (1 / 2–4 / 5+) to English's two.
-  A countable string carries its forms `|`-separated on both sides of the
-  catalog: `tp('{0} retry|{0} retries', n, n)`. `site/test.mjs` checks this.
-- **Numbers**: `fmt()` swaps `.` for `,` under Czech. The config cards do not go
-  through it — their values are integers, so no Oracle syntax is ever touched.
-- **Static markup** is translated by the block sitting between the markup and the
-  models. It snapshots the English out of the DOM *once*, by CSS selector, and
-  every later pass renders from that snapshot, so a translated string can never
-  become the source for the next translation. It is placed there, and
-  `DG.setLang` runs it before the `onLang` subscribers, because the models own a
-  dozen control notes and headings that also exist in the markup — the models
-  have to win.
+  fragments, so a 26ai variant can say the same thing with the numbers elsewhere.
+- **Static markup** is re-rendered by the block sitting between the markup and
+  the models. It snapshots the 19c English out of the DOM *once*, by CSS
+  selector, and every later pass renders from that snapshot. It runs before the
+  `onRefresh` subscribers, because the models own a dozen control notes and
+  headings that also exist in the markup — the models have to win.
 - **Script-injected chrome** (the Notes buttons, the config pill, the demo
   buttons) is invisible to that snapshot, so each of those blocks re-applies its
-  own labels from an `onLang` callback.
-- **The editable identity is not translated.** `ID_DEFAULTS` (`prm01`, `app_svc`,
-  `DC 1`, `production`, `failover target`) round-trips through the export file
-  and the share link, so a Czech value there would be wrong. Chapter 4's inputs
-  whose `placeholder` *is* that fixture default therefore carry
-  `data-i18n-skip`, which excludes only their placeholder from the attribute
-  sweep — the two prose placeholders ("unnamed &mdash; …") still translate. Where
-  a sentence names one of these values, the value arrives as a `{n}` placeholder
-  (`t('Nowhere — nothing publishes {0}', idv('service'))`), never baked into the
-  key. The identity card's `<select>` **option texts do** go through the sweep
-  (`.dep-row select option` is in the selector list): the observer-placement
-  names are prose, while the Oracle vocabulary in the other selects
-  (`MaxAvailability`, `SYNC`) is simply absent from the catalog and falls through
-  unchanged — which is the whole reason that selector is safe.
-
-### Extracting and verifying
-
-There is no extraction script in the repo — the reliable way is to ask the page,
-because it knows which strings a given state actually asks for. `DG.missing()`
-returns every key looked up with no translation. Build, then load
-`_site/legacy/index.html` (the Czech catalog ships with the legacy page; the
-application is English only) in headless Chrome with a probe appended that stubs
-`requestAnimationFrame` (the render loop wedges otherwise), calls
-`DG.setLang('cs')`, walks the key states, and dumps `JSON.stringify(DG.missing())`
-into the DOM for `--dump-dom` to pick up. Everything it reports must be a term
-from the never-translated list above. "The key states" is a **loop over all
-24 scenario × observer-location cells** (dispatch real `input` *and* `change`
-events on the radios — nothing outside the first IIFE may call into the models),
-plus both protection modes on the cells where the mode changes the story, the
-ping properties, `FastStartFailoverPmyShutdown` off where the primary stalls, and
-chapter 4 open at each of the four locations, whose config cards and identity
-rows carry strings no other state asks for. Since the edition switch, the walk
-runs in **both editions** (`DG.setEd('26ai')`, then back): the lag-policy radios
-in MaxAvailability, the two lag controls (`FastStartFailoverLagGraceTime` at 0
-and ≥ 5, `FastStartFailoverLagType` both ways, in MaxPerformance) and the 26ai
-config cards all ask for strings 19c never does — and the V26 substitution means the
-26ai English variants are catalog keys of their own.
-
-Three things that only a rendered page catches, all worth re-checking after
-translating: **lane labels live in a fixed 124 px gutter** (13 px for the name,
-10 px for the sub-line) and a longer Czech string silently clips off the left
-edge — `Primary transport` had to become `Transport primary`, not
-`Transport na primary`. **Rail headers wrap** when the eyebrow plus the
-buttons exceed 270 px, which is why `Reset defaults` is `Výchozí` and not
-`Zpět na výchozí`. And where a label is built through **`fitLabel`**, the source
-offers a ladder of candidates from longest to shortest and **every rung is its
-own catalog key**: translate them all, and keep the short rungs genuinely short
-(`not deployed` → `nenasazen`), or the ladder falls through to the bare value.
-Verify a `cs` → `en` round trip too: dump the DOM after
-`setLang('cs'); setLang('en')` and diff it against a plain English load. They
-must match except for the `is-new` fade-in class, which the language switch
-deliberately does not re-add.
+  own labels from an `onRefresh` callback.
+- Where a label is built through **`fitLabel`**, the source offers a ladder of
+  candidates from longest to shortest; lane labels live in a fixed 124 px gutter,
+  so keep the short rungs genuinely short or the ladder falls through to the
+  bare value.
 
 ## Process that produced this (worth repeating)
 
@@ -1220,9 +1125,8 @@ it was allowed to add anything.
   alone (see CLAUDE.md): `app/index.html` declares its charset, so em dashes,
   `×` and `≤` are written as themselves. Do not carry `\uXXXX` escapes or
   `&mdash;` into TSX or CSS.
-- **The application is English only.** Czech lives in the legacy catalog and the
-  handover documents; a reader who asks for `?lang=cs` is offered
-  `/dataguard/legacy/`.
+- **Everything is English only**, both pages. The Czech handover documents in
+  `handover/` are the one exception, and they are repo-only.
 - Presets are the scenario tests: a new topology worth drawing is a preset in
   `app/src/presets` with a canvas golden and a `presets.test.ts` entry, not a
   one-off fixture inside a test.

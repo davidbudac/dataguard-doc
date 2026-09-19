@@ -433,8 +433,7 @@ export function IntroPage(): JSX.Element {
         </p>
         <p class="caption">
           The page this one replaced is still served, frozen:{' '}
-          <a href={LEGACY_PATH}>the original single-page explainer</a>, which also reads{' '}
-          <a href={`${LEGACY_PATH}?lang=cs`}>in Czech</a>.
+          <a href={LEGACY_PATH}>the original single-page explainer</a>.
         </p>
       </footer>
     </article>

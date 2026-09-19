@@ -58,28 +58,26 @@ background:var(--bg);color:var(--ik);font-family:var(--sans);font-size:15px;line
 .hd{display:flex;flex-direction:column;gap:10px;padding-bottom:22px}
 .hd h1{margin:0;font-size:clamp(26px,3.4vw,38px);line-height:1.1;font-weight:620;letter-spacing:-.022em;text-wrap:balance}
 .hd .lede{max-width:62ch;color:var(--ik2);font-size:16px}
-/* The eyebrow and the language switch share one row, so the switch sits at the
-   page's top-right without leaving the header's flow. */
+/* The eyebrow and the header switches share one row, so the switches sit at
+   the page's top-right without leaving the header's flow. */
 .hd-top{display:flex;justify-content:space-between;align-items:center;gap:16px}
 
-/* Language switch -- EN / CZ, styled after the segmented controls in the rails.
-   The labels are short country-style tags, not words, so they need no
-   translation. The value behind the CZ button is still the language code cs --
-   that is what data-lang, the lang attribute, ?lang= and the catalog all use. */
-.langsw{display:flex;flex:0 0 auto;border:1px solid var(--ln2);border-radius:2px;overflow:hidden}
-.langsw button{font-family:var(--mono);font-size:11px;letter-spacing:.1em;color:var(--ik3);
+/* Release switch -- 19c / 26ai, styled after the segmented controls in the
+   rails. */
+.segsw{display:flex;flex:0 0 auto;border:1px solid var(--ln2);border-radius:2px;overflow:hidden}
+.segsw button{font-family:var(--mono);font-size:11px;letter-spacing:.1em;color:var(--ik3);
 background:var(--sf);border:0;border-right:1px solid var(--ln);padding:4px 10px;cursor:pointer}
-.langsw button:last-child{border-right:0}
-.langsw button:hover{color:var(--ik);background:var(--sf2)}
-.langsw button[aria-pressed="true"]{background:var(--vif);color:var(--ik);font-weight:600;
+.segsw button:last-child{border-right:0}
+.segsw button:hover{color:var(--ik);background:var(--sf2)}
+.segsw button[aria-pressed="true"]{background:var(--vif);color:var(--ik);font-weight:600;
 box-shadow:inset 0 -2px 0 var(--vi)}
 @media (prefers-reduced-motion:no-preference){
-.langsw button{transition:background-color .16s ease,color .16s ease}}
-/* The release switch is the language switch's twin -- same class, so no button
-   styling of its own -- and the two share one box at the header's right edge. */
+.segsw button{transition:background-color .16s ease,color .16s ease}}
+/* The release switch and the theme switch share one box at the header's right
+   edge. */
 .hd-sw{display:flex;flex:0 0 auto;align-items:center;gap:10px}
 
-/* Theme switch -- one square button beside the two segmented switches. It shows
+/* Theme switch -- one square button beside the segmented release switch. It shows
    the theme a press would move to, so the moon stands for "go dark". Which of
    the two icons is visible is decided in CSS, off the same three conditions the
    token blocks use (system preference, then either data-theme override), which
@@ -144,8 +142,8 @@ padding:7px 14px 7px 12px;cursor:pointer;text-align:left}
    measured height (JS keeps it current); the chapter scroll targets and the
    control rail's sticky offset both derive from it, so nothing the reader
    jumps to ends up underneath the bar. Each chapter opens with a
-   screen-reader-only h2 (class chdiv-t, kept as the translation hook and the
-   aria-labelledby target); the visible chapter identity lives in the bar. */
+   screen-reader-only h2 (class chdiv-t, kept as the release-variant hook and
+   the aria-labelledby target); the visible chapter identity lives in the bar. */
 .fsfo{--navh:46px}
 .chapnav{position:sticky;top:0;z-index:30;margin:0;padding:0;background:var(--bg);
 border-top:1px solid var(--ln);border-bottom:1px solid var(--ln)}
@@ -334,8 +332,8 @@ input[type="range"]:disabled::-moz-range-thumb{background:var(--ik3);box-shadow:
 .seg-row{display:grid;grid-template-columns:1fr 1fr;border:1px solid var(--ln2);border-radius:2px;overflow:hidden}
 .seg-row.cols3{grid-template-columns:repeat(3,1fr)}
 /* Two columns, as many rows as there are labels: one column per row would be
-   tall, and four columns would clip "Observer lost" in the 302 px rail -- a
-   longer Czech label even sooner. Row-agnostic, so adding a pair adds a row.
+   tall, and four columns would clip "Observer lost" in the 302 px rail.
+   Row-agnostic, so adding a pair adds a row.
    Both users of the class have an even number of labels, so "the last two"
    is the last row. */
 .seg-row.cols2r label:nth-of-type(even){border-right:0}
@@ -620,56 +618,23 @@ select.dep-in{width:auto;min-width:13em;cursor:pointer}
 </style>
 
 <script>
-/* Language -- the first script block on the page, and the only one the others
-   depend on. It defines DG.t (translate) and DG.setLang and touches no markup,
-   because it runs before the markup is parsed.
-
-   English is the source language: it lives in the markup and inside the t()
-   calls, so a missing translation degrades to readable English rather than to a
-   key. Czech lives OUTSIDE this file, in simulator/i18n/cs.json, and
-   site/build.mjs inlines it into the built page as
-   <script type="application/json" id="dg-i18n-cs">. That split is not
-   incidental -- this fragment carries no <meta charset> (see CLAUDE.md), so it
-   must stay pure ASCII, and a Czech catalog spelled in \uXXXX escapes would be
-   unmaintainable. The JSON block lands inside the wrapper that declares the
-   charset, so it can hold real accented characters.
-
-   Catalog keys ARE the English source strings. A string with no entry falls
-   through untranslated, which is what makes the technical vocabulary work:
-   property names, protection modes, transport modes, Oracle statuses, error
-   numbers, SQL and DGMGRL are simply absent from the catalog, or carried
-   verbatim inside a translated sentence. A Czech reader can still match every
-   term on the page against the Oracle documentation. */
+/* Release -- the first script block on the page, and the only one the others
+   depend on. It defines DG.t and DG.setEd and touches no markup, because it
+   runs before the markup is parsed. The page is English only: the source
+   strings live in the markup and inside the t() calls. */
 window.DG = (function () {
   "use strict";
-  var LANGS = { en: 1, cs: 1 };
-  var CATS = {};
-  var lang = 'en';
   var subs = [];
   var statik = null;
 
   /* The Oracle release the page describes: 19c, the reading it has always had,
-     or 26ai. It is a second dimension on the SOURCE string rather than a second
-     catalog -- V26 maps a 19c English source string to its 26ai English
-     counterpart, and t() substitutes before it looks anything up. So the
-     substituted value is itself a catalog key, Czech translates the 26ai
-     sentence on its own, a missing variant degrades to the 19c text, and a
-     missing translation degrades to 26ai English. Every existing t() call site
-     and the whole static-markup pass become release-aware without changing. */
+     or 26ai. It is a second dimension on the SOURCE string -- V26 maps a 19c
+     English source string to its 26ai English counterpart, and t() substitutes
+     it, so a missing variant degrades to the 19c text. Every t() call site and
+     the whole static-markup pass are release-aware without changing. */
   var EDS = { '19c': 1, '26ai': 1 };
   var ed = '19c';
   var V26 = {};
-  /* Lookups with no entry, collected rather than logged: the headless coverage
-     check reads this to report what is still untranslated. */
-  var missing = {};
-
-  var el = document.getElementById('dg-i18n-cs');
-  if (el) {
-    try {
-      var data = JSON.parse(el.textContent);
-      CATS.cs = (data && data.strings) || {};
-    } catch (e) { CATS.cs = {}; }
-  }
 
   function fill(s, args, from) {
     return s.replace(/\{(\d+)\}/g, function (all, i) {
@@ -678,43 +643,28 @@ window.DG = (function () {
     });
   }
 
-  /* t(source, ...values) -- translate, then substitute {0}, {1}, ... Sentences
-     are keyed whole and take placeholders rather than being concatenated,
-     because Czech puts the numbers in different places than English does. */
+  /* t(source, ...values) -- pick the release's variant, then substitute {0},
+     {1}, ... Sentences are keyed whole and take placeholders rather than being
+     concatenated, so a variant can move the numbers. */
   function t(s) {
     if (ed === '26ai' && V26[s] !== undefined) s = V26[s];
-    var cat = CATS[lang];
-    var v = cat ? cat[s] : undefined;
-    if (v === undefined || v === null) {
-      if (lang !== 'en') missing[s] = 1;
-      v = s;
-    }
-    return arguments.length > 1 ? fill(v, arguments, 1) : v;
+    return arguments.length > 1 ? fill(s, arguments, 1) : s;
   }
 
-  /* Czech has three cardinal forms (1 / 2-4 / 5 and up) where English has two,
-     so a countable string carries its forms '|'-separated in that order on both
-     sides of the catalog: tp('{0} retry|{0} retries', n, n). */
-  function plural(n) {
-    if (lang === 'cs') return n === 1 ? 0 : (n >= 2 && n <= 4 ? 1 : 2);
-    return n === 1 ? 0 : 1;
-  }
+  /* A countable string carries its forms '|'-separated, singular first:
+     tp('{0} retry|{0} retries', n, n). */
   function tp(s, n) {
     var forms = t(s).split('|');
-    var i = plural(n);
+    var i = n === 1 ? 0 : 1;
     return fill(forms[i < forms.length ? i : forms.length - 1], arguments, 2);
   }
-
-  /* Decimal separator. Czech writes 1,1 s where English writes 1.1 s. Applied
-     by the page's fmt() helper, so it reaches prose, chips and drawings --
-     never the config cards, whose values are all integers and must stay valid
-     Oracle syntax. */
-  function dec() { return lang === 'cs' ? ',' : '.'; }
 
   function syncUrl() {
     if (!window.history || !history.replaceState || !window.URLSearchParams) return;
     var p = new URLSearchParams(location.search);
-    if (lang === 'en') p.delete('lang'); else p.set('lang', lang);
+    /* The page once had a Czech reading; links that still carry ?lang= are
+       read in English and the key normalizes away. */
+    p.delete('lang');
     /* 19c is the default reading, so it normalizes out of the query string: a
        link carrying no ver= is the page exactly as it was before the release
        switch existed. */
@@ -734,19 +684,9 @@ window.DG = (function () {
     for (var i = 0; i < subs.length; i++) subs[i]();
   }
 
-  function setLang(next) {
-    if (!LANGS[next] || next === lang) return;
-    lang = next;
-    document.documentElement.lang = lang;
-    try { localStorage.setItem('dg-lang', lang); } catch (e) { /* private mode */ }
-    syncUrl();
-    refresh();
-  }
-
-  /* Switching release takes the same private refresh path a language switch
-     takes: the static markup pass first, then every subscriber. An edition flip
-     changes more than words -- the models mirror it into their own state and
-     redraw -- but nothing here needs to know that. */
+  /* Switching release: the static markup pass first, then every subscriber. An
+     edition flip changes more than words -- the models mirror it into their own
+     state and redraw -- but nothing here needs to know that. */
   function setEd(next) {
     if (!EDS[next] || next === ed) return;
     ed = next;
@@ -755,24 +695,8 @@ window.DG = (function () {
     refresh();
   }
 
-  /* Resolution order: an explicit ?lang= beats a remembered choice beats
-     English. Nothing is rendered yet, so this only sets state. */
-  var want = null;
-  if (window.URLSearchParams) {
-    var q = new URLSearchParams(location.search).get('lang');
-    if (q && LANGS[q]) want = q;
-  }
-  if (!want) {
-    try {
-      var saved = localStorage.getItem('dg-lang');
-      if (saved && LANGS[saved]) want = saved;
-    } catch (e) { /* private mode */ }
-  }
-  if (want) lang = want;
-  document.documentElement.lang = lang;
-
-  /* Same order for the release, and the same reason: an explicit ?ver= beats a
-     remembered choice beats 19c. Falling back to 19c is what keeps every link
+  /* Resolution order: an explicit ?ver= beats a remembered choice beats 19c.
+     Nothing is rendered yet, so this only sets state. Falling back to 19c is what keeps every link
      and every stored configuration written before this existed reading the way
      it always did. */
   var wantEd = null;
@@ -789,14 +713,12 @@ window.DG = (function () {
   if (wantEd) ed = wantEd;
 
   /* Normalize the pasted URL right away, the same way the config params are:
-     an unknown ?lang= token drops instead of lingering next to an English page.
+     a stale ?lang= token drops instead of lingering.
      A clean URL is a no-op -- syncUrl skips replaceState when nothing changes. */
   syncUrl();
 
   return {
-    t: t, tp: tp, dec: dec, setLang: setLang,
-    lang: function () { return lang; },
-    has: function (code) { return !!CATS[code]; },
+    t: t, tp: tp,
     setEd: setEd,
     ed: function () { return ed; },
     /* Registered from the static block below, beside the markup the keys are
@@ -807,9 +729,8 @@ window.DG = (function () {
         if (Object.prototype.hasOwnProperty.call(map, k)) V26[k] = map[k];
       }
     },
-    onLang: function (cb) { subs.push(cb); },
-    setStatic: function (cb) { statik = cb; },
-    missing: function () { return Object.keys(missing).sort(); }
+    onRefresh: function (cb) { subs.push(cb); },
+    setStatic: function (cb) { statik = cb; }
   };
 })();
 </script>
@@ -838,13 +759,9 @@ window.DG = (function () {
     <div class="hd-top">
       <p class="eyebrow">Oracle 19c Data Guard broker</p>
       <div class="hd-sw">
-        <div class="langsw" id="versw" role="group" aria-label="Oracle release">
+        <div class="segsw" id="versw" role="group" aria-label="Oracle release">
           <button type="button" data-edition="19c" aria-pressed="true" title="Oracle Database 19c">19c</button>
           <button type="button" data-edition="26ai" aria-pressed="false" title="Oracle AI Database 26ai">26ai</button>
-        </div>
-        <div class="langsw" id="langsw" role="group" aria-label="Language">
-          <button type="button" data-lang="en" aria-pressed="true" title="English">EN</button>
-          <button type="button" data-lang="cs" aria-pressed="false" title="Czech">CZ</button>
         </div>
         <button type="button" class="themesw" id="themesw" aria-label="Switch theme" title="Switch theme">
           <svg class="th-moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20.5 14.6A8.5 8.5 0 0 1 9.4 3.5a8.5 8.5 0 1 0 11.1 11.1z"/></svg>
@@ -1670,15 +1587,15 @@ window.DG = (function () {
           <div class="dep-row"><label for="dep-name">Deployment name</label>
             <input class="dep-in" type="text" id="dep-name" maxlength="64" placeholder="unnamed &mdash; shown in the page header when set"></div>
           <div class="dep-row"><label for="dep-svc">Role-based service</label>
-            <input class="dep-in" type="text" id="dep-svc" maxlength="64" data-i18n-skip placeholder="app_svc"></div>
+            <input class="dep-in" type="text" id="dep-svc" maxlength="64" placeholder="app_svc"></div>
           <div class="dep-row"><label for="dep-db-p">Primary DB_UNIQUE_NAME</label>
-            <input class="dep-in" type="text" id="dep-db-p" maxlength="64" data-i18n-skip placeholder="prm01"></div>
+            <input class="dep-in" type="text" id="dep-db-p" maxlength="64" placeholder="prm01"></div>
           <div class="dep-row"><label for="dep-db-s">Standby DB_UNIQUE_NAME</label>
-            <input class="dep-in" type="text" id="dep-db-s" maxlength="64" data-i18n-skip placeholder="sby01"></div>
+            <input class="dep-in" type="text" id="dep-db-s" maxlength="64" placeholder="sby01"></div>
           <div class="dep-row"><label for="dep-host-p">Primary host</label>
-            <input class="dep-in" type="text" id="dep-host-p" maxlength="64" data-i18n-skip placeholder="dc1-prm01"></div>
+            <input class="dep-in" type="text" id="dep-host-p" maxlength="64" placeholder="dc1-prm01"></div>
           <div class="dep-row"><label for="dep-host-s">Standby host</label>
-            <input class="dep-in" type="text" id="dep-host-s" maxlength="64" data-i18n-skip placeholder="dc2-sby01"></div>
+            <input class="dep-in" type="text" id="dep-host-s" maxlength="64" placeholder="dc2-sby01"></div>
           <div class="dep-row"><label for="dep-host-o">Observer host</label>
             <input class="dep-in" type="text" id="dep-host-o" maxlength="64" placeholder="unnamed &mdash; the page says where it runs instead"></div>
           <div class="dep-row"><label for="dep-obsloc">Observer location</label>
@@ -1691,15 +1608,15 @@ window.DG = (function () {
           <div class="dep-row"><label for="dep-port">Listener port</label>
             <input class="dep-in" type="number" id="dep-port" min="1" max="65535" step="1" value="1521"></div>
           <div class="dep-row"><label for="dep-dc1">Primary site label</label>
-            <input class="dep-in" type="text" id="dep-dc1" maxlength="64" data-i18n-skip placeholder="DC 1"></div>
+            <input class="dep-in" type="text" id="dep-dc1" maxlength="64" placeholder="DC 1"></div>
           <div class="dep-row"><label for="dep-dc2">Standby site label</label>
-            <input class="dep-in" type="text" id="dep-dc2" maxlength="64" data-i18n-skip placeholder="DC 2"></div>
+            <input class="dep-in" type="text" id="dep-dc2" maxlength="64" placeholder="DC 2"></div>
           <div class="dep-row"><label for="dep-dc3">Third site label</label>
-            <input class="dep-in" type="text" id="dep-dc3" maxlength="64" data-i18n-skip placeholder="DC 3"></div>
+            <input class="dep-in" type="text" id="dep-dc3" maxlength="64" placeholder="DC 3"></div>
           <div class="dep-row"><label for="dep-sub-p">Primary subtitle</label>
-            <input class="dep-in" type="text" id="dep-sub-p" maxlength="64" data-i18n-skip placeholder="production"></div>
+            <input class="dep-in" type="text" id="dep-sub-p" maxlength="64" placeholder="production"></div>
           <div class="dep-row"><label for="dep-sub-s">Standby subtitle</label>
-            <input class="dep-in" type="text" id="dep-sub-s" maxlength="64" data-i18n-skip placeholder="failover target"></div>
+            <input class="dep-in" type="text" id="dep-sub-s" maxlength="64" placeholder="failover target"></div>
         </div>
         <p class="dep-cap">The two subtitles, the two database hosts and the site labels appear on the topology boxes in chapter&nbsp;1; the databases, hosts, port and service appear in the connect string and in every configuration card below. Where the observer runs is the one choice on this card that changes what the page draws &mdash; it is the chapter&nbsp;1 rail&rsquo;s control, in both directions.</p>
       </article>
@@ -2296,35 +2213,30 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
 </div>
 
 <script>
-/* Static markup translation, plus the EN / CZ switch.
+/* Static markup release variants, plus the 19c / 26ai switch.
 
    Deliberately placed between the markup and the models: it snapshots the
-   English source out of the DOM, and it has to do that before the models'
-   first draw() overwrites the control notes and headings they share. From then
-   on every pass reads the snapshot, never the live DOM, so a translated string
-   can never become the source for the next translation.
+   19c source out of the DOM, and it has to do that before the models' first
+   draw() overwrites the control notes and headings they share. From then on
+   every pass reads the snapshot, never the live DOM, so a 26ai string can
+   never become the source for the next pass.
 
-   Elements are matched by selector rather than tagged with data-i18n
-   attributes. Being generous with the selectors costs nothing: a string with no
-   catalog entry falls through unchanged, so the property names, DGMGRL
-   commands, ORA numbers and mode names sitting in the same table cells stay
-   English by simply not being in the catalog. */
+   Elements are matched by selector rather than tagged with attributes. Being
+   generous with the selectors costs nothing: a string with no 26ai variant
+   falls through unchanged. */
 (function () {
   "use strict";
   var DG = window.DG;
   if (!DG) return;
 
   /* 26ai variants of the 19c source strings, keyed by the 19c source and
-     substituted inside t() before the catalog is consulted. The KEY side must
+     substituted inside t(). The KEY side must
      byte-match the source: for anything reached through HTML_SEL below that is
      the DECODED innerHTML, so an &mdash; in the markup is the real character
      here, spelled as a \uXXXX escape -- entities do not decode in a script.
-     Editing the English at the line noted means editing the key here
-     and the matching key in simulator/i18n/cs.json -- a stale key fails
-     silently, back to the 19c text, which is what the coverage grep looks for.
-     The values are English, and translatable in their own right; keep their
-     markup structurally identical to the key, because the tag-balance check in
-     site/test.mjs only sees the catalog. */
+     Editing the English at the line noted means editing the key here -- a
+     stale key fails silently, back to the 19c text. Keep each value's markup
+     structurally identical to its key. */
   DG.addVariants({
     /* the page eyebrow */
     'Oracle 19c Data Guard broker': 'Oracle 26ai Data Guard broker',
@@ -2405,9 +2317,9 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
       'deprecated since 19c \u2014 set the attributes via EDIT DATABASE ... SET PARAMETER'
   });
 
-  /* Whole innerHTML is translated, markup and all: a sentence often carries
-     <span class="mono"> around a property name, and the catalog entry carries
-     the same span so the term keeps its monospace styling in Czech. */
+  /* Whole innerHTML is swapped, markup and all: a sentence often carries
+     <span class="mono"> around a property name, and the variant carries the
+     same span so the term keeps its monospace styling. */
   var HTML_SEL = [
     '.hd h1', '.hd .lede', '.hd .eyebrow',
     '.chapnav .cn-t', '.chapnav .cn-s',
@@ -2425,10 +2337,7 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
     /* the page footer's byline. The link beside it is a domain, not prose, so
        it is deliberately not selected. */
     '.pgfoot span',
-    /* the deployment chapter's static form. The selects' option texts go
-       through too: the placement names are prose, and the Oracle vocabulary in
-       the other three selects (MaxAvailability, SYNC) is simply absent from the
-       catalog, so it falls through unchanged. */
+    /* the deployment chapter's static form, option texts included. */
     '.dep-row label', '.dep-row select option', '.dep-cap', '.dep-grp', '.dep-actions button',
     '.sq-svg text', '.tx-svg text'
   ].join(', ');
@@ -2453,12 +2362,7 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
       if (n && n.nodeType === 3 && n.data.trim()) tail.push({ node: n, en: n.data });
     });
     Array.prototype.forEach.call(root.querySelectorAll('[aria-label], [title], [placeholder]'), function (el) {
-      /* data-i18n-skip marks a placeholder that IS the fixture default the field
-         falls back to -- "failover target", "prm01". Translating those would
-         advertise a value the page never actually uses. */
-      var skip = el.hasAttribute('data-i18n-skip');
       ATTR.forEach(function (a) {
-        if (skip && a === 'placeholder') return;
         var v = el.getAttribute(a);
         if (v) attrs.push({ el: el, a: a, en: v });
       });
@@ -2484,25 +2388,11 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
     tail.forEach(function (o) { o.node.data = t(o.en); });
     attrs.forEach(function (o) { o.el.setAttribute(o.a, t(o.en)); });
     document.title = t(docTitle);
-    Array.prototype.forEach.call(btns, function (b) {
-      b.setAttribute('aria-pressed', b.getAttribute('data-lang') === DG.lang() ? 'true' : 'false');
-    });
     Array.prototype.forEach.call(vbtns, function (b) {
       b.setAttribute('aria-pressed', b.getAttribute('data-edition') === DG.ed() ? 'true' : 'false');
     });
   }
 
-  var sw = document.getElementById('langsw');
-  var btns = sw ? sw.querySelectorAll('button[data-lang]') : [];
-  Array.prototype.forEach.call(btns, function (b) {
-    b.addEventListener('click', function () { DG.setLang(b.getAttribute('data-lang')); });
-  });
-  /* Hide the switch when the build did not inline a catalog -- the raw fragment
-     opened on its own has English only, and a dead toggle is worse than none. */
-  if (sw && !DG.has('cs')) sw.hidden = true;
-
-  /* The release switch is never hidden: both editions live in this fragment,
-     so it works with or without a translation catalog. */
   var vsw = document.getElementById('versw');
   var vbtns = vsw ? vsw.querySelectorAll('button[data-edition]') : [];
   Array.prototype.forEach.call(vbtns, function (b) {
@@ -2597,7 +2487,7 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
   );
 
   /* Script-injected chrome is invisible to the static markup pass. */
-  window.DG.onLang(function () { btns.forEach(label); });
+  window.DG.onRefresh(function () { btns.forEach(label); });
 })();
 </script>
 
@@ -3339,15 +3229,14 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
   /* REOPENMODEL:END */
 
   /* ---------- helpers ---------- */
-  /* Czech writes 1,1 s where English writes 1.1 s. Every number the page shows
-     in prose, a chip or a drawing goes through here; the config cards do not,
-     and their values are integers anyway, so no Oracle syntax is ever touched. */
+  /* Every number the page shows in prose, a chip or a drawing goes through
+     here; the config cards do not, and their values are integers anyway. */
   function fmt(n) {
     if (!isFinite(n)) return '\u2014';
     var r = Math.round(n * 100) / 100;
     if (Math.abs(r - Math.round(r)) < 1e-9) return String(Math.round(r));
     var s = (Math.round(n * 10) / 10 === r) ? r.toFixed(1) : r.toFixed(2);
-    return s.replace('.', window.DG.dec());
+    return s;
   }
   function sign(n) { return fmt(n).replace(/^-/, '\u2212'); }
   function fmtClock(n) {
@@ -3374,7 +3263,7 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
 
   /* ---------- control state ---------- */
   /* No version key here, deliberately: the release is mirrored into C at the
-     top of every draw() from the header switch, the way the language is, so
+     top of every draw() from the header switch, so
      "Reset defaults" cannot silently put the reader back on 19c. */
   var DEFAULTS = {
     scenario: 'crash', observerLoc: 'dc3', mode: 'maxavail', threshold: 30,
@@ -4989,7 +4878,7 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
   /* Same pill on the configuration card, where a field is a row rather than a
      control and there is no note under it to fall back on. It goes after the
      input rather than inside the label: the label's innerHTML is snapshotted
-     by the translation pass, which would overwrite anything living in it. */
+     by the release-variant pass, which would overwrite anything living in it. */
   function depPill(input, why) {
     var row = input.parentNode, p = row.lastElementChild;
     if (!p || !p.classList.contains('ctl-pill')) {
@@ -6658,9 +6547,7 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
   }
   /* Compact duration for the drawing, where horizontal room is scarce. */
   function rpDur(sec) { return sec < 60 ? fmt(sec) + ' s' : fmt(sec / 60) + ' min'; }
-  /* Ordinals are language-specific: English suffixes, a bare "5." in Czech. */
   function rpOrd(n) {
-    if (window.DG.lang() !== 'en') return n + '.';
     var r = n % 100;
     if (r >= 11 && r <= 13) return n + 'th';
     return n + (['th', 'st', 'nd', 'rd'][n % 10] || 'th');
@@ -7374,7 +7261,7 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
     } else if (sc === 'partition') {
       /* one cut, on the one link that failed -- both sites are intact. The
          two slashes sit on the line just left of the redo pill, so they never
-         land on it whatever width the pill's translation needs. */
+         land on it whatever width the pill's label needs. */
       var sx = 590 - psW / 2 - 26;
       push(ln('tp-x', sx, 156, sx + 10, 140));
       push(ln('tp-x', sx + 10, 156, sx + 20, 140));
@@ -7422,7 +7309,7 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
     lastW = Math.max(880, Math.round(els.wrap.clientWidth) || 880);
     els.wrap.innerHTML = buildTimeline(m, lastW);
 
-    /* The release is in the signature, unlike the language: an edition flip
+    /* The release is in the signature: an edition flip
        changes the drawing (MaxAvailability can become bounded-loss under a
        26ai lag policy), not only its words. */
     var sig = [C.scenario, C.observerLoc, m.outcome, C.mode, C.pingSet, C.pmyShutdown,
@@ -8105,16 +7992,13 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
     setMsg(t('Everything reset to the documented defaults'), false);
   });
 
-  /* A language switch is a full repaint: every string above is produced by
-     draw(), so nothing else has to be re-labelled here. The signature vars are
-     left alone deliberately -- the shapes did not change, only the words, and a
-     fade-in on a language flip would read as a state change. A release switch
-     comes through the same subscriber list, and there the fade-in is right:
-     draw() has C.version in its signature. */
-  window.DG.onLang(draw);
+  /* A release switch is a full repaint: every string above is produced by
+     draw(), so nothing else has to be re-labelled here, and the fade-in is
+     right because draw() has C.version in its signature. */
+  window.DG.onRefresh(draw);
 
   /* Type-in readouts carry a title and an aria-label of their own. */
-  window.DG.onLang(function () {
+  window.DG.onRefresh(function () {
     Array.prototype.forEach.call(document.querySelectorAll('output.ctl-val.is-editable'), function (out) {
       out.setAttribute('title', t('Click to type a value'));
     });
@@ -8376,7 +8260,7 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
   /* Chapter pager -- prev/next at the foot of each panel, so the six still
      read as a sequence now that scrolling no longer carries the reader from
      one into the next. Titles are read off the nav links rather than kept in
-     a second table, which is also why a language switch just rebuilds them. */
+     a second table, which is also why a release switch just rebuilds them. */
   function title(idx) {
     var full = items[idx].link.querySelector('.cn-t');
     var short = items[idx].link.querySelector('.cn-s');
@@ -8414,7 +8298,7 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
     }
   }
   pagers();
-  if (window.DG && window.DG.onLang) window.DG.onLang(pagers);
+  if (window.DG && window.DG.onRefresh) window.DG.onRefresh(pagers);
 
   /* Opening chapter: an address bar naming a chapter, or naming anything
      inside one, wins; otherwise chapter 1. No scrolling either way -- the URL
@@ -8489,8 +8373,8 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
     noteBtns.push(b);
   });
   /* Script-injected chrome is invisible to the static markup pass, so each
-     block that creates its own labels re-applies them on a language switch. */
-  window.DG.onLang(function () {
+     block that creates its own labels re-applies them on a release switch. */
+  window.DG.onRefresh(function () {
     noteBtns.forEach(function (b) {
       b.textContent = t('Notes');
       b.setAttribute('title', t('Show the explanation under each control'));
@@ -8639,7 +8523,7 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
   document.addEventListener('click', schedule);
   if (mq.addEventListener) mq.addEventListener('change', schedule);
   else if (mq.addListener) mq.addListener(schedule);
-  window.DG.onLang(update);
+  window.DG.onRefresh(update);
   update();
 })();
 </script>
@@ -8696,7 +8580,7 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
     { k: 'lat', t: 'range', id: 'c-latency',      d: 0 },
     { k: 'sd',  t: 'check', id: 'c-shutdown',     d: true },
     /* The two 26ai lag properties. There is deliberately no key for the release
-       itself: DG owns ?ver=, the way it owns ?lang=. */
+       itself: DG owns ?ver=. */
     { k: 'lt',  t: 'radio', name: 'lagtype', d: 'apply',
       map: { apply: 'lt-apply', transport: 'lt-xpt' } },
     { k: 'tla', t: 'range', id: 'c-translag',    d: 2 },
@@ -8914,7 +8798,7 @@ java -jar oratcptest.jar &lt;standby-host&gt; -port=&lt;free port&gt; <span clas
     });
     card.appendChild(b);
   });
-  window.DG.onLang(function () {
+  window.DG.onRefresh(function () {
     demoBtns.forEach(function (o) {
       o.b.textContent = t(o.d.label);
       o.b.setAttribute('title', t('Set the controls up to demonstrate this and jump to the timeline'));

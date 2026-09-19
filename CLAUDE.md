@@ -59,11 +59,9 @@ This rule is specific to the legacy fragment. `app/`, the Markdown files
 (`AGENTS.md`, `diagrams/README.md`) and the SVG figures declare their own encoding
 and use real Unicode characters normally.
 
-**The Czech translation is why this rule did not have to bend.** `simulator/i18n/cs.json`
-is normal UTF-8 with real accented characters, and `site/build-legacy.mjs` inlines it
-into the built page's `<head>`, where the charset *is* declared. The fragment carries
-only English. So: never add a Czech string to the fragment, in any escaping —
-translations belong in the catalog. See AGENTS.md for the mechanism.
+**Everything is English only.** The Czech catalog and the EN / CZ toggle were
+removed in September 2026; do not add a translation layer or a non-English string
+back to either page.
 
 ## The application in `app/`
 
@@ -89,6 +87,6 @@ the user asks**.
   classes, and `el.style.setProperty` through a ref is the single escape hatch.
   `site/build.mjs` fails the build on an inline `<script>`, an `on*=` handler or a
   `style=` attribute in the built HTML.
-- **English only.** Czech belongs to the legacy page and the handover documents.
+- **English only.** Czech survives only in the repo-only handover documents.
 - `app/` is ordinary UTF-8: write `—` and `×` as themselves, never as entities or
   `\uXXXX` escapes.

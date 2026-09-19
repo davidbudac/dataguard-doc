@@ -11,7 +11,7 @@
  * projects the trace back onto `computeFsfo`'s return object. No cell here is
  * special-cased anywhere in the engine.
  *
- * The APPMODEL, COMMITMODEL and REOPENMODEL groups and the Czech catalog tests
+ * The APPMODEL, COMMITMODEL and REOPENMODEL groups
  * are not ported here: those three models arrive with M5.
  */
 

@@ -84,7 +84,7 @@ describe('payloads', () => {
 
   it('a payload sitting beside other fragment keys is still found', async () => {
     const payload = encodePayloadPlain('{"a":1}');
-    expect((await decodePayload(`#lang=cs&${payload}`))?.json).toBe('{"a":1}');
+    expect((await decodePayload(`#ver=26ai&${payload}`))?.json).toBe('{"a":1}');
   });
 
   it('a corrupt payload decodes to null rather than throwing', async () => {

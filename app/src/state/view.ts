@@ -74,12 +74,6 @@ export interface Toast {
   text: string;
   /** An optional in-place undo of whatever just happened. */
   action?: { label: string; run: () => void };
-  /**
-   * A real link, when the honest answer is somewhere else -- a `?lang=cs` deep
-   * link into the Czech reading, which lives on the published page. A link,
-   * not a button: it survives a middle click and it can be copied.
-   */
-  link?: { label: string; href: string };
 }
 
 export const mode = signal<Mode>('build');

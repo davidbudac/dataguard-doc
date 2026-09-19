@@ -417,7 +417,3 @@
   top:var(--bar-bottom,calc(var(--h-top) + var(--h-status)))}
 @media (max-width:767px){.toast{position:static}}
 
-/* A notice that has a better place to send the reader sends them with a link,
-   not a button: `?lang=cs` belongs on the page that has the Czech reading. */
-.strip-link{font-family:var(--mono);font-size:11px;letter-spacing:.04em;color:var(--vi);
-  white-space:nowrap}

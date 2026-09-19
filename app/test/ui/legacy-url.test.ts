@@ -52,10 +52,10 @@ describe('legacy urls', () => {
     expect(upgradeLegacyUrl('?ver=nonsense&sc=crash')?.view.ed).toBeUndefined();
   });
 
-  it('sends a Czech link to the page that has Czech, instead of dropping it', () => {
+  it('ignores the language key an older link carries', () => {
     const up = upgradeLegacyUrl('?lang=cs&sc=crash', '#ch-clocks');
-    expect(up?.legacyHref).toBe('legacy/?lang=cs&sc=crash#ch-clocks');
-    expect(up?.notice).toContain('English only');
+    expect(up?.dropped).toEqual([]);
+    expect(up?.notice).toBe('Upgraded an older link.');
   });
 
   it('names the parameters it dropped', () => {

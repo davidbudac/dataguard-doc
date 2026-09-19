@@ -319,10 +319,9 @@ for (const [query, mark, what] of [
 
 /* ---------------- the links the published page handed out ---------------- */
 
-/* Every link in the handover document, the wiki page and the reading list is
-   of this shape, and `?lang=cs` is the Czech reading of it. The application is
-   English only, so that one has to say so and offer the page that is not --
-   which is the legacy page, still shipped beside this one. */
+/* Every link in the handover document and the wiki page is of this shape.
+   Some still carry `?lang=cs` from when the page had a Czech reading; the
+   application is English only and upgrades them like any other. */
 console.log('\nlegacy links');
 const legacy = await load(`${base}?sc=iso&lat=2&lang=cs#ch-clocks`);
 if (!legacy.ok) {
@@ -337,9 +336,8 @@ if (!legacy.ok) {
   if (/class="app m-break/.test(legacy.dom)) pass('legacy link: #ch-clocks opens Break mode');
   else fail('legacy link: #ch-clocks did not open Break mode');
 
-  const href = /<a\b[^>]*class="strip-link"[^>]*\bhref="([^"]*)"/i.exec(legacy.dom)?.[1];
-  if (href && href.startsWith('legacy/')) pass(`legacy link: ?lang=cs offers the Czech page (${href})`);
-  else fail(`legacy link: ?lang=cs offered no link to legacy/ (got ${href ?? 'nothing'})`);
+  if (/Upgraded an older link\./.test(legacy.dom)) pass('legacy link: ?lang=cs upgrades like any other old link');
+  else fail('legacy link: ?lang=cs did not upgrade as an old link');
 
   /* The `#t=` round trip, in a real browser: this document came from the old
      query keys rather than from a preset, so there is no shorter way to say it

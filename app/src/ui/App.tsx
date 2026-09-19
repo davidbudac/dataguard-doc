@@ -222,7 +222,6 @@ export function App() {
         <p class={`strip toast ${t.kind === 'info' ? '' : `is-${t.kind}`}`} role="status">
           <span>{t.text}</span>
           <span class="strip-spacer" />
-          {t.link ? <a class="strip-link" href={t.link.href}>{t.link.label}</a> : null}
           {t.action ? (
             <button type="button" class="btn" onClick={() => { t.action?.run(); toast.value = null; }}>
               {t.action.label}

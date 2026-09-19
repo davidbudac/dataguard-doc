@@ -11,7 +11,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { LESSONS, lessonById } from '@/content';
-import { LEGACY_ANCHORS, LEGACY_PATH, upgradeLegacyUrl } from '@/state/legacy-url';
+import { LEGACY_ANCHORS, upgradeLegacyUrl } from '@/state/legacy-url';
 import { MODES, PANEL_TABS } from '@/state/view';
 
 describe('legacy chapter anchors', () => {
@@ -47,13 +47,10 @@ describe('legacy chapter anchors', () => {
     }
   });
 
-  it('sends a Czech reading to the page that has one, once, with a link', () => {
+  it('upgrades an old ?lang= link like any other, without reporting the key', () => {
     const up = upgradeLegacyUrl('?lang=cs&sc=crash', '#ch-clocks');
-    expect(up?.notice).toContain('English only');
-    expect(up?.legacyHref).toBe(`${LEGACY_PATH}?lang=cs&sc=crash#ch-clocks`);
-    /* Every other link keeps its language: no notice link where there is nothing
-       to link to. */
-    expect(upgradeLegacyUrl('?sc=crash', '#ch-clocks')?.legacyHref).toBeNull();
-    expect(upgradeLegacyUrl('?lang=en&sc=crash')?.legacyHref).toBeNull();
+    expect(up?.view.mode).toBe('break');
+    expect(up?.dropped).toEqual([]);
+    expect(up?.notice).toBe('Upgraded an older link.');
   });
 });

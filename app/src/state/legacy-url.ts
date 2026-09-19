@@ -12,10 +12,9 @@
  * published page owned them rather than its models:
  *
  *   `ver=26ai`  the edition -- a reading preference here, so it lands on `ed`
- *   `lang=cs`   the Czech reading. This application is English only, and the
- *               Czech document keeps its home at the legacy page: the notice
- *               says so and offers the link rather than dropping the reader
- *               somewhere they cannot read.
+ *   `lang=`     the reading language of a page that no longer has one. Older
+ *               links still carry it, so it is recognised and ignored rather
+ *               than reported as unknown.
  */
 
 import { LEGACY_URL_FIELDS, migrateLegacyQuery } from '@/engine';
@@ -67,8 +66,6 @@ export interface LegacyUpgrade {
   dropped: string[];
   /** One sentence for the strip, or null when there is nothing to say. */
   notice: string | null;
-  /** Set when the reader asked for a language this application does not have. */
-  legacyHref: string | null;
 }
 
 const stripHash = (hash: string): string => (hash.startsWith('#') ? hash.slice(1) : hash);
@@ -110,19 +107,9 @@ export function upgradeLegacyUrl(search: string, hash = ''): LegacyUpgrade | nul
     if (target.lesson) view.lesson = target.lesson;
   }
 
-  const lang = query['lang'];
-  const wantsCzech = lang !== undefined && lang !== '' && lang !== 'en';
-  const notice = wantsCzech
-    ? 'This page is English only. The Czech reading of the same document stays on the earlier page.'
-    : dropped.length > 0
-      ? `Upgraded an older link. Dropped ${dropped.length} unknown parameter${dropped.length === 1 ? '' : 's'}: ${dropped.join(', ')}.`
-      : 'Upgraded an older link.';
+  const notice = dropped.length > 0
+    ? `Upgraded an older link. Dropped ${dropped.length} unknown parameter${dropped.length === 1 ? '' : 's'}: ${dropped.join(', ')}.`
+    : 'Upgraded an older link.';
 
-  return {
-    topology,
-    view,
-    dropped,
-    notice,
-    legacyHref: wantsCzech ? `${LEGACY_PATH}${search}${hash}` : null,
-  };
+  return { topology, view, dropped, notice };
 }

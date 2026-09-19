@@ -4,8 +4,7 @@
 #
 # What goes out: the application (app/, built by Vite) at the root, and the
 # page it replaced at /dataguard/legacy/ -- every link in the handover
-# document, the wiki page and the Czech reading list points at that one, and
-# `?lang=cs` still lands there.
+# document and the wiki page points at that one.
 #
 # Replaces the old GitHub Pages deploy (.github/workflows/pages.yml, removed):
 # the repo is private now, so publishing is this explicit push instead of a

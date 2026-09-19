@@ -68,7 +68,6 @@ async function boot(): Promise<void> {
   let restoredFromStorage = false;
   let notice: string | null = null;
   /* Set only when the honest answer lives on another page -- see SS6.4. */
-  let noticeLink: { label: string; href: string } | null = null;
 
   /* 1. the fragment carries a whole document */
   let next: Doc | null = null;
@@ -109,13 +108,6 @@ async function boot(): Promise<void> {
       if (legacy.view.lesson) state.lesson = legacy.view.lesson;
       if (legacy.view.ed && !present.has('ed')) state.ed = legacy.view.ed;
       notice = legacy.notice;
-      /* `?lang=cs` is not dropped in silence: the Czech reading of this
-         document stays on the published page, and the notice links to it.
-         It shows once, because the canonical URL written on the first flush no
-         longer carries the parameter that produced it. */
-      if (legacy.legacyHref !== null) {
-        noticeLink = { label: 'Open the Czech page', href: legacy.legacyHref };
-      }
     }
   }
 
@@ -152,7 +144,7 @@ async function boot(): Promise<void> {
   }
 
   if (notice !== null) {
-    toast.value = { kind: 'info', text: notice, ...(noticeLink ? { link: noticeLink } : {}) };
+    toast.value = { kind: 'info', text: notice };
   }
 
   const root = document.getElementById('app');
