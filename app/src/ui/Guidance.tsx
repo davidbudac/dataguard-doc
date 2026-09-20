@@ -56,21 +56,32 @@ const BULLETS: [string, string][] = [
  * Verified against the handlers, not against the design: the card keys are
  * `onCardKey` in `canvas/TopoCanvas.tsx`, the playhead keys are `onKeyDown` in
  * `timeline/Playhead.tsx`, and Escape on a drawer is the document listener in
- * `common/Sheet.tsx`. Anything not in one of those three is not listed.
+ * `common/Sheet.tsx`, and the page-wide ones are `ui/shortcuts.ts`. Anything
+ * not in one of those four is not listed.
  */
 const KEYS: { where: string; rows: [string, string][] }[] = [
   {
     where: 'On the drawing, with a card, a data centre or a link caption focused',
     rows: [
       ['↑ ↓ ← →', 'move to the next card in the same data centre — on a link caption, the next link'],
-      ['Enter · Space', 'select it, and its actions open beside it'],
+      ['Enter · Space', 'select it — with Shift, add it to the selection'],
+      ['F2', 'rename it where it is drawn — a double click does too (Build)'],
+      ['Alt+↑ ↓ ← →', 'move the card 8 px, or the whole selection — with Shift, 32 px (Build)'],
       ['Shift+F10 · ☰', 'open its actions and move the focus into them — the right button does too'],
       /* `onEventMenu` is spread onto the canvas only in Break
          (`canvas/CanvasSlot.tsx`), exactly as `onDelete` is only in Build:
          a key that is bound in one mode says which one. */
       ['E', 'open the event menu for it (Break)'],
-      ['Delete', 'remove it (Build)'],
+      ['Delete', 'remove it, or everything selected (Build)'],
       ['Esc', 'close the actions first, then clear the selection'],
+    ],
+  },
+  {
+    where: 'Anywhere on the page, outside a text field',
+    rows: [
+      ['Ctrl+Z · ⌘Z', 'undo'],
+      ['Ctrl+Shift+Z · Ctrl+Y', 'redo'],
+      ['Ctrl+A · ⌘A', 'select every card on the drawing'],
     ],
   },
   {

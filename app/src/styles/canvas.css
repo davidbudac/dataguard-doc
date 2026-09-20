@@ -380,18 +380,21 @@
   .tp-legend { color: var(--ik2); }
   /* There is nothing to press on a printout, and nothing to scroll: a zoomed
      drawing prints at the size the paper gives it. */
-  .cv-tools, .cv-add, .cv-zoom, .tp-actions { display: none; }
+  .cv-tools, .cv-add, .cv-zoom, .tp-actions, .tp-more, .tp-rename { display: none; }
   .tp-wrap.is-zoomed .topo-svg { max-width: 100%; max-height: none; }
 }
 
 /* ---- connecting: the port and the line drawn from it ---- */
-/* The port is on the card's right edge and only shows itself while the card
+/* The ports are on the card's side edges and only show themselves while the card
    is hovered, selected or focused, so the drawing at rest stays the drawing
    -- but a reader who reaches for a card finds the handle on it. */
 .topo-svg .tp-port { cursor: crosshair; opacity: 0; }
 .topo-svg .tp-node:hover .tp-port,
 .topo-svg .tp-node:focus-within .tp-port,
-.topo-svg .tp-node:has(.tp-card.is-sel) .tp-port { opacity: 1; }
+.topo-svg .tp-node:has(.tp-card.is-sel) .tp-port,
+.topo-svg .tp-sitewrap:hover .tp-port,
+.topo-svg .tp-sitewrap:focus-within .tp-port,
+.topo-svg .tp-sitewrap:has(.tp-site.is-sel) .tp-port { opacity: 1; }
 .topo-svg .tp-port-hit { fill: transparent; }
 .topo-svg .tp-port-dot { fill: var(--sf); stroke: var(--ik3); stroke-width: 1.2; }
 .topo-svg .tp-port:hover .tp-port-dot { fill: var(--vif); stroke: var(--vi); }
@@ -399,6 +402,40 @@
 @media (prefers-reduced-motion: no-preference) {
   .topo-svg .tp-port { transition: opacity .16s ease; }
 }
+/* ---- the handle, the selection rectangle, the name field ---- */
+/* The handle is the pointer's way to the action bar: a click only selects, so
+   the bar has to be asked for, and this is where. */
+.topo-svg .tp-more { cursor: pointer; }
+.topo-svg .tp-more-hit { fill: transparent; }
+.topo-svg .tp-more-dot { fill: var(--sf); stroke: var(--vi); stroke-width: 1.2; }
+.topo-svg .tp-more-pip { fill: var(--vi); pointer-events: none; }
+.topo-svg .tp-more:hover .tp-more-dot,
+.topo-svg .tp-more.is-open .tp-more-dot { fill: var(--vif); }
+.topo-svg .tp-band {
+  fill: var(--vif); fill-opacity: .45; stroke: var(--vi); stroke-width: 1; stroke-dasharray: 4 3;
+  pointer-events: none;
+}
+.cv-rename { display: flex; flex-direction: column; gap: 3px; }
+.cv-rename-in {
+  box-sizing: border-box; width: 100%; height: 22px; padding: 0 4px;
+  font-size: 12.5px; font-weight: 600; color: var(--ik);
+  background: var(--sf); border: 1px solid var(--vi); border-radius: 3px; outline: none;
+}
+.cv-rename-in.is-bad { border-color: var(--rd); }
+.cv-rename-why {
+  margin: 0; padding: 3px 5px; font-size: 10.5px; line-height: 1.3; color: var(--ik);
+  background: var(--rdf); border: 1px solid var(--rd); border-radius: 3px;
+}
+/* A chip being dragged off the toolbar: one fixed box that follows the pointer
+   (`left`/`top` set through a ref, the page's one escape hatch). */
+.cv-ghost {
+  position: fixed; z-index: 50; pointer-events: none; transform: translate(10px, 10px);
+  padding: 3px 8px; font-size: 12px; border: 1px solid var(--vi); border-radius: 3px;
+  background: var(--sf); color: var(--ik); box-shadow: var(--sh); opacity: .92;
+}
+.cv-add .btn { touch-action: none; cursor: grab; }
+.cv-add .btn.is-placing { cursor: grabbing; border-color: var(--vi); }
+
 /* The line while it is being drawn, and the card it is about to land on. */
 .topo-svg .tp-rubber-ln {
   stroke: var(--ik3); stroke-width: 1.5; stroke-dasharray: 5 4; fill: none; pointer-events: none;

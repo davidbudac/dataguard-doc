@@ -24,6 +24,7 @@ import { TopBar } from './TopBar';
 import { StatusBar } from './StatusBar';
 import { Guidance, IntroCard } from './Guidance';
 import { usePrintExpand } from './print';
+import { installShortcuts } from './shortcuts';
 import { Readout } from './Readout';
 import { IssuePanel } from './IssuePanel';
 import { Sheet } from './common/Sheet';
@@ -197,6 +198,8 @@ export function App() {
      window, and both the Configure panels and Build's folded notes expand off
      the same signal (ui/print.ts). */
   usePrintExpand();
+  /* Undo, redo and select-all, for the whole page (ui/shortcuts.ts). */
+  useEffect(() => installShortcuts(), []);
 
   return (
     <div class={intro ? 'app m-intro' : `app m-${m}`}>

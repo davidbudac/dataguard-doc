@@ -821,6 +821,52 @@ Phase C of §3d, plus two defects the bar had grown.
   the line and the click-away through the mounted app). The layout test for
   `classic('none')` now expects the empty third site as a panel.
 
+## 3h. Driving the drawing (as built, 2026-09-20)
+
+§3d and §3g made the drawing editable; this pass changed how it is *driven*, because
+the gestures were all there and the page was still clumsy to use. Where §3d or §3g say
+"a click opens the bar", this section supersedes them for Build. Break is unchanged.
+
+- **A click selects, and nothing else.** The rail shows the form. The action bar is
+  asked for: the `⋯` handle `TopoCanvas` draws on the corner of the last selected
+  thing (`anchorFor`, so one implementation covers cards, name bands and caption
+  pills), the right button, `Shift+F10`. The handle carries its subject's `data-node`,
+  so a press on it is neither a press on the ground (which clears) nor a press outside
+  the bar (which closes it before the click could toggle it). A bar that popped under
+  every click sat on top of the drag or the line that usually follows one. A
+  multi-selection now reaches its intersection bar through the same handle.
+- **Additions are dragged to where they belong.** A toolbar chip pressed adds with the
+  automatic placement, as before; *dragged*, it lands in the data centre it is dropped
+  on (`add*(where)` already took the site). The chip is HTML and the panels are SVG, so
+  they meet in `canvas/place.ts`: which chip is in the air, which site it is over, and
+  the drawing's own hit test (`siteAtRef`, pure geometry like every other drop). The
+  ghost is one `position: fixed` box moved with `el.style.setProperty` through a ref —
+  the page's single escape hatch, used for the second time. Dropped on nothing it says
+  where to drop it (`WHY_DROP_ON_SITE`).
+- **Names are edited where they are drawn.** Double-click or `F2` opens `InlineName`:
+  an `<input>` in a `<foreignObject>` over the name, placed in drawing units like the
+  bar. `Enter` commits, `Esc` gives up, blur commits what it can. A refused name is
+  said *under the open field* (`renameVerdict`, the rail's sentence), not in a toast
+  after it closed. Every addition from the toolbar opens its own name, so add → type →
+  `Enter` is one flow. A data centre renames its label; its id stays.
+- **Selections act as one.** A drag over the ground is a selection rectangle in Build
+  (cards only); the pan moved to the middle button and `Space`+drag, and the wheel
+  still scrolls. Dragging a selected card carries the selection, as one edit under the
+  pressed card's coalesce key (so `moveToSite` still folds into it). `Alt`+arrow nudges
+  8 px (`Shift`: 32) — passed as a *delta*, so two presses inside one render add up.
+  `Delete` asks `removeAction` for each selected thing against the document as it then
+  is; what may go goes, the rest is named with its reason, and a clean removal's toast
+  carries `Undo`.
+- **`Tidy`**, in the zoom strip: drops the hand-placed offsets of the selection, or of
+  everything. Grey with its reason while nothing has been moved.
+- **Site links are drawn.** A port beside a data centre's name; a line to another
+  data centre is `addLink`, through the same `connectVerdict` table. Cards carry a port
+  on both side edges and the rubber band leaves from the side facing the pointer.
+- **Page-wide keys** (`ui/shortcuts.ts`, installed once by `App`): `Ctrl/⌘+Z`,
+  `Ctrl/⌘+Shift+Z`, `Ctrl+Y`, `Ctrl/⌘+A`. A key typed in a field is the field's.
+
+Tests: `test/ui/canvas-controls.test.ts`.
+
 ## 4. Topology canvas
 
 **Node card** (generalised `nodeCard`): flat `--sf` rect, hairline, rx 5, badge rx 7 centred; role word / host mono (19-char elision, full value in aria) / subtitle; width clamp(184, measured, 260); height 72 (3-line DB) / 52 (observer). Glyphs: db cylinder, observer eye, far sync = cylinder + chevron (no base), snapshot = cylinder + shutter tick. RAC `⌗2` chip top-right (absent = single instance, legend says so once). Master observer `MASTER` violet chip only while FSFO is enabled ("all observers have the same functionality" when disabled); observe-only slate chip. Break-mode state: phase tint fill/border; down = hatch + red border; crashed host = two-stroke red cross on the name line; stalled primary = red border, no cross.

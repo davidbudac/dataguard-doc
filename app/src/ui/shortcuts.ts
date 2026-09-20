@@ -1,0 +1,53 @@
+/**
+ * The keys that belong to the page rather than to a control on it.
+ *
+ * Undo and redo were two buttons in the header and nothing else, which made
+ * every slip on the drawing a trip to the top of the page. These are the
+ * bindings every editor has taught: `Ctrl/Cmd+Z`, `Ctrl/Cmd+Shift+Z` and
+ * `Ctrl+Y`, and `Ctrl/Cmd+A` for every card on the drawing.
+ *
+ * A key typed into a field is the field's: the browser's own undo inside a
+ * text input is not this page's to take.
+ */
+
+import { topology } from '@/state/derived';
+import { redo, undo } from '@/state/history';
+import { canEdit, clearSelection, mode, selection, viewport } from '@/state/view';
+
+const typing = (t: EventTarget | null): boolean =>
+  t instanceof HTMLElement
+  && (t.isContentEditable || t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT');
+
+export function onGlobalKey(ev: KeyboardEvent): void {
+  if (ev.defaultPrevented || typing(ev.target) || !canEdit(viewport.value)) return;
+  const mod = ev.ctrlKey || ev.metaKey;
+  const key = ev.key.toLowerCase();
+  if (mod && !ev.altKey && key === 'z') {
+    ev.preventDefault();
+    if (ev.shiftKey) redo(); else undo();
+    return;
+  }
+  if (mod && !ev.altKey && !ev.shiftKey && key === 'y') {
+    ev.preventDefault();
+    redo();
+    return;
+  }
+  const drawing = mode.value === 'build' || mode.value === 'break';
+  if (mod && !ev.altKey && !ev.shiftKey && key === 'a' && drawing) {
+    ev.preventDefault();
+    const t = topology.value;
+    selection.value = [...t.members.map((m) => m.id as string), ...t.observers.map((o) => o.id as string)];
+    return;
+  }
+  /* `Escape` with the focus nowhere: the cards handle their own, this is the
+     press after a click on the ground or in the margin. */
+  if (ev.key === 'Escape' && ev.target === document.body && selection.value.length > 0) {
+    clearSelection();
+  }
+}
+
+/** Installed once by the shell; returns the uninstall. */
+export function installShortcuts(): () => void {
+  document.addEventListener('keydown', onGlobalKey);
+  return () => document.removeEventListener('keydown', onGlobalKey);
+}

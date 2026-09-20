@@ -144,17 +144,22 @@ export function NodeCard(props: NodeCardProps): JSX.Element {
       )}
       {chipNodes}
       {props.port ? (
-        /* The port: a handle on the card's right edge a line is dragged from.
-           Part of the card's own group, so the focus, the hover and the
-           selection it lives under are the card's; only its pointer press is
-           its own. */
-        <g class="tp-port" data-port={node.key} onPointerDown={(ev) => props.onPortPointerDown?.(node.key, ev)}>
-          <title>Drag to another card to connect them</title>
-          <circle class="tp-port-hit" cx={portX} cy={portY} r={11} />
-          <circle class="tp-port-dot" cx={portX} cy={portY} r={5} />
-          <line class="tp-port-x" x1={portX - 2.5} y1={portY} x2={portX + 2.5} y2={portY} />
-          <line class="tp-port-x" x1={portX} y1={portY - 2.5} x2={portX} y2={portY + 2.5} />
-        </g>
+        /* The ports: a handle on each side edge a line is dragged from, so the
+           line starts on the side it is heading for. Part of the card's own
+           group, so the focus, the hover and the selection they live under are
+           the card's; only their pointer press is their own. */
+        [node.x, portX].map((px) => (
+          <g
+            class="tp-port" key={px} data-port={node.key}
+            onPointerDown={(ev) => props.onPortPointerDown?.(node.key, ev)}
+          >
+            <title>Drag to another card to connect them</title>
+            <circle class="tp-port-hit" cx={px} cy={portY} r={11} />
+            <circle class="tp-port-dot" cx={px} cy={portY} r={5} />
+            <line class="tp-port-x" x1={px - 2.5} y1={portY} x2={px + 2.5} y2={portY} />
+            <line class="tp-port-x" x1={px} y1={portY - 2.5} x2={px} y2={portY + 2.5} />
+          </g>
+        ))
       ) : null}
       {frame.crashed ? (
         <g class="tp-cross" aria-hidden="true">

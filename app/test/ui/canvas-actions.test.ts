@@ -289,7 +289,17 @@ const clickCard = async (root: HTMLElement, key: string): Promise<void> => {
   await tick();
 };
 
-describe('a click on the drawing offers what can be done to it', () => {
+/** The `...` handle on the corner of the selected thing: the pointer's way to the bar. */
+const handle = (root: HTMLElement): Element | null => root.querySelector('.tp-more');
+
+/** Select it, then ask for the bar the way a pointer does. */
+const askBar = async (root: HTMLElement, key: string): Promise<void> => {
+  await clickCard(root, key);
+  handle(root)!.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+  await tick();
+};
+
+describe('the handle on the selected thing offers what can be done to it', () => {
   beforeEach(() => {
     unmountAll();
     selection.value = [];
@@ -302,9 +312,29 @@ describe('a click on the drawing offers what can be done to it', () => {
     resetHistory(classicDoc());
   });
 
-  it('opens the Build table on the card that was clicked, Edit first and Remove last', async () => {
+  it('a click in Build selects and offers nothing until it is asked', async () => {
     const root = await mountApp();
     await clickCard(root, 'sby01');
+    expect(selection.value).toEqual(['sby01']);
+    expect(barOpen.value).toBeNull();
+    expect(root.querySelector('.cv-bar')).toBeNull();
+    expect(handle(root)?.getAttribute('data-more')).toBe('sby01');
+    expect(handle(root)?.getAttribute('aria-expanded')).toBe('false');
+  });
+
+  it('the handle closes the bar it opened, and keeps the selection', async () => {
+    const root = await mountApp();
+    await askBar(root, 'sby01');
+    expect(barOpen.value).toBe('sby01');
+    handle(root)!.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    await tick();
+    expect(barOpen.value).toBeNull();
+    expect(selection.value).toEqual(['sby01']);
+  });
+
+  it('opens the Build table on the card that was clicked, Edit first and Remove last', async () => {
+    const root = await mountApp();
+    await askBar(root, 'sby01');
     expect(barOpen.value).toBe('sby01');
     const rows = barRows(root);
     expect(rows[0]).toBe('Edit sby01');
@@ -315,7 +345,7 @@ describe('a click on the drawing offers what can be done to it', () => {
 
   it('refuses to remove the primary on the bar, in the words the rail uses', async () => {
     const root = await mountApp();
-    await clickCard(root, 'prm01');
+    await askBar(root, 'prm01');
     const remove = [...root.querySelectorAll('.cv-bar-row')]
       .find((r) => r.querySelector('button')?.textContent === 'Remove prm01');
     expect(remove).toBeDefined();
@@ -326,7 +356,7 @@ describe('a click on the drawing offers what can be done to it', () => {
 
   it('runs the row that is not refused', async () => {
     const root = await mountApp();
-    await clickCard(root, 'sby01');
+    await askBar(root, 'sby01');
     const remove = [...root.querySelectorAll('.cv-bar-row button')]
       .find((b) => b.textContent === 'Remove sby01') as HTMLButtonElement;
     remove.click();
@@ -336,16 +366,16 @@ describe('a click on the drawing offers what can be done to it', () => {
 
   it('closes when the selection moves to something else', async () => {
     const root = await mountApp();
-    await clickCard(root, 'sby01');
+    await askBar(root, 'sby01');
     expect(barOpen.value).toBe('sby01');
     await clickCard(root, 'prm01');
-    expect(barOpen.value).toBe('prm01');
-    expect(root.querySelector('.cv-bar-hd .mono')?.textContent).toBe('prm01');
+    expect(barOpen.value).toBeNull();
+    expect(handle(root)?.getAttribute('data-more')).toBe('prm01');
   });
 
   it('closes on a click on the ground between the cards', async () => {
     const root = await mountApp();
-    await clickCard(root, 'sby01');
+    await askBar(root, 'sby01');
     const svg = root.querySelector('.topo-svg');
     pointerUp(svg!);
     await tick();

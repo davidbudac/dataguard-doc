@@ -268,7 +268,8 @@ describe('the zoom strip drives the drawing', () => {
        the strip's height. */
     const reasons = (): string[] =>
       [...root.querySelectorAll<HTMLButtonElement>('.cv-zoom button')]
-        .filter((b) => b.disabled)
+        /* `Tidy` rides in the same strip and is grey for a reason of its own. */
+        .filter((b) => b.disabled && b.getAttribute('aria-label') !== 'Tidy the drawing')
         .map((b) => b.title);
 
     expect(reasons()).toEqual([]);

@@ -279,7 +279,11 @@ describe('the shell wires those keys to real edits', () => {
     press(control(root, 'dc1-dc2'), 'Delete');
     await tick();
     expect(docSignal.value.topology.links.map((l) => l.id as string)).not.toContain('dc1-dc2');
-    expect(toast.value).toBeNull();
+    /* Not a refusal: the way back, offered where the reader is looking. */
+    expect(toast.value?.kind).toBe('info');
+    expect(toast.value?.action?.label).toBe('Undo');
+    toast.value?.action?.run();
+    expect(docSignal.value.topology.links.map((l) => l.id as string)).toContain('dc1-dc2');
   });
 
   it('Escape clears the selection', async () => {

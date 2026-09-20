@@ -508,6 +508,47 @@ export function removeLink(id: LinkId): void {
  * reference in the document in the same edit, so the configuration is never
  * momentarily inconsistent.
  */
+/**
+ * Whether `raw` may be the name of the member, observer or data centre `key`.
+ *
+ * One answer for the rail's field and for the one on the drawing: the rail
+ * says a refusal in a toast after the fact, the drawing says it under the
+ * field while it is still open, and both are this sentence. An empty or an
+ * unchanged name is not refused -- it is simply not a rename.
+ */
+export function renameVerdict(t: TopologyDoc, key: string, raw: string): WhyState {
+  const name = raw.trim();
+  if (name === '' || name === key) return ON;
+  if (t.members.some((m) => (m.id as string) === key)) {
+    return t.members.some((m) => (m.id as string) === name) ? off(WHY.nameTaken) : ON;
+  }
+  if (t.observers.some((o) => (o.id as string) === key)) {
+    return t.observers.some((o) => (o.id as string) === name) ? off(WHY.observerNameTaken) : ON;
+  }
+  return ON;
+}
+
+/** A data centre's name is a label: its id, and every reference to it, stays. */
+export function renameSite(id: SiteId, raw: string): void {
+  const name = raw.trim();
+  if (name === '') return;
+  mutate(`Rename ${id as string}`, (t) => ({
+    ...t,
+    sites: t.sites.map((s) => (s.id === id ? { ...s, name } : s)),
+  }));
+}
+
+/**
+ * Put hand-placed cards back where the layout draws them: the named ones, or
+ * every one when none is named. One edit, so one undo brings them all back.
+ */
+export function tidyLayout(keys: readonly string[]): void {
+  edit(keys.length === 0 ? 'Tidy the drawing' : `Tidy ${keys.join(', ')}`, (d) => {
+    const drop = keys.length === 0 ? Object.keys(d.layout) : keys.filter((k) => k in d.layout);
+    return drop.length === 0 ? d : dropLayout(d, drop);
+  });
+}
+
 export function renameMember(id: MemberId, raw: string): void {
   const name = raw.trim();
   const t = doc.value.topology;
@@ -794,6 +835,14 @@ export function connectVerdict(
     return { label: 'Connect the observers', enabled: off('Two observers have no link between them: each watches the primary and the failover target.') };
   }
   const s = site(to);
+  const sa = site(from);
+  if (sa && s) {
+    const label = `Link ${sa.name} and ${s.name}`;
+    if (sa.id === s.id) return { label, enabled: off('A link runs between two different data centres.') };
+    const linked = t.links.some((l) => l.scope === 'site'
+      && (l.ends as readonly string[]).includes(from) && (l.ends as readonly string[]).includes(to));
+    return { label, enabled: linked ? off('These two data centres are linked already.') : ON };
+  }
   if (s && a) {
     return { label: `Add a standby in ${s.name} and ship redo to it`, enabled: ON };
   }

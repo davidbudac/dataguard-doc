@@ -383,6 +383,10 @@ describe('the bar closes on a press anywhere that is not the bar', () => {
     root.querySelector('[data-node="sby01"]')!
       .dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
     await painted();
+    /* A click selects; the handle on the selected card asks for the bar. */
+    root.querySelector('.tp-more')!
+      .dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    await painted();
     expect(barOpen.value).toBe('sby01');
     const rail = document.querySelector('.app-rail')!;
     rail.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, cancelable: true }));
@@ -394,6 +398,10 @@ describe('the bar closes on a press anywhere that is not the bar', () => {
   it('stays open on a press inside itself', async () => {
     const root = await mountApp();
     root.querySelector('[data-node="sby01"]')!
+      .dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    await painted();
+    /* A click selects; the handle on the selected card asks for the bar. */
+    root.querySelector('.tp-more')!
       .dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
     await painted();
     root.querySelector('.cv-bar-row button')!

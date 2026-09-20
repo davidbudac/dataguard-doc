@@ -15,13 +15,17 @@ import type { TopologyDoc } from '@/engine';
 import { siteId } from '@/engine';
 import { frame, geometry, redoGraph, topology } from '@/state/derived';
 import { doc, withLayout } from '@/state/doc';
-import { breakCoalescing, edit } from '@/state/history';
+import { breakCoalescing, edit, undo } from '@/state/history';
 import {
   canEdit, clearSelection, focusField, hovered, mode, railWhere, select, selection, tNow, toast,
   viewport,
 } from '@/state/view';
 import { buildActionsFor, openInspectorFor, removeAction } from '../build/actions';
-import { addDatabase, addFsfoTarget, connectVerdict, moveToSite, shipRedo } from '../inspector/edits';
+import {
+  addDatabase, addFsfoTarget, addLink, connectVerdict, moveToSite, renameMember, renameObserver,
+  renameSite, renameVerdict, shipRedo, tidyLayout,
+} from '../inspector/edits';
+import { placeOver, renaming, setSiteAt } from './place';
 import {
   actionsFor, nothingToRestore, restoreQuietLine, runAction,
 } from '../break/events';
@@ -67,6 +71,9 @@ export function connectFromCanvas(from: string, to: string): void {
   }
   const member = (k: string) => t.members.find((m) => (m.id as string) === k);
   const observer = (k: string) => t.observers.find((o) => (o.id as string) === k);
+  const isSite = (k: string): boolean => t.sites.some((x) => (x.id as string) === k);
+  /* A line from one data centre's name to another's: the site link between them. */
+  if (isSite(from) && isSite(to)) { addLink(siteId(from), siteId(to)); return; }
   const a = member(from); const b = member(to);
   if (a && b) { shipRedo(a.id, b.id); return; }
   if (a && observer(to)) { addFsfoTarget(a.id); return; }
@@ -80,14 +87,64 @@ export function connectFromCanvas(from: string, to: string): void {
 }
 
 export function deleteFromCanvas(key: string): void {
-  const action = removeAction(topology.value, key);
-  if (action === null) return;
-  if (action.enabled.state === 'off') {
-    toast.value = { kind: 'warn', text: `${key} stays: ${action.enabled.why}` };
+  /* `Delete` on one of several selected things means all of them -- a
+     selection that answers a drag as a group and `Delete` as one card is two
+     stories about the same highlight. Each is asked separately: what may go
+     goes, what may not is named with its reason. */
+  const sel = selection.value;
+  const keys = sel.includes(key) && sel.length > 1 ? [...sel] : [key];
+  const gone: string[] = [];
+  const kept: string[] = [];
+  for (const k of keys) {
+    /* Against the document as it now is: removing one can change whether the
+       next may go. */
+    const action = removeAction(topology.value, k);
+    if (action === null) continue;
+    if (action.enabled.state === 'off') { kept.push(`${k} stays: ${action.enabled.why}`); continue; }
+    action.run();
+    gone.push(k);
+  }
+  if (gone.length > 0) selection.value = selection.value.filter((k) => !gone.includes(k));
+  if (kept.length > 0) {
+    toast.value = { kind: 'warn', text: kept.join(' ') };
     return;
   }
-  action.run();
-  clearSelection();
+  if (gone.length === 0) return;
+  const n = gone.length;
+  toast.value = {
+    kind: 'info',
+    text: `Removed ${gone.join(', ')}.`,
+    action: { label: 'Undo', run: () => { for (let i = 0; i < n; i++) undo(); } },
+  };
+}
+
+/** The name as the drawing shows it, for the field that edits it. */
+function nameOf(t: TopologyDoc, key: string): string {
+  return t.sites.find((x) => (x.id as string) === key)?.name ?? key;
+}
+
+/** What can be renamed on the drawing: a member, an observer, a data centre. */
+const canRename = (t: TopologyDoc, key: string): boolean =>
+  t.members.some((m) => (m.id as string) === key)
+  || t.observers.some((o) => (o.id as string) === key)
+  || t.sites.some((x) => (x.id as string) === key);
+
+function commitRename(key: string, raw: string): void {
+  const t = topology.value;
+  const m = t.members.find((x) => (x.id as string) === key);
+  const o = t.observers.find((x) => (x.id as string) === key);
+  renaming.value = null;
+  if (m) renameMember(m.id, raw);
+  else if (o) renameObserver(o.id, raw);
+  else renameSite(siteId(key), raw);
+  /* The field took the focus and is gone: hand it to the thing it named, under
+     the name it now has, once that has been drawn. */
+  const now = m || o ? raw.trim() : key;
+  setTimeout(() => {
+    for (const el of document.querySelectorAll<SVGGElement>('.topo-svg [data-node]')) {
+      if (el.getAttribute('data-node') === now && !el.hasAttribute('data-more')) { el.focus(); return; }
+    }
+  }, 0);
 }
 
 /**
@@ -200,14 +257,19 @@ function useCanvasScale(zoomFactor: number): [(el: HTMLElement | null) => void, 
  * explains itself in a tooltip rather than in a sentence beside it, and
  * ui.md SS3d says so.
  */
-function ZoomStrip() {
+export const WHY_TIDY = 'No card has been moved by hand, so there is nothing to tidy.';
+
+function ZoomStrip({ tidy }: { tidy: boolean }) {
   const at = zoom.value;
+  const moved = Object.keys(doc.value.layout);
+  const picked = selection.value.filter((k) => moved.includes(k));
   const out = canZoom(-1);
   const inn = canZoom(1);
   const states: WhyState[] = [
     out ? ON : { state: 'off', why: WHY_MIN },
     inn ? ON : { state: 'off', why: WHY_MAX },
     { state: 'on' },
+    ...(tidy ? [moved.length === 0 ? { state: 'off' as const, why: WHY_TIDY } : ON] : []),
   ];
   const roving = useRovingToolbar(states.map((w) => w.state !== 'off'));
   const rows: { label: string; name: string; title: string; run: () => void }[] = [
@@ -229,6 +291,16 @@ function ZoomStrip() {
       title: 'Back to the drawing at its own size.',
       run: () => fitZoom(),
     },
+    ...(tidy
+      ? [{
+        label: 'Tidy',
+        name: 'Tidy the drawing',
+        title: picked.length > 0
+          ? 'Put the selected cards back where the layout draws them.'
+          : 'Put every card moved by hand back where the layout draws it.',
+        run: () => tidyLayout(picked),
+      }]
+      : []),
   ];
 
   return (
@@ -319,6 +391,16 @@ export function CanvasSlot({ interactive = true }: CanvasSlotProps) {
     return () => document.removeEventListener('pointerdown', onPress, true);
   }, [anchored]);
 
+  const building = editable && m === 'build';
+  /* A name field whose subject has gone -- an undo, a removal, a change of
+     mode -- has nothing to rename. */
+  const renameKey = renaming.value;
+  const renameLive = building && renameKey !== null && canRename(topology.value, renameKey);
+  useEffect(() => {
+    if (renameKey !== null && !renameLive) renaming.value = null;
+  }, [renameKey, renameLive]);
+  useEffect(() => () => setSiteAt(null), []);
+
   const built = !editable || anchored === null || keys.length === 0
     ? null
     : m === 'break'
@@ -353,7 +435,7 @@ export function CanvasSlot({ interactive = true }: CanvasSlotProps) {
   const toolbar = adds === null && !zooming ? null : (
     <div class="cv-tools">
       {adds}
-      {zooming ? <ZoomStrip /> : null}
+      {zooming ? <ZoomStrip tidy={editable && m === 'build'} /> : null}
     </div>
   );
   if (graph === null) {
@@ -392,14 +474,52 @@ export function CanvasSlot({ interactive = true }: CanvasSlotProps) {
         zoomFactor={zoomFactor}
         {...(zooming ? { onZoomStep: (dir: 1 | -1): void => zoomBy(dir) } : {})}
         {...(bar === null ? {} : { bar })}
-        /* A plain click selects *and* offers: the reader who clicked a card
-           has already said which object they mean, and making them find the
-           rail to act on it is the trip this bar exists to save. It does not
-           take the focus -- the arrows have to keep walking the drawing. */
         onSelect={(key: string, additive: boolean) => {
           select(key, additive);
-          if (editable && !additive) openBar(key);
+          /* Build: a click selects and nothing else -- the rail shows the form,
+             and the bar is asked for (the handle, the right button, Shift+F10).
+             A menu that opens under every click is in the way of the drag and
+             the line that usually follow one. Break still offers on the click:
+             there the list of events *is* what the click is for. */
+          if (editable && !additive && m === 'break') openBar(key);
+          /* A bar about something else closes now, not when an effect gets
+             round to it: it must not outlive the selection it answered. */
+          else if (barOpen.peek() !== null && barOpen.peek() !== key) closeBar();
         }}
+        {...(editable
+          ? { handle: keys.length === 0 ? null : keys[keys.length - 1] as string }
+          : {})}
+        {...(building
+          ? {
+            onSelectMany: (hit: readonly string[], additive: boolean): void => {
+              closeBar();
+              selection.value = additive
+                ? [...selection.value, ...hit.filter((k) => !selection.value.includes(k))]
+                : [...hit];
+            },
+            onNudge: (ids: readonly string[], dx: number, dy: number): void => {
+              edit(
+                ids.length === 1 ? `Move the ${ids[0] as string} card` : `Move ${ids.length} cards`,
+                (d) => ids.reduce((acc, k) => {
+                  const base = acc.layout[k] ?? { dx: 0, dy: 0 };
+                  return withLayout(acc, k, { dx: base.dx + dx, dy: base.dy + dy });
+                }, d),
+                `nudge:${ids.join(',')}`,
+              );
+            },
+            dropHint: placeOver.value,
+            siteAtRef: setSiteAt,
+            rename: renameLive && renameKey !== null
+              ? {
+                key: renameKey,
+                initial: nameOf(topology.value, renameKey),
+                verdict: (raw: string) => renameVerdict(topology.value, renameKey, raw),
+                commit: (raw: string) => commitRename(renameKey, raw),
+                cancel: () => { renaming.value = null; },
+              }
+              : null,
+          }
+          : {})}
         onHover={(key: string | null) => { hovered.value = key; }}
         onClear={() => { closeBar(); clearSelection(); }}
         onCloseBar={() => closeBar()}
@@ -416,6 +536,8 @@ export function CanvasSlot({ interactive = true }: CanvasSlotProps) {
                and its name field takes the caret (a one-shot request the
                `Text` control reads and clears). */
             onOpen: (key: string): void => {
+              /* A link has no name of its own to edit; its form does. */
+              if (canRename(topology.value, key)) { closeBar(); select(key); renaming.value = key; return; }
               openInspectorFor(key);
               focusField.value = `name:${key}`;
             },
@@ -439,8 +561,18 @@ export function CanvasSlot({ interactive = true }: CanvasSlotProps) {
             connectWhat: (from: string, to: string) => connectVerdict(topology.value, from, to),
           }
           : {})}
-        onDrag={(key: string, offset: { dx: number; dy: number }) => {
-          edit(`Move the ${key} card`, (d) => withLayout(d, key, offset), `drag:${key}`);
+        onDrag={(
+          key: string, _offset: { dx: number; dy: number },
+          all: Readonly<Record<string, { dx: number; dy: number }>>,
+        ) => {
+          /* Every card the drag carries, in one edit under the pressed card's
+             key -- which is the key `moveToSite` coalesces into. */
+          const ids = Object.keys(all);
+          edit(
+            ids.length === 1 ? `Move the ${key} card` : `Move ${ids.length} cards`,
+            (d) => ids.reduce((acc, k) => withLayout(acc, k, all[k] as { dx: number; dy: number }), d),
+            `drag:${key}`,
+          );
         }}
         onDragEnd={() => breakCoalescing()}
       />

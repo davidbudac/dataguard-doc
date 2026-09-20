@@ -12,8 +12,9 @@
  * `WhyState` union does not admit an `off` with nothing to say.
  */
 
-import { useState } from 'preact/hooks';
-import type { TopologyDoc } from '@/engine';
+import type { JSX } from 'preact';
+import { useRef, useState } from 'preact/hooks';
+import type { SiteId, TopologyDoc } from '@/engine';
 import { siteId as toSiteId } from '@/engine';
 import { WhyPill } from '../common/WhyPill';
 import type { WhyState } from '../common/WhyPill';
@@ -21,6 +22,8 @@ import { useRovingToolbar } from '../common/useRovingToolbar';
 import { Action, Note, Pick } from './controls';
 import { addDatabase, addFarSync, addHost, addLink, addObserver, addSite } from './edits';
 import { off, ON } from './why';
+import { toast } from '@/state/view';
+import { endPlacing, placeOver, placing, renaming, siteAt } from '../canvas/place';
 
 /**
  * A member, a far sync instance and an observer all land in a data centre, so
@@ -47,7 +50,13 @@ export interface AddAction {
   short: string;
   /** What it will do, as a tooltip on the toolbar's small buttons. */
   title: string;
-  run: () => void;
+  /**
+   * Adds it and returns the key it was given. `where` is the data centre a
+   * chip was dropped on; without it the placement is automatic.
+   */
+  run: (where?: SiteId) => string | null;
+  /** True when a drop has to land on a data centre to mean anything. */
+  needsWhere: boolean;
   enabled: (doc: TopologyDoc) => WhyState;
 }
 
@@ -65,7 +74,8 @@ export const ADD_ACTIONS: readonly AddAction[] = [
     label: '+ Standby database',
     short: '+ Standby',
     title: 'Add a physical standby on a host of its own, in a data centre that has no database yet.',
-    run: () => { addDatabase(); },
+    run: (where) => addDatabase(where),
+    needsWhere: true,
     enabled: needsSite,
   },
   {
@@ -73,7 +83,8 @@ export const ADD_ACTIONS: readonly AddAction[] = [
     label: '+ Far sync instance',
     short: '+ Far sync',
     title: 'Add a far sync instance: no role, no apply, no open mode.',
-    run: () => { addFarSync(); },
+    run: (where) => addFarSync(where),
+    needsWhere: true,
     enabled: needsSite,
   },
   {
@@ -81,7 +92,8 @@ export const ADD_ACTIONS: readonly AddAction[] = [
     label: '+ Observer',
     short: '+ Observer',
     title: 'Add an observer on a host of its own -- an observer is never deployed on a database server or cluster.',
-    run: () => { addObserver(); },
+    run: (where) => addObserver(where),
+    needsWhere: true,
     enabled: needsSite,
   },
   {
@@ -89,7 +101,8 @@ export const ADD_ACTIONS: readonly AddAction[] = [
     label: '+ Data centre',
     short: '+ Data centre',
     title: 'Add a data centre, and a site link from it to every data centre already drawn.',
-    run: () => { addSite(); },
+    run: () => addSite(),
+    needsWhere: false,
     enabled: () => ON,
   },
 ];
@@ -210,13 +223,68 @@ export function AddPalette({ doc, onAdded }: AddPaletteProps) {
  *
  * Every button carries what it will do as a `title`, and a refusal still rides
  * beside the button rather than living only in the tooltip.
+ *
+ * A press adds it where the page thinks best; a *drag* carries it to the data
+ * centre it is dropped on. Either way the new thing is selected with its name
+ * open for typing, so adding and naming are one gesture.
  */
+const PLACE_THRESHOLD = 4;
+export const WHY_DROP_ON_SITE = 'Drop it on a data centre to put it there.';
+
 export function AddToolbar({ doc }: { doc: TopologyDoc }) {
   const states = ADD_ACTIONS.map((a) => a.enabled(doc));
   /* A disabled button cannot be focused, so parking the tab stop on one would
      make the whole strip unreachable by Tab. `+ Data centre` is never off, so
      there is always somewhere to park it. */
   const roving = useRovingToolbar(states.map((w) => w.state !== 'off'));
+  const press = useRef<{ key: string; x: number; y: number; moved: boolean } | null>(null);
+  /* A drag ends in a click on the button that captured it; that click is the
+     tail of the drag, not a press. */
+  const swallow = useRef(false);
+  const ghost = useRef<HTMLDivElement | null>(null);
+  const at = useRef({ x: 0, y: 0 });
+  const follow = (x: number, y: number): void => {
+    at.current = { x, y };
+    ghost.current?.style.setProperty('left', `${x}px`);
+    ghost.current?.style.setProperty('top', `${y}px`);
+  };
+  const added = (key: string | null): void => { if (key !== null) renaming.value = key; };
+
+  const onDown = (a: AddAction, ev: JSX.TargetedPointerEvent<HTMLButtonElement>): void => {
+    if (ev.button !== 0) return;
+    press.current = { key: a.key, x: ev.clientX, y: ev.clientY, moved: false };
+  };
+  const onMove = (a: AddAction, ev: JSX.TargetedPointerEvent<HTMLButtonElement>): void => {
+    const p = press.current;
+    if (p === null || p.key !== a.key) return;
+    if (!p.moved && Math.hypot(ev.clientX - p.x, ev.clientY - p.y) < PLACE_THRESHOLD) return;
+    if (!p.moved) {
+      p.moved = true;
+      ev.currentTarget.setPointerCapture?.(ev.pointerId);
+      placing.value = a.key;
+    }
+    placeOver.value = a.needsWhere ? siteAt(ev.clientX, ev.clientY) : null;
+    follow(ev.clientX, ev.clientY);
+  };
+  const onUp = (a: AddAction, ev: JSX.TargetedPointerEvent<HTMLButtonElement>): void => {
+    const p = press.current;
+    press.current = null;
+    if (p === null || !p.moved) return;
+    swallow.current = true;
+    /* Only the click this release produces: one that never comes (a release
+       off the button, a synthetic event) must not eat the next real press. */
+    setTimeout(() => { swallow.current = false; }, 0);
+    ev.currentTarget.releasePointerCapture?.(ev.pointerId);
+    const over = a.needsWhere ? siteAt(ev.clientX, ev.clientY) : null;
+    endPlacing();
+    if (a.needsWhere && over === null) {
+      toast.value = { kind: 'info', text: WHY_DROP_ON_SITE };
+      return;
+    }
+    added(a.run(over === null ? undefined : toSiteId(over)));
+  };
+  const onCancel = (): void => { press.current = null; endPlacing(); };
+  const dragged = ADD_ACTIONS.find((a) => a.key === placing.value) ?? null;
 
   return (
     <div
@@ -232,13 +300,20 @@ export function AddToolbar({ doc }: { doc: TopologyDoc }) {
           <span class="ctl-off" key={a.key}>
             <button
               type="button"
-              class={`btn${isOff ? ' is-faded' : ''}`}
+              class={`btn${isOff ? ' is-faded' : ''}${placing.value === a.key ? ' is-placing' : ''}`}
               disabled={isOff}
-              title={a.title}
+              title={`${a.title} Press to add it, or drag it onto the drawing.`}
               tabIndex={roving.tabIndex(i)}
               ref={roving.itemRef(i)}
               onFocus={() => roving.onFocus(i)}
-              onClick={() => a.run()}
+              onPointerDown={(ev) => onDown(a, ev)}
+              onPointerMove={(ev) => onMove(a, ev)}
+              onPointerUp={(ev) => onUp(a, ev)}
+              onPointerCancel={onCancel}
+              onClick={() => {
+                if (swallow.current) { swallow.current = false; return; }
+                added(a.run());
+              }}
             >
               {a.short}
             </button>
@@ -246,6 +321,12 @@ export function AddToolbar({ doc }: { doc: TopologyDoc }) {
           </span>
         );
       })}
+      {dragged === null ? null : (
+        <div
+          class="cv-ghost" aria-hidden="true"
+          ref={(el) => { ghost.current = el; if (el) follow(at.current.x, at.current.y); }}
+        >{dragged.short}</div>
+      )}
     </div>
   );
 }

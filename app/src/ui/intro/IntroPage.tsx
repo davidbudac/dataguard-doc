@@ -168,22 +168,34 @@ const HOWTO: { k: string; d: JSX.Element }[] = [
     k: 'Select and edit',
     d: (
       <>
-        Click a card, a data centre or a link and its actions open beside it on the drawing;
-        the full properties are in the inspector. Double-click a card to rename it.
+        Click a card, a data centre or a link to select it; its properties are in the
+        inspector, and the <span class="mono">⋯</span> on its corner (or the right button)
+        opens its actions beside it. Double-click a name, or press <span class="mono">F2</span>,
+        to rename it where it is drawn. Drag over the ground to select several cards;{' '}
+        <span class="mono">Ctrl+A</span> selects them all.
       </>
     ),
   },
   {
     k: 'Add something',
-    d: <>The <span class="mono">+</span> strip on the drawing, or &ldquo;Add &hellip; here&rdquo; on a data centre.</>,
+    d: (
+      <>
+        Press a <span class="mono">+</span> button over the drawing and the page places it; drag
+        the button onto a data centre and it lands there. Either way its name opens for typing.
+      </>
+    ),
   },
   {
     k: 'Move and connect',
     d: (
       <>
-        Drag a card into another data centre and it moves there, host and all. Drag from
-        the port on a card&rsquo;s right edge to another card: member to member ships redo
-        (RedoRoutes), member to observer names a fast-start failover target.
+        Drag a card &mdash; or a whole selection &mdash; and it moves;{' '}
+        <span class="mono">Alt</span> and an arrow nudges it, and <span class="mono">Tidy</span>{' '}
+        puts it back. Dropped in another data centre it moves there, host and all. Drag from
+        the port on either side of a card to another card: member to member ships redo
+        (RedoRoutes), member to observer names a fast-start failover target. The port beside
+        a data centre&rsquo;s name draws a site link to another.
+        <span class="mono"> Ctrl+Z</span> undoes any of it.
       </>
     ),
   },
