@@ -38,7 +38,22 @@ import {
 import { WHY } from '@/ui/inspector/why';
 import { printing } from '@/ui/print';
 
-const mount = (component: () => unknown): HTMLElement => {
+/**
+ * A Storage this environment does not otherwise have: jsdom hands back a bare
+ * object with no methods here, so persistence has nothing to write to.
+ */
+const memory = new Map<string, string>();
+const fakeStorage = {
+  getItem: (k: string) => memory.get(k) ?? null,
+  setItem: (k: string, v: string) => { memory.set(k, String(v)); },
+  removeItem: (k: string) => { memory.delete(k); },
+  clear: () => { memory.clear(); },
+  key: (i: number) => [...memory.keys()][i] ?? null,
+  get length() { return memory.size; },
+} as unknown as Storage;
+Object.defineProperty(window, 'localStorage', { configurable: true, value: fakeStorage });
+
+const mount =(component: () => unknown): HTMLElement => {
   const root = document.createElement('div');
   document.body.appendChild(root);
   render(h(component as never, {}), root);
