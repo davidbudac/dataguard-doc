@@ -10,7 +10,7 @@
  * canvas workflow owns this file from here.
  */
 
-import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import type { TopologyDoc } from '@/engine';
 import { siteId } from '@/engine';
 import { frame, geometry, redoGraph, topology } from '@/state/derived';
@@ -202,8 +202,16 @@ function breakBar(
  * on every resize frame and would re-place the bar on each one. Absent
  * `ResizeObserver` -- jsdom -- it stays 1, which is what a test renders at.
  */
-function useCanvasScale(zoomFactor: number): [(el: HTMLElement | null) => void, number] {
+type Margin = { t: number; r: number; b: number; l: number };
+const NO_MARGIN: Margin = { t: 0, r: 0, b: 0, l: 0 };
+
+function useCanvasScale(
+  zoomFactor: number,
+): [(el: HTMLElement | null) => void, number, Margin] {
   const [scale, setScale] = useState(1);
+  /* The free ground around the drawing, in user units: where the bar may hang
+     (anchor.ts `barRoom`). None while zoomed -- the wrap is a scroll port then. */
+  const [margin, setMargin] = useState<Margin>(NO_MARGIN);
   const observer = useRef<ResizeObserver | null>(null);
   const host = useRef<HTMLElement | null>(null);
   const read = useCallback((): void => {
@@ -219,6 +227,21 @@ function useCanvasScale(zoomFactor: number): [(el: HTMLElement | null) => void, 
     if (!(declared > 0) || !(painted > 0)) return;
     const k = Math.min(1, Math.max(0.5, Math.round((painted / declared) * 100) / 100));
     setScale((prev) => (prev === k ? prev : k));
+    const wrap = host.current as HTMLElement;
+    const inner = svg.getBoundingClientRect();
+    const outer = wrap.getBoundingClientRect();
+    /* User units per CSS pixel, unclamped: this converts, it does not compensate. */
+    const u = declared / painted;
+    const inset = 8;
+    const side = (px: number): number => Math.max(0, Math.round((px - inset) * u));
+    const next = wrap.classList.contains('is-zoomed') ? NO_MARGIN : {
+      t: side(inner.top - outer.top),
+      r: side(outer.right - inner.right),
+      b: side(outer.bottom - inner.bottom),
+      l: side(inner.left - outer.left),
+    };
+    setMargin((prev) => (prev.t === next.t && prev.r === next.r && prev.b === next.b && prev.l === next.l
+      ? prev : next));
   }, []);
   useEffect(() => () => observer.current?.disconnect(), []);
   /* A zoom does not resize the wrap -- the wrap is the scroll port and keeps
@@ -226,6 +249,10 @@ function useCanvasScale(zoomFactor: number): [(el: HTMLElement | null) => void, 
      never fires on one and the measurement would be a rung out of date. This
      is that missing edge. */
   useEffect(() => { read(); }, [zoomFactor, read]);
+  /* Nor does an edit: a new data centre widens the drawing inside a wrap of
+     the same size, and the ground around it shrinks. Every render, then --
+     both setters bail out when nothing moved. */
+  useLayoutEffect(() => { read(); });
   const ref = useCallback((el: HTMLElement | null): void => {
     observer.current?.disconnect();
     observer.current = null;
@@ -237,7 +264,7 @@ function useCanvasScale(zoomFactor: number): [(el: HTMLElement | null) => void, 
     ro.observe(el);
     observer.current = ro;
   }, [read]);
-  return [ref, scale];
+  return [ref, scale, margin];
 }
 
 /**
@@ -349,7 +376,7 @@ export function CanvasSlot({ interactive = true }: CanvasSlotProps) {
      still looking. */
   const zooming = interactive && (m === 'build' || m === 'break');
   const zoomFactor = zooming ? zoom.value : 1;
-  const [wrapRef, scale] = useCanvasScale(zoomFactor);
+  const [wrapRef, scale, barMargin] = useCanvasScale(zoomFactor);
   const anchored = barOpen.value;
 
   /* The bar closes rather than moves. A selection that no longer holds the key
@@ -471,6 +498,7 @@ export function CanvasSlot({ interactive = true }: CanvasSlotProps) {
           : 'This drawing is a live view of the configuration; the workbench beside it is where it is edited.'}
         wrapRef={wrapRef}
         scale={scale}
+        barMargin={barMargin}
         zoomFactor={zoomFactor}
         {...(zooming ? { onZoomStep: (dir: 1 | -1): void => zoomBy(dir) } : {})}
         {...(bar === null ? {} : { bar })}

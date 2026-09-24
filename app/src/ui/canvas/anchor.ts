@@ -81,42 +81,87 @@ export interface BarPlacement {
 }
 
 /**
- * Below the anchor, above it when below would fall out of the view, and
- * always clamped into the view on both axes.
+ * Where the bar may be painted: the viewBox, grown by the free ground the wrap
+ * leaves around the drawing.
  *
- * The clamp is `max(view, min(x, far edge))` in that order, so a footprint
- * larger than the view pins to its top left corner rather than jumping to the
- * far edge -- the failure is then visible at the edge the reader is looking
- * at instead of off screen entirely. Nothing in the workbench reaches that
- * case: the bar caps at six rows, and `test/ui/canvas-presets.test.ts` walks
- * every preset at every frame to keep it that way.
+ * The svg paints its overflow (`.topo-svg { overflow: visible }`) and the wrap
+ * centres a drawing that is smaller than its room, so a small configuration
+ * sits in a band of empty stage. Clamping the bar to the viewBox alone put it
+ * *on* the drawing -- over the card beside the one it was about -- while that
+ * ground stood empty. `margin` is that ground in user units, measured by
+ * `CanvasSlot` (zero where there is no layout, and while zoomed, where the wrap
+ * is a scroll port and the viewBox is the honest bound again).
+ */
+export function barRoom(
+  view: { x: number; y: number; w: number; h: number },
+  margin: { t: number; r: number; b: number; l: number },
+): { x: number; y: number; w: number; h: number } {
+  return {
+    x: view.x - margin.l,
+    y: view.y - margin.t,
+    w: view.w + margin.l + margin.r,
+    h: view.h + margin.t + margin.b,
+  };
+}
+
+const overlap = (a: Rect, b: Rect): number => {
+  const w = Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x);
+  const h = Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y);
+  return w > 0 && h > 0 ? w * h : 0;
+};
+
+/**
+ * Below the anchor, above it, then beside it -- the first of those that fits
+ * the room *and* covers none of `obstacles` (the other cards and captions).
+ * When every candidate covers something, the one that covers least; when none
+ * fits at all, pinned at the top left of the room.
+ *
+ * Each side is tried twice, left-aligned with the anchor and right-aligned
+ * with it, because a card at the right of the drawing has the bar's width to
+ * its left and not to its right. The clamp is `max(room, min(x, far edge))`
+ * in that order, so a footprint larger than the room pins to its top left
+ * corner rather than jumping to the far edge. `test/ui/canvas-presets.test.ts`
+ * walks every preset at every frame to keep the bar inside.
  */
 export function placeBar(
-  anchor: Rect, size: { w: number; h: number }, view: { x: number; y: number; w: number; h: number },
+  anchor: Rect,
+  size: { w: number; h: number },
+  view: { x: number; y: number; w: number; h: number },
+  obstacles: readonly Rect[] = [],
 ): BarPlacement {
   const bottom = view.y + view.h;
   const clampX = (x: number): number => Math.max(view.x, Math.min(x, view.x + view.w - size.w));
   const clampY = (y: number): number => Math.max(view.y, Math.min(y, bottom - size.h));
   const below = anchor.y + anchor.h + BAR_GAP;
-  if (below + size.h <= bottom) {
-    return { x: clampX(anchor.x), y: below, flipped: false };
-  }
   const above = anchor.y - BAR_GAP - size.h;
-  if (above >= view.y) {
-    return { x: clampX(anchor.x), y: above, flipped: true };
-  }
-  /* Neither fits without covering the anchor -- a short view and a tall bar.
-     Beside it, then: the right of the anchor, or its left, whichever has the
-     room, with the top edges aligned and clamped. Only when neither side has
-     the width does the bar fall back to covering -- pinned at the top left of
-     the view, where the collision is at least in front of the reader. */
   const right = anchor.x + anchor.w + BAR_GAP;
-  if (right + size.w <= view.x + view.w) {
-    return { x: right, y: clampY(anchor.y), flipped: false, beside: true };
-  }
   const left = anchor.x - BAR_GAP - size.w;
-  if (left >= view.x) {
-    return { x: left, y: clampY(anchor.y), flipped: false, beside: true };
+  const alignL = clampX(anchor.x);
+  const alignR = clampX(anchor.x + anchor.w - size.w);
+  const candidates: BarPlacement[] = [];
+  if (below + size.h <= bottom) {
+    candidates.push({ x: alignL, y: below, flipped: false }, { x: alignR, y: below, flipped: false });
   }
-  return { x: clampX(anchor.x), y: clampY(above), flipped: true };
+  if (above >= view.y) {
+    candidates.push({ x: alignL, y: above, flipped: true }, { x: alignR, y: above, flipped: true });
+  }
+  if (right + size.w <= view.x + view.w) {
+    candidates.push({ x: right, y: clampY(anchor.y), flipped: false, beside: true });
+  }
+  if (left >= view.x) {
+    candidates.push({ x: left, y: clampY(anchor.y), flipped: false, beside: true });
+  }
+  if (candidates.length === 0) return { x: clampX(anchor.x), y: clampY(above), flipped: true };
+  const cost = (c: BarPlacement): number => {
+    const box = { x: c.x, y: c.y, w: size.w, h: size.h };
+    return obstacles.reduce((sum, o) => sum + overlap(box, o), 0);
+  };
+  let best = candidates[0] as BarPlacement;
+  let bestCost = cost(best);
+  for (const c of candidates) {
+    if (bestCost === 0) break;
+    const k = cost(c);
+    if (k < bestCost) { best = c; bestCost = k; }
+  }
+  return best;
 }

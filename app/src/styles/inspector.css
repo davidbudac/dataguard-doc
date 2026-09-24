@@ -111,6 +111,11 @@ input[type="range"].field-in:focus-visible{outline:2px solid var(--fc);outline-o
 
 .dest{border-top:1px solid var(--ln)}
 .dest .rr-line{padding:12px var(--gut) 0}
+/* A row set straight into a group -- an observer's "Make it the master", a
+   member's instances and "+ Instance" -- sits inside the rail's gutter like
+   the fields around it; it used to start flush against the rail's edge. */
+.grp>.rr-line,.grp>.rr-dest{padding:4px var(--gut) 10px}
+.grp>.rr-dest+.rr-dest,.grp>.rr-dest+.rr-line{padding-top:0}
 .dest .field{border-bottom:0;padding-bottom:8px}
 .dest .field:last-child{padding-bottom:14px}
 

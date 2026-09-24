@@ -894,8 +894,24 @@ does was taken away; what went was the second and third copy of it around the ed
   `+` button onto a data centre, drag a card's ⊕ onto another, click to edit. Rename,
   `⋯` and where the properties live ride with `Hints`.
 
+- **The action bar keeps off the rest of the drawing.** It was clamped to the viewBox,
+  and a small configuration's viewBox is barely taller than its cards, so the bar
+  usually stepped beside its card and sat on the neighbour. The svg paints its
+  overflow and the wrap centres a small drawing in empty stage, so `CanvasSlot` now
+  measures that free ground (wrap rect minus svg rect, in user units, 8 px inset;
+  none while zoomed, where the wrap scrolls) and `barRoom` grows the view by it.
+  `placeBar` then tries below, above (each left- and right-aligned with the anchor),
+  right and left, and takes the first that covers no other card or caption, else the
+  one that covers least. Measured on every render, because an edit resizes the
+  drawing inside a wrap of the same size. Where the stage is exactly the drawing's
+  height (Break at 1280×720) there is no ground to use and the bar may still cover a
+  card.
+- A row set straight into a rail group (`.grp>.rr-line`, `.grp>.rr-dest` — the
+  observer's *Make it the master*, a member's instances) now sits inside the gutter.
+
 Tests: `test/ui/inspector.test.ts` (*adding happens in one place*), `build-actions.test.ts`
-(the header's Remove against the table).
+(the header's Remove against the table), `canvas-actions.test.ts` (*the bar keeps off
+the rest of the drawing*).
 
 ## 4. Topology canvas
 

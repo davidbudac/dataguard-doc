@@ -22,7 +22,7 @@ import type { Geometry, LayoutOffset, NodeBox } from './layout';
 import { layoutTopology } from './layout';
 import { cardFrameFor, chipsFor, routeTopology, siteIsDown, unionViewBox } from './routing';
 import { describeTopology, cardLabel, linkLabel, siteLabel } from './aria';
-import { anchorFor, fittedScale, placeBar } from './anchor';
+import { anchorFor, barRoom, fittedScale, placeBar } from './anchor';
 import { InlineName } from './InlineName';
 import { siteLabelRect } from './layout';
 import { ActionBar, barFootprint } from './ActionBar';
@@ -123,6 +123,11 @@ export interface TopoCanvasProps {
    * else on the drawing needs it, because everything else *is* the drawing.
    */
   scale?: number;
+  /**
+   * The free ground the wrap leaves around the drawing, in user units, so the
+   * bar can hang there rather than over the next card (`barRoom`).
+   */
+  barMargin?: { t: number; r: number; b: number; l: number };
   /**
    * How large the drawing is asked to be drawn, 1 being its own size.
    *
@@ -812,10 +817,16 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
   /* In user units, and larger than the CSS size when the drawing is shrunk:
      the bar undoes the drawing's scale, so its footprint on the drawing grows
      as that scale falls. Placing against the CSS size put it off the stage. */
-  const barScale = barSize === null ? k : fittedScale(barSize, view, k);
+  const room = barRoom(view, props.barMargin ?? { t: 0, r: 0, b: 0, l: 0 });
+  const barScale = barSize === null ? k : fittedScale(barSize, room, k);
+  /* What the bar should not sit on: every other card and every caption. */
+  const barObstacles = bar === null ? [] : [
+    ...Object.entries(geo.byKey).filter(([key]) => key !== bar.key).map(([, n]) => n),
+    ...routed.links.filter((l) => linkKey(l) !== bar.key).map((l) => l.pill),
+  ];
   const barPlace = bar === null || barAnchor === null || barSize === null
     ? null
-    : placeBar(barAnchor, { w: barSize.w / barScale, h: barSize.h / barScale }, view);
+    : placeBar(barAnchor, { w: barSize.w / barScale, h: barSize.h / barScale }, room, barObstacles);
 
   /* The handle: the top right corner of the subject's anchor. */
   const handleKey = interactive ? props.handle ?? null : null;

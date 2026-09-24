@@ -23,7 +23,7 @@ import { h, render } from 'preact';
 import type { TopologyDoc } from '@/engine';
 import { ActionBar, barFootprint, MAX_ROWS_BREAK } from '@/ui/canvas/ActionBar';
 import type { BarAction } from '@/ui/canvas/ActionBar';
-import { anchorFor, placeBar } from '@/ui/canvas/anchor';
+import { anchorFor, barRoom, placeBar } from '@/ui/canvas/anchor';
 import { barOpen, closeBar } from '@/ui/canvas/bar';
 import { layoutTopology, siteLabelRect } from '@/ui/canvas/layout';
 import { routeTopology, unionViewBox } from '@/ui/canvas/routing';
@@ -62,6 +62,60 @@ const act = (id: string, label: string, extra: Partial<BarAction> = {}): BarActi
 });
 
 /* ---------------- placement ---------------- */
+
+describe('the bar keeps off the rest of the drawing', () => {
+  it('uses the free ground around a small drawing rather than covering its neighbour', () => {
+    /* The classic shape: a 224-unit-tall drawing, the standby at the right,
+       the observer to its upper left. Clamped to the viewBox alone the bar
+       could only go beside the card -- over the observer. With the empty
+       stage below the drawing counted in, it hangs underneath. */
+    const view = { x: 0, y: 0, w: 1000, h: 224 };
+    const anchor = { x: 800, y: 110, w: 184, h: 72 };
+    const observer = { x: 400, y: 20, w: 184, h: 60 };
+    const size = { w: 170, h: 180 };
+    const tight = placeBar(anchor, size, view, [observer]);
+    expect(tight.beside).toBe(true);
+    const room = barRoom(view, { t: 150, r: 0, b: 200, l: 0 });
+    const roomy = placeBar(anchor, size, room, [observer]);
+    expect(roomy).toMatchObject({ y: 110 + 72 + 6, flipped: false });
+    expect(roomy.x + size.w).toBeLessThanOrEqual(room.x + room.w);
+  });
+
+  it('tries the other alignment, then the other side, before covering a card', () => {
+    const view = { x: 0, y: 0, w: 1000, h: 600 };
+    const anchor = { x: 300, y: 100, w: 184, h: 72 };
+    const size = { w: 240, h: 150 };
+    /* A card under the anchor's right end: left-aligned below would cover it,
+       right-aligned below clears it. */
+    const underRight = { x: 500, y: 190, w: 60, h: 60 };
+    const a = placeBar(anchor, size, view, [underRight]);
+    expect(a).toMatchObject({ x: 300 + 184 - 240, flipped: false });
+    /* A card under the whole anchor: above it, then. */
+    const under = { x: 0, y: 190, w: 1000, h: 60 };
+    const b = placeBar({ ...anchor, y: 300 }, size, view, [{ ...under, y: 390 }]);
+    expect(b.flipped).toBe(true);
+  });
+
+  it('covers as little as it can when everywhere covers something', () => {
+    const view = { x: 0, y: 0, w: 600, h: 600 };
+    const anchor = { x: 200, y: 250, w: 184, h: 72 };
+    const size = { w: 200, h: 150 };
+    const big = { x: 0, y: 0, w: 600, h: 240 };
+    const small = { x: 200, y: 330, w: 20, h: 20 };
+    const beside = { x: 390, y: 250, w: 210, h: 150 };
+    const at = placeBar(anchor, size, view, [big, small, beside]);
+    /* Below covers only the small card; above sits on the big one, the right
+       on the third, and the left has no room. */
+    expect(at.flipped).toBe(false);
+    expect(at.beside).toBeUndefined();
+  });
+
+  it('grows the room by the measured margins, and not at all without them', () => {
+    const view = { x: -10, y: 5, w: 100, h: 50 };
+    expect(barRoom(view, { t: 0, r: 0, b: 0, l: 0 })).toEqual(view);
+    expect(barRoom(view, { t: 1, r: 2, b: 3, l: 4 })).toEqual({ x: -14, y: 4, w: 106, h: 54 });
+  });
+});
 
 describe('the bar is placed inside the view, always', () => {
   const view = { x: 0, y: 0, w: 1000, h: 400 };
