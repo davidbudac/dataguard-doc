@@ -906,12 +906,23 @@ does was taken away; what went was the second and third copy of it around the ed
   drawing inside a wrap of the same size. Where the stage is exactly the drawing's
   height (Break at 1280×720) there is no ground to use and the bar may still cover a
   card.
+- **A new standby arrives with the transport its protection mode wants.** `addDatabase`
+  wrote `LogXptMode` ASYNC unconditionally, so in MAXAVAILABILITY (and MAXPROTECTION)
+  every `+ Standby` raised `XPT.TABLE_4_2` the moment it landed. `transportForMode`
+  (`inspector/edits.ts`) gives SYNC for maximum protection and availability and ASYNC
+  for maximum performance — broker Table 4-2's row. And `shipRedo` now names ASYNC on
+  every cascaded leg instead of copying the receiver's LogXptMode: real-time cascading
+  needs the attribute explicit (facts A5, B2), every worked example writes it
+  (`(North_Sales : South_Sales ASYNC)`), and a SYNC receiver would otherwise turn the
+  line into `ROUTES.CASCADE_SYNC_UNDOC` / `FARSYNC_ONWARD_SYNC_UNDOC`. Checked across
+  all eleven presets: neither `+ Standby` nor a line from a non-primary onto a data
+  centre adds an error or a warning.
 - A row set straight into a rail group (`.grp>.rr-line`, `.grp>.rr-dest` — the
   observer's *Make it the master*, a member's instances) now sits inside the gutter.
 
 Tests: `test/ui/inspector.test.ts` (*adding happens in one place*), `build-actions.test.ts`
 (the header's Remove against the table), `canvas-actions.test.ts` (*the bar keeps off
-the rest of the drawing*).
+the rest of the drawing*), `canvas-gestures.test.ts` (*a new standby does not arrive broken*).
 
 ## 4. Topology canvas
 

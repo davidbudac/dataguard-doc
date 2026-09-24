@@ -15,10 +15,12 @@
 
 import { beforeEach, describe, expect, it } from 'vitest';
 import { h, render } from 'preact';
-import { linkId, memberId, siteId } from '@/engine';
+import { linkId, memberId, siteId, validate } from '@/engine';
 import type { TopologyDoc } from '@/engine';
 import { App } from '@/ui/App';
-import { classicDoc, doc as docSignal } from '@/state/doc';
+import { classicDoc, doc as docSignal, makeDoc } from '@/state/doc';
+import { PRESETS } from '@/presets';
+import { connectFromCanvas } from '@/ui/canvas/CanvasSlot';
 import { edit, resetHistory, undo, undoLabel, undoStack } from '@/state/history';
 import { menuOpen } from '@/ui/canvas/EventMenu';
 import { barOpen, closeBar } from '@/ui/canvas/bar';
@@ -26,6 +28,7 @@ import { fitZoom } from '@/ui/canvas/zoom';
 import { mode, selection, toast, viewport } from '@/state/view';
 import {
   addDatabase, addFsfoTarget, addInstance, addObserver, addSite, moveToSite, shipRedo,
+  transportForMode,
 } from '@/ui/inspector/edits';
 import { actionsForKey, runAction } from '@/ui/break/events';
 import { farSyncFixture } from './canvas-fixtures';
@@ -139,12 +142,15 @@ describe('shipRedo: a line from one member to another', () => {
     expect(toast.value?.text).toContain('already ships');
   });
 
-  it('gives a standby an (ANY : target) rule with the target\'s transport named', () => {
+  it('gives a standby an (ANY : target ASYNC) rule, whatever the target\'s own transport', () => {
     const id = addDatabase()!;
+    /* In MAXAVAILABILITY the new standby arrives as SYNC; the cascaded leg is
+       still named ASYNC, which is what real-time cascading needs. */
+    expect(member(id as string).logXptMode).toBe('SYNC');
     shipRedo(memberId('sby01'), id);
     const m = member('sby01');
     expect(m.redoRoutes).toEqual([
-      { source: 'ANY', groups: [{ dests: [{ target: id, xpt: member(id as string).logXptMode }] }] },
+      { source: 'ANY', groups: [{ dests: [{ target: id, xpt: 'ASYNC' }] }] },
     ]);
     expect(m.dests).toHaveProperty(id as string);
     expect(undoLabel.value).toBe(`Ship redo from sby01 to ${id as string}`);
@@ -469,4 +475,33 @@ describe('Break: restoring a cut link', () => {
     runAction(mark);
     expect(observer('obs01').running).toBe(true);
   });
+});
+
+describe('a new standby does not arrive broken', () => {
+  /* The page used to add every standby as ASYNC, so in maximum availability
+     the drawing raised an error the moment a reader pressed "+ Standby". */
+  const loud = (): string[] => validate(topo())
+    .filter((f) => f.severity !== 'info')
+    .map((f) => `${f.id} ${f.subject.id ?? ''}`);
+
+  it('takes the transport broker Table 4-2 gives for the protection mode', () => {
+    expect(transportForMode('MAXPROTECTION')).toBe('SYNC');
+    expect(transportForMode('MAXAVAILABILITY')).toBe('SYNC');
+    expect(transportForMode('MAXPERFORMANCE')).toBe('ASYNC');
+  });
+
+  for (const p of PRESETS) {
+    it(`adds no error or warning in ${p.id}, by + Standby or by a line onto a data centre`, () => {
+      resetHistory(makeDoc({ ...p.doc(), events: [] }));
+      const before = loud();
+      addDatabase();
+      expect(loud().filter((x) => !before.includes(x))).toEqual([]);
+
+      resetHistory(makeDoc({ ...p.doc(), events: [] }));
+      const sender = topo().members.find((m) => !(m.kind === 'database' && m.role === 'primary'));
+      if (sender === undefined) return;
+      connectFromCanvas(sender.id as string, topo().sites.at(-1)!.id as string);
+      expect(loud().filter((x) => !before.includes(x))).toEqual([]);
+    });
+  }
 });

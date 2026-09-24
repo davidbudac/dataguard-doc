@@ -171,6 +171,18 @@ function withHost(t: TopologyDoc, name: string, site: SiteId): TopologyDoc {
  * done. A data centre this document does not have is not one to put anything
  * in, so it falls back rather than writing a dangling host.
  */
+/**
+ * The transport a new standby arrives with: the one broker Table 4-2 gives
+ * for the configuration's protection mode -- SYNC for maximum protection and
+ * maximum availability, ASYNC for maximum performance. A fixed ASYNC made
+ * every standby added to a MAXAVAILABILITY drawing an error the moment it
+ * landed, which is the page contradicting itself rather than teaching
+ * anything. The reader can still pick another in the rail or the bar.
+ */
+export function transportForMode(mode: TopologyDoc['config']['protectionMode']): XptMode {
+  return mode === 'MAXPERFORMANCE' ? 'ASYNC' : 'SYNC';
+}
+
 export function addDatabase(where?: SiteId): MemberId | null {
   const t = doc.value.topology;
   const site = placeIn(t, where) ?? siteForNewMember(t);
@@ -184,7 +196,7 @@ export function addDatabase(where?: SiteId): MemberId | null {
       id, kind: 'database', name,
       instances: [{ name, host: hostId(hname) }],
       connectIdentifier: name, enabled: true,
-      dests: {}, redoRoutes: [], logXptMode: 'ASYNC',
+      dests: {}, redoRoutes: [], logXptMode: transportForMode(cur.config.protectionMode),
       role: 'physical', flashbackOn: false,
       applyLagSeconds: 0, transportLagSeconds: 0,
       applyRunning: true, realTimeApply: true,
@@ -765,12 +777,15 @@ export function shipRedo(from: MemberId, to: MemberId): void {
   if (receiver.kind === 'database' && receiver.role === 'snapshot') {
     toast.value = { kind: 'warn', text: `${to as string} is a snapshot standby: it receives redo but applies none until it is converted back.` };
   }
-  /* A cascaded destination names its transport: the ASYNC attribute has to be
-     explicit for real-time cascading (ROUTES.CASCADE_RT_ASYNC), and the
-     receiver's LogXptMode is what it would have fallen back to anyway. */
+  /* A cascaded destination names ASYNC: the attribute has to be explicit for
+     real-time cascading (ROUTES.CASCADE_RT_ASYNC), and every cascaded leg in
+     Oracle's worked examples is written that way -- `(North_Sales :
+     South_Sales ASYNC)` on a far sync. Falling back to the receiver's
+     LogXptMode stopped being harmless once a new standby arrives as SYNC in
+     maximum availability (`transportForMode`). */
   const dest: RouteDest = sender.id === primary.id
     ? { target: to }
-    : { target: to, xpt: receiver.logXptMode };
+    : { target: to, xpt: 'ASYNC' };
   const routes = routesWith(sender, primary.id, dest);
   if (routes === sender.redoRoutes) {
     toast.value = {
