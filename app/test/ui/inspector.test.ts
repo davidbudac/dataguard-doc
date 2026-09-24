@@ -24,14 +24,12 @@ import {
   toast, viewport,
 } from '@/state/view';
 import { CanvasSlot } from '@/ui/canvas/CanvasSlot';
-import { addOpen, Inspector } from '@/ui/inspector/Inspector';
+import { Inspector } from '@/ui/inspector/Inspector';
 import { IssuePanel, revealFindings } from '@/ui/IssuePanel';
 import {
   addDatabase, addFarSync, addLink, addObserver, addSite, removeSite, renameMember, setPrimary,
 } from '@/ui/inspector/edits';
-import {
-  ADD_ACTIONS, AddToolbar, WHY_NO_SITE, WHY_ONE_SITE, WHY_SAME_SITE,
-} from '@/ui/inspector/adds';
+import { ADD_ACTIONS, AddToolbar, WHY_NO_SITE, WHY_ONE_SITE } from '@/ui/inspector/adds';
 import {
   DEFAULT_OPEN, isSectionOpen, openSections, resetSections, SECTION_IDS, sectionOfRule, SUMMARY_ID,
 } from '@/ui/inspector/sections';
@@ -95,7 +93,6 @@ beforeEach(() => {
   mode.value = 'build';
   edition.value = '19c';
   notesOpen.value = false;
-  addOpen.value = false;
   toast.value = null;
   lessonId.value = null;
   lessonStep.value = 0;
@@ -343,19 +340,18 @@ describe('the foldable configuration groups', () => {
   });
 });
 
-describe('the three ways to add something', () => {
-  const RAIL = ADD_ACTIONS.map((a) => a.label);
-
-  it('opens the empty rail on the palette, above the folded summary', async () => {
-    /* `Start here` -- three numbered sentences repeating the guidance line --
-       is gone, and the summary table is behind a fold: what a reader arrives
-       to do is the first thing the rail offers (ui.md SS3f). */
+describe('adding happens in one place', () => {
+  it('opens the empty rail on the folded summary, with nothing to add there', async () => {
+    /* The rail used to open on a palette of the same four buttons the toolbar
+       over the drawing carries, and a selected card's header had a third copy
+       behind `Add`. The toolbar is the one surface now (ui.md SS3i). */
     const root = mount(Inspector);
     await tick();
     const eyebrows = [...root.querySelectorAll('.eyebrow')].map((el) => el.textContent);
-    expect(eyebrows.slice(0, 2)).toEqual(['Add', SUMMARY_ID]);
-    expect(eyebrows).not.toContain('Start here');
+    expect(eyebrows[0]).toBe(SUMMARY_ID);
+    expect(eyebrows).not.toContain('Add');
     expect(root.querySelector('.sum')).toBeNull();
+    expect(root.querySelector('.pal')).toBeNull();
   });
 
   it('opens that summary when the reader asks for the explanations', async () => {
@@ -371,14 +367,10 @@ describe('the three ways to add something', () => {
     hintsOn.value = false;
   });
 
-  it('offers the same four labels in the rail and on the drawing', async () => {
-    const rail = mount(Inspector);
-    await tick();
-    expect(buttonLabels(rail, '.pal .btn')).toEqual([...RAIL, '+ Host', '+ Link']);
+  it('offers the four additions on the drawing, each saying what it does', async () => {
     const stage = mountWith(AddToolbar, { doc: doc.value.topology });
     await tick();
     expect(buttonLabels(stage, '.cv-add .btn')).toEqual(ADD_ACTIONS.map((a) => a.short));
-    /* Every toolbar button says what it will do, and none of them is mute. */
     for (const b of stage.querySelectorAll<HTMLButtonElement>('.cv-add .btn')) {
       expect(b.getAttribute('title')).toBeTruthy();
       expect(b.disabled).toBe(false);
@@ -386,7 +378,7 @@ describe('the three ways to add something', () => {
     expect(stage.querySelector('.cv-add')?.getAttribute('role')).toBe('toolbar');
   });
 
-  it('refuses in the same words on both surfaces when there is no data centre', async () => {
+  it('refuses in words when there is no data centre', async () => {
     const base = classicDoc();
     const bare = { ...base.topology, sites: [], hosts: [], links: [], members: [], observers: [] };
     resetHistory({ ...base, topology: bare, layout: {} });
@@ -401,27 +393,36 @@ describe('the three ways to add something', () => {
     }
     /* A data centre is the one addition that never needs one. */
     expect(buttonLabels(stage, '.cv-add .btn:not(:disabled)')).toEqual(['+ Data centre']);
-
-    const rail = mount(Inspector);
-    await tick();
-    const reasons = new Map(
-      [...rail.querySelectorAll<HTMLButtonElement>('.pal .btn')]
-        .filter((b) => b.disabled)
-        .map((b) => [b.textContent ?? '', b.parentElement?.querySelector('.why')?.textContent ?? '']),
-    );
-    /* The three above, plus `+ Host` with nowhere to put one; `+ Link` refuses
-       for its own reason, which it keeps. */
-    expect([...reasons.keys()].sort())
-      .toEqual(['+ Far sync instance', '+ Host', '+ Link', '+ Observer', '+ Standby database']);
-    expect(reasons.get('+ Standby database')).toBe(WHY_NO_SITE);
-    expect(reasons.get('+ Host')).toBe(WHY_NO_SITE);
-    /* Not WHY_SAME_SITE, which was what it used to say here: nobody picked the
-       same data centre twice. With none at all it is the same sentence the
-       other four give -- WHY_ONE_SITE would imply there is a first. */
-    expect(reasons.get('+ Link')).toBe(WHY_NO_SITE);
   });
 
-  it('refuses `+ Link` on a one-data-centre document rather than writing a blank end', async () => {
+  it('links a data centre from its own form, to each one it is not linked to yet', async () => {
+    const base = classicDoc();
+    const t = base.topology;
+    resetHistory({
+      ...base,
+      topology: { ...t, links: t.links.filter((l) => (l.id as string) !== 'dc2-dc3') },
+      layout: {},
+    });
+    selection.value = ['dc2'];
+    const root = mount(Inspector);
+    await tick();
+    const rows = () => [...root.querySelectorAll<HTMLElement>('.rr-dest')]
+      .filter((r) => r.querySelector('.btn')?.textContent === '+ Link' || r.querySelector('.tag')?.textContent === 'linked');
+    const nameOf = (id: string): string => t.sites.find((x) => (x.id as string) === id)?.name ?? id;
+    const rowFor = (id: string) => rows().find((r) => r.querySelector('.mono')?.textContent === nameOf(id));
+    expect(rowFor('dc1')?.querySelector('.tag')?.textContent).toBe('linked');
+    const add = rowFor('dc3')?.querySelector<HTMLButtonElement>('.btn');
+    expect(add?.textContent).toBe('+ Link');
+    expect(add?.getAttribute('title')).toBeTruthy();
+    add?.click();
+    await tick();
+    expect(doc.value.topology.links.some((l) => l.scope === 'site'
+      && (l.ends as [string, string]).includes('dc2') && (l.ends as [string, string]).includes('dc3'))).toBe(true);
+    /* The new link is selected, so its round trip is the next thing in reach. */
+    expect(selection.value).toEqual(['dc2-dc3']);
+  });
+
+  it('says a lone data centre has nothing to link to, rather than offering a blank end', async () => {
     const base = classicDoc();
     const one = {
       ...base.topology,
@@ -429,83 +430,11 @@ describe('the three ways to add something', () => {
       hosts: [], links: [], members: [], observers: [],
     };
     resetHistory({ ...base, topology: one, layout: {} });
-
-    const rail = mount(Inspector);
+    selection.value = [one.sites[0]!.id as string];
+    const root = mount(Inspector);
     await tick();
-    const link = [...rail.querySelectorAll<HTMLButtonElement>('.pal .btn')]
-      .find((b) => b.textContent === '+ Link');
-    expect(link?.disabled).toBe(true);
-    expect(link?.parentElement?.querySelector('.why')?.textContent).toBe(WHY_ONE_SITE);
-    /* The picker still has nothing to point at -- there genuinely is no second
-       data centre -- but the blank is now accounted for by the sentence under
-       the button beside it, rather than sitting next to a live control. */
-    const to = rail.querySelector<HTMLSelectElement>('select[aria-label="to"]');
-    expect(to?.value).toBe('');
-
-    link?.click();
-    await tick();
-    expect(doc.value.topology.links).toEqual([]);
-  });
-
-  it('keeps the data centre the reader picked, and says why it will not link it to itself', async () => {
-    const rail = mount(Inspector);
-    await tick();
-    const to = () => rail.querySelector<HTMLSelectElement>('select[aria-label="to"]');
-    const link = () => [...rail.querySelectorAll<HTMLButtonElement>('.pal .btn')]
-      .find((b) => b.textContent === '+ Link');
-    expect(to()?.value).toBe('dc2');
-
-    /* Naming `from` on both sides is a thing the reader may do, and a select
-       that quietly shows something else instead is worse than a refusal: the
-       pick stands, and the button beside it states the rule. */
-    const sel = to() as HTMLSelectElement;
-    sel.value = 'dc1';
-    sel.dispatchEvent(new Event('change', { bubbles: true }));
-    await tick();
-    expect(to()?.value).toBe('dc1');
-    expect(link()?.disabled).toBe(true);
-    expect(link()?.parentElement?.querySelector('.why')?.textContent).toBe(WHY_SAME_SITE);
-
-    const before = doc.value.topology.links.length;
-    link()?.click();
-    await tick();
-    expect(doc.value.topology.links).toHaveLength(before);
-  });
-
-  it('follows the document when a data centre a picker named is removed', async () => {
-    const rail = mount(Inspector);
-    await tick();
-    const to = () => rail.querySelector<HTMLSelectElement>('select[aria-label="to"]');
-    expect(to()?.value).toBe('dc2');
-
-    /* dc2 goes from underneath the open palette. The picker must not be left
-       naming it: a select whose value is not among its options renders blank,
-       and `+ Link` beside it would re-create a link to a site that is gone. */
-    removeSite(siteId('dc2'));
-    clearSelection();
-    await tick();
-    const opts = [...(to()?.options ?? [])].map((o) => o.value);
-    expect(opts).not.toContain('dc2');
-    expect(opts).toContain(to()?.value as string);
-
-    const link = [...rail.querySelectorAll<HTMLButtonElement>('.pal .btn')]
-      .find((b) => b.textContent === '+ Link');
-    link?.click();
-    await tick();
-    for (const l of doc.value.topology.links) {
-      for (const end of l.ends as [string, string]) {
-        expect(doc.value.topology.sites.some((s) => (s.id as string) === end)
-          || doc.value.topology.hosts.some((h) => (h.id as string) === end)).toBe(true);
-      }
-    }
-  });
-
-  it('gives every add control a title, on both surfaces', async () => {
-    const rail = mount(Inspector);
-    await tick();
-    for (const b of rail.querySelectorAll<HTMLButtonElement>('.pal .btn')) {
-      expect(b.getAttribute('title'), b.textContent ?? '').toBeTruthy();
-    }
+    expect(root.textContent).toContain(WHY_ONE_SITE);
+    expect(buttonLabels(root, '.btn')).not.toContain('+ Link');
   });
 
   it('is one tab stop with arrow keys, which is what `role="toolbar"` promises', async () => {
@@ -562,45 +491,29 @@ describe('the three ways to add something', () => {
     expect(stage.querySelector('.cv-add')).toBeNull();
   });
 
-  it('keeps the way to add things reachable while a card is selected', async () => {
+  it('puts the removal in the header, beside the name, and nothing to add', async () => {
     selection.value = ['sby01'];
     const root = mount(Inspector);
     await tick();
-    /* The palette is not in the rail -- the member's properties are -- but the
-       header offers it without clearing the selection first. */
+    const head = buttonLabels(root, '.insp-hd .btn');
+    expect(head).toContain('Remove');
+    expect(head).toContain('Clear');
+    expect(head.some((l) => l.startsWith('Add'))).toBe(false);
     expect(root.querySelector('.pal')).toBeNull();
-    const tog = [...root.querySelectorAll<HTMLButtonElement>('.insp-hd .btn')]
-      .find((b) => (b.textContent ?? '').startsWith('Add'));
-    expect(tog).toBeDefined();
-    expect(tog?.getAttribute('aria-expanded')).toBe('false');
-    /* No `aria-controls`: the palette is genuinely absent while this is shut,
-       so the reference would name nothing. `Fold` does it the same way. */
-    expect(tog?.hasAttribute('aria-controls')).toBe(false);
-
-    tog?.click();
+    [...root.querySelectorAll<HTMLButtonElement>('.insp-hd .btn')]
+      .find((b) => b.textContent === 'Remove')?.click();
     await tick();
-    const menu = root.querySelector<HTMLElement>('#insp-add');
-    expect(menu).not.toBeNull();
-    expect(root.querySelector('.insp-hd .btn[aria-expanded="true"]')).not.toBeNull();
-    /* The same labels, because it is the same table of actions. */
-    expect(buttonLabels(menu as HTMLElement, '.pal .btn')).toEqual([...RAIL, '+ Host', '+ Link']);
-    expect(selection.value).toEqual(['sby01']);
+    expect(doc.value.topology.members.map((m) => m.id as string)).not.toContain('sby01');
   });
 
-  it('adds from the menu and folds itself away again', async () => {
-    selection.value = ['sby01'];
+  it('says under the header why a removal is refused', async () => {
+    selection.value = ['prm01'];
     const root = mount(Inspector);
     await tick();
-    addOpen.value = true;
-    await tick();
-    const before = doc.value.topology.members.length;
-    const add = [...root.querySelectorAll<HTMLButtonElement>('#insp-add .pal .btn')]
-      .find((b) => b.textContent === '+ Standby database');
-    add?.click();
-    await tick();
-    expect(doc.value.topology.members).toHaveLength(before + 1);
-    expect(addOpen.value).toBe(false);
-    expect(root.querySelector('#insp-add')).toBeNull();
+    const btn = [...root.querySelectorAll<HTMLButtonElement>('.insp-hd .btn')]
+      .find((b) => b.textContent === 'Remove');
+    expect(btn?.disabled).toBe(true);
+    expect(root.querySelector('.insp-why .why')?.textContent).toBeTruthy();
   });
 });
 
@@ -709,25 +622,6 @@ describe('the palette', () => {
     const before = doc.value.topology.links.length;
     expect(addLink(siteId('dc1'), siteId('nowhere'))).toBeNull();
     expect(doc.value.topology.links).toHaveLength(before);
-  });
-
-  it('folds the header disclosure away when the selection moves to another card', async () => {
-    selection.value = ['sby01'];
-    const root = mount(Inspector);
-    await tick();
-    const tog = () => [...root.querySelectorAll<HTMLButtonElement>('.insp-hd .btn')]
-      .find((b) => (b.textContent ?? '').startsWith('Add'));
-    tog()?.click();
-    await tick();
-    expect(root.querySelector('#insp-add')).not.toBeNull();
-
-    /* A palette opened over sby01 is not a palette opened over prm01: its own
-       header names the subject it sits under. */
-    selection.value = ['prm01'];
-    await tick();
-    expect(addOpen.value).toBe(false);
-    expect(root.querySelector('#insp-add')).toBeNull();
-    expect(tog()?.getAttribute('aria-expanded')).toBe('false');
   });
 });
 

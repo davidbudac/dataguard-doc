@@ -1,16 +1,16 @@
 /**
- * One data centre: its label, the hosts standing in it, and the removal.
+ * One data centre: its label, the hosts standing in it, and its links.
  *
- * A site is the one subject whose removal is refused by what is *inside* it
- * rather than by what it is -- so the Remove button here is the Build table's
- * own entry (`build/actions`), the same object the Delete key presses on the
- * drawing, and the two cannot come to disagree about `WHY.siteHasHosts`.
+ * `+ Host` and `+ Link` used to be pickers on the empty rail, asking which data
+ * centre before the button meant anything. Selecting the data centre *is*
+ * naming it, so both live here now. The removal is in the rail's header, like
+ * every other subject's (`Inspector.tsx`).
  */
 
 import type { Site, TopologyDoc } from '@/engine';
-import { removeAction } from '../build/actions';
 import { Action, Group, Note, Text } from './controls';
-import { addHost, mutate, removeHost } from './edits';
+import { addHost, addLink, mutate, removeHost } from './edits';
+import { WHY_ONE_SITE } from './adds';
 import { off, ON, WHY } from './why';
 
 export interface SiteFormProps {
@@ -23,7 +23,10 @@ export function SiteForm({ site, doc }: SiteFormProps) {
   const used = new Set<string>();
   for (const m of doc.members) for (const i of m.instances) used.add(i.host as string);
   for (const o of doc.observers) used.add(o.host as string);
-  const remove = removeAction(doc, site.id as string);
+  const others = doc.sites.filter((s) => s.id !== site.id);
+  const linked = (o: Site): boolean => doc.links.some((l) => l.scope === 'site'
+    && (l.ends as [string, string]).includes(site.id as string)
+    && (l.ends as [string, string]).includes(o.id as string));
   return (
     <>
       <Group title="Data centre">
@@ -42,6 +45,7 @@ export function SiteForm({ site, doc }: SiteFormProps) {
         action={<Action label="+ Host" onClick={() => addHost(site.id)} />}
       >
         {hosts.length === 0 ? <Note always>No hosts in this data centre yet.</Note> : null}
+        <div class="site-rows">
         {hosts.map((h) => (
           <div class="rr-dest" key={h.id as string}>
             <span class="mono">{h.name}</span>
@@ -53,12 +57,27 @@ export function SiteForm({ site, doc }: SiteFormProps) {
             />
           </div>
         ))}
+        </div>
       </Group>
-      <Group title="This data centre">
-        <div class="rr-line">
-          {remove === null ? null : (
-            <Action label={remove.label} enabled={remove.enabled} onClick={remove.run} />
-          )}
+      {/* The keyboard's way to a site link; a pointer can also draw one from
+          the port beside the name on the drawing. */}
+      <Group title="Links">
+        {others.length === 0 ? <Note always>{WHY_ONE_SITE}</Note> : null}
+        <div class="site-rows">
+        {others.map((o) => (
+          <div class="rr-dest" key={o.id as string}>
+            <span class="mono">{o.name}</span>
+            {linked(o) ? (
+              <span class="tag t-sl">linked</span>
+            ) : (
+              <Action
+                label="+ Link"
+                title={`Add a site link from ${site.name} to ${o.name}, at zero round trip.`}
+                onClick={() => addLink(site.id, o.id)}
+              />
+            )}
+          </div>
+        ))}
         </div>
       </Group>
     </>

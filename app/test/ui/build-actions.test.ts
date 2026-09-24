@@ -40,9 +40,11 @@ const linkRtt = (id: string): number =>
   topo().links.find((l) => (l.id as string) === id)!.rttMs;
 
 /** A button in the rail, found by the words on it, with its reason beside it. */
+/* The rail's Remove sits in its header and reads "Remove"; the table's full
+   label ("Remove sby01") is its title. */
 const byLabel = (root: HTMLElement, label: string): HTMLButtonElement | undefined =>
-  [...root.querySelectorAll<HTMLButtonElement>('button.btn')]
-    .find((b) => b.textContent === label);
+  [...root.querySelectorAll<HTMLButtonElement>('.insp-hd button.btn')]
+    .find((b) => b.title === label && b.textContent === 'Remove');
 
 beforeEach(() => {
   document.body.innerHTML = '';
@@ -72,7 +74,7 @@ describe('the rail and the table state one removal', () => {
       await tick();
       const button = byLabel(root, action!.label);
       expect(button, `no Remove button labelled ${action!.label}`).not.toBeUndefined();
-      const why = button!.parentElement?.querySelector('.why')?.textContent ?? null;
+      const why = root.querySelector('.insp-why .why')?.textContent ?? null;
       const rendered = button!.disabled
         ? { state: 'off', why: why ?? '' }
         : { state: 'on' };

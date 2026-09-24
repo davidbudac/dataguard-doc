@@ -867,6 +867,36 @@ the gestures were all there and the page was still clumsy to use. Where §3d or 
 
 Tests: `test/ui/canvas-controls.test.ts`.
 
+## 3i. A leaner Build (as built, 2026-09-24)
+
+The owner's ask: *"improve how the user works with the diagram when building …
+simplify it a little bit, but not too much, just make it lean."* Nothing the drawing
+does was taken away; what went was the second and third copy of it around the edges.
+
+- **One place adds.** The toolbar over the drawing. The empty rail's palette (the same
+  four buttons, 2×2) and the `Add ▸` disclosure in a selected subject's header are
+  gone, and so is `addOpen`. `+ Host` was already on a data centre's form; `+ Link`
+  moved there too, one row per other data centre (`linked`, or `+ Link`), which is the
+  keyboard's way to a site link beside the port a pointer drags. The two pickers it
+  replaces asked "which data centre?" of a reader who could simply select one.
+- **Remove lives in the rail's header**, beside the name it would remove and `Clear`,
+  reading `Remove` with the table's full label (`Remove sby01`) as its `title`. It is
+  still `removeAction` — the same object the Delete key and the action bar press. A
+  refusal is set on its own row under the header (`.insp-why`), because a sentence in
+  the header's button row pushed `Clear` off a 360 px rail. The four footer groups
+  that used to carry it (*This member / observer / link / data centre*) are gone; the
+  observer's and the link's notes moved up into their forms' main group.
+- **A healthy configuration's validation panel is one line**: "No errors and no
+  warnings, as modelled here · 3 notes", and that line is the notes' toggle. The
+  empty-state sentence under it and the separate notes toggle said the same thing
+  twice more. With an error or a warning the panel is what it was (§3g).
+- **The guidance line leads with the gestures that were hardest to find**: drag a
+  `+` button onto a data centre, drag a card's ⊕ onto another, click to edit. Rename,
+  `⋯` and where the properties live ride with `Hints`.
+
+Tests: `test/ui/inspector.test.ts` (*adding happens in one place*), `build-actions.test.ts`
+(the header's Remove against the table).
+
 ## 4. Topology canvas
 
 **Node card** (generalised `nodeCard`): flat `--sf` rect, hairline, rx 5, badge rx 7 centred; role word / host mono (19-char elision, full value in aria) / subtitle; width clamp(184, measured, 260); height 72 (3-line DB) / 52 (observer). Glyphs: db cylinder, observer eye, far sync = cylinder + chevron (no base), snapshot = cylinder + shutter tick. RAC `⌗2` chip top-right (absent = single instance, legend says so once). Master observer `MASTER` violet chip only while FSFO is enabled ("all observers have the same functionality" when disabled); observe-only slate chip. Break-mode state: phase tint fill/border; down = hatch + red border; crashed host = two-stroke red cross on the name line; stalled primary = red border, no cross.

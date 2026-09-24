@@ -1,26 +1,25 @@
 /**
- * Adding to the configuration, written once and offered in three places.
+ * Adding to the configuration: the toolbar along the top of the drawing.
  *
- * The rail's palette, the toolbar along the top of the drawing and the
- * `Add` disclosure in the inspector's header are three surfaces over one
- * table. That is the point of this module: a label, a tooltip and above all a
- * *refusal* is stated once, so the drawing and the rail can never disagree
- * about whether a standby can be added or about why it cannot.
+ * It used to be one table offered in three places -- a palette on the empty
+ * rail, an `Add` disclosure in the rail's header, and this toolbar. Three
+ * surfaces for four buttons was the clutter, so the toolbar is the one place
+ * that adds (ui.md SS3i). `+ Host` lives on a data centre's form and a site
+ * link on its form or its port, because both need a data centre named first.
  *
  * Every entry carries the reason it would be grey rather than a boolean, so a
- * dead button in any of the three surfaces is impossible to write here -- the
- * `WhyState` union does not admit an `off` with nothing to say.
+ * dead button is impossible to write here -- the `WhyState` union does not
+ * admit an `off` with nothing to say.
  */
 
 import type { JSX } from 'preact';
-import { useRef, useState } from 'preact/hooks';
+import { useRef } from 'preact/hooks';
 import type { SiteId, TopologyDoc } from '@/engine';
 import { siteId as toSiteId } from '@/engine';
 import { WhyPill } from '../common/WhyPill';
 import type { WhyState } from '../common/WhyPill';
 import { useRovingToolbar } from '../common/useRovingToolbar';
-import { Action, Note, Pick } from './controls';
-import { addDatabase, addFarSync, addHost, addLink, addObserver, addSite } from './edits';
+import { addDatabase, addFarSync, addObserver, addSite } from './edits';
 import { off, ON } from './why';
 import { toast } from '@/state/view';
 import { endPlacing, placeOver, placing, renaming, siteAt } from '../canvas/place';
@@ -32,14 +31,7 @@ import { endPlacing, placeOver, placing, renaming, siteAt } from '../canvas/plac
  * button that silently does nothing is the one thing this page may not do.
  */
 export const WHY_NO_SITE = 'There is no data centre to put it in yet.';
-export const WHY_SAME_SITE = 'A link runs between two different data centres.';
-export const WHY_LINKED = 'These two data centres are linked already.';
-/**
- * A link needs two ends, and a one-data-centre configuration has one to offer.
- * `WHY_SAME_SITE` would be a lie here -- the reader has not picked the same
- * data centre twice, there is no second one to pick. `WHY_NO_SITE` covers the
- * rung below it, where there is not even a first.
- */
+/** A link needs two ends, and a one-data-centre configuration has one to offer. */
 export const WHY_ONE_SITE = 'A link needs a second data centre.';
 
 export interface AddAction {
@@ -106,108 +98,6 @@ export const ADD_ACTIONS: readonly AddAction[] = [
     enabled: () => ON,
   },
 ];
-
-/* ---------------- the rail's palette ---------------- */
-
-export interface AddPaletteProps {
-  doc: TopologyDoc;
-  /** Called after any addition -- the header's disclosure folds itself away. */
-  onAdded?: () => void;
-}
-
-/**
- * The palette itself, without a group header: the empty inspector wraps it in
- * one, and the header's `Add` disclosure wraps it in another. Both get the
- * same six controls, the same labels and the same refusals, because both get
- * this component.
- */
-export function AddPalette({ doc, onAdded }: AddPaletteProps) {
-  /* What the reader last chose is a *preference*, not the value: the document
-     moves underneath this palette -- undo, a removal, a step of a lesson --
-     and a picker still naming a data centre that has gone renders blank while
-     the button beside it stays live and writes a dangling end. So the value is
-     derived from the document every render, and the preference is honoured
-     only while the document still contains it. */
-  const [siteWant, setSite] = useState<string>(doc.sites[0]?.id as string ?? '');
-  const [fromWant, setFrom] = useState<string>(doc.sites[0]?.id as string ?? '');
-  const [toWant, setTo] = useState<string>(doc.sites[1]?.id as string ?? '');
-  const ids = doc.sites.map((s) => s.id as string);
-  const has = (v: string): boolean => ids.includes(v);
-  const site = has(siteWant) ? siteWant : (ids[0] ?? '');
-  const from = has(fromWant) ? fromWant : (ids[0] ?? '');
-  /* The fallback prefers a data centre that is not `from`, so the pair starts
-     and stays usable. It does *not* forbid the reader from naming `from` here:
-     a select that quietly shows something other than what was picked is worse
-     than one that takes the pick and says why it will not do -- and that is
-     what `WHY_SAME_SITE` is for. Only the *fallback* avoids it. */
-  const to = has(toWant) ? toWant : (ids.find((id) => id !== from) ?? '');
-  const siteOptions = doc.sites.map((s) => ({ value: s.id as string, label: s.name }));
-  const linked = doc.links.some((l) => l.scope === 'site'
-    && (l.ends as [string, string]).includes(from) && (l.ends as [string, string]).includes(to));
-  const done = (): void => onAdded?.();
-
-  return (
-    <>
-      {/* The four one-press additions, 2x2 and full width: they are the reason
-          the empty rail exists, and a row of four small buttons read as a
-          toolbar of the group above them rather than as the group's content
-          (ui.md SS3f). What each one does is still the button's `title`. */}
-      <div class="pal pal-adds">
-        {ADD_ACTIONS.map((a) => (
-          <Action
-            key={a.key}
-            label={a.label}
-            title={a.title}
-            enabled={a.enabled(doc)}
-            onClick={() => { a.run(); done(); }}
-          />
-        ))}
-      </div>
-      {/* The second rank, under a hairline: both of these need a data centre
-          named before the button means anything. */}
-      <div class="pal pal-more">
-        <Pick
-          name="Host in"
-          prose
-          value={site}
-          options={siteOptions}
-          onChange={setSite}
-        />
-        <Action
-          label="+ Host"
-          title="Add an empty host to that data centre, ready for a database or an observer."
-          enabled={site === '' ? off(WHY_NO_SITE) : ON}
-          onClick={() => { addHost(toSiteId(site)); done(); }}
-        />
-      </div>
-      <div class="pal">
-        <Pick name="Link from" prose value={from} options={siteOptions} onChange={setFrom} />
-        <Pick name="to" prose value={to} options={siteOptions} onChange={setTo} />
-        <Action
-          label="+ Link"
-          title="Add a site link between those two data centres, at zero round trip."
-          /* Four rungs, narrowest last. The first two used to be missing, so a
-             document with fewer than two data centres left `to` blank against
-             options that hold no blank -- and the button beside that blank was
-             live, and wrote an end no data centre answers to. */
-          enabled={ids.length === 0
-            ? off(WHY_NO_SITE)
-            : to === ''
-              ? off(WHY_ONE_SITE)
-              : from === to
-                ? off(WHY_SAME_SITE)
-                : linked ? off(WHY_LINKED) : ON}
-          onClick={() => { addLink(toSiteId(from), toSiteId(to)); done(); }}
-        />
-      </div>
-      <Note>
-        A new database lands in a data centre that has none, on a host of its own, and
-        the primary is given destination properties for it. A new observer gets a host of
-        its own too: an observer is never deployed on a database server or cluster.
-      </Note>
-    </>
-  );
-}
 
 /* ---------------- the toolbar above the drawing ---------------- */
 

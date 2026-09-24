@@ -139,6 +139,41 @@ export function IssuePanel() {
      the fact of them. `aria-controls` names the list it folds. */
   const summary = counts.length === 0 ? 'No errors and no warnings' : counts.join(' · ');
   const noteWord = notes.length === 0 ? null : `${notes.length} note${notes.length === 1 ? '' : 's'}`;
+
+  /* A healthy configuration is one line. The panel used to open on "No
+     errors and no warnings", then "No issues in this configuration" under
+     it, then the notes toggle under that -- three rows under the drawing to
+     say one thing. With nothing loud, the heading *is* the notes toggle. */
+  if (loud.length === 0) {
+    return (
+      <div class={`issues${open ? '' : ' is-folded'}`}>
+        <button
+          type="button"
+          class="issues-hd"
+          aria-expanded={notes.length === 0 ? undefined : open}
+          aria-controls={notes.length === 0 ? undefined : 'issues-body'}
+          disabled={notes.length === 0}
+          title={notes.length === 0 ? undefined : 'The notes: documented behaviour worth knowing'}
+          onClick={() => { notesOpen.value = !open; }}
+        >
+          <span class="notes-caret">{notes.length === 0 ? '' : open ? '▾' : '▸'}</span>
+          <span class="eyebrow">Validation</span>
+          <span class="caption">
+            {`${summary}, as modelled here`}
+            {noteWord === null ? '' : ` · ${noteWord}`}
+          </span>
+        </button>
+        {open && notes.length > 0 ? (
+          <div class="issues-body" id="issues-body">
+            {notes.map((f) => (
+              <Row key={`${f.id}:${f.subject.kind}:${f.subject.id ?? ''}`} f={f} />
+            ))}
+          </div>
+        ) : null}
+      </div>
+    );
+  }
+
   return (
     <div class={`issues${unfolded ? '' : ' is-folded'}`}>
       <button
@@ -158,16 +193,6 @@ export function IssuePanel() {
       </button>
       {unfolded ? (
         <div class="issues-body" id="issues-body">
-
-      {/* An empty list says something true rather than nothing at all -- and
-          says it once. One line: the eyebrow over it shouted NOTHING TO FIX
-          at a reader whose configuration is healthy, above a heading that had
-          already said "No errors and no warnings" (ui.md SS3f). */}
-      {loud.length === 0 ? (
-        <div class="empty">
-          <p>No issues in this configuration, as modelled here.</p>
-        </div>
-      ) : null}
 
       {loud.map((f) => (
         <Row key={`${f.id}:${f.subject.kind}:${f.subject.id ?? ''}`} f={f} />

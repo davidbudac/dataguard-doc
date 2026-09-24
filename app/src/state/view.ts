@@ -233,9 +233,8 @@ export function railWhere(v: Viewport = viewport.value): string {
 export function modeGuide(m: Mode, v: Viewport = viewport.value): string {
   switch (m) {
     case 'build':
-      return 'Click to select, drag to move, double-click to rename; '
-        + `the full properties are in ${railWhere(v)}, ⋯ or the right button opens its actions, `
-        + 'and a + button dragged onto a data centre adds there.';
+      return 'Drag a + button onto a data centre to add, drag a card’s ⊕ onto another to connect, click to edit; '
+        + `double-click renames, ⋯ or the right button opens its actions, and the full properties are in ${railWhere(v)}.`;
     case 'break':
       return 'Click a host to crash it or a link to cut it, or pick a scenario in the panel; '
         + 'the timeline below runs the clocks.';

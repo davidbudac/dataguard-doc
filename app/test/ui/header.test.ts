@@ -219,8 +219,8 @@ describe('the guidance line', () => {
     expect(line()).toBe(`Build · ${lead} ${rest}`);
     /* The second half is the second half of `modeGuide`, promoted to its own
        sentence -- nothing is dropped on the way. */
-    expect(modeGuide('build', 'wide')).toContain('a + button dragged onto a data centre adds there');
-    expect(line()).toContain('The full properties are in');
+    expect(modeGuide('build', 'wide')).toContain('Drag a + button onto a data centre to add');
+    expect(line()).toContain('the full properties are in');
 
     hintsOn.value = false;
     await tick();

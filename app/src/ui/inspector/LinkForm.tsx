@@ -10,8 +10,7 @@
  */
 
 import type { Link, TopologyDoc } from '@/engine';
-import { removeAction } from '../build/actions';
-import { Action, Check, Group, Note, Num } from './controls';
+import { Check, Group, Note, Num } from './controls';
 import { FieldNote } from '../common/Field';
 import { patchLink } from './edits';
 
@@ -32,7 +31,6 @@ export function LinkForm({ link, doc }: LinkFormProps) {
   const id = link.id;
   const a = endName(doc, link, 0);
   const b = endName(doc, link, 1);
-  const remove = removeAction(doc, id as string);
   return (
     <>
       <Group title={link.scope === 'site' ? 'Site link' : 'Host link'}>
@@ -97,14 +95,6 @@ export function LinkForm({ link, doc }: LinkFormProps) {
           <FieldNote always>
             Recorded for the socket-buffer arithmetic; nothing in the failure model reads it.
           </FieldNote>
-        </div>
-      </Group>
-
-      <Group title="This link">
-        <div class="rr-line">
-          {remove === null ? null : (
-            <Action label={remove.label} enabled={remove.enabled} onClick={remove.run} />
-          )}
         </div>
         <Note>
           Removing a link removes the path: two data centres with no link between them

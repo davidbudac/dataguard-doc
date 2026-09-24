@@ -32,7 +32,7 @@
   .ct-cite,.ct-ext,.lesson-fn a,.cb-claim a{overflow-wrap:anywhere}
   /* Gestures, not information: the clipboard button on a generated file and
      the palette that adds members to a configuration nobody can edit here. */
-  .cb-hd .ctl-off,.pal{display:none}
+  .cb-hd .ctl-off{display:none}
   /* The drawing's own action bar: six buttons about whatever was selected when
      the printout was taken, which is a gesture, not a fact about the
      deployment. `canvas.css` drops it too; this is the sheet that says what

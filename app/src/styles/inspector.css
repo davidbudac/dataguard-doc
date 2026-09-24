@@ -18,8 +18,11 @@
 .insp-acts{display:flex;align-items:center;gap:8px;flex:0 0 auto;margin-left:auto}
 .insp-hd .title{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 /* The rail header is the one row where the shell's button padding does not
-   fit: `Hints`, `Add` and `Clear` beside a name inside 360 px. */
+   fit: `Hints`, `Remove` and `Clear` beside a name inside 360 px. */
 .insp-hd .btn{padding:5px 10px;font-size:11px}
+/* A refused Remove says why on the row under the header. */
+.insp-why{margin:0;padding:10px var(--gut);border-bottom:1px solid var(--ln)}
+.insp-why .why{display:inline-block;border-radius:8px}
 
 /* The `Hints` switch: the quietest control in the header until it is on, when
    it takes the accent it is turning on elsewhere. It is a toggle, not a
@@ -101,6 +104,8 @@ input[type="range"].field-in:focus-visible{outline:2px solid var(--fc);outline-o
 .rr-dest .field-in{width:auto;min-width:104px;flex:0 1 auto}
 .rr-dest .mono{font-size:12px;color:var(--ik)}
 .rr-text{font-size:12px}
+/* A data centre's hosts and links: one row each, inside the rail's gutter. */
+.site-rows{display:flex;flex-direction:column;gap:6px;padding:0 var(--gut) 12px}
 
 /* ---------------- destinations ---------------- */
 
@@ -118,36 +123,6 @@ input[type="range"].field-in:focus-visible{outline:2px solid var(--fc);outline-o
 .sum dt{font-size:11px;font-family:var(--mono);letter-spacing:.1em;text-transform:uppercase;
   color:var(--ik3)}
 .sum dd{margin:0;font-size:12.5px;color:var(--ik);overflow-wrap:anywhere}
-
-/* ---------------- the palette ---------------- */
-
-.pal{display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap;
-  padding:2px var(--gut) 10px}
-.pal .field{padding:0;border-bottom:0;flex:0 1 auto;min-width:120px}
-.pal .field-in{width:auto;min-width:110px}
-/* A refusal is a sentence, so a palette button that is off stacks its pill
-   under itself rather than pushing the row sideways. */
-.pal .ctl-off{flex-direction:column;align-items:flex-start;gap:6px}
-
-/* The four additions, 2x2 (ui.md SS3f). They are what a reader arrives to do,
-   so they are the first thing on the empty rail and they are targets rather
-   than links in a row: a 360 px rail fits two 160 px buttons a side, which is
-   also what stops "+ Far sync instance" from wrapping mid-noun. */
-.pal-adds{display:grid;grid-template-columns:1fr 1fr;gap:10px;align-items:stretch}
-.pal-adds .ctl-off{flex-direction:column;align-items:stretch;gap:6px;min-width:0}
-.pal-adds .btn{width:100%;justify-content:flex-start;padding:10px 12px;
-  white-space:normal;text-align:left}
-/* The second rank: a host and a link both need a data centre named first, so
-   they are pickers with a button beside them rather than one press. Quieter,
-   under a hairline, because they are the additions a reader reaches for
-   second. */
-.pal-more{padding-top:12px;border-top:1px solid var(--ln)}
-.pal-more+.pal{padding-top:2px}
-.pal-more .btn,.pal-more+.pal .btn{color:var(--ik3)}
-.pal-more .field-name.is-prose,.pal-more+.pal .field-name.is-prose{font-size:11.5px;
-  color:var(--ik3)}
-.pal-more .field-in,.pal-more+.pal .field-in{padding:5px 8px;font-size:12px}
-.pal-more .btn:hover:not(:disabled),.pal-more+.pal .btn:hover:not(:disabled){color:var(--ik)}
 
 /* ---------------- Break rail ---------------- */
 

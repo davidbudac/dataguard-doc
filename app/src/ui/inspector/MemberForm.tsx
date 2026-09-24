@@ -11,7 +11,6 @@
 
 import type { Member, MemberId, RedoGraph, TopologyDoc, XptMode } from '@/engine';
 import { hostId, isDatabase } from '@/engine';
-import { removeAction } from '../build/actions';
 import { Fact } from '../common/Chip';
 import { Action, Check, Choice, Fold, Group, Note, Num, Pick, Text } from './controls';
 import { DESTS_ID, INSTANCES_ID } from './sections';
@@ -58,10 +57,6 @@ export function MemberForm({ member, doc, graph }: MemberFormProps) {
   for (const k of Object.keys(member.dests)) fed.add(k);
   const dests = others.filter((m) => fed.has(m.id as string));
   const notDests = others.filter((m) => !fed.has(m.id as string));
-
-  /* The removal is the Build table's own entry, not a second reading of the
-     same two rules: the Delete key on the drawing presses this very object. */
-  const remove = removeAction(doc, id as string);
 
   return (
     <>
@@ -384,14 +379,6 @@ export function MemberForm({ member, doc, graph }: MemberFormProps) {
           />
         )}
       </Fold>
-
-      <Group title="This member">
-        <div class="rr-line">
-          {remove === null ? null : (
-            <Action label={remove.label} enabled={remove.enabled} onClick={remove.run} />
-          )}
-        </div>
-      </Group>
     </>
   );
 }

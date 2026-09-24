@@ -11,7 +11,6 @@
 
 import type { Observer, TopologyDoc } from '@/engine';
 import { hostId } from '@/engine';
-import { removeAction } from '../build/actions';
 import { Action, Check, Group, Note, Text } from './controls';
 import { Pick } from './controls';
 import { patchObserver, renameObserver, setMasterObserver } from './edits';
@@ -26,7 +25,6 @@ export function ObserverForm({ observer, doc }: ObserverFormProps) {
   const id = observer.id;
   const dbHosts = new Set<string>();
   for (const m of doc.members) for (const i of m.instances) dbHosts.add(i.host as string);
-  const remove = removeAction(doc, id as string);
 
   return (
     <>
@@ -119,14 +117,6 @@ export function ObserverForm({ observer, doc }: ObserverFormProps) {
             },
           )}
         />
-      </Group>
-
-      <Group title="This observer">
-        <div class="rr-line">
-          {remove === null ? null : (
-            <Action label={remove.label} enabled={remove.enabled} onClick={remove.run} />
-          )}
-        </div>
         <Note>
           Removing the last observer is not the same as being unobserved: with no observer
           deployed, fast-start failover was never enabled and

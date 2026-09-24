@@ -4,22 +4,22 @@
  * The empty state is not empty. A rail with nothing in it teaches nothing, so
  * with no selection this is a summary of the configuration -- what it is, what
  * mode it runs in, what the observer arrangement is -- followed by the
- * configuration's own properties and the palette that adds to it. Selecting a
- * card swaps the properties in; clearing the selection brings the summary
- * back.
+ * configuration's own properties. Selecting a card swaps the properties in;
+ * clearing the selection brings the summary back. Adding is not here: the
+ * toolbar over the drawing is the one place that adds (ui.md SS3i).
  *
  * Ids are one namespace here, exactly as they are on the canvas: a member, an
  * observer, a link and a site cannot share a name, so a selection key resolves
  * to precisely one subject.
  */
 
-import { signal } from '@preact/signals';
 import { useLayoutEffect } from 'preact/hooks';
 import type { Link, Member, Observer, Site, TopologyDoc } from '@/engine';
 import { errors, issues, redoGraph, topology, warnings } from '@/state/derived';
 import { canEdit, clearSelection, hintsOn, mode, selection, viewport } from '@/state/view';
-import { Fold, Group, Note } from './controls';
-import { AddPalette } from './adds';
+import { Fold, Note } from './controls';
+import { isOff, WhyPill } from '../common/WhyPill';
+import { removeAction } from '../build/actions';
 import { hintsShown, HintsToggle } from '../hints';
 import { revealSections, SUMMARY_ID } from './sections';
 import { ConfigForm } from './ConfigForm';
@@ -29,17 +29,6 @@ import { ObserverForm } from './ObserverForm';
 import { SiteForm } from './SiteForm';
 import { WHY } from './why';
 import '@/styles/inspector.css';
-
-/**
- * Whether the header's `Add` disclosure is open, for this session.
- *
- * Selecting a card used to replace the whole rail, palette included, so the
- * only way back to `+ Standby database` was to find `Clear` first. The
- * disclosure sits beside `Clear` and opens the same palette in flow -- never a
- * popup: `style-src 'self'` forbids positioning anything from script, and a
- * panel with a fixed place is one the reader can find again (ui.md SS3).
- */
-export const addOpen = signal(false);
 
 type Subject =
   | { kind: 'member'; member: Member }
@@ -119,11 +108,6 @@ function Summary({ doc }: { doc: TopologyDoc }) {
   );
 }
 
-/* `Start here` used to sit above the palette: three numbered sentences saying
-   what the guidance line under the header says in one, and what the
-   Introduction page says at length. The palette itself is the answer to "where
-   do I click", so it is what the empty rail opens with now (ui.md SS3f). */
-
 /* ---------------- the rail ---------------- */
 
 export function Inspector() {
@@ -132,13 +116,6 @@ export function Inspector() {
   const subject = resolveSubject(doc, sel[0]);
   const graph = redoGraph.value;
   const narrowed = mode.value === 'configure';
-
-  /* The disclosure belongs to the card it was opened over: its header says
-     which subject it sits under, and selecting another one is a new question.
-     A palette left hanging open above the next card's properties is a panel
-     the reader did not ask for -- and it pushes those properties down the
-     rail. Before the read-only return, because a hook is not conditional. */
-  useLayoutEffect(() => { addOpen.value = false; }, [sel[0] ?? '']);
 
   /* Asking for the explanations is asking for the page to say more about
      itself, and the summary is the rail's own statement of what is drawn --
@@ -161,9 +138,11 @@ export function Inspector() {
     );
   }
 
-  /* The palette is Build's; Configure narrows the rail to the properties. */
-  const canAdd = !narrowed;
-  const menuOpen = canAdd && subject !== null && addOpen.value;
+  /* The removal is the Build table's own entry -- the one the Delete key and
+     the action bar press -- so it sits in the header, beside the name it
+     would remove, rather than at the foot of a form four screens down.
+     Configure narrows the rail to the properties. */
+  const remove = subject === null || narrowed ? null : removeAction(doc, sel[0] as string);
 
   return (
     <div class="insp">
@@ -186,31 +165,27 @@ export function Inspector() {
         <HintsToggle />
         {subject === null ? null : (
           <>
-            {canAdd ? (
+            {remove === null ? null : (
               <button
                 type="button"
-                class="btn"
-                /* `aria-expanded` alone, exactly as `Fold` does it: the palette
-                   is genuinely absent while this is shut, and an `aria-controls`
-                   naming an element that is not in the document is a reference
-                   to nothing rather than a collapsed disclosure. */
-                aria-expanded={addOpen.value}
-                title="The same additions the empty rail offers, without clearing the selection first"
-                onClick={() => { addOpen.value = !addOpen.value; }}
+                class={`btn${isOff(remove.enabled) ? ' is-faded' : ''}`}
+                disabled={isOff(remove.enabled)}
+                title={remove.label}
+                onClick={remove.run}
               >
-                {`Add ${addOpen.value ? '▾' : '▸'}`}
+                Remove
               </button>
-            ) : null}
+            )}
             <button type="button" class="btn" onClick={() => clearSelection()}>Clear</button>
           </>
         )}
         </span>
       </header>
 
-      {menuOpen ? (
-        <Group id="insp-add" title="Add">
-          <AddPalette doc={doc} onAdded={() => { addOpen.value = false; }} />
-        </Group>
+      {/* A refused removal says why under the header, not beside the button:
+          a sentence in the header's button row pushed `Clear` off the rail. */}
+      {remove !== null && isOff(remove.enabled) ? (
+        <p class="insp-why"><WhyPill why={remove.enabled} /></p>
       ) : null}
 
       {sel.length > 1 ? (
@@ -225,13 +200,6 @@ export function Inspector() {
 
       {subject === null ? (
         <>
-          {/* Adding is what a reader arrives to do, so it is the first thing
-              on the rail rather than four screens below a summary table. */}
-          {canAdd ? (
-            <Group title="Add">
-              <AddPalette doc={doc} />
-            </Group>
-          ) : null}
           <Summary doc={doc} />
           <ConfigForm doc={doc} />
         </>
