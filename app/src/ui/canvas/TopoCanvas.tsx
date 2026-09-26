@@ -89,6 +89,14 @@ export interface TopoCanvasProps {
    */
   onMoveToSite?: (key: string, site: string) => void;
   /**
+   * A single card (never a whole stack) dropped onto another host's card or
+   * chassis stack: reassigns it there, merging it into that host's stack --
+   * cross-site too. Passing it makes another host's card and its stack a
+   * drop target during a lone card's drag; without it such a drag drops onto
+   * the layout the way it always has, `onMoveToSite` included.
+   */
+  onMergeIntoHost?: (key: string, hostId: string) => void;
+  /**
    * A line drawn from one card's port to another card. Passing it draws the
    * ports; the caller decides what a member-to-member or a member-to-observer
    * line means.
@@ -187,6 +195,13 @@ interface CardDrag {
   moved: boolean;
   /** The other data centre the pointer is over, when the caller takes drops. */
   over: string | null;
+  /** The other host the pointer is over, when the caller takes a merge. */
+  hostOver: string | null;
+  /** True only for a lone card's own drag -- a blade pressed by itself, or a
+      single card with no stack at all. Never a header drag (2+ blades) or a
+      data centre's own drag: only a single card has one meaning for "the
+      host under the pointer", so only a single card offers the merge. */
+  canMerge: boolean;
 }
 
 /** A line being drawn from a card's port: nothing moves until it lands. */
@@ -296,6 +311,10 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
      card, or the line from a port to the pointer and the card it is over. State
      rather than a ref, because the drawing has to repaint on every move. */
   const [dropSite, setDropSite] = useState<string | null>(null);
+  /* The other host a single-card drag is over, so its card (or its stack's
+     frame) can say it will take the card -- `null` off any host, and always
+     `null` for a drag that carries more than one card. */
+  const [hostDropTarget, setHostDropTarget] = useState<string | null>(null);
   const [rubber, setRubber] = useState<{
     from: string; x: number; y: number; over: string | null;
     what: { label: string; enabled: WhyState } | null;
@@ -349,6 +368,34 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
   /** The other card under the point, or null: cards only, never a panel or a caption. */
   const cardUnder = (p: { x: number; y: number }, own: string): string | null =>
     geo.nodes.find((n) => n.key !== own && inside(n, p))?.key ?? null;
+  /**
+   * The one host a member or an observer stands on -- undefined for a RAC
+   * member, which stands on more than one and so has no single host a drop
+   * onto it, or a drop of it, could mean without guessing.
+   */
+  const hostIdOf = (key: string): string | undefined => {
+    const member = doc.members.find((m) => (m.id as string) === key);
+    if (member) return member.instances.length === 1 ? (member.instances[0]?.host as string | undefined) : undefined;
+    const observer = doc.observers.find((o) => (o.id as string) === key);
+    return observer ? (observer.host as string) : undefined;
+  };
+  /**
+   * Where a single-card drag on `own` would merge it: a chassis stack whose
+   * host differs from its own first (the frame and the header both count,
+   * so hovering the band above the blades still offers the drop), another
+   * card's host otherwise -- never `own`'s own host, so hovering the stack
+   * it already stands in never offers to merge it with itself.
+   */
+  const mergeTargetUnder = (p: { x: number; y: number }, own: string): string | null => {
+    const ownHost = hostIdOf(own);
+    if (ownHost === undefined) return null;
+    const stack = geo.stacks.find((s) => s.hostId !== ownHost && inside(s, p));
+    if (stack) return stack.hostId;
+    const card = cardUnder(p, own);
+    if (card === null) return null;
+    const h = hostIdOf(card);
+    return h === undefined || h === ownHost ? null : h;
+  };
   /**
    * Where a drawn line may land: another card first, another data centre's
    * panel otherwise. Never the panel the line started in -- the port sits
@@ -442,6 +489,20 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
     const set = new Set<string>();
     for (const k of many) for (const mate of stackMatesOf(k)) set.add(mate);
     return [...set];
+  };
+
+  /**
+   * The cards a press on one blade carries: itself alone, so a blade can be
+   * pulled out of its stack, unless it stands in a multi-selection of two or
+   * more cards -- then the drag is the selection's drag and keeps carrying
+   * every stack mate the way `carried` always has. The header keeps carrying
+   * the whole stack unconditionally (`onHeaderPointerDown`, below): only a
+   * lone blade's own drag has one card and one meaning for "the host under
+   * the pointer".
+   */
+  const carriedByBlade = (key: string): string[] => {
+    const many = selection.filter((k) => geo.byKey[k] !== undefined).length > 1;
+    return many && selection.includes(key) ? carried(key) : [key];
   };
 
   const siblings = (node: NodeBox): NodeBox[] => geo.nodes
@@ -562,18 +623,21 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
   };
 
   /* ---- drag: pointer capture on the svg, deltas in user units ---- */
-  const onCardPointerDown = (key: string, ev: JSX.TargetedPointerEvent<SVGGElement>): void => {
-    if (!props.onDrag && !props.onDragEnd) return;
-    if (ev.button !== 0) return;
+
+  /** Common setup for any drag that carries one or more cards: `keys` fixes
+      `bases` now, the capture itself waits for the drag threshold
+      (`onPointerMove`) so a plain click still reaches the card's own
+      `onClick`. `canMerge` is true only when this is a lone blade's own
+      drag -- the one case a host under the pointer has one meaning. */
+  const beginCardDrag = (
+    key: string, keys: readonly string[], canMerge: boolean, ev: JSX.TargetedPointerEvent<SVGGElement>,
+  ): void => {
     const svg = svgRef.current;
-    const node = geo.byKey[key];
-    if (!svg || !node) return;
-    /* A press on the card's port starts a line, not a move. */
-    if (ev.target instanceof Element && ev.target.closest('.tp-port') !== null) return;
+    if (!svg) return;
     const rect = svg.getBoundingClientRect();
     const scale = rect.width > 0 ? view.w / rect.width : 1;
     const bases: Record<string, LayoutOffset> = {};
-    for (const k of carried(key)) bases[k] = overrides[k] ?? { dx: 0, dy: 0 };
+    for (const k of keys) bases[k] = overrides[k] ?? { dx: 0, dy: 0 };
     drag.current = {
       kind: 'card',
       key,
@@ -583,12 +647,33 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
       scale,
       moved: false,
       over: null,
+      hostOver: null,
+      canMerge,
     };
-    /* Capture waits for the drag threshold (onPointerMove). Capturing here
-       retargets the pointerup -- and with it the mouseup and the click -- to
-       the svg, so a plain click never reached the card's own onClick and
-       selecting with a mouse silently did nothing. A drag still captures the
-       moment it becomes one, which is the only time the pointer can leave. */
+  };
+
+  /** A press on a blade: carries only itself, unless it is part of a
+      multi-selection (`carriedByBlade`) -- the one gesture that can pull a
+      card out of the stack it shares with others. */
+  const onCardPointerDown = (key: string, ev: JSX.TargetedPointerEvent<SVGGElement>): void => {
+    if (!props.onDrag && !props.onDragEnd) return;
+    if (ev.button !== 0) return;
+    const node = geo.byKey[key];
+    if (!svgRef.current || !node) return;
+    /* A press on the card's port starts a line, not a move. */
+    if (ev.target instanceof Element && ev.target.closest('.tp-port') !== null) return;
+    const keys = carriedByBlade(key);
+    beginCardDrag(key, keys, keys.length === 1, ev);
+  };
+
+  /** A press on the chassis header: always carries the whole stack, the
+      gesture `StackChassis` offers over every blade at once. */
+  const onHeaderPointerDown = (key: string, ev: JSX.TargetedPointerEvent<SVGGElement>): void => {
+    if (!props.onDrag && !props.onDragEnd) return;
+    if (ev.button !== 0) return;
+    const node = geo.byKey[key];
+    if (!svgRef.current || !node) return;
+    beginCardDrag(key, carried(key), false, ev);
   };
 
   /**
@@ -634,6 +719,8 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
       scale,
       moved: false,
       over: null,
+      hostOver: null,
+      canMerge: false,
     };
   };
 
@@ -735,9 +822,14 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
     d.moved = true;
     const all = offsetsOf(d, dx, dy);
     props.onDrag?.(d.key, all[d.key] as LayoutOffset, all);
+    const p = toUser(ev.clientX, ev.clientY, d.scale);
+    const hostOver = props.onMergeIntoHost && d.canMerge ? mergeTargetUnder(p, d.key) : null;
+    if (hostOver !== d.hostOver) { d.hostOver = hostOver; setHostDropTarget(hostOver); }
     if (props.onMoveToSite) {
+      /* A host takes the drop first: the site highlight underneath it would
+         only repeat what the card or the stack already says. */
       const own = geo.byKey[d.key]?.site as string | undefined;
-      const over = own === undefined ? null : siteUnder(toUser(ev.clientX, ev.clientY, d.scale), own);
+      const over = hostOver !== null || own === undefined ? null : siteUnder(p, own);
       if (over !== d.over) { d.over = over; setDropSite(over); }
     }
   };
@@ -785,14 +877,29 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
     }
     if (!d.moved) return;
     if (d.over !== null) setDropSite(null);
+    if (d.hostOver !== null) setHostDropTarget(null);
     const dx = (ev.clientX - d.startX) * d.scale;
     const dy = (ev.clientY - d.startY) * d.scale;
     const all = offsetsOf(d, dx, dy);
-    props.onDragEnd?.(d.key, all[d.key] as LayoutOffset, all);
-    /* Dropped in another data centre: the move is the caller's edit, and it
-       runs after the offset is committed so the two fold into one undo. The
-       pressed card goes first -- its key is the one the drag coalesced under. */
-    if (d.over !== null) {
+    /* The merge or the site move, both read fresh at the drop rather than
+       from the last move (a pointer that stops moving still sends the up
+       somewhere) -- and both *before* `onDragEnd`, which breaks the
+       coalescing window (`CanvasSlot`'s `breakCoalescing`): call it first
+       and the drop's own edit would land on a fresh coalesce key instead of
+       the drag's, and "the drag that carried it there" and the drop would be
+       two undos rather than the one every caller's doc comment promises. */
+    let dropped = false;
+    /* Dropped onto another host: the merge is the caller's edit, and it takes
+       the drop before `onMoveToSite` gets a look, the same priority the
+       highlight already showed while it was still in the air. */
+    if (props.onMergeIntoHost && d.canMerge) {
+      const target = mergeTargetUnder(toUser(ev.clientX, ev.clientY, d.scale), d.key);
+      if (target !== null) { props.onMergeIntoHost(d.key, target); dropped = true; }
+    }
+    /* Dropped in another data centre: the move is the caller's edit, coalesced
+       under the same key the drag itself carries. The pressed card goes
+       first -- its key is the one the drag coalesced under. */
+    if (!dropped && d.over !== null) {
       const own = geo.byKey[d.key]?.site as string | undefined;
       const over = own === undefined ? null : siteUnder(toUser(ev.clientX, ev.clientY, d.scale), own);
       if (over !== null) {
@@ -801,6 +908,7 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
         }
       }
     }
+    props.onDragEnd?.(d.key, all[d.key] as LayoutOffset, all);
   };
 
   /**
@@ -1077,7 +1185,8 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
               stack={s}
               byKey={geo.byKey}
               interactive={interactive}
-              onHeaderPointerDown={onCardPointerDown}
+              onHeaderPointerDown={onHeaderPointerDown}
+              dropTarget={hostDropTarget !== null && s.hostId === hostDropTarget}
             />
           ))}
         </g>
@@ -1096,7 +1205,7 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
               dragging={drag.current?.kind === 'card' && drag.current.moved && n.key in drag.current.bases}
               target={rubber !== null && rubber.over === n.key
                 ? (rubber.what?.enabled.state === 'off' ? 'no' : 'yes')
-                : null}
+                : hostDropTarget !== null && hostIdOf(n.key) === hostDropTarget ? 'yes' : null}
               port={interactive && props.onConnect !== undefined}
               interactive={interactive}
               tabIndex={tabStops.has(n.key) ? 0 : -1}

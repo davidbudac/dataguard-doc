@@ -12,7 +12,7 @@
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import type { TopologyDoc } from '@/engine';
-import { siteId } from '@/engine';
+import { hostId, siteId } from '@/engine';
 import { frame, geometry, redoGraph, topology } from '@/state/derived';
 import { doc, withLayout } from '@/state/doc';
 import { breakCoalescing, edit, undo } from '@/state/history';
@@ -22,8 +22,8 @@ import {
 } from '@/state/view';
 import { buildActionsFor, openInspectorFor, removeAction } from '../build/actions';
 import {
-  addDatabase, addFsfoTarget, addLink, connectVerdict, moveToSite, renameMember, renameObserver,
-  renameSite, renameVerdict, shipRedo, tidyLayout,
+  addDatabase, addFsfoTarget, addLink, connectVerdict, mergeIntoHost, moveToSite, renameMember,
+  renameObserver, renameSite, renameVerdict, shipRedo, tidyLayout,
 } from '../inspector/edits';
 import { placeOver, renaming, setSiteAt } from './place';
 import {
@@ -585,6 +585,9 @@ export function CanvasSlot({ interactive = true }: CanvasSlotProps) {
             /* A card dropped in another data centre moves there -- hosts and
                all, one undo with the drag that carried it. */
             onMoveToSite: (key: string, site: string): void => moveToSite(key, siteId(site)),
+            /* A card dropped on another host's card or stack merges into it --
+               same host, hosts and all, one undo with the drag. */
+            onMergeIntoHost: (key: string, host: string): void => mergeIntoHost(key, hostId(host)),
             onConnect: connectFromCanvas,
             connectWhat: (from: string, to: string) => connectVerdict(topology.value, from, to),
           }

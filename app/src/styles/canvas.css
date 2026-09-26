@@ -241,6 +241,9 @@
    group `aria-hidden`, and every blade still carries its own name, role and
    selection feedback (`.tp-card.is-blade`, above). */
 .topo-svg .tp-stack-frame { fill: var(--sf); stroke: var(--ln2); stroke-width: 1.25; }
+/* A single card is being dragged over this stack's host: the same violet
+   wash `.tp-site.is-drop` gives an empty data centre panel. */
+.topo-svg .tp-stack-frame.is-drop { fill: var(--vif); stroke: var(--vi); stroke-width: 1.5; }
 .topo-svg .tp-stack-hd { fill: var(--sf3); }
 .topo-svg .tp-stack-hd.is-live { cursor: pointer; pointer-events: auto; }
 .topo-svg .tp-stack-hd-tx {

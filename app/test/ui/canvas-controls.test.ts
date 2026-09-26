@@ -25,7 +25,7 @@ import { mode, selection, toast, viewport } from '@/state/view';
 import { WHY_DROP_ON_SITE } from '@/ui/inspector/adds';
 import { removeLink } from '@/ui/inspector/edits';
 import { WHY } from '@/ui/inspector/why';
-import { linkId } from '@/engine';
+import { hostId, linkId } from '@/engine';
 
 const tick = (): Promise<void> => new Promise((r) => setTimeout(r, 0));
 const painted = (): Promise<void> => new Promise((r) => setTimeout(r, 40));
@@ -447,9 +447,27 @@ describe('a chassis stack is dragged as a group', () => {
     });
   };
 
-  it('carries every blade in the stack, as one undo, when one blade is pressed', async () => {
+  it('carries only the pressed blade, leaving its stack mate where it is', async () => {
     coHostObserverWithPrimary();
     const root = await mountApp();
+    const n = undoStack.value.length;
+    const c = rectOf(root, 'prm01', 'rect.tp-card');
+    const start = clientOf(root, c.x + 20, c.y + 20);
+    const svg = root.querySelector('.topo-svg')!;
+    pointer(cardEl(root, 'prm01'), 'Down', ...start);
+    pointer(svg, 'Move', start[0] + 16, start[1] + 8);
+    await tick();
+    pointer(svg, 'Up', start[0] + 16, start[1] + 8);
+    await tick();
+    expect(docSignal.value.layout).toEqual({ prm01: { dx: 16, dy: 8 } });
+    expect(undoStack.value.length).toBe(n + 1);
+  });
+
+  it('carries every stack mate again once both blades are selected', async () => {
+    coHostObserverWithPrimary();
+    const root = await mountApp();
+    selection.value = ['prm01', 'obs01'];
+    await tick();
     const n = undoStack.value.length;
     const c = rectOf(root, 'prm01', 'rect.tp-card');
     const start = clientOf(root, c.x + 20, c.y + 20);
@@ -489,5 +507,124 @@ describe('a chassis stack is dragged as a group', () => {
     cardEl(root, 'obs01').dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
     await tick();
     expect(selection.value).toEqual(['obs01']);
+  });
+});
+
+describe('a single card is dropped onto another host', () => {
+  /* An observer standing on the primary's own host, same as the group above:
+     one blade to pull out of a stack, one to drop it on. */
+  const coHostObserverWithPrimary = (): void => {
+    const before = docSignal.value;
+    const host = before.topology.members.find((m) => (m.id as string) === 'prm01')!.instances[0]!.host;
+    resetHistory({
+      ...before,
+      topology: {
+        ...before.topology,
+        observers: before.topology.observers.map((o) => ((o.id as string) === 'obs01' ? { ...o, host } : o)),
+      },
+    });
+  };
+
+  /* `prm01` grows a second instance on a host of its own, and the observer
+     moves beside it on a third -- a RAC primary with a same-site neighbour
+     that is not standing on either of its hosts, so a drop on it is neither
+     a merge nor a cross-site move. */
+  const makeRacWithNeighbor = (): void => {
+    const before = docSignal.value;
+    const prm = before.topology.members.find((m) => (m.id as string) === 'prm01')!;
+    const site = before.topology.hosts.find((h) => h.id === prm.instances[0]!.host)!.site;
+    const prm2 = { id: hostId('dc1-prm02'), name: 'dc1-prm02', site, listenerPort: 1521 };
+    const obsHost = { id: hostId('dc1-obs01'), name: 'dc1-obs01', site, listenerPort: 1521 };
+    resetHistory({
+      ...before,
+      topology: {
+        ...before.topology,
+        hosts: [...before.topology.hosts, prm2, obsHost],
+        members: before.topology.members.map((m) => ((m.id as string) === 'prm01'
+          ? { ...m, instances: [...m.instances, { name: 'prm02', host: prm2.id }] }
+          : m)),
+        observers: before.topology.observers.map((o) => ({ ...o, host: obsHost.id })),
+      },
+    });
+  };
+
+  const dragOnto = async (
+    root: HTMLElement, from: string, target: { x: number; y: number; w: number; h: number },
+  ): Promise<void> => {
+    const c = rectOf(root, from, 'rect.tp-card');
+    const start = clientOf(root, c.x + c.w / 2, c.y + c.h / 2);
+    const end = clientOf(root, target.x + target.w / 2, target.y + target.h / 2);
+    const svg = root.querySelector('.topo-svg')!;
+    pointer(cardEl(root, from), 'Down', ...start);
+    pointer(svg, 'Move', ...end);
+    await tick();
+    pointer(svg, 'Up', ...end);
+    await tick();
+  };
+
+  it('merges a standalone card onto another card\'s host, cross-site, in one undo', async () => {
+    const root = await mountApp();
+    const n = undoStack.value.length;
+    const targetHost = topo().members.find((m) => (m.id as string) === 'prm01')!.instances[0]!.host;
+    const oldHost = topo().members.find((m) => (m.id as string) === 'sby01')!.instances[0]!.host;
+    await dragOnto(root, 'sby01', rectOf(root, 'prm01', 'rect.tp-card'));
+    expect(topo().members.find((m) => (m.id as string) === 'sby01')!.instances[0]!.host).toBe(targetHost);
+    expect(siteOf('sby01')).toBe('dc1');
+    expect(topo().hosts.some((h) => h.id === oldHost)).toBe(false);
+    expect(docSignal.value.layout.sby01).toBeUndefined();
+    expect(undoStack.value.length).toBe(n + 1);
+  });
+
+  it('moves a blade dropped on another host between stacks, keeping the old host while it is still shared', async () => {
+    coHostObserverWithPrimary();
+    const root = await mountApp();
+    const prmHost = topo().members.find((m) => (m.id as string) === 'prm01')!.instances[0]!.host;
+    const sbyHost = topo().members.find((m) => (m.id as string) === 'sby01')!.instances[0]!.host;
+    await dragOnto(root, 'obs01', rectOf(root, 'sby01', 'rect.tp-card'));
+    expect(topo().observers.find((o) => (o.id as string) === 'obs01')!.host).toBe(sbyHost);
+    /* `prm01` still stands on the old host, so it is not removed. */
+    expect(topo().hosts.some((h) => h.id === prmHost)).toBe(true);
+    expect(topo().members.find((m) => (m.id as string) === 'prm01')!.instances[0]!.host).toBe(prmHost);
+  });
+
+  it('highlights the target card while a merge is in reach, in place of the site highlight', async () => {
+    const root = await mountApp();
+    const targetRect = rectOf(root, 'prm01', 'rect.tp-card');
+    const c = rectOf(root, 'sby01', 'rect.tp-card');
+    const start = clientOf(root, c.x + c.w / 2, c.y + c.h / 2);
+    const over = clientOf(root, targetRect.x + targetRect.w / 2, targetRect.y + targetRect.h / 2);
+    const svg = root.querySelector('.topo-svg')!;
+    pointer(cardEl(root, 'sby01'), 'Down', ...start);
+    pointer(svg, 'Move', ...over);
+    await tick();
+    expect(root.querySelector('[data-node="prm01"] rect.tp-card')?.getAttribute('class')).toContain('is-target');
+    expect(root.querySelector('.tp-site.is-drop')).toBeNull();
+    pointer(svg, 'Up', ...over);
+    await tick();
+  });
+
+  it('changes nothing but the layout when dropped on open ground in its own data centre', async () => {
+    const root = await mountApp();
+    const c = rectOf(root, 'prm01', 'rect.tp-card');
+    const start = clientOf(root, c.x + 6, c.y + 6);
+    const svg = root.querySelector('.topo-svg')!;
+    pointer(cardEl(root, 'prm01'), 'Down', ...start);
+    pointer(svg, 'Move', start[0] + 16, start[1] + 8);
+    await tick();
+    pointer(svg, 'Up', start[0] + 16, start[1] + 8);
+    await tick();
+    expect(siteOf('prm01')).toBe('dc1');
+    expect(docSignal.value.layout).toEqual({ prm01: { dx: 16, dy: 8 } });
+  });
+
+  it('does not merge a RAC member, even dropped squarely on another card in its own data centre', async () => {
+    makeRacWithNeighbor();
+    const root = await mountApp();
+    const hostsBefore = topo().members.find((m) => (m.id as string) === 'prm01')!.instances.map((i) => i.host);
+    await dragOnto(root, 'prm01', rectOf(root, 'obs01', 'rect.tp-card'));
+    const prm = topo().members.find((m) => (m.id as string) === 'prm01')!;
+    expect(prm.instances.map((i) => i.host)).toEqual(hostsBefore);
+    expect(topo().observers.find((o) => (o.id as string) === 'obs01')!.host).toBe(hostId('dc1-obs01'));
+    expect(docSignal.value.layout.prm01).toBeDefined();
   });
 });

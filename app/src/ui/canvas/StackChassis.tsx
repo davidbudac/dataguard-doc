@@ -26,6 +26,9 @@ export interface StackChassisProps {
   /** A press on the header: the same "move the whole stack" gesture a press
       on any one of its blades already starts. */
   onHeaderPointerDown?: (topKey: string, ev: JSX.TargetedPointerEvent<SVGGElement>) => void;
+  /** A single card is being dragged over this stack's host: it says so the
+      way an empty data centre panel does (`SiteRect`'s `is-drop`). */
+  dropTarget?: boolean;
 }
 
 export function StackChassis(props: StackChassisProps): JSX.Element | null {
@@ -52,7 +55,7 @@ export function StackChassis(props: StackChassisProps): JSX.Element | null {
         : undefined}
     >
       <rect
-        class="tp-stack-frame"
+        class={`tp-stack-frame${props.dropTarget ? ' is-drop' : ''}`}
         x={stack.x} y={stack.y} width={stack.w} height={stack.h} rx={r}
       />
       <path

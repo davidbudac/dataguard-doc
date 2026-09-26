@@ -730,6 +730,49 @@ export function moveToSite(key: string, site: SiteId): void {
 }
 
 /**
+ * Merge a member or an observer into another host's chassis stack -- the
+ * card dropped on another host's card, or on the stack standing on it.
+ *
+ * Unlike `moveToSite`, the mover takes the *existing* host rather than a new
+ * one of its own: taking the same host is what folds it into that host's
+ * stack, and (a host belonging to one site) is what carries it cross-site
+ * too, replacing `moveToSite`'s new-host behaviour for this one drop. A RAC
+ * member has more than one host and no single one the drop could mean, so
+ * it is left alone -- the canvas only offers this drop for a single-instance
+ * card, but this checks again rather than trust it. The old host goes if
+ * nothing else stands on it, the same as `moveToSite`; the drag's own offset
+ * is dropped so the card snaps into the new stack rather than floating over
+ * it.
+ *
+ * One undo: coalesced under the same `drag:${key}` the drag itself writes
+ * under, so the drag and the merge undo as the one gesture they were.
+ */
+export function mergeIntoHost(key: string, targetHost: HostId): void {
+  const t = doc.value.topology;
+  const target = t.hosts.find((h) => h.id === targetHost);
+  if (!target) return;
+  const member = t.members.find((m) => (m.id as string) === key);
+  const observer = member ? undefined : t.observers.find((o) => (o.id as string) === key);
+  if (!member && !observer) return;
+  if (member && member.instances.length !== 1) return;
+  const oldHost = member ? member.instances[0]?.host : observer?.host;
+  if (oldHost === undefined || oldHost === targetHost) return;
+
+  edit(`Move ${key} onto ${target.name}`, (d) => {
+    let cur = d.topology;
+    cur = {
+      ...cur,
+      members: cur.members.map((m) => (m.id === member?.id
+        ? { ...m, instances: m.instances.map((i) => ({ ...i, host: targetHost })) }
+        : m)),
+      observers: cur.observers.map((o) => (o.id === observer?.id ? { ...o, host: targetHost } : o)),
+    };
+    if (!hostShared(cur, oldHost as HostId, key)) cur = withoutHost(cur, oldHost as HostId);
+    return dropLayout(withTopology(d, cur), [key]);
+  }, `drag:${key}`);
+}
+
+/**
  * One member's RedoRoutes with `dest` added: to the rule active for
  * `primary` when there is one, as a new rule otherwise -- `(LOCAL : to)` at
  * the primary, `(ANY : to)` anywhere else, the cascading form that survives
