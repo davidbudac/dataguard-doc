@@ -52,8 +52,7 @@ const siteNameOfMember = (doc: TopologyDoc, m: Member): string => {
 };
 
 const hostOfMember = (doc: TopologyDoc, m: Member): string => {
-  const first = m.instances[0];
-  return first ? hostNameOf(doc, first.host as string) : '';
+  return [...new Set(m.instances.map((i) => hostNameOf(doc, i.host as string)))].join(', ');
 };
 
 const memberById = (doc: TopologyDoc, id: string): Member | undefined =>
@@ -281,7 +280,7 @@ export function cardLabel(
       : 'No active redo route reaches it from the primary.';
   const st = frame ? frame.members[m.id] : undefined;
   const kind = isFarSync(m) ? 'Far sync instance' : roleWord(m);
-  return `${kind} ${m.name} on host ${host} in ${site}${rac}. ${feed}${st ? ` It is ${stateWords(st)}.` : ''}`;
+  return `${kind} ${m.name} on ${m.instances.length > 1 ? 'hosts' : 'host'} ${host} in ${site}${rac}. ${feed}${st ? ` It is ${stateWords(st)}.` : ''}`;
 }
 
 /**

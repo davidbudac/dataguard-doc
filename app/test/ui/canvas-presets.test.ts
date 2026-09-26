@@ -27,7 +27,7 @@ import { PRESETS } from '@/presets';
 import type { TimedEvent } from '@/engine';
 import { layoutTopology, siteLabelRect } from '@/ui/canvas/layout';
 import type { Geometry } from '@/ui/canvas/layout';
-import { routeTopology } from '@/ui/canvas/routing';
+import { cardFrameFor, routeTopology } from '@/ui/canvas/routing';
 import type { RoutedLink } from '@/ui/canvas/routing';
 import { overlaps } from '@/ui/canvas/measure';
 import type { Rect } from '@/ui/canvas/measure';
@@ -336,4 +336,37 @@ describe('the action bar stays on the drawing', () => {
       }
     });
   }
+});
+
+
+describe('RAC instance hosts', () => {
+  it('does not put the RAC database in a chassis belonging to its first host', () => {
+    const doc = PRESETS.find((p) => p.id === 'rac-primary')!.doc();
+    const primary = doc.members.find((m) => m.name === 'prm01')!;
+    const standby = doc.members.find((m) => m.name === 'sby01')!;
+    const changed = {
+      ...doc,
+      members: doc.members.map((m) => m === standby
+        ? { ...m, instances: m.instances.map((i) => ({ ...i, host: primary.instances[0]!.host })) }
+        : m),
+    };
+    const { geo } = draw(changed);
+    expect(geo.byKey.prm01!.stackKey).toBeUndefined();
+    expect(geo.byKey.prm01!.instanceHosts).toHaveLength(2);
+  });
+
+  it('draws both hosts and marks only the failed instance down', () => {
+    const preset = PRESETS.find((p) => p.id === 'rac-primary')!;
+    const d = draw(preset.doc());
+    const node = d.geo.byKey.prm01!;
+    expect(node.instanceHosts?.map((i) => [i.name, i.host])).toEqual([
+      ['prm011', 'dc1-node1'], ['prm012', 'dc1-node2'],
+    ]);
+    expect(node.stackKey).toBeUndefined();
+    const frame = stateAt(simulate(d.doc, preset.events()), 0);
+    const card = cardFrameFor(d.doc, node, frame);
+    expect(card.downInstances).toEqual(['prm011']);
+    expect(card.down).toBe(false);
+    expect(card.degraded).toBe(true);
+  });
 });

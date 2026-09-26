@@ -96,6 +96,9 @@ describe('moveToSite: a card dropped in another data centre', () => {
 
   it('moves every instance of a RAC member together', () => {
     addInstance(memberId('sby01'));
+    const instances = member('sby01').instances;
+    expect(new Set(instances.map((i) => i.host)).size).toBe(2);
+    expect(new Set(instances.map((i) => siteOfHost(i.host as string)))).toEqual(new Set(['dc2']));
     addSite();
     moveToSite('sby01', siteId('dc4'));
     const hosts = member('sby01').instances.map((i) => i.host as string);

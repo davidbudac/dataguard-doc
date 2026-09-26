@@ -16,7 +16,7 @@
 
 import type { JSX } from 'preact';
 import type { NodeBox } from './layout';
-import { approxW, CARD } from './measure';
+import { approxW, CARD, elide } from './measure';
 import type { CardChip, CardFrame, Phase } from './routing';
 
 export type { CardChip, CardFrame, ChipTone, Phase } from './routing';
@@ -69,7 +69,7 @@ export function NodeCard(props: NodeCardProps): JSX.Element {
   const stacked = node.stackKey !== undefined;
   const badge = isObs ? CARD.badgeObs : CARD.badgeDb;
   const bx = node.x + CARD.badgeX;
-  const by = node.y + Math.round((node.h - badge) / 2);
+  const by = node.y + Math.round(((node.instanceHosts ? CARD.dbH : node.h) - badge) / 2);
   const pad = Math.round((badge - 24) / 2);
   const tx = node.x + (isObs ? CARD.textXObs : CARD.textXDb);
   const nameY = node.y + (isObs ? 22 : 24);
@@ -150,6 +150,17 @@ export function NodeCard(props: NodeCardProps): JSX.Element {
       {node.lines.sub === undefined ? null : (
         <text class="tp-sub" x={tx} y={nameY + 30}>{node.lines.sub}</text>
       )}
+      {node.instanceHosts?.map((inst, index) => {
+        const y = node.y + CARD.dbH + index * CARD.instanceRowH;
+        const host = `${inst.host} · ${inst.site}`;
+        const down = frame.downInstances?.includes(inst.name) ?? false;
+        return <g key={inst.name} class="tp-instance">
+          <title>{inst.name} on host {inst.host} in {inst.site}{down ? ' — down' : ''}</title>
+          <rect class={`tp-card${down ? ' is-down' : ''}`} x={node.x + 8} y={y} width={node.w - 16} height={CARD.instanceRowH - 6} rx={3} />
+          <text class="tp-host" x={node.x + 16} y={y + 14}>{elide(inst.name, 27)}{down ? ' ×' : ''}</text>
+          <text class="tp-sub" x={node.x + 16} y={y + 29}>{elide(host, 34)}</text>
+        </g>;
+      })}
       {chipNodes}
       {props.port ? (
         /* The ports: a handle on each side edge a line is dragged from, so the

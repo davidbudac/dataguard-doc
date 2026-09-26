@@ -838,6 +838,7 @@ export function unionViewBox(view: Geometry['viewBox'], bounds: Rect | null): Ge
 export type Phase = 'neutral' | 'serving' | 'applying' | 'waiting' | 'observer' | 'idle';
 
 export interface CardFrame {
+  downInstances?: string[];
   phase: Phase;
   /** Hatched fill and a red border: this component is gone. */
   down: boolean;
@@ -928,6 +929,7 @@ export function cardFrameFor(
     crashed: allDown,
     stalled: st === 'stalled',
     degraded: downHosts > 0 && !allDown,
+    ...(m.instances.length > 1 ? { downInstances: m.instances.filter((i) => down || hostSiteDown(frame, doc, i.host as string)).map((i) => i.name) } : {}),
     unreachable: live ? !live.reachableFromPrimary : node.unreachable,
   };
 }

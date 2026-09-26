@@ -38,6 +38,9 @@ export const CARD = {
   maxW: 260,
   /** three text lines (role, host, name) */
   dbH: 72,
+  /** RAC instance rows below the shared database header. */
+  instanceRowH: 44,
+  instanceBottomPad: 8,
   /** two text lines (role, host) */
   obsH: 52,
   badgeDb: 32,

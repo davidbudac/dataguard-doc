@@ -69,6 +69,7 @@ export interface NodeBox {
   unreachable: boolean;
   /** More than one instance is RAC. */
   instances: number;
+  instanceHosts?: { name: string; host: string; site: string }[];
   x: number;
   y: number;
   w: number;
@@ -185,10 +186,9 @@ export function glyphOf(m: Member): Glyph {
 const hostName = (doc: TopologyDoc, id: string): string =>
   doc.hosts.find((h) => (h.id as string) === id)?.name ?? id;
 
-/** The host line of a member card: the first instance, RAC or not. */
+/** Every host belonging to the database, including all RAC nodes. */
 export function memberHostLine(doc: TopologyDoc, m: Member): string {
-  const first = m.instances[0];
-  return first ? hostName(doc, first.host as string) : '';
+  return [...new Set(m.instances.map((i) => hostName(doc, i.host as string)))].join(', ');
 }
 
 /**
@@ -203,7 +203,9 @@ function memberLines(doc: TopologyDoc, m: Member): CardLines {
   const host = memberHostLine(doc, m);
   const avail = CARD.maxW - CARD.textXDb - CARD.padRight;
   const name = fitLabel([m.name], avail) ?? elide(m.name, 26);
-  return { name, host: elide(host), sub: roleWord(m) };
+  return m.instances.length > 1
+    ? { name, host: roleWord(m), sub: 'Shared database' }
+    : { name, host: elide(host), sub: roleWord(m) };
 }
 
 /** A member's blade inside a chassis stack: the host line moves to the shared
@@ -342,7 +344,7 @@ export function layoutTopology(
      site for free. A single-occupant host never appears in `hostGroups` with
      two or more entries, so it never enters a row below -- its card renders
      exactly as it always has. */
-  const hostOfMember = (m: Member): string | undefined => m.instances[0]?.host as string | undefined;
+  const hostOfMember = (m: Member): string | undefined => m.instances.length === 1 ? m.instances[0]?.host as string | undefined : undefined;
   const hostGroups = new Map<string, { members: Member[]; observers: Observer[] }>();
   for (const m of doc.members) {
     const h = hostOfMember(m);
@@ -428,7 +430,7 @@ export function layoutTopology(
   for (const m of doc.members) {
     const lines = isStackedMember(m) ? stackedMemberLines(m) : memberLines(doc, m);
     memberCards.set(m.id as string, {
-      lines, w: measureCardWidth(lines, false), hostFull: memberHostLine(doc, m),
+      lines, w: m.instances.length > 1 ? CARD.maxW : measureCardWidth(lines, false), hostFull: memberHostLine(doc, m),
     });
   }
   const observerCards = new Map<string, { lines: CardLines; w: number; hostFull: string }>();
@@ -449,8 +451,9 @@ export function layoutTopology(
   const obsRowWidth = (row: ObsRow): number => (row.hostId === undefined
     ? observerCards.get(row.rep.id as string)?.w ?? CARD.minW
     : Math.max(stackHeaderW(row.hostId), ...row.observers.map((o) => observerCards.get(o.id as string)?.w ?? CARD.minW)));
+  const memberHeight = (m: Member): number => CARD.dbH + (m.instances.length > 1 ? m.instances.length * CARD.instanceRowH + CARD.instanceBottomPad : 0);
   const memRowHeight = (row: MemRow): number => (row.hostId === undefined
-    ? CARD.dbH
+    ? memberHeight(row.rep)
     : LAYOUT.stackHeaderH + row.members.length * CARD.dbH + row.observers.length * CARD.obsH);
   const obsRowHeight = (row: ObsRow): number => (row.hostId === undefined
     ? CARD.obsH
@@ -613,7 +616,12 @@ export function layoutTopology(
             x,
             y: rowTop,
             w,
-            h: CARD.dbH,
+            h: memberHeight(m),
+            ...(m.instances.length > 1 ? { instanceHosts: m.instances.map((i) => {
+              const host = doc.hosts.find((h) => h.id === i.host);
+              const site = doc.sites.find((s) => s.id === host?.site);
+              return { name: i.name, host: host?.name ?? i.host as string, site: site?.name ?? '' };
+            }) } : {}),
             lines: card?.lines ?? { name: m.name },
             hostFull: card?.hostFull ?? '',
             moved: false,

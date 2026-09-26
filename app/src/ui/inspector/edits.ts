@@ -349,12 +349,23 @@ export function addHost(site: SiteId): HostId | null {
 
 /** Add an instance to a member -- one more instance is what makes it RAC. */
 export function addInstance(id: MemberId): void {
-  patchMember(id, `Add an instance to ${id as string}`, (m) => {
-    const n = m.instances.length + 1;
+  mutate(`Add an instance to ${id as string}`, (t) => {
+    const m = t.members.find((member) => member.id === id);
+    const firstHost = t.hosts.find((h) => h.id === m?.instances[0]?.host);
+    if (!m || !firstHost) return t;
+    let n = m.instances.length + 1;
+    while (m.instances.some((i) => i.name === `${m.name}${n}`)) n++;
     const name = `${m.name}${n}`;
-    const host = m.instances[0]?.host ?? hostId('');
-    const inst: Instance = { name, host };
-    return { ...m, instances: [...m.instances, inst] };
+    const hostname = uniqueHost(t, `${firstHost.site as string}-${name}`);
+    const next = withHost(t, hostname, firstHost.site);
+    return {
+      ...next,
+      hosts: next.hosts.map((h) => h.id === hostId(hostname) && firstHost.cluster
+        ? { ...h, cluster: firstHost.cluster } : h),
+      members: next.members.map((member) => member.id === id
+        ? { ...member, instances: [...member.instances, { name, host: hostId(hostname) }] }
+        : member),
+    };
   });
 }
 
