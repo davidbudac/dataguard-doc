@@ -9,7 +9,7 @@
 import { describe, expect, it } from 'vitest';
 import { layoutTopology } from '@/ui/canvas/layout';
 import type { Geometry } from '@/ui/canvas/layout';
-import { buildLinks, orthPath, routeTopology } from '@/ui/canvas/routing';
+import { buildLinks, cardRoleFor, orthPath, routeTopology } from '@/ui/canvas/routing';
 import type { RoutedLink } from '@/ui/canvas/routing';
 import { overlaps } from '@/ui/canvas/measure';
 import type { TopologyDoc } from '@/engine';
@@ -18,7 +18,7 @@ import {
   threeObserverFixture,
 } from './canvas-fixtures';
 import { simulate, stateAt } from '@/engine';
-import { farSyncZeroLoss } from '@/presets';
+import { classic as classicPreset, farSyncZeroLoss } from '@/presets';
 
 const routeOf = (doc: TopologyDoc): { geo: Geometry; links: RoutedLink[] } => {
   const geo = layoutTopology(doc, graphOf(doc));
@@ -258,4 +258,40 @@ describe('routing: link inventory', () => {
     expect(links.filter((l) => l.kind === 'ping')).toHaveLength(3);
     expect(links.filter((l) => l.kind === 'check')).toHaveLength(3);
   });
+});
+
+describe('database role badges', () => {
+  it('distinguishes databases from far sync and observers, and follows failover', () => {
+    const fsDoc = farSyncZeroLoss.doc();
+    for (const node of layoutTopology(fsDoc, graphOf(fsDoc)).nodes) {
+      if (node.glyph === 'farsync' || node.kind === 'observer') expect(cardRoleFor(fsDoc, node)).toBeNull();
+    }
+    const doc = classicPreset.doc();
+    const geo = layoutTopology(doc, graphOf(doc));
+    const trace = simulate(doc, classicPreset.events());
+    const before = stateAt(trace, -1);
+    const after = stateAt(trace, 900);
+    expect(after.epoch.primary).not.toBe(before.epoch.primary);
+    for (const node of geo.nodes) {
+      const member = doc.members.find((m) => m.id === node.id);
+      if (!member || member.kind !== 'database') {
+        expect(cardRoleFor(doc, node, after)).toBeNull();
+      } else {
+        expect(cardRoleFor(doc, node)).toBe(member.role === 'primary' ? 'primary' : 'standby');
+        expect(cardRoleFor(doc, node, before)).toBe(member.id === before.epoch.primary ? 'primary' : 'standby');
+        expect(cardRoleFor(doc, node, after)).toBe(member.id === after.epoch.primary ? 'primary' : member.role === 'primary' ? 'former-primary' : 'standby');
+      }
+    }
+  });
+});
+
+it('marks the old primary as standby after a completed switchover', () => {
+  const doc = classicPreset.doc();
+  const target = doc.members.find((m) => m.kind === 'database' && m.role === 'physical')!;
+  const trace = simulate(doc, [{ at: 0, kind: 'cmd.switchover', to: target.id }]);
+  const frame = stateAt(trace, 900);
+  expect(frame.epoch.primary).toBe(target.id);
+  for (const node of layoutTopology(doc, graphOf(doc)).nodes) {
+    if (node.kind === 'member') expect(cardRoleFor(doc, node, frame)).toBe(node.id === target.id ? 'primary' : 'standby');
+  }
 });

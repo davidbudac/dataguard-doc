@@ -15,7 +15,7 @@ import type { AnyState, Member, RedoGraph, Snapshot, TopologyDoc } from '@/engin
 import { isFarSync, linkRttMs } from '@/engine';
 import type { NodeBox } from './layout';
 import { roleWord } from './layout';
-import { siteIsDown } from './routing';
+import { cardRoleFor, siteIsDown } from './routing';
 
 export interface AriaRow {
   site: string;
@@ -265,6 +265,7 @@ export function cardLabel(
       : o.role === 'master' ? 'master observer' : 'backup observer';
     return `${o.name}, ${role} on host ${host} in ${site}${st ? `, ${stateWords(st)}` : ''}.`;
   }
+  graph = frame?.epoch.redo ?? graph;
   const m = memberById(doc, node.id);
   if (!m) return node.id;
   const host = hostOfMember(doc, m);
@@ -279,7 +280,11 @@ export function cardLabel(
       ? `It receives redo from ${feeder}${rm.effectiveXpt ? ` over ${rm.effectiveXpt}` : ''}.`
       : 'No active redo route reaches it from the primary.';
   const st = frame ? frame.members[m.id] : undefined;
-  const kind = isFarSync(m) ? 'Far sync instance' : roleWord(m);
+  const role = cardRoleFor(doc, node, frame);
+  const kind = isFarSync(m) ? 'Far sync instance'
+    : m.id === graph.primary ? 'Primary'
+    : role === 'former-primary' ? 'Former primary'
+    : m.role === 'primary' ? 'Standby' : roleWord(m);
   return `${kind} ${m.name} on ${m.instances.length > 1 ? 'hosts' : 'host'} ${host} in ${site}${rac}. ${feed}${st ? ` It is ${stateWords(st)}.` : ''}`;
 }
 

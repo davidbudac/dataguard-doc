@@ -989,3 +989,31 @@ separate inset row for each instance, naming its host and site. The card grows
 with the instance count; Break mode marks failed instance rows individually.
 A RAC card never joins a chassis stack on its first host. Adding an instance
 creates a separate host in the same site in the same undoable edit.
+
+## Small declutter pass (2026-09-26)
+
+The header uses one native Theme picker (System / Light / Dark) and compact
+Undo/Redo arrows with accessible names and action tooltips. Build guidance leads
+with “Click to edit · drag to move · + to add”; connection and renaming instructions
+remain available with Hints. Canvas tools keep their existing actions, with flat
+zoom controls and no extra bordered, shadowed containers around each group.
+
+Validation counts remain in the header and validation panel; the readout no longer
+repeats them. Its protection, failover, playhead and run results are unchanged.
+The healthy validation heading and Break empty state use shorter copy. Warnings,
+refusal reasons, model labels and citations retain their existing visibility.
+
+Break also gives unused vertical space to the topology. Its timeline dock sizes
+to its content, capped at 56vh with scrolling for dense runs; the topology takes
+the remaining height (minimum 260px). Below 768px both return to natural page
+flow, so the mobile viewer does not inherit the dock cap.
+
+Database icon badges distinguish primary (teal, P) from standby (blue, S),
+including snapshot and logical standbys. Down-state red overrides the role color
+but preserves the letter. The role marker and card role label follow the current
+primary at the timeline playhead; far sync and observer glyphs stay distinct.
+The former primary uses F after a failover, rather than implying it has been reinstated as a standby.
+
+The workbench width cap is now 1920px (previously 1360px). Additional width goes
+to the topology and timeline; the inspector retains its 360px width and prose
+retains its local reading widths. The toast shares the same shell cap.

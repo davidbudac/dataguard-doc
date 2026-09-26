@@ -11,10 +11,8 @@
 .app{
   display:grid;
   height:100dvh;
-  /* Capped and centred, with the page ground showing in the gutters: at 1440
-     the shell ran edge to edge and the eye had no line to come back to. The
-     cap is the drawing's, not a fashion -- a 1+1+1 topology is ~1040 px wide,
-     and a rail beside it wants 360. */
+  /* Use desktop width for the drawing and timeline; the inspector keeps its
+     own width and prose keeps its local reading measure. */
   max-width:var(--w-app);
   margin-inline:auto;
   border-inline:1px solid var(--ln);
@@ -39,10 +37,13 @@
 .app.m-configure{grid-template-rows:auto fit-content(26vh) minmax(0,1fr)}
 /* Build is the drawing's mode: the stage takes the room and the dock takes
    its content, capped -- the other way round, a healthy preset rendered a
-   drawing at 60 % over an empty band under six folded notes. Break keeps the
-   fit-content stage: the timeline is the point of that mode. */
+   drawing at 60 % over an empty band under six folded notes. */
 .app.m-build{grid-template-rows:auto minmax(260px,1fr) minmax(0,auto)}
 .app.m-build .app-dock{max-height:46vh}
+/* Break gives spare height to the topology instead of leaving it below the
+   timeline. Dense runs scroll within a capped dock; playback stays sticky. */
+.app.m-break{grid-template-rows:auto minmax(260px,1fr) minmax(0,auto)}
+.app.m-break .app-dock{max-height:56vh}
 /* Configure's dock is the mode's main surface, so it takes the whole track;
    the 64vh cap below is for docks that share the height with the canvas. */
 .app.m-configure .app-dock{max-height:none}
@@ -130,6 +131,9 @@
 .topbar-group .seg button{font-size:10.5px;padding:4px 9px;letter-spacing:.08em}
 .topbar-group .btn{font-size:10.5px;padding:5px 10px;color:var(--ik3)}
 .topbar-group .btn:hover:not(:disabled){color:var(--ik)}
+.topbar-group .theme-picker{background:var(--sf);max-width:15ch}
+.topbar-group .btn.is-icon{padding:0;font-size:17px;border-color:transparent}
+.topbar-group .btn.is-icon:hover:not(:disabled){border-color:var(--ln2)}
 
 /* ---------------- status bar ---------------- */
 
@@ -169,7 +173,7 @@
    own -- the band above used to carry the same idea as a second line. */
 .guide{display:flex;flex-direction:column;gap:0;background:var(--sf);
   border-bottom:1px solid var(--ln)}
-.guide-line{padding:10px var(--gut);font-size:12px;line-height:1.5;color:var(--ik3);
+.guide-line{padding:7px var(--gut);font-size:12px;line-height:1.5;color:var(--ik3);
   max-width:112ch}
 .guide-mode{font-weight:620;color:var(--ik2)}
 
@@ -392,9 +396,9 @@
   .app{border-inline:0}
 }
 @media (max-width:767px){
-  .app,.app.m-build,.app.m-configure,.app.m-learn{height:auto;min-height:100dvh;overflow:visible;
+  .app,.app.m-build,.app.m-break,.app.m-configure,.app.m-learn{height:auto;min-height:100dvh;overflow:visible;
     grid-template-rows:auto auto auto auto}
-  .app-stage,.app-dock,.app-rail,.app.m-build .app-dock{overflow:visible;max-height:none}
+  .app-stage,.app-dock,.app-rail,.app.m-build .app-dock,.app.m-break .app-dock{overflow:visible;max-height:none}
   .app.m-build .app-stage,.app.m-break .app-stage,.app.m-configure .app-stage{display:block}
   .topbar{padding:10px 14px;gap:10px}
   .topbar-spacer{display:none}

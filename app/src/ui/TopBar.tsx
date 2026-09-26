@@ -10,7 +10,7 @@
  * not gone — it is each mode button's `title` (`MODE_SUB`), and the mode word
  * now leads the guidance line in.
  *
- * Undo and redo are small buttons that say only "Undo" and "Redo": the edit
+ * Undo and redo use compact arrows with accessible names: the edit
  * they would reverse rides in the `title`, and a disabled one carries its
  * reason there too. The two chips that used to sit beside them, shouting
  * NOTHING TO UNDO YET at a reader who had not yet done anything, said the same
@@ -72,35 +72,43 @@ export function TopBar() {
           onChange={(v) => { edition.value = v; saveEdition(v); }}
         />
 
-        <Segmented<ThemePref>
-          label="Theme"
+        <select
+          class="btn theme-picker"
+          aria-label="Theme"
+          title="Theme"
           value={theme.value}
-          options={[
-            { value: 'auto', label: 'Auto', title: 'Follow the system setting' },
-            { value: 'light', label: 'Light' },
-            { value: 'dark', label: 'Dark' },
-          ]}
-          onChange={(v) => { theme.value = v; saveTheme(v); applyTheme(v); }}
-        />
+          onChange={(e) => {
+            const v = e.currentTarget.value as ThemePref;
+            theme.value = v;
+            saveTheme(v);
+            applyTheme(v);
+          }}
+        >
+          <option value="auto">System</option>
+          <option value="light">Light</option>
+          <option value="dark">Dark</option>
+        </select>
 
         <button
           type="button"
-          class="btn is-quiet"
+          class="btn is-icon"
+          aria-label="Undo"
           disabled={!canUndo.value}
           title={undoLabel.value ? `Undo: ${undoLabel.value}` : 'Nothing to undo yet'}
           onClick={() => undo()}
         >
-          Undo
+          <span aria-hidden="true">↶</span>
         </button>
 
         <button
           type="button"
-          class="btn is-quiet"
+          class="btn is-icon"
+          aria-label="Redo"
           disabled={!canRedo.value}
           title={redoLabel.value ? `Redo: ${redoLabel.value}` : 'Nothing undone yet'}
           onClick={() => redo()}
         >
-          Redo
+          <span aria-hidden="true">↷</span>
         </button>
 
         {/* A toggle, and it says which way it is pointing. Closing the card

@@ -2,12 +2,9 @@
  * One node of the topology canvas -- the generalised `nodeCard` of the
  * published strip.
  *
- * A card is a flat bordered surface, a monochrome icon badge (database
- * cylinder, far sync cylinder with a chevron, snapshot cylinder with a shutter
- * tick, observer eye), then two or three lines of text. The cards are
- * monochrome while nothing has happened; a phase tint appears only when the
- * caller passes a frame from the trace, and red is reserved for the one thing
- * colour must say -- this component is down.
+ * Database badges use teal for primary, blue for standby, and a P/S marker.
+ * Failure red overrides role color; the letter still identifies the role.
+ * Far sync and observer glyphs keep their own distinct shapes.
  *
  * No inline styles: geometry rides on SVG presentation attributes and every
  * appearance is a class, because the page ships under a CSP with no
@@ -25,6 +22,7 @@ export { NEUTRAL_FRAME } from './routing';
 export interface NodeCardProps {
   node: NodeBox;
   frame: CardFrame;
+  databaseRole?: 'primary' | 'standby' | 'former-primary' | null;
   chips: readonly CardChip[];
   label: string;
   prefix: string;
@@ -59,6 +57,11 @@ const chipWidth = (text: string): number => Math.round(approxW(text, 9, true) + 
 
 export function NodeCard(props: NodeCardProps): JSX.Element {
   const { node, frame, chips, prefix } = props;
+  const role = props.databaseRole;
+  const roleClass = role ? ` is-${role}` : '';
+  const roleText = role === 'primary' ? 'Primary'
+    : role === 'former-primary' ? 'Former primary'
+    : role === 'standby' && node.lines.sub === 'Primary' ? 'Standby' : node.lines.sub;
   const isObs = node.kind === 'observer';
   /* A blade in a chassis stack: its own border and fill go quiet (the
      chassis behind it draws the one continuous outline and the divider
@@ -135,20 +138,29 @@ export function NodeCard(props: NodeCardProps): JSX.Element {
       ) : null}
       <rect class={cardClass} x={node.x} y={node.y} width={node.w} height={node.h} rx={stacked ? 0 : 5} />
       <rect
-        class={`tp-bdg${frame.down ? ' is-down' : ''}`}
+        class={`tp-bdg${roleClass}${frame.down ? ' is-down' : ''}`}
         x={bx} y={by} width={badge} height={badge} rx={7}
       />
       <use
         href={`#${prefix}-ico-${node.glyph}`}
-        class={`tp-ico${frame.down ? ' is-down' : ''}`}
+        class={`tp-ico${roleClass}${frame.down ? ' is-down' : ''}`}
         transform={`translate(${bx + pad},${by + pad})`}
       />
+      {role ? (
+        <g class={`tp-role-mark${roleClass}${frame.down ? ' is-down' : ''}`}>
+          <title>{role === 'primary' ? 'Primary database' : role === 'former-primary' ? 'Former primary — not reinstated' : 'Standby database'}</title>
+          <rect x={bx + badge - 12} y={by + badge - 12} width={14} height={14} rx={4} />
+          <text x={bx + badge - 5} y={by + badge - 1.5} text-anchor="middle">
+            {role === 'primary' ? 'P' : role === 'former-primary' ? 'F' : 'S'}
+          </text>
+        </g>
+      ) : null}
       <text class="tp-name" x={tx} y={nameY}>{node.lines.name}</text>
       {node.lines.host === undefined ? null : (
         <text class="tp-host" x={tx} y={nameY + 16}>{node.lines.host}</text>
       )}
       {node.lines.sub === undefined ? null : (
-        <text class="tp-sub" x={tx} y={nameY + 30}>{node.lines.sub}</text>
+        <text class="tp-sub" x={tx} y={nameY + 30}>{roleText}</text>
       )}
       {node.instanceHosts?.map((inst, index) => {
         const y = node.y + CARD.dbH + index * CARD.instanceRowH;

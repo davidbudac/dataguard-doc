@@ -102,7 +102,7 @@ describe('the header', () => {
     expect(text).not.toContain('NOTHING UNDONE');
     /* The reason did not vanish, it moved: a disabled control still says why,
        in the one place a disabled control can say it without shouting. */
-    const undo = [...root.querySelectorAll('button')].find((b) => b.textContent === 'Undo');
+    const undo = [...root.querySelectorAll('button')].find((b) => b.getAttribute('aria-label') === 'Undo');
     expect(undo?.disabled).toBe(true);
     expect(undo?.getAttribute('title')).toBe('Nothing to undo yet');
   });
