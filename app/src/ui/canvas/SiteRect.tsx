@@ -26,6 +26,8 @@ export interface SiteRectProps {
   /** Draw the port a site link can be dragged from, beside the name. */
   port?: boolean;
   onPortPointerDown?: (key: string, ev: JSX.TargetedPointerEvent<SVGGElement>) => void;
+  /** A press on the panel itself: the start of a group move of everything in it. */
+  onPointerDown?: (key: string, ev: JSX.TargetedPointerEvent<SVGGElement>) => void;
   interactive: boolean;
   /** Said out loud: the name, what stands in it, and whether it is gone. */
   label: string;
@@ -70,6 +72,7 @@ export function SiteRect(props: SiteRectProps): JSX.Element {
       onClick={props.interactive
         ? (ev) => props.onSelect?.(key, ev.shiftKey || ev.metaKey || ev.ctrlKey)
         : undefined}
+      onPointerDown={props.interactive ? (ev) => props.onPointerDown?.(key, ev) : undefined}
       onPointerEnter={props.interactive ? () => props.onHover?.(key) : undefined}
       onPointerLeave={props.interactive ? () => props.onHover?.(null) : undefined}
       onKeyDown={props.interactive ? (ev) => props.onKeyDown?.(key, ev) : undefined}

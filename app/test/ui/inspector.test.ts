@@ -12,10 +12,11 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { h, render } from 'preact';
 import {
-  BOUNDS, formatRedoRoutes, isTopologyDoc, parseTopologyDoc, resolveRedoGraph, validate,
+  BOUNDS, declaredPrimary, formatRedoRoutes, isTopologyDoc, parseTopologyDoc, resolveRedoGraph,
+  validate,
 } from '@/engine';
 import type { DatabaseMember, MemberId } from '@/engine';
-import { hostId, memberId, siteId } from '@/engine';
+import { hostId, memberId, observerId, siteId } from '@/engine';
 import { classicDoc, doc } from '@/state/doc';
 import { resetHistory, undo } from '@/state/history';
 import { errors } from '@/state/derived';
@@ -26,8 +27,10 @@ import {
 import { CanvasSlot } from '@/ui/canvas/CanvasSlot';
 import { Inspector } from '@/ui/inspector/Inspector';
 import { IssuePanel, revealFindings } from '@/ui/IssuePanel';
+import { layoutTopology, roleWord } from '@/ui/canvas/layout';
 import {
-  addDatabase, addFarSync, addLink, addObserver, addSite, removeSite, renameMember, setPrimary,
+  addDatabase, addFarSync, addLink, addObserver, addSite, removeSite, renameMember,
+  renameObserver, setPrimary,
 } from '@/ui/inspector/edits';
 import { ADD_ACTIONS, AddToolbar, WHY_NO_SITE, WHY_ONE_SITE } from '@/ui/inspector/adds';
 import {
@@ -634,6 +637,38 @@ describe('identity and roles', () => {
     const primary = t.members.find((m) => m.kind === 'database' && m.role === 'primary');
     expect(Object.keys(primary?.dests ?? {})).toContain('stby01');
     expect(isTopologyDoc(t)).toBe(true);
+  });
+
+  it('keeps showing the current name on the card after a rename -- the big title, not just the id', () => {
+    /* The gap that let the title silently keep saying "Physical standby":
+       every earlier test here only checked the document's own ids, which the
+       rename always got right. The card's big title is a separate, derived
+       fact -- `layoutTopology`'s `lines.name` -- and this is the one place
+       that reads it back out after the edit, the way a reader looking at the
+       drawing would. */
+    renameMember(memberId('sby01'), 'stby01');
+    const t = doc.value.topology;
+    const primary = declaredPrimary(t);
+    if (primary === null) throw new Error('no primary');
+    const graph = resolveRedoGraph(t, { primary });
+    const geo = layoutTopology(t, graph);
+    const renamed = t.members.find((m) => (m.id as string) === 'stby01')!;
+    const node = geo.byKey['stby01'];
+    expect(node).toBeDefined();
+    expect(node?.lines.name).toBe('stby01');
+    expect(node?.lines.sub).toBe(roleWord(renamed));
+  });
+
+  it('keeps showing the current name on an observer\'s card after a rename', () => {
+    renameObserver(observerId('obs01'), 'watcher01');
+    const t = doc.value.topology;
+    const primary = declaredPrimary(t);
+    if (primary === null) throw new Error('no primary');
+    const graph = resolveRedoGraph(t, { primary });
+    const geo = layoutTopology(t, graph);
+    const node = geo.byKey['watcher01'];
+    expect(node).toBeDefined();
+    expect(node?.lines.name).toBe('watcher01');
   });
 
   it('refuses a name another member already carries, and says so', () => {

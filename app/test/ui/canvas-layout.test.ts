@@ -9,11 +9,13 @@
  */
 
 import { describe, expect, it } from 'vitest';
+import { hostId } from '@/engine';
 import { layoutTopology, nodeKey } from '@/ui/canvas/layout';
 import type { Geometry, NodeBox } from '@/ui/canvas/layout';
 import { overlaps } from '@/ui/canvas/measure';
 import {
-  allFixtures, cascadeFixture, cascadeSameSiteFixture, classic, farSyncFixture, graphOf,
+  allFixtures, cascadeFixture, cascadeSameSiteFixture, classic, coHostedMembersFixture,
+  coHostedObserverFixture, coHostedObserversFixture, farSyncFixture, graphOf,
   threeObserverFixture,
 } from './canvas-fixtures';
 
@@ -222,5 +224,156 @@ describe('layoutTopology: drag overrides', () => {
     const moved = layoutTopology(doc, graphOf(doc), { overrides: { prm01: { dx: 40, dy: 0 } } });
     expect(box(node(moved, 'sby01'))).toEqual(box(node(base, 'sby01')));
     expect(node(moved, 'sby01').moved).toBe(false);
+  });
+
+  it('moves a data centre as a group: one offset per member, and the panel follows them', () => {
+    const doc = classic('dc3');
+    const base = geometryOf(doc);
+    /* A drag on dc1's own panel writes the same delta under every member and
+       observer standing in it -- `prm01` here -- not under the site's own
+       id: the site rect is a derived bounding box of its cards, so moving
+       every card by the same offset already carries the box with them. */
+    const moved = layoutTopology(doc, graphOf(doc), { overrides: { prm01: { dx: 40, dy: 24 } } });
+    const before = node(base, 'prm01');
+    const after = node(moved, 'prm01');
+    expect(after.x - before.x).toBe(40);
+    expect(after.y - before.y).toBe(24);
+    const dc1Before = base.sites.find((s) => (s.id as string) === 'dc1')!;
+    const dc1After = moved.sites.find((s) => (s.id as string) === 'dc1')!;
+    expect(dc1After.x - dc1Before.x).toBe(40);
+    expect(dc1After.y - dc1Before.y).toBe(24);
+    /* Nothing that stands in another data centre moves. */
+    expect(box(node(moved, 'sby01'))).toEqual(box(node(base, 'sby01')));
+    const dc2Before = base.sites.find((s) => (s.id as string) === 'dc2')!;
+    const dc2After = moved.sites.find((s) => (s.id as string) === 'dc2')!;
+    expect([dc2After.x, dc2After.y, dc2After.w, dc2After.h])
+      .toEqual([dc2Before.x, dc2Before.y, dc2Before.w, dc2Before.h]);
+  });
+
+  it('reads a site-keyed offset only for the empty panel it was written for', () => {
+    const doc = classic('none');
+    const base = geometryOf(doc);
+    /* dc3 is empty in this placement (`classic('none')` deploys no observer),
+       so it is the one site a group drag can only carry by its own id -- no
+       member of its own to write the offset under. */
+    const moved = layoutTopology(doc, graphOf(doc), { overrides: { dc3: { dx: 16, dy: -8 } } });
+    const before = base.sites.find((s) => (s.id as string) === 'dc3')!;
+    const after = moved.sites.find((s) => (s.id as string) === 'dc3')!;
+    expect(after.x - before.x).toBe(16);
+    expect(after.y - before.y).toBe(-8);
+    /* An occupied site's own id is never read: only its members' keys are. */
+    const occupied = layoutTopology(doc, graphOf(doc), { overrides: { dc1: { dx: 100, dy: 100 } } });
+    const dc1Before = base.sites.find((s) => (s.id as string) === 'dc1')!;
+    const dc1Occupied = occupied.sites.find((s) => (s.id as string) === 'dc1')!;
+    expect([dc1Occupied.x, dc1Occupied.y]).toEqual([dc1Before.x, dc1Before.y]);
+  });
+});
+
+describe('layoutTopology: chassis stacks -- cards sharing a host', () => {
+  it('leaves an item alone on its host exactly as today: its own card, its own host line', () => {
+    const doc = coHostedObserverFixture();
+    const geo = geometryOf(doc);
+    const sby = node(geo, 'sby01');
+    expect(sby.stackKey).toBeUndefined();
+    expect(sby.lines.host).toBe('dc2-sby01');
+    expect(geo.stacks.some((s) => s.memberKeys.includes('sby01'))).toBe(false);
+  });
+
+  it('snaps a member and an observer sharing a host into one touching stack', () => {
+    const doc = coHostedObserverFixture();
+    const geo = geometryOf(doc);
+    const prm = node(geo, 'prm01');
+    const obs = node(geo, 'obs01');
+    expect(prm.stackKey).toBe('stack:dc1-prm01');
+    expect(obs.stackKey).toBe('stack:dc1-prm01');
+    /* The header carries the host once; the blades no longer repeat it. */
+    expect(prm.lines.host).toBeUndefined();
+    expect(prm.lines.sub).toBe('Primary');
+    expect(obs.lines.host).toBe('Observer');
+    /* Same x, same width: one column, not two. */
+    expect(prm.x).toBe(obs.x);
+    expect(prm.w).toBe(obs.w);
+    /* Touching: the observer's blade starts exactly where the primary's ends. */
+    expect(obs.y).toBe(prm.y + prm.h);
+    const stack = geo.stacks.find((s) => s.key === 'stack:dc1-prm01')!;
+    expect(stack).toBeDefined();
+    expect(stack.memberKeys).toEqual(['prm01', 'obs01']);
+    expect(stack.label).toContain('dc1-prm01');
+    /* The header sits directly above the top blade, with its own band height. */
+    expect(stack.y).toBe(prm.y - stack.headerH);
+    expect(stack.x).toBe(prm.x);
+    expect(stack.w).toBe(prm.w);
+    expect(stack.h).toBe(stack.headerH + prm.h + obs.h);
+    /* The site box clears the header band, not just the blades. */
+    const dc1 = geo.sites.find((s) => (s.id as string) === 'dc1')!;
+    expect(dc1.y).toBeLessThanOrEqual(stack.y);
+  });
+
+  it('snaps two members with no observer sharing a host into one stack, and none of it overlaps another card', () => {
+    const doc = coHostedMembersFixture();
+    const geo = geometryOf(doc);
+    const sby01 = node(geo, 'sby01');
+    const sby02 = node(geo, 'sby02');
+    expect(sby01.stackKey).toBe(sby02.stackKey);
+    expect(sby01.stackKey).toBeDefined();
+    expect(sby01.x).toBe(sby02.x);
+    const [top, bottom] = sby01.y < sby02.y ? [sby01, sby02] : [sby02, sby01];
+    expect(bottom.y).toBe(top.y + top.h);
+    for (const other of geo.nodes) {
+      if (other.key === 'sby01' || other.key === 'sby02') continue;
+      expect(overlaps(sby01, other)).toBe(false);
+      expect(overlaps(sby02, other)).toBe(false);
+    }
+  });
+
+  it('snaps two observers with no member on their host into their own stack, in the observer band', () => {
+    const doc = coHostedObserversFixture();
+    const geo = geometryOf(doc);
+    const obs01 = node(geo, 'obs01');
+    const obs02 = node(geo, 'obs02');
+    expect(obs01.stackKey).toBe(obs02.stackKey);
+    expect(obs01.kind).toBe('observer');
+    expect(obs01.x).toBe(obs02.x);
+    const [top, bottom] = obs01.y < obs02.y ? [obs01, obs02] : [obs02, obs01];
+    expect(bottom.y).toBe(top.y + top.h);
+  });
+
+  it('dissolves and re-forms a stack as the document\'s own hosts change, with no other state', () => {
+    const doc = coHostedObserverFixture();
+    const stacked = layoutTopology(doc, graphOf(doc));
+    expect(node(stacked, 'prm01').stackKey).toBeDefined();
+
+    /* Give the observer a host of its own: nothing shares it any more, so it
+       reverts to an ordinary card, unstacked. */
+    const dissolved: typeof doc = {
+      ...doc,
+      hosts: [...doc.hosts, { ...doc.hosts[0]!, id: hostId('dc1-obs01'), name: 'dc1-obs01' }],
+      observers: doc.observers.map((o) => (o.id === 'obs01' ? { ...o, host: hostId('dc1-obs01') } : o)),
+    };
+    const apart = layoutTopology(dissolved, graphOf(dissolved));
+    expect(node(apart, 'prm01').stackKey).toBeUndefined();
+    expect(node(apart, 'obs01').stackKey).toBeUndefined();
+    expect(node(apart, 'prm01').lines.host).toBe('dc1-prm01');
+
+    /* Move it back onto the primary's host: the stack re-forms, purely from
+       the document -- no layout state of its own to carry across the move. */
+    const rejoined = layoutTopology(doc, graphOf(doc));
+    expect(node(rejoined, 'prm01').stackKey).toBe(node(stacked, 'prm01').stackKey);
+  });
+
+  it('carries every blade under one drag offset written on the pressed card, and the stack still touches', () => {
+    const doc = coHostedObserverFixture();
+    /* The drawing writes one offset per key it carries (`TopoCanvas.carried`
+       resolves every blade of a pressed card's stack); the layout only has to
+       stay internally consistent once both offsets land in one edit. */
+    const moved = layoutTopology(doc, graphOf(doc), {
+      overrides: { prm01: { dx: 24, dy: 16 }, obs01: { dx: 24, dy: 16 } },
+    });
+    const prm = node(moved, 'prm01');
+    const obs = node(moved, 'obs01');
+    expect(prm.moved).toBe(true);
+    expect(obs.moved).toBe(true);
+    expect(prm.x).toBe(obs.x);
+    expect(obs.y).toBe(prm.y + prm.h);
   });
 });

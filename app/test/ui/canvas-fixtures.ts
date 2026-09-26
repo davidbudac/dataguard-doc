@@ -78,6 +78,61 @@ export function cascadeSameSiteFixture(): TopologyDoc {
   };
 }
 
+/** An observer standing on the primary's own host: one chassis stack. */
+export function coHostedObserverFixture(): TopologyDoc {
+  const prm = db('prm01', ['dc1-prm01'], 'primary');
+  const sby = db('sby01', ['dc2-sby01'], 'physical');
+  dest(prm, sby.id);
+  return build({
+    sites: ['dc1', 'dc2'],
+    hosts: [['dc1-prm01', 'dc1'], ['dc2-sby01', 'dc2']],
+    members: [prm, sby],
+    observers: [observer('obs01', 'dc1-prm01')],
+    targets: [sby.id],
+  });
+}
+
+/** Two standbys sharing one host: a member-only chassis stack. */
+export function coHostedMembersFixture(): TopologyDoc {
+  const prm = db('prm01', ['dc1-prm01'], 'primary', {
+    redoRoutes: [{
+      source: 'LOCAL',
+      groups: [
+        { priority: 1, dests: [{ target: memberId('sby01') }], explicitGroup: true },
+        { priority: 2, dests: [{ target: memberId('sby02') }], explicitGroup: true },
+      ],
+    }],
+  });
+  const sby01 = db('sby01', ['dc2-sby01'], 'physical');
+  const sby02 = db('sby02', ['dc2-sby01'], 'physical');
+  dest(prm, sby01.id);
+  dest(prm, sby02.id);
+  return build({
+    sites: ['dc1', 'dc2'],
+    hosts: [['dc1-prm01', 'dc1'], ['dc2-sby01', 'dc2']],
+    members: [prm, sby01, sby02],
+    targets: [sby01.id],
+  });
+}
+
+/** Two observers sharing one host, with no member on it: an observer-only
+    chassis stack, standing in the observer band on its own. */
+export function coHostedObserversFixture(): TopologyDoc {
+  const prm = db('prm01', ['dc1-prm01'], 'primary');
+  const sby = db('sby01', ['dc2-sby01'], 'physical');
+  dest(prm, sby.id);
+  return build({
+    sites: ['dc1', 'dc2', 'dc3'],
+    hosts: [['dc1-prm01', 'dc1'], ['dc2-sby01', 'dc2'], ['dc3-obs01', 'dc3']],
+    members: [prm, sby],
+    observers: [
+      observer('obs01', 'dc3-obs01', 'master'),
+      observer('obs02', 'dc3-obs01', 'backup'),
+    ],
+    targets: [sby.id],
+  });
+}
+
 /** Three observers, two of them in one data centre. */
 export function threeObserverFixture(): TopologyDoc {
   const prm = db('prm01', ['dc1-prm01'], 'primary');
@@ -134,5 +189,8 @@ export function allFixtures(): { name: string; doc: TopologyDoc }[] {
     { name: 'cascade', doc: cascadeFixture() },
     { name: 'three observers', doc: threeObserverFixture() },
     { name: 'priority groups', doc: priorityFixture() },
+    { name: 'co-hosted observer', doc: coHostedObserverFixture() },
+    { name: 'co-hosted members', doc: coHostedMembersFixture() },
+    { name: 'co-hosted observers', doc: coHostedObserversFixture() },
   ];
 }

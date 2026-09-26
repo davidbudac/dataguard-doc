@@ -594,10 +594,19 @@ export function CanvasSlot({ interactive = true }: CanvasSlotProps) {
           all: Readonly<Record<string, { dx: number; dy: number }>>,
         ) => {
           /* Every card the drag carries, in one edit under the pressed card's
-             key -- which is the key `moveToSite` coalesces into. */
+             key -- which is the key `moveToSite` coalesces into. A data
+             centre's own key is in the same namespace (`carried()` in
+             `TopoCanvas` reaches for it the same way it reaches for a
+             selection), and dragging one carries its own members and
+             observers along, so the label says "data centre" rather than
+             "card" when that is what moved. */
           const ids = Object.keys(all);
+          const site = topology.value.sites.find((s) => (s.id as string) === key);
+          const label = site
+            ? `Move the ${site.name} data centre`
+            : ids.length === 1 ? `Move the ${key} card` : `Move ${ids.length} cards`;
           edit(
-            ids.length === 1 ? `Move the ${key} card` : `Move ${ids.length} cards`,
+            label,
             (d) => ids.reduce((acc, k) => withLayout(acc, k, all[k] as { dx: number; dy: number }), d),
             `drag:${key}`,
           );

@@ -378,8 +378,13 @@ function candidatesFor(
 
   if (kind === 'ping' || kind === 'check') {
     /* The observer band sits above the member band, so an observer link comes
-       down onto the top edge of the card it watches. */
-    if (a.col === b.col) {
+       down onto the top edge of the card it watches -- unless the two are
+       co-hosted, in which case they are two blades of one chassis stack with
+       nothing between them: no straight run has room for a pill (the same
+       reason a member-to-member hop takes the same detour, above), so the
+       line goes round the side of the column instead. */
+    const sameStack = a.stackKey !== undefined && a.stackKey === b.stackKey;
+    if (a.col === b.col && !sameStack) {
       out.push({
         points: Math.abs(ax - bx) < 0.5
           ? [{ x: ax, y: a.y + a.h }, { x: bx, y: b.y }]
@@ -387,6 +392,19 @@ function candidatesFor(
             { x: bx, y: (a.y + a.h + b.y) / 2 }, { x: bx, y: b.y }],
         corridor: `v:${a.col}:${a.row}`,
         shift: shiftY([1, 2]),
+      });
+    } else if (a.col === b.col) {
+      const col = geo.columns[a.col];
+      const rightmost = a.col === geo.columns.length - 1;
+      const sideX = col
+        ? (rightmost ? col.x - 14 : col.x + col.w + 14)
+        : (rightmost ? a.x - 14 : a.x + a.w + 14);
+      const exitA = rightmost ? { x: a.x, y: ay } : { x: a.x + a.w, y: ay };
+      const exitB = rightmost ? { x: b.x, y: by } : { x: b.x + b.w, y: by };
+      out.push({
+        points: [exitA, { x: sideX, y: ay }, { x: sideX, y: by }, exitB],
+        corridor: `side:${a.col}`,
+        shift: shiftX([1, 2]),
       });
     } else {
       const side = b.col > a.col ? a.x + a.w : a.x;

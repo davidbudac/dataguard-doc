@@ -60,6 +60,13 @@ const chipWidth = (text: string): number => Math.round(approxW(text, 9, true) + 
 export function NodeCard(props: NodeCardProps): JSX.Element {
   const { node, frame, chips, prefix } = props;
   const isObs = node.kind === 'observer';
+  /* A blade in a chassis stack: its own border and fill go quiet (the
+     chassis behind it draws the one continuous outline and the divider
+     between blades) until something -- selection, hover, a drag, a down
+     frame -- needs to say *which* blade, at which point `.tp-card.is-blade`
+     is beaten by the more specific `.is-sel`/`.is-hov`/... rule that follows
+     it in canvas.css. */
+  const stacked = node.stackKey !== undefined;
   const badge = isObs ? CARD.badgeObs : CARD.badgeDb;
   const bx = node.x + CARD.badgeX;
   const by = node.y + Math.round((node.h - badge) / 2);
@@ -69,6 +76,7 @@ export function NodeCard(props: NodeCardProps): JSX.Element {
 
   const cardClass = [
     'tp-card',
+    stacked ? 'is-blade' : '',
     frame.down ? 'is-down' : PHASE_CLASS[frame.phase],
     frame.stalled && !frame.down ? 'is-stalled' : '',
     frame.unreachable ? 'is-unreached' : '',
@@ -121,11 +129,11 @@ export function NodeCard(props: NodeCardProps): JSX.Element {
     >
       {frame.down ? (
         <rect
-          class="tp-hatchfill" x={node.x} y={node.y} width={node.w} height={node.h} rx={5}
+          class="tp-hatchfill" x={node.x} y={node.y} width={node.w} height={node.h} rx={stacked ? 0 : 5}
           fill={`url(#${prefix}-hatch)`}
         />
       ) : null}
-      <rect class={cardClass} x={node.x} y={node.y} width={node.w} height={node.h} rx={5} />
+      <rect class={cardClass} x={node.x} y={node.y} width={node.w} height={node.h} rx={stacked ? 0 : 5} />
       <rect
         class={`tp-bdg${frame.down ? ' is-down' : ''}`}
         x={bx} y={by} width={badge} height={badge} rx={7}

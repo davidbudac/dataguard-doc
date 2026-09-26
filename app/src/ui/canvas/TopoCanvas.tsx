@@ -30,6 +30,7 @@ import type { BarAction } from './ActionBar';
 import type { WhyState } from '../common/WhyPill';
 import { approxW, CARD } from './measure';
 import { NodeCard } from './NodeCard';
+import { StackChassis } from './StackChassis';
 import { LinkPath, linkKey } from './LinkPath';
 import { SiteRect, siteKey } from './SiteRect';
 import { snap8 } from './measure';
@@ -418,11 +419,29 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
     cards.current.get(key)?.focus();
   };
 
-  /** The cards a gesture on `key` carries: the selected ones when it is one of them. */
+  /** Every blade of the chassis stack `key` stands in, itself included -- or
+      just `key` alone on a host of its own. */
+  const stackMatesOf = (key: string): string[] => {
+    const n = geo.byKey[key];
+    const sk = n?.stackKey;
+    if (sk === undefined) return [key];
+    return geo.nodes.filter((x) => x.stackKey === sk).map((x) => x.key);
+  };
+
+  /**
+   * The cards a gesture on `key` carries: the selected ones when it is one of
+   * them, or its whole chassis stack otherwise -- a drag on one blade, or on
+   * the header above it, always moves every blade in the stack together, in
+   * one edit (`carried` is what both `onCardPointerDown` and the `Alt`-arrow
+   * nudge build their `bases`/keys from).
+   */
   const carried = (key: string): string[] => {
-    if (!selection.includes(key)) return [key];
+    if (!selection.includes(key)) return stackMatesOf(key);
     const many = selection.filter((k) => geo.byKey[k] !== undefined);
-    return many.length === 0 ? [key] : many;
+    if (many.length === 0) return stackMatesOf(key);
+    const set = new Set<string>();
+    for (const k of many) for (const mate of stackMatesOf(k)) set.add(mate);
+    return [...set];
   };
 
   const siblings = (node: NodeBox): NodeBox[] => geo.nodes
@@ -570,6 +589,52 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
        the svg, so a plain click never reached the card's own onClick and
        selecting with a mouse silently did nothing. A drag still captures the
        moment it becomes one, which is the only time the pointer can leave. */
+  };
+
+  /**
+   * A press on a data centre's own panel: the whole data centre moves as one.
+   *
+   * Every member and observer standing in it is carried under its own key --
+   * `bases` is what `offsetsOf` steps and what `onDrag` writes, so one drag
+   * is one edit for the whole group, coalesced under the site's key
+   * (`drag:${id}`, `CanvasSlot`'s `onDrag`, generic over what the drag
+   * carries). An empty panel has no member to carry the move for, so it
+   * carries its own id instead -- the one case `layoutTopology` reads a
+   * site-keyed offset, to slide the panel itself (`layout.ts` step 8). An
+   * occupied site never writes to its own key: every member already moved by
+   * the same delta already drags the derived box with it, and a leftover
+   * offset on the site's id would reappear out of nowhere the day its last
+   * member left and the panel became the empty case.
+   *
+   * Never carries `onMoveToSite`: the site's own key has no entry in
+   * `geo.byKey` (that map holds only member and observer nodes), so the
+   * "which site is the pointer over" check in `onPointerMove`/`endDrag`
+   * finds no owning site for it and never fires a drop.
+   */
+  const onSitePointerDown = (key: string, ev: JSX.TargetedPointerEvent<SVGGElement>): void => {
+    if (!props.onDrag && !props.onDragEnd) return;
+    if (ev.button !== 0) return;
+    /* A press on the site's own port starts a line, not a move. */
+    if (ev.target instanceof Element && ev.target.closest('.tp-port') !== null) return;
+    const svg = svgRef.current;
+    const site = geo.sites.find((s) => (s.id as string) === key);
+    if (!svg || !site) return;
+    const rect = svg.getBoundingClientRect();
+    const scale = rect.width > 0 ? view.w / rect.width : 1;
+    const members = geo.nodes.filter((n) => (n.site as string) === key).map((n) => n.key);
+    const keys = members.length > 0 ? members : [key];
+    const bases: Record<string, LayoutOffset> = {};
+    for (const k of keys) bases[k] = overrides[k] ?? { dx: 0, dy: 0 };
+    drag.current = {
+      kind: 'card',
+      key,
+      bases,
+      startX: ev.clientX,
+      startY: ev.clientY,
+      scale,
+      moved: false,
+      over: null,
+    };
   };
 
   /** A press on a card's port: the start of a line to another card. */
@@ -979,6 +1044,7 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
               onSelect={onCardSelect}
               onHover={props.onHover}
               onKeyDown={onEntityKey}
+              onPointerDown={onSitePointerDown}
               nodeRef={cardRef}
             />
           ))}
@@ -1000,6 +1066,18 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
                 && hovered !== l.from && hovered !== l.to}
               onSelect={onCardSelect}
               onHover={props.onHover}
+            />
+          ))}
+        </g>
+
+        <g class="tp-stacks">
+          {geo.stacks.map((s) => (
+            <StackChassis
+              key={s.key}
+              stack={s}
+              byKey={geo.byKey}
+              interactive={interactive}
+              onHeaderPointerDown={onCardPointerDown}
             />
           ))}
         </g>

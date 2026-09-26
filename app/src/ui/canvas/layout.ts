@@ -39,6 +39,12 @@ export const LAYOUT = {
   padTop: 10,
   padBottom: 16,
   padSide: 10,
+  /**
+   * Two or more cards on one host snap into a chassis stack: one header band
+   * naming the host, the blades touching under it with no row gap between
+   * them (a divider line stands in for the gap instead).
+   */
+  stackHeaderH: 18,
 } as const;
 
 export type NodeKind = 'member' | 'observer';
@@ -72,6 +78,24 @@ export interface NodeBox {
   hostFull: string;
   /** True when the caller's drag override moved this card. */
   moved: boolean;
+  /** Set when 2+ occupants share this card's host: the chassis stack's key
+      (`stack:<hostId>`), the same one on every blade of that stack and on
+      the matching entry in `Geometry.stacks`. Undefined for a card alone on
+      its host, which draws exactly as it always has. */
+  stackKey?: string;
+}
+
+export interface StackBox extends Rect {
+  /** `stack:<hostId>` -- shared with every blade's `NodeBox.stackKey`. */
+  key: string;
+  hostId: string;
+  site: SiteId;
+  /** The header band's own height, at the top of this rect. */
+  headerH: number;
+  /** The host name, fitted to the stack's width. */
+  label: string;
+  /** Every blade's key, top to bottom -- what a press on the header carries. */
+  memberKeys: string[];
 }
 
 export interface SiteBox extends Rect {
@@ -104,6 +128,9 @@ export interface ViewBox { x: number; y: number; w: number; h: number }
 export interface Geometry {
   nodes: NodeBox[];
   byKey: Record<string, NodeBox>;
+  /** One entry per chassis stack on the drawing -- the header band and the
+      outer frame around its blades. Empty where nothing is co-hosted. */
+  stacks: StackBox[];
   sites: SiteBox[];
   columns: { site: SiteId; x: number; w: number }[];
   viewBox: ViewBox;
@@ -164,16 +191,48 @@ export function memberHostLine(doc: TopologyDoc, m: Member): string {
   return first ? hostName(doc, first.host as string) : '';
 }
 
+/**
+ * The card's big title is always the stored name -- a member's or an
+ * observer's `id`/`name` stay equal (`renameMember`, `renameObserver`), so
+ * the title a reader renamed is the title the card keeps showing. The role
+ * word moves to the small line under it, which is where the name used to
+ * sit: a card that renders "Primary" no matter what the reader typed is a
+ * rename that silently reverted on the drawing while the document kept it.
+ */
 function memberLines(doc: TopologyDoc, m: Member): CardLines {
   const host = memberHostLine(doc, m);
-  return { name: roleWord(m), host: elide(host), sub: m.name };
+  const avail = CARD.maxW - CARD.textXDb - CARD.padRight;
+  const name = fitLabel([m.name], avail) ?? elide(m.name, 26);
+  return { name, host: elide(host), sub: roleWord(m) };
+}
+
+/** A member's blade inside a chassis stack: the host line moves to the shared
+    header, so the card keeps only its name and role word. */
+function stackedMemberLines(m: Member): CardLines {
+  const avail = CARD.maxW - CARD.textXDb - CARD.padRight;
+  const name = fitLabel([m.name], avail) ?? elide(m.name, 26);
+  return { name, sub: roleWord(m) };
+}
+
+/** An observer's blade inside a chassis stack: "Observer" stands in for the
+    host, which the header already names once for the whole stack. */
+function stackedObserverLines(o: Observer): CardLines {
+  const avail = CARD.maxW - CARD.textXObs - CARD.padRight;
+  const name = fitLabel([o.name], avail) ?? elide(o.name, 24);
+  return { name, host: 'Observer' };
 }
 
 function observerLines(doc: TopologyDoc, o: Observer): CardLines {
   const host = hostName(doc, o.host as string);
-  const both = `${o.name}, ${host}`;
-  const line = fitLabel([both, host], CARD.maxW - CARD.textXObs - CARD.padRight) ?? elide(host);
-  return { name: 'Observer', host: elide(line, 24) };
+  const avail = CARD.maxW - CARD.textXObs - CARD.padRight;
+  const name = fitLabel([o.name], avail) ?? elide(o.name, 24);
+  /* An observer card has room for two lines, not three (`CARD.obsH`), so the
+     role word rides on the host line beside it rather than on a sub line
+     that would need a taller card -- the same fitting the name line above
+     went through, falling back to the host alone when even that is tight. */
+  const combined = `Observer, ${host}`;
+  const roled = fitLabel([combined, host], avail) ?? elide(host);
+  return { name, host: roled };
 }
 
 interface Placed {
@@ -278,26 +337,129 @@ export function layoutTopology(
     return { site: s as SiteId, col, obs, mems };
   });
 
+  /* ---- 3b. chassis stacks: 2+ occupants sharing a host snap into one ----
+     A host belongs to one site, so grouping by host id is grouping within a
+     site for free. A single-occupant host never appears in `hostGroups` with
+     two or more entries, so it never enters a row below -- its card renders
+     exactly as it always has. */
+  const hostOfMember = (m: Member): string | undefined => m.instances[0]?.host as string | undefined;
+  const hostGroups = new Map<string, { members: Member[]; observers: Observer[] }>();
+  for (const m of doc.members) {
+    const h = hostOfMember(m);
+    if (h === undefined) continue;
+    const g = hostGroups.get(h) ?? { members: [], observers: [] };
+    g.members.push(m);
+    hostGroups.set(h, g);
+  }
+  for (const o of doc.observers) {
+    const h = o.host as string;
+    const g = hostGroups.get(h) ?? { members: [], observers: [] };
+    g.observers.push(o);
+    hostGroups.set(h, g);
+  }
+  const groupSize = (h: string | undefined): number => {
+    if (h === undefined) return 0;
+    const g = hostGroups.get(h);
+    return g ? g.members.length + g.observers.length : 0;
+  };
+  const isStackedMember = (m: Member): boolean => groupSize(hostOfMember(m)) >= 2;
+  const isStackedObserver = (o: Observer): boolean => groupSize(o.host as string) >= 2;
+  const byName = (a: { name: string }, b: { name: string }): number =>
+    (a.name < b.name ? -1 : a.name > b.name ? 1 : 0);
+  const stackKeyOf = (hostId: string): string => `stack:${hostId}`;
+  const stackHeaderW = (hostId: string): number =>
+    Math.ceil(approxW(hostName(doc, hostId), 10.5, true) + 20);
+
+  interface MemRow { rep: Member; hostId?: string; members: Member[]; observers: Observer[] }
+  interface ObsRow { rep: Observer; hostId?: string; observers: Observer[] }
+
+  /** One row per member, folding every co-hosted member and observer after
+      the first occurrence into that first member's row. */
+  const memRowsOf = (mems: Member[]): MemRow[] => {
+    const seen = new Set<string>();
+    const rows: MemRow[] = [];
+    for (const m of mems) {
+      const h = hostOfMember(m);
+      if (h !== undefined && groupSize(h) >= 2) {
+        if (seen.has(h)) continue;
+        seen.add(h);
+        const g = hostGroups.get(h) as { members: Member[]; observers: Observer[] };
+        rows.push({
+          rep: m, hostId: h, members: [...g.members].sort(memberRoleCmp), observers: [...g.observers].sort(byName),
+        });
+      } else {
+        rows.push({ rep: m, members: [m], observers: [] });
+      }
+    }
+    return rows;
+  };
+  function memberRoleCmp(a: Member, b: Member): number {
+    const ra = rank.get(a.id as string) ?? 0; const rb = rank.get(b.id as string) ?? 0;
+    if (ra !== rb) return ra - rb;
+    const ka = roleKey(a); const kb = roleKey(b);
+    if (ka !== kb) return ka - kb;
+    return byName(a, b);
+  }
+  /** One row per observer not already folded into a member's row above --
+      an observer alone with another observer on a host with no member still
+      snaps into its own chassis stack, in the observer band. */
+  const obsRowsOf = (obs: Observer[]): ObsRow[] => {
+    const seen = new Set<string>();
+    const rows: ObsRow[] = [];
+    for (const o of obs) {
+      const h = o.host as string;
+      const g = hostGroups.get(h);
+      if (g && g.members.length > 0) continue;
+      if (g && g.members.length + g.observers.length >= 2) {
+        if (seen.has(h)) continue;
+        seen.add(h);
+        rows.push({ rep: o, hostId: h, observers: [...g.observers].sort(byName) });
+      } else {
+        rows.push({ rep: o, observers: [o] });
+      }
+    }
+    return rows;
+  };
+  const memRowsByCol = columns.map((c) => memRowsOf(c.mems));
+  const obsRowsByCol = columns.map((c) => obsRowsOf(c.obs));
+
   /* ---- 4. measure ---- */
   const memberCards = new Map<string, { lines: CardLines; w: number; hostFull: string }>();
   for (const m of doc.members) {
-    const lines = memberLines(doc, m);
+    const lines = isStackedMember(m) ? stackedMemberLines(m) : memberLines(doc, m);
     memberCards.set(m.id as string, {
       lines, w: measureCardWidth(lines, false), hostFull: memberHostLine(doc, m),
     });
   }
   const observerCards = new Map<string, { lines: CardLines; w: number; hostFull: string }>();
   for (const o of doc.observers) {
-    const lines = observerLines(doc, o);
+    const lines = isStackedObserver(o) ? stackedObserverLines(o) : observerLines(doc, o);
     observerCards.set(o.id as string, {
       lines, w: measureCardWidth(lines, true), hostFull: hostName(doc, o.host as string),
     });
   }
 
-  const colW = columns.map((c) => {
+  const memRowWidth = (row: MemRow): number => (row.hostId === undefined
+    ? memberCards.get(row.rep.id as string)?.w ?? CARD.minW
+    : Math.max(
+      stackHeaderW(row.hostId),
+      ...row.members.map((m) => memberCards.get(m.id as string)?.w ?? CARD.minW),
+      ...row.observers.map((o) => observerCards.get(o.id as string)?.w ?? CARD.minW),
+    ));
+  const obsRowWidth = (row: ObsRow): number => (row.hostId === undefined
+    ? observerCards.get(row.rep.id as string)?.w ?? CARD.minW
+    : Math.max(stackHeaderW(row.hostId), ...row.observers.map((o) => observerCards.get(o.id as string)?.w ?? CARD.minW)));
+  const memRowHeight = (row: MemRow): number => (row.hostId === undefined
+    ? CARD.dbH
+    : LAYOUT.stackHeaderH + row.members.length * CARD.dbH + row.observers.length * CARD.obsH);
+  const obsRowHeight = (row: ObsRow): number => (row.hostId === undefined
+    ? CARD.obsH
+    : LAYOUT.stackHeaderH + row.observers.length * CARD.obsH);
+
+  const colW = columns.map((c, ci) => {
     const widths = [
-      ...c.mems.map((m) => memberCards.get(m.id as string)?.w ?? CARD.minW),
-      ...c.obs.map((o) => observerCards.get(o.id as string)?.w ?? CARD.minW),
+      ...(memRowsByCol[ci] ?? []).map(memRowWidth),
+      ...(obsRowsByCol[ci] ?? []).map(obsRowWidth),
     ];
     const indent = c.mems.some((m) => sameSiteCascade(doc, graph, m, memberSite))
       ? LAYOUT.cascadeIndent : 0;
@@ -320,17 +482,17 @@ export function layoutTopology(
   const hop = (a: Member, b: Member): boolean => graph.edges.some((e) =>
     ((e.from as string) === (a.id as string) && (e.to as string) === (b.id as string))
     || ((e.from as string) === (b.id as string) && (e.to as string) === (a.id as string)));
-  const memGaps: number[][] = columns.map((c) => c.mems.map((m, i): number => {
-    const next = c.mems[i + 1];
+  const memGaps: number[][] = memRowsByCol.map((rows) => rows.map((row, i): number => {
+    const next = rows[i + 1];
     if (!next) return 0;
-    return hop(m, next) ? LAYOUT.hopGap : LAYOUT.rowGap;
+    return hop(row.rep, next.rep) ? LAYOUT.hopGap : LAYOUT.rowGap;
   }));
-  const obsStackH = columns.map((c) =>
-    c.obs.length === 0 ? 0 : c.obs.length * CARD.obsH + (c.obs.length - 1) * LAYOUT.rowGap);
-  const memStackH = columns.map((c, ci) =>
-    c.mems.length === 0
-      ? 0
-      : c.mems.length * CARD.dbH + (memGaps[ci] ?? []).reduce((acc: number, g) => acc + g, 0));
+  const obsStackH = obsRowsByCol.map((rows) => (rows.length === 0
+    ? 0
+    : rows.reduce((acc, r) => acc + obsRowHeight(r), 0) + (rows.length - 1) * LAYOUT.rowGap));
+  const memStackH = memRowsByCol.map((rows, ci) => (rows.length === 0
+    ? 0
+    : rows.reduce((acc, r) => acc + memRowHeight(r), 0) + (memGaps[ci] ?? []).reduce((acc: number, g) => acc + g, 0)));
   const bandH = Math.max(0, ...obsStackH);
   const memberBandTop = bandH === 0 ? 0 : bandH + LAYOUT.bandGap;
   const memberBandH = Math.max(0, ...memStackH);
@@ -338,71 +500,198 @@ export function layoutTopology(
   /* ---- 6. place ---- */
   const overrides = opts.overrides ?? {};
   const placed: Placed[] = [];
+  interface StackDef {
+    key: string; hostId: string; site: SiteId; label: string; w: number; memberKeys: string[];
+  }
+  const stackDefs: StackDef[] = [];
   columns.forEach((c, ci) => {
     const cw = colW[ci] ?? CARD.minW;
     const cx = colX[ci] ?? 0;
     /* Observers bottom-align in the band: a single one always sits directly
        above the member band, whatever another site stacked up there. */
     let oy = bandH - (obsStackH[ci] ?? 0);
-    c.obs.forEach((o, row) => {
-      const card = observerCards.get(o.id as string);
-      const w = card?.w ?? CARD.minW;
-      placed.push({
-        indent: 0,
-        node: {
-          key: nodeKey('observer', o.id as string),
-          id: o.id as string,
-          kind: 'observer',
-          glyph: 'observer',
+    (obsRowsByCol[ci] ?? []).forEach((row, rowIdx) => {
+      const w = obsRowWidth(row);
+      const x = Math.round(cx + (cw - w) / 2);
+      const rowTop = Math.round(oy);
+      if (row.hostId === undefined) {
+        const o = row.rep;
+        const card = observerCards.get(o.id as string);
+        placed.push({
+          indent: 0,
+          node: {
+            key: nodeKey('observer', o.id as string),
+            id: o.id as string,
+            kind: 'observer',
+            glyph: 'observer',
+            site: c.site,
+            col: ci,
+            row: rowIdx,
+            rank: -1,
+            unreachable: false,
+            instances: 1,
+            x,
+            y: rowTop,
+            w,
+            h: CARD.obsH,
+            lines: card?.lines ?? { name: o.name },
+            hostFull: card?.hostFull ?? '',
+            moved: false,
+          },
+        });
+      } else {
+        const skey = stackKeyOf(row.hostId);
+        const memberKeys: string[] = [];
+        let by = rowTop + LAYOUT.stackHeaderH;
+        row.observers.forEach((o) => {
+          const card = observerCards.get(o.id as string);
+          const key = nodeKey('observer', o.id as string);
+          memberKeys.push(key);
+          placed.push({
+            indent: 0,
+            node: {
+              key,
+              id: o.id as string,
+              kind: 'observer',
+              glyph: 'observer',
+              site: c.site,
+              col: ci,
+              row: rowIdx,
+              rank: -1,
+              unreachable: false,
+              instances: 1,
+              x,
+              y: by,
+              w,
+              h: CARD.obsH,
+              lines: card?.lines ?? { name: o.name },
+              hostFull: card?.hostFull ?? '',
+              moved: false,
+              stackKey: skey,
+            },
+          });
+          by += CARD.obsH;
+        });
+        stackDefs.push({
+          key: skey,
+          hostId: row.hostId,
           site: c.site,
-          col: ci,
-          row,
-          rank: -1,
-          unreachable: false,
-          instances: 1,
-          x: Math.round(cx + (cw - w) / 2),
-          y: Math.round(oy),
+          label: fitLabel([hostName(doc, row.hostId)], w - 16) ?? elide(hostName(doc, row.hostId), 16),
           w,
-          h: CARD.obsH,
-          lines: card?.lines ?? { name: 'Observer' },
-          hostFull: card?.hostFull ?? '',
-          moved: false,
-        },
-      });
-      oy += CARD.obsH + LAYOUT.rowGap;
+          memberKeys,
+        });
+      }
+      oy += obsRowHeight(row) + LAYOUT.rowGap;
     });
 
     /* Member stacks centre on one line, so the classic primary-to-standby
        redo edge comes out horizontal. */
     let my = memberBandTop + Math.round((memberBandH - (memStackH[ci] ?? 0)) / 2);
-    c.mems.forEach((m, row) => {
-      const card = memberCards.get(m.id as string);
-      const w = card?.w ?? CARD.minW;
-      const indent = sameSiteCascade(doc, graph, m, memberSite) ? LAYOUT.cascadeIndent : 0;
-      const r = rank.get(m.id as string) ?? unreachableRank;
-      placed.push({
-        indent,
-        node: {
-          key: nodeKey('member', m.id as string),
-          id: m.id as string,
-          kind: 'member',
-          glyph: glyphOf(m),
+    (memRowsByCol[ci] ?? []).forEach((row, rowIdx) => {
+      const w = memRowWidth(row);
+      const indent = row.hostId === undefined && sameSiteCascade(doc, graph, row.rep, memberSite)
+        ? LAYOUT.cascadeIndent : 0;
+      const x = Math.round(cx + (cw - w) / 2 + indent);
+      const rowTop = Math.round(my);
+      if (row.hostId === undefined) {
+        const m = row.rep;
+        const card = memberCards.get(m.id as string);
+        const r = rank.get(m.id as string) ?? unreachableRank;
+        placed.push({
+          indent,
+          node: {
+            key: nodeKey('member', m.id as string),
+            id: m.id as string,
+            kind: 'member',
+            glyph: glyphOf(m),
+            site: c.site,
+            col: ci,
+            row: rowIdx,
+            rank: r,
+            unreachable: r >= unreachableRank && unreachableRank > 0,
+            instances: m.instances.length,
+            x,
+            y: rowTop,
+            w,
+            h: CARD.dbH,
+            lines: card?.lines ?? { name: m.name },
+            hostFull: card?.hostFull ?? '',
+            moved: false,
+          },
+        });
+      } else {
+        const skey = stackKeyOf(row.hostId);
+        const memberKeys: string[] = [];
+        let by = rowTop + LAYOUT.stackHeaderH;
+        row.members.forEach((m) => {
+          const card = memberCards.get(m.id as string);
+          const r = rank.get(m.id as string) ?? unreachableRank;
+          const key = nodeKey('member', m.id as string);
+          memberKeys.push(key);
+          placed.push({
+            indent: 0,
+            node: {
+              key,
+              id: m.id as string,
+              kind: 'member',
+              glyph: glyphOf(m),
+              site: c.site,
+              col: ci,
+              row: rowIdx,
+              rank: r,
+              unreachable: r >= unreachableRank && unreachableRank > 0,
+              instances: m.instances.length,
+              x,
+              y: by,
+              w,
+              h: CARD.dbH,
+              lines: card?.lines ?? { name: m.name },
+              hostFull: card?.hostFull ?? '',
+              moved: false,
+              stackKey: skey,
+            },
+          });
+          by += CARD.dbH;
+        });
+        row.observers.forEach((o) => {
+          const card = observerCards.get(o.id as string);
+          const key = nodeKey('observer', o.id as string);
+          memberKeys.push(key);
+          placed.push({
+            indent: 0,
+            node: {
+              key,
+              id: o.id as string,
+              kind: 'observer',
+              glyph: 'observer',
+              site: c.site,
+              col: ci,
+              row: rowIdx,
+              rank: -1,
+              unreachable: false,
+              instances: 1,
+              x,
+              y: by,
+              w,
+              h: CARD.obsH,
+              lines: card?.lines ?? { name: o.name },
+              hostFull: card?.hostFull ?? '',
+              moved: false,
+              stackKey: skey,
+            },
+          });
+          by += CARD.obsH;
+        });
+        stackDefs.push({
+          key: skey,
+          hostId: row.hostId,
           site: c.site,
-          col: ci,
-          row,
-          rank: r,
-          unreachable: r >= unreachableRank && unreachableRank > 0,
-          instances: m.instances.length,
-          x: Math.round(cx + (cw - w) / 2 + indent),
-          y: Math.round(my),
+          label: fitLabel([hostName(doc, row.hostId)], w - 16) ?? elide(hostName(doc, row.hostId), 16),
           w,
-          h: CARD.dbH,
-          lines: card?.lines ?? { name: roleWord(m) },
-          hostFull: card?.hostFull ?? '',
-          moved: false,
-        },
-      });
-      my += CARD.dbH + (memGaps[ci]?.[row] ?? LAYOUT.rowGap);
+          memberKeys,
+        });
+      }
+      my += memRowHeight(row) + (memGaps[ci]?.[rowIdx] ?? LAYOUT.rowGap);
     });
   });
 
@@ -417,6 +706,21 @@ export function layoutTopology(
 
   const byKey: Record<string, NodeBox> = {};
   for (const n of nodes) byKey[n.key] = n;
+
+  /* Stack rects are derived from the blades' own (already overridden) rects,
+     never recomputed from the pre-drag geometry -- so a stack dragged as a
+     group still reads as one touching chassis wherever the drag left it. */
+  const stacks: StackBox[] = stackDefs.map((sd) => {
+    const blades = sd.memberKeys.map((k) => byKey[k]).filter((n): n is NodeBox => n !== undefined);
+    const x = blades[0]?.x ?? 0;
+    const yTop = (blades.length === 0 ? 0 : Math.min(...blades.map((b) => b.y))) - LAYOUT.stackHeaderH;
+    const yBottom = blades.length === 0 ? 0 : Math.max(...blades.map((b) => b.y + b.h));
+    const w = blades.length === 0 ? sd.w : Math.max(...blades.map((b) => b.w));
+    return {
+      key: sd.key, hostId: sd.hostId, site: sd.site, headerH: LAYOUT.stackHeaderH, label: sd.label,
+      x, y: yTop, w, h: yBottom - yTop, memberKeys: sd.memberKeys,
+    };
+  });
 
   /* ---- 8. site rects, recomputed after the overrides moved cards ---- */
   const sites: SiteBox[] = [];
@@ -433,9 +737,21 @@ export function layoutTopology(
       x0 = cx; x1 = cx + cw;
       y0 = top - LAYOUT.colPad;
       y1 = top + tall + LAYOUT.colPad + LAYOUT.labelBand;
+      /* The one place a site-keyed offset is read: an empty panel has no
+         member whose own drag would carry it, so a drag on the panel itself
+         (`TopoCanvas` `onSitePointerDown`) writes its delta under the site's
+         own id instead. */
+      const ov = overrides[c.site as string];
+      if (ov) {
+        const dx = snap8(ov.dx); const dy = snap8(ov.dy);
+        x0 += dx; x1 += dx; y0 += dy; y1 += dy;
+      }
     } else {
+      /* A stack's header sits above its topmost blade, so the panel's own
+         top has to clear it too -- `own` alone would crop the header band. */
+      const ownStacks = stacks.filter((s) => (s.site as string) === (c.site as string));
       x0 = Math.min(...own.map((n) => n.x)) - LAYOUT.colPad;
-      y0 = Math.min(...own.map((n) => n.y)) - LAYOUT.colPad;
+      y0 = Math.min(...own.map((n) => n.y), ...ownStacks.map((s) => s.y)) - LAYOUT.colPad;
       x1 = Math.max(...own.map((n) => n.x + n.w)) + LAYOUT.colPad;
       y1 = Math.max(...own.map((n) => n.y + n.h)) + LAYOUT.colPad + LAYOUT.labelBand;
     }
@@ -462,6 +778,7 @@ export function layoutTopology(
   return {
     nodes,
     byKey,
+    stacks,
     sites,
     columns: columns.map((c, i) => ({ site: c.site, x: colX[i] ?? 0, w: colW[i] ?? 0 })),
     viewBox: {

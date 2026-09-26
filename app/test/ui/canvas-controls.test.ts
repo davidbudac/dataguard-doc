@@ -91,6 +91,8 @@ const rectOf = (root: HTMLElement, k: string, sel: string): { x: number; y: numb
 };
 const cardEl = (root: HTMLElement, k: string): SVGGElement =>
   root.querySelector(`.tp-node[data-node="${k}"]`)!;
+const siteEl = (root: HTMLElement, k: string): SVGGElement =>
+  root.querySelector(`.tp-sitewrap[data-node="${k}"]`)!;
 const chip = (root: HTMLElement, label: string): HTMLButtonElement =>
   [...root.querySelectorAll<HTMLButtonElement>('.cv-add button')].find((b) => b.textContent === label)!;
 const field = (root: HTMLElement): HTMLInputElement | null => root.querySelector('.cv-rename-in');
@@ -224,6 +226,71 @@ describe('a name is edited where it is drawn', () => {
     await painted();
     const site = topo().sites.find((s) => (s.id as string) === 'dc2')!;
     expect(site.name).toBe('London');
+  });
+});
+
+describe('a data centre is dragged as a group', () => {
+  it('carries every member and observer standing in it, as one undo, and leaves the other data centres where they are', async () => {
+    const root = await mountApp();
+    const n = undoStack.value.length;
+    const panel = rectOf(root, 'dc1', 'rect.tp-site');
+    const start = clientOf(root, panel.x + panel.w / 2, panel.y + 10);
+    const svg = root.querySelector('.topo-svg')!;
+    pointer(siteEl(root, 'dc1'), 'Down', ...start);
+    pointer(svg, 'Move', start[0] + 24, start[1] + 16);
+    await tick();
+    pointer(svg, 'Up', start[0] + 24, start[1] + 16);
+    await painted();
+    /* dc1 holds only prm01: that offset moves, and nothing that stands in
+       another data centre does. */
+    expect(docSignal.value.layout).toEqual({ prm01: { dx: 24, dy: 16 } });
+    expect(siteOf('prm01')).toBe('dc1');
+    expect(undoStack.value.length).toBe(n + 1);
+    expect(undoLabel.value).toBe('Move the DC 1 data centre');
+  });
+
+  it('does not drop its own members on themselves', async () => {
+    /* A drag that never leaves dc1's own panel must not read as a card
+       dropped into another data centre -- `onMoveToSite` would otherwise
+       fire for a card that never actually crossed a boundary. */
+    const root = await mountApp();
+    const panel = rectOf(root, 'dc1', 'rect.tp-site');
+    const start = clientOf(root, panel.x + panel.w / 2, panel.y + 10);
+    const svg = root.querySelector('.topo-svg')!;
+    pointer(siteEl(root, 'dc1'), 'Down', ...start);
+    pointer(svg, 'Move', start[0] + 10, start[1] + 10);
+    await tick();
+    pointer(svg, 'Up', start[0] + 10, start[1] + 10);
+    await painted();
+    expect(siteOf('prm01')).toBe('dc1');
+    expect(memberIds()).toEqual(['prm01', 'sby01']);
+  });
+
+  it('drags an empty panel too, keyed by the data centre\'s own id', async () => {
+    const root = await mountApp();
+    chip(root, '+ Data centre').click();
+    await painted();
+    const added = topo().sites.map((s) => s.id as string).find((id) => id !== 'dc1' && id !== 'dc2' && id !== 'dc3')!;
+    expect(added).toBeDefined();
+    const panel = rectOf(root, added, 'rect.tp-site');
+    const start = clientOf(root, panel.x + panel.w / 2, panel.y + panel.h / 2);
+    const svg = root.querySelector('.topo-svg')!;
+    pointer(siteEl(root, added), 'Down', ...start);
+    pointer(svg, 'Move', start[0] + 8, start[1] + 24);
+    await tick();
+    pointer(svg, 'Up', start[0] + 8, start[1] + 24);
+    await painted();
+    expect(docSignal.value.layout[added]).toEqual({ dx: 8, dy: 24 });
+  });
+
+  it('still selects with a click, and still opens the rename field on a double click', async () => {
+    const root = await mountApp();
+    siteEl(root, 'dc1').dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    await tick();
+    expect(selection.value).toEqual(['dc1']);
+    siteEl(root, 'dc1').dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }));
+    await painted();
+    expect(field(root)?.value).toBe('DC 1');
   });
 });
 
@@ -362,5 +429,65 @@ describe('a selection is made, moved and removed as one', () => {
     expect(memberIds()).not.toContain('sby01');
     expect(toast.value?.kind).toBe('warn');
     expect(toast.value?.text).toContain('prm01 stays');
+  });
+});
+
+describe('a chassis stack is dragged as a group', () => {
+  /* An observer standing on the primary's own host: `layoutTopology` snaps
+     the two into one touching stack, with a shared header band above them. */
+  const coHostObserverWithPrimary = (): void => {
+    const before = docSignal.value;
+    const host = before.topology.members.find((m) => (m.id as string) === 'prm01')!.instances[0]!.host;
+    resetHistory({
+      ...before,
+      topology: {
+        ...before.topology,
+        observers: before.topology.observers.map((o) => ((o.id as string) === 'obs01' ? { ...o, host } : o)),
+      },
+    });
+  };
+
+  it('carries every blade in the stack, as one undo, when one blade is pressed', async () => {
+    coHostObserverWithPrimary();
+    const root = await mountApp();
+    const n = undoStack.value.length;
+    const c = rectOf(root, 'prm01', 'rect.tp-card');
+    const start = clientOf(root, c.x + 20, c.y + 20);
+    const svg = root.querySelector('.topo-svg')!;
+    pointer(cardEl(root, 'prm01'), 'Down', ...start);
+    pointer(svg, 'Move', start[0] + 16, start[1] + 8);
+    await tick();
+    pointer(svg, 'Up', start[0] + 16, start[1] + 8);
+    await tick();
+    expect(docSignal.value.layout).toEqual({ prm01: { dx: 16, dy: 8 }, obs01: { dx: 16, dy: 8 } });
+    expect(undoStack.value.length).toBe(n + 1);
+  });
+
+  it('carries every blade the same way when the shared header band is pressed', async () => {
+    coHostObserverWithPrimary();
+    const root = await mountApp();
+    const n = undoStack.value.length;
+    const frame = root.querySelector('.tp-stack-frame')!;
+    const fx = Number(frame.getAttribute('x'));
+    const fy = Number(frame.getAttribute('y'));
+    const fw = Number(frame.getAttribute('width'));
+    const start = clientOf(root, fx + fw / 2, fy + 6);
+    const svg = root.querySelector('.topo-svg')!;
+    const header = root.querySelector('.tp-stack-hd')!;
+    pointer(header, 'Down', ...start);
+    pointer(svg, 'Move', start[0] + 24, start[1] - 8);
+    await tick();
+    pointer(svg, 'Up', start[0] + 24, start[1] - 8);
+    await tick();
+    expect(docSignal.value.layout).toEqual({ prm01: { dx: 24, dy: -8 }, obs01: { dx: 24, dy: -8 } });
+    expect(undoStack.value.length).toBe(n + 1);
+  });
+
+  it('still selects only the one card a click landed on', async () => {
+    coHostObserverWithPrimary();
+    const root = await mountApp();
+    cardEl(root, 'obs01').dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    await tick();
+    expect(selection.value).toEqual(['obs01']);
   });
 });

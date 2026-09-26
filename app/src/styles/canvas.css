@@ -191,6 +191,12 @@
 /* A node is a card: a flat bordered surface, a monochrome icon badge, then two
    or three lines of text. Colour arrives only with a frame from the trace. */
 .topo-svg .tp-card { fill: var(--sf); stroke: var(--ln); stroke-width: 1; }
+/* A blade inside a chassis stack (canvas.css's own `.tp-stack*` rules, below):
+   the chassis draws the one continuous border and fill, and the header and
+   the divider between blades, so a blade at rest paints neither -- until a
+   later, equally specific rule (`.is-sel`, `.is-hov`, `.is-drag`, `.is-down`,
+   ...) says which one, and wins by coming after this in the cascade. */
+.topo-svg .tp-card.is-blade { fill: none; stroke: none; }
 .topo-svg .tp-hatchfill { stroke: none; }
 .topo-svg .tp-card.is-down { fill: none; stroke: var(--rd); stroke-width: 1.25; }
 .topo-svg .tp-card.is-stalled { stroke: var(--rd); stroke-width: 1.5; }
@@ -227,6 +233,21 @@
 .topo-svg .tp-chip.is-violet .tp-chip-tx { fill: var(--vi); }
 .topo-svg .tp-chip.is-slate .tp-chip-bg { fill: var(--sf2); }
 .topo-svg .tp-chip.is-slate .tp-chip-tx { fill: var(--sl); }
+
+/* ---- chassis stacks ---- */
+/* Two or more cards sharing a host: one continuous frame behind the blades,
+   a tinted header band naming the host once, a hairline divider standing in
+   for the row gap between blades. Decoration only -- `StackChassis` marks the
+   group `aria-hidden`, and every blade still carries its own name, role and
+   selection feedback (`.tp-card.is-blade`, above). */
+.topo-svg .tp-stack-frame { fill: var(--sf); stroke: var(--ln2); stroke-width: 1.25; }
+.topo-svg .tp-stack-hd { fill: var(--sf3); }
+.topo-svg .tp-stack-hd.is-live { cursor: pointer; pointer-events: auto; }
+.topo-svg .tp-stack-hd-tx {
+  font-family: var(--mono); font-size: 10.5px; font-weight: 600; letter-spacing: .04em;
+  fill: var(--ik2); pointer-events: none;
+}
+.topo-svg .tp-stack-div { stroke: var(--ln); stroke-width: 1; }
 
 /* ---- site panels ---- */
 /* Which failures are site failures and which are only link failures is half
