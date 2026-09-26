@@ -21,10 +21,12 @@ import { isDatabase } from '@/engine';
 import { withEvents } from '@/state/doc';
 import { topology, trace } from '@/state/derived';
 import { edit } from '@/state/history';
-import { tNow } from '@/state/view';
+import { playing, tNow, toast } from '@/state/view';
 import { lastInterestingT } from '@/ui/timeline/build';
 import type { WhyState } from '../common/WhyPill';
 import { off, ON, WHY } from '../inspector/why';
+
+import { eventTimeRefusal, reorderRefusal, snapEventTime } from './event-order';
 
 /* ---------------- names ---------------- */
 
@@ -753,10 +755,30 @@ export function removeEventAt(index: number): void {
   ));
 }
 
-export function setEventTime(index: number, at: number): void {
+export function setEventTime(index: number, at: number, expected?: TimedEvent): number | null {
+  const current = topology.value;
+  if (expected && current.events[index] !== expected) return null;
+  at = snapEventTime(at);
+  const why = eventTimeRefusal(current, index, at);
+  if (why) { toast.value = { kind: 'warn', text: why }; return null; }
+  if (current.events[index]?.at === at) return index;
+  playing.value = false;
+  const moved = { ...current.events[index]!, at };
   edit(`Move an injected event to t = ${at} s`, (d) => withEvents(
-    d, d.topology.events.map((e, i) => (i === index ? { ...e, at } : e)),
-  ), `event-at:${index}`);
+    d, d.topology.events.map((e, i) => (i === index ? moved : e)),
+  ));
+  return topology.value.events.indexOf(moved);
+}
+
+export function reorderEvent(index: number, direction: -1 | 1): void {
+  const current = topology.value;
+  const why = reorderRefusal(current, index, direction);
+  if (why) { toast.value = { kind: 'warn', text: why }; return; }
+  playing.value = false;
+  const at = current.events[index]!.at;
+  const neighborAt = current.events[index + direction]!.at;
+  edit('Reorder injected events', (d) => withEvents(d, d.topology.events.map((e, i) =>
+    i === index ? { ...e, at: neighborAt } : i === index + direction ? { ...e, at } : e)));
 }
 
 /* ---------------- words ---------------- */

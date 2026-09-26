@@ -229,3 +229,7 @@ button.issue.sv-info{border-left:3px solid var(--ln2)}
      on a printout (the rail renders them all while `printing` is on). */
   .tmpls{grid-template-columns:1fr;gap:14px}
 }
+
+.evt-order{grid-column:2 / -1;display:flex;flex-wrap:wrap;gap:6px}
+.evt-order .ctl-off{flex-wrap:wrap}
+.evt-order .btn{padding:4px 8px;font-size:11px}

@@ -1017,3 +1017,33 @@ The former primary uses F after a failover, rather than implying it has been rei
 The workbench width cap is now 1920px (previously 1360px). Additional width goes
 to the topology and timeline; the inspector retains its 360px width and prose
 retains its local reading widths. The toast shares the same shell cap.
+
+## Editing the event sequence (2026-09-26)
+
+In Break, injected timeline markers are draggable and keyboard focusable. Dragging
+previews against the original axis and commits once on release. That axis stays
+fixed after a successful drop so automatic rescaling cannot visually undo the
+move; “Fit timeline” restores the automatic fit. Other document edits and undo
+refit automatically, as do keyboard moves outside the visible range. Escape, pointer
+cancellation or lost capture discards the preview. Arrow keys move by 1 s (Shift:
+0.1 s), Home/End use the allowed time bounds. Playback pauses while editing. The
+selected event keeps keyboard focus after its new time changes the list order.
+Only injected events can move: computed failover/open/abort markers are read-only,
+as are Learn, print/export and the narrow viewer.
+
+The Events rail offers Earlier/Later when a neighbor exists. These swap adjacent
+time slots in one undoable edit. Events at the same time cannot swap slots; their
+engine priority stays intact, and editing a time separates them. The same bounds
+apply to dragging, keyboard nudges and numeric time inputs (0–900 s).
+
+`ui/break/event-order.ts` defines conservative editing constraints, not Oracle
+claims: retain the authored sequence for the same subject, overlapping host/site/
+instance/member/observer state changes, partition/link changes, and role commands.
+Distinct related events keep a 0.1 s gap; existing simultaneous events retain their
+order. Independent events can pass each other. Disabled reorder actions explain
+why; a refused numeric edit restores the input and reports its allowed range.
+The domain engine still determines the outcome, including command refusals.
+
+The playhead is dragged by its dashed line, grip or time badge; clicking a lane
+or empty plot area does not seek. Grabbing the badge preserves its offset from
+the line. Keyboard seeking and the transport controls remain available.

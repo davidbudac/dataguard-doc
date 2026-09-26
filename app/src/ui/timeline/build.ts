@@ -265,6 +265,8 @@ export interface TimelineView {
   width: number;
   /** Export mode: reproduce `x(t) = 280 + 10 * t` for the static figures. */
   pinnedScale?: boolean;
+  /** Preserve the editing viewport after dropping an event. */
+  axis?: { t0: Seconds; t1: Seconds };
   /** Lane id to render as selected. */
   selection?: string | null;
   /**
@@ -880,7 +882,7 @@ export function buildTimeline(trace: Trace, doc: TopologyDoc, view: TimelineView
     t1 = PINNED.t1;
     tickStep = PINNED.tickStep;
   } else {
-    ({ t0, t1 } = axisSpan(trace, events));
+    ({ t0, t1 } = view.axis ?? axisSpan(trace, events));
     tickStep = pickTickStep(t1 - t0);
   }
   const scale = pinned

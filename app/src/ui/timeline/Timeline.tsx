@@ -9,10 +9,12 @@
 
 import { useMemo, useState } from 'preact/hooks';
 import type { JSX } from 'preact';
-import type { TopologyDoc, Trace } from '@/engine';
+import type { TimedEvent, TopologyDoc, Trace } from '@/engine';
+import { sortEvents } from '@/engine';
 import { buildTimeline, TL } from './build';
 import type { TimelineLane, TimelineMarker, TimelineModel } from './build';
 import { Brace, TopBrace } from './Brace';
+import { EventDrag } from './EventDrag';
 import { Playhead } from './Playhead';
 import { usePlayback } from './playback';
 import { Transport } from './Transport';
@@ -29,6 +31,7 @@ export interface TimelineProps {
   playing?: boolean;
   speed?: number;
   onSeek?: (t: number) => void;
+  onMoveEvent?: (index: number, at: number, expected: TimedEvent) => number | null | void;
   onPlayToggle?: () => void;
   onSpeed?: (speed: number) => void;
   selection?: string | null;
@@ -183,14 +186,32 @@ function Marker({ marker }: { marker: TimelineMarker }) {
 export function Timeline(props: TimelineProps) {
   const {
     trace, doc, width, tNow, playing = false, speed = 1,
-    onSeek, onPlayToggle, onSpeed, selection = null, onSelect,
+    onSeek, onMoveEvent, onPlayToggle, onSpeed, selection = null, onSelect,
     pinnedScale = false, showTransport = true,
   } = props;
 
+  // Hold the viewport only for the exact document produced by our drop.
+  // Undo, rail edits and scenario/configuration changes fit automatically.
+  const scenario = useMemo(() => JSON.stringify(doc), [doc]);
+  const [heldAxis, setHeldAxis] = useState<{
+    scenario: string; t0: number; t1: number;
+  } | null>(null);
+  const axis = heldAxis?.scenario === scenario ? heldAxis : undefined;
   const model = useMemo(
-    () => buildTimeline(trace, doc, { width, pinnedScale, selection }),
-    [trace, doc, width, pinnedScale, selection],
+    () => buildTimeline(trace, doc, { width, pinnedScale, selection, ...(axis ? { axis } : {}) }),
+    [trace, doc, width, pinnedScale, selection, axis],
   );
+  const moveEvent = (index: number, at: number, expected: TimedEvent) => {
+    const result = onMoveEvent?.(index, at, expected);
+    if (typeof result === 'number' && result >= 0 && at !== expected.at) {
+      const next = { ...doc, events: sortEvents(doc.events.map((event, i) =>
+        i === index ? { ...event, at } : event)) };
+      setHeldAxis(at >= model.scale.t0 && at <= model.scale.t1
+        ? { scenario: JSON.stringify(next), t0: model.scale.t0, t1: model.scale.t1 }
+        : null);
+    }
+    return result;
+  };
   const [tip, setTip] = useState<TooltipState | null>(null);
 
   /* ▶ moves the playhead. The loop lives in the UI layer -- the engine has no
@@ -287,7 +308,8 @@ export function Timeline(props: TimelineProps) {
             <text class="t-tick" x={model.scale.plotL} y={model.axisY + 30}>{model.zeroNote}</text>
           ) : null}
 
-          {model.markers.map((m) => <Marker key={m.key} marker={m} />)}
+          {model.markers.filter((m) => !onMoveEvent || pinnedScale || m.kind !== 'event')
+            .map((m) => <Marker key={m.key} marker={m} />)}
           {model.braces.map((b) => <Brace key={b.key} brace={b} />)}
 
           {pinnedScale ? null : (
@@ -299,6 +321,13 @@ export function Timeline(props: TimelineProps) {
               {...(onPlayToggle ? { onTogglePlay: onPlayToggle } : {})}
             />
           )}
+          {/* Above the playhead, so grabbing an event cannot seek instead. */}
+          {!onMoveEvent || pinnedScale ? null : model.markers.filter((m) => m.kind === 'event').map((m) => (
+            <EventDrag key={m.key} marker={m} model={model} doc={doc} onMove={moveEvent}
+              onStart={() => { setTip(null); if (playing) onPlayToggle?.(); }}>
+              <Marker marker={m} />
+            </EventDrag>
+          ))}
         </svg>
         <Tooltip tip={tip} />
       </div>
@@ -316,6 +345,7 @@ export function Timeline(props: TimelineProps) {
           -- 32 px of a 226 px dock at 1280x720, every scroll position -- and
           the transport is what has to stay reachable. */}
       <div class="legend tl-legend">
+        {axis && !pinnedScale ? <button type="button" class="btn" onClick={() => setHeldAxis(null)}>Fit timeline</button> : null}
         {model.legend.map((l) => (
           <span key={l.swatch}><i class={l.swatch} />{l.label}</span>
         ))}

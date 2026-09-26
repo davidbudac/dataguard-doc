@@ -31,6 +31,7 @@ import { Sheet } from './common/Sheet';
 import { CanvasSlot } from './canvas/CanvasSlot';
 import { EventMenu } from './canvas/EventMenu';
 import { Inspector } from './inspector/Inspector';
+import { setEventTime } from './break/events';
 import { BreakRail } from './break/BreakRail';
 import { Panels } from './panels/Panels';
 import { LearnShell, LearnWorkbenchHeader } from './learn/LearnShell';
@@ -123,6 +124,7 @@ function TimelineSlot() {
           playing={playing.value}
           speed={speed.value}
           onSeek={(t2) => { tNow.value = t2; }}
+          {...(mode.value === 'break' && canEdit(viewport.value) ? { onMoveEvent: setEventTime } : {})}
           onPlayToggle={() => { playing.value = !playing.value; }}
           onSpeed={(s) => { speed.value = s; }}
           selection={selection.value[0] ?? null}

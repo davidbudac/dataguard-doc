@@ -40,8 +40,9 @@ import { hintsShown, HintsToggle } from '../hints';
 import { printing } from '../print';
 import { WHY } from '../inspector/why';
 import {
-  applyTemplate, clearEvents, describeEvent, removeEventAt, setEventTime, templates,
+  applyTemplate, clearEvents, describeEvent, removeEventAt, reorderEvent, setEventTime, templates,
 } from './events';
+import { eventTimeBounds, reorderRefusal } from './event-order';
 import '@/styles/inspector.css';
 
 /** Open the six scenario descriptions. View state, so it is not undoable. */
@@ -87,15 +88,16 @@ export function BreakRail() {
               <input
                 class="field-in"
                 type="number"
-                min={0}
-                max={900}
+                min={eventTimeBounds(doc, i).min}
+                max={eventTimeBounds(doc, i).max}
                 step={0.1}
                 value={String(e.at)}
                 disabled={!editable}
                 onChange={(ev) => {
                   const v = Number((ev.currentTarget as HTMLInputElement).value);
                   if (!isFinite(v)) return;
-                  setEventTime(i, Math.max(0, Math.round(v * 10) / 10));
+                  setEventTime(i, v);
+                  (ev.currentTarget as HTMLInputElement).value = String(e.at);
                 }}
               />
               <span class="evt-u">s</span>
@@ -105,14 +107,28 @@ export function BreakRail() {
               enabled={editable ? { state: 'on' } : { state: 'off', why: WHY.readOnlyHere }}
               onClick={() => removeEventAt(i)}
             />
+            {list.length > 1 ? (
+              <div class="evt-order" aria-label={`Reorder event ${i + 1}`}>
+                {([-1, 1] as const).map((direction) => {
+                  if (i + direction < 0 || i + direction >= list.length) return null;
+                  const why = editable ? reorderRefusal(doc, i, direction) : WHY.readOnlyHere;
+                  return <Action
+                    key={direction}
+                    label={direction === -1 ? '↑ Earlier' : '↓ Later'}
+                    title="Swap times with the adjacent event"
+                    enabled={why ? { state: 'off', why } : { state: 'on' }}
+                    onClick={() => reorderEvent(i, direction)}
+                  />;
+                })}
+              </div>
+            ) : null}
           </div>
         ))}
 
         {list.length === 0 ? null : (
           <Note>
-            t = 0 is the first injected event, and the numbers here are the numbers on the
-            axis. The playhead is at t = {at} s; a card clicked on the drawing injects its
-            event there.
+            Drag numbered events on the timeline to change their time. Earlier and Later
+            swap adjacent times while keeping related events in order. The playhead is at t = {at} s.
           </Note>
         )}
       </Group>

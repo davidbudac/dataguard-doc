@@ -237,8 +237,8 @@ export function modeGuide(m: Mode, v: Viewport = viewport.value): string {
         + 'Drag a + button onto a data centre to add, or a card’s ⊕ onto another to connect. '
         + `Double-click to rename; ⋯ opens actions, and the full properties are in ${railWhere(v)}.`;
     case 'break':
-      return 'Click a host to crash it or a link to cut it, or pick a scenario in the panel; '
-        + 'the timeline below runs the clocks.';
+      return 'Click a card to add an event, drag a numbered timeline marker to change its time; '
+        + 'use Earlier / Later in Events to swap adjacent times, or pick a scenario below.';
     case 'configure':
       return 'Generated from the drawing — DGMGRL, init parameters, connect strings. '
         + `Settings are in ${railWhere(v)}.`;
