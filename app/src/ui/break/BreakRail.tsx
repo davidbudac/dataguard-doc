@@ -73,8 +73,7 @@ export function BreakRail() {
           <div class="empty">
             <span class="empty-k">Nothing has happened yet</span>
             <p>
-              The configuration is in its steady state. Pick a scenario below, or select a
-              card on the drawing and use the Actions menu that opens with it.
+              Pick a scenario below, or select a card to add an event.
             </p>
           </div>
         ) : null}

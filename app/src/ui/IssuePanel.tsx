@@ -137,7 +137,7 @@ export function IssuePanel() {
   /* The heading is the fold's handle. The counts stay on it either way, so a
      folded panel still says "2 errors" -- what the fold hides is the rows, not
      the fact of them. `aria-controls` names the list it folds. */
-  const summary = counts.length === 0 ? 'No errors and no warnings' : counts.join(' · ');
+  const summary = counts.length === 0 ? 'No issues' : counts.join(' · ');
   const noteWord = notes.length === 0 ? null : `${notes.length} note${notes.length === 1 ? '' : 's'}`;
 
   /* A healthy configuration is one line. The panel used to open on "No
@@ -211,7 +211,7 @@ export function IssuePanel() {
             {/* One phrase in both states: the caret and `aria-expanded` say
                 which way the fold is pointing, and ", folded away" wrapped
                 the row to two lines in a 360 px rail to say it a third time. */}
-            documented behaviour worth knowing
+            Details and sources
           </span>
         </button>
       )}

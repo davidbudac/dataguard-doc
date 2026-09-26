@@ -14,13 +14,8 @@
  * leads with the moment the drawing is at, and the run's own numbers carry a
  * group label of their own.
  *
- * The `Run` group holds the run's own chips and nothing else. Findings are the
- * validator's answer about the *configuration* -- `derived.ts` keeps the run's
- * own findings (a readiness gate that forbade a failover, an alternate that
- * activated) deliberately out of `issues` so the two are never conflated --
- * so the Findings chip sits outside the group, beside the playhead reading.
- * Under the label it would say "Run - Findings no issues" at the very moment
- * the run raised the warning that blocked the failover.
+ * Validation counts live in the header and validation panel. Keeping them out
+ * of this strip also avoids confusing configuration findings with run outcomes.
  */
 
 import { readout, topology, trace } from '@/state/derived';
@@ -36,7 +31,7 @@ import { Chip } from './common/Chip';
 import '@/styles/readout.css';
 
 export function Readout() {
-  const chips = readout.value;
+  const chips = readout.value.filter((c) => c.id !== 'findings');
   /* A run exists when events have been injected, and it is drawn in the two
      modes that read the outcome at `tNow` (ui.md SS3). Build and Configure
      read the steady state, which has no playhead to speak of. */
@@ -62,19 +57,14 @@ export function Readout() {
     sub: 'The drawing above holds the state at this moment on the timeline. The chips under Run are the run as a whole. Scrub the playhead to move this one.',
   };
 
-  /* Chip ids are stable, so the partition is by id rather than by position. */
-  const runChips = chips.filter((c) => c.id !== 'findings');
-  const docChips = chips.filter((c) => c.id === 'findings');
-
   return (
     <section class="readout" aria-label="Readout">
       <div class="chips">
         <Chip chip={at} />
         <div class="ro-run" role="group" aria-label="Run">
           <span class="ro-run-k">Run</span>
-          {runChips.map((c) => <Chip key={c.id} chip={c} />)}
+          {chips.map((c) => <Chip key={c.id} chip={c} />)}
         </div>
-        {docChips.map((c) => <Chip key={c.id} chip={c} />)}
       </div>
     </section>
   );

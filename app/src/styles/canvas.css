@@ -89,9 +89,7 @@
 }
 .cv-tools .cv-add { margin: 0; align-self: flex-start; }
 
-/* The zoom ladder: the same raised surface as `.cv-add`, narrower, with the
-   rung it is on printed beside the buttons in mono so the digits do not shift
-   the strip as they change. */
+/* Quiet utility controls beside the additions; the drawing owns the stage. */
 .cv-zoom {
   flex: 0 0 auto;
   display: flex;
@@ -99,10 +97,8 @@
   align-items: flex-start;
   gap: 6px;
   padding: 6px 8px;
-  background: var(--sf);
-  border: 1px solid var(--ln);
-  border-radius: 3px;
-  box-shadow: var(--sh);
+  background: transparent;
+  border: 0;
 }
 .cv-zoom-pct {
   align-self: center;
@@ -137,19 +133,18 @@
   gap: 8px;
   max-width: min(480px, 74%);
   padding: 6px 8px;
-  /* Raised, so it is made of the raised surface: --sf with --ln2 and --sh is
-     how every other shadowed thing here is built (.tl-tip, .sheet). --sf2 is
-     the sunken token, and a sunken fill under a drop shadow is a hole that
-     claims to be a panel. */
-  background: var(--sf);
-  border: 1px solid var(--ln);
-  border-radius: 3px;
-  box-shadow: var(--sh);
+  background: transparent;
+  border: 0;
 }
 /* The strip over the drawing is the one place buttons stay compact: it is
    chrome over the workbench, not a rail (ui.md SS3f, "canvas airy, rails
    dense" cuts both ways). */
 .cv-add .btn, .cv-zoom .btn { padding: 5px 10px; }
+.cv-zoom .btn { border-color: transparent; }
+.cv-zoom .btn:hover:not(:disabled) { border-color: var(--ln2); }
+.cv-tools { align-self: stretch; justify-content: space-between; gap: 4px; }
+.cv-tools .cv-add { padding-inline: 0; max-width: 100%; }
+.cv-tools .cv-zoom { margin-left: auto; padding-inline: 0; }
 /* A refusal is a sentence: it stacks under its button instead of stretching
    the strip along the top of the drawing. */
 .cv-add .ctl-off { flex-direction: column; align-items: flex-start; gap: 4px; }
@@ -212,8 +207,20 @@
 .topo-svg .tp-card.is-drag { stroke: var(--fc); stroke-width: 2; stroke-dasharray: 5 3; }
 
 .topo-svg .tp-bdg { fill: var(--sf3); }
+.topo-svg .tp-bdg.is-primary { fill: var(--tlf); }
+.topo-svg .tp-bdg.is-standby { fill: var(--blf); }
 .topo-svg .tp-bdg.is-down { fill: var(--rdf); }
 .topo-svg .tp-ico { stroke: var(--ik2); fill: none; }
+.topo-svg .tp-ico.is-primary { stroke: var(--tl); }
+.topo-svg .tp-ico.is-standby { stroke: var(--bl); }
+.topo-svg .tp-role-mark rect { fill: var(--blf); stroke: var(--bl); stroke-width: 1; }
+.topo-svg .tp-role-mark text { fill: var(--bl); font: 700 10px var(--sans); }
+.topo-svg .tp-role-mark.is-primary rect { fill: var(--tlf); stroke: var(--tl); }
+.topo-svg .tp-role-mark.is-primary text { fill: var(--tl); }
+.topo-svg .tp-role-mark.is-former-primary rect { fill: var(--sf3); stroke: var(--sl); }
+.topo-svg .tp-role-mark.is-former-primary text { fill: var(--sl); }
+.topo-svg .tp-role-mark.is-down rect { fill: var(--rdf); stroke: var(--rd); }
+.topo-svg .tp-role-mark.is-down text { fill: var(--rd); }
 .topo-svg .tp-ico.is-down { stroke: var(--rd); }
 
 .topo-svg .tp-node.is-live { cursor: pointer; }

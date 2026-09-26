@@ -20,7 +20,7 @@ import {
 import type { RedoGraph, Snapshot, TopologyDoc } from '@/engine';
 import type { Geometry, LayoutOffset, NodeBox } from './layout';
 import { layoutTopology } from './layout';
-import { cardFrameFor, chipsFor, routeTopology, siteIsDown, unionViewBox } from './routing';
+import { cardFrameFor, cardRoleFor, chipsFor, routeTopology, siteIsDown, unionViewBox } from './routing';
 import { describeTopology, cardLabel, linkLabel, siteLabel } from './aria';
 import { anchorFor, barRoom, fittedScale, placeBar } from './anchor';
 import { InlineName } from './InlineName';
@@ -1198,6 +1198,7 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
               node={n}
               prefix={prefix}
               frame={cardFrameFor(doc, n, frame)}
+              databaseRole={cardRoleFor(doc, n, frame)}
               chips={chipsFor(doc, n)}
               label={cardLabel(doc, graph, n, frame)}
               selected={isSelected(n.key)}

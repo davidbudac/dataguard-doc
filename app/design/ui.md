@@ -982,3 +982,31 @@ M1 shell + canvas drawing the classic 1+1+1 from the engine · M2 Build mode (in
 
 ## 8. Taste notes
 Two faces only: system sans for prose, mono for everything Oracle/terminal (property names, modes, statuses, ORA numbers, DGMGRL, names, hosts, numerals with units). Prose 15/1.55, captions 11.5, eyebrows 11 mono uppercase .16em, chips 10.5 mono uppercase .12em, readout numbers 26/620 tabular. **As built the eyebrow is quieter and rarer** — 10.5 mono uppercase .08em, and only for a *section* label. It is not a chip label (the readout's are sans, sentence case), and it is not a title that reads as a sentence: the event menu says `Inject at t = 40 s` in mono sentence case, because AT T = 40 S was a shout. Readout values are 14/620 tabular mono, and the site label under a data centre rectangle is 11 px, not 10 — it names a column of the drawing, not a footnote to it. Canvas airy, rails dense; elevation only on rail/sheet/drawer. Colour semantic never decorative; cards monochrome in Build, tinted only in Break at a t; red = down only; violet = app's voice + observer semantics. Empty states say something true (inspector → configuration summary; Break → "Nothing has happened yet…"; timeline → "steady state — no events injected"; validation → "No issues … as modelled here"). Five invariants: WhyPill on every disabled control (`{state:'on'} | {state:'off', why}` prop); captions branch on outcome; nothing hidden by CSS alone; every demonstrable claim has "Show me"; undocumented labelled in place (`<Fact id>` chip). New principle: the drawing and the text are the same object seen twice (hover a generated line → highlight the member; select a member → scroll to its lines).
+
+## Small declutter pass (2026-09-26)
+
+The header uses one native Theme picker (System / Light / Dark) and compact
+Undo/Redo arrows with accessible names and action tooltips. Build guidance leads
+with “Click to edit · drag to move · + to add”; connection and renaming instructions
+remain available with Hints. Canvas tools keep their existing actions, with flat
+zoom controls and no extra bordered, shadowed containers around each group.
+
+Validation counts remain in the header and validation panel; the readout no longer
+repeats them. Its protection, failover, playhead and run results are unchanged.
+The healthy validation heading and Break empty state use shorter copy. Warnings,
+refusal reasons, model labels and citations retain their existing visibility.
+
+Break also gives unused vertical space to the topology. Its timeline dock sizes
+to its content, capped at 56vh with scrolling for dense runs; the topology takes
+the remaining height (minimum 260px). Below 768px both return to natural page
+flow, so the mobile viewer does not inherit the dock cap.
+
+Database icon badges distinguish primary (teal, P) from standby (blue, S),
+including snapshot and logical standbys. Down-state red overrides the role color
+but preserves the letter. The role marker and card role label follow the current
+primary at the timeline playhead; far sync and observer glyphs stay distinct.
+The former primary uses F after a failover, rather than implying it has been reinstated as a standby.
+
+The workbench width cap is now 1920px (previously 1360px). Additional width goes
+to the topology and timeline; the inspector retains its 360px width and prose
+retains its local reading widths. The toast shares the same shell cap.

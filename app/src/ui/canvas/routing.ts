@@ -932,6 +932,19 @@ export function cardFrameFor(
   };
 }
 
+/** Database identity follows the playhead when a role transition occurs. */
+export function cardRoleFor(
+  doc: TopologyDoc, node: NodeBox, frame?: Snapshot | null,
+): 'primary' | 'standby' | 'former-primary' | null {
+  if (node.kind !== 'member') return null;
+  const member = memberById(doc, node.id);
+  if (!member || !isDatabase(member)) return null;
+  if (frame ? frame.epoch.primary === member.id : member.role === 'primary') return 'primary';
+  const state = frame?.members[member.id];
+  const converted = state === 'mounted-apply' || state === 'mounted-noapply' || state === 'open-ro';
+  return member.role === 'primary' && !converted ? 'former-primary' : 'standby';
+}
+
 /** A site hatches only when the site itself is gone. */
 export function siteIsDown(doc: TopologyDoc, site: string, frame?: Snapshot | null): boolean {
   if (!frame) return false;

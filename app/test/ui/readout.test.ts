@@ -88,14 +88,12 @@ describe('the readout in Break', () => {
    * count under "Run" can say "Run - Findings no issues" at the very moment
    * the run raised the warning that blocked the failover.
    */
-  it('keeps the configuration Findings chip out of the Run group', async () => {
+  it('leaves configuration findings to the header and validation panel', async () => {
     crash();
     const root = mount();
     await tick();
-    expect(root.textContent).toContain('Findings');
+    expect(root.textContent).not.toContain('Findings');
     expect(root.querySelector('.ro-run')?.textContent).not.toContain('Findings');
-    const last = [...root.querySelectorAll('.chips > .chip')].at(-1);
-    expect(last?.querySelector('.chip-k')?.textContent).toBe('Findings');
   });
 
   /**
