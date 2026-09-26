@@ -59,9 +59,11 @@ export function NodeCard(props: NodeCardProps): JSX.Element {
   const { node, frame, chips, prefix } = props;
   const role = props.databaseRole;
   const roleClass = role ? ` is-${role}` : '';
+  const roleInHostLine = node.instances > 1;
+  const originalRoleText = roleInHostLine ? node.lines.host : node.lines.sub;
   const roleText = role === 'primary' ? 'Primary'
     : role === 'former-primary' ? 'Former primary'
-    : role === 'standby' && node.lines.sub === 'Primary' ? 'Standby' : node.lines.sub;
+    : role === 'standby' && originalRoleText === 'Primary' ? 'Standby' : originalRoleText;
   const isObs = node.kind === 'observer';
   /* A blade in a chassis stack: its own border and fill go quiet (the
      chassis behind it draws the one continuous outline and the divider
@@ -157,10 +159,10 @@ export function NodeCard(props: NodeCardProps): JSX.Element {
       ) : null}
       <text class="tp-name" x={tx} y={nameY}>{node.lines.name}</text>
       {node.lines.host === undefined ? null : (
-        <text class="tp-host" x={tx} y={nameY + 16}>{node.lines.host}</text>
+        <text class="tp-host" x={tx} y={nameY + 16}>{roleInHostLine ? roleText : node.lines.host}</text>
       )}
       {node.lines.sub === undefined ? null : (
-        <text class="tp-sub" x={tx} y={nameY + 30}>{roleText}</text>
+        <text class="tp-sub" x={tx} y={nameY + 30}>{roleInHostLine ? node.lines.sub : roleText}</text>
       )}
       {node.instanceHosts?.map((inst, index) => {
         const y = node.y + CARD.dbH + index * CARD.instanceRowH;
