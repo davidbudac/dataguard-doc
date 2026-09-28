@@ -23,6 +23,7 @@ import { TOO_LARGE_MESSAGE } from '@/state/codec';
 import { revealFindings } from './IssuePanel';
 import { WhyPill } from './common/WhyPill';
 import { exportPng } from './export/diagram';
+import { openReport } from './export/Report';
 
 const busy = signal(false);
 
@@ -301,6 +302,14 @@ export function DocActions() {
             onClick={() => { void exportPng(); }}
           >
             Diagram as PNG
+          </button>
+          <button
+            type="button"
+            class="btn"
+            title="Open the whole configuration as a printable report and save it as PDF"
+            onClick={() => { void openReport(); }}
+          >
+            Report as PDF
           </button>
 
           <label class="btn">

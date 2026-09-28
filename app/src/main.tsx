@@ -19,7 +19,7 @@
  */
 
 import { render } from 'preact';
-import { App } from './ui/App';
+import { Root } from './ui/Root';
 import { classicDoc, makeDoc } from './state/doc';
 import type { Doc } from './state/doc';
 import { findPreset } from './presets';
@@ -150,7 +150,7 @@ async function boot(): Promise<void> {
 
   const root = document.getElementById('app');
   if (!root) throw new Error('boot: #app is missing from index.html');
-  render(<App />, root);
+  render(<Root />, root);
 
   if (restoredFromStorage) announceRestore();
   startViewportWatch();

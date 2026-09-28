@@ -31,7 +31,7 @@ import type { Doc } from './doc';
 import { encodeDoc, toWire } from './codec';
 import type { Mode, PanelTab, ThemePref } from './view';
 import {
-  MODES, PANEL_TABS, edition, introPage, lessonId, lessonStep, mode, panelTab, playing,
+  MODES, PANEL_TABS, edition, introPage, lessonId, lessonStep, mode, panelTab, playing, reportPage,
   scrubbing, selection, theme, tNow,
 } from './view';
 
@@ -40,6 +40,8 @@ export interface UrlState {
   mode: Mode;
   /** The Introduction, instead of the workbench. */
   intro: boolean;
+  /** The printable report, instead of the workbench. */
+  report: boolean;
   panel: PanelTab;
   sel: readonly string[];
   t: number;
@@ -53,6 +55,7 @@ export const URL_DEFAULTS: UrlState = {
   ed: '19c',
   mode: 'build',
   intro: false,
+  report: false,
   panel: 'dgmgrl',
   sel: [],
   t: 0,
@@ -108,6 +111,14 @@ export const URL_FIELDS: readonly UrlField[] = [
     k: 'intro', what: 'the Introduction page',
     parse: (raw, out) => { if (raw === '1') out.intro = true; },
     write: (s) => (s.intro ? '1' : null),
+  },
+  {
+    /* The same shape as `intro`: a page over the workbench, one spelling. It
+       is what makes the report printable without a click -- a headless
+       browser given `?report=1#t=...` prints the report of that document. */
+    k: 'report', what: 'the printable report',
+    parse: (raw, out) => { if (raw === '1') out.report = true; },
+    write: (s) => (s.report ? '1' : null),
   },
   {
     k: 'panel', what: 'the Configure tab',
@@ -226,6 +237,7 @@ export function currentUrlState(): UrlState {
     ed: edition.value,
     mode: mode.value,
     intro: introPage.value,
+    report: reportPage.value,
     panel: panelTab.value,
     sel: selection.value,
     /* The playhead is deliberately absent while it is moving: one drag would
@@ -242,6 +254,7 @@ export function applyUrlState(s: UrlState): void {
   edition.value = s.ed;
   mode.value = s.mode;
   introPage.value = s.intro;
+  reportPage.value = s.report;
   panelTab.value = s.panel;
   selection.value = [...s.sel];
   tNow.value = s.t;

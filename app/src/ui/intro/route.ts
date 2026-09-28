@@ -112,7 +112,7 @@ export function openLesson(index: number): void {
  * say how to render whatever is shown, not what to show -- leave the first
  * visit free to start at the Introduction.
  */
-const ADDRESSED = new Set(['mode', 'panel', 'sel', 't', 'preset', 'lesson', 'step']);
+const ADDRESSED = new Set(['mode', 'report', 'panel', 'sel', 't', 'preset', 'lesson', 'step']);
 
 export interface BootIntro {
   /** `?intro=1` was asked for outright. */

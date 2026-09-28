@@ -1,0 +1,122 @@
+/* The printable report (ui/export/Report.tsx).
+
+   On screen: an A4 sheet on the page ground, with a bar above it to go back
+   or print. On paper: the sheet alone, 15 mm margins, a page break before
+   each major section, nothing that only makes sense under a cursor. The root
+   is pinned to the light theme while the report is open, so every token here
+   resolves to its light value in both. */
+
+@page{size:A4;margin:15mm 15mm 17mm}
+
+html.is-report,html.is-report body{height:auto}
+.report{min-height:100vh;background:var(--bg);color:var(--ik);padding-bottom:40px}
+
+/* ---- the bar (screen only) ---- */
+.rp-bar{position:sticky;top:0;z-index:5;display:flex;align-items:center;gap:var(--s3);
+  padding:10px var(--gut);background:var(--sf);border-bottom:1px solid var(--ln)}
+.rp-bar-t{flex:1;text-align:center;color:var(--ik3);font-size:12.5px}
+
+/* ---- the sheet ---- */
+.rp{box-sizing:border-box;width:210mm;max-width:calc(100% - 32px);margin:24px auto 0;
+  padding:16mm 15mm;background:#FFFFFF;border:1px solid var(--ln);border-radius:4px;
+  font-size:10pt;line-height:1.5;color:var(--ik)}
+
+.rp h2{display:flex;align-items:baseline;gap:10px;margin:0 0 10px;padding-bottom:6px;
+  border-bottom:1.5px solid var(--ik);font-size:14pt;line-height:1.25;font-weight:650;
+  break-after:avoid}
+.rp h3{margin:16px 0 4px;font-size:11pt;font-weight:650;break-after:avoid}
+.rp-n{font-family:var(--mono);font-size:10pt;color:var(--ik3);font-weight:500}
+.rp-sec{margin-top:26px}
+.rp-lead{margin:0 0 8px;color:var(--ik2);font-size:9.5pt}
+.rp-empty{margin:4px 0 8px;color:var(--ik3);font-style:italic}
+.rp-note{color:var(--ik3);font-size:8.5pt}
+.rp-ref{margin-left:2px;font-family:var(--mono);font-size:7pt;color:var(--bl);vertical-align:super;line-height:0}
+.rp .fact{margin-left:6px;padding:0 5px;border:1px solid var(--ln2);border-radius:3px;
+  font-family:var(--sans);font-size:7.5pt;letter-spacing:0;text-transform:none;
+  color:var(--ik2);background:var(--sf2);white-space:nowrap;vertical-align:1px}
+.rp .fact.b-model{color:var(--vi);background:var(--vif);border-color:var(--vi)}
+
+/* ---- title block ---- */
+.rp-head{padding-bottom:14px;border-bottom:1px solid var(--ln2)}
+.rp-kicker{margin:0;font-family:var(--mono);font-size:8.5pt;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--ik3)}
+.rp-title{margin:6px 0 4px;font-size:24pt;line-height:1.15;font-weight:700;letter-spacing:-.01em;
+  overflow-wrap:anywhere}
+.rp-meta{margin:0;color:var(--ik2);font-size:10pt}
+.rp-lede{margin:10px 0 0;color:var(--ik2);font-size:9.5pt;max-width:150mm}
+
+/* ---- summary: label-left, value-right ---- */
+.rp-sum{margin:0;display:grid;grid-template-columns:48mm 1fr}
+.rp-sum-row{display:contents}
+.rp-sum dt,.rp-sum dd{margin:0;padding:4px 0;border-bottom:1px solid var(--ln)}
+.rp-sum dt{color:var(--ik2)}
+.rp-sum dd{overflow-wrap:anywhere}
+.rp-sub{display:block;color:var(--ik3);font-size:8.5pt}
+.rp-v2{color:var(--ik2)}
+
+/* ---- the diagram ---- */
+.rp-diagram .tp-wrap{gap:6px;break-inside:avoid}
+.rp-diagram .topo-svg{width:100%;height:auto;max-width:100%;max-height:none}
+.rp-diagram .tp-legend{font-size:8pt}
+
+/* ---- tables ---- */
+.rp-tab{width:100%;margin:0 0 14px;border-collapse:collapse;font-size:8.5pt;line-height:1.4}
+.rp-tab th{padding:4px 6px 4px 0;text-align:left;font-weight:600;color:var(--ik2);
+  border-bottom:1.5px solid var(--ik2);white-space:nowrap}
+.rp-tab td{padding:4px 6px 4px 0;vertical-align:top;border-bottom:1px solid var(--ln);
+  overflow-wrap:anywhere}
+.rp-tab tr{break-inside:avoid}
+.rp-events td:first-child{width:18mm}
+
+/* ---- findings: a tag, not a coloured edge ---- */
+.rp-findings{list-style:none;margin:0;padding:0}
+.rp-finding{padding:6px 0;border-bottom:1px solid var(--ln);break-inside:avoid}
+.rp-finding p{margin:0}
+.rp-finding-hd{display:flex;flex-wrap:wrap;align-items:baseline;gap:8px;font-size:8.5pt}
+.rp-finding-msg{margin-top:2px}
+.rp-sev{display:inline-block;min-width:15mm;font-weight:650;font-size:7.5pt;letter-spacing:.06em;
+  text-transform:uppercase}
+.rp-sev.sv-error{color:var(--rd)}
+.rp-sev.sv-warning{color:var(--am)}
+.rp-sev.sv-info{color:var(--sl)}
+.rp-subj{color:var(--ik2)}
+.rp-ora{color:var(--rd)}
+
+/* ---- generated files ---- */
+.rp-group{margin-top:8px}
+.rp-file{margin:6px 0 14px}
+.rp-file-hd{display:flex;align-items:baseline;gap:10px;margin:0 0 3px;font-size:9pt;break-after:avoid}
+/* A heading never ends a page: the group's title, its lead and the file's
+   name travel with the first lines of the file. */
+.rp-group>h3,.rp-group>.rp-lead{break-after:avoid}
+.rp-code>.rp-ln:nth-child(-n+3){break-before:avoid}
+.rp-file-t{font-weight:600}
+.rp-file-n{color:var(--ik3);font-size:8pt}
+.rp-code{padding:6px 8px;background:var(--sf2);border:1px solid var(--ln);border-radius:3px;
+  font-family:var(--mono);font-size:7.6pt;line-height:1.45}
+.rp-ln{white-space:pre-wrap;overflow-wrap:anywhere;break-inside:avoid}
+.rp-ln code{font:inherit}
+.rp-ln.k-comment,.rp-ln.k-note{color:var(--ik3)}
+.rp-ln .rp-note{font-family:var(--sans);font-size:7.5pt}
+.rp-claims{margin:4px 0 0;padding-left:16px;font-size:8.5pt;color:var(--ik2)}
+
+/* ---- the run ---- */
+.rp-timeline{margin:4px 0 10px;overflow:hidden;break-inside:avoid}
+.rp-timeline .tl-svg{width:100%;height:auto;max-width:100%}
+
+/* ---- sources ---- */
+.rp-src{margin:0;padding-left:22px;font-size:8.5pt}
+.rp-src li{padding:4px 0;border-bottom:1px solid var(--ln);break-inside:avoid}
+.rp-src p{margin:0}
+.rp-src-u{color:var(--ik3);font-size:7.5pt}
+.rp-url{color:var(--bl);text-decoration:none;border:0;overflow-wrap:anywhere}
+
+@media print{
+  html.is-report body{background:#FFFFFF}
+  .report{min-height:0;background:#FFFFFF;padding:0}
+  .rp-bar{display:none}
+  .rp{width:auto;max-width:none;margin:0;padding:0;border:0;border-radius:0}
+  .rp-sec.is-page{break-before:page;margin-top:0}
+  .rp a[href^="http"]::after{content:none}
+  .rp-code,.rp .fact,.rp-sev{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+}

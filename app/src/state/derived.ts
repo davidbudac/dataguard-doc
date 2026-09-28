@@ -172,15 +172,23 @@ function findingsChip(): ReadoutChip {
  * outcome; with events it has an outcome, and every chip branches on that
  * outcome rather than on the name of the event that caused it.
  */
-export const readout = computed<ReadoutChip[]>(() => {
-  const t = trace.value;
-  const topo = topology.value;
-  const graph = redoGraph.value;
-
+export const readout = computed<ReadoutChip[]>(
   /* Build and Configure are about the configuration, so their readout is the
      steady state even when the Document carries events (ui.md SS3): the
      outcome belongs to the modes that draw the run. */
-  const steady = mode.value === 'build' || mode.value === 'configure';
+  () => readoutFor(mode.value === 'build' || mode.value === 'configure'),
+);
+
+/**
+ * The chips for one of the two readings, whichever mode is open: `steady`
+ * asks for the configuration at rest, otherwise the run's outcome (which
+ * falls back to the steady reading when there is no run). The printable
+ * report asks for both, from any mode.
+ */
+export function readoutFor(steady: boolean): ReadoutChip[] {
+  const t = trace.value;
+  const topo = topology.value;
+  const graph = redoGraph.value;
 
   if (!t || steady) {
     const level = graph?.protectionLevel;
@@ -307,4 +315,4 @@ export const readout = computed<ReadoutChip[]>(() => {
   }
   chips.push(findingsChip());
   return chips;
-});
+}

@@ -66,7 +66,10 @@ resolved, transparent or page-coloured ground) and download `<config>.png`.
 No new network access; CSP-safe.
 
 ### 2.2 Export the whole project as a PDF report
-Status: todo
+Status: done (on ui/track2-export)
+Note: chose a print-styled report page + `window.print()` ("Save as PDF") over a client-side
+PDF library: no dependency, no CSP change, vector diagram, selectable text. ⋯ → "Report as PDF"
+opens `?report=1` (`ui/export/Report.tsx`, contents assembled in `report-model.ts`), always light, A4.
 From the ⋯ menu: a full report — title/summary, the diagram, member/observer
 table, validation findings, the generated Configure outputs (DGMGRL, init
 params, TNS/JDBC), Break events + outcome if any, and the citations. Either a

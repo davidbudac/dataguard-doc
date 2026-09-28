@@ -102,6 +102,12 @@ export const introOpen = signal<boolean>(false);
  * else to look at -- and any mode button leaves it (`ui/intro/route.ts`).
  */
 export const introPage = signal<boolean>(false);
+/**
+ * The printable report, in place of the whole shell (ui/export/Report.tsx).
+ * Addressable as `?report=1`, so a report can be reloaded, linked to and
+ * printed by a headless browser without a click.
+ */
+export const reportPage = signal<boolean>(false);
 /** Validation's INFO rows, collapsed until the reader asks for them. */
 export const notesOpen = signal<boolean>(false);
 /**
