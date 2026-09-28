@@ -84,7 +84,6 @@ const U = {
   ora16661: 'https://docs.oracle.com/en/error-help/db/ora-16661/',
   ora16819: 'https://docs.oracle.com/en/error-help/db/ora-16819/',
   bkr26Manual: 'https://docs.oracle.com/en/database/oracle/oracle-database/26/dgbkr/manual-failover1.html',
-  bkr26Modes: 'https://docs.oracle.com/en/database/oracle/oracle-database/26/dgbkr/managing-data-protection-modes.html',
   ora16658: 'https://docs.oracle.com/en/error-help/db/ora-16658/',
   ora16820: 'https://docs.oracle.com/en/error-help/db/ora-16820/',
   ora16867: 'https://docs.oracle.com/en/error-help/db/ora-16867/',

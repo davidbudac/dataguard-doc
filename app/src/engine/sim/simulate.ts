@@ -84,7 +84,10 @@ export type DataLossKind = 'none' | 'bounded' | 'na' | 'manual' | 'unknown';
 export interface EngineFacts extends DerivedFacts {
   /** The candidate the broker landed on, whether or not it was promoted. */
   target: MemberId | null;
-  /** The current fast-start failover target at the end of the run. */
+  /**
+   * The current fast-start failover target at the end of the run; null once
+   * a role change has completed, where the run stops evaluating it.
+   */
   activeTarget: MemberId | null;
   /** The configuration ended the run unobserved. */
   unobserved: boolean;
@@ -260,6 +263,7 @@ export function simulate(
     if (pingPropertiesSet(doc) && !ping) addFinding(pingNotIn19c(doc));
   }
   const masterSwitches: { at: Seconds; observer: ObserverId }[] = [];
+  let lastNoStall: 'unobserved' | 'not-ready' | null = null;
 
   const q = new Queue();
   const epochs: Epoch[] = [];
@@ -1355,11 +1359,14 @@ export function simulate(
         ['OBS.OBSERVE_ONLY', 'FSFO.PMY_SHUTDOWN', 'SWITCHOVER.FSFO_GATE']));
     }
 
-    const running = view.actors[state.primary as string]?.running ?? null;
-    if (running !== null && state.phase === 'normal') {
+    /* Recorded where the stretch begins, not once per epoch of it. */
+    const running = state.phase === 'normal'
+      ? view.actors[state.primary as string]?.running ?? null : null;
+    if (running !== null && running !== lastNoStall) {
       decideAt(at, 'PRIMARY.NO_STALL', false, noStallClaim(running, lagGated(doc)),
         { kind: 'member', id: state.primary as string });
     }
+    lastNoStall = running;
 
     /* SIM-03: a former primary that is up after a failover is mounted and
        needs reinstating; it is never open beside the new primary. */
@@ -2115,8 +2122,10 @@ function deriveFacts(
     perMember,
     observers,
     target: state.target,
+    /* After a role change the target is whatever Oracle makes of the former
+       primary, and that is past where this run stops evaluating. */
     activeTarget: state.phase === 'normal' || state.phase === 'blocked'
-      ? state.activeTarget : state.target,
+      ? state.activeTarget : null,
     unobserved: view.fsfoEnabled && state.unobserved,
     detectSeconds: state.initiateAt !== null ? state.detectSeconds : null,
     netHopSeconds: netHopSeconds(doc, view, targetId),
