@@ -160,6 +160,8 @@ export {
   reinstateBandClaim, reinstateFindings, SW_CONVERT, SW_VERIFY, switchoverGate,
   switchoverLossClaim, switchoverRefused, switchoverSchedule,
 } from './sim/roles';
+export type { AuthoredDest } from './sim/dests';
+export { authoredDests, retryLimit } from './sim/dests';
 
 /* validation */
 export type { DeclaredDest, Rule, RuleId, RuleSpec, ValidateContext } from './validate';

@@ -21,7 +21,9 @@ import { claimWellFormed } from '../src/engine/types/claims';
 import type { Claim } from '../src/engine/types/claims';
 import { hostId, memberId } from '../src/engine/ids';
 import type { TimedEvent } from '../src/engine/types/events';
-import { multiTargetDoc } from './topologies';
+import { authoredDests } from '../src/engine/sim/dests';
+import { preset } from '../src/presets';
+import { build, db, multiTargetDoc } from './topologies';
 
 const firstLine = (f: GeneratedFile): Line => f.lines[0] as Line;
 
@@ -212,6 +214,43 @@ describe('computeReopen: one destination at a time', () => {
     expect(outageFromTrace(trace, memberId('sby01'))).toBe(null);
     const rp = computeReopen(input);
     expect(rp.disabledAt).toBe(180);              // three retries at 60 s
+  });
+
+  /* ED-04 (fact check 2026-09-28): the broker default for MaxFailure is 1
+     inside a RedoRoutes priority group, 0 otherwise -- an unset destination
+     must read the group-aware default, not always the flat one. */
+  it('an unset destination defaults MaxFailure to 1 inside a RedoRoutes group, 0 outside one', () => {
+    const prm = db('prm01', ['dc1-prm01'], 'primary');
+    const sby = db('sby01', ['dc2-sby01'], 'physical');
+    /* No dest() call: prm.dests carries no entry at all for sby, which is
+       the case reopenInputFrom must fall back on defaultDestProps for. */
+    const doc = build({
+      sites: ['dc1', 'dc2'], hosts: [['dc1-prm01', 'dc1'], ['dc2-sby01', 'dc2']],
+      members: [prm, sby], targets: [sby.id],
+    });
+    const outside = reopenInputFrom(doc, prm.id, sby.id, { outageSeconds: 600 });
+    expect(outside.maxFailure).toBe(0);
+    const inside = reopenInputFrom(doc, prm.id, sby.id, {
+      outageSeconds: 600, inPriorityGroup: true,
+    });
+    expect(inside.maxFailure).toBe(1);
+  });
+
+  /* The real preset the previous test is abstracted from: North_Sales ->
+     South_Sales sits in a parenthesised group with no dest() properties of
+     its own (sim/dests.ts's authoredDests already reads MaxFailure 1 there
+     for the simulation); the Reopen panel must read the same 1, not the
+     flat default 0, once it is told the destination is in a group. */
+  it('the far-sync-zero-loss preset South_Sales leg reads MaxFailure 1 from its group', () => {
+    const doc = preset('far-sync-zero-loss').doc();
+    const north = memberId('North_Sales');
+    const south = memberId('South_Sales');
+    const authored = authoredDests(doc, north).find((d) => d.to === south);
+    expect(authored?.inPriorityGroup).toBe(true);
+    const input = reopenInputFrom(doc, north, south, {
+      outageSeconds: 600, inPriorityGroup: authored?.inPriorityGroup ?? false,
+    });
+    expect(input.maxFailure).toBe(1);
   });
 
   it('with no observer deployed nothing is armed', () => {

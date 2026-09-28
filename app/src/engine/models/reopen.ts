@@ -26,6 +26,7 @@ import { assertCitesAllowed } from '../citations';
 import type { CitationId } from '../citations';
 import { BOUNDS } from '../defaults';
 import type { Edition, MemberId, Seconds } from '../ids';
+import { defaultDestProps } from '../serialize/schema';
 import type { Claim } from '../types/claims';
 import { documented, model } from '../types/claims';
 import type { ProtectionMode, TopologyDoc } from '../types/topology';
@@ -336,9 +337,14 @@ export function reopenInputFrom(
   const outage = opts.outageSeconds
     ?? (opts.trace ? outageFromTrace(opts.trace, to) : null)
     ?? BOUNDS.outageSeconds.default;
+  /* The broker default for MaxFailure is 1 inside a RedoRoutes priority
+     group, 0 otherwise (PROP19, B26/maxfailure.html) -- defaultDestProps
+     is where that default lives, so an unset destination reads the right
+     one instead of always falling back to the flat, no-group default. */
+  const defaults = defaultDestProps({ inGroup: opts.inPriorityGroup === true });
   return {
-    reopenSeconds: props?.reopenSeconds ?? BOUNDS.reopenSeconds.default,
-    maxFailure: props?.maxFailure ?? BOUNDS.maxFailure.default,
+    reopenSeconds: props?.reopenSeconds ?? defaults.reopenSeconds,
+    maxFailure: props?.maxFailure ?? defaults.maxFailure,
     outageSeconds: outage,
     redoRateMBs: doc.environment.redoRateMBs,
     mode: doc.config.protectionMode,

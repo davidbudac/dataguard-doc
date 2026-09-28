@@ -20,7 +20,7 @@
 
 import { signal } from '@preact/signals';
 import {
-  BOUNDS, computeReopen, findMember, outageFromTrace, reopenInputFrom,
+  authoredDests, BOUNDS, computeReopen, findMember, outageFromTrace, reopenInputFrom,
 } from '@/engine';
 import type { MemberId, ReopenModel, TopologyDoc } from '@/engine';
 import type { BraceInput } from '@/ui/timeline/build';
@@ -531,9 +531,17 @@ export function Reopen() {
   const fsfoOn = doc.config.fsfo.state !== 'disabled' && doc.observers.length > 0;
   const fromTrace = t === null ? null : outageFromTrace(t, chosen);
   const outage = reopenOutage.value ?? fromTrace ?? BOUNDS.outageSeconds.default;
+  /* Whether the destination is written inside a parenthesised RedoRoutes
+     group -- read off the engine's own routing resolution (authoredDests),
+     never recomputed here. It decides both MaxFailure's broker default (1
+     in a group, 0 otherwise) and the documented re-enter-when-accessible
+     exception (ED-04). */
+  const inPriorityGroup = authoredDests(doc, primary)
+    .find((d) => d.to === chosen)?.inPriorityGroup ?? false;
   const input = reopenInputFrom(doc, primary, chosen, {
     ...(t === null ? {} : { trace: t }),
     outageSeconds: outage,
+    inPriorityGroup,
   });
   const rp = computeReopen(input);
   const destName = findMember(doc, chosen)?.name ?? String(chosen);
