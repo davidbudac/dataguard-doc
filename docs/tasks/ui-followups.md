@@ -85,7 +85,10 @@ something that does not rely on a left border on a rounded box (a dot/tag, a
 background tint, or square corners).
 
 ### 3.2 Clean up and polish the right side menu
-Status: todo
+Status: done (on ui/track3-panel)
+Note: one system in `styles/inspector.css` (float.css no longer restyles the rails):
+header with kind + name, one heading style, `Field` rows are `row` or `stack` by a
+content-width estimate (`fitsBeside`), list rows (`.lrow`), sub-blocks (`.sub`).
 The inspector card is inconsistent: mixed heading styles, uneven spacing,
 controls that wrap unpredictably, varying row heights. Make one consistent
 system: section headings, label-left/value-right rows, full-width controls

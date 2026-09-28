@@ -88,12 +88,12 @@ export function ConfigForm({ doc }: ConfigFormProps) {
     <>
       <Fold id="Configuration" title="Configuration" hint={c.protectionMode}>
         <Text
-          name="Name"
+          name="Name" prose
           value={c.name}
           onCommit={(v) => patchConfig('Rename the configuration', (x) => ({ ...x, name: v.trim() || x.name }))}
         />
         <Choice
-          name="Protection mode"
+          name="Protection mode" prose
           value={c.protectionMode}
           options={[
             { value: 'MAXPROTECTION', label: 'MAXPROTECTION' },
@@ -131,6 +131,7 @@ export function ConfigForm({ doc }: ConfigFormProps) {
         title="PrimaryDatabaseCandidates"
         hint={candidates.length === 0 ? 'empty' : candidates.join(', ')}
       >
+        <div class="opt-list">
         {databases.map((m) => {
           const list = candidates;
           const on = list.includes(m.id);
@@ -155,6 +156,7 @@ export function ConfigForm({ doc }: ConfigFormProps) {
             </label>
           );
         })}
+        </div>
         <Note>
           A fast-start-failover-disabled fence: while fast-start failover is disabled it
           restricts <span class="mono">SWITCHOVER</span> and
@@ -190,24 +192,68 @@ export function ConfigForm({ doc }: ConfigFormProps) {
               : "Failover needs both the observer and the target standby to have lost the primary for the threshold, plus the target standby's readiness check. This page draws ObserverOverride at FALSE, the broker default."}
         />
 
-        <div class="field">
+        {/* The target list is the one property here that is a list, so it is
+            the one field drawn by hand: its name and reading on the first
+            line, a row per target under it (the order the broker walks), then
+            the databases that could be added, and the switch to ANY last. */}
+        <div class="field is-stack">
           <div class="field-hd">
             <span class="field-name">FastStartFailoverTarget</span>
-            <span class="field-val">
-              {f.target.kind === 'ANY' ? 'ANY' : (targetList.join(', ') || 'not set')}
-            </span>
+            <span class="field-val">{targetWord}</span>
           </div>
-          <div class="rr-line">
-            <Action
-              label={f.target.kind === 'ANY' ? 'Name the targets' : 'ANY'}
-              onClick={() => patchFsfo(
-                f.target.kind === 'ANY' ? 'Name the failover targets' : 'Set FastStartFailoverTarget to ANY',
-                (x): FsfoConfig => ({
-                  ...x,
-                  target: x.target.kind === 'ANY' ? { kind: 'list', members: [] } : { kind: 'ANY' },
-                }),
-              )}
-            />
+          <div class="field-ctl">
+            {f.target.kind === 'ANY' ? null : (
+              <>
+                {targetList.map((id, i) => (
+                  <div class="rr-dest lrow" key={id as string}>
+                    <span class="lrow-k mono">{i + 1}. {id as string}</span>
+                    {/* Only the moves that exist: the first target has no
+                        "Up", exactly as the Break rail's first event has no
+                        "Earlier". */}
+                    {i === 0 ? null : <Action label="Up" onClick={() => move(i, -1)} />}
+                    {i === targetList.length - 1
+                      ? null
+                      : <Action label="Down" onClick={() => move(i, 1)} />}
+                    <Action
+                      label="Remove"
+                      onClick={() => setTarget(targetList.filter((x) => x !== id))}
+                    />
+                  </div>
+                ))}
+                {databases
+                  .filter((m) => !targetList.includes(m.id))
+                  .map((m) => (
+                    <div class="rr-dest lrow" key={`add-${m.id as string}`}>
+                      <span class="lrow-k mono">{m.id as string}</span>
+                      <Action
+                        label="Add as a target"
+                        enabled={m.role === 'primary'
+                          ? off(WHY.primaryNotTarget)
+                          : m.role === 'snapshot' ? off(WHY.snapshotNotTarget) : ON}
+                        onClick={() => setTarget([...targetList, m.id])}
+                      />
+                    </div>
+                  ))}
+                {doc.members.filter((m) => m.kind === 'farsync').map((m) => (
+                  <div class="rr-dest lrow" key={`fs-${m.id as string}`}>
+                    <span class="lrow-k mono">{m.id as string}</span>
+                    <Action label="Add as a target" enabled={off(WHY.farSyncNotTarget)} onClick={() => undefined} />
+                  </div>
+                ))}
+              </>
+            )}
+            <div class="rr-line lrow is-acts">
+              <Action
+                label={f.target.kind === 'ANY' ? 'Name the targets' : 'Set to ANY'}
+                onClick={() => patchFsfo(
+                  f.target.kind === 'ANY' ? 'Name the failover targets' : 'Set FastStartFailoverTarget to ANY',
+                  (x): FsfoConfig => ({
+                    ...x,
+                    target: x.target.kind === 'ANY' ? { kind: 'list', members: [] } : { kind: 'ANY' },
+                  }),
+                )}
+              />
+            </div>
           </div>
           {f.target.kind === 'ANY' ? (
             <FieldNote>
@@ -215,52 +261,11 @@ export function ConfigForm({ doc }: ConfigFormProps) {
               must be set explicitly for fast-start failover to be enabled.
             </FieldNote>
           ) : (
-            <>
-              {targetList.map((id, i) => (
-                <div class="rr-dest" key={id as string}>
-                  <span class="mono">{i + 1}. {id as string}</span>
-                  <Action
-                    label="Up"
-                    enabled={i === 0 ? off('It is first in the order already.') : ON}
-                    onClick={() => move(i, -1)}
-                  />
-                  <Action
-                    label="Down"
-                    enabled={i === targetList.length - 1 ? off('It is last in the order already.') : ON}
-                    onClick={() => move(i, 1)}
-                  />
-                  <Action
-                    label="Remove"
-                    onClick={() => setTarget(targetList.filter((x) => x !== id))}
-                  />
-                </div>
-              ))}
-              {databases
-                .filter((m) => !targetList.includes(m.id))
-                .map((m) => (
-                  <div class="rr-dest" key={`add-${m.id as string}`}>
-                    <span class="mono">{m.id as string}</span>
-                    <Action
-                      label="Add as a target"
-                      enabled={m.role === 'primary'
-                        ? off(WHY.primaryNotTarget)
-                        : m.role === 'snapshot' ? off(WHY.snapshotNotTarget) : ON}
-                      onClick={() => setTarget([...targetList, m.id])}
-                    />
-                  </div>
-                ))}
-              {doc.members.filter((m) => m.kind === 'farsync').map((m) => (
-                <div class="rr-dest" key={`fs-${m.id as string}`}>
-                  <span class="mono">{m.id as string}</span>
-                  <Action label="Add as a target" enabled={off(WHY.farSyncNotTarget)} onClick={() => undefined} />
-                </div>
-              ))}
-              <FieldNote>
-                The order is the order the broker walks: it takes the candidates in the
-                order the property lists them, never "the first viable one".
-                <Fact basis="model" id="FSFO.TARGET_SELECTION" />
-              </FieldNote>
-            </>
+            <FieldNote>
+              The order is the order the broker walks: it takes the candidates in the
+              order the property lists them, never "the first viable one".
+              <Fact basis="model" id="FSFO.TARGET_SELECTION" />
+            </FieldNote>
           )}
         </div>
 
@@ -395,10 +400,10 @@ export function ConfigForm({ doc }: ConfigFormProps) {
           : `${preferred.length} host${preferred.length === 1 ? '' : 's'}`}
       >
         {preferred.map((p, i) => (
-          <div class="rr-dest" key={`${p.host as string}-${i}`}>
-            <span class="mono">{p.host as string}</span>
+          <div class="rr-dest lrow" key={`${p.host as string}-${i}`}>
+            <span class="lrow-k mono">{p.host as string}</span>
             <select
-              class="field-in"
+              class="field-in is-short"
               aria-label={`Priority for ${p.host as string}`}
               disabled={ed !== '26ai'}
               value={String(p.priority)}
@@ -456,7 +461,7 @@ export function ConfigForm({ doc }: ConfigFormProps) {
         hint={`${doc.environment.roleTransitionSeconds} s role transition · ${doc.environment.redoRateMBs} MB/s`}
       >
         <Num
-          name="Role transition"
+          name="Role transition" prose
           bound="roleTransitionSeconds"
           value={doc.environment.roleTransitionSeconds}
           coalesce="env:role"
@@ -466,7 +471,7 @@ export function ConfigForm({ doc }: ConfigFormProps) {
           note="Terminal recovery, the role change and the open are environment-dependent, not parameter-driven. This is the drawing's constant for them."
         />
         <Num
-          name="Local redo write"
+          name="Local redo write" prose
           bound="localWriteMs"
           value={doc.environment.localWriteMs}
           coalesce="env:lw"
@@ -475,7 +480,7 @@ export function ConfigForm({ doc }: ConfigFormProps) {
           )}
         />
         <Num
-          name="Standby redo log write"
+          name="Standby redo log write" prose
           bound="standbyWriteMs"
           value={doc.environment.standbyWriteMs}
           coalesce="env:sbw"
@@ -485,7 +490,7 @@ export function ConfigForm({ doc }: ConfigFormProps) {
           note="What an AFFIRM standby pays before it acknowledges."
         />
         <Num
-          name="Redo rate"
+          name="Redo rate" prose
           bound="redoRateMBs"
           value={doc.environment.redoRateMBs}
           coalesce="env:rate"

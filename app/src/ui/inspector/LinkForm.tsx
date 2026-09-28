@@ -33,11 +33,15 @@ export function LinkForm({ link, doc }: LinkFormProps) {
   const b = endName(doc, link, 1);
   return (
     <>
-      <Group title={link.scope === 'site' ? 'Site link' : 'Host link'}>
-        <div class="field">
+      {/* The header says which kind of link this is; the first row says
+          what it joins. */}
+      <Group title="General">
+        <div class="field is-row">
           <div class="field-hd">
-            <span class="field-name">{a} to {b}</span>
-            <span class="tag t-sl">{link.scope}</span>
+            <span class="field-name is-prose">Between</span>
+          </div>
+          <div class="field-ctl">
+            <span class="field-val mono">{a} – {b}</span>
           </div>
           <FieldNote>
             {link.scope === 'site'
@@ -46,7 +50,7 @@ export function LinkForm({ link, doc }: LinkFormProps) {
           </FieldNote>
         </div>
         <Num
-          name="Round trip"
+          name="Round trip" prose
           bound="latencyMs"
           value={link.rttMs}
           coalesce={`rtt:${id as string}`}
@@ -57,7 +61,7 @@ export function LinkForm({ link, doc }: LinkFormProps) {
           note="What a SYNC commit pays twice, and what the FAILOVER command crosses on its way to the target."
         />
         <Check
-          name="Up"
+          name="Up" prose
           label="The link is up"
           checked={link.up}
           onChange={(v) => patchLink(
@@ -65,19 +69,18 @@ export function LinkForm({ link, doc }: LinkFormProps) {
           )}
           note="This is the configuration's steady state. To cut the link at a moment on the clock, inject the event in Break mode."
         />
-        <div class="field">
+        <div class="field is-row">
           <div class="field-hd">
-            <span class="field-name">Bandwidth</span>
-            <span class="field-val">
-              {link.bandwidthMbit === undefined ? 'not set' : `${link.bandwidthMbit} Mbit/s`}
-            </span>
+            <span class="field-name is-prose">Bandwidth</span>
           </div>
+          <div class="field-ctl">
           <input
             class="field-in"
             type="number"
             min={0}
             step={10}
-            aria-label="Bandwidth"
+            aria-label="Bandwidth, Mbit/s"
+            placeholder="not set"
             value={link.bandwidthMbit === undefined ? '' : String(link.bandwidthMbit)}
             onChange={(e) => {
               const raw = (e.currentTarget as HTMLInputElement).value.trim();
@@ -90,6 +93,8 @@ export function LinkForm({ link, doc }: LinkFormProps) {
               });
             }}
           />
+          <span class="field-unit">Mbit/s</span>
+          </div>
           {/* Always: an input that changes nothing in the run is a lie
               without this line, and the control itself cannot say it. */}
           <FieldNote always>

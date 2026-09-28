@@ -123,7 +123,12 @@ export function BreakRail({ scenarios = true, validation = true }: BreakRailProp
           <div class="evt" key={`${i}-${e.kind}-${e.at}`}>
             <span class="evt-n">{i + 1}</span>
             <span class="evt-b">{describeEvent(doc, e)}</span>
+            {/* The event's controls on a line of their own under what it is:
+                its time, the two swaps, and Remove at the end -- the same
+                order on every row, whatever the description's length. */}
+            <div class="evt-ctl">
             <label class="evt-at">
+              <span class="evt-u">at</span>
               <span class="sr">Time of event {i + 1}, in seconds</span>
               <input
                 class="field-in"
@@ -142,11 +147,6 @@ export function BreakRail({ scenarios = true, validation = true }: BreakRailProp
               />
               <span class="evt-u">s</span>
             </label>
-            <Action
-              label="Remove"
-              enabled={editable ? { state: 'on' } : { state: 'off', why: WHY.readOnlyHere }}
-              onClick={() => removeEventAt(i)}
-            />
             {list.length > 1 ? (
               <div class="evt-order" aria-label={`Reorder event ${i + 1}`}>
                 {([-1, 1] as const).map((direction) => {
@@ -162,6 +162,13 @@ export function BreakRail({ scenarios = true, validation = true }: BreakRailProp
                 })}
               </div>
             ) : null}
+            <span class="rr-spacer" />
+            <Action
+              label="Remove"
+              enabled={editable ? { state: 'on' } : { state: 'off', why: WHY.readOnlyHere }}
+              onClick={() => removeEventAt(i)}
+            />
+            </div>
           </div>
         ))}
 

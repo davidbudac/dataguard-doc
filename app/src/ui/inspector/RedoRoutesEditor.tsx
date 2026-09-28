@@ -98,19 +98,21 @@ export function RedoRoutesEditor({ member, doc }: RedoRoutesEditorProps) {
         />
       )}
     >
-      <div class="field">
+      <div class="field is-stack">
         <div class="field-hd">
-          <span class="field-name">The property</span>
+          <span class="field-name is-prose">The property</span>
         </div>
-        <input
-          class="field-in rr-text"
-          type="text"
-          aria-label="RedoRoutes property"
-          spellcheck={false}
-          placeholder="(LOCAL : ALL)"
-          value={text}
-          onChange={(e) => parseText((e.currentTarget as HTMLInputElement).value)}
-        />
+        <div class="field-ctl">
+          <input
+            class="field-in rr-text"
+            type="text"
+            aria-label="RedoRoutes property"
+            spellcheck={false}
+            placeholder="(LOCAL : ALL)"
+            value={text}
+            onChange={(e) => parseText((e.currentTarget as HTMLInputElement).value)}
+          />
+        </div>
         {error === null ? null : <FieldNote warn>RedoRoutes: {error}</FieldNote>}
         {rules.length === 0 ? (
           /* An empty state, so it stays: an empty box says nothing about what
@@ -131,9 +133,9 @@ export function RedoRoutesEditor({ member, doc }: RedoRoutesEditorProps) {
       {rules.map((rule, i) => {
         const multi = Array.isArray(rule.source) && rule.source.length > 1;
         return (
-          <div class="rr-rule" key={`rule-${i}`}>
-            <div class="rr-line">
-              <span class="eyebrow">Rule {i + 1}</span>
+          <div class="rr-rule sub" key={`rule-${i}`}>
+            <div class="sub-hd">
+              <span class="sub-t">Rule {i + 1}</span>
               <span class="rr-spacer" />
               <Action
                 label="+ Group"
@@ -155,8 +157,8 @@ export function RedoRoutesEditor({ member, doc }: RedoRoutesEditorProps) {
               />
             </div>
 
-            <label class="rr-row">
-              <span class="rr-k">Source</span>
+            <label class="rr-row lrow">
+              <span class="rr-k lrow-k">Source</span>
               <select
                 class="field-in"
                 aria-label={`Rule ${i + 1} source`}
@@ -190,8 +192,8 @@ export function RedoRoutesEditor({ member, doc }: RedoRoutesEditorProps) {
 
             {rule.groups.map((g, gi) => (
               <div class="rr-grp" key={`grp-${i}-${gi}`}>
-                <div class="rr-row">
-                  <span class="rr-k">PRIORITY</span>
+                <div class="rr-row lrow">
+                  <span class="rr-k lrow-k mono">PRIORITY</span>
                   <select
                     class="field-in"
                     aria-label={`Rule ${i + 1} group ${gi + 1} priority`}
@@ -215,6 +217,8 @@ export function RedoRoutesEditor({ member, doc }: RedoRoutesEditorProps) {
                     <option value="">not set</option>
                     {PRIORITIES.map((p) => <option key={p} value={String(p)}>{p}</option>)}
                   </select>
+                </div>
+                <div class="rr-row lrow is-acts">
                   <Action
                     label="+ Destination"
                     onClick={() => patchGroup(
@@ -237,7 +241,7 @@ export function RedoRoutesEditor({ member, doc }: RedoRoutesEditorProps) {
                 </div>
 
                 {g.dests.map((d, di) => (
-                  <div class="rr-dest" key={`dest-${i}-${gi}-${di}`}>
+                  <div class="rr-dest rr-dgrid" key={`dest-${i}-${gi}-${di}`}>
                     <select
                       class="field-in"
                       aria-label={`Rule ${i + 1} destination ${di + 1}`}
