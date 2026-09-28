@@ -108,7 +108,25 @@ export interface SiteBox extends Rect {
   col: number;
   /** Nothing stands in it yet: drawn as an empty panel a card can be dropped into. */
   empty: boolean;
+  /**
+   * The smallest box this data centre may be drawn at: its cards and stack
+   * headers plus the padding and the name band -- what a resize may not cut
+   * into. For an empty panel, the empty panel's own default box.
+   */
+  fit: Rect;
+  /**
+   * The origin a stored size is measured from: the top-left corner of the
+   * box the layout would draw with no card moved by hand. A sized override's
+   * `dx`/`dy` are relative to it, so the box travels with its column when an
+   * addition elsewhere moves the columns.
+   */
+  anchor: { x: number; y: number };
+  /** The reader gave it a size of its own (`LayoutOffset.w`/`h`). */
+  sized: boolean;
 }
+
+/** The minimum a data centre may be resized to when nothing stands in it. */
+export const SITE_MIN = { w: 120, h: 64 } as const;
 
 /**
  * The site's name band: the rectangle its label actually occupies.
@@ -148,7 +166,11 @@ export interface Geometry {
   unreachableRank: number;
 }
 
-export interface LayoutOffset { dx: number; dy: number }
+/**
+ * A hand-made offset. Under a data centre's key it may also carry `w`/`h`,
+ * the size the reader gave the box (doc.ts `LayoutOverride`).
+ */
+export interface LayoutOffset { dx: number; dy: number; w?: number; h?: number }
 
 export interface LayoutOptions {
   /** Drag overrides, keyed by node key, snapped to 8 px. */
@@ -731,10 +753,25 @@ export function layoutTopology(
   });
 
   /* ---- 8. site rects, recomputed after the overrides moved cards ---- */
+  /* The box around a set of cards: their extent, a stack's header above its
+     top blade (a blade's own `y` is under the header, so `y - headerH` is the
+     stack's top for the top blade and inside the stack for the others), the
+     padding, and the name band at the bottom. */
+  const boxAround = (list: readonly NodeBox[]): { x0: number; y0: number; x1: number; y1: number } => ({
+    x0: Math.min(...list.map((n) => n.x)) - LAYOUT.colPad,
+    y0: Math.min(...list.map((n) => (n.stackKey === undefined ? n.y : n.y - LAYOUT.stackHeaderH))) - LAYOUT.colPad,
+    x1: Math.max(...list.map((n) => n.x + n.w)) + LAYOUT.colPad,
+    y1: Math.max(...list.map((n) => n.y + n.h)) + LAYOUT.colPad + LAYOUT.labelBand,
+  });
   const sites: SiteBox[] = [];
   columns.forEach((c, ci) => {
     const own = nodes.filter((n) => (n.site as string) === (c.site as string));
+    const ov = overrides[c.site as string];
+    const sized = ov !== undefined && typeof ov.w === 'number' && typeof ov.h === 'number'
+      && isFinite(ov.w) && isFinite(ov.h);
     let x0: number; let y0: number; let x1: number; let y1: number;
+    let anchor: { x: number; y: number };
+    let fit: Rect;
     if (own.length === 0) {
       /* The empty panel: one column wide, the member band tall -- or one card
          tall when there is no member band to match. */
@@ -745,23 +782,39 @@ export function layoutTopology(
       x0 = cx; x1 = cx + cw;
       y0 = top - LAYOUT.colPad;
       y1 = top + tall + LAYOUT.colPad + LAYOUT.labelBand;
-      /* The one place a site-keyed offset is read: an empty panel has no
-         member whose own drag would carry it, so a drag on the panel itself
-         (`TopoCanvas` `onSitePointerDown`) writes its delta under the site's
-         own id instead. */
-      const ov = overrides[c.site as string];
-      if (ov) {
+      anchor = { x: x0, y: y0 };
+      fit = { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
+      /* The one place a site-keyed offset is read without a size: an empty
+         panel has no member whose own drag would carry it, so a drag on the
+         panel itself (`TopoCanvas` `onSitePointerDown`) writes its delta
+         under the site's own id instead. */
+      if (ov && !sized) {
         const dx = snap8(ov.dx); const dy = snap8(ov.dy);
         x0 += dx; x1 += dx; y0 += dy; y1 += dy;
+        fit = { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
       }
     } else {
-      /* A stack's header sits above its topmost blade, so the panel's own
-         top has to clear it too -- `own` alone would crop the header band. */
-      const ownStacks = stacks.filter((s) => (s.site as string) === (c.site as string));
-      x0 = Math.min(...own.map((n) => n.x)) - LAYOUT.colPad;
-      y0 = Math.min(...own.map((n) => n.y), ...ownStacks.map((s) => s.y)) - LAYOUT.colPad;
-      x1 = Math.max(...own.map((n) => n.x + n.w)) + LAYOUT.colPad;
-      y1 = Math.max(...own.map((n) => n.y + n.h)) + LAYOUT.colPad + LAYOUT.labelBand;
+      const natural = boxAround(placed
+        .map((p) => p.node)
+        .filter((n) => (n.site as string) === (c.site as string)));
+      anchor = { x: natural.x0, y: natural.y0 };
+      ({ x0, y0, x1, y1 } = boxAround(own));
+      fit = { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
+    }
+    /* A size of its own: the stored box, grown to whatever it has to hold --
+       never smaller than its cards, whatever the link or the file says. */
+    if (sized) {
+      const bx = anchor.x + Math.round(ov.dx);
+      const by = anchor.y + Math.round(ov.dy);
+      const bw = Math.max(own.length === 0 ? SITE_MIN.w : 0, Math.round(ov.w as number));
+      const bh = Math.max(own.length === 0 ? SITE_MIN.h : 0, Math.round(ov.h as number));
+      if (own.length === 0) {
+        x0 = bx; y0 = by; x1 = bx + bw; y1 = by + bh;
+        fit = { x: x0, y: y0, w: SITE_MIN.w, h: SITE_MIN.h };
+      } else {
+        x0 = Math.min(x0, bx); y0 = Math.min(y0, by);
+        x1 = Math.max(x1, bx + bw); y1 = Math.max(y1, by + bh);
+      }
     }
     const site = doc.sites.find((s) => (s.id as string) === (c.site as string));
     const name = site?.name ?? (c.site as string);
@@ -774,6 +827,9 @@ export function layoutTopology(
       labelY: y1 - 5,
       col: ci,
       empty: own.length === 0,
+      fit,
+      anchor,
+      sized,
     });
   });
 

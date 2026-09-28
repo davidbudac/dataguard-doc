@@ -57,6 +57,35 @@ describe('codec', () => {
     }
   });
 
+  it('round trips a data centre\'s own size, to the pixel, beside the snapped card offsets', async () => {
+    const d = withLayout(sample(), 'dc2', { dx: -13, dy: 7, w: 257, h: 141 });
+    const back = await decodeFragment(`#${encodeDocPlain(d).fragment}`);
+    expect(back?.doc?.layout).toEqual({
+      prm01: { dx: 24, dy: -16 },
+      dc2: { dx: -13, dy: 7, w: 257, h: 141 },
+    });
+    expect(back?.dropped).toEqual([]);
+  });
+
+  it('reads a link written before sizes existed exactly as it did', async () => {
+    /* The wire object an older page wrote: offsets only, one of them on an
+       empty site's own key. */
+    const wire = JSON.parse(toJsonText(classicDoc())) as Record<string, unknown>;
+    wire['ui'] = { ...(wire['ui'] as object), layout: { prm01: { dx: 23, dy: -17 }, dc3: { dx: 9, dy: 0 } } };
+    const back = await decodeFragment(`#t0=${base64UrlEncode(utf8Encode(JSON.stringify(wire)))}`);
+    expect(back?.doc?.layout).toEqual({ prm01: { dx: 24, dy: -16 }, dc3: { dx: 8, dy: 0 } });
+  });
+
+  it('treats a size with one half missing as a plain offset, and clamps a silly one', () => {
+    const wire = JSON.parse(toJsonText(classicDoc())) as Record<string, unknown>;
+    wire['ui'] = {
+      ...(wire['ui'] as object),
+      layout: { dc1: { dx: 5, dy: 5, w: 300 }, dc2: { dx: 0, dy: 0, w: 1e9, h: -4 } },
+    };
+    const back = parseJsonText(JSON.stringify(wire));
+    expect(back.doc?.layout).toEqual({ dc1: { dx: 8, dy: 8 }, dc2: { dx: 0, dy: 0, w: 8000, h: 16 } });
+  });
+
   it('round trips through the file text', () => {
     const d = sample();
     const back = parseJsonText(toJsonText(d));

@@ -19,7 +19,7 @@ import {
 } from 'preact/hooks';
 import type { RedoGraph, Snapshot, TopologyDoc } from '@/engine';
 import type { Geometry, LayoutOffset, NodeBox, SiteBox, ViewBox } from './layout';
-import { layoutTopology } from './layout';
+import { layoutTopology, SITE_MIN } from './layout';
 import { cardFrameFor, cardRoleFor, chipsFor, routeTopology, siteIsDown, unionViewBox } from './routing';
 import { describeTopology, cardLabel, linkLabel, siteLabel } from './aria';
 import { anchorFor, barRoom, fittedScale, placeBar } from './anchor';
@@ -29,6 +29,7 @@ import { ActionBar, barFootprint } from './ActionBar';
 import type { BarAction } from './ActionBar';
 import type { WhyState } from '../common/WhyPill';
 import { approxW, CARD } from './measure';
+import type { Rect } from './measure';
 import { NodeCard } from './NodeCard';
 import { StackChassis } from './StackChassis';
 import { LinkPath, linkKey } from './LinkPath';
@@ -71,6 +72,27 @@ export interface TopoCanvasProps {
    */
   onDrag?: (key: string, offset: LayoutOffset, all: Readonly<Record<string, LayoutOffset>>) => void;
   onDragEnd?: (key: string, offset: LayoutOffset, all: Readonly<Record<string, LayoutOffset>>) => void;
+  /**
+   * A card let go inside the data centre it came from, where the box would
+   * otherwise shrink round it: these data centres keep the box they had when
+   * the drag began, as a sized override each (`LayoutOffset.w`/`h`). Called
+   * before `onDragEnd`, so the caller can write it into the drag's own edit.
+   */
+  onHoldSites?: (key: string, boxes: Readonly<Record<string, LayoutOffset>>) => void;
+  /**
+   * A data centre resized from one of its handles (or `Alt`+arrow on it): its
+   * new box as a sized override. Passing it draws the handles on a selected
+   * data centre. Every call of one gesture is the same edit.
+   */
+  onResizeSite?: (site: string, box: LayoutOffset) => void;
+  /** The resize gesture is over: the next one is a new edit. */
+  onResizeEnd?: () => void;
+  /**
+   * `Alt` and an arrow on a data centre: its bottom right corner, this far.
+   * A delta rather than a box, so two presses inside one render add up (the
+   * `onNudge` contract).
+   */
+  onResizeBy?: (site: string, dx: number, dy: number) => void;
   /**
    * `Alt` and an arrow on a card: these cards, this far. A delta rather than
    * the offsets it comes to, so two presses inside one render add up.
@@ -237,7 +259,58 @@ interface MarqueeDrag {
   additive: boolean;
 }
 
-type DragState = CardDrag | PanDrag | LinkDrag | MarqueeDrag;
+/** A data centre's handle being dragged: which edges move, from which box. */
+interface ResizeDrag {
+  kind: 'resize';
+  site: string;
+  edges: ResizeEdges;
+  /** The box as drawn when the handle was pressed, and what bounds it. */
+  start: Rect;
+  fit: Rect;
+  anchor: { x: number; y: number };
+  empty: boolean;
+  startX: number;
+  startY: number;
+  scale: number;
+  moved: boolean;
+}
+
+export interface ResizeEdges { l: boolean; r: boolean; t: boolean; b: boolean }
+
+type DragState = CardDrag | PanDrag | LinkDrag | MarqueeDrag | ResizeDrag;
+
+/** The eight handles of a data centre's box, by compass point. */
+const HANDLES: readonly { id: string; edges: ResizeEdges; cursor: string }[] = [
+  { id: 'n', edges: { l: false, r: false, t: true, b: false }, cursor: 'ns' },
+  { id: 's', edges: { l: false, r: false, t: false, b: true }, cursor: 'ns' },
+  { id: 'w', edges: { l: true, r: false, t: false, b: false }, cursor: 'ew' },
+  { id: 'e', edges: { l: false, r: true, t: false, b: false }, cursor: 'ew' },
+  { id: 'nw', edges: { l: true, r: false, t: true, b: false }, cursor: 'nwse' },
+  { id: 'se', edges: { l: false, r: true, t: false, b: true }, cursor: 'nwse' },
+  { id: 'ne', edges: { l: false, r: true, t: true, b: false }, cursor: 'nesw' },
+  { id: 'sw', edges: { l: true, r: false, t: false, b: true }, cursor: 'nesw' },
+];
+
+/**
+ * A data centre's box with some of its edges moved by (dx, dy), in the
+ * drawing's units: snapped to the 8 px grid, never smaller than `SITE_MIN`,
+ * and never cutting into the cards it holds (`fit`) -- as the sized override
+ * `layoutTopology` reads back (`dx`/`dy` from the box's `anchor`).
+ */
+export function resizedBox(
+  from: { start: Rect; fit: Rect; anchor: { x: number; y: number }; empty: boolean },
+  edges: ResizeEdges, dx: number, dy: number,
+): LayoutOffset {
+  const { start, fit } = from;
+  let x0 = start.x; let y0 = start.y; let x1 = start.x + start.w; let y1 = start.y + start.h;
+  const sx = snap8(dx); const sy = snap8(dy);
+  const hold = !from.empty;
+  if (edges.l) x0 = Math.min(x0 + sx, x1 - SITE_MIN.w, hold ? fit.x : Infinity);
+  if (edges.r) x1 = Math.max(x1 + sx, x0 + SITE_MIN.w, hold ? fit.x + fit.w : -Infinity);
+  if (edges.t) y0 = Math.min(y0 + sy, y1 - SITE_MIN.h, hold ? fit.y : Infinity);
+  if (edges.b) y1 = Math.max(y1 + sy, y0 + SITE_MIN.h, hold ? fit.y + fit.h : -Infinity);
+  return { dx: x0 - from.anchor.x, dy: y0 - from.anchor.y, w: x1 - x0, h: y1 - y0 };
+}
 
 const DRAG_THRESHOLD = 4;
 
@@ -271,6 +344,28 @@ const scrollerFor = (svg: SVGSVGElement): Element | null => {
   if (wrap !== null && wrap.classList.contains('is-zoomed')) return wrap;
   return svg.closest('.app-stage');
 };
+
+/** Grab thickness of a handle, and the size of the square drawn on it. */
+const HANDLE_HIT = 12;
+const HANDLE_DOT = 7;
+
+/** Where a handle can be grabbed: a square on a corner, a strip along an edge. */
+function handleHit(r: Rect, e: ResizeEdges): Rect {
+  const t = HANDLE_HIT;
+  const corner = (e.l || e.r) && (e.t || e.b);
+  if (corner) {
+    return { x: (e.l ? r.x : r.x + r.w) - t / 2 - 2, y: (e.t ? r.y : r.y + r.h) - t / 2 - 2, w: t + 4, h: t + 4 };
+  }
+  if (e.t || e.b) return { x: r.x + t, y: (e.t ? r.y : r.y + r.h) - t / 2, w: Math.max(0, r.w - 2 * t), h: t };
+  return { x: (e.l ? r.x : r.x + r.w) - t / 2, y: r.y + t, w: t, h: Math.max(0, r.h - 2 * t) };
+}
+
+/** The small square drawn on a handle: on the corner, or mid-edge. */
+function handleDot(r: Rect, e: ResizeEdges): Rect {
+  const cx = e.l ? r.x : e.r ? r.x + r.w : r.x + r.w / 2;
+  const cy = e.t ? r.y : e.b ? r.y + r.h : r.y + r.h / 2;
+  return { x: cx - HANDLE_DOT / 2, y: cy - HANDLE_DOT / 2, w: HANDLE_DOT, h: HANDLE_DOT };
+}
 
 export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
   const {
@@ -318,7 +413,7 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
   /* A card, a data centre or a selection rectangle in flight: the drawing
      turns off anything a browser would do with the same press -- chiefly a
      text selection that would paint every label the pointer crosses. */
-  const [moving, setMoving] = useState(false);
+  const [moving, setMoving] = useState<string | null>(null);
   /* A drag in flight, as the drawing shows it: the panel about to take the
      card, or the line from a port to the pointer and the card it is over. State
      rather than a ref, because the drawing has to repaint on every move. */
@@ -612,6 +707,23 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
     }
   };
 
+  /**
+   * A data centre's keys: `Alt` and an arrow resizes it from its bottom right
+   * corner -- one 8 px step, four with `Shift` -- the keyboard's way to what
+   * the handles do; everything else is every entity's.
+   */
+  const onSiteKey = (key: string, ev: JSX.TargetedKeyboardEvent<SVGGElement>): void => {
+    if (ev.altKey && props.onResizeBy && ev.key.startsWith('Arrow')) {
+      ev.preventDefault();
+      const step = ev.shiftKey ? 32 : 8;
+      const dx = ev.key === 'ArrowLeft' ? -step : ev.key === 'ArrowRight' ? step : 0;
+      const dy = ev.key === 'ArrowUp' ? -step : ev.key === 'ArrowDown' ? step : 0;
+      props.onResizeBy(key, dx, dy);
+      return;
+    }
+    onEntityKey(key, ev);
+  };
+
   /** The captions are one stop and a list: the arrows walk them in routed order. */
   const onLinkKey = (key: string, ev: JSX.TargetedKeyboardEvent<SVGGElement>): void => {
     const at = linkAt(key);
@@ -719,7 +831,8 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
     const rect = svg.getBoundingClientRect();
     const scale = rect.width > 0 ? view.w / rect.width : 1;
     const members = geo.nodes.filter((n) => (n.site as string) === key).map((n) => n.key);
-    const keys = members.length > 0 ? members : [key];
+    /* A box with a size of its own is carried with its cards, under its own key. */
+    const keys = members.length === 0 ? [key] : site.sized ? [...members, key] : members;
     const bases: Record<string, LayoutOffset> = {};
     for (const k of keys) bases[k] = overrides[k] ?? { dx: 0, dy: 0 };
     drag.current = {
@@ -798,10 +911,10 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
    * one on `mousedown` whatever `user-select` says about the target, once the
    * pointer has crossed into ordinary page text).
    */
-  const takeDrag = (ev: JSX.TargetedPointerEvent<SVGSVGElement>): void => {
+  const takeDrag = (ev: JSX.TargetedPointerEvent<SVGSVGElement>, cursor = 'grab'): void => {
     svgRef.current?.setPointerCapture?.(ev.pointerId);
     if (typeof window !== 'undefined') window.getSelection?.()?.removeAllRanges();
-    setMoving(true);
+    setMoving(cursor);
   };
 
   const onPointerMove = (ev: JSX.TargetedPointerEvent<SVGSVGElement>): void => {
@@ -825,6 +938,19 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
       if (!d.moved) takeDrag(ev);
       d.moved = true;
       setBand(bandOf(d, ev.clientX, ev.clientY));
+      return;
+    }
+    if (d.kind === 'resize') {
+      if (!d.moved && Math.hypot(ev.clientX - d.startX, ev.clientY - d.startY) < DRAG_THRESHOLD) return;
+      if (!d.moved) {
+        const h = HANDLES.find((x) => x.edges.l === d.edges.l && x.edges.r === d.edges.r
+          && x.edges.t === d.edges.t && x.edges.b === d.edges.b);
+        takeDrag(ev, h?.cursor ?? 'grab');
+        setFrozen({ view, sites: null });
+      }
+      d.moved = true;
+      props.onResizeSite?.(d.site, resizedBox(d, d.edges,
+        (ev.clientX - d.startX) * d.scale, (ev.clientY - d.startY) * d.scale));
       return;
     }
     if (d.kind === 'link') {
@@ -864,8 +990,12 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
 
   const offsetsOf = (d: CardDrag, dx: number, dy: number): Record<string, LayoutOffset> => {
     const all: Record<string, LayoutOffset> = {};
+    /* The delta is snapped, not the sum: every card's base is already on the
+       grid, so for a card the two agree, and a data centre's sized box -- which
+       is not on the grid -- keeps its place relative to its cards as it goes. */
+    const sx = snap8(dx); const sy = snap8(dy);
     for (const [k, base] of Object.entries(d.bases)) {
-      all[k] = { dx: snap8(base.dx + dx), dy: snap8(base.dy + dy) };
+      all[k] = { ...base, dx: base.dx + sx, dy: base.dy + sy };
     }
     return all;
   };
@@ -880,8 +1010,9 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
     if (!d) return;
     drag.current = null;
     svgRef.current?.releasePointerCapture?.(ev.pointerId);
-    if (d.moved) { setMoving(false); setFrozen(null); }
+    if (d.moved) { setMoving(null); setFrozen(null); }
     if (d.kind === 'pan') { if (d.moved) setPanning(false); return; }
+    if (d.kind === 'resize') { if (d.moved) props.onResizeEnd?.(); return; }
     if (d.kind === 'marquee') {
       setBand(null);
       if (!d.moved) return;
@@ -937,7 +1068,59 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
         }
       }
     }
+    /* Let go inside the data centre it came from: a box that would now shrink
+       round what is left in it keeps the size it had when the drag began, and
+       only grows -- to take a card let go past its edge (task 1.2). */
+    if (!dropped && d.over === null && props.onHoldSites && frozen?.sites) {
+      const held = holdsAfter(frozen.sites, d, all);
+      if (Object.keys(held).length > 0) props.onHoldSites(d.key, held);
+    }
     props.onDragEnd?.(d.key, all[d.key] as LayoutOffset, all);
+  };
+
+  /** The data centres a card drag would shrink, with the box each should keep. */
+  const holdsAfter = (
+    was: readonly SiteBox[], d: CardDrag, all: Readonly<Record<string, LayoutOffset>>,
+  ): Record<string, LayoutOffset> => {
+    const after = layoutTopology(doc, graph, { overrides: { ...overrides, ...all } });
+    const touched = new Set(Object.keys(d.bases)
+      .map((k) => geo.byKey[k]?.site as string | undefined)
+      .filter((x): x is string => x !== undefined));
+    const out: Record<string, LayoutOffset> = {};
+    for (const id of touched) {
+      const before = was.find((st) => (st.id as string) === id);
+      const now = after.sites.find((st) => (st.id as string) === id);
+      if (!before || !now) continue;
+      const holds = now.x <= before.x && now.y <= before.y
+        && now.x + now.w >= before.x + before.w && now.y + now.h >= before.y + before.h;
+      if (holds) continue;
+      out[id] = { dx: before.x - now.anchor.x, dy: before.y - now.anchor.y, w: before.w, h: before.h };
+    }
+    return out;
+  };
+
+  /** A press on one of a data centre's handles: the start of a resize. */
+  const onHandlePointerDown = (
+    site: SiteBox, edges: ResizeEdges, ev: JSX.TargetedPointerEvent<SVGGElement>,
+  ): void => {
+    if (!props.onResizeSite || ev.button !== 0) return;
+    const svg = svgRef.current;
+    if (!svg) return;
+    ev.stopPropagation();
+    const rect = svg.getBoundingClientRect();
+    drag.current = {
+      kind: 'resize',
+      site: site.id as string,
+      edges,
+      start: { x: site.x, y: site.y, w: site.w, h: site.h },
+      fit: site.fit,
+      anchor: site.anchor,
+      empty: site.empty,
+      startX: ev.clientX,
+      startY: ev.clientY,
+      scale: rect.width > 0 ? view.w / rect.width : 1,
+      moved: false,
+    };
   };
 
   /**
@@ -962,7 +1145,7 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
    */
   const onSvgPointerUp = (ev: JSX.TargetedPointerEvent<SVGSVGElement>): void => {
     const d = drag.current;
-    const wasCard = d !== null && (d.kind === 'card' || d.kind === 'link');
+    const wasCard = d !== null && (d.kind === 'card' || d.kind === 'link' || d.kind === 'resize');
     const panned = d !== null && (d.kind === 'pan' || d.kind === 'marquee') && d.moved;
     endDrag(ev);
     if (wasCard || panned) return;
@@ -1091,7 +1274,7 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
       ref={props.wrapRef}
     >
       <svg
-        class={`topo-svg${panning ? ' is-pan' : ''}${moving ? ' is-dragging' : ''}${
+        class={`topo-svg${panning ? ' is-pan' : ''}${moving === null ? '' : ` is-dragging cur-${moving}`}${
           interactive && (props.onDrag || props.onDragEnd) ? ' is-movable' : ''}`}
         ref={svgRef}
         viewBox={`${view.x} ${view.y} ${view.w} ${view.h}`}
@@ -1181,7 +1364,7 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
               interactive={interactive}
               onSelect={onCardSelect}
               onHover={props.onHover}
-              onKeyDown={onEntityKey}
+              onKeyDown={onSiteKey}
               onPointerDown={onSitePointerDown}
               nodeRef={cardRef}
             />
@@ -1308,6 +1491,30 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
             />
           ))}
         </g>
+
+        {/* The handles of a selected data centre: over the cards, because the
+            edge they sit on is the edge of the box, not of what is inside. */}
+        {!interactive || !props.onResizeSite ? null : sitesDrawn
+          .filter((st) => isSelected(siteKey(st.id as string)))
+          .map((st) => (
+            <g key={`rsz-${st.id as string}`} class="tp-resize" data-node={st.id as string} aria-hidden="true">
+              {HANDLES.map((hd) => {
+                const hit = handleHit(st, hd.edges);
+                const dot = handleDot(st, hd.edges);
+                return (
+                  <g
+                    key={hd.id}
+                    class={`tp-rsz cur-${hd.cursor}`}
+                    onPointerDown={(ev) => onHandlePointerDown(st, hd.edges, ev)}
+                  >
+                    <title>Drag to resize {st.name} (also: Alt+arrow on the data centre)</title>
+                    <rect class="tp-rsz-hit" x={hit.x} y={hit.y} width={hit.w} height={hit.h} />
+                    <rect class="tp-rsz-dot" x={dot.x} y={dot.y} width={dot.w} height={dot.h} rx={1.5} />
+                  </g>
+                );
+              })}
+            </g>
+          ))}
 
         {band === null ? null : (
           <rect class="tp-band" aria-hidden="true" x={band.x} y={band.y} width={band.w} height={band.h} />

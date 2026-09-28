@@ -27,6 +27,15 @@ import { removeLink } from '@/ui/inspector/edits';
 import { WHY } from '@/ui/inspector/why';
 import { hostId, linkId } from '@/engine';
 
+/**
+ * The layout's card offsets alone. A card let go inside its own data centre
+ * also writes that data centre's kept box (a sized override, task 1.2), which
+ * is a fact about the box and not about where the cards went.
+ */
+const cardLayout = (): Record<string, { dx: number; dy: number }> => Object.fromEntries(
+  Object.entries(docSignal.value.layout).filter(([, v]) => v.w === undefined),
+);
+
 const tick = (): Promise<void> => new Promise((r) => setTimeout(r, 0));
 const painted = (): Promise<void> => new Promise((r) => setTimeout(r, 40));
 const topo = (): TopologyDoc => docSignal.value.topology;
@@ -376,7 +385,7 @@ describe('a selection is made, moved and removed as one', () => {
     await tick();
     pointer(svg, 'Up', start[0] + 16, start[1] + 8);
     await tick();
-    expect(docSignal.value.layout).toEqual({ prm01: { dx: 16, dy: 8 }, sby01: { dx: 16, dy: 8 } });
+    expect(cardLayout()).toEqual({ prm01: { dx: 16, dy: 8 }, sby01: { dx: 16, dy: 8 } });
     expect(undoStack.value.length).toBe(n + 1);
     expect(undoLabel.value).toBe('Move 2 cards');
   });
@@ -459,7 +468,7 @@ describe('a chassis stack is dragged as a group', () => {
     await tick();
     pointer(svg, 'Up', start[0] + 16, start[1] + 8);
     await tick();
-    expect(docSignal.value.layout).toEqual({ prm01: { dx: 16, dy: 8 } });
+    expect(cardLayout()).toEqual({ prm01: { dx: 16, dy: 8 } });
     expect(undoStack.value.length).toBe(n + 1);
   });
 
@@ -477,7 +486,7 @@ describe('a chassis stack is dragged as a group', () => {
     await tick();
     pointer(svg, 'Up', start[0] + 16, start[1] + 8);
     await tick();
-    expect(docSignal.value.layout).toEqual({ prm01: { dx: 16, dy: 8 }, obs01: { dx: 16, dy: 8 } });
+    expect(cardLayout()).toEqual({ prm01: { dx: 16, dy: 8 }, obs01: { dx: 16, dy: 8 } });
     expect(undoStack.value.length).toBe(n + 1);
   });
 
@@ -497,7 +506,7 @@ describe('a chassis stack is dragged as a group', () => {
     await tick();
     pointer(svg, 'Up', start[0] + 24, start[1] - 8);
     await tick();
-    expect(docSignal.value.layout).toEqual({ prm01: { dx: 24, dy: -8 }, obs01: { dx: 24, dy: -8 } });
+    expect(cardLayout()).toEqual({ prm01: { dx: 24, dy: -8 }, obs01: { dx: 24, dy: -8 } });
     expect(undoStack.value.length).toBe(n + 1);
   });
 
@@ -614,7 +623,7 @@ describe('a single card is dropped onto another host', () => {
     pointer(svg, 'Up', start[0] + 16, start[1] + 8);
     await tick();
     expect(siteOf('prm01')).toBe('dc1');
-    expect(docSignal.value.layout).toEqual({ prm01: { dx: 16, dy: 8 } });
+    expect(cardLayout()).toEqual({ prm01: { dx: 16, dy: 8 } });
   });
 
   it('does not merge a RAC member, even dropped squarely on another card in its own data centre', async () => {

@@ -32,18 +32,25 @@ does not. The whole card rectangle must be the grab target (ports and the `⋯`
 button keep their own behaviour).
 
 ### 1.2 Dragging a card must not resize its data centre
-Status: in progress (ui/track1-canvas)
-Note: step 1 done -- `TopoCanvas.tsx` freezes every data centre rect (and the
-viewBox, so the drawing no longer rescales under the pointer) from the moment a
-card drag crosses the threshold until the drop. Keeping the size *after* the drop
-needs the stored DC size from 1.3.
+Status: done (on ui/track1-canvas)
+Note: `TopoCanvas.tsx` freezes every DC rect and the viewBox from the moment a
+card drag starts until the drop (no rescaling under the pointer either). On a
+drop inside its own DC, `holdsAfter` writes the pre-drag box as a sized override
+for any DC that would otherwise shrink (same undo as the drag); it still grows to
+take a card let go past its edge. A move into another DC refits the source.
 While a card is dragged inside/out of a data centre, the DC rectangle grows /
 shrinks with it. The DC box must keep its size during the drag; it may only
 re-fit on drop if the card lands outside the current box (or not at all, once 1.3
 exists).
 
 ### 1.3 User-resizable data centre box
-Status: todo
+Status: done (on ui/track1-canvas)
+Note: `layout[siteId]` may now carry `w`/`h` (`state/doc.ts` `LayoutOverride`,
+codec reads/writes it; old links without it decode identically). `layout.ts`
+draws a sized box at its natural anchor + dx/dy, grown to its cards (`SiteBox.fit`,
+`.anchor`, `.sized`). A selected DC gets 8 handles (`resizedBox` clamps to the
+cards / `SITE_MIN`), `Alt`+arrow resizes from the keyboard, one undo per gesture;
+a DC drag carries its box; Tidy resets it. Tests: `test/ui/canvas-resize.test.ts`.
 Resize handles on a selected DC (at least the corners, ideally edges too); the
 size persists in the document/URL like positions do, undoable, and never smaller
 than the cards it contains. Tidy may reset it.

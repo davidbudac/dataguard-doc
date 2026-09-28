@@ -78,6 +78,20 @@
 /* While something is being dragged, the grip shows everywhere the pointer
    goes -- the pointer is captured, so the element under it means nothing. */
 .topo-svg.is-dragging, .topo-svg.is-dragging * { cursor: grabbing; }
+.topo-svg.is-dragging.cur-ns, .topo-svg.is-dragging.cur-ns * { cursor: ns-resize; }
+.topo-svg.is-dragging.cur-ew, .topo-svg.is-dragging.cur-ew * { cursor: ew-resize; }
+.topo-svg.is-dragging.cur-nwse, .topo-svg.is-dragging.cur-nwse * { cursor: nwse-resize; }
+.topo-svg.is-dragging.cur-nesw, .topo-svg.is-dragging.cur-nesw * { cursor: nesw-resize; }
+
+/* A selected data centre's resize handles: a square on each corner and each
+   edge's middle, over a wider invisible strip that is what the pointer grabs. */
+.topo-svg .tp-rsz-hit { fill: transparent; }
+.topo-svg .tp-rsz-dot { fill: var(--sf); stroke: var(--fc); stroke-width: 1.25; pointer-events: none; }
+.topo-svg .tp-rsz:hover .tp-rsz-dot { fill: var(--fc); }
+.topo-svg .tp-rsz.cur-ns { cursor: ns-resize; }
+.topo-svg .tp-rsz.cur-ew { cursor: ew-resize; }
+.topo-svg .tp-rsz.cur-nwse { cursor: nwse-resize; }
+.topo-svg .tp-rsz.cur-nesw { cursor: nesw-resize; }
 
 /* ---- the strips above the stage ---- */
 /* One row along the top of the stage, holding Build's additions and the zoom
