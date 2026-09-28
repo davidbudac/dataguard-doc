@@ -310,6 +310,8 @@ produce its report through main's `?report=1` report, not its own HTML
 generator.
 
 ### 7.7 Drop
-Status: todo
+Status: done (on ui/track7-port)
+Note: nothing of `calm.css`, the old-layout restyle hunks or `app/design/mockups/` was ported. Of the
+branch's `ui.md` edits only what is still true went in (a Track 7 section, the intro button count).
 `styles/calm.css` and the old-layout restyle hunks in tokens.css, shell.css,
 inspector.css, intro.css, readout.css; `app/design/mockups/` (superseded).

@@ -588,7 +588,7 @@ nicer"*. So it is a **page**, not another band of chrome over the workbench,
 and it is read by scanning.
 
 - **What it is.** `ui/intro/IntroPage.tsx` — six bands: a hero with the one
-  sentence and two buttons; *What you are looking at* (the classic preset drawn
+  sentence and three buttons; *What you are looking at* (the classic preset drawn
   by `TopoCanvas` with `interactive={false}`, and five numbered callouts under
   it); *The four modes* (four cards, each with a concrete "Try it"); *How to do
   things* (eight one-line gestures as a `<dl>`); *Five words* (the glossary);
@@ -622,7 +622,7 @@ and it is read by scanning.
 - **`dg-intro-v1` changed meaning, and the strip is gone.** The key used to say
   "the first-visit strip has been dismissed"; it now says "this reader has been
   shown the Introduction". It is written by leaving the page — every mode
-  button (`TopBar`), both hero buttons and every "Try it" go through
+  button (`TopBar`), the hero buttons and every "Try it" go through
   `leaveIntro()` — and, for a reader who arrived through a share link and never
   saw the page, by their first real gesture (the effect in `Guidance.tsx`).
   Closing the `?` card writes nothing, as before: its button says **Close**
@@ -1047,3 +1047,43 @@ The domain engine still determines the outcome, including command refusals.
 The playhead is dragged by its dashed line, grip or time badge; clicking a lane
 or empty plot area does not seek. Grabbing the badge preserves its offset from
 the line. Keyboard seeking and the transport controls remain available.
+
+## Saved work, comparison, explanations and the walkthrough (Track 7, as built)
+
+Ported feature by feature from `feat/usability-workflows` onto the canvas-first
+shell (docs/tasks/ui-followups.md, Track 7). Its competing restyle of the old
+docked layout (`calm.css`, the mockups) was not ported.
+
+- **Saved configurations** (⋯ menu, `ui/workspaces/`, `state/workspaces.ts`):
+  named browser-local copies (`dg-workspaces-v1`) and the 30 most recent drafts
+  that opening something else replaced (`dg-recovery-v1`). Copies hold the
+  document and its edition; stored records are refused unless they decode
+  cleanly. Opening a preset, lesson, file or saved copy is one undoable step
+  (`history.replaceDoc`) that keeps the outgoing draft; an untouched preset is
+  not kept. Undo restores the edition only when the step changed it. These
+  copies are separate from Share and from the JSON export.
+- **Compare alternatives** (⋯ menu, `ui/review/`, `state/review.ts`): a
+  baseline (`dg-review-baseline-v1`, with its edition) against the document
+  under one named scenario, each run from its declared topology with the
+  scenario at t = 0 in place of its events; then the setting and command-block
+  changes. *Common failures* runs the six templates one by one, with optional
+  session-only expectations (outcome, opening deadline, loss limit) checked
+  against the model -- a missing promotion, a missing loss bound or a truncated
+  run never passes. A run made against other settings is marked stale; opening
+  a result restores its tested inputs undoably. Every value is this page's
+  model and says so; ObserverOverride stays FALSE. It prints as a section of
+  the `?report=1` report; there is no second report generator.
+- The Commit panel and the comparison share `panels/commit-model.ts`
+  (`directCommitLegs`) and honour the document's `commitWaitPolicy`.
+- **Why this result?** is a fold on the Break rail under the event list, and
+  the quiet "Why?" beside the Outcome chip opens it. Steps come from the events
+  and the trace (`break/explain.ts`) and keep their claims' basis and
+  citations; selecting one pauses playback, seeks and selects its subjects.
+- **The classic walkthrough** (`intro/Walkthrough.tsx`) starts from the third
+  hero button. It is a card under the guidance line, in the header's flow, so
+  the measured bar bottom grows with it; three steps (crash, advance, change
+  the threshold), and it ends when another document replaces the example.
+- The ⋯ menu's dialogs are `Sheet variant="card"`: a floating card under the
+  bar, mounted by the shell (the menu is a `<details>` that shuts on a press).
+  `Sheet` keeps Tab inside a dialog and returns focus to the menu when its
+  opener was folded away.
