@@ -5,52 +5,54 @@ CONNECT sys@prm01 AS SYSDBA;
 CREATE CONFIGURATION 'dg_config' AS PRIMARY DATABASE IS 'prm01' CONNECT IDENTIFIER IS prm01;
 ADD DATABASE 'sby01' AS CONNECT IDENTIFIER IS sby01;
 ADD FAR_SYNC fs1 AS CONNECT IDENTIFIER IS fs1;
-(a far sync instance has no role, no apply and no broker state: it receives redo into standby redo logs and forwards it, and can never function in the primary role)
-(a far sync edge does not replace the primary-to-standby link: there must still be a direct network connection between the primary database and the remote standby database, used for health checks and switchover processing)
+-- a far sync instance has no role, no apply and no broker state: it receives redo into standby redo logs and forwards it, and can never function in the primary role;
+-- a far sync edge does not replace the primary-to-standby link: there must still be a direct network connection between the primary database and the remote standby database, used for health checks and switchover processing;
 
 EDIT FAR_SYNC 'fs1' SET PROPERTY 'LogXptMode' = 'SYNC';
 EDIT DATABASE 'sby01' SET PROPERTY 'LogXptMode' = 'ASYNC';
-(default)
+-- default;
 EDIT DATABASE 'prm01' SET PROPERTY 'LogXptMode' = 'SYNC';
-(prm01 ships redo with it once a role swap makes it the standby)
-(to use a far sync instance with fast-start failover the far sync transport mode must be SYNC or FASTSYNC and the target standby transport mode must be ASYNC)
+-- prm01 ships redo with it once a role swap makes it the standby;
+-- to use a far sync instance with fast-start failover the far sync transport mode must be SYNC or FASTSYNC and the target standby transport mode must be ASYNC;
 
 EDIT DATABASE 'prm01' SET PROPERTY 'RedoRoutes' = '(LOCAL : fs1 SYNC)';
 EDIT FAR_SYNC 'fs1' SET PROPERTY 'RedoRoutes' = '(prm01 : sby01 ASYNC)';
-(the routes are pre-declared for both directions: a rule is active when its redo source names the current primary, and nothing rewrites on a role change)
+-- the routes are pre-declared for both directions: a rule is active when its redo source names the current primary, and nothing rewrites on a role change;
 
 EDIT FAR_SYNC 'fs1' SET PROPERTY 'NetTimeout' = 30;
-(default)
+-- default;
 EDIT DATABASE 'sby01' SET PROPERTY 'NetTimeout' = 30;
-(default)
-(sby01 receives ASYNC here: NetTimeout bounds how long LGWR waits for a SYNC acknowledgement, it never affects sessions under ASYNC, and it is never a failover clock)
-(ReopenSecs and MaxFailure stay documented broker properties in 19c (neither is on the 19c deprecation list); their values are the REOPEN and MAX_FAILURE attributes, so this script sets them once, in the LOG_ARCHIVE_DEST_n block)
+-- default;
+-- sby01 receives ASYNC here: NetTimeout bounds how long LGWR waits for a SYNC acknowledgement, it never affects sessions under ASYNC, and it is never a failover clock;
+-- ReopenSecs and MaxFailure are broker properties, not deprecated in any edition, the lines above set them where they differ from the broker default, and the init.ora block shows the REOPEN and MAX_FAILURE attributes they write;
 
 ENABLE FAR_SYNC fs1;
 ENABLE CONFIGURATION;
 
 EDIT CONFIGURATION SET PROTECTION MODE AS MAXAVAILABILITY;
-(if the primary does not receive acknowledgement from at least one synchronized standby, then it operates as if it were in maximum performance mode)
+-- if the primary does not receive acknowledgement from at least one synchronized standby, then it operates as if it were in maximum performance mode;
 
 EDIT CONFIGURATION SET PROPERTY FastStartFailoverThreshold = 30;
-(default)
-(the clock starts when the observer first loses its connection to the primary, and a failover needs BOTH the observer and the target standby to have lost the primary for that long -- ObserverOverride is FALSE, the broker default, and this page models the default only)
-(ObserverPingInterval and ObserverPingRetry stay unset -- detection runs on the threshold)
-(FastStartFailoverLagLimit is not evaluated in maximum availability under 19c -- the standby must be synchronized instead, which is about redo received, so an apply lag does not block it)
+-- default;
+-- the clock starts when the observer first loses its connection to the primary, and a failover needs BOTH the observer and the target standby to have lost the primary for that long -- ObserverOverride is FALSE, the broker default, and this page models the default only;
+-- ObserverPingInterval and ObserverPingRetry stay unset -- detection runs on the threshold;
+-- FastStartFailoverLagLimit is not evaluated in maximum availability under 19c -- the standby must be synchronized instead, which is about redo received, so an apply lag does not block it;
 EDIT CONFIGURATION SET PROPERTY FastStartFailoverPmyShutdown = TRUE;
-(default)
-(TRUE is the default: a primary stalled longer than the threshold, able to reach neither the observer nor the target standby, aborts itself)
+-- default;
+-- TRUE is the default: a primary stalled longer than the threshold, able to reach neither the observer nor the target standby, aborts itself;
 EDIT CONFIGURATION SET PROPERTY FastStartFailoverAutoReinstate = TRUE;
-(it reinstates only after an observer-initiated failover caused by a primary crash or isolation -- never after a user-configurable health condition or a DBMS_DG.INITIATE_FS_FAILOVER call -- and it needs Flashback Database on both databases, the former primary started and mounted, and the master observer able to reach it)
+-- it reinstates only after an observer-initiated failover caused by a primary crash or isolation -- never after a user-configurable health condition or a DBMS_DG.INITIATE_FS_FAILOVER call -- and it needs Flashback Database on both databases, the former primary started and mounted, and the master observer able to reach it;
 EDIT DATABASE 'prm01' SET PROPERTY 'FastStartFailoverTarget' = 'sby01';
-(the target can only be the name of a physical or logical standby -- never a snapshot standby, a far sync instance or a Zero Data Loss Recovery Appliance -- and it must receive redo directly from the primary database; receiving it from a far sync instance is the sanctioned exception)
-(targets are verified when fast-start failover is enabled, and the reciprocal value is set on the target automatically)
+-- the target can only be the name of a physical or logical standby -- never a snapshot standby, a far sync instance or a Zero Data Loss Recovery Appliance -- and it must receive redo directly from the primary database, receiving it from a far sync instance is the sanctioned exception;
+-- targets are verified when fast-start failover is enabled, and the reciprocal value is set on the target automatically;
 
 ENABLE FAST_START FAILOVER;
 
-START OBSERVER obs01 FILE IS /u01/app/oracle/dg/obs01/fsfo.dat LOGFILE IS /u01/app/oracle/dg/obs01/observer.log CONNECT IDENTIFIER IS prm01 IN BACKGROUND;
-(IN BACKGROUND is the form the documentation prefers: the prompt returns and the observer process keeps running)
-(the observer belongs on a host of its own, ideally at a third site or third data center -- it should never be deployed at the primary database server or cluster, or on the standby database server or cluster)
+START OBSERVER obs01 IN BACKGROUND CONNECT IDENTIFIER IS prm01 FILE IS /u01/app/oracle/dg/obs01/fsfo.dat LOGFILE IS /u01/app/oracle/dg/obs01/observer.log;
+-- issued from a DGMGRL session on dc3-obs01, obs01's own host -- not the session that built the configuration above;
+-- IN BACKGROUND is the form the documentation prefers: the prompt returns and the observer process keeps running;
+-- CONNECT IDENTIFIER IS uses the credentials stored in the Oracle wallet, if the wallet is not configured, then the command will fail to start the observer;
+-- the observer belongs on a host of its own, ideally at a third site or third data center -- it should never be deployed at the primary database server or cluster, or on the standby database server or cluster;
 
 ===== initora.prm01 -- LOG_ARCHIVE_DEST_n on prm01 -- where the transport properties land =====
 
@@ -75,7 +77,8 @@ log_archive_dest_2 =
 # 11-31 SERVICE only
 
 # ReopenSecs / MaxFailure are the broker properties behind REOPEN / MAX_FAILURE --
-# not deprecated in 19c; EDIT DATABASE ... SET PARAMETER reaches the same attributes
+# not deprecated in any edition; the DGMGRL script sets them with EDIT DATABASE
+# ... SET PROPERTY where they differ from the broker default
 
 ===== initora.fs1 -- LOG_ARCHIVE_DEST_n on fs1 -- where the transport properties land =====
 
@@ -102,7 +105,8 @@ log_archive_dest_2 =
 # terminal standbys
 
 # ReopenSecs / MaxFailure are the broker properties behind REOPEN / MAX_FAILURE --
-# not deprecated in 19c; EDIT DATABASE ... SET PARAMETER reaches the same attributes
+# not deprecated in any edition; the DGMGRL script sets them with EDIT DATABASE
+# ... SET PROPERTY where they differ from the broker default
 # VALID_FOR on fs1 is written for the standby role
 
 ===== show.configuration.verbose -- SHOW CONFIGURATION VERBOSE =====

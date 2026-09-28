@@ -124,7 +124,14 @@ export function note(content: string | Span | Span[], claim: Claim<string>): Lin
 
 /* ---------------- rendering ---------------- */
 
-/** The comment marker each syntax uses; DGMGRL has none to borrow. */
+/**
+ * The comment marker each syntax uses. DGMGRL's own comment syntax (`--` or
+ * `REM`, each terminated with a semicolon -- DGMGRL.COMMENT_SYNTAX) is not a
+ * single-character prefix like the others, so it is not returned here; the UI
+ * gutter draws a dot for it instead (`CodeBlock.tsx`'s `gutterFor`). `show`
+ * output is a drawing, not a script, so it borrows the same parenthetical
+ * treatment as a marker-less syntax would.
+ */
 export const commentMarker = (syntax: FileSyntax): string =>
   syntax === 'dgmgrl' || syntax === 'show' ? '' : '#';
 
@@ -132,17 +139,30 @@ export const lineText = (line: Line): string =>
   ' '.repeat(line.indent ?? 0) + line.spans.map((s) => s.text).join('');
 
 /**
+ * Render one note/comment line's text as its syntax spells a comment.
+ *
+ * DGMGRL's documented form is `-- text;` (a space after the double dash, a
+ * terminating semicolon -- DGMGRL.COMMENT_SYNTAX). A comment's own text must
+ * not contain a `;` before that terminator, so an inner semicolon is written
+ * as a comma. `show` output has no comment syntax to borrow -- it is a
+ * drawing -- so its commentary stays parenthetical.
+ */
+export function commentText(syntax: FileSyntax, text: string): string {
+  if (syntax === 'dgmgrl') return `-- ${text.trim().replace(/;/g, ',')};`;
+  const marker = commentMarker(syntax);
+  return marker === '' ? `(${text.trim()})` : `${marker} ${text}`;
+}
+
+/**
  * Flatten a file to plain text -- what a golden test compares and what a
- * "copy" button hands over. Comments get their syntax's marker; a DGMGRL
- * transcript, which has no comment syntax, gets its commentary parenthesised.
+ * "copy" button hands over. Comments get their syntax's marker; DGMGRL gets
+ * its own documented comment syntax (`commentText`).
  */
 export function renderPlain(file: GeneratedFile): string {
-  const marker = commentMarker(file.syntax);
   return file.lines.map((l) => {
     if (l.kind === 'blank') return '';
     const text = lineText(l);
     if (l.kind === 'cmd') return text;
-    if (marker === '') return `(${text.trim()})`;
-    return `${marker} ${text}`;
+    return commentText(file.syntax, text);
   }).join('\n');
 }

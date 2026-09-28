@@ -184,15 +184,15 @@ const textOf = (f: GeneratedFile): string => renderPlain(f);
 
 describe('the traps the fact sheet lists', () => {
   for (const [name, make] of cases) {
-    it(`${name}: START OBSERVER spells FILE IS, never FILE=`, () => {
+    it(`${name}: START OBSERVER spells FILE IS, never FILE=, IN BACKGROUND right after the name, CONNECT IDENTIFIER IS mandatory`, () => {
       const doc = make();
       const script = generateDgmgrl(doc);
       const text = textOf(script);
       expect(text).toContain('FILE IS');
       expect(text).not.toContain('FILE=');
       for (const o of doc.observers) {
-        expect(text).toContain(`START OBSERVER ${o.name} FILE IS`);
-        expect(text).toContain('IN BACKGROUND;');
+        expect(text).toContain(`START OBSERVER ${o.name} IN BACKGROUND CONNECT IDENTIFIER IS`);
+        expect(text).toContain('FILE IS');
       }
     });
 

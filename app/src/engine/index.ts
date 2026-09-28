@@ -122,7 +122,7 @@ export type {
   FileSyntax, GeneratedFile, Line, LineKind, LineOptions, LineTone, Span,
 } from './generate/lines';
 export {
-  blank, cmd, comment, commentMarker, dim, hl, lineText, note, renderPlain, span, svc,
+  blank, cmd, comment, commentMarker, commentText, dim, hl, lineText, note, renderPlain, span, svc,
 } from './generate/lines';
 export { buildTns, serviceAddresses } from './generate/tnsnames';
 export type { JdbcOptions } from './generate/jdbc';
