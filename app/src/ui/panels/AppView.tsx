@@ -262,7 +262,7 @@ function switchoverLanes(
       a: t0, b: down, cls: 'b-tl', ink: 'f-tl',
       labs: ['Pooled sessions working on the primary', 'Working', 'OK'],
     },
-    { a: down, b: bk, cls: 'b-hatch', ink: 'f-rd', labs: ['Terminated as the primary converts', 'Terminated'] },
+    { a: down, b: bk, cls: 'b-hatch', ink: 'f-rd', labs: ['Terminated -- the old primary restarts into its new role', 'Terminated'] },
     {
       a: bk, b: poolEnd, cls: 'b-am', ink: 'f-am',
       labs: ['Pool empty -- requests wait or fail', 'Pool empty', 'Empty'],

@@ -109,6 +109,31 @@ describe('computeCommit: more than one leg', () => {
     expect(cm.modeConflict).toBe(false);
   });
 
+  /* VAL-02 (fact check 2026-09-28): "the broker verifies that there is at
+     least one standby database in the configuration that can support the
+     desired grade of protection" -- a configuration-level check, so an
+     ASYNC bystander beside a SYNC standby is not itself a mismatch. */
+  it('an ASYNC leg beside a SYNC leg is not a maximum availability mode conflict', () => {
+    const cm = computeCommit({
+      mode: 'MAXAVAILABILITY', localWriteMs: 2, edition: '19c',
+      legs: [
+        { to: memberId('sby01'), kind: 'database', xpt: 'SYNC', rttMs: 4, destWriteMs: 1 },
+        { to: memberId('sby02'), kind: 'database', xpt: 'ASYNC', rttMs: 20, destWriteMs: 1 },
+      ],
+    });
+    expect(cm.modeConflict).toBe(false);
+  });
+
+  it('an ASYNC leg alone is still a maximum availability mode conflict under 19c', () => {
+    const cm = computeCommit({
+      mode: 'MAXAVAILABILITY', localWriteMs: 2, edition: '19c',
+      legs: [
+        { to: memberId('sby01'), kind: 'database', xpt: 'ASYNC', rttMs: 20, destWriteMs: 1 },
+      ],
+    });
+    expect(cm.modeConflict).toBe(true);
+  });
+
   it('two synchronous legs: waiting for all of them is the model, first-ack the toggle', () => {
     const legs = [
       { to: memberId('sby01'), kind: 'database' as const, xpt: 'SYNC' as const, rttMs: 4, destWriteMs: 1 },
@@ -118,7 +143,13 @@ describe('computeCommit: more than one leg', () => {
     const first = computeCommit({ mode: 'MAXAVAILABILITY', localWriteMs: 2, legs, waitPolicy: 'first-ack' });
     expect(all.commitMs).toBe(21);
     expect(first.commitMs).toBe(5);
-    expect(all.claims.multiSync?.basis).toBe('model');
+    /* DATA_GUARD_SYNC_LATENCY defaults to 0, which is documented to mean LGWR
+       waits for every SYNC destination up to NET_TIMEOUT -- this page's
+       default ('all') is that documented behaviour, not a model guess. A
+       non-zero value only bounds how much longer LGWR waits past the first
+       ack, which the 'first-ack' toggle simplifies to an immediate return, so
+       that one stays a model claim. */
+    expect(all.claims.multiSync?.basis).toBe('documented');
     expect(first.claims.multiSync?.basis).toBe('model');
     /* One leg is never a multi-SYNC question, so the label does not appear. */
     const one = computeCommit({ mode: 'MAXAVAILABILITY', localWriteMs: 2, legs: [legs[0] as typeof legs[0]] });

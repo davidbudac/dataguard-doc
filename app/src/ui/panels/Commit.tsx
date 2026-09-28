@@ -382,7 +382,9 @@ export function Commit() {
             : ' A far sync leg terminates the commit -- with SYNC into the far sync instance all committed redo resides on disk there, and the hop onward to the target standby is ASYNC and outside the transaction.'}
           {cm.claims.multiSync === undefined
             ? ''
-            : ' More than one synchronous destination is waited on here, and what a commit with more than one waits for is not documented: this draws the pessimistic reading.'}
+            : cm.waitPolicy === 'all'
+              ? ' More than one synchronous destination is waited on here. DATA_GUARD_SYNC_LATENCY defaults to 0, which documents that LGWR waits up to NET_TIMEOUT for each SYNC standby in turn -- the default this draws.'
+              : ' More than one synchronous destination is waited on here, drawn to return at the first acknowledgement. A non-zero DATA_GUARD_SYNC_LATENCY documents that LGWR keeps waiting a bounded time past the first ack rather than returning at it; this is this page’s simplification of that.'}
         </p>
       </div>
       <div class="panel-body" ref={ref}>

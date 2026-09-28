@@ -67,6 +67,8 @@ const U = {
   sbyRoles: 'https://docs.oracle.com/en/database/oracle/oracle-database/19/sbydb/managing-oracle-data-guard-role-transitions.html',
   sbyDestAttrs: 'https://docs.oracle.com/en/database/oracle/oracle-database/19/sbydb/LOG_ARCHIVE_DEST_n-parameter-attributes.html',
   refDestN: 'https://docs.oracle.com/en/database/oracle/oracle-database/19/refrn/LOG_ARCHIVE_DEST_n.html',
+  refSyncLatency19: 'https://docs.oracle.com/en/database/oracle/oracle-database/19/refrn/DATA_GUARD_SYNC_LATENCY.html',
+  refSyncLatency26: 'https://docs.oracle.com/en/database/oracle/oracle-database/26/refrn/DATA_GUARD_SYNC_LATENCY.html',
   refVDatabase: 'https://docs.oracle.com/en/database/oracle/oracle-database/19/refrn/V-DATABASE.html',
   haOptimize: 'https://docs.oracle.com/en/database/oracle/oracle-database/19/haovw/optimizing-automatic-failover-common-scenarios-minimize-downtime1.html',
   haRedoTuning: 'https://docs.oracle.com/en/database/oracle/oracle-database/19/haovw/redo-transport-troubleshooting-and-tuning.html',
@@ -769,6 +771,11 @@ export const CITATIONS = {
     url: U.sbyDestAttrs, edition: '19c', verified: 'primary',
     quote: 'Redo transport services attempt to reopen failed destinations at log switch time. Redo transport services check if the time of the last error plus the REOPEN interval is less than the current time. If it is, redo transport services attempt to reopen the destination. REOPEN applies to all errors, not just connection failures.',
     note: 'Valid values >=0 seconds, default value 300 seconds; broker property ReopenSecs. The meaning of 0 is not documented.',
+  },
+  'XPT.DATA_GUARD_SYNC_LATENCY': {
+    url: U.refSyncLatency19, edition: '19c', verified: 'primary',
+    quote: 'The default value is 0, which means that the LGWR will wait up to the number of seconds specified by the NET_TIMEOUT attribute of the LOG_ARCHIVE_DEST_n parameter for each SYNC standby destination.',
+    note: "DATA_GUARD_SYNC_LATENCY: 'controls how many seconds the Log Writer (LGWR) process waits beyond the response of the first in a series of Oracle Data Guard SYNC redo transport mode connections.' At its default (0) a commit waits for every SYNC destination, up to NET_TIMEOUT each -- the documented default is this page's 'all' policy. A non-zero value bounds how much longer LGWR waits past the first acknowledgement before giving up on the stragglers, which is what the 'first-ack' toggle approximates; the property does not make the commit return the instant the first ack lands, only shortens how long it keeps waiting for the rest. Identical wording on the 26ai page (refSyncLatency26).",
   },
   'DEST.MAX_FAILURE': {
     url: U.sbyDestAttrs, edition: '19c', verified: 'primary',
