@@ -523,12 +523,19 @@ describe('far sync, zero data loss over distance (Example 5-2)', () => {
     expect(g.members[M('FS1')]?.countsTowardProtectionAck.value).toBe(true);
   });
 
-  it('falls back to the alternate direct destination when the far sync dies', () => {
+  it('declares the direct destination in the PRIORITY form, not the 12.1 ALT form', () => {
+    expect(formatRedoRoutes(member(doc, 'North_Sales').redoRoutes))
+      .toBe('(LOCAL : (FS1 SYNC PRIORITY=1, South_Sales ASYNC PRIORITY=2))');
+    expect(validate(doc).some((f) => f.id === 'ROUTES.ALT_12_1_ONLY')).toBe(false);
+    expect(edge(g, 'North_Sales', 'South_Sales')?.inactiveReason).toBe('group-standby');
+  });
+
+  it('falls back to the direct destination of its group when the far sync dies', () => {
     const t = simulate(doc, p.events());
     expect(t.facts.outcome).toBe('continues');
-    const alt = t.findings.find((f) => f.id === 'ROUTES.ALT_ACTIVATION');
-    expect(alt?.basis).toBe('model');
-    expect(alt?.note).toMatch(/protection level is reduced/);
+    expect(t.findings.some((f) => f.id === 'ROUTES.ALT_ACTIVATION')).toBe(false);
+    const instant = t.findings.find((f) => f.id === 'ROUTES.GROUP_SWITCH_INSTANT');
+    expect(instant?.basis).toBe('model');
     const g2 = finalGraph(doc, p);
     expect(activeEdge(g2, 'North_Sales', 'South_Sales')).toBe(true);
     expect(edge(g2, 'North_Sales', 'South_Sales')?.xpt).toBe('ASYNC');
@@ -751,9 +758,11 @@ describe('snapshot and logical standbys as bystanders', () => {
     expect(t.facts.newPrimary).toBe(M('sby01'));
     expect(t.decisions.some((d) => d.id === 'BYSTANDERS.FOLLOW' && d.taken)).toBe(true);
     const g2 = finalGraph(doc, p);
-    /* (LOCAL : ALL) at the new primary, and ALL excludes snapshot standbys. */
+    /* (LOCAL : ALL) at the new primary, and ALL is every other member: a
+       snapshot standby "receives and archives redo data from a primary
+       database" like any standby -- it only may not forward it. */
     expect(g2.members[M('lsby01')]?.reachableFromPrimary).toBe(true);
-    expect(g2.members[M('snp01')]?.reachableFromPrimary).toBe(false);
+    expect(g2.members[M('snp01')]?.reachableFromPrimary).toBe(true);
   });
 });
 

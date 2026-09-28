@@ -29,9 +29,9 @@ function zeroLossDoc(): TopologyDoc {
   });
   const south = database('South_Sales', ['dc2-south'], 'physical', { logXptMode: 'ASYNC' });
   /* Inside a RedoRoutes group MaxFailure is 1 unless set, and a member at 0
-     "cannot be part of a RedoRoutes group". */
+     "cannot be part of a RedoRoutes group": South_Sales is left at that
+     default rather than written down as 0. */
   dest(north, fs1.id, { maxFailure: 1 });
-  dest(north, south.id, { maxFailure: 1 });
   dest(fs1, south.id);
   return topology({
     name: 'far_sync_zero_loss',
@@ -108,10 +108,9 @@ function haPairDoc(): TopologyDoc {
   const south = database('South_Sales', ['dc2-south'], 'physical', { logXptMode: 'ASYNC' });
   /* "A member whose MaxFailure property is set to zero cannot be part of a
      RedoRoutes group", so every member of the group carries a non-zero one
-     -- 1, the broker default inside a group. */
+     -- South_Sales the broker default inside a group, which is 1. */
   dest(north, fs1.id, { maxFailure: 1 });
   dest(north, fs2.id, { maxFailure: 1 });
-  dest(north, south.id, { maxFailure: 1 });
   dest(fs1, south.id);
   dest(fs2, south.id);
   return topology({

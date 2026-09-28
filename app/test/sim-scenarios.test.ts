@@ -322,15 +322,25 @@ describe('a destination that fails past MaxFailure (Example 4-3 and the ALT spel
   });
 
   it('disables an ungrouped destination at MaxFailure, and the healing does not bring it back', () => {
-    const t = simulate(alternateDoc(true), [down(0), up(1000)]);
+    const t = simulate(alternateDoc(false), [down(0), up(1000)]);
     const f = t.findings.find((x) => x.id === 'DEST.MAX_FAILURE_DISABLED');
     expect(f?.severity).toBe('warning');
     expect(f?.basis).toBe('documented');
     expect(f?.message).toContain('manually reenabled');
-    /* FALLBACK or not: a disabled destination stays disabled, so the
+    /* Without FALLBACK the disabled destination stays disabled, so the
        alternate is still the one carrying redo after the heal. */
     expect(activeTo(lastGraph(t))).toEqual(['Alternate_Sales']);
     expect(edgeTo(lastGraph(t), 'Local_Sales')?.inactiveReason).toBe('max-failure-disabled');
+  });
+
+  it('with FALLBACK resumes the named destination once it is available, even after MaxFailure', () => {
+    /* 12.1: "The optional FALLBACK keyword is used to specify that redo
+       transport to the non-alternate member should be resumed if it becomes
+       available." */
+    const t = simulate(alternateDoc(true), [down(0), up(1000)]);
+    expect(t.findings.find((x) => x.id === 'DEST.MAX_FAILURE_DISABLED')).toBeDefined();
+    expect(activeTo(lastGraph(t))).toEqual(['Local_Sales']);
+    expect(edgeTo(lastGraph(t), 'Local_Sales')?.inactiveReason).toBeUndefined();
   });
 
   it('brings a FALLBACK destination back once it is reachable again', () => {
@@ -341,18 +351,47 @@ describe('a destination that fails past MaxFailure (Example 4-3 and the ALT spel
     expect(t.findings.find((x) => x.id === 'ROUTES.ALT_LATCHED')).toBeUndefined();
   });
 
-  it('keeps a non-FALLBACK alternate in service after the heal, and labels the reading', () => {
+  it('keeps a non-FALLBACK alternate in service after the heal, as 12.1 documents', () => {
     const t = simulate(alternateDoc(false), [down(0), up(120)]);
     expect(activeTo(lastGraph(t))).toEqual(['Alternate_Sales']);
     const f = t.findings.find((x) => x.id === 'ROUTES.ALT_LATCHED');
-    expect(f?.basis).toBe('model');
-    expect(f?.note ?? '').toContain('not stated on any page');
+    expect(f?.basis).toBe('documented');
+    expect(f?.cite).toContain('ROUTES.FALLBACK_121');
+    expect(f?.message).toContain('12.1');
+  });
+
+  it('counts MaxFailure the 26ai way under 26ai: the initial failure counts, so 1 is no retry', () => {
+    const doc19 = alternateDoc(false);
+    const t19 = simulate(doc19, [down(0), up(1000)]);
+    const at19 = t19.findings.find((x) => x.id === 'DEST.MAX_FAILURE_DISABLED');
+    expect(at19?.message).toContain('at 300 s');
+    expect(at19?.cite).toContain('DEST.MAX_FAILURE_DISABLED_19C');
+
+    const doc26 = alternateDoc(false);
+    doc26.config.edition = '26ai';
+    const t26 = simulate(doc26, [down(0), up(1000)]);
+    const at26 = t26.findings.find((x) => x.id === 'DEST.MAX_FAILURE_DISABLED');
+    expect(at26?.message).toContain('at 0 s');
+    expect(at26?.message).toContain('No further attempts are made to reactivate');
+    expect(at26?.message).not.toContain('manually reenabled');
+    expect(at26?.cite).toContain('DEST.MAX_FAILURE_26AI');
+    expect(t26.epochs.map((e) => e.t0)).not.toContain(300);
+  });
+
+  it('26ai MaxFailure 2 is one retry after the initial failure', () => {
+    const doc = alternateDoc(false);
+    doc.config.edition = '26ai';
+    const prm = doc.members[0];
+    if (prm) prm.dests[LOCAL_SALES] = { ...prm.dests[LOCAL_SALES]!, maxFailure: 2 };
+    const t = simulate(doc, [down(0), up(1000)]);
+    expect(t.findings.find((x) => x.id === 'DEST.MAX_FAILURE_DISABLED')?.message).toContain('at 300 s');
   });
 
   it('starts the MaxFailure count over when the destination comes back, and says that is a reading', () => {
     /* One failed attempt at 300 s against MaxFailure 2, then a heal: the
-       counter starts over, so a second outage gets its own two attempts. */
-    const doc = alternateDoc(true);
+       counter starts over, so a second outage gets its own two attempts.
+       (Without FALLBACK, so that the disabled destination stays disabled.) */
+    const doc = alternateDoc(false);
     const prm = doc.members[0];
     if (prm) prm.dests[LOCAL_SALES] = { ...prm.dests[LOCAL_SALES]!, maxFailure: 2 };
     const t = simulate(doc, [down(0), up(400), down(500), up(2000)]);
@@ -362,5 +401,25 @@ describe('a destination that fails past MaxFailure (Example 4-3 and the ALT spel
     /* 500 + 2 * 300: the second outage's own two attempts. */
     expect(t.epochs.map((e) => e.t0)).toContain(1100);
     expect(edgeTo(lastGraph(t), 'Local_Sales')?.inactiveReason).toBe('max-failure-disabled');
+  });
+});
+
+describe('equal priorities inside a group are sticky (Example 2, far sync HA pair)', () => {
+  const fsDown = (at: number): TimedEvent => ({ at, kind: 'host.down', host: hostId('dc1-fs1') });
+  const fsUp = (at: number): TimedEvent => ({ at, kind: 'host.up', host: hostId('dc1-fs1') });
+  const fromPrimary = (g: RedoGraph): string[] =>
+    g.edges.filter((e) => (e.from as string) === 'North_Sales' && e.active && e.up).map((e) => e.to as string);
+
+  it('stays with FS2 after FS1 comes back, because the two have the same priority', () => {
+    const doc = preset('far-sync-ha-pair').doc();
+    const t = simulate(doc, [fsDown(0), fsUp(600)]);
+    expect(fromPrimary(lastGraph(t))).toEqual(['FS2']);
+    expect(edgeTo(lastGraph(t), 'FS1')?.inactiveReason).toBe('group-standby');
+  });
+
+  it('returns to a lower PRIORITY number as soon as it is back (Example 1, far sync zero loss)', () => {
+    const doc = preset('far-sync-zero-loss').doc();
+    const t = simulate(doc, [fsDown(0), fsUp(600)]);
+    expect(fromPrimary(lastGraph(t))).toEqual(['FS1']);
   });
 });

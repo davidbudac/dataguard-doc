@@ -23,7 +23,10 @@ ping:obs01:North_Sales  ping [20 ms]
   pill 245,16 82x20
 redo:FS1:South_Sales  redo (ASYNC) [40 ms RTT]
   path 208,234 -> 332,234 -> 332,175 -> 898,175
-  pill 540,165 151x20
+  pill 251,224 151x20
 redo:North_Sales:FS1  redo (SYNC) [0 ms RTT]
   path 116,152 -> 116,198
   pill 46,165 140x20
+redo:North_Sales:South_Sales  PRIORITY 2 [ASYNC]
+  path 208,116 -> 344,116 -> 344,175 -> 898,175
+  pill 251,106 115x20

@@ -12,7 +12,7 @@ EDIT DATABASE 'sby02' SET PROPERTY 'LogXptMode' = 'ASYNC';
 EDIT DATABASE 'prm01' SET PROPERTY 'LogXptMode' = 'SYNC';
 (prm01 ships redo with it once a role swap makes it the standby)
 
-EDIT DATABASE 'prm01' SET PROPERTY 'RedoRoutes' = '(LOCAL : (sby01 SYNC PRIORITY=1), (sby02 ASYNC PRIORITY=2))';
+EDIT DATABASE 'prm01' SET PROPERTY 'RedoRoutes' = '(LOCAL : (sby01 SYNC PRIORITY=1, sby02 ASYNC PRIORITY=2))';
 (the routes are pre-declared for both directions: a rule is active when its redo source names the current primary, and nothing rewrites on a role change)
 (PRIORITY is RedoRoutes syntax; GROUP is not -- GROUP is a LOG_ARCHIVE_DEST_n attribute and appears in the init.ora block instead)
 
@@ -84,7 +84,7 @@ log_archive_dest_3 =
 
 # ReopenSecs / MaxFailure are the broker properties behind REOPEN / MAX_FAILURE --
 # not deprecated in 19c; EDIT DATABASE ... SET PARAMETER reaches the same attributes
-# GROUP= and PRIORITY= are LOG_ARCHIVE_DEST_n attributes, never RedoRoutes syntax; writing the RedoRoutes priority groups as GROUP=1 with one PRIORITY per group is this page's reading of the same intent
+# GROUP= and PRIORITY= are LOG_ARCHIVE_DEST_n attributes, never RedoRoutes syntax; writing each parenthesised RedoRoutes group as a GROUP of its own, with each destination's PRIORITY, is this page's reading of the same intent
 # destinations carrying GROUP and PRIORITY re-enter service when they are found accessible -- the one documented exception to the manual-reenable rule
 
 ===== show.configuration.verbose -- SHOW CONFIGURATION VERBOSE =====

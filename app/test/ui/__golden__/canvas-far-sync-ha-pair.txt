@@ -31,6 +31,9 @@ redo:FS2:South_Sales  redo (ASYNC) [40 ms RTT]
 redo:North_Sales:FS1  redo (SYNC) [0 ms RTT]
   path 116,152 -> 116,198
   pill 46,165 140x20
-redo:North_Sales:FS2  PRIORITY 2 [SYNC]
+redo:North_Sales:FS2  PRIORITY 1 [SYNC]
   path 208,116 -> 258,116 -> 258,324 -> 208,324
-  pill 197,170 151x20
+  pill 204,170 109x20
+redo:North_Sales:South_Sales  PRIORITY 2 [ASYNC]
+  path 208,116 -> 320,116 -> 320,220 -> 898,220
+  pill 263,106 115x20

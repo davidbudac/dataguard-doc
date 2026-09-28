@@ -27,7 +27,7 @@ ping:obs01:North_Sales  ping [5 ms]
   pill 249,16 75x20
 redo:North_Sales:Alternate_Sales  PRIORITY 2 [SYNC]
   path 116,152 -> 116,202 -> 1450,202 -> 1450,152
-  pill 708,192 151x20
+  pill 729,192 109x20
 redo:North_Sales:Local_Sales  redo (SYNC) [2 ms RTT]
   path 208,116 -> 898,116
   pill 483,106 140x20

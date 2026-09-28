@@ -367,7 +367,8 @@ describe('the LOG_ARCHIVE_DEST_n block', () => {
     expect(initora).toContain('GROUP=1 PRIORITY=2');
     expect(initora).toContain('never RedoRoutes syntax');
     const script = renderPlain(generateDgmgrl(doc));
-    expect(script).toContain("'RedoRoutes' = '(LOCAL : (sby01 SYNC PRIORITY=1), (sby02 ASYNC PRIORITY=2))';");
+    /* Example 4-3's shape: one group, a PRIORITY per destination. */
+    expect(script).toContain("'RedoRoutes' = '(LOCAL : (sby01 SYNC PRIORITY=1, sby02 ASYNC PRIORITY=2))';");
   });
 
   it('writes ALTERNATE= for an alternate destination', () => {
