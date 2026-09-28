@@ -103,11 +103,15 @@ on one instance, the apply instance (F2-F4); see §10 for how the loop moves it.
 ### 1.4 RedoRoutes
 ```ts
 interface RedoRouteRule { source: 'LOCAL' | 'ANY' | MemberId[]; groups: DestGroup[]; }
-interface DestGroup { priority?: 1|2|3|4|5|6|7|8; dests: RouteDest[]; }  // default 1 for far sync members, 8 otherwise
-interface RouteDest { target: 'ALL' | MemberId; xpt?: XptMode; alt?: { target: MemberId; xpt?: XptMode; fallback?: boolean }; }
+interface DestGroup { dests: RouteDest[]; explicitGroup?: boolean; }  // parenthesised = one redo destination group
+interface RouteDest { target: 'ALL' | MemberId; xpt?: XptMode; priority?: 1|2|3|4|5|6|7|8;  // default by the DESTINATION: 1 far sync, 8 otherwise
+  alt?: { target: MemberId; xpt?: XptMode; fallback?: boolean }; }                      // 12.1 grammar only
 ```
-Both grammars round-trip (12.1 `ALT=(… FALLBACK)`, 19c/26ai `PRIORITY=n`). A
-`parseRedoRoutes(text)` recursive-descent parser round-trips the DGMGRL spelling.
+`PRIORITY=n` belongs to a destination inside a parenthesised group (19c properties page and
+26ai *Redo Routing Rules*, Examples 1–4); an unparenthesised destination is a group of one. A
+`parseRedoRoutes(text)` recursive-descent parser round-trips the DGMGRL spelling, and still
+parses the 12.1 `ALT=(… FALLBACK)` form. Documents saved before 2026-09-28 carried PRIORITY
+on the group; `parseTopologyDoc` migrates them (see §10).
 
 ### 1.5 Observers
 ```ts
@@ -233,12 +237,12 @@ export interface RedoGraph { primary: MemberId; edges: RedoEdge[]; members: Reco
 export function resolveRedoGraph(doc: TopologyDoc, opts: { primary: MemberId; net?: NetState }): RedoGraph;
 ```
 Algorithm:
-1. Rule activation: active iff source names the current primary. `LOCAL` iff `m.id === primary`. `ANY` iff `primary !== m.id` (model: ROUTES.ANY_SEMANTICS). Standby `(prm : x ASYNC)` is active now (cascading); `(LOCAL : …)` waits for role change. Nothing rewrites on role change (A7); `SHOW CONFIGURATION WHEN PRIMARY IS x` = resolve with another primary.
+1. Rule activation: active iff source names the current primary. `LOCAL` iff `m.id === primary`. `ANY` always — "an alias for any database in the configuration", this member included [D]. Standby `(prm : x ASYNC)` is active now (cascading); `(LOCAL : …)` waits for role change. Nothing rewrites on role change (A7); `SHOW CONFIGURATION WHEN PRIMARY IS x` = resolve with another primary.
 2. Defaults: `[]` at a database = `(LOCAL : ALL)` [D]; at a far sync = forwards nothing (model ROUTES.FARSYNC_NULL_DEFAULT).
-3. `ALL` = every other enabled member except snapshot standbys (inferred).
+3. `ALL` = every other enabled member, snapshot standbys included [D: a snapshot standby receives and archives redo], the current primary excluded (inferred).
 4. `xpt = dest.xpt ?? receiver.logXptMode` [D].
-5. Groups: lowest priority number whose destinations are all up, else lowest with ≥1 up (model ROUTES.PRIORITY_ACTIVATION).
-6. ALT/FALLBACK: alt active when primary dest MaxFailure-disabled or unreachable; FALLBACK reverts. `(alternate of X)` in VERBOSE [D].
+5. Groups [D, Examples 1–4]: one active path per parenthesised group, all groups at once. Within a group the usable destination with the lowest PRIORITY; ties go to the one already chosen (`ResolveOptions.groupChoice`, carried by the simulation) else the first listed; when 8 is the best, every PRIORITY=8 destination. Unparenthesised destinations and ALL each ship. The instant of the move is model (ROUTES.GROUP_SWITCH_INSTANT).
+6. ALT/FALLBACK (12.1 only): alt active when the named destination is MaxFailure-disabled, unreachable or latched; with FALLBACK the named destination is resumed once available, even from MaxFailure [D 12.1]; without it the alternate latches. `(alternate of X)` in VERBOSE [D].
 7. BFS from primary over active+up edges: depth, feedPath, role; cycles → ROUTES.CYCLE. No cascade depth limit (UNDOC, stated).
 8. Synchronized: direct SYNC/FASTSYNC up & transport gap 0 → true (documented). MaxPerformance / 26ai bounded MaxAvail → lag-limit gate (existing `lagGated`). Across a far sync hop: synchronized iff primary→FS edge SYNC/FASTSYNC & up and FS→target up — **model SYNC.ACROSS_FARSYNC**. Cascaded terminal: false (inferred PROT.CASCADE_NOT_COUNTED).
 9. Protection ack set: members with an up SYNC/FASTSYNC edge from the primary; MaxProtection restricted to databases [D]; MaxAvail counts far sync. Level degrades to MAXPERFORMANCE when MaxAvail has no synchronized ack [D C4]; RESYNCHRONIZATION timing is model.
@@ -281,12 +285,76 @@ fsfoArmed := fsfo.state === 'enabled' && observers.some(running)
 master := running observer with role 'master' (filtered by PreferredObserverHosts)
 obsSeesPrimary := reachable(master.host, anyLiveInstanceHost(primary))
 obsSeesTarget(t), targetSeesPrimary(t) := redoGraph.members[t].reachableFromPrimary
-stalled := fsfoArmed && primaryAlive && !obsSeesPrimary && !targets.some(targetSeesPrimary); abort at stallStart+threshold iff pmyShutdown
+ready(t) := fsfoReady[t]      // the recorded SYNCHRONIZED / UNDER-LAG-LIMIT state, a latch (below)
 ```
-Failover at `initiateAt` iff master lost the primary for threshold (or ping window when both ping props set) AND chosen target lost the primary (ObserverOverride FALSE) AND master reaches target AND readiness gate passes. `detect = pingSet ? pingIntervalMs*(pingRetry+1)/1000 : 0.3` (model FSFO.PING_ARITHMETIC); `initiate = pingSet ? detect : threshold`; primary stall clock always uses threshold.
-Target selection: walk candidate list in order, skip unreachable/gate-failing → **model FSFO.TARGET_SELECTION** ("order", never "first viable"); toggle `targetPolicy: 'skip-to-next' | 'active-target-only'`, default skip-to-next.
-Readiness gate: MaxAvail/MaxProt (19c; 26ai with limit 0) synchronized; MaxPerf and 26ai bounded MaxAvail: gateLag ≤ lagLimit (transport lag under TRANSPORT, clamped to apply lag); terminal recovery pays the apply lag.
-MaxAvail at-least-one-synchronized [D]; MaxProt shutdown when no SYNC-acking database → aborted at lastAck+netTimeout (model PROT.MAXPROT_SHUTDOWN_TIMING). Bystanders per BystandersFollowRoleChange (default ALL). Reinstate: open band with no end (environment-dependent), preconditions as Findings.
+**Readiness is state, not a live query.** `ready(t)` is the target's *recorded* state --
+SYNCHRONIZED or TARGET UNDER LAG LIMIT -- and it is a latch: it stays true while nothing new
+is committed, because a primary that is dead, stalled or hanging on the commit generates no
+redo the standby could be missing. It flips to UNSYNCHRONIZED / TARGET OVER LAG LIMIT only
+from the instant the primary carries on committing without the target (`fsfo.readiness`
+deadline), and under the lag limit the recorded lag keeps *growing* while the target receives
+nothing -- one second of lag per second of redo the primary generates it does not get
+(`FSFO.NOT_READY_TIMING`, model: the fact that the change must be recorded is documented, when
+it lands is not). Redo reaching the target again resynchronizes it at once, drawn as immediate
+(`FSFO.RESYNC_INSTANT`, model) -- Oracle only says the ability is restored "once the target
+standby database has received all missing redo data", not how long that takes.
+**The primary stalls only where a change cannot be confirmed.** Being reachable by neither the
+observer nor any target isolates a primary, but isolation alone is not STALLED: a primary that
+was never observed, or whose target was never ready, has no recorded state left to change, so
+it keeps running and the run says why (`running: 'unobserved' | 'not-ready'`). It stalls once
+isolation coincides with something that *would* have to change to confirm it -- the
+configuration was observed and the active target was ready, or it is already stalled, or it is
+a former primary a role change has already passed by. `legacyStallWhenNotReady` (below) is the
+one switch that widens this back to "isolated stalls, full stop".
+Failover at `initiateAt` iff master lost the primary for threshold (or ping window when both
+ping props set) AND chosen target lost the primary (ObserverOverride FALSE) AND master reaches
+target AND readiness gate passes. `detect = pingSet ? pingIntervalMs*(pingRetry+1)/1000 : 0.3`
+(model FSFO.PING_ARITHMETIC); `initiate = pingSet ? detect : threshold`; primary stall clock
+always uses threshold, independently of the observer's clock, and both are exposed as the
+instant they first started (`EngineFacts.thresholdStartAt` / `stallStartAt`), not just the
+instant of the outage they belong to.
+**ObserverPingInterval and ObserverPingRetry are not 19c properties.** Absent from the 19c
+property reference, the 19c fast-start failover chapter, the 19c command reference and a live
+19.27 system; first documented in 21c. `pingInEffect` reads them only when the edition is not
+19c (`FSFO.PING_NOT_IN_19C`, doc-later) -- a 19c document that sets them anyway detects on the
+threshold like any other, and the run says so.
+Target selection: walk candidate list in order, skip unreachable/gate-failing → **model
+FSFO.TARGET_SELECTION** ("order", never "first viable"); toggle `targetPolicy: 'skip-to-next'
+| 'active-target-only'`, default skip-to-next. **The walk runs only while the primary is
+alive.** "The broker automatically changes the fast-start failover target" is the broker at the
+primary acting, so a second candidate is reached only while the primary can still reach it;
+once the primary and the active target are down together there is no second failover, even
+with a live second candidate -- documented for 26ai ("Data Guard Broker cannot failover to
+second fast-start failover target if both the primary and first fast-start failover targets are
+down"), carried as `doc-later` under 19c because its chapter states the automatic change but is
+silent on this case (`FSFO.NO_SECOND_TARGET`).
+Readiness gate: MaxAvail/MaxProt (19c; 26ai with limit 0) synchronized; MaxPerf and 26ai bounded
+MaxAvail: gateLag ≤ lagLimit (transport lag under TRANSPORT, clamped to apply lag); terminal
+recovery pays the apply lag.
+MaxAvail at-least-one-synchronized [D]; MaxProt shutdown when no SYNC-acking database → aborted
+at lastAck+netTimeout (model PROT.MAXPROT_SHUTDOWN_TIMING). Bystanders per
+BystandersFollowRoleChange (default ALL). Reinstate: open band with no end
+(environment-dependent), preconditions as Findings.
+**Refused commands never change role.** SWITCHOVER TO refuses a down target, a down primary or
+the two unable to reach each other (`SWITCHOVER.GATE`); FAILOVER TO refuses a down target
+(`FAILOVER.TARGET_DOWN`), and separately raises an error -- without refusing the command -- when
+the primary is still open, because the broker cannot see to it that an operator shuts it down
+first (`FAILOVER.PRIMARY_STILL_OPEN`). A manual failover with fast-start failover enabled is
+conditional on the target being the current target, synchronized or inside the lag limit, and
+the observer reaching it (`manualFailoverFindings`, roles.ts); the loss it books is the redo the
+target never received -- never documented as bounded, zero or lossless, always model
+(`FAILOVER.LOSS_DEPENDS`).
+**A former primary is never drawn open beside the new one.** After a role change it is mounted,
+not open, whether or not fast-start failover armed the failover (`FSFO.FORMER_PRIMARY_NOT_OPEN`
+where it did, `FAILOVER.FORMER_PRIMARY_MOUNTED` -- this page's reading -- where it did not,
+since only the fast-start-failover case has ORA-16649 spelling out the mounted state). It stays
+that way until REINSTATE DATABASE or a fresh START/STARTUP the run does not model.
+**One role change per run.** A second failover after a role change -- fast-start failover stays
+armed, and "the reinstated database acts as the fast-start failover target for the new primary
+database, making a subsequent fast-start failover possible" -- is not simulated. The run stops
+evaluating at the first role change and says so (`SIM.ONE_ROLE_CHANGE`, model, a Finding and a
+`taken: false` Decision together): the lanes after that instant are where the simulation ends,
+not a second Oracle outcome.
 
 Output:
 ```ts
@@ -313,6 +381,20 @@ Model labels from §4: FSFO.PING_ARITHMETIC, FSFO.TARGET_SELECTION, PROT.MAXPROT
 `classicTopology({observerLoc, edition, …CDEF knobs})`: sites dc1/dc2/dc3; hosts dc1-prm01, dc2-sby01, observer host of its own in the chosen site; members prm01/sby01 with `redoRoutes: []`; three site links at `latency`; FSFO enabled unless `none`; target [sby01].
 Scenario → events: crash = host.down dc1-prm01; isolated = link.cut dc1↔dc2 + dc1↔dc3; partition = link.cut dc1↔dc2; dc2down = site.down dc2; observer-lost = host.down observer host; switchover = cmd.switchover to sby01.
 `legacyComputeFsfo(c) = classicTopology + scenarioEvents + simulate + toLegacyModel`; `site/test.mjs`'s matrix, stall table, clock invariants, 26ai tests and back-compat deepEquals run against it unmodified — the M3 gate.
+`simulate`'s third argument, `SimParams`, carries three switches that exist for this adapter
+alone and are set nowhere else -- not by any control, not by the share-link codec:
+- `legacyPingUnder19c` (ED-01): the published page offers ObserverPingInterval/Retry under 19c
+  and draws the ping arithmetic there; the general engine's default is that they are 21c
+  properties a 19c document cannot reach.
+- `legacyStallWhenNotReady` (SIM-02): the published page stalls every primary that reaches
+  neither the observer nor any target; the general engine's default stalls one only where a
+  recorded state actually has to change to confirm it (§4).
+- `legacyManualLossIsApplyLag` (SIM-06): the published page draws a manual failover's loss, in
+  maximum performance mode, as the apply lag; the general engine's default is the redo the
+  standby never received, which the transport lag already bounds separately.
+Both readings are legitimate: the published fragment is frozen (`simulator/`, served at
+`/dataguard/legacy/`) and its own parity tests hold it to `site/test.mjs` exactly, so it keeps
+its pre-fact-check model rather than silently changing what a saved link once showed.
 Surviving quantities (same name/value/formula): initiate, detect, execStart (= initiate + netHop, netHop = observer→target rtt/2000), tOpen, applyRemaining, abort, blocked, gateLagSeconds, dataLossKind/Seconds, ifDiedNow, stalled/standbyGone/redoFlowing/pmyReachable (derived from graph), tDown/tConvertEnd/downtime/tRestartDraw (SW_VERIFY=1, SW_CONVERT=2 nominal), horizon/preRoll/tickStep, outcome (six values + additive new ones), lagStall/lagType, observerLost/pingSet/switchover/scenario (derived label preserving observer-lost+none → crash).
 
 ## 6. Porting the other three models
@@ -374,9 +456,18 @@ the design did not state, so it is recorded rather than left to be rediscovered.
   `RedoEdge`, `ResolvedMember`, `RedoGraph`, `EdgeRole`, `EdgeInactiveReason`,
   `ProtectionLevel`. They are derived output like the trace, nothing authored refers to
   them, and `redo/resolve.ts` imports them from there.
-- **`ALL` excludes the current primary as well as snapshot standbys.** §3.3 names only
-  the snapshot exclusion. Redo travelling back to its own source is not a destination,
-  so `expandAll` drops the primary too — an inference from the grammar, stated as one.
+- **`ALL` excludes the current primary.** Redo travelling back to its own source is not a
+  destination, so `expandAll` drops the primary — an inference from the grammar, stated as
+  one. It includes snapshot standbys (corrected 2026-09-28, fact check VAL-04).
+- **RedoRoutes PRIORITY moved onto the destination (2026-09-28, fact check VAL-01).** The
+  first build put PRIORITY on a group and activated one group at a time. Documents,
+  share links and workspaces in that shape still load: a rule whose groups carry
+  `priority` becomes ONE parenthesised group whose destinations take their old group's
+  priority (so "A, else B" stays "A, else B"); a multi-destination group that was the
+  last resort becomes PRIORITY=8 (all ship together); anything that cannot be said
+  exactly is reported as a repair. MaxFailure defaults to 1 for a destination inside a
+  parenthesised group (`defaultDestProps({ inGroup })`), and `sim/dests.ts` counts
+  MaxFailure the 26ai way under 26ai (the initial failure counts).
 - **`disabledDests` and `altLatched` are carried by the simulation, in `sim/dests.ts`.**
   §3.6 describes the resolver's inputs but not who fills them. The epoch loop counts
   REOPEN attempts per destination (drawn at exact `ReopenSecs` multiples — a model of
@@ -386,9 +477,8 @@ the design did not state, so it is recorded rather than left to be rediscovered.
   except for a destination written in a parenthesised PRIORITY group, which re-enters
   service when it is found accessible (documented, 12.2+). An alternate declared **without**
   `FALLBACK` latches once it takes over and stays in service after the named destination
-  heals; **with** `FALLBACK` the named destination returns as soon as it is usable again —
-  unless it was disabled at `MaxFailure`, which outlives the heal. Only the grammar is
-  documented there, so the latch emits `ROUTES.ALT_LATCHED` (model). Resetting the
+  heals; **with** `FALLBACK` the named destination returns as soon as it is available again,
+  even from `MaxFailure` — both documented in 12.1 (`ROUTES.ALT_LATCHED`, `ROUTES.FALLBACK_121`). Resetting the
   consecutive-failure counter on a successful reopen is likewise a reading, not a rule
   (`DEST.MAXFAILURE_RESET_UNDOC`), and `max-failure-disabled` outranks the other
   `inactiveReason`s because it is the reason that outlives them.
@@ -451,3 +541,54 @@ the design did not state, so it is recorded rather than left to be rediscovered.
   Reinstatement no longer asks a RAC member for static service names: they are needed "only
   if Oracle Clusterware or Oracle Restart is not being used", and "Oracle Clusterware is a
   required component for using Oracle RAC" (`isRac`).
+
+### Collected current routes
+
+The v1 SQL collector importer (`engine/collect.ts`) accepts framed JSON records,
+requires all advertised members and a single primary, and rejects conflicting
+RAC destinations. `MemberBase.routesObserved?: true` distinguishes a collected
+empty route list from the broker NULL default; `activeRule` must not synthesize
+LOCAL:ALL for that list. This optional schema-2 field survives normalization,
+export and reload; older documents retain their existing semantics. Collected
+edges apply only under the captured primary. The importer returns assumptions
+and any schema repairs beside the document. No live database verification was
+available; the collector and mapping need a real Oracle test-environment drill.
+
+### The application as a card (2026-09-28)
+
+`TopologyDoc.application?: { id, name, host }` draws the application tier on a host
+of its own; `doc.client` stays the connect descriptor and is what the card's form
+edits. The field is optional schema-2: a document without it parses, exports and
+reloads without it, and `parseApplication` drops (and reports) one whose host is
+gone. `engine/application.ts` (`withApplication`, `primarySite`) is the one place
+that puts it on a document: in the primary's data centre, filling an empty
+ADDRESS_LIST with the primary and then every standby database, never a far sync
+instance.
+
+- **`computeApp` has two vantages, and the document picks.** With no application the
+  published reading stands, word for word and number for number (`APP.CLIENT_VANTAGE`:
+  outside every site, an address answers when its site still has a way out) — that is
+  what `classicTopology`, a legacy link and `legacy-models.test.ts` run. With one, an
+  address is dialable when its host is up and the application's host reaches it
+  (`APP.CLIENT_PLACED`, model), asked of `buildReachability` with the engine's
+  no-transit default. A dead host behind a severed link is a `timeout` whatever
+  `deadBehaviour` says (`pathTo`: reachability with that host brought back).
+- **`NetStateSummary.groups`** carries an explicit partition's host groups, and
+  `netFromSummary` turns an epoch's summary back into a `NetState`, so reachability
+  can be asked of a recorded epoch. `partitioned` is unchanged.
+- **The outcome no longer short-circuits a placed application.** The published model
+  returns `noEvent` on `observer-lost`, a refused switchover and `stall-noone` before
+  looking at the addresses. Placed, the order is the other way round: while the
+  service stays in reach nothing happened (the outcome only names the kind of quiet),
+  and once it does not there is a ladder, whatever the broker decided — so a stalled
+  primary that aborts at the threshold is a ladder from the abort.
+- **New on `AppModel`:** `placed`, `appDownAt`, `spans` (stretches over which the
+  application's picture is constant: `appUp`, `serving`, `servingState`, `published`)
+  and `steady` (the same for the configuration as declared — a trace opens on its
+  first event, so its first span is already the failure). `NoEventKind` gains
+  `app-down`: the application's host went down and never came back, so nothing is
+  dialled; when it does come back the ladder starts there.
+- **The application decides nothing.** No rule, clock or decision in `sim/*` reads it;
+  `test/app-placement.test.ts` pins that the run's facts are the same with and
+  without it, beside the placement outcomes on the classic 1 + 1 + 1.
+

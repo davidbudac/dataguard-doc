@@ -3,6 +3,8 @@
  *
  *   `dg-doc-v1`      the Document, debounced 500 ms
  *   `dg-theme`       light / dark / auto -- same key the published page uses
+ *   `dg-palette`     standard / cvd -- this page only; the published page
+ *                    has one palette
  *   `dg-ed`          19c / 26ai -- likewise, so a reader who set the release
  *                    on the old page finds it set here
  *   `dg-intro-v1`    set once the reader has been shown the Introduction
@@ -12,6 +14,7 @@
  *                    the strip is gone and the page replaced it.
  *   `dg-hints`       whether the sentence under each control is shown
  *   `dg-issues`      whether Build's validation panel is unfolded ('0' = folded)
+ *   `dg-tl-h`        the height (px) Break's timeline panel was dragged to
  *   `dg-fsfo-cfg-v1` the published page's stored configuration. Read once when
  *                    there is nothing newer, and never deleted: the old page
  *                    is still serving from /legacy/ and still owns that key.
@@ -30,16 +33,19 @@ import type { Doc } from './doc';
 import { classicDoc, doc, exportFileName } from './doc';
 import { fromWire, parseJsonText, toJsonText } from './codec';
 import type { DecodeResult } from './codec';
-import { hintsOn, issuesOpen } from './view';
-import type { ThemePref } from './view';
+import { gridOn, hintsOn, issuesOpen, timelineH, TL_MIN_H } from './view';
+import type { PalettePref, ThemePref } from './view';
 
 export const DOC_KEY = 'dg-doc-v1';
 export const THEME_KEY = 'dg-theme';
+export const PALETTE_KEY = 'dg-palette';
 export const EDITION_KEY = 'dg-ed';
 export const LEGACY_DOC_KEY = 'dg-fsfo-cfg-v1';
 export const INTRO_KEY = 'dg-intro-v1';
 export const HINTS_KEY = 'dg-hints';
+export const GRID_KEY = 'dg-grid';
 export const ISSUES_KEY = 'dg-issues';
+export const TIMELINE_H_KEY = 'dg-tl-h';
 
 export const AUTOSAVE_MS = 500;
 export const RESTORE_NOTICE_MS = 8000;
@@ -75,6 +81,13 @@ export function loadTheme(): ThemePref | null {
 }
 
 export const saveTheme = (v: ThemePref): void => write(THEME_KEY, v);
+
+export function loadPalette(): PalettePref | null {
+  const v = read(PALETTE_KEY);
+  return v === 'standard' || v === 'cvd' ? v : null;
+}
+
+export const savePalette = (v: PalettePref): void => write(PALETTE_KEY, v);
 
 export function loadEdition(): '19c' | '26ai' | null {
   const v = read(EDITION_KEY);
@@ -124,6 +137,46 @@ export function setHints(on: boolean): void {
 }
 
 export const toggleHints = (): void => setHints(!hintsOn.value);
+
+/* ---------------- the dotted ground ---------------- */
+
+/** The canvas's dots, on or off -- `gridOn` in `view.ts`; unset means on. */
+export function loadGrid(): void {
+  gridOn.value = read(GRID_KEY) !== '0';
+}
+
+export function toggleGrid(): void {
+  gridOn.value = !gridOn.value;
+  write(GRID_KEY, gridOn.value ? '1' : '0');
+}
+
+/* ---------------- Break's timeline panel ---------------- */
+
+/**
+ * The height the reader dragged the timeline panel to -- `timelineH` in
+ * `view.ts`. Read once at boot; anything that is not a whole number of pixels
+ * at least `TL_MIN_H` tall reads as "never set".
+ */
+export function loadTimelineH(): void {
+  const raw = read(TIMELINE_H_KEY);
+  const n = raw === null ? NaN : Number(raw);
+  timelineH.value = Number.isFinite(n) && n >= TL_MIN_H ? Math.round(n) : null;
+}
+
+/**
+ * Set the height; `remember` is false while a drag is still moving, so a
+ * gesture writes storage once, at its end. `null` goes back to the default
+ * and forgets the stored value.
+ */
+export function setTimelineH(h: number | null, remember = true): void {
+  timelineH.value = h === null ? null : Math.round(h);
+  if (!remember) return;
+  if (h === null) {
+    try { store()?.removeItem(TIMELINE_H_KEY); } catch { /* private mode */ }
+  } else {
+    write(TIMELINE_H_KEY, String(Math.round(h)));
+  }
+}
 
 /* ---------------- the validation panel ---------------- */
 

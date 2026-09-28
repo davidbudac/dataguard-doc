@@ -45,9 +45,9 @@ import { INTRO_HREF, openIntro } from './intro/route';
 
 /** The three working modes, one clause each; Learn is the link at the foot. */
 const BULLETS: [string, string][] = [
-  ['Build', 'draws the deployment — data centres, databases, far syncs, observers and the redo between them.'],
-  ['Break', 'injects a failure into that deployment and runs the clocks: detection, threshold, role change, open.'],
-  ['Configure', 'prints the same deployment as DGMGRL commands, init parameters and connect strings.'],
+  ['Build', 'draw a configuration: data centres, databases, far syncs, observers and the redo between them.'],
+  ['Break', 'add a failure and follow the timeline through detection, threshold, role change and open.'],
+  ['Configure', 'generate DGMGRL commands, init parameters and connect strings from the drawing.'],
 ];
 
 /**
@@ -158,13 +158,11 @@ export function IntroCard() {
         ))}
       </ul>
       <p class="intro-foot caption">
-        Everything is one configuration seen four ways, and every link carries it.
-        {' '}
+        The four modes show the same configuration, and a shared link carries it.{' '}
         <IntroLink />
-        {' — what this is, what the drawing shows and how to do things. '}
+        {' explains the drawing and the controls. '}
         <LearnLink />
-        {' '}
-        walks through it in ten lessons.
+        {' has ten guided lessons.'}
       </p>
 
       {/* The one place the toggle is explained rather than merely offered. The
@@ -172,8 +170,8 @@ export function IntroCard() {
           noticed it finds out what it does -- and can press it here. */}
       <p class="intro-foot caption">
         <b>{HINTS_LABEL}</b>
-        {', in the inspector header, adds the sentence under each control and the '}
-        {'rest of the line above. It is off by default, and it is remembered.'}
+        {', in the inspector header, shows help under each control and the rest of the '}
+        {'line above. It is off by default, and the setting is remembered.'}
         {' '}
         <HintsToggle />
       </p>

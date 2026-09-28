@@ -23,9 +23,18 @@ import { fitZoom } from '@/ui/canvas/zoom';
 import { WHY_TIDY } from '@/ui/canvas/CanvasSlot';
 import { mode, selection, toast, viewport } from '@/state/view';
 import { WHY_DROP_ON_SITE } from '@/ui/inspector/adds';
-import { removeLink } from '@/ui/inspector/edits';
+import { addDatabase, removeLink } from '@/ui/inspector/edits';
 import { WHY } from '@/ui/inspector/why';
-import { hostId, linkId } from '@/engine';
+import { hostId, linkId, siteId } from '@/engine';
+
+/**
+ * The layout's card offsets alone. A card let go inside its own data centre
+ * also writes that data centre's kept box (a sized override, task 1.2), which
+ * is a fact about the box and not about where the cards went.
+ */
+const cardLayout = (): Record<string, { dx: number; dy: number }> => Object.fromEntries(
+  Object.entries(docSignal.value.layout).filter(([, v]) => v.w === undefined),
+);
 
 const tick = (): Promise<void> => new Promise((r) => setTimeout(r, 0));
 const painted = (): Promise<void> => new Promise((r) => setTimeout(r, 40));
@@ -241,9 +250,9 @@ describe('a data centre is dragged as a group', () => {
     await tick();
     pointer(svg, 'Up', start[0] + 24, start[1] + 16);
     await painted();
-    /* dc1 holds only prm01: that offset moves, and nothing that stands in
-       another data centre does. */
-    expect(docSignal.value.layout).toEqual({ prm01: { dx: 24, dy: 16 } });
+    /* dc1 holds prm01 and the application under it: those offsets move, and
+       nothing that stands in another data centre does. */
+    expect(docSignal.value.layout).toEqual({ prm01: { dx: 24, dy: 16 }, app01: { dx: 24, dy: 16 } });
     expect(siteOf('prm01')).toBe('dc1');
     expect(undoStack.value.length).toBe(n + 1);
     expect(undoLabel.value).toBe('Move the DC 1 data centre');
@@ -343,7 +352,10 @@ describe('a selection is made, moved and removed as one', () => {
     await painted();
     key(document.body, 'a', { ctrlKey: true });
     expect([...selection.value].sort()).toEqual(
-      [...memberIds(), ...topo().observers.map((o) => o.id as string)].sort(),
+      [
+        ...memberIds(), ...topo().observers.map((o) => o.id as string),
+        ...(topo().application ? [topo().application!.id as string] : []),
+      ].sort(),
     );
     chip(root, '+ Data centre').click();
     await painted();
@@ -376,7 +388,7 @@ describe('a selection is made, moved and removed as one', () => {
     await tick();
     pointer(svg, 'Up', start[0] + 16, start[1] + 8);
     await tick();
-    expect(docSignal.value.layout).toEqual({ prm01: { dx: 16, dy: 8 }, sby01: { dx: 16, dy: 8 } });
+    expect(cardLayout()).toEqual({ prm01: { dx: 16, dy: 8 }, sby01: { dx: 16, dy: 8 } });
     expect(undoStack.value.length).toBe(n + 1);
     expect(undoLabel.value).toBe('Move 2 cards');
   });
@@ -392,7 +404,7 @@ describe('a selection is made, moved and removed as one', () => {
 
   it('Tidy is grey with its reason until a card has been moved, then puts it back in one undo', async () => {
     const root = await mountApp();
-    const tidy = (): HTMLButtonElement => root.querySelector('.cv-zoom button[aria-label="Tidy the drawing"]')!;
+    const tidy = (): HTMLButtonElement => root.querySelector('button[aria-label="Tidy the drawing"]')!;
     expect(tidy().disabled).toBe(true);
     expect(tidy().title).toBe(WHY_TIDY);
     key(cardEl(root, 'sby01'), 'ArrowRight', { altKey: true });
@@ -459,7 +471,7 @@ describe('a chassis stack is dragged as a group', () => {
     await tick();
     pointer(svg, 'Up', start[0] + 16, start[1] + 8);
     await tick();
-    expect(docSignal.value.layout).toEqual({ prm01: { dx: 16, dy: 8 } });
+    expect(cardLayout()).toEqual({ prm01: { dx: 16, dy: 8 } });
     expect(undoStack.value.length).toBe(n + 1);
   });
 
@@ -477,7 +489,7 @@ describe('a chassis stack is dragged as a group', () => {
     await tick();
     pointer(svg, 'Up', start[0] + 16, start[1] + 8);
     await tick();
-    expect(docSignal.value.layout).toEqual({ prm01: { dx: 16, dy: 8 }, obs01: { dx: 16, dy: 8 } });
+    expect(cardLayout()).toEqual({ prm01: { dx: 16, dy: 8 }, obs01: { dx: 16, dy: 8 } });
     expect(undoStack.value.length).toBe(n + 1);
   });
 
@@ -497,7 +509,7 @@ describe('a chassis stack is dragged as a group', () => {
     await tick();
     pointer(svg, 'Up', start[0] + 24, start[1] - 8);
     await tick();
-    expect(docSignal.value.layout).toEqual({ prm01: { dx: 24, dy: -8 }, obs01: { dx: 24, dy: -8 } });
+    expect(cardLayout()).toEqual({ prm01: { dx: 24, dy: -8 }, obs01: { dx: 24, dy: -8 } });
     expect(undoStack.value.length).toBe(n + 1);
   });
 
@@ -576,15 +588,37 @@ describe('a single card is dropped onto another host', () => {
   });
 
   it('moves a blade dropped on another host between stacks, keeping the old host while it is still shared', async () => {
-    coHostObserverWithPrimary();
-    const root = await mountApp();
+    /* A second standby on the primary's host: a stack of two databases. */
+    addDatabase(siteId('dc1'));
     const prmHost = topo().members.find((m) => (m.id as string) === 'prm01')!.instances[0]!.host;
+    const before = docSignal.value;
+    resetHistory({
+      ...before,
+      topology: {
+        ...before.topology,
+        members: before.topology.members.map((m) => ((m.id as string) === 'sby02'
+          ? { ...m, instances: m.instances.map((i) => ({ ...i, host: prmHost })) }
+          : m)),
+      },
+    });
+    const root = await mountApp();
     const sbyHost = topo().members.find((m) => (m.id as string) === 'sby01')!.instances[0]!.host;
-    await dragOnto(root, 'obs01', rectOf(root, 'sby01', 'rect.tp-card'));
-    expect(topo().observers.find((o) => (o.id as string) === 'obs01')!.host).toBe(sbyHost);
+    await dragOnto(root, 'sby02', rectOf(root, 'sby01', 'rect.tp-card'));
+    expect(topo().members.find((m) => (m.id as string) === 'sby02')!.instances[0]!.host).toBe(sbyHost);
     /* `prm01` still stands on the old host, so it is not removed. */
     expect(topo().hosts.some((h) => h.id === prmHost)).toBe(true);
     expect(topo().members.find((m) => (m.id as string) === 'prm01')!.instances[0]!.host).toBe(prmHost);
+  });
+
+  it('will not put an observer on a database\'s host: the host refuses and the drop is only the move', async () => {
+    coHostObserverWithPrimary();
+    const root = await mountApp();
+    const sbyHost = topo().members.find((m) => (m.id as string) === 'sby01')!.instances[0]!.host;
+    await dragOnto(root, 'obs01', rectOf(root, 'sby01', 'rect.tp-card'));
+    const obs = topo().observers.find((o) => (o.id as string) === 'obs01')!;
+    expect(obs.host).not.toBe(sbyHost);
+    /* Let go over DC 2, so it moves there -- on a host of its own. */
+    expect(topo().hosts.find((x) => x.id === obs.host)?.site as string).toBe('dc2');
   });
 
   it('highlights the target card while a merge is in reach, in place of the site highlight', async () => {
@@ -614,7 +648,7 @@ describe('a single card is dropped onto another host', () => {
     pointer(svg, 'Up', start[0] + 16, start[1] + 8);
     await tick();
     expect(siteOf('prm01')).toBe('dc1');
-    expect(docSignal.value.layout).toEqual({ prm01: { dx: 16, dy: 8 } });
+    expect(cardLayout()).toEqual({ prm01: { dx: 16, dy: 8 } });
   });
 
   it('does not merge a RAC member, even dropped squarely on another card in its own data centre', async () => {

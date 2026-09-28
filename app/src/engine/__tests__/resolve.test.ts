@@ -127,6 +127,26 @@ describe('far sync: the worked example from the design', () => {
     expect(g.protectionLevel.basis).toBe('documented');
   });
 
+  it('the far sync acknowledgement is documented under 26ai and inferred under 19c (ED-06)', () => {
+    /* 26ai: "... on at least one synchronized standby database or far sync
+       instance"; the 19c sentence does not name the far sync instance. */
+    const d19 = farSyncDoc();
+    d19.config.edition = '19c';
+    const a19 = resolveRedoGraph(d19, { primary: PRM }).members[memberId('FS1')]!.countsTowardProtectionAck;
+    expect(a19.value).toBe(true);
+    expect(a19.basis).toBe('inferred');
+    const d26 = farSyncDoc();
+    d26.config.edition = '26ai';
+    const a26 = resolveRedoGraph(d26, { primary: PRM }).members[memberId('FS1')]!.countsTowardProtectionAck;
+    expect(a26.value).toBe(true);
+    expect(a26.basis).toBe('documented');
+    expect(a26.cite).toContain('MAXAVAIL.FARSYNC_ACK_26AI');
+    /* Maximum protection is not maximum availability's sentence: still inferred, and not counted. */
+    d26.config.protectionMode = 'MAXPROTECTION';
+    const p26 = resolveRedoGraph(d26, { primary: PRM }).members[memberId('FS1')]!.countsTowardProtectionAck;
+    expect(p26.value).toBe(false);
+  });
+
   it('losing the far sync host drops MaxAvailability to maximum performance', () => {
     const net = applyNetEvent(initialNetState(doc), { kind: 'host.down', host: hostId('dc1-FS1') });
     const g2 = resolveRedoGraph(doc, { primary: PRM, net });
@@ -171,14 +191,25 @@ describe('cascading: broker Example 4-2 in engine terms', () => {
 /* ---------------- rules, defaults, groups, alternates ---------------- */
 
 describe('rule activation and defaults', () => {
-  it('a NULL property at a primary is (LOCAL : ALL), and skips snapshot standbys', () => {
+  it('a NULL property at a primary is (LOCAL : ALL), and ALL includes snapshot standbys', () => {
+    /* "The ALL keyword is an alias for all possible destinations in the
+       configuration", and a snapshot standby "receives and archives redo data
+       from a primary database" like a physical or logical one. */
     const prm = db('prm01', 'dc1', 'primary');
     const sby = db('sby01', 'dc2', 'physical');
     const snap = db('snap01', 'dc3', 'snapshot');
     const doc = build([prm, sby, snap], ['dc1', 'dc2', 'dc3']);
     const g = resolveRedoGraph(doc, { primary: PRM });
-    expect(g.edges.map((e) => e.to)).toEqual([SBY]);
-    expect(g.members[memberId('snap01')]!.reachableFromPrimary).toBe(false);
+    expect(g.edges.map((e) => e.to)).toEqual([SBY, memberId('snap01')]);
+    expect(g.members[memberId('snap01')]!.reachableFromPrimary).toBe(true);
+  });
+
+  it('a primary whose only standby is a snapshot standby still ships to it', () => {
+    const prm = db('prm01', 'dc1', 'primary', '(LOCAL : ALL)');
+    const snap = db('snap01', 'dc2', 'snapshot');
+    const g = resolveRedoGraph(build([prm, snap], ['dc1', 'dc2']), { primary: PRM });
+    expect(g.edges).toHaveLength(1);
+    expect(g.edges[0]).toMatchObject({ to: memberId('snap01'), active: true, up: true });
   });
 
   it('an unspecified transport attribute falls back to the destination LogXptMode', () => {
@@ -210,13 +241,20 @@ describe('rule activation and defaults', () => {
     expect(g.edges.filter((e) => e.from === SBY).map((e) => e.to)).toEqual([memberId('term01')]);
   });
 
-  it('an ANY source carries a model label, because the docs only define LOCAL and names', () => {
+  it('an ANY source names any database, so the rule is active whoever is primary', () => {
+    /* "The ANY keyword is an alias for any database in the configuration." */
     const prm = db('prm01', 'dc1', 'primary', '(LOCAL : sby01 SYNC)');
     const sby = db('sby01', 'dc2', 'physical', '(ANY : term01 ASYNC)');
     const term = db('term01', 'dc3', 'physical');
     const doc = build([prm, sby, term], ['dc1', 'dc2', 'dc3']);
     const g = resolveRedoGraph(doc, { primary: PRM });
-    expect(g.findings.find((f) => f.id === 'ROUTES.ANY_SEMANTICS')?.basis).toBe('model');
+    expect(g.edges.filter((e) => e.from === SBY).map((e) => e.to)).toEqual([memberId('term01')]);
+    const f = g.findings.find((x) => x.id === 'ROUTES.ANY_SEMANTICS');
+    expect(f?.basis).toBe('documented');
+    expect(f?.cite).toContain('ROUTES.ANY_ALIAS');
+    /* ... including when the member holding the rule is the primary itself. */
+    const own = resolveRedoGraph(doc, { primary: SBY });
+    expect(own.edges.find((e) => e.from === SBY && e.to === memberId('term01'))?.active).toBe(true);
   });
 });
 
@@ -228,18 +266,31 @@ describe('priority groups and alternates', () => {
     return build([prm, a, b], ['dc1', 'dc2', 'dc3']);
   };
 
-  it('the lowest priority group whose destinations are all up wins', () => {
-    const doc = makeDoc('(LOCAL : (a SYNC PRIORITY=1), (b ASYNC PRIORITY=2))');
-    const g = resolveRedoGraph(doc, { primary: PRM });
-    expect(g.edges.find((e) => e.to === memberId('a'))?.active).toBe(true);
-    const lower = g.edges.find((e) => e.to === memberId('b'));
-    expect(lower?.active).toBe(false);
-    expect(lower?.inactiveReason).toBe('lower-priority-group');
-    expect(g.findings.find((f) => f.id === 'ROUTES.PRIORITY_ACTIVATION')?.basis).toBe('model');
+  it('two unparenthesised destinations are two groups, and both ship', () => {
+    const g = resolveRedoGraph(makeDoc('(LOCAL : a SYNC, b ASYNC)'), { primary: PRM });
+    expect(g.edges.every((e) => e.active)).toBe(true);
   });
 
-  it('with the first group down, the next one takes over', () => {
-    const doc = makeDoc('(LOCAL : (a SYNC PRIORITY=1), (b ASYNC PRIORITY=2))');
+  it('two groups of one are two paths: (a PRIORITY=1), (b PRIORITY=2) ships to both', () => {
+    /* "The general rule is that there is one active redo path for each group." */
+    const g = resolveRedoGraph(makeDoc('(LOCAL : (a SYNC PRIORITY=1), (b ASYNC PRIORITY=2))'), { primary: PRM });
+    expect(g.edges.find((e) => e.to === memberId('a'))?.active).toBe(true);
+    expect(g.edges.find((e) => e.to === memberId('b'))?.active).toBe(true);
+  });
+
+  it('inside one group the lowest PRIORITY number ships and the other stands by', () => {
+    const doc = makeDoc('(LOCAL : (a SYNC PRIORITY=1, b ASYNC PRIORITY=2))');
+    const g = resolveRedoGraph(doc, { primary: PRM });
+    expect(g.edges.find((e) => e.to === memberId('a'))).toMatchObject({ active: true, priority: 1 });
+    const lower = g.edges.find((e) => e.to === memberId('b'));
+    expect(lower).toMatchObject({ active: false, priority: 2, inactiveReason: 'group-standby' });
+    expect(g.findings.find((f) => f.id === 'ROUTES.GROUP_SELECTION')?.basis).toBe('documented');
+    expect(g.findings.find((f) => f.id === 'ROUTES.GROUP_SWITCH_INSTANT')?.basis).toBe('model');
+    expect(g.findings.some((f) => f.id === 'ROUTES.PRIORITY_ACTIVATION')).toBe(false);
+  });
+
+  it('with the PRIORITY=1 destination down, the PRIORITY=2 one takes over', () => {
+    const doc = makeDoc('(LOCAL : (a SYNC PRIORITY=1, b ASYNC PRIORITY=2))');
     const net = applyNetEvent(initialNetState(doc), { kind: 'host.down', host: hostId('dc2-a') });
     const g = resolveRedoGraph(doc, { primary: PRM, net });
     expect(g.edges.find((e) => e.to === memberId('b'))?.active).toBe(true);
@@ -269,6 +320,109 @@ describe('priority groups and alternates', () => {
     expect(e?.active).toBe(false);
     expect(e?.inactiveReason).toBe('max-failure-disabled');
     expect(g.members[memberId('a')]!.reachableFromPrimary).toBe(false);
+  });
+});
+
+/* ---------------- Oracle's Examples 1-4, as behaviour ---------------- */
+
+describe('the Redo Routing Rules examples', () => {
+  /* PRI, SB1 and SB2 are databases, FS1 and FS2 far sync instances. */
+  const doc = (priRoutes: string, extra: Member[] = []): TopologyDoc => build([
+    db('PRI', 'dc1', 'primary', priRoutes),
+    fs('FS1', 'dc1', '(PRI : SB1)'),
+    fs('FS2', 'dc1', '(PRI : SB1)'),
+    db('SB1', 'dc2', 'physical'),
+    ...extra,
+  ], ['dc1', 'dc2', 'dc3']);
+  const PRI = memberId('PRI');
+  const down = (d: TopologyDoc, ...hosts: string[]) =>
+    hosts.reduce((n, h) => applyNetEvent(n, { kind: 'host.down', host: hostId(h) }), initialNetState(d));
+  const shipsTo = (g: ReturnType<typeof resolveRedoGraph>): string[] =>
+    g.edges.filter((e) => e.from === PRI && e.active).map((e) => e.to as string).sort();
+
+  it('Example 1: FS1 while it is available, SB1 while it is not, FS1 again when it is back', () => {
+    const d = doc('(local : ( FS1 PRIORITY=1, SB1 PRIORITY=2 ) )');
+    expect(shipsTo(resolveRedoGraph(d, { primary: PRI }))).toEqual(['FS1']);
+    const g = resolveRedoGraph(d, { primary: PRI, net: down(d, 'dc1-FS1') });
+    expect(shipsTo(g)).toEqual(['SB1']);
+    /* Back: priority 1 is higher than priority 2, whatever was chosen before. */
+    const back = resolveRedoGraph(d, { primary: PRI, ...(g.groupChoice ? { groupChoice: g.groupChoice } : {}) });
+    expect(shipsTo(back)).toEqual(['FS1']);
+  });
+
+  it('Example 2: equal priorities are sticky -- FS2 keeps the redo after FS1 returns', () => {
+    const d = doc('(local : ( FS1 PRIORITY=1, FS2 PRIORITY=1 ) )');
+    expect(shipsTo(resolveRedoGraph(d, { primary: PRI }))).toEqual(['FS1']);
+    const failed = resolveRedoGraph(d, { primary: PRI, net: down(d, 'dc1-FS1') });
+    expect(shipsTo(failed)).toEqual(['FS2']);
+    expect(Object.values(failed.groupChoice ?? {})).toEqual([memberId('FS2')]);
+    const back = resolveRedoGraph(d, { primary: PRI, groupChoice: failed.groupChoice ?? {} });
+    expect(shipsTo(back)).toEqual(['FS2']);
+    /* "If FS2 fails, then the primary ships to FS1." */
+    const fs2Gone = resolveRedoGraph(d, {
+      primary: PRI, net: down(d, 'dc1-FS2'), groupChoice: failed.groupChoice ?? {},
+    });
+    expect(shipsTo(fs2Gone)).toEqual(['FS1']);
+  });
+
+  it('far sync destinations default to PRIORITY=1, so an unannotated pair is a pair of equals', () => {
+    const d = doc('(LOCAL : (FS1, FS2))');
+    const g = resolveRedoGraph(d, { primary: PRI });
+    expect(shipsTo(g)).toEqual(['FS1']);
+    expect(g.edges.find((e) => e.to === memberId('FS2'))?.priority).toBe(1);
+  });
+
+  it('Example 3: one active path per group, two groups at once', () => {
+    const d = doc('(local : ( FS1 PRIORITY=1, SB1 PRIORITY=2 ), ( FS2 PRIORITY=1, SB2 PRIORITY=2 ) )',
+      [db('SB2', 'dc3', 'physical')]);
+    expect(shipsTo(resolveRedoGraph(d, { primary: PRI }))).toEqual(['FS1', 'FS2']);
+    expect(shipsTo(resolveRedoGraph(d, { primary: PRI, net: down(d, 'dc1-FS1') }))).toEqual(['FS2', 'SB1']);
+    expect(shipsTo(resolveRedoGraph(d, { primary: PRI, net: down(d, 'dc1-FS2') }))).toEqual(['FS1', 'SB2']);
+    expect(shipsTo(resolveRedoGraph(d, { primary: PRI, net: down(d, 'dc1-FS1', 'dc1-FS2') })))
+      .toEqual(['SB1', 'SB2']);
+  });
+
+  it('Example 4: when PRIORITY=8 is the best on offer, every PRIORITY=8 destination ships', () => {
+    const d = doc('(local : ( FS1 PRIORITY=1, SB1 PRIORITY=8, SB2 PRIORITY=8 ) )',
+      [db('SB2', 'dc3', 'physical')]);
+    expect(shipsTo(resolveRedoGraph(d, { primary: PRI }))).toEqual(['FS1']);
+    expect(shipsTo(resolveRedoGraph(d, { primary: PRI, net: down(d, 'dc1-FS1') }))).toEqual(['SB1', 'SB2']);
+  });
+
+  it('databases default to PRIORITY=8, so an unannotated group of databases ships to all of them', () => {
+    const d = doc('(LOCAL : (SB1, SB2))', [db('SB2', 'dc3', 'physical')]);
+    expect(shipsTo(resolveRedoGraph(d, { primary: PRI }))).toEqual(['SB1', 'SB2']);
+  });
+});
+
+describe('the 12.1 ALT form and FALLBACK', () => {
+  const makeDoc = (routes: string): TopologyDoc => build([
+    db('prm01', 'dc1', 'primary', routes), db('a', 'dc2', 'physical'), db('b', 'dc3', 'physical'),
+  ], ['dc1', 'dc2', 'dc3']);
+  const key = `${PRM}>${memberId('a')}`;
+
+  it('with FALLBACK the named destination is resumed once it is available, even from MaxFailure', () => {
+    const g = resolveRedoGraph(makeDoc('(LOCAL : a SYNC ALT=(b ASYNC FALLBACK))'), {
+      primary: PRM, disabledDests: new Set([key]),
+    });
+    expect(g.edges.find((e) => e.to === memberId('a'))).toMatchObject({ active: true, up: true });
+    expect(g.edges.some((e) => e.to === memberId('b'))).toBe(false);
+  });
+
+  it('without FALLBACK a disabled named destination stays out and the alternate carries on', () => {
+    const g = resolveRedoGraph(makeDoc('(LOCAL : a SYNC ALT=(b ASYNC))'), {
+      primary: PRM, disabledDests: new Set([key]),
+    });
+    expect(g.edges.find((e) => e.to === memberId('b'))?.active).toBe(true);
+    expect(g.edges.find((e) => e.to === memberId('a'))?.inactiveReason).toBe('max-failure-disabled');
+  });
+
+  it('latched without FALLBACK: if the alternate then fails, nothing ships to either', () => {
+    const doc = makeDoc('(LOCAL : a SYNC ALT=(b ASYNC))');
+    const net = applyNetEvent(initialNetState(doc), { kind: 'host.down', host: hostId('dc3-b') });
+    const g = resolveRedoGraph(doc, { primary: PRM, net, altLatched: new Set([key]) });
+    expect(g.members[memberId('a')]!.reachableFromPrimary).toBe(false);
+    expect(g.members[memberId('b')]!.reachableFromPrimary).toBe(false);
   });
 });
 

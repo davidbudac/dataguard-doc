@@ -150,7 +150,7 @@ describe('aria: card labels', () => {
   it('spells a host name the card had to elide', () => {
     const doc = classic('dc3', { hostPrimary: 'an-extremely-long-database-host-name-01' });
     const node = nodeOf(doc, 'prm01');
-    expect(node.lines.host).toBe('an-extremely-long-…');
+    expect(node.lines.host).toBe('an-extremely-lon…');
     const label = cardLabel(doc, graphOf(doc), node);
     expect(label).toContain('an-extremely-long-database-host-name-01');
     expect(label).toContain('It is the primary.');

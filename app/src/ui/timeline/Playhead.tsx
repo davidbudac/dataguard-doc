@@ -9,6 +9,7 @@
  */
 
 import type { JSX } from 'preact';
+import { useRef } from 'preact/hooks';
 import { fmt, TL } from './build';
 import type { TimelineModel } from './build';
 
@@ -53,33 +54,35 @@ export function Playhead({ model, tNow, playing = false, onSeek, onTogglePlay }:
      and would otherwise overwrite the seek on the next frame. */
   const takeOver = (): void => { if (playing && onTogglePlay) onTogglePlay(); };
 
-  const seekFromClient = (el: SVGGraphicsElement, clientX: number): void => {
-    if (!onSeek) return;
-    const svg = el.ownerSVGElement ?? (el as unknown as SVGSVGElement);
-    const box = svg.getBoundingClientRect();
-    const ratio = box.width > 0 ? model.width / box.width : 1;
-    onSeek(scale.clampT(scale.tAt((clientX - box.left) * ratio)));
-  };
-
-  const onPointerDown = (e: JSX.TargetedPointerEvent<SVGRectElement>): void => {
-    if (!onSeek) return;
+  const drag = useRef<{ pointer: number; clientX: number; at: number; pxPerSecond: number; moved: boolean } | null>(null);
+  const onPointerDown = (e: JSX.TargetedPointerEvent<SVGGElement>): void => {
+    if (!onSeek || e.button !== 0) return;
     e.preventDefault();
+    e.stopPropagation();
     const el = e.currentTarget;
+    const width = el.ownerSVGElement!.getBoundingClientRect().width;
+    drag.current = { pointer: e.pointerId, clientX: e.clientX, at: t, moved: false,
+      pxPerSecond: scale.pxPerSecond * (width > 0 ? width / model.width : 1) };
+    el.focus();
     el.setPointerCapture(e.pointerId);
     takeOver();
-    seekFromClient(el, e.clientX);
   };
 
-  const onPointerMove = (e: JSX.TargetedPointerEvent<SVGRectElement>): void => {
-    if (!onSeek) return;
-    if (!e.currentTarget.hasPointerCapture(e.pointerId)) return;
-    seekFromClient(e.currentTarget, e.clientX);
-  };
-
-  const onPointerUp = (e: JSX.TargetedPointerEvent<SVGRectElement>): void => {
-    if (e.currentTarget.hasPointerCapture(e.pointerId)) {
-      e.currentTarget.releasePointerCapture(e.pointerId);
+  const onPointerMove = (e: JSX.TargetedPointerEvent<SVGGElement>): void => {
+    const d = drag.current;
+    if (!onSeek || !d || d.pointer !== e.pointerId) return;
+    e.stopPropagation();
+    // Preserve the grab offset, including when dragging by the time badge.
+    if (e.clientX !== d.clientX || d.moved) {
+      d.moved = true;
+      onSeek(scale.clampT(d.at + (e.clientX - d.clientX) / d.pxPerSecond));
     }
+  };
+
+  const release = (e: JSX.TargetedPointerEvent<SVGGElement>): void => {
+    if (drag.current?.pointer !== e.pointerId) return;
+    drag.current = null;
+    if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId);
   };
 
   const onKeyDown = (e: JSX.TargetedKeyboardEvent<SVGGElement>): void => {
@@ -106,18 +109,6 @@ export function Playhead({ model, tNow, playing = false, onSeek, onTogglePlay }:
 
   return (
     <g class={playing ? 'tl-playhead is-playing' : 'tl-playhead'}>
-      {/* the drag surface: invisible, but a real target the whole lane block wide */}
-      <rect
-        class="tl-scrub-hit"
-        x={scale.plotL}
-        y={top}
-        width={Math.max(0, scale.plotW)}
-        height={Math.max(0, bottom - top)}
-        onPointerDown={onPointerDown}
-        onPointerMove={onPointerMove}
-        onPointerUp={onPointerUp}
-        onPointerCancel={onPointerUp}
-      />
       <g
         class="tl-playhead-g"
         transform={`translate(${x},0)`}
@@ -130,7 +121,14 @@ export function Playhead({ model, tNow, playing = false, onSeek, onTogglePlay }:
         aria-valuenow={t}
         aria-valuetext={`t = ${fmt(t)} seconds`}
         onKeyDown={onKeyDown}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={(e) => { onPointerMove(e); release(e); }}
+        onPointerCancel={release}
+        onLostPointerCapture={release}
       >
+        <title>Drag the time marker to scrub. Arrow keys move by 1 s; Shift by 0.1 s.</title>
+        <rect class="tl-playhead-hit" x={-8} y={top - 12} width={16} height={Math.max(0, bottom - top + 12)} />
         <line class="tl-playhead-ln" x1={0} y1={top} x2={0} y2={bottom} />
         <path class="tl-playhead-grip" d="M-6,-11 L6,-11 L6,-2 L0,4 L-6,-2 z" transform={`translate(0,${top})`} />
         <rect class="tl-playhead-badge" x={flip ? -60 : 6} y={top - 12} width={54} height={16} rx={2} />

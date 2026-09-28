@@ -1,0 +1,456 @@
+/* The canvas-first shell: quieter controls everywhere, and -- in Build and
+   Break, from 1024 px up -- a full-bleed canvas with the chrome floating over
+   it as rounded cards.
+
+   Loaded after shell.css and every component sheet, so the rules below restyle
+   the shared controls by the same selectors rather than by louder ones. Colour
+   still comes only from tokens.css: teal serving, blue applying, amber waiting,
+   red down, violet observer. Positions that depend on a measurement (`--bar-
+   bottom`, `--dock-h`) are custom properties App.tsx writes through
+   `style.setProperty`, never a style attribute. */
+
+:root{
+  --r-card:12px;
+  --r-ctl:7px;
+  --float-m:14px;
+  --w-float-rail:340px;
+  /* The room the floating inspector takes from the right edge: its width and
+     the margin on both sides of it. */
+  --rail-space:calc(var(--w-float-rail) + 2 * var(--float-m));
+  --sh-card:0 1px 2px rgba(16,25,34,.05),0 8px 24px rgba(16,25,34,.08);
+}
+@media (prefers-color-scheme:dark){:root{--sh-card:0 1px 2px rgba(0,0,0,.5),0 10px 28px rgba(0,0,0,.45)}}
+:root[data-theme="dark"]{--sh-card:0 1px 2px rgba(0,0,0,.5),0 10px 28px rgba(0,0,0,.45)}
+:root[data-theme="light"]{--sh-card:0 1px 2px rgba(16,25,34,.05),0 8px 24px rgba(16,25,34,.08)}
+/* The lifted option of a segmented control. In light it is the card surface
+   on a sunken track; in dark the surface and the track are two shades apart,
+   so the lift is the hairline token instead. */
+:root{--seg-on:var(--sf)}
+@media (prefers-color-scheme:dark){:root{--seg-on:var(--ln2)}}
+:root[data-theme="dark"]{--seg-on:var(--ln2)}
+:root[data-theme="light"]{--seg-on:var(--sf)}
+
+/* ================= the shared controls, quieter ================= */
+
+/* Section labels in sentence case: the mono uppercase eyebrow made every
+   third word on the page shout. Oracle vocabulary keeps its mono face where it
+   is a value; a heading is not one. */
+.eyebrow{font-family:var(--sans);font-size:12px;font-weight:600;letter-spacing:0;
+  text-transform:none;color:var(--ik2)}
+.empty .empty-k{font-family:var(--sans);font-size:12px;font-weight:600;letter-spacing:0;
+  text-transform:none;color:var(--ik2)}
+.fact{font-family:var(--sans);font-size:10.5px;letter-spacing:0;text-transform:none;
+  border-color:transparent}
+.tag{font-family:var(--sans);font-size:11px;font-weight:600;letter-spacing:0;
+  text-transform:capitalize;border-color:transparent;border-radius:999px;padding:1px 8px}
+.issue-id{letter-spacing:0}
+
+/* Ghost buttons: no box until the pointer is on one. */
+.btn{font-family:var(--sans);font-size:12.5px;font-weight:500;letter-spacing:0;
+  color:var(--ik2);background:transparent;border:1px solid transparent;
+  border-radius:var(--r-ctl);padding:5px 10px}
+.btn:hover:not(:disabled){color:var(--ik);background:var(--sf2);border-color:transparent}
+.btn.is-quiet{border-color:transparent;color:var(--ik3)}
+.btn.is-quiet:hover:not(:disabled){color:var(--ik);border-color:transparent}
+.btn.is-primary{color:var(--vi);background:var(--vif);border-color:transparent}
+.btn.is-primary:hover:not(:disabled){color:var(--vi);background:var(--vif);
+  border-color:var(--vi)}
+.btn.is-solid{color:var(--sf);background:var(--ik);border-color:var(--ik);font-weight:600}
+.btn.is-solid:hover:not(:disabled){color:var(--sf);background:var(--ik2);border-color:var(--ik2)}
+.btn.is-icon{width:30px;height:30px;padding:0;justify-content:center;background:transparent;
+  font-size:15px;color:var(--ik2)}
+.btn.is-icon svg{width:16px;height:16px}
+.btn.is-icon svg .fill{fill:currentColor;stroke:none}
+select.btn{padding-right:8px}
+
+/* Segmented controls as soft pills: a sunken track, the pressed option lifted
+   out of it. No underline, no hairline between options. */
+.seg{border:0;border-radius:9px;padding:3px;gap:2px;background:var(--sf2);overflow:visible}
+.seg button{font-family:var(--sans);font-size:12.5px;font-weight:500;letter-spacing:0;
+  color:var(--ik2);background:transparent;border:0;border-radius:6px;padding:4px 11px}
+.seg button:hover:not(:disabled){color:var(--ik);background:transparent}
+.seg button[aria-pressed="true"]{color:var(--ik);background:var(--seg-on);font-weight:600;
+  box-shadow:0 1px 2px rgba(16,25,34,.14)}
+.seg button:focus-visible{outline-offset:0;border-radius:6px}
+
+/* The top bar's two segmented controls: the modes are the page's own
+   navigation, so they are the one full-size pill; the release is small. */
+.topbar-modes .seg button{font-size:13px;letter-spacing:0;padding:5px 14px}
+.topbar-modes .seg button[aria-pressed="true"],
+.topbar-modes .seg button[aria-pressed="true"]:hover{color:var(--ik);background:var(--seg-on);
+  box-shadow:0 1px 2px rgba(16,25,34,.14)}
+.topbar-group .seg button{font-family:var(--mono);font-size:11.5px;letter-spacing:0;padding:3px 8px}
+
+/* Inputs: rounded, hairline, the value in mono. */
+.field-in{border-radius:var(--r-ctl);border-color:var(--ln);background:var(--sf);color:var(--ik)}
+.field-in:focus{border-color:var(--vi)}
+
+.why{border-color:transparent}
+
+/* ================= the rails ================= */
+
+/* The inspector and the Break rail have one system of their own, in
+   inspector.css: header, group headings, label-left/value-right rows, list
+   rows and sub-blocks. Nothing here restyles them. */
+
+/* The scenario buttons, on the rail's shelf and on the palette. */
+.tmpl .btn{border:1px solid var(--ln);border-radius:var(--r-ctl)}
+.tmpl .btn:hover:not(:disabled){border-color:var(--ln2)}
+
+/* Validation rows: a quieter band, no box. */
+button.issue{border-bottom:1px solid var(--ln)}
+.issues-hd{background:var(--sf)}
+.notes-tog{font-family:var(--sans);font-size:12.5px;letter-spacing:0}
+
+/* ================= the header, in every mode ================= */
+
+.app-head{padding:var(--float-m) var(--float-m) 0;background:transparent}
+.topbar{min-height:52px;padding:6px 10px 6px 16px;gap:10px 16px;
+  background:var(--sf);border:1px solid var(--ln);border-radius:var(--r-card);
+  box-shadow:var(--sh-card);flex-wrap:nowrap}
+.topbar-brand{flex:1 1 0;flex-direction:row;align-items:center;gap:10px;min-width:0}
+.topbar-brand .brand{font-size:14px;font-weight:650;letter-spacing:-.01em;color:var(--ik);
+  border-bottom:0;white-space:nowrap}
+.topbar-brand .brand:hover{color:var(--vi)}
+.topbar-modes{flex:0 0 auto}
+.topbar-group{flex:1 1 0;justify-content:flex-end;flex-wrap:nowrap;gap:4px;min-width:0}
+.topbar-group .btn{font-size:12.5px;color:var(--ik2)}
+.topbar-group .btn.is-icon{font-size:16px;border-color:transparent}
+.topbar-group .btn.is-icon:hover:not(:disabled){border-color:transparent}
+.topbar-group>.seg{margin-right:6px}
+.topbar-acts{display:flex;align-items:center;gap:6px;margin-left:6px}
+/* The document cluster keeps its class (`.statusbar`) but none of the old
+   bar's look: it is a run of controls inside the top bar now. */
+.topbar .statusbar{display:flex;align-items:center;gap:6px;min-height:0;padding:0;
+  background:transparent;border:0;overflow:visible;font-size:12.5px}
+.topbar .statusbar>*{flex:0 0 auto}
+
+/* The configuration picker: a quiet mono name beside the brand, not a box. */
+.doc-picker{font-family:var(--mono);font-size:12px;color:var(--ik3);max-width:30ch;
+  field-sizing:content;
+  min-width:0;overflow:hidden;text-overflow:ellipsis;padding:4px 6px;cursor:pointer}
+.doc-picker:hover:not(:disabled){color:var(--ik)}
+.doc-picker option,.doc-picker optgroup{font-family:var(--sans);color:var(--ik);background:var(--sf)}
+.doc-restored{font-size:12px;color:var(--ik3);white-space:nowrap}
+.topbar .count{font-family:var(--sans);font-size:12px;font-weight:500;background:transparent;
+  border:0;border-bottom:1px solid transparent;padding:2px 0;cursor:pointer;white-space:nowrap}
+.topbar .count:hover{border-bottom-color:currentColor}
+.topbar .count.is-error{color:var(--rd)}
+.topbar .count.is-warn{color:var(--am)}
+.topbar .count.is-clean{color:var(--tl)}
+.sharelink{font-size:12px;letter-spacing:0;white-space:nowrap}
+
+/* The overflow: a native disclosure, its menu a small card under it. */
+.ovf{position:relative}
+.ovf>summary{list-style:none;cursor:pointer;font-size:16px}
+.ovf>summary::-webkit-details-marker{display:none}
+.ovf[open]>summary{background:var(--sf2);color:var(--ik)}
+.ovf-menu{position:absolute;right:0;top:calc(100% + 6px);z-index:45;display:flex;
+  flex-direction:column;align-items:stretch;min-width:150px;padding:5px}
+.ovf-menu .btn{justify-content:flex-start;width:100%}
+
+/* The guidance line: one quiet sentence under the bar, not a band. */
+.guide{background:transparent;border-bottom:0}
+.guide-line{padding:7px 4px 6px;font-size:12px;color:var(--ik3);max-width:none}
+.guide-mode{font-weight:600;color:var(--ik2)}
+
+/* The classic walkthrough (intro/Walkthrough.tsx): a small card centred
+   under the guidance line, in the header's flow -- the measured bar bottom
+   grows with it, so nothing it covers is lost under it. */
+.walk{display:flex;align-items:center;gap:12px;width:fit-content;
+  max-width:min(820px,calc(100% - 2 * var(--float-m)));margin:2px auto 4px;
+  padding:7px 8px 7px 12px;box-sizing:border-box}
+.walk-step{flex:0 0 auto;display:inline-flex;align-items:center;justify-content:center;
+  min-width:30px;height:22px;padding:0 6px;border-radius:999px;font-size:11px;font-weight:600;
+  color:var(--vi);background:var(--vif)}
+.walk-text{display:flex;flex-direction:column;gap:1px;min-width:0;font-size:12.5px;line-height:1.4;
+  color:var(--ik2)}
+.walk-text strong{font-size:12.5px;font-weight:650;color:var(--ik)}
+.walk-acts{display:flex;align-items:center;flex-wrap:wrap;gap:4px;flex:0 0 auto}
+.walk-acts .why{font-size:11.5px}
+@media (max-width:767px){
+  .walk{flex-wrap:wrap}
+}
+
+/* The toast: a small card under the bar rather than a full-width strip. */
+.strip.toast{width:auto;max-width:min(720px,calc(100% - 2 * var(--float-m)));
+  top:calc(var(--bar-bottom,80px) + 8px);border:1px solid var(--vi);border-radius:10px;
+  box-shadow:var(--sh-card);padding:7px 8px 7px 14px}
+.strip.toast.is-warn{border-color:var(--am)}
+.strip.toast.is-error{border-color:var(--rd)}
+
+/* The generic floating card. */
+.float-card{background:var(--sf);border:1px solid var(--ln);border-radius:var(--r-card);
+  box-shadow:var(--sh-card)}
+
+/* Configure and Learn keep the docked grid under the floating bar. */
+.app{background:var(--sf)}
+.app:not(.is-float) .app-rail{box-shadow:none}
+
+/* ================= the floating layout: Build and Break ================= */
+
+@media screen{
+  .app.is-float{display:block;position:relative;max-width:none;border-inline:0;
+    height:100dvh;overflow:hidden;background:var(--bg)}
+
+  /* The header floats; the band it sits in lets the canvas through. */
+  .app.is-float .app-head{position:absolute;top:0;left:0;right:0;z-index:30;
+    pointer-events:none}
+  .app.is-float .app-head>*{pointer-events:auto}
+  .app.is-float .guide{pointer-events:none;align-items:center}
+  .app.is-float .guide-line{text-align:center;max-width:100ch;margin:0 auto;
+    padding:6px 12px;text-shadow:0 0 6px var(--bg),0 0 2px var(--bg)}
+  .app.is-float .guide-line a,.app.is-float .intro{pointer-events:auto}
+  /* The explanation the ? opens is a card over the canvas: it must not push
+     the drawing down by the height of a page of keyboard shortcuts. */
+  .app.is-float .intro{position:absolute;top:100%;left:50%;transform:translateX(-50%);
+    z-index:40;width:min(80ch,calc(100vw - 2 * var(--float-m)));margin:0;
+    max-height:calc(100dvh - var(--bar-bottom,80px) - 40px);overflow:auto;
+    background:var(--sf);border:1px solid var(--ln);border-radius:var(--r-card);
+    box-shadow:var(--sh-card)}
+
+  /* The ground: the whole window, dotted. */
+  .app.is-float .app-stage{position:absolute;inset:0;display:block;min-height:0;
+    overflow:hidden;background-color:var(--bg);
+    background-image:radial-gradient(var(--dot) 1px,transparent 1.2px);
+    background-size:20px 20px;background-position:10px 10px}
+  /* The dots are paper, not content: faint, and off at the reader's word
+     (the dots button on the zoom pill). */
+  .app.is-float{--dot:color-mix(in srgb,var(--ln) 70%,var(--bg))}
+  .app.is-float.no-grid .app-stage{background-image:none}
+  /* The drawing fits the room the cards leave, not the window: the wrap is
+     inset by the bar above, the palette on the left, the inspector on the
+     right and the dock below, so a fitted drawing never sits under any of
+     them. Zoomed, the same box is the scroll port. */
+  .app.is-float{--pal-space:calc(var(--pal-r,96px) + 16px)}
+  .app.is-float .app-stage>.tp-wrap{position:absolute;inset:0;min-height:0;
+    padding:calc(var(--bar-bottom,80px) + 18px) calc(var(--rail-space) + 18px)
+      calc(var(--dock-h,72px) + var(--float-m) + 36px) var(--pal-space)}
+  .app.is-float .app-stage>.tp-wrap.is-zoomed{min-height:0}
+  .app.is-float .app-stage>.empty{position:absolute;top:calc(var(--bar-bottom,80px) + 18px);
+    left:var(--pal-space);right:calc(var(--rail-space) + 18px)}
+
+  /* The palette at the left edge. */
+  .app.is-float .palette{position:absolute;left:var(--float-m);
+    top:calc(var(--bar-bottom,80px) + 12px);z-index:20;padding:6px;display:flex;
+    flex-direction:column;gap:2px;
+    max-height:calc(100dvh - var(--bar-bottom,80px) - var(--dock-h,72px) - 3 * var(--float-m) - 12px);
+    overflow:auto}
+  .pal-add .cv-add{flex-direction:column;flex-wrap:nowrap;align-items:stretch;gap:2px;margin:0;
+    padding:0;max-width:none}
+  .pal-add .cv-add .ctl-off{flex-direction:column;align-items:stretch;gap:4px}
+  .pal-add .btn,.pal-add .pal-btn{flex-direction:column;justify-content:center;gap:3px;
+    width:68px;padding:7px 2px 6px;border-radius:8px;font-size:10.5px;line-height:1.15;
+    white-space:normal;text-align:center;color:var(--ik2)}
+  .pal-add .btn svg{display:block;width:17px;height:17px;fill:none;stroke:currentColor;
+    stroke-width:1.4;stroke-linecap:round;stroke-linejoin:round}
+  .pal-add .pal-lbl{display:block}
+  .pal-add .why{max-width:22ch;font-size:11px}
+  .pal-tidy{border-top:1px solid var(--ln);margin-top:4px;padding-top:4px}
+
+  /* Break's palette: the six scenarios, one click each. */
+  .pal-scn{width:206px;gap:6px;padding:10px}
+  .pal-k{font-size:12px;font-weight:600;color:var(--ik2);padding:0 4px}
+  .pal-scn:not(.is-open){width:auto}
+  .pal-tog{display:flex;align-items:center;gap:6px;background:transparent;border:0;
+    border-radius:6px;cursor:pointer;font-family:inherit;text-align:left;padding:4px}
+  .pal-tog:hover{background:var(--sf2);color:var(--ik)}
+  .pal-scn-list{display:flex;flex-direction:column;gap:4px}
+  .pal-scn .tmpl .btn{border:0;padding:6px 8px;font-size:12.5px;white-space:normal;
+    text-align:left;justify-content:flex-start;width:100%}
+  .pal-scn .tmpl .btn:hover:not(:disabled){background:var(--sf2)}
+
+  /* The inspector card on the right. */
+  .app.is-float .app-rail{position:absolute;right:var(--float-m);
+    top:calc(var(--bar-bottom,80px) + 12px);bottom:var(--float-m);width:var(--w-float-rail);
+    z-index:20;overflow:auto;border-left:1px solid var(--ln);border-radius:var(--r-card);
+    box-shadow:var(--sh-card);scrollbar-width:thin}
+  .app.is-float .app-rail .insp-hd{border-radius:var(--r-card) var(--r-card) 0 0}
+  .app.is-float .app-rail .evmenu{border-radius:var(--r-card) var(--r-card) 0 0}
+
+  /* The dock at the bottom: Build's readings, Break's timeline panel. */
+  .app.is-float .app-dock{position:absolute;left:var(--float-m);
+    right:calc(var(--rail-space));bottom:var(--float-m);z-index:20;display:flex;
+    flex-direction:column;border-top:1px solid var(--ln);overflow:auto;max-height:46vh;
+    border-radius:var(--r-card)}
+  .app.is-float.m-break .app-dock{max-height:min(46vh,420px)}
+  /* With a run on it, Break's panel is the height the reader dragged it to
+     (`--tl-h`, written by App.tsx) or a bit over a third of the window --
+     `timelineDefaultH` in view.ts says the same -- and never so tall that it
+     reaches the header. */
+  .app.is-float.m-break .app-dock.has-tl{height:var(--tl-h,clamp(220px,36dvh,400px));
+    min-height:64px;max-height:calc(100dvh - var(--bar-bottom,80px) - 12px - var(--float-m))}
+  /* Full screen: the panel takes the window under the header, over the
+     palette, the drawing and the rail. */
+  .app.is-float.m-break.tl-full .app-dock{top:calc(var(--bar-bottom,80px) + 12px);
+    right:var(--float-m);height:auto;max-height:none;z-index:25}
+  .app.is-float.tl-full .zoom-pill,.app.is-float.tl-full .fnd-toast{visibility:hidden}
+
+  /* The grab handle: the top edge of the panel's header row. A short bar says
+     it is there; the whole edge takes the press. */
+  .dock-grip{position:absolute;top:0;left:0;right:0;height:9px;z-index:5;cursor:ns-resize;
+    touch-action:none;display:flex;justify-content:center;align-items:flex-start;
+    border-radius:var(--r-card) var(--r-card) 0 0}
+  .dock-grip-bar{width:40px;height:4px;margin-top:3px;border-radius:2px;background:var(--ln2);
+    transition:background .12s ease-out,width .12s ease-out}
+  .dock-grip:hover .dock-grip-bar,.dock-grip.is-dragging .dock-grip-bar{background:var(--ik3);width:56px}
+  .dock-grip:focus{outline:none}
+  .dock-grip:focus-visible .dock-grip-bar{background:var(--vi);width:56px}
+  .dock-grip:focus-visible{box-shadow:inset 0 2px 0 var(--vi)}
+  .app.is-float.m-break .dock-status .tl-full-btn{flex:0 0 auto;margin-left:-4px}
+  .tl-full-btn svg{fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;
+    stroke-linejoin:round}
+  .tl-full-btn[aria-pressed="true"]{color:var(--vi)}
+  .dock-status{display:flex;align-items:center;gap:12px;padding:0 14px 0 0;min-width:0;
+    flex:0 0 auto}
+  .dock-status>.readout{flex:1 1 auto;min-width:0;min-height:0;border-bottom:0;
+    background:transparent}
+  .app.is-float.m-break .dock-status{border-bottom:1px solid var(--ln);position:sticky;top:0;
+    z-index:4;background:var(--sf)}
+  .app.is-float .chips{padding:10px 16px;row-gap:8px}
+  .app.is-float .chip{display:grid;grid-template-columns:auto auto;justify-content:start;
+    column-gap:6px;row-gap:0;align-items:baseline;padding:0 18px}
+  .app.is-float .chip:first-child{padding-left:0}
+  .app.is-float .chip-k{grid-column:1 / -1;font-size:11px;line-height:1.35}
+  .app.is-float .chip-v{font-size:13.5px}
+  .app.is-float .chip-s{font-size:11px}
+  .app.is-float .ro-run-k{font-size:11px;align-self:center}
+
+  .fnd-chips{display:flex;align-items:center;gap:6px;flex:0 0 auto;margin-left:auto}
+  .fnd-chip{display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border:0;
+    border-radius:999px;font:500 12px/1.4 var(--sans);white-space:nowrap;cursor:pointer;
+    background:var(--sf2);color:var(--ik2)}
+  span.fnd-chip{cursor:default}
+  .fnd-chip.t-am{background:var(--amf);color:var(--am)}
+  .fnd-chip.t-rd{background:var(--rdf);color:var(--rd)}
+  .fnd-chip.t-tl{background:var(--tlf);color:var(--tl)}
+  .fnd-chip.t-sl{background:var(--sf2);color:var(--ik2)}
+  button.fnd-chip:hover{box-shadow:inset 0 0 0 1px currentColor}
+  button.fnd-chip[aria-expanded="true"]{box-shadow:inset 0 0 0 1px currentColor}
+
+  /* Break's timeline, as the body of the dock: the transport and the legend
+     share one compact row at the head, the lanes run under it. */
+  .app.is-float .tl-slot{margin:0 16px 8px;min-width:0}
+  .app.is-float .tl-slot>.empty{padding:10px 0 6px;max-width:none}
+  .app.is-float .app-dock .tl{display:grid;grid-template-columns:auto minmax(0,1fr);
+    gap:4px 16px;align-items:center}
+  .app.is-float .app-dock .tl-foot{order:1;grid-column:1;grid-row:1;position:static;border-top:0;
+    padding:8px 0 4px;background:transparent}
+  .app.is-float .app-dock .tl-legend{order:1;grid-column:2;grid-row:1;justify-self:end;
+    justify-content:flex-end;padding:8px 0 4px;font-size:11.5px;gap:4px 12px}
+  .app.is-float .app-dock .tl-plot{order:2;grid-column:1 / -1;grid-row:2}
+  .app.is-float .app-dock .tl-note{order:3;grid-column:1 / -1;grid-row:3}
+  .app.is-float .app-dock .tl-legend i{border-radius:3px}
+  .tl-tp-btn,.tl-tp-speed,.tl-tp-in{border-radius:var(--r-ctl)}
+  .tl-tp-btn{font-family:var(--sans)}
+  .tl-tp-speed{border-color:transparent;font-family:var(--sans);letter-spacing:0}
+  .tl-tp-speed.is-on{border-color:transparent;color:var(--ik);background:var(--sf2)}
+
+  /* The zoom pill, bottom right of the canvas, left of the inspector. */
+  .app.is-float .zoom-pill{position:absolute;right:calc(var(--rail-space));
+    bottom:calc(var(--dock-h,72px) + var(--float-m) + 12px);z-index:20;padding:3px}
+  .app.is-float .zoom-pill .cv-zoom{padding:0;gap:2px;align-items:center;flex-wrap:nowrap}
+  .app.is-float .zoom-pill .cv-zoom>:nth-child(1){order:0}
+  .app.is-float .zoom-pill .cv-zoom>.cv-zoom-pct{order:1;min-width:5ch;text-align:center;
+    font-size:12px}
+  .app.is-float .zoom-pill .cv-zoom>:nth-child(2){order:2}
+  .app.is-float .zoom-pill .cv-zoom>:nth-child(3){order:3}
+  .app.is-float .zoom-pill .cv-zoom>:nth-child(4){order:4;margin-left:2px;padding-left:10px;border-left:1px solid var(--ln);border-radius:0}
+  .app.is-float .zoom-pill .btn{padding:4px 9px;border-color:transparent}
+
+  /* The most serious finding, once, above the dock. */
+  .fnd-toast{position:absolute;left:var(--pal-space);bottom:calc(var(--dock-h,72px) + var(--float-m) + 12px);
+    z-index:21;display:flex;align-items:center;gap:10px;padding:5px 6px 5px 6px;
+    max-width:calc(100vw - var(--pal-space) - var(--rail-space) - 200px)}
+  /* The tone is the chip at its head (Error / Warning), not a left border. */
+  .fnd-toast-m{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+    font-size:12.5px;color:var(--ik2)}
+  .fnd-toast .btn{padding:3px 8px}
+  .fnd-toast .btn.is-icon{width:26px;height:26px}
+
+  /* The findings themselves, over the canvas above the chips. */
+  .fnd-pop{position:absolute;right:var(--rail-space);
+    bottom:calc(var(--dock-h,72px) + var(--float-m) + 10px);z-index:35;display:flex;
+    flex-direction:column;width:min(600px,calc(100vw - var(--rail-space) - 2 * var(--float-m)));
+    max-height:calc(100dvh - var(--bar-bottom,80px) - var(--dock-h,72px) - 3 * var(--float-m) - 20px);
+    overflow:hidden}
+  .fnd-pop-hd{display:flex;align-items:center;gap:10px;padding:8px 8px 8px 16px;
+    border-bottom:1px solid var(--ln)}
+  .fnd-pop-t{font-size:13px;font-weight:650;color:var(--ik)}
+  .fnd-pop-n{font-size:12px;color:var(--ik3)}
+  .fnd-pop-body{min-height:0;overflow:auto;border-radius:0 0 var(--r-card) var(--r-card)}
+  .fnd-pop .issues{overflow:visible}
+  .issues-none{padding:14px 16px;font-size:13px;color:var(--ik3)}
+
+  /* The event menu, when there is no rail to head (1024-1279): a card at the
+     right edge, above the zoom pill, and the drawing's fit starts under it or
+     stops left of it, whichever draws larger (`--evm-t`/`--evm-r`, measured
+     by App.tsx) -- shut to its one button, it gives the room back. It scrolls
+     rather than run under the pill or the dock. */
+  .app.is-float .app-stage>.evmenu{position:absolute;right:var(--float-m);
+    top:calc(var(--bar-bottom,80px) + 12px);margin:0;z-index:22;border-radius:var(--r-card);
+    border-color:var(--ln);width:min(300px,30vw);box-sizing:border-box;overflow:auto;
+    max-height:calc(100dvh - var(--bar-bottom,80px) - var(--dock-h,72px) - 2 * var(--float-m) - 76px)}
+  .app.is-float .app-stage>.evmenu.is-shut{width:auto}
+  .app.is-float.has-evm .app-stage>.tp-wrap{
+    padding-top:var(--evm-t,calc(var(--bar-bottom,80px) + 18px));
+    padding-right:var(--evm-r,calc(var(--rail-space) + 18px))}
+
+  /* 1024-1279: the inspector is a drawer, so the dock and the pill take the
+     right edge back. */
+  @media (max-width:1279px){
+    .app.is-float{--rail-space:var(--float-m)}
+    .app.is-float .fnd-toast{max-width:calc(100vw - var(--pal-space) - 220px)}
+  }
+}
+
+/* Below 1280 the bar cannot hold the modes dead centre -- the right-hand
+   group (release, undo, redo, theme, ?, the drawer button, Share, overflow)
+   is wider than half of what is left -- so the modes sit centred in the gap
+   between the two ends instead, the pills and gaps tighten, and the
+   configuration name gives up width (it ellipsises) before anything wraps.
+   One row down to 1024. */
+@media (max-width:1279px){
+  .topbar{gap:10px 10px;padding-left:14px}
+  .topbar-brand{flex:0 1 auto}
+  .topbar-brand .doc-picker{flex:0 1 auto;min-width:7ch}
+  .topbar-modes{margin-inline:auto}
+  .topbar-modes .seg button{padding:5px 10px}
+  .topbar-group{flex:0 0 auto}
+  .topbar-group>.seg{margin-right:2px}
+  .topbar-acts{margin-left:2px;gap:4px}
+}
+/* Narrow top bar: the modes wrap under the brand rather than crushing it. */
+@media (max-width:1023px){
+  .topbar{flex-wrap:wrap}
+  .topbar-brand{flex:1 1 auto}
+  .topbar-modes{order:3;flex:1 1 100%;display:flex;justify-content:center;margin-inline:0}
+  .topbar-group{flex:0 1 auto}
+}
+@media (max-width:767px){
+  .app-head{padding:8px 8px 0}
+  .topbar-group{flex-wrap:wrap}
+}
+
+/* The dotted-ground toggle on the zoom pill: lit while the dots are on. */
+.cv-dots-ico{display:block;fill:currentColor}
+.zoom-pill .btn[aria-pressed="true"]{color:var(--ik)}
+.zoom-pill .btn[aria-pressed="false"]{color:var(--ik3)}
+
+/* ================= dialogs the ⋯ menu opens ================= */
+
+/* A floating card under the bar at the right, where the menu was, rather
+   than the drawer's full-height edge (common/Sheet.tsx `variant="card"`).
+   The page behind stays readable: the scrim only dims it. */
+.sheet.is-card{top:calc(var(--bar-bottom,80px) + 8px);right:var(--float-m);bottom:auto;
+  left:auto;width:min(420px,calc(100vw - 2 * var(--float-m)));
+  max-height:calc(100dvh - var(--bar-bottom,80px) - 8px - var(--float-m));
+  border:1px solid var(--ln);border-radius:var(--r-card);box-shadow:var(--sh-card);
+  overflow:hidden}
+.sheet.is-card .sheet-hd{background:var(--sf);padding:10px 8px 10px 16px}
+.sheet.is-card .sheet-hd .title{font-size:13px;font-weight:650;color:var(--ik)}
+.scrim.is-light{background:rgba(16,25,34,.12)}
+@media (max-width:767px){
+  .sheet.is-card{top:auto;bottom:0;right:0;left:0;width:auto;max-height:80dvh;
+    border-radius:var(--r-card) var(--r-card) 0 0}
+}

@@ -60,6 +60,19 @@ export function netSummary(net: NetState): NetStateSummary {
     downLinks: [...net.downLinks].sort(),
     partitioned: net.partitions !== null,
     downInstances: [...net.downInstances].sort(),
+    ...(net.partitions !== null ? { groups: net.partitions.map((g) => [...g]) } : {}),
+  };
+}
+
+/** The network an epoch recorded, as the state reachability is asked of. */
+export function netFromSummary(s: NetStateSummary): NetState {
+  return {
+    downHosts: new Set(s.downHosts),
+    downSites: new Set(s.downSites),
+    downLinks: new Set(s.downLinks),
+    partitions: s.groups ? s.groups.map((g) => [...g]) : null,
+    downMembers: new Set(),
+    downInstances: new Set(s.downInstances),
   };
 }
 

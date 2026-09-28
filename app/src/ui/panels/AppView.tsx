@@ -48,6 +48,25 @@ const LANES = (service: string): FigLane[] => [
 function noEventLanes(ap: AppModel, service: string, t0: number, t1: number): FigLane[] {
   const lanes = LANES(service);
   const stalled = ap.noEventKind === 'stalled';
+  /* The application's own host is gone: the service never moved, and nobody
+     is left to dial it. */
+  if (ap.noEventKind === 'app-down') {
+    const from = ap.appDownAt ?? 0;
+    lanes[0]?.segs.push({
+      a: t0, b: t1, cls: 'b-tl', ink: 'f-tl',
+      labs: ["Published by the primary's listener -- it never moves", 'On the primary throughout', 'On the primary'],
+    });
+    for (const lane of [lanes[1], lanes[2]]) {
+      lane?.segs.push(
+        { a: t0, b: from, cls: 'b-tl', ink: 'f-tl', labs: ['Working', 'OK'] },
+        {
+          a: from, b: t1, cls: 'b-hatch', ink: 'f-rd',
+          labs: ['The application is down with its host', 'Application down', 'Down'],
+        },
+      );
+    }
+    return lanes;
+  }
   if (stalled) {
     lanes[0]?.segs.push({
       a: t0, b: t1, cls: 'b-tl', ink: 'f-tl',
@@ -243,7 +262,7 @@ function switchoverLanes(
       a: t0, b: down, cls: 'b-tl', ink: 'f-tl',
       labs: ['Pooled sessions working on the primary', 'Working', 'OK'],
     },
-    { a: down, b: bk, cls: 'b-hatch', ink: 'f-rd', labs: ['Terminated as the primary converts', 'Terminated'] },
+    { a: down, b: bk, cls: 'b-hatch', ink: 'f-rd', labs: ['Terminated -- the old primary restarts into its new role', 'Terminated'] },
     {
       a: bk, b: poolEnd, cls: 'b-am', ink: 'f-am',
       labs: ['Pool empty -- requests wait or fail', 'Pool empty', 'Empty'],
@@ -443,6 +462,8 @@ function AppFigure({ ap, tr, doc, width }: {
 
   const noEventTop = ap.switchoverRefused
     ? 'Nothing to draw -- the broker refused the switchover, so the service never left the primary'
+    : ap.noEventKind === 'app-down'
+      ? 'Nothing is dialled -- the application is down with its host'
     : ap.noEventKind === 'observer-lost'
       ? "Nothing to draw -- the observer is not in the application's path, and no failover moves the service"
       : ap.noEventKind === 'stalled'
@@ -573,6 +594,13 @@ export function AppView() {
           are nominal drawing constants, not documented figures, and the role-based service
           is assumed published the instant the new primary opens. These parameters affect
           only new connections -- no established session is touched by anything drawn here.
+          {doc.application === undefined ? null : (
+            <>
+              {' '}The string is dialled from where the application stands on the drawing
+              (<span class="mono">{doc.application.name}</span>): an address it cannot reach
+              gives no answer. That placement is this page&rsquo;s model.
+            </>
+          )}
         </p>
       </div>
       <div class="panel-body" ref={ref}>

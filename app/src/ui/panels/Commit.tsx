@@ -16,10 +16,11 @@
  *     standby is ASYNC and outside the transaction.
  */
 
-import { computeCommit, findMember, isFarSync, linkRttMs, memberHosts } from '@/engine';
+import { computeCommit, findMember, isFarSync } from '@/engine';
 import type { CommitLeg, CommitLegResult, CommitModel, MemberId, TopologyDoc } from '@/engine';
 import type { BraceInput, TimelineScale } from '@/ui/timeline/build';
 import { primaryId, redoGraph, topology } from '@/state/derived';
+import { doc as workingDoc } from '@/state/doc';
 import { edition } from '@/state/view';
 import { Chip } from '@/ui/common/Chip';
 import type { ReadoutChip } from '@/state/derived';
@@ -28,6 +29,7 @@ import {
   useFigWidth,
 } from './figure';
 import type { FigLane } from './figure';
+import { directCommitLegs } from './commit-model';
 
 const r1 = (n: number): number => Math.round(n * 10) / 10;
 
@@ -35,26 +37,7 @@ const r1 = (n: number): number => Math.round(n * 10) / 10;
 
 /** The primary's direct destinations, in the order the resolver found them. */
 export function commitLegs(doc: TopologyDoc, primary: MemberId | null): CommitLeg[] {
-  if (primary === null) return [];
-  const graph = redoGraph.value;
-  if (!graph) return [];
-  const from = findMember(doc, primary);
-  const fromHost = from ? memberHosts(from)[0] : undefined;
-  const out: CommitLeg[] = [];
-  for (const e of graph.edges) {
-    if (e.from !== primary || !e.active) continue;
-    const to = findMember(doc, e.to);
-    if (!to) continue;
-    const toHost = memberHosts(to)[0];
-    out.push({
-      to: e.to,
-      kind: to.kind,
-      xpt: e.xpt,
-      rttMs: fromHost && toHost ? linkRttMs(doc, fromHost, toHost) : 0,
-      destWriteMs: doc.environment.standbyWriteMs,
-    });
-  }
-  return out;
+  return directCommitLegs(doc, primary, redoGraph.value);
 }
 
 /** ` to sby01` -- who a far sync instance forwards to, when it forwards. */
@@ -368,6 +351,9 @@ export function Commit() {
     mode: doc.config.protectionMode,
     localWriteMs: doc.environment.localWriteMs,
     legs,
+    /* The simulation parameter the file carries; absent, the model's own
+       default (wait for all). */
+    waitPolicy: workingDoc.value.params.commitWaitPolicy ?? 'all',
   });
   const governingName = cm.governing === null
     ? ''
@@ -396,7 +382,9 @@ export function Commit() {
             : ' A far sync leg terminates the commit -- with SYNC into the far sync instance all committed redo resides on disk there, and the hop onward to the target standby is ASYNC and outside the transaction.'}
           {cm.claims.multiSync === undefined
             ? ''
-            : ' More than one synchronous destination is waited on here, and what a commit with more than one waits for is not documented: this draws the pessimistic reading.'}
+            : cm.waitPolicy === 'all'
+              ? ' More than one synchronous destination is waited on here. DATA_GUARD_SYNC_LATENCY defaults to 0, which documents that LGWR waits up to NET_TIMEOUT for each SYNC standby in turn -- the default this draws.'
+              : ' More than one synchronous destination is waited on here, drawn to return at the first acknowledgement. A non-zero DATA_GUARD_SYNC_LATENCY documents that LGWR keeps waiting a bounded time past the first ack rather than returning at it; this is this page’s simplification of that.'}
         </p>
       </div>
       <div class="panel-body" ref={ref}>

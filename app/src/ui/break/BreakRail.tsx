@@ -32,22 +32,76 @@
  */
 
 import { signal } from '@preact/signals';
-import { events, topology } from '@/state/derived';
+import { events, topology, trace } from '@/state/derived';
 import { canEdit, tNow, viewport } from '@/state/view';
 import { IssuePanel } from '../IssuePanel';
-import { Action, Group, Note } from '../inspector/controls';
+import { Action, Fold, Group, Note } from '../inspector/controls';
+import { isSectionOpen, SCENARIOS_ID, toggleSection } from '../inspector/sections';
 import { hintsShown, HintsToggle } from '../hints';
 import { printing } from '../print';
 import { WHY } from '../inspector/why';
+import { useRailRow } from '../common/Field';
 import {
-  applyTemplate, clearEvents, describeEvent, removeEventAt, setEventTime, templates,
+  applyTemplate, clearEvents, describeEvent, removeEventAt, reorderEvent, setEventTime, templates,
 } from './events';
+import { eventTimeBounds, reorderRefusal } from './event-order';
+import { RunExplanation } from './RunExplanation';
 import '@/styles/inspector.css';
 
 /** Open the six scenario descriptions. View state, so it is not undoable. */
 export const scenarioNotesOpen = signal(false);
 
-export function BreakRail() {
+export interface BreakRailProps {
+  children?: unknown;
+  /**
+   * Whether the scenarios ride on the rail. The floating layout puts them on
+   * the palette at the left edge of the canvas instead (`ScenarioPalette`).
+   */
+  scenarios?: boolean;
+  /** Whether the validation panel closes the rail. The floating layout has
+      the status chips and their popover for that (Findings.tsx). */
+  validation?: boolean;
+}
+
+/**
+ * The scenarios as the floating palette carries them: the same six
+ * templates, the same refusals, the sentence as each button's title.
+ */
+export function ScenarioPalette() {
+  const doc = topology.value;
+  const editable = canEdit(viewport.value);
+  const open = isSectionOpen(SCENARIOS_ID);
+  return (
+    <nav class={`palette pal-scn float-card${open ? ' is-open' : ''}`} aria-label="One-click scenarios">
+      <button
+        type="button"
+        class="pal-k pal-tog"
+        aria-expanded={open}
+        onClick={() => toggleSection(SCENARIOS_ID)}
+      >
+        <span class="grp-caret" aria-hidden="true">{open ? '▾' : '▸'}</span>
+        Scenarios
+      </button>
+      {open ? (
+      <div class="pal-scn-list">
+        {templates(doc, 0).map((t) => (
+          <div class="tmpl" key={t.id}>
+            <Action
+              label={t.label}
+              title={t.caption}
+              enabled={editable ? t.enabled : { state: 'off', why: WHY.readOnlyHere }}
+              onClick={() => applyTemplate(t)}
+            />
+          </div>
+        ))}
+      </div>
+      ) : null}
+    </nav>
+  );
+}
+
+export function BreakRail({ scenarios = true, validation = true }: BreakRailProps = {}) {
+  const railRef = useRailRow();
   const doc = topology.value;
   const list = events.value;
   const editable = canEdit(viewport.value);
@@ -57,7 +111,7 @@ export function BreakRail() {
   const shown = open || printing.value;
 
   return (
-    <div class="insp">
+    <div class="insp" ref={railRef}>
       <Group
         title={list.length === 0 ? 'Events' : `Events (${list.length})`}
         action={(
@@ -71,10 +125,11 @@ export function BreakRail() {
       >
         {list.length === 0 ? (
           <div class="empty">
-            <span class="empty-k">Nothing has happened yet</span>
+            <span class="empty-k">No events yet</span>
             <p>
-              The configuration is in its steady state. Pick a scenario below, or select a
-              card on the drawing and use the Actions menu that opens with it.
+              {scenarios
+                ? 'Pick a scenario below, or select a card to add an event.'
+                : 'Pick a scenario on the left, or select a card to add an event.'}
             </p>
           </div>
         ) : null}
@@ -83,43 +138,71 @@ export function BreakRail() {
           <div class="evt" key={`${i}-${e.kind}-${e.at}`}>
             <span class="evt-n">{i + 1}</span>
             <span class="evt-b">{describeEvent(doc, e)}</span>
+            {/* The event's controls on a line of their own under what it is:
+                its time, the two swaps, and Remove at the end -- the same
+                order on every row, whatever the description's length. */}
+            <div class="evt-ctl">
             <label class="evt-at">
+              <span class="evt-u">at</span>
               <span class="sr">Time of event {i + 1}, in seconds</span>
               <input
                 class="field-in"
                 type="number"
-                min={0}
-                max={900}
+                min={eventTimeBounds(doc, i).min}
+                max={eventTimeBounds(doc, i).max}
                 step={0.1}
                 value={String(e.at)}
                 disabled={!editable}
                 onChange={(ev) => {
                   const v = Number((ev.currentTarget as HTMLInputElement).value);
                   if (!isFinite(v)) return;
-                  setEventTime(i, Math.max(0, Math.round(v * 10) / 10));
+                  setEventTime(i, v);
+                  (ev.currentTarget as HTMLInputElement).value = String(e.at);
                 }}
               />
               <span class="evt-u">s</span>
             </label>
+            {list.length > 1 ? (
+              <div class="evt-order" aria-label={`Reorder event ${i + 1}`}>
+                {([-1, 1] as const).map((direction) => {
+                  if (i + direction < 0 || i + direction >= list.length) return null;
+                  const why = editable ? reorderRefusal(doc, i, direction) : WHY.readOnlyHere;
+                  return <Action
+                    key={direction}
+                    label={direction === -1 ? '↑ Earlier' : '↓ Later'}
+                    title="Swap times with the adjacent event"
+                    enabled={why ? { state: 'off', why } : { state: 'on' }}
+                    onClick={() => reorderEvent(i, direction)}
+                  />;
+                })}
+              </div>
+            ) : null}
+            <span class="rr-spacer" />
             <Action
               label="Remove"
               enabled={editable ? { state: 'on' } : { state: 'off', why: WHY.readOnlyHere }}
               onClick={() => removeEventAt(i)}
             />
+            </div>
           </div>
         ))}
 
         {list.length === 0 ? null : (
           <Note>
-            t = 0 is the first injected event, and the numbers here are the numbers on the
-            axis. The playhead is at t = {at} s; a card clicked on the drawing injects its
-            event there.
+            Drag numbered events on the timeline to change their time. Earlier and Later
+            swap adjacent times while keeping related events in order. The playhead is at t = {at} s.
           </Note>
         )}
       </Group>
 
-      <Group
+      {/* What the run decided, and why: under the events that caused it. */}
+      {trace.value ? <RunExplanation doc={doc} trace={trace.value} /> : null}
+
+      {scenarios ? (
+      <Fold
+        id={SCENARIOS_ID}
         title="One-click scenarios"
+        hint={`${templates(doc, 0).length} templates`}
         action={(
           <button
             type="button"
@@ -138,8 +221,7 @@ export function BreakRail() {
             it names itself. */}
         {hintsShown() ? (
           <p class="caption tmpl-lede">
-            Each one replaces whatever is injected now — the observer stays wherever its
-            card sits.
+            A scenario replaces the current events. The topology stays the same.
           </p>
         ) : null}
 
@@ -156,12 +238,13 @@ export function BreakRail() {
             </div>
           ))}
         </div>
-      </Group>
+      </Fold>
+      ) : null}
 
       {/* The same validation the Build dock shows, worded and folded the same
           way: what is wrong with a configuration does not stop being true
           because the reader switched to breaking it. */}
-      <IssuePanel />
+      {validation ? <IssuePanel /> : null}
     </div>
   );
 }

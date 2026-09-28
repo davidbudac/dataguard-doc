@@ -32,6 +32,10 @@ export function elide(s: string, max = 19): string {
   return s.length > max ? `${s.slice(0, max - 1)}…` : s;
 }
 
+/** The small data centre / host icons beside a name: drawn `size` px square,
+    the text after it moved right by `gap`. */
+export const MINI_ICON = { size: 11, gap: 14 } as const;
+
 export const CARD = {
   /** width clamp(184, measured, 260) */
   minW: 184,
@@ -61,6 +65,9 @@ export interface CardLines {
   name: string;
   /** Host line, mono, elided at 19 characters. */
   host?: string;
+  /** Where the host name starts in `host`, when the line names a host: a
+      small server icon is drawn in front of it (`NodeCard`). */
+  hostAt?: number;
   /** Third line: the db_unique_name, or the observer's own name. */
   sub?: string;
 }
@@ -70,7 +77,8 @@ export function measureCardWidth(lines: CardLines, isObserver: boolean): number 
   const textX = isObserver ? CARD.textXObs : CARD.textXDb;
   const widest = Math.max(
     approxW(lines.name, CARD.nameSize),
-    lines.host === undefined ? 0 : approxW(lines.host, CARD.hostSize, true),
+    lines.host === undefined ? 0
+      : approxW(lines.host, CARD.hostSize, true) + (lines.hostAt === undefined ? 0 : MINI_ICON.gap),
     lines.sub === undefined ? 0 : approxW(lines.sub, CARD.subSize, true),
   );
   const want = Math.ceil(textX + widest + CARD.padRight);

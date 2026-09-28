@@ -13,9 +13,11 @@
 
 import { computed } from '@preact/signals';
 import { layoutTopology } from '@/ui/canvas/layout';
+import { inFlight, inFlightFrom } from '@/ui/canvas/place';
+import { appModelFor } from '@/ui/timeline/build';
 import type { Geometry } from '@/ui/canvas/layout';
 import {
-  declaredPrimary, resolveRedoGraph, simulate, sortFindings, stateAt, validate,
+  declaredPrimary, honestLevel, resolveRedoGraph, simulate, sortFindings, stateAt, validate,
 } from '@/engine';
 import type {
   CitationId, Claim, EngineTrace, Finding, Outcome, ProtectionLevel, Snapshot, TopologyDoc,
@@ -57,7 +59,9 @@ export const redoGraph = computed(() => {
 export const geometry = computed<Geometry | null>(() => {
   const graph = redoGraph.value;
   if (graph === null) return null;
-  return layoutTopology(topology.value, graph, { overrides: doc.value.layout });
+  return layoutTopology(topology.value, graph, {
+    overrides: doc.value.layout, transient: inFlight.value, transientFrom: inFlightFrom.value,
+  });
 });
 
 /** Validation findings, sorted by (severity, subject, id) the way the engine sorts. */
@@ -104,8 +108,18 @@ export const runFindings = computed<Finding[]>(
 
 export const outcome = computed(() => trace.value?.facts.outcome ?? null);
 
+/**
+ * The level at rest, with the label it has earned: a degraded maximum
+ * availability configuration "operates as if it were in maximum performance
+ * mode", and which value the broker reports meanwhile is not documented.
+ */
+const steadyLevel = computed<Claim<ProtectionLevel> | null>(() => {
+  const level = redoGraph.value?.protectionLevel;
+  return level ? honestLevel(level, topology.value.config.protectionMode) : null;
+});
+
 export const protectionLevel = computed<Claim<ProtectionLevel> | null>(
-  () => trace.value?.epochs.at(-1)?.protectionLevel ?? redoGraph.value?.protectionLevel ?? null,
+  () => trace.value?.epochs.at(-1)?.protectionLevel ?? steadyLevel.value,
 );
 
 /* ---------------- the readout ---------------- */
@@ -172,18 +186,26 @@ function findingsChip(): ReadoutChip {
  * outcome; with events it has an outcome, and every chip branches on that
  * outcome rather than on the name of the event that caused it.
  */
-export const readout = computed<ReadoutChip[]>(() => {
+export const readout = computed<ReadoutChip[]>(
+  /* Build and Configure are about the configuration, so their readout is the
+     steady state even when the Document carries events (ui.md SS3): the
+     outcome belongs to the modes that draw the run. */
+  () => readoutFor(mode.value === 'build' || mode.value === 'configure'),
+);
+
+/**
+ * The chips for one of the two readings, whichever mode is open: `steady`
+ * asks for the configuration at rest, otherwise the run's outcome (which
+ * falls back to the steady reading when there is no run). The printable
+ * report asks for both, from any mode.
+ */
+export function readoutFor(steady: boolean): ReadoutChip[] {
   const t = trace.value;
   const topo = topology.value;
   const graph = redoGraph.value;
 
-  /* Build and Configure are about the configuration, so their readout is the
-     steady state even when the Document carries events (ui.md SS3): the
-     outcome belongs to the modes that draw the run. */
-  const steady = mode.value === 'build' || mode.value === 'configure';
-
   if (!t || steady) {
-    const level = graph?.protectionLevel;
+    const level = graph ? steadyLevel.value : null;
     const modeWord = topo.config.protectionMode;
     const members = topo.members.length;
     const standbys = topo.members.filter((m) => m.kind === 'database' && m.role !== 'primary').length;
@@ -200,12 +222,15 @@ export const readout = computed<ReadoutChip[]>(() => {
         id: 'protection', tone: level && level.value !== modeWord ? 'am' : 'tl',
         k: 'Protection level',
         v: level ? level.value : 'unknown',
-        /* The mode is what was configured; the level is what the broker
-           reports. When the two differ the chip says so, because the reader
+        /* The mode is what was configured; the level is how the primary is
+           operating. When the two differ the chip says so, because the reader
            who set MAXAVAILABILITY and reads MAXPERFORMANCE has been told
-           something, not shown a typo. */
+           something, not shown a typo. What it must not say is that the
+           broker REPORTS this value: Oracle's sentence is "operates as if it
+           were in maximum performance mode", and PROTECTION_LEVEL lists
+           RESYNCHRONIZATION as a value of its own without saying when. */
         sub: level && level.value !== modeWord
-          ? `Configured ${modeWord}, but no synchronized standby is acknowledging, so the broker reports this level.`
+          ? `Configured ${modeWord}, but no synchronized standby is acknowledging, so the primary operates as if it were in maximum performance mode. Which value PROTECTION_LEVEL reports meanwhile is not documented.`
           : level && level.basis !== 'documented'
             ? 'The level the broker would report for this configuration.'
             : 'The level the broker reports while every destination is up.',
@@ -225,8 +250,10 @@ export const readout = computed<ReadoutChip[]>(() => {
           ? { v2: `${observersRunning} observer${observersRunning === 1 ? '' : 's'} running` }
           : {}),
         sub: fsfo.state === 'enabled'
-          ? 'The broker fails over on its own when the observer and the target agree the primary is gone.'
-          : 'Nothing fails over on its own; a failover here is one somebody types.',
+          ? 'With ObserverOverride FALSE, automatic failover requires both the observer and the target to lose the primary, and the target to pass its readiness check.'
+          : fsfo.state === 'observe-only'
+            ? 'The observer reports what it would do but does not initiate failover.'
+            : 'Fast-start failover is disabled. A failover here is one an operator types.',
       },
       findingsChip(),
     ];
@@ -245,16 +272,20 @@ export const readout = computed<ReadoutChip[]>(() => {
       id: 'outcome',
       tone: f.blocked ? 'am' : (f.outcome === 'failover' || f.outcome === 'switchover' ? 'vi' : 'ik'),
       k: 'Outcome',
-      v: f.blocked ? 'blocked' : OUTCOME_WORD[f.outcome],
+      /* With nobody promoted, "manual failover" would name a failover that
+         did not happen: what is left is an action for an operator. */
+      v: f.blocked ? 'blocked'
+        : f.outcome === 'manual' && f.newPrimary === null ? 'manual action needed'
+          : OUTCOME_WORD[f.outcome],
       sub: f.blocked
-        ? 'The transition was ordered and then forbidden; nothing changed role.'
-        : 'What the configuration did, not what was done to it.',
+        ? 'The transition was ordered and then refused; nothing changed role.'
+        : 'The outcome of the whole simulation, not of the moment on screen.',
     },
   ];
   if (moved && f.tOpen !== null) {
     chips.push({
       id: 'open', tone: 'tl', k: 'New primary open', v: fmt(f.tOpen), unit: 's',
-      sub: 'Measured from the first injected event.',
+      sub: 'Modelled time from the first injected event. How long it takes in practice depends on the environment.',
     });
   }
   /* What the failover cost, in seconds of redo. Zero is the whole promise of
@@ -263,27 +294,43 @@ export const readout = computed<ReadoutChip[]>(() => {
   if (moved && f.newPrimary !== null) {
     const rpo = f.perMember[f.newPrimary]?.rpoSeconds ?? null;
     if (rpo !== null) {
+      /* Three readings, and zero is only one of them. A far sync instance
+         lost with the primary leaves a loss nobody can put a number on, and
+         a manual failover is never "none" by right: it is whatever the
+         standby was missing. */
+      const unknown = f.dataLossKind === 'unknown';
+      const zero = !unknown && rpo.value === 0;
       chips.push({
-        id: 'loss', tone: rpo.value === 0 ? 'tl' : 'am', k: 'Data loss',
-        v: rpo.value === 0 ? 'none' : fmt(rpo.value), ...(rpo.value === 0 ? {} : { unit: 's' }),
-        sub: rpo.value === 0
-          ? 'The new primary opened with every acknowledged commit.'
-          : 'Redo the new primary never received, in seconds.',
+        id: 'loss', tone: zero ? 'tl' : 'am', k: 'Data loss',
+        v: unknown ? 'unknown' : zero ? 'none' : fmt(rpo.value),
+        ...(unknown || zero ? {} : { unit: 's' }),
+        sub: unknown
+          ? 'The far sync instance went down with the primary, and what it had not yet forwarded is lost with it. This run cannot say how much.'
+          : zero
+            ? (f.dataLossKind === 'manual'
+              ? 'The standby held everything the primary had generated when it was promoted. A manual failover guarantees nothing of the kind.'
+              : rpo.basis === 'documented'
+                ? 'The new primary opened with every acknowledged commit.'
+                : 'The new primary opened with every acknowledged commit, as this page models it.')
+            : f.dataLossKind === 'manual'
+              ? 'Redo the primary generated that the new primary never received, in seconds. Nothing bounds it.'
+              : 'Redo the new primary never received, in seconds.',
         basis: rpo.basis,
+        cite: [...rpo.cite],
       });
     }
   }
   if (f.abortAt !== null) {
     /* Two different shutdowns, and the chip never confuses them. A stalled
-       primary aborts itself under FastStartFailoverPmyShutdown one threshold
-       after the stall began; a maximum protection primary is shut down because
-       no synchronized standby is acknowledging, and the instant it happens --
-       the last acknowledgement plus NET_TIMEOUT -- is this page's model, not a
-       documented interval and never a failover clock. */
+       primary shuts itself down under FastStartFailoverPmyShutdown one
+       threshold after the stall began; a maximum protection primary is shut
+       down because no synchronized standby is acknowledging, and the instant
+       it happens -- the last acknowledgement plus NET_TIMEOUT -- is this
+       page's model, not a documented interval and never a failover clock. */
     const maxprot = f.outcome === 'maxprot-shutdown';
     chips.push({
       id: 'abort', tone: 'rd',
-      k: maxprot ? 'Primary shut down' : 'Primary aborts',
+      k: maxprot ? 'Primary shut down' : 'Primary shuts down',
       v: fmt(f.abortAt), unit: 's',
       sub: maxprot
         ? `MaxProtection shut the primary down — no synchronized standby acknowledged. Drawn one NET_TIMEOUT (${fmt(f.netTimeoutSeconds)} s) after the last acknowledgement.`
@@ -296,15 +343,40 @@ export const readout = computed<ReadoutChip[]>(() => {
         : {}),
     });
   }
+  /* What the run cost the application: when its connect string got through,
+     or that it never did. This page's model, from where the card stands. */
+  const ap = appModelFor(t, topo);
+  if (ap !== null && (!ap.noEvent || ap.noEventKind === 'app-down')) {
+    const name = topo.application?.name ?? 'the application';
+    chips.push(ap.tConn !== null
+      ? {
+        id: 'app', tone: 'tl', k: 'Application reconnects', v: fmt(ap.tConn), unit: 's',
+        sub: `${name} gets a new connection at this instant: the connect string's own waits, on top of the role change.`,
+        basis: 'model',
+      }
+      : {
+        id: 'app', tone: 'rd', k: 'Application',
+        v: ap.noEventKind === 'app-down' ? 'down' : 'stays down',
+        sub: ap.noEventKind === 'app-down'
+          ? `${name} is down with its host, so nothing is dialled.`
+          : `${name} exhausts its connect string${ap.gaveUp === null ? '' : ` at t = ${fmt(ap.gaveUp)} s`} without reaching the service.`,
+        basis: 'model',
+      });
+  }
   const observerStates = Object.values(f.observers).map((o) => o.endState);
   if (observerStates.length > 0) {
+    /* The master's, where there is one: every other running observer ends
+       `backup` and a stopped one `stopped`, so the master is the one that
+       ends in neither. */
+    const master = observerStates.find((st) => st !== 'backup' && st !== 'stopped');
     chips.push({
-      id: 'observer', tone: 'vi', k: 'Observer', v: observerStates[0] as string,
-      sub: observerStates.length > 1
-        ? `${observerStates.length} observers deployed; the master's state is shown.`
-        : 'The state the observer ends in.',
+      id: 'observer', tone: 'vi', k: 'Observer', v: master ?? (observerStates[0] as string),
+      sub: observerStates.length === 1 ? 'The state the observer ends in.'
+        : master !== undefined
+          ? `${observerStates.length} observers deployed; the master's state is shown.`
+          : `${observerStates.length} observers deployed, none of them the master at the end of the run.`,
     });
   }
   chips.push(findingsChip());
   return chips;
-});
+}

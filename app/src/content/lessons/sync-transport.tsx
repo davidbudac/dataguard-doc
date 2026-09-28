@@ -36,9 +36,16 @@ export const syncTransport: Lesson = {
       title: 'SDU is the unit Oracle Net ships',
       prose: (
         <P>
-          SDU is how much data Oracle Net buffers before sending; default 8192 bytes, range 512 bytes
-          to 2 MB. It is negotiated per connection and the smaller end wins, so set it on the
-          primary&rsquo;s transport alias and on the standby&rsquo;s listener.
+          SDU is how much data Oracle Net buffers before sending; range 512 bytes to 2 MB. The default
+          is one flat 8192 bytes for both ends under 19c;{' '}
+          <Fact
+            id="NET.DEFAULT_SDU_26AI"
+            basis="documented"
+          >
+            26ai splits it — 8192 bytes for a client, 65536 bytes for a server
+          </Fact>
+          . It is negotiated per connection and the smaller end wins, so set it on the primary&rsquo;s
+          transport alias and on the standby&rsquo;s listener.
         </P>
       ),
     },
@@ -47,8 +54,16 @@ export const syncTransport: Lesson = {
       prose: (
         <P>
           Oracle&rsquo;s HA best practices: <M>SDU</M> = 65535 improved synchronous transport in their
-          testing, and the recommendation is scoped to SYNC only. It is neither a prerequisite (
-          <M>SYNC</M> runs at the default) nor the ceiling (<M>DEFAULT_SDU_SIZE</M> goes to 2 MB).
+          testing, scoped to SYNC only, and calls 65535{' '}
+          <Fact
+            id={['NET.SDU_HA_MAX_65535', 'NET.SDU_RANGE_19C']}
+            basis="conflict"
+            note="The HA guide names 65535 the maximum value; the DEFAULT_SDU_SIZE reference page it never cross-references gives a range up to 2097152. Oracle does not reconcile the two on the same page."
+          >
+            the maximum value
+          </Fact>
+          , which <M>DEFAULT_SDU_SIZE</M>&rsquo;s own range contradicts (up to 2 MB). Either way it is
+          not a prerequisite: <M>SYNC</M> runs at the default.
         </P>
       ),
     },
@@ -104,7 +119,9 @@ export const syncTransport: Lesson = {
               {'# high-bandwidth link. The Net Services worked example:\n'}
               {'#   100 Mbit/s x 5 ms / 8 bits = 62500 bytes, about 64 KB\n#\n'}
               {'# Or once for every Oracle Net connection on the host, in sqlnet.ora:\n'}
-              {'#   DEFAULT_SDU_SIZE = 65535        (default 8192, range 512 - 2097152)\n'}
+              {'#   DEFAULT_SDU_SIZE = 65535        (range 512 - 2097152; default 8192 flat\n'}
+              {'#                                    under 19c, 8192 client / 65536 server\n'}
+              {'#                                    under 26ai)\n'}
               {'#   SEND_BUF_SIZE    = <3 x BDP>    (defaults are OS-specific; Linux 2.6\n'}
               {'#   RECV_BUF_SIZE    = <3 x BDP>     is 16 KB send, 87380 bytes receive)\n#\n'}
               {'# The HA guide gets there the other way: leave each socket to the TCP\n'}

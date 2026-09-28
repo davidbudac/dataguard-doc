@@ -310,8 +310,8 @@ just did, and the control that does it must sit where they are looking.*
    `type="number"` input that snaps to a tenth, floors at 0 and writes `tNow`, so
    the drawing and the number can never disagree; read-only renders the number as
    plain text and drops the input (a disabled box with no reason on it is what the
-   WhyPill contract forbids). Under it, one hint: "Events land at the playhead —
-   scrub the timeline to inject later." *Deviation from the brief, deliberate:* the
+   WhyPill contract forbids). Under it, one hint: "New events use the playhead
+   time. Move it to add an event later." *Deviation from the brief, deliberate:* the
    spec asked for a fixed title **and** a separate `at [ n ] s` field; two
    always-equal numbers for one moment on one line is the disease item 5 cures.
 7. **Less chrome over the stage.** The mode subtitle band is gone — `MODE_SUB` is
@@ -588,7 +588,7 @@ nicer"*. So it is a **page**, not another band of chrome over the workbench,
 and it is read by scanning.
 
 - **What it is.** `ui/intro/IntroPage.tsx` — six bands: a hero with the one
-  sentence and two buttons; *What you are looking at* (the classic preset drawn
+  sentence and three buttons; *What you are looking at* (the classic preset drawn
   by `TopoCanvas` with `interactive={false}`, and five numbered callouts under
   it); *The four modes* (four cards, each with a concrete "Try it"); *How to do
   things* (eight one-line gestures as a `<dl>`); *Five words* (the glossary);
@@ -622,7 +622,7 @@ and it is read by scanning.
 - **`dg-intro-v1` changed meaning, and the strip is gone.** The key used to say
   "the first-visit strip has been dismissed"; it now says "this reader has been
   shown the Introduction". It is written by leaving the page — every mode
-  button (`TopBar`), both hero buttons and every "Try it" go through
+  button (`TopBar`), the hero buttons and every "Try it" go through
   `leaveIntro()` — and, for a reader who arrived through a share link and never
   saw the page, by their first real gesture (the effect in `Guidance.tsx`).
   Closing the `?` card writes nothing, as before: its button says **Close**
@@ -631,7 +631,7 @@ and it is read by scanning.
   `header.test.ts`'s "first-visit strip" suite is now "what writes
   dg-intro-v1", and `test/ui/intro.test.ts` pins the rest.
 - **Every button loads before it switches.** `route.ts` owns the jumps: preset
-  first (`resetHistory(makeDoc(preset.doc()))` + `presetId`), then the Break
+  first (`replaceWorkingDocument`, one undoable step that keeps the reader's draft), then the Break
   template if the button named one (`templates`/`applyTemplate`, so the
   scenario is the engine's own `scenarioEvents` and the playhead rests on the
   outcome), then the panel tab, then the mode — the same order
@@ -1001,7 +1001,7 @@ Lessons: 1 Failover clocks · 2 The transport layer · 3 The application's view 
 M1 shell + canvas drawing the classic 1+1+1 from the engine · M2 Build mode (inspector, validation, undo, persistence, share) · M3 Break mode (events, timeline, scrubber, readout; six templates reproduce the six legacy outcomes) · M4 Configure (generators, panels, cross-highlight, goldens) · M5 Learn (nine lessons, reference, legacy URLs, print; deploy flip; drop 'unsafe-inline') · M6 polish/a11y/perf.
 
 ## 8. Taste notes
-Two faces only: system sans for prose, mono for everything Oracle/terminal (property names, modes, statuses, ORA numbers, DGMGRL, names, hosts, numerals with units). Prose 15/1.55, captions 11.5, eyebrows 11 mono uppercase .16em, chips 10.5 mono uppercase .12em, readout numbers 26/620 tabular. **As built the eyebrow is quieter and rarer** — 10.5 mono uppercase .08em, and only for a *section* label. It is not a chip label (the readout's are sans, sentence case), and it is not a title that reads as a sentence: the event menu says `Inject at t = 40 s` in mono sentence case, because AT T = 40 S was a shout. Readout values are 14/620 tabular mono, and the site label under a data centre rectangle is 11 px, not 10 — it names a column of the drawing, not a footnote to it. Canvas airy, rails dense; elevation only on rail/sheet/drawer. Colour semantic never decorative; cards monochrome in Build, tinted only in Break at a t; red = down only; violet = app's voice + observer semantics. Empty states say something true (inspector → configuration summary; Break → "Nothing has happened yet…"; timeline → "steady state — no events injected"; validation → "No issues … as modelled here"). Five invariants: WhyPill on every disabled control (`{state:'on'} | {state:'off', why}` prop); captions branch on outcome; nothing hidden by CSS alone; every demonstrable claim has "Show me"; undocumented labelled in place (`<Fact id>` chip). New principle: the drawing and the text are the same object seen twice (hover a generated line → highlight the member; select a member → scroll to its lines).
+Two faces only: system sans for prose, mono for everything Oracle/terminal (property names, modes, statuses, ORA numbers, DGMGRL, names, hosts, numerals with units). Prose 15/1.55, captions 11.5, eyebrows 11 mono uppercase .16em, chips 10.5 mono uppercase .12em, readout numbers 26/620 tabular. **As built the eyebrow is quieter and rarer** — 10.5 mono uppercase .08em, and only for a *section* label. It is not a chip label (the readout's are sans, sentence case), and it is not a title that reads as a sentence: the event menu says `Inject at t = 40 s` in mono sentence case, because AT T = 40 S was a shout. Readout values are 14/620 tabular mono, and the site label under a data centre rectangle is 11 px, not 10 — it names a column of the drawing, not a footnote to it. Canvas airy, rails dense; elevation only on rail/sheet/drawer. Colour semantic never decorative; cards monochrome in Build, tinted only in Break at a t; red = down only; violet = app's voice + observer semantics. Empty states say something true (inspector → configuration summary; Break → "No events yet…"; timeline → "No events yet. Select a card…"; validation → "No issues … as modelled here"). Five invariants: WhyPill on every disabled control (`{state:'on'} | {state:'off', why}` prop); captions branch on outcome; nothing hidden by CSS alone; every demonstrable claim has "Show me"; undocumented labelled in place (`<Fact id>` chip). New principle: the drawing and the text are the same object seen twice (hover a generated line → highlight the member; select a member → scroll to its lines).
 
 
 RAC cards now retain one database identity and one set of redo links, with a
@@ -1009,3 +1009,171 @@ separate inset row for each instance, naming its host and site. The card grows
 with the instance count; Break mode marks failed instance rows individually.
 A RAC card never joins a chassis stack on its first host. Adding an instance
 creates a separate host in the same site in the same undoable edit.
+
+## Small declutter pass (2026-09-26)
+
+The header uses one native Theme picker (System / Light / Dark) and compact
+Undo/Redo arrows with accessible names and action tooltips. Build guidance leads
+with “Click to edit · drag to move · + to add”; connection and renaming instructions
+remain available with Hints. Canvas tools keep their existing actions, with flat
+zoom controls and no extra bordered, shadowed containers around each group.
+
+Validation counts remain in the header and validation panel; the readout no longer
+repeats them. Its protection, failover, playhead and run results are unchanged.
+The healthy validation heading and Break empty state use shorter copy. Warnings,
+refusal reasons, model labels and citations retain their existing visibility.
+
+Break also gives unused vertical space to the topology. Its timeline dock sizes
+to its content, capped at 56vh with scrolling for dense runs; the topology takes
+the remaining height (minimum 260px). Below 768px both return to natural page
+flow, so the mobile viewer does not inherit the dock cap.
+
+Database icon badges distinguish primary (teal, P) from standby (blue, S),
+including snapshot and logical standbys. Down-state red overrides the role color
+but preserves the letter. The role marker and card role label follow the current
+primary at the timeline playhead; far sync and observer glyphs stay distinct.
+The former primary uses F after a failover, rather than implying it has been reinstated as a standby.
+
+The workbench width cap is now 1920px (previously 1360px). Additional width goes
+to the topology and timeline; the inspector retains its 360px width and prose
+retains its local reading widths. The toast shares the same shell cap.
+
+## Editing the event sequence (2026-09-26)
+
+In Break, injected timeline markers are draggable and keyboard focusable. Dragging
+previews against the original axis and commits once on release. That axis stays
+fixed after a successful drop so automatic rescaling cannot visually undo the
+move; “Fit timeline” restores the automatic fit. Other document edits and undo
+refit automatically, as do keyboard moves outside the visible range. Escape, pointer
+cancellation or lost capture discards the preview. Arrow keys move by 1 s (Shift:
+0.1 s), Home/End use the allowed time bounds. Playback pauses while editing. The
+selected event keeps keyboard focus after its new time changes the list order.
+Only injected events can move: computed failover/open/abort markers are read-only,
+as are Learn, print/export and the narrow viewer.
+
+The Events rail offers Earlier/Later when a neighbor exists. These swap adjacent
+time slots in one undoable edit. Events at the same time cannot swap slots; their
+engine priority stays intact, and editing a time separates them. The same bounds
+apply to dragging, keyboard nudges and numeric time inputs (0–900 s).
+
+`ui/break/event-order.ts` defines conservative editing constraints, not Oracle
+claims: retain the authored sequence for the same subject, overlapping host/site/
+instance/member/observer state changes, partition/link changes, and role commands.
+Distinct related events keep a 0.1 s gap; existing simultaneous events retain their
+order. Independent events can pass each other. Disabled reorder actions explain
+why; a refused numeric edit restores the input and reports its allowed range.
+The domain engine still determines the outcome, including command refusals.
+
+The playhead is dragged by its dashed line, grip or time badge; clicking a lane
+or empty plot area does not seek. Grabbing the badge preserves its offset from
+the line. Keyboard seeking and the transport controls remain available.
+
+## Saved work, comparison, explanations and the walkthrough (Track 7, as built)
+
+Ported feature by feature from `feat/usability-workflows` onto the canvas-first
+shell (docs/tasks/ui-followups.md, Track 7). Its competing restyle of the old
+docked layout (`calm.css`, the mockups) was not ported.
+
+- **Saved configurations** (⋯ menu, `ui/workspaces/`, `state/workspaces.ts`):
+  named browser-local copies (`dg-workspaces-v1`) and the 30 most recent drafts
+  that opening something else replaced (`dg-recovery-v1`). Copies hold the
+  document and its edition; stored records are refused unless they decode
+  cleanly. Opening a preset, lesson, file or saved copy is one undoable step
+  (`history.replaceDoc`) that keeps the outgoing draft; an untouched preset is
+  not kept. Undo restores the edition only when the step changed it. These
+  copies are separate from Share and from the JSON export.
+- **Compare alternatives** (⋯ menu, `ui/review/`, `state/review.ts`): a
+  baseline (`dg-review-baseline-v1`, with its edition) against the document
+  under one named scenario, each run from its declared topology with the
+  scenario at t = 0 in place of its events; then the setting and command-block
+  changes. *Common failures* runs the six templates one by one, with optional
+  session-only expectations (outcome, opening deadline, loss limit) checked
+  against the model -- a missing promotion, a missing loss bound or a truncated
+  run never passes. A run made against other settings is marked stale; opening
+  a result restores its tested inputs undoably. Every value is this page's
+  model and says so; ObserverOverride stays FALSE. It prints as a section of
+  the `?report=1` report; there is no second report generator.
+- The Commit panel and the comparison share `panels/commit-model.ts`
+  (`directCommitLegs`) and honour the document's `commitWaitPolicy`.
+- **Why this result?** is a fold on the Break rail under the event list, and
+  the quiet "Why?" beside the Outcome chip opens it. Steps come from the events
+  and the trace (`break/explain.ts`) and keep their claims' basis and
+  citations; selecting one pauses playback, seeks and selects its subjects.
+- **The classic walkthrough** (`intro/Walkthrough.tsx`) starts from the third
+  hero button. It is a card under the guidance line, in the header's flow, so
+  the measured bar bottom grows with it; three steps (crash, advance, change
+  the threshold), and it ends when another document replaces the example.
+- The ⋯ menu's dialogs are `Sheet variant="card"`: a floating card under the
+  bar, mounted by the shell (the menu is a `<details>` that shuts on a press).
+  `Sheet` keeps Tab inside a dialog and returns focus to the menu when its
+  opener was folded away.
+
+### Existing setup import
+
+The ⋯ menu opens a sheet for SQL collector output, separate from native document
+Import. SQL and optional Bash downloads are static same-origin assets. Paste or
+file input is capped at 2 MB of UTF-8. A newer paste or file selection invalidates
+an earlier pending file read and its preview. Preview does not mutate the current document;
+Draw imported topology uses `replaceWorkingDocument` with recovery and undo.
+Assumptions are retained in document notes (the codec's 4000-character limit,
+with explicit truncation notice), and a persistent disclosure above the drawing
+keeps them visible across export, share and reload. DGMGRL text is not accepted.
+
+## The application on the drawing (as built, 2026-09-28)
+
+- **A card of its own** (`NodeKind 'application'`, glyph `app`, an `APP` chip): two
+  lines, the width of a database card, on a host of its own in the primary's data
+  centre to start with. It is dragged into another data centre like any card
+  (`moveToSite`), renamed in place, removed from the rail's header, and added from
+  the toolbar — where `+ Application` is offered only while the drawing has none
+  (`AddAction.offered`): there is one, and a button grey for good says nothing. It
+  shares no host (`mergeVerdict`, `WHY_APPLICATION_OWN_HOST` — the page's own rule,
+  not Oracle's, and worded that way).
+- **Its band is under the member band** (`LAYOUT.appGap`), the observers' is over
+  it, so an observer's line comes down onto a card's top edge and the application's
+  comes up onto its bottom one. In its own column the line is a straight hop, left
+  of the card's middle; to another column it leaves the card sideways, runs under
+  every database and rises beside the data centre's name (`clearOfName`), never
+  through it. `LinkKind 'connect'`: dash-dot, colour `--cn`, one line per database
+  on the ADDRESS_LIST, captioned `sessions` to the database publishing the service
+  and `address` (faded) to the others; `cut` and `down` as every line says them.
+- **The lane between the bands** (`Geometry.midLaneY`, `LAYOUT.midLane`): with an
+  application under the primary, a redo route that used to leave by the card's
+  bottom edge for the lane under everything would run through the application's
+  card. It takes the lane between the member band and the application instead
+  (`corridor 'mid'`), tried before `under`; null — and nothing changes — when no
+  application is drawn.
+- **A data centre has room in it.** `LAYOUT.colPad` is 24 (was 14): the box the
+  layout draws. `LAYOUT.fitPad` stays 14: `SiteBox.fit`, what a resize may not cut
+  into, so a box with a size of its own can still be drawn tighter than the
+  layout's. The observers' trunk gap grew by the difference, so the top trunk still
+  passes under an observer-only data centre's name. All eleven canvas goldens moved;
+  they record geometry.
+- **The rail** (`ApplicationForm`): name, data centre, then the connect string as
+  the descriptor spells it — `SERVICE_NAME`, `TRANSPORT_CONNECT_TIMEOUT`,
+  `CONNECT_TIMEOUT` (0 is "not set": no default is documented), `RETRY_COUNT`,
+  `RETRY_DELAY`, `FAILOVER`, `LOAD_BALANCE` — the ADDRESS_LIST as a tick per
+  database (a far sync instance grey, with its reason), and the dead-address answer
+  under *This page's model*. A line drawn between the application and a database
+  lists that database. A new standby joins the list; a standby moved to another
+  data centre stays on it.
+- **Break: the application's view.** Three lanes under the configuration's, on the
+  same axis and under the same playhead (`timeline/app-lanes.ts`, pure): `Service`,
+  `Sessions`, `New connections`, headed by one line that says what they add up to
+  ("outage 60.3 s — 15.3 s of it inside the connect string") and that it is this
+  page's model. The ladder is drawn address by address; the reconnect and the
+  exhausted string are marks. The axis stretches to the application's own end
+  (`axisSpan(trace, events, doc)`, capped as the Configure panel caps it), because
+  the reconnect is usually past the role change. `Application's view` in the legend
+  row folds the lanes away (`appLanesShown`, a moment's view); the pinned export
+  scale never draws them. The readout gains `Application reconnects` / `Application
+  stays down`.
+- **What a document without one does.** Nothing new: no card, no lanes, no lane
+  between the bands, the published vantage. A link or a file written before the
+  card existed, and every published-page link, opens that way; `+ Application` adds
+  it. The presets, the first-visit document and Reset carry it.
+- **Found on the way, and fixed:** a published-page link opened the Introduction
+  over itself on a first visit (its query keys are not in `ADDRESSED`), so
+  `site/smoke.mjs` failed its two legacy-link checks. Boot now counts an upgraded
+  link as a document.
+

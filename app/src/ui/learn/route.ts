@@ -26,6 +26,7 @@ import type { Lesson } from '@/content';
 import { doc, withTopology } from '@/state/doc';
 import { edit, resetHistory } from '@/state/history';
 import { presetId } from '@/state/url';
+import { activeWorkspaceId, keepRecovery } from '@/state/workspaces';
 import { lessonId, lessonStep, mode, tNow } from '@/state/view';
 import { presetIdFor, stepTopology } from './apply';
 
@@ -74,6 +75,8 @@ export function openLessonStep(lesson: Lesson, step: number, how: 'boot' | 'live
   if (how === 'boot') {
     resetHistory(withTopology(doc.value, topology));
   } else {
+    /* The reader's own draft is kept before a lesson draws over it. */
+    keepRecovery();
     edit(
       `Open ${lesson.title}, step ${step + 1}`,
       (d) => withTopology(d, topology),
@@ -81,6 +84,7 @@ export function openLessonStep(lesson: Lesson, step: number, how: 'boot' | 'live
     );
   }
   presetId.value = pid;
+  activeWorkspaceId.value = null;
 }
 
 /**

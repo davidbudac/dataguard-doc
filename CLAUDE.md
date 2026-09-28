@@ -19,6 +19,14 @@ Issues live in GitHub Issues (github.com/davidbudac/dataguard-doc), via the `gh`
 
 Single-context: root `CONTEXT.md` + `docs/adr/`. See `docs/agents/domain.md`.
 
+### Fact check
+
+Reviewing what the workbench asserts against Oracle's documentation is a procedure, not an
+improvisation: `docs/agents/fact-check.md`. It produces a report and no fixes. The last one is
+`SIMULATOR_FACT_CHECK_2026-09-28.md`; its scenarios run with
+`cd app && npx vitest run --config vitest.factcheck.config.ts`. A feature that adds an outcome
+adds its probes to `app/test/fact-check/probes.probe.ts`.
+
 ## Keep `simulator/fsfo-simulator.html` pure ASCII
 
 **Never write a raw non-ASCII character into that file.** No em dashes, middle dots,

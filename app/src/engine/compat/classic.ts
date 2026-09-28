@@ -21,7 +21,7 @@ import type {
 } from '../types/topology';
 import { isDatabase } from '../types/topology';
 import { defaultClient, defaultConfiguration, defaultEnvironment } from '../serialize/schema';
-import type { Outcome } from '../types/trace';
+import type { Outcome, SimParams } from '../types/trace';
 import { simulate } from '../sim/simulate';
 import type { DataLossKind, EngineTrace, LagStall } from '../sim/simulate';
 import { SW_CONVERT, SW_VERIFY } from '../sim/roles';
@@ -271,6 +271,10 @@ export function classicTopology(o: ClassicKnobs = {}): TopologyDoc {
     target: { kind: 'list', members: [standby.id] },
     thresholdSeconds: k.threshold,
     lagLimitSeconds: lagLimitFor(edition, k.mode, k.lagPolicy, k.lagLimit),
+    /* The published page always carries an explicit lag limit -- its 26ai
+       policy is already folded in by lagLimitFor -- so a migrated document
+       says it was set, and never follows the reading edition's default. */
+    lagLimitSet: true,
     lagType: k.lagType === 'transport' ? 'TRANSPORT' : 'APPLY',
     lagGraceTimeSeconds: k.lagGraceTime,
     pingIntervalMs: k.pingSet ? k.pingInterval : null,
@@ -530,6 +534,30 @@ export function toLegacyModel(
 }
 
 /**
+ * The three readings the published page keeps and the workbench no longer
+ * shares (fact check 2026-09-28). `simulator/fsfo-simulator.html` is frozen,
+ * and this adapter's job is to reproduce its `computeFsfo` number for number
+ * -- `legacy-matrix.test.ts` and `legacy-fragment-parity.test.ts` hold it to
+ * that -- so it asks the engine for that page's arithmetic by name:
+ *
+ *  - the ping properties take effect under 19c, where they do not exist
+ *    (ED-01);
+ *  - a primary that reaches neither the observer nor the target stalls even
+ *    when the target was already past the lag limit, where Oracle has nothing
+ *    left to confirm and lets it run (SIM-02);
+ *  - what a manual failover loses in maximum performance mode is drawn as the
+ *    apply lag (SIM-06).
+ *
+ * Nothing else passes these. A document built with `classicTopology` and run
+ * through `simulate` directly gets the workbench's readings.
+ */
+export const PUBLISHED_PAGE: SimParams = {
+  legacyPingUnder19c: true,
+  legacyStallWhenNotReady: true,
+  legacyManualLossIsApplyLag: true,
+};
+
+/**
  * `computeFsfo(c)` on the general engine: build the 1+1+1 deployment, turn the
  * scenario into events, simulate, and project the trace back onto the
  * published object.
@@ -554,6 +582,6 @@ export function legacyComputeFsfo(c: ClassicKnobs = {}): LegacyModel {
      synchronized because the commit waited for its acknowledgement, whatever
      the slider says -- so the document goes to the simulator as authored. */
 
-  const trace = simulate(doc, doc.events);
+  const trace = simulate(doc, doc.events, PUBLISHED_PAGE);
   return toLegacyModel(trace, doc, { scenario });
 }

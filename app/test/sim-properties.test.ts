@@ -10,6 +10,7 @@
 import { describe, expect, it } from 'vitest';
 import { CITATION_IDS } from '../src/engine/citations';
 import type { CitationId } from '../src/engine/citations';
+import { lagLimitOf } from '../src/engine/defaults';
 import { classicTopology } from '../src/engine/compat/classic';
 import type { ClassicMode, ClassicObserverLoc, ClassicScenario } from '../src/engine/compat/classic';
 import { hostId, memberId, observerId, siteId } from '../src/engine/ids';
@@ -19,6 +20,7 @@ import {
   membersReachable,
 } from '../src/engine/net/graph';
 import type { NetState } from '../src/engine/net/graph';
+import { resolveRedoGraph } from '../src/engine/redo/resolve';
 import { simulate, stateAt } from '../src/engine/sim/simulate';
 import type { EngineTrace } from '../src/engine/sim/simulate';
 import type { Claim, Finding } from '../src/engine/types/claims';
@@ -73,6 +75,51 @@ function corpus(): Case[] {
     events: [
       { at: 0, kind: 'site.down', site: siteId('dc2') },
       { at: 0, kind: 'host.down', host: hostId('dc1-prm01') },
+    ],
+  });
+  out.push({
+    name: 'multi-target, dc2 down and the primary after it',
+    doc: multiTargetDoc(),
+    events: [
+      { at: 0, kind: 'site.down', site: siteId('dc2') },
+      { at: 10, kind: 'host.down', host: hostId('dc1-prm01') },
+    ],
+  });
+  /* The outages at different times: the standby first, then the observer;
+     the observer first, then the standby; and a standby that comes back. */
+  const cut = (at: number, link: string): TimedEvent =>
+    ({ at, kind: 'link.cut', link: link as never });
+  out.push({
+    name: 'classic, standby cut off, then the observer, then the primary crashes',
+    doc: classicTopology({ observerLoc: 'dc3' }),
+    events: [cut(0, 'dc1-dc2'), cut(100, 'dc1-dc3'), { at: 200, kind: 'host.down', host: hostId('dc1-prm01') }],
+  });
+  out.push({
+    name: 'classic, observer stopped, then the standby cut off',
+    doc: classicTopology({ observerLoc: 'dc3' }),
+    events: [{ at: 0, kind: 'observer.stop', observer: observerId('obs01') }, cut(50, 'dc1-dc2')],
+  });
+  out.push({
+    name: 'classic maxperf, standby cut off, the lag grows past the limit, crash',
+    doc: classicTopology({ observerLoc: 'dc3', mode: 'maxperf', logXptMode: 'async', standbyLag: 10 }),
+    events: [cut(0, 'dc1-dc2'), { at: 100, kind: 'host.down', host: hostId('dc1-prm01') }],
+  });
+  out.push({
+    name: 'classic, standby down and back, crash',
+    doc: classicTopology({ observerLoc: 'dc3' }),
+    events: [
+      { at: 0, kind: 'host.down', host: hostId('dc2-sby01') },
+      { at: 50, kind: 'host.up', host: hostId('dc2-sby01') },
+      { at: 60, kind: 'host.down', host: hostId('dc1-prm01') },
+    ],
+  });
+  out.push({
+    name: 'classic, crash, failover, the former primary returns, the new primary dies',
+    doc: classicTopology({ observerLoc: 'dc3' }),
+    events: [
+      { at: 0, kind: 'host.down', host: hostId('dc1-prm01') },
+      { at: 100, kind: 'host.up', host: hostId('dc1-prm01') },
+      { at: 200, kind: 'host.down', host: hostId('dc2-sby01') },
     ],
   });
   out.push({
@@ -191,8 +238,15 @@ describe('SS8.2 properties', () => {
     }
   });
 
-  it('the primary stalls only when it reaches neither the master observer nor any target', () => {
+  /* Fact check SIM-02: the property used to be "stalled whenever it reaches
+     neither". Oracle stalls a primary only while a change of state is left to
+     confirm, so the target has to have been ready and the configuration
+     observed when the primary lost the two of them. Every case this property
+     walks loses them at t = 0 or not at all, so "ready" is the target as
+     configured. */
+  it('the primary stalls only when it reaches neither the master observer nor any target, with a change of state left to confirm', () => {
     for (const { c, trace } of TRACES) {
+      if (c.events.some((e) => e.at > 0)) continue;
       const net = netAt(c.doc, c.events, 0);
       const reach = buildReachability(c.doc, net);
       const primary = c.doc.members.find((m) => m.id === trace.epochs[0]?.primary) as Member;
@@ -207,8 +261,21 @@ describe('SS8.2 properties', () => {
         return !!m && memberAlive(c.doc, net, m) && membersReachable(c.doc, net, primary, m, reach);
       });
       const armed = c.doc.config.fsfo.state === 'enabled';
-      const expected = armed && alive && !obsSees && !targetSees;
+      const first = c.doc.members.find((m) => m.id === targets[0]);
+      const steady = resolveRedoGraph(c.doc, { primary: primary.id });
+      const gatedOnLag = c.doc.config.protectionMode === 'MAXPERFORMANCE'
+        || (c.doc.config.edition === '26ai' && c.doc.config.protectionMode === 'MAXAVAILABILITY'
+          && lagLimitOf(c.doc) > 0);
+      const ready = !!first && first.kind === 'database' && (gatedOnLag
+        ? first.applyLagSeconds <= lagLimitOf(c.doc)
+        : steady.members[first.id]?.synchronized.value === true);
+      const expected = armed && alive && !obsSees && !targetSees && ready;
       expect(trace.facts.conditions.stalled, c.name).toBe(expected);
+      if (armed && alive && !obsSees && !targetSees && !ready) {
+        expect(trace.facts.abortAt, c.name).toBe(null);
+        expect(trace.facts.initiateAt, c.name).toBe(null);
+        expect(trace.decisions.some((d) => d.id === 'PRIMARY.NO_STALL'), c.name).toBe(true);
+      }
     }
   });
 

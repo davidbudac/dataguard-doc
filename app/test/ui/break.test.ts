@@ -21,10 +21,11 @@ import { clearSelection, hintsOn, mode, selection, tNow, viewport } from '@/stat
 import { BreakRail, scenarioNotesOpen } from '@/ui/break/BreakRail';
 import { EventMenu, menuOpen } from '@/ui/canvas/EventMenu';
 import {
-  actionsFor, anythingDownUnder, applyTemplate, clearEvents, describeEvent, isDownAt,
+  actionsFor, anythingDownUnder, applyTemplate, clearEvents, describeEvent, hoverTools, isDownAt, NO_RESTART_AFTER_ABORT,
   removeEventAt, restoreQuietLine, runAction, setEventTime, templates,
 } from '@/ui/break/events';
 import { WHY } from '@/ui/inspector/why';
+import { DEFAULT_OPEN, openSections, SCENARIOS_ID } from '@/ui/inspector/sections';
 import { printing } from '@/ui/print';
 
 const mount = (component: () => unknown): HTMLElement => {
@@ -60,9 +61,13 @@ beforeEach(() => {
   tNow.value = 0;
   menuOpen.value = true;
   scenarioNotesOpen.value = false;
+  openSections.value = new Set<string>([DEFAULT_OPEN]);
   hintsOn.value = false;
   clearSelection();
 });
+
+/** Unfold the scenarios, which start folded. */
+const openScenarios = (): void => { openSections.value = new Set<string>([DEFAULT_OPEN, SCENARIOS_ID]); };
 
 describe('the six templates', () => {
   const t = classicTopology({});
@@ -139,7 +144,7 @@ describe('the event list', () => {
   it('is empty, and says something true, until something is injected', async () => {
     const root = mount(BreakRail);
     await tick();
-    expect(root.textContent).toContain('Nothing has happened yet');
+    expect(root.textContent).toContain('No events yet');
     /* The scenarios sit under the list now, so the empty state points down. */
     expect(root.textContent).toContain('Pick a scenario below');
     expect(root.textContent).not.toContain('Pick a scenario above');
@@ -199,10 +204,11 @@ describe('the order of the rail', () => {
   });
 
   it('counts the injected events in the eyebrow, above the scenarios', async () => {
+    openScenarios();
     applyTemplate(byId(doc.value.topology, 'isolated')!);
     const root = mount(BreakRail);
     await tick();
-    expect(eyebrows(root)).toEqual(['Events (2)', 'One-click scenarios', 'Validation']);
+    expect(eyebrows(root)).toEqual(['Events (2)', 'Why this result?', 'One-click scenarios', 'Validation']);
     /* Every event row is drawn before the first scenario row. */
     const nodes = [...root.querySelectorAll('.evt, .tmpl')];
     const firstTmpl = nodes.findIndex((n) => n.classList.contains('tmpl'));
@@ -211,7 +217,23 @@ describe('the order of the rail', () => {
   });
 });
 
+describe('the scenario fold', () => {
+  it('starts folded: the six names are absent until the toggle is pressed', async () => {
+    const root = mount(BreakRail);
+    await tick();
+    expect(root.querySelectorAll('.tmpl')).toHaveLength(0);
+    const tog = [...root.querySelectorAll<HTMLButtonElement>('button.grp-tog')]
+      .find((b) => b.textContent?.includes('One-click scenarios'))!;
+    expect(tog.getAttribute('aria-expanded')).toBe('false');
+    tog.click();
+    await tick();
+    expect(root.querySelectorAll('.tmpl')).toHaveLength(templates(doc.value.topology, 0).length);
+  });
+});
+
 describe('the scenario descriptions', () => {
+  beforeEach(openScenarios);
+
   it('is a shelf of names, with every sentence one press away', async () => {
     const root = mount(BreakRail);
     await tick();
@@ -278,7 +300,7 @@ describe('the scenario descriptions', () => {
     await tick();
     const lede = root.querySelectorAll('.tmpl-lede');
     expect(lede).toHaveLength(1);
-    expect(lede[0]!.textContent).toContain('replaces whatever is injected now');
+    expect(lede[0]!.textContent).toContain('replaces the current events');
     expect(root.querySelector('.tmpls')!.previousElementSibling).toBe(lede[0]!);
   });
 
@@ -373,6 +395,56 @@ describe('the canvas menu', () => {
 });
 
 /**
+ * The engine now refuses a SWITCHOVER TO a down target or with the primary
+ * down, refuses a FAILOVER TO a down target, and draws no reinstatement where
+ * its preconditions fail. The menu used to offer all three unconditionally;
+ * each now carries the same reading the run itself acts on.
+ */
+describe('SWITCHOVER, FAILOVER and REINSTATE say why they are off', () => {
+  it('SWITCHOVER is off while the target is down, and on again once it is restored', () => {
+    inject([{ at: 0, kind: 'host.down', host: 'dc2-sby01' }]);
+    expect(actionsFor(doc.value.topology, ['sby01'], 0).find((a) => a.id === 'cmd.switchover')?.enabled)
+      .toEqual({ state: 'off', why: WHY.switchoverTargetDown });
+    inject([]);
+    expect(actionsFor(doc.value.topology, ['sby01'], 0).find((a) => a.id === 'cmd.switchover')?.enabled)
+      .toEqual({ state: 'on' });
+  });
+
+  it('SWITCHOVER is off while the primary is down', () => {
+    inject([{ at: 0, kind: 'host.down', host: 'dc1-prm01' }]);
+    expect(actionsFor(doc.value.topology, ['sby01'], 0).find((a) => a.id === 'cmd.switchover')?.enabled)
+      .toEqual({ state: 'off', why: WHY.switchoverPrimaryDown });
+  });
+
+  it('FAILOVER is off while the target is down, but not while the primary is', () => {
+    inject([{ at: 0, kind: 'host.down', host: 'dc2-sby01' }]);
+    expect(actionsFor(doc.value.topology, ['sby01'], 0).find((a) => a.id === 'cmd.failover')?.enabled)
+      .toEqual({ state: 'off', why: WHY.failoverTargetDown });
+    inject([{ at: 0, kind: 'host.down', host: 'dc1-prm01' }]);
+    expect(actionsFor(doc.value.topology, ['sby01'], 0).find((a) => a.id === 'cmd.failover')?.enabled)
+      .toEqual({ state: 'on' });
+  });
+
+  it('REINSTATE DATABASE is off for the current primary and for a standby that never held the role', () => {
+    const t = doc.value.topology;
+    expect(actionsFor(t, ['prm01'], 0).find((a) => a.id === 'cmd.reinstate')?.enabled)
+      .toEqual({ state: 'off', why: WHY.notFormerPrimary });
+    expect(actionsFor(t, ['sby01'], 0).find((a) => a.id === 'cmd.reinstate')?.enabled)
+      .toEqual({ state: 'off', why: WHY.notFormerPrimary });
+  });
+
+  it('REINSTATE DATABASE turns on for the primary a failover left behind, and stays off for the new primary', () => {
+    applyTemplate(byId(doc.value.topology, 'crash')!);
+    /* The published scenario's failover is open by t = 55 (see
+       sim-fact-check.test.ts's ED-01/SIM-03 readings of the same threshold). */
+    const acts = actionsFor(doc.value.topology, ['prm01'], 60);
+    expect(acts.find((a) => a.id === 'cmd.reinstate')?.enabled).toEqual({ state: 'on' });
+    expect(actionsFor(doc.value.topology, ['sby01'], 60).find((a) => a.id === 'cmd.reinstate')?.enabled)
+      .toEqual({ state: 'off', why: WHY.notFormerPrimary });
+  });
+});
+
+/**
  * The menu injects at the playhead, and until it said so the header's
  * "Inject at t = 0 s" read as a property of the menu rather than as a reading
  * of where the playhead happened to be.
@@ -387,12 +459,12 @@ describe('the menu says where an event will land', () => {
     /* The clock reading is the fact, and it is in the header at every
        setting; the sentence that spells it out is a hint. */
     expect(title).toContain('Inject at t =');
-    expect(root.textContent).not.toContain('Events land at the playhead');
+    expect(root.textContent).not.toContain('New events use the playhead time');
 
     hintsOn.value = true;
     const withHints = mount(EventMenu);
     await tick();
-    expect(withHints.textContent).toContain('Events land at the playhead');
+    expect(withHints.textContent).toContain('New events use the playhead time');
   });
 
   it('makes the clock reading the control, and moving it moves the playhead', async () => {
@@ -707,5 +779,53 @@ describe('the playhead after an injection', () => {
     const apply = actionsFor(doc.value.topology, ['sby01'], 7).find((a) => a.id === 'apply.toggle');
     runAction(apply!);
     expect(tNow.value).toBe(7);
+  });
+});
+
+const icons = (key: string, at = 0): string[] =>
+  hoverTools(doc.value.topology, key, at).map((t) => `${t.icon}:${t.enabled.state}`);
+
+describe('the hover icons', () => {
+  it('offers crash and isolate on a data centre, shutdown on a database, cut on a line', () => {
+    expect(icons('dc1')).toEqual(['crash:on', 'isolate:on']);
+    expect(icons('prm01')).toEqual(['shutdown:on', 'crash:on']);
+    expect(icons('obs01')).toEqual(['stop:on', 'crash:on']);
+    expect(icons('dc1-dc2')).toEqual(['cut:on']);
+  });
+
+  it('isolating cuts every link of the data centre, and the icon turns into reconnect', () => {
+    hoverTools(doc.value.topology, 'dc1', 0).find((t) => t.icon === 'isolate')!.run();
+    const cuts = doc.value.topology.events.filter((e) => e.kind === 'link.cut');
+    expect(cuts.map((e) => (e as { link: string }).link).sort()).toEqual(['dc1-dc2', 'dc1-dc3']);
+    expect(icons('dc1')).toEqual(['crash:on', 'reconnect:on']);
+    expect(icons('dc1-dc2')).toEqual(['heal:on']);
+  });
+
+  it('turns a shut-down database into a start, one undo', () => {
+    hoverTools(doc.value.topology, 'prm01', 0).find((t) => t.icon === 'shutdown')!.run();
+    expect(kinds(doc.value.topology.events)).toEqual(['member.down']);
+    expect(icons('prm01')).toEqual(['startup:on', 'crash:on']);
+    undo();
+    expect(doc.value.topology.events).toHaveLength(0);
+  });
+
+  it('draws a refused icon grey rather than dropping it', () => {
+    inject([{ at: 0, kind: 'site.down', site: 'dc1' }]);
+    /* The host is held down by its data centre: its restore says so. */
+    expect(icons('prm01')).toContain('startup:off');
+  });
+});
+
+describe('the hover icons follow the run, not only the events', () => {
+  it('turns a primary the broker aborted into a grey start, with the reason', () => {
+    applyTemplate(byId(doc.value.topology, 'isolated')!);
+    const abortAt = [...Array(1200).keys()].map((i) => i / 10)
+      .find((t) => membersAt(t)['prm01'] === 'aborted');
+    expect(abortAt).toBeDefined();
+    expect(icons('prm01', 0)).toEqual(['shutdown:on', 'crash:on']);
+    const late = hoverTools(doc.value.topology, 'prm01', abortAt! + 1);
+    expect(late.map((t) => `${t.icon}:${t.enabled.state}`)).toEqual(['startup:off', 'crash:on']);
+    const why = late[0]!.enabled;
+    expect(why.state === 'off' && why.why).toBe(NO_RESTART_AFTER_ABORT);
   });
 });

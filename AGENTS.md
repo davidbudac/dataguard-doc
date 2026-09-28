@@ -19,7 +19,8 @@ produced, and how to extend it without breaking consistency or accuracy.
 | `diagrams/fsfo-sequence.svg` (+`.png`) | Sequence diagram of the crash case with an elapsed-time gutter |
 | `diagrams/fsfo-net-timeout.svg` (+`.png`) | Two panels separating NET_TIMEOUT (redo transport) from the broker failover clocks |
 | `diagrams/README.md` | Figure embeds, broker-property and redo-transport-property tables with verified defaults, the ping-properties quirk, the verified-facts sections behind the commit/reopen/observer/placement/side-topics views (including the 24-cell observer-placement outcome matrix) and behind the 26ai edition switch (the MaxAvailability lag-limit semantics and Oracle's self-contradiction on them, `PrimaryDatabaseCandidates`, `V$FS_FAILOVER_OBSERVERS`), the drawing idealizations, Oracle doc links. Its *Topology features* section points at `app/design/facts.md` for far sync, cascading, RedoRoutes, multi-target and multi-observer sources |
-| `app/` | The workbench: TypeScript + Vite + Preact + signals. A pure, DOM-free engine in `app/src/engine` (types, citation catalogue, validation rules, redo-graph resolver, epoch-loop simulator, generators, the legacy adapter), the interface in `app/src/ui` (including the on-canvas action bar, the Introduction page and the `Hints` toggle — see `app/design/ui.md` §3c–§3i; §3h is how the drawing is driven: click selects, `⋯` for the bar, drag-to-place, inline rename, marquee, shortcuts; §3i is the lean pass: the toolbar is the one add surface, Remove sits in the rail header), state in `app/src/state`, twelve presets in `app/src/presets`, ten lessons and the reference tables in `app/src/content`, 1752 vitest tests across 61 files in `app/src/**/__tests__` and `app/test`. Built to `_site/` and served at `/dataguard/`. Zero external requests, no inline script and no inline style — the page is meant to run under `script-src 'self'; style-src 'self'` |
+| `app/` | The workbench: TypeScript + Vite + Preact + signals. A pure, DOM-free engine in `app/src/engine` (types, citation catalogue, validation rules, redo-graph resolver, epoch-loop simulator, generators, the legacy adapter), the interface in `app/src/ui` (including the on-canvas action bar, the Introduction page and the `Hints` toggle — see `app/design/ui.md` §3c–§3i; §3h is how the drawing is driven: click selects, `⋯` for the bar, drag-to-place, inline rename, marquee, shortcuts; §3i is the lean pass: the toolbar is the one add surface, Remove sits in the rail header), state in `app/src/state`, twelve presets in `app/src/presets`, ten lessons and the reference tables in `app/src/content`, 2375 vitest tests across 89 files in `app/src/**/__tests__` and `app/test`. Built to `_site/` and served at `/dataguard/`. Zero external requests, no inline script and no inline style — the page is meant to run under `script-src 'self'; style-src 'self'` |
+| `app/public/collectors/` | Read-only SQL collector, optional Bash/SQL*Plus wrapper and run instructions for existing setups. The ⋯ menu's **Import existing setup** sheet previews pasted/file output before drawing it. `engine/collect.ts` maps current routes; imported `routesObserved` prevents invented NULL-default routes. Missing broker settings and placement assumptions remain in document notes. Validated live on a 19c primary + mounted standby (SYSDBA, local OS auth); wallet, least-privilege, RAC and far sync remain unverified. DGMGRL transcripts are not parsed. |
 | `app/design/facts.md` | The verified Oracle fact sheet for the topology features (far sync, cascading, multiple standbys and FSFO targets, multiple observers, RedoRoutes, member types, destination counts), researched 2026-08-16 against docs.oracle.com and re-verified 2026-08-17, marked `[D]` / `[D-later]` / `[UNDOC]` / `[CONFLICT]` per claim. **The only permitted source of a "documented" claim in the application.** Its top-five traps are restated in the accuracy rules below |
 | `app/design/engine.md` | The engine design: `Claim`/`Basis` labelling, the topology data model, the validation catalogue, the redo-graph resolver, the epoch-loop failure engine, the compat adapter and the 24-cell matrix gate, the generators, the module layout — plus §10, *Deviations from the design as built*, which is where the code and the specification differ |
 | `app/design/ui.md` | The application architecture: premises carried over from the legacy page, project structure and the CSP goal, Document-vs-View state, the four modes, canvas layout/routing, timeline, the migration table from the six legacy chapters, and the taste notes. Its as-built notes (event-menu placement, the mode-aware readout, the drawer's focus contract, the print pass) are the record of what the code does where it went past the design |
@@ -27,6 +28,8 @@ produced, and how to extend it without breaking consistency or accuracy.
 | `app/README.md` | The short version of the three above: what it is, dev commands, structure, testing, deploy pointer |
 | `simulator/fsfo-simulator.html` | **Frozen.** Source fragment of the page that used to be published at `/dataguard/`; now served at `/dataguard/legacy/`. English only, pure ASCII (see [CLAUDE.md](CLAUDE.md)). Bug-fix territory only — new work goes into `app/` |
 | `testing/README.md` | Test runbook: step-by-step drills verifying each documented situation against a real 19c configuration (crash, isolation, observer loss, NET_TIMEOUT, blocked failover, reopen/MaxFailure, client view, commit measurement, plus four topology drills for far sync, cascading, multi-target and multiple observers), with an RTO/RPO probe harness and reinstate cleanup. Repo-only markdown — not part of the published site |
+| `docs/agents/fact-check.md` | How to review the workbench against Oracle: the evidence rules (only docs.oracle.com, quotes matched by grep, both editions, a live system where there is one), the eight slices, the report format, and the traps the first review fell into. With it: `app/test/fact-check/probes.probe.ts` (one runnable scenario per finding, printing `OPEN` or `CHANGED`; run with `cd app && npx vitest run --config vitest.factcheck.config.ts`, never part of `npm test`), `citations.probe.ts` (every quote in the citation catalogue looked for on the page it cites; network, so only with `FACT_CHECK_ONLINE=1`), `fetch-docs.sh` and `totext.py` (the Oracle pages as greppable text, written outside the repo) |
+| `SIMULATOR_FACT_CHECK_2026-09-28.md` | The report of the first full review of `app/` against 19c and 26ai, with a read-only look at a live 19.27 configuration, **and what was done about each finding** (its *Resolution* section). The findings are fixed except where that section says a decision was taken instead — one role change per run, resynchronization drawn as immediate, the 19c edition meaning 19c as documented — and the accuracy rules below were corrected with them. A later review re-uses its finding ids |
 | `site/build.mjs` | The site build, in three steps: `npm run build` in `app/` (which empties `_site/` and writes the hashed bundle), then `site/build-legacy.mjs`, then `assertNoInline(_site/index.html)` — a built page carrying a `<script>` with a body, an `on*=` handler or a `style=` attribute fails the build rather than the browser's content security policy. The guard proves it can fail (three fixtures it must reject, one it must accept) before it is trusted to pass |
 | `site/build-legacy.mjs` | What `site/build.mjs` used to be: wraps the fragment into a full page (doctype, charset, title, favicon, canonical + social meta) and enforces the ASCII-only guard — it exits non-zero on any byte above U+007E, naming the offending lines. Writes `_site/legacy/index.html` and copies `diagrams/` to `_site/diagrams`, which both pages share |
 | `site/smoke.mjs` | Dependency-free browser check of the built tree: serves `_site/` over `node:http`, loads it in headless Chrome (`--dump-dom`, console messages captured through `--enable-logging=stderr`), takes the page's own `data-permalink` for the `classic` and `far-sync-zero-loss` presets and reloads it cold — an untouched preset now carries no `#t=` at all, so the check accepts either a `#t=` document or a short link naming the preset (and asserts the latter is under 200 characters) — asserts the node cards, the timeline lanes and the outcome chip, opens each of the four modes by name, and checks that a published-page link (`?sc=iso&lat=2&lang=cs#ch-clocks`) upgrades into Break mode like any other old link, following *that* permalink cold to keep one real-browser `CompressionStream` → `DecompressionStream` round trip (an upgraded legacy link names no preset, so it must carry `#t=`). Probes HTTP first and falls back to an inlined single-file copy over `file://` where the machine's headless Chrome cannot fetch over HTTP. Exits non-zero on any failed check, any console message, or any file the page asked for and did not get |
@@ -62,8 +65,8 @@ public URL.
 
 The three gates, and what each one can catch that the others cannot:
 
-1. `npm --prefix app run test` — the application's own suite (**1752 tests
-   across 61 files**): the engine's invariants, the 24-cell matrix through the
+1. `npm --prefix app run test` — the application's own suite (**2375 tests
+   across 89 files**): the engine's invariants, the 24-cell matrix through the
    compat adapter, the validation catalogue, the generator goldens, the canvas
    and timeline geometry, the URL and file round trips.
 2. `node --test site/test.mjs` — the same kind of assertion against the legacy
@@ -199,6 +202,16 @@ agree on:
   observer and the target standby to have lost the primary for the threshold,
   plus the standby's readiness check (synchronized in MaxAvailability/
   MaxProtection; apply lag ≤ `FastStartFailoverLagLimit` in MaxPerformance).
+  **Readiness is state, not a snapshot of the sliders.** Oracle: "either the
+  observer or target standby database may allow the primary database to continue
+  redo generation after first recording that a fast-start failover cannot
+  happen", and fast-start failover cannot occur if "the target standby database
+  was not synchronized with the primary database at the time the primary
+  database failed". So a standby that was cut off while the primary kept
+  committing is `UNSYNCHRONIZED` (or `TARGET OVER LAG LIMIT`: the lag grows
+  while it receives nothing), and a later primary failure gives **no**
+  fast-start failover. Never draw a zero-loss failover to a standby the primary
+  had been running without.
 - **`ObserverOverride` default FALSE, and the whole page assumes the default.**
   The "both the observer and the standby must have lost the primary" rule above
   is that default's behavior: with TRUE, "an automatic failover [may] occur when
@@ -214,8 +227,19 @@ agree on:
   pingInterval × (pingRetry + 1) — the first failed ping plus its retries,
   ≈ 1.1 s at the minimums — is **this page's model** of that sentence and every
   asset that draws the number must label it as a model, never as a quoted figure.
-  Docs gap: the 19c properties reference does not list these two
-  properties (they exist since 12.2); cite the 21c+ edition for them.
+  (The 21c and 26ai chapters also say "Set both these properties to achieve a
+  primary failure detection time of 1 second", which is 100 ms × 10: quote it
+  beside the model.)
+  **The two properties do not exist in 19c.** They are absent from the 12.2, 18c
+  and 19c property pages, chapters and command references, and from a live 19.27
+  system (neither name is in the `dgmgrl` or `oracle` binary, nor in
+  `SHOW CONFIGURATION VERBOSE`); they are first documented in 21c. An earlier
+  revision of these rules said they "exist since 12.2" — that was wrong. Under
+  the 19c edition the workbench greys them, raises
+  `FSFO.PING_PROPS_NOT_IN_19C` on a document that carries them, never emits
+  them, and detects on the threshold. The frozen legacy page still offers them
+  under 19c; the compat adapter reproduces that through `SimParams.legacyPingUnder19c`,
+  which nothing else may set.
   **26ai defaults contradiction:** the 26ai property pages give the broker
   defaults as 0 — not set, detection governed by the threshold — while the
   26ai FSFO chapter's table still shows 100 ms / 10. The simulator's 26ai
@@ -223,7 +247,18 @@ agree on:
   disagreement; never write "defaults identical in 26ai" unqualified. The
   explicitly-set minimums stay 100 ms / 10 in every edition.
 - `FastStartFailoverLagLimit` default 30 s, min 5 s, MaxPerformance only **under
-  19c**. **Under 26ai it also applies in MaxAvailability, where the broker default
+  19c — and the 19c documentation contradicts itself on it**: the 19c property
+  page says so, while the 19c fast-start failover chapter says "For zero data
+  loss in maximum availability mode, the FastStartFailoverLagLimit property must
+  be set to zero" and prints `Lag Limit: 0 seconds` in a MaxAvailability example.
+  A live 19.27 system in MaxAvailability prints `Lag Limit: 30 seconds (not in
+  use)`, which is what the 19c edition draws — as a `conflict`, with both
+  citations, and with Oracle's spelling `(not in use)`. The MaxAvailability role
+  **arrived in 21c** (21c change list and chapter), not in 26ai; only the
+  per-mode default of 0 is 26ai. A document that never set the property follows
+  the edition's broker default (`lagLimitOf(doc)`), so a MaxAvailability preset
+  is `ZERO DATA LOSS` under both editions.
+  **Under 26ai it also applies in MaxAvailability, where the broker default
   is 0**: zero means the standby must have received everything and the failover
   is zero-loss (the 19c rule written as a number), any non-zero value (min 5 s)
   makes MaxAvailability bounded-loss, permitted while the apply lag is at or
@@ -244,6 +279,13 @@ agree on:
   after fast-start failover is initiated, briefly risking two primaries — the
   rail warns when the sliders cross, and no asset may present "at most one
   database ends up open" as unconditional.
+  `FastStartFailoverLagType`, `FastStartFailoverLagGraceTime` and
+  `PrimaryDatabaseCandidates` are documented as new in 26ai and are absent from
+  the 19c and 21c property pages — but all three are in the property list of a
+  live 19.27 system. The 19c edition is **19c as documented**: it greys them,
+  and says "documented from 26ai; observed in the property list of a 19.27
+  system, which Oracle's 19c documentation does not mention". Never write that
+  observation as documentation.
   `FastStartFailoverLagType` and `FastStartFailoverLagGraceTime` did **not**
   follow it: both stay documented as maximum-performance-mode behavior whatever
   the lag limit is doing in MaxAvailability, and both gray out there. The
@@ -264,21 +306,29 @@ agree on:
   the list omits it. Never word it as "a fence around fast-start failover". The
   19.26 backport is reported by the Data Guard PM's blog series only — not in
   Oracle's release-update documentation, so write it as reported, never as
-  documented.
+  documented. (The property is present on a live 19.27 system; that is an
+  observation, and is labelled as one.)
 - **`PRIMARY UNOBSERVED` is a target-standby status** (broker Table 5-1, and the
   chapter's worked example): the primary shows `FS_FAILOVER_STATUS` =
   `SYNCHRONIZED` with `FS_FAILOVER_OBSERVER_PRESENT` = `NO`, and the target
   standby is where `FS_FAILOVER_STATUS` reads `PRIMARY UNOBSERVED`. Never put
-  `PRIMARY UNOBSERVED` on the primary. With **no observer deployed at all**,
-  `FS_FAILOVER_STATUS` reads `DISABLED` — a third state, not "unobserved".
+  `PRIMARY UNOBSERVED` on the primary. The status needs the standby to still
+  have "connectivity to the observer", so it belongs to a lost *link* between
+  primary and observer, not to a dead observer. Fast-start failover **disabled**
+  reads `DISABLED` — a third state, not "unobserved".
 - **A manual failover with FSFO enabled is conditional, not free.** "You can
   perform a manual failover even if fast-start failover is enabled" holds only
   where the target is the `FastStartFailoverTarget` standby, that standby is
   synchronized (MaxAvailability/MaxProtection) or within the lag limit
   (MaxPerformance), and "the observer is started and communicating with the
-  target standby database", with the primary shut down first. So an *unobserved*
+  target standby database", with the primary shut down first ("You must ensure
+  that the primary database is shut down prior to performing a manual
+  failover"), only to the **current** target ("The failover can only be
+  performed to the current target standby database" — the same holds for a
+  switchover, `ORA-16655`), and never `IMMEDIATE` ("You cannot perform an
+  immediate manual failover when fast-start failover is enabled"). So an *unobserved*
   configuration fails the third condition — `DISABLE FAST_START FAILOVER FORCE`
-  first. Word the no-observer case as a manual failover needing no observer
+  first. Observe-only mode lifts these conditions (see below). Word the no-observer case as a manual failover needing no observer
   *while FSFO is disabled*, never as unconditionally available.
 - **`FastStartFailoverAutoReinstate` is narrower than "the old primary returns".**
   It reinstates only after an observer-initiated failover caused by a primary
@@ -309,12 +359,26 @@ agree on:
   from the target standby — that is not the documented case.
 - **The scripting surfaces in the 26ai change table predate 26ai.** The official
   SQLcl `DG` page is scoped "Oracle Database release 21c only" and the ORDS
-  Data Guard REST endpoints are documented in ORDS 23.3, so the row names both
-  releases; the table caption's "including what arrived in 21c and 23ai" is what
+  Data Guard REST endpoints are documented from ORDS 21.1 onwards (an ORDS
+  version, not a database release), so the row names both; the table caption's "including what arrived in 21c and 23ai" is what
   it leans on.
 - `FastStartFailoverPmyShutdown` default TRUE: a primary STALLED
   (`V$DATABASE.FS_FAILOVER_STATUS`) longer than the threshold, unable to reach
-  observer or target standby, aborts itself.
+  observer or target standby, **shuts down**. That is the broker guide's verb
+  ("the primary database will shut down after FastStartFailoverThreshold seconds
+  has elapsed if redo generation has been stalled…"); the HA guide says the same
+  thing as "causing it to abort". Both are Oracle's; what the reader sees uses
+  the broker guide's, and never "aborts itself" as if the broker pages said it.
+- **A former primary never opens after a role change while fast-start failover
+  is enabled.** "To allow the master observer to automatically reinstate the
+  former primary database, the database must be started and mounted. It will
+  not be allowed to open in any event if fast-start failover is enabled."
+  (`ORA-16649`). Draw it mounted and needing reinstatement; never draw two
+  databases open read-write because a host came back.
+- **One role change per run.** The engine evaluates one failover or switchover
+  and says so (`SIM.ONE_ROLE_CHANGE`) when later events would need a second.
+  Oracle documents that fast-start failover stays enabled and the reinstated
+  database becomes the new target; the page does not draw that.
 - `NET_TIMEOUT` is a `LOG_ARCHIVE_DEST_n` transport attribute (broker property
   `NetTimeout`), default 30 s, min 1 s, ≥ 8–10 s recommended. It bounds how long
   LGWR waits for the standby's SYNC ack; it is NEVER a failover clock, never
@@ -342,6 +406,15 @@ agree on:
   verify and 2 s convert bands are nominal drawing constants (footnote 3), not documented numbers.
 - Reinstate (`FastStartFailoverAutoReinstate`, Flashback Database) is
   deliberately out of scope; at most a footnote.
+- **Where the connect string is dialled from is this page's model, never a
+  documented fact.** The published page dials from outside every data centre;
+  the workbench dials from the application's card when the document has one. An
+  address the application cannot reach gives no answer (a timeout), whatever the
+  dead-address switch says. The application decides nothing about a failover —
+  no clock or decision reads it — and the three costs below stay nominal drawing
+  constants. `test/app-placement.test.ts` pins the placement outcomes; the
+  published numbers stay pinned by `legacy-models.test.ts` on a document with no
+  application, so neither may be "fixed" to match the other.
 - Client connect-string facts (simulator "application's view" section; sources
   in `diagrams/README.md`): `TRANSPORT_CONNECT_TIMEOUT` default 60 s per
   ADDRESS — and per IP address a host name resolves to; the page draws
@@ -370,7 +443,14 @@ agree on:
   the notice (same precedent as the 21c ObserverPing* citation). Legality per
   broker Table 4-2: MaxProtection SYNC; MaxAvailability SYNC or FASTSYNC;
   MaxPerformance ASYNC is the only mode listed — never write that SYNC is
-  illegal there. FSFO cannot be initiated when FASTSYNC is in use and the
+  illegal there. **The table is met by "at least one standby database"**, not by
+  every destination: "the broker verifies that there is at least one standby
+  database in the configuration that can support the desired grade of
+  protection", so an ASYNC bystander beside a SYNC standby is legal in every
+  edition. The per-member list in the fast-start failover prerequisites binds
+  the target **and the primary** ("The current primary database must have its
+  LogXptMode property set accordingly") — a primary left at ASYNC in
+  MaxAvailability is what Oracle's own example refuses to switch over. FSFO cannot be initiated when FASTSYNC is in use and the
   standby is missing redo data.
 - Commit cost is **max(local write, remote ack path)**, never the sum, because
   the documented 13-step SYNC path has LGWR start the remote write (step 5)
@@ -387,7 +467,15 @@ agree on:
 - `MaxFailure`/`MAX_FAILURE` counts CONSECUTIVE attempts to reestablish the
   destination at log switches; 0 = unlimited and is the default for
   default-group destinations (non-default log-archive-destination groups default
-  to 1). At the limit the destination is disabled with no further access until
+  to 1 — and so does the broker property for a member written inside a
+  parenthesised RedoRoutes group, in 19c and 26ai alike). **26ai rewrote the
+  semantics**: "If MAX_FAILURE is set to 1, no attempts are made to reactivate
+  this archive destination when it fails. If MAX_FAILURE > 1, reactivation
+  attempts are made until the number of consecutive failures is equal to the
+  value of MAX_FAILURE" — the initial failure counts, the "manually reenabled"
+  wording is gone, and every destination of a group must carry a non-zero
+  value. What follows is the 19c wording; the engine, the reopen panel and the
+  generated comments are edition-aware. At the limit the destination is disabled with no further access until
   it is MANUALLY reenabled — the network healing does not bring it back, and the
   destination is then treated as if `REOPEN` had not been specified. Whether a
   successful reopen resets the counter is NOT documented ("consecutive" implies
@@ -400,8 +488,11 @@ agree on:
   `LogArchiveFormat`, `LogFileNameConvert`) and their 19c property rows carry no
   deprecation note (re-verified 2026-08-17); an earlier revision of these rules
   called them deprecated, and the legacy simulator fragment still does — do not
-  copy that. `EDIT DATABASE ... SET PARAMETER` is a second route to the same
-  `REOPEN` / `MAX_FAILURE` attributes, not a replacement. The 19c broker row for
+  copy that. The broker writes `LOG_ARCHIVE_DEST_n` itself from `MaxFailure`,
+  `NetTimeout` and `ReopenSecs`, so the generated script sets them with
+  `EDIT DATABASE … SET PROPERTY` on the receiving member; do not present
+  `SET PARAMETER` as a route to `REOPEN` / `MAX_FAILURE` — nothing documents it
+  as one. The 19c broker row for
   `MaxFailure` states only "the maximum number of contiguous archiving failures"
   and its default — always cite the sbydb `LOG_ARCHIVE_DEST_n` attributes page for
   `MAX_FAILURE` semantics, never the broker page. (The "Corresponds to: VALID_FOR"
@@ -411,9 +502,11 @@ agree on:
 - **SDU** (chapter 5): the HA guide recommends 65535 **for synchronous
   transport only** — a best practice, never a requirement, and the guide says
   nothing about ASYNC, so neither do these assets. `DEFAULT_SDU_SIZE` defaults
-  to 8192 with a documented range of 512 – 2097152 bytes, so never call 65535
-  the parameter's maximum (the guide's own "its maximum value" wording is
-  stale) and never present 2 MB as the recommendation. SDU is negotiated per
+  to 8192 under 19c (26ai: 8192 for clients, **65536 for servers**) with a
+  documented range of 512 – 2097152 bytes. The HA guide's "its maximum value of
+  65535" and the reference's range contradict each other: show both as a
+  conflict, never call 65535 the parameter's maximum as fact, and never present
+  2 MB as the recommendation. SDU is negotiated per
   connection and the lower end wins — hence both ends.
 - **Socket buffers** (chapter 5): `SEND_BUF_SIZE` / `RECV_BUF_SIZE` are Oracle
   Net parameters, not `LOG_ARCHIVE_DEST_n` attributes — settable in
@@ -453,12 +546,24 @@ agree on:
   −61%, write size +94%) are **Oracle's worked example on Oracle's test system**
   and must never be presented as what SYNC typically costs.
 - Observer loss alone stalls nothing: the primary stalls only when it can reach
-  NEITHER the observer NOR the target standby. While unobserved,
+  NEITHER the observer NOR the target standby — **and only while a state change
+  is left to confirm**. `STALLED` is shown when "the change to the
+  UNSYNCHRONIZED state … or to the TARGET OVER LAG LIMIT state … cannot be
+  confirmed by either the target standby database or the observer". Lost at the
+  same instant, that is a stall; lost at different times it is not: "While the
+  configuration is in the unobserved state, fast-start failover cannot happen.
+  Therefore, the primary database can continue processing transactions, even if
+  the target standby database fails", and the HA guide: "an observer or standby
+  outage, or the outage of both at different times, does not impact the
+  availability of the primary database". A primary that is already
+  unsynchronized, already over the lag limit or already unobserved does not
+  stall. While unobserved,
   `V$DATABASE.FS_FAILOVER_STATUS` = `PRIMARY UNOBSERVED` and
   `FS_FAILOVER_OBSERVER_PRESENT` = NO. `ORA-16820` (observer no longer observing
   this database) is the standing health condition; `ORA-16658` (unobserved
   fast-start failover configuration) is raised only when a failover is ATTEMPTED
-  while unobserved — never use the two interchangeably. 19c registers up to
+  while unobserved — never use the two interchangeably; `ORA-16819` is the third:
+  fast-start failover enabled and no observer started. 19c registers up to
   three observers, one of them master, and only the master coordinates FSFO; if
   the master dies while primary and standby still see each other, the broker
   **tries to nominate** a backup observer as the new master (12.2+; an attempt
@@ -487,8 +592,14 @@ agree on:
   means FSFO is enabled and the master observer is missing:
   `FS_FAILOVER_STATUS` = `PRIMARY UNOBSERVED`, `ORA-16820`, the observer-lost
   scenario, and the broker's list headed "Fast-start failover cannot occur if:",
-  one of whose entries is "The master observer is not running" (the fourth; the list opens with "Fast-start failover is no longer enabled"). No observer
-  deployed means FSFO was never enabled — the
+  one of whose entries is "The master observer is not running" (the fourth; the list opens with "Fast-start failover is no longer enabled"). **Oracle
+  allows fast-start failover to be enabled with no observer started** ("If you do
+  not start the observer after you have enabled fast-start failover, the
+  ORA-16819 warning is displayed for the primary and target standby
+  databases"): that configuration is enabled and unobserved, and no failover can
+  happen in it. The legacy page's "none" placement and the classic adapter draw
+  fast-start failover as *disabled* there — a choice of that page, never to be
+  worded as Oracle's rule — and then the
   `FastStartFailover*` properties can be set and nothing arms them, and a manual
   `FAILOVER TO` is the only thing that promotes the standby. One corollary to
   keep straight: the MaxPerformance switchover refusal past
@@ -571,7 +682,15 @@ condensed out of it:
   based on the order in which they are specified".** Multi-target arrived in
   12.2. **Never write "the first viable target"** — order is what Oracle
   documents, and which candidate a given failure ends on is this page's model
-  (`FSFO.TARGET_SELECTION`). Also documented: the property takes member names or
+  (`FSFO.TARGET_SELECTION`). The target changes **while the primary is alive**
+  ("If the designated fast-start failover target develops a problem … the broker
+  automatically changes the fast-start failover target to one of the other
+  candidate targets"); once the primary is gone it cannot. 26ai says so
+  outright: "Data Guard Broker cannot failover to second fast-start failover
+  target if both the primary and first fast-start failover targets are down."
+  19c is silent, so the 19c edition carries it as `doc-later`. Never draw a
+  failover to a second candidate after the primary and the first were lost
+  together. Also documented: the property takes member names or
   `ANY`; with more than one standby it must be set explicitly; "targets are
   verified when fast-start failover is enabled"; the reciprocal value is set on
   the target automatically; and it "can only be set to the name of physical or
@@ -600,18 +719,35 @@ condensed out of it:
   logical standbys are not supported in MaxProtection under FSFO.
 - **RedoRoutes grammar, spelled the way the broker spells it.** `(redo source :
   redo destination)`; source `LOCAL | ANY | name[,name]`; destination
-  `ALL [attr] | name [attr][, name [attr]]`; attribute `ASYNC | SYNC | FASTSYNC`.
-  A source may appear in only one rule per member; an unspecified attribute
+  `ALL [attr] | group[, group]`, a group being `name [attr]` or
+  `( name [attr] [PRIORITY=n] [, name [attr] [PRIORITY=n]] )`; attribute
+  `ASYNC | SYNC | FASTSYNC`. **`PRIORITY` belongs to a destination inside a
+  parenthesised group, never to the group**: "there is one active redo path for
+  each group", the usable destination with the lowest number; equal priorities
+  are sticky ("Even after FS1 becomes active again, the primary continues
+  shipping to FS2 because FS1 and FS2 have the same priority"); groups are
+  independent and ship concurrently; the default is 1 for a far sync
+  *destination* and 8 otherwise. All of that is documented (Examples 1–4), so
+  only the instant the primary moves is this page's model. `ALL` "is an alias
+  for all possible destinations" — snapshot standbys included, which receive
+  and archive redo like any standby — and `ANY` "is an alias for any database in
+  the configuration", the local one included.
+  A source may appear in only one rule per member ("either explicitly or
+  implicitly through use of the LOCAL keyword"); an unspecified attribute
   falls back to the destination's `LogXptMode`; the NULL default at a primary
   means `(LOCAL : ALL)`; "a redo routing rule is active if its redo source field
   specifies the current primary database"; "LOCAL … cannot be used at a far sync
   instance"; "the ASYNC redo transport attribute must be explicitly specified for
-  a cascaded destination to enable real-time cascading". The property cannot be
-  set on a snapshot standby. **`PRIORITY=n` (n = 1…8, default 1 for far sync
+  a cascaded destination to enable real-time cascading". What is forbidden at a
+  snapshot standby is *forwarding* ("cannot be configured such that … the
+  snapshot standby would send redo data to another member"), not the property. **`PRIORITY=n` (n = 1…8, default 1 for far sync
   members and 8 otherwise) is a 19c fact** — it is on the 19c broker properties
   page word for word, together with "if a primary ships redo to a destination
   with PRIORITY=8, then it must ship to every PRIORITY=8 destination"; 12.1's
-  `ALT=(name [xpt] [FALLBACK])` is the older spelling and is absent from 26ai.
+  `ALT=(name [xpt] [FALLBACK])` is the older spelling and is **12.1 only** —
+  absent from the 12.2, 19c and 26ai grammar, so the page parses it for old
+  documents, warns under both editions (`ROUTES.ALT_12_1_ONLY`) and never
+  generates it. What `FALLBACK` does is documented on that 12.1 page.
   **`GROUP` is a `LOG_ARCHIVE_DEST_n` attribute, not RedoRoutes syntax** — it
   belongs in the generated `LOG_ARCHIVE_DEST_n` block and nowhere else. Which
   group a destination is in decides more than routing: a destination inside a
@@ -627,18 +763,23 @@ condensed out of it:
 - **Member types, as a table, because the differences are the point.** Physical
   standby: cascades, may be an FSFO target, may be primary. Logical standby: does
   not cascade, may be an FSFO target, may be primary (and a RedoRoutes rule on
-  one is documented only with a LOCAL destination — the 19c property page
-  contradicts itself here, so it is a `[CONFLICT]`). Snapshot standby: neither
+  one is documented only with a LOCAL **source**: "only if the redo source field
+  is set to LOCAL", in 19c and 26ai alike). Snapshot standby: neither
   cascades nor may be a target. Far sync: forwards redo, never a target, never
   primary. Zero Data Loss Recovery Appliance: never a target.
 - **Destination counts.** `LOG_ARCHIVE_DEST_n` runs n = 1…31; destinations 1–10
   take `LOCATION` or `SERVICE`, 11–31 `SERVICE` only. The cascading fan-out limit
   is **30 terminal destinations** — **never write "30 remote destinations"**,
   which is a different and wrong claim. The 253-members-per-configuration figure
-  is documented in 12.1 only and is not restated in 19c or 26ai: carry it as a
-  cross-edition citation or not at all.
-- **Multiple observers: three in 19c, four from 21c, and 26ai contradicts
-  itself.** 19c: "There can be up to three observers for a single Data Guard
+  is documented in 19c and 26ai (*Managing Oracle Data Guard Broker
+  Configurations*: "a broker configuration consisting of up to 253 members"); an
+  earlier revision of these rules called it 12.1-only, which was wrong.
+- **Multiple observers: three in 19c, four from 21c, and both 19c and 26ai
+  contradict themselves.** The `ORA-16647` help page settles the numbers ("For
+  Oracle Database releases 12.2 through 19c, a maximum of three observers can be
+  started. For Oracle Database release 21c and later, a maximum of 4"); the 19c
+  command reference's `START OBSERVER` entry nevertheless says "up to four
+  observers". Name that conflict where 19c is on screen, as the 26ai one is. 19c: "There can be up to three observers for a single Data Guard
   configuration. One is the master observer and the others are backup
   observers." 21c and the 26ai FSFO chapter say four, and 26ai's `START OBSERVER`
   page says "you can register up to four observers" with `ORA-16647` for the
@@ -649,17 +790,28 @@ condensed out of it:
   master observer can coordinate fast-start failover with Data Guard broker",
   and "when fast-start failover is disabled, no observer is called the master
   observer; all observers have the same functionality" — so a `MASTER` badge
-  while FSFO is disabled is wrong. `SET MASTEROBSERVER TO name` exists; its
-  preconditions are undocumented. `PreferredObserverHosts` (19c) ranks hosts
-  1–8, lower wins, default 8, broker default Null, and "the change does not
-  affect the location of the master observer until the next role change".
+  while FSFO is disabled is wrong. `SET MASTEROBSERVER TO name` exists, and its
+  preconditions are documented: "the actual switch does not happen until the
+  next time the primary contacts the target standby, usually within three
+  seconds if fast-start failover is enabled", with the target enabled and not
+  needing reinstatement and no role change, reinstatement or target switch in
+  progress. `PreferredObserverHosts` (12.2+, **database scope**: `EDIT DATABASE`,
+  never `EDIT CONFIGURATION`) ranks hosts 1–8, lower wins, default 8, broker
+  default Null; under 19c "the change does not affect the location of the master
+  observer until the next role change", under 26ai "The master observer will be
+  changed automatically to an observer running on a higher priority host".
   `ObserverPingInterval`/`ObserverPingRetry`, `ObserverReconnect` and
   `ObserverConnectIdentifier` are the knobs; there is no `SET OBSERVER`
   heartbeat command.
 - **`START OBSERVER` spells its file arguments `FILE IS`, never `FILE=`.** The
-  documented form is `START OBSERVER [name] [FILE IS f] [LOGFILE IS l]
-  [CONNECT IDENTIFIER IS ci] [IN BACKGROUND];`, `IN BACKGROUND` preferred, and
-  `-logfile` deprecated since 12.2. `SHOW OBSERVER` "displays the observer name,
+  foreground form is `START OBSERVER [name] [FILE IS f] [LOGFILE IS l]
+  [TRACE_LEVEL IS …];`; the background form, which the documentation prefers,
+  is `START OBSERVER [name] IN BACKGROUND CONNECT IDENTIFIER IS ci [FILE IS f]
+  [LOGFILE IS l] [TRACE_LEVEL IS …];` — `IN BACKGROUND` directly after the name,
+  the connect identifier **not optional**, and a wallet required. Each observer
+  is started from a DGMGRL session on its own host. DGMGRL scripts have comment
+  syntax (`-- text;`, `REM text;`, terminated by a semicolon), and the generated
+  script uses it. `-logfile` deprecated since 12.2. `SHOW OBSERVER` "displays the observer name,
   the host name where the observer is running, whether the observer is the master
   observer, and the last time the observer pinged the primary and standby", and
   reports correct last-ping information only while FSFO is enabled.
@@ -669,6 +821,12 @@ condensed out of it:
   standby", "you can switch over or manual failover to a bystander database",
   the observer log says "Unable to failover since this observer is in
   observe-only mode", and `V$DATABASE.FS_FAILOVER_MODE` reads `OBSERVE-ONLY`.
+  It also lifts the manual-failover conditions: "Manual failover can be
+  performed even if the pre-condition checks are not met", including an
+  unsynchronized, lagging or unobserved configuration.
+- **Under 26ai the `FS_FAILOVER_*` columns of `V$DATABASE` are deprecated** in
+  favour of `V$FAST_START_FAILOVER_CONFIG`; name the view of the edition on
+  screen. `SWITCHOVER … WAIT` is deprecated in 26ai in favour of `DrainTimeout`.
 - **Three more spellings worth pinning.** `ConfigurationWideServiceName`
   defaults to `primarydbname_CFG` and "the service name does not change after a
   role transition" (19c, introduced 12.2). `TransportDisconnectedThreshold`
@@ -742,7 +900,8 @@ global appears in it; `app/test/import-boundary.test.ts` keeps the layering
 - **Types** (`types/topology.ts`, `types/events.ts`, `types/trace.ts`,
   `types/claims.ts`). The authored document is `TopologyDoc`: sites, hosts,
   links, members (`DatabaseMember` | `FarSyncMember`), observers, one
-  `Configuration` with its `FsfoConfig`, a `ClientDescriptor`, environment
+  `Configuration` with its `FsfoConfig`, a `ClientDescriptor`, an optional
+  `Application` (the card the descriptor is dialled from), environment
   params and the event list. Derived output — `RedoEdge`, `ResolvedMember`,
   `RedoGraph`, `Epoch`, `Lane`, `Segment`, `Trace`, `DerivedFacts` — lives in
   `types/trace.ts`, because it is output rather than something anyone authors.
@@ -754,7 +913,7 @@ global appears in it; `app/test/import-boundary.test.ts` keeps the layering
   `basis` are orthogonal — an `error` can rest on a model, and often does.
   **This is the mechanism the accuracy rules run on**: an unlabelled model is a
   type error, not a review finding.
-- **The citation catalogue** (`citations.ts`) is 127 entries of URL + the
+- **The citation catalogue** (`citations.ts`) is 220 entries of URL + the
   quoted sentence + which edition's page it is + `verified: 'primary' |
   'cross-edition'`. Some entries also carry `forbiddenFor`: a source the
   accuracy rules rule *out* for a named fact (`FORBIDDEN_FACTS` — the 26ai
@@ -792,8 +951,8 @@ global appears in it; `app/test/import-boundary.test.ts` keeps the layering
   test is the gate: the general engine may not "improve" on the verified
   outcomes. Change a cell there and you are changing `site/test.mjs`,
   `diagrams/README.md` and the fragment in the same commit, or you are wrong.
-- **Validation** (`validate/*`) is 47 rules in one catalogue (`RULE_CATALOGUE`,
-  two of them 26ai-only), each with an id, a severity, a permitted set of bases
+- **Validation** (`validate/*`) is 55 rules in one catalogue (`RULE_CATALOGUE`,
+  one of them 26ai-only), each with an id, a severity, a permitted set of bases
   and its citations: far sync never primary, FSFO target kind and direct-redo,
   multi-target explicitness, the protection-mode/transport table, the RedoRoutes
   grammar rules, cascading restrictions, observer count and placement,
@@ -801,7 +960,9 @@ global appears in it; `app/test/import-boundary.test.ts` keeps the layering
   sorted `Finding[]`; the UI's issue list, the generated scripts' notes and the
   inspector's refusals all read that one list, so a rule is worded once.
 - **The other three models** (`models/*`) are the ported legacy views:
-  `computeApp` (the client's retry ladder over N addresses), `computeCommit`
+  `computeApp` (the client's retry ladder over N addresses — dialled from the
+  application's host when the document draws one, and from outside every site,
+  as the published page dials it, when it does not), `computeCommit`
   (one commit under SYNC/FASTSYNC/ASYNC, `max(local write, remote ack path)`,
   the far sync hop terminating the commit) and `computeReopen` (the
   `ReopenSecs`/`MaxFailure` aftermath), plus `models/axis.ts`, which is the
@@ -850,6 +1011,18 @@ component computes domain state locally.**
   `requestAnimationFrame`: rAF stops in a background tab and never fires in a
   headless dump, and the permalink is a reading of the state that has to exist
   in both.
+- **Saved configurations** (`workspaces.ts`, ⋯ menu): named copies under
+  `dg-workspaces-v1` and the last 30 drafts that opening a preset, lesson,
+  file or saved copy replaced under `dg-recovery-v1`, both validated through
+  the import codec on read. Every "open" goes through
+  `replaceWorkingDocument` → `history.replaceDoc`: one undoable step that
+  carries the preset id, the saved copy (`activeWorkspaceId`) and -- only when
+  it changed -- the edition; an ordinary edit never records the edition.
+- **Compare alternatives** (`review.ts`, `ui/review/`, ⋯ menu): a baseline under
+  `dg-review-baseline-v1`, compared with the document under one scenario, and
+  the six scenarios run one by one; every value is labelled as this page's
+  model. It prints through `?report=1` (`comparisonSection` → `report-model.ts`),
+  never through a report generator of its own.
 - **Persistence** (`persist.ts`): `dg-doc-v1` (the Document, debounced),
   `dg-theme` and `dg-ed` (the two reading preferences, same keys the legacy page
   uses, so a reader who set them there keeps them here). `dg-fsfo-cfg-v1`, the
@@ -883,17 +1056,42 @@ modes changes what is around it.
   pure and deterministic, so it has goldens. `routing.ts` routes the links with
   at most two bends, allocates channels per corridor, and places each link's
   caption on a four-rung ladder that keeps it out of cards, other captions, site
-  rectangles and other links' lines. Routing and drawing both run in two passes
+  rectangles and other links' lines. With three or more observers their lines
+  run as trunks (task 5.2): the gap between the observer band and the member
+  band opens to one lane per trunk (`Geometry.trunks`, pings plus one per
+  readiness target), lines of one kind to one card share one channel per
+  corridor (`bundleOf`), each caption prefers its line's own stretch, and a
+  shared line is drawn from its card end so the dashes coincide.
+  Routing and drawing both run in two passes
   (every route, then every caption; every line, then every card, then every
   caption) so a caption is never painted over by a line routed after it.
   `app/test/ui/canvas-presets.test.ts` holds all twelve presets to the collision
-  rules and to a geometry golden.
+  rules and to a geometry golden. A data centre's box is the bounding box of
+  its cards unless it has a size of its own: `layout[siteId]` may carry `w`/`h`
+  (a handle resize, or a card drop that would otherwise shrink it), measured
+  from the box's natural anchor and never smaller than its cards; Tidy resets it.
+  A card the layout placed slides down out of the way of one moved by hand
+  (`makeWay`, step 7b); a data centre grown by a hand move or a resize pushes
+  the columns beside it so every corridor keeps its width (`columnPush`, step
+  7c: growth to the right pushes right, to the left pushes left); and where a new standby, far sync or observer goes when
+  no data centre is named is `ui/build/placement.ts`. The box is drawn with
+  `LAYOUT.colPad` (24) round its cards and may be resized down to
+  `LAYOUT.fitPad` (14). **The application** is a card of its own under the
+  member band, in the primary's data centre to start with: one dash-dot
+  `connect` line to every database on its ADDRESS_LIST, coming up onto the
+  card's bottom edge, and a lane between the member band and the application
+  (`Geometry.midLaneY`) for the redo routes that would otherwise run through
+  it. A document without an application draws none of this
+  (`app/design/ui.md`, "The application on the drawing").
 - **Timeline** (`ui/timeline/`): `build.ts` is a pure
   `buildTimeline(trace, topology, view) → TimelineModel`; the component maps it
   to VNodes. Lane order is primary, observers (master first, and no master at
   all while FSFO is disabled), far syncs, then standbys in BFS order with
-  cascaded ones indented. The playhead is its own component subscribing to
-  `tNow` alone.
+  cascaded ones indented. Under them, when the document draws an application,
+  its point of view: `Service`, `Sessions` and `New connections`
+  (`timeline/app-lanes.ts`, pure, from `computeApp`), on the same axis — which
+  stretches to the application's reconnect — and labelled as this page's model.
+  The playhead is its own component subscribing to `tNow` alone.
 - **Panels** (`ui/panels/`): the generated files, rendered from the engine's
   structured lines, with copy buttons and line ⇄ canvas cross-highlighting. On
   paper all seven stack: `Panels` listens for `beforeprint` and for a
@@ -940,7 +1138,7 @@ modes changes what is around it.
 
 ### Tests
 
-`npm --prefix app run test` is **1752 tests across 61 files**. What is where:
+`npm --prefix app run test` is **2375 tests across 89 files**. What is where:
 
 - `app/src/engine/__tests__/` — the engine's own unit tests (purity, citations,
   claims, schema, migrate, URL codec, parse, resolve, graph, axis, classic).
@@ -972,18 +1170,28 @@ exported file and the share payload — so "Reset", an import and a shared link
 all leave the reader's edition alone. `TopologyDoc.config.edition` is what the
 engine reads, and the boot path writes the preference into it.
 
-What the edition actually changes: the two `RULES_26AI_ONLY` validation rules;
-the far-sync-with-FSFO protection-mode conflict (19c excludes MaxProtection and
-MaxPerformance, 26ai only MaxProtection); `FastStartFailoverLagLimit`'s
-MaxAvailability role and with it the readiness gate; `computeCommit`'s verdict on
-ASYNC under MaxAvailability (a mode conflict under 19c, an informational
-"allowed" under 26ai); the observer count ceiling; the two RedoRoutes rules
-that exist only in 26ai (`ROUTES.GROUP_NEEDS_MAXFAILURE`,
-`ROUTES.ALT_NOT_IN_26AI`); and the notes the generators and the reopen model
-attach. Everything it changes is a documented difference with a
-citation on both sides, and where 26ai contradicts itself — the observer count,
-the `ObserverPing*` defaults, the lag-limit mode question — the page shows the
-conflict rather than picking a side.
+What the edition actually changes: the `RULES_26AI_ONLY` validation rule
+(`ROUTES.GROUP_NEEDS_MAXFAILURE`) and the three that fire under 19c only
+(`FSFO.PING_PROPS_NOT_IN_19C`, `FSFO.LAGTYPE_GRACETIME_19C`,
+`CFG.PRIMARY_CANDIDATES_19C`); whether `ObserverPingInterval` /
+`ObserverPingRetry` exist at all (not under 19c: the controls grey, the engine
+detects on the threshold, the script does not emit them); the far-sync-with-FSFO
+protection-mode conflict (19c excludes MaxProtection and MaxPerformance, 26ai
+only MaxProtection); `FastStartFailoverLagLimit`'s broker default and its
+MaxAvailability role, and with them the readiness gate (`lagLimitOf(doc)`: a
+document that never set the property follows the edition); the transport a
+fast-start failover target may use in MaxAvailability (ASYNC is listed under
+26ai only); the observer count ceiling; how `MAX_FAILURE` counts (26ai counts
+the initial failure); what `PreferredObserverHosts` does when it changes; which
+view the generated text names (`V$DATABASE.FS_FAILOVER_*` under 19c,
+`V$FAST_START_FAILOVER_CONFIG` under 26ai); the `SHOW FAST_START FAILOVER` mock
+(19c follows a live 19.27 system, 26ai the 26ai example with its ping lines);
+and the notes the generators and the reopen model attach. Where Oracle
+contradicts itself — the observer count in both editions, the `ObserverPing*`
+defaults in 26ai, the lag-limit mode question in both — the page shows the
+conflict rather than picking a side. **The 19c edition is 19c as documented**:
+what a live 19.27 system shows beyond the documentation is recorded as an
+observation and labelled as one.
 
 ## The legacy fragment (simulator/)
 

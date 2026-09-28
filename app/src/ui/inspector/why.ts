@@ -37,7 +37,11 @@ export const WHY = {
   needs26ai:
     'A later edition states this: switch the release to 26ai to set it here.',
   lagLimitMaxAvail19c:
-    'Under 19c FastStartFailoverLagLimit is a maximum performance property. 26ai gives it a maximum availability role.',
+    'Under 19c FastStartFailoverLagLimit is a maximum performance property, and 19c\'s own fast-start failover chapter and property page disagree about whether it reaches maximum availability at all. The maximum availability role is a 21c feature; 26ai gives that role its own default of 0.',
+  pingPropsNotIn19c:
+    'ObserverPingInterval and ObserverPingRetry do not exist in 19c: absent from the 12.2, 18c and 19c property pages and from a live 19.27 system. Documented from 21c.',
+  docLater26aiObservedIn1927:
+    'Documented from 26ai; observed in the property list of a 19.27 system, which Oracle\'s 19c documentation does not mention.',
 
   /* ---- documented restrictions ---- */
   fastsyncMode:
@@ -52,6 +56,8 @@ export const WHY = {
     'NET_TIMEOUT bounds the wait for a SYNC acknowledgement, so an ASYNC destination is not given one.',
   farSyncNoRole:
     'A far sync instance has no role, no apply and no open mode.',
+  farSyncNotAddress:
+    'A far sync instance cannot be opened for access, so no connect string names it.',
   farSyncNotTarget:
     'FastStartFailoverTarget takes a physical or logical standby; a far sync instance cannot be one.',
   snapshotNotTarget:
@@ -77,7 +83,7 @@ export const WHY = {
   siteHasHosts:
     'This site still has hosts in it: move or remove them first.',
   hostInUse:
-    'This host still runs a database instance or an observer.',
+    'This host still runs a database instance, an observer or the application.',
   noObserverDeployed:
     'No observer is deployed, so there is none to lose. Deploying no observer is not the same as being unobserved.',
   nothingDown:
@@ -86,6 +92,14 @@ export const WHY = {
     'It is already down at this point on the clock.',
   noTarget:
     'No physical or logical standby is configured to move the role to.',
+  switchoverTargetDown:
+    'SWITCHOVER needs the target standby up: it is down at this point on the clock.',
+  switchoverPrimaryDown:
+    'SWITCHOVER needs the primary up: it is down at this point on the clock.',
+  failoverTargetDown:
+    'FAILOVER needs the target standby up: it is down at this point on the clock.',
+  notFormerPrimary:
+    'REINSTATE DATABASE is for a former primary the run left needing reinstatement; the run does not show this one as that.',
   /**
    * The two ends of a range this page models, said without the numbers: the
    * range itself lives in the engine's `BOUNDS`, and a sentence here carrying
@@ -109,6 +123,8 @@ export const WHY = {
     'Another member already carries that db_unique_name.',
   observerNameTaken:
     'Another observer already carries that name.',
+  idTaken:
+    'Something else in this configuration already carries that name.',
 } as const;
 
 export type WhyKey = keyof typeof WHY;

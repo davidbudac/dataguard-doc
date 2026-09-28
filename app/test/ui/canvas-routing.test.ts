@@ -9,7 +9,7 @@
 import { describe, expect, it } from 'vitest';
 import { layoutTopology } from '@/ui/canvas/layout';
 import type { Geometry } from '@/ui/canvas/layout';
-import { buildLinks, orthPath, routeTopology } from '@/ui/canvas/routing';
+import { buildLinks, cardRoleFor, orthPath, routeTopology } from '@/ui/canvas/routing';
 import type { RoutedLink } from '@/ui/canvas/routing';
 import { overlaps } from '@/ui/canvas/measure';
 import type { TopologyDoc } from '@/engine';
@@ -18,7 +18,7 @@ import {
   threeObserverFixture,
 } from './canvas-fixtures';
 import { simulate, stateAt } from '@/engine';
-import { farSyncZeroLoss } from '@/presets';
+import { classic as classicPreset, farSyncZeroLoss } from '@/presets';
 
 const routeOf = (doc: TopologyDoc): { geo: Geometry; links: RoutedLink[] } => {
   const geo = layoutTopology(doc, graphOf(doc));
@@ -41,7 +41,7 @@ describe('routing: what gets drawn', () => {
     expect(redo.caption).toBe('redo (SYNC)');
     expect(redo.value).toBe('0 ms RTT');
     expect(redo.arrow).toBe(true);
-    expect(redo.d).toBe('M198,116 L838,116');
+    expect(redo.d).toBe('M208,116 L898,116');
     expect(byId(links, 'ping:obs01:prm01').arrow).toBe(false);
   });
 
@@ -65,13 +65,14 @@ describe('routing: what gets drawn', () => {
     expect(redo.slashes).toHaveLength(2);
   });
 
-  it('keeps a standing-down destination on the drawing, and labels the model', () => {
+  it('keeps a standing-down destination on the drawing; which one stands down is documented', () => {
     const { links } = routeOf(priorityFixture());
     const standby = byId(links, 'redo:prm01:sby02');
     expect(standby.active).toBe(false);
     expect(standby.caption).toBe('PRIORITY 2');
     expect(standby.value).toBe('SYNC');
-    expect(standby.model).toBe(true);
+    /* One active path per group, lowest PRIORITY first: Examples 1-4. */
+    expect(standby.model).toBe(false);
     expect(byId(links, 'redo:prm01:sby01').active).toBe(true);
     expect(byId(links, 'redo:prm01:sby01').model).toBe(false);
   });
@@ -210,11 +211,11 @@ describe('routing: geometry', () => {
 });
 
 describe('routing: a frame is what the line says, not the declaration', () => {
-  /* Example 5-2 with the far sync host gone. The alternate destination the
-     primary declares behind FS1 is carrying the redo from the moment FS1 dies
-     -- the primary lane says "shipping redo" again -- and the drawing has to
-     agree: the line to South_Sales is the live one, with its round trip, and
-     the ALT pill moves onto the destination that is standing down. */
+  /* Example 5-2 with the far sync host gone. The PRIORITY=2 destination the
+     primary declares in the same group as FS1 is carrying the redo from the
+     moment FS1 dies -- the primary lane says "shipping redo" again -- and the
+     drawing has to agree: the line to South_Sales is the live one, with its
+     round trip, and the PRIORITY pill moves onto FS1, which stands by. */
   const preset = farSyncZeroLoss.doc();
   const trace = simulate(preset, farSyncZeroLoss.events());
   const graph = graphOf(preset);
@@ -232,19 +233,23 @@ describe('routing: a frame is what the line says, not the declaration', () => {
     expect(alt.value).toBe('40 ms RTT');
   });
 
-  it('moves the ALT pill onto the destination that is standing down', () => {
+  it('moves the PRIORITY pill onto the destination that is standing down', () => {
     const declared = byId(at(40), 'redo:North_Sales:FS1');
     expect(declared.active).toBe(false);
-    expect(declared.caption).toBe('ALT');
-    expect(declared.model).toBe(true);
+    expect(declared.caption).toBe('PRIORITY 1');
+    expect(declared.model).toBe(false);
+    const quiet = routeTopology(preset, graph, geo, stateAt(simulate(preset, []), 0)).links;
+    expect(byId(quiet, 'redo:North_Sales:South_Sales').caption).toBe('PRIORITY 2');
   });
 
-  it('draws only the declared destinations while every one of them is up', () => {
+  it('draws every declared destination, the standing-by one included, while all are up', () => {
     const quiet = simulate(preset, []);
     const links = routeTopology(preset, graph, geo, stateAt(quiet, 0)).links;
     expect(links.map((l) => l.id)).toEqual([
-      'check:obs01:South_Sales', 'ping:obs01:North_Sales',
-      'redo:FS1:South_Sales', 'redo:North_Sales:FS1',
+      'check:obs01:South_Sales',
+      'connect:app01:North_Sales', 'connect:app01:South_Sales',
+      'ping:obs01:North_Sales',
+      'redo:FS1:South_Sales', 'redo:North_Sales:FS1', 'redo:North_Sales:South_Sales',
     ]);
   });
 });
@@ -258,4 +263,40 @@ describe('routing: link inventory', () => {
     expect(links.filter((l) => l.kind === 'ping')).toHaveLength(3);
     expect(links.filter((l) => l.kind === 'check')).toHaveLength(3);
   });
+});
+
+describe('database role badges', () => {
+  it('distinguishes databases from far sync and observers, and follows failover', () => {
+    const fsDoc = farSyncZeroLoss.doc();
+    for (const node of layoutTopology(fsDoc, graphOf(fsDoc)).nodes) {
+      if (node.glyph === 'farsync' || node.kind === 'observer') expect(cardRoleFor(fsDoc, node)).toBeNull();
+    }
+    const doc = classicPreset.doc();
+    const geo = layoutTopology(doc, graphOf(doc));
+    const trace = simulate(doc, classicPreset.events());
+    const before = stateAt(trace, -1);
+    const after = stateAt(trace, 900);
+    expect(after.epoch.primary).not.toBe(before.epoch.primary);
+    for (const node of geo.nodes) {
+      const member = doc.members.find((m) => m.id === node.id);
+      if (!member || member.kind !== 'database') {
+        expect(cardRoleFor(doc, node, after)).toBeNull();
+      } else {
+        expect(cardRoleFor(doc, node)).toBe(member.role === 'primary' ? 'primary' : 'standby');
+        expect(cardRoleFor(doc, node, before)).toBe(member.id === before.epoch.primary ? 'primary' : 'standby');
+        expect(cardRoleFor(doc, node, after)).toBe(member.id === after.epoch.primary ? 'primary' : member.role === 'primary' ? 'former-primary' : 'standby');
+      }
+    }
+  });
+});
+
+it('marks the old primary as standby after a completed switchover', () => {
+  const doc = classicPreset.doc();
+  const target = doc.members.find((m) => m.kind === 'database' && m.role === 'physical')!;
+  const trace = simulate(doc, [{ at: 0, kind: 'cmd.switchover', to: target.id }]);
+  const frame = stateAt(trace, 900);
+  expect(frame.epoch.primary).toBe(target.id);
+  for (const node of layoutTopology(doc, graphOf(doc)).nodes) {
+    if (node.kind === 'member') expect(cardRoleFor(doc, node, frame)).toBe(node.id === target.id ? 'primary' : 'standby');
+  }
 });

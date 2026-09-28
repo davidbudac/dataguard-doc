@@ -38,8 +38,19 @@ import { declaredPrimary, findMember, isDatabase, isFarSync } from '../src/engin
 import type { Finding, RedoGraph, TopologyDoc } from '../src/engine';
 import { memberId } from '../src/engine/ids';
 import type { MemberId } from '../src/engine/ids';
+import { formatRedoRoutes } from '../src/engine/redo/parse';
+import { lagLimitIsSet, lagLimitOf } from '../src/engine/defaults';
+import { lagGated } from '../src/engine/sim/fsfo';
+import { showFastStartFailover } from '../src/engine/generate/show';
+import { renderPlain } from '../src/engine/generate/lines';
 
 const M = (s: string): MemberId => memberId(s);
+
+const member = (doc: TopologyDoc, id: string) => {
+  const m = findMember(doc, M(id));
+  expect(m).toBeDefined();
+  return m as NonNullable<typeof m>;
+};
 
 const graphOf = (doc: TopologyDoc): RedoGraph => {
   const primary = declaredPrimary(doc);
@@ -141,30 +152,39 @@ const EXPECTED_FINDINGS: Record<PresetId, string[]> = {
 
   'far-sync-zero-loss': [
     /* One MaxFailure destination on the primary, so one deprecation notice and
-       one note on what reaching the limit does. */
+       one note on what reaching the limit does. The fast-start failover
+       target is fed through a far sync instance, so Scenario 7's "set on
+       both sides" note applies (VAL-07.7). */
     'info documented DEST.DEPRECATED_19C North_Sales',
     'info documented EDIT.FSFO_ENABLED_BLOCKS',
     'info documented EDIT.REMOVE_TARGET South_Sales',
+    'info documented FSFO.FARSYNC_TARGET_BOTH_SIDES South_Sales',
     'info model DEST.MAXFAILURE_RESET_UNDOC North_Sales',
     'info model MODEL.OBSERVER_OVERRIDE',
   ].sort(),
 
   'far-sync-ha-pair': [
     /* Two far syncs, so both notes twice -- once per destination. The subject
-       is the sending database, which is why the two lines look alike. */
+       is the sending database, which is why the two lines look alike. The
+       fast-start failover target is fed through a far sync instance too
+       (VAL-07.7). */
     'info documented DEST.DEPRECATED_19C North_Sales',
     'info documented DEST.DEPRECATED_19C North_Sales',
     'info documented EDIT.FSFO_ENABLED_BLOCKS',
     'info documented EDIT.REMOVE_TARGET South_Sales',
+    'info documented FSFO.FARSYNC_TARGET_BOTH_SIDES South_Sales',
     'info model DEST.MAXFAILURE_RESET_UNDOC North_Sales',
     'info model DEST.MAXFAILURE_RESET_UNDOC North_Sales',
     'info model MODEL.OBSERVER_OVERRIDE',
   ].sort(),
 
   'far-sync-role-change': [
-    /* Both directions are pre-declared and neither carries MaxFailure. */
+    /* Both directions are pre-declared and neither carries MaxFailure. The
+       fast-start failover target is fed through a far sync instance
+       (VAL-07.7). */
     'info documented EDIT.FSFO_ENABLED_BLOCKS',
     'info documented EDIT.REMOVE_TARGET South_Sales',
+    'info documented FSFO.FARSYNC_TARGET_BOTH_SIDES South_Sales',
     'info model MODEL.OBSERVER_OVERRIDE',
   ].sort(),
 
@@ -211,14 +231,15 @@ const EXPECTED_FINDINGS: Record<PresetId, string[]> = {
   ].sort(),
 
   bystanders: [
-    /* The two warnings are the preset's subject: under 26ai a logical and a
-       snapshot standby may sit in a maximum availability configuration on
-       ASYNC, which Table 4-2 flags without forbidding. */
+    /* VAL-02: a logical and a snapshot standby sitting on ASYNC in a maximum
+       availability configuration are legal bystanders -- Oracle asks only
+       that at least one standby in the configuration supports the mode
+       (here, sby01's SYNC), not that every destination does. Neither
+       bystander is the fast-start failover target, so the stricter
+       per-target prerequisite list does not apply to them either. */
     'info documented EDIT.FSFO_ENABLED_BLOCKS',
     'info documented EDIT.REMOVE_TARGET sby01',
     'info model MODEL.OBSERVER_OVERRIDE',
-    'warning documented XPT.TABLE_4_2 lsby01',
-    'warning documented XPT.TABLE_4_2 snp01',
   ].sort(),
 
   'max-protection': [
@@ -266,8 +287,56 @@ describe('the recorded validation output', () => {
     );
     expect([...reached].sort()).toEqual([
       'DEST.DEPRECATED_19C', 'DEST.MAXFAILURE_RESET_UNDOC', 'EDIT.FSFO_ENABLED_BLOCKS',
-      'EDIT.REMOVE_TARGET', 'FSFO.OBSERVE_ONLY', 'MODEL.OBSERVER_OVERRIDE', 'XPT.TABLE_4_2',
+      'EDIT.REMOVE_TARGET', 'FSFO.FARSYNC_TARGET_BOTH_SIDES', 'FSFO.OBSERVE_ONLY',
+      'MODEL.OBSERVER_OVERRIDE',
     ]);
+  });
+});
+
+/* ---------------- both editions ---------------- */
+
+/**
+ * The edition is a reading preference laid over the document, so a preset
+ * has to be a configuration Oracle accepts under either one (VAL-06). Two
+ * things used to break that. The primary's own LogXptMode was the builder's
+ * ASYNC, so after a role change it was a standby the mode could not use --
+ * XPT.PRIMARY_LOGXPTMODE now says so, and every preset gives the primary the
+ * transport its mode needs unless a pre-declared reverse rule supplies it.
+ * And every preset stored FastStartFailoverLagLimit = 30, which under 26ai
+ * made maximum availability bounded-loss although nobody set a limit; the
+ * presets now leave it not set, so the edition's default is in force.
+ */
+describe.each(PRESETS.map((p) => [p.id, p] as const))('preset %s, read under 19c and 26ai', (_id, p) => {
+  const under = (edition: '19c' | '26ai'): TopologyDoc => {
+    const d = p.doc();
+    d.config.edition = edition;
+    return d;
+  };
+
+  it.each(['19c', '26ai'] as const)('validates with no error under %s, and raises what it raises natively', (edition) => {
+    const findings = validate(under(edition));
+    expect(findings.filter((f) => f.severity === 'error')
+      .map((f) => `${f.id} ${f.subject.id ?? ''}: ${f.message}`)).toEqual([]);
+    /* No finding is edition-specific for any preset: the same record holds
+       whichever edition reads it. */
+    expect(fingerprints(findings)).toEqual(EXPECTED_FINDINGS[p.id]);
+    expect(findings.some((f) => f.id === 'XPT.PRIMARY_LOGXPTMODE')).toBe(false);
+  });
+
+  it('leaves FastStartFailoverLagLimit not set', () => {
+    expect(lagLimitIsSet(p.doc().config.fsfo)).toBe(false);
+  });
+
+  it.each(['19c', '26ai'] as const)('is zero data loss under %s', (edition) => {
+    const d = under(edition);
+    /* Every preset is in maximum availability or maximum protection. */
+    expect(d.config.protectionMode).not.toBe('MAXPERFORMANCE');
+    expect(lagGated(d)).toBe(false);
+    expect(lagLimitOf(d)).toBe(edition === '26ai' && d.config.protectionMode === 'MAXAVAILABILITY' ? 0 : 30);
+    const word = d.config.fsfo.state === 'observe-only'
+      ? 'Fast-Start Failover: Enabled in Observe-Only Mode'
+      : 'Fast-Start Failover: Enabled in Zero Data Loss Mode';
+    expect(renderPlain(showFastStartFailover(d))).toContain(word);
   });
 });
 
@@ -467,6 +536,18 @@ describe('classic: primary, standby, observer at a third site', () => {
     /* Execution is environment-dependent, and the engine says so. */
     expect(t.decisions.some((d) => d.id === 'EXEC.ENV_DEPENDENT')).toBe(true);
   });
+  it('shuts an isolated primary down one threshold into the stall, in Oracle\'s verb', () => {
+    /* "the primary database will shut down after FastStartFailoverThreshold
+       seconds has elapsed" -- the state is still called aborted. */
+    const iso = simulate(doc, [
+      { at: 0, kind: 'link.cut', link: 'dc1-dc2' as never },
+      { at: 0, kind: 'link.cut', link: 'dc1-dc3' as never },
+    ]);
+    expect(iso.facts.abortAt).toBe(30);
+    const d = iso.decisions.find((x) => x.id === 'PRIMARY.ABORT');
+    expect(d?.claim.note).toContain('the stalled primary shuts down');
+    expect(d?.claim.note).not.toContain('aborts itself');
+  });
 });
 
 describe('observe-only: the observer that never fails over', () => {
@@ -511,6 +592,73 @@ describe('observe-only: the observer that never fails over', () => {
   });
 });
 
+describe('observe-only: the manual role changes Oracle leaves open', () => {
+  /* The observe-only notes of the 19c and 26ai fast-start failover chapters:
+     "Manual failover to the fast-start failover target can be performed
+     without receiving an acknowledgement from the observer." / "Manual
+     failover can be performed even if the pre-condition checks are not met."
+     / "You can switch over or manual failover to a bystander database." The
+     enabled-mode conditions (FSFO.MANUAL_FAILOVER_CONDITIONS) do not apply. */
+  const REFUSALS = [
+    'FSFO.MANUAL_FAILOVER_UNOBSERVED', 'FSFO.MANUAL_FAILOVER_NOT_TARGET',
+    'FSFO.MANUAL_FAILOVER_NOT_READY', 'SWITCHOVER.REFUSED',
+  ];
+  const refused = (t: ReturnType<typeof simulate>): string[] =>
+    t.findings.filter((f) => REFUSALS.includes(f.id)).map((f) => f.id);
+
+  it('fails over to the target without the observer', () => {
+    const p = preset('observe-only');
+    const t = simulate(p.doc(), [
+      { at: 0, kind: 'host.down', host: 'dc1-prm01' as never },
+      { at: 1, kind: 'observer.stop', observer: 'obs01' as never },
+      { at: 5, kind: 'cmd.failover', to: M('sby01') },
+    ]);
+    expect(refused(t)).toEqual([]);
+    expect(t.facts.newPrimary).toBe(M('sby01'));
+  });
+
+  it('fails over although the target is not synchronized -- a pre-condition not met', () => {
+    const p = preset('observe-only');
+    const t = simulate(p.doc(), [
+      { at: 0, kind: 'link.cut', link: 'dc1-dc2' as never },
+      { at: 45, kind: 'host.down', host: 'dc1-prm01' as never },
+      { at: 50, kind: 'cmd.failover', to: M('sby01') },
+    ]);
+    expect(refused(t)).toEqual([]);
+    expect(t.facts.newPrimary).toBe(M('sby01'));
+    /* ... and pays for it: past NET_TIMEOUT the primary carried on without
+       the standby, and that redo is lost. */
+    expect(t.facts.dataLossSeconds).toBeGreaterThan(0);
+  });
+
+  it('switches over, and fails over, to a bystander', () => {
+    const observeOnlyTwoStandbys = (): TopologyDoc => {
+      const d = preset('multi-target-three-observers').doc();
+      d.config.fsfo.state = 'observe-only';
+      d.config.fsfo.target = { kind: 'list', members: [M('sby01')] };
+      return d;
+    };
+    const sw = simulate(observeOnlyTwoStandbys(), [{ at: 0, kind: 'cmd.switchover', to: M('sby02') }]);
+    expect(refused(sw)).toEqual([]);
+    expect(sw.facts.switchover?.blocked).toBe(false);
+    expect(sw.facts.newPrimary).toBe(M('sby02'));
+    const fo = simulate(observeOnlyTwoStandbys(), [
+      { at: 0, kind: 'host.down', host: 'dc1-prm01' as never },
+      { at: 5, kind: 'cmd.failover', to: M('sby02') },
+    ]);
+    expect(refused(fo)).toEqual([]);
+    expect(fo.facts.newPrimary).toBe(M('sby02'));
+    /* The contrast: enabled, the same failover names a member that is not the target. */
+    const enabled = observeOnlyTwoStandbys();
+    enabled.config.fsfo.state = 'enabled';
+    const no = simulate(enabled, [
+      { at: 0, kind: 'site.down', site: 'dc1' as never },
+      { at: 5, kind: 'cmd.failover', to: M('sby02') },
+    ]);
+    expect(refused(no)).toContain('FSFO.MANUAL_FAILOVER_NOT_TARGET');
+  });
+});
+
 describe('far sync, zero data loss over distance (Example 5-2)', () => {
   const p = preset('far-sync-zero-loss');
   const doc = p.doc();
@@ -526,12 +674,19 @@ describe('far sync, zero data loss over distance (Example 5-2)', () => {
     expect(g.members[M('FS1')]?.countsTowardProtectionAck.value).toBe(true);
   });
 
-  it('falls back to the alternate direct destination when the far sync dies', () => {
+  it('declares the direct destination in the PRIORITY form, not the 12.1 ALT form', () => {
+    expect(formatRedoRoutes(member(doc, 'North_Sales').redoRoutes))
+      .toBe('(LOCAL : (FS1 SYNC PRIORITY=1, South_Sales ASYNC PRIORITY=2))');
+    expect(validate(doc).some((f) => f.id === 'ROUTES.ALT_12_1_ONLY')).toBe(false);
+    expect(edge(g, 'North_Sales', 'South_Sales')?.inactiveReason).toBe('group-standby');
+  });
+
+  it('falls back to the direct destination of its group when the far sync dies', () => {
     const t = simulate(doc, p.events());
     expect(t.facts.outcome).toBe('continues');
-    const alt = t.findings.find((f) => f.id === 'ROUTES.ALT_ACTIVATION');
-    expect(alt?.basis).toBe('model');
-    expect(alt?.note).toMatch(/protection level is reduced/);
+    expect(t.findings.some((f) => f.id === 'ROUTES.ALT_ACTIVATION')).toBe(false);
+    const instant = t.findings.find((f) => f.id === 'ROUTES.GROUP_SWITCH_INSTANT');
+    expect(instant?.basis).toBe('model');
     const g2 = finalGraph(doc, p);
     expect(activeEdge(g2, 'North_Sales', 'South_Sales')).toBe(true);
     expect(edge(g2, 'North_Sales', 'South_Sales')?.xpt).toBe('ASYNC');
@@ -546,14 +701,23 @@ describe('a high-availability far sync pair (Example 5-4)', () => {
   const doc = p.doc();
   const g = graphOf(doc);
 
-  it('ships to the first group and stands the second one down', () => {
+  it('is one group, as Example 5-4 writes it, so the drawing is what the broker would do', () => {
+    expect(formatRedoRoutes(member(doc, 'North_Sales').redoRoutes))
+      .toBe('(LOCAL : (FS1 SYNC PRIORITY=1, FS2 SYNC PRIORITY=1, South_Sales ASYNC PRIORITY=2))');
+  });
+
+  it('ships to one far sync instance and stands the rest of the group down', () => {
     expect(activeEdge(g, 'North_Sales', 'FS1')).toBe(true);
-    expect(edge(g, 'North_Sales', 'FS1')?.groupPriority).toBe(1);
+    expect(edge(g, 'North_Sales', 'FS1')?.priority).toBe(1);
     expect(edge(g, 'North_Sales', 'FS2')?.active).toBe(false);
-    expect(edge(g, 'North_Sales', 'FS2')?.inactiveReason).toBe('lower-priority-group');
-    const f = g.findings.find((x) => x.id === 'ROUTES.PRIORITY_ACTIVATION');
+    expect(edge(g, 'North_Sales', 'FS2')?.inactiveReason).toBe('group-standby');
+    expect(edge(g, 'North_Sales', 'South_Sales')?.inactiveReason).toBe('group-standby');
+    /* Which destination ships is documented; the instant it moves is not. */
+    expect(g.findings.find((x) => x.id === 'ROUTES.GROUP_SELECTION')?.basis).toBe('documented');
+    const f = g.findings.find((x) => x.id === 'ROUTES.GROUP_SWITCH_INSTANT');
     expect(f?.basis).toBe('model');
     expect(f?.note ?? '').not.toBe('');
+    expect(g.findings.some((x) => x.id === 'ROUTES.PRIORITY_ACTIVATION')).toBe(false);
   });
 
   it('keeps zero data loss when the first far sync host dies', () => {
@@ -647,10 +811,15 @@ describe('PRIORITY groups and the stood-down destination (Example 4-3)', () => {
     expect(f?.basis).toBe('inferred');
   });
 
-  it('activates the second group when the first destination host dies', () => {
+  it('is one group with a PRIORITY per destination, as 19c Example 4-3 writes it', () => {
+    expect(formatRedoRoutes(member(doc, 'North_Sales').redoRoutes))
+      .toBe('(LOCAL : (Local_Sales SYNC PRIORITY=1, Alternate_Sales SYNC PRIORITY=2))');
+  });
+
+  it('moves to the PRIORITY=2 destination when the first destination host dies', () => {
     const g = graphOf(doc);
     expect(edge(g, 'North_Sales', 'Alternate_Sales')?.inactiveReason)
-      .toBe('lower-priority-group');
+      .toBe('group-standby');
     const t = simulate(doc, p.events());
     expect(t.facts.outcome).toBe('continues');
     expect(t.facts.abortAt).toBe(null);
@@ -670,24 +839,57 @@ describe('two candidate targets, three observers', () => {
     expect(doc.observers.filter((o) => o.role === 'master')).toHaveLength(1);
   });
 
-  it('walks the candidate list in order and lands on the second one', () => {
+  /* Fact check SIM-05. The preset's events used to take the second data
+     centre and the primary down at the same instant and promote the second
+     candidate, which 26ai documents as impossible. They now lose the first
+     candidate first, while the primary is there to change the target. */
+  it('loses the first candidate first, and the primary later', () => {
+    expect(p.events()).toEqual([
+      { at: 0, kind: 'site.down', site: 'dc2' },
+      { at: 20, kind: 'host.down', host: 'dc1-prm01' },
+    ]);
+    expect(doc.events).toEqual(p.events());
+  });
+
+  it('changes the target while the primary is alive, and fails over to the second candidate', () => {
     const t = simulate(doc, p.events());
+    const change = t.decisions.find((x) => x.id === 'FSFO.TARGET_CHANGE');
+    expect(change?.at).toBe(0);
+    expect(change?.subject?.id).toBe('sby02');
     expect(t.facts.outcome).toBe('failover');
     expect(t.facts.target).toBe(M('sby02'));
-    expect(t.facts.initiateAt).toBe(30);
+    /* One threshold after the primary went, at 20 s. */
+    expect(t.facts.initiateAt).toBe(50);
     /* execStart + the apply lag it still has to replay + the role change. */
-    expect(t.facts.tOpen).toBeCloseTo(30.005 + 10 + 15, 6);
+    expect(t.facts.tOpen).toBeCloseTo(50.005 + 10 + 15, 6);
   });
 
-  it('says the order is the model, and refuses the forbidden wording', () => {
+  it('says the change is the model, and refuses the forbidden wording', () => {
     const t = simulate(doc, p.events());
-    const d = t.decisions.find((x) => x.id === 'FSFO.TARGET_SELECTION');
-    expect(d?.claim.basis).toBe('model');
-    expect(d?.claim.note).toContain('order');
-    expect(d?.claim.note).toContain('never "the first viable one in the list"');
+    for (const id of ['FSFO.TARGET_CHANGE', 'FSFO.TARGET_SELECTION']) {
+      const d = t.decisions.find((x) => x.id === id);
+      expect(d?.claim.basis, id).toBe('model');
+      expect(d?.claim.note, id).toContain('order');
+      expect(d?.claim.note, id).toContain('never "the first viable one in the list"');
+    }
   });
 
-  it('stops at the first candidate under the active-target-only policy', () => {
+  it('promotes nobody when the two are lost at the same instant, in either edition', () => {
+    for (const edition of ['19c', '26ai'] as const) {
+      const d = p.doc();
+      d.config.edition = edition;
+      const t = simulate(d, [
+        { at: 0, kind: 'site.down', site: 'dc2' as never },
+        { at: 0, kind: 'host.down', host: 'dc1-prm01' as never },
+      ]);
+      expect(t.facts.newPrimary, edition).toBe(null);
+      const f = t.findings.find((x) => x.id === 'FSFO.NO_SECOND_TARGET');
+      expect(f?.basis, edition).toBe(edition === '26ai' ? 'documented' : 'doc-later');
+      expect(f?.cite, edition).toContain('FSFO.NO_SECOND_TARGET_26AI');
+    }
+  });
+
+  it('never changes the target under the active-target-only policy', () => {
     const only = simulate(doc, p.events(), { targetPolicy: 'active-target-only' });
     expect(only.facts.newPrimary).toBe(null);
   });
@@ -719,12 +921,15 @@ describe('snapshot and logical standbys as bystanders', () => {
   const p = preset('bystanders');
   const doc = p.doc();
 
-  it('is drawn under 26ai, where an ASYNC maximum availability member is allowed', () => {
+  it('is drawn under 26ai, where an ASYNC bystander raises nothing at all', () => {
+    /* VAL-02: Oracle asks only that at least one standby in the
+       configuration support the mode (here sby01's SYNC); an ASYNC
+       bystander next to it is legal in every edition, and neither bystander
+       is the fast-start failover target, so no rule fires for them. */
     expect(doc.config.edition).toBe('26ai');
     expect(doc.config.protectionMode).toBe('MAXAVAILABILITY');
     const warn = validate(doc).filter((f) => f.id === 'XPT.TABLE_4_2');
-    expect(warn.every((f) => f.severity === 'warning')).toBe(true);
-    expect(warn.map((f) => f.subject.id)).toEqual(['lsby01', 'snp01']);
+    expect(warn).toEqual([]);
   });
 
   it('leaves the snapshot standby out of the candidate list', () => {
@@ -740,9 +945,11 @@ describe('snapshot and logical standbys as bystanders', () => {
     expect(t.facts.newPrimary).toBe(M('sby01'));
     expect(t.decisions.some((d) => d.id === 'BYSTANDERS.FOLLOW' && d.taken)).toBe(true);
     const g2 = finalGraph(doc, p);
-    /* (LOCAL : ALL) at the new primary, and ALL excludes snapshot standbys. */
+    /* (LOCAL : ALL) at the new primary, and ALL is every other member: a
+       snapshot standby "receives and archives redo data from a primary
+       database" like any standby -- it only may not forward it. */
     expect(g2.members[M('lsby01')]?.reachableFromPrimary).toBe(true);
-    expect(g2.members[M('snp01')]?.reachableFromPrimary).toBe(false);
+    expect(g2.members[M('snp01')]?.reachableFromPrimary).toBe(true);
   });
 });
 

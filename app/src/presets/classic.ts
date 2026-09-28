@@ -21,8 +21,11 @@ const LINKS: [string, string, number][] = [
 ];
 
 function classicDoc(fsfoState: 'enabled' | 'observe-only'): TopologyDoc {
+  /* The primary carries the transport it needs as the standby: after a role
+     change the new primary ships to it at its own LogXptMode. */
   const prm = database('prm01', ['dc1-prm01'], 'primary', {
     redoRoutes: [local(to('sby01', 'SYNC'))],
+    logXptMode: 'SYNC',
   });
   const sby = database('sby01', ['dc2-sby01'], 'physical', { logXptMode: 'SYNC' });
   dest(prm, sby.id);
@@ -52,7 +55,10 @@ export const classic: Preset = {
     + 'and network infrastructure", and never at the primary or standby database server or '
     + 'cluster. The primary ships SYNC, which is what maximum availability mode takes, so the '
     + 'standby is synchronized and the readiness check passes -- broker Table 4-2 lists SYNC '
-    + 'and FASTSYNC for maximum availability mode. The default event kills the '
+    + 'and FASTSYNC for maximum availability mode. The primary carries SYNC as its own '
+    + 'LogXptMode too, because after a role change it is the standby: the fast-start failover '
+    + 'prerequisites "set the LogXptMode database property for both the primary and target '
+    + 'standby databases to SYNC or FASTSYNC". The default event kills the '
     + "primary's host at t = 0: the observer and the target standby both lose the primary, and "
     + 'with ObserverOverride at its default FALSE a fast-start failover needs both of them to '
     + 'have lost it, so the observer initiates one FastStartFailoverThreshold (default 30 s) '
@@ -60,6 +66,7 @@ export const classic: Preset = {
     + 'environment-dependent, not parameter-driven, and the bands drawn for it are nominal.',
   cite: [
     'OBS.PLACEMENT_THIRD_SITE', 'OBS.PLACEMENT_NEVER_ON_DB_HOST', 'XPT.TABLE_4_2',
+    'FSFO.TASK3_PRIMARY_XPT_19C',
     'MAXAVAIL.AT_LEAST_ONE', 'FSFO.THRESHOLD', 'FSFO.BOTH_MUST_HAVE_LOST',
     'FSFO.OBSERVER_OVERRIDE_FALSE', 'OBS.MASTER_ONLY_COORDINATES',
   ],
@@ -76,19 +83,21 @@ export const observeOnly: Preset = {
   summary:
     'The same configuration with ENABLE FAST_START FAILOVER OBSERVE ONLY. The observer watches '
     + 'and reports, and the one thing it will not do is promote anybody: "Unable to failover '
-    + 'since this observer is in observe-only mode". In this mode the primary may open without '
-    + 'acknowledgement from the target, and a switchover or a failover to a bystander stays '
-    + 'allowed. The default event kills the primary at t = 0 and nothing is promoted -- the '
-    + 'standby waits, and only a manual FAILOVER moves the role. That manual failover is '
-    + 'conditional while fast-start failover is enabled: the target must be the '
-    + 'FastStartFailoverTarget standby, synchronized in maximum availability or maximum '
-    + 'protection mode (within FastStartFailoverLagLimit in maximum performance mode), with the '
-    + 'observer started and communicating with the target standby and the primary shut down '
-    + 'first. This is the preset to compare against "classic": same failure, same clocks '
-    + 'running, no promotion at the end of them.',
+    + 'since this observer is in observe-only mode". The default event kills the primary at '
+    + 't = 0 and nothing is promoted -- the standby waits, and only a manual FAILOVER moves the '
+    + 'role. In observe-only mode that manual failover is not held to the conditions an '
+    + 'enabled configuration imposes: "Manual failover to the fast-start failover target can '
+    + 'be performed without receiving an acknowledgement from the observer", and "Manual '
+    + 'failover can be performed even if the pre-condition checks are not met" -- the '
+    + 'configuration UNSYNC or LAGGING or unobserved, the target invalid, a reinstatement or a '
+    + 'master observer switch in progress. "You can switch over or manual failover to a '
+    + 'bystander database." What such a failover loses is whatever the target had not received. '
+    + 'The rest of the fast-start failover machinery in this mode is not documented, and this '
+    + "page's model draws it unarmed: no primary stall, no readiness gate. This is the preset to "
+    + 'compare against "classic": the same failure, and no promotion at the end of it.',
   cite: [
-    'OBS.OBSERVE_ONLY', 'FSFO.MANUAL_FAILOVER_CONDITIONS', 'FSFO.THRESHOLD',
-    'OBS.MASTER_ONLY_COORDINATES',
+    'OBS.OBSERVE_ONLY', 'OBS.OBSERVE_ONLY_NO_ACK', 'OBS.OBSERVE_ONLY_NO_PRECHECKS',
+    'OBS.OBSERVE_ONLY_BYSTANDER', 'OBS.MASTER_ONLY_COORDINATES',
   ],
   doc: () => classicDoc('observe-only'),
   events: () => [hostDown(0, 'dc1-prm01')],

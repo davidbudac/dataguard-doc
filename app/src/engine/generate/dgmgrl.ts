@@ -6,8 +6,9 @@
  * per-member transport and routing properties, enable, choose the protection
  * mode, set the fast-start failover properties, arm it, start the observers.
  *
- * The card is a transcript, so its commentary is parenthetical and unprefixed:
- * DGMGRL has no comment syntax to borrow. Three traps the golden tests pin:
+ * The card is a transcript; its commentary renders as DGMGRL's own documented
+ * comment syntax (`-- text;`, DGMGRL.COMMENT_SYNTAX) when copied or exported --
+ * see `commentText` in `lines.ts`. Three traps the golden tests pin:
  *
  *  - `FILE IS`, never `FILE=`,
  *  - `GROUP` never appears inside a RedoRoutes string -- it is a
@@ -21,18 +22,19 @@
 
 import { assertCitesAllowed } from '../citations';
 import type { CitationId } from '../citations';
-import { BROKER_DEFAULTS, defaultLagLimit } from '../defaults';
+import { BROKER_DEFAULTS, defaultLagLimit, lagLimitIsSet, lagLimitOf } from '../defaults';
 import type { MemberId } from '../ids';
-import { formatRedoRoutes } from '../redo/parse';
+import { formatRedoRoutes, isParenthesised } from '../redo/parse';
 import { resolveRedoGraph } from '../redo/resolve';
-import { detectClaim, lagGated, pingPropertiesSet } from '../sim/fsfo';
+import { defaultDestProps } from '../serialize/schema';
+import { detectClaim, pingPropertiesSet } from '../sim/fsfo';
 import type { Claim, Finding } from '../types/claims';
-import { docLater, documented, model } from '../types/claims';
+import { conflict, docLater, documented, model } from '../types/claims';
 import type { DestProps, Member, TopologyDoc } from '../types/topology';
 import { declaredPrimary, isDatabase, isFarSync, isRac } from '../types/topology';
 import { isMultiInstanceApply } from '../sim/rac';
 import type { GeneratedFile, Line, Span } from './lines';
-import { blank, cmd, hl, note, span } from './lines';
+import { blank, cmd, comment, hl, note, span } from './lines';
 
 /* The lag limit's protection-mode story is one of the fenced facts: the 26ai
    maximum-availability role may be cited only to the fast-start failover
@@ -67,6 +69,10 @@ const nLater = (text: string, cite: CitationId[], why: string): Line =>
 
 export function generateDgmgrl(doc: TopologyDoc, opts: DgmgrlOptions = {}): GeneratedFile {
   const lines: Line[] = [];
+  if (doc.members.some(m => m.routesObserved)) {
+    lines.push(nModel('Imported SQL snapshot: this is not a recovered broker configuration. Review all generated commands before use.',
+      'Only current collected routes are known. Empty observed routes suppress simulator defaults, but cannot express an empty broker RedoRoutes policy; future-role routes and uncollected settings need manual review.'));
+  }
   const findings = [...(opts.findings ?? [])];
   const cfg = doc.config;
   const fsfo = cfg.fsfo;
@@ -94,6 +100,10 @@ export function generateDgmgrl(doc: TopologyDoc, opts: DgmgrlOptions = {}): Gene
   const graph = resolveRedoGraph(doc, { primary: primary.id });
   const databases = members.filter(isDatabase);
   const farSyncs = members.filter(isFarSync);
+  /* Every member named as a destination inside a parenthesised RedoRoutes
+     group, from any sender: the broker default for MaxFailure is 1 there,
+     0 for a destination outside any group (DEST.MAX_FAILURE). */
+  const grouped = groupedDestinationIds(doc);
 
   /* ---- the session ---- */
   lines.push(cmd(`CONNECT sys@${primary.connectIdentifier} AS SYSDBA;`,
@@ -244,7 +254,7 @@ export function generateDgmgrl(doc: TopologyDoc, opts: DgmgrlOptions = {}): Gene
       'the routes are pre-declared for both directions: a rule is active when its redo source names the current primary, and nothing rewrites on a role change',
       ['FS.ROUTES_BOTH_DIRECTIONS', 'ROUTES.RULE_ACTIVE'],
     ));
-    if (routed.some((m) => m.redoRoutes.some((r) => r.groups.length > 1))) {
+    if (routed.some((m) => m.redoRoutes.some((r) => r.groups.some((g) => g.dests.some((d) => d.priority !== undefined))))) {
       lines.push(nDoc(
         'PRIORITY is RedoRoutes syntax; GROUP is not -- GROUP is a LOG_ARCHIVE_DEST_n attribute and appears in the init.ora block instead',
         ['ROUTES.GROUP_IS_NOT_ROUTES_SYNTAX', 'ROUTES.PRIORITY_26AI'],
@@ -259,7 +269,12 @@ export function generateDgmgrl(doc: TopologyDoc, opts: DgmgrlOptions = {}): Gene
     lines.push(blank());
   }
 
-  /* ---- NetTimeout, a property of the receiving member ---- */
+  /* ---- NetTimeout, ReopenSecs, MaxFailure: properties of the receiving
+     member -- "The properties used are: Binding, MaxFailure, NetTimeout,
+     RedoCompression, and ReopenSecs" (DEST.BROKER_OWNED_PROPERTIES). The
+     broker writes these into the NET_TIMEOUT / REOPEN / MAX_FAILURE
+     attributes of the LOG_ARCHIVE_DEST_n it manages; init.ora shows where
+     they land, but this script is what sets them. ---- */
   const netTimeouts: Array<{ m: Member; d: DestProps }> = [];
   for (const m of members) {
     for (const sender of members) {
@@ -287,10 +302,31 @@ export function generateDgmgrl(doc: TopologyDoc, opts: DgmgrlOptions = {}): Gene
           ['DEST.NET_TIMEOUT'],
         ));
       }
+
+      /* The broker default for MaxFailure is 1 inside a parenthesised
+         RedoRoutes group, 0 otherwise (DEST.MAX_FAILURE); ReopenSecs is 300
+         regardless. Only a non-default value is set explicitly. */
+      const brokerDefault = defaultDestProps({ inGroup: grouped.has(m.id as string) });
+      if (d.reopenSeconds !== brokerDefault.reopenSeconds) {
+        lines.push(cmd(
+          [span(`${editOf(m)} SET PROPERTY 'ReopenSecs' = `), hl(String(d.reopenSeconds)), span(';')],
+          { basis: 'documented', cite: ['DEST.REOPEN', 'DEST.BROKER_OWNED_PROPERTIES'] },
+        ));
+      }
+      if (d.maxFailure !== brokerDefault.maxFailure) {
+        lines.push(cmd(
+          [span(`${editOf(m)} SET PROPERTY 'MaxFailure' = `), hl(String(d.maxFailure)), span(';')],
+          { basis: 'documented', cite: ['DEST.MAX_FAILURE', 'DEST.BROKER_OWNED_PROPERTIES'] },
+        ));
+        lines.push(nDoc(
+          `the broker default is ${brokerDefault.maxFailure} here -- 1 for a member inside a parenthesised RedoRoutes group, 0 otherwise`,
+          ['DEST.MAX_FAILURE'],
+        ));
+      }
     }
     lines.push(nDoc(
-      'ReopenSecs and MaxFailure stay documented broker properties in 19c (neither is on the 19c deprecation list); their values are the REOPEN and MAX_FAILURE attributes, so this script sets them once, in the LOG_ARCHIVE_DEST_n block',
-      ['DEST.DEPRECATED_19C'],
+      'ReopenSecs and MaxFailure are broker properties, not deprecated in any edition; the lines above set them where they differ from the broker default, and the init.ora block shows the REOPEN and MAX_FAILURE attributes they write',
+      ['DEST.BROKER_OWNED_PROPERTIES', 'DEST.DEPRECATED_19C'],
     ));
     lines.push(blank());
   }
@@ -304,11 +340,28 @@ export function generateDgmgrl(doc: TopologyDoc, opts: DgmgrlOptions = {}): Gene
   lines.push(blank());
 
   /* ---- protection mode ---- */
-  lines.push(cmd(
-    [span('EDIT CONFIGURATION SET PROTECTION MODE AS '),
-      val(cfg.protectionMode, cfg.protectionMode === defaults.protectionMode), span(';')],
-    { basis: 'documented', cite: ['DGMGRL.BROKER_COMMANDS', 'XPT.TABLE_4_2'] },
-  ));
+  if (cfg.protectionMode === 'MAXPROTECTION') {
+    /* "Upgrading from MAXPERFORMANCE to MAXPROTECTION is not allowed. You
+       must first go to MAXAVAILABILITY and then to MAXPROTECTION." A new
+       configuration starts at MAXPERFORMANCE, so a document asking for
+       MAXPROTECTION always needs both steps. */
+    lines.push(cmd('EDIT CONFIGURATION SET PROTECTION MODE AS MAXAVAILABILITY;',
+      { basis: 'documented', cite: ['DGMGRL.BROKER_COMMANDS', 'XPT.TABLE_4_2'] }));
+    lines.push(nDoc(
+      'a new configuration cannot go straight to maximum protection: it must go to maximum availability first',
+      ['DGMGRL.MAXPROT_STAGED'],
+    ));
+    lines.push(cmd(
+      [span('EDIT CONFIGURATION SET PROTECTION MODE AS '), hl('MAXPROTECTION'), span(';')],
+      { basis: 'documented', cite: ['DGMGRL.BROKER_COMMANDS', 'XPT.TABLE_4_2'] },
+    ));
+  } else {
+    lines.push(cmd(
+      [span('EDIT CONFIGURATION SET PROTECTION MODE AS '),
+        val(cfg.protectionMode, cfg.protectionMode === defaults.protectionMode), span(';')],
+      { basis: 'documented', cite: ['DGMGRL.BROKER_COMMANDS', 'XPT.TABLE_4_2'] },
+    ));
+  }
   if (cfg.protectionMode === 'MAXAVAILABILITY') {
     lines.push(nDoc(
       'if the primary does not receive acknowledgement from at least one synchronized standby, then it operates as if it were in maximum performance mode',
@@ -347,24 +400,32 @@ export function generateDgmgrl(doc: TopologyDoc, opts: DgmgrlOptions = {}): Gene
       ['OBS.CANNOT_OCCUR_LIST'],
     ));
     lines.push(nDoc(
-      'with no observer deployed V$DATABASE.FS_FAILOVER_STATUS simply reads DISABLED -- deploying no observer is not the same as being unobserved',
-      ['FSFO.STATUS_DISABLED', 'FSFO.PRIMARY_UNOBSERVED'],
+      /* ED-06: 26ai deprecates the V$DATABASE.FS_FAILOVER_* columns in favour
+         of V$FAST_START_FAILOVER_CONFIG. */
+      cfg.edition === '26ai'
+        ? 'with no observer deployed V$FAST_START_FAILOVER_CONFIG simply reads DISABLED -- deploying no observer is not the same as being unobserved'
+        : 'with no observer deployed V$DATABASE.FS_FAILOVER_STATUS simply reads DISABLED -- deploying no observer is not the same as being unobserved',
+      cfg.edition === '26ai'
+        ? ['FSFO.FS_FAILOVER_CONFIG_26AI', 'FSFO.PRIMARY_UNOBSERVED']
+        : ['FSFO.STATUS_DISABLED', 'FSFO.PRIMARY_UNOBSERVED'],
     ));
     const target = firstTargetName(doc, primary.id);
     if (target !== null) {
       lines.push(blank());
-      lines.push(cmd(`FAILOVER TO ${q(target)};`,
-        { basis: 'documented', cite: ['FSFO.MANUAL_FAILOVER_CONDITIONS'] }));
       lines.push(nDoc(
-        'a manual failover needs no observer while fast-start failover is disabled',
-        ['FSFO.MANUAL_FAILOVER_CONDITIONS'],
+        'a manual failover needs no observer while fast-start failover is disabled -- issue it only once the primary has actually failed, and before issuing it verify that you are connected to the standby database that will become the new primary',
+        ['FSFO.MANUAL_FAILOVER_CONDITIONS', 'DGMGRL.FAILOVER_CONNECT_STANDBY'],
       ));
+      /* Runbook text, not a line of the build script: FAILOVER is destructive
+         and only makes sense once the primary is actually down. */
+      lines.push(comment(`FAILOVER TO ${q(target)}`,
+        { basis: 'documented', cite: ['FSFO.MANUAL_FAILOVER_CONDITIONS'] }));
     }
   } else {
     lines.push(...fsfoPropertyLines(doc, defaults));
     lines.push(...targetLines(doc, primary));
     lines.push(blank());
-    lines.push(...enableAndObserverLines(doc));
+    lines.push(...enableAndObserverLines(doc, primary));
   }
 
   /* ---- what validate had to say, verbatim ---- */
@@ -386,6 +447,22 @@ export function generateDgmgrl(doc: TopologyDoc, opts: DgmgrlOptions = {}): Gene
 const nameOf = (doc: TopologyDoc, id: MemberId): string =>
   doc.members.find((m) => m.id === id)?.name ?? (id as string);
 
+/** Every member id named as a destination inside a parenthesised group, from any sender. */
+function groupedDestinationIds(doc: TopologyDoc): Set<string> {
+  const out = new Set<string>();
+  for (const m of doc.members) {
+    for (const r of m.redoRoutes) {
+      for (const g of r.groups) {
+        if (!isParenthesised(g)) continue;
+        for (const d of g.dests) {
+          if (d.target !== 'ALL') out.add(d.target as string);
+        }
+      }
+    }
+  }
+  return out;
+}
+
 /* ---------------- the fast-start failover properties ---------------- */
 
 function fsfoPropertyLines(doc: TopologyDoc, defaults: (typeof BROKER_DEFAULTS)['19c']): Line[] {
@@ -406,14 +483,18 @@ function fsfoPropertyLines(doc: TopologyDoc, defaults: (typeof BROKER_DEFAULTS)[
     ['FSFO.THRESHOLD', 'FSFO.BOTH_MUST_HAVE_LOST', 'FSFO.OBSERVER_OVERRIDE_FALSE'],
   ));
 
-  if (pingPropertiesSet(doc)) {
+  if (pingPropertiesSet(doc) && v26) {
+    /* ObserverPingInterval / ObserverPingRetry: zero occurrences on the
+       12.2, 18c and 19c properties pages, first documented in 21c, and
+       absent from a live 19.27 install -- never emitted under 19c
+       (ED-01), only under 26ai, which has its own primary pages for them. */
     out.push(cmd(
       [span('EDIT CONFIGURATION SET PROPERTY ObserverPingInterval = '), hl(String(f.pingIntervalMs)), span(';')],
-      { basis: 'doc-later', cite: ['FSFO.PING_PROPS_21C'], note: 'The 19c properties reference does not list the ObserverPing* properties; they exist since 12.2, so the citation is the 21c page.' },
+      { basis: 'documented', cite: ['FSFO.PING_DEFAULTS_26AI_ZERO'] },
     ));
     out.push(cmd(
       [span('EDIT CONFIGURATION SET PROPERTY ObserverPingRetry = '), hl(String(f.pingRetry)), span(';')],
-      { basis: 'doc-later', cite: ['FSFO.PING_PROPS_21C'], note: 'Same page as ObserverPingInterval.' },
+      { basis: 'documented', cite: ['FSFO.PING_RETRY_26AI'] },
     ));
     out.push(nDoc(
       'with both properties explicitly set, the threshold above is ignored for the observer\'s detection',
@@ -430,13 +511,19 @@ function fsfoPropertyLines(doc: TopologyDoc, defaults: (typeof BROKER_DEFAULTS)[
       'the isolated primary\'s own stall clock still runs on the threshold',
       ['FSFO.PMY_SHUTDOWN'],
     ));
-    if (v26) {
-      out.push(nLater(
-        'the 26ai property pages give both broker defaults as 0 -- not set -- while the 26ai fast-start failover chapter\'s table still shows 100 ms and 10; the explicitly-set minimums stay 100 ms and 10 in every edition',
-        ['FSFO.PING_DEFAULTS_26AI_ZERO', 'FSFO.PING_DEFAULTS_26AI_TABLE'],
-        '26ai disagrees with itself about the defaults; never write "defaults identical in 26ai" unqualified.',
-      ));
-    }
+    out.push(nLater(
+      'the 26ai property pages give both broker defaults as 0 -- not set -- while the 26ai fast-start failover chapter\'s table still shows 100 ms and 10; the explicitly-set minimums stay 100 ms and 10 in every edition',
+      ['FSFO.PING_DEFAULTS_26AI_ZERO', 'FSFO.PING_DEFAULTS_26AI_TABLE'],
+      '26ai disagrees with itself about the defaults; never write "defaults identical in 26ai" unqualified.',
+    ));
+  } else if (pingPropertiesSet(doc)) {
+    /* v19: the document specifies values for both properties, but they do
+       not exist in 19c, so this script does not set them. */
+    out.push(nLater(
+      'the ObserverPing* properties are not documented for 19c -- zero occurrences on the 12.2, 18c or 19c properties pages, and neither name is present in a live 19.27 install -- so this script does not set them here even though the document specifies values for both; detection stays governed by the threshold above',
+      ['FSFO.PING_PROPS_21C'],
+      'First documented in the 21c broker properties page.',
+    ));
   } else {
     out.push(nDoc(
       'ObserverPingInterval and ObserverPingRetry stay unset -- detection runs on the threshold',
@@ -444,35 +531,54 @@ function fsfoPropertyLines(doc: TopologyDoc, defaults: (typeof BROKER_DEFAULTS)[
     ));
   }
 
-  /* The lag limit, whose protection-mode story changed in 26ai. */
+  /* The lag limit, whose protection-mode story changed in 21c and whose
+     broker default follows the edition and the mode until someone sets it.
+     The command is emitted only for a limit that was set; a limit at its
+     broker default is a note saying which default is in force. */
   const mode = cfg.protectionMode;
+  const limitSet = lagLimitIsSet(f);
+  const limit = lagLimitOf(doc);
+  const lagDefault = defaultLagLimit(cfg.edition, mode);
+  const setLagLimit = (cite: CitationId[]): Line => cmd(
+    [span('EDIT CONFIGURATION SET PROPERTY FastStartFailoverLagLimit = '),
+      val(limit, limit === lagDefault), span(';')],
+    { basis: 'documented', cite },
+  );
   if (mode === 'MAXAVAILABILITY' && !v26) {
-    out.push(nDoc(
-      'FastStartFailoverLagLimit is not evaluated in maximum availability under 19c -- the standby must be synchronized instead, which is about redo received, so an apply lag does not block it',
-      LAG_LIMIT_MODE_CITES,
-    ));
+    /* ED-03: 19c contradicts itself, and a live 19.27 system prints the limit
+       "(not in use)" in maximum availability; the page follows the live
+       system and names the conflict rather than resolving it. */
+    if (limitSet) out.push(setLagLimit(['FSFO.LAGLIMIT_DEFAULT_19C']));
+    const text = `${limitSet ? `FastStartFailoverLagLimit is set to ${limit} seconds` : `FastStartFailoverLagLimit is not set -- the 19c broker default is ${lagDefault} seconds`}, and in maximum availability a live 19.27 system prints it "(not in use)": the standby must be synchronized instead, which is about redo received, so an apply lag does not block it. The 19c documentation contradicts itself here -- its fast-start failover chapter says zero data loss in maximum availability needs the property set to zero, its property page says the property is used in maximum performance mode`;
+    out.push(note(text, conflict(text,
+      ['FSFO.LAGLIMIT_ZERO_MAXAVAIL_19C', 'FSFO.LAGLIMIT_MAXPERF_ONLY_19C'],
+      'The 19c fast-start failover chapter and the 19c FastStartFailoverLagLimit property page disagree about whether the property reaches maximum availability. A live 19.27 system in MaxAvailability prints "Lag Limit: 30 seconds (not in use)" -- an observation, not documentation -- and this page follows it.')));
   } else if (mode === 'MAXAVAILABILITY') {
-    const dflt = defaultLagLimit('26ai', 'MAXAVAILABILITY');
-    out.push(cmd(
-      [span('EDIT CONFIGURATION SET PROPERTY FastStartFailoverLagLimit = '),
-        val(f.lagLimitSeconds, f.lagLimitSeconds === dflt), span(';')],
-      { basis: 'documented', cite: LAG_LIMIT_MODE_CITES },
-    ));
+    if (limitSet) out.push(setLagLimit(LAG_LIMIT_MODE_CITES));
+    else {
+      out.push(nDoc(
+        `FastStartFailoverLagLimit is not set -- the 26ai broker default in maximum availability mode is ${lagDefault} seconds`,
+        ['FSFO.LAGLIMIT_RANGES'],
+      ));
+    }
     out.push(nDoc(
-      f.lagLimitSeconds === 0
-        ? '0 is the maximum availability default in 26ai: the standby must have received every change, so the failover loses nothing -- V$FAST_START_FAILOVER_CONFIG names that ZERO DATA LOSS'
+      limit === 0
+        ? '0 in maximum availability: the standby must have received every change, so the failover loses nothing -- V$FAST_START_FAILOVER_CONFIG names that ZERO DATA LOSS'
         : 'non-zero in maximum availability: fast-start failover is permitted while the lag is at or below the limit and loses at most that much -- POTENTIAL DATA LOSS',
       LAG_LIMIT_MODE_CITES,
     ));
   } else if (mode === 'MAXPERFORMANCE') {
-    const isDefault = f.lagLimitSeconds === defaults.lagLimitSeconds;
-    out.push(cmd(
-      [span('EDIT CONFIGURATION SET PROPERTY FastStartFailoverLagLimit = '),
-        val(f.lagLimitSeconds, isDefault), span(';')],
-      { basis: 'documented', cite: ['FSFO.LAGLIMIT_RANGES'] },
-    ));
-    if (isDefault) out.push(nDoc('default', ['FSFO.LAGLIMIT_RANGES']));
-    if (f.lagLimitSeconds > f.thresholdSeconds) {
+    const rangeCite: CitationId = v26 ? 'FSFO.LAGLIMIT_RANGES' : 'FSFO.LAGLIMIT_DEFAULT_19C';
+    if (limitSet) {
+      out.push(setLagLimit([rangeCite]));
+      if (limit === lagDefault) out.push(nDoc('default', [rangeCite]));
+    } else {
+      out.push(nDoc(
+        `FastStartFailoverLagLimit is not set -- the broker default in maximum performance mode is ${lagDefault} seconds`,
+        [rangeCite],
+      ));
+    }
+    if (limit > f.thresholdSeconds) {
       out.push(nDoc(
         'Oracle recommends FastStartFailoverLagLimit at or below FastStartFailoverThreshold: past it the old primary can keep committing after a fast-start failover is initiated, briefly risking two primaries',
         ['FSFO.LAGLIMIT_RECOMMENDATION'],
@@ -501,10 +607,11 @@ function fsfoPropertyLines(doc: TopologyDoc, defaults: (typeof BROKER_DEFAULTS)[
         ['FSFO.LAGTYPE', 'FSFO.LAGGRACETIME'],
       ));
     }
-  } else if (!lagGated(doc)) {
+  } else {
+    if (limitSet) out.push(setLagLimit([v26 ? 'FSFO.LAGLIMIT_RANGES' : 'FSFO.LAGLIMIT_DEFAULT_19C']));
     out.push(nDoc(
-      'the readiness check in maximum protection is that the standby is synchronized, so the lag limit is not evaluated',
-      LAG_LIMIT_MODE_CITES,
+      'FastStartFailoverLagLimit is not used in maximum protection mode: the readiness check is that the standby is synchronized',
+      ['FSFO.LAGLIMIT_NOT_MAXPROT_26AI'],
     ));
   }
 
@@ -516,7 +623,7 @@ function fsfoPropertyLines(doc: TopologyDoc, defaults: (typeof BROKER_DEFAULTS)[
   if (f.pmyShutdown === defaults.pmyShutdown) out.push(nDoc('default', ['FSFO.PMY_SHUTDOWN']));
   if (f.pmyShutdown) {
     out.push(nDoc(
-      'TRUE is the default: a primary stalled longer than the threshold, able to reach neither the observer nor the target standby, aborts itself',
+      'TRUE is the default: a primary stalled longer than the threshold, able to reach neither the observer nor the target standby, will shut down',
       ['FSFO.PMY_SHUTDOWN', 'OBS.LOSS_ALONE_STALLS_NOTHING'],
     ));
   }
@@ -536,20 +643,33 @@ function fsfoPropertyLines(doc: TopologyDoc, defaults: (typeof BROKER_DEFAULTS)[
   if (f.observerReconnectSeconds !== undefined) {
     out.push(cmd(
       [span('EDIT CONFIGURATION SET PROPERTY ObserverReconnect = '), hl(String(f.observerReconnectSeconds)), span(';')],
-      { basis: 'documented', cite: ['OBS.OBSERVER_ORA'] },
+      { basis: 'documented', cite: ['OBS.OBSERVER_RECONNECT'] },
     ));
   }
 
   const preferred = f.preferredObserverHosts ?? [];
   if (preferred.length > 0) {
+    /* PreferredObserverHosts is database-scope, not configuration-wide: the
+       26ai chapter's own example sets it with EDIT DATABASE on both
+       North_Sales and South_Sales. When this document pre-declares routes
+       in both directions -- the same signal the RedoRoutes block above
+       reads -- a future role change needs it on the other database too. */
+    const primaryId = declaredPrimary(doc);
+    const bothDirections = primaryId !== null
+      && doc.members.some((m) => m.id !== primaryId && m.redoRoutes.length > 0);
+    const targets = bothDirections
+      ? doc.members.filter((m) => isDatabase(m) && (m.id === primaryId || m.redoRoutes.length > 0))
+      : doc.members.filter((m) => m.id === primaryId);
     const value = preferred.map((p) => `${p.host as string}:${p.priority}`).join(',');
-    out.push(cmd(
-      [span("EDIT CONFIGURATION SET PROPERTY PreferredObserverHosts = '"), hl(value), span("';")],
-      { basis: 'documented', cite: ['OBS.PREFERRED_HOSTS'] },
-    ));
+    for (const m of targets) {
+      out.push(cmd(
+        [span(`${editOf(m)} SET PROPERTY 'PreferredObserverHosts' = '`), hl(value), span("';")],
+        { basis: 'documented', cite: ['OBS.PREFERRED_HOSTS', 'OBS.PREFERRED_HOSTS_EXAMPLE_26AI'] },
+      ));
+    }
     out.push(nDoc(
-      'only observers running on the hosts specified will observe databases and become the master observer; priority runs 1 to 8, lower wins, and the default is 8',
-      ['OBS.PREFERRED_HOSTS'],
+      'PreferredObserverHosts has database scope -- EDIT DATABASE, never EDIT CONFIGURATION -- so whichever database is primary needs its own copy; only observers running on the hosts specified will observe databases and become the master observer; priority runs 1 to 8, lower wins, and the default is 8',
+      ['OBS.PREFERRED_HOSTS', 'OBS.PREFERRED_HOSTS_EXAMPLE_26AI'],
     ));
   }
 
@@ -614,7 +734,7 @@ function targetLines(doc: TopologyDoc, primary: Member): Line[] {
 
 /* ---------------- ENABLE and the observers ---------------- */
 
-function enableAndObserverLines(doc: TopologyDoc): Line[] {
+function enableAndObserverLines(doc: TopologyDoc, primary: Member): Line[] {
   const out: Line[] = [];
   const f = doc.config.fsfo;
 
@@ -636,14 +756,31 @@ function enableAndObserverLines(doc: TopologyDoc): Line[] {
   }
   out.push(blank());
 
-  /* Each observer is a DGMGRL session of its own, on a host of its own. */
+  /* Each observer is a DGMGRL session of its own, on a host of its own --
+     "START OBSERVER [observer-name] IN BACKGROUND CONNECT IDENTIFIER IS
+     connect-identifier [FILE IS observer-file] [LOGFILE IS log-file]
+     [TRACE_LEVEL IS USER | SUPPORT];" (OBS.START_FILE_IS). IN BACKGROUND sits
+     right after the name; CONNECT IDENTIFIER IS is mandatory. */
   for (const o of doc.observers) {
-    const parts = [`START OBSERVER ${o.name}`];
+    const usesPrimaryIdentifier = o.connectIdentifier === undefined;
+    const connectIdentifier = o.connectIdentifier ?? primary.connectIdentifier;
+    const parts = [
+      `START OBSERVER ${o.name}`, 'IN BACKGROUND', `CONNECT IDENTIFIER IS ${connectIdentifier}`,
+    ];
     if (o.fileIs !== undefined) parts.push(`FILE IS ${o.fileIs}`);
     if (o.logfileIs !== undefined) parts.push(`LOGFILE IS ${o.logfileIs}`);
-    if (o.connectIdentifier !== undefined) parts.push(`CONNECT IDENTIFIER IS ${o.connectIdentifier}`);
-    parts.push('IN BACKGROUND');
     out.push(cmd(`${parts.join(' ')};`, { basis: 'documented', cite: ['OBS.START_FILE_IS'] }));
+    const host = doc.hosts.find((h) => h.id === o.host);
+    out.push(nDoc(
+      `issued from a DGMGRL session on ${host?.name ?? String(o.host)}, ${o.name}'s own host -- not the session that built the configuration above`,
+      ['OBS.START_FILE_IS', 'OBS.PLACEMENT_NEVER_ON_DB_HOST'],
+    ));
+    if (usesPrimaryIdentifier) {
+      out.push(nDoc(
+        `${o.name} has no connect identifier of its own in this document; CONNECT IDENTIFIER IS is mandatory, so the command above uses ${primary.name}'s (${connectIdentifier})`,
+        ['OBS.START_FILE_IS'],
+      ));
+    }
     if (o.fileIs === undefined) {
       out.push(nDoc(
         'FILE IS and LOGFILE IS name the observer\'s files -- the syntax is FILE IS, never FILE=',
@@ -654,6 +791,10 @@ function enableAndObserverLines(doc: TopologyDoc): Line[] {
   if (doc.observers.length > 0) {
     out.push(nDoc(
       'IN BACKGROUND is the form the documentation prefers: the prompt returns and the observer process keeps running',
+      ['OBS.START_FILE_IS'],
+    ));
+    out.push(nDoc(
+      'CONNECT IDENTIFIER IS uses the credentials stored in the Oracle wallet; if the wallet is not configured, then the command will fail to start the observer',
       ['OBS.START_FILE_IS'],
     ));
     out.push(nDoc(
@@ -671,9 +812,8 @@ function enableAndObserverLines(doc: TopologyDoc): Line[] {
       'only the master observer can coordinate fast-start failover; if the primary and target standby databases stay connected but the connection to the master observer is lost, then the broker tries to nominate a backup observer as the new master observer',
       ['OBS.MASTER_ONLY_COORDINATES', 'OBS.NOMINATION_PRECONDITION'],
     ));
-    out.push(nModel(
-      'the command is documented; what has to be true for it to succeed is not',
-      'SET MASTEROBSERVER TO is documented as a command, but its preconditions are not, so this page states none.',
+    out.push(nDoc(
+      'the switch does not happen at the instant this command is issued: it takes effect the next time the primary contacts the target standby, usually within three seconds if fast-start failover is enabled, and only if the target standby is enabled and does not require reinstatement, with no role change, reinstating or fast-start failover target switch already in progress',
       ['OBS.SET_MASTEROBSERVER'],
     ));
   } else if (doc.observers.length > 1) {

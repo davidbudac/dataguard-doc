@@ -69,6 +69,36 @@ all: while the document is still, value for value, the preset it names,
 `?preset=<id>` is the whole address. Old links to the legacy page are upgraded on
 load by `src/state/legacy-url.ts`.
 
+**Saved configurations** (⋯ menu → Saved configurations) are named copies in
+this browser. Save updates the open named copy; Duplicate creates another.
+Each copy holds the document and its 19c/26ai edition. Opening an example,
+lesson, imported file or saved copy is one undoable step, and the outgoing
+draft is also kept in a browser-local list of the 30 most recent ones
+(`dg-recovery-v1`) -- an untouched preset is not kept, the picker has it.
+Named copies use `dg-workspaces-v1`. Both stores are read back through the
+normal import codec and a record that does not decode cleanly is refused; a
+storage error is shown in the dialog, and a failed recovery write leaves
+Undo available for the current visit. Export a JSON file to move a
+configuration to another browser or device.
+
+**Compare alternatives** (⋯ menu) saves a baseline in this browser
+(`dg-review-baseline-v1`) and reads it beside the configuration on screen
+under one named scenario, or runs the six common scenarios one by one against
+the configuration, each with its scenario at t = 0 in place of the authored
+events. Optional expected outcomes, opening deadlines and loss limits are
+checked against the model -- they are not measured recovery objectives. A
+run made against other settings is marked stale; opening a result restores
+the tested configuration, with Undo available. The ⋯ → Report as PDF page
+prints the comparison and an up-to-date scenario run as its own section; the
+branch's standalone HTML review download was not ported (one report system).
+
+In Break, **Why this result?** (a fold on the rail under the events, and the
+"Why?" beside the outcome in the readout) lists the run's recorded decisions
+with the basis and sources of each; selecting a step moves the playhead there
+and selects what it is about. The Introduction's **Walk through it step by
+step** runs a three-step classic walkthrough (crash, advance to the failover,
+change `FastStartFailoverThreshold`) in a card under the guidance line.
+
 ## Testing
 
 `npm test` runs everything. Three suites are load-bearing:
@@ -111,3 +141,24 @@ From the repository root, `./site/publish.sh` builds, runs the three gates and
 deploys — and only ever when the user asks for it. The nginx and CSP details,
 the pre-publish checklist and the rest are in
 [`../AGENTS.md`](../AGENTS.md#publishing).
+
+## Importing an existing setup
+
+1. On each database / far sync, from CDB$ROOT, as SYSDBA:
+   ```bash
+   sqlplus -s / as sysdba @dataguard-topology.sql </dev/null > <member>.txt
+   # or: bash collect-dataguard.sh > <member>.txt
+   ```
+2. Combine: `cat primary.txt standby.txt > topology.txt`
+3. In the workbench: **⋯ → Import existing setup** → load or paste
+   `topology.txt` → **Preview import** → **Draw imported topology**.
+
+Each file holds one `DGTOPO_BEGIN_V1` … `DGTOPO_END_V1` block of JSON lines.
+Undo restores the previous drawing.
+
+The read-only [SQL collector](public/collectors/dataguard-topology.sql) and the
+optional [Bash wrapper](public/collectors/collect-dataguard.sh) (which also takes
+wallet aliases) are downloadable from the dialog. [Instructions and limitations](public/collectors/README.txt)
+explain privileges, mounted members and which broker settings need manual review.
+Import previews assumptions before replacing the drawing; replacement is undoable.
+This reconstructs current topology, not all broker configuration.

@@ -125,7 +125,7 @@ export function EventMenu() {
           that reading is on screen either way. */}
       {editable && hintsShown() ? (
         <p class="evmenu-hint">
-          Events land at the playhead — scrub the timeline to inject later.
+          New events use the playhead time. Move it to add an event later.
         </p>
       ) : null}
 
@@ -133,13 +133,11 @@ export function EventMenu() {
         <p class="evmenu-empty">{WHY.readOnlyView}</p>
       ) : keys.length === 0 ? (
         <p class="evmenu-empty">
-          Select a card, a data centre or a line on the drawing, and what can be done to
-          it appears here.
+          Select a card, a data centre or a link to see the events it offers.
         </p>
       ) : events.length === 0 && props.length === 0 ? (
         <p class="evmenu-empty">
-          Nothing in this selection can be broken together. Select one card at a time to
-          see what it offers.
+          No event applies to this whole selection. Select one card to see its events.
         </p>
       ) : null}
 
@@ -154,8 +152,7 @@ export function EventMenu() {
       {props.length === 0 ? null : (
         <>
           <p class="evmenu-note">
-            A property, not an event: this one holds from the first frame rather than
-            landing at t = {at} s.
+            A setting, not an event: it holds for the whole simulation, not from t = {at} s.
           </p>
           {props.map((a) => (
             <div class="evmenu-row" key={a.id}>
@@ -167,7 +164,7 @@ export function EventMenu() {
 
       {keys.length > 1 ? (
         <p class="evmenu-note">
-          {keys.length} objects are selected, so this is what all of them can do.
+          Showing the events all {keys.length} selected objects share.
         </p>
       ) : null}
     </div>

@@ -12,15 +12,18 @@
  */
 
 import type {
-  Member, Observer, RedoGraph, SiteId, TopologyDoc,
+  Application, Member, Observer, RedoGraph, SiteId, TopologyDoc,
 } from '@/engine';
 import { isDatabase, isFarSync } from '@/engine';
 import type { CardLines, Rect } from './measure';
-import { approxW, CARD, elide, fitLabel, measureCardWidth, snap8 } from './measure';
+import { approxW, CARD, elide, fitLabel, measureCardWidth, MINI_ICON, snap8 } from './measure';
 
 export const LAYOUT = {
-  /** Site rect padding; twice this is the "max card + 28" column box. */
-  colPad: 14,
+  /** Site rect padding as the layout draws it: room round the cards, so a
+      data centre reads as a place with things in it rather than a frame. */
+  colPad: 24,
+  /** The padding a data centre may be resized down to (`SiteBox.fit`). */
+  fitPad: 14,
   /** Free space between two column boxes -- the corridor links and pills ride. */
   corridor: 200,
   /** Before an empty panel, which no link reaches: room to see it is a panel, no more. */
@@ -32,6 +35,13 @@ export const LAYOUT = {
   hopGap: 46,
   /** Between the observer band and the member band. */
   bandGap: 28,
+  /** Between the member band and the application under it: room for the
+      hop up to the primary with its caption, and for the lanes a redo route
+      takes between the two (`midLane`). */
+  appGap: 92,
+  /** The first lane between the member band and the application, this far
+      under the member band: just clear of the data centres' own boxes. */
+  midLane: 50,
   /** The site rect's bottom label band. */
   labelBand: 18,
   /** A cascaded standby is indented under its cascader when they share a site. */
@@ -45,10 +55,43 @@ export const LAYOUT = {
    * them (a divider line stands in for the gap instead).
    */
   stackHeaderH: 18,
+  /**
+   * With three or more observers their lines run as trunks along the gap
+   * between the bands (task 5.2) -- one for the pings, one per readiness
+   * target -- and the gap grows to hold them this far apart, so a caption
+   * riding one trunk clears the next.
+   */
+  trunkStep: 24,
+  /** No more trunks than this; a further bundle finds its own corridor. */
+  maxTrunks: 4,
 } as const;
 
-export type NodeKind = 'member' | 'observer';
-export type Glyph = 'db' | 'farsync' | 'snapshot' | 'observer';
+/**
+ * The fast-start failover targets an observer's readiness check runs against:
+ * the declared list, or every physical and logical standby when the property
+ * is ANY.
+ */
+export function readinessTargets(doc: TopologyDoc): string[] {
+  const t = doc.config.fsfo.target;
+  if (t.kind === 'list') return t.members.map((m) => m as string);
+  return doc.members
+    .filter((m) => isDatabase(m) && (m.role === 'physical' || m.role === 'logical'))
+    .map((m) => m.id as string);
+}
+
+/**
+ * How many observer trunks the gap between the bands carries: none below
+ * three observers (their lines route one by one, as they always have), else
+ * one for the pings and one per readiness target.
+ */
+export function trunkCount(doc: TopologyDoc): number {
+  if (doc.observers.length < 3) return 0;
+  const checks = doc.config.fsfo.state === 'disabled' ? 0 : readinessTargets(doc).length;
+  return Math.min(LAYOUT.maxTrunks, 1 + checks);
+}
+
+export type NodeKind = 'member' | 'observer' | 'application';
+export type Glyph = 'db' | 'farsync' | 'snapshot' | 'observer' | 'app';
 
 export interface NodeBox {
   /**
@@ -64,7 +107,8 @@ export interface NodeBox {
   site: SiteId;
   col: number;
   row: number;
-  /** Hops from the primary; -1 for the observer band, `unreachableRank` when nothing feeds it. */
+  /** Hops from the primary; -1 for the observer band and the application,
+      `unreachableRank` when nothing feeds it. */
   rank: number;
   unreachable: boolean;
   /** More than one instance is RAC. */
@@ -108,7 +152,25 @@ export interface SiteBox extends Rect {
   col: number;
   /** Nothing stands in it yet: drawn as an empty panel a card can be dropped into. */
   empty: boolean;
+  /**
+   * The smallest box this data centre may be drawn at: its cards and stack
+   * headers plus the padding and the name band -- what a resize may not cut
+   * into. For an empty panel, the empty panel's own default box.
+   */
+  fit: Rect;
+  /**
+   * The origin a stored size is measured from: the top-left corner of the
+   * box the layout would draw with no card moved by hand. A sized override's
+   * `dx`/`dy` are relative to it, so the box travels with its column when an
+   * addition elsewhere moves the columns.
+   */
+  anchor: { x: number; y: number };
+  /** The reader gave it a size of its own (`LayoutOffset.w`/`h`). */
+  sized: boolean;
 }
+
+/** The minimum a data centre may be resized to when nothing stands in it. */
+export const SITE_MIN = { w: 120, h: 64 } as const;
 
 /**
  * The site's name band: the rectangle its label actually occupies.
@@ -121,7 +183,9 @@ export interface SiteBox extends Rect {
  */
 export function siteLabelRect(s: SiteBox): Rect {
   const w = Math.round(approxW(s.label, 10) + s.label.length * 1.2 + 8);
-  return { x: Math.round(s.labelX - w / 2), y: Math.round(s.labelY) - 11, w, h: 15 };
+  /* The building icon sits left of the name (`SiteRect`), inside the rect, so
+     the router keeps captions off it too. */
+  return { x: Math.round(s.labelX - w / 2) - MINI_ICON.gap, y: Math.round(s.labelY) - 11, w: w + MINI_ICON.gap, h: 15 };
 }
 
 export interface ViewBox { x: number; y: number; w: number; h: number }
@@ -144,15 +208,46 @@ export interface Geometry {
   bandLaneY: number;
   /** Below every site rect: the lane backwards and column-skipping edges use. */
   underLaneY: number;
+  /**
+   * Between the member band and the application: the lane those edges use
+   * instead while an application stands under a card they would leave by.
+   * Null when no application is drawn.
+   */
+  midLaneY: number | null;
+  /**
+   * How many observer trunks run along `bandLaneY` and up from it, `trunkStep`
+   * apart (task 5.2); zero when the observer lines route one by one.
+   */
+  trunks: number;
   maxRank: number;
   unreachableRank: number;
 }
 
-export interface LayoutOffset { dx: number; dy: number }
+/**
+ * A hand-made offset. Under a data centre's key it may also carry `w`/`h`,
+ * the size the reader gave the box (doc.ts `LayoutOverride`).
+ */
+export interface LayoutOffset { dx: number; dy: number; w?: number; h?: number }
 
 export interface LayoutOptions {
   /** Drag overrides, keyed by node key, snapped to 8 px. */
   overrides?: Readonly<Record<string, LayoutOffset>>;
+  /**
+   * Cards being carried right now. Their overrides are drawn, but nothing
+   * makes way for them (step 7b) until they are let go: a card slid across
+   * another must not shove it aside mid-air, or the host the reader is aiming
+   * a merge at would jump out from under the pointer.
+   */
+  transient?: readonly string[];
+  /**
+   * Where the cards in the air stood when they were picked up: their
+   * overrides from before the drag (a data centre's own key included, for
+   * a whole data centre carried with its size). The columns push each other
+   * (step 7c) as if the carried cards were still there, so a neighbouring
+   * data centre does not slide about -- under a box the drag holds still --
+   * while a card is carried. A key missing here counts where it is drawn.
+   */
+  transientFrom?: Readonly<Record<string, LayoutOffset>>;
 }
 
 /** The key a node is selected, hovered and dragged by: its own id. */
@@ -205,7 +300,7 @@ function memberLines(doc: TopologyDoc, m: Member): CardLines {
   const name = fitLabel([m.name], avail) ?? elide(m.name, 26);
   return m.instances.length > 1
     ? { name, host: roleWord(m), sub: 'Shared database' }
-    : { name, host: elide(host), sub: roleWord(m) };
+    : { name, host: elide(host, 17), hostAt: 0, sub: roleWord(m) };
 }
 
 /** A member's blade inside a chassis stack: the host line moves to the shared
@@ -233,14 +328,31 @@ function observerLines(doc: TopologyDoc, o: Observer): CardLines {
      that would need a taller card -- the same fitting the name line above
      went through, falling back to the host alone when even that is tight. */
   const combined = `Observer, ${host}`;
-  const roled = fitLabel([combined, host], avail) ?? elide(host);
-  return { name, host: roled };
+  const iconAvail = avail - MINI_ICON.gap;
+  const roled = fitLabel([combined, host], iconAvail) ?? elide(host, 17);
+  /* The server icon goes in front of the host name, wherever it starts. */
+  return { name, host: roled, hostAt: roled === combined ? 'Observer, '.length : 0 };
+}
+
+/**
+ * The application's card: two lines, as an observer's is -- its name, and the
+ * host it runs on. What it is rides on the card as a chip (`chipsFor`), so
+ * the card stays the width of the databases it stands under.
+ */
+function applicationLines(doc: TopologyDoc, a: Application): CardLines {
+  const host = hostName(doc, a.host as string);
+  const avail = CARD.maxW - CARD.textXObs - CARD.padRight;
+  const name = fitLabel([a.name], avail) ?? elide(a.name, 24);
+  return { name, host: fitLabel([host], avail - MINI_ICON.gap) ?? elide(host, 17), hostAt: 0 };
 }
 
 interface Placed {
   node: NodeBox;
   indent: number;
 }
+
+/** What the layout's own padding leaves over the tightest a box may be drawn. */
+const SLACK = LAYOUT.colPad - LAYOUT.fitPad;
 
 /**
  * Rank: the BFS depth the resolver already computed. A member nothing feeds
@@ -302,9 +414,15 @@ export function layoutTopology(
     observersBySite.set(s, list);
   }
 
+  /* The application stands where its host does; a document without one, or
+     one naming a host that is gone, draws no card for it. */
+  const app = doc.application;
+  const appSite = app === undefined ? undefined : siteOfHost.get(app.host as string);
+
   /* ---- 2. column order: sites by the shallowest rank they hold ---- */
   const occupied = (s: string): boolean =>
-    (membersBySite.get(s)?.length ?? 0) + (observersBySite.get(s)?.length ?? 0) > 0;
+    (membersBySite.get(s)?.length ?? 0) + (observersBySite.get(s)?.length ?? 0)
+      + (appSite === s ? 1 : 0) > 0;
   const siteIds = doc.sites.map((s) => s.id as string).filter(occupied);
   /* A data centre with nothing in it yet is still drawn -- as an empty panel
      past the last occupied column, so "Add a data centre" puts something on
@@ -336,7 +454,7 @@ export function layoutTopology(
       if (ka !== kb) return ka - kb;
       return a.name < b.name ? -1 : a.name > b.name ? 1 : 0;
     });
-    return { site: s as SiteId, col, obs, mems };
+    return { site: s as SiteId, col, obs, mems, app: appSite === s ? app : undefined };
   });
 
   /* ---- 3b. chassis stacks: 2+ occupants sharing a host snap into one ----
@@ -459,10 +577,16 @@ export function layoutTopology(
     ? CARD.obsH
     : LAYOUT.stackHeaderH + row.observers.length * CARD.obsH);
 
+  const appCard = app === undefined || appSite === undefined ? null : (() => {
+    const lines = applicationLines(doc, app);
+    return { lines, w: measureCardWidth(lines, true), hostFull: hostName(doc, app.host as string) };
+  })();
+
   const colW = columns.map((c, ci) => {
     const widths = [
       ...(memRowsByCol[ci] ?? []).map(memRowWidth),
       ...(obsRowsByCol[ci] ?? []).map(obsRowWidth),
+      ...(c.app !== undefined && appCard !== null ? [appCard.w] : []),
     ];
     const indent = c.mems.some((m) => sameSiteCascade(doc, graph, m, memberSite))
       ? LAYOUT.cascadeIndent : 0;
@@ -473,7 +597,9 @@ export function layoutTopology(
   let cursor = 0;
   for (let i = 0; i < columns.length; i++) {
     colX.push(cursor);
-    const nextEmpty = (columns[i + 1]?.mems.length ?? 1) + (columns[i + 1]?.obs.length ?? 1) === 0;
+    const after = columns[i + 1];
+    const nextEmpty = after !== undefined
+      && after.mems.length + after.obs.length + (after.app === undefined ? 0 : 1) === 0;
     cursor += (colW[i] ?? 0) + (nextEmpty ? LAYOUT.emptyGap : LAYOUT.corridor);
   }
 
@@ -497,8 +623,18 @@ export function layoutTopology(
     ? 0
     : rows.reduce((acc, r) => acc + memRowHeight(r), 0) + (memGaps[ci] ?? []).reduce((acc: number, g) => acc + g, 0)));
   const bandH = Math.max(0, ...obsStackH);
-  const memberBandTop = bandH === 0 ? 0 : bandH + LAYOUT.bandGap;
+  const trunks = bandH === 0 ? 0 : trunkCount(doc);
+  /* Opened up by one step per trunk past the first, and by a name band more:
+     an observer-only data centre's box hangs its name into the gap, and the
+     top trunk must pass under it rather than through it. */
+  const bandGap = trunks > 1
+    ? LAYOUT.bandGap + LAYOUT.labelBand + SLACK + (trunks - 1) * LAYOUT.trunkStep
+    : LAYOUT.bandGap;
+  const memberBandTop = bandH === 0 ? 0 : bandH + bandGap;
   const memberBandH = Math.max(0, ...memStackH);
+  /* The application's band, under every member: a line that leaves its card
+     sideways then runs below every database on the drawing. */
+  const appBandTop = memberBandTop + memberBandH + (memberBandH === 0 ? 0 : LAYOUT.appGap);
 
   /* ---- 6. place ---- */
   const overrides = opts.overrides ?? {};
@@ -701,16 +837,91 @@ export function layoutTopology(
       }
       my += memRowHeight(row) + (memGaps[ci]?.[rowIdx] ?? LAYOUT.rowGap);
     });
+
+    if (c.app !== undefined && appCard !== null) {
+      placed.push({
+        indent: 0,
+        node: {
+          key: nodeKey('application', c.app.id as string),
+          id: c.app.id as string,
+          kind: 'application',
+          glyph: 'app',
+          site: c.site,
+          col: ci,
+          row: (memRowsByCol[ci] ?? []).length,
+          rank: -1,
+          unreachable: false,
+          instances: 1,
+          x: Math.round(cx + (cw - appCard.w) / 2),
+          y: Math.round(appBandTop),
+          w: appCard.w,
+          h: CARD.obsH,
+          lines: appCard.lines,
+          hostFull: appCard.hostFull,
+          moved: false,
+        },
+      });
+    }
   });
 
   /* ---- 7. drag overrides, snapped ---- */
-  const nodes = placed.map(({ node }) => {
+  const transient = opts.transient ?? [];
+  const madeWay = makeWay(transient, placed.map(({ node }) => {
     const ov = overrides[node.key];
     if (!ov) return node;
     const dx = snap8(ov.dx); const dy = snap8(ov.dy);
     if (dx === 0 && dy === 0) return node;
     return { ...node, x: node.x + dx, y: node.y + dy, moved: true };
+  }));
+
+  /* ---- 7c. the columns push each other ---- */
+  const naturalBoxes = columns.map((c, ci) => {
+    const own = placed.map((p) => p.node).filter((n) => (n.site as string) === (c.site as string));
+    if (own.length === 0) {
+      const cx = colX[ci] ?? 0;
+      return { x0: cx, x1: cx + (colW[ci] ?? CARD.minW + LAYOUT.colPad * 2) };
+    }
+    return {
+      x0: Math.min(...own.map((n) => n.x)) - LAYOUT.colPad,
+      x1: Math.max(...own.map((n) => n.x + n.w)) + LAYOUT.colPad,
+    };
   });
+  const naturalX = new Map(placed.map((p) => [p.node.key, p.node.x]));
+  const from = opts.transientFrom ?? {};
+  /* Every column's left and right edge as the reader's hand has left it,
+     before anything is pushed: its cards (a card in the air where it was
+     picked up), a size of its own, an empty panel's own offset. */
+  const handBoxes = columns.map((c, ci) => {
+    const nat = naturalBoxes[ci] as { x0: number; x1: number };
+    const site = c.site as string;
+    const xs = madeWay.filter((n) => (n.site as string) === site).map((n) => {
+      const was = transient.includes(n.key) ? from[n.key] : undefined;
+      const x = was === undefined ? n.x : (naturalX.get(n.key) ?? n.x) + snap8(was.dx);
+      return { x0: x - LAYOUT.colPad, x1: x + n.w + LAYOUT.colPad };
+    });
+    const ov = transient.includes(site) ? from[site] : overrides[site];
+    const sized = ov !== undefined && typeof ov.w === 'number' && typeof ov.h === 'number'
+      && isFinite(ov.w) && isFinite(ov.h);
+    let box = xs.length === 0
+      ? { x0: nat.x0, x1: nat.x1 }
+      : { x0: Math.min(...xs.map((b) => b.x0)), x1: Math.max(...xs.map((b) => b.x1)) };
+    const empty = !madeWay.some((n) => (n.site as string) === site);
+    /* A size of its own is held against the cards at the tighter padding: the
+       reader may draw a data centre smaller than the layout would. */
+    if (sized && xs.length > 0) box = { x0: box.x0 + SLACK, x1: box.x1 - SLACK };
+    if (sized) {
+      const bx = nat.x0 + Math.round(ov.dx);
+      const bw = Math.max(empty ? SITE_MIN.w : 0, Math.round(ov.w as number));
+      box = empty ? { x0: bx, x1: bx + bw } : { x0: Math.min(box.x0, bx), x1: Math.max(box.x1, bx + bw) };
+    } else if (empty && ov) {
+      box = { x0: box.x0 + snap8(ov.dx), x1: box.x1 + snap8(ov.dx) };
+    }
+    return box;
+  });
+  const push = columnPush(naturalBoxes, handBoxes);
+  const nodes = push.every((s) => s === 0)
+    ? madeWay
+    : madeWay.map((n) => (push[n.col] ? { ...n, x: n.x + (push[n.col] as number) } : n));
 
   const byKey: Record<string, NodeBox> = {};
   for (const n of nodes) byKey[n.key] = n;
@@ -719,7 +930,12 @@ export function layoutTopology(
      never recomputed from the pre-drag geometry -- so a stack dragged as a
      group still reads as one touching chassis wherever the drag left it. */
   const stacks: StackBox[] = stackDefs.map((sd) => {
-    const blades = sd.memberKeys.map((k) => byKey[k]).filter((n): n is NodeBox => n !== undefined);
+    const all = sd.memberKeys.map((k) => byKey[k]).filter((n): n is NodeBox => n !== undefined);
+    /* A blade lifted out on its own is in the air, not in the chassis: the
+       frame stays round the blades that stayed (task 5.3) rather than
+       stretching after the one being carried away. */
+    const staying = all.filter((n) => !transient.includes(n.key));
+    const blades = staying.length > 0 ? staying : all;
     const x = blades[0]?.x ?? 0;
     const yTop = (blades.length === 0 ? 0 : Math.min(...blades.map((b) => b.y))) - LAYOUT.stackHeaderH;
     const yBottom = blades.length === 0 ? 0 : Math.max(...blades.map((b) => b.y + b.h));
@@ -731,37 +947,76 @@ export function layoutTopology(
   });
 
   /* ---- 8. site rects, recomputed after the overrides moved cards ---- */
+  /* The box around a set of cards: their extent, a stack's header above its
+     top blade (a blade's own `y` is under the header, so `y - headerH` is the
+     stack's top for the top blade and inside the stack for the others), the
+     padding, and the name band at the bottom. */
+  const boxAround = (
+    list: readonly NodeBox[], pad: number = LAYOUT.colPad,
+  ): { x0: number; y0: number; x1: number; y1: number } => ({
+    x0: Math.min(...list.map((n) => n.x)) - pad,
+    y0: Math.min(...list.map((n) => (n.stackKey === undefined ? n.y : n.y - LAYOUT.stackHeaderH))) - pad,
+    x1: Math.max(...list.map((n) => n.x + n.w)) + pad,
+    y1: Math.max(...list.map((n) => n.y + n.h)) + pad + LAYOUT.labelBand,
+  });
   const sites: SiteBox[] = [];
   columns.forEach((c, ci) => {
     const own = nodes.filter((n) => (n.site as string) === (c.site as string));
+    const ov = overrides[c.site as string];
+    const sized = ov !== undefined && typeof ov.w === 'number' && typeof ov.h === 'number'
+      && isFinite(ov.w) && isFinite(ov.h);
     let x0: number; let y0: number; let x1: number; let y1: number;
+    let anchor: { x: number; y: number };
+    let fit: Rect;
+    const s = push[ci] ?? 0;
     if (own.length === 0) {
       /* The empty panel: one column wide, the member band tall -- or one card
          tall when there is no member band to match. */
-      const cx = colX[ci] ?? 0;
+      const cx = (colX[ci] ?? 0) + s;
       const cw = colW[ci] ?? CARD.minW + LAYOUT.colPad * 2;
       const top = memberBandTop;
       const tall = Math.max(memberBandH, CARD.dbH);
       x0 = cx; x1 = cx + cw;
       y0 = top - LAYOUT.colPad;
       y1 = top + tall + LAYOUT.colPad + LAYOUT.labelBand;
-      /* The one place a site-keyed offset is read: an empty panel has no
-         member whose own drag would carry it, so a drag on the panel itself
-         (`TopoCanvas` `onSitePointerDown`) writes its delta under the site's
-         own id instead. */
-      const ov = overrides[c.site as string];
-      if (ov) {
+      anchor = { x: x0, y: y0 };
+      fit = { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
+      /* The one place a site-keyed offset is read without a size: an empty
+         panel has no member whose own drag would carry it, so a drag on the
+         panel itself (`TopoCanvas` `onSitePointerDown`) writes its delta
+         under the site's own id instead. */
+      if (ov && !sized) {
         const dx = snap8(ov.dx); const dy = snap8(ov.dy);
         x0 += dx; x1 += dx; y0 += dy; y1 += dy;
+        fit = { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
       }
     } else {
-      /* A stack's header sits above its topmost blade, so the panel's own
-         top has to clear it too -- `own` alone would crop the header band. */
-      const ownStacks = stacks.filter((s) => (s.site as string) === (c.site as string));
-      x0 = Math.min(...own.map((n) => n.x)) - LAYOUT.colPad;
-      y0 = Math.min(...own.map((n) => n.y), ...ownStacks.map((s) => s.y)) - LAYOUT.colPad;
-      x1 = Math.max(...own.map((n) => n.x + n.w)) + LAYOUT.colPad;
-      y1 = Math.max(...own.map((n) => n.y + n.h)) + LAYOUT.colPad + LAYOUT.labelBand;
+      const natural = boxAround(placed
+        .map((p) => p.node)
+        .filter((n) => (n.site as string) === (c.site as string)));
+      /* Pushed with its column, so a size of its own travels with it. */
+      anchor = { x: natural.x0 + s, y: natural.y0 };
+      /* What a resize may not cut into is the cards at the tighter padding;
+         a box with a size of its own starts from there, the layout's own box
+         from the roomier one. */
+      const tight = boxAround(own, LAYOUT.fitPad);
+      fit = { x: tight.x0, y: tight.y0, w: tight.x1 - tight.x0, h: tight.y1 - tight.y0 };
+      ({ x0, y0, x1, y1 } = sized ? tight : boxAround(own));
+    }
+    /* A size of its own: the stored box, grown to whatever it has to hold --
+       never smaller than its cards, whatever the link or the file says. */
+    if (sized) {
+      const bx = anchor.x + Math.round(ov.dx);
+      const by = anchor.y + Math.round(ov.dy);
+      const bw = Math.max(own.length === 0 ? SITE_MIN.w : 0, Math.round(ov.w as number));
+      const bh = Math.max(own.length === 0 ? SITE_MIN.h : 0, Math.round(ov.h as number));
+      if (own.length === 0) {
+        x0 = bx; y0 = by; x1 = bx + bw; y1 = by + bh;
+        fit = { x: x0, y: y0, w: SITE_MIN.w, h: SITE_MIN.h };
+      } else {
+        x0 = Math.min(x0, bx); y0 = Math.min(y0, by);
+        x1 = Math.max(x1, bx + bw); y1 = Math.max(y1, by + bh);
+      }
     }
     const site = doc.sites.find((s) => (s.id as string) === (c.site as string));
     const name = site?.name ?? (c.site as string);
@@ -774,6 +1029,9 @@ export function layoutTopology(
       labelY: y1 - 5,
       col: ci,
       empty: own.length === 0,
+      fit,
+      anchor,
+      sized,
     });
   });
 
@@ -788,7 +1046,17 @@ export function layoutTopology(
     byKey,
     stacks,
     sites,
-    columns: columns.map((c, i) => ({ site: c.site, x: colX[i] ?? 0, w: colW[i] ?? 0 })),
+    /* The column as the router's corridors see it: pushed, and widened to
+       whatever its box reaches past its natural edges, so a corridor's middle
+       is the middle of the free space that is actually there. */
+    columns: columns.map((c, i) => {
+      const nat = naturalBoxes[i] as { x0: number; x1: number };
+      const hand = handBoxes[i] as { x0: number; x1: number };
+      const s = push[i] ?? 0;
+      const x = (colX[i] ?? 0) + s + Math.min(0, hand.x0 - nat.x0);
+      const x1 = (colX[i] ?? 0) + (colW[i] ?? 0) + s + Math.max(0, hand.x1 - nat.x1);
+      return { site: c.site, x, w: x1 - x };
+    }),
     viewBox: {
       x: vx0 - LAYOUT.padSide,
       y: vy0 - LAYOUT.padTop,
@@ -798,9 +1066,133 @@ export function layoutTopology(
     overLaneY: vy0 - LAYOUT.padTop + 2,
     bandLaneY: bandH === 0 ? vy0 - LAYOUT.padTop + 2 : memberBandTop - 10,
     underLaneY: vy1 + 4,
+    midLaneY: appCard === null || memberBandH === 0
+      ? null : memberBandTop + memberBandH + LAYOUT.midLane,
+    trunks,
     maxRank,
     unreachableRank,
   };
+}
+
+/**
+ * Step 7b: a card the layout placed makes way for one the reader placed.
+ *
+ * The auto-layout never overlaps two of its own cards, but a card moved by
+ * hand keeps its offset from a slot the layout may since have given to
+ * something new -- a standby added to that data centre, a card dropped into
+ * it -- and the newcomer then landed on top of it. Here every unit the layout
+ * placed (a card alone, or a chassis stack with every blade) that overlaps a
+ * hand-moved card, or a unit already settled above it, slides straight down
+ * until it is clear, one row gap below. Hand-moved cards never move, and
+ * nothing is written anywhere: the next layout starts from the natural slots
+ * again, so a card that no longer collides returns to its own.
+ *
+ * With nothing moved by hand this returns its input untouched, which keeps
+ * every preset's geometry golden exactly where it was.
+ */
+function makeWay(transient: readonly string[], nodes: NodeBox[]): NodeBox[] {
+  if (!nodes.some((n) => n.moved && !transient.includes(n.key))) return nodes;
+  const headerOf = (n: NodeBox): number => (n.stackKey === undefined ? 0 : LAYOUT.stackHeaderH);
+  const boxOf = (list: readonly NodeBox[]): Rect => {
+    const x0 = Math.min(...list.map((n) => n.x));
+    const y0 = Math.min(...list.map((n) => n.y - headerOf(n)));
+    const x1 = Math.max(...list.map((n) => n.x + n.w));
+    const y1 = Math.max(...list.map((n) => n.y + n.h));
+    return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
+  };
+  /* Units: a stack moves as one, unless a blade of it was moved by hand --
+     then every blade of it stays where it is, as an obstacle. */
+  const units = new Map<string, NodeBox[]>();
+  for (const n of nodes) {
+    const k = n.stackKey ?? `card:${n.key}`;
+    units.set(k, [...(units.get(k) ?? []), n]);
+  }
+  /* Within one data centre only: a card moved by hand towards the next
+     column grows its own box, and the columns push each other apart for it
+     (step 7c) -- the neighbour's cards need not slide down as well. */
+  const fixed: (Rect & { site: string })[] = [];
+  const auto: { key: string; site: string; list: NodeBox[]; box: Rect }[] = [];
+  for (const [key, list] of units) {
+    /* In the air: neither an obstacle nor pushed. */
+    if (list.some((n) => transient.includes(n.key))) continue;
+    const site = list[0]?.site as string;
+    if (list.some((n) => n.moved)) fixed.push(...list.map((n) => ({ x: n.x, y: n.y - headerOf(n), w: n.w, h: n.h + headerOf(n), site })));
+    else auto.push({ key, site, list, box: boxOf(list) });
+  }
+  /* Top to bottom, left to right: a unit pushed down meets the ones under it
+     in the order the reader reads them. */
+  auto.sort((a, b) => a.box.y - b.box.y || a.box.x - b.box.x);
+  /* Clear by a hair counts as clear -- a card nudged one grid step towards its
+     neighbour must not shove it -- but whatever has to move lands a full row
+     gap below what it met. */
+  const gap = LAYOUT.rowGap;
+  const hair = 4;
+  const clash = (a: Rect, b: Rect): boolean =>
+    a.x < b.x + b.w + hair && b.x < a.x + a.w + hair && a.y < b.y + b.h + hair && b.y < a.y + a.h + hair;
+  const settled: (Rect & { site: string })[] = [...fixed];
+  const shift = new Map<string, number>();
+  for (const u of auto) {
+    let box = u.box;
+    for (let guard = 0; guard < 64; guard++) {
+      const hit = settled.filter((r) => r.site === u.site && clash(box, r));
+      if (hit.length === 0) break;
+      const below = Math.max(...hit.map((r) => r.y + r.h)) + gap;
+      box = { ...box, y: below };
+    }
+    settled.push({ ...box, site: u.site });
+    if (box.y !== u.box.y) for (const n of u.list) shift.set(n.key, box.y - u.box.y);
+  }
+  if (shift.size === 0) return nodes;
+  return nodes.map((n) => {
+    const dy = shift.get(n.key);
+    return dy === undefined ? n : { ...n, y: n.y + dy };
+  });
+}
+
+/**
+ * Step 7c: how far each column slides so no data centre's box eats into the
+ * corridor beside it (task 5.1).
+ *
+ * `natural` is each column's box as the layout places it, `hand` the same box
+ * once cards moved by hand and a size of its own have had their way. Between
+ * two neighbours the corridor must stay as wide as the layout made it -- it is
+ * where the links bend and their captions ride. Where it has narrowed, the
+ * column that grew into it pushes: a box grown to the right pushes every
+ * column right of it further right, a box grown to the left pushes every
+ * column left of it further left. So the thing the reader just moved or
+ * resized stays under the pointer and the neighbours give way, and nothing is
+ * ever pulled back to close a corridor a drag has widened.
+ *
+ * Nothing grown, nothing pushed: every shift is zero and every preset draws
+ * exactly as it did.
+ */
+export function columnPush(
+  natural: readonly { x0: number; x1: number }[], hand: readonly { x0: number; x1: number }[],
+): number[] {
+  const n = natural.length;
+  const right = new Array<number>(n).fill(0);
+  const left = new Array<number>(n).fill(0);
+  for (let i = 1; i < n; i++) {
+    const na = natural[i - 1]; const nb = natural[i];
+    const ha = hand[i - 1]; const hb = hand[i];
+    if (!na || !nb || !ha || !hb) continue;
+    const gap = nb.x0 - na.x1;
+    const short = gap - (hb.x0 - ha.x1);
+    if (short <= 0) continue;
+    /* The right-hand box's own growth leftwards pushes left; whatever is
+       left of the shortfall came from the left-hand box and pushes right. */
+    const byLeftward = Math.max(0, Math.min(short, nb.x0 - hb.x0));
+    left[i] = byLeftward;
+    right[i] = short - byLeftward;
+  }
+  const out = new Array<number>(n).fill(0);
+  for (let i = 0; i < n; i++) {
+    let s = 0;
+    for (let j = 1; j <= i; j++) s += right[j] as number;
+    for (let j = i + 1; j < n; j++) s -= left[j] as number;
+    out[i] = s;
+  }
+  return out;
 }
 
 /** A cascaded member whose feeder shares its site is indented under it. */

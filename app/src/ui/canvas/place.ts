@@ -13,6 +13,7 @@
  */
 
 import { signal } from '@preact/signals';
+import type { LayoutOffset } from './layout';
 
 /** The `AddAction.key` being dragged, or null. */
 export const placing = signal<string | null>(null);
@@ -20,6 +21,19 @@ export const placing = signal<string | null>(null);
 export const placeOver = signal<string | null>(null);
 /** The key whose name is being edited in place, or null. */
 export const renaming = signal<string | null>(null);
+/**
+ * The cards a drag on the drawing is carrying right now: the layout draws
+ * them where the drag puts them but makes nothing else move out of their way
+ * until they land (`layout.ts` step 7b). Empty when nothing is in the air.
+ */
+export const inFlight = signal<readonly string[]>([]);
+/**
+ * Where those cards stood when they were picked up -- their overrides from
+ * before the drag. The columns push each other as if the cards were still
+ * there (`layout.ts` step 7c), so nothing slides under a box the drag holds
+ * still. Empty when nothing is in the air.
+ */
+export const inFlightFrom = signal<Readonly<Record<string, LayoutOffset>>>({});
 
 let hit: ((clientX: number, clientY: number) => string | null) | null = null;
 

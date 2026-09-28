@@ -14,7 +14,7 @@
  */
 
 import { useLayoutEffect } from 'preact/hooks';
-import type { Link, Member, Observer, Site, TopologyDoc } from '@/engine';
+import type { Application, Link, Member, Observer, Site, TopologyDoc } from '@/engine';
 import { errors, issues, redoGraph, topology, warnings } from '@/state/derived';
 import { canEdit, clearSelection, hintsOn, mode, selection, viewport } from '@/state/view';
 import { Fold, Note } from './controls';
@@ -22,17 +22,20 @@ import { isOff, WhyPill } from '../common/WhyPill';
 import { removeAction } from '../build/actions';
 import { hintsShown, HintsToggle } from '../hints';
 import { revealSections, SUMMARY_ID } from './sections';
+import { ApplicationForm } from './ApplicationForm';
 import { ConfigForm } from './ConfigForm';
 import { LinkForm } from './LinkForm';
 import { MemberForm } from './MemberForm';
 import { ObserverForm } from './ObserverForm';
 import { SiteForm } from './SiteForm';
 import { WHY } from './why';
+import { useRailRow } from '../common/Field';
 import '@/styles/inspector.css';
 
 type Subject =
   | { kind: 'member'; member: Member }
   | { kind: 'observer'; observer: Observer }
+  | { kind: 'application'; application: Application }
   | { kind: 'link'; link: Link }
   | { kind: 'site'; site: Site }
   | null;
@@ -43,6 +46,9 @@ export function resolveSubject(doc: TopologyDoc, key: string | undefined): Subje
   if (member) return { kind: 'member', member };
   const observer = doc.observers.find((o) => (o.id as string) === key);
   if (observer) return { kind: 'observer', observer };
+  if (doc.application !== undefined && (doc.application.id as string) === key) {
+    return { kind: 'application', application: doc.application };
+  }
   const link = doc.links.find((l) => (l.id as string) === key);
   if (link) return { kind: 'link', link };
   const site = doc.sites.find((s) => (s.id as string) === key);
@@ -50,9 +56,41 @@ export function resolveSubject(doc: TopologyDoc, key: string | undefined): Subje
   return null;
 }
 
-const SUBJECT_WORD: Record<Exclude<Subject, null>['kind'], string> = {
-  member: 'Member', observer: 'Observer', link: 'Link', site: 'Site',
-};
+/** What the header calls the selected object, in the words the drawing uses. */
+function subjectWord(s: Exclude<Subject, null>): string {
+  switch (s.kind) {
+    case 'member':
+      if (s.member.kind === 'farsync') return 'Far sync instance';
+      return s.member.role === 'primary' ? 'Primary database' : `Standby database (${s.member.role})`;
+    case 'observer': return `Observer (${s.observer.role})`;
+    case 'application': return 'Application';
+    case 'link': return s.link.scope === 'site' ? 'Site link' : 'Host link';
+    case 'site': return 'Data centre';
+  }
+}
+
+/**
+ * The name the header shows: the identifier for a member or an observer (it
+ * is their `db_unique_name` / observer name), the label for a data centre,
+ * and the two ends for a link -- a link's id is plumbing nobody typed.
+ */
+function subjectName(doc: TopologyDoc, s: Exclude<Subject, null>): string {
+  const siteName = (id: string): string =>
+    doc.sites.find((x) => (x.id as string) === id)?.name ?? id;
+  const hostName = (id: string): string =>
+    doc.hosts.find((x) => (x.id as string) === id)?.name ?? id;
+  switch (s.kind) {
+    case 'member': return s.member.id as string;
+    case 'observer': return s.observer.id as string;
+    case 'application': return s.application.id as string;
+    case 'site': return s.site.name;
+    case 'link': {
+      const [a, b] = s.link.ends as [string, string];
+      const name = s.link.scope === 'site' ? siteName : hostName;
+      return `${name(a)} – ${name(b)}`;
+    }
+  }
+}
 
 /* ---------------- the sections ---------------- */
 
@@ -71,6 +109,7 @@ function Summary({ doc }: { doc: TopologyDoc }) {
     ['Far sync', farsyncs.length === 0 ? 'none' : farsyncs.map((m) => m.id as string).join(', ')],
     ['Fast-start failover', doc.config.fsfo.state],
     ['Target', target.kind === 'ANY' ? 'ANY' : (target.members.join(', ') || 'not set')],
+    ['Application', doc.application ? (doc.application.id as string) : 'not drawn'],
     [
       'Observers',
       doc.observers.length === 0
@@ -111,6 +150,9 @@ function Summary({ doc }: { doc: TopologyDoc }) {
 /* ---------------- the rail ---------------- */
 
 export function Inspector() {
+  /* The row-or-stack choice of every field below is made against this
+     rail's measured width (common/Field.tsx), not the floating card's. */
+  const railRef = useRailRow();
   const doc = topology.value;
   const sel = selection.value;
   const subject = resolveSubject(doc, sel[0]);
@@ -127,10 +169,14 @@ export function Inspector() {
 
   if (!canEdit(viewport.value)) {
     return (
-      <div class="insp">
+      <div class="insp" ref={railRef}>
         <header class="insp-hd">
+          <span class="insp-subj">
+            <span class="insp-kind">Configuration</span>
+            <span class="title mono" title={doc.config.name}>{doc.config.name}</span>
+          </span>
           <span class="rr-spacer" />
-          <HintsToggle />
+          <span class="insp-acts"><HintsToggle /></span>
         </header>
         <Summary doc={doc} />
         <Note warn>{WHY.readOnlyView}</Note>
@@ -143,23 +189,24 @@ export function Inspector() {
      would remove, rather than at the foot of a form four screens down.
      Configure narrows the rail to the properties. */
   const remove = subject === null || narrowed ? null : removeAction(doc, sel[0] as string);
+  const title = subject === null ? doc.config.name : subjectName(doc, subject);
 
   return (
-    <div class="insp">
+    <div class="insp" ref={railRef}>
       {/* The header is the rail's one fixed row, so it is where the `Hints`
           switch lives -- including on the empty rail, which is exactly where a
           reader who wants the prose back is looking. With nothing selected it
           carries that button and nothing else. */}
       <header class="insp-hd">
-        {subject === null ? null : (
-          <span class="insp-subj">
-            <span class="eyebrow">{SUBJECT_WORD[subject.kind]}</span>
-            {/* Ellipsed rather than wrapped mid-word (inspector.css), so the
-                whole name rides in the tooltip -- and the buttons wrap to a
-                second row before a five-letter name has to give way. */}
-            <span class="title mono" title={sel[0]}>{sel[0]}</span>
-          </span>
-        )}
+        {/* What the rail is about, always: the selected object, or the
+            configuration itself when nothing is selected. The kind word is
+            not an `.eyebrow` -- the eyebrows are the section headings below. */}
+        <span class="insp-subj">
+          <span class="insp-kind">{subject === null ? 'Configuration' : subjectWord(subject)}</span>
+          {/* Ellipsed rather than wrapped mid-word (inspector.css), so the
+              whole name rides in the tooltip. */}
+          <span class="title mono" title={title}>{title}</span>
+        </span>
         <span class="rr-spacer" />
         <span class="insp-acts">
         <HintsToggle />
@@ -210,6 +257,9 @@ export function Inspector() {
         : null}
       {subject?.kind === 'observer'
         ? <ObserverForm observer={subject.observer} doc={doc} />
+        : null}
+      {subject?.kind === 'application'
+        ? <ApplicationForm application={subject.application} doc={doc} />
         : null}
       {subject?.kind === 'link' ? <LinkForm link={subject.link} doc={doc} /> : null}
       {subject?.kind === 'site' ? <SiteForm site={subject.site} doc={doc} /> : null}

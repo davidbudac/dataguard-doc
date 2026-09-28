@@ -51,10 +51,13 @@ const altRoutes = () => [rule('LOCAL', [{
 
 const priorityRoutes = () => [{
   source: 'LOCAL' as const,
-  groups: [
-    { priority: 1 as const, dests: [{ target: M('sby01'), xpt: 'SYNC' as const }], explicitGroup: true },
-    { priority: 2 as const, dests: [{ target: M('sby02'), xpt: 'ASYNC' as const }], explicitGroup: true },
-  ],
+  groups: [{
+    dests: [
+      { target: M('sby01'), xpt: 'SYNC' as const, priority: 1 as const },
+      { target: M('sby02'), xpt: 'ASYNC' as const, priority: 2 as const },
+    ],
+    explicitGroup: true,
+  }],
 }];
 
 /** A RAC cluster with a third node the observer would sit on. */
@@ -138,16 +141,21 @@ const CASES: Case[] = [
   },
   {
     id: 'FSFO.LAGLIMIT_VS_THRESHOLD',
-    fires: 'the lag limit is above the threshold',
-    quiet: 'the lag limit equals the threshold',
+    fires: 'maximum performance, the lag limit above the threshold',
+    quiet: 'the same limit under 19c maximum availability, where it is not in use',
     trigger: () => {
       const d = baseDoc();
+      d.config.protectionMode = 'MAXPERFORMANCE';
       d.config.fsfo.lagLimitSeconds = 45;
+      d.config.fsfo.lagLimitSet = true;
       return d;
     },
     silent: () => {
       const d = baseDoc();
-      d.config.fsfo.lagLimitSeconds = d.config.fsfo.thresholdSeconds;
+      d.config.edition = '19c';
+      d.config.protectionMode = 'MAXAVAILABILITY';
+      d.config.fsfo.lagLimitSeconds = 45;
+      d.config.fsfo.lagLimitSet = true;
       return d;
     },
   },
@@ -210,6 +218,17 @@ const CASES: Case[] = [
     silent: () => baseDoc({ mode: 'MAXPROTECTION' }),
   },
   {
+    id: 'XPT.PRIMARY_LOGXPTMODE',
+    fires: 'the primary would receive ASYNC after a role change, in 19c maximum availability',
+    quiet: 'the primary carries SYNC for when it is the standby',
+    trigger: () => {
+      const d = baseDoc();
+      dbOf(d, 'prm01').logXptMode = 'ASYNC';
+      return d;
+    },
+    silent: () => baseDoc(),
+  },
+  {
     id: 'XPT.FASTSYNC_MAXAVAIL_ONLY',
     fires: 'FASTSYNC in maximum performance',
     quiet: 'FASTSYNC in maximum availability',
@@ -241,11 +260,11 @@ const CASES: Case[] = [
   },
   {
     id: 'ROUTES.SOURCE_UNIQUE',
-    fires: 'LOCAL appears in two rules on one member',
+    fires: 'a rule sourced at LOCAL and one naming the member itself -- LOCAL is the local database',
     quiet: 'the second rule names a different source',
     trigger: () => withRoutes(baseDoc(), 'prm01', [
       rule('LOCAL', [{ target: M('sby01'), xpt: 'SYNC' }]),
-      rule('LOCAL', [{ target: M('sby01'), xpt: 'ASYNC' }]),
+      rule([M('prm01')], [{ target: M('sby01'), xpt: 'ASYNC' }]),
     ]),
     silent: () => withRoutes(baseDoc(), 'prm01', [
       rule('LOCAL', [{ target: M('sby01'), xpt: 'SYNC' }]),
@@ -261,18 +280,20 @@ const CASES: Case[] = [
   },
   {
     id: 'ROUTES.SNAPSHOT_FORBIDDEN',
-    fires: 'RedoRoutes is set on a snapshot standby',
-    quiet: 'the snapshot standby leaves the property NULL',
+    fires: 'a snapshot standby carries a rule that would forward redo to another member',
+    quiet: 'the snapshot standby carries only a LOCAL rule, which sends nothing while it is a standby',
     trigger: () => {
-      const d = baseDoc({ fsfo: 'disabled' });
-      const sby = dbOf(d, 'sby01');
+      const d = twoStandbyDoc({ targets: [M('sby01')] });
+      const sby = dbOf(d, 'sby02');
       sby.role = 'snapshot';
-      sby.redoRoutes = [rule('LOCAL', [{ target: 'ALL' }])];
+      sby.redoRoutes = [rule([M('prm01')], [{ target: M('sby01'), xpt: 'ASYNC' }])];
       return d;
     },
     silent: () => {
       const d = baseDoc({ fsfo: 'disabled' });
-      dbOf(d, 'sby01').role = 'snapshot';
+      const sby = dbOf(d, 'sby01');
+      sby.role = 'snapshot';
+      sby.redoRoutes = [rule('LOCAL', [{ target: 'ALL' }])];
       return d;
     },
   },
@@ -304,12 +325,13 @@ const CASES: Case[] = [
   },
   {
     id: 'ROUTES.GROUP_NEEDS_MAXFAILURE',
-    fires: '26ai, a PRIORITY group holding a member whose MaxFailure is 0',
+    fires: '26ai, a PRIORITY group holding a member whose MaxFailure is set to 0',
     quiet: 'the same group with MaxFailure at 2',
     trigger: () => {
       const d = twoStandbyDoc();
       d.config.edition = '26ai';
       memberOf(d, 'prm01').redoRoutes = priorityRoutes();
+      setDest(d, 'prm01', 'sby01', { maxFailure: 0 });
       return d;
     },
     silent: () => {
@@ -322,15 +344,17 @@ const CASES: Case[] = [
     },
   },
   {
-    id: 'ROUTES.ALT_NOT_IN_26AI',
-    fires: '26ai with an ALT destination',
-    quiet: 'the same rule under 19c',
-    trigger: () => {
-      const d = withRoutes(twoStandbyDoc(), 'prm01', altRoutes());
-      d.config.edition = '26ai';
+    id: 'ROUTES.ALT_12_1_ONLY',
+    fires: 'an ALT destination, under 19c as under 26ai',
+    quiet: 'the same remote alternate written with PRIORITY',
+    trigger: () => withRoutes(twoStandbyDoc(), 'prm01', altRoutes()),
+    silent: () => {
+      const d = twoStandbyDoc();
+      memberOf(d, 'prm01').redoRoutes = priorityRoutes();
+      setDest(d, 'prm01', 'sby01', { maxFailure: 1 });
+      setDest(d, 'prm01', 'sby02', { maxFailure: 1 });
       return d;
     },
-    silent: () => withRoutes(twoStandbyDoc(), 'prm01', altRoutes()),
   },
   {
     id: 'ROUTES.CASCADE_PHYSICAL_ONLY',
@@ -600,6 +624,85 @@ const CASES: Case[] = [
     trigger: () => baseDoc(),
     silent: () => baseDoc({ fsfo: 'disabled' }),
   },
+  {
+    id: 'FSFO.PING_PROPS_NOT_IN_19C',
+    fires: 'ObserverPingInterval/Retry are set under 19c',
+    quiet: 'they are left unset',
+    trigger: () => {
+      const d = baseDoc({ edition: '19c' });
+      d.config.fsfo.pingIntervalMs = 100;
+      d.config.fsfo.pingRetry = 10;
+      return d;
+    },
+    silent: () => baseDoc({ edition: '19c' }),
+  },
+  {
+    id: 'FSFO.LAGTYPE_GRACETIME_19C',
+    fires: 'FastStartFailoverLagType is TRANSPORT under 19c',
+    quiet: 'it is left at APPLY',
+    trigger: () => {
+      const d = baseDoc({ edition: '19c' });
+      d.config.fsfo.lagType = 'TRANSPORT';
+      return d;
+    },
+    silent: () => baseDoc({ edition: '19c' }),
+  },
+  {
+    id: 'CFG.PRIMARY_CANDIDATES_19C',
+    fires: 'PrimaryDatabaseCandidates is set under 19c',
+    quiet: 'it is left empty',
+    trigger: () => {
+      const d = baseDoc({ edition: '19c' });
+      d.config.primaryDatabaseCandidates = [M('prm01')];
+      return d;
+    },
+    silent: () => baseDoc({ edition: '19c' }),
+  },
+  {
+    id: 'FSFO.FARSYNC_TARGET_BOTH_SIDES',
+    fires: 'the fast-start failover target is fed through a far sync instance',
+    quiet: 'fast-start failover is disabled',
+    trigger: () => farSyncDoc(),
+    silent: () => farSyncDoc({ fsfo: 'disabled' }),
+  },
+  {
+    id: 'FSFO.FLASHBACK_REQUIRED',
+    fires: 'fast-start failover is enabled with Flashback Database off on the target',
+    quiet: 'Flashback Database is on',
+    trigger: () => {
+      const d = baseDoc();
+      dbOf(d, 'sby01').flashbackOn = false;
+      return d;
+    },
+    silent: () => baseDoc(),
+  },
+  {
+    id: 'MEMBER.SNAPSHOT_NEEDS_FLASHBACK',
+    fires: 'a snapshot standby has Flashback Database off',
+    quiet: 'Flashback Database is on',
+    trigger: () => {
+      const d = baseDoc({ fsfo: 'disabled' });
+      const sby = dbOf(d, 'sby01');
+      sby.role = 'snapshot';
+      sby.flashbackOn = false;
+      return d;
+    },
+    silent: () => {
+      const d = baseDoc({ fsfo: 'disabled' });
+      dbOf(d, 'sby01').role = 'snapshot';
+      return d;
+    },
+  },
+  {
+    id: 'OBS.NAME_RESERVED',
+    fires: 'two observers share a name',
+    quiet: 'their names differ',
+    trigger: () => baseDoc({
+      hosts: observerHosts(2),
+      observers: [observer('obs01', 'dc3-obs01', 'master'), observer('obs01', 'dc3-obs02')],
+    }),
+    silent: () => baseDoc({ hosts: observerHosts(2), observers: observers(2) }),
+  },
 ];
 
 describe('the rule catalogue is covered', () => {
@@ -662,16 +765,22 @@ describe('a document that says fast-start failover is enabled with no observer',
   const find = (doc: ReturnType<typeof baseDoc>) =>
     validate(doc).find((f) => f.id === 'OBS.NONE_DEPLOYED');
 
-  it('warns, and says the run reads the configuration as not armed', () => {
+  it('warns, and says the configuration is unobserved with ORA-16819, never "cannot both be true"', () => {
+    /* Enabling fast-start failover with no observer started is legal and
+       documented (ORA-16819), not an inconsistency the document is caught
+       in -- VAL-04. */
     const f = find(baseDoc({ observers: [] }));
     expect(f?.severity).toBe('warning');
     expect(f?.basis).toBe('documented');
     expect(f?.message).toContain('fsfo.state = enabled');
-    expect(f?.message).toContain('FS_FAILOVER_STATUS = DISABLED');
-    expect(f?.message).toContain('no fast-start failover clock starts');
+    expect(f?.message).toContain('ORA-16819');
+    expect(f?.message).toContain('is unobserved and no failover can happen');
+    expect(f?.ora).toBe('ORA-16819');
+    expect(f?.cite).toContain('ORA.16819');
     /* Never "unobserved": that is the state with fast-start failover enabled
        and the master observer missing. */
     expect(f?.message).toContain('That is not the same as being unobserved');
+    expect(f?.message).not.toContain('cannot both be true');
   });
 
   it('warns for observe-only too, which arms nothing either', () => {
@@ -687,6 +796,44 @@ describe('a document that says fast-start failover is enabled with no observer',
   });
 });
 
+describe('the three conditions of enabling fast-start failover (VAL-04)', () => {
+  it('FSFO.MULTI_TARGET_EXPLICIT is info while disabled, error while enabled', () => {
+    const enabledDoc = twoStandbyDoc({ targets: [] });
+    const enabled = validate(enabledDoc).find((f) => f.id === 'FSFO.MULTI_TARGET_EXPLICIT');
+    const disabledDoc = twoStandbyDoc({ targets: [] });
+    disabledDoc.config.fsfo.state = 'disabled';
+    const disabled = validate(disabledDoc).find((f) => f.id === 'FSFO.MULTI_TARGET_EXPLICIT');
+    expect(enabled?.severity).toBe('error');
+    expect(disabled?.severity).toBe('info');
+    expect(disabled?.message).toContain('enabling it would require');
+  });
+
+  it('FSFO.LOGICAL_MAXPROT is info while disabled, error while enabled', () => {
+    const base = { mode: 'MAXPROTECTION' as const, secondRole: 'logical' as const, targets: [M('sby02')] };
+    const enabled = validate(twoStandbyDoc(base)).find((f) => f.id === 'FSFO.LOGICAL_MAXPROT');
+    const disabledDoc = twoStandbyDoc(base);
+    disabledDoc.config.fsfo.state = 'disabled';
+    const disabled = validate(disabledDoc).find((f) => f.id === 'FSFO.LOGICAL_MAXPROT');
+    expect(enabled?.severity).toBe('error');
+    expect(disabled?.severity).toBe('info');
+    expect(disabled?.message).toContain('Enabling it would fail');
+  });
+
+  it('FSFO.TARGET_DIRECT_REDO is info while disabled, error while enabled', () => {
+    /* cascadeDoc has no fsfo option; the paired CASES entry above already
+       checks the enabled (default) severity, so this checks the disabled
+       branch directly against the rule. */
+    const enabled = validate(cascadeDoc({ targets: [M('term1')] }))
+      .find((f) => f.id === 'FSFO.TARGET_DIRECT_REDO');
+    const doc = cascadeDoc({ targets: [M('term1')] });
+    doc.config.fsfo.state = 'disabled';
+    const disabled = validate(doc).find((f) => f.id === 'FSFO.TARGET_DIRECT_REDO');
+    expect(enabled?.severity).toBe('error');
+    expect(disabled?.severity).toBe('info');
+    expect(disabled?.message).toContain('Enabling fast-start failover would require');
+  });
+});
+
 describe('a far sync instance that is not in the redo path', () => {
   it('does not drag the mode gate in', () => {
     const d = baseDoc({
@@ -695,5 +842,144 @@ describe('a far sync instance that is not in the redo path', () => {
     });
     cutLink(d, 'dc1-dc3');
     expect(idsFor(d)).not.toContain('FSFO.FARSYNC_MODE_19C');
+  });
+});
+
+describe('RedoRoutes rules, read the way Oracle writes them', () => {
+  const find = (doc: TopologyDoc, id: string): Finding | undefined => validate(doc).find((f) => f.id === id);
+
+  it('SOURCE_UNIQUE counts LOCAL as naming the local database', () => {
+    const f = find(withRoutes(baseDoc(), 'prm01', [
+      rule('LOCAL', [{ target: M('sby01'), xpt: 'SYNC' }]),
+      rule([M('prm01')], [{ target: M('sby01'), xpt: 'ASYNC' }]),
+    ]), 'ROUTES.SOURCE_UNIQUE');
+    expect(f?.message).toContain('LOCAL is prm01 itself');
+    expect(f?.cite).toEqual(['ROUTES.SOURCE_ONCE']);
+  });
+
+  it('SNAPSHOT_FORBIDDEN: a snapshot standby may receive redo, and may carry a LOCAL rule', () => {
+    const d = baseDoc({ fsfo: 'disabled' });
+    dbOf(d, 'sby01').role = 'snapshot';
+    dbOf(d, 'sby01').redoRoutes = [rule('LOCAL', [{ target: M('prm01') }])];
+    expect(find(d, 'ROUTES.SNAPSHOT_FORBIDDEN')).toBeUndefined();
+  });
+
+  it('LOGICAL_LOCAL_ONLY is plain documentation about the source field', () => {
+    const d = twoStandbyDoc({ secondRole: 'logical', targets: [M('sby01')] });
+    dbOf(d, 'sby02').redoRoutes = [rule([M('prm01')], [{ target: M('sby01'), xpt: 'ASYNC' }])];
+    const f = find(d, 'ROUTES.LOGICAL_LOCAL_ONLY');
+    expect(f?.severity).toBe('warning');
+    expect(f?.basis).toBe('documented');
+    expect(f?.message).toContain('redo source field');
+    expect(f?.note).toBeUndefined();
+  });
+
+  it('ALT_NEEDS_MAXFAILURE rests on 12.1 and names the MaxFailure property of the non-alternate member', () => {
+    const d = withRoutes(twoStandbyDoc(), 'prm01', altRoutes());
+    const f = find(d, 'ROUTES.ALT_NEEDS_MAXFAILURE');
+    expect(f?.basis).toBe('inferred');
+    expect(f?.note).toMatch(/12\.1/);
+    expect(f?.message).toContain("EDIT DATABASE 'sby01' SET PROPERTY 'MaxFailure' = 1;");
+    expect(f?.message).not.toContain('LOG_ARCHIVE_DEST_n');
+    expect(f?.fix?.patch).toEqual([{ op: 'replace', path: '/members/0/dests/sby01/maxFailure', value: 1 }]);
+  });
+
+  it('GROUP_NEEDS_MAXFAILURE stays quiet on an untouched group: MaxFailure defaults to 1 there', () => {
+    const d = twoStandbyDoc();
+    d.config.edition = '26ai';
+    const prm = memberOf(d, 'prm01');
+    prm.redoRoutes = priorityRoutes();
+    prm.dests = {};
+    expect(find(d, 'ROUTES.GROUP_NEEDS_MAXFAILURE')).toBeUndefined();
+    /* Set to 0 by hand, it fires -- documented under 26ai. */
+    prm.dests[M('sby02')] = { netTimeoutSeconds: 30, reopenSeconds: 300, maxFailure: 0 };
+    const f = find(d, 'ROUTES.GROUP_NEEDS_MAXFAILURE');
+    expect(f?.basis).toBe('documented');
+    expect(f?.cite).toContain('ROUTES.MAXFAILURE_GROUP_DEFAULT');
+  });
+
+  it('ALT_12_1_ONLY applies under 19c as under 26ai, and offers the PRIORITY spelling', () => {
+    for (const edition of ['19c', '26ai'] as const) {
+      const d = withRoutes(twoStandbyDoc(), 'prm01', altRoutes());
+      d.config.edition = edition;
+      const f = find(d, 'ROUTES.ALT_12_1_ONLY');
+      expect(f?.severity, edition).toBe('warning');
+      expect(f?.basis, edition).toBe('documented');
+      expect(f?.message, edition).toContain('(LOCAL : (sby01 SYNC PRIORITY=1, sby02 ASYNC PRIORITY=2))');
+    }
+  });
+});
+
+describe('the primary is a standby after a role change (VAL-06)', () => {
+  const primaryFinding = (doc: TopologyDoc): Finding | undefined =>
+    validate(doc).find((f) => f.id === 'XPT.PRIMARY_LOGXPTMODE');
+  const asyncPrimary = (o: Parameters<typeof baseDoc>[0] = {}): TopologyDoc => {
+    const d = baseDoc(o);
+    dbOf(d, 'prm01').logXptMode = 'ASYNC';
+    return d;
+  };
+
+  it('is an error under 19c, and says why: after the role change this database is the standby', () => {
+    const f = primaryFinding(asyncPrimary());
+    expect(f?.severity).toBe('error');
+    expect(f?.basis).toBe('documented');
+    expect(f?.subject).toEqual({ kind: 'member', id: 'prm01' });
+    expect(f?.message).toContain('after a role change to \'sby01\' it is the standby');
+    expect(f?.cite).toContain('FSFO.TASK3_PRIMARY_XPT_19C');
+    expect(f?.fix?.patch).toEqual([{ op: 'replace', path: '/members/0/logXptMode', value: 'SYNC' }]);
+  });
+
+  it('is a warning under 26ai maximum availability, whose prerequisites list ASYNC', () => {
+    const f = primaryFinding(asyncPrimary({ edition: '26ai' }));
+    expect(f?.severity).toBe('warning');
+    expect(f?.cite).toContain('FSFO.PREREQ_PRIMARY_XPT_26AI');
+  });
+
+  it('is an error in maximum protection in both editions, FASTSYNC included', () => {
+    for (const edition of ['19c', '26ai'] as const) {
+      const d = baseDoc({ edition, mode: 'MAXPROTECTION' });
+      dbOf(d, 'prm01').logXptMode = 'FASTSYNC';
+      expect(primaryFinding(d)?.severity, edition).toBe('error');
+    }
+  });
+
+  it('asks nothing in maximum performance, or with fast-start failover disabled', () => {
+    expect(primaryFinding(asyncPrimary({ mode: 'MAXPERFORMANCE' }))).toBeUndefined();
+    const off = asyncPrimary();
+    off.config.fsfo.state = 'disabled';
+    expect(primaryFinding(off)).toBeUndefined();
+    const watch = asyncPrimary();
+    watch.config.fsfo.state = 'observe-only';
+    expect(primaryFinding(watch)?.severity).toBe('error');
+  });
+
+  it('reads a pre-declared reverse rule instead of the LogXptMode, and offers no LogXptMode fix then', () => {
+    const d = asyncPrimary();
+    memberOf(d, 'sby01').redoRoutes = [rule('LOCAL', [{ target: M('prm01'), xpt: 'SYNC' }])];
+    expect(primaryFinding(d)).toBeUndefined();
+    memberOf(d, 'sby01').redoRoutes = [rule('LOCAL', [{ target: M('prm01'), xpt: 'ASYNC' }])];
+    const f = primaryFinding(d);
+    expect(f?.severity).toBe('error');
+    expect(f?.message).toContain('the RedoRoutes rule');
+    expect(f?.fix).toBeUndefined();
+  });
+
+  it('reads the primary\'s own LogXptMode when no rule at the target would ship to it', () => {
+    const d = asyncPrimary();
+    memberOf(d, 'sby01').redoRoutes = [rule([M('prm01')], [{ target: M('prm01'), xpt: 'SYNC' }])];
+    const f = primaryFinding(d);
+    expect(f?.message).toContain('no RedoRoutes rule would ship to it');
+  });
+
+  it('reads the leg into a far sync instance when the reverse path goes through one', () => {
+    const d = farSyncDoc();
+    dbOf(d, 'prm01').logXptMode = 'ASYNC';
+    const fs2 = farSync('fs2', 'dc2-sby01');
+    fs2.redoRoutes = [rule([M('sby01')], [{ target: M('prm01'), xpt: 'ASYNC' }])];
+    d.members.push(fs2);
+    memberOf(d, 'sby01').redoRoutes = [rule('LOCAL', [{ target: M('fs2'), xpt: 'SYNC' }])];
+    expect(primaryFinding(d)).toBeUndefined();
+    d.config.protectionMode = 'MAXPROTECTION';
+    expect(primaryFinding(d)?.message).toContain('a far sync instance cannot be used');
   });
 });

@@ -97,10 +97,13 @@ export function coHostedMembersFixture(): TopologyDoc {
   const prm = db('prm01', ['dc1-prm01'], 'primary', {
     redoRoutes: [{
       source: 'LOCAL',
-      groups: [
-        { priority: 1, dests: [{ target: memberId('sby01') }], explicitGroup: true },
-        { priority: 2, dests: [{ target: memberId('sby02') }], explicitGroup: true },
-      ],
+      groups: [{
+        dests: [
+          { target: memberId('sby01'), priority: 1 },
+          { target: memberId('sby02'), priority: 2 },
+        ],
+        explicitGroup: true,
+      }],
     }],
   });
   const sby01 = db('sby01', ['dc2-sby01'], 'physical');
@@ -154,15 +157,18 @@ export function threeObserverFixture(): TopologyDoc {
   });
 }
 
-/** Two priority groups: the second one is declared and standing down. */
+/** One group, two priorities: the PRIORITY=2 destination is declared and standing down. */
 export function priorityFixture(): TopologyDoc {
   const prm = db('prm01', ['dc1-prm01'], 'primary', {
     redoRoutes: [{
       source: 'LOCAL',
-      groups: [
-        { priority: 1, dests: [{ target: memberId('sby01') }], explicitGroup: true },
-        { priority: 2, dests: [{ target: memberId('sby02') }], explicitGroup: true },
-      ],
+      groups: [{
+        dests: [
+          { target: memberId('sby01'), priority: 1 },
+          { target: memberId('sby02'), priority: 2 },
+        ],
+        explicitGroup: true,
+      }],
     }],
   });
   const sby01 = db('sby01', ['dc2-sby01'], 'physical');

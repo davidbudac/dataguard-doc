@@ -13,9 +13,11 @@
 
 import { beforeEach, describe, expect, it } from 'vitest';
 import { h, render } from 'preact';
-import { classicDoc } from '@/state/doc';
+import { classicDoc, makeDoc } from '@/state/doc';
+import { classicTopology, hostId } from '@/engine';
 import { resetHistory } from '@/state/history';
-import { mode, tNow } from '@/state/view';
+import { inspectorOpen, mode, tNow, viewport } from '@/state/view';
+import { explanationOpen } from '@/ui/break/RunExplanation';
 import { applyTemplate, templates } from '@/ui/break/events';
 import { Readout } from '@/ui/Readout';
 import { doc } from '@/state/doc';
@@ -39,6 +41,9 @@ beforeEach(() => {
   resetHistory(classicDoc());
   mode.value = 'break';
   tNow.value = 0;
+  explanationOpen.value = false;
+  inspectorOpen.value = false;
+  viewport.value = 'wide';
 });
 
 describe('the readout in Break', () => {
@@ -82,20 +87,47 @@ describe('the readout in Break', () => {
     expect(grp?.textContent).toContain('Outcome');
   });
 
+  it('opens the explanation from beside the outcome, including from Learn on a narrow screen', async () => {
+    crash();
+    mode.value = 'learn';
+    viewport.value = 'compact';
+    const root = mount();
+    await tick();
+    const why = root.querySelector<HTMLButtonElement>('.ro-why')!;
+    expect(why.getAttribute('aria-label')).toBe('Why this result?');
+    /* It sits right after the verdict it explains. */
+    expect(why.previousElementSibling?.querySelector('.chip-k')?.textContent).toBe('Outcome');
+    why.click();
+    await tick();
+    expect(explanationOpen.value).toBe(true);
+    expect(mode.value).toBe('break');
+    expect(inspectorOpen.value).toBe(true);
+  });
+
+  it('asks for manual action when the primary is down and nobody was promoted', async () => {
+    const base = classicTopology();
+    doc.value = makeDoc({
+      ...base,
+      config: { ...base.config, fsfo: { ...base.config.fsfo, state: 'disabled' } },
+      events: [{ at: 0, kind: 'host.down', host: hostId('dc1-prm01') }],
+    });
+    const root = mount();
+    await tick();
+    expect(root.querySelector('.ro-run .chip-v')?.textContent).toBe('manual action needed');
+  });
+
   /**
    * Findings are the validator's answer about the *configuration*: derived.ts
    * keeps the run's own findings out of `issues` on purpose, so filing the
    * count under "Run" can say "Run - Findings no issues" at the very moment
    * the run raised the warning that blocked the failover.
    */
-  it('keeps the configuration Findings chip out of the Run group', async () => {
+  it('leaves configuration findings to the header and validation panel', async () => {
     crash();
     const root = mount();
     await tick();
-    expect(root.textContent).toContain('Findings');
+    expect(root.textContent).not.toContain('Findings');
     expect(root.querySelector('.ro-run')?.textContent).not.toContain('Findings');
-    const last = [...root.querySelectorAll('.chips > .chip')].at(-1);
-    expect(last?.querySelector('.chip-k')?.textContent).toBe('Findings');
   });
 
   /**
@@ -109,7 +141,7 @@ describe('the readout in Break', () => {
     await tick();
     const { axisSpan, fmt } = await import('@/ui/timeline/build');
     const { topology, trace } = await import('@/state/derived');
-    const span = axisSpan(trace.value!, topology.value.events);
+    const span = axisSpan(trace.value!, topology.value.events, topology.value);
     tNow.value = 500;
     await tick();
     const hi = root.querySelector('.chip-v')?.textContent;

@@ -15,6 +15,8 @@ import { h, render } from 'preact';
 import { App } from '@/ui/App';
 import { TopBar } from '@/ui/TopBar';
 import { IntroPage } from '@/ui/intro/IntroPage';
+import { ClassicWalkthrough, walkthroughPhase } from '@/ui/intro/Walkthrough';
+import { Inspector } from '@/ui/inspector/Inspector';
 import { introOnBoot, INTRO_HREF, jump, leaveIntro, openIntro } from '@/ui/intro/route';
 import { classicDoc, doc } from '@/state/doc';
 import { resetHistory } from '@/state/history';
@@ -74,6 +76,7 @@ beforeEach(() => {
   viewport.value = 'wide';
   introOpen.value = false;
   introPage.value = true;
+  walkthroughPhase.value = 'off';
 });
 
 /* ---------------- the address ---------------- */
@@ -190,8 +193,10 @@ describe('the shell with the Introduction open', () => {
     introPage.value = false;
     const root = mount(TopBar);
     await tick();
+    /* The brand is the link: "Data Guard", titled as the Introduction. */
     const link = [...root.querySelectorAll('a')]
-      .find((a) => a.textContent === 'Introduction');
+      .find((a) => a.classList.contains('brand'));
+    expect(link?.getAttribute('title')).toContain('Introduction');
     expect(link?.getAttribute('href')).toBe(INTRO_HREF);
     link?.dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true }));
     await tick();
@@ -261,6 +266,76 @@ describe('the four "Try it" buttons', () => {
     await tick();
     expect(mode.value).toBe('learn');
     expect(lessonId.value).not.toBeNull();
+  });
+});
+
+describe('the classic walkthrough', () => {
+  it('starts from the hero on the classic configuration, in Break, with a clean timeline', async () => {
+    const root = mount(IntroPage);
+    await tick();
+    button(root, 'Walk through it step by step').click();
+    await tick();
+    expect(presetId.value).toBe('classic');
+    expect(mode.value).toBe('break');
+    expect(doc.value.topology.events).toHaveLength(0);
+    expect(walkthroughPhase.value).toBe('crash');
+    expect(introPage.value).toBe(false);
+  });
+
+  it('runs a crash, advances the clock, and guides a threshold change', async () => {
+    const intro = mount(IntroPage);
+    button(intro, 'Walk through it step by step').click();
+    const guide = mount(ClassicWalkthrough);
+    await tick();
+    button(guide, 'Crash primary').click();
+    await tick();
+    expect(doc.value.topology.events.some((e) => e.kind === 'host.down')).toBe(true);
+    expect(tNow.value).toBe(0);
+    button(guide, 'Advance to failover').click();
+    await tick();
+    expect(tNow.value).toBeGreaterThan(0);
+    button(guide, 'Open threshold control').click();
+    await tick();
+    expect(mode.value).toBe('build');
+    const inspector = mount(Inspector);
+    await tick();
+    const threshold = inspector.querySelector<HTMLInputElement>('input[aria-label="FastStartFailoverThreshold"]');
+    expect(threshold).not.toBeNull();
+    threshold!.value = '20';
+    threshold!.dispatchEvent(new Event('input', { bubbles: true }));
+    await tick();
+    expect(doc.value.topology.config.fsfo.thresholdSeconds).toBe(20);
+    button(guide, 'See the changed result').click();
+    await tick();
+    expect(mode.value).toBe('break');
+  });
+
+  it('offers a prepared example on the read-only narrow layout', async () => {
+    viewport.value = 'narrow';
+    const intro = mount(IntroPage);
+    button(intro, 'Walk through it step by step').click();
+    await tick();
+    expect(walkthroughPhase.value).toBe('advance');
+    expect(doc.value.topology.events.some((e) => e.kind === 'host.down')).toBe(true);
+    const guide = mount(ClassicWalkthrough);
+    await tick();
+    expect([...guide.querySelectorAll('button')].some((b) => b.textContent === 'Crash primary')).toBe(false);
+    button(guide, 'Advance to failover').click();
+    await tick();
+    expect(button(guide, 'Open threshold control').disabled).toBe(true);
+    expect(guide.textContent).toContain('Editing needs a wider screen');
+  });
+
+  it('ends if another topology replaces the classic example', async () => {
+    const intro = mount(IntroPage);
+    button(intro, 'Walk through it step by step').click();
+    const guide = mount(ClassicWalkthrough);
+    await tick();
+    expect(guide.querySelector('.walk')).not.toBeNull();
+    jump({ preset: 'max-protection', mode: 'break' });
+    await tick();
+    expect(guide.querySelector('.walk')).toBeNull();
+    expect(walkthroughPhase.value).toBe('off');
   });
 });
 

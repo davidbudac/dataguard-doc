@@ -10,24 +10,28 @@
  * canvas workflow owns this file from here.
  */
 
+import type { JSX } from 'preact';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import type { TopologyDoc } from '@/engine';
 import { hostId, siteId } from '@/engine';
 import { frame, geometry, redoGraph, topology } from '@/state/derived';
 import { doc, withLayout } from '@/state/doc';
-import { breakCoalescing, edit, undo } from '@/state/history';
+import { breakCoalescing, edit, undo, undoLabel } from '@/state/history';
+import { toggleGrid } from '@/state/persist';
 import {
-  canEdit, clearSelection, focusField, hovered, mode, railWhere, select, selection, tNow, toast,
-  viewport,
+  canEdit, clearSelection, floating, focusField, gridOn, hovered, mode, railWhere, select, selection, tNow,
+  toast, viewport,
 } from '@/state/view';
 import { buildActionsFor, openInspectorFor, removeAction } from '../build/actions';
 import {
-  addDatabase, addFsfoTarget, addLink, connectVerdict, mergeIntoHost, moveToSite, renameMember,
-  renameObserver, renameSite, renameVerdict, shipRedo, tidyLayout,
+  addDatabase, addFsfoTarget, addLink, connectVerdict, mergeIntoHost, moveToSite,
+  renameApplication, renameMember, renameObserver, renameSite, renameVerdict, setAddressListed,
+  shipRedo, tidyLayout,
 } from '../inspector/edits';
-import { placeOver, renaming, setSiteAt } from './place';
+import { inFlight, inFlightFrom, placeOver, renaming, setSiteAt } from './place';
+import { mergeVerdict } from './drop';
 import {
-  actionsFor, nothingToRestore, restoreQuietLine, runAction,
+  actionsFor, hoverTools, nothingToRestore, restoreQuietLine, runAction,
 } from '../break/events';
 import { AddToolbar } from '../inspector/adds';
 import type { WhyState } from '../common/WhyPill';
@@ -37,7 +41,8 @@ import type { BarAction } from './ActionBar';
 import { MAX_ROWS_BREAK } from './ActionBar';
 import { barFocus, barOpen, closeBar, openBar } from './bar';
 import { menuOpen, snapT } from './EventMenu';
-import { TopoCanvas } from './TopoCanvas';
+import { resizedBox, TopoCanvas } from './TopoCanvas';
+import { isElement, PopIcon, popIn, popOut, popped, useHostWindow } from '../common/popout';
 import {
   canZoom, fitZoom, WHY_MAX, WHY_MIN, zoom, zoomBy, zoomLabel,
 } from './zoom';
@@ -75,6 +80,13 @@ export function connectFromCanvas(from: string, to: string): void {
   /* A line from one data centre's name to another's: the site link between them. */
   if (isSite(from) && isSite(to)) { addLink(siteId(from), siteId(to)); return; }
   const a = member(from); const b = member(to);
+  /* The application and a database: the database joins its ADDRESS_LIST. */
+  const app = t.application?.id as string | undefined;
+  if (app !== undefined && (from === app || to === app)) {
+    const m = from === app ? b : a;
+    if (m) setAddressListed(m.id, true);
+    return;
+  }
   if (a && b) { shipRedo(a.id, b.id); return; }
   if (a && observer(to)) { addFsfoTarget(a.id); return; }
   if (observer(from) && b) { addFsfoTarget(b.id); return; }
@@ -123,26 +135,32 @@ function nameOf(t: TopologyDoc, key: string): string {
   return t.sites.find((x) => (x.id as string) === key)?.name ?? key;
 }
 
-/** What can be renamed on the drawing: a member, an observer, a data centre. */
+/** What can be renamed on the drawing: a member, an observer, the application, a data centre. */
 const canRename = (t: TopologyDoc, key: string): boolean =>
   t.members.some((m) => (m.id as string) === key)
   || t.observers.some((o) => (o.id as string) === key)
+  || (t.application?.id as string | undefined) === key
   || t.sites.some((x) => (x.id as string) === key);
 
-function commitRename(key: string, raw: string): void {
+function commitRename(key: string, raw: string, where: Document = document): void {
   const t = topology.value;
   const m = t.members.find((x) => (x.id as string) === key);
   const o = t.observers.find((x) => (x.id as string) === key);
   renaming.value = null;
+  const isApp = (t.application?.id as string | undefined) === key;
   if (m) renameMember(m.id, raw);
   else if (o) renameObserver(o.id, raw);
+  else if (isApp) renameApplication(raw);
   else renameSite(siteId(key), raw);
   /* The field took the focus and is gone: hand it to the thing it named, under
      the name it now has, once that has been drawn. */
-  const now = m || o ? raw.trim() : key;
+  const now = m || o || isApp ? raw.trim() : key;
   setTimeout(() => {
-    for (const el of document.querySelectorAll<SVGGElement>('.topo-svg [data-node]')) {
-      if (el.getAttribute('data-node') === now && !el.hasAttribute('data-more')) { el.focus(); return; }
+    for (const el of where.querySelectorAll<SVGGElement>('.topo-svg [data-node]')) {
+      if (el.getAttribute('data-node') === now && !el.hasAttribute('data-more') && !el.hasAttribute('data-tools')) {
+        el.focus();
+        return;
+      }
     }
   }, 0);
 }
@@ -259,8 +277,12 @@ function useCanvasScale(
     host.current = el;
     if (!el) return;
     read();
-    if (typeof ResizeObserver === 'undefined') return;
-    const ro = new ResizeObserver(read);
+    /* The observer of the window the drawing is in: it may be a popup
+       (common/popout.tsx). */
+    const RO = el.ownerDocument.defaultView?.ResizeObserver
+      ?? (typeof ResizeObserver === 'undefined' ? undefined : ResizeObserver);
+    if (RO === undefined) return;
+    const ro = new RO(read);
     ro.observe(el);
     observer.current = ro;
   }, [read]);
@@ -284,9 +306,9 @@ function useCanvasScale(
  * explains itself in a tooltip rather than in a sentence beside it, and
  * ui.md SS3d says so.
  */
-export const WHY_TIDY = 'No card has been moved by hand, so there is nothing to tidy.';
+export const WHY_TIDY = 'No card has been moved and no data centre resized by hand, so there is nothing to tidy.';
 
-function ZoomStrip({ tidy }: { tidy: boolean }) {
+function ZoomStrip({ tidy, grid = false, pop = false }: { tidy: boolean; grid?: boolean; pop?: boolean }) {
   const at = zoom.value;
   const moved = Object.keys(doc.value.layout);
   const picked = selection.value.filter((k) => moved.includes(k));
@@ -297,9 +319,14 @@ function ZoomStrip({ tidy }: { tidy: boolean }) {
     inn ? ON : { state: 'off', why: WHY_MAX },
     { state: 'on' },
     ...(tidy ? [moved.length === 0 ? { state: 'off' as const, why: WHY_TIDY } : ON] : []),
+    ...(grid ? [ON] : []),
+    ...(pop ? [ON] : []),
   ];
   const roving = useRovingToolbar(states.map((w) => w.state !== 'off'));
-  const rows: { label: string; name: string; title: string; run: () => void }[] = [
+  const rows: {
+    label: string | JSX.Element; name: string; title: string; run: () => void; pressed?: boolean;
+    cls?: string;
+  }[] = [
     {
       label: '−',
       name: 'Zoom out',
@@ -324,8 +351,29 @@ function ZoomStrip({ tidy }: { tidy: boolean }) {
         name: 'Tidy the drawing',
         title: picked.length > 0
           ? 'Put the selected cards back where the layout draws them.'
-          : 'Put every card moved by hand back where the layout draws it.',
+          : 'Put every card moved by hand back where the layout draws it, and every resized data centre back to its own size.',
         run: () => tidyLayout(picked),
+      }]
+      : []),
+    ...(grid
+      ? [{
+        label: <DotsIcon />,
+        name: 'Dotted background',
+        title: gridOn.value ? 'Hide the dotted background.' : 'Show the dotted background.',
+        run: toggleGrid,
+        pressed: gridOn.value,
+      }]
+      : []),
+    ...(pop
+      ? [{
+        label: <PopIcon out={popped.value.canvas !== undefined} />,
+        name: 'Open the drawing in a new window',
+        title: popped.value.canvas !== undefined
+          ? 'Bring the drawing back into the main window.'
+          : 'Open the drawing in a new window you can drag to another screen.',
+        run: () => { if (popped.value.canvas !== undefined) popIn('canvas'); else popOut('canvas'); },
+        pressed: popped.value.canvas !== undefined,
+        cls: 'po-btn',
       }]
       : []),
   ];
@@ -339,9 +387,10 @@ function ZoomStrip({ tidy }: { tidy: boolean }) {
           <button
             key={r.name}
             type="button"
-            class={`btn${isOff ? ' is-faded' : ''}`}
+            class={`btn${isOff ? ' is-faded' : ''}${r.cls === undefined ? '' : ` ${r.cls}`}`}
             disabled={isOff}
             aria-label={r.name}
+            aria-pressed={r.pressed}
             title={why.state === 'off' ? why.why : r.title}
             tabIndex={roving.tabIndex(i)}
             ref={roving.itemRef(i)}
@@ -353,6 +402,47 @@ function ZoomStrip({ tidy }: { tidy: boolean }) {
         );
       })}
       <span class="cv-zoom-pct">{zoomLabel(at)}</span>
+    </div>
+  );
+}
+
+/** Nine dots: the toggle for the canvas's dotted ground. */
+function DotsIcon() {
+  return (
+    <svg class="cv-dots-ico" viewBox="0 0 12 12" width="12" height="12" aria-hidden="true">
+      {[2, 6, 10].flatMap((y) => [2, 6, 10].map((x) => <circle key={`${x}-${y}`} cx={x} cy={y} r="1.1" />))}
+    </svg>
+  );
+}
+
+/**
+ * Tidy, on its own, for the floating palette: the same act, the same refusal
+ * in its title, as the zoom strip's `Tidy` in the docked layout.
+ */
+function TidyButton() {
+  const moved = Object.keys(doc.value.layout);
+  const picked = selection.value.filter((k) => moved.includes(k));
+  const off = moved.length === 0;
+  return (
+    <div class="pal-tidy">
+      <button
+        type="button"
+        class={`btn pal-btn${off ? ' is-faded' : ''}`}
+        disabled={off}
+        aria-label="Tidy the drawing"
+        title={off
+          ? WHY_TIDY
+          : picked.length > 0
+            ? 'Put the selected cards back where the layout draws them.'
+            : 'Put every card moved by hand back where the layout draws it, and every resized data centre back to its own size.'}
+        onClick={() => tidyLayout(picked)}
+      >
+        <svg viewBox="0 0 16 16" aria-hidden="true">
+          <path d="M2.5 5.5V2.5h3M13.5 5.5V2.5h-3M2.5 10.5v3h3M13.5 10.5v3h-3" />
+          <rect x="5.5" y="5.5" width="5" height="5" rx="1" />
+        </svg>
+        <span class="pal-lbl">Tidy</span>
+      </button>
     </div>
   );
 }
@@ -377,6 +467,7 @@ export function CanvasSlot({ interactive = true }: CanvasSlotProps) {
   const zooming = interactive && (m === 'build' || m === 'break');
   const zoomFactor = zooming ? zoom.value : 1;
   const [wrapRef, scale, barMargin] = useCanvasScale(zoomFactor);
+  const host = useHostWindow();
   const anchored = barOpen.value;
 
   /* The bar closes rather than moves. A selection that no longer holds the key
@@ -410,12 +501,14 @@ export function CanvasSlot({ interactive = true }: CanvasSlotProps) {
     if (anchored === null) return;
     const onPress = (ev: PointerEvent): void => {
       const t = ev.target;
-      if (!(t instanceof Element)) return;
+      if (!isElement(t)) return;
       if (t.closest('.tp-actions') !== null || t.closest('[data-node]') !== null) return;
       closeBar();
     };
-    document.addEventListener('pointerdown', onPress, true);
-    return () => document.removeEventListener('pointerdown', onPress, true);
+    /* The drawing's own document: it may be in a popup (common/popout.tsx). */
+    const where = host?.document ?? document;
+    where.addEventListener('pointerdown', onPress, true);
+    return () => where.removeEventListener('pointerdown', onPress, true);
   }, [anchored]);
 
   const building = editable && m === 'build';
@@ -458,13 +551,29 @@ export function CanvasSlot({ interactive = true }: CanvasSlotProps) {
   const adds = editable && m === 'build'
     ? <AddToolbar doc={topology.value} />
     : null;
-  /* The zoom ladder rides in the same row as Build's additions. */
-  const toolbar = adds === null && !zooming ? null : (
-    <div class="cv-tools">
-      {adds}
-      {zooming ? <ZoomStrip tidy={editable && m === 'build'} /> : null}
-    </div>
-  );
+  /* Over a full-bleed canvas (App.tsx, `floating`) the additions and Tidy
+     are a palette at the left edge and the zoom ladder a pill at the bottom
+     right; both float over the drawing rather than taking a row above it.
+     Docked, the zoom ladder rides in the same row as Build's additions. */
+  const float = interactive && floating(m, viewport.value);
+  const toolbar = float
+    ? (
+      <>
+        {adds === null ? null : (
+          <nav class="palette pal-add float-card" aria-label="Tools">
+            {adds}
+            <TidyButton />
+          </nav>
+        )}
+        {zooming ? <div class="zoom-pill float-card"><ZoomStrip tidy={false} grid pop /></div> : null}
+      </>
+    )
+    : adds === null && !zooming ? null : (
+      <div class="cv-tools">
+        {adds}
+        {zooming ? <ZoomStrip tidy={editable && m === 'build'} /> : null}
+      </div>
+    );
   if (graph === null) {
     return (
       <>
@@ -472,8 +581,8 @@ export function CanvasSlot({ interactive = true }: CanvasSlotProps) {
         <div class="empty">
           <span class="empty-k">Canvas</span>
           <p>
-            No member carries the primary role, so there is no redo to draw. Give one
-            database <span class="mono">role: primary</span> and the drawing comes back.
+            No database has the primary role, so there is no redo to draw. Give one
+            database <span class="mono">role: primary</span> to show the redo routes.
           </p>
         </div>
       </>
@@ -542,13 +651,16 @@ export function CanvasSlot({ interactive = true }: CanvasSlotProps) {
                 key: renameKey,
                 initial: nameOf(topology.value, renameKey),
                 verdict: (raw: string) => renameVerdict(topology.value, renameKey, raw),
-                commit: (raw: string) => commitRename(renameKey, raw),
+                commit: (raw: string) => commitRename(renameKey, raw, host?.document),
                 cancel: () => { renaming.value = null; },
               }
               : null,
           }
           : {})}
         onHover={(key: string | null) => { hovered.value = key; }}
+        {...(editable && m === 'break'
+          ? { tools: (key: string) => hoverTools(topology.value, key, snapT(tNow.value)) }
+          : {})}
         onClear={() => { closeBar(); clearSelection(); }}
         onCloseBar={() => closeBar()}
         /* The context menu is a keyboard-shaped request -- `Shift+F10` is
@@ -588,10 +700,43 @@ export function CanvasSlot({ interactive = true }: CanvasSlotProps) {
             /* A card dropped on another host's card or stack merges into it --
                same host, hosts and all, one undo with the drag. */
             onMergeIntoHost: (key: string, host: string): void => mergeIntoHost(key, hostId(host)),
+            /* ...unless the placement rule refuses it: an observer never
+               shares a host with a database. */
+            mergeWhat: (key: string, host: string) => mergeVerdict(topology.value, key, host),
             onConnect: connectFromCanvas,
             connectWhat: (from: string, to: string) => connectVerdict(topology.value, from, to),
+            /* A data centre's handles: its box, a sized override under its
+               own key -- one undo for the whole gesture. */
+            onResizeSite: (site: string, box: { dx: number; dy: number; w?: number; h?: number }): void => {
+              const name = topology.value.sites.find((s) => (s.id as string) === site)?.name ?? site;
+              edit(`Resize the ${name} data centre`, (d) => withLayout(d, site, box), `resize:${site}`);
+            },
+            onResizeEnd: () => breakCoalescing(),
+            onResizeBy: (site: string, dx: number, dy: number): void => {
+              /* Read live, not from the render: a second press before the
+                 repaint must grow from where the first one left the box. */
+              const st = geometry.value?.sites.find((s) => (s.id as string) === site);
+              if (!st) return;
+              const box = resizedBox(
+                { start: st, fit: st.fit, anchor: st.anchor, empty: st.empty },
+                { l: false, r: true, t: false, b: true }, dx, dy,
+              );
+              edit(`Resize the ${st.name} data centre`, (d) => withLayout(d, site, box), `resize:${site}`);
+            },
           }
           : {})}
+        /* A card let go inside its own data centre: the boxes it would have
+           shrunk keep their size, in the drag's own edit (`drag:${key}`), so
+           the move and the kept size undo as one. */
+        onHoldSites={(key: string, boxes: Readonly<Record<string, { dx: number; dy: number; w?: number; h?: number }>>) => {
+          /* The drag's own label: the kept boxes are part of that move, not a
+             second thing the reader did. */
+          edit(
+            undoLabel.peek() ?? `Move the ${key} card`,
+            (d) => Object.entries(boxes).reduce((acc, [id, box]) => withLayout(acc, id, box), d),
+            `drag:${key}`,
+          );
+        }}
         onDrag={(
           key: string, _offset: { dx: number; dy: number },
           all: Readonly<Record<string, { dx: number; dy: number }>>,
@@ -604,6 +749,12 @@ export function CanvasSlot({ interactive = true }: CanvasSlotProps) {
              observers along, so the label says "data centre" rather than
              "card" when that is what moved. */
           const ids = Object.keys(all);
+          if (inFlight.peek().join('\u0000') !== ids.join('\u0000')) {
+            /* Read before this move's own edit: where they stood when picked up. */
+            const was = doc.peek().layout;
+            inFlightFrom.value = Object.fromEntries(ids.map((k) => [k, was[k] ?? { dx: 0, dy: 0 }]));
+            inFlight.value = ids;
+          }
           const site = topology.value.sites.find((s) => (s.id as string) === key);
           const label = site
             ? `Move the ${site.name} data centre`
@@ -614,7 +765,12 @@ export function CanvasSlot({ interactive = true }: CanvasSlotProps) {
             `drag:${key}`,
           );
         }}
-        onDragEnd={() => breakCoalescing()}
+        onDragEnd={() => {
+          /* Landed: from here on, what it overlaps makes way for it. */
+          inFlight.value = [];
+          inFlightFrom.value = {};
+          breakCoalescing();
+        }}
       />
     </>
   );

@@ -10,41 +10,55 @@
  * not gone — it is each mode button's `title` (`MODE_SUB`), and the mode word
  * now leads the guidance line in.
  *
- * Undo and redo are small buttons that say only "Undo" and "Redo": the edit
+ * Undo and redo use compact arrows with accessible names: the edit
  * they would reverse rides in the `title`, and a disabled one carries its
  * reason there too. The two chips that used to sit beside them, shouting
  * NOTHING TO UNDO YET at a reader who had not yet done anything, said the same
  * thing three times over and were the loudest text in the bar.
  */
 
+import type { ComponentChildren } from 'preact';
 import { canUndo, canRedo, redo, redoLabel, undo, undoLabel } from '@/state/history';
-import { edition, introOpen, mode, MODE_LABEL, MODE_SUB, MODES, theme } from '@/state/view';
-import type { Mode, ThemePref } from '@/state/view';
-import { saveEdition, saveTheme } from '@/state/persist';
-import { applyTheme } from '@/state/view';
+import {
+  applyPalette, applyTheme, edition, introOpen, mode, MODE_LABEL, MODE_SUB, MODES, nextTheme, palette, theme,
+} from '@/state/view';
+import type { Mode, PalettePref, ThemePref } from '@/state/view';
+import { saveEdition, savePalette, saveTheme } from '@/state/persist';
 import { Segmented } from './common/Segmented';
 import { INTRO_HREF, leaveIntro, openIntro } from './intro/route';
 
-export function TopBar() {
+const THEME_WORD: Record<ThemePref, string> = { auto: 'system', light: 'light', dark: 'dark' };
+const PALETTE_WORD: Record<PalettePref, string> = { standard: 'standard', cvd: 'colour-blind safe' };
+
+export interface TopBarProps {
+  children?: unknown;
+  /** Beside the brand: which configuration is on screen (StatusBar's picker). */
+  doc?: ComponentChildren;
+  /** At the right end: what can be done to the configuration as a whole. */
+  actions?: ComponentChildren;
+}
+
+export function TopBar({ doc, actions }: TopBarProps = {}) {
   const m = mode.value;
+  const pref = theme.value;
+  const next = nextTheme(pref);
+  const pal = palette.value;
+  const nextPal: PalettePref = pal === 'standard' ? 'cvd' : 'standard';
   return (
     <header class="topbar app-top">
       <div class="topbar-brand">
-        <b>Data Guard topology</b>
         {/* A real `<a href>` and not a button, so it can be middle-clicked,
             bookmarked and copied: `?intro=1` is the page's own address, and
             the click handler only saves the reload. */}
-        <span>
-          simulator
-          {' · '}
-          <a
-            href={INTRO_HREF}
-            title="What this is, and what to do with it"
-            onClick={(e) => { e.preventDefault(); openIntro(); }}
-          >
-            Introduction
-          </a>
-        </span>
+        <a
+          class="brand"
+          href={INTRO_HREF}
+          title="Introduction: what this is, and what to do with it"
+          onClick={(e) => { e.preventDefault(); openIntro(); }}
+        >
+          Data Guard
+        </a>
+        {doc}
       </div>
 
       <div class="topbar-modes">
@@ -59,48 +73,77 @@ export function TopBar() {
         />
       </div>
 
-      <div class="topbar-spacer" />
-
       <div class="topbar-group">
         <Segmented<'19c' | '26ai'>
           label="Oracle release"
           value={edition.value}
           options={[
             { value: '19c', label: '19c', title: 'Oracle Database 19c' },
-            { value: '26ai', label: '26ai', title: 'Oracle Database 26ai' },
+            { value: '26ai', label: '26ai', title: 'Oracle AI Database 26ai' },
           ]}
           onChange={(v) => { edition.value = v; saveEdition(v); }}
         />
 
-        <Segmented<ThemePref>
-          label="Theme"
-          value={theme.value}
-          options={[
-            { value: 'auto', label: 'Auto', title: 'Follow the system setting' },
-            { value: 'light', label: 'Light' },
-            { value: 'dark', label: 'Dark' },
-          ]}
-          onChange={(v) => { theme.value = v; saveTheme(v); applyTheme(v); }}
-        />
-
         <button
           type="button"
-          class="btn is-quiet"
+          class="btn is-icon"
+          aria-label="Undo"
           disabled={!canUndo.value}
           title={undoLabel.value ? `Undo: ${undoLabel.value}` : 'Nothing to undo yet'}
           onClick={() => undo()}
         >
-          Undo
+          <span aria-hidden="true">↶</span>
         </button>
 
         <button
           type="button"
-          class="btn is-quiet"
+          class="btn is-icon"
+          aria-label="Redo"
           disabled={!canRedo.value}
           title={redoLabel.value ? `Redo: ${redoLabel.value}` : 'Nothing undone yet'}
           onClick={() => redo()}
         >
-          Redo
+          <span aria-hidden="true">↷</span>
+        </button>
+
+        {/* One press flips light and dark; the name says which way it is
+            pointing now and which way it will go. */}
+        <button
+          type="button"
+          class="btn is-icon theme-tog"
+          aria-label={`Theme: ${THEME_WORD[pref]}. Switch to ${THEME_WORD[next]}`}
+          title={`Theme: ${THEME_WORD[pref]} — switch to ${THEME_WORD[next]}`}
+          onClick={() => {
+            theme.value = next;
+            saveTheme(next);
+            applyTheme(next);
+          }}
+        >
+          <svg viewBox="0 0 16 16" aria-hidden="true">
+            <circle cx="8" cy="8" r="5.5" />
+            <path d="M8 2.5a5.5 5.5 0 0 1 0 11z" class="fill" />
+          </svg>
+        </button>
+
+        {/* The hue set, beside the theme and independent of it: light or
+            dark, either palette. Pressed while the alternative is on. */}
+        <button
+          type="button"
+          class="btn is-icon palette-tog"
+          aria-label={`Palette: ${PALETTE_WORD[pal]}. Switch to ${PALETTE_WORD[nextPal]}`}
+          aria-pressed={pal !== 'standard'}
+          title={`Palette: ${PALETTE_WORD[pal]} — switch to ${PALETTE_WORD[nextPal]}`}
+          onClick={() => {
+            palette.value = nextPal;
+            savePalette(nextPal);
+            applyPalette(nextPal);
+          }}
+        >
+          <svg viewBox="0 0 16 16" aria-hidden="true">
+            <circle cx="5" cy="6" r="2.5" class="pal-a" />
+            <circle cx="11" cy="6" r="2.5" class="pal-b" />
+            <circle cx="8" cy="11" r="2.5" class="pal-c" />
+          </svg>
         </button>
 
         {/* A toggle, and it says which way it is pointing. Closing the card
@@ -117,7 +160,9 @@ export function TopBar() {
         >
           ?
         </button>
+        {actions === undefined ? null : <div class="topbar-acts">{actions}</div>}
       </div>
+
     </header>
   );
 }

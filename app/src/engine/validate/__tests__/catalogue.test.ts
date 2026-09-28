@@ -106,8 +106,15 @@ describe('the edition gate', () => {
 
   it('runs the whole 19c corpus through a forced 26ai pass without losing a 19c finding', () => {
     /* Everything the 19c pass reports must still be reportable under 26ai,
-       except the two rules the editions genuinely disagree about. */
-    const editionSensitive = new Set(['FSFO.FARSYNC_MODE_19C', 'OBS.COUNT', 'XPT.TABLE_4_2']);
+       except the rules the editions genuinely disagree about -- including the
+       three 19c-only doc-later findings (ED-02: LagType/LagGraceTime/
+       PrimaryDatabaseCandidates and the ObserverPing* properties are all
+       documented from a later edition and vanish once the edition is 26ai,
+       by design, since the 26ai pass no longer disagrees with the document). */
+    const editionSensitive = new Set([
+      'FSFO.FARSYNC_MODE_19C', 'OBS.COUNT', 'XPT.TABLE_4_2',
+      'FSFO.PING_PROPS_NOT_IN_19C', 'FSFO.LAGTYPE_GRACETIME_19C', 'CFG.PRIMARY_CANDIDATES_19C',
+    ]);
     for (const doc of DOCS) {
       if (doc.config.edition !== '19c') continue;
       const under19 = new Set(validate(doc).map((f) => f.id));
@@ -148,21 +155,30 @@ describe('the edition gate', () => {
 
   it('counts observers per edition: three under 19c, four under 26ai', () => {
     const hosts: [string, string][] = [['dc1-prm01', 'dc1'], ['dc2-sby01', 'dc2'],
-      ['dc3-obs01', 'dc3'], ['dc3-obs02', 'dc3'], ['dc3-obs03', 'dc3'], ['dc3-obs04', 'dc3']];
-    const four = (edition: '19c' | '26ai'): TopologyDoc => baseDoc({
-      edition, hosts,
-      observers: [
-        { id: 'obs01' as never, name: 'obs01', host: 'dc3-obs01' as never, role: 'master', running: true },
-        { id: 'obs02' as never, name: 'obs02', host: 'dc3-obs02' as never, role: 'backup', running: true },
-        { id: 'obs03' as never, name: 'obs03', host: 'dc3-obs03' as never, role: 'backup', running: true },
-        { id: 'obs04' as never, name: 'obs04', host: 'dc3-obs04' as never, role: 'backup', running: true },
-      ],
-    });
-    expect(validate(four('19c')).some((f) => f.id === 'OBS.COUNT')).toBe(true);
-    expect(validate(four('26ai')).some((f) => f.id === 'OBS.COUNT')).toBe(false);
-    const f = validate(four('19c')).find((x) => x.id === 'OBS.COUNT');
-    expect(f?.basis).toBe('conflict');
-    expect(f?.note).toMatch(/SHOW OBSERVER/);
+      ['dc3-obs01', 'dc3'], ['dc3-obs02', 'dc3'], ['dc3-obs03', 'dc3'], ['dc3-obs04', 'dc3'],
+      ['dc3-obs05', 'dc3']];
+    const observersUpTo = (n: number): TopologyDoc['observers'] => Array.from({ length: n }, (_, i) => ({
+      id: `obs0${i + 1}` as never, name: `obs0${i + 1}`, host: `dc3-obs0${i + 1}` as never,
+      role: (i === 0 ? 'master' : 'backup') as never, running: true,
+    }));
+    const withObservers = (edition: '19c' | '26ai', n: number): TopologyDoc =>
+      baseDoc({ edition, hosts, observers: observersUpTo(n) });
+
+    expect(validate(withObservers('19c', 4)).some((f) => f.id === 'OBS.COUNT')).toBe(true);
+    expect(validate(withObservers('26ai', 4)).some((f) => f.id === 'OBS.COUNT')).toBe(false);
+    expect(validate(withObservers('26ai', 5)).some((f) => f.id === 'OBS.COUNT')).toBe(true);
+    /* The move from three to four is settled at 21c (ORA-16647); the two
+       conflicts that survive it are edition-specific and different from each
+       other -- 19c's own command reference against its own fast-start
+       failover chapter, 26ai's own SHOW OBSERVER page against its own
+       fast-start failover chapter -- so the notes name different pages. */
+    const f19 = validate(withObservers('19c', 4)).find((x) => x.id === 'OBS.COUNT');
+    expect(f19?.basis).toBe('conflict');
+    expect(f19?.note).toMatch(/START OBSERVER/);
+    expect(f19?.note).toMatch(/settled at 21c/);
+    const f26 = validate(withObservers('26ai', 5)).find((x) => x.id === 'OBS.COUNT');
+    expect(f26?.basis).toBe('conflict');
+    expect(f26?.note).toMatch(/SHOW OBSERVER/);
   });
 
   it('turns the maximum availability ASYNC finding from an error into a warning under 26ai', () => {
@@ -261,10 +277,18 @@ describe('the wordings the accuracy rules pin down', () => {
       observers: [{ id: 'obs01' as never, name: 'obs01', host: 'dc1-obs01' as never, role: 'master', running: true }],
     })).find((x) => x.id === 'OBS.PRIMARY_SITE');
     expect(f?.severity).toBe('warning');
+    /* VAL-05: the old message had this backward -- "defensible only where
+       the application tier is local to the primary" is the reverse of the
+       HA guide's own caveat, which sends the observer away from the primary
+       even then. */
+    expect(f?.basis).toBe('inferred');
     expect(f?.message).toContain('third site or third data center');
     expect(f?.message).toContain('same path to connect to the production database');
     expect(f?.message).toContain("standby's data center on a separate host");
-    expect(f?.message).toMatch(/defensible only where the application tier is local to the primary/);
+    expect(f?.message).toContain(
+      'when the application tier is local to the production database, the observer belongs at either the standby location or a third data center instead',
+    );
+    expect(f?.message).not.toMatch(/defensible only where the application tier is local to the primary/);
     expect(f?.message).not.toMatch(/recommend/i);
   });
 });
@@ -275,7 +299,8 @@ describe('ORA numbers', () => {
     expect(withOra.length).toBeGreaterThan(0);
     for (const f of withOra) {
       expect(f.ora, f.id).toMatch(/^ORA-\d{5}$/);
-      expect(['EDIT.FSFO_ENABLED_BLOCKS', 'EDIT.REMOVE_TARGET']).toContain(f.id);
+      expect(['EDIT.FSFO_ENABLED_BLOCKS', 'EDIT.REMOVE_TARGET', 'OBS.NONE_DEPLOYED', 'FSFO.FLASHBACK_REQUIRED'])
+        .toContain(f.id);
     }
   });
 

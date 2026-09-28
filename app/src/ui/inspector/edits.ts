@@ -12,10 +12,11 @@
  */
 
 import {
-  activeRule, defaultDestProps, hostId, linkId, memberId, observerId, siteId,
+  activeRule, applicationId, defaultDestProps, hostId, isParenthesised, linkId, memberId, observerId, primarySite,
+  siteId, withApplication,
 } from '@/engine';
 import type {
-  DatabaseMember, DestGroup, DestProps, FarSyncMember, Host, Instance, Link, Member, MemberId,
+  ClientDescriptor, DatabaseMember, DestGroup, DestProps, FarSyncMember, Host, Instance, Link, Member, MemberId,
   Observer, RedoRouteRule, RouteDest, Site, TimedEvent, TopologyDoc, XptMode,
 } from '@/engine';
 import type { HostId, LinkId, ObserverId, SiteId } from '@/engine';
@@ -25,6 +26,7 @@ import { edit } from '@/state/history';
 import { select, toast } from '@/state/view';
 import type { WhyState } from '../common/WhyPill';
 import { off, ON, WHY } from './why';
+import { siteForNewFarSync, siteForNewObserver, siteForNewStandby } from '../build/placement';
 
 /* ---------------- the two primitives ---------------- */
 
@@ -85,6 +87,13 @@ export function patchFsfo(
   patchConfig(label, (c) => ({ ...c, fsfo: fn(c.fsfo) }), key);
 }
 
+/** One labelled edit of the application's connect descriptor. */
+export function patchClient(
+  label: string, fn: (c: ClientDescriptor) => ClientDescriptor, key?: string,
+): void {
+  mutate(label, (t) => ({ ...t, client: fn(t.client) }), key);
+}
+
 export function patchEnvironment(
   label: string, fn: (e: TopologyDoc['environment']) => TopologyDoc['environment'], key?: string,
 ): void {
@@ -122,23 +131,11 @@ const hostNames = (t: TopologyDoc): string[] => t.hosts.map((h) => h.id as strin
 /* ---------------- adding ---------------- */
 
 /**
- * Where a new database belongs: a data centre that has no database in it yet
- * -- so a second database lands opposite the first, which is the deployment
- * anyone drawing Data Guard means -- and the last site otherwise.
+ * Where a new database belongs when the reader named no place: an empty data
+ * centre, else beside the standbys already drawn -- never the observer's data
+ * centre while another will do (`build/placement.ts`).
  */
-function siteForNewMember(t: TopologyDoc): SiteId | null {
-  const siteOf = new Map<string, string>();
-  for (const h of t.hosts) siteOf.set(h.id as string, h.site as string);
-  const occupied = new Set<string>();
-  for (const m of t.members) {
-    for (const i of m.instances) {
-      const s = siteOf.get(i.host as string);
-      if (s) occupied.add(s);
-    }
-  }
-  const free = t.sites.find((s) => !occupied.has(s.id as string));
-  return free?.id ?? t.sites.at(-1)?.id ?? null;
-}
+const siteForNewMember = (t: TopologyDoc): SiteId | null => siteForNewStandby(t);
 
 /** The data centre a caller named, when this document actually has it. */
 const placeIn = (t: TopologyDoc, where: SiteId | undefined): SiteId | null =>
@@ -215,16 +212,105 @@ export function addDatabase(where?: SiteId): MemberId | null {
           redoRoutes: routesWith(m, primary.id, { target: id }),
         }
         : m));
-    return { ...withH, members };
+    /* The application sees every standby: the new one joins its ADDRESS_LIST. */
+    const client = {
+      ...withH.client,
+      addresses: [...withH.client.addresses, { host: hostId(hname), port: withH.hosts.at(-1)?.listenerPort ?? 1521 }],
+    };
+    return { ...withH, members, client };
   });
   select(id as string);
   return id;
 }
 
+/**
+ * Where the application goes when no data centre is named: beside the
+ * primary, which is where it stands to start with.
+ */
+export const siteForApplication = (t: TopologyDoc): SiteId | null => primarySite(t);
+
+/**
+ * Add the application, on a host of its own. There is one: a second connect
+ * string is a second document. Its ADDRESS_LIST is the descriptor's own; an
+ * empty one is filled with the primary and every standby database.
+ */
+export function addApplication(where?: SiteId): string | null {
+  const t = doc.value.topology;
+  if (t.application !== undefined) return null;
+  const next = withApplication(t, placeIn(t, where) ?? siteForApplication(t) ?? undefined);
+  const name = next.application?.id as string | undefined;
+  if (name === undefined) return null;
+  mutate(`Add the application ${name}`, (cur) => withApplication(cur, next.hosts.at(-1)?.site, name));
+  select(name);
+  return name;
+}
+
+/** Remove the application and the host it stood on; the descriptor stays. */
+export function removeApplication(): void {
+  edit('Remove the application', (d) => {
+    const app = d.topology.application;
+    if (app === undefined) return d;
+    const { application: _gone, ...rest } = d.topology;
+    let next: TopologyDoc = rest;
+    if (!hostShared(next, app.host, app.id as string)) next = withoutHost(next, app.host);
+    return dropLayout(withTopology(d, next), [app.id as string]);
+  });
+}
+
+/** Rename the application; nothing else in the document names it. */
+export function renameApplication(raw: string): void {
+  const name = raw.trim();
+  const t = doc.value.topology;
+  const app = t.application;
+  if (app === undefined || name === '' || name === (app.id as string)) return;
+  if (takenIds(t).has(name)) {
+    toast.value = { kind: 'warn', text: `${app.id as string} keeps its name: ${WHY.idTaken}` };
+    return;
+  }
+  edit(`Rename the application ${app.id as string} to ${name}`, (d) => {
+    const cur = d.topology.application;
+    if (cur === undefined) return d;
+    const next: TopologyDoc = { ...d.topology, application: { ...cur, id: applicationId(name), name } };
+    const moved = d.layout[cur.id as string];
+    if (moved === undefined) return withTopology(d, next);
+    const layout = { ...d.layout };
+    delete layout[cur.id as string];
+    layout[name] = moved;
+    return { ...withTopology(d, next), layout };
+  });
+  select(name);
+}
+
+/**
+ * Put a database on the application's ADDRESS_LIST or take it off: every
+ * instance's host, in the order the member lists them, after the addresses
+ * already there.
+ */
+export function setAddressListed(id: MemberId, listed: boolean): void {
+  const t = doc.value.topology;
+  const m = t.members.find((x) => x.id === id);
+  if (!m) return;
+  const hosts = hostsOf(m);
+  patchClient(`${listed ? 'Add' : 'Remove'} ${id as string} ${listed ? 'to' : 'from'} the ADDRESS_LIST`, (c) => {
+    const rest = c.addresses.filter((a) => !hosts.includes(a.host));
+    if (!listed) return { ...c, addresses: rest };
+    const have = new Set(c.addresses.map((a) => a.host));
+    return {
+      ...c,
+      addresses: [
+        ...c.addresses,
+        ...hosts.filter((h) => !have.has(h)).map((h) => ({
+          host: h, port: t.hosts.find((x) => x.id === h)?.listenerPort ?? 1521,
+        })),
+      ],
+    };
+  });
+}
+
 /** Add a far sync instance: no role, no apply, no open mode. */
 export function addFarSync(where?: SiteId): MemberId | null {
   const t = doc.value.topology;
-  const site = placeIn(t, where) ?? siteForNewMember(t) ?? t.sites.at(-1)?.id ?? null;
+  const site = placeIn(t, where) ?? siteForNewFarSync(t) ?? t.sites.at(-1)?.id ?? null;
   if (site === null) return null;
   const name = nextName('fs', memberNames(t));
   const hname = uniqueHost(t, `${site as string}-${name}`);
@@ -250,17 +336,7 @@ export function addFarSync(where?: SiteId): MemberId | null {
  */
 export function addObserver(where?: SiteId): ObserverId | null {
   const t = doc.value.topology;
-  const dbSites = new Set<string>();
-  const siteOf = new Map<string, string>();
-  for (const h of t.hosts) siteOf.set(h.id as string, h.site as string);
-  for (const m of t.members) {
-    for (const i of m.instances) {
-      const s = siteOf.get(i.host as string);
-      if (s) dbSites.add(s);
-    }
-  }
-  const site = placeIn(t, where)
-    ?? t.sites.find((s) => !dbSites.has(s.id as string))?.id ?? t.sites.at(-1)?.id ?? null;
+  const site = placeIn(t, where) ?? siteForNewObserver(t);
   if (site === null) return null;
   const name = nextName('obs', t.observers.map((o) => o.id as string));
   const id = observerId(name);
@@ -292,6 +368,7 @@ function takenIds(t: TopologyDoc): Set<string> {
     ...t.members.map((m) => m.id as string),
     ...t.observers.map((o) => o.id as string),
     ...t.links.map((l) => l.id as string),
+    ...(t.application ? [t.application.id as string] : []),
   ]);
 }
 
@@ -515,13 +592,18 @@ export function removeObserver(id: ObserverId): void {
 }
 
 /** A host and every reference to it: its host links, client addresses and events. */
-const withoutHost = (t: TopologyDoc, id: HostId): TopologyDoc => ({
-  ...t,
-  hosts: t.hosts.filter((h) => h.id !== id),
-  links: t.links.filter((l) => !(l.scope === 'host' && (l.ends as [HostId, HostId]).includes(id))),
-  client: { ...t.client, addresses: t.client.addresses.filter((a) => a.host !== id) },
-  events: t.events.filter((e) => !eventMentionsHost(e, id)),
-});
+function withoutHost(t: TopologyDoc, id: HostId): TopologyDoc {
+  /* The application stands on a host: without it there is no application. */
+  const { application, ...rest } = t;
+  return {
+    ...rest,
+    ...(application !== undefined && application.host !== id ? { application } : {}),
+    hosts: t.hosts.filter((h) => h.id !== id),
+    links: t.links.filter((l) => !(l.scope === 'host' && (l.ends as [HostId, HostId]).includes(id))),
+    client: { ...t.client, addresses: t.client.addresses.filter((a) => a.host !== id) },
+    events: t.events.filter((e) => !eventMentionsHost(e, id)),
+  };
+}
 
 export function removeHost(id: HostId): void {
   mutate(`Remove the host ${id as string}`, (t) => withoutHost(t, id));
@@ -571,6 +653,9 @@ export function renameVerdict(t: TopologyDoc, key: string, raw: string): WhyStat
   }
   if (t.observers.some((o) => (o.id as string) === key)) {
     return t.observers.some((o) => (o.id as string) === name) ? off(WHY.observerNameTaken) : ON;
+  }
+  if ((t.application?.id as string | undefined) === key) {
+    return takenIds(t).has(name) ? off(WHY.idTaken) : ON;
   }
   return ON;
 }
@@ -696,7 +781,8 @@ const hostsOf = (m: Member): HostId[] => {
 /** True when anything other than `except` stands on this host. */
 function hostShared(t: TopologyDoc, host: HostId, except: string): boolean {
   return t.members.some((m) => (m.id as string) !== except && m.instances.some((i) => i.host === host))
-    || t.observers.some((o) => (o.id as string) !== except && o.host === host);
+    || t.observers.some((o) => (o.id as string) !== except && o.host === host)
+    || (t.application !== undefined && (t.application.id as string) !== except && t.application.host === host);
 }
 
 /**
@@ -723,11 +809,13 @@ export function moveToSite(key: string, site: SiteId): void {
   if (!target) return;
   const member = t.members.find((m) => (m.id as string) === key);
   const observer = member ? undefined : t.observers.find((o) => (o.id as string) === key);
-  if (!member && !observer) return;
+  const app = !member && !observer && (t.application?.id as string | undefined) === key
+    ? t.application : undefined;
+  if (!member && !observer && !app) return;
   const siteOf = (h: HostId): SiteId | undefined => t.hosts.find((x) => x.id === h)?.site;
-  const hosts = member ? hostsOf(member) : observer ? [observer.host] : [];
+  const hosts = member ? hostsOf(member) : observer ? [observer.host] : app ? [app.host] : [];
   if (hosts.length === 0 || hosts.every((h) => siteOf(h) === site)) return;
-  const name = member ? member.name : observer?.name ?? key;
+  const name = member ? member.name : observer?.name ?? app?.name ?? key;
 
   edit(`Move ${key} to ${target.name}`, (d) => {
     let cur = d.topology;
@@ -754,6 +842,15 @@ export function moveToSite(key: string, site: SiteId): void {
         ? { ...m, instances: m.instances.map((i) => ({ ...i, host: moved(i.host) })) }
         : m)),
       observers: cur.observers.map((o) => (o.id === observer?.id ? { ...o, host: moved(o.host) } : o)),
+      ...(app !== undefined && cur.application !== undefined
+        ? { application: { ...cur.application, host: moved(cur.application.host) } }
+        : {}),
+      /* An address follows the database it names to its new host, so a
+         standby moved to another data centre stays on the ADDRESS_LIST. */
+      client: {
+        ...cur.client,
+        addresses: cur.client.addresses.map((a) => ({ ...a, host: moved(a.host) })),
+      },
     };
     /* The hosts left behind, when nothing else stands on them. */
     for (const h of remap.keys()) {
@@ -820,10 +917,19 @@ function routesWith(m: Member, primary: MemberId, dest: RouteDest): RedoRouteRul
     g.dests.some((dd) => dd.target === 'ALL' || dd.target === dest.target);
   if (act && act.rule.groups.some(names)) return m.redoRoutes;
   if (act && m.redoRoutes.length > 0) {
-    return m.redoRoutes.map((r, i) => (i !== act.index ? r : {
-      ...r,
-      groups: r.groups.map((g, gi) => (gi !== 0 ? g : { ...g, dests: [...g.dests, dest] })),
-    }));
+    /* Joined to the first unparenthesised entry, so that it ships: added to a
+       parenthesised group it would only stand by, since a group has one
+       active redo path. */
+    return m.redoRoutes.map((r, i) => {
+      if (i !== act.index) return r;
+      const open = r.groups.findIndex((g) => !isParenthesised(g));
+      return {
+        ...r,
+        groups: open < 0
+          ? [...r.groups, { dests: [dest] }]
+          : r.groups.map((g, gi) => (gi !== open ? g : { ...g, dests: [...g.dests, dest] })),
+      };
+    });
   }
   const source: RedoRouteRule['source'] = m.id === primary ? 'LOCAL' : 'ANY';
   return [...m.redoRoutes, { source, groups: [{ dests: [dest] }] }];
@@ -898,6 +1004,17 @@ export function connectVerdict(
   const site = (k: string): Site | undefined => t.sites.find((x) => (x.id as string) === k);
   const a = member(from); const b = member(to);
   const primary = t.members.find((m) => m.kind === 'database' && m.role === 'primary');
+  /* The application and a database, in either direction: an address. */
+  const app = t.application;
+  const isApp = (k: string): boolean => app !== undefined && (app.id as string) === k;
+  if (isApp(from) || isApp(to)) {
+    const m = isApp(from) ? b : a;
+    if (!m) return { label: 'Connect', enabled: off('The application connects to databases: draw the line to one.') };
+    const label = `List ${m.id as string} in the ADDRESS_LIST`;
+    if (m.kind === 'farsync') return { label, enabled: off(WHY.farSyncNotAddress) };
+    const listed = m.instances.some((i) => t.client.addresses.some((x) => x.host === i.host));
+    return { label, enabled: listed ? off(`${m.id as string} is on the ADDRESS_LIST already.`) : ON };
+  }
   if (a && b) {
     if (b.kind === 'database' && b.role === 'primary') {
       return { label: `Ship redo to ${to}`, enabled: off(`${to} is the primary: redo starts there, nothing ships to it.`) };

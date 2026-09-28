@@ -12,7 +12,7 @@
 import { signal } from '@preact/signals';
 import type { Doc } from '@/state/doc';
 import { classicDoc, doc, makeDoc } from '@/state/doc';
-import { edit, resetHistory } from '@/state/history';
+import { edit } from '@/state/history';
 import { errors, issues, warnings } from '@/state/derived';
 import { exportDoc, importFile, restored, startFresh } from '@/state/persist';
 import { buildShareUrl, isPristinePreset, presetId, shareHref, shareTooLarge } from '@/state/url';
@@ -22,6 +22,13 @@ import { edition, inspectorOpen, mode, toast, viewport } from '@/state/view';
 import { TOO_LARGE_MESSAGE } from '@/state/codec';
 import { revealFindings } from './IssuePanel';
 import { WhyPill } from './common/WhyPill';
+import { activeWorkspaceId, replaceWorkingDocument, workspacesOpen } from '@/state/workspaces';
+import { openWorkspaces } from './workspaces/Workspaces';
+import { reviewOpen } from '@/state/review';
+import { openReview } from './review/ReviewPanel';
+import { exportPng } from './export/diagram';
+import { openReport } from './export/Report';
+import { collectOpen } from './import/CollectDialog';
 
 const busy = signal(false);
 
@@ -65,10 +72,11 @@ async function onImport(file: File | null): Promise<void> {
     toast.value = { kind: 'error', text: report.message };
     return;
   }
-  const restoredDoc = report.doc;
-  resetHistory(restoredDoc);
-  presetId.value = null;
-  toast.value = { kind: 'info', text: report.message };
+  /* One undoable step, and the draft it replaces is kept (workspaces.ts). A
+     recovery copy that could not be written says so itself. */
+  if (replaceWorkingDocument('Import configuration', report.doc, null)) {
+    toast.value = { kind: 'info', text: report.message };
+  }
 }
 
 /**
@@ -122,18 +130,22 @@ export interface StatusBarProps {
    * the nominal height would paint over it.
    */
   hostRef?: (el: HTMLElement | null) => void;
+  /**
+   * Whether the finding tally rides in this cluster. The floating layout
+   * carries it on the status card over the canvas instead (Findings.tsx).
+   */
+  count?: boolean;
 }
 
-export function StatusBar({ hostRef }: StatusBarProps) {
-  const errs = errors.value.length;
-  const warns = warnings.value.length;
-  const notes = issues.value.length - errs - warns;
-  const tone = errs > 0 ? 'is-error' : warns > 0 ? 'is-warn' : 'is-clean';
-  const link = sharedUrl.value;
+/**
+ * Which configuration is on screen: the picker, and -- once, after a reload --
+ * the note that it was restored, with the way back to a fresh one.
+ */
+export function DocPicker() {
   const { preset, edited } = presetState(doc.value, presetId.value);
   const showing = preset !== null && !edited;
   return (
-    <div class="statusbar app-status" ref={hostRef}>
+    <>
       {/* The word "Preset" is gone from the bar: the picker's first option
           names what is on screen ("1+1+1 with observer", "Current
           configuration (edited)"), the control's own title says what it is,
@@ -143,7 +155,7 @@ export function StatusBar({ hostRef }: StatusBarProps) {
       <label class="sr" for="preset-picker">Preset</label>
       <select
         id="preset-picker"
-        class="btn"
+        class="btn doc-picker"
         title="Load one of the twelve configurations this page ships with"
         /* The preset's own option while the document still is that preset;
            the first option, which then says so, once it is not. */
@@ -154,9 +166,9 @@ export function StatusBar({ hostRef }: StatusBarProps) {
           if (!chosen) return;
           /* A preset replaces the whole Document, events included:
              reproducibility is the point, and the events are part of the story
-             the preset tells (presets/types.ts). */
-          resetHistory(makeDoc(chosen.doc()));
-          presetId.value = chosen.id;
+             the preset tells (presets/types.ts). One undoable step, and the
+             draft it replaces is kept in Saved configurations. */
+          replaceWorkingDocument(`Open ${chosen.short}`, makeDoc(chosen.doc()), chosen.id);
         }}
       >
         <option value="">
@@ -174,21 +186,8 @@ export function StatusBar({ hostRef }: StatusBarProps) {
         ))}
       </select>
 
-      {/* The tally is the way in, not a label: it takes the reader to the
-          findings it counts, in whichever mode they are (IssuePanel.tsx). */}
-      <button
-        type="button"
-        class={`count ${tone}`}
-        title={mode.value === 'build' || mode.value === 'break'
-          ? 'Show the validation findings'
-          : 'Show the validation findings, in Build'}
-        onClick={() => { revealFindings(); }}
-      >
-        {findingCount(errs, warns, notes)}
-      </button>
-
       {restored.value ? (
-        <span class="mono">
+        <span class="doc-restored">
           Restored your last configuration
           {' '}
           <button
@@ -198,15 +197,51 @@ export function StatusBar({ hostRef }: StatusBarProps) {
                deployment in its steady state, and the preset of that name
                carries the crash at t = 0 as well. Naming it would make the
                picker say "edited" about a document nobody has edited. */
-            onClick={() => { resetHistory(startFresh(edition.value)); presetId.value = null; }}
+            onClick={() => { replaceWorkingDocument('Start fresh', startFresh(edition.value), null); }}
           >
             Start fresh
           </button>
         </span>
       ) : null}
+    </>
+  );
+}
 
-      <span class="statusbar-spacer" />
+/**
+ * The tally is the way in, not a label: it takes the reader to the findings
+ * it counts, in whichever mode they are (IssuePanel.tsx).
+ */
+export function DocCount() {
+  const errs = errors.value.length;
+  const warns = warnings.value.length;
+  const notes = issues.value.length - errs - warns;
+  const tone = errs > 0 ? 'is-error' : warns > 0 ? 'is-warn' : 'is-clean';
+  return (
+    <button
+      type="button"
+      class={`count ${tone}`}
+      title={mode.value === 'build' || mode.value === 'break'
+        ? 'Show the validation findings'
+        : 'Show the validation findings, in Build'}
+      onClick={() => { revealFindings(); }}
+    >
+      {findingCount(errs, warns, notes)}
+    </button>
+  );
+}
 
+/**
+ * What can be done to the configuration as a whole: the drawer toggle below
+ * `wide`, Share, and -- behind the overflow -- Export, Import and Reset.
+ *
+ * The overflow is a native `<details>`: a real disclosure with no script of
+ * its own, and its three items stay in the document while it is shut, so a
+ * keyboard, a test and a screen reader all find the same three buttons.
+ */
+export function DocActions() {
+  const link = sharedUrl.value;
+  return (
+    <>
       {viewport.value === 'wide' || mode.value === 'learn' ? null : (
         <button
           type="button"
@@ -225,7 +260,7 @@ export function StatusBar({ hostRef }: StatusBarProps) {
           never be a secret only the clipboard knows. */}
       <button
         type="button"
-        class="btn"
+        class="btn is-solid"
         disabled={busy.value}
         title="Copy a link that carries the whole configuration"
         data-permalink={shareHref.value}
@@ -239,39 +274,121 @@ export function StatusBar({ hostRef }: StatusBarProps) {
       {link === null || shareTooLarge.value ? null : (
         /* A real link, not a receipt: the address the reader can copy without
            a clipboard permission, and the one this page is at. */
-        <a class="sharelink mono" id="permalink" rel="bookmark" href={link}>
+        <a class="sharelink" id="permalink" rel="bookmark" href={link}>
           Link copied
         </a>
       )}
 
-      <button type="button" class="btn is-quiet" onClick={() => exportDoc(doc.value)}>Export</button>
-
-      <label class="btn is-quiet">
-        Import
-        <input
-          type="file"
-          class="sr"
-          accept=".json,.dgtopo.json,application/json"
-          onChange={(e) => {
-            const input = e.currentTarget as HTMLInputElement;
-            void onImport(input.files?.[0] ?? null).finally(() => { input.value = ''; });
-          }}
-        />
-      </label>
-
-      <button
-        type="button"
-        class="btn is-quiet"
-        title="Back to the classic 1+1+1 configuration"
-        onClick={() => {
-          edit('Reset to the classic configuration', () => classicDoc(edition.value));
-          /* Same reason as Start fresh: this is the classic deployment, not
-             the `classic` preset, which brings its own event. */
-          presetId.value = null;
+      <details
+        class="ovf"
+        onKeyDown={(e) => {
+          if (e.key !== 'Escape') return;
+          const el = e.currentTarget as HTMLDetailsElement;
+          if (!el.open) return;
+          el.open = false;
+          el.querySelector('summary')?.focus();
+        }}
+        /* A press on one of its items is the end of the errand: shut it. */
+        onClick={(e) => {
+          const t = e.target as Element;
+          if (t.closest('.ovf-menu button') !== null) {
+            (e.currentTarget as HTMLDetailsElement).open = false;
+          }
         }}
       >
-        Reset
-      </button>
+        <summary class="btn is-icon" aria-label="More" title="Saved configurations, compare, export, import, reset">
+          <span aria-hidden="true">⋯</span>
+        </summary>
+        <div class="ovf-menu float-card">
+          <button
+            type="button"
+            class="btn"
+            aria-haspopup="dialog"
+            aria-expanded={workspacesOpen.value}
+            title="Named copies in this browser, and drafts replaced by opening something else"
+            onClick={() => openWorkspaces()}
+          >
+            Saved configurations
+          </button>
+          <button
+            type="button"
+            class="btn"
+            aria-haspopup="dialog"
+            aria-expanded={reviewOpen.value}
+            title="Compare this configuration with a baseline, or run the common failures against it"
+            onClick={() => openReview()}
+          >
+            Compare alternatives
+          </button>
+          <button type="button" class="btn" onClick={() => exportDoc(doc.value)}>Export</button>
+          <button
+            type="button"
+            class="btn"
+            title="Save the drawing as a PNG picture, in the current theme"
+            onClick={() => { void exportPng(); }}
+          >
+            Diagram as PNG
+          </button>
+          <button
+            type="button"
+            class="btn"
+            title="Open the whole configuration as a printable report and save it as PDF"
+            onClick={() => { void openReport(); }}
+          >
+            Report as PDF
+          </button>
+
+          <button type="button" class="btn" aria-haspopup="dialog" onClick={() => { collectOpen.value = true; }}>
+            Import existing setup
+          </button>
+          <label class="btn">
+            Import
+            <input
+              type="file"
+              class="sr"
+              accept=".json,.dgtopo.json,application/json"
+              onChange={(e) => {
+                const input = e.currentTarget as HTMLInputElement;
+                void onImport(input.files?.[0] ?? null).finally(() => { input.value = ''; });
+                const host = input.closest('details');
+                if (host) host.open = false;
+              }}
+            />
+          </label>
+
+          <button
+            type="button"
+            class="btn"
+            title="Back to the classic 1+1+1 configuration"
+            onClick={() => {
+              edit('Reset to the classic configuration', () => classicDoc(edition.value));
+              /* Same reason as Start fresh: this is the classic deployment, not
+                 the `classic` preset, which brings its own event. */
+              presetId.value = null;
+              activeWorkspaceId.value = null;
+            }}
+          >
+            Reset
+          </button>
+        </div>
+      </details>
+    </>
+  );
+}
+
+/**
+ * The document's controls in one cluster -- picker, tally, Share and the
+ * overflow. The shell splits it across the header (the picker beside the
+ * brand, the actions at the right end); this whole form is what a narrow
+ * header, and a test, gets.
+ */
+export function StatusBar({ hostRef, count = true }: StatusBarProps) {
+  return (
+    <div class="statusbar app-status" ref={hostRef}>
+      <DocPicker />
+      {count ? <DocCount /> : null}
+      <span class="statusbar-spacer" />
+      <DocActions />
     </div>
   );
 }

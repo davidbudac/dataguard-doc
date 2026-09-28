@@ -24,7 +24,7 @@ export { assertCitesAllowed, citation, CITATION_IDS, CITATIONS, FORBIDDEN_FACTS,
 
 /* topology */
 export type {
-  ClientAddress, ClientDescriptor, Configuration, DatabaseMember, DbRole, DestGroup,
+  Application, ClientAddress, ClientDescriptor, Configuration, DatabaseMember, DbRole, DestGroup,
   DestProps, EnvironmentParams, FarSyncMember, FsfoConfig, FsfoState, FsfoTarget, Host,
   Instance, LagType, Link, LinkScope, Member, MemberBase, MemberKind, Observer, OpenMode,
   PreferredObserverHost, ProtectionMode, RedoRouteRule, RouteAlternate, RouteDest,
@@ -34,6 +34,8 @@ export {
   declaredPrimary, destProps, findHost, findLink, findMember, findObserver, findSite,
   isDatabase, isFarSync, isRac, memberHosts,
 } from './types/topology';
+
+export { primarySite, withApplication } from './application';
 
 /* events and states */
 export type {
@@ -53,6 +55,7 @@ export type { Bound, BoundKey, BrokerDefaults } from './defaults';
 export {
   BOUNDS, boundOf, BROKER_DEFAULTS, clamp, defaultLagLimit, NOMINAL, pingSet, withinBounds,
 } from './defaults';
+export { LAG_LIMIT_UNSET_STORED, lagLimitIsSet, lagLimitOf } from './defaults';
 
 /* serialization */
 export type { IssueSeverity, ParseResult, SchemaIssue } from './serialize/schema';
@@ -78,8 +81,9 @@ export {
 export type { NetState, Reachability, ReachabilityOptions } from './net/graph';
 export {
   applyNetEvent, buildReachability, emptyNetState, expandLinks, hostUp, initialNetState,
-  instanceKey, linkRttMs, liveInstanceHosts, liveInstances, memberAlive, stoppedInstances, memberDegraded, memberReachableFromHost,
-  membersReachable, netSummary, reachable, upHosts,
+  instanceKey, linkRttMs, liveInstanceHosts, liveInstances, memberAlive, memberDegraded,
+  memberReachableFromHost, membersReachable, netFromSummary, netSummary, reachable,
+  stoppedInstances, upHosts,
 } from './net/graph';
 
 /* redo routing */
@@ -87,10 +91,12 @@ export type {
   FormatOptions, RedoRoutesDialect, RedoRoutesParseError, RedoRoutesParseResult,
 } from './redo/parse';
 export {
-  formatRedoRoutes, formatRedoRule, parseRedoRoutes, parseRedoRoutesOrThrow,
+  formatRedoRoutes, formatRedoRule, isParenthesised, parseRedoRoutes, parseRedoRoutesOrThrow,
 } from './redo/parse';
 export type { ResolveOptions } from './redo/resolve';
-export { activeRule, defaultGroupPriority, destKey, resolveRedoGraph } from './redo/resolve';
+export {
+  activeRule, defaultDestPriority, destKey, expandAll, groupKey, resolveRedoGraph,
+} from './redo/resolve';
 
 /* axes */
 export type { AxisSpec, CommitAxisSpec } from './models/axis';
@@ -101,7 +107,7 @@ export {
 
 /* the other three models: the application's view, one commit, the reopen ladder */
 export type {
-  AddressPlan, AppAttempt, AppClaims, AppModel, AppOptions, Dial, DialKind, NoEventKind,
+  AddressPlan, AppAttempt, AppClaims, AppModel, AppOptions, AppSpan, Dial, DialKind, NoEventKind,
 } from './models/app';
 export { computeApp } from './models/app';
 export type {
@@ -118,7 +124,7 @@ export type {
   FileSyntax, GeneratedFile, Line, LineKind, LineOptions, LineTone, Span,
 } from './generate/lines';
 export {
-  blank, cmd, comment, commentMarker, dim, hl, lineText, note, renderPlain, span, svc,
+  blank, cmd, comment, commentMarker, commentText, dim, hl, lineText, note, renderPlain, span, svc,
 } from './generate/lines';
 export { buildTns, serviceAddresses } from './generate/tnsnames';
 export type { JdbcOptions } from './generate/jdbc';
@@ -146,11 +152,14 @@ export {
   preferredHostsClaim, preferredRank, readinessGate, selectTarget, targetKindClaim,
   transportLagOf,
 } from './sim/fsfo';
+export { noSecondTarget, notReadyClaim, pingInEffect, pingNotIn19c, resyncClaim } from './sim/fsfo';
 export {
   abortClaim, commitHangClaim, maxAvailDegraded, maxProtectionShutdown, modeName,
   netTimeoutForMode, netTimeoutOf, stallClaim, syncAckDatabases, syncAckMembers,
 } from './sim/protection';
-export type { SwitchoverGateInput, SwitchoverRefusal } from './sim/roles';
+export { honestLevel, modeAfterFailover, noStallClaim } from './sim/protection';
+export type { ManualFailoverInput, SwitchoverGateInput, SwitchoverRefusal } from './sim/roles';
+export { bystanderAhead, manualLossClaim, reinstateCommandFindings } from './sim/roles';
 export {
   applyFailoverClaim, applyInstanceTimeout, applyParticipants, hasApplyInstance,
   initialApplyInstance, isMultiInstanceApply, nextApplyInstance, primaryDegradedClaim,
@@ -160,6 +169,8 @@ export {
   reinstateBandClaim, reinstateFindings, SW_CONVERT, SW_VERIFY, switchoverGate,
   switchoverLossClaim, switchoverRefused, switchoverSchedule,
 } from './sim/roles';
+export type { AuthoredDest } from './sim/dests';
+export { authoredDests, retryLimit } from './sim/dests';
 
 /* validation */
 export type { DeclaredDest, Rule, RuleId, RuleSpec, ValidateContext } from './validate';
@@ -175,3 +186,7 @@ export {
   CLASSIC_DEFAULTS, CLASSIC_IDS, classicTopology, effectiveScenario, legacyComputeFsfo,
   scenarioEvents, toLegacyModel,
 } from './compat/classic';
+export { PUBLISHED_PAGE } from './compat/classic';
+
+export { importCollectedTopology, COLLECTION_LIMIT, COLLECTION_NOTE } from './collect';
+export type { CollectedTopology } from './collect';

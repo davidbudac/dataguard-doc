@@ -16,7 +16,9 @@
 
 import { BROKER_DEFAULTS } from '../defaults';
 import type { MemberId } from '../ids';
-import { activeRule } from '../redo/resolve';
+import { isParenthesised } from '../redo/parse';
+import { activeRule, defaultDestPriority, expandAll as expandAllOf } from '../redo/resolve';
+import { defaultDestProps } from '../serialize/schema';
 import type { CitationId } from '../citations';
 import { documented, model } from '../types/claims';
 import type { DestProps, Member, RouteDest, TopologyDoc, XptMode } from '../types/topology';
@@ -51,7 +53,9 @@ interface Slot {
   /** The destination number of this one's alternate, when it has one. */
   alternate?: number;
   fallback?: boolean;
-  /** Only written when the member's rule declares more than one group. */
+  /** GROUP=k: the k-th parenthesised group of the active rule. */
+  group?: number;
+  /** Written with `group`: the destination's PRIORITY, as written or its default. */
   priority?: number;
 }
 
@@ -61,6 +65,10 @@ export function generateInitOra(doc: TopologyDoc, opts: InitOraOptions = {}): Ge
   const sender = doc.members.find((m) => m.id === senderId);
   const defaults = BROKER_DEFAULTS[doc.config.edition];
   const lines: Line[] = [];
+  if (doc.members.some(m => m.routesObserved)) {
+    lines.push(nModel('Imported SQL snapshot: this is not a recovered broker configuration. Review all generated commands before use.',
+      'Only current collected routes are known. Empty observed routes suppress simulator defaults, but cannot express an empty broker RedoRoutes policy; future-role routes and uncollected settings need manual review.'));
+  }
 
   const file = (ls: Line[], title: string): GeneratedFile => ({
     id: sender ? `initora.${sender.id as string}` : 'initora',
@@ -115,11 +123,22 @@ export function generateInitOra(doc: TopologyDoc, opts: InitOraOptions = {}): Ge
     ));
     lines.push(comment("for the standby's acknowledgement; it is never a failover clock"));
   }
+  const v26 = doc.config.edition === '26ai';
   const maxFailures = [...new Set(slots.map((s) => s.props.maxFailure))];
   for (const mf of maxFailures) {
     if (mf === 0) {
-      lines.push(comment('MAX_FAILURE=0: retried at every log switch, without limit',
-        { basis: 'documented', cite: ['DEST.MAX_FAILURE'] }));
+      lines.push(comment(
+        v26 ? 'MAX_FAILURE=0: reactivation attempts are continuous' : 'MAX_FAILURE=0: retried at every log switch, without limit',
+        { basis: 'documented', cite: v26 ? ['DEST.MAX_FAILURE_26AI'] : ['DEST.MAX_FAILURE'] },
+      ));
+    } else if (v26 && mf === 1) {
+      lines.push(comment('MAX_FAILURE=1: no attempts are made to reactivate this destination',
+        { basis: 'documented', cite: ['DEST.MAX_FAILURE_26AI'] }));
+      lines.push(comment('when it fails'));
+    } else if (v26) {
+      lines.push(comment(`MAX_FAILURE=${mf}: reactivation is attempted until ${mf} consecutive`,
+        { basis: 'documented', cite: ['DEST.MAX_FAILURE_26AI'] }));
+      lines.push(comment('failures, after which no further attempts are made to reactivate it'));
     } else {
       lines.push(comment(`MAX_FAILURE=${mf}: after ${mf} consecutive failed reopens the destination is`,
         { basis: 'documented', cite: ['DEST.MAX_FAILURE'] }));
@@ -127,8 +146,10 @@ export function generateInitOra(doc: TopologyDoc, opts: InitOraOptions = {}): Ge
       lines.push(comment('REOPEN is then treated as unspecified'));
     }
   }
-  lines.push(comment('whether a successful reopen resets that counter is not documented',
-    { basis: 'documented', cite: ['DEST.MAX_FAILURE'] }));
+  if (!v26) {
+    lines.push(comment('whether a successful reopen resets that counter is not documented',
+      { basis: 'documented', cite: ['DEST.MAX_FAILURE'] }));
+  }
   lines.push(comment('REOPEN only gates eligibility: transport retries a failed destination at',
     { basis: 'documented', cite: ['DEST.REOPEN'] }));
   lines.push(comment('log switch time, once the last error plus REOPEN is in the past'));
@@ -153,11 +174,18 @@ export function generateInitOra(doc: TopologyDoc, opts: InitOraOptions = {}): Ge
   }
   lines.push(blank());
   lines.push(comment('ReopenSecs / MaxFailure are the broker properties behind REOPEN / MAX_FAILURE --',
-    { basis: 'documented', cite: ['DEST.DEPRECATED_19C'] }));
-  lines.push(comment('not deprecated in 19c; EDIT DATABASE ... SET PARAMETER reaches the same attributes'));
+    { basis: 'documented', cite: ['DEST.BROKER_OWNED_PROPERTIES', 'DEST.DEPRECATED_19C'] }));
+  lines.push(comment('not deprecated in any edition; the DGMGRL script sets them with EDIT DATABASE'));
+  lines.push(comment('... SET PROPERTY where they differ from the broker default'));
+  if (slots.some((s) => s.alternate !== undefined)) {
+    lines.push(nDoc(
+      'ALTERNATE for a SERVICE= (remote) destination is maintained only for backwards compatibility -- GROUP and PRIORITY are the preferred, current form; ALTERNATE is still the way to configure a local LOCATION= alternate',
+      ['ROUTES.ALT_BACKWARDS_COMPAT'],
+    ));
+  }
   if (slots.some((s) => s.priority !== undefined)) {
     lines.push(nModel(
-      "GROUP= and PRIORITY= are LOG_ARCHIVE_DEST_n attributes, never RedoRoutes syntax; writing the RedoRoutes priority groups as GROUP=1 with one PRIORITY per group is this page's reading of the same intent",
+      "GROUP= and PRIORITY= are LOG_ARCHIVE_DEST_n attributes, never RedoRoutes syntax; writing each parenthesised RedoRoutes group as a GROUP of its own, with each destination's PRIORITY, is this page's reading of the same intent",
       'The RedoRoutes PRIORITY grammar and the LOG_ARCHIVE_DEST_n GROUP/PRIORITY attributes are both documented; that the broker writes the one as the other is not, so the mapping is this page\'s model.',
       ['ROUTES.GROUP_IS_NOT_ROUTES_SYNTAX', 'DEST.ATTRIBUTE_SPELLINGS', 'DEST.GROUP_PRIORITY_REENTER'],
     ));
@@ -280,46 +308,53 @@ function slotsFor(doc: TopologyDoc, sender: Member, primary: MemberId, startAt: 
   if (!act) return [];
   const slots: Slot[] = [];
   let n = startAt;
-  const multiGroup = act.rule.groups.length > 1;
 
   const receiver = (id: MemberId): Member | undefined => doc.members.find((m) => m.id === id);
-  /* `ALL` is every other enabled member except snapshot standbys and except
-     the primary itself -- the same reading the redo graph resolver uses. */
-  const expandAll = (): MemberId[] => doc.members
-    .filter((m) => m.enabled && m.id !== sender.id && m.id !== primary)
-    .filter((m) => !(isDatabase(m) && m.role === 'snapshot'))
-    .map((m) => m.id);
+  /* `ALL` is every other enabled member except the primary itself -- the
+     same reading the redo graph resolver uses. */
+  const expandAll = (): MemberId[] => expandAllOf(doc, sender.id, primary);
 
-  const push = (to: Member, d: RouteDest, priority: number | undefined, viaAlt: boolean): Slot => {
+  const push = (
+    to: Member, d: RouteDest, viaAlt: boolean, grouped?: { group: number; priority: number },
+  ): Slot => {
     const xptFromRule = viaAlt ? d.alt?.xpt : d.xpt;
     const slot: Slot = {
       n: n++,
       to,
       xpt: xptFromRule ?? to.logXptMode,
-      props: sender.dests[to.id] ?? { netTimeoutSeconds: 30, reopenSeconds: 300, maxFailure: 0 },
+      props: sender.dests[to.id] ?? defaultDestProps({ inGroup: grouped !== undefined }),
     };
-    if (priority !== undefined) slot.priority = priority;
+    if (grouped !== undefined) {
+      slot.group = grouped.group;
+      slot.priority = grouped.priority;
+    }
     slots.push(slot);
     return slot;
   };
 
+  /* Each parenthesised RedoRoutes group is one LOG_ARCHIVE_DEST_n GROUP, its
+     destinations carrying their own PRIORITY. */
+  let groupNo = 0;
   for (const g of act.rule.groups) {
-    const priority = multiGroup ? (g.priority ?? (isFarSync(sender) ? 1 : 8)) : undefined;
+    const grouped = isParenthesised(g);
+    if (grouped) groupNo++;
     for (const d of g.dests) {
       if (d.target === 'ALL') {
         for (const id of expandAll()) {
           const to = receiver(id);
-          if (to) push(to, d, priority, false);
+          if (to) push(to, d, false);
         }
         continue;
       }
       const to = receiver(d.target);
       if (!to || !to.enabled) continue;
-      const main = push(to, d, priority, false);
+      const main = push(to, d, false, grouped
+        ? { group: groupNo, priority: d.priority ?? defaultDestPriority(to) }
+        : undefined);
       if (d.alt) {
         const altTo = receiver(d.alt.target);
         if (altTo) {
-          const alt = push(altTo, d, priority, true);
+          const alt = push(altTo, d, true);
           alt.alternateFor = main.n;
           if (d.alt.fallback === true) alt.fallback = true;
           main.alternate = alt.n;
@@ -340,11 +375,20 @@ function blockLines(
   const asyncHere = s.xpt === 'ASYNC';
   const dest = `log_archive_dest_${s.n}`;
 
+  /* An alternate needs its own LOG_ARCHIVE_DEST_STATE_n: 'ALTERNATE' on the
+     stand-in, 'ENABLE' on the destination it stands in for -- the worked
+     example in "Using the ALTERNATE Attribute" (DEST.ALTERNATE_STATE_EXAMPLE)
+     sets both, on lines of their own, ahead of the LOG_ARCHIVE_DEST_n itself. */
   if (s.alternateFor !== undefined) {
+    out.push(cmd(`log_archive_dest_state_${s.n} = 'ALTERNATE'`,
+      { basis: 'documented', cite: ['DEST.ALTERNATE_STATE_EXAMPLE'] }));
     out.push(comment(
       `the alternate for log_archive_dest_${s.alternateFor}${s.fallback === true ? ', with FALLBACK' : ''}`,
       { basis: 'documented', cite: ['ROUTES.GRAMMAR_121', 'DEST.ATTRIBUTE_SPELLINGS'] },
     ));
+  } else if (s.alternate !== undefined) {
+    out.push(cmd(`log_archive_dest_state_${s.n} = 'ENABLE'`,
+      { basis: 'documented', cite: ['DEST.ALTERNATE_STATE_EXAMPLE'] }));
   }
   out.push(cmd(`${dest} =`, { basis: 'documented', cite: ['DEST.ATTRIBUTE_SPELLINGS'] }));
 
@@ -370,8 +414,8 @@ function blockLines(
     out.push(cmd([span('    ALTERNATE='), hl(`LOG_ARCHIVE_DEST_${s.alternate}`)],
       { basis: 'documented', cite: ['DEST.ATTRIBUTE_SPELLINGS'] }));
   }
-  if (s.priority !== undefined) {
-    out.push(cmd([span('    GROUP='), hl('1'), span(' PRIORITY='), hl(String(s.priority))],
+  if (s.group !== undefined && s.priority !== undefined) {
+    out.push(cmd([span('    GROUP='), hl(String(s.group)), span(' PRIORITY='), hl(String(s.priority))],
       { basis: 'documented', cite: ['DEST.ATTRIBUTE_SPELLINGS'] }));
   }
   out.push(cmd(

@@ -9,12 +9,15 @@ import {
   database, dest, host, hostDown, instanceDown, local, observer, siteDown, to, topology,
 } from './build';
 import type { Preset } from './types';
-import type { TopologyDoc } from '../engine';
+import type { TimedEvent, TopologyDoc } from '../engine';
 
 /* Two candidate targets and three observers -- the 19c maximum. */
 function multiTargetDoc(): TopologyDoc {
+  /* Every database takes SYNC, the primary included: after a role change
+     it is the standby. */
   const prm = database('prm01', ['dc1-prm01'], 'primary', {
     redoRoutes: [local(to('sby01', 'SYNC'), to('sby02', 'SYNC'))],
+    logXptMode: 'SYNC',
   });
   const sby01 = database('sby01', ['dc2-sby01'], 'physical', {
     logXptMode: 'SYNC', applyLagSeconds: 5,
@@ -42,8 +45,17 @@ function multiTargetDoc(): TopologyDoc {
       observer('obs03', 'dc3-obs03', 'backup'),
     ],
     targets: ['sby01', 'sby02'],
-    events: [siteDown(0, 'dc2'), hostDown(0, 'dc1-prm01')],
+    events: multiTargetEvents(),
   });
+}
+
+/**
+ * The first candidate is lost first and the primary fails later: the target
+ * changes while the primary is there to change it. Losing the two at the same
+ * instant is the case 26ai documents as no failover at all.
+ */
+function multiTargetEvents(): TimedEvent[] {
+  return [siteDown(0, 'dc2'), hostDown(20, 'dc1-prm01')];
 }
 
 export const multiTargetThreeObservers: Preset = {
@@ -63,26 +75,34 @@ export const multiTargetThreeObservers: Preset = {
     + 'only the master observer can coordinate fast-start failover; if the primary and target '
     + 'standby stay connected but the connection to the master observer is lost, the broker '
     + 'tries to nominate a backup observer as the new master, a documented attempt under that '
-    + 'precondition rather than a guarantee. The default event takes the whole second data '
-    + "centre down and the primary's host with it: the first candidate is gone, so the "
-    + 'promotion goes to the second one. Walking the list in order and skipping a candidate '
-    + "that cannot be reached is this page's model, not a documented algorithm -- never read "
-    + 'it as "the first viable one in the list". The 19c count of three observers is '
-    + '19c-specific and is not carried across editions.',
+    + 'precondition rather than a guarantee. The default events take the whole second data '
+    + "centre down at t = 0 and the primary's host at t = 20 s. The first candidate is gone "
+    + 'while the primary is still there, so the broker changes the target to the second one, '
+    + 'and when the primary fails the promotion goes to it. That the target changes is '
+    + "documented; which candidate it lands on and how long the change takes are this page's "
+    + 'model -- it walks the list in order and draws the change at once -- so never read it '
+    + 'as "the first viable one in the list". Move the two events to the same instant and '
+    + 'nothing is promoted: "Data Guard Broker cannot failover to second fast-start failover '
+    + 'target if both the primary and first fast-start failover targets are down" is a 26ai '
+    + 'sentence, the 19c chapter is silent on the case, and the page applies it in both '
+    + 'editions, labelled accordingly. The 19c count of three observers is 19c-specific and '
+    + 'is not carried across editions.',
   cite: [
     'FSFO.MULTI_TARGET_12_2', 'FSFO.TARGET_MUST_BE_EXPLICIT', 'FSFO.TARGET_ORDER',
-    'FSFO.TARGET_AUTO_CHANGE', 'FSFO.TARGET_VERIFIED_ON_ENABLE', 'OBS.THREE_19C',
+    'FSFO.TARGET_AUTO_CHANGE', 'FSFO.NO_SECOND_TARGET_26AI', 'FSFO.TARGET_VERIFIED_ON_ENABLE',
+    'OBS.THREE_19C',
     'OBS.MASTER_ONLY_COORDINATES', 'OBS.NOMINATION_PRECONDITION', 'FSFO.THRESHOLD',
     'FSFO.BOTH_MUST_HAVE_LOST', 'OBS.PLACEMENT_NEVER_ON_DB_HOST',
   ],
   doc: multiTargetDoc,
-  events: () => [siteDown(0, 'dc2'), hostDown(0, 'dc1-prm01')],
+  events: multiTargetEvents,
 };
 
 /* A two-instance RAC primary. */
 function racDoc(): TopologyDoc {
   const prm = database('prm01', ['dc1-node1', 'dc1-node2'], 'primary', {
     redoRoutes: [local(to('sby01', 'SYNC'))],
+    logXptMode: 'SYNC',
   });
   const sby = database('sby01', ['dc2-sby01'], 'physical', { logXptMode: 'SYNC' });
   dest(prm, sby.id);
@@ -131,6 +151,7 @@ export const racPrimary: Preset = {
 function racStandbyDoc(): TopologyDoc {
   const prm = database('prm01', ['dc1-node1', 'dc1-node2'], 'primary', {
     redoRoutes: [local(to('sby01', 'SYNC'))],
+    logXptMode: 'SYNC',
   });
   const sby = database('sby01', ['dc2-node1', 'dc2-node2'], 'physical', {
     logXptMode: 'SYNC', preferredApplyInstance: 'sby011',
@@ -184,6 +205,7 @@ export const racStandby: Preset = {
 function bystanderDoc(): TopologyDoc {
   const prm = database('prm01', ['dc1-prm01'], 'primary', {
     redoRoutes: [local(to('sby01', 'SYNC'), to('lsby01', 'ASYNC'), to('snp01', 'ASYNC'))],
+    logXptMode: 'SYNC',
   });
   const sby = database('sby01', ['dc2-sby01'], 'physical', { logXptMode: 'SYNC' });
   const lsby = database('lsby01', ['dc3-lsby01'], 'logical', {
@@ -195,9 +217,8 @@ function bystanderDoc(): TopologyDoc {
   dest(prm, snap.id);
   return topology({
     name: 'bystanders',
-    /* 26ai, because the bystanders take ASYNC while the configuration is in
-       maximum availability mode: broker Table 4-2 lists SYNC or FASTSYNC for
-       that mode, and the 26ai prerequisites add ASYNC to the list. */
+    /* The one preset drawn under 26ai. Nothing in it depends on the edition:
+       an ASYNC bystander beside a SYNC target is legal in both (VAL-02). */
     edition: '26ai',
     sites: ['dc1', 'dc2', 'dc3', 'dc4'],
     hosts: [
@@ -225,30 +246,34 @@ export const bystanders: Preset = {
     + 'standby sit beside it as bystanders. FastStartFailoverTarget "can only be set to the '
     + 'name of physical or logical standbys. It cannot be set to the name of a snapshot standby '
     + 'database, far sync instance, or Zero Data Loss Recovery Appliance", so the logical '
-    + 'standby here could be a candidate and the snapshot standby could not. RedoRoutes cannot '
-    + 'be set on a snapshot standby at all, and on a logical standby the page allows only a '
-    + 'LOCAL destination while contradicting itself elsewhere, so the engine reports that one '
-    + 'as a conflict rather than picking a side. Maximum protection mode has its own bans: it '
+    + 'standby here could be a candidate and the snapshot standby could not. RedoRoutes may not '
+    + 'make a snapshot standby send redo on to another member, and "The RedoRoutes property can '
+    + 'be set for a logical standby database only if the redo source field is set to LOCAL". '
+    + 'Maximum protection mode has its own bans: it '
     + 'cannot be used when the only standby is a snapshot standby, and logical standbys are '
     + 'not supported in it for fast-start failover. The two bystanders take ASYNC while the '
-    + 'configuration is in maximum availability mode, which is why the preset is drawn under '
-    + '26ai: broker Table 4-2 gives SYNC or FASTSYNC for that mode and the 26ai fast-start '
-    + 'failover prerequisites add ASYNC, so the same document is a mode conflict under 19c and '
-    + 'an allowance under 26ai. The default event kills the primary at '
+    + 'configuration is in maximum availability mode, and that is legal in every edition: the '
+    + 'broker verifies "that there is at least one standby database in the configuration that '
+    + "can support the desired grade of protection\" -- the target's SYNC here -- and the "
+    + 'stricter per-member transport list of the fast-start failover prerequisites is for the '
+    + 'target and the primary only, which both carry SYNC. The default event kills the primary at '
     + 't = 0, the target is promoted, and the bystanders follow, because '
     + 'BystandersFollowRoleChange defaults to ALL and their viability is checked on a complete '
     + 'failover. How the observer treats members that are not the target is not documented -- '
     + 'it is documented as pinging the primary and the target standby -- so anything this page '
     + 'draws for the bystanders during the failover is its model. One inference shows up in '
     + "the redo graph afterwards: the new primary's RedoRoutes property is NULL, which is "
-    + '(LOCAL : ALL) at a primary, and the engine reads ALL as every other enabled member '
-    + 'except snapshot standbys -- a deduction from the grammar, not a sentence of its own, '
-    + 'so the snapshot standby ends the run with nothing feeding it.',
+    + '(LOCAL : ALL) at a primary, and the engine reads ALL as every other enabled member, the '
+    + 'snapshot standby included -- "Like a physical or logical standby database, a snapshot '
+    + 'standby database receives and archives redo data from a primary database" -- leaving out '
+    + 'only the new primary itself, which is a deduction from the grammar rather than a sentence '
+    + 'of its own.',
   cite: [
     'FSFO.TARGET_KIND', 'ROUTES.SNAPSHOT_FORBIDDEN', 'ROUTES.LOGICAL_LOCAL_ONLY',
     'MODE.MAXPROT_SNAPSHOT_ONLY', 'FSFO.LOGICAL_MAXPROT', 'BYSTANDERS.DEFAULT_ALL',
-    'FSFO.THRESHOLD', 'FSFO.BOTH_MUST_HAVE_LOST', 'ROUTES.DEFAULT_NULL',
-    'XPT.TABLE_4_2', 'XPT.MAXAVAIL_ASYNC_26AI',
+    'FSFO.THRESHOLD', 'FSFO.BOTH_MUST_HAVE_LOST', 'ROUTES.DEFAULT_NULL', 'ROUTES.ALL_ALIAS',
+    'ROUTES.SNAPSHOT_RECEIVES_REDO', 'XPT.TABLE_4_2', 'MODE.AT_LEAST_ONE_SUPPORTS',
+    'FSFO.TASK3_PRIMARY_XPT_19C',
   ],
   doc: bystanderDoc,
   events: () => [hostDown(0, 'dc1-prm01')],
@@ -256,8 +281,11 @@ export const bystanders: Preset = {
 
 /* Maximum protection with two SYNC standbys, and both of them dying. */
 function maxProtectionDoc(): TopologyDoc {
+  /* Maximum protection -- SYNC, for the primary too: it is a standby after
+     a role change. */
   const prm = database('prm01', ['dc1-prm01'], 'primary', {
     redoRoutes: [local(to('sby01', 'SYNC'), to('sby02', 'SYNC'))],
+    logXptMode: 'SYNC',
   });
   const sby01 = database('sby01', ['dc2-sby01'], 'physical', { logXptMode: 'SYNC' });
   const sby02 = database('sby02', ['dc3-sby02'], 'physical', { logXptMode: 'SYNC' });
@@ -299,7 +327,9 @@ export const maxProtection: Preset = {
     + 'and both destinations shorten NET_TIMEOUT from its 30 s default to 10 s -- a transport '
     + 'attribute bounding how long LGWR waits for the acknowledgement, minimum 1 s, 8 to 10 s '
     + 'recommended, and never a failover clock. The default events take the second data centre '
-    + 'down at t = 0 and the third at t = 60 s. Through the first the primary keeps committing, '
+    + 'down at t = 0 and the third at t = 60 s. The primary carries SYNC as its own LogXptMode '
+    + 'as well, because after a role change it is a standby: "In maximum protection mode, set '
+    + 'the LogXptMode database property to SYNC". Through the first the primary keeps committing, '
     + 'because the other standby is still acknowledging; through the second it has nobody left '
     + 'and shuts itself down. "Any one SYNC acknowledgement suffices" is documented in the '
     + 'broker guide\'s wording -- the primary "will shut down, rather than continue processing '
@@ -313,6 +343,7 @@ export const maxProtection: Preset = {
   cite: [
     'MAXPROT.SHUTS_PRIMARY', 'MAXPROT.AT_LEAST_ONE_BROKER', 'MAXPROT.TWO_STANDBYS', 'XPT.TABLE_4_2',
     'DEST.NET_TIMEOUT', 'MAXAVAIL.AT_LEAST_ONE', 'MODE.MAXPROT_SNAPSHOT_ONLY', 'FS.MAXPROT_BROKER_19C',
+    'FSFO.TASK3_PRIMARY_XPT_19C',
   ],
   doc: maxProtectionDoc,
   events: () => [siteDown(0, 'dc2'), siteDown(60, 'dc3')],

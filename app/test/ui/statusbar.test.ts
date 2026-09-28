@@ -20,7 +20,8 @@ import { isPristinePreset, parseUrlQuery, presetId, shareHref, shareTooLarge } f
 import { findingCount, presetState, share, sharedUrl } from '@/ui/StatusBar';
 import { parseTopologyDoc } from '@/engine';
 import { errors, issues, warnings } from '@/state/derived';
-import { inspectorOpen, mode, notesOpen, viewport } from '@/state/view';
+import { findingsOpen, inspectorOpen, mode, notesOpen, viewport } from '@/state/view';
+import { workspacesOpen } from '@/state/workspaces';
 
 const mount = (): HTMLElement => {
   const root = document.createElement('div');
@@ -181,6 +182,30 @@ describe('the preset picker', () => {
     expect(d.topology.members.some((m) => m.kind === 'farsync')).toBe(true);
     expect(d.topology.events.length).toBeGreaterThan(0);
   });
+
+  it('lets Undo return to an edited configuration after choosing a preset', async () => {
+    edit('Personal note', (d) => ({ ...d, meta: { ...d.meta, notes: 'keep this' } }));
+    const root = mount();
+    const picker = root.querySelector('#preset-picker') as HTMLSelectElement;
+    picker.value = 'far-sync-zero-loss';
+    picker.dispatchEvent(new Event('change', { bubbles: true }));
+    await tick();
+    expect(presetId.value).toBe('far-sync-zero-loss');
+    expect(doc.value.meta.notes).toBe('');
+    undo();
+    expect(doc.value.meta.notes).toBe('keep this');
+    expect(presetId.value).toBeNull();
+  });
+
+  it('opens Saved configurations from the overflow menu', () => {
+    const root = mount();
+    const item = [...root.querySelectorAll<HTMLButtonElement>('.ovf-menu button')]
+      .find((b) => b.textContent === 'Saved configurations');
+    expect(item).toBeDefined();
+    item?.click();
+    expect(workspacesOpen.value).toBe(true);
+    workspacesOpen.value = false;
+  });
 });
 
 describe('the share link', () => {
@@ -272,9 +297,20 @@ describe('the finding count', () => {
     }
   });
 
-  it('opens the drawer in Break, where the findings live at the foot of the rail', () => {
+  it('opens the findings popover in Break, over the floating canvas', () => {
     mode.value = 'break';
     viewport.value = 'medium';
+    findingsOpen.value = false;
+    const root = mount();
+    (root.querySelector('.count') as HTMLButtonElement).click();
+    expect(mode.value).toBe('break');
+    expect(findingsOpen.value).toBe(true);
+    expect(inspectorOpen.value).toBe(false);
+  });
+
+  it('opens the drawer in Break below the floating layout, where the findings close the rail', () => {
+    mode.value = 'break';
+    viewport.value = 'compact';
     const root = mount();
     (root.querySelector('.count') as HTMLButtonElement).click();
     expect(mode.value).toBe('break');

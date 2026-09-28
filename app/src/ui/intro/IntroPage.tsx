@@ -32,6 +32,7 @@ import { TopoCanvas } from '@/ui/canvas/TopoCanvas';
 import { LEGACY_PATH } from '@/state/legacy-url';
 import { introOpen } from '@/state/view';
 import { jump, leaveIntro, openLesson } from './route';
+import { startClassicWalkthrough } from './Walkthrough';
 
 import '@/content/content.css';
 import '@/styles/intro.css';
@@ -60,8 +61,7 @@ function ClassicDrawing(): JSX.Element | null {
       prefix="ip"
       interactive={false}
       readOnlyWhy={
-        'Read-only here, on purpose. In Build this same drawing is the workbench: '
-        + 'everything on it can be selected, moved and changed.'
+        'Read-only preview. Open Build to select, move or edit the drawing.'
       }
     />
   );
@@ -77,7 +77,7 @@ const CALLOUTS: { k: string; t: string; d: JSX.Element }[] = [
   {
     k: '02',
     t: 'The standby',
-    d: <>Receives that redo and applies it, ready to take the primary role when it has to.</>,
+    d: <>Receives and applies redo. It can become the primary after a role change.</>,
   },
   {
     k: '03',
@@ -96,9 +96,8 @@ const CALLOUTS: { k: string; t: string; d: JSX.Element }[] = [
     t: 'The redo line',
     d: (
       <>
-        Its pill says how redo is shipped and how far it goes: the transport
-        (<span class="mono">SYNC</span> or <span class="mono">ASYNC</span>) and the round-trip
-        time between the two sites.
+        The label shows the transport mode (<span class="mono">SYNC</span> or{' '}
+        <span class="mono">ASYNC</span>) and round-trip time between sites.
       </>
     ),
   },
@@ -130,32 +129,32 @@ const MODES: ModeCard[] = [
   {
     name: 'Build',
     glyph: g(<><rect x="2.5" y="4.5" width="7" height="5" rx="1" /><rect x="10.5" y="10.5" width="7" height="5" rx="1" /><path d="M6 9.5v3.5h4.5" /></>),
-    what: 'The drawing is the workbench.',
-    you: 'Add data centres, databases, far syncs and observers, and route the redo between them.',
+    what: 'Draw a Data Guard configuration.',
+    you: 'Add data centres, databases, far syncs and observers. Connect members to route redo.',
     cta: 'Draw the classic 1+1+1',
     go: () => jump({ preset: 'classic', mode: 'build' }),
   },
   {
     name: 'Break',
     glyph: g(<><path d="M11 2.5 5.5 11h4l-1 6.5L15 9h-4z" /></>),
-    what: 'The same configuration, with something wrong with it.',
-    you: 'Crash a host, cut a link or take a site down, then read the clocks on the timeline.',
+    what: 'See how the configuration responds to a failure.',
+    you: 'Crash a host, cut a link or take a site down. Follow the timeline to see what happens.',
     cta: 'Isolate a far sync site',
     go: () => jump({ preset: 'far-sync-zero-loss', scenario: 'isolated', mode: 'break' }),
   },
   {
     name: 'Configure',
     glyph: g(<><rect x="2.5" y="3.5" width="15" height="13" rx="1.5" /><path d="M5.5 8l2.5 2-2.5 2M10.5 12.5h4" /></>),
-    what: 'The drawing, printed.',
-    you: 'DGMGRL commands, LOG_ARCHIVE_DEST_n, tnsnames and JDBC, generated from what you drew.',
+    what: 'Generate the configuration from the drawing.',
+    you: 'Review the DGMGRL commands, LOG_ARCHIVE_DEST_n, tnsnames and JDBC generated from it.',
     cta: 'Print the DGMGRL commands',
     go: () => jump({ preset: 'classic', mode: 'configure', panel: 'dgmgrl' }),
   },
   {
     name: 'Learn',
     glyph: g(<><path d="M3 4.5h5.5A1.5 1.5 0 0 1 10 6v10a1.5 1.5 0 0 0-1.5-1.5H3zM17 4.5h-5.5A1.5 1.5 0 0 0 10 6v10a1.5 1.5 0 0 1 1.5-1.5H17z" /></>),
-    what: 'Nine lessons, each with a live configuration beside it.',
-    you: 'Read a step, press "Show me", and the workbench sets itself up for exactly that step.',
+    what: 'Work through nine lessons.',
+    you: 'Each lesson has a live configuration. Press "Show me" to load the step beside the text.',
     cta: 'Open lesson 1',
     go: () => openLesson(0),
   },
@@ -168,10 +167,10 @@ const HOWTO: { k: string; d: JSX.Element }[] = [
     k: 'Select and edit',
     d: (
       <>
-        Click a card, a data centre or a link to select it; its properties are in the
-        inspector, and the <span class="mono">⋯</span> on its corner (or the right button)
-        opens its actions beside it. Double-click a name, or press <span class="mono">F2</span>,
-        to rename it where it is drawn. Drag over the ground to select several cards;{' '}
+        Click a card, data centre or link to select it and inspect its properties.
+        Use <span class="mono">⋯</span> or right-click for actions. Double-click a name or
+        press <span class="mono">F2</span> to rename it. Drag across the background to select
+        several cards;{' '}
         <span class="mono">Ctrl+A</span> selects them all.
       </>
     ),
@@ -180,8 +179,8 @@ const HOWTO: { k: string; d: JSX.Element }[] = [
     k: 'Add something',
     d: (
       <>
-        Press a <span class="mono">+</span> button over the drawing and the page places it; drag
-        the button onto a data centre and it lands there. Either way its name opens for typing.
+        Click a <span class="mono">+</span> button to add a member, or drag it onto a data
+        centre. You can name the new member immediately.
       </>
     ),
   },
@@ -189,13 +188,12 @@ const HOWTO: { k: string; d: JSX.Element }[] = [
     k: 'Move and connect',
     d: (
       <>
-        Drag a card &mdash; or a whole selection &mdash; and it moves;{' '}
-        <span class="mono">Alt</span> and an arrow nudges it, and <span class="mono">Tidy</span>{' '}
-        puts it back. Dropped in another data centre it moves there, host and all. Drag from
-        the port on either side of a card to another card: member to member ships redo
-        (RedoRoutes), member to observer names a fast-start failover target. The port beside
-        a data centre&rsquo;s name draws a site link to another.
-        <span class="mono"> Ctrl+Z</span> undoes any of it.
+        Drag a card or selection to move it. <span class="mono">Alt</span> with an arrow
+        nudges it; <span class="mono">Tidy</span> resets its position. Drop a member in
+        another data centre to move its host there. Drag between card ports to route redo
+        (RedoRoutes), or from a member to an observer to name a fast-start failover target.
+        Drag between data centre ports to add a site link. <span class="mono">Ctrl+Z</span>{' '}
+        undoes the change.
       </>
     ),
   },
@@ -203,8 +201,8 @@ const HOWTO: { k: string; d: JSX.Element }[] = [
     k: 'Remove something',
     d: (
       <>
-        <span class="mono">Remove</span> on the action bar, or the <span class="mono">Delete</span>{' '}
-        key. Nothing refuses in silence: what cannot be removed says why.
+        Use <span class="mono">Remove</span> on the action bar or press{' '}
+        <span class="mono">Delete</span>. If removal is unavailable, the control explains why.
       </>
     ),
   },
@@ -212,8 +210,8 @@ const HOWTO: { k: string; d: JSX.Element }[] = [
     k: 'Break something',
     d: (
       <>
-        In Break, click a host to crash it or a link to cut it. Events land at the playhead,
-        and the timeline underneath runs the clocks &mdash; drag it to any moment.
+        In Break, click a host to crash it or a link to cut it. The event starts at the
+        playhead. Drag the playhead to inspect another moment.
       </>
     ),
   },
@@ -221,8 +219,7 @@ const HOWTO: { k: string; d: JSX.Element }[] = [
     k: 'Read the configuration',
     d: (
       <>
-        Configure&rsquo;s tabs are generated from the drawing. Hover a line and the member it
-        configures lights up.
+        Configure generates each tab from the drawing. Hover a line to highlight its member.
       </>
     ),
   },
@@ -239,8 +236,8 @@ const HOWTO: { k: string; d: JSX.Element }[] = [
     k: 'Share it',
     d: (
       <>
-        <span class="mono">Share</span> copies a link that carries the whole configuration &mdash;
-        the drawing, the events and every parameter. Nothing is stored on a server.
+        <span class="mono">Share</span> copies a link containing the drawing, events and
+        parameters. The page stores nothing on a server.
       </>
     ),
   },
@@ -248,8 +245,8 @@ const HOWTO: { k: string; d: JSX.Element }[] = [
     k: 'Turn the explanations on',
     d: (
       <>
-        A sentence under each control is off by default. <span class="mono">Hints</span>, in the
-        inspector header, brings them back and remembers that you wanted them.
+        Turn on <span class="mono">Hints</span> in the inspector header to show an explanation
+        under each control. The setting is remembered.
       </>
     ),
   },
@@ -283,11 +280,13 @@ const WORDS: { k: string; d: JSX.Element }[] = [
     k: 'Fast-start failover',
     d: (
       <>
-        The broker failing over without anybody typing a command.{' '}
+        The broker changes the primary role automatically. With default detection settings and
+        <span class="mono"> ObserverOverride = FALSE</span>,{' '}
         <Fact id="FSFO.BOTH_MUST_HAVE_LOST">
-          It happens when both the observer and the target standby have lost the primary for
-          FastStartFailoverThreshold seconds
+          the observer and target standby must both lose contact with the primary for{' '}
+          <span class="mono">FastStartFailoverThreshold</span> seconds
         </Fact>
+        , and the target must pass the readiness check.
       </>
     ),
   },
@@ -305,9 +304,9 @@ const WORDS: { k: string; d: JSX.Element }[] = [
     k: 'Protection mode',
     d: (
       <>
-        The promise the whole configuration makes about losing data &mdash; maximum performance,
-        maximum availability or maximum protection. The readout names the one in force, and the
-        validation panel says when the drawing cannot keep it.
+        The configuration&rsquo;s data loss policy: maximum performance, maximum availability
+        or maximum protection. The readout shows the protection level it reaches, which can
+        differ from the mode selected; validation says when the drawing cannot keep it.
       </>
     ),
   },
@@ -340,8 +339,7 @@ export function IntroPage(): JSX.Element {
           A workbench for Oracle Data Guard topologies.
         </h1>
         <p class="ip-sub">
-          Draw a configuration, break it, and read what the broker would do and what it would
-          print.
+          Draw a configuration, simulate a failure and generate its settings.
         </p>
         <div class="ip-cta">
           <button
@@ -358,6 +356,9 @@ export function IntroPage(): JSX.Element {
           >
             Watch a failover
           </button>
+          <button type="button" class="btn" onClick={startClassicWalkthrough}>
+            Walk through it step by step
+          </button>
         </div>
         <p class="caption ip-hero-note">
           Nothing here connects to a database. Every number is arithmetic over what you typed, a
@@ -369,7 +370,7 @@ export function IntroPage(): JSX.Element {
       <Band
         n="01"
         title="What you are looking at"
-        lead="One primary, one standby in a second data centre, one observer in a third. It is the shape the workbench opens on, and the one most of the lessons use."
+        lead="The classic example: a primary, a standby in a second data centre and an observer in a third. The workbench opens on it, and most lessons use it."
       >
         <div class="ip-figure">
           <div class="ip-drawing"><ClassicDrawing /></div>
@@ -388,7 +389,7 @@ export function IntroPage(): JSX.Element {
       <Band
         n="02"
         title="The four modes"
-        lead="One configuration, seen four ways. The buttons in the header switch between them at any time, and every link you copy carries whichever one you were in."
+        lead="Use the header buttons to switch modes. A shared link opens in the mode you selected."
       >
         <div class="ip-modes">
           {MODES.map((m) => (
@@ -415,13 +416,13 @@ export function IntroPage(): JSX.Element {
           ))}
         </dl>
         <p class="caption ip-after">
-          Every key this page binds is listed in one place:{' '}
+          For all keyboard shortcuts, open{' '}
           <button
             type="button"
             class="ip-inline"
             onClick={() => { leaveIntro(); introOpen.value = true; }}
           >
-            the ? in the header
+            Help (?) in the header
           </button>
           .
         </p>

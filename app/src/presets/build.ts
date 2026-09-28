@@ -8,11 +8,11 @@
  */
 
 import {
-  defaultClient, defaultConfiguration, defaultDestProps, defaultEnvironment,
+  applicationId, defaultClient, defaultConfiguration, defaultDestProps, defaultEnvironment,
   hostId, linkId, memberId, observerId, siteId,
 } from '../engine';
 import type {
-  DatabaseMember, DbRole, DestGroup, DestProps, Edition, EnvironmentParams, FarSyncMember,
+  Application, DatabaseMember, DbRole, DestGroup, DestProps, Edition, EnvironmentParams, FarSyncMember,
   FsfoConfig, Host, Link, Member, MemberId, Observer, ProtectionMode, RedoRouteRule,
   RouteAlternate, RouteDest, RoutePriority, ServiceDef, Site, TimedEvent, TopologyDoc, XptMode,
 } from '../engine';
@@ -143,17 +143,18 @@ export function alternate(target: string, xpt?: XptMode, fallback = true): Route
   return a;
 }
 
-/** A parenthesised destination group with an explicit PRIORITY=n, n = 1..8. */
-export const group = (priority: RoutePriority, ...dests: RouteDest[]): DestGroup => ({
-  priority, dests, explicitGroup: true,
-});
+/** A parenthesised destination group: one active redo path among `dests`. */
+export const group = (...dests: RouteDest[]): DestGroup => ({ dests, explicitGroup: true });
+
+/** A destination written with PRIORITY=n (n = 1..8) inside a group. */
+export const prio = (priority: RoutePriority, d: RouteDest): RouteDest => ({ ...d, priority });
 
 /** `(LOCAL : ...)` -- active while this member is the primary. */
 export const local = (...dests: RouteDest[]): RedoRouteRule => ({
   source: 'LOCAL', groups: [{ dests }],
 });
 
-/** `(LOCAL : (a PRIORITY=1), (b PRIORITY=2))`. */
+/** `(LOCAL : (a PRIORITY=1, b PRIORITY=2))`. */
 export const localGroups = (...groups: DestGroup[]): RedoRouteRule => ({
   source: 'LOCAL', groups,
 });
@@ -187,6 +188,11 @@ export interface TopologySpec {
   targets?: string[];
   /** Hosts the client's ADDRESS_LIST names; defaults to every database host. */
   clientHosts?: string[];
+  /**
+   * The application's card. Left out, it stands on a host of its own in the
+   * primary's data centre; `false` leaves the document without one.
+   */
+  application?: { name?: string; site?: string } | false;
   serviceName?: string;
   environment?: Partial<EnvironmentParams>;
   events?: TimedEvent[];
@@ -215,8 +221,11 @@ export function topology(spec: TopologySpec): TopologyDoc {
 
   const client = defaultClient();
   client.serviceName = serviceName;
+  /* The primary first, then every standby database in the order the
+     configuration lists them: the application sees all of them. A far sync
+     instance is never opened, so it is never an address. */
   const clientHosts = spec.clientHosts
-    ?? dbMembers.filter((m) => m.role === 'primary' || targets.includes(m.id))
+    ?? [...dbMembers.filter((m) => m.role === 'primary'), ...dbMembers.filter((m) => m.role !== 'primary')]
       .flatMap((m) => m.instances.map((i) => i.host as string));
   client.addresses = clientHosts.map((h) => {
     const found = spec.hosts.find((x) => (x.id as string) === h);
@@ -226,17 +235,33 @@ export function topology(spec: TopologySpec): TopologyDoc {
   const links: Link[] = spec.links.map(([a, b, rtt]) => siteLink(a, b, rtt));
   for (const [a, b, rtt] of spec.hostLinks ?? []) links.push(hostLink(a, b, rtt));
 
+  /* The application, on a host of its own beside the primary. */
+  const hosts = [...spec.hosts];
+  let application: Application | undefined;
+  const primaryHost = dbMembers.find((m) => m.role === 'primary')?.instances[0]?.host;
+  const appSite = spec.application === false
+    ? undefined
+    : spec.application?.site
+      ?? (spec.hosts.find((h) => h.id === primaryHost)?.site as string | undefined);
+  if (spec.application !== false && appSite !== undefined) {
+    const name = spec.application?.name ?? 'app01';
+    const h = host(`${appSite}-${name}`, appSite);
+    hosts.push(h);
+    application = { id: applicationId(name), name, host: h.id };
+  }
+
   return {
     app: 'dg-topology',
     schema: 2,
     label: spec.name,
     sites: spec.sites.map((s) => site(s)),
-    hosts: spec.hosts,
+    hosts,
     links,
     members: spec.members,
     observers: spec.observers ?? [],
     config,
     client,
+    ...(application ? { application } : {}),
     environment: { ...defaultEnvironment(), ...spec.environment },
     events: spec.events ?? [],
   };

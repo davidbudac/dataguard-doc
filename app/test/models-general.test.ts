@@ -21,7 +21,9 @@ import { claimWellFormed } from '../src/engine/types/claims';
 import type { Claim } from '../src/engine/types/claims';
 import { hostId, memberId } from '../src/engine/ids';
 import type { TimedEvent } from '../src/engine/types/events';
-import { multiTargetDoc } from './topologies';
+import { authoredDests } from '../src/engine/sim/dests';
+import { preset } from '../src/presets';
+import { build, db, multiTargetDoc } from './topologies';
 
 const firstLine = (f: GeneratedFile): Line => f.lines[0] as Line;
 
@@ -54,16 +56,21 @@ describe('computeApp: an ADDRESS_LIST of three', () => {
   });
 
   it('a dead data centre in the middle of the list costs a second timeout', () => {
+    /* The data centre goes first and the primary ten seconds later: the
+       broker changes the target to sby02 while the primary is there to change
+       it. Losing the two at the same instant promotes nobody (fact check
+       SIM-05), and then there is no service to connect to. */
     const { app } = threeAddress([
-      { at: 0, kind: 'host.down', host: hostId('dc1-prm01') },
       { at: 0, kind: 'site.down', site: 'dc2' as never },
+      { at: 10, kind: 'host.down', host: hostId('dc1-prm01') },
     ]);
     expect(app.addresses.map((a) => a.kind)).toEqual(['timeout', 'timeout', 'refuse']);
     expect(app.passCost).toBeCloseTo(120.2, 9);
     const last = app.attempts[app.attempts.length - 1];
-    /* sby02 is the second candidate: the first is skipped, not preferred. */
+    /* sby02 is the second candidate, and the target by the time of the failure. */
     expect(last?.dials[last.dials.length - 1]?.index).toBe(2);
-    expect(app.tConn).toBeCloseTo(120.3, 9);
+    /* The ladder starts when the primary stops answering, at 10 s. */
+    expect(app.tConn).toBeCloseTo(130.3, 9);
   });
 
   it('every claim it carries is well formed, and the model ones say so', () => {
@@ -109,6 +116,31 @@ describe('computeCommit: more than one leg', () => {
     expect(cm.modeConflict).toBe(false);
   });
 
+  /* VAL-02 (fact check 2026-09-28): "the broker verifies that there is at
+     least one standby database in the configuration that can support the
+     desired grade of protection" -- a configuration-level check, so an
+     ASYNC bystander beside a SYNC standby is not itself a mismatch. */
+  it('an ASYNC leg beside a SYNC leg is not a maximum availability mode conflict', () => {
+    const cm = computeCommit({
+      mode: 'MAXAVAILABILITY', localWriteMs: 2, edition: '19c',
+      legs: [
+        { to: memberId('sby01'), kind: 'database', xpt: 'SYNC', rttMs: 4, destWriteMs: 1 },
+        { to: memberId('sby02'), kind: 'database', xpt: 'ASYNC', rttMs: 20, destWriteMs: 1 },
+      ],
+    });
+    expect(cm.modeConflict).toBe(false);
+  });
+
+  it('an ASYNC leg alone is still a maximum availability mode conflict under 19c', () => {
+    const cm = computeCommit({
+      mode: 'MAXAVAILABILITY', localWriteMs: 2, edition: '19c',
+      legs: [
+        { to: memberId('sby01'), kind: 'database', xpt: 'ASYNC', rttMs: 20, destWriteMs: 1 },
+      ],
+    });
+    expect(cm.modeConflict).toBe(true);
+  });
+
   it('two synchronous legs: waiting for all of them is the model, first-ack the toggle', () => {
     const legs = [
       { to: memberId('sby01'), kind: 'database' as const, xpt: 'SYNC' as const, rttMs: 4, destWriteMs: 1 },
@@ -118,7 +150,13 @@ describe('computeCommit: more than one leg', () => {
     const first = computeCommit({ mode: 'MAXAVAILABILITY', localWriteMs: 2, legs, waitPolicy: 'first-ack' });
     expect(all.commitMs).toBe(21);
     expect(first.commitMs).toBe(5);
-    expect(all.claims.multiSync?.basis).toBe('model');
+    /* DATA_GUARD_SYNC_LATENCY defaults to 0, which is documented to mean LGWR
+       waits for every SYNC destination up to NET_TIMEOUT -- this page's
+       default ('all') is that documented behaviour, not a model guess. A
+       non-zero value only bounds how much longer LGWR waits past the first
+       ack, which the 'first-ack' toggle simplifies to an immediate return, so
+       that one stays a model claim. */
+    expect(all.claims.multiSync?.basis).toBe('documented');
     expect(first.claims.multiSync?.basis).toBe('model');
     /* One leg is never a multi-SYNC question, so the label does not appear. */
     const one = computeCommit({ mode: 'MAXAVAILABILITY', localWriteMs: 2, legs: [legs[0] as typeof legs[0]] });
@@ -145,6 +183,29 @@ describe('computeReopen: one destination at a time', () => {
     expect(grouped.claims.priorityGroup?.cite).toContain('DEST.GROUP_PRIORITY_REENTER');
   });
 
+  /* ED-04 (fact check 2026-09-28): 26ai's usage notes count the initial
+     failure, so MAX_FAILURE=1 disables the destination with no retry at
+     all, and MAX_FAILURE=n gives n-1 retries -- one fewer than 19c. */
+  it('26ai counts the initial failure: MaxFailure=1 is no retry at all', () => {
+    const base = { reopenSeconds: 300, maxFailure: 1, outageSeconds: 1800, redoRateMBs: 5,
+      mode: 'MAXAVAILABILITY' as const, lagLimitSeconds: 30, edition: '26ai' as const };
+    const rp = computeReopen(base);
+    expect(rp.disabledAt).toBe(0);
+    expect(rp.reconnectAt).toBe(null);
+    expect(rp.claims.maxFailure.basis).toBe('documented');
+    expect(rp.claims.maxFailure.cite).toContain('DEST.MAX_FAILURE_26AI');
+  });
+
+  it('26ai MaxFailure=3 gives two retries, one fewer than 19c gives', () => {
+    const base = { reopenSeconds: 60, maxFailure: 3, outageSeconds: 1800, redoRateMBs: 5,
+      mode: 'MAXAVAILABILITY' as const, lagLimitSeconds: 30 };
+    const under19c = computeReopen(base);
+    const under26ai = computeReopen({ ...base, edition: '26ai' as const });
+    expect(under19c.disabledAt).toBe(180);           // three retries at 60 s
+    expect(under26ai.disabledAt).toBe(120);           // two retries at 60 s
+    expect(under19c.claims.maxFailure.cite).toContain('DEST.MAX_FAILURE_DISABLED_19C');
+  });
+
   it('reads the destination attributes off the member, and the outage off the trace', () => {
     const doc = classicTopology({ scenario: 'dc2down', reopen: 60, maxFailure: 3, transportLag: 0 });
     const trace = simulate(doc, doc.events);
@@ -158,6 +219,43 @@ describe('computeReopen: one destination at a time', () => {
     expect(outageFromTrace(trace, memberId('sby01'))).toBe(null);
     const rp = computeReopen(input);
     expect(rp.disabledAt).toBe(180);              // three retries at 60 s
+  });
+
+  /* ED-04 (fact check 2026-09-28): the broker default for MaxFailure is 1
+     inside a RedoRoutes priority group, 0 otherwise -- an unset destination
+     must read the group-aware default, not always the flat one. */
+  it('an unset destination defaults MaxFailure to 1 inside a RedoRoutes group, 0 outside one', () => {
+    const prm = db('prm01', ['dc1-prm01'], 'primary');
+    const sby = db('sby01', ['dc2-sby01'], 'physical');
+    /* No dest() call: prm.dests carries no entry at all for sby, which is
+       the case reopenInputFrom must fall back on defaultDestProps for. */
+    const doc = build({
+      sites: ['dc1', 'dc2'], hosts: [['dc1-prm01', 'dc1'], ['dc2-sby01', 'dc2']],
+      members: [prm, sby], targets: [sby.id],
+    });
+    const outside = reopenInputFrom(doc, prm.id, sby.id, { outageSeconds: 600 });
+    expect(outside.maxFailure).toBe(0);
+    const inside = reopenInputFrom(doc, prm.id, sby.id, {
+      outageSeconds: 600, inPriorityGroup: true,
+    });
+    expect(inside.maxFailure).toBe(1);
+  });
+
+  /* The real preset the previous test is abstracted from: North_Sales ->
+     South_Sales sits in a parenthesised group with no dest() properties of
+     its own (sim/dests.ts's authoredDests already reads MaxFailure 1 there
+     for the simulation); the Reopen panel must read the same 1, not the
+     flat default 0, once it is told the destination is in a group. */
+  it('the far-sync-zero-loss preset South_Sales leg reads MaxFailure 1 from its group', () => {
+    const doc = preset('far-sync-zero-loss').doc();
+    const north = memberId('North_Sales');
+    const south = memberId('South_Sales');
+    const authored = authoredDests(doc, north).find((d) => d.to === south);
+    expect(authored?.inPriorityGroup).toBe(true);
+    const input = reopenInputFrom(doc, north, south, {
+      outageSeconds: 600, inPriorityGroup: authored?.inPriorityGroup ?? false,
+    });
+    expect(input.maxFailure).toBe(1);
   });
 
   it('with no observer deployed nothing is armed', () => {
@@ -220,6 +318,19 @@ describe('tnsnames.ora and the JDBC thin URL', () => {
     const text = renderPlain(tuned);
     expect(text).toContain('sec written out on purpose');
     expect(text).not.toMatch(/1[89]c driver changed|21c|23ai/);
+  });
+
+  it('spells RETRY_DELAY=0 out under 26ai, where the driver default is 1 second', () => {
+    const v19 = buildJdbc(classicTopology({ rd: 0, transportLag: 0 }));
+    expect(renderPlain(v19)).not.toContain('RETRY_DELAY');
+
+    const v26 = buildJdbc(classicTopology({ version: '26ai', rd: 0, transportLag: 0 }));
+    const text = renderPlain(v26);
+    expect(text).toContain('(RETRY_DELAY=0)');
+    expect(text).toContain('starting in 26ai the driver default is 1 second');
+
+    const v26tuned = buildJdbc(classicTopology({ version: '26ai', rd: 3, transportLag: 0 }));
+    expect(renderPlain(v26tuned)).toContain('(RETRY_DELAY=3)');
   });
 
   it('the lead comment is the caller choice', () => {

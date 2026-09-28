@@ -13,9 +13,10 @@
 import { topology } from '@/state/derived';
 import { redo, undo } from '@/state/history';
 import { canEdit, clearSelection, mode, selection, viewport } from '@/state/view';
+import { isHTMLElement } from './common/dom';
 
 const typing = (t: EventTarget | null): boolean =>
-  t instanceof HTMLElement
+  isHTMLElement(t)
   && (t.isContentEditable || t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT');
 
 export function onGlobalKey(ev: KeyboardEvent): void {
@@ -36,12 +37,15 @@ export function onGlobalKey(ev: KeyboardEvent): void {
   if (mod && !ev.altKey && !ev.shiftKey && key === 'a' && drawing) {
     ev.preventDefault();
     const t = topology.value;
-    selection.value = [...t.members.map((m) => m.id as string), ...t.observers.map((o) => o.id as string)];
+    selection.value = [
+      ...t.members.map((m) => m.id as string), ...t.observers.map((o) => o.id as string),
+      ...(t.application ? [t.application.id as string] : []),
+    ];
     return;
   }
   /* `Escape` with the focus nowhere: the cards handle their own, this is the
      press after a click on the ground or in the margin. */
-  if (ev.key === 'Escape' && ev.target === document.body && selection.value.length > 0) {
+  if (ev.key === 'Escape' && isHTMLElement(ev.target) && ev.target === ev.target.ownerDocument.body && selection.value.length > 0) {
     clearSelection();
   }
 }

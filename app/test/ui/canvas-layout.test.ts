@@ -10,7 +10,8 @@
 
 import { describe, expect, it } from 'vitest';
 import { hostId } from '@/engine';
-import { layoutTopology, nodeKey } from '@/ui/canvas/layout';
+import { LAYOUT, layoutTopology, nodeKey, SITE_MIN } from '@/ui/canvas/layout';
+import { resizedBox } from '@/ui/canvas/TopoCanvas';
 import type { Geometry, NodeBox } from '@/ui/canvas/layout';
 import { overlaps } from '@/ui/canvas/measure';
 import {
@@ -33,15 +34,15 @@ describe('layoutTopology: the classic 1+1+1', () => {
   it('draws the observer in the third site between the two databases', () => {
     const geo = geometryOf(classic('dc3'));
     expect(geo.nodes.map((n) => n.key)).toEqual(['prm01', 'obs01', 'sby01']);
-    expect(box(node(geo, 'prm01'))).toEqual([14, 80, 184, 72]);
-    expect(box(node(geo, 'obs01'))).toEqual([426, 0, 184, 52]);
-    expect(box(node(geo, 'sby01'))).toEqual([838, 80, 184, 72]);
+    expect(box(node(geo, 'prm01'))).toEqual([24, 80, 184, 72]);
+    expect(box(node(geo, 'obs01'))).toEqual([456, 0, 194, 52]);
+    expect(box(node(geo, 'sby01'))).toEqual([898, 80, 184, 72]);
     expect(geo.sites.map((s) => [s.id as string, s.x, s.y, s.w, s.h])).toEqual([
-      ['dc1', 0, 66, 212, 118],
-      ['dc3', 412, -14, 212, 98],
-      ['dc2', 824, 66, 212, 118],
+      ['dc1', 0, 56, 232, 138],
+      ['dc3', 432, -24, 242, 118],
+      ['dc2', 874, 56, 232, 138],
     ]);
-    expect(geo.viewBox).toEqual({ x: -10, y: -24, w: 1056, h: 224 });
+    expect(geo.viewBox).toEqual({ x: -10, y: -34, w: 1126, h: 244 });
   });
 
   it('grows the primary site upward when the observer runs there', () => {
@@ -52,7 +53,7 @@ describe('layoutTopology: the classic 1+1+1', () => {
     const dc1 = geo.sites.find((s) => (s.id as string) === 'dc1');
     const dc2 = geo.sites.find((s) => (s.id as string) === 'dc2');
     expect(dc1?.h).toBeGreaterThan(dc2?.h ?? 0);
-    expect(box(node(geo, 'obs01'))).toEqual([14, 0, 184, 52]);
+    expect(box(node(geo, 'obs01'))).toEqual([24, 0, 194, 52]);
   });
 
   it('mirrors onto the standby site', () => {
@@ -197,7 +198,7 @@ describe('layoutTopology: invariants', () => {
       expect(n.w).toBeGreaterThanOrEqual(184);
       expect(n.w).toBeLessThanOrEqual(260);
     }
-    expect(node(geo, 'prm01').lines.host).toBe('an-extremely-long-…');
+    expect(node(geo, 'prm01').lines.host).toBe('an-extremely-lon…');
   });
 });
 
@@ -214,14 +215,15 @@ describe('layoutTopology: drag overrides', () => {
     expect(after.y - before.y).toBe(-16);
     expect(after.moved).toBe(true);
     const dc1 = moved.sites.find((s) => (s.id as string) === 'dc1');
-    expect(dc1!.x).toBe(after.x - 14);
-    expect(dc1!.y).toBe(after.y - 14);
+    expect(dc1!.x).toBe(after.x - LAYOUT.colPad);
+    expect(dc1!.y).toBe(after.y - LAYOUT.colPad);
   });
 
   it('leaves the untouched cards where they were', () => {
     const doc = classic('dc3');
     const base = geometryOf(doc);
-    const moved = layoutTopology(doc, graphOf(doc), { overrides: { prm01: { dx: 40, dy: 0 } } });
+    /* Away from the corridor, and down: nothing grows into a neighbour. */
+    const moved = layoutTopology(doc, graphOf(doc), { overrides: { prm01: { dx: -40, dy: 32 } } });
     expect(box(node(moved, 'sby01'))).toEqual(box(node(base, 'sby01')));
     expect(node(moved, 'sby01').moved).toBe(false);
   });
@@ -242,12 +244,16 @@ describe('layoutTopology: drag overrides', () => {
     const dc1After = moved.sites.find((s) => (s.id as string) === 'dc1')!;
     expect(dc1After.x - dc1Before.x).toBe(40);
     expect(dc1After.y - dc1Before.y).toBe(24);
-    /* Nothing that stands in another data centre moves. */
-    expect(box(node(moved, 'sby01'))).toEqual(box(node(base, 'sby01')));
+    /* The next data centre is pushed along as a whole (task 5.1): the
+       corridor between the two keeps its width, and nothing in dc2 changes
+       shape or leaves its place relative to its own box. */
     const dc2Before = base.sites.find((s) => (s.id as string) === 'dc2')!;
     const dc2After = moved.sites.find((s) => (s.id as string) === 'dc2')!;
-    expect([dc2After.x, dc2After.y, dc2After.w, dc2After.h])
+    expect([dc2After.x - 40, dc2After.y, dc2After.w, dc2After.h])
       .toEqual([dc2Before.x, dc2Before.y, dc2Before.w, dc2Before.h]);
+    expect(dc2After.x - (dc1After.x + dc1After.w)).toBe(dc2Before.x - (dc1Before.x + dc1Before.w));
+    const [sx, sy, sw, sh] = box(node(base, 'sby01'));
+    expect(box(node(moved, 'sby01'))).toEqual([sx! + 40, sy, sw, sh]);
   });
 
   it('reads a site-keyed offset only for the empty panel it was written for', () => {
@@ -266,6 +272,113 @@ describe('layoutTopology: drag overrides', () => {
     const dc1Before = base.sites.find((s) => (s.id as string) === 'dc1')!;
     const dc1Occupied = occupied.sites.find((s) => (s.id as string) === 'dc1')!;
     expect([dc1Occupied.x, dc1Occupied.y]).toEqual([dc1Before.x, dc1Before.y]);
+  });
+});
+
+describe('layoutTopology: a data centre with a size of its own', () => {
+  const siteOf = (geo: Geometry, id: string) => geo.sites.find((s) => (s.id as string) === id)!;
+
+  it('reports the natural box as the anchor and the cards\' extent as the fit', () => {
+    const doc = classic('dc3');
+    const geo = geometryOf(doc);
+    const dc2 = siteOf(geo, 'dc2');
+    expect(dc2.sized).toBe(false);
+    expect(dc2.anchor).toEqual({ x: dc2.x, y: dc2.y });
+    /* The layout draws the box roomier than a resize may make it. */
+    const slack = LAYOUT.colPad - LAYOUT.fitPad;
+    expect([dc2.fit.x, dc2.fit.y, dc2.fit.w, dc2.fit.h])
+      .toEqual([dc2.x + slack, dc2.y + slack, dc2.w - 2 * slack, dc2.h - 2 * slack]);
+  });
+
+  it('draws a sized box at its anchor plus the offset, at the stored size', () => {
+    const doc = classic('dc3');
+    const base = siteOf(geometryOf(doc), 'dc2');
+    const geo = layoutTopology(doc, graphOf(doc), {
+      overrides: { dc2: { dx: -20, dy: -30, w: base.w + 100, h: base.h + 80 } },
+    });
+    const dc2 = siteOf(geo, 'dc2');
+    expect(dc2.sized).toBe(true);
+    expect([dc2.x, dc2.y, dc2.w, dc2.h]).toEqual([base.x - 20, base.y - 30, base.w + 100, base.h + 80]);
+    /* The cards do not move, and the label follows the box's bottom edge. */
+    expect(box(node(geo, 'sby01'))).toEqual(box(node(geometryOf(doc), 'sby01')));
+    expect(dc2.labelY).toBe(dc2.y + dc2.h - 5);
+    expect(geo.viewBox.w).toBeGreaterThan(geometryOf(doc).viewBox.w);
+  });
+
+  it('is never smaller than the cards it holds, whatever the stored size says', () => {
+    const doc = classic('dc3');
+    const base = siteOf(geometryOf(doc), 'dc2');
+    const geo = layoutTopology(doc, graphOf(doc), { overrides: { dc2: { dx: 40, dy: 40, w: 16, h: 16 } } });
+    const dc2 = siteOf(geo, 'dc2');
+    expect([dc2.x, dc2.y, dc2.w, dc2.h]).toEqual([base.fit.x, base.fit.y, base.fit.w, base.fit.h]);
+  });
+
+  it('grows to take a card moved past its stored edge', () => {
+    const doc = classic('dc3');
+    const base = siteOf(geometryOf(doc), 'dc2');
+    const geo = layoutTopology(doc, graphOf(doc), {
+      overrides: { dc2: { dx: 0, dy: 0, w: base.w, h: base.h }, sby01: { dx: 80, dy: 0 } },
+    });
+    const dc2 = siteOf(geo, 'dc2');
+    expect(dc2.x).toBe(base.x);
+    expect(dc2.x + dc2.w).toBe(base.fit.x + base.fit.w + 80);
+    for (const n of geo.nodes.filter((x) => (x.site as string) === 'dc2')) {
+      expect(n.x).toBeGreaterThanOrEqual(dc2.x);
+      expect(n.x + n.w).toBeLessThanOrEqual(dc2.x + dc2.w);
+    }
+  });
+
+  it('gives an empty panel the stored box, but not below the minimum', () => {
+    const doc = classic('none');
+    const base = siteOf(geometryOf(doc), 'dc3');
+    const sized = siteOf(layoutTopology(doc, graphOf(doc), {
+      overrides: { dc3: { dx: 8, dy: 8, w: 300, h: 200 } },
+    }), 'dc3');
+    expect([sized.x, sized.y, sized.w, sized.h]).toEqual([base.x + 8, base.y + 8, 300, 200]);
+    const tiny = siteOf(layoutTopology(doc, graphOf(doc), {
+      overrides: { dc3: { dx: 0, dy: 0, w: 10, h: 10 } },
+    }), 'dc3');
+    expect([tiny.w, tiny.h]).toEqual([SITE_MIN.w, SITE_MIN.h]);
+  });
+
+  it('reads an override with only one of the two sizes as the plain offset it always was', () => {
+    const doc = classic('dc3');
+    const base = siteOf(geometryOf(doc), 'dc1');
+    const geo = layoutTopology(doc, graphOf(doc), { overrides: { dc1: { dx: 100, dy: 100, w: 500 } } });
+    const dc1 = siteOf(geo, 'dc1');
+    expect([dc1.x, dc1.y, dc1.w, dc1.h, dc1.sized]).toEqual([base.x, base.y, base.w, base.h, false]);
+  });
+});
+
+describe('resizedBox: a handle dragged', () => {
+  const from = {
+    start: { x: 100, y: 100, w: 200, h: 120 },
+    fit: { x: 110, y: 110, w: 150, h: 90 },
+    anchor: { x: 100, y: 100 },
+    empty: false,
+  };
+  const all = { l: true, r: true, t: true, b: true };
+
+  it('moves the dragged edges by the snapped delta', () => {
+    expect(resizedBox(from, { l: false, r: true, t: false, b: true }, 37, 22))
+      .toEqual({ dx: 0, dy: 0, w: 240, h: 144 });
+    expect(resizedBox(from, { l: true, r: false, t: true, b: false }, -16, -8))
+      .toEqual({ dx: -16, dy: -8, w: 216, h: 128 });
+  });
+
+  it('stops at the cards inside', () => {
+    expect(resizedBox(from, { l: true, r: false, t: true, b: false }, 200, 200))
+      .toEqual({ dx: 10, dy: 10, w: 190, h: 110 });
+    /* Every edge at once: the far ones move, the near ones stop at the cards. */
+    expect(resizedBox(from, all, 200, 200)).toEqual({ dx: 10, dy: 10, w: 390, h: 310 });
+    const inward = resizedBox(from, { l: false, r: true, t: false, b: true }, -300, -300);
+    expect(inward).toEqual({ dx: 0, dy: 0, w: 160, h: 100 });
+  });
+
+  it('stops an empty panel at the minimum size only', () => {
+    const empty = { ...from, empty: true };
+    expect(resizedBox(empty, { l: false, r: true, t: false, b: true }, -400, -400))
+      .toEqual({ dx: 0, dy: 0, w: SITE_MIN.w, h: SITE_MIN.h });
   });
 });
 

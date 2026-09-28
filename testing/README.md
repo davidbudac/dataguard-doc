@@ -844,3 +844,52 @@ Referenced directly by this runbook:
 - [ORA-16820](https://docs.oracle.com/en/error-help/db/ora-16820/) /
   [ORA-16658](https://docs.oracle.com/en/error-help/db/ora-16658/) — the
   standing-condition vs. attempted-failover distinction in drill 3.
+
+## Existing-setup collector acceptance drill
+
+This is the live Oracle validation for `app/public/collectors/`. Steps 1–2, the
+local wrapper and its failing-alias path passed on 2026-09-28 against a 19.27 CDB
+primary + mounted physical standby with FSFO; wallet aliases, least-privilege
+grants, RAC, far sync and cascades are still open.
+The automated importer tests use synthetic records; they do not prove SQL runs
+against a mounted 19c database or an installation's privilege configuration.
+
+1. In a non-production 19c configuration, open a dedicated SQL*Plus/SQLcl session
+   with the grants listed in `app/public/collectors/README.txt`. Use CDB$ROOT for
+   a CDB. Spool `@dataguard-topology.sql` once per primary, standby and far sync
+   member. On RAC, collect once per database and check every running instance
+   appears. Avoid role changes during collection.
+2. Confirm every block has one database record and both version markers, with
+   no ORA-/SP2-/TNS- errors. Check the host/instance names, modes and configured
+   destinations against the fixed views. Check lag sample timestamps; a stale
+   DATUM_TIME must not be read as proof that redo is current.
+3. Run the optional Bash wrapper through wallet aliases. Confirm its output
+   imports through the same path. Include a deliberately failing alias: exit
+   must be nonzero, stdout empty, and diagnostics on stderr. Never supply a
+   password in command-line arguments.
+4. In **⋯ → Import existing setup**, paste all blocks or load their combined
+   file, then preview. Before drawing, the existing document must be unchanged.
+   Omit a member and confirm the importer lists the missing member. Repeat a
+   member or remove an end marker and confirm it refuses the input.
+5. Draw the topology and compare current redo edges with actual configuration:
+   direct physical/logical standbys, primary → far sync → terminal, and a
+   cascader → terminal. Compare SYNC/AFFIRM, SYNC/NOAFFIRM and ASYNC destinations.
+   Deferred/failed/alternate-status destinations must be reported as excluded;
+   a VALID current destination with an ALTERNATE property must remain drawn,
+   with a note that its fallback was not reconstructed.
+6. Compare primary FSFO mode, threshold, current target and master host. If
+   FSFO is disabled, stale FSFO columns must not create an observer or target.
+   Review broker-only fields separately through SHOW CONFIGURATION VERBOSE,
+   SHOW DATABASE/FAR_SYNC VERBOSE, SHOW FAST_START FAILOVER and SHOW OBSERVER.
+   These transcripts are not accepted import input. Review provisional sites,
+   connectivity, ports and simulation assumptions before injecting failures.
+7. Undo must restore the original document. Import again, export/reload/share,
+   and check that names, current edges, empty observed routes and the assumptions
+   notice survive. In particular, no reverse route may appear simply because
+   the imported standby becomes the primary in a simulation.
+
+Browser automation note (2026-09-28): this environment's headless Chrome falls
+back from loopback HTTP to an inlined `file://` bundle. The legacy-link Break-mode
+and compressed-permalink smoke assertions fail on both the unchanged baseline
+and the collector build. Interactive HTTP checks of that legacy link succeed.
+Keep this limitation separate from the live Oracle acceptance drill above.

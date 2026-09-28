@@ -17,7 +17,8 @@ import {
 } from '@/engine';
 import type { DatabaseMember, MemberId } from '@/engine';
 import { hostId, memberId, observerId, siteId } from '@/engine';
-import { classicDoc, doc } from '@/state/doc';
+import { classicDoc, doc, makeDoc } from '@/state/doc';
+import { presetDoc } from '@/presets';
 import { resetHistory, undo } from '@/state/history';
 import { errors } from '@/state/derived';
 import {
@@ -139,11 +140,48 @@ describe('the WhyPill contract', () => {
     expect(whyTexts(root)).not.toContain(WHY.lagLimitMaxAvail19c);
   });
 
-  it('gates PreferredObserverHosts on the release', async () => {
+  it('never gates PreferredObserverHosts on the release: it is documented since 12.2', async () => {
+    /* ED-05: the property is on the 12.2, 18c and 19c property pages and in
+       a live 19.27 system -- never grey this control under 19c. */
     const root = mount(Inspector);
     await tick();
     await unfold(root, 'PreferredObserverHosts');
-    expect(whyTexts(root)).toContain(WHY.needs26ai);
+    expect(whyTexts(root)).not.toContain(WHY.needs26ai);
+    const addHost = [...root.querySelectorAll('.field-name')]
+      .find((el) => el.textContent === 'Add a host');
+    expect(addHost?.closest('.field')?.classList.contains('is-off')).toBe(false);
+    edition.value = '26ai';
+    await tick();
+    expect(whyTexts(root)).not.toContain(WHY.needs26ai);
+  });
+
+  it('gates ObserverPingInterval/Retry on the release: neither exists in 19c (ED-01)', async () => {
+    const root = mount(Inspector);
+    await tick();
+    await unfold(root, 'Fast-start failover');
+    expect(whyTexts(root)).toContain(WHY.pingPropsNotIn19c);
+    edition.value = '26ai';
+    await tick();
+    expect(whyTexts(root)).not.toContain(WHY.pingPropsNotIn19c);
+  });
+
+  it('gates LagType/LagGraceTime and PrimaryDatabaseCandidates on the release (ED-02)', async () => {
+    const root = mount(Inspector);
+    await tick();
+    await unfold(root, 'Fast-start failover');
+    await unfold(root, 'PrimaryDatabaseCandidates');
+    /* LagType and LagGraceTime carry the reason as a WhyPill; the checkbox
+       list for PrimaryDatabaseCandidates carries it as the fold's own note.
+       All three are present under 19c because the properties are documented
+       from 26ai and absent from the 19c and 21c properties references, even
+       though a live 19.27 system carries all three. */
+    const pills = whyTexts(root);
+    expect(pills.filter((t) => t === WHY.docLater26aiObservedIn1927).length).toBe(2);
+    expect(root.textContent).toContain(WHY.docLater26aiObservedIn1927);
+    edition.value = '26ai';
+    await tick();
+    expect(whyTexts(root)).not.toContain(WHY.docLater26aiObservedIn1927);
+    expect(root.textContent).not.toContain(WHY.docLater26aiObservedIn1927);
   });
 
   it('gates FASTSYNC on the protection mode', async () => {
@@ -165,11 +203,14 @@ describe('the WhyPill contract', () => {
   });
 
   it('says it once when a whole control is off, not once per option', async () => {
+    /* FastStartFailoverLagType is documented as maximum performance mode
+       behaviour, and the classic configuration runs maximum availability.
+       Under 26ai, so the edition gate (ED-02) does not also apply and mask
+       the mode-based reason this test is about. */
+    edition.value = '26ai';
     const root = mount(Inspector);
     await tick();
     await unfold(root, 'Fast-start failover');
-    /* FastStartFailoverLagType is documented as maximum performance mode
-       behaviour, and the classic configuration runs maximum availability. */
     const field = [...root.querySelectorAll('.field.is-off')]
       .find((el) => (el.textContent ?? '').includes('FastStartFailoverLagType'));
     expect(field).toBeDefined();
@@ -220,6 +261,45 @@ describe('the RedoRoutes editor', () => {
     await tick();
     expect(formatRedoRoutes(member('prm01').redoRoutes)).toBe(text);
     expect(member('prm01').redoRoutes[0]?.groups).toHaveLength(2);
+  });
+
+  it('keeps a PRIORITY on each destination of one group (Oracle Example 1)', async () => {
+    selection.value = ['prm01'];
+    const root = mount(Inspector);
+    await tick();
+    const input = root.querySelector<HTMLInputElement>('input[aria-label="RedoRoutes property"]');
+    (input as HTMLInputElement).value = '(local : ( FS1 PRIORITY=1, sby01 PRIORITY=2 ) )';
+    (input as HTMLInputElement).dispatchEvent(new Event('change', { bubbles: true }));
+    await tick();
+    expect(formatRedoRoutes(member('prm01').redoRoutes)).toBe('(LOCAL : (FS1 PRIORITY=1, sby01 PRIORITY=2))');
+    const second = root.querySelector<HTMLSelectElement>('select[aria-label="Rule 1 destination 2 priority"]');
+    expect(second?.value).toBe('2');
+  });
+
+  it('edits PRIORITY per destination, and a PRIORITY puts its group in parentheses', async () => {
+    selection.value = ['prm01'];
+    const root = mount(Inspector);
+    await tick();
+    const input = root.querySelector<HTMLInputElement>('input[aria-label="RedoRoutes property"]');
+    (input as HTMLInputElement).value = '(LOCAL : FS1 SYNC, sby01 ASYNC)';
+    (input as HTMLInputElement).dispatchEvent(new Event('change', { bubbles: true }));
+    await tick();
+    const paren = root.querySelector<HTMLInputElement>('input[aria-label="Rule 1 group 1 in parentheses"]');
+    expect(paren?.checked).toBe(false);
+
+    const prio = root.querySelector<HTMLSelectElement>('select[aria-label="Rule 1 destination 2 priority"]');
+    (prio as HTMLSelectElement).value = '2';
+    (prio as HTMLSelectElement).dispatchEvent(new Event('change', { bubbles: true }));
+    await tick();
+    expect(formatRedoRoutes(member('prm01').redoRoutes)).toBe('(LOCAL : (FS1 SYNC, sby01 ASYNC PRIORITY=2))');
+
+    /* Out of the parentheses, the PRIORITY goes with them: it is written inside them only. */
+    const paren2 = root.querySelector<HTMLInputElement>('input[aria-label="Rule 1 group 1 in parentheses"]');
+    expect(paren2?.checked).toBe(true);
+    (paren2 as HTMLInputElement).checked = false;
+    (paren2 as HTMLInputElement).dispatchEvent(new Event('change', { bubbles: true }));
+    await tick();
+    expect(formatRedoRoutes(member('prm01').redoRoutes)).toBe('(LOCAL : FS1 SYNC, sby01 ASYNC)');
   });
 
   it('refuses what it cannot parse, and says so without changing the property', async () => {
@@ -370,14 +450,22 @@ describe('adding happens in one place', () => {
     hintsOn.value = false;
   });
 
-  it('offers the four additions on the drawing, each saying what it does', async () => {
+  it('offers the five additions on the drawing, each saying what it does', async () => {
     const stage = mountWith(AddToolbar, { doc: doc.value.topology });
     await tick();
-    expect(buttonLabels(stage, '.cv-add .btn')).toEqual(ADD_ACTIONS.map((a) => a.short));
+    /* The application is one card: with it on the drawing there is none to
+       add, and the button is absent rather than grey for good. */
+    expect(doc.value.topology.application).toBeDefined();
+    expect(buttonLabels(stage, '.cv-add .btn'))
+      .toEqual(ADD_ACTIONS.filter((a) => a.key !== 'application').map((a) => a.short));
     for (const b of stage.querySelectorAll<HTMLButtonElement>('.cv-add .btn')) {
       expect(b.getAttribute('title')).toBeTruthy();
       expect(b.disabled).toBe(false);
     }
+    const { application: _none, ...bare } = doc.value.topology;
+    const without = mountWith(AddToolbar, { doc: bare });
+    await tick();
+    expect(buttonLabels(without, '.cv-add .btn')).toEqual(ADD_ACTIONS.map((a) => a.short));
     expect(stage.querySelector('.cv-add')?.getAttribute('role')).toBe('toolbar');
   });
 
@@ -441,11 +529,12 @@ describe('adding happens in one place', () => {
   });
 
   it('is one tab stop with arrow keys, which is what `role="toolbar"` promises', async () => {
-    const stage = mountWith(AddToolbar, { doc: doc.value.topology });
+    const { application: _none, ...bare } = doc.value.topology;
+    const stage = mountWith(AddToolbar, { doc: bare });
     await tick();
     const btns = [...stage.querySelectorAll<HTMLButtonElement>('.cv-add .btn')];
     const stops = () => btns.map((b) => b.getAttribute('tabindex'));
-    expect(stops()).toEqual(['0', '-1', '-1', '-1']);
+    expect(stops()).toEqual(['0', '-1', '-1', '-1', '-1']);
 
     const bar = stage.querySelector<HTMLElement>('.cv-add') as HTMLElement;
     const arrow = (key: string): void => {
@@ -453,17 +542,17 @@ describe('adding happens in one place', () => {
     };
     arrow('ArrowRight');
     await tick();
-    expect(stops()).toEqual(['-1', '0', '-1', '-1']);
+    expect(stops()).toEqual(['-1', '0', '-1', '-1', '-1']);
     expect(document.activeElement).toBe(btns[1]);
     arrow('End');
     await tick();
-    expect(stops()).toEqual(['-1', '-1', '-1', '0']);
+    expect(stops()).toEqual(['-1', '-1', '-1', '-1', '0']);
     arrow('ArrowRight');
     await tick();
-    expect(stops()).toEqual(['0', '-1', '-1', '-1']);
+    expect(stops()).toEqual(['0', '-1', '-1', '-1', '-1']);
     arrow('Home');
     await tick();
-    expect(stops()).toEqual(['0', '-1', '-1', '-1']);
+    expect(stops()).toEqual(['0', '-1', '-1', '-1', '-1']);
   });
 
   it('never parks the one tab stop on a button that cannot take focus', async () => {
@@ -853,5 +942,35 @@ describe('bounds', () => {
     const threshold = root.querySelector<HTMLInputElement>('input[aria-label="FastStartFailoverThreshold"]');
     expect(threshold?.min).toBe(String(BOUNDS.thresholdSeconds.min));
     expect(threshold?.max).toBe(String(BOUNDS.thresholdSeconds.max));
+  });
+});
+
+describe('FastStartFailoverLagLimit: the limit in force until it is set (ED-03)', () => {
+  const lagField = (root: HTMLElement): HTMLElement | undefined =>
+    [...root.querySelectorAll<HTMLElement>('.field')]
+      .find((el) => el.querySelector('.field-name')?.textContent === 'FastStartFailoverLagLimit');
+
+  it('reads the edition\'s broker default while the property is not set, and an edit sets it', async () => {
+    resetHistory(makeDoc(presetDoc('classic')));
+    expect(doc.value.topology.config.fsfo.lagLimitSet).toBeUndefined();
+    edition.value = '26ai';
+    const root = mount(Inspector);
+    await tick();
+    await unfold(root, 'Fast-start failover');
+    /* 26ai maximum availability: the broker default is 0, zero data loss. */
+    expect(lagField(root)?.querySelector('.field-val')?.textContent).toBe('0 s');
+    edition.value = '19c';
+    await tick();
+    expect(lagField(root)?.querySelector('.field-val')?.textContent).toBe('30 s');
+    edition.value = '26ai';
+    await tick();
+    const input = lagField(root)?.querySelector<HTMLInputElement>('input');
+    expect(input).toBeDefined();
+    (input as HTMLInputElement).value = '10';
+    (input as HTMLInputElement).dispatchEvent(new Event('input', { bubbles: true }));
+    await tick();
+    expect(doc.value.topology.config.fsfo.lagLimitSet).toBe(true);
+    expect(doc.value.topology.config.fsfo.lagLimitSeconds).toBe(10);
+    expect(lagField(root)?.querySelector('.field-val')?.textContent).toBe('10 s');
   });
 });

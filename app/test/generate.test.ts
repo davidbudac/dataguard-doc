@@ -24,7 +24,7 @@ import { isCitationId } from '../src/engine/citations';
 import { classicTopology } from '../src/engine/compat/classic';
 import { generateDgmgrl } from '../src/engine/generate/dgmgrl';
 import { generateInitOra, generateInitOraFiles } from '../src/engine/generate/initora';
-import { generateShowMocks, showConfiguration } from '../src/engine/generate/show';
+import { generateShowMocks, showConfiguration, showFastStartFailover } from '../src/engine/generate/show';
 import type { GeneratedFile, Line } from '../src/engine/generate/lines';
 import { lineText, renderPlain } from '../src/engine/generate/lines';
 import { hostId, memberId, observerId } from '../src/engine/ids';
@@ -75,17 +75,20 @@ const farSync52 = (): TopologyDoc => withObserverFiles(farSyncDoc());
 const cascade42 = (): TopologyDoc => withObserverFiles(cascadeDoc());
 
 /**
- * Example 4-3 in document form: two destination groups on the primary, the
- * second a lower priority, so VERBOSE marks its member `(alternate of ...)`.
+ * Example 4-3 in document form: one destination group on the primary, the
+ * second destination a lower priority, so VERBOSE marks it `(alternate of ...)`.
  */
 function priority43(): TopologyDoc {
   const prm = db('prm01', ['dc1-prm01'], 'primary', {
     redoRoutes: [{
       source: 'LOCAL',
-      groups: [
-        { priority: 1, explicitGroup: true, dests: [{ target: memberId('sby01'), xpt: 'SYNC' }] },
-        { priority: 2, explicitGroup: true, dests: [{ target: memberId('sby02'), xpt: 'ASYNC' }] },
-      ],
+      groups: [{
+        explicitGroup: true,
+        dests: [
+          { target: memberId('sby01'), xpt: 'SYNC', priority: 1 },
+          { target: memberId('sby02'), xpt: 'ASYNC', priority: 2 },
+        ],
+      }],
     }],
   });
   const sby01 = db('sby01', ['dc2-sby01'], 'physical', { logXptMode: 'SYNC' });
@@ -181,15 +184,15 @@ const textOf = (f: GeneratedFile): string => renderPlain(f);
 
 describe('the traps the fact sheet lists', () => {
   for (const [name, make] of cases) {
-    it(`${name}: START OBSERVER spells FILE IS, never FILE=`, () => {
+    it(`${name}: START OBSERVER spells FILE IS, never FILE=, IN BACKGROUND right after the name, CONNECT IDENTIFIER IS mandatory`, () => {
       const doc = make();
       const script = generateDgmgrl(doc);
       const text = textOf(script);
       expect(text).toContain('FILE IS');
       expect(text).not.toContain('FILE=');
       for (const o of doc.observers) {
-        expect(text).toContain(`START OBSERVER ${o.name} FILE IS`);
-        expect(text).toContain('IN BACKGROUND;');
+        expect(text).toContain(`START OBSERVER ${o.name} IN BACKGROUND CONNECT IDENTIFIER IS`);
+        expect(text).toContain('FILE IS');
       }
     });
 
@@ -288,6 +291,93 @@ describe('the DGMGRL script', () => {
     expect(text).toContain("FAILOVER TO 'sby01';");
   });
 
+  it('FAILOVER TO is commented runbook text, never an executable script line (GEN-05)', () => {
+    const doc = { ...classicDoc(), observers: [] };
+    const script = generateDgmgrl(doc);
+    expect(commandsOf(script).map(lineText).some((l) => l.startsWith('FAILOVER TO'))).toBe(false);
+    const text = textOf(script);
+    expect(text).toContain("-- FAILOVER TO 'sby01';");
+    expect(text).toContain('verify that you are connected to the standby database that will become the new primary');
+  });
+
+  it('a new configuration stages through MAXAVAILABILITY on the way to MAXPROTECTION (GEN-03)', () => {
+    const doc = classicDoc();
+    const maxProt: TopologyDoc = { ...doc, config: { ...doc.config, protectionMode: 'MAXPROTECTION' } };
+    const text = textOf(generateDgmgrl(maxProt));
+    order(
+      text,
+      'EDIT CONFIGURATION SET PROTECTION MODE AS MAXAVAILABILITY;',
+      'EDIT CONFIGURATION SET PROTECTION MODE AS MAXPROTECTION;',
+    );
+    expect(text).toContain('cannot go straight to maximum protection');
+
+    const maxAvail = textOf(generateDgmgrl(doc));
+    expect(maxAvail).not.toContain('MAXAVAILABILITY;\nEDIT CONFIGURATION SET PROTECTION MODE AS MAXPROTECTION');
+  });
+
+  it('sets ObserverReconnect and cites the property\'s own page, not ObserverConfigFile (TXT-12)', () => {
+    const base = classicDoc();
+    const doc: TopologyDoc = {
+      ...base,
+      config: { ...base.config, fsfo: { ...base.config.fsfo, observerReconnectSeconds: 60 } },
+    };
+    const script = generateDgmgrl(doc);
+    const line = commandsOf(script).find((l) => lineText(l).includes('ObserverReconnect'));
+    expect(line).toBeDefined();
+    expect(line?.cite).toEqual(['OBS.OBSERVER_RECONNECT']);
+    expect(line?.cite).not.toContain('OBS.OBSERVER_ORA');
+  });
+
+  it('SET MASTEROBSERVER TO states the documented preconditions (SIM-14b)', () => {
+    const text = textOf(generateDgmgrl(multiTargetThreeObservers()));
+    expect(text).toContain('does not happen at the instant this command is issued');
+    expect(text).toContain('usually within three seconds if fast-start failover is enabled');
+    expect(text).not.toContain('its preconditions are not');
+  });
+
+  it('PreferredObserverHosts is EDIT DATABASE, database-scoped, and repeated when both directions are pre-declared (ED-05)', () => {
+    const base = classicDoc();
+    const oneWay: TopologyDoc = {
+      ...base,
+      config: {
+        ...base.config,
+        fsfo: { ...base.config.fsfo, preferredObserverHosts: [{ host: hostId('dc3-obs01'), priority: 1 }] },
+      },
+    };
+    const oneWayText = textOf(generateDgmgrl(oneWay));
+    expect(oneWayText).toContain("EDIT DATABASE 'prm01' SET PROPERTY 'PreferredObserverHosts' = 'dc3-obs01:1';");
+    expect(oneWayText).not.toContain('EDIT CONFIGURATION SET PROPERTY PreferredObserverHosts');
+    expect(oneWayText).not.toContain("EDIT DATABASE 'sby01' SET PROPERTY 'PreferredObserverHosts'");
+
+    const sby01 = oneWay.members.find((m) => m.id === memberId('sby01')) as typeof oneWay.members[number];
+    const bothWays: TopologyDoc = {
+      ...oneWay,
+      members: oneWay.members.map((m) => (m.id === sby01.id
+        ? { ...m, redoRoutes: [{ source: 'LOCAL' as const, groups: [{ dests: [{ target: memberId('prm01') }] }] }] }
+        : m)),
+    };
+    const bothWaysText = textOf(generateDgmgrl(bothWays));
+    expect(bothWaysText).toContain("EDIT DATABASE 'prm01' SET PROPERTY 'PreferredObserverHosts' = 'dc3-obs01:1';");
+    expect(bothWaysText).toContain("EDIT DATABASE 'sby01' SET PROPERTY 'PreferredObserverHosts' = 'dc3-obs01:1';");
+  });
+
+  it('ReopenSecs is set with EDIT DATABASE when it differs from the broker default (GEN-06)', () => {
+    const prm = db('prm01', ['dc1-prm01'], 'primary', {
+      redoRoutes: [{ source: 'LOCAL', groups: [{ dests: [{ target: memberId('sby01') }] }] }],
+    });
+    const sby01 = db('sby01', ['dc2-sby01'], 'physical', { logXptMode: 'SYNC' });
+    dest(prm, sby01.id, { reopenSeconds: 120 });
+    const doc = build({
+      sites: ['dc1', 'dc2', 'dc3'],
+      hosts: [['dc1-prm01', 'dc1'], ['dc2-sby01', 'dc2'], ['dc3-obs01', 'dc3']],
+      members: [prm, sby01],
+      observers: [observer('obs01', 'dc3-obs01')],
+      targets: [sby01.id],
+    });
+    const text = textOf(generateDgmgrl(doc));
+    expect(text).toContain("EDIT DATABASE 'sby01' SET PROPERTY 'ReopenSecs' = 120;");
+  });
+
   it('spells OBSERVE ONLY when the configuration is observe-only', () => {
     const base = classicDoc();
     const doc: TopologyDoc = {
@@ -364,7 +454,8 @@ describe('the LOG_ARCHIVE_DEST_n block', () => {
     expect(initora).toContain('GROUP=1 PRIORITY=2');
     expect(initora).toContain('never RedoRoutes syntax');
     const script = renderPlain(generateDgmgrl(doc));
-    expect(script).toContain("'RedoRoutes' = '(LOCAL : (sby01 SYNC PRIORITY=1), (sby02 ASYNC PRIORITY=2))';");
+    /* Example 4-3's shape: one group, a PRIORITY per destination. */
+    expect(script).toContain("'RedoRoutes' = '(LOCAL : (sby01 SYNC PRIORITY=1, sby02 ASYNC PRIORITY=2))';");
   });
 
   it('writes ALTERNATE= for an alternate destination', () => {
@@ -397,6 +488,37 @@ describe('the LOG_ARCHIVE_DEST_n block', () => {
     expect(renderPlain(generateDgmgrl(doc)))
       .toContain("'RedoRoutes' = '(LOCAL : sby01 SYNC ALT=(sby02 ASYNC FALLBACK))';");
   });
+
+  it('an alternate gets its own LOG_ARCHIVE_DEST_STATE_n, matching Oracle\'s worked example (GEN-07)', () => {
+    const prm = db('prm01', ['dc1-prm01'], 'primary', {
+      redoRoutes: [{
+        source: 'LOCAL',
+        groups: [{
+          dests: [{
+            target: memberId('sby01'),
+            xpt: 'SYNC',
+            alt: { target: memberId('sby02'), xpt: 'ASYNC', fallback: true },
+          }],
+        }],
+      }],
+    });
+    const sby01 = db('sby01', ['dc2-sby01'], 'physical', { logXptMode: 'SYNC' });
+    const sby02 = db('sby02', ['dc3-sby02'], 'physical', { logXptMode: 'ASYNC' });
+    const doc = build({
+      sites: ['dc1', 'dc2', 'dc3'],
+      hosts: [['dc1-prm01', 'dc1'], ['dc2-sby01', 'dc2'], ['dc3-sby02', 'dc3'], ['dc3-obs01', 'dc3']],
+      members: [prm, sby01, sby02],
+      observers: [observer('obs01', 'dc3-obs01')],
+      targets: [sby01.id],
+    });
+    const text = renderPlain(generateInitOra(doc));
+    const at = (needle: string): number => text.indexOf(needle);
+    expect(at("log_archive_dest_state_2 = 'ENABLE'")).toBeGreaterThan(-1);
+    expect(at("log_archive_dest_state_3 = 'ALTERNATE'")).toBeGreaterThan(-1);
+    expect(at("log_archive_dest_state_2 = 'ENABLE'")).toBeLessThan(at('log_archive_dest_2 ='));
+    expect(at("log_archive_dest_state_3 = 'ALTERNATE'")).toBeLessThan(at('log_archive_dest_3 ='));
+    expect(text).toContain('maintained only for backwards compatibility');
+  });
 });
 
 /* ---------------- the SHOW mocks ---------------- */
@@ -419,13 +541,14 @@ describe('the SHOW mocks', () => {
     expect(remote).toBe('      remote_sby - Physical standby database (receiving current redo)');
   });
 
-  it('mark the far sync line as a model spelling', () => {
+  it('the far sync line is documented, not this page\'s model (GEN-13)', () => {
     const file = showConfiguration(farSync52());
     const text = renderPlain(file);
-    expect(text).toContain('fs1 - Far sync instance   (model)');
+    expect(text).toContain('fs1 - Far sync instance');
+    expect(text).not.toContain('fs1 - Far sync instance   (model)');
     const line = file.lines.find((l) => lineText(l).includes('Far sync instance'));
-    expect(line?.basis).toBe('model');
-    expect(line?.note).toMatch(/not found in the documentation/);
+    expect(line?.basis).toBe('documented');
+    expect(line?.cite).toContain('DGMGRL.FARSYNC_LINE_DOCUMENTED');
   });
 
   it('mark the lower-priority destination (alternate of ...) in VERBOSE only', () => {
@@ -452,14 +575,25 @@ describe('the SHOW mocks', () => {
   });
 
   it('name every observer, master first, and carry the edition count', () => {
-    const text = renderPlain(generateShowMocks(multiTargetThreeObservers())[2] as GeneratedFile);
+    const doc = multiTargetThreeObservers();
+    const text = renderPlain(generateShowMocks(doc)[2] as GeneratedFile);
     const heads = text.split('\n').filter((l) => l.startsWith('Observer "'));
     expect(heads).toEqual([
       'Observer "obs01" - Master',
       'Observer "obs02" - Backup',
       'Observer "obs03" - Backup',
     ]);
-    expect(text).toContain('19c registers up to three observers, one of them master');
+    /* The header the 19c broker commands reference's own SHOW OBSERVER
+       example opens with, ahead of the per-observer list. */
+    expect(text).toContain(`Configuration - ${doc.config.name}`);
+    expect(text).toContain('Primary: prm01');
+    expect(text).toContain('Active Target Standby: sby01');
+    /* 19c disagrees with itself the same way 26ai does: the switchover/
+       failover chapter and ORA-16647's own 19c tab say three, the command
+       reference's own START OBSERVER page says four. */
+    expect(text).toContain(
+      'the 19c fast-start failover chapter and ORA-16647 say up to three observers, while the 19c command reference’s START OBSERVER usage notes say four',
+    );
   });
 
   it('drop the master/backup distinction when fast-start failover is disabled', () => {
@@ -478,5 +612,187 @@ describe('the SHOW mocks', () => {
     const doc = { ...classicDoc(), observers: [] };
     const text = renderPlain(generateShowMocks(doc)[2] as GeneratedFile);
     expect(text).toContain('not the same as unobserved');
+  });
+
+  it('names V$FAST_START_FAILOVER_CONFIG, not V$DATABASE, once the document is 26ai (ED-06)', () => {
+    const doc = { ...classicDoc(), observers: [], config: { ...classicDoc().config, edition: '26ai' as const } };
+    const text = renderPlain(generateShowMocks(doc)[2] as GeneratedFile);
+    expect(text).toContain('V$FAST_START_FAILOVER_CONFIG');
+    expect(text).not.toContain('V$DATABASE.FS_FAILOVER_STATUS');
+  });
+
+  describe('the Fast-Start Failover: status word (GEN-09)', () => {
+    it('MaxProtection is zero data loss', () => {
+      const base = classicDoc();
+      const doc: TopologyDoc = { ...base, config: { ...base.config, protectionMode: 'MAXPROTECTION' } };
+      expect(renderPlain(showFastStartFailover(doc))).toContain('Fast-Start Failover: Enabled in Zero Data Loss Mode');
+    });
+
+    it('19c MaxAvailability is zero data loss', () => {
+      expect(renderPlain(showFastStartFailover(classicDoc()))).toContain('Fast-Start Failover: Enabled in Zero Data Loss Mode');
+    });
+
+    it('MaxPerformance is potential data loss', () => {
+      const base = classicDoc();
+      const doc: TopologyDoc = { ...base, config: { ...base.config, protectionMode: 'MAXPERFORMANCE' } };
+      expect(renderPlain(showFastStartFailover(doc))).toContain('Fast-Start Failover: Enabled in Potential Data Loss Mode');
+    });
+
+    it('26ai MaxAvailability with a non-zero lag limit is potential data loss', () => {
+      const base = classicDoc();
+      const doc: TopologyDoc = {
+        ...base,
+        config: {
+          ...base.config, edition: '26ai',
+          fsfo: { ...base.config.fsfo, lagLimitSeconds: 10 },
+        },
+      };
+      expect(renderPlain(showFastStartFailover(doc))).toContain('Fast-Start Failover: Enabled in Potential Data Loss Mode');
+    });
+
+    it('disabled prints DISABLED, in capitals', () => {
+      const base = classicDoc();
+      const doc: TopologyDoc = { ...base, config: { ...base.config, fsfo: { ...base.config.fsfo, state: 'disabled' } } };
+      expect(renderPlain(showFastStartFailover(doc))).toContain('Fast-Start Failover: DISABLED');
+    });
+  });
+
+  it('marks the (*) fast-start failover target and the legend under it, VERBOSE only (GEN-12)', () => {
+    const doc = multiTargetThreeObservers();
+    const verbose = renderPlain(showConfiguration(doc, { verbose: true }));
+    expect(verbose).toContain('sby01 - (*) Physical standby database');
+    expect(verbose).toContain('(*) Fast-Start Failover target');
+    const plain = renderPlain(showConfiguration(doc));
+    expect(plain).not.toContain('(*)');
+  });
+
+  it('draws a member no active route reaches under "Members Not Receiving Redo:" (GEN-12)', () => {
+    const prm = db('prm01', ['dc1-prm01'], 'primary', {
+      redoRoutes: [{ source: 'LOCAL', groups: [{ dests: [{ target: memberId('sby01') }] }] }],
+    });
+    const sby01 = db('sby01', ['dc2-sby01'], 'physical', { logXptMode: 'SYNC' });
+    const sby02 = db('sby02', ['dc3-sby02'], 'physical', { logXptMode: 'SYNC' });
+    const doc = build({
+      sites: ['dc1', 'dc2', 'dc3'],
+      hosts: [['dc1-prm01', 'dc1'], ['dc2-sby01', 'dc2'], ['dc3-sby02', 'dc3'], ['dc3-obs01', 'dc3']],
+      members: [prm, sby01, sby02],
+      observers: [observer('obs01', 'dc3-obs01')],
+      targets: [sby01.id],
+    });
+    const text = renderPlain(showConfiguration(doc));
+    expect(text).toContain('Members Not Receiving Redo:');
+    const lines = text.split('\n');
+    const headingAt = lines.findIndex((l) => l.includes('Members Not Receiving Redo:'));
+    const sby02At = lines.findIndex((l) => l.includes('sby02 -'));
+    expect(sby02At).toBeGreaterThan(headingAt);
+  });
+
+  it('prints Ping Interval / Ping Retry after Threshold under 26ai only (ED-06)', () => {
+    const base = classicDoc();
+    const doc19c: TopologyDoc = {
+      ...base,
+      config: { ...base.config, fsfo: { ...base.config.fsfo, pingIntervalMs: 100, pingRetry: 10 } },
+    };
+    expect(renderPlain(showFastStartFailover(doc19c))).not.toContain('Ping Interval');
+
+    const doc26ai: TopologyDoc = { ...doc19c, config: { ...doc19c.config, edition: '26ai' } };
+    const text = renderPlain(showFastStartFailover(doc26ai));
+    expect(text).toContain('Ping Interval:');
+    expect(text).toContain('Ping Retry:');
+  });
+
+  it('prints the Configurable Failover Conditions block (GEN-11)', () => {
+    const text = renderPlain(showFastStartFailover(classicDoc()));
+    expect(text).toContain('Configurable Failover Conditions');
+    expect(text).toContain('Health Conditions:');
+    expect(text).toContain('Corrupted Controlfile   YES');
+    expect(text).toContain('Inaccessible Logfile    NO');
+    expect(text).toContain('Oracle Error Conditions:');
+  });
+
+  it('Observer Reconnect and Potential Targets print even at the default / for a single target (GEN-11)', () => {
+    const text = renderPlain(showFastStartFailover(classicDoc()));
+    expect(text).toContain('Observer Reconnect:   (none)');
+    expect(text).toContain('Potential Targets:');
+  });
+
+  it('prints "(not in use)" for an ungated lag limit, not "(not evaluated in this mode)" (GEN-10)', () => {
+    const text = renderPlain(showFastStartFailover(classicDoc()));
+    expect(text).toContain('(not in use)');
+    expect(text).not.toContain('not evaluated in this mode');
+  });
+});
+
+describe('FastStartFailoverLagLimit follows the broker default until it is set (ED-03)', () => {
+  /** The classic document with the property not set, read under `edition` and `mode`. */
+  const unset = (edition: '19c' | '26ai', mode: TopologyDoc['config']['protectionMode']): TopologyDoc => {
+    const base = classicDoc();
+    const { lagLimitSet: _dropped, ...fsfo } = base.config.fsfo;
+    return {
+      ...base,
+      config: { ...base.config, edition, protectionMode: mode, fsfo: { ...fsfo, lagLimitSeconds: 30 } },
+    };
+  };
+  const setTo = (doc: TopologyDoc, v: number): TopologyDoc => ({
+    ...doc,
+    config: { ...doc.config, fsfo: { ...doc.config.fsfo, lagLimitSeconds: v, lagLimitSet: true } },
+  });
+  const SET = 'EDIT CONFIGURATION SET PROPERTY FastStartFailoverLagLimit';
+  const lagLines = (doc: TopologyDoc): Line[] =>
+    generateDgmgrl(doc).lines.filter((l) => lineText(l).includes('FastStartFailoverLagLimit'));
+
+  it('emits no SET PROPERTY for a limit that was never set, in any edition or mode', () => {
+    for (const edition of ['19c', '26ai'] as const) {
+      for (const mode of ['MAXPERFORMANCE', 'MAXAVAILABILITY', 'MAXPROTECTION'] as const) {
+        const text = renderPlain(generateDgmgrl(unset(edition, mode)));
+        expect(text, `${edition} ${mode}`).not.toContain(SET);
+      }
+    }
+  });
+
+  it('names the default in force instead', () => {
+    expect(renderPlain(generateDgmgrl(unset('26ai', 'MAXAVAILABILITY'))))
+      .toContain('FastStartFailoverLagLimit is not set -- the 26ai broker default in maximum availability mode is 0 seconds');
+    expect(renderPlain(generateDgmgrl(unset('26ai', 'MAXAVAILABILITY')))).toContain('ZERO DATA LOSS');
+    expect(renderPlain(generateDgmgrl(unset('19c', 'MAXPERFORMANCE'))))
+      .toContain('FastStartFailoverLagLimit is not set -- the broker default in maximum performance mode is 30 seconds');
+    expect(renderPlain(generateDgmgrl(unset('26ai', 'MAXPROTECTION'))))
+      .toContain('FastStartFailoverLagLimit is not used in maximum protection mode');
+  });
+
+  it('emits the command for a limit that was set, and the bounded-loss note under 26ai', () => {
+    const doc = setTo(unset('26ai', 'MAXAVAILABILITY'), 10);
+    const text = renderPlain(generateDgmgrl(doc));
+    expect(text).toContain(`${SET} = 10;`);
+    expect(text).toContain('POTENTIAL DATA LOSS');
+    expect(renderPlain(generateDgmgrl(setTo(unset('19c', 'MAXPERFORMANCE'), 30)))).toContain(`${SET} = 30;`);
+  });
+
+  it('carries the 19c maximum availability disagreement as a conflict, in Oracle\'s spelling', () => {
+    for (const doc of [unset('19c', 'MAXAVAILABILITY'), setTo(unset('19c', 'MAXAVAILABILITY'), 45)]) {
+      const notes = lagLines(doc).filter((l) => l.kind === 'note');
+      const c = notes.find((l) => l.basis === 'conflict');
+      expect(c).toBeDefined();
+      expect(c?.cite).toEqual(['FSFO.LAGLIMIT_ZERO_MAXAVAIL_19C', 'FSFO.LAGLIMIT_MAXPERF_ONLY_19C']);
+      expect(lineText(c as Line)).toContain('"(not in use)"');
+      expect(c?.note ?? '').not.toBe('');
+    }
+    const all = [
+      ...['19c', '26ai'].flatMap((e) => ['MAXPERFORMANCE', 'MAXAVAILABILITY', 'MAXPROTECTION']
+        .map((m) => unset(e as '19c' | '26ai', m as TopologyDoc['config']['protectionMode']))),
+    ];
+    for (const doc of all) expect(renderPlain(generateDgmgrl(doc))).not.toContain('not evaluated');
+  });
+
+  it('SHOW FAST_START FAILOVER prints the limit in force: 26ai zero-loss prints 0 bare, 19c prints 30 (not in use)', () => {
+    const v26 = renderPlain(showFastStartFailover(unset('26ai', 'MAXAVAILABILITY')));
+    expect(v26).toContain('Fast-Start Failover: Enabled in Zero Data Loss Mode');
+    expect(v26).toMatch(/Lag Limit: +0 seconds\n/);
+    const v19 = renderPlain(showFastStartFailover(unset('19c', 'MAXAVAILABILITY')));
+    expect(v19).toContain('Fast-Start Failover: Enabled in Zero Data Loss Mode');
+    expect(v19).toMatch(/Lag Limit: +30 seconds \(not in use\)/);
+    const bounded = renderPlain(showFastStartFailover(setTo(unset('26ai', 'MAXAVAILABILITY'), 10)));
+    expect(bounded).toContain('Fast-Start Failover: Enabled in Potential Data Loss Mode');
+    expect(bounded).toMatch(/Lag Limit: +10 seconds\n/);
   });
 });

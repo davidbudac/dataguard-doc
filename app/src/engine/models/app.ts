@@ -21,13 +21,16 @@
  */
 
 import { NOMINAL } from '../defaults';
-import { instanceKey } from '../net/graph';
-import type { HostId, MemberId, Seconds } from '../ids';
+import type { HostId, MemberId, Seconds, SiteId } from '../ids';
+import { buildReachability, hostUp, initialNetState, instanceKey, netFromSummary } from '../net/graph';
+import type { Reachability } from '../net/graph';
 import type { Claim } from '../types/claims';
 import { documented, model } from '../types/claims';
+import type { AnyState } from '../types/events';
 import type {
-  ClientAddress, ClientDescriptor, Host, Site, TopologyDoc,
+  Application, ClientAddress, ClientDescriptor, Host, Site, TopologyDoc,
 } from '../types/topology';
+import { declaredPrimary } from '../types/topology';
 import type { Epoch, Lane, Segment, Trace } from '../types/trace';
 import type { AxisSpec } from './axis';
 import { fixedAxis, secondsAxis } from './axis';
@@ -71,10 +74,31 @@ export interface AppAttempt {
   ok: boolean;
 }
 
-export type NoEventKind = 'observer-lost' | 'switchover-refused' | 'continues' | 'stalled';
+export type NoEventKind =
+  | 'observer-lost' | 'switchover-refused' | 'continues' | 'stalled'
+  /** The application's own host went down and never came back: nobody is dialling. */
+  | 'app-down';
+
+/**
+ * One stretch of the run over which the application's picture does not change:
+ * whether it is running, which member publishes the service where it can
+ * reach it, and which member publishes it at all.
+ */
+export interface AppSpan {
+  t0: Seconds;
+  /** null on the last span: it runs to the horizon. */
+  t1: Seconds | null;
+  appUp: boolean;
+  /** The member publishing the service at an address the application reaches. */
+  serving: MemberId | null;
+  /** That member's state -- a STALLED primary still publishes. */
+  servingState: AnyState | null;
+  /** A member publishing the service at a listed address, reachable or not. */
+  published: MemberId | null;
+}
 
 export interface AppClaims {
-  /** Where the engine places the application tier, which is not in the topology. */
+  /** Where the descriptor is dialled from: the application's host, or outside every site. */
   vantage: Claim<string>;
   /** The three nominal costs. */
   nominal: Claim<string>;
@@ -117,6 +141,18 @@ export interface AppModel {
   horizon: Seconds;
   preRoll: Seconds;
   tickStep: Seconds;
+  /** Where the application stands; null when the document has no application. */
+  placed: { host: HostId; site: SiteId } | null;
+  /** When the application's own host first went down; null when it never did. */
+  appDownAt: Seconds | null;
+  /** The run as the application sees it, stretch by stretch. */
+  spans: AppSpan[];
+  /**
+   * The configuration as declared, before anything was injected: what the
+   * pre-roll of a drawing shows. A trace opens on its first event, so its
+   * first span is already the failure.
+   */
+  steady: Omit<AppSpan, 't0' | 't1'>;
   claims: AppClaims;
 }
 
@@ -133,6 +169,16 @@ export interface AppModel {
 const VANTAGE = model<string>(
   'the application tier sits outside every site',
   "APP.CLIENT_VANTAGE: clients are not in the topology, so the engine treats an address as dialable when its host is up and its site still has an up link to a live site. A fully isolated site drops the packets -- which is why an isolated primary costs a TRANSPORT_CONNECT_TIMEOUT even when the dead-address toggle says the OS would refuse. Under an explicit partition event the trace records only that the network was partitioned, not which side the application tier is on.",
+);
+
+/**
+ * With the application drawn on a host of its own, the question is asked of
+ * the same network the databases and the observers live on: an address answers
+ * when the application's host can reach that host.
+ */
+const placedVantage = (host: string, site: string): Claim<string> => model<string>(
+  `the application dials from ${host} in ${site}`,
+  "APP.CLIENT_PLACED: an address is dialable when its host is up and the application's host reaches it -- inside one data centre always, across two only over a link between them that is up, because no host here forwards traffic for another. An address the application cannot reach at all drops the packets and costs a TRANSPORT_CONNECT_TIMEOUT, whatever the dead-address toggle says. While the application's own host is down nothing is dialled.",
 );
 
 const NOMINAL_COSTS = model<string>(
@@ -182,8 +228,13 @@ class TraceReader {
   private readonly memberByHost = new Map<string, MemberId>();
   private readonly instanceByHost = new Map<string, string>();
   private readonly laneByMember = new Map<string, Lane>();
+  private readonly reach = new Map<string, Reachability>();
+  /** The application's card, when the document has one standing on a host. */
+  readonly app: Application | null;
 
   constructor(private readonly doc: TopologyDoc, private readonly trace: Trace) {
+    const a = doc.application;
+    this.app = a && doc.hosts.some((h) => h.id === a.host) ? a : null;
     for (const h of doc.hosts) this.hostById.set(h.id as string, h);
     for (const s of doc.sites) this.siteById.set(s.id as string, s);
     for (const m of doc.members) {
@@ -236,15 +287,59 @@ class TraceReader {
     return net.downHosts.has(host as string) || net.downSites.has(h.site as string);
   }
 
+  /** Is the application itself running? Always, when it is not in the topology. */
+  appUp(t: Seconds): boolean {
+    return this.app === null || !this.hostDown(this.app.host, t);
+  }
+
   /**
-   * Is this address dialable at all? Up, and in a site that still has a way
-   * out -- see VANTAGE.
+   * Is this address dialable at all? Up, and either reached by the
+   * application's host or -- with no application drawn -- in a site that
+   * still has a way out. See VANTAGE and `placedVantage`.
    */
   dialable(host: HostId, t: Seconds): boolean {
     if (this.hostDown(host, t)) return false;
     const h = this.hostById.get(host as string);
     if (!h) return false;
+    if (this.app !== null) {
+      return this.appUp(t) && this.reachAt(t, null).reachable(this.app.host, host);
+    }
     return this.siteHasWayOut(h.site as string, this.netAt(t));
+  }
+
+  /**
+   * Would the application's packets arrive were this host up? A dead host
+   * behind a severed link cannot refuse anything: there is nobody on the far
+   * side of the cut to answer. With no application drawn the answer is yes,
+   * which leaves the dead-address toggle deciding, as it always has.
+   */
+  pathTo(host: HostId, t: Seconds): boolean {
+    if (this.app === null) return true;
+    if (!this.appUp(t)) return false;
+    return this.reachAt(t, host).reachable(this.app.host, host);
+  }
+
+  /** Reachability in the epoch at `t`, optionally with one host brought back. */
+  private reachAt(t: Seconds, revive: HostId | null): Reachability {
+    const e = this.epochAt(t);
+    const key = `${e ? e.t0 : 'none'}|${revive === null ? '' : revive as string}`;
+    const hit = this.reach.get(key);
+    if (hit) return hit;
+    const net = netFromSummary(e?.net ?? { downHosts: [], downSites: [], downLinks: [], partitioned: false, downInstances: [] });
+    if (revive !== null) {
+      (net.downHosts as Set<HostId>).delete(revive);
+      const site = this.hostById.get(revive as string)?.site;
+      if (site !== undefined) (net.downSites as Set<SiteId>).delete(site);
+    }
+    const r = buildReachability(this.doc, net);
+    this.reach.set(key, r);
+    return r;
+  }
+
+  /** The state a member's lane is in at `t`. */
+  stateOf(member: MemberId, t: Seconds): AnyState | null {
+    const lane = this.laneByMember.get(member as string);
+    return lane ? this.segmentAt(lane, t)?.state ?? null : null;
   }
 
   private siteHasWayOut(site: string, net: NetAt): boolean {
@@ -322,8 +417,15 @@ export function computeApp(
     : Infinity;
   const facts = trace.facts;
 
+  const appHost = reader.app === null
+    ? undefined : doc.hosts.find((h) => h.id === reader.app?.host);
+  const placed = reader.app !== null && appHost !== undefined
+    ? { host: appHost.id, site: appHost.site } : null;
   const claims: AppClaims = {
-    vantage: VANTAGE, nominal: NOMINAL_COSTS, timeouts: TIMEOUTS, retry: RETRY,
+    vantage: placed !== null && appHost !== undefined
+      ? placedVantage(appHost.name, doc.sites.find((x) => x.id === appHost.site)?.name ?? (appHost.site as string))
+      : VANTAGE,
+    nominal: NOMINAL_COSTS, timeouts: TIMEOUTS, retry: RETRY,
     refusal: REFUSAL, singleIp: SINGLE_IP,
     ...(client.loadBalance ? { loadBalance: LOAD_BALANCE } : {}),
   };
@@ -334,7 +436,10 @@ export function computeApp(
      which is why an isolated primary costs a full transport timeout even with
      the toggle set to RST. */
   const classify = (a: ClientAddress, t: Seconds): DialKind => {
-    if (reader.hostDown(a.host, t)) return client.deadBehaviour === 'drop' ? 'timeout' : 'rst';
+    if (reader.hostDown(a.host, t)) {
+      if (!reader.pathTo(a.host, t)) return 'timeout';
+      return client.deadBehaviour === 'drop' ? 'timeout' : 'rst';
+    }
     if (!reader.dialable(a.host, t)) return 'timeout';
     return reader.publishing(a.host, t) ? 'establish' : 'refuse';
   };
@@ -349,11 +454,57 @@ export function computeApp(
   };
 
   /* When the client loses the read-write service; null = it never does. */
-  const serving = (t: Seconds): boolean =>
-    addresses.some((a) => reader.dialable(a.host, t) && reader.publishing(a.host, t));
+  const serving = (t: Seconds): boolean => reader.appUp(t)
+    && addresses.some((a) => reader.dialable(a.host, t) && reader.publishing(a.host, t));
   const bounds = reader.boundaries();
   let lost: Seconds | null = null;
   for (const t of bounds) { if (!serving(t)) { lost = t; break; } }
+
+  let appDownAt: Seconds | null = null;
+  for (const t of bounds) { if (!reader.appUp(t)) { appDownAt = t; break; } }
+
+  /* The run stretch by stretch, merged where nothing the application can see
+     changed between two instants. */
+  const spans: AppSpan[] = [];
+  bounds.forEach((t, i) => {
+    const up = reader.appUp(t);
+    const reached = up
+      ? addresses.find((a) => reader.dialable(a.host, t) && reader.publishing(a.host, t))
+      : undefined;
+    const anywhere = addresses.find((a) => !reader.hostDown(a.host, t) && reader.publishing(a.host, t));
+    const servingId = reached ? reader.memberOn(reached.host) : null;
+    const span: AppSpan = {
+      t0: t, t1: bounds[i + 1] ?? null, appUp: up,
+      serving: servingId,
+      servingState: servingId === null ? null : reader.stateOf(servingId, t),
+      published: anywhere ? reader.memberOn(anywhere.host) : null,
+    };
+    const prev = spans[spans.length - 1];
+    if (prev && prev.appUp === span.appUp && prev.serving === span.serving
+      && prev.servingState === span.servingState && prev.published === span.published) {
+      prev.t1 = span.t1;
+    } else {
+      spans.push(span);
+    }
+  });
+  /* The steady state, read off the document: the declared primary publishes,
+     and the application reaches it over the links as they are declared. */
+  const primaryId = declaredPrimary(doc);
+  const net0 = initialNetState(doc);
+  const reach0 = buildReachability(doc, net0);
+  const listed = (h: HostId): boolean => addresses.some((a) => a.host === h);
+  const primaryHosts = (doc.members.find((m) => m.id === primaryId)?.instances ?? [])
+    .map((i) => i.host).filter((h) => listed(h) && hostUp(doc, net0, h));
+  const reached0 = reader.app === null
+    ? primaryHosts.length > 0
+    : primaryHosts.some((h) => reach0.reachable(reader.app?.host ?? h, h));
+  const steady = {
+    appUp: true,
+    serving: reached0 ? primaryId : null,
+    servingState: reached0 ? 'open-rw' as const : null,
+    published: primaryHosts.length > 0 ? primaryId : null,
+  };
+  const shape = { placed, appDownAt, spans, steady };
 
   const noEvent = (kind: NoEventKind): AppModel => {
     const axis = fixedAxis(60);
@@ -366,17 +517,28 @@ export function computeApp(
       refuse: REFUSE, estab: ESTAB, rst: RST,
       passCost: 0, tService: null, attempts: [], tConn: null, gaveUp: null,
       startAt: 0, worst: 0, retryCost: 0, clipped: false,
-      ...axisFields(axis), claims,
+      ...axisFields(axis), ...shape, claims,
     };
   };
+
+  /* With the application on a host of its own the question is what that host
+     can see, so the outcome only names the kind of quiet: whenever the service
+     stayed in its reach nothing happened to it, and whenever it did not there
+     is a ladder to draw, whatever the broker decided. */
+  if (placed !== null && lost === null) {
+    if (facts.outcome === 'observer-lost') return noEvent('observer-lost');
+    if (facts.outcome === 'switchover' && facts.blocked) return noEvent('switchover-refused');
+    if (placed === null && facts.outcome === 'stall-noone') return noEvent('stalled');
+    return noEvent('continues');
+  }
 
   /* Observer lost: nothing fails over, so there is no connection story at all.
      The descriptor never has to move, address 1 answers as always, and no
      established session is touched. Same shape, every field neutral. */
-  if (facts.outcome === 'observer-lost') return noEvent('observer-lost');
+  if (placed === null && facts.outcome === 'observer-lost') return noEvent('observer-lost');
 
   /* The broker refused the command, so nothing ever moved. */
-  if (facts.outcome === 'switchover' && facts.blocked) return noEvent('switchover-refused');
+  if (placed === null && facts.outcome === 'switchover' && facts.blocked) return noEvent('switchover-refused');
 
   /* A STALLED primary still runs its listener and still publishes the
      service, so a new connection is accepted exactly as before. The outage
@@ -388,7 +550,11 @@ export function computeApp(
      shape of every cell where the configuration simply carries on. */
   if (lost === null) return noEvent('continues');
 
-  const startAt = lost;
+  /* An application that is down dials nothing: the worst-case request is the
+     first one it makes once its host is back, and there is none if it never is. */
+  let startAt: Seconds | null = null;
+  for (const t of bounds) { if (t >= lost && reader.appUp(t)) { startAt = t; break; } }
+  if (startAt === null) return { ...noEvent('app-down'), startAt: lost };
 
   /* The worst-case traversal: every address answers, none of them connects.
      An address that would establish right now is charged a refusal, because
@@ -455,7 +621,7 @@ export function computeApp(
     addresses: plans, d1, drop, refuse: REFUSE, estab: ESTAB, rst: RST,
     passCost, tService, attempts, tConn, gaveUp, startAt, worst, retryCost,
     clipped: end > axis.horizon,
-    ...axisFields(axis), claims,
+    ...axisFields(axis), ...shape, claims,
   };
 }
 

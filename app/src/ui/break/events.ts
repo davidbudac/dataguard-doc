@@ -15,16 +15,19 @@
  *    so selecting three cards offers exactly what all three can do.
  */
 
-import { scenarioEvents } from '@/engine';
-import type { ClassicScenario, HostId, TimedEvent, TopologyDoc } from '@/engine';
+import { scenarioEvents, stateAt } from '@/engine';
+import type { ClassicScenario, DatabaseMember, HostId, TimedEvent, TopologyDoc } from '@/engine';
 import { hasApplyInstance, isDatabase } from '@/engine';
 import { withEvents } from '@/state/doc';
 import { topology, trace } from '@/state/derived';
 import { edit } from '@/state/history';
-import { tNow } from '@/state/view';
+import { appLanesShown, playing, tNow, toast } from '@/state/view';
 import { lastInterestingT } from '@/ui/timeline/build';
 import type { WhyState } from '../common/WhyPill';
+import type { CanvasTool, ToolIconName } from '../canvas/HoverTools';
 import { off, ON, WHY } from '../inspector/why';
+
+import { eventTimeRefusal, reorderRefusal, snapEventTime } from './event-order';
 
 /* ---------------- names ---------------- */
 
@@ -176,6 +179,9 @@ export function anythingDownUnder(doc: TopologyDoc, key: string, t: number): boo
   if (doc.observers.some((o) => (o.id as string) === key)) {
     return isDownAt(doc, { kind: 'observer', id: key }, t);
   }
+  if (doc.application !== undefined && (doc.application.id as string) === key) {
+    return isDownAt(doc, { kind: 'host', id: doc.application.host as string }, t);
+  }
   if (doc.links.some((l) => (l.id as string) === key)) {
     return isDownAt(doc, { kind: 'link', id: key }, t);
   }
@@ -220,6 +226,40 @@ const heldByHost = (doc: TopologyDoc, host: HostId, at: number): string | null =
     ? `${hostName(doc, host)} is down: restore the host first.`
     : null);
 
+/**
+ * A database the broker itself shut down: FastStartFailoverPmyShutdown on a
+ * stalled primary, or maximum protection with no standby left to acknowledge.
+ * No injected event names it, so the literal reading calls it up -- but the
+ * run has it aborted, and the drawing shows it so.
+ */
+export const ABORTED_BY_BROKER =
+  'The broker has already shut it down at this point on the clock.';
+export const NO_RESTART_AFTER_ABORT =
+  'The broker shut it down. Restarting a database the broker shut down is not modelled on this page.';
+
+/** The run's own state for a member at `at`, when the trace is this document's. */
+const simMemberState = (doc: TopologyDoc, key: string, at: number): string | undefined => {
+  const t = trace.value;
+  if (t === null || doc !== topology.value) return undefined;
+  return (stateAt(t, at).members as Record<string, string>)[key];
+};
+
+/**
+ * Whether the run shows this member, at `at`, as the primary a role change
+ * has already replaced -- read off the trace's own facts (`newPrimary`) and
+ * its own per-instant state (`simMemberState`), never recomputed here.
+ * REINSTATE DATABASE is offered on the strength of this alone: a database
+ * that is still the primary in the drawing at this instant, still holds the
+ * role for the whole run, or never held it, is not what a reinstatement is
+ * for.
+ */
+const isFormerPrimary = (doc: TopologyDoc, member: DatabaseMember, at: number): boolean => {
+  const t = trace.value;
+  if (t === null || doc !== topology.value) return false;
+  if (member.role !== 'primary' || t.facts.newPrimary === null || t.facts.newPrimary === member.id) return false;
+  return simMemberState(doc, member.id as string, at) !== 'open-rw';
+};
+
 /** Every action the one selected object offers at `at`. */
 export function actionsForKey(doc: TopologyDoc, key: string, at: number): EventAction[] {
   const out: EventAction[] = [];
@@ -230,6 +270,9 @@ export function actionsForKey(doc: TopologyDoc, key: string, at: number): EventA
   const primary = doc.members.find((m) => isDatabase(m) && m.role === 'primary');
 
   if (member) {
+    /* Aborted by the broker and not by any event: shutting it down again is
+       nothing, and starting it is outside what the run models. */
+    const aborted = simMemberState(doc, key, at) === 'aborted';
     const hosts = member.instances.map((i) => i.host);
     const first = hosts[0];
     const allDown = hosts.length > 0 && hosts.every((h) => isDownAt(doc, { kind: 'host', id: h as string }, at));
@@ -262,7 +305,7 @@ export function actionsForKey(doc: TopologyDoc, key: string, at: number): EventA
           id: `instance.down:${inst.name}`,
           label: `SHUTDOWN ABORT the instance ${inst.name}`,
           plural: 'SHUTDOWN ABORT the instance',
-          enabled: down ? off(WHY.alreadyDown) : ON,
+          enabled: down ? off(WHY.alreadyDown) : aborted ? off(ABORTED_BY_BROKER) : ON,
           events: [{ at, kind: 'instance.down', member: member.id, instance: inst.name }],
         });
         const held = heldByHost(doc, inst.host, at);
@@ -270,7 +313,8 @@ export function actionsForKey(doc: TopologyDoc, key: string, at: number): EventA
           id: `instance.up:${inst.name}`,
           label: `Start the instance ${inst.name}`,
           plural: 'Start the instance',
-          enabled: held !== null ? off(held) : (down ? ON : off(WHY.nothingDown)),
+          enabled: held !== null ? off(held) : down ? ON
+            : aborted ? off(NO_RESTART_AFTER_ABORT) : off(WHY.nothingDown),
           events: [{ at, kind: 'instance.up', member: member.id, instance: inst.name }],
         });
       }
@@ -295,14 +339,15 @@ export function actionsForKey(doc: TopologyDoc, key: string, at: number): EventA
         id: 'member.down',
         label: `SHUTDOWN ABORT ${key}`,
         plural: 'SHUTDOWN ABORT the database',
-        enabled: down ? off(WHY.alreadyDown) : ON,
+        enabled: down ? off(WHY.alreadyDown) : aborted ? off(ABORTED_BY_BROKER) : ON,
         events: [{ at, kind: 'member.down', member: member.id }],
       });
       out.push({
         id: 'member.up',
         label: `Start ${key}`,
         plural: 'Start the database',
-        enabled: held !== null ? off(held) : (down ? ON : off(WHY.nothingDown)),
+        enabled: held !== null ? off(held) : down ? ON
+          : aborted ? off(NO_RESTART_AFTER_ABORT) : off(WHY.nothingDown),
         events: [{ at, kind: 'member.up', member: member.id }],
       });
     }
@@ -325,27 +370,40 @@ export function actionsForKey(doc: TopologyDoc, key: string, at: number): EventA
       });
     }
     if (isDatabase(member) && member.role !== 'primary') {
+      /* The engine refuses SWITCHOVER TO a down target, and refuses it while
+         the primary is down -- the broker verifies both databases before it
+         converts either. FAILOVER TO refuses only a down target: the primary
+         being down is exactly the case a failover is for. Neither check here
+         is the engine's connectivity gate (the two being unable to reach each
+         other): that reading is not one of this file's own helpers, so the
+         menu still offers the command and the run itself refuses it. */
+      const targetDown = isDownAt(doc, { kind: 'member', id: key }, at);
+      const primaryDown = primary !== undefined
+        && isDownAt(doc, { kind: 'member', id: primary.id as string }, at);
       out.push({
         id: 'cmd.switchover',
         label: `SWITCHOVER TO ${key}`,
         plural: 'Switch over',
-        enabled: primary ? ON : off(WHY.noTarget),
+        enabled: !primary ? off(WHY.noTarget)
+          : targetDown ? off(WHY.switchoverTargetDown)
+            : primaryDown ? off(WHY.switchoverPrimaryDown) : ON,
         events: [{ at, kind: 'cmd.switchover', to: member.id }],
       });
       out.push({
         id: 'cmd.failover',
         label: `FAILOVER TO ${key}`,
         plural: 'Fail over',
-        enabled: primary ? ON : off(WHY.noTarget),
+        enabled: !primary ? off(WHY.noTarget)
+          : targetDown ? off(WHY.failoverTargetDown) : ON,
         events: [{ at, kind: 'cmd.failover', to: member.id }],
       });
     }
     if (isDatabase(member)) {
       out.push({
         id: 'cmd.reinstate',
-        label: `REINSTATE ${key}`,
+        label: `REINSTATE DATABASE ${key}`,
         plural: 'Reinstate',
-        enabled: ON,
+        enabled: isFormerPrimary(doc, member, at) ? ON : off(WHY.notFormerPrimary),
         events: [{ at, kind: 'cmd.reinstate', member: member.id }],
       });
       const running = member.applyRunning;
@@ -370,6 +428,29 @@ export function actionsForKey(doc: TopologyDoc, key: string, at: number): EventA
         ),
       });
     }
+  }
+
+  /* The application is its host: crashing the host is the one thing that
+     happens to it, and it decides nothing about what the configuration does. */
+  const app = doc.application !== undefined && (doc.application.id as string) === key
+    ? doc.application : undefined;
+  if (app) {
+    const hDown = isDownAt(doc, { kind: 'host', id: app.host as string }, at);
+    const hostHeld = heldBySite(doc, app.host, at);
+    out.push({
+      id: 'host.down',
+      label: `Crash ${hostName(doc, app.host)}`,
+      plural: 'Crash the hosts',
+      enabled: hDown ? off(WHY.alreadyDown) : ON,
+      events: [{ at, kind: 'host.down', host: app.host }],
+    });
+    out.push({
+      id: 'host.up',
+      label: `Restore ${hostName(doc, app.host)}`,
+      plural: 'Restore the hosts',
+      enabled: hostHeld !== null ? off(hostHeld) : (hDown ? ON : off(WHY.nothingDown)),
+      events: [{ at, kind: 'host.up', host: app.host }],
+    });
   }
 
   if (observer) {
@@ -530,9 +611,102 @@ export function actionsForKey(doc: TopologyDoc, key: string, at: number): EventA
       enabled: down ? ON : off(WHY.nothingDown),
       events: [{ at, kind: 'site.up', site: site.id }],
     });
+    /* Isolating is the classic "isolated" scenario aimed at this data centre:
+       every site link that touches it is cut, and the data centre itself keeps
+       running. Reconnecting heals whichever of those links are down now. */
+    const own = doc.links.filter((l) => l.scope === 'site' && (l.ends as readonly string[]).includes(key));
+    const open = own.filter((l) => !isDownAt(doc, { kind: 'link', id: l.id as string }, at));
+    const shut = own.filter((l) => isDownAt(doc, { kind: 'link', id: l.id as string }, at));
+    out.push({
+      id: 'site.isolate',
+      label: `Isolate ${site.name}`,
+      plural: 'Isolate the sites',
+      enabled: own.length === 0
+        ? off('No link leaves this data centre, so there is nothing to cut.')
+        : open.length === 0 ? off(WHY.alreadyDown) : ON,
+      events: open.map((l) => ({ at, kind: 'link.cut', link: l.id }) as TimedEvent),
+    });
+    out.push({
+      id: 'site.reconnect',
+      label: `Reconnect ${site.name}`,
+      plural: 'Reconnect the sites',
+      enabled: shut.length === 0 ? off(WHY.nothingDown) : ON,
+      events: shut.map((l) => ({ at, kind: 'link.heal', link: l.id }) as TimedEvent),
+    });
   }
 
   return out;
+}
+
+/* ---------------- the icons on hover ---------------- */
+
+type HoverTool = CanvasTool;
+type ToolIcon = ToolIconName;
+
+/**
+ * The few actions worth an icon on the thing under the pointer, in Break.
+ *
+ * Read off `actionsForKey` rather than beside it, so an icon and the menu row
+ * it abbreviates share one label and one refusal. Each pair of opposites is one
+ * slot: the way down while the thing is up, the way back once it is down --
+ * grey with its reason as its title when that way back is refused.
+ */
+export function hoverTools(doc: TopologyDoc, key: string, at: number): CanvasTool[] {
+  const all = actionsForKey(doc, key, at);
+  const find = (id: string): EventAction | undefined => all.find((a) => a.id === id);
+  const tool = (a: EventAction, icon: ToolIcon): HoverTool => ({
+    id: a.id, icon, label: a.label, enabled: a.enabled, run: () => runAction(a),
+  });
+  const pair = (downId: string, downIcon: ToolIcon, upId: string, upIcon: ToolIcon): HoverTool | null => {
+    const d = find(downId);
+    const u = find(upId);
+    /* Down already: the slot is the way back, even when that is refused --
+       "restore the site first" says more than "it is already down". */
+    const isDown = d !== undefined && d.enabled.state === 'off'
+      && (d.enabled.why === WHY.alreadyDown || d.enabled.why === ABORTED_BY_BROKER);
+    if (u && (isDown || (u.enabled.state === 'on' && (!d || d.enabled.state === 'off')))) return tool(u, upIcon);
+    if (d) return tool(d, downIcon);
+    return u ? tool(u, upIcon) : null;
+  };
+  /* A RAC database has no member-wide shutdown in the table, only one per
+     instance: its icon folds them into one entry, one undo. */
+  const perInstance = (prefix: 'instance.down' | 'instance.up', label: string, why: WhyState): EventAction | undefined => {
+    const each = all.filter((a) => a.id.startsWith(`${prefix}:`));
+    if (each.length === 0) return undefined;
+    const live = each.filter((a) => a.enabled.state === 'on');
+    return {
+      id: prefix,
+      label,
+      plural: label,
+      enabled: live.length > 0 ? ON : (each[0]?.enabled ?? why),
+      events: live.flatMap((a) => a.events),
+    };
+  };
+
+  const out: (HoverTool | null)[] = [];
+  const member = doc.members.find((m) => (m.id as string) === key);
+  if (member) {
+    const rac = perInstance('instance.down', `SHUTDOWN ABORT every instance of ${key}`, off(WHY.alreadyDown));
+    if (rac) {
+      const up = perInstance('instance.up', `Start every instance of ${key}`, off(WHY.nothingDown));
+      all.push(rac, ...(up ? [up] : []));
+      out.push(pair('instance.down', 'shutdown', 'instance.up', 'startup'));
+    } else {
+      out.push(pair('member.down', 'shutdown', 'member.up', 'startup'));
+    }
+    out.push(pair('host.down', 'crash', 'host.up', 'restore'));
+  } else if (doc.observers.some((o) => (o.id as string) === key)) {
+    out.push(pair('observer.stop', 'stop', 'observer.start', 'start'));
+    out.push(pair('host.down', 'crash', 'host.up', 'restore'));
+  } else if ((doc.application?.id as string | undefined) === key) {
+    out.push(pair('host.down', 'crash', 'host.up', 'restore'));
+  } else if (doc.links.some((l) => (l.id as string) === key)) {
+    out.push(pair('link.cut', 'cut', 'link.heal', 'heal'));
+  } else if (doc.sites.some((st) => (st.id as string) === key)) {
+    out.push(pair('site.down', 'crash', 'site.up', 'restore'));
+    out.push(pair('site.isolate', 'isolate', 'site.reconnect', 'reconnect'));
+  }
+  return out.filter((t): t is HoverTool => t !== null);
 }
 
 /**
@@ -544,7 +718,7 @@ export function actionsForKey(doc: TopologyDoc, key: string, at: number): EventA
  * `:name` suffix taken off first.
  */
 const RESTORE_IDS: readonly string[] = [
-  'host.up', 'member.up', 'instance.up', 'site.up', 'link.heal', 'observer.start',
+  'host.up', 'member.up', 'instance.up', 'site.up', 'site.reconnect', 'link.heal', 'observer.start',
 ];
 
 export const isRestore = (a: EventAction): boolean =>
@@ -636,7 +810,7 @@ export function actionsFor(doc: TopologyDoc, keys: readonly string[], at: number
 export function restPlayhead(): void {
   const t = trace.value;
   if (t === null) { tNow.value = 0; return; }
-  const end = lastInterestingT(t, topology.value.events);
+  const end = lastInterestingT(t, topology.value.events, appLanesShown.value ? topology.value : undefined);
   /* A tenth of a second, the way the axis is read (EventMenu's `snapT`). */
   tNow.value = Math.max(0, Math.round(end * 10) / 10);
 }
@@ -767,10 +941,30 @@ export function removeEventAt(index: number): void {
   ));
 }
 
-export function setEventTime(index: number, at: number): void {
+export function setEventTime(index: number, at: number, expected?: TimedEvent): number | null {
+  const current = topology.value;
+  if (expected && current.events[index] !== expected) return null;
+  at = snapEventTime(at);
+  const why = eventTimeRefusal(current, index, at);
+  if (why) { toast.value = { kind: 'warn', text: why }; return null; }
+  if (current.events[index]?.at === at) return index;
+  playing.value = false;
+  const moved = { ...current.events[index]!, at };
   edit(`Move an injected event to t = ${at} s`, (d) => withEvents(
-    d, d.topology.events.map((e, i) => (i === index ? { ...e, at } : e)),
-  ), `event-at:${index}`);
+    d, d.topology.events.map((e, i) => (i === index ? moved : e)),
+  ));
+  return topology.value.events.indexOf(moved);
+}
+
+export function reorderEvent(index: number, direction: -1 | 1): void {
+  const current = topology.value;
+  const why = reorderRefusal(current, index, direction);
+  if (why) { toast.value = { kind: 'warn', text: why }; return; }
+  playing.value = false;
+  const at = current.events[index]!.at;
+  const neighborAt = current.events[index + direction]!.at;
+  edit('Reorder injected events', (d) => withEvents(d, d.topology.events.map((e, i) =>
+    i === index ? { ...e, at: neighborAt } : i === index + direction ? { ...e, at } : e)));
 }
 
 /* ---------------- words ---------------- */
@@ -793,7 +987,7 @@ export function describeEvent(doc: TopologyDoc, e: TimedEvent): string {
     case 'observer.start': return `Start the observer ${e.observer as string}`;
     case 'cmd.switchover': return `SWITCHOVER TO ${e.to as string}`;
     case 'cmd.failover': return `FAILOVER TO ${e.to as string}${e.immediate === true ? ' IMMEDIATE' : ''}`;
-    case 'cmd.reinstate': return `REINSTATE ${e.member as string}`;
+    case 'cmd.reinstate': return `REINSTATE DATABASE ${e.member as string}`;
     case 'cmd.setMasterObserver': return `SET MASTEROBSERVER TO ${e.observer as string}`;
     case 'cmd.setApplyInstance': return `Move apply on ${e.member as string} to ${e.instance}`;
     case 'cmd.disableFsfo':

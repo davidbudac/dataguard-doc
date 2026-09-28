@@ -17,23 +17,33 @@
 
 import type { JSX } from 'preact';
 import type { NodeBox, StackBox } from './layout';
+import { approxW, MINI_ICON } from './measure';
+import { MiniIcon } from './NodeCard';
 
 export interface StackChassisProps {
   stack: StackBox;
   /** Every blade's own box, keyed the same way `Geometry.byKey` is. */
   byKey: Record<string, NodeBox>;
   interactive: boolean;
+  /** The id prefix of the drawing's `<defs>`, for the host icon. */
+  prefix: string;
   /** A press on the header: the same "move the whole stack" gesture a press
       on any one of its blades already starts. */
   onHeaderPointerDown?: (topKey: string, ev: JSX.TargetedPointerEvent<SVGGElement>) => void;
   /** A single card is being dragged over this stack's host: it says so the
       way an empty data centre panel does (`SiteRect`'s `is-drop`). */
   dropTarget?: boolean;
+  /** A lone card is in the air: `maybe` where this host would take it, `dim`
+      where it cannot, `no` where the pointer is on it and it refuses. */
+  hint?: 'maybe' | 'no' | 'dim' | null;
 }
 
 export function StackChassis(props: StackChassisProps): JSX.Element | null {
   const { stack, byKey } = props;
-  const blades = stack.memberKeys.map((k) => byKey[k]).filter((n): n is NodeBox => n !== undefined);
+  /* The blades inside the frame: one lifted out and carried away is drawn
+     on its own, and no divider is left behind for it. */
+  const blades = stack.memberKeys.map((k) => byKey[k])
+    .filter((n): n is NodeBox => n !== undefined && n.y >= stack.y && n.y + n.h <= stack.y + stack.h);
   if (blades.length === 0) return null;
   const topKey = stack.memberKeys[0] as string;
   const headerBottom = stack.y + stack.headerH;
@@ -48,14 +58,15 @@ export function StackChassis(props: StackChassisProps): JSX.Element | null {
   const r = 6;
   return (
     <g
-      class="tp-stack"
+      class={`tp-stack${props.hint === 'dim' ? ' is-dim' : ''}`}
       aria-hidden="true"
       onPointerDown={props.interactive
         ? (ev) => props.onHeaderPointerDown?.(topKey, ev)
         : undefined}
     >
       <rect
-        class={`tp-stack-frame${props.dropTarget ? ' is-drop' : ''}`}
+        class={`tp-stack-frame${props.dropTarget ? ' is-drop'
+          : props.hint === 'no' ? ' is-drop-no' : props.hint === 'maybe' ? ' is-can-drop' : ''}`}
         x={stack.x} y={stack.y} width={stack.w} height={stack.h} rx={r}
       />
       <path
@@ -63,9 +74,14 @@ export function StackChassis(props: StackChassisProps): JSX.Element | null {
         d={`M${stack.x},${headerBottom} v-${stack.headerH - r} a${r},${r} 0 0 1 ${r},-${r} `
           + `h${stack.w - 2 * r} a${r},${r} 0 0 1 ${r},${r} v${stack.headerH - r} z`}
       />
+      <MiniIcon
+        prefix={props.prefix} kind="host"
+        x={stack.x + stack.w / 2 - (approxW(stack.label, 10.5, true) + stack.label.length * 0.42) / 2 - MINI_ICON.gap / 2 - MINI_ICON.size / 2}
+        baseline={stack.y + stack.headerH / 2 + 3.5}
+      />
       <text
         class="tp-stack-hd-tx"
-        x={stack.x + stack.w / 2}
+        x={stack.x + stack.w / 2 + MINI_ICON.gap / 2}
         y={stack.y + stack.headerH / 2 + 3.5}
         text-anchor="middle"
       >

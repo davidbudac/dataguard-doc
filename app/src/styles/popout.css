@@ -1,0 +1,41 @@
+/* A part popped out into a window of its own (ui/common/popout.tsx): Break's
+   timeline panel, or the drawing. The popup carries copies of every stylesheet
+   the page has, so the part keeps its floating-layout look; the rules here only
+   take away what floated it over something else -- the header it sat under,
+   the palette and the rail it made room for -- and let it fill the window.
+
+   The same file styles the pop-out buttons and the note left behind in the
+   main window. */
+
+/* ---------------- the buttons ---------------- */
+
+.po-ico{display:block;width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:1.5;
+  stroke-linecap:round;stroke-linejoin:round}
+.zoom-pill .po-ico{width:13px;height:13px}
+/* Beside the full-screen button, at the end of the timeline panel's head row. */
+.app.is-float.m-break .dock-status .po-btn{flex:0 0 auto;margin-right:-8px}
+/* After the dots on the zoom pill, which float.css orders by position. */
+.app.is-float .zoom-pill .cv-zoom>.po-btn{order:5}
+.po-btn[aria-pressed="true"]{color:var(--vi)}
+
+/* ---------------- the note left behind ---------------- */
+
+.po-away p{margin:0}
+.po-away .btn{margin:2px 4px 0 0}
+
+/* ---------------- inside the popup ---------------- */
+
+.po-host{display:contents}
+
+/* The timeline panel is the whole window. */
+.app.is-float.po .app-dock,
+.app.is-float.m-break.po .app-dock.has-tl{position:absolute;inset:0;height:auto;min-height:0;
+  max-height:none;border:0;border-radius:0;box-shadow:none}
+
+/* The drawing has the window to itself: no header above it, no rail beside it,
+   no dock below -- only the zoom pill in the corner, and Build's palette. */
+.app.is-float.po .app-stage>.tp-wrap{padding:18px 18px 64px}
+.app.is-float.po.m-build .app-stage>.tp-wrap{padding-left:calc(var(--pal-r,96px) + 16px)}
+.app.is-float.po .app-stage>.empty{top:18px;left:18px;right:18px}
+.app.is-float.po .palette{top:var(--float-m);max-height:calc(100dvh - 2 * var(--float-m))}
+.app.is-float.po .zoom-pill{right:var(--float-m);bottom:var(--float-m)}

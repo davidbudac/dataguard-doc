@@ -31,7 +31,7 @@ import {
   patchInstance, removeInstance, shipRedo, transportForMode,
 } from '@/ui/inspector/edits';
 import { actionsForKey, runAction } from '@/ui/break/events';
-import { farSyncFixture } from './canvas-fixtures';
+import { farSyncFixture, priorityFixture } from './canvas-fixtures';
 
 const tick = (): Promise<void> => new Promise((r) => setTimeout(r, 0));
 /* Long enough for preact to flush the effects it defers past the paint. */
@@ -186,6 +186,17 @@ describe('shipRedo: a line from one member to another', () => {
     expect(rules[0]!.groups[0]!.dests.map((d) => d.target)).toEqual([memberId('sby01'), id]);
     shipRedo(memberId('fs1'), id);
     expect(toast.value?.text).toContain('already ships');
+  });
+
+  it('a line drawn from a member whose active rule is one parenthesised group ships, not stands by', () => {
+    /* A group has one active redo path, so joining it would only put the new
+       destination on standby: the line becomes an entry of its own. */
+    resetHistory({ ...docSignal.value, topology: priorityFixture() });
+    const id = addDatabase()!;
+    shipRedo(memberId('prm01'), id);
+    const groups = member('prm01').redoRoutes[0]!.groups;
+    expect(groups[0]!.dests.map((d) => d.target)).toEqual([memberId('sby01'), memberId('sby02')]);
+    expect(groups.at(-1)).toEqual({ dests: [{ target: id }] });
   });
 
   it('"+ Standby" under a primary with RedoRoutes of its own joins the active rule, so it is reached', () => {

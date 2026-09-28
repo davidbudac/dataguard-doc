@@ -1,40 +1,67 @@
 /**
- * Destinations across epochs: REOPEN, MaxFailure and the alternate latch.
+ * Destinations across epochs: REOPEN, MaxFailure, the alternate latch and
+ * the choice inside a RedoRoutes group.
  *
- * Three documented rules and one idealization live here, and the idealization
- * is labelled where it is used rather than hidden inside the arithmetic:
+ * The documented rules and the one idealization live here, and the
+ * idealization is labelled where it is used rather than hidden inside the
+ * arithmetic:
  *
  *  - `REOPEN` gates eligibility and the log switch supplies the trigger: redo
  *    transport retries a failed destination at log switch time, once the last
  *    error plus `REOPEN` is less than now. This engine draws the retries at
  *    exact `ReopenSecs` multiples, which is a model of that sentence (the same
  *    idealization the reopen panel carries, footnote 4).
- *  - `MaxFailure` counts CONSECUTIVE attempts to reestablish the destination.
- *    At the limit the destination is disabled with no further access until it
- *    is MANUALLY reenabled -- the network healing does not bring it back.
+ *  - `MaxFailure` counts CONSECUTIVE failures, and the two editions count
+ *    them differently. 19c keeps the 12.1 notes: the count is of attempts to
+ *    REESTABLISH the destination, so the initial error is not one of them, and
+ *    at the limit "the destination is disabled and there is no further access
+ *    until the destination is manually reenabled". 26ai rewrote the notes:
+ *    "If MAX_FAILURE is set to 1, no attempts are made to reactivate this
+ *    archive destination when it fails", so the initial failure counts, and at
+ *    the limit "no further attempts are made to reactivate the archive
+ *    destination". Either way the network healing does not bring it back.
  *    Whether a successful reopen resets the counter is not documented; this
  *    engine resets it and says so.
- *  - The one documented exception is a 12.2+ GROUP/PRIORITY destination, which
- *    re-enters service when it is found accessible.
- *
- * The alternate's FALLBACK keyword is documented as grammar (12.1 broker
- * chapter 4). What the two spellings do afterwards -- the named destination
- * coming back with FALLBACK, the alternate staying in service without it -- is
- * not a sentence anywhere that was verified, so it is this engine's reading and
- * every run that takes it says so.
+ *  - The documented exception is a destination in a RedoRoutes group (a
+ *    GROUP/PRIORITY destination underneath), which re-enters service when it
+ *    is found accessible. Inside a group MaxFailure also defaults to 1, not 0.
+ *  - The 12.1 `ALT=( ... FALLBACK)` form: "The optional FALLBACK keyword is
+ *    used to specify that redo transport to the non-alternate member should be
+ *    resumed if it becomes available"; without it the alternate stays in
+ *    service, and if it then fails "no redo will be shipped to the terminal
+ *    standby databases serviced by the alternate destination". The latch is
+ *    carried here; the FALLBACK return is the resolver's.
+ *  - Among destinations of equal priority in a group the primary stays where
+ *    it is ("Even after FS1 becomes active again, the primary continues
+ *    shipping to FS2"), so the choice each group made is carried from one
+ *    epoch to the next.
  */
 
-import type { MemberId, Seconds } from '../ids';
+import type { Edition, MemberId, Seconds } from '../ids';
 import type { Finding } from '../types/claims';
 import type { DestProps, Member, RouteAlternate, TopologyDoc } from '../types/topology';
+import type { RedoGraph } from '../types/trace';
 import { destProps } from '../types/topology';
 import { defaultDestProps } from '../serialize/schema';
-import { activeRule, destKey } from '../redo/resolve';
+import { isParenthesised } from '../redo/parse';
+import { activeRule, destKey, expandAll } from '../redo/resolve';
 
 export { destKey };
 
 /** The destination's own properties, or the broker defaults where it has none. */
-const propsOf = (m: Member, to: MemberId): DestProps => destProps(m, to) ?? defaultDestProps();
+const propsOf = (m: Member, to: MemberId, inGroup: boolean): DestProps =>
+  destProps(m, to) ?? defaultDestProps({ inGroup });
+
+/**
+ * How many failed attempts to reestablish a destination end it, or null when
+ * MaxFailure is 0 and they never do. 19c counts attempts after the initial
+ * error, so it is MaxFailure; 26ai counts the initial failure too, so it is
+ * one fewer -- MAX_FAILURE=1 is no retry at all.
+ */
+export function retryLimit(props: DestProps, edition: Edition): number | null {
+  if (props.maxFailure <= 0) return null;
+  return edition === '26ai' ? props.maxFailure - 1 : props.maxFailure;
+}
 
 /** One authored destination of the rule that is active for this primary. */
 export interface AuthoredDest {
@@ -42,9 +69,12 @@ export interface AuthoredDest {
   from: MemberId;
   to: MemberId;
   props: DestProps;
-  /** The destination was written in a parenthesised PRIORITY group. */
+  /** The destination was written in a parenthesised RedoRoutes group. */
   inPriorityGroup: boolean;
   alt?: RouteAlternate;
+  edition: Edition;
+  /** `retryLimit(props, edition)`: failed reopen attempts that end the destination. */
+  retryLimit: number | null;
 }
 
 /**
@@ -55,19 +85,20 @@ export interface AuthoredDest {
  */
 export function authoredDests(doc: TopologyDoc, primary: MemberId): AuthoredDest[] {
   const out: AuthoredDest[] = [];
+  const edition = doc.config.edition;
   for (const m of doc.members) {
     if (!m.enabled) continue;
     const act = activeRule(m, primary);
     if (!act) continue;
     for (const g of act.rule.groups) {
-      const inPriorityGroup = g.explicitGroup === true || g.priority !== undefined;
       for (const d of g.dests) {
-        const targets: MemberId[] = d.target === 'ALL'
-          ? doc.members.filter((x) => x.enabled && x.id !== m.id && x.id !== primary).map((x) => x.id)
-          : [d.target];
+        const inPriorityGroup = isParenthesised(g) && d.target !== 'ALL';
+        const targets: MemberId[] = d.target === 'ALL' ? expandAll(doc, m.id, primary) : [d.target];
         for (const to of targets) {
+          const props = propsOf(m, to, inPriorityGroup);
           const e: AuthoredDest = {
-            key: destKey(m.id, to), from: m.id, to, props: propsOf(m, to), inPriorityGroup,
+            key: destKey(m.id, to), from: m.id, to, props, inPriorityGroup,
+            edition, retryLimit: retryLimit(props, edition),
           };
           if (d.target !== 'ALL' && d.alt) e.alt = d.alt;
           out.push(e);
@@ -76,6 +107,17 @@ export function authoredDests(doc: TopologyDoc, primary: MemberId): AuthoredDest
     }
   }
   return out;
+}
+
+/**
+ * The destination each parenthesised group is shipping to, carried into the
+ * next epoch: a group that chose this epoch overrides what it chose before,
+ * and one that could not choose (nothing usable) keeps its last choice.
+ */
+export function carryGroupChoice(
+  prev: Readonly<Record<string, MemberId>>, graph: RedoGraph,
+): Record<string, MemberId> {
+  return { ...prev, ...(graph.groupChoice ?? {}) };
 }
 
 /**
@@ -90,21 +132,31 @@ export function failedAttempts(downSince: Seconds, at: Seconds, reopenSeconds: S
 }
 
 /** When the counter reaches MaxFailure, in this engine's retry ladder. */
-export function disableAt(downSince: Seconds, props: DestProps): Seconds | null {
-  if (props.maxFailure <= 0) return null;
-  return downSince + props.maxFailure * Math.max(1, props.reopenSeconds || 0);
+export function disableAt(
+  downSince: Seconds, props: DestProps, edition: Edition = '19c',
+): Seconds | null {
+  const limit = retryLimit(props, edition);
+  if (limit === null) return null;
+  return downSince + limit * Math.max(1, props.reopenSeconds || 0);
 }
 
 /* ---------------- findings ---------------- */
 
 export const maxFailureDisabled = (
   d: AuthoredDest, at: Seconds, fromName: string, toName: string,
-): Finding => ({
-  id: 'DEST.MAX_FAILURE_DISABLED', severity: 'warning', basis: 'documented',
-  cite: ['DEST.MAX_FAILURE'],
-  subject: { kind: 'member', id: d.to as string },
-  message: `${fromName} has disabled the destination to ${toName} at ${at} s: MaxFailure is ${d.props.maxFailure}, and that many consecutive attempts to reestablish it have failed. There is no further access to the destination until it is manually reenabled -- the network healing does not bring it back, and the destination is then treated as if REOPEN had not been specified.`,
-});
+): Finding => (d.edition === '26ai'
+  ? {
+    id: 'DEST.MAX_FAILURE_DISABLED', severity: 'warning', basis: 'documented',
+    cite: ['DEST.MAX_FAILURE_26AI', 'DEST.MAX_FAILURE'],
+    subject: { kind: 'member', id: d.to as string },
+    message: `${fromName} has given up on the destination to ${toName} at ${at} s: MaxFailure is ${d.props.maxFailure}, and under 26ai the initial failure counts, so ${d.props.maxFailure === 1 ? 'no attempt is made to reactivate it' : `the ${d.props.maxFailure - 1} reactivation attempt${d.props.maxFailure - 1 === 1 ? '' : 's'} after it failed too`}. No further attempts are made to reactivate the destination -- the network healing does not bring it back.`,
+  }
+  : {
+    id: 'DEST.MAX_FAILURE_DISABLED', severity: 'warning', basis: 'documented',
+    cite: ['DEST.MAX_FAILURE', 'DEST.MAX_FAILURE_DISABLED_19C'],
+    subject: { kind: 'member', id: d.to as string },
+    message: `${fromName} has disabled the destination to ${toName} at ${at} s: MaxFailure is ${d.props.maxFailure}, and that many consecutive attempts to reestablish it have failed. There is no further access to the destination until it is manually reenabled -- the network healing does not bring it back, and the destination is then treated as if REOPEN had not been specified.`,
+  });
 
 export const groupReenters = (
   d: AuthoredDest, fromName: string, toName: string,
@@ -136,9 +188,8 @@ export const maxFailureResetUndoc = (
 export const alternateLatched = (
   d: AuthoredDest, fromName: string, toName: string, altName: string,
 ): Finding => ({
-  id: 'ROUTES.ALT_LATCHED', severity: 'info', basis: 'model',
-  cite: ['ROUTES.GRAMMAR_121', 'ROUTES.ALT_MAXFAILURE'],
+  id: 'ROUTES.ALT_LATCHED', severity: 'info', basis: 'documented',
+  cite: ['ROUTES.FALLBACK_121', 'ROUTES.GRAMMAR_121'],
   subject: { kind: 'route', id: d.from as string },
-  message: `${fromName} declares the alternate to ${altName} without FALLBACK, so this run keeps shipping there even after ${toName} is reachable again.`,
-  note: 'The grammar is documented -- ALT=(name [xpt] [FALLBACK]) -- and the keyword is what tells the two spellings apart. What each one does afterwards is not stated on any page that was verified, so this engine reads FALLBACK as "the named destination returns once it is usable again" and its absence as "the alternate stays in service until someone changes it", and says so wherever it acts on it.',
+  message: `${fromName} declares the alternate to ${altName} without FALLBACK, so it keeps shipping there even after ${toName} is reachable again -- and if ${altName} fails, no redo is shipped to the members it serves. That is the 12.1 ALT form, which the 12.2, 19c and 26ai grammar no longer carries.`,
 });

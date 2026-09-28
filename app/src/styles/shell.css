@@ -11,10 +11,8 @@
 .app{
   display:grid;
   height:100dvh;
-  /* Capped and centred, with the page ground showing in the gutters: at 1440
-     the shell ran edge to edge and the eye had no line to come back to. The
-     cap is the drawing's, not a fashion -- a 1+1+1 topology is ~1040 px wide,
-     and a rail beside it wants 360. */
+  /* Use desktop width for the drawing and timeline; the inspector keeps its
+     own width and prose keeps its local reading measure. */
   max-width:var(--w-app);
   margin-inline:auto;
   border-inline:1px solid var(--ln);
@@ -39,10 +37,13 @@
 .app.m-configure{grid-template-rows:auto fit-content(26vh) minmax(0,1fr)}
 /* Build is the drawing's mode: the stage takes the room and the dock takes
    its content, capped -- the other way round, a healthy preset rendered a
-   drawing at 60 % over an empty band under six folded notes. Break keeps the
-   fit-content stage: the timeline is the point of that mode. */
+   drawing at 60 % over an empty band under six folded notes. */
 .app.m-build{grid-template-rows:auto minmax(260px,1fr) minmax(0,auto)}
 .app.m-build .app-dock{max-height:46vh}
+/* Break gives spare height to the topology instead of leaving it below the
+   timeline. Dense runs scroll within a capped dock; playback stays sticky. */
+.app.m-break{grid-template-rows:auto minmax(260px,1fr) minmax(0,auto)}
+.app.m-break .app-dock{max-height:56vh}
 /* Configure's dock is the mode's main surface, so it takes the whole track;
    the 64vh cap below is for docks that share the height with the canvas. */
 .app.m-configure .app-dock{max-height:none}
@@ -130,6 +131,9 @@
 .topbar-group .seg button{font-size:10.5px;padding:4px 9px;letter-spacing:.08em}
 .topbar-group .btn{font-size:10.5px;padding:5px 10px;color:var(--ik3)}
 .topbar-group .btn:hover:not(:disabled){color:var(--ik)}
+.topbar-group .theme-picker{background:var(--sf);max-width:15ch}
+.topbar-group .btn.is-icon{padding:0;font-size:17px;border-color:transparent}
+.topbar-group .btn.is-icon:hover:not(:disabled){border-color:var(--ln2)}
 
 /* ---------------- status bar ---------------- */
 
@@ -169,7 +173,7 @@
    own -- the band above used to carry the same idea as a second line. */
 .guide{display:flex;flex-direction:column;gap:0;background:var(--sf);
   border-bottom:1px solid var(--ln)}
-.guide-line{padding:10px var(--gut);font-size:12px;line-height:1.5;color:var(--ik3);
+.guide-line{padding:7px var(--gut);font-size:12px;line-height:1.5;color:var(--ik3);
   max-width:112ch}
 .guide-mode{font-weight:620;color:var(--ik2)}
 
@@ -211,6 +215,10 @@
 .btn.is-icon{width:28px;height:26px;padding:0;justify-content:center;background:var(--sf)}
 .btn.is-icon svg{display:block;width:14px;height:14px;fill:none;stroke:currentColor;
   stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+/* The palette toggle draws three of the palette's own hues, so the icon is a
+   swatch of whichever set is on. */
+.palette-tog svg circle{stroke:none}
+.palette-tog .pal-a{fill:var(--tl)}.palette-tog .pal-b{fill:var(--bl)}.palette-tog .pal-c{fill:var(--am)}
 @media (prefers-reduced-motion:no-preference){
   .btn{transition:background-color .16s ease,color .16s ease,border-color .16s ease}}
 
@@ -330,14 +338,17 @@
 .issue-b .mono{font-size:12px;color:var(--ik)}
 .issue-id{font-family:var(--mono);font-size:10px;letter-spacing:.1em;color:var(--ik3);
   grid-column:2}
-.issue.sv-error{border-left:3px solid var(--rd)}
-.issue.sv-warning{border-left:3px solid var(--am)}
-.issue.sv-info{border-left:3px solid var(--ln2)}
+/* Severity is the tag at the head of the row (Error / Warning / Info, in the
+   tone tokens.css gives it), not a thick left border: on a rounded card a
+   3 px left border curves into a wedge at the corners. An error row also
+   takes a faint wash of its colour, so it still reads first in a long list. */
+.issue.sv-error{background:color-mix(in srgb,var(--rd) 5%,var(--sf))}
+.issue.sv-warning{background:color-mix(in srgb,var(--am) 5%,var(--sf))}
 /* The fold. Information is never an alarm, so the toggle is slate and quiet,
    and what it hides is genuinely absent from the document until it is open. */
 .notes-tog{display:flex;align-items:center;gap:10px;width:100%;text-align:left;
   padding:11px var(--gut);background:var(--sf);border:0;border-bottom:1px solid var(--ln);
-  border-left:3px solid var(--ln2);cursor:pointer;
+  cursor:pointer;
   font-family:var(--mono);font-size:11.5px;letter-spacing:.04em;color:var(--ik2)}
 .notes-tog:hover{background:var(--sf2);color:var(--ik)}
 .notes-caret{color:var(--ik3);width:9px}
@@ -392,9 +403,9 @@
   .app{border-inline:0}
 }
 @media (max-width:767px){
-  .app,.app.m-build,.app.m-configure,.app.m-learn{height:auto;min-height:100dvh;overflow:visible;
+  .app,.app.m-build,.app.m-break,.app.m-configure,.app.m-learn{height:auto;min-height:100dvh;overflow:visible;
     grid-template-rows:auto auto auto auto}
-  .app-stage,.app-dock,.app-rail,.app.m-build .app-dock{overflow:visible;max-height:none}
+  .app-stage,.app-dock,.app-rail,.app.m-build .app-dock,.app.m-break .app-dock{overflow:visible;max-height:none}
   .app.m-build .app-stage,.app.m-break .app-stage,.app.m-configure .app-stage{display:block}
   .topbar{padding:10px 14px;gap:10px}
   .topbar-spacer{display:none}

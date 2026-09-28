@@ -14,7 +14,7 @@
 import type { ComponentChildren } from 'preact';
 import { BOUNDS, clamp } from '@/engine';
 import type { BoundKey } from '@/engine';
-import { Field } from '../common/Field';
+import { Field, fitsBeside, textPx } from '../common/Field';
 import { Segmented } from '../common/Segmented';
 import type { SegmentedOption } from '../common/Segmented';
 import { WhyPill } from '../common/WhyPill';
@@ -59,8 +59,13 @@ export function Group(
  * (ui.md SS3, "on paper the panels stack").
  */
 export function Fold(
-  { id, title, hint, children }:
-  { id: string; title: string; hint?: string; children: ComponentChildren },
+  { id, title, hint, action, children }:
+  {
+    id: string; title: string; hint?: string;
+    /** Controls for the open group, beside the toggle; absent while it is folded. */
+    action?: ComponentChildren;
+    children: ComponentChildren;
+  },
 ) {
   const open = isSectionOpen(id) || printing.value;
   return (
@@ -76,6 +81,7 @@ export function Fold(
           <span class="eyebrow">{title}</span>
           {hint === undefined || open ? null : <span class="grp-sum mono">{hint}</span>}
         </button>
+        {action === undefined || !open ? null : <span class="grp-act">{action}</span>}
       </header>
       {open ? children : null}
     </section>
@@ -122,18 +128,32 @@ export interface NumProps {
   coalesce?: string;
   /** Overrides the bound's own label in the value chip. */
   unit?: string;
+  /** The name is this page's words rather than an Oracle property. */
+  prose?: boolean;
 }
 
+/** The width of a number box, and so of the control on a number row. */
+const NUMBER_PX = 88;
+/** The width of a text box on a row. */
+const TEXT_PX = 150;
+/** A checkbox and its TRUE/FALSE reading. */
+const CHECK_PX = 64;
+
 export function Num(
-  { name, bound, value, onChange, kind = 'range', note, warn, enabled = ON, unit }: NumProps,
+  { name, bound, value, onChange, kind = 'range', note, warn, enabled = ON, unit, prose }: NumProps,
 ) {
   const b = BOUNDS[bound];
   const off = enabled.state === 'off';
   const shown = unit ?? (b.unit === 'count' || b.unit === 'port' ? '' : b.unit);
+  /* A slider takes the width under its name, its reading beside the name. A
+     number box is its own reading, so it sits beside the name instead. */
+  const row = kind === 'number' && fitsBeside(name, prose === true, NUMBER_PX);
   return (
     <Field
       name={name}
-      value={`${value}${shown === '' ? '' : ` ${shown}`}`}
+      prose={prose}
+      layout={row ? 'row' : 'stack'}
+      value={kind === 'number' ? undefined : `${value}${shown === '' ? '' : ` ${shown}`}`}
       note={note}
       warn={warn}
       enabled={enabled}
@@ -170,6 +190,7 @@ export interface TextProps {
   mono?: boolean;
   /** When `focusField` holds this key, the input takes the focus once. */
   focusKey?: string;
+  prose?: boolean;
 }
 
 /**
@@ -177,7 +198,7 @@ export interface TextProps {
  * reference in the document, and half a name is not a document.
  */
 export function Text({
-  name, value, onCommit, placeholder, note, enabled = ON, focusKey,
+  name, value, onCommit, placeholder, note, enabled = ON, focusKey, prose,
 }: TextProps) {
   const off = enabled.state === 'off';
   const ref = useRef<HTMLInputElement | null>(null);
@@ -192,7 +213,13 @@ export function Text({
     ref.current?.select();
   }, [wanted, off]);
   return (
-    <Field name={name} note={note} enabled={enabled}>
+    <Field
+      name={name}
+      prose={prose}
+      layout={fitsBeside(name, prose === true, TEXT_PX) ? 'row' : 'stack'}
+      note={note}
+      enabled={enabled}
+    >
       <input
         ref={ref}
         class="field-in"
@@ -218,20 +245,36 @@ export interface CheckProps {
   note?: string;
   warn?: boolean;
   enabled?: WhyState;
+  prose?: boolean;
 }
 
-export function Check({ name, label, checked, onChange, note, warn, enabled = ON }: CheckProps) {
+/**
+ * A flag: the property name on the left, its reading and the box on the
+ * right. The sentence that says what ticking it means is the box's accessible
+ * name and its tooltip; the explanation proper is the note under the row.
+ */
+export function Check(
+  { name, label, checked, onChange, note, warn, enabled = ON, prose }: CheckProps,
+) {
   const off = enabled.state === 'off';
   return (
-    <Field name={name} value={checked ? 'TRUE' : 'FALSE'} note={note} warn={warn} enabled={enabled}>
-      <label class="opt">
+    <Field
+      name={name}
+      prose={prose}
+      layout={fitsBeside(name, prose === true, CHECK_PX) ? 'row' : 'stack'}
+      note={note}
+      warn={warn}
+      enabled={enabled}
+    >
+      <label class="opt is-flag" title={label}>
+        <span class="field-val">{checked ? 'TRUE' : 'FALSE'}</span>
         <input
           type="checkbox"
           checked={checked}
           disabled={off}
+          aria-label={label}
           onChange={(e) => onChange((e.currentTarget as HTMLInputElement).checked)}
         />
-        <span>{label}</span>
       </label>
     </Field>
   );
@@ -247,18 +290,29 @@ export interface ChoiceProps<T extends string> {
   note?: string;
   warn?: boolean;
   enabled?: WhyState;
+  prose?: boolean;
 }
 
-/** A segmented control with a property name over it. */
+/** The width a segmented control of these labels takes (11 px mono). */
+const segPx = (labels: readonly string[]): number =>
+  labels.reduce((n, l) => n + textPx(l, 11) + 16, 0) + 2 * (labels.length - 1) + 4;
+
+/**
+ * A segmented control. Beside its name when the options are short enough
+ * (ALL | NONE), full width under it otherwise (the three protection modes),
+ * with every option taking an equal share of the row.
+ */
 export function Choice<T extends string>(
-  { name, value, options, onChange, note, warn, enabled = ON }: ChoiceProps<T>,
+  { name, value, options, onChange, note, warn, enabled = ON, prose }: ChoiceProps<T>,
 ) {
+  const layout = fitsBeside(name, prose === true, segPx(options.map((o) => o.label)))
+    ? 'row' : 'stack';
   /* A field that is off as a whole says why once, on the field. Only a
      per-option restriction -- FASTSYNC outside maximum availability -- gets a
      pill of its own, which is what `Segmented` draws. */
   if (enabled.state === 'off') {
     return (
-      <Field name={name} note={note} warn={warn} enabled={enabled}>
+      <Field name={name} prose={prose} layout={layout} note={note} warn={warn} enabled={enabled}>
         <div class="seg" role="group" aria-label={name}>
           {options.map((o) => (
             <button key={o.value} type="button" aria-pressed={o.value === value} disabled>
@@ -270,7 +324,7 @@ export function Choice<T extends string>(
     );
   }
   return (
-    <Field name={name} note={note} warn={warn} enabled={enabled}>
+    <Field name={name} prose={prose} layout={layout} note={note} warn={warn} enabled={enabled}>
       <Segmented label={name} value={value} options={options} onChange={onChange} />
     </Field>
   );
@@ -296,8 +350,16 @@ export interface PickProps {
 /** A drop-down, for lists too long to segment: hosts, members, sites. */
 export function Pick({ name, value, options, onChange, note, enabled = ON, prose }: PickProps) {
   const off = enabled.state === 'off';
+  /* A drop-down is as wide as its longest option, plus the arrow. */
+  const widest = options.reduce((n, o) => Math.max(n, textPx(o.label, 12)), 0) + 36;
   return (
-    <Field name={name} prose={prose} note={note} enabled={enabled}>
+    <Field
+      name={name}
+      prose={prose}
+      layout={fitsBeside(name, prose === true, widest) ? 'row' : 'stack'}
+      note={note}
+      enabled={enabled}
+    >
       <select
         class="field-in"
         value={value}

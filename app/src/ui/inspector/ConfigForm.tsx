@@ -14,7 +14,7 @@
 import { useLayoutEffect } from 'preact/hooks';
 import { BOUNDS } from '@/engine';
 import type { FsfoConfig, MemberId, RoutePriority, TopologyDoc } from '@/engine';
-import { hostId, isDatabase } from '@/engine';
+import { hostId, isDatabase, lagLimitIsSet, lagLimitOf } from '@/engine';
 import { errors } from '@/state/derived';
 import { Fact } from '../common/Chip';
 import { Action, Check, Choice, Fold, Note, Num, Pick, Text } from './controls';
@@ -36,15 +36,22 @@ export function ConfigForm({ doc }: ConfigFormProps) {
   const perf = c.protectionMode === 'MAXPERFORMANCE';
   const avail = c.protectionMode === 'MAXAVAILABILITY';
   const pingSet = f.pingIntervalMs !== null && f.pingRetry !== null;
+  /* The limit in force: as set, or the broker default for the edition and
+     mode being read until somebody sets it. Editing it sets it. */
+  const lagLimit = lagLimitOf(doc);
   const fsfoOn = f.state !== 'disabled';
   const databases = doc.members.filter(isDatabase);
   const targetList = f.target.kind === 'list' ? f.target.members : [];
 
-  /* 19c: a maximum performance property. 26ai: also maximum availability,
-     where 0 is the broker default and means zero data loss. */
+  /* 19c: a maximum performance property, and 19c disagrees with itself about
+     whether it reaches maximum availability at all -- this page follows the
+     observed 19.27 behaviour (not evaluated there) over the chapter's "must
+     be zero" sentence. 26ai: maximum availability has the role too, where 0
+     is the broker default and means zero data loss; that role is a 21c
+     feature, not a 26ai one. */
   const lagLimitOff = perf
     ? ON
-    : (ed === '26ai' && avail ? ON : off(ed === '26ai' ? WHY.lagTypeMode : WHY.lagLimitMaxAvail19c));
+    : ((ed === '26ai' && avail) ? ON : off(ed === '26ai' ? WHY.lagTypeMode : WHY.lagLimitMaxAvail19c));
 
   const setTarget = (members: MemberId[]): void =>
     patchFsfo(
@@ -88,12 +95,12 @@ export function ConfigForm({ doc }: ConfigFormProps) {
     <>
       <Fold id="Configuration" title="Configuration" hint={c.protectionMode}>
         <Text
-          name="Name"
+          name="Name" prose
           value={c.name}
           onCommit={(v) => patchConfig('Rename the configuration', (x) => ({ ...x, name: v.trim() || x.name }))}
         />
         <Choice
-          name="Protection mode"
+          name="Protection mode" prose
           value={c.protectionMode}
           options={[
             { value: 'MAXPROTECTION', label: 'MAXPROTECTION' },
@@ -115,15 +122,19 @@ export function ConfigForm({ doc }: ConfigFormProps) {
         <Text
           name="ConfigurationWideServiceName"
           value={c.configurationWideServiceName ?? ''}
-          placeholder="not set"
+          placeholder={`not set (default ${c.name}_CFG)`}
           onCommit={(v) => patchConfig('Set ConfigurationWideServiceName', (x) => {
             const next = { ...x };
             if (v.trim() === '') delete next.configurationWideServiceName;
             else next.configurationWideServiceName = v.trim();
             return next;
           })}
-          note="One name for the configuration, as an alternative to listing every address. A later edition documents it."
+          note="One name for the configuration, as an alternative to listing every address. The default is primarydbname_CFG, documented in 12.2, 18c, 19c and 26ai alike -- never a later edition -- and does not change after a role transition."
         />
+        <Note>
+          Default primarydbname_CFG.
+          <Fact basis="documented" id="CFG.WIDE_SERVICE_NAME" />
+        </Note>
       </Fold>
 
       <Fold
@@ -131,6 +142,7 @@ export function ConfigForm({ doc }: ConfigFormProps) {
         title="PrimaryDatabaseCandidates"
         hint={candidates.length === 0 ? 'empty' : candidates.join(', ')}
       >
+        <div class="opt-list">
         {databases.map((m) => {
           const list = candidates;
           const on = list.includes(m.id);
@@ -139,6 +151,7 @@ export function ConfigForm({ doc }: ConfigFormProps) {
               <input
                 type="checkbox"
                 checked={on}
+                disabled={ed === '19c'}
                 onChange={() => patchConfig(
                   `${on ? 'Remove' : 'Add'} ${m.id as string} in PrimaryDatabaseCandidates`,
                   (x) => {
@@ -155,16 +168,23 @@ export function ConfigForm({ doc }: ConfigFormProps) {
             </label>
           );
         })}
-        <Note>
-          A fast-start-failover-disabled fence: while fast-start failover is disabled it
-          restricts <span class="mono">SWITCHOVER</span> and
-          <span class="mono"> FAILOVER</span> to the databases it lists and refuses
-          anything else with <span class="mono">ORA-16529</span>. Once fast-start failover
-          is enabled it adds nothing new, because
-          <span class="mono"> FastStartFailoverTarget</span> already governs the target.
-          The default is empty, which restricts nothing, and the broker adds the current
-          primary itself if the list omits it.
-        </Note>
+        </div>
+        {ed === '19c' ? (
+          <Note>
+            {WHY.docLater26aiObservedIn1927}
+          </Note>
+        ) : (
+          <Note>
+            A fast-start-failover-disabled fence: while fast-start failover is disabled it
+            restricts <span class="mono">SWITCHOVER</span> and
+            <span class="mono"> FAILOVER</span> to the databases it lists and refuses
+            anything else with <span class="mono">ORA-16529</span>. Once fast-start failover
+            is enabled it adds nothing new, because
+            <span class="mono"> FastStartFailoverTarget</span> already governs the target.
+            The default is empty, which restricts nothing, and the broker adds the current
+            primary itself if the list omits it.
+          </Note>
+        )}
       </Fold>
 
       <Fold
@@ -190,24 +210,68 @@ export function ConfigForm({ doc }: ConfigFormProps) {
               : "Failover needs both the observer and the target standby to have lost the primary for the threshold, plus the target standby's readiness check. This page draws ObserverOverride at FALSE, the broker default."}
         />
 
-        <div class="field">
+        {/* The target list is the one property here that is a list, so it is
+            the one field drawn by hand: its name and reading on the first
+            line, a row per target under it (the order the broker walks), then
+            the databases that could be added, and the switch to ANY last. */}
+        <div class="field is-stack">
           <div class="field-hd">
             <span class="field-name">FastStartFailoverTarget</span>
-            <span class="field-val">
-              {f.target.kind === 'ANY' ? 'ANY' : (targetList.join(', ') || 'not set')}
-            </span>
+            <span class="field-val">{targetWord}</span>
           </div>
-          <div class="rr-line">
-            <Action
-              label={f.target.kind === 'ANY' ? 'Name the targets' : 'ANY'}
-              onClick={() => patchFsfo(
-                f.target.kind === 'ANY' ? 'Name the failover targets' : 'Set FastStartFailoverTarget to ANY',
-                (x): FsfoConfig => ({
-                  ...x,
-                  target: x.target.kind === 'ANY' ? { kind: 'list', members: [] } : { kind: 'ANY' },
-                }),
-              )}
-            />
+          <div class="field-ctl">
+            {f.target.kind === 'ANY' ? null : (
+              <>
+                {targetList.map((id, i) => (
+                  <div class="rr-dest lrow" key={id as string}>
+                    <span class="lrow-k mono">{i + 1}. {id as string}</span>
+                    {/* Only the moves that exist: the first target has no
+                        "Up", exactly as the Break rail's first event has no
+                        "Earlier". */}
+                    {i === 0 ? null : <Action label="Up" onClick={() => move(i, -1)} />}
+                    {i === targetList.length - 1
+                      ? null
+                      : <Action label="Down" onClick={() => move(i, 1)} />}
+                    <Action
+                      label="Remove"
+                      onClick={() => setTarget(targetList.filter((x) => x !== id))}
+                    />
+                  </div>
+                ))}
+                {databases
+                  .filter((m) => !targetList.includes(m.id))
+                  .map((m) => (
+                    <div class="rr-dest lrow" key={`add-${m.id as string}`}>
+                      <span class="lrow-k mono">{m.id as string}</span>
+                      <Action
+                        label="Add as a target"
+                        enabled={m.role === 'primary'
+                          ? off(WHY.primaryNotTarget)
+                          : m.role === 'snapshot' ? off(WHY.snapshotNotTarget) : ON}
+                        onClick={() => setTarget([...targetList, m.id])}
+                      />
+                    </div>
+                  ))}
+                {doc.members.filter((m) => m.kind === 'farsync').map((m) => (
+                  <div class="rr-dest lrow" key={`fs-${m.id as string}`}>
+                    <span class="lrow-k mono">{m.id as string}</span>
+                    <Action label="Add as a target" enabled={off(WHY.farSyncNotTarget)} onClick={() => undefined} />
+                  </div>
+                ))}
+              </>
+            )}
+            <div class="rr-line lrow is-acts">
+              <Action
+                label={f.target.kind === 'ANY' ? 'Name the targets' : 'Set to ANY'}
+                onClick={() => patchFsfo(
+                  f.target.kind === 'ANY' ? 'Name the failover targets' : 'Set FastStartFailoverTarget to ANY',
+                  (x): FsfoConfig => ({
+                    ...x,
+                    target: x.target.kind === 'ANY' ? { kind: 'list', members: [] } : { kind: 'ANY' },
+                  }),
+                )}
+              />
+            </div>
           </div>
           {f.target.kind === 'ANY' ? (
             <FieldNote>
@@ -215,52 +279,11 @@ export function ConfigForm({ doc }: ConfigFormProps) {
               must be set explicitly for fast-start failover to be enabled.
             </FieldNote>
           ) : (
-            <>
-              {targetList.map((id, i) => (
-                <div class="rr-dest" key={id as string}>
-                  <span class="mono">{i + 1}. {id as string}</span>
-                  <Action
-                    label="Up"
-                    enabled={i === 0 ? off('It is first in the order already.') : ON}
-                    onClick={() => move(i, -1)}
-                  />
-                  <Action
-                    label="Down"
-                    enabled={i === targetList.length - 1 ? off('It is last in the order already.') : ON}
-                    onClick={() => move(i, 1)}
-                  />
-                  <Action
-                    label="Remove"
-                    onClick={() => setTarget(targetList.filter((x) => x !== id))}
-                  />
-                </div>
-              ))}
-              {databases
-                .filter((m) => !targetList.includes(m.id))
-                .map((m) => (
-                  <div class="rr-dest" key={`add-${m.id as string}`}>
-                    <span class="mono">{m.id as string}</span>
-                    <Action
-                      label="Add as a target"
-                      enabled={m.role === 'primary'
-                        ? off(WHY.primaryNotTarget)
-                        : m.role === 'snapshot' ? off(WHY.snapshotNotTarget) : ON}
-                      onClick={() => setTarget([...targetList, m.id])}
-                    />
-                  </div>
-                ))}
-              {doc.members.filter((m) => m.kind === 'farsync').map((m) => (
-                <div class="rr-dest" key={`fs-${m.id as string}`}>
-                  <span class="mono">{m.id as string}</span>
-                  <Action label="Add as a target" enabled={off(WHY.farSyncNotTarget)} onClick={() => undefined} />
-                </div>
-              ))}
-              <FieldNote>
-                The order is the order the broker walks: it takes the candidates in the
-                order the property lists them, never "the first viable one".
-                <Fact basis="model" id="FSFO.TARGET_SELECTION" />
-              </FieldNote>
-            </>
+            <FieldNote>
+              The order is the order the broker walks: it takes the candidates in the
+              order the property lists them, never "the first viable one".
+              <Fact basis="model" id="FSFO.TARGET_SELECTION" />
+            </FieldNote>
           )}
         </div>
 
@@ -279,30 +302,35 @@ export function ConfigForm({ doc }: ConfigFormProps) {
         <Num
           name="FastStartFailoverLagLimit"
           bound="lagLimitSeconds"
-          value={f.lagLimitSeconds}
+          value={lagLimit}
           coalesce="fsfo:laglimit"
           enabled={lagLimitOff}
-          warn={f.lagLimitSeconds > f.thresholdSeconds}
+          warn={lagLimit > f.thresholdSeconds}
           onChange={(v) => patchFsfo(
             `Set FastStartFailoverLagLimit to ${v} s`,
-            (x): FsfoConfig => ({ ...x, lagLimitSeconds: v }), 'fsfo:laglimit',
+            (x): FsfoConfig => ({ ...x, lagLimitSeconds: v, lagLimitSet: true }), 'fsfo:laglimit',
           )}
-          note={f.lagLimitSeconds > f.thresholdSeconds
+          note={(lagLimitIsSet(f) ? '' : 'Not set: the broker default for this edition and mode applies. ')
+            + (lagLimit > f.thresholdSeconds
             ? 'Oracle recommends the lag limit at or below the threshold: past it the old primary can keep committing after fast-start failover is initiated, briefly risking two primaries.'
             : ed === '26ai' && avail
-              ? '26ai gives maximum availability a lag limit too, with a broker default of 0 -- the standby must have received everything and the failover is zero-loss. Any non-zero value, minimum 5 s, makes it bounded-loss.'
-              : 'Default 30 s, minimum 5 s. Failover is permitted while the gated lag stays within it.'}
+              ? '26ai gives maximum availability a lag limit too, with a broker default of 0 -- the standby must have received everything and the failover is zero-loss. Any non-zero value, minimum 5 s, makes it bounded-loss. The role arrived in 21c; 26ai\'s own contribution is the per-mode default.'
+              : ed === '19c' && avail
+                ? 'Under 19c this control is greyed because the property page and the fast-start failover chapter disagree about whether it reaches maximum availability at all -- see the why-pill. Default 30 s, minimum 5 s.'
+                : 'Default 30 s, minimum 5 s. Failover is permitted while the gated lag stays within it.')}
         />
 
         <Choice
           name="FastStartFailoverLagType"
           value={f.lagType}
           options={[{ value: 'APPLY', label: 'APPLY' }, { value: 'TRANSPORT', label: 'TRANSPORT' }]}
-          enabled={gateOff(!perf, WHY.lagTypeMode)}
+          enabled={ed === '19c' ? off(WHY.docLater26aiObservedIn1927) : gateOff(!perf, WHY.lagTypeMode)}
           onChange={(v) => patchFsfo(
             `Set FastStartFailoverLagType to ${v}`, (x): FsfoConfig => ({ ...x, lagType: v }),
           )}
-          note="Under TRANSPORT the gated quantity is the transport lag, clamped to the apply lag; terminal recovery still pays the apply lag."
+          note={ed === '19c'
+            ? 'Documented from 26ai; absent from the 19c and 21c properties references. A live 19.27 system carries it regardless (SHOW FAST_START FAILOVER prints Lag Type:) -- an observation, never documentation.'
+            : 'Under TRANSPORT the gated quantity is the transport lag, clamped to the apply lag; terminal recovery still pays the apply lag.'}
         />
 
         <Num
@@ -310,20 +338,25 @@ export function ConfigForm({ doc }: ConfigFormProps) {
           bound="lagGraceTimeSeconds"
           value={f.lagGraceTimeSeconds}
           coalesce="fsfo:laggrace"
-          enabled={!fsfoOn
-            ? off(WHY.lagGraceNoFsfo)
-            : gateOff(!perf, WHY.lagGraceMode)}
+          enabled={ed === '19c'
+            ? off(WHY.docLater26aiObservedIn1927)
+            : !fsfoOn
+              ? off(WHY.lagGraceNoFsfo)
+              : gateOff(!perf, WHY.lagGraceMode)}
           onChange={(v) => patchFsfo(
             `Set FastStartFailoverLagGraceTime to ${v} s`,
             (x): FsfoConfig => ({ ...x, lagGraceTimeSeconds: v }), 'fsfo:laggrace',
           )}
-          note="The permission to keep committing while the lag is over the limit is granted by the observer or the target standby, and the property is defined only while fast-start failover is enabled."
+          note={ed === '19c'
+            ? 'Documented from 26ai; absent from the 19c and 21c properties references. A live 19.27 system carries it regardless (SHOW FAST_START FAILOVER prints Lag Grace Time:) -- an observation, never documentation.'
+            : 'The permission to keep committing while the lag is over the limit is granted by the observer or the target standby, and the property is defined only while fast-start failover is enabled.'}
         />
 
         <Check
           name="ObserverPingInterval / ObserverPingRetry"
           label="Both properties are explicitly set"
           checked={pingSet}
+          enabled={ed === '19c' ? off(WHY.pingPropsNotIn19c) : ON}
           onChange={(v) => patchFsfo(
             v ? 'Set the ObserverPing properties' : 'Leave the ObserverPing properties unset',
             (x): FsfoConfig => ({
@@ -332,14 +365,16 @@ export function ConfigForm({ doc }: ConfigFormProps) {
               pingRetry: v ? BOUNDS.pingRetry.default : null,
             }),
           )}
-          note="When both are set, the threshold is ignored for the observer's detection. That much is documented; the arithmetic below is not."
+          note={ed === '19c'
+            ? 'Neither property exists in 19c: absent from the 12.2, 18c and 19c property pages and from a live 19.27 system. First documented in 21c.'
+            : "When both are set, the threshold is ignored for the observer's detection. That much is documented; the arithmetic below is not."}
         />
         <Num
           name="ObserverPingInterval"
           bound="pingIntervalMs"
           value={f.pingIntervalMs ?? BOUNDS.pingIntervalMs.default}
           coalesce="fsfo:pingint"
-          enabled={pingSet ? ON : off(WHY.pingUnset)}
+          enabled={ed === '19c' ? off(WHY.pingPropsNotIn19c) : pingSet ? ON : off(WHY.pingUnset)}
           onChange={(v) => patchFsfo(
             `Set ObserverPingInterval to ${v} ms`,
             (x): FsfoConfig => ({ ...x, pingIntervalMs: v }), 'fsfo:pingint',
@@ -350,7 +385,7 @@ export function ConfigForm({ doc }: ConfigFormProps) {
           bound="pingRetry"
           kind="number"
           value={f.pingRetry ?? BOUNDS.pingRetry.default}
-          enabled={pingSet ? ON : off(WHY.pingUnset)}
+          enabled={ed === '19c' ? off(WHY.pingPropsNotIn19c) : pingSet ? ON : off(WHY.pingUnset)}
           onChange={(v) => patchFsfo(
             `Set ObserverPingRetry to ${v}`, (x): FsfoConfig => ({ ...x, pingRetry: v }),
           )}
@@ -367,13 +402,13 @@ export function ConfigForm({ doc }: ConfigFormProps) {
 
         <Check
           name="FastStartFailoverPmyShutdown"
-          label="A stalled primary aborts itself"
+          label="A stalled primary shuts itself down"
           checked={f.pmyShutdown}
           onChange={(v) => patchFsfo(
             `Set FastStartFailoverPmyShutdown to ${v ? 'TRUE' : 'FALSE'}`,
             (x): FsfoConfig => ({ ...x, pmyShutdown: v }),
           )}
-          note="Default TRUE: a primary stalled longer than the threshold, able to reach neither the observer nor the target standby, aborts itself."
+          note="Default TRUE: a primary stalled longer than the threshold, able to reach neither the observer nor the target standby, will shut down."
         />
         <Check
           name="FastStartFailoverAutoReinstate"
@@ -395,12 +430,11 @@ export function ConfigForm({ doc }: ConfigFormProps) {
           : `${preferred.length} host${preferred.length === 1 ? '' : 's'}`}
       >
         {preferred.map((p, i) => (
-          <div class="rr-dest" key={`${p.host as string}-${i}`}>
-            <span class="mono">{p.host as string}</span>
+          <div class="rr-dest lrow" key={`${p.host as string}-${i}`}>
+            <span class="lrow-k mono">{p.host as string}</span>
             <select
-              class="field-in"
+              class="field-in is-short"
               aria-label={`Priority for ${p.host as string}`}
-              disabled={ed !== '26ai'}
               value={String(p.priority)}
               onChange={(e) => {
                 const n = Number((e.currentTarget as HTMLSelectElement).value);
@@ -416,7 +450,6 @@ export function ConfigForm({ doc }: ConfigFormProps) {
             </select>
             <Action
               label="Remove"
-              enabled={ed === '26ai' ? ON : off(WHY.needs26ai)}
               onClick={() => patchFsfo(`Remove ${p.host as string} from PreferredObserverHosts`, (x): FsfoConfig => ({
                 ...x,
                 preferredObserverHosts: (x.preferredObserverHosts ?? []).filter((_, j) => j !== i),
@@ -428,7 +461,6 @@ export function ConfigForm({ doc }: ConfigFormProps) {
           name="Add a host"
           prose
           value=""
-          enabled={ed === '26ai' ? ON : off(WHY.needs26ai)}
           options={[
             { value: '', label: 'pick a host' },
             ...doc.hosts.map((h) => ({ value: h.id as string, label: h.name })),
@@ -445,8 +477,12 @@ export function ConfigForm({ doc }: ConfigFormProps) {
           }}
         />
         <Note>
-          Lower wins, 1 to 8, default 8. A later edition documents it.
-          <Fact basis="doc-later" id="OBS.PREFERRED_HOSTS" />
+          Lower wins, 1 to 8, default 8. Property scope is Database. Documented since 12.2 --
+          present in the 19c property pages and in a live 19.27 system, never a later edition.
+          {ed === '26ai'
+            ? ' Under 26ai the master observer is changed automatically to an observer running on a higher priority host.'
+            : ' Under 19c a change does not affect the location of the master observer until the next role change; 26ai changes it automatically instead.'}
+          <Fact basis="documented" id={ed === '26ai' ? 'OBS.PREFERRED_HOSTS_26AI' : 'OBS.PREFERRED_HOSTS'} />
         </Note>
       </Fold>
 
@@ -456,7 +492,7 @@ export function ConfigForm({ doc }: ConfigFormProps) {
         hint={`${doc.environment.roleTransitionSeconds} s role transition · ${doc.environment.redoRateMBs} MB/s`}
       >
         <Num
-          name="Role transition"
+          name="Role transition" prose
           bound="roleTransitionSeconds"
           value={doc.environment.roleTransitionSeconds}
           coalesce="env:role"
@@ -466,7 +502,7 @@ export function ConfigForm({ doc }: ConfigFormProps) {
           note="Terminal recovery, the role change and the open are environment-dependent, not parameter-driven. This is the drawing's constant for them."
         />
         <Num
-          name="Local redo write"
+          name="Local redo write" prose
           bound="localWriteMs"
           value={doc.environment.localWriteMs}
           coalesce="env:lw"
@@ -475,7 +511,7 @@ export function ConfigForm({ doc }: ConfigFormProps) {
           )}
         />
         <Num
-          name="Standby redo log write"
+          name="Standby redo log write" prose
           bound="standbyWriteMs"
           value={doc.environment.standbyWriteMs}
           coalesce="env:sbw"
@@ -485,7 +521,7 @@ export function ConfigForm({ doc }: ConfigFormProps) {
           note="What an AFFIRM standby pays before it acknowledges."
         />
         <Num
-          name="Redo rate"
+          name="Redo rate" prose
           bound="redoRateMBs"
           value={doc.environment.redoRateMBs}
           coalesce="env:rate"

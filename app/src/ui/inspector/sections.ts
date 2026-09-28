@@ -48,6 +48,8 @@ export type SectionId = (typeof SECTION_IDS)[number];
 export const SUMMARY_ID = 'Configuration summary';
 export const INSTANCES_ID = 'Instances';
 export const DESTS_ID = 'Destinations';
+/** Break's six scenarios, on the rail and on the floating palette alike. Folded to start. */
+export const SCENARIOS_ID = 'One-click scenarios';
 
 /** Configuration is the one that opens with the rail; the rest are folded. */
 export const DEFAULT_OPEN: SectionId = 'Configuration';

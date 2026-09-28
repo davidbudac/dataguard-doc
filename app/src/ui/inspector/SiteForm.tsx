@@ -23,15 +23,16 @@ export function SiteForm({ site, doc }: SiteFormProps) {
   const used = new Set<string>();
   for (const m of doc.members) for (const i of m.instances) used.add(i.host as string);
   for (const o of doc.observers) used.add(o.host as string);
+  if (doc.application) used.add(doc.application.host as string);
   const others = doc.sites.filter((s) => s.id !== site.id);
   const linked = (o: Site): boolean => doc.links.some((l) => l.scope === 'site'
     && (l.ends as [string, string]).includes(site.id as string)
     && (l.ends as [string, string]).includes(o.id as string));
   return (
     <>
-      <Group title="Data centre">
+      <Group title="General">
         <Text
-          name="Name"
+          name="Name" prose
           value={site.name}
           onCommit={(v) => mutate(`Rename ${site.id as string}`, (t) => ({
             ...t,
@@ -47,8 +48,8 @@ export function SiteForm({ site, doc }: SiteFormProps) {
         {hosts.length === 0 ? <Note always>No hosts in this data centre yet.</Note> : null}
         <div class="site-rows">
         {hosts.map((h) => (
-          <div class="rr-dest" key={h.id as string}>
-            <span class="mono">{h.name}</span>
+          <div class="rr-dest lrow" key={h.id as string}>
+            <span class="lrow-k mono">{h.name}</span>
             <span class="tag t-sl">{used.has(h.id as string) ? 'in use' : 'free'}</span>
             <Action
               label="Remove"
@@ -65,8 +66,8 @@ export function SiteForm({ site, doc }: SiteFormProps) {
         {others.length === 0 ? <Note always>{WHY_ONE_SITE}</Note> : null}
         <div class="site-rows">
         {others.map((o) => (
-          <div class="rr-dest" key={o.id as string}>
-            <span class="mono">{o.name}</span>
+          <div class="rr-dest lrow" key={o.id as string}>
+            <span class="lrow-k mono">{o.name}</span>
             {linked(o) ? (
               <span class="tag t-sl">linked</span>
             ) : (

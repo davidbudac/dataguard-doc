@@ -1,5 +1,7 @@
 /**
- * The five footnotes, ported from the legacy fragment's `.foot` block.
+ * The footnotes: the five ported from the legacy fragment's `.foot` block,
+ * plus a sixth for the 19c self-contradiction around FastStartFailoverLagLimit
+ * in MaxAvailability (ED-03).
  *
  * They say which numbers on the page are drawing constants rather than
  * documented figures -- the same job the `<Fact>` chip does inline, kept for
@@ -30,8 +32,9 @@ export const FOOTNOTES: Footnote[] = [
         >
           interval &times; (retries + 1)
         </Fact>{' '}
-        &mdash; is this page&rsquo;s model as well: the documentation states only that the threshold
-        is then ignored and that detection can be reduced to nearly one second.
+        &mdash; is this page&rsquo;s model as well. The minimum for each property is <M>100 ms</M> and{' '}
+        <M>10</M> retries, and Oracle&rsquo;s own arithmetic is left implicit: &ldquo;the detection
+        time can be reduced to nearly 1 second,&rdquo; never interval &times; (retries + 1).
       </p>
     ),
   },
@@ -81,6 +84,21 @@ export const FOOTNOTES: Footnote[] = [
         MaxAvailability behavior above; the chapter&rsquo;s <em>Task 3</em> and the closing line of
         the property page still carry the 19c sentence saying the property is used only in maximum
         performance mode. This page follows the protection-modes section.
+      </p>
+    ),
+  },
+  {
+    n: 6,
+    body: (
+      <p>
+        Under 19c, <M>FastStartFailoverLagLimit</M> in MaxAvailability is a separate, older
+        self-contradiction: the fast-start failover chapter says the property &ldquo;must be set to
+        zero&rdquo; for zero data loss there, while the property page says the property is used only
+        in MaxPerformance. A live 19.27 system in MaxAvailability prints &ldquo;Lag Limit: 30 seconds
+        (not in use)&rdquo;, which is the behaviour this page follows &mdash; the limit is not
+        evaluated in MaxAvailability under 19c. The MaxAvailability role itself is a 21c feature, not
+        a 26ai one; 26ai&rsquo;s own contribution is the per-mode default of 0 (footnote 5 is 26ai&rsquo;s
+        own, separate disagreement about the same property).
       </p>
     ),
   },

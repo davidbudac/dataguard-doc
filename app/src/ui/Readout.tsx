@@ -14,29 +14,26 @@
  * leads with the moment the drawing is at, and the run's own numbers carry a
  * group label of their own.
  *
- * The `Run` group holds the run's own chips and nothing else. Findings are the
- * validator's answer about the *configuration* -- `derived.ts` keeps the run's
- * own findings (a readiness gate that forbade a failover, an alternate that
- * activated) deliberately out of `issues` so the two are never conflated --
- * so the Findings chip sits outside the group, beside the playhead reading.
- * Under the label it would say "Run - Findings no issues" at the very moment
- * the run raised the warning that blocked the failover.
+ * Validation counts live in the header and validation panel. Keeping them out
+ * of this strip also avoids confusing configuration findings with run outcomes.
  */
 
 import { readout, topology, trace } from '@/state/derived';
 import type { ReadoutChip } from '@/state/derived';
-import { mode, tNow } from '@/state/view';
+import { appLanesShown, mode, tNow } from '@/state/view';
 /* The same formatter *and the same horizon* the playhead badge and the
    transport's time field use, so the three places that print the playhead can
    never print it differently. Sharing only the formatter was not enough:
    `?t=200` on an axis that ends at 63 s used to print 200 here and 63.25 on
    the badge. */
 import { clampToAxis, fmt } from './timeline/build';
+import { Fragment } from 'preact';
 import { Chip } from './common/Chip';
+import { showExplanation } from './break/RunExplanation';
 import '@/styles/readout.css';
 
 export function Readout() {
-  const chips = readout.value;
+  const chips = readout.value.filter((c) => c.id !== 'findings');
   /* A run exists when events have been injected, and it is drawn in the two
      modes that read the outcome at `tNow` (ui.md SS3). Build and Configure
      read the steady state, which has no playhead to speak of. */
@@ -57,14 +54,10 @@ export function Readout() {
     id: 'at',
     tone: 'ik',
     k: 'Drawing at',
-    v: `t = ${fmt(clampToAxis(tNow.value, t, topology.value.events))}`,
+    v: `t = ${fmt(clampToAxis(tNow.value, t, topology.value.events, appLanesShown.value ? topology.value : undefined))}`,
     unit: 's',
-    sub: 'The drawing above holds the state at this moment on the timeline. The chips under Run are the run as a whole. Scrub the playhead to move this one.',
+    sub: 'The drawing shows this moment on the timeline; the readings under Run describe the whole simulation. Move the playhead to inspect another moment.',
   };
-
-  /* Chip ids are stable, so the partition is by id rather than by position. */
-  const runChips = chips.filter((c) => c.id !== 'findings');
-  const docChips = chips.filter((c) => c.id === 'findings');
 
   return (
     <section class="readout" aria-label="Readout">
@@ -72,9 +65,25 @@ export function Readout() {
         <Chip chip={at} />
         <div class="ro-run" role="group" aria-label="Run">
           <span class="ro-run-k">Run</span>
-          {runChips.map((c) => <Chip key={c.id} chip={c} />)}
+          {chips.map((c) => (
+            <Fragment key={c.id}>
+              <Chip chip={c} />
+              {/* The way from the verdict to its reasons: the rail's
+                  "Why this result?" fold, opened and brought into view. */}
+              {c.id === 'outcome' ? (
+                <button
+                  type="button"
+                  class="ro-why btn is-quiet"
+                  aria-label="Why this result?"
+                  title="Why this result? The run's decisions, step by step"
+                  onClick={showExplanation}
+                >
+                  Why?
+                </button>
+              ) : null}
+            </Fragment>
+          ))}
         </div>
-        {docChips.map((c) => <Chip key={c.id} chip={c} />)}
       </div>
     </section>
   );

@@ -2,12 +2,9 @@
  * One node of the topology canvas -- the generalised `nodeCard` of the
  * published strip.
  *
- * A card is a flat bordered surface, a monochrome icon badge (database
- * cylinder, far sync cylinder with a chevron, snapshot cylinder with a shutter
- * tick, observer eye), then two or three lines of text. The cards are
- * monochrome while nothing has happened; a phase tint appears only when the
- * caller passes a frame from the trace, and red is reserved for the one thing
- * colour must say -- this component is down.
+ * Database badges use teal for primary, blue for standby, and a P/S marker.
+ * Failure red overrides role color; the letter still identifies the role.
+ * Far sync and observer glyphs keep their own distinct shapes.
  *
  * No inline styles: geometry rides on SVG presentation attributes and every
  * appearance is a class, because the page ships under a CSP with no
@@ -16,7 +13,7 @@
 
 import type { JSX } from 'preact';
 import type { NodeBox } from './layout';
-import { approxW, CARD, elide } from './measure';
+import { approxW, CARD, elide, MINI_ICON } from './measure';
 import type { CardChip, CardFrame, Phase } from './routing';
 
 export type { CardChip, CardFrame, ChipTone, Phase } from './routing';
@@ -25,14 +22,18 @@ export { NEUTRAL_FRAME } from './routing';
 export interface NodeCardProps {
   node: NodeBox;
   frame: CardFrame;
+  databaseRole?: 'primary' | 'standby' | 'former-primary' | null;
   chips: readonly CardChip[];
   label: string;
   prefix: string;
   selected: boolean;
   hovered: boolean;
   dragging: boolean;
-  /** A line from another card is over it: about to be connected, or refused. */
-  target?: 'yes' | 'no' | null;
+  /** A line from another card is over it: about to be connected, or refused --
+      or, while a card is in the air, one it could be dropped on (`maybe`). */
+  target?: 'yes' | 'no' | 'maybe' | null;
+  /** A card is in the air and this one cannot take it: drawn faded. */
+  dim?: boolean;
   /** Draw the port a line can be dragged from. */
   port?: boolean;
   interactive: boolean;
@@ -59,9 +60,44 @@ const chipWidth = (text: string): number => Math.round(approxW(text, 9, true) + 
 const APPLY_TAG = 'APPLY';
 const COORD_TAG = 'COORDINATOR';
 
+/** A small data centre or host icon whose bottom sits on a text baseline. */
+export function MiniIcon(props: { prefix: string; kind: 'host' | 'dc'; x: number; baseline: number }): JSX.Element {
+  const k = MINI_ICON.size / 24;
+  return (
+    <use
+      href={`#${props.prefix}-ico-${props.kind}`}
+      class="tp-mini"
+      transform={`translate(${props.x},${props.baseline - MINI_ICON.size + 1.5}) scale(${k})`}
+    />
+  );
+}
+
+/** The host line with the server icon in front of the host name -- which may
+    start part-way along, after "Observer, ". */
+function hostLineWithIcon(line: string, at: number, tx: number, y: number, prefix: string): JSX.Element {
+  const before = line.slice(0, at);
+  const ix = tx + (before ? approxW(before, CARD.hostSize, true) : 0);
+  return (
+    <>
+      <MiniIcon prefix={prefix} kind="host" x={ix} baseline={y} />
+      <text class="tp-host" x={tx} y={y}>
+        {before}<tspan x={ix + MINI_ICON.gap}>{line.slice(at)}</tspan>
+      </text>
+    </>
+  );
+}
+
 export function NodeCard(props: NodeCardProps): JSX.Element {
   const { node, frame, chips, prefix } = props;
-  const isObs = node.kind === 'observer';
+  const role = props.databaseRole;
+  const roleClass = role ? ` is-${role}` : '';
+  const roleInHostLine = node.instances > 1;
+  const originalRoleText = roleInHostLine ? node.lines.host : node.lines.sub;
+  const roleText = role === 'primary' ? 'Primary'
+    : role === 'former-primary' ? 'Former primary'
+    : role === 'standby' && originalRoleText === 'Primary' ? 'Standby' : originalRoleText;
+  /* The two-line card: an observer's, and the application's. */
+  const isObs = node.kind !== 'member';
   /* A blade in a chassis stack: its own border and fill go quiet (the
      chassis behind it draws the one continuous outline and the divider
      between blades) until something -- selection, hover, a drag, a down
@@ -86,7 +122,8 @@ export function NodeCard(props: NodeCardProps): JSX.Element {
     props.selected ? 'is-sel' : '',
     props.hovered ? 'is-hov' : '',
     props.dragging ? 'is-drag' : '',
-    props.target === 'yes' ? 'is-target' : props.target === 'no' ? 'is-target-no' : '',
+    props.target === 'yes' ? 'is-target' : props.target === 'no' ? 'is-target-no'
+      : props.target === 'maybe' ? 'is-target-maybe' : '',
   ].filter(Boolean).join(' ');
   const portX = node.x + node.w;
   const portY = node.y + Math.round(node.h / 2);
@@ -110,7 +147,7 @@ export function NodeCard(props: NodeCardProps): JSX.Element {
 
   return (
     <g
-      class={`tp-node${props.interactive ? ' is-live' : ''}`}
+      class={`tp-node${props.interactive ? ' is-live' : ''}${props.dim ? ' is-dim' : ''}`}
       role="button"
       aria-label={props.label}
       aria-pressed={props.selected}
@@ -137,20 +174,30 @@ export function NodeCard(props: NodeCardProps): JSX.Element {
       ) : null}
       <rect class={cardClass} x={node.x} y={node.y} width={node.w} height={node.h} rx={stacked ? 0 : 5} />
       <rect
-        class={`tp-bdg${frame.down ? ' is-down' : ''}`}
+        class={`tp-bdg${roleClass}${frame.down ? ' is-down' : ''}`}
         x={bx} y={by} width={badge} height={badge} rx={7}
       />
       <use
         href={`#${prefix}-ico-${node.glyph}`}
-        class={`tp-ico${frame.down ? ' is-down' : ''}`}
+        class={`tp-ico${roleClass}${frame.down ? ' is-down' : ''}`}
         transform={`translate(${bx + pad},${by + pad})`}
       />
+      {role ? (
+        <g class={`tp-role-mark${roleClass}${frame.down ? ' is-down' : ''}`}>
+          <title>{role === 'primary' ? 'Primary database' : role === 'former-primary' ? 'Former primary — not reinstated' : 'Standby database'}</title>
+          <rect x={bx + badge - 12} y={by + badge - 12} width={14} height={14} rx={4} />
+          <text x={bx + badge - 5} y={by + badge - 1.5} text-anchor="middle">
+            {role === 'primary' ? 'P' : role === 'former-primary' ? 'F' : 'S'}
+          </text>
+        </g>
+      ) : null}
       <text class="tp-name" x={tx} y={nameY}>{node.lines.name}</text>
-      {node.lines.host === undefined ? null : (
-        <text class="tp-host" x={tx} y={nameY + 16}>{node.lines.host}</text>
-      )}
+      {node.lines.host === undefined ? null
+        : roleInHostLine || node.lines.hostAt === undefined ? (
+          <text class="tp-host" x={tx} y={nameY + 16}>{roleInHostLine ? roleText : node.lines.host}</text>
+        ) : hostLineWithIcon(node.lines.host, node.lines.hostAt, tx, nameY + 16, prefix)}
       {node.lines.sub === undefined ? null : (
-        <text class="tp-sub" x={tx} y={nameY + 30}>{node.lines.sub}</text>
+        <text class="tp-sub" x={tx} y={nameY + 30}>{roleInHostLine ? node.lines.sub : roleText}</text>
       )}
       {node.instanceHosts?.map((inst, index) => {
         const y = node.y + CARD.dbH + index * CARD.instanceRowH;
@@ -168,7 +215,8 @@ export function NodeCard(props: NodeCardProps): JSX.Element {
           <title>{inst.name} on host {inst.host} in {inst.site}{down ? ' — down' : coordinator ? ' — the apply instance' : apply ? ' — running Redo Apply' : ''}</title>
           <rect class={`tp-card${down ? ' is-down' : ''}`} x={node.x + 8} y={y} width={node.w - 16} height={CARD.instanceRowH - 6} rx={3} />
           <text class="tp-host" x={node.x + 16} y={y + 14}>{elide(inst.name, apply ? 20 : 27)}{down ? ' ×' : ''}</text>
-          <text class="tp-sub" x={node.x + 16} y={y + 29}>{elide(host, 34)}</text>
+          <MiniIcon prefix={prefix} kind="host" x={node.x + 16} baseline={y + 29} />
+          <text class="tp-sub" x={node.x + 16 + MINI_ICON.gap} y={y + 29}>{elide(host, 32)}</text>
           {apply ? (
             /* The one instance a RAC standby runs apply on (facts.md F2). */
             <g class="tp-chip is-blue">

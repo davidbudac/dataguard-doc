@@ -28,8 +28,8 @@ import { inspectorOpen, select, viewport } from '@/state/view';
 import type { WhyState } from '../common/WhyPill';
 import { resolveSubject } from '../inspector/Inspector';
 import {
-  addDatabase, addHost, addInstance, addObserver, patchLink, removeLink, removeMember, removeObserver,
-  removeSite, setLogXptMode, setMasterObserver, setPrimary,
+  addDatabase, addHost, addInstance, addObserver, patchLink, removeApplication, removeLink,
+  removeMember, removeObserver, removeSite, setLogXptMode, setMasterObserver, setPrimary,
 } from '../inspector/edits';
 import { off, ON, WHY } from '../inspector/why';
 
@@ -149,6 +149,17 @@ export function buildActionsForKey(doc: TopologyDoc, key: string): BuildAction[]
       enabled: ON,
       kind: 'remove',
       run: () => removeObserver(observer.id),
+    });
+  }
+
+  if (subject.kind === 'application') {
+    out.push({
+      id: 'remove',
+      label: `Remove ${key}`,
+      plural: 'Remove',
+      enabled: ON,
+      kind: 'remove',
+      run: () => removeApplication(),
     });
   }
 

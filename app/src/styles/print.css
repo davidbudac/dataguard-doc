@@ -49,10 +49,10 @@
 @media print{
   .explain{display:none}
   .explain-wrap:not(.is-open)>.explain-body{display:block}
-  .explain-body{border-left-color:#000000}
+  .explain-body{background:none;border:1px solid #000000}
 
   .learn{padding:0;gap:18px}
-  .ls{break-inside:avoid;border-left-color:#000000}
+  .ls{break-inside:avoid;background:none}
   .ls-actions,.ls-anchor,.learn-back{display:none}
   .lesson-fn,.ct-footnote,.ct-figure,.ct-note,.ct-table-wrap{break-inside:avoid}
   .ct-code{white-space:pre-wrap;word-break:break-word}

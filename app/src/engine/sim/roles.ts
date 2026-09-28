@@ -12,6 +12,7 @@
 import { NOMINAL } from '../defaults';
 import type { Claim, Finding } from '../types/claims';
 import { documented, model } from '../types/claims';
+import type { CitationId } from '../citations';
 import type { MemberId, Seconds } from '../ids';
 import type { TopologyDoc } from '../types/topology';
 import { isDatabase, isRac } from '../types/topology';
@@ -29,52 +30,82 @@ export const nominalBandsClaim = (): Claim<[Seconds, Seconds]> =>
 
 /**
  * With fast-start failover enabled the broker permits a switchover only to the
- * pre-specified target standby, and only while that standby is synchronized
- * (maximum availability) or inside FastStartFailoverLagLimit (maximum
- * performance). Past the limit in maximum performance it REFUSES the command:
- * a refused SWITCHOVER, never a forbidden failover.
+ * CURRENT fast-start failover target -- not to any candidate the property
+ * lists; anything else is ORA-16655 -- and only while that standby is
+ * synchronized (maximum availability) or inside FastStartFailoverLagLimit
+ * (maximum performance). Past the limit in maximum performance it REFUSES the
+ * command: a refused SWITCHOVER, never a forbidden failover.
  *
- * The gate is fast-start failover's own, so it cannot fire where nothing was
- * ever armed: no observer deployed, fast-start failover disabled, or enabled
- * OBSERVE ONLY, where a switchover -- and a failover to a bystander -- stays
- * documented as allowed.
+ * The gate is fast-start failover's own, so it cannot fire where fast-start
+ * failover is disabled or enabled OBSERVE ONLY, where a switchover -- and a
+ * failover to a bystander -- stays documented as allowed.
+ *
+ * Before any of that, a switchover needs both databases: the broker verifies
+ * the primary and the target, and "the primary and standby must be able to
+ * communicate directly with each other". A far sync instance between them
+ * changes nothing about that, available or not.
  */
 export interface SwitchoverGateInput {
   fsfoEnabled: boolean;
   maxPerformance: boolean;
   gateLag: Seconds;
   lagLimit: Seconds;
-  /** The member named by the command is one of the FastStartFailoverTarget candidates. */
+  /** The member named by the command is the current fast-start failover target. */
   isTarget: boolean;
-  /** What the target was worth the last time redo reached it (maximum availability). */
+  /** The target has all of the primary's redo (maximum availability). */
   synchronized: boolean;
+  /** The primary is running. */
+  primaryUp: boolean;
+  /** The member named by the command is running. */
+  targetUp: boolean;
+  /** The two reach each other directly. */
+  connected: boolean;
 }
 
-export type SwitchoverRefusal = 'not-target' | 'not-synchronized' | 'past-lag-limit';
+export type SwitchoverRefusal =
+  | 'primary-down' | 'target-down' | 'not-connected'
+  | 'not-target' | 'not-synchronized' | 'past-lag-limit';
 
 export function switchoverGate(
   input: SwitchoverGateInput,
 ): { blocked: boolean; reason: SwitchoverRefusal | null; claim: Claim<boolean> } {
   const { fsfoEnabled, maxPerformance, gateLag, lagLimit, isTarget, synchronized } = input;
+  const needs: SwitchoverRefusal | null = !input.primaryUp ? 'primary-down'
+    : !input.targetUp ? 'target-down'
+      : !input.connected ? 'not-connected' : null;
+  if (needs !== null) {
+    return {
+      blocked: true, reason: needs,
+      claim: documented(true, ['SWITCHOVER.FARSYNC_NO_EFFECT', 'SWITCHOVER.FORMER_PRIMARY_RESTARTS'],
+        needs === 'primary-down'
+          ? 'A switchover is a planned role reversal between two running databases, and the primary is down: there is nothing to switch over from. What is left is a failover.'
+          : needs === 'target-down'
+            ? 'A switchover is a planned role reversal between two running databases, and the standby named by the command is down.'
+            : 'During a switchover the primary and the standby must be able to communicate directly with each other, and these two cannot.'),
+    };
+  }
   if (!fsfoEnabled) {
     return {
       blocked: false, reason: null,
       claim: documented(false,
         ['SWITCHOVER.FSFO_GATE', 'FSFO.STATUS_DISABLED', 'OBS.OBSERVE_ONLY'],
-        "The target and lag-limit refusals are fast-start failover's own gates, so they cannot fire where nothing is armed: no observer deployed, fast-start failover disabled, or enabled OBSERVE ONLY -- in which the observer never fails over, and a switchover, or a failover to a bystander, is documented as still allowed. Nothing refuses the command; the swap just spends longer catching up."),
+        "The target and lag-limit refusals are fast-start failover's own gates, so they cannot fire where it is not enabled: fast-start failover disabled, or enabled OBSERVE ONLY -- in which the observer never fails over, and a switchover, or a failover to a bystander, is documented as still allowed. Nothing refuses the command; the swap just spends longer catching up."),
     };
   }
   const reason: SwitchoverRefusal | null = !isTarget ? 'not-target'
     : maxPerformance ? (gateLag > lagLimit ? 'past-lag-limit' : null)
       : (synchronized ? null : 'not-synchronized');
   const text = reason === 'not-target'
-    ? 'Fast-start failover is enabled, and the broker permits a switchover only to the pre-specified target standby: this member is not one of the FastStartFailoverTarget candidates.'
+    ? 'Fast-start failover is enabled, and the broker permits a switchover only to the pre-specified target standby: this member is not the current fast-start failover target (ORA-16655).'
     : maxPerformance
       ? `Fast-start failover is enabled, so the broker permits the switchover only while the target is inside FastStartFailoverLagLimit: ${gateLag} s against ${lagLimit} s.`
       : synchronized
         ? 'Fast-start failover is enabled and the target is synchronized. An apply lag does not block maximum availability -- synchronized is about redo received, so the lag only lengthens the catch-up.'
         : 'Fast-start failover is enabled and the target is not synchronized: in maximum availability the broker permits the switchover only while the pre-specified target standby is synchronized. Redo it has not received is what blocks it; an apply lag alone would not.';
-  return { blocked: reason !== null, reason, claim: documented(reason !== null, ['SWITCHOVER.FSFO_GATE'], text) };
+  const cite: CitationId[] = reason === 'not-target'
+    ? ['SWITCHOVER.FSFO_GATE', 'SWITCHOVER.FSFO_TARGET_ONLY', 'ORA.16655']
+    : ['SWITCHOVER.FSFO_GATE'];
+  return { blocked: reason !== null, reason, claim: documented(reason !== null, cite, text) };
 }
 
 /**
@@ -99,11 +130,15 @@ export function switchoverSchedule(
   };
 }
 
-export function switchoverRefused(at: Seconds, to: MemberId): SwitchoverFacts {
-  return {
+export function switchoverRefused(
+  at: Seconds, to: MemberId, refusal?: SwitchoverRefusal | null,
+): SwitchoverFacts {
+  const facts: SwitchoverFacts = {
     at, to, tDown: null, tConvertEnd: null, tOpen: null, downtime: null,
     tRestartDraw: null, blocked: true, applyRemaining: 0,
   };
+  if (refusal) facts.refusal = refusal;
+  return facts;
 }
 
 export const switchoverLossClaim = (): Claim<number> =>
@@ -125,64 +160,152 @@ export function bystanders(doc: TopologyDoc, newPrimary: MemberId): MemberId[] {
 }
 
 export const bystanderClaim = (follow: 'ALL' | 'NONE'): Claim<'ALL' | 'NONE'> =>
-  documented(follow, ['BYSTANDERS.DEFAULT_ALL'],
-    follow === 'ALL'
-      ? 'BystandersFollowRoleChange is ALL, the default: the bystander standbys follow the role change and are viability-checked on a complete failover.'
-      : 'BystandersFollowRoleChange is NONE, so the bystanders do not follow the role change and are left out of the new configuration.');
+  follow === 'ALL'
+    ? documented(follow, ['BYSTANDERS.DEFAULT_ALL', 'BYSTANDERS.ALL_AHEAD_DISABLED'],
+      'BystandersFollowRoleChange is ALL, the default: during the failover the broker determines whether each bystander standby is ahead of or behind the failover target. One that is behind simply gets its redo transport from the new primary; one that is ahead is disabled with a status of ORA-16661 and must be reinstated after the failover completes.')
+    : documented(follow, ['BYSTANDERS.DEFAULT_ALL', 'BYSTANDERS.NONE_DISABLED'],
+      'BystandersFollowRoleChange is NONE: the broker does not evaluate the bystander standbys as part of the failover. They are marked as disabled with a status of ORA-16661 so that they can be evaluated later, and the broker completes the failover as soon as possible.');
+
+/**
+ * A bystander that holds redo the new primary never received. That the broker
+ * disables it is documented; which bystander is ahead is read here off the
+ * redo each member is missing, which is this page's arithmetic.
+ */
+export const bystanderAhead = (
+  bystander: MemberId, target: MemberId, behindBystander: Seconds, behindTarget: Seconds,
+): { claim: Claim<string>; finding: Finding } => {
+  const text = `${bystander as string} is ahead of ${target as string}: it is missing ${behindBystander} s of the primary's redo where the new primary was missing ${behindTarget} s. The broker disables it with a status of ORA-16661, and it must be reinstated after the failover completes.`;
+  const note = 'BYSTANDERS.AHEAD: that a bystander ahead of the failover target is disabled is documented. Which one is ahead is this page\'s arithmetic over the transport lag as configured and the time the primary ran without each member.';
+  const cite: CitationId[] = ['BYSTANDERS.ALL_AHEAD_DISABLED', 'ORA.16661'];
+  return {
+    claim: model(text, note, cite),
+    finding: {
+      id: 'BYSTANDERS.AHEAD_DISABLED', severity: 'warning', basis: 'model', cite,
+      subject: { kind: 'member', id: bystander as string },
+      message: text, note, ora: 'ORA-16661',
+    },
+  };
+};
 
 /* ---------------- manual failover ---------------- */
 
 /**
  * "You can perform a manual failover even if fast-start failover is enabled"
- * holds only where the target is the FastStartFailoverTarget standby, that
+ * holds only where the target is the CURRENT fast-start failover target, that
  * standby is synchronized (maximum availability/protection) or within the lag
  * limit (maximum performance), and "the observer is started and communicating
  * with the target standby database", with the primary shut down first. An
  * unobserved configuration fails the third condition: DISABLE FAST_START
- * FAILOVER FORCE first.
+ * FAILOVER FORCE first. An IMMEDIATE failover is not available at all while
+ * fast-start failover is enabled.
+ *
+ * `refused` is what the broker does about it: a command that fails one of the
+ * fast-start failover conditions, or names a standby that is not running, is
+ * not executed and nothing changes role. A primary that is still open is
+ * different -- the broker cannot see to it that the operator shut it down --
+ * so that one is an error the run carries while the failover is drawn.
  */
+export interface ManualFailoverInput {
+  fsfoEnabled: boolean;
+  /** The member named is the current fast-start failover target. */
+  isFsfoTarget: boolean;
+  ready: boolean;
+  observerTalksToTarget: boolean;
+  cascaded: boolean;
+  immediate: boolean;
+  targetUp: boolean;
+  /** The primary is still running when the command is issued. */
+  primaryUp: boolean;
+}
+
 export function manualFailoverFindings(
-  doc: TopologyDoc, target: MemberId, opts: {
-    fsfoEnabled: boolean; isFsfoTarget: boolean; ready: boolean; observerTalksToTarget: boolean;
-    cascaded: boolean;
-  },
-): Finding[] {
+  doc: TopologyDoc, target: MemberId, opts: ManualFailoverInput,
+): { findings: Finding[]; refused: boolean } {
   const out: Finding[] = [];
+  let refused = false;
+  const subject = { kind: 'member' as const, id: target as string };
+  if (!opts.targetUp) {
+    refused = true;
+    out.push({
+      id: 'FAILOVER.TARGET_DOWN', severity: 'error', basis: 'model',
+      cite: ['FAILOVER.PRIMARY_SHUT_DOWN', 'FSFO.MANUAL_FAILOVER_CONDITIONS'], subject,
+      message: `FAILOVER TO ${target as string} is refused: ${target as string} is not running, and a failover is carried out on the standby that becomes the primary. Nothing changes role.`,
+      note: 'FAILOVER.TARGET_DOWN: the FAILOVER command is issued while connected to the standby that is to become the primary, so a standby that is down cannot be failed over to. The documentation states the procedure, not this refusal in so many words.',
+    });
+  }
+  if (opts.fsfoEnabled && opts.immediate) {
+    refused = true;
+    out.push({
+      id: 'FAILOVER.IMMEDIATE_WITH_FSFO', severity: 'error', basis: 'documented',
+      cite: ['FAILOVER.NO_IMMEDIATE_WITH_FSFO'], subject,
+      message: 'FAILOVER ... IMMEDIATE is refused: you cannot perform an immediate manual failover when fast-start failover is enabled.',
+    });
+  }
   if (opts.fsfoEnabled && !opts.observerTalksToTarget) {
+    refused = true;
     out.push({
       id: 'FSFO.MANUAL_FAILOVER_UNOBSERVED', severity: 'error', basis: 'documented',
-      cite: ['FSFO.MANUAL_FAILOVER_CONDITIONS', 'ORA.16658'],
-      subject: { kind: 'member', id: target as string },
+      cite: ['FSFO.MANUAL_FAILOVER_CONDITIONS', 'ORA.16658'], subject,
       message: 'A manual failover with fast-start failover enabled needs the observer started and communicating with the target standby: DISABLE FAST_START FAILOVER FORCE first.',
       ora: 'ORA-16658',
     });
   }
   if (opts.fsfoEnabled && !opts.isFsfoTarget) {
+    refused = true;
     out.push({
       id: 'FSFO.MANUAL_FAILOVER_NOT_TARGET', severity: 'error', basis: 'documented',
-      cite: ['FSFO.MANUAL_FAILOVER_CONDITIONS'],
-      subject: { kind: 'member', id: target as string },
-      message: 'With fast-start failover enabled a manual failover is permitted only to the FastStartFailoverTarget standby.',
+      cite: ['FSFO.MANUAL_FAILOVER_CONDITIONS', 'FAILOVER.CURRENT_TARGET_ONLY', 'ORA.16655'], subject,
+      message: 'With fast-start failover enabled a manual failover can only be performed to the current fast-start failover target standby, and this member is not it.',
+      ora: 'ORA-16655',
     });
   }
   if (opts.fsfoEnabled && !opts.ready) {
+    refused = true;
     out.push({
       id: 'FSFO.MANUAL_FAILOVER_NOT_READY', severity: 'error', basis: 'documented',
-      cite: ['FSFO.MANUAL_FAILOVER_CONDITIONS'],
-      subject: { kind: 'member', id: target as string },
+      cite: ['FSFO.MANUAL_FAILOVER_CONDITIONS', 'FAILOVER.NO_IMMEDIATE_WITH_FSFO'], subject,
       message: 'With fast-start failover enabled the target must be synchronized (maximum availability or protection) or inside the lag limit (maximum performance) for a manual failover.',
+    });
+  }
+  if (opts.primaryUp) {
+    out.push({
+      id: 'FAILOVER.PRIMARY_STILL_OPEN', severity: 'error', basis: 'documented',
+      cite: opts.fsfoEnabled
+        ? ['FSFO.MANUAL_FAILOVER_CONDITIONS', 'FAILOVER.PRIMARY_SHUT_DOWN']
+        : ['FAILOVER.PRIMARY_SHUT_DOWN'],
+      subject,
+      message: opts.fsfoEnabled
+        ? 'The primary database is still running. "You must ensure that the primary database is shut down prior to performing a manual failover."'
+        : 'The primary database is still running. "Before beginning a failover, first determine that there is no possibility of recovering the primary database in a timely manner, and ensure that the primary database is shut down." Until it is, two databases are open as the primary.',
     });
   }
   if (opts.cascaded) {
     out.push({
       id: 'CASCADE.MANUAL_FAILOVER_TERMINAL', severity: 'warning', basis: 'documented',
-      cite: ['CASCADE.MANUAL_FAILOVER_UNSENT', 'FSFO.TARGET_DIRECT_REDO'],
-      subject: { kind: 'member', id: target as string },
+      cite: ['CASCADE.MANUAL_FAILOVER_UNSENT', 'FSFO.TARGET_DIRECT_REDO'], subject,
       message: 'Manual failover to a terminal standby is documented and legal, but no attempt is made to transmit any unsent redo from the cascader to the terminal standby.',
     });
   }
   void doc;
-  return out;
+  return { findings: out, refused };
+}
+
+/**
+ * What a manual failover loses. Nothing bounds it: "There may or may not be
+ * data loss depending upon whether your primary and target standby databases
+ * were synchronized at the time of the primary database failure." The number
+ * is this page's arithmetic and is never a documented figure.
+ */
+export function manualLossClaim(
+  seconds: Seconds, parts: { ranWithout: Seconds; lag: Seconds; lagIs: 'transport' | 'apply' | 'none' },
+): Claim<number> {
+  const lagText = parts.lagIs === 'none' ? ''
+    : parts.lagIs === 'apply'
+      ? ` plus the ${parts.lag} s apply lag, drawn 1:1 as the published page draws it`
+      : ` plus the ${parts.lag} s of redo the transport had not delivered`;
+  return model(seconds,
+    `FAILOVER.LOSS_MODEL: a manual failover promotes the standby with whatever redo it holds, and nothing bounds what is lost. The number is the ${parts.ranWithout} s the primary generated redo this standby never received${lagText} -- the workbench's own arithmetic, not a documented figure.${seconds === 0 ? ' Zero here means the standby was synchronized when the primary failed, not that a manual failover is lossless.' : ''}`,
+    ['FAILOVER.LOSS_DEPENDS']);
 }
 
 /* ---------------- reinstate ---------------- */
@@ -217,6 +340,41 @@ export function reinstateFindings(
     });
   }
   return out;
+}
+
+/**
+ * REINSTATE DATABASE, the command. It is for a database a failover left
+ * behind, it needs Flashback Database to have been enabled on that database
+ * before the failover, and the database has to be up and in contact with the
+ * new primary. Where one of those is missing nothing is reinstated, so no
+ * band is drawn.
+ */
+export function reinstateCommandFindings(
+  doc: TopologyDoc, member: MemberId, opts: {
+    needsReinstate: boolean; up: boolean; reachesPrimary: boolean; newPrimary: MemberId | null;
+  },
+): Finding[] {
+  const m = doc.members.find((x) => x.id === member);
+  const n = opts.newPrimary ? doc.members.find((x) => x.id === opts.newPrimary) : undefined;
+  const subject = { kind: 'member' as const, id: member as string };
+  if (!opts.needsReinstate) {
+    return [{
+      id: 'REINSTATE.NOTHING_TO_REINSTATE', severity: 'warning', basis: 'documented',
+      cite: ['REINSTATE.NEEDS_FLASHBACK', 'FSFO.AUTO_REINSTATE'], subject,
+      message: `REINSTATE DATABASE ${member as string} does nothing here: reinstatement is supported only after a failover, for a database the failover left needing it.`,
+    }];
+  }
+  const missing: string[] = [];
+  if (m && isDatabase(m) && !m.flashbackOn) missing.push(`Flashback Database was not enabled on ${m.name} before the failover`);
+  if (n && isDatabase(n) && !n.flashbackOn) missing.push(`Flashback Database is off on ${n.name}`);
+  if (!opts.up) missing.push(`${m?.name ?? (member as string)} is not started and mounted`);
+  else if (!opts.reachesPrimary) missing.push(`${m?.name ?? (member as string)} and the new primary have no network connectivity`);
+  if (missing.length === 0) return [];
+  return [{
+    id: 'REINSTATE.COMMAND_PRECONDITIONS', severity: 'error', basis: 'documented',
+    cite: ['REINSTATE.NEEDS_FLASHBACK', 'FSFO.FORMER_PRIMARY_NOT_OPEN'], subject,
+    message: `REINSTATE DATABASE ${member as string} cannot succeed: ${missing.join('; ')}. For the REINSTATE command to succeed, Flashback Database must have been enabled on the database prior to the failover, and the database to be reinstated and the new primary database must have network connectivity. Without it the database has to be re-created from a copy of the new primary.`,
+  }];
 }
 
 export const reinstateBandClaim = (): Claim<null> =>

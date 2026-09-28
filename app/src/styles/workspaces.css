@@ -1,0 +1,35 @@
+/* Saved configurations (ui/workspaces/Workspaces.tsx): the body of a
+   floating card dialog, in the inspector's idiom -- sentence-case headings,
+   hairline rows, quiet buttons, the one solid button being the save. */
+
+.ws-body{display:flex;flex-direction:column;gap:0;padding:4px 16px 14px;font-size:12.5px;
+  white-space:normal}
+.ws-lede{margin:6px 0 10px;font-size:12px;line-height:1.5;color:var(--ik3)}
+.ws-sec .ws-lede{margin:0 0 4px}
+.ws-error{margin:6px 0 10px;padding:8px 10px;border-radius:var(--r-ctl,7px);font-size:12px;
+  color:var(--rd);background:var(--rdf)}
+.ws-sec{display:flex;flex-direction:column;gap:6px;padding:12px 0;border-top:1px solid var(--ln)}
+.ws-lede+.ws-sec,.ws-error+.ws-sec{border-top:0;padding-top:4px}
+.ws-h{margin:0;font-size:12px;font-weight:600;color:var(--ik2)}
+.ws-label{font-size:12px;font-weight:500;color:var(--ik2)}
+.ws-body .field-in{width:100%;box-sizing:border-box;padding:6px 8px;font-size:12.5px}
+.ws-actions{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:2px}
+.ws-actions .btn:not(.is-solid):not(.is-quiet):not(.is-danger),.ws-item>.btn{border-color:var(--ln)}
+.ws-none{margin:0;font-size:12px;color:var(--ik3)}
+.ws-list{list-style:none;margin:0;padding:0}
+.ws-item{display:flex;align-items:center;gap:6px;padding:3px 0;border-bottom:1px solid var(--ln)}
+.ws-item:last-child{border-bottom:0}
+.ws-pick{display:flex;flex:1 1 auto;min-width:0;flex-direction:column;align-items:flex-start;gap:1px;
+  padding:5px 8px;border:0;border-radius:var(--r-ctl,7px);background:transparent;color:var(--ik);
+  font:inherit;text-align:left;cursor:pointer}
+.ws-pick:hover{background:var(--sf2)}
+.ws-pick[aria-pressed="true"]{background:var(--vif)}
+.ws-pick.is-static{cursor:default}
+.ws-pick.is-static:hover{background:transparent}
+.ws-name{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500}
+.ws-item.is-open .ws-name::after{content:" · open";font-weight:400;color:var(--vi)}
+.ws-meta{font-size:11px;color:var(--ik3)}
+.ws-manage{display:flex;flex-direction:column;gap:6px;margin-top:8px;padding:10px;
+  border-radius:var(--r-ctl,7px);background:var(--sf2)}
+.btn.is-danger{color:var(--rd);background:var(--rdf);border-color:transparent}
+.btn.is-danger:hover:not(:disabled){color:var(--rd);border-color:var(--rd)}

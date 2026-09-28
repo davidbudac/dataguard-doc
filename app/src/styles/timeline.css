@@ -89,6 +89,14 @@
 /* numbered event markers: the number ties the drawing to the Break rail */
 .tl-svg .tl-marker-nb { fill: var(--sf); stroke: var(--rd); stroke-width: 1.25; }
 .tl-svg .tl-marker-nt { font-size: 9.5px; font-weight: 600; fill: var(--rd); }
+/* The injected event's icon, over its number: the canvas's hover-tool glyph. */
+.tl-svg .tl-marker-chip { fill: var(--rdf); stroke: var(--rd); stroke-width: 1; }
+.tl-svg .tl-marker-stem { stroke: var(--rd); stroke-width: 1; opacity: .55; }
+.tl-svg .tl-marker-ico g path,
+.tl-svg .tl-marker-ico g rect,
+.tl-svg .tl-marker-ico g circle {
+  fill: none; stroke: var(--rd); stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round;
+}
 
 /* ---------------- lanes: selection and hover ---------------- */
 
@@ -97,6 +105,13 @@
 .tl-svg .tl-lane.is-selected .lane-bg { stroke: var(--ik3); stroke-width: 1.5; }
 .tl-svg .tl-lane.is-selected .t-lane { fill: var(--vi); }
 .tl-svg .tl-seg { cursor: default; }
+/* The application's lanes: a hairline and one line of text over the three. */
+.tl-svg .tl-app-rule { stroke: var(--ln2); stroke-width: 1; stroke-dasharray: 2 3; }
+.tl-svg .t-app-note { font-weight: 400; fill: var(--ik2); }
+.tl-svg .t-app-note.f-am { fill: var(--am); }
+.tl-svg .t-app-note.f-rd { fill: var(--rd); }
+/* A press anywhere on the plot seeks there (Timeline.tsx). */
+.tl-svg.is-seekable, .tl-svg.is-seekable .tl-lane, .tl-svg.is-seekable .tl-seg { cursor: pointer; }
 
 @media (prefers-reduced-motion: reduce) {
   .tl-svg .tl-lane .lane-bg { transition: none; }
@@ -104,12 +119,12 @@
 
 /* ---------------- playhead ---------------- */
 
-.tl-svg .tl-scrub-hit { fill: transparent; cursor: ew-resize; }
+.tl-svg .tl-playhead-hit { fill: transparent; }
 .tl-svg .tl-playhead-ln { stroke: var(--ik); stroke-width: 1; stroke-dasharray: 2 3; }
 .tl-svg .tl-playhead-grip { fill: var(--ik); }
 .tl-svg .tl-playhead-badge { fill: var(--sf); stroke: var(--ln2); stroke-width: 1; }
 .tl-svg .tl-playhead-t { font-size: 10.5px; fill: var(--ik); dominant-baseline: middle; }
-.tl-svg .tl-playhead-g { cursor: ew-resize; outline: none; }
+.tl-svg .tl-playhead-g { cursor: ew-resize; outline: none; touch-action: none; user-select: none; }
 .tl-svg .tl-playhead-g:focus-visible .tl-playhead-grip { fill: var(--vi); }
 .tl-svg .tl-playhead-g:focus-visible .tl-playhead-ln { stroke: var(--vi); stroke-dasharray: none; }
 .tl-svg .tl-playhead.is-playing .tl-playhead-ln { stroke-dasharray: none; }
@@ -278,3 +293,13 @@
 .tl-transport .why { white-space: nowrap; }
 
 /* The screen-reader table uses base.css's `.sr`; nothing extra is needed. */
+
+/* Injected events sit above the playhead; computed milestones stay static. */
+.tl-event-drag{cursor:ew-resize;touch-action:none}
+.tl-event-hit{fill:transparent;stroke:transparent}
+.tl-event-drag:focus{outline:none}
+.tl-event-drag:focus-visible .tl-event-hit,
+.tl-event-drag:hover .tl-event-hit{stroke:var(--fc);fill:var(--sf);stroke-width:1.5}
+.tl-event-drag.is-dragging .tl-marker{opacity:.65}
+.tl-svg .tl-event-time{fill:var(--ik);font-size:11px;paint-order:stroke;stroke:var(--sf);stroke-width:4px;stroke-linejoin:round}
+@media print{.tl-event-hit{display:none}}

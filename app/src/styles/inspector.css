@@ -1,150 +1,322 @@
-/* The rails: the inspector, the Break rail and the event menu over the canvas.
+/* The rails: the inspector, the Break rail and the event menu at their head.
 
-   Dense where the shell is airy (ui.md SS8), and built out of the same tokens
-   as everything else, so a colour that means "observer" on the drawing means
-   it here too. No rule in this file hides anything: what the reader cannot see
-   is not in the document. */
+   One system for all of them (docs/tasks/ui-followups.md 3.2), built out of
+   the 4 px ladder in tokens.css:
 
-.insp{display:flex;flex-direction:column;min-width:0}
+   - a header: what is selected (a small muted kind word over the name) and
+     the rail's buttons on the right;
+   - groups, separated by a hairline, each headed by one heading style --
+     sentence case, 12 px, semibold, muted -- in a 40 px row, whether the
+     group folds or not;
+   - fields: the name on the left and the control on the right in a 32 px
+     row (`.field.is-row`), or the name and its reading on one line with the
+     control full width under it (`.field.is-stack`). Which one is decided by
+     the component from the control's width against the rail's measured row
+     (`fitsBeside` and `railRow` in common/Field), never by an accident of
+     wrapping. Notes and refusals always take a line
+     of their own under the control;
+   - list rows (`.lrow`): an identifier on the left, its buttons on the right,
+     a refusal on the line under them;
+   - sub-blocks (`.sub`): a destination or a RedoRoutes rule, a bordered box
+     inside the group with a heading row of its own.
 
-.insp-hd{display:flex;align-items:center;gap:10px;padding:12px var(--gut);
-  border-bottom:1px solid var(--ln);background:var(--sf2);position:sticky;top:0;z-index:2}
-/* The subject's name, on one line. `overflow-wrap: anywhere` broke `prm01`
-   across two rows once the header carried three buttons -- a name split
-   mid-word is a name the reader has to reassemble. It shrinks and ellipses
-   instead, and the whole name is the header's `title`. */
-.insp-hd{flex-wrap:wrap;row-gap:8px}
-.insp-subj{display:flex;align-items:center;gap:10px;flex:1 1 auto;min-width:0}
-.insp-acts{display:flex;align-items:center;gap:8px;flex:0 0 auto;margin-left:auto}
-.insp-hd .title{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-/* The rail header is the one row where the shell's button padding does not
-   fit: `Hints`, `Remove` and `Clear` beside a name inside 360 px. */
-.insp-hd .btn{padding:5px 10px;font-size:11px}
+   Every rule is prefixed with `.insp` (or the rail it sits in), so it wins over
+   the page-wide control styles in shell.css and float.css without a louder
+   selector war. Colour comes only from tokens.css. No rule in this file hides
+   anything: what the reader cannot see is not in the document. */
+
+.insp{display:flex;flex-direction:column;min-width:0;--px:var(--rail-px)}
+
+/* ---------------- header ---------------- */
+
+.insp-hd{display:flex;align-items:center;flex-wrap:wrap;gap:var(--s1) var(--s2);
+  min-height:60px;padding:var(--s3) calc(var(--px) - var(--s1)) var(--s3) var(--px);
+  background:var(--sf);border-bottom:1px solid var(--ln);position:sticky;top:0;z-index:2}
+.insp-subj{display:flex;flex-direction:column;align-items:flex-start;gap:2px;
+  flex:1 1 auto;min-width:0}
+.insp-kind{font-size:12px;line-height:16px;color:var(--ik3);white-space:nowrap;
+  overflow:hidden;text-overflow:ellipsis;max-width:100%}
+/* The subject's name, on one line: it shrinks and ellipses rather than
+   breaking mid-word, and the whole name is its `title`. */
+.insp-hd .title{font-size:15px;line-height:20px;font-weight:600;max-width:100%;min-width:0;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.insp-hd .rr-spacer{flex:0 0 0}
+.insp-acts{display:flex;align-items:center;gap:2px;flex:0 0 auto;margin-left:auto}
 /* A refused Remove says why on the row under the header. */
-.insp-why{margin:0;padding:10px var(--gut);border-bottom:1px solid var(--ln)}
-.insp-why .why{display:inline-block;border-radius:8px}
+.insp-why{margin:0;padding:var(--s2) var(--px);border-bottom:1px solid var(--ln)}
 
-/* The `Hints` switch: the quietest control in the header until it is on, when
-   it takes the accent it is turning on elsewhere. It is a toggle, not a
-   disclosure, so it carries `aria-pressed` -- and it is the one thing on the
-   rail that says the explanations still exist while they are not rendered. */
-.hint-tog[aria-pressed="true"]{color:var(--ik);border-color:var(--ik3);background:var(--sf)}
+/* The `Hints` switch: quiet until it is on, when it takes the accent. It is a
+   toggle, not a disclosure, so it carries `aria-pressed`. */
+.insp .hint-tog[aria-pressed="true"],.app-rail .hint-tog[aria-pressed="true"]{
+  color:var(--vi);background:var(--vif)}
+
+/* ---------------- buttons, refusals, tags ---------------- */
+
+/* One button size on every rail: the header's, a group's `+ Rule`, a row's
+   `Remove`. Ghost until the pointer is on one (float.css). */
+.insp .btn,.app-rail .evmenu .btn{font-size:12.5px;padding:4px 8px;min-height:28px}
+.insp .btn.is-faded{opacity:.46}
+/* A refusal is a sentence under the control it explains, full width, never
+   squeezed beside a button. */
+.insp .why,.app-rail .evmenu .why{display:block;border-radius:8px;padding:4px 10px;border:0;
+  background:color-mix(in srgb,var(--ik3) 12%,var(--sf));
+  font-size:12px;line-height:1.45}
+.insp .tag{font-family:var(--sans);font-size:11.5px;font-weight:500;text-transform:none;
+  letter-spacing:0;padding:1px 8px;border-radius:999px}
+.insp .tag.mono{font-family:var(--mono);font-size:11px}
 
 /* ---------------- groups ---------------- */
 
-/* A group of the rail. 20 px of gutter, and 28 px of air between one group
-   and the next (ui.md SS3f): the rail is dense on purpose, but at 10 px of
-   head padding the label of the next group sat closer to the last row of the
-   previous one than to its own first row. */
-.grp{display:flex;flex-direction:column;min-width:0;padding-bottom:10px;
+.grp{display:flex;flex-direction:column;min-width:0;padding-bottom:var(--s2);
   border-bottom:1px solid var(--ln)}
 .grp:last-child{border-bottom:0}
-.grp-hd{display:flex;align-items:center;gap:10px;padding:18px var(--gut) 10px;
-  background:var(--sf)}
-.grp-act{margin-left:auto;display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
-/* A group whose first child draws its own top hairline (a field, a fold)
-   needs no padding of its own under the label. */
-.grp>.field:first-of-type{padding-top:2px}
+.grp-hd{display:flex;align-items:center;gap:var(--s2);min-height:40px;
+  padding:var(--s1) calc(var(--px) - var(--s1)) 0 var(--px)}
+/* The one heading style. */
+.insp .grp-hd .eyebrow{font-family:var(--sans);font-size:12px;line-height:16px;font-weight:600;
+  letter-spacing:0;text-transform:none;color:var(--ik2);min-width:0}
+.grp-act{margin-left:auto;display:flex;align-items:center;gap:2px;flex-wrap:wrap;
+  justify-content:flex-end}
 
-/* A group that folds. The eyebrow keeps its look and becomes the label of a
-   real button that fills the header row, so the whole row is the hit target;
-   the padding moves off the header and onto the button for exactly that
-   reason. A closed section renders no children at all -- there is no rule
-   here that hides one. */
+/* A group that folds: the heading becomes a real button that fills the row,
+   caret on the left and, while it is shut, what is inside on the right. A
+   closed section renders no children at all. */
 .grp-fold{padding-bottom:0}
-.grp-fold.is-open{padding-bottom:10px}
+.grp-fold.is-open{padding-bottom:var(--s2)}
 .grp-fold>.grp-hd{padding:0}
-.grp-tog{display:flex;align-items:center;gap:10px;width:100%;text-align:left;
-  padding:16px var(--gut) 14px;background:transparent;border:0;cursor:pointer}
+.grp-tog{display:flex;align-items:center;gap:var(--s2);width:100%;min-height:40px;
+  text-align:left;padding:var(--s1) var(--px) 0;background:transparent;border:0;
+  cursor:pointer;font:inherit;color:inherit}
+.grp-fold:not(.is-open) .grp-tog{padding-top:0}
+.grp-fold>.grp-hd>.grp-act{flex:0 0 auto;padding:var(--s1) var(--px) 0 0}
 .grp-tog:hover{background:var(--sf2)}
-.grp-tog:hover .eyebrow{color:var(--ik2)}
-.grp-caret{font-family:var(--mono);font-size:10px;color:var(--ik3);width:9px;flex:0 0 auto}
-.grp-sum{margin-left:auto;font-size:11.5px;color:var(--ik3);min-width:0;text-align:right;
-  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.grp-tog:hover .eyebrow{color:var(--ik)}
+.grp-caret{font-family:var(--mono);font-size:10px;line-height:16px;color:var(--ik3);
+  width:10px;flex:0 0 auto}
+.grp-sum{margin-left:auto;font-family:var(--mono);font-size:11.5px;color:var(--ik3);
+  min-width:0;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 @media (prefers-reduced-motion:no-preference){
   .grp-tog{transition:background-color .16s ease}}
-.grp-note{padding:11px var(--gut) 13px;font-size:12px;line-height:1.5;color:var(--ik3);
-  border-top:1px solid var(--ln);max-width:80ch}
+
+/* Prose in a group: a note, an empty state. */
+.grp-note{margin:0;padding:var(--s1) var(--px) var(--s2);font-size:12px;line-height:1.5;
+  color:var(--ik3);border:0;max-width:80ch}
 .grp-note.is-warn{color:var(--am)}
 .grp-note .mono{font-size:11px;color:var(--ik2)}
-.grp .empty{padding:4px var(--gut) 12px}
+.insp .grp .empty{gap:2px;padding:0 var(--px) var(--s2);font-size:12.5px;line-height:1.5}
+.insp .empty .empty-k{font-family:var(--sans);font-size:12.5px;font-weight:600;
+  letter-spacing:0;text-transform:none;color:var(--ik2)}
+.insp .empty p{margin:0}
+
+/* ---------------- fields ---------------- */
+
+.insp .field{display:flex;flex-direction:row;flex-wrap:wrap;align-items:center;column-gap:var(--s3);
+  row-gap:var(--s1);min-height:var(--row-h);padding:var(--s1) var(--px);border:0}
+.insp .field-hd{display:flex;align-items:baseline;justify-content:space-between;
+  gap:var(--s2);min-width:0}
+/* Oracle vocabulary keeps its mono face (shell.css); this page's own words
+   are set in the sans. Same size, same ink, either way. */
+.insp .field-name{font-size:11.5px;line-height:20px;color:var(--ik2);letter-spacing:0;
+  overflow-wrap:anywhere}
+.insp .field-name.is-prose{font-family:var(--sans);font-size:12.5px;letter-spacing:0}
+.insp .field-val{font-family:var(--mono);font-size:12px;font-weight:500;color:var(--ik);
+  white-space:nowrap}
+.insp .field-unit{font-family:var(--mono);font-size:11.5px;color:var(--ik3)}
+.insp .field-note,.insp .field>.why{order:2;flex:1 1 100%;margin:0}
+.insp .field-note{font-size:12px;line-height:1.5;color:var(--ik3)}
+.insp .field-note.is-warn{color:var(--am)}
+
+/* Row: name left, control right. The control box dissolves so each control
+   (and a refusal inside it) is laid out by the row itself. */
+.insp .field.is-row .field-hd{flex:1 1 auto}
+.insp .field.is-row .field-ctl{display:contents}
+.insp .field.is-row .field-ctl>*{flex:0 0 auto}
+.insp .field.is-row .ctl-off{display:contents}
+.insp .field.is-row .field-ctl .why{order:2;flex:1 1 100%}
+.insp .field.is-row input.field-in[type="text"]{width:150px}
+.insp .field.is-row input.field-in[type="number"]{width:88px}
+.insp .field.is-row select.field-in{width:auto;max-width:200px}
+.insp .field.is-off.is-row .field-ctl>*:not(.why){opacity:.46}
+
+/* Stack: name and reading on one line, the control full width under it. */
+.insp .field.is-stack{padding-top:var(--s2);padding-bottom:var(--s2)}
+.insp .field.is-stack .field-hd{flex:1 1 100%}
+.insp .field.is-stack .field-ctl{flex:1 1 100%;display:flex;flex-direction:column;
+  align-items:stretch;gap:var(--s1);min-width:0}
+.insp .field.is-stack .field-ctl>.opt{align-self:flex-start}
 
 /* ---------------- controls ---------------- */
 
-/* A segmented control inside a 360 px rail is the one place the shell's
-   button rhythm has to give: MAXPROTECTION | MAXAVAILABILITY | MAXPERFORMANCE
-   is 40 characters of mono, and the control clips its own corners, so a
-   segment past the edge is a segment nobody can read or press. It goes a size
-   down here, and it wraps rather than clipping when even that will not do. */
-.field .seg{flex-wrap:wrap;max-width:100%}
-.field .seg button{padding:6px 9px;font-size:11px;letter-spacing:.06em}
+.insp .field-in{height:30px;padding:0 8px;font-size:12px;color:var(--ik);background:var(--sf);
+  border:1px solid var(--ln2);border-radius:var(--r-ctl);width:100%;min-width:0}
+.insp .field-in:hover:not(:disabled){border-color:var(--ik3)}
+.insp .field-in:focus{border-color:var(--vi)}
+.insp select.field-in{cursor:pointer;padding-right:4px}
+.insp input[type="range"].field-in{height:18px;padding:0;background:transparent;border:0;
+  accent-color:var(--vi)}
+.insp input[type="range"].field-in:focus{outline:none}
+.insp input[type="range"].field-in:focus-visible{outline:2px solid var(--fc);outline-offset:3px}
 
-.opt{display:inline-flex;align-items:center;gap:8px;font-size:13px;color:var(--ik2);
-  padding:3px 0;cursor:pointer}
-.opt input{accent-color:var(--vi);margin:0}
+/* A segmented control of Oracle values: mono, on a sunken track. Full width
+   in a stack, each option an equal share; its natural width in a row. */
+.insp .field .seg{display:flex;flex-wrap:nowrap;max-width:100%;padding:2px;gap:2px;
+  border-radius:8px;background:var(--sf2)}
+.insp .field .seg button{font-family:var(--mono);font-size:11px;letter-spacing:0;
+  padding:4px 8px;min-height:24px;border-radius:6px;white-space:nowrap}
+/* Three long Oracle values (MAXPROTECTION | MAXAVAILABILITY | MAXPERFORMANCE)
+   fit a 290 px row at 10.5 px; on a narrower rail the options wrap as whole
+   words onto a second line rather than being clipped. */
+.insp .field.is-stack .seg{width:100%;flex-wrap:wrap}
+.insp .field.is-stack .seg button{flex:1 1 auto;min-width:0;padding:4px 3px;font-size:10.5px}
+
+.opt{display:inline-flex;align-items:center;gap:var(--s2);font-size:12.5px;color:var(--ik2);
+  cursor:pointer}
+.opt input{accent-color:var(--vi);margin:0;width:15px;height:15px;cursor:pointer}
 .opt .mono{font-size:12px;color:var(--ik)}
-.field select.field-in,.rr-dest select.field-in,.rr-row select.field-in{cursor:pointer}
-input[type="range"].field-in{padding:0;background:transparent;border:0;accent-color:var(--vi)}
-input[type="range"].field-in:focus{outline:none}
-input[type="range"].field-in:focus-visible{outline:2px solid var(--fc);outline-offset:3px}
+.opt.is-flag .field-val{line-height:16px}
+.opt input:disabled{cursor:not-allowed}
+/* A list of flags, one per row. */
+.opt-list{display:flex;flex-direction:column;padding:0 var(--px)}
+.opt-list .opt{min-height:var(--row-h)}
+
+/* ---------------- list rows ---------------- */
+
+/* An identifier and its buttons on one line; a refusal on the next. */
+.insp .lrow{display:flex;flex-wrap:wrap;align-items:center;column-gap:2px;row-gap:var(--s1);
+  min-height:var(--row-h);padding:2px 0}
+.insp .grp>.lrow{padding-left:var(--px);padding-right:calc(var(--px) - var(--s1))}
+.lrow-k{flex:1 1 auto;min-width:0;font-size:12px;color:var(--ik);overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap}
+.lrow-k.mono{font-size:12px}
+.insp .lrow .ctl-off{display:contents}
+.insp .lrow .why{order:2;flex:1 1 100%}
+.site-rows .lrow .why,.insp .grp>.lrow .why{margin-right:var(--s1)}
+.insp .lrow .tag{margin:0 var(--s1)}
+.insp .lrow .field-in{height:28px;flex:1 1 0;width:auto;min-width:0}
+.insp .lrow select.field-in.is-short{flex:0 0 auto;width:56px}
+.insp .lrow.is-inst{column-gap:var(--s1)}
+/* A data centre's hosts and links: rows inside the rail's inset. */
+.site-rows{display:flex;flex-direction:column;padding:0 calc(var(--px) - var(--s1)) 0 var(--px)}
+/* A row of buttons only (`+ Instance`, `Set to ANY`, `+ Destination`): the
+   first label lines up with the names above it, not its button's padding. */
+.insp .lrow.is-acts{justify-content:flex-start;margin-left:-8px}
+
+/* ---------------- sub-blocks ---------------- */
+
+/* A destination, a RedoRoutes rule: a bordered box inside the group with its
+   own heading row. Everything inside is inset by 12 px instead of 16. */
+.insp .sub{display:flex;flex-direction:column;margin:var(--s1) var(--px) var(--s2);
+  padding:0 0 var(--s1);border:1px solid var(--ln);border-radius:10px;--px:var(--s3)}
+.sub-hd{display:flex;align-items:center;gap:var(--s1);min-height:36px;
+  padding:var(--s1) calc(var(--px) - var(--s1)) 0 var(--px)}
+.sub-t{font-size:12px;font-weight:600;color:var(--ik)}
+.insp .sub>.lrow{padding-left:var(--px);padding-right:var(--px)}
 
 /* ---------------- RedoRoutes ---------------- */
 
-.rr-rule{display:flex;flex-direction:column;gap:8px;padding:12px var(--gut);
-  border-top:1px solid var(--ln)}
-.rr-line{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:2px 0}
+.rr-line{display:flex;align-items:center;gap:var(--s2);flex-wrap:wrap}
 .rr-spacer{flex:1 1 auto;min-width:0}
-.rr-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;row-gap:10px}
-.rr-row .field-in{width:auto;min-width:96px;flex:0 1 auto}
-.rr-k{font-family:var(--mono);font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;
-  color:var(--ik3);flex:0 0 auto}
-.rr-grp{display:flex;flex-direction:column;gap:6px;padding:8px 0 8px 10px;
-  border-left:2px solid var(--ln2)}
-.rr-dest{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:2px 0}
-.rr-dest .field-in{width:auto;min-width:104px;flex:0 1 auto}
-.rr-dest .mono{font-size:12px;color:var(--ik)}
 .rr-text{font-size:12px}
-/* A data centre's hosts and links: one row each, inside the rail's gutter. */
-.site-rows{display:flex;flex-direction:column;gap:6px;padding:0 var(--gut) 12px}
-
-/* ---------------- destinations ---------------- */
-
-.dest{border-top:1px solid var(--ln)}
-.dest .rr-line{padding:12px var(--gut) 0}
-/* A row set straight into a group -- an observer's "Make it the master", a
-   member's instances and "+ Instance" -- sits inside the rail's gutter like
-   the fields around it; it used to start flush against the rail's edge. */
-.grp>.rr-line,.grp>.rr-dest{padding:4px var(--gut) 10px}
-.grp>.rr-dest+.rr-dest,.grp>.rr-dest+.rr-line{padding-top:0}
-.dest .field{border-bottom:0;padding-bottom:8px}
-.dest .field:last-child{padding-bottom:14px}
+.insp .rr-k{font-family:var(--sans);font-size:12.5px;letter-spacing:0;text-transform:none;
+  color:var(--ik2)}
+.insp .rr-k.mono{font-family:var(--mono);font-size:11.5px}
+.insp .rr-row select.field-in{flex:0 0 auto;width:auto;min-width:104px}
+/* A PRIORITY group is a sunken box inside its rule. */
+.rr-grp{display:flex;flex-direction:column;gap:0;margin:var(--s1) var(--px) 0;
+  padding:var(--s1) var(--s2);background:var(--sf2);border-radius:8px}
+.insp .rr-grp .lrow{padding:2px 0}
+/* One destination of a group: target and transport, alternate and FALLBACK,
+   then Remove -- a two-column grid, so every destination lines up. */
+.insp .rr-dgrid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:var(--s1);
+  align-items:center;padding:var(--s2) 0 var(--s1);border-top:1px solid var(--ln)}
+.insp .rr-dgrid .field-in{height:28px;width:100%}
+.insp .rr-dgrid .opt{padding-left:var(--s1)}
+.insp .rr-dgrid .ctl-off{display:contents}
+.insp .rr-dgrid .btn{grid-column:2;justify-self:end}
+.insp .rr-dgrid .why{grid-column:1 / -1}
 
 /* ---------------- the summary ---------------- */
 
-.sum{display:flex;flex-direction:column;margin:0;padding:0 var(--gut) 12px}
-.sum-row{display:grid;grid-template-columns:minmax(0,11ch) minmax(0,1fr);gap:12px;
-  padding:6px 0;border-bottom:1px solid var(--ln);align-items:baseline}
-.sum-row:last-child{border-bottom:0}
-.sum dt{font-size:11px;font-family:var(--mono);letter-spacing:.1em;text-transform:uppercase;
-  color:var(--ik3)}
-.sum dd{margin:0;font-size:12.5px;color:var(--ik);overflow-wrap:anywhere}
+/* Label left, value right, like every other row of the rail. */
+.sum{display:flex;flex-direction:column;margin:0;padding:0 var(--px) var(--s1)}
+.sum-row{display:flex;justify-content:space-between;align-items:baseline;gap:var(--s3);
+  min-height:28px;padding:4px 0;border:0}
+.insp .sum dt{flex:0 0 auto;font-family:var(--sans);font-size:12.5px;letter-spacing:0;
+  text-transform:none;color:var(--ik2)}
+.sum dd{margin:0;min-width:0;font-size:12px;line-height:1.5;color:var(--ik);text-align:right;
+  overflow-wrap:anywhere}
 
-/* ---------------- Break rail ---------------- */
+/* ---------------- Break rail: the events ---------------- */
 
-.tmpl{display:flex;flex-direction:column;gap:6px;padding:10px var(--gut);
-  border-top:1px solid var(--ln)}
-.tmpl .caption{max-width:44ch}
-.evt{display:grid;grid-template-columns:auto minmax(0,1fr) auto auto;gap:10px;
-  align-items:center;padding:11px var(--gut);border-top:1px solid var(--ln)}
-.evt-n{font-family:var(--mono);font-size:10.5px;color:var(--ik3);
-  border:1px solid var(--ln2);border-radius:999px;width:20px;height:20px;
+/* The number beside an injected event is the number on the timeline's axis --
+   same circle, same red, same mono, so the rail and the drawing are one
+   object seen twice. What the event is on the first line; its time, the two
+   swaps and Remove on the second, in that order on every row. */
+.evt{display:grid;grid-template-columns:20px minmax(0,1fr);column-gap:var(--s2);row-gap:2px;
+  align-items:center;padding:var(--s2) var(--px)}
+.evt+.evt{border-top:1px solid var(--ln)}
+.evt-n{font-family:var(--mono);font-size:10px;font-weight:600;color:var(--rd);
+  border:1px solid var(--rd);border-radius:999px;width:19px;height:19px;
   display:inline-flex;align-items:center;justify-content:center}
-.evt-b{font-family:var(--mono);font-size:12px;color:var(--ik);overflow-wrap:anywhere}
-.evt-at{display:inline-flex;align-items:center;gap:5px}
-.evt-at .field-in{width:72px;font-size:12px;padding:5px 7px}
-.evt-u{font-family:var(--mono);font-size:11px;color:var(--ik3)}
+.evt-b{font-family:var(--mono);font-size:12px;line-height:20px;color:var(--ik);
+  overflow-wrap:anywhere}
+.evt-ctl{grid-column:2;display:flex;flex-wrap:wrap;align-items:center;gap:var(--s1) 2px;
+  margin-left:-8px}
+.evt-ctl .ctl-off,.evt-order,.evt-order .ctl-off{display:contents}
+.evt-ctl .why{order:2;flex:1 1 100%;margin-left:8px}
+.evt-at{display:inline-flex;align-items:center;gap:var(--s1);padding-left:8px;margin-right:var(--s1)}
+.insp .evt-at .field-in{width:64px;height:28px}
+.evt-u{font-family:var(--mono);font-size:11.5px;color:var(--ik3)}
 
-/* ---------------- the event menu over the canvas ---------------- */
+/* ---------------- Break rail: why this result ---------------- */
+
+/* The run's decisions (break/RunExplanation.tsx): a fold like the
+   inspector's, each step a row -- its time in mono where the event number
+   sits in the list above, what happened beside it, and under that the basis
+   and the sources of the claim behind it. */
+.run-explain-body{padding:0 var(--px) var(--s3)}
+.run-explain-note{margin:0 0 var(--s2);font-size:12px;line-height:1.45;color:var(--ik3)}
+.run-explain-list{list-style:none;margin:0;padding:0;border-top:1px solid var(--ln)}
+.run-explain-step{padding:var(--s1) 0 var(--s2);border-bottom:1px solid var(--ln)}
+.run-explain-seek{display:grid;grid-template-columns:48px minmax(0,1fr);gap:var(--s2);width:100%;
+  margin:0 -6px;padding:5px 6px;box-sizing:content-box;border:0;border-radius:var(--r-ctl,7px);
+  background:transparent;text-align:left;color:var(--ik);font:inherit;cursor:pointer}
+.run-explain-seek:hover{background:var(--sf2)}
+.run-explain-time{font-size:11.5px;line-height:18px;color:var(--ik3)}
+.run-explain-copy{display:flex;flex-direction:column;gap:2px;min-width:0;font-size:12px;line-height:1.4;
+  color:var(--ik2)}
+.run-explain-copy strong{font-size:12.5px;font-weight:600;color:var(--ik)}
+.run-explain-source{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 6px;
+  margin:2px 0 0 calc(48px + var(--s2));font-size:11px;line-height:1.4;color:var(--ik3);
+  overflow-wrap:anywhere}
+.run-explain-source a{font-size:10.5px;color:var(--bl)}
+.insp .run-explain-settings{margin:var(--s1) 0 0 calc(48px + var(--s2) - 8px)}
+.run-explain-related{display:flex;flex-wrap:wrap;gap:2px;margin:var(--s2) 0 0 -8px}
+
+/* ---------------- Break rail: the scenario shelf ---------------- */
+
+/* The six scenarios as a shelf (on the rail only where there is no floating
+   palette). Closed, a two-column grid of names; `Show descriptions` opens
+   the sentences and the grid becomes one column. A description is never
+   painted out of view: closed, it is not rendered, and it is each button's
+   `title` either way. */
+.tmpl-lede{margin:0;padding:0 var(--px) var(--s2);max-width:80ch}
+.tmpls{display:grid;grid-template-columns:1fr 1fr;gap:var(--s2);padding:var(--s1) var(--px) var(--s2)}
+.tmpls.is-open{grid-template-columns:1fr;gap:var(--s3)}
+.tmpl{display:flex;flex-direction:column;gap:var(--s1);min-width:0}
+.tmpl .caption{max-width:44ch}
+.tmpl .ctl-off{flex-direction:column;align-items:stretch;gap:var(--s1);min-width:0}
+.tmpl .btn{width:100%;justify-content:flex-start;padding:8px 12px;white-space:normal;
+  text-align:left}
+.tmpl-cap{min-width:0;max-width:80ch;font-size:12px;line-height:1.5;color:var(--ik3);margin:0}
+.tmpl-car{color:var(--ik3);width:9px}
+@media print{
+  /* On paper every scenario carries its sentence (the rail renders them all
+     while `printing` is on). */
+  .tmpls{grid-template-columns:1fr;gap:var(--s3)}
+}
+
+/* ---------------- the event menu ---------------- */
 
 /* In the stage's flow, under the drawing (shell.css makes the stage a
    column): a menu floating over the canvas covered the very card it was
@@ -165,10 +337,25 @@ input[type="range"].field-in:focus-visible{outline:2px solid var(--fc);outline-o
 .evmenu-empty{padding:10px;font-size:12px;line-height:1.45;color:var(--ik3)}
 .evmenu-note{padding:8px 10px 2px;font-size:11px;line-height:1.4;color:var(--ik3)}
 
-/* At the head of the Break rail it is a rail group, not a floating card. */
+/* At the head of the Break rail it is the rail's header and first group, in
+   the rail's own voice: the same 60 px header, the same inset, the same
+   buttons and refusals as the inspector. */
 .app-rail .evmenu{align-self:stretch;margin:0;width:auto;max-height:none;overflow:visible;
-  border:0;border-bottom:1px solid var(--ln);border-radius:0;box-shadow:none}
-.app-rail .evmenu.is-shut{padding:10px var(--gut)}
+  gap:0;padding-bottom:var(--s2);border:0;border-bottom:1px solid var(--ln);border-radius:0;
+  box-shadow:none}
+.app-rail .evmenu.is-shut{flex-direction:row;padding:var(--s3) var(--rail-px)}
+.app-rail .evmenu-hd{min-height:60px;padding:var(--s3) calc(var(--rail-px) - var(--s1))
+  var(--s3) var(--rail-px);background:var(--sf);margin-bottom:var(--s1);z-index:3}
+.app-rail .evmenu-title{font-family:var(--sans);font-size:13px;font-weight:600;
+  letter-spacing:0;color:var(--ik)}
+.app-rail .evmenu-at{height:26px;padding:0 6px;border-color:var(--ln2);
+  border-radius:var(--r-ctl);font-size:12px}
+.app-rail .evmenu-row{padding:0 calc(var(--rail-px) - var(--s1)) 0 calc(var(--rail-px) - 8px)}
+.app-rail .evmenu-row .btn{min-height:32px}
+.app-rail .evmenu-row .why{margin:0 0 var(--s1) 8px}
+.app-rail .evmenu-empty,.app-rail .evmenu-note,.app-rail .evmenu-hint,.app-rail .evmenu-quiet{
+  margin:0;padding:var(--s1) var(--rail-px) var(--s2);font-size:12px;line-height:1.5;
+  color:var(--ik3)}
 @media (max-width:767px){
   .evmenu{width:auto;max-height:none;margin:12px}
 }
@@ -176,56 +363,12 @@ input[type="range"].field-in:focus-visible{outline:2px solid var(--fc);outline-o
 /* ---------------- validation rows as buttons ---------------- */
 
 /* The row is a real button: it is focusable, it answers Enter, and it reads
-   as one thing to a screen reader. It keeps the look the shell gives .issue. */
-button.issue{width:100%;text-align:left;background:var(--sf);border-top:0;border-right:0;
+   as one thing to a screen reader. It keeps the look the shell gives .issue;
+   severity is its tag (and a faint wash for errors and warnings), never a
+   left border. */
+button.issue{width:100%;text-align:left;background:var(--sf);border:0;
   border-bottom:1px solid var(--ln);cursor:pointer;font:inherit;color:inherit}
 button.issue:hover{background:var(--sf2)}
-button.issue.sv-error{border-left:3px solid var(--rd)}
-button.issue.sv-warning{border-left:3px solid var(--am)}
-button.issue.sv-info{border-left:3px solid var(--ln2)}
-
-/* Break rail ---------------------------------------------------------------
-
-   The event list is the head of the rail and the scenarios are rows under it,
-   so these rules come after -- and override -- the older Break rail block
-   above. Nothing here hides anything without a way back: a clipped
-   description is in the DOM, is the row's title, unclips on focus-within,
-   opens with the group head's toggle, and is open on paper. */
-
-/* The number beside an injected event is the number on the timeline's axis --
-   same circle, same red, same mono, so the rail and the drawing are one
-   object seen twice. */
-.evt-n{border-color:var(--rd);color:var(--rd);font-size:10px;font-weight:600;
-  width:19px;height:19px}
-
-/* One quiet line under the eyebrow, not a paragraph at the foot of the group. */
-.tmpl-lede{padding:2px 16px 8px;max-width:80ch}
-
-/* The six scenarios as a shelf, not as six paragraphs (ui.md SS3f).
-   Closed, the group is a two-column grid of the six names and nothing else:
-   six clipped one-line descriptions under six buttons were 12 rows of text
-   for a shelf the reader takes one thing off. `Show descriptions` opens the
-   sentences -- and then the grid becomes one column, because a sentence in a
-   170 px cell is not a sentence. The description is never painted out of
-   view: with the group closed it is not rendered, and the button that would
-   render it is the group's own toggle, right above. */
-.tmpls{display:grid;grid-template-columns:1fr 1fr;gap:8px;
-  padding:2px var(--gut) 12px}
-.tmpls.is-open{grid-template-columns:1fr;gap:14px}
-.tmpl{gap:5px;padding:0;border-top:0;min-width:0}
-.tmpl .ctl-off{flex-direction:column;align-items:stretch;gap:6px;min-width:0}
-.tmpl .btn{width:100%;justify-content:flex-start;padding:9px 12px;
-  white-space:normal;text-align:left}
-.tmpl-cap{min-width:0;max-width:80ch;font-size:12px;line-height:1.5;color:var(--ik3);
-  margin:0}
-
-/* The toggle is a real button in the group head, quiet enough not to compete
-   with the six rows it opens. */
-.tmpl-tog{letter-spacing:.04em}
-.tmpl-car{color:var(--ik3);width:9px}
-
-@media print{
-  /* On paper every scenario carries its sentence: there is no toggle to press
-     on a printout (the rail renders them all while `printing` is on). */
-  .tmpls{grid-template-columns:1fr;gap:14px}
-}
+button.issue.sv-error{background:color-mix(in srgb,var(--rd) 5%,var(--sf))}
+button.issue.sv-warning{background:color-mix(in srgb,var(--am) 5%,var(--sf))}
+button.issue.sv-error:hover,button.issue.sv-warning:hover{background:var(--sf2)}

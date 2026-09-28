@@ -34,15 +34,21 @@ export const changes26ai: RefTableData = {
           <M>FastStartFailoverLagLimit</M> in MaxAvailability
         </>,
         <>
-          The property is no longer MaxPerformance-only. In MaxAvailability its broker default becomes{' '}
-          <M>0</M>, which is the 19c rule spelled as a number: the standby must have received all the
-          redo the primary generated, and a fast-start failover loses nothing. Set it non-zero
+          The property&rsquo;s MaxAvailability role is a <strong>21c</strong> feature, on the 21c
+          change list and 21c chapter, not a 26ai one &mdash; 19c itself disagrees about whether the
+          property reaches MaxAvailability at all (its fast-start failover chapter says it
+          &ldquo;must be set to zero&rdquo; there, its property page says it is used only in
+          MaxPerformance, and a live 19.27 system prints &ldquo;not in use&rdquo; in MaxAvailability).
+          26ai&rsquo;s own contribution is the per-mode broker default: <M>0</M> in MaxAvailability,
+          which is the 19c zero-loss rule spelled as a number &mdash; the standby must have received
+          all the redo the primary generated, and a fast-start failover loses nothing. Set it non-zero
           (minimum 5 s) and MaxAvailability becomes bounded-loss instead &mdash; failover is permitted
           whenever the standby&rsquo;s apply lag is at or below the limit, and the loss is bounded by
           it. <M>V$FAST_START_FAILOVER_CONFIG</M> reports the two as <M>ZERO DATA LOSS</M> and{' '}
-          <M>POTENTIAL DATA LOSS</M>. The 26ai prerequisites table also lists <M>ASYNC</M> among the
+          <M>POTENTIAL DATA LOSS</M>. The 26ai prerequisites list also lists <M>ASYNC</M> among the
           transports allowed for a MaxAvailability target, where 19c listed only <M>SYNC</M> and{' '}
-          <M>FASTSYNC</M>.
+          <M>FASTSYNC</M> &mdash; a conflict with 26ai&rsquo;s own Table 4-2 and LogXptMode page, which
+          still give SYNC or FASTSYNC only, and which 26ai does not name.
         </>,
         <>
           <Ext href={`${D26}/dgbkr/fast-start-failover2.html`}>
@@ -92,17 +98,24 @@ export const changes26ai: RefTableData = {
       cells: [
         <M>VALIDATE FAST_START FAILOVER</M>,
         <>
-          One DGMGRL command running the documented readiness checklist: fast-start failover properties
-          that are set incorrectly, anything preventing fast-start failover from being enabled or
-          initiated, anything affecting what happens once it is initiated, anything impacting the
-          configuration&rsquo;s stability, and the syntax of <M>fsfocallout.ora</M> together with the
-          accessibility of the callout scripts. The documented example output also flags an observer
-          that has not been started and flashback logging that is off &mdash; the checks that 19c
-          leaves spread across <M>SHOW</M> commands and views.
+          The command itself is a <strong>21c</strong> feature (&ldquo;Misconfigurations in a
+          fast-start failover configuration can be identified by validating the configuration using
+          the VALIDATE FAST_START FAILOVER command&rdquo;, 21c change list), and it is documented on
+          the 19c command reference page too &mdash; not new in 26ai. It runs the documented readiness
+          checklist: fast-start failover properties that are set incorrectly, anything preventing
+          fast-start failover from being enabled or initiated, anything affecting what happens once it
+          is initiated, anything impacting the configuration&rsquo;s stability, and the syntax of{' '}
+          <M>fsfocallout.ora</M> together with the accessibility of the callout scripts. The documented
+          example output also flags an observer that has not been started and flashback logging that
+          is off &mdash; the checks that a 19c or 21c reader would otherwise find spread across{' '}
+          <M>SHOW</M> commands and views.
         </>,
         <>
           <Ext href={`${D26}/dgbkr/validate-fast_start-failover.html`}>26ai docs</Ext> ·{' '}
-          <Ext href={`${CAL}/dg26ai-validate-fsfo/`}>Caldara #28</Ext>
+          <Ext href="https://docs.oracle.com/en/database/oracle/oracle-database/19/dgbkr/oracle-data-guard-broker-commands.html">
+            19c command reference
+          </Ext>{' '}
+          · <Ext href={`${CAL}/dg26ai-validate-fsfo/`}>Caldara #28</Ext>
         </>,
       ],
     },
@@ -142,15 +155,18 @@ export const changes26ai: RefTableData = {
       cells: [
         'SQL-side broker visibility',
         <>
-          New view <M>V$DG_BROKER_PROPERTY</M> lists every broker property and value from SQL;{' '}
-          <M>V$DG_BROKER_CONFIG</M> gains <M>SWITCHOVER_READY</M> and <M>FAILOVER_READY</M>,
-          role-transition readiness as two columns; <M>V$FS_FAILOVER_OBSERVERS</M> gains per-observer
-          diagnostics &mdash; seconds since the observer last pinged the primary and the target, and
-          the full paths of its log and state files &mdash; with the caveat that the view&rsquo;s
-          behavior is defined only when it is queried on the primary.
+          <M>V$DG_BROKER_PROPERTY</M>, which lists every broker property and value from SQL, and{' '}
+          <M>V$FS_FAILOVER_OBSERVERS</M>&rsquo; <M>LOG_FILE</M> and <M>STATE_FILE</M> columns are both
+          documented since <strong>21c</strong> &mdash; present on the 21c reference pages, not new in
+          26ai. <M>V$DG_BROKER_CONFIG</M> gains <M>SWITCHOVER_READY</M> and <M>FAILOVER_READY</M>,
+          role-transition readiness as two columns, which is a 26ai addition. With the caveat that
+          these views&rsquo; behavior is defined only when queried on the primary.
         </>,
         <>
-          <Ext href={`${D26}/refrn/V-DG_BROKER_PROPERTY.html`}>26ai docs</Ext> ·{' '}
+          <Ext href="https://docs.oracle.com/en/database/oracle/oracle-database/21/refrn/V-DG_BROKER_PROPERTY.html">
+            21c docs
+          </Ext>{' '}
+          · <Ext href={`${D26}/refrn/V-DG_BROKER_PROPERTY.html`}>26ai docs</Ext> ·{' '}
           <Ext href={`${CAL}/dg26ai-v-dg-broker-property/`}>Caldara #23</Ext> ·{' '}
           <Ext href={`${CAL}/dg26ai-switchover-readiness/`}>#21</Ext> ·{' '}
           <Ext href={`${CAL}/dg26ai-enhanced-observer-diagnostics/`}>#27</Ext>
@@ -186,9 +202,9 @@ export const changes26ai: RefTableData = {
           DGMGRL grows JSON output for its <M>SHOW</M> commands; the <M>DBMS_DG</M> package becomes a
           full PL/SQL configuration API rather than the single 19c failover-initiation call; SQLcl
           speaks the broker commands; ORDS exposes them over REST. Those last two arrived before 26ai
-          &mdash; the SQLcl <M>DG</M> command is documented for 21c and the ORDS endpoints ship in 23.3
-          &mdash; so a 19c site picks them up in the same upgrade. Automation stops screen-scraping
-          DGMGRL.
+          &mdash; the SQLcl <M>DG</M> command is documented for 21c and the ORDS Data Guard REST
+          endpoints exist from ORDS 21.1 &mdash; so a 19c site picks them up in the same upgrade.
+          Automation stops screen-scraping DGMGRL.
         </>,
         <>
           <Ext href={`${D26}/arpls/DBMS_DG.html`}>26ai docs</Ext> ·{' '}
@@ -197,8 +213,8 @@ export const changes26ai: RefTableData = {
             SQLcl DG
           </Ext>{' '}
           ·{' '}
-          <Ext href="https://docs.oracle.com/en/database/oracle/oracle-rest-data-services/23.3/orrst/api-data-guard.html">
-            ORDS Data Guard REST
+          <Ext href="https://docs.oracle.com/en/database/oracle/oracle-rest-data-services/21.1/orrst/api-data-guard.html">
+            ORDS Data Guard REST (21.1)
           </Ext>{' '}
           · <Ext href={`${CAL}/dg26ai-json-output/`}>Caldara #14</Ext> ·{' '}
           <Ext href={`${CAL}/dg26ai-pl-sql-api/`}>#10</Ext> ·{' '}

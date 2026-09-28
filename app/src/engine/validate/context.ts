@@ -70,7 +70,12 @@ export interface ValidateContext {
   forwardedDests(m: Member): DeclaredDest[];
   /** Active, up edges leaving the declared primary. */
   primaryEdges(): RedoEdge[];
-  destPropsFor(from: Member, to: MemberId): DestProps;
+  /**
+   * The destination's properties, or the broker defaults where it has none --
+   * MaxFailure defaults to 1 for a destination written inside a parenthesised
+   * RedoRoutes group (`inGroup`), 0 otherwise.
+   */
+  destPropsFor(from: Member, to: MemberId, inGroup?: boolean): DestProps;
   siteOf(host: HostId): SiteId | undefined;
   /** Hosts that run a database instance. */
   dbHosts: Set<HostId>;
@@ -197,9 +202,11 @@ export function buildContext(doc: TopologyDoc): ValidateContext {
         rule.source === 'LOCAL' ? 'LOCAL' : rule.source === 'ANY' ? 'ANY' : 'named';
       rule.groups.forEach((group, groupIndex) => {
         for (const dest of group.dests) {
+          /* ALL is every other member, snapshot standbys included: they
+             receive and archive redo like any standby. */
           const targets: Array<{ id: MemberId; fromAll: boolean }> = dest.target === 'ALL'
             ? doc.members
-              .filter((x) => x.enabled && x.id !== m.id && !(isDatabase(x) && x.role === 'snapshot'))
+              .filter((x) => x.enabled && x.id !== m.id)
               .map((x) => ({ id: x.id, fromAll: true }))
             : [{ id: dest.target, fromAll: false }];
           for (const t of targets) {
@@ -240,7 +247,7 @@ export function buildContext(doc: TopologyDoc): ValidateContext {
     rawTargets, targetIsAny, candidates,
     fsfoOn: doc.config.fsfo.state !== 'disabled',
     declaredDests, forwardedDests, primaryEdges,
-    destPropsFor: (from, to) => from.dests[to] ?? defaultDestProps(),
+    destPropsFor: (from, to, inGroup) => from.dests[to] ?? defaultDestProps({ inGroup: inGroup === true }),
     siteOf: (host) => siteByHost.get(host),
     dbHosts, dbClusters,
     reachableMembers: (a, b) => membersReachable(doc, net, a, b, reach),

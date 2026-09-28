@@ -24,7 +24,8 @@
 import type { Finding } from '@/engine';
 import { errors, issues, warnings } from '@/state/derived';
 import {
-  inspectorOpen, issuesOpen, lessonId, mode, notesOpen, selection, toast, viewport,
+  findingsOpen, floating, inspectorOpen, issuesOpen, lessonId, mode, notesOpen, selection, toast,
+  viewport,
 } from '@/state/view';
 import { setIssuesOpen, toggleIssues } from '@/state/persist';
 import { Fact } from './common/Chip';
@@ -71,7 +72,10 @@ export function revealFindings(): void {
       ...(open ? { action: { label: 'Back to the lesson', run: () => { mode.value = 'learn'; } } } : {}),
     };
   } else if (mode.value === 'configure') mode.value = 'build';
-  else if (mode.value === 'break' && viewport.value !== 'wide') inspectorOpen.value = true;
+  /* Over a full-bleed canvas the findings are a popover the status card's
+     chips open, in Build and Break alike; the rows are not docked anywhere. */
+  if (floating(mode.value, viewport.value)) { findingsOpen.value = true; return; }
+  if (mode.value === 'break' && viewport.value !== 'wide') inspectorOpen.value = true;
   scrollFindingsIntoView();
 }
 
@@ -121,7 +125,17 @@ function Row({ f }: { f: Finding }) {
   );
 }
 
-export function IssuePanel() {
+export interface IssuePanelProps {
+  children?: unknown;
+  /**
+   * Rows only, unfolded, with no heading of its own: the popover that hosts
+   * it carries the heading and the counts, and a fold inside a popover is a
+   * second door to the same room.
+   */
+  bare?: boolean;
+}
+
+export function IssuePanel({ bare = false }: IssuePanelProps = {}) {
   const list = issues.value;
   const loud = list.filter((f) => f.severity !== 'info');
   const notes = list.filter((f) => f.severity === 'info');
@@ -137,8 +151,40 @@ export function IssuePanel() {
   /* The heading is the fold's handle. The counts stay on it either way, so a
      folded panel still says "2 errors" -- what the fold hides is the rows, not
      the fact of them. `aria-controls` names the list it folds. */
-  const summary = counts.length === 0 ? 'No errors and no warnings' : counts.join(' · ');
+  const summary = counts.length === 0 ? 'No issues' : counts.join(' · ');
   const noteWord = notes.length === 0 ? null : `${notes.length} note${notes.length === 1 ? '' : 's'}`;
+
+  if (bare) {
+    return (
+      <div class="issues is-bare">
+        <div class="issues-body" id="issues-body">
+          {loud.length === 0 && notes.length === 0 ? (
+            <p class="issues-none">No issues, as modelled here.</p>
+          ) : null}
+          {loud.map((f) => (
+            <Row key={`${f.id}:${f.subject.kind}:${f.subject.id ?? ''}`} f={f} />
+          ))}
+          {notes.length === 0 ? null : (
+            <button
+              type="button"
+              class="notes-tog"
+              aria-expanded={open}
+              onClick={() => { notesOpen.value = !open; }}
+            >
+              <span class="notes-caret">{open ? '▾' : '▸'}</span>
+              {noteWord}
+              <span class="notes-hint">Details and sources</span>
+            </button>
+          )}
+          {open
+            ? notes.map((f) => (
+              <Row key={`${f.id}:${f.subject.kind}:${f.subject.id ?? ''}`} f={f} />
+            ))
+            : null}
+        </div>
+      </div>
+    );
+  }
 
   /* A healthy configuration is one line. The panel used to open on "No
      errors and no warnings", then "No issues in this configuration" under
@@ -211,7 +257,7 @@ export function IssuePanel() {
             {/* One phrase in both states: the caret and `aria-expanded` say
                 which way the fold is pointing, and ", folded away" wrapped
                 the row to two lines in a 360 px rail to say it a third time. */}
-            documented behaviour worth knowing
+            Details and sources
           </span>
         </button>
       )}

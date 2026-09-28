@@ -1,0 +1,11 @@
+.sheet.is-card.collect-dialog{width:min(760px,calc(100vw - 32px));max-width:760px}
+.collect-body{padding:16px;overflow:auto;font-size:13px;line-height:1.5}
+.collect-body p{margin:0 0 12px}
+.collect-body label{display:block;margin:12px 0 6px;font-weight:600}
+.collect-body textarea{display:block;box-sizing:border-box;width:100%;margin-bottom:12px;padding:8px;background:var(--sf);color:var(--ik);border:1px solid var(--ln);border-radius:6px;resize:vertical;font:12px monospace}
+.collect-body pre{overflow:auto;padding:8px;background:var(--sf2)}
+.collect-body [role=alert]{margin-top:12px;color:var(--rd)}
+.collect-body li{margin-bottom:6px;overflow-wrap:anywhere}
+.collect-notice{margin:4px 16px;padding:6px 10px;border:1px solid var(--ln);border-radius:6px;font-size:12px;background:var(--sf2)}
+.collect-notice summary{cursor:pointer}
+.collect-notice p{white-space:pre-line;max-height:220px;overflow:auto}

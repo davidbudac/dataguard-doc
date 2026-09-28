@@ -19,10 +19,9 @@ import { findPreset } from '@/presets';
 import type { PresetId } from '@/presets';
 import { makeDoc } from '@/state/doc';
 import { topology } from '@/state/derived';
-import { resetHistory } from '@/state/history';
+import { replaceWorkingDocument } from '@/state/workspaces';
 import { dismissIntro } from '@/state/persist';
-import { presetId } from '@/state/url';
-import { introOpen, introPage, mode, panelTab, selection, tNow } from '@/state/view';
+import { introOpen, introPage, mode, panelTab } from '@/state/view';
 import type { Mode, PanelTab } from '@/state/view';
 import { applyTemplate, templates } from '@/ui/break/events';
 import { openLessonStep } from '@/ui/learn/route';
@@ -57,10 +56,8 @@ export function leaveIntro(): void {
 export function loadPreset(id: PresetId): void {
   const chosen = findPreset(id);
   if (!chosen) return;
-  resetHistory(makeDoc(chosen.doc()));
-  presetId.value = id;
-  selection.value = [];
-  tNow.value = 0;
+  /* The same path as the picker: undoable, and the draft it replaces is kept. */
+  replaceWorkingDocument(`Open ${chosen.short}`, makeDoc(chosen.doc()), id);
 }
 
 export interface IntroJump {
@@ -112,7 +109,7 @@ export function openLesson(index: number): void {
  * say how to render whatever is shown, not what to show -- leave the first
  * visit free to start at the Introduction.
  */
-const ADDRESSED = new Set(['mode', 'panel', 'sel', 't', 'preset', 'lesson', 'step']);
+const ADDRESSED = new Set(['mode', 'report', 'panel', 'sel', 't', 'preset', 'lesson', 'step']);
 
 export interface BootIntro {
   /** `?intro=1` was asked for outright. */

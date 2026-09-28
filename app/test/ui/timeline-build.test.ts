@@ -9,6 +9,8 @@ import { describe, expect, it } from 'vitest';
 import { classicTopology, scenarioEvents, simulate } from '@/engine';
 import type { TopologyDoc, Trace } from '@/engine';
 import { preset } from '@/presets';
+import { hostId, memberId } from '../../src/engine/ids';
+import { multiTargetDoc } from '../topologies';
 import {
   approxW, axisSpan, buildTimeline, clampToAxis, describeEvent, fitLabel, packBraces,
   PINNED, snapNice, TL,
@@ -55,9 +57,9 @@ describe('buildTimeline: the classic crash', () => {
        has to hold a marker label and the ladder is the plain one. */
     const m = build('observer-lost');
     expect(m.scale.plotL).toBe(TL.gutter);
-    expect(m.lanes.map((l) => l.y)).toEqual([80, 128, 176]);
+    expect(m.lanes.map((l) => l.y)).toEqual([TL.laneTop, TL.laneTop + 48, TL.laneTop + 96]);
     expect(m.lanes.every((l) => l.height === 38)).toBe(true);
-    expect(m.lanesBottom).toBe(80 + 3 * 48 - 10);
+    expect(m.lanesBottom).toBe(TL.laneTop + 3 * 48 - 10);
     expect(m.axisY).toBe(m.lanesBottom + 24);
   });
 
@@ -65,8 +67,8 @@ describe('buildTimeline: the classic crash', () => {
     /* The observer lane carries "Initiates failover at t = 30 s" above it and
        the standby's carries "Opens read-write"; the primary's does not. */
     const m = build();
-    expect(m.lanes.map((l) => l.y)).toEqual([80, 128 + TL.markRow, 176 + 2 * TL.markRow]);
-    expect(m.lanesBottom).toBe(80 + 3 * 48 - 10 + 2 * TL.markRow);
+    expect(m.lanes.map((l) => l.y)).toEqual([TL.laneTop, TL.laneTop + 48 + TL.markRow, TL.laneTop + 96 + 2 * TL.markRow]);
+    expect(m.lanesBottom).toBe(TL.laneTop + 3 * 48 - 10 + 2 * TL.markRow);
   });
 
   it('keeps every marker label out of the lanes it sits between', () => {
@@ -154,6 +156,67 @@ describe('buildTimeline: the classic crash', () => {
   });
 });
 
+/**
+ * "The clock starts when the observer FIRST loses its connection to the
+ * primary" -- so a failure injected well after t = 0 has to draw the
+ * FastStartFailoverThreshold brace, and the primary's own stall clock, from
+ * that instant, not from 0.
+ */
+describe('buildTimeline: a brace whose clock starts after t = 0', () => {
+  const late = (scenario: Parameters<typeof scenarioEvents>[0], at: number, over: Parameters<typeof classicTopology>[0] = {}) => {
+    const base = classicTopology(over);
+    const events = scenarioEvents(scenario, base).map((e) => ({ ...e, at }));
+    const doc: TopologyDoc = { ...base, events };
+    const trace = simulate(doc, events);
+    return { doc, trace, m: buildTimeline(trace, doc, { width: 980 }) };
+  };
+
+  it('draws the observer’s FastStartFailoverThreshold brace from the crash, not from 0', () => {
+    const { trace, m } = late('crash', 100);
+    const th = m.braces.find((b) => b.key === 'threshold');
+    expect(trace.facts.thresholdStartAt).toBe(100);
+    expect(th?.a).toBe(100);
+    expect(th?.b).toBe(trace.facts.initiateAt);
+    expect(th?.a).toBeGreaterThan(0);
+  });
+
+  it('draws the primary’s own stall clock from when it started stalling, not from 0', () => {
+    /* pmyShutdown stays TRUE (the default) so the primary aborts, and the
+       'abort' brace under a failover outcome is the one drawn from the stall. */
+    const { doc, trace, m } = late('isolated', 100);
+    expect(trace.facts.outcome).toBe('failover');
+    expect(trace.facts.stallStartAt).toBe(100);
+    const abort = m.braces.find((b) => b.key === 'abort');
+    expect(abort?.a).toBe(100);
+    expect(abort?.b).toBe(trace.facts.abortAt);
+    void doc;
+  });
+
+  it('draws stall-noone’s own FastStartFailoverThreshold brace from the stall, not from 0', () => {
+    /* A standby-site observer goes down with the standby site: nobody is left
+       to fail over to, and the primary stalls with nothing to confirm it. */
+    const { trace, m } = late('dc2down', 100, { observerLoc: 'dc2' });
+    expect(trace.facts.outcome).toBe('stall-noone');
+    expect(trace.facts.stallStartAt).toBe(100);
+    const th = m.braces.find((b) => b.key === 'stall-threshold');
+    expect(th?.a).toBe(100);
+    expect(th?.b).toBe(trace.facts.abortAt);
+  });
+
+  it('still anchors the NET_TIMEOUT brace at the failure instant it was already computed from', () => {
+    const p = preset('max-protection');
+    const doc = p.doc();
+    doc.config.fsfo.state = 'disabled';
+    const events = p.events().map((e) => ({ ...e, at: 100 }));
+    const trace = simulate(doc, events);
+    expect(trace.facts.outcome).toBe('maxprot-shutdown');
+    const m = buildTimeline(trace, doc, { width: 980 });
+    const nt = m.braces.find((b) => b.name === 'NET_TIMEOUT');
+    expect(nt?.a).toBe((trace.facts.abortAt ?? 0) - (trace.facts.netTimeoutSeconds ?? 0));
+    expect(nt?.a).toBeGreaterThan(0);
+  });
+});
+
 describe('buildTimeline: captions branch on the outcome', () => {
   it('never repeats the event name back', () => {
     for (const scenario of ['crash', 'partition', 'isolated', 'dc2down', 'observer-lost', 'switchover'] as const) {
@@ -174,6 +237,51 @@ describe('buildTimeline: captions branch on the outcome', () => {
     expect(m.caption.text).toContain(`${trace.facts.tOpen} s`);
     expect(m.caption.text).not.toContain('Total outage');
     expect(m.caption.anchor).toBe('middle');
+  });
+});
+
+/* SIM-14 g (fact check 2026-09-28): the blocked-switchover caption used to
+   say "outside FastStartFailoverLagLimit" for every refusal, including one
+   that has nothing to do with the lag limit. It now reads the reason the
+   engine recorded on the switchover facts (`facts.switchover.refusal`). */
+describe('buildTimeline: a blocked switchover names its own refusal reason', () => {
+  it('names the lag limit when that is the refusal', () => {
+    const { doc, trace } = classic('switchover');
+    doc.config.fsfo.state = 'enabled';
+    doc.config.protectionMode = 'MAXPERFORMANCE';
+    doc.config.fsfo.lagLimitSeconds = 0;
+    const events = scenarioEvents('switchover', doc);
+    const t2 = simulate(doc, events);
+    if (!t2.facts.blocked) return; // engine still landing
+    const m = buildTimeline(t2, doc, { width: 980 });
+    expect(m.caption.text).toContain('SWITCHOVER refused');
+    expect(m.caption.text).toContain('FastStartFailoverLagLimit');
+  });
+
+  it('names the target, not the lag limit, when the member is not the pre-specified target', () => {
+    const doc = multiTargetDoc();
+    doc.config.fsfo.state = 'enabled';
+    doc.config.fsfo.target = { kind: 'list', members: [memberId('sby01')] };
+    const events = [{ at: 0, kind: 'cmd.switchover' as const, to: memberId('sby02') }];
+    const trace = simulate(doc, events);
+    expect(trace.facts.blocked).toBe(true);
+    const m = buildTimeline(trace, { ...doc, events }, { width: 980 });
+    expect(m.caption.text).toContain('SWITCHOVER refused');
+    expect(m.caption.text).not.toContain('FastStartFailoverLagLimit');
+    expect(m.caption.text).toContain('not the pre-specified fast-start failover target');
+  });
+
+  it('names the standby that is down, which no fast-start failover gate has anything to do with', () => {
+    const { doc } = classic('switchover');
+    const events = [
+      { at: 0, kind: 'host.down' as const, host: hostId('dc2-sby01') },
+      { at: 5, kind: 'cmd.switchover' as const, to: memberId('sby01') },
+    ];
+    const trace = simulate(doc, events);
+    expect(trace.facts.blocked).toBe(true);
+    expect(trace.facts.switchover?.refusal).toBe('target-down');
+    const m = buildTimeline(trace, { ...doc, events }, { width: 980 });
+    expect(m.caption.text).toBe('SWITCHOVER refused — the target standby is down');
   });
 });
 

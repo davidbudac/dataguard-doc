@@ -19,14 +19,16 @@
  */
 
 import { render } from 'preact';
-import { App } from './ui/App';
+import { Root } from './ui/Root';
 import { classicDoc, makeDoc } from './state/doc';
 import type { Doc } from './state/doc';
 import { findPreset } from './presets';
 import { resetHistory } from './state/history';
 import { decodeFragment, fragmentKind } from './state/codec';
 import {
-  announceRestore, introDismissed, loadDoc, loadEdition, loadHints, loadIntro, loadIssuesOpen, loadTheme,
+  announceRestore, introDismissed, loadDoc, loadEdition, loadGrid, loadHints, loadIntro, loadIssuesOpen, loadPalette,
+  loadTheme,
+  loadTimelineH,
   startAutosave,
 } from './state/persist';
 import { upgradeLegacyUrl } from './state/legacy-url';
@@ -37,11 +39,13 @@ import {
   applyUrlState, parseUrlQuery, presetId, splitQuery, startUrlSync, URL_DEFAULTS,
 } from './state/url';
 import type { UrlState } from './state/url';
-import { applyTheme, introPage, startViewportWatch, toast } from './state/view';
+import { applyPalette, applyTheme, introPage, palette, startViewportWatch, toast } from './state/view';
 
 import './styles/tokens.css';
 import './styles/base.css';
 import './styles/shell.css';
+import './styles/float.css';
+import './styles/popout.css';
 import './styles/print.css';
 
 async function boot(): Promise<void> {
@@ -57,13 +61,17 @@ async function boot(): Promise<void> {
   if (!present.has('theme')) state.theme = loadTheme() ?? URL_DEFAULTS.theme;
   if (!present.has('ed')) state.ed = loadEdition() ?? URL_DEFAULTS.ed;
   applyTheme(state.theme);
+  palette.value = loadPalette() ?? 'standard';
+  applyPalette();
   /* Whether the reader has already been told how the page works. Read once,
      here, so no component reaches into localStorage while it renders. */
   loadIntro();
   /* And whether they want the sentence under each control. Same contract:
      read once, here, never from inside a render. */
   loadHints();
+  loadGrid();
   loadIssuesOpen();
+  loadTimelineH();
 
   let restoredFromStorage = false;
   let notice: string | null = null;
@@ -135,9 +143,8 @@ async function boot(): Promise<void> {
   introPage.value = introOnBoot({
     asked: state.intro,
     seen: introDismissed.value,
-    /* An old link upgraded into a document is a link to that document: it
-       opens where the published page's chapter pointed, not on the
-       Introduction. */
+    /* A published-page link is a link to something too: its old query keys
+       are a configuration, and the Introduction does not open over it. */
     hasDocument: fragmentKind(hash) !== null || upgraded,
     keys: [...present],
   });
@@ -154,7 +161,7 @@ async function boot(): Promise<void> {
 
   const root = document.getElementById('app');
   if (!root) throw new Error('boot: #app is missing from index.html');
-  render(<App />, root);
+  render(<Root />, root);
 
   if (restoredFromStorage) announceRestore();
   startViewportWatch();

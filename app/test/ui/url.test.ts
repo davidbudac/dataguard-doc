@@ -16,18 +16,18 @@ describe('url table', () => {
     const keys = URL_FIELDS.map((f) => f.k);
     expect(new Set(keys).size).toBe(keys.length);
     expect(keys).toEqual([
-      'ed', 'mode', 'intro', 'panel', 'sel', 't', 'preset', 'lesson', 'step', 'theme',
+      'ed', 'mode', 'intro', 'report', 'panel', 'sel', 't', 'preset', 'lesson', 'step', 'theme',
     ]);
   });
 
   it('parses every key', () => {
     const { state, unknown } = parseUrlQuery(
-      '?ed=26ai&mode=break&intro=1&panel=commit&sel=prm01,sby01&t=12.5&preset=classic'
+      '?ed=26ai&mode=break&intro=1&report=1&panel=commit&sel=prm01,sby01&t=12.5&preset=classic'
       + '&lesson=clocks&step=3&theme=dark',
     );
     expect(unknown).toEqual([]);
     expect(state).toEqual({
-      ed: '26ai', mode: 'break', intro: true, panel: 'commit', sel: ['prm01', 'sby01'], t: 12.5,
+      ed: '26ai', mode: 'break', intro: true, report: true, panel: 'commit', sel: ['prm01', 'sby01'], t: 12.5,
       preset: 'classic', lesson: 'clocks', step: 3, theme: 'dark',
     });
   });

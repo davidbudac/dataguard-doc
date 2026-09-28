@@ -6,7 +6,7 @@
  */
 
 import type {
-  Edition, HostId, LinkId, MemberId, Millis, ObserverId, Seconds, SiteId,
+  ApplicationId, Edition, HostId, LinkId, MemberId, Millis, ObserverId, Seconds, SiteId,
 } from '../ids';
 import type { TimedEvent } from './events';
 
@@ -61,6 +61,7 @@ export interface DestProps {
 
 export type RoutePriority = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8;
 
+/** 12.1 grammar only: `ALT=(name [xpt] [FALLBACK])`. Absent from 12.2, 19c and 26ai. */
 export interface RouteAlternate {
   target: MemberId;
   xpt?: XptMode;
@@ -70,14 +71,28 @@ export interface RouteAlternate {
 export interface RouteDest {
   target: 'ALL' | MemberId;
   xpt?: XptMode;
+  /**
+   * `PRIORITY=n`, which the grammar writes after a destination inside a
+   * parenthesised group. Unset, it is 1 when the destination is a far sync
+   * instance and 8 otherwise -- the kind of the destination, not the sender.
+   */
+  priority?: RoutePriority;
+  /** The 12.1 alternate form, kept so that old text still parses. */
   alt?: RouteAlternate;
 }
 
+/**
+ * One entry of the redo destination field.
+ *
+ * Parenthesised (`explicitGroup`), it is one redo destination group: "there
+ * is one active redo path for each group" -- the usable destination with the
+ * lowest PRIORITY number, or every PRIORITY=8 destination when 8 is the best
+ * on offer. Unparenthesised, each destination in `dests` is a group of its
+ * own, so every one of them is active: `(LOCAL : a, b)` ships to both.
+ */
 export interface DestGroup {
-  /** Default 1 for far sync members, 8 otherwise. */
-  priority?: RoutePriority;
   dests: RouteDest[];
-  /** True when the group was written in the parenthesised PRIORITY spelling. */
+  /** True when the group was written in parentheses. */
   explicitGroup?: boolean;
 }
 
@@ -98,6 +113,8 @@ export interface MemberBase {
   dests: Record<MemberId, DestProps>;
   /** [] means the property is NULL. */
   redoRoutes: RedoRouteRule[];
+  /** Imported current routes: an empty list means no observed route, not broker NULL. */
+  routesObserved?: true;
   /** As a receiver; broker default ASYNC. */
   logXptMode: XptMode;
 }
@@ -182,7 +199,20 @@ export interface FsfoConfig {
   state: FsfoState;
   target: FsfoTarget;
   thresholdSeconds: Seconds;
+  /**
+   * The FastStartFailoverLagLimit value as set. Meaningful only with
+   * `lagLimitSet`; while the property is not set it holds
+   * LAG_LIMIT_UNSET_STORED. Never read it directly: `lagLimitOf(doc)` is the
+   * limit in force.
+   */
   lagLimitSeconds: Seconds;
+  /**
+   * FastStartFailoverLagLimit was set on this configuration. Absent, the
+   * property is at the broker default, which follows the edition and the
+   * protection mode (defaultLagLimit) -- "not set" is a first-class state,
+   * as it is for the ping properties.
+   */
+  lagLimitSet?: true;
   lagType: LagType;
   lagGraceTimeSeconds: Seconds;
   /** Both non-null is the documented "explicitly set" pair. */
@@ -232,6 +262,17 @@ export interface ClientDescriptor {
   deadBehaviour: 'drop' | 'rst';
 }
 
+/**
+ * The application tier, as one card on a host of its own. Where it stands is
+ * the vantage its connect descriptor is dialled from: an address answers when
+ * this host can reach that one. `doc.client` stays the descriptor itself.
+ */
+export interface Application {
+  id: ApplicationId;
+  name: string;
+  host: HostId;
+}
+
 export interface EnvironmentParams {
   roleTransitionSeconds: Seconds;
   localWriteMs: Millis;
@@ -253,6 +294,12 @@ export interface TopologyDoc {
   observers: Observer[];
   config: Configuration;
   client: ClientDescriptor;
+  /**
+   * Absent in a document written before the application was a card, and in
+   * the published 1+1+1 deployment: the descriptor is then dialled from
+   * outside every data centre, as the published page dials it.
+   */
+  application?: Application;
   environment: EnvironmentParams;
   events: TimedEvent[];
 }
