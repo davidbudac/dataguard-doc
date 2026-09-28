@@ -819,6 +819,11 @@ export const CITATIONS = {
     url: U.bkr26Configs, edition: '26ai', verified: 'primary',
     quote: 'Oracle Data Guard broker enables you to create a broker configuration consisting of up to 253 members, including one primary database and a combination of standby databases, far sync instances, and Zero Data Loss Recovery Appliances.',
   },
+  'CFG.DEFAULT_PROTECTION_MODE': {
+    url: U.bkr19Cmds, edition: '19c', verified: 'primary',
+    quote: 'The default protection mode for the configuration is MAXPERFORMANCE.',
+    note: 'CREATE CONFIGURATION, Usage Notes. Oracle\'s own broker default -- never this workbench\'s own starting mode, which is a product choice (MAXAVAILABILITY) kept in a separate constant.',
+  },
   'CFG.WIDE_SERVICE_NAME': {
     url: U.bkr19Props, edition: '19c', verified: 'primary',
     quote: 'The default service name of this configuration-wide service is primarydbname_CFG, where the primary database name is appended with a suffix of _CFG. The service name does not change after a role transition.',

@@ -6,6 +6,7 @@
  */
 
 import { M } from '../facts-ui';
+import { Fn } from '../footnotes';
 import { byEdition, type RefTableData } from './RefTable';
 
 export const brokerProperties: RefTableData = {
@@ -35,20 +36,25 @@ export const brokerProperties: RefTableData = {
       key: 'ping-interval',
       cells: [
         <M>ObserverPingInterval</M>,
-        byEdition('100 ms', '0 — not set'),
-        '100 ms',
-        <>How frequently the observer pings the primary.</>,
+        byEdition('does not exist in 19c', '0 — not set'),
+        byEdition('—', '100 ms'),
+        <>
+          How frequently the observer pings the primary. Absent from the 12.2, 18c and 19c property
+          pages, the fast-start failover chapter and the command reference, and from a live 19.27
+          system; documented from 21c.
+        </>,
       ],
     },
     {
       key: 'ping-retry',
       cells: [
         <M>ObserverPingRetry</M>,
-        byEdition('10', '0 — not set'),
-        '10',
+        byEdition('does not exist in 19c', '0 — not set'),
+        byEdition('—', '10'),
         <>
           Number of times the observer retries a failed ping before initiating failover. A ping
-          counts as failed when there is no answer within <M>ObserverPingInterval</M>.
+          counts as failed when there is no answer within <M>ObserverPingInterval</M>. Absent from
+          19c for the same reason as ObserverPingInterval; documented from 21c.
         </>,
       ],
     },
@@ -59,10 +65,14 @@ export const brokerProperties: RefTableData = {
         byEdition('30 s', '30 s MaxPerf · 0 MaxAvail'),
         byEdition('5 s', '0, or 5 s'),
         <>
-          MaxPerformance only under 19c. Maximum seconds the standby&rsquo;s apply point may lag the
-          primary&rsquo;s redo generation point for fast-start failover to be permitted. Bounds the
-          data loss. Under 26ai it applies in MaxAvailability as well, where the default 0 is the 19c
-          zero-loss rule written as a number.
+          Maximum seconds the standby&rsquo;s apply point may lag the primary&rsquo;s redo generation
+          point for fast-start failover to be permitted. Bounds the data loss. 19c disagrees with
+          itself about MaxAvailability: its fast-start failover chapter says the property &ldquo;must
+          be set to zero&rdquo; for zero data loss there, its own property page says the property is
+          used only in MaxPerformance, and a live 19.27 system prints &ldquo;Lag Limit: 30 seconds
+          (not in use)&rdquo; in MaxAvailability &mdash; the behaviour this page follows.<Fn n={6} />{' '}
+          The MaxAvailability role is a 21c feature; 26ai&rsquo;s own contribution is the per-mode
+          default, 0 meaning the 19c zero-loss rule written as a number.
         </>,
       ],
     },

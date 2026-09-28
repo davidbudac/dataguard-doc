@@ -99,6 +99,9 @@ export function withinBounds(key: BoundKey, value: number): boolean {
 /* ---------------- broker defaults ---------------- */
 
 export interface BrokerDefaults {
+  /** "The default protection mode for the configuration is MAXPERFORMANCE."
+   *  Oracle's own broker default -- never this workbench's starting mode; see
+   *  WORKBENCH_DEFAULT_PROTECTION_MODE below for that. */
   protectionMode: ProtectionMode;
   logXptMode: XptMode;
   thresholdSeconds: Seconds;
@@ -160,8 +163,24 @@ const OBSERVERS_19C = conflict(3, ['OBS.THREE_19C', 'ORA.16647'],
 const OBSERVERS_26AI = conflict(4, ['OBS.FOUR_26AI', 'OBS.THREE_26AI_SHOW'],
   'The 26ai fast-start failover chapter says four, matching the settled 21c-and-later limit (ORA-16647); the 26ai SHOW OBSERVER page still says three. This engine reads four for 26ai and names the SHOW OBSERVER conflict.');
 
+/**
+ * The workbench's own choice of starting protection mode for a fresh
+ * document, an imported document with the property missing, and every
+ * preset that does not set its own: MAXAVAILABILITY. This is a product
+ * choice, not a broker fact -- Oracle's own broker default is MAXPERFORMANCE
+ * (BROKER_DEFAULTS[edition].protectionMode, below) -- and it is kept as a
+ * separate, clearly named constant precisely so the two are never
+ * conflated. Many tests and presets depend on the workbench continuing to
+ * start in MAXAVAILABILITY; this constant is what they should read, not
+ * BROKER_DEFAULTS[edition].protectionMode.
+ */
+export const WORKBENCH_DEFAULT_PROTECTION_MODE: ProtectionMode = 'MAXAVAILABILITY';
+
 const COMMON = {
-  protectionMode: 'MAXAVAILABILITY',
+  /* "The default protection mode for the configuration is MAXPERFORMANCE."
+     (19c DGMGRL command reference, CREATE CONFIGURATION). Never read this as
+     the workbench's own starting mode -- see WORKBENCH_DEFAULT_PROTECTION_MODE. */
+  protectionMode: 'MAXPERFORMANCE',
   logXptMode: 'ASYNC',
   thresholdSeconds: 30,
   lagLimitSeconds: 30,

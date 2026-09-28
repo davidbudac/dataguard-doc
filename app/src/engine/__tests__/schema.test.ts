@@ -1,8 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
-  defaultFsfo, emptyDoc, isTopologyDoc, parseTopologyDoc, parseTopologyDocOrThrow,
+  defaultConfiguration, defaultFsfo, emptyDoc, isTopologyDoc, parseTopologyDoc,
+  parseTopologyDocOrThrow,
 } from '../serialize/schema';
-import { BOUNDS, BROKER_DEFAULTS, clamp, defaultLagLimit, pingSet, withinBounds } from '../defaults';
+import {
+  BOUNDS, BROKER_DEFAULTS, WORKBENCH_DEFAULT_PROTECTION_MODE, clamp, defaultLagLimit, pingSet,
+  withinBounds,
+} from '../defaults';
 import { classicTopology } from '../compat/classic';
 
 const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v)) as T;
@@ -65,6 +69,20 @@ describe('broker defaults per edition', () => {
   it('the fresh-document lag limit is the mode default for the edition', () => {
     expect(defaultFsfo('19c').lagLimitSeconds).toBe(30);
     expect(defaultFsfo('26ai').lagLimitSeconds).toBe(0);
+  });
+
+  it('separates the broker\'s own default protection mode from the workbench\'s starting mode (ED-07)', () => {
+    /* "The default protection mode for the configuration is MAXPERFORMANCE."
+       -- Oracle's own broker default, in both editions. The workbench itself
+       still starts a fresh document or an unset import in MAXAVAILABILITY:
+       that is a product choice kept in its own constant so the two are never
+       conflated, and so this fix does not change what a fresh document or a
+       preset starts in. */
+    expect(BROKER_DEFAULTS['19c'].protectionMode).toBe('MAXPERFORMANCE');
+    expect(BROKER_DEFAULTS['26ai'].protectionMode).toBe('MAXPERFORMANCE');
+    expect(WORKBENCH_DEFAULT_PROTECTION_MODE).toBe('MAXAVAILABILITY');
+    expect(defaultConfiguration('19c').protectionMode).toBe('MAXAVAILABILITY');
+    expect(defaultConfiguration('26ai').protectionMode).toBe('MAXAVAILABILITY');
   });
 
   it('26ai reads the ping defaults as not set, and names the contradiction', () => {
