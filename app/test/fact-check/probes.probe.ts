@@ -285,9 +285,9 @@ const SIM: SimProbe[] = [
       { at: 0, kind: 'cmd.switchover', to: CLASSIC_IDS.standby },
       { at: 100, kind: 'host.down', host: SBY },
     ],
-    oracle: 'fast-start failover stays enabled across a role change; the former primary is the new target',
+    oracle: 'fast-start failover stays enabled across a role change; the former primary is the new target. Owner decision 2026-09-28: one role change per run stays, and the run must say so (SIM.ONE_ROLE_CHANGE)',
     open: (t) => t.facts.outcome === 'switchover' && endState(t, 'sby01') === 'down'
-      && endState(t, 'prm01') !== 'open-rw',
+      && !hasFinding(t, 'SIM.ONE_ROLE_CHANGE'),
     lanes: ['prm01', 'sby01'],
   },
   {
@@ -299,8 +299,8 @@ const SIM: SimProbe[] = [
       { at: 50, kind: 'host.up', host: SBY },
       { at: 60, kind: 'host.down', host: PRM },
     ],
-    oracle: '"the ability to automatically failover is restored once the target standby database has received all missing redo data" -- instant here, and unlabelled',
-    open: promoted,
+    oracle: '"the ability to automatically failover is restored once the target standby database has received all missing redo data" -- drawn as immediate, which is acceptable only while the run labels it as this page\'s model',
+    open: (t) => promoted(t) && !t.findings.some((f) => f.id.startsWith('FSFO.RESYNC')),
   },
   {
     finding: 'SIM-13',
@@ -363,10 +363,11 @@ const TEXT: TextProbe[] = [
   {
     finding: 'VAL-04',
     title: 'Two standbys, FSFO disabled, no target named',
-    oracle: 'the explicit-target rule is a condition of ENABLING fast-start failover',
+    oracle: 'the explicit-target rule is a condition of ENABLING fast-start failover: while it is disabled the rule may inform, never refuse',
     run: () => {
-      const hit = validate(twoStandbys()).some((f) => f.id === 'FSFO.MULTI_TARGET_EXPLICIT');
-      return { open: hit, now: hit ? 'FSFO.MULTI_TARGET_EXPLICIT raised' : 'not raised' };
+      const hits = validate(twoStandbys()).filter((f) => f.id === 'FSFO.MULTI_TARGET_EXPLICIT');
+      const worst = hits.map((f) => f.severity).sort()[0] ?? 'not raised';
+      return { open: hits.some((f) => f.severity !== 'info'), now: `FSFO.MULTI_TARGET_EXPLICIT: ${worst}` };
     },
   },
   {

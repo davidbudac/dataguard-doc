@@ -6,7 +6,8 @@ legacy fragment in `simulator/` was not reviewed, but it shares the model behind
 SIM-01/02.
 
 Reviewed state: `main` on 2026-09-28, between `9e4494e` and `3191048`. The probes were re-run
-against `3191048`: 27 of 27 still show what is recorded here.
+against `3191048`: 27 of 27 showed what is recorded here. The fixes followed the same day; see
+*Resolution*.
 
 To repeat the review: `docs/agents/fact-check.md` (procedure),
 `app/test/fact-check/probes.probe.ts` (the scenarios below, runnable),
@@ -15,6 +16,70 @@ To repeat the review: `docs/agents/fact-check.md` (procedure),
 ```bash
 cd app && npx vitest run --config vitest.factcheck.config.ts
 ```
+
+## Resolution (same day)
+
+Everything below this section is the report as it was written, before any fix. This section
+is what was done about it. After the fixes: 2280 tests green (1962 before), the legacy gate
+tests unmodified and green, 27 of 27 probes `CHANGED`, 203 of 204 checked citation quotes
+found word for word on their pages (the miss is a table, `XPT.TABLE_4_2`, not a wrong quote).
+
+### Decisions taken
+
+| # | Question | Decision |
+|---|---|---|
+| D1 | What "19c" means | **19c as documented.** What a live 19.27 system shows beyond the documentation (`FastStartFailoverLagType`, `FastStartFailoverLagGraceTime`, `PrimaryDatabaseCandidates` in its property list) is recorded as an observation and labelled as one; the controls grey under 19c. `ObserverPing*` are in neither the 19c documentation nor the 19.27 binaries, and are gone from the 19c edition |
+| D2 | Role changes per run | **One, disclosed.** `SIM.ONE_ROLE_CHANGE` says so when later events would need a second |
+| D3 | Resynchronization | Still drawn as immediate, now labelled as this page's model (`FSFO.RESYNC_INSTANT`), and the zero after it is `model`, not `documented` |
+| D4 | The frozen legacy page | Untouched. Where the corrected engine disagrees with it (ping under 19c, the stall when not ready, manual loss in MaxPerformance), the compat adapter alone sets three `SimParams` switches so the parity tests keep passing unmodified. **The legacy page still shows the old behaviour for ED-01 and SIM-02c** |
+
+### Per finding
+
+| Finding | Status | What the page does now |
+|---|---|---|
+| SIM-01 | fixed | Readiness is state. A standby the primary ran without is not ready; a later primary failure is a blocked failover citing "was not synchronized at the time the primary database failed". Lag grows while the target receives nothing |
+| SIM-02 | fixed | Stall only while a state change is left to confirm. Observer lost first, already unsynchronized, already over the limit: the primary runs on |
+| SIM-03 | fixed | Former primary is mounted and needs reinstatement (`ORA-16649`); never open, never a redo destination |
+| SIM-04 | fixed | Commands against a down or unreachable member are refused by the engine and greyed, with the reason, in the event menu |
+| SIM-05 | fixed | The target changes only while the primary is alive. Primary and first target lost together: no failover (`documented` 26ai, `doc-later` 19c). The preset now loses the first target at 0 and the primary at 20 |
+| SIM-06 | fixed | Manual loss is the time the primary ran without the standby, basis `model` |
+| SIM-07 | fixed | `FAILOVER.PRIMARY_STILL_OPEN` error; `IMMEDIATE` refused while fast-start failover is enabled |
+| SIM-08 | fixed | Current target only; switchover refusal cites `ORA-16655` |
+| SIM-09 | fixed | A far sync hop is not a cascade; no warning under 19c, no refusal under 26ai |
+| SIM-10 | decision D2 | Disclosed, not modelled |
+| SIM-11 | decision D3 | Labelled |
+| SIM-12 | fixed | Degraded level is `model`; the chip says "operates as if", not "the broker reports". No sentence was found stating when `RESYNCHRONIZATION` shows |
+| SIM-13 | fixed | Zero across a far sync is `model`; far sync lost with the primary gives an unknown loss |
+| SIM-14 a–g | fixed | Nomination on a lost link to a live master; `SET MASTEROBSERVER` conditions; bystander wording and the ahead-of-target case; protection mode after a role change; reinstate preconditions; the master's chip; the refusal caption reads a typed reason from the trace |
+| ED-01 | fixed in `app/` | Greyed, validated (`FSFO.PING_PROPS_NOT_IN_19C`), not emitted, not simulated under 19c. Legacy page: see D4 |
+| ED-02 | decision D1 | UI, engine and generator now agree |
+| ED-03 | fixed | 19c rule carried as `conflict` with both citations and `(not in use)`; attribution is 21c. A document that never set the limit follows the edition's default (`lagLimitOf`), so every MaxAvailability preset is Zero Data Loss under both editions |
+| ED-04 | fixed | Edition-aware counting and wording in the engine, the reopen panel, the inspector and the generated comments; `MaxFailure` defaults to 1 inside a group |
+| ED-05 | fixed | Available under 19c, `EDIT DATABASE`, edition-specific note |
+| ED-06 | fixed | View names, SHOW ping lines, SDU default, JDBC `RETRY_DELAY`, far sync acknowledgement, observe-only sentences. `SWITCHOVER … WAIT` deprecation is stated in the lesson |
+| ED-07 | fixed | All six attributions |
+| VAL-01 | fixed | `PRIORITY` on the destination; one path per group, sticky among equals, the `PRIORITY=8` rule; old documents migrate to what their author saw drawn |
+| VAL-02 | fixed | "At least one" at configuration level; the per-member list binds the target and the primary while fast-start failover is on |
+| VAL-03 | fixed | `ROUTES.ALT_12_1_ONLY` under both editions; `FALLBACK` follows the 12.1 sentence; no preset generates `ALT=` |
+| VAL-04 | fixed | All eight rows |
+| VAL-05 | fixed | All six rows |
+| VAL-06 | fixed | Primary's `LogXptMode` in ten presets; new rule `XPT.PRIMARY_LOGXPTMODE`; every preset validates without an error under both editions |
+| VAL-07 | fixed, two skipped | Added 1, 2, 3, 5, 7. Item 6 is the generator's staged upgrade (GEN-03). Item 4 (no switchover to a logical standby in MaxProtection) is **not** added |
+| GEN-01 … GEN-13 | fixed | Script and mocks follow the documented forms; the 19c `SHOW FAST_START FAILOVER` mock follows the live 19.27 output |
+| TXT-01 | fixed, and **the finding was too strong** | The reader-facing text now uses the broker guide's "shut down". But the HA guide does say the primary "aborts" ("causing it to abort so that existing connections…"), so "aborts" was never unsupported — only absent from the broker pages. Two occurrences that rest on the HA guide remain |
+| TXT-02 … TXT-13 | fixed | |
+
+### Still open
+
+- The legacy page (D4).
+- VAL-07 item 4.
+- `XPT.PRIMARY_LOGXPTMODE` does not look at a primary that would be fed through a cascading
+  standby after the role change.
+- The 12.1 alternate takes over when the named member is unreachable, not when its `MaxFailure`
+  count is reached (labelled `model`).
+- An old document with several parenthesised groups and no priority at all cannot be told from
+  the new shape, and loads as the new reading.
+- Nothing here was run against a 26ai database.
 
 ## How this was checked
 

@@ -40,7 +40,7 @@ that slice and the probes; it does not need the other seven.
    configuration is available, read it — read-only — and record the release
    update. Documentation and binaries disagree more often than expected.
 
-## The three tools
+## The four tools
 
 ### 1. Pages
 
@@ -81,7 +81,21 @@ found the most in:
 | The same document under the other edition | gating that was written for one edition only |
 | The preset's own events under both editions | presets are what a reader opens first |
 
-### 3. A live configuration
+### 3. Citations
+
+```bash
+cd app && FACT_CHECK_ONLINE=1 npx vitest run --config vitest.factcheck.config.ts
+```
+
+`app/test/fact-check/citations.probe.ts` fetches every URL in
+`app/src/engine/citations.ts` and looks for each quote on its page, word for
+word. It needs the network, so it runs only with `FACT_CHECK_ONLINE=1`; without
+it the run is the scenario probes alone. A `MISSING` row is a lead, not a
+verdict: a quote that spans a table or a list can miss on layout, and the
+error-help pages carry one tab per release. Read the page before believing it.
+Entries marked `paraphrase` are counted and not checked — keep them few.
+
+### 4. A live configuration
 
 Read-only, and only where one exists. Record the release update with every
 observation.

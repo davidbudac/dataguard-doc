@@ -19,7 +19,7 @@ produced, and how to extend it without breaking consistency or accuracy.
 | `diagrams/fsfo-sequence.svg` (+`.png`) | Sequence diagram of the crash case with an elapsed-time gutter |
 | `diagrams/fsfo-net-timeout.svg` (+`.png`) | Two panels separating NET_TIMEOUT (redo transport) from the broker failover clocks |
 | `diagrams/README.md` | Figure embeds, broker-property and redo-transport-property tables with verified defaults, the ping-properties quirk, the verified-facts sections behind the commit/reopen/observer/placement/side-topics views (including the 24-cell observer-placement outcome matrix) and behind the 26ai edition switch (the MaxAvailability lag-limit semantics and Oracle's self-contradiction on them, `PrimaryDatabaseCandidates`, `V$FS_FAILOVER_OBSERVERS`), the drawing idealizations, Oracle doc links. Its *Topology features* section points at `app/design/facts.md` for far sync, cascading, RedoRoutes, multi-target and multi-observer sources |
-| `app/` | The workbench: TypeScript + Vite + Preact + signals. A pure, DOM-free engine in `app/src/engine` (types, citation catalogue, validation rules, redo-graph resolver, epoch-loop simulator, generators, the legacy adapter), the interface in `app/src/ui` (including the on-canvas action bar, the Introduction page and the `Hints` toggle — see `app/design/ui.md` §3c–§3i; §3h is how the drawing is driven: click selects, `⋯` for the bar, drag-to-place, inline rename, marquee, shortcuts; §3i is the lean pass: the toolbar is the one add surface, Remove sits in the rail header), state in `app/src/state`, eleven presets in `app/src/presets`, nine lessons and the reference tables in `app/src/content`, 1962 vitest tests across 82 files in `app/src/**/__tests__` and `app/test`. Built to `_site/` and served at `/dataguard/`. Zero external requests, no inline script and no inline style — the page is meant to run under `script-src 'self'; style-src 'self'` |
+| `app/` | The workbench: TypeScript + Vite + Preact + signals. A pure, DOM-free engine in `app/src/engine` (types, citation catalogue, validation rules, redo-graph resolver, epoch-loop simulator, generators, the legacy adapter), the interface in `app/src/ui` (including the on-canvas action bar, the Introduction page and the `Hints` toggle — see `app/design/ui.md` §3c–§3i; §3h is how the drawing is driven: click selects, `⋯` for the bar, drag-to-place, inline rename, marquee, shortcuts; §3i is the lean pass: the toolbar is the one add surface, Remove sits in the rail header), state in `app/src/state`, eleven presets in `app/src/presets`, nine lessons and the reference tables in `app/src/content`, 2280 vitest tests across 88 files in `app/src/**/__tests__` and `app/test`. Built to `_site/` and served at `/dataguard/`. Zero external requests, no inline script and no inline style — the page is meant to run under `script-src 'self'; style-src 'self'` |
 | `app/public/collectors/` | Read-only SQL collector, optional Bash/SQL*Plus wrapper and run instructions for existing setups. The ⋯ menu's **Import existing setup** sheet previews pasted/file output before drawing it. `engine/collect.ts` maps current routes; imported `routesObserved` prevents invented NULL-default routes. Missing broker settings and placement assumptions remain in document notes. Validated live on a 19c primary + mounted standby (SYSDBA, local OS auth); wallet, least-privilege, RAC and far sync remain unverified. DGMGRL transcripts are not parsed. |
 | `app/design/facts.md` | The verified Oracle fact sheet for the topology features (far sync, cascading, multiple standbys and FSFO targets, multiple observers, RedoRoutes, member types, destination counts), researched 2026-08-16 against docs.oracle.com and re-verified 2026-08-17, marked `[D]` / `[D-later]` / `[UNDOC]` / `[CONFLICT]` per claim. **The only permitted source of a "documented" claim in the application.** Its top-five traps are restated in the accuracy rules below |
 | `app/design/engine.md` | The engine design: `Claim`/`Basis` labelling, the topology data model, the validation catalogue, the redo-graph resolver, the epoch-loop failure engine, the compat adapter and the 24-cell matrix gate, the generators, the module layout — plus §10, *Deviations from the design as built*, which is where the code and the specification differ |
@@ -28,8 +28,8 @@ produced, and how to extend it without breaking consistency or accuracy.
 | `app/README.md` | The short version of the three above: what it is, dev commands, structure, testing, deploy pointer |
 | `simulator/fsfo-simulator.html` | **Frozen.** Source fragment of the page that used to be published at `/dataguard/`; now served at `/dataguard/legacy/`. English only, pure ASCII (see [CLAUDE.md](CLAUDE.md)). Bug-fix territory only — new work goes into `app/` |
 | `testing/README.md` | Test runbook: step-by-step drills verifying each documented situation against a real 19c configuration (crash, isolation, observer loss, NET_TIMEOUT, blocked failover, reopen/MaxFailure, client view, commit measurement, plus four topology drills for far sync, cascading, multi-target and multiple observers), with an RTO/RPO probe harness and reinstate cleanup. Repo-only markdown — not part of the published site |
-| `docs/agents/fact-check.md` | How to review the workbench against Oracle: the evidence rules (only docs.oracle.com, quotes matched by grep, both editions, a live system where there is one), the eight slices, the report format, and the traps the first review fell into. With it: `app/test/fact-check/probes.probe.ts` (one runnable scenario per finding, printing `OPEN` or `CHANGED`; run with `cd app && npx vitest run --config vitest.factcheck.config.ts`, never part of `npm test`), `fetch-docs.sh` and `totext.py` (the Oracle pages as greppable text, written outside the repo) |
-| `SIMULATOR_FACT_CHECK_2026-09-28.md` | The report of the first full review of `app/` against 19c and 26ai, with a read-only look at a live 19.27 configuration. **Open findings — several of the accuracy rules below are contradicted by it** (the `ObserverPing*` properties do not exist in 19c; the 253-member limit is documented in 19c and 26ai; `PRIORITY` in RedoRoutes belongs to a destination, not a group). Read it before relying on a rule it names |
+| `docs/agents/fact-check.md` | How to review the workbench against Oracle: the evidence rules (only docs.oracle.com, quotes matched by grep, both editions, a live system where there is one), the eight slices, the report format, and the traps the first review fell into. With it: `app/test/fact-check/probes.probe.ts` (one runnable scenario per finding, printing `OPEN` or `CHANGED`; run with `cd app && npx vitest run --config vitest.factcheck.config.ts`, never part of `npm test`), `citations.probe.ts` (every quote in the citation catalogue looked for on the page it cites; network, so only with `FACT_CHECK_ONLINE=1`), `fetch-docs.sh` and `totext.py` (the Oracle pages as greppable text, written outside the repo) |
+| `SIMULATOR_FACT_CHECK_2026-09-28.md` | The report of the first full review of `app/` against 19c and 26ai, with a read-only look at a live 19.27 configuration, **and what was done about each finding** (its *Resolution* section). The findings are fixed except where that section says a decision was taken instead — one role change per run, resynchronization drawn as immediate, the 19c edition meaning 19c as documented — and the accuracy rules below were corrected with them. A later review re-uses its finding ids |
 | `site/build.mjs` | The site build, in three steps: `npm run build` in `app/` (which empties `_site/` and writes the hashed bundle), then `site/build-legacy.mjs`, then `assertNoInline(_site/index.html)` — a built page carrying a `<script>` with a body, an `on*=` handler or a `style=` attribute fails the build rather than the browser's content security policy. The guard proves it can fail (three fixtures it must reject, one it must accept) before it is trusted to pass |
 | `site/build-legacy.mjs` | What `site/build.mjs` used to be: wraps the fragment into a full page (doctype, charset, title, favicon, canonical + social meta) and enforces the ASCII-only guard — it exits non-zero on any byte above U+007E, naming the offending lines. Writes `_site/legacy/index.html` and copies `diagrams/` to `_site/diagrams`, which both pages share |
 | `site/smoke.mjs` | Dependency-free browser check of the built tree: serves `_site/` over `node:http`, loads it in headless Chrome (`--dump-dom`, console messages captured through `--enable-logging=stderr`), takes the page's own `data-permalink` for the `classic` and `far-sync-zero-loss` presets and reloads it cold — an untouched preset now carries no `#t=` at all, so the check accepts either a `#t=` document or a short link naming the preset (and asserts the latter is under 200 characters) — asserts the node cards, the timeline lanes and the outcome chip, opens each of the four modes by name, and checks that a published-page link (`?sc=iso&lat=2&lang=cs#ch-clocks`) upgrades into Break mode like any other old link, following *that* permalink cold to keep one real-browser `CompressionStream` → `DecompressionStream` round trip (an upgraded legacy link names no preset, so it must carry `#t=`). Probes HTTP first and falls back to an inlined single-file copy over `file://` where the machine's headless Chrome cannot fetch over HTTP. Exits non-zero on any failed check, any console message, or any file the page asked for and did not get |
@@ -65,8 +65,8 @@ public URL.
 
 The three gates, and what each one can catch that the others cannot:
 
-1. `npm --prefix app run test` — the application's own suite (**1962 tests
-   across 82 files**): the engine's invariants, the 24-cell matrix through the
+1. `npm --prefix app run test` — the application's own suite (**2280 tests
+   across 88 files**): the engine's invariants, the 24-cell matrix through the
    compat adapter, the validation catalogue, the generator goldens, the canvas
    and timeline geometry, the URL and file round trips.
 2. `node --test site/test.mjs` — the same kind of assertion against the legacy
@@ -364,10 +364,11 @@ agree on:
   it leans on.
 - `FastStartFailoverPmyShutdown` default TRUE: a primary STALLED
   (`V$DATABASE.FS_FAILOVER_STATUS`) longer than the threshold, unable to reach
-  observer or target standby, **shuts down**. That is Oracle's verb ("the
-  primary database will shut down after FastStartFailoverThreshold seconds has
-  elapsed if redo generation has been stalled…"); Oracle never says it aborts
-  itself, so neither does anything a reader sees.
+  observer or target standby, **shuts down**. That is the broker guide's verb
+  ("the primary database will shut down after FastStartFailoverThreshold seconds
+  has elapsed if redo generation has been stalled…"); the HA guide says the same
+  thing as "causing it to abort". Both are Oracle's; what the reader sees uses
+  the broker guide's, and never "aborts itself" as if the broker pages said it.
 - **A former primary never opens after a role change while fast-start failover
   is enabled.** "To allow the master observer to automatically reinstate the
   former primary database, the database must be started and mounted. It will
@@ -912,7 +913,7 @@ global appears in it; `app/test/import-boundary.test.ts` keeps the layering
   `basis` are orthogonal — an `error` can rest on a model, and often does.
   **This is the mechanism the accuracy rules run on**: an unlabelled model is a
   type error, not a review finding.
-- **The citation catalogue** (`citations.ts`) is 127 entries of URL + the
+- **The citation catalogue** (`citations.ts`) is 220 entries of URL + the
   quoted sentence + which edition's page it is + `verified: 'primary' |
   'cross-edition'`. Some entries also carry `forbiddenFor`: a source the
   accuracy rules rule *out* for a named fact (`FORBIDDEN_FACTS` — the 26ai
@@ -950,8 +951,8 @@ global appears in it; `app/test/import-boundary.test.ts` keeps the layering
   test is the gate: the general engine may not "improve" on the verified
   outcomes. Change a cell there and you are changing `site/test.mjs`,
   `diagrams/README.md` and the fragment in the same commit, or you are wrong.
-- **Validation** (`validate/*`) is 47 rules in one catalogue (`RULE_CATALOGUE`,
-  two of them 26ai-only), each with an id, a severity, a permitted set of bases
+- **Validation** (`validate/*`) is 55 rules in one catalogue (`RULE_CATALOGUE`,
+  one of them 26ai-only), each with an id, a severity, a permitted set of bases
   and its citations: far sync never primary, FSFO target kind and direct-redo,
   multi-target explicitness, the protection-mode/transport table, the RedoRoutes
   grammar rules, cascading restrictions, observer count and placement,
@@ -1137,7 +1138,7 @@ modes changes what is around it.
 
 ### Tests
 
-`npm --prefix app run test` is **1962 tests across 82 files**. What is where:
+`npm --prefix app run test` is **2280 tests across 88 files**. What is where:
 
 - `app/src/engine/__tests__/` — the engine's own unit tests (purity, citations,
   claims, schema, migrate, URL codec, parse, resolve, graph, axis, classic).
@@ -1169,18 +1170,28 @@ exported file and the share payload — so "Reset", an import and a shared link
 all leave the reader's edition alone. `TopologyDoc.config.edition` is what the
 engine reads, and the boot path writes the preference into it.
 
-What the edition actually changes: the two `RULES_26AI_ONLY` validation rules;
-the far-sync-with-FSFO protection-mode conflict (19c excludes MaxProtection and
-MaxPerformance, 26ai only MaxProtection); `FastStartFailoverLagLimit`'s
-MaxAvailability role and with it the readiness gate; `computeCommit`'s verdict on
-ASYNC under MaxAvailability (a mode conflict under 19c, an informational
-"allowed" under 26ai); the observer count ceiling; the two RedoRoutes rules
-that exist only in 26ai (`ROUTES.GROUP_NEEDS_MAXFAILURE`,
-`ROUTES.ALT_NOT_IN_26AI`); and the notes the generators and the reopen model
-attach. Everything it changes is a documented difference with a
-citation on both sides, and where 26ai contradicts itself — the observer count,
-the `ObserverPing*` defaults, the lag-limit mode question — the page shows the
-conflict rather than picking a side.
+What the edition actually changes: the `RULES_26AI_ONLY` validation rule
+(`ROUTES.GROUP_NEEDS_MAXFAILURE`) and the three that fire under 19c only
+(`FSFO.PING_PROPS_NOT_IN_19C`, `FSFO.LAGTYPE_GRACETIME_19C`,
+`CFG.PRIMARY_CANDIDATES_19C`); whether `ObserverPingInterval` /
+`ObserverPingRetry` exist at all (not under 19c: the controls grey, the engine
+detects on the threshold, the script does not emit them); the far-sync-with-FSFO
+protection-mode conflict (19c excludes MaxProtection and MaxPerformance, 26ai
+only MaxProtection); `FastStartFailoverLagLimit`'s broker default and its
+MaxAvailability role, and with them the readiness gate (`lagLimitOf(doc)`: a
+document that never set the property follows the edition); the transport a
+fast-start failover target may use in MaxAvailability (ASYNC is listed under
+26ai only); the observer count ceiling; how `MAX_FAILURE` counts (26ai counts
+the initial failure); what `PreferredObserverHosts` does when it changes; which
+view the generated text names (`V$DATABASE.FS_FAILOVER_*` under 19c,
+`V$FAST_START_FAILOVER_CONFIG` under 26ai); the `SHOW FAST_START FAILOVER` mock
+(19c follows a live 19.27 system, 26ai the 26ai example with its ping lines);
+and the notes the generators and the reopen model attach. Where Oracle
+contradicts itself — the observer count in both editions, the `ObserverPing*`
+defaults in 26ai, the lag-limit mode question in both — the page shows the
+conflict rather than picking a side. **The 19c edition is 19c as documented**:
+what a live 19.27 system shows beyond the documentation is recorded as an
+observation and labelled as one.
 
 ## The legacy fragment (simulator/)
 
