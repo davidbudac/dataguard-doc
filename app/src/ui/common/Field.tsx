@@ -12,6 +12,8 @@
  */
 
 import type { ComponentChildren } from 'preact';
+import { signal } from '@preact/signals';
+import { useCallback, useEffect, useRef } from 'preact/hooks';
 import { hintsShown } from '../hints';
 import { WhyPill } from './WhyPill';
 import type { WhyState } from './WhyPill';
@@ -54,19 +56,66 @@ export function FieldNote(
 /**
  * Whether a control of about `controlPx` fits on the same line as a name.
  *
- * An estimate from the text, not a measurement: the rail is a fixed width,
- * and deciding the layout from the content rather than from the window is
- * what makes it the same every time. A mono character is 0.6 em wide, a sans
- * one about 0.55 em -- so a field name (11.5 px mono, or 12.5 px sans for
- * this page's own words) is ~6.9 px a character either way.
+ * The name and the control are estimated from their text -- a mono character
+ * is 0.6 em wide, a sans one about 0.55 em, so a field name (11.5 px mono, or
+ * 12.5 px sans for this page's own words) is ~6.9 px a character either way --
+ * and the line they must share is the rail's *measured* row (`railRow`): the
+ * 340 px floating card, the wider drawer at 1024-1279 and Configure's docked
+ * column are three different widths, and a field that stacks in the first
+ * needlessly stacks in the other two if the row is assumed.
  */
 export const RAIL_ROW_PX = 292;
+/**
+ * The width a field row has in the rail on screen: the rail's content width
+ * less its side padding and some slack (`rowFor`). Written by `useRailRow` on
+ * the rail's root; the default is the floating card's, which is also what
+ * jsdom renders at.
+ */
+export const railRow = signal<number>(RAIL_ROW_PX);
 export const textPx = (text: string, sizePx: number, mono = true): number =>
   Math.ceil(text.length * sizePx * (mono ? 0.6 : 0.55));
 const NAME_PX = (name: string, prose: boolean): number =>
   (prose ? textPx(name, 12.5, false) : textPx(name, 11.5));
-export const fitsBeside = (name: string, prose: boolean, controlPx: number): boolean =>
-  NAME_PX(name, prose) + 12 + controlPx <= RAIL_ROW_PX;
+export const fitsBeside = (
+  name: string, prose: boolean, controlPx: number, row: number = railRow.value,
+): boolean => NAME_PX(name, prose) + 12 + controlPx <= row;
+
+/** Slack beyond the side padding (`--px`), for a scrollbar and rounding. */
+const ROW_SLACK = 12;
+
+/**
+ * A rail's content width, as the row a field has: floored to 4 px so a
+ * sub-pixel resize does not re-lay the rail, and never under the floating
+ * card's row -- that 340 px card is the narrowest rail this page draws, and a
+ * thin scrollbar appearing in it must not stack a field that has always fit.
+ */
+export const rowFor = (clientWidth: number, sidePad: number): number =>
+  Math.max(RAIL_ROW_PX, Math.floor((clientWidth - 2 * sidePad - ROW_SLACK) / 4) * 4);
+
+/**
+ * Measure the rail this is put on (the `.insp` root) into `railRow`. The rail's
+ * width is set by the layout around it, never by the fields inside it, so the
+ * row-or-stack choice cannot feed back into the measurement.
+ */
+export function useRailRow(): (el: HTMLElement | null) => void {
+  const observer = useRef<ResizeObserver | null>(null);
+  useEffect(() => () => observer.current?.disconnect(), []);
+  return useCallback((el: HTMLElement | null): void => {
+    observer.current?.disconnect();
+    observer.current = null;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const read = (): void => {
+      if (el.clientWidth <= 0) return;
+      const pad = parseFloat(getComputedStyle(el).getPropertyValue('--px')) || 16;
+      const row = rowFor(el.clientWidth, pad);
+      if (row !== railRow.peek()) railRow.value = row;
+    };
+    read();
+    const ro = new ResizeObserver(read);
+    ro.observe(el);
+    observer.current = ro;
+  }, []);
+}
 
 export function Field(
   {

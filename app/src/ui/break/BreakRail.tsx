@@ -39,6 +39,7 @@ import { Action, Group, Note } from '../inspector/controls';
 import { hintsShown, HintsToggle } from '../hints';
 import { printing } from '../print';
 import { WHY } from '../inspector/why';
+import { useRailRow } from '../common/Field';
 import {
   applyTemplate, clearEvents, describeEvent, removeEventAt, reorderEvent, setEventTime, templates,
 } from './events';
@@ -87,6 +88,7 @@ export function ScenarioPalette() {
 }
 
 export function BreakRail({ scenarios = true, validation = true }: BreakRailProps = {}) {
+  const railRef = useRailRow();
   const doc = topology.value;
   const list = events.value;
   const editable = canEdit(viewport.value);
@@ -96,7 +98,7 @@ export function BreakRail({ scenarios = true, validation = true }: BreakRailProp
   const shown = open || printing.value;
 
   return (
-    <div class="insp">
+    <div class="insp" ref={railRef}>
       <Group
         title={list.length === 0 ? 'Events' : `Events (${list.length})`}
         action={(

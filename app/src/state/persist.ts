@@ -12,6 +12,7 @@
  *                    the strip is gone and the page replaced it.
  *   `dg-hints`       whether the sentence under each control is shown
  *   `dg-issues`      whether Build's validation panel is unfolded ('0' = folded)
+ *   `dg-tl-h`        the height (px) Break's timeline panel was dragged to
  *   `dg-fsfo-cfg-v1` the published page's stored configuration. Read once when
  *                    there is nothing newer, and never deleted: the old page
  *                    is still serving from /legacy/ and still owns that key.
@@ -30,7 +31,7 @@ import type { Doc } from './doc';
 import { classicDoc, doc, exportFileName } from './doc';
 import { fromWire, parseJsonText, toJsonText } from './codec';
 import type { DecodeResult } from './codec';
-import { gridOn, hintsOn, issuesOpen } from './view';
+import { gridOn, hintsOn, issuesOpen, timelineH, TL_MIN_H } from './view';
 import type { ThemePref } from './view';
 
 export const DOC_KEY = 'dg-doc-v1';
@@ -41,6 +42,7 @@ export const INTRO_KEY = 'dg-intro-v1';
 export const HINTS_KEY = 'dg-hints';
 export const GRID_KEY = 'dg-grid';
 export const ISSUES_KEY = 'dg-issues';
+export const TIMELINE_H_KEY = 'dg-tl-h';
 
 export const AUTOSAVE_MS = 500;
 export const RESTORE_NOTICE_MS = 8000;
@@ -136,6 +138,34 @@ export function loadGrid(): void {
 export function toggleGrid(): void {
   gridOn.value = !gridOn.value;
   write(GRID_KEY, gridOn.value ? '1' : '0');
+}
+
+/* ---------------- Break's timeline panel ---------------- */
+
+/**
+ * The height the reader dragged the timeline panel to -- `timelineH` in
+ * `view.ts`. Read once at boot; anything that is not a whole number of pixels
+ * at least `TL_MIN_H` tall reads as "never set".
+ */
+export function loadTimelineH(): void {
+  const raw = read(TIMELINE_H_KEY);
+  const n = raw === null ? NaN : Number(raw);
+  timelineH.value = Number.isFinite(n) && n >= TL_MIN_H ? Math.round(n) : null;
+}
+
+/**
+ * Set the height; `remember` is false while a drag is still moving, so a
+ * gesture writes storage once, at its end. `null` goes back to the default
+ * and forgets the stored value.
+ */
+export function setTimelineH(h: number | null, remember = true): void {
+  timelineH.value = h === null ? null : Math.round(h);
+  if (!remember) return;
+  if (h === null) {
+    try { store()?.removeItem(TIMELINE_H_KEY); } catch { /* private mode */ }
+  } else {
+    write(TIMELINE_H_KEY, String(Math.round(h)));
+  }
 }
 
 /* ---------------- the validation panel ---------------- */

@@ -72,16 +72,26 @@ export function FindingsChips() {
   );
 }
 
+/**
+ * Escape closes the popover, and that is all it does. Taken on the way down
+ * (capture, on the window) and stopped there: a card focused on the drawing,
+ * or the page's own Escape on the body (shortcuts.ts), would otherwise read
+ * the same press as "forget the selection" -- one key, two things undone.
+ */
+export function onFindingsKey(e: KeyboardEvent): void {
+  if (e.key !== 'Escape' || !findingsOpen.value) return;
+  findingsOpen.value = false;
+  e.preventDefault();
+  e.stopImmediatePropagation();
+}
+
 /** The rows, over the canvas, until the reader closes them. */
 export function FindingsPopover() {
   const open = findingsOpen.value;
   useEffect(() => {
     if (!open) return undefined;
-    const onKey = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') findingsOpen.value = false;
-    };
-    document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
+    window.addEventListener('keydown', onFindingsKey, true);
+    return () => window.removeEventListener('keydown', onFindingsKey, true);
   }, [open]);
   if (!open) return null;
   const errs = errors.value.length;

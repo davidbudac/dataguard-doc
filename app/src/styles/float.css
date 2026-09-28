@@ -204,13 +204,13 @@ button.issue{border-bottom:1px solid var(--ln)}
      inset by the bar above, the palette on the left, the inspector on the
      right and the dock below, so a fitted drawing never sits under any of
      them. Zoomed, the same box is the scroll port. */
+  .app.is-float{--pal-space:calc(var(--pal-r,96px) + 16px)}
   .app.is-float .app-stage>.tp-wrap{position:absolute;inset:0;min-height:0;
     padding:calc(var(--bar-bottom,80px) + 18px) calc(var(--rail-space) + 18px)
-      calc(var(--dock-h,72px) + var(--float-m) + 36px) 104px}
-  .app.is-float.m-break .app-stage>.tp-wrap{padding-left:236px}
+      calc(var(--dock-h,72px) + var(--float-m) + 36px) var(--pal-space)}
   .app.is-float .app-stage>.tp-wrap.is-zoomed{min-height:0}
   .app.is-float .app-stage>.empty{position:absolute;top:calc(var(--bar-bottom,80px) + 18px);
-    left:104px;right:calc(var(--rail-space) + 18px)}
+    left:var(--pal-space);right:calc(var(--rail-space) + 18px)}
 
   /* The palette at the left edge. */
   .app.is-float .palette{position:absolute;left:var(--float-m);
@@ -252,6 +252,33 @@ button.issue{border-bottom:1px solid var(--ln)}
     flex-direction:column;border-top:1px solid var(--ln);overflow:auto;max-height:46vh;
     border-radius:var(--r-card)}
   .app.is-float.m-break .app-dock{max-height:min(46vh,420px)}
+  /* With a run on it, Break's panel is the height the reader dragged it to
+     (`--tl-h`, written by App.tsx) or a bit over a third of the window --
+     `timelineDefaultH` in view.ts says the same -- and never so tall that it
+     reaches the header. */
+  .app.is-float.m-break .app-dock.has-tl{height:var(--tl-h,clamp(220px,36dvh,400px));
+    min-height:64px;max-height:calc(100dvh - var(--bar-bottom,80px) - 12px - var(--float-m))}
+  /* Full screen: the panel takes the window under the header, over the
+     palette, the drawing and the rail. */
+  .app.is-float.m-break.tl-full .app-dock{top:calc(var(--bar-bottom,80px) + 12px);
+    right:var(--float-m);height:auto;max-height:none;z-index:25}
+  .app.is-float.tl-full .zoom-pill,.app.is-float.tl-full .fnd-toast{visibility:hidden}
+
+  /* The grab handle: the top edge of the panel's header row. A short bar says
+     it is there; the whole edge takes the press. */
+  .dock-grip{position:absolute;top:0;left:0;right:0;height:9px;z-index:5;cursor:ns-resize;
+    touch-action:none;display:flex;justify-content:center;align-items:flex-start;
+    border-radius:var(--r-card) var(--r-card) 0 0}
+  .dock-grip-bar{width:40px;height:4px;margin-top:3px;border-radius:2px;background:var(--ln2);
+    transition:background .12s ease-out,width .12s ease-out}
+  .dock-grip:hover .dock-grip-bar,.dock-grip.is-dragging .dock-grip-bar{background:var(--ik3);width:56px}
+  .dock-grip:focus{outline:none}
+  .dock-grip:focus-visible .dock-grip-bar{background:var(--vi);width:56px}
+  .dock-grip:focus-visible{box-shadow:inset 0 2px 0 var(--vi)}
+  .app.is-float.m-break .dock-status .tl-full-btn{flex:0 0 auto;margin-left:-4px}
+  .tl-full-btn svg{fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;
+    stroke-linejoin:round}
+  .tl-full-btn[aria-pressed="true"]{color:var(--vi)}
   .dock-status{display:flex;align-items:center;gap:12px;padding:0 14px 0 0;min-width:0;
     flex:0 0 auto}
   .dock-status>.readout{flex:1 1 auto;min-width:0;min-height:0;border-bottom:0;
@@ -310,11 +337,9 @@ button.issue{border-bottom:1px solid var(--ln)}
   .app.is-float .zoom-pill .btn{padding:4px 9px;border-color:transparent}
 
   /* The most serious finding, once, above the dock. */
-  .fnd-toast{position:absolute;left:104px;bottom:calc(var(--dock-h,72px) + var(--float-m) + 12px);
+  .fnd-toast{position:absolute;left:var(--pal-space);bottom:calc(var(--dock-h,72px) + var(--float-m) + 12px);
     z-index:21;display:flex;align-items:center;gap:10px;padding:5px 6px 5px 6px;
-    max-width:calc(100vw - 104px - var(--rail-space) - 200px)}
-  .app.is-float.m-break .fnd-toast{left:236px;
-    max-width:calc(100vw - 236px - var(--rail-space) - 200px)}
+    max-width:calc(100vw - var(--pal-space) - var(--rail-space) - 200px)}
   /* The tone is the chip at its head (Error / Warning), not a left border. */
   .fnd-toast-m{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
     font-size:12.5px;color:var(--ik2)}
@@ -335,25 +360,49 @@ button.issue{border-bottom:1px solid var(--ln)}
   .fnd-pop .issues{overflow:visible}
   .issues-none{padding:14px 16px;font-size:13px;color:var(--ik3)}
 
-  /* The event menu, when there is no rail to head (1024-1279). */
+  /* The event menu, when there is no rail to head (1024-1279): a card at the
+     right edge, above the zoom pill, and the drawing's fit starts under it or
+     stops left of it, whichever draws larger (`--evm-t`/`--evm-r`, measured
+     by App.tsx) -- shut to its one button, it gives the room back. It scrolls
+     rather than run under the pill or the dock. */
   .app.is-float .app-stage>.evmenu{position:absolute;right:var(--float-m);
     top:calc(var(--bar-bottom,80px) + 12px);margin:0;z-index:22;border-radius:var(--r-card);
-    border-color:var(--ln)}
+    border-color:var(--ln);width:min(300px,30vw);box-sizing:border-box;overflow:auto;
+    max-height:calc(100dvh - var(--bar-bottom,80px) - var(--dock-h,72px) - 2 * var(--float-m) - 76px)}
+  .app.is-float .app-stage>.evmenu.is-shut{width:auto}
+  .app.is-float.has-evm .app-stage>.tp-wrap{
+    padding-top:var(--evm-t,calc(var(--bar-bottom,80px) + 18px));
+    padding-right:var(--evm-r,calc(var(--rail-space) + 18px))}
 
   /* 1024-1279: the inspector is a drawer, so the dock and the pill take the
      right edge back. */
   @media (max-width:1279px){
     .app.is-float{--rail-space:var(--float-m)}
-    .app.is-float .fnd-toast{max-width:calc(100vw - 104px - 220px)}
-    .app.is-float.m-break .fnd-toast{max-width:calc(100vw - 236px - 220px)}
+    .app.is-float .fnd-toast{max-width:calc(100vw - var(--pal-space) - 220px)}
   }
 }
 
+/* Below 1280 the bar cannot hold the modes dead centre -- the right-hand
+   group (release, undo, redo, theme, ?, the drawer button, Share, overflow)
+   is wider than half of what is left -- so the modes sit centred in the gap
+   between the two ends instead, the pills and gaps tighten, and the
+   configuration name gives up width (it ellipsises) before anything wraps.
+   One row down to 1024. */
+@media (max-width:1279px){
+  .topbar{gap:10px 10px;padding-left:14px}
+  .topbar-brand{flex:0 1 auto}
+  .topbar-brand .doc-picker{flex:0 1 auto;min-width:7ch}
+  .topbar-modes{margin-inline:auto}
+  .topbar-modes .seg button{padding:5px 10px}
+  .topbar-group{flex:0 0 auto}
+  .topbar-group>.seg{margin-right:2px}
+  .topbar-acts{margin-left:2px;gap:4px}
+}
 /* Narrow top bar: the modes wrap under the brand rather than crushing it. */
-@media (max-width:1100px){
+@media (max-width:1023px){
   .topbar{flex-wrap:wrap}
   .topbar-brand{flex:1 1 auto}
-  .topbar-modes{order:3;flex:1 1 100%;display:flex;justify-content:center}
+  .topbar-modes{order:3;flex:1 1 100%;display:flex;justify-content:center;margin-inline:0}
   .topbar-group{flex:0 1 auto}
 }
 @media (max-width:767px){

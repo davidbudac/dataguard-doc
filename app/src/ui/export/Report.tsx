@@ -14,7 +14,7 @@
  * put back when it closes -- a dark A4 page is ink, not a report.
  */
 
-import { useLayoutEffect } from 'preact/hooks';
+import { useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { commentMarker, lineText } from '@/engine';
 import type { Basis, GeneratedFile, Line } from '@/engine';
 import { doc } from '@/state/doc';
@@ -25,7 +25,7 @@ import { applyTheme, reportPage, theme } from '@/state/view';
 import { Fact } from '../common/Chip';
 import { TopoCanvas } from '../canvas/TopoCanvas';
 import { Timeline } from '../timeline/Timeline';
-import { buildReport } from './report-model';
+import { buildReport, diagramLandscape } from './report-model';
 import type { FindingRow, ReportModel } from './report-model';
 import '@/styles/report.css';
 
@@ -161,6 +161,25 @@ function FileBlock({ file, model }: { file: GeneratedFile; model: ReportModel })
   );
 }
 
+/**
+ * Whether the diagram prints on a landscape page (report.css, `@page
+ * diagram`), read off the drawing actually rendered: its viewBox is the
+ * layout's box united with the routed links, which only the canvas knows.
+ * A layout effect, so the class is in place before the first paint -- and so
+ * before a headless browser prints.
+ */
+function useWideDiagram(): { ref: (el: HTMLElement | null) => void; landscape: boolean } {
+  const host = useRef<HTMLElement | null>(null);
+  const [landscape, setLandscape] = useState(false);
+  useLayoutEffect(() => {
+    const box = host.current?.querySelector('.topo-svg')?.getAttribute('viewBox')
+      ?.trim().split(/[\s,]+/).map(Number);
+    const next = diagramLandscape(box?.[2] ?? 0, box?.[3] ?? 0);
+    if (next !== landscape) setLandscape(next);
+  });
+  return { ref: (el) => { host.current = el; }, landscape };
+}
+
 /* ---------------- the report ---------------- */
 
 export function Report() {
@@ -178,6 +197,7 @@ export function Report() {
     outcome: tr === null ? null : readoutFor(false),
   });
   useReportChrome(model.title);
+  const wide = useWideDiagram();
   const graph = redoGraph.value;
   const geo = geometry.value;
   const date = new Date().toISOString().slice(0, 10);
@@ -227,8 +247,18 @@ export function Report() {
           </dl>
         </section>
 
-        <section class="rp-sec rp-diagram" aria-labelledby="rp-s-diagram">
+        <section
+          class={wide.landscape ? 'rp-sec rp-diagram is-landscape' : 'rp-sec rp-diagram'}
+          aria-labelledby="rp-s-diagram"
+          ref={wide.ref}
+        >
           <h2 id="rp-s-diagram"><span class="rp-n">{num()}</span> Diagram</h2>
+          {wide.landscape ? (
+            <p class="rp-note rp-screen">
+              Printed on a landscape page of its own: the drawing is too wide to read on a
+              portrait one.
+            </p>
+          ) : null}
           {graph === null ? (
             <p class="rp-empty">No primary database is declared, so there is no redo graph to draw.</p>
           ) : (

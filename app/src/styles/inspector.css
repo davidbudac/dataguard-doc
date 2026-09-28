@@ -11,8 +11,9 @@
    - fields: the name on the left and the control on the right in a 32 px
      row (`.field.is-row`), or the name and its reading on one line with the
      control full width under it (`.field.is-stack`). Which one is decided by
-     the component from the control's width (`fitsBeside` in common/Field),
-     never by an accident of wrapping. Notes and refusals always take a line
+     the component from the control's width against the rail's measured row
+     (`fitsBeside` and `railRow` in common/Field), never by an accident of
+     wrapping. Notes and refusals always take a line
      of their own under the control;
    - list rows (`.lrow`): an identifier on the left, its buttons on the right,
      a refusal on the line under them;
