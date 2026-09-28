@@ -22,7 +22,11 @@ Status values: `todo` · `in progress (branch)` · `done (sha)` · `handoff` (se
 ## Track 1 — canvas interactions (`app/src/ui/canvas/*`)
 
 ### 1.1 Drag a card from anywhere on it
-Status: todo
+Status: done (on ui/track1-canvas)
+Note: root cause was SVG hit-testing only painted fill -- a chassis blade's rect
+and a down card's rect paint `fill: none`, so presses fell through to the chassis
+or the ground. `canvas.css` now gives `.tp-node > rect.tp-card` `pointer-events: all`;
+draggable cards show a `grab` cursor (`.topo-svg.is-movable`).
 Today only the name text or the icon starts a drag; the card's empty surface
 does not. The whole card rectangle must be the grab target (ports and the `⋯`
 button keep their own behaviour).

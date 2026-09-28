@@ -1079,7 +1079,8 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
       ref={props.wrapRef}
     >
       <svg
-        class={`topo-svg${panning ? ' is-pan' : ''}${moving ? ' is-dragging' : ''}`}
+        class={`topo-svg${panning ? ' is-pan' : ''}${moving ? ' is-dragging' : ''}${
+          interactive && (props.onDrag || props.onDragEnd) ? ' is-movable' : ''}`}
         ref={svgRef}
         viewBox={`${view.x} ${view.y} ${view.w} ${view.h}`}
         width={Math.round(view.w * zoomFactor)}
