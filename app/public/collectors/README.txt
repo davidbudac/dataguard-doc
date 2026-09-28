@@ -27,6 +27,9 @@ SQL*Plus / SQLcl
 Required SELECT access to these fixed views (grants use the underscore names):
   V_$DATABASE, GV_$INSTANCE, V_$DATAGUARD_CONFIG, GV_$ARCHIVE_DEST,
   V_$DATAGUARD_STATS.
+The FS_FAILOVER_* columns this script reads off V$DATABASE are deprecated as
+of Oracle Database 26ai in favor of V$FAST_START_FAILOVER_CONFIG; they still
+exist and this script still reads them on 26ai.
 Use an existing authorized account; the script grants no privileges. Run it in
 a dedicated session: WHENEVER SQLERROR exits on a query error. Do not run it in
 a session holding uncommitted application work. The script changes client

@@ -93,6 +93,9 @@ const U = {
   bkr26Configs: 'https://docs.oracle.com/en/database/oracle/oracle-database/26/dgbkr/managing-oracle-data-guard-broker-configurations.html',
   bkr26Modes: 'https://docs.oracle.com/en/database/oracle/oracle-database/26/dgbkr/managing-data-protection-modes.html',
   bkr19Roles: 'https://docs.oracle.com/en/database/oracle/oracle-database/19/sbydb/managing-oracle-data-guard-role-transitions.html',
+  sbyAlternate19: 'https://docs.oracle.com/en/database/oracle/oracle-database/19/sbydb/using-ALTERNATE-attribute-to-configure-alternate-destinations.html',
+  refVDatabase26: 'https://docs.oracle.com/en/database/oracle/oracle-database/26/refrn/V-DATABASE.html',
+  jdbc26Urls: 'https://docs.oracle.com/en/database/oracle/oracle-database/26/jjdbc/data-sources-and-URLs.html',
 } as const;
 
 /**
@@ -1052,6 +1055,88 @@ export const CITATIONS = {
     url: U.sbyDestAttrs, edition: '19c', verified: 'primary', paraphrase: true,
     quote: 'LOG_ARCHIVE_DEST_n attributes are spelled SERVICE=, SYNC/ASYNC, AFFIRM/NOAFFIRM, NET_TIMEOUT=, REOPEN=, MAX_FAILURE=, ALTERNATE=, GROUP=, PRIORITY=, VALID_FOR=(...) and DB_UNIQUE_NAME=.',
     note: 'ALTERNATE, GROUP and PRIORITY belong to the parameter, never to a RedoRoutes string.',
+  },
+
+  /* ---------------- Fact check 2026-09-28: generator findings ---------------- */
+  'OBS.OBSERVER_RECONNECT': {
+    url: U.bkr19Props, edition: '19c', verified: 'primary',
+    quote: 'The ObserverReconnect configuration property specifies how often the observer establishes a new connection to the primary database. When this property is set to the default value of 0, the observer creates and maintains a connection to the primary database, but it does not periodically create a new connection to the primary database.',
+    note: 'TXT-12: this property, not ObserverConfigFile/observer.ora (OBS.OBSERVER_ORA), is what the ObserverReconnect line rests on.',
+  },
+  'DGMGRL.MAXPROT_STAGED': {
+    url: U.bkr19Cmds, edition: '19c', verified: 'primary',
+    quote: 'Upgrading from MAXPERFORMANCE to MAXPROTECTION is not allowed. You must first go to MAXAVAILABILITY and then to MAXPROTECTION.',
+    note: "Usage Notes for EDIT CONFIGURATION SET PROTECTION MODE. The default protection mode for a new configuration is MAXPERFORMANCE (same page), so a document asking for MAXPROTECTION needs both steps.",
+  },
+  'DGMGRL.COMMENT_SYNTAX': {
+    url: U.bkr19Cmds, edition: '19c', verified: 'primary',
+    quote: 'Comment lines are permitted in the script, but they must be terminated with a semi-colon. For example the following comments would be allowed in a script: REM Hello World; -- Hello Again!; The double dash must be followed by a space character before the comment text.',
+    note: "GEN-04: DGMGRL does have a comment syntax -- REM and -- (double dash, space, text, terminating semicolon). This is the @ (at sign) command's Usage Notes, about scripts run with @.",
+  },
+  'DGMGRL.FAILOVER_CONNECT_STANDBY': {
+    url: U.bkr19Cmds, edition: '19c', verified: 'primary',
+    quote: 'Before you issue the FAILOVER command, verify that you are connected to the standby database that will become the new primary database. If necessary, issue a CONNECT command to connect to the standby database to which you want to failover.',
+    note: 'FAILOVER command Usage Notes. GEN-05: this is why FAILOVER TO never belongs in the build script as an executable line -- it runs from a session connected to the target, after the primary has actually failed.',
+  },
+  'DEST.BROKER_OWNED_PROPERTIES': {
+    url: U.bkr19Members, edition: '19c', verified: 'primary',
+    quote: 'The properties used are: Binding, MaxFailure, NetTimeout, RedoCompression, and ReopenSecs. These properties correspond to attributes on the LOG_ARCHIVE_DEST_n initialization parameter.',
+    note: "GEN-06: 'Other Redo Transport Settings', Managing the Members of a Broker Configuration. The broker owns these; EDIT DATABASE ... SET PROPERTY is how a script sets them, not a hand-edited init.ora line.",
+  },
+  'ROUTES.ALT_BACKWARDS_COMPAT': {
+    url: U.sbyAlternate19, edition: '19c', verified: 'primary',
+    quote: 'As of Oracle Database 12c Release 2 (12.2), the preferred method for creating alternate log archive destinations for remote standby databases and far sync instances that take over if the active destination fails is to use the GROUP and PRIORITY attributes. ... use of the ALTERNATE attribute for remote log archive destinations (SERVICE=...) is maintained only for backwards compatibility.',
+    note: 'GEN-07: local LOCATION= destinations still use ALTERNATE for high availability; only the SERVICE= (remote) case is superseded by GROUP/PRIORITY.',
+  },
+  'DEST.ALTERNATE_STATE_EXAMPLE': {
+    url: U.sbyAlternate19, edition: '19c', verified: 'primary', paraphrase: true,
+    quote: "H.1 Configuring an Alternate Destination sets LOG_ARCHIVE_DEST_STATE_2='ENABLE' beside LOG_ARCHIVE_DEST_2 (the main destination, ALTERNATE=LOG_ARCHIVE_DEST_3) and LOG_ARCHIVE_DEST_STATE_3='ALTERNATE' beside LOG_ARCHIVE_DEST_3 (the alternate, ALTERNATE=LOG_ARCHIVE_DEST_2).",
+    note: "GEN-07: marked paraphrase because this restates the worked example's two LOG_ARCHIVE_DEST_STATE_n lines rather than quoting the whole code block verbatim (TXT-13).",
+  },
+  'OBS.PREFERRED_HOSTS_EXAMPLE_26AI': {
+    url: U.bkr26Fsfo, edition: '26ai', verified: 'primary', paraphrase: true,
+    quote: "Specifying Preferred Observers Based on Current Primary: EDIT DATABASE North_Sales SET PROPERTY PreferredObserverHosts='ob1-host:1,ob2-host:2'; EDIT DATABASE South_Sales SET PROPERTY PreferredObserverHosts='ob3-host:1,ob4-host:2';",
+    note: "ED-05: the page's own example has mismatched quoting (a stray double quote before the opening single quote); this catalogue entry straightens it, since the generated script must emit valid DGMGRL. Sets PreferredObserverHosts on whichever database is named -- both the current primary and whichever standby might become primary, exactly as North_Sales and South_Sales both get their own EDIT DATABASE line here.",
+  },
+  'FSFO.FS_FAILOVER_CONFIG_26AI': {
+    url: U.refVDatabase26, edition: '26ai', verified: 'primary',
+    quote: 'the FS_FAILOVER_* columns in the V$DATABASE view are deprecated. Instead, use the corresponding columns in V$FAST_START_FAILOVER_CONFIG.',
+    note: 'ED-06: V$DATABASE.FS_FAILOVER_STATUS etc. stay correct for 19c; a 26ai document should name V$FAST_START_FAILOVER_CONFIG instead.',
+  },
+  'CLIENT.JDBC_RETRY_DELAY_26AI': {
+    url: U.jdbc26Urls, edition: '26ai', verified: 'primary',
+    quote: 'The RETRY_DELAY connection attribute specifies the delay between connection retries in seconds by default. Starting from Oracle AI Database Release 26ai, the default value of this parameter is 1 second.',
+    note: 'ED-06: earlier drivers default RETRY_DELAY to no delay; 26ai changes the default to 1 second, so a 26ai URL with RETRY_DELAY=0 is a value the operator chose, not the driver default, and is worth spelling out.',
+  },
+  'FSFO.STATUS_WORDS': {
+    url: U.bkr19Cmds, edition: '19c', verified: 'primary', paraphrase: true,
+    quote: 'Fast-Start Failover: Enabled in Zero Data Loss Mode / Fast-Start Failover: Enabled in Potential Data Loss Mode / Fast-Start Failover: Enabled in Observe-Only Mode / Fast-Start Failover: DISABLED',
+    note: "GEN-09: four spellings spliced from separate examples on the same page (ENABLE FAST_START FAILOVER Example 1, VALIDATE FAST_START FAILOVER's MaxPerformance example, the observe-only scenario, and the plain SHOW CONFIGURATION examples). DISABLED is the only one printed in capitals.",
+  },
+  'DGMGRL.SHOW_FSFO_CONDITIONS': {
+    url: U.bkr19Cmds, edition: '19c', verified: 'primary', paraphrase: true,
+    quote: 'Configurable Failover Conditions Health Conditions: Corrupted Controlfile YES Corrupted Dictionary YES Inaccessible Logfile NO Stuck Archiver NO Datafile Write Errors YES Oracle Error Conditions: (none)',
+    note: 'GEN-11: the closing block of SHOW FAST_START FAILOVER Example 2, flattened. These are the broker default health conditions; the engine does not model ENABLE/DISABLE FAST_START FAILOVER CONDITION, so the mock always shows the defaults.',
+  },
+  'DGMGRL.SHOW_FSFO_FIELDS_26AI': {
+    url: U.bkr26Fsfo, edition: '26ai', verified: 'primary', paraphrase: true,
+    quote: 'Fast-Start Failover: Enabled in Zero Data Loss Mode Protection Mode: MaxAvailability Lag Limit: 0 seconds Threshold: 30 seconds Ping Interval: 3000 milliseconds Ping Retry: 0 Active Target: South_Sales Potential Targets: "South_Sales" South_Sales valid Observer: observer1 Shutdown Primary: TRUE Auto-reinstate: TRUE Observer Reconnect: (none) Observer Override: FALSE',
+    note: "ED-06: the 26ai fast-start failover chapter's own SHOW FAST_START FAILOVER example, flattened; it adds Ping Interval and Ping Retry between Threshold and Active Target and otherwise matches the 19c example (DGMGRL.SHOW_FSFO_FIELDS).",
+  },
+  'DGMGRL.MEMBERS_NOT_RECEIVING_REDO': {
+    url: U.bkr19Cmds, edition: '19c', verified: 'primary', paraphrase: true,
+    quote: 'SHOW CONFIGURATION: North_Sales - Primary database / North_FS - Far Sync / South_Sales - Physical standby database / Members Not Receiving Redo: / South_FS - Far Sync',
+    note: "GEN-12: from the role-change example (South_Sales becomes primary, so North_FS no longer receives redo while South_FS does). The heading's exact spelling is 'Members Not Receiving Redo:'.",
+  },
+  'DGMGRL.VERBOSE_TARGET_MARKER': {
+    url: U.bkr19Cmds, edition: '19c', verified: 'primary', paraphrase: true,
+    quote: "SHOW CONFIGURATION VERBOSE: South_Sales- (*) Physical standby database / (*) Fast-Start Failover target",
+    note: 'GEN-12: Example 2, the fast-start failover target line in VERBOSE output. The legend line follows immediately under the marked member.',
+  },
+  'DGMGRL.FARSYNC_LINE_DOCUMENTED': {
+    url: U.bkr19Cmds, edition: '19c', verified: 'primary',
+    quote: 'FS- Far sync instance',
+    note: "GEN-13: from the same VERBOSE example as DGMGRL.VERBOSE_TARGET_MARKER ('North_Sales - Primary database / FS- Far sync instance / South_Sales- (*) Physical standby database'); the far sync role word is documented, not this page's model.",
   },
 } as const satisfies Record<string, Citation>;
 

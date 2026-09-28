@@ -15,7 +15,7 @@
  */
 
 import { useLayoutEffect, useRef, useState } from 'preact/hooks';
-import { commentMarker, lineText } from '@/engine';
+import { commentText, lineText } from '@/engine';
 import type { Basis, GeneratedFile, Line } from '@/engine';
 import { doc } from '@/state/doc';
 import {
@@ -123,11 +123,8 @@ function CodeLine({ line, syntax, refs }: {
   refs: Readonly<Record<string, number>>;
 }) {
   if (line.kind === 'blank') return <div class="rp-ln is-blank"> </div>;
-  const marker = commentMarker(syntax);
   const text = lineText(line);
-  const shown = line.kind === 'cmd'
-    ? text
-    : marker === '' ? `(${text.trim()})` : `${marker} ${text}`;
+  const shown = line.kind === 'cmd' ? text : commentText(syntax, text);
   const nums = (line.cite ?? []).map((id) => refs[id]).filter((n): n is number => n !== undefined);
   return (
     <div class={`rp-ln k-${line.kind}`}>
