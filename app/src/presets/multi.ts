@@ -8,7 +8,7 @@ import {
   database, dest, host, hostDown, instanceDown, local, observer, siteDown, to, topology,
 } from './build';
 import type { Preset } from './types';
-import type { TopologyDoc } from '../engine';
+import type { TimedEvent, TopologyDoc } from '../engine';
 
 /* Two candidate targets and three observers -- the 19c maximum. */
 function multiTargetDoc(): TopologyDoc {
@@ -41,8 +41,17 @@ function multiTargetDoc(): TopologyDoc {
       observer('obs03', 'dc3-obs03', 'backup'),
     ],
     targets: ['sby01', 'sby02'],
-    events: [siteDown(0, 'dc2'), hostDown(0, 'dc1-prm01')],
+    events: multiTargetEvents(),
   });
+}
+
+/**
+ * The first candidate is lost first and the primary fails later: the target
+ * changes while the primary is there to change it. Losing the two at the same
+ * instant is the case 26ai documents as no failover at all.
+ */
+function multiTargetEvents(): TimedEvent[] {
+  return [siteDown(0, 'dc2'), hostDown(20, 'dc1-prm01')];
 }
 
 export const multiTargetThreeObservers: Preset = {
@@ -62,20 +71,27 @@ export const multiTargetThreeObservers: Preset = {
     + 'only the master observer can coordinate fast-start failover; if the primary and target '
     + 'standby stay connected but the connection to the master observer is lost, the broker '
     + 'tries to nominate a backup observer as the new master, a documented attempt under that '
-    + 'precondition rather than a guarantee. The default event takes the whole second data '
-    + "centre down and the primary's host with it: the first candidate is gone, so the "
-    + 'promotion goes to the second one. Walking the list in order and skipping a candidate '
-    + "that cannot be reached is this page's model, not a documented algorithm -- never read "
-    + 'it as "the first viable one in the list". The 19c count of three observers is '
-    + '19c-specific and is not carried across editions.',
+    + 'precondition rather than a guarantee. The default events take the whole second data '
+    + "centre down at t = 0 and the primary's host at t = 20 s. The first candidate is gone "
+    + 'while the primary is still there, so the broker changes the target to the second one, '
+    + 'and when the primary fails the promotion goes to it. That the target changes is '
+    + "documented; which candidate it lands on and how long the change takes are this page's "
+    + 'model -- it walks the list in order and draws the change at once -- so never read it '
+    + 'as "the first viable one in the list". Move the two events to the same instant and '
+    + 'nothing is promoted: "Data Guard Broker cannot failover to second fast-start failover '
+    + 'target if both the primary and first fast-start failover targets are down" is a 26ai '
+    + 'sentence, the 19c chapter is silent on the case, and the page applies it in both '
+    + 'editions, labelled accordingly. The 19c count of three observers is 19c-specific and '
+    + 'is not carried across editions.',
   cite: [
     'FSFO.MULTI_TARGET_12_2', 'FSFO.TARGET_MUST_BE_EXPLICIT', 'FSFO.TARGET_ORDER',
-    'FSFO.TARGET_AUTO_CHANGE', 'FSFO.TARGET_VERIFIED_ON_ENABLE', 'OBS.THREE_19C',
+    'FSFO.TARGET_AUTO_CHANGE', 'FSFO.NO_SECOND_TARGET_26AI', 'FSFO.TARGET_VERIFIED_ON_ENABLE',
+    'OBS.THREE_19C',
     'OBS.MASTER_ONLY_COORDINATES', 'OBS.NOMINATION_PRECONDITION', 'FSFO.THRESHOLD',
     'FSFO.BOTH_MUST_HAVE_LOST', 'OBS.PLACEMENT_NEVER_ON_DB_HOST',
   ],
   doc: multiTargetDoc,
-  events: () => [siteDown(0, 'dc2'), hostDown(0, 'dc1-prm01')],
+  events: multiTargetEvents,
 };
 
 /* A two-instance RAC primary. */

@@ -153,3 +153,39 @@ describe('the comparison in the printable report', () => {
     expect(expectationText({ maxLossSeconds: 0 })).toBe('loss ≤ 0 s');
   });
 });
+
+/* Fact check SIM-06 and SIM-13: the loss column never reads "none" for a loss
+   the run knows about, or cannot bound. */
+describe('the loss column after the 2026-09-28 fact check', () => {
+  it('a manual failover after the primary ran without the standby reads the seconds, and that nothing bounds them', () => {
+    const s = snapshot();
+    s.doc.topology.config.fsfo.state = 'disabled';
+    const topology = s.doc.topology;
+    const trace = simulate(topology, [
+      { at: 0, kind: 'link.cut', link: 'dc1-dc2' as never },
+      { at: 100, kind: 'host.down', host: 'dc1-prm01' as never },
+      { at: 120, kind: 'cmd.failover', to: 'sby01' as never },
+    ]);
+    expect(trace.facts.newPrimary).toBe('sby01');
+    expect(lossText(trace)).toBe('70 s of redo never received (model); nothing bounds it');
+    expect(lossText(trace)).not.toContain('None');
+  });
+
+  it('a far sync instance lost with the primary reads unknown', () => {
+    const p = PRESETS.find((x) => x.id === 'far-sync-zero-loss')!;
+    const trace = simulate(p.doc(), [{ at: 0, kind: 'site.down', site: 'dc1' as never }]);
+    expect(trace.facts.newPrimary).not.toBe(null);
+    expect(trace.facts.dataLossKind).toBe('unknown');
+    expect(lossText(trace)).toBe('Unknown: not bounded in this model');
+  });
+
+  it('never passes a loss expectation on a loss it cannot bound', () => {
+    const p = PRESETS.find((x) => x.id === 'far-sync-zero-loss')!;
+    const topology = p.doc();
+    const trace = simulate(topology, [{ at: 0, kind: 'site.down', site: 'dc1' as never }]);
+    const row = {
+      id: 'crash' as const, label: 'x', description: 'x', topology, trace, unavailable: null,
+    };
+    expect(assess(row, { maxLossSeconds: 0 })).toBe('Not assessed: no loss bound');
+  });
+});

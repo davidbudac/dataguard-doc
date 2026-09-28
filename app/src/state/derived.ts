@@ -17,7 +17,7 @@ import { inFlight, inFlightFrom } from '@/ui/canvas/place';
 import { appModelFor } from '@/ui/timeline/build';
 import type { Geometry } from '@/ui/canvas/layout';
 import {
-  declaredPrimary, resolveRedoGraph, simulate, sortFindings, stateAt, validate,
+  declaredPrimary, honestLevel, resolveRedoGraph, simulate, sortFindings, stateAt, validate,
 } from '@/engine';
 import type {
   CitationId, Claim, EngineTrace, Finding, Outcome, ProtectionLevel, Snapshot, TopologyDoc,
@@ -108,8 +108,18 @@ export const runFindings = computed<Finding[]>(
 
 export const outcome = computed(() => trace.value?.facts.outcome ?? null);
 
+/**
+ * The level at rest, with the label it has earned: a degraded maximum
+ * availability configuration "operates as if it were in maximum performance
+ * mode", and which value the broker reports meanwhile is not documented.
+ */
+const steadyLevel = computed<Claim<ProtectionLevel> | null>(() => {
+  const level = redoGraph.value?.protectionLevel;
+  return level ? honestLevel(level, topology.value.config.protectionMode) : null;
+});
+
 export const protectionLevel = computed<Claim<ProtectionLevel> | null>(
-  () => trace.value?.epochs.at(-1)?.protectionLevel ?? redoGraph.value?.protectionLevel ?? null,
+  () => trace.value?.epochs.at(-1)?.protectionLevel ?? steadyLevel.value,
 );
 
 /* ---------------- the readout ---------------- */
@@ -195,7 +205,7 @@ export function readoutFor(steady: boolean): ReadoutChip[] {
   const graph = redoGraph.value;
 
   if (!t || steady) {
-    const level = graph?.protectionLevel;
+    const level = graph ? steadyLevel.value : null;
     const modeWord = topo.config.protectionMode;
     const members = topo.members.length;
     const standbys = topo.members.filter((m) => m.kind === 'database' && m.role !== 'primary').length;
@@ -212,12 +222,15 @@ export function readoutFor(steady: boolean): ReadoutChip[] {
         id: 'protection', tone: level && level.value !== modeWord ? 'am' : 'tl',
         k: 'Protection level',
         v: level ? level.value : 'unknown',
-        /* The mode is what was configured; the level is what the broker
-           reports. When the two differ the chip says so, because the reader
+        /* The mode is what was configured; the level is how the primary is
+           operating. When the two differ the chip says so, because the reader
            who set MAXAVAILABILITY and reads MAXPERFORMANCE has been told
-           something, not shown a typo. */
+           something, not shown a typo. What it must not say is that the
+           broker REPORTS this value: Oracle's sentence is "operates as if it
+           were in maximum performance mode", and PROTECTION_LEVEL lists
+           RESYNCHRONIZATION as a value of its own without saying when. */
         sub: level && level.value !== modeWord
-          ? `Configured ${modeWord}, but no synchronized standby is acknowledging, so the broker reports this level.`
+          ? `Configured ${modeWord}, but no synchronized standby is acknowledging, so the primary operates as if it were in maximum performance mode. Which value PROTECTION_LEVEL reports meanwhile is not documented.`
           : level && level.basis !== 'documented'
             ? 'The level the broker would report for this configuration.'
             : 'The level the broker reports while every destination is up.',
@@ -281,13 +294,29 @@ export function readoutFor(steady: boolean): ReadoutChip[] {
   if (moved && f.newPrimary !== null) {
     const rpo = f.perMember[f.newPrimary]?.rpoSeconds ?? null;
     if (rpo !== null) {
+      /* Three readings, and zero is only one of them. A far sync instance
+         lost with the primary leaves a loss nobody can put a number on, and
+         a manual failover is never "none" by right: it is whatever the
+         standby was missing. */
+      const unknown = f.dataLossKind === 'unknown';
+      const zero = !unknown && rpo.value === 0;
       chips.push({
-        id: 'loss', tone: rpo.value === 0 ? 'tl' : 'am', k: 'Data loss',
-        v: rpo.value === 0 ? 'none' : fmt(rpo.value), ...(rpo.value === 0 ? {} : { unit: 's' }),
-        sub: rpo.value === 0
-          ? 'The new primary opened with every acknowledged commit.'
-          : 'Redo the new primary never received, in seconds.',
+        id: 'loss', tone: zero ? 'tl' : 'am', k: 'Data loss',
+        v: unknown ? 'unknown' : zero ? 'none' : fmt(rpo.value),
+        ...(unknown || zero ? {} : { unit: 's' }),
+        sub: unknown
+          ? 'The far sync instance went down with the primary, and what it had not yet forwarded is lost with it. This run cannot say how much.'
+          : zero
+            ? (f.dataLossKind === 'manual'
+              ? 'The standby held everything the primary had generated when it was promoted. A manual failover guarantees nothing of the kind.'
+              : rpo.basis === 'documented'
+                ? 'The new primary opened with every acknowledged commit.'
+                : 'The new primary opened with every acknowledged commit, as this page models it.')
+            : f.dataLossKind === 'manual'
+              ? 'Redo the primary generated that the new primary never received, in seconds. Nothing bounds it.'
+              : 'Redo the new primary never received, in seconds.',
         basis: rpo.basis,
+        cite: [...rpo.cite],
       });
     }
   }
@@ -336,11 +365,16 @@ export function readoutFor(steady: boolean): ReadoutChip[] {
   }
   const observerStates = Object.values(f.observers).map((o) => o.endState);
   if (observerStates.length > 0) {
+    /* The master's, where there is one: every other running observer ends
+       `backup` and a stopped one `stopped`, so the master is the one that
+       ends in neither. */
+    const master = observerStates.find((st) => st !== 'backup' && st !== 'stopped');
     chips.push({
-      id: 'observer', tone: 'vi', k: 'Observer', v: observerStates[0] as string,
-      sub: observerStates.length > 1
-        ? `${observerStates.length} observers deployed; the master's state is shown.`
-        : 'The state the observer ends in.',
+      id: 'observer', tone: 'vi', k: 'Observer', v: master ?? (observerStates[0] as string),
+      sub: observerStates.length === 1 ? 'The state the observer ends in.'
+        : master !== undefined
+          ? `${observerStates.length} observers deployed; the master's state is shown.`
+          : `${observerStates.length} observers deployed, none of them the master at the end of the run.`,
     });
   }
   chips.push(findingsChip());

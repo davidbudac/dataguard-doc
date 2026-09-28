@@ -12,11 +12,13 @@
  *    protection, and the lag limit in maximum performance -- and, from 26ai,
  *    in a maximum availability configuration whose lag limit is non-zero,
  *  - the primary's own stall clock always runs on the threshold, even when the
- *    ping properties replace the threshold for the observer's detection.
+ *    ping properties replace the threshold for the observer's detection,
+ *  - fast-start failover goes to the CURRENT target only; the broker changes
+ *    the target while the primary is there to change it.
  */
 
 import { NOMINAL } from '../defaults';
-import type { Claim } from '../types/claims';
+import type { Claim, Finding } from '../types/claims';
 import { documented, inferred, model } from '../types/claims';
 import { assertCitesAllowed } from '../citations';
 import type { CitationId } from '../citations';
@@ -66,15 +68,40 @@ export const pingPropertiesSet = (doc: TopologyDoc): boolean =>
   doc.config.fsfo.pingIntervalMs !== null && doc.config.fsfo.pingRetry !== null;
 
 /**
+ * Do the two ping properties take effect in this document?
+ *
+ * ObserverPingInterval and ObserverPingRetry do not exist in 19c: neither
+ * name appears in the 19c property reference, the 19c fast-start failover
+ * chapter or the 19c command reference, nor in the 19.27 binaries, and the
+ * first edition that documents them is 21c. A 19c document that carries them
+ * therefore detects on FastStartFailoverThreshold like any other 19c
+ * configuration, and the run says why.
+ *
+ * `legacyPingUnder19c` is the published page's reading -- it offers both
+ * properties under 19c -- and only the compatibility adapter asks for it.
+ */
+export const pingInEffect = (doc: TopologyDoc, legacyPingUnder19c = false): boolean =>
+  pingPropertiesSet(doc) && (doc.config.edition !== '19c' || legacyPingUnder19c);
+
+/** The finding a 19c document raises when it sets properties 19c does not have. */
+export const pingNotIn19c = (doc: TopologyDoc): Finding => ({
+  id: 'FSFO.PING_NOT_IN_19C', severity: 'warning', basis: 'doc-later',
+  cite: ['FSFO.PING_PROPS_21C', 'FSFO.THRESHOLD'],
+  subject: { kind: 'config' },
+  message: `ObserverPingInterval and ObserverPingRetry are not available in Oracle Database 19c, so this run ignores them: the observer detects the loss of the primary on FastStartFailoverThreshold (${doc.config.fsfo.thresholdSeconds} s).`,
+  note: 'Neither property is on the 19c property reference, in the 19c fast-start failover chapter or in the 19c command reference, and neither name is in the 19.27 binaries; the first edition that documents them is 21c. Switch the edition to 26ai to see the ping model.',
+});
+
+/**
  * Detection. The documented part is that the threshold is ignored for the
  * observer's detection once BOTH ping properties are explicitly set, and that
  * detection "can be reduced to nearly 1 second". No arithmetic appears
  * anywhere in the documentation, so interval x (retry + 1) -- the first failed
  * ping plus its retries -- is this page's model of that sentence.
  */
-export function detectClaim(doc: TopologyDoc): Claim<Seconds> {
+export function detectClaim(doc: TopologyDoc, ping: boolean = pingPropertiesSet(doc)): Claim<Seconds> {
   const f = doc.config.fsfo;
-  if (f.pingIntervalMs !== null && f.pingRetry !== null) {
+  if (ping && f.pingIntervalMs !== null && f.pingRetry !== null) {
     return model(
       (f.pingIntervalMs * (f.pingRetry + 1)) / 1000,
       'FSFO.PING_ARITHMETIC: ObserverPingInterval x (ObserverPingRetry + 1) -- the first failed ping plus its retries. The documentation states only that the threshold is ignored once both properties are set and that detection can be reduced to nearly 1 second; the arithmetic is this page\'s model and is never a quoted figure.',
@@ -89,9 +116,11 @@ export function detectClaim(doc: TopologyDoc): Claim<Seconds> {
 }
 
 /** How long after losing the primary the master observer initiates. */
-export function initiateDelayClaim(doc: TopologyDoc): Claim<Seconds> {
-  if (pingPropertiesSet(doc)) {
-    const d = detectClaim(doc);
+export function initiateDelayClaim(
+  doc: TopologyDoc, ping: boolean = pingPropertiesSet(doc),
+): Claim<Seconds> {
+  if (ping) {
+    const d = detectClaim(doc, ping);
     return model(
       d.value,
       `The ping properties are both set, so the threshold is ignored for the observer's detection. ${d.note ?? ''}`.trim(),
@@ -138,34 +167,80 @@ export interface Readiness {
 }
 
 /**
- * The standby's readiness check. `latchedSync` is what the target was worth
- * the last time redo actually reached it: synchronized is a statement about
- * redo received, so a link that has just been cut does not un-synchronize the
- * redo the standby already holds.
+ * The standby's readiness check, asked at the time the primary failed.
+ *
+ * `ready` is the recorded state: SYNCHRONIZED or TARGET UNDER LAG LIMIT. It is
+ * a latch only while nothing new is committed -- a primary that is dead,
+ * stalled or hanging on the commit generates no redo the standby could be
+ * missing, so a link that has just been cut does not un-synchronize the redo
+ * the standby already holds. From the instant the primary carries on without
+ * the standby the state is UNSYNCHRONIZED or TARGET OVER LAG LIMIT, and a
+ * fast-start failover "cannot occur".
+ *
+ * `unsentSeconds` is how long the primary generated redo this standby never
+ * received. Where the lag limit is the gate it is what the lag has grown by.
  */
 export function readinessGate(
-  doc: TopologyDoc, target: Member, latchedSync: boolean, state?: SimState,
+  doc: TopologyDoc, target: Member, ready: boolean, state?: SimState, unsentSeconds: Seconds = 0,
 ): Readiness {
-  const gateLag = gateLagSeconds(doc, target, state);
+  const gateLag = gateLagSeconds(doc, target, state) + unsentSeconds;
   if (lagGated(doc)) {
     const limit = doc.config.fsfo.lagLimitSeconds;
-    const passes = gateLag <= limit;
+    const passes = ready && gateLag <= limit;
+    const grown = unsentSeconds > 0
+      ? ` The lag is the configured ${gateLagSeconds(doc, target, state)} s plus the ${unsentSeconds} s the primary generated redo this standby did not receive -- drawn second for second, which is this page's model.`
+      : '';
     return {
       passes,
       gateLag,
-      claim: documented(passes, LAG_GATE_CITES.concat(['FSFO.LAGTYPE']),
-        `${effectiveLagType(doc)} lag ${gateLag} s against a FastStartFailoverLagLimit of ${limit} s: failover is possible any time the lag is at or below the limit.`),
+      claim: documented(passes, LAG_GATE_CITES.concat(['FSFO.LAGTYPE', 'FSFO.CANNOT_OVER_LAG_LIMIT']),
+        `${effectiveLagType(doc)} lag ${gateLag} s against a FastStartFailoverLagLimit of ${limit} s: failover is possible any time the lag is at or below the limit, and cannot occur if the target lags by more than the limit at the time the primary database failed.${grown}`),
     };
   }
   return {
-    passes: latchedSync,
+    passes: ready,
     gateLag,
-    claim: documented(latchedSync, ['FSFO.BOTH_MUST_HAVE_LOST', 'MAXAVAIL.AT_LEAST_ONE', 'XPT.TABLE_4_2'],
-      latchedSync
+    claim: documented(ready,
+      ['FSFO.CANNOT_NOT_SYNCHRONIZED', 'FSFO.BOTH_MUST_HAVE_LOST', 'MAXAVAIL.AT_LEAST_ONE', 'XPT.TABLE_4_2'],
+      ready
         ? 'The target standby is synchronized, which is what maximum availability and maximum protection ask of it.'
-        : 'The target standby is not synchronized, and in maximum availability or maximum protection mode that is the readiness check fast-start failover has to pass.'),
+        : 'The target standby was not synchronized with the primary database at the time the primary database failed, and in maximum availability or maximum protection mode fast-start failover cannot occur then.'),
   };
 }
+
+/**
+ * The recorded state changes from ready to not ready. That it has to be
+ * recorded -- by the observer or by the target standby -- before the primary
+ * may carry on is documented; WHEN the recording lands is not.
+ */
+export function notReadyClaim(
+  doc: TopologyDoc, target: MemberId, by: 'observer' | 'target' | 'unobserved' | 'disabled',
+): Claim<string> {
+  const state = lagGated(doc) ? 'TARGET OVER LAG LIMIT' : 'UNSYNCHRONIZED';
+  const who = by === 'observer' ? 'The master observer records'
+    : by === 'target' ? 'The target standby records'
+      : by === 'unobserved' ? 'The configuration is unobserved, so nothing has to be confirmed: the primary carries on and'
+        : 'Fast-start failover is not enabled, so nothing has to be confirmed: the primary carries on and';
+  const tail = by === 'observer' || by === 'target'
+    ? ` that fast-start failover cannot happen, and the primary continues without ${target as string}: the state is ${state}.`
+    : ` ${target as string} no longer has all of its redo.`;
+  return model(`${who}${tail}`,
+    lagGated(doc)
+      ? 'FSFO.NOT_READY_TIMING: that the change has to be recorded before the primary continues is documented; when the lag crosses the limit is not. This page grows the lag by one second for every second the primary generates redo the target does not receive, starting from the lag as configured.'
+      : 'FSFO.NOT_READY_TIMING: that the change has to be recorded before the primary continues is documented; when the recording lands is not. This page draws it where the commit hang ends -- one NET_TIMEOUT after the acknowledgement stopped -- which is the instant the primary starts committing without the target.',
+    ['FSFO.GUARANTEE_STALL', 'FSFO.STATUS_STALLED', 'DEST.NET_TIMEOUT']);
+}
+
+/**
+ * Redo reaches the target again. The documentation restores the ability to
+ * fail over "once the target standby database has received all missing redo
+ * data" and says nothing about how long that takes, because it depends on how
+ * much redo is missing and how fast it ships. This page draws it as immediate.
+ */
+export const resyncClaim = (target: MemberId, unsent: Seconds): Claim<string> =>
+  model(`Redo reaches ${target as string} again and it is drawn as synchronized at once.`,
+    `FSFO.RESYNC_INSTANT: "the ability to automatically failover is restored once the target standby database has received all missing redo data". How long receiving it takes is environment-dependent -- here ${unsent} s of redo generation had not been received -- and is not modelled: this page draws the resynchronization as immediate, so a failure shortly after the link returns looks better here than it would be.`,
+    ['FSFO.RESYNC_RESTORES']);
 
 /* ---------------- observers ---------------- */
 
@@ -270,11 +345,19 @@ export interface TargetChoice {
 }
 
 /**
- * Walk the candidate list in order and take the first candidate the observer
- * can reach that has also lost the primary. A candidate that fails the
- * readiness gate is skipped only while another candidate passes it: with none
- * left the broker still has a target, and what refuses the failover is the
- * gate rather than the absence of a standby.
+ * The automatic change of target: "If the designated fast-start failover
+ * target develops a problem and cannot be the target of a failover, then the
+ * broker automatically changes the fast-start failover target to one of the
+ * other candidate targets."
+ *
+ * It is the broker at the PRIMARY that changes the target, so this walk runs
+ * while the primary is alive and reaches another candidate, and never once the
+ * primary is gone: "Data Guard Broker cannot failover to second fast-start
+ * failover target if both the primary and first fast-start failover targets
+ * are down" (26ai; the 19c chapter is silent).
+ *
+ * The candidates are walked in the order the property lists them. A candidate
+ * that fails `gatePasses` is skipped only while another candidate passes it.
  */
 export function selectTarget(
   candidates: readonly MemberId[],
@@ -297,15 +380,42 @@ export function selectTarget(
     target: null,
     skipped,
     claim: model('No candidate target is usable.',
-      'FSFO.TARGET_SELECTION: the broker selects a target based on the order in which the candidates are specified, and it automatically changes the target if the designated one develops a problem. Which candidate it lands on in a given failure, and at what instant, is not documented -- this engine walks the list in order and says so.',
+      'FSFO.TARGET_SELECTION: the broker selects a target based on the order in which the candidates are specified, and it automatically changes the target if the designated one develops a problem. Which candidate it lands on, and at what instant, is not documented -- this engine walks the list in order while the primary is there to make the change, and says so.',
       ['FSFO.TARGET_ORDER', 'FSFO.TARGET_AUTO_CHANGE']),
   };
 }
 
 const choiceClaim = (id: MemberId, skipped: readonly MemberId[], gateFailed: boolean): Claim<string> =>
   model(id as string,
-    `FSFO.TARGET_SELECTION: the candidates are walked in the order the FastStartFailoverTarget property lists them${skipped.length > 0 ? `, past ${skipped.join(', ')}` : ''}${gateFailed ? '; no candidate passes the readiness gate, so the target stands and the gate is what refuses the failover' : ''}. Oracle documents the order and the automatic change of target, not which candidate a given failure lands on, so this walk is this page's model -- never "the first viable one in the list".`,
+    `FSFO.TARGET_SELECTION: the candidates are walked in the order the FastStartFailoverTarget property lists them${skipped.length > 0 ? `, past ${skipped.join(', ')}` : ''}${gateFailed ? '; no candidate passes the readiness gate, so the target stands and the gate is what refuses the failover' : ''}. Oracle documents the order and the automatic change of target -- made while the primary is there to make it -- not which candidate the change lands on or how long it takes, so this walk and its instant are this page's model -- never "the first viable one in the list".`,
     ['FSFO.TARGET_ORDER', 'FSFO.TARGET_AUTO_CHANGE']);
+
+/**
+ * The primary and the first target are both gone. Documented for 26ai; the
+ * 19c chapter does not carry the sentence, so under 19c the same outcome is
+ * labelled as documented later.
+ */
+export function noSecondTarget(
+  doc: TopologyDoc, active: MemberId, other: MemberId,
+): { claim: Claim<string>; finding: Finding } {
+  const is26 = doc.config.edition === '26ai';
+  const text = `No fast-start failover: the target ${active as string} is down together with the primary, and the broker cannot fail over to the second target ${other as string}. The target changes only while the primary is there to change it.`;
+  const note = is26
+    ? 'Restrictions When Fast-Start Failover is Enabled, 26ai.'
+    : 'FSFO.NO_SECOND_TARGET: the sentence is on the 26ai page. The 19c chapter documents the automatic change of target and is silent on this case, so under 19c the restriction is applied as documented in a later edition rather than as a 19c fact.';
+  const cite: CitationId[] = ['FSFO.NO_SECOND_TARGET_26AI', 'FSFO.TARGET_AUTO_CHANGE'];
+  return {
+    claim: is26
+      ? { value: text, basis: 'documented', cite, note }
+      : { value: text, basis: 'doc-later', cite, note },
+    finding: {
+      id: 'FSFO.NO_SECOND_TARGET', severity: 'error', basis: is26 ? 'documented' : 'doc-later', cite,
+      subject: { kind: 'member', id: active as string },
+      message: text,
+      note,
+    },
+  };
+}
 
 /* ---------------- the far sync exclusions ---------------- */
 

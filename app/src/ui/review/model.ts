@@ -84,7 +84,11 @@ export function lossText(t: EngineTrace | null): string {
   switch (t.facts.dataLossKind) {
     case 'none': return 'None in this model';
     case 'bounded': return `≤ ${numberText(t.facts.dataLossSeconds)} s of redo (model)`;
-    case 'manual': return 'Depends on manual action';
+    case 'manual': return t.facts.dataLossSeconds > 0
+      ? `${numberText(t.facts.dataLossSeconds)} s of redo never received (model); nothing bounds it`
+      : 'Depends on manual action';
+    /* The far sync instance that held the redo went down with the primary. */
+    case 'unknown': return 'Unknown: not bounded in this model';
     case 'na': return 'Not applicable';
   }
 }

@@ -699,24 +699,57 @@ describe('two candidate targets, three observers', () => {
     expect(doc.observers.filter((o) => o.role === 'master')).toHaveLength(1);
   });
 
-  it('walks the candidate list in order and lands on the second one', () => {
+  /* Fact check SIM-05. The preset's events used to take the second data
+     centre and the primary down at the same instant and promote the second
+     candidate, which 26ai documents as impossible. They now lose the first
+     candidate first, while the primary is there to change the target. */
+  it('loses the first candidate first, and the primary later', () => {
+    expect(p.events()).toEqual([
+      { at: 0, kind: 'site.down', site: 'dc2' },
+      { at: 20, kind: 'host.down', host: 'dc1-prm01' },
+    ]);
+    expect(doc.events).toEqual(p.events());
+  });
+
+  it('changes the target while the primary is alive, and fails over to the second candidate', () => {
     const t = simulate(doc, p.events());
+    const change = t.decisions.find((x) => x.id === 'FSFO.TARGET_CHANGE');
+    expect(change?.at).toBe(0);
+    expect(change?.subject?.id).toBe('sby02');
     expect(t.facts.outcome).toBe('failover');
     expect(t.facts.target).toBe(M('sby02'));
-    expect(t.facts.initiateAt).toBe(30);
+    /* One threshold after the primary went, at 20 s. */
+    expect(t.facts.initiateAt).toBe(50);
     /* execStart + the apply lag it still has to replay + the role change. */
-    expect(t.facts.tOpen).toBeCloseTo(30.005 + 10 + 15, 6);
+    expect(t.facts.tOpen).toBeCloseTo(50.005 + 10 + 15, 6);
   });
 
-  it('says the order is the model, and refuses the forbidden wording', () => {
+  it('says the change is the model, and refuses the forbidden wording', () => {
     const t = simulate(doc, p.events());
-    const d = t.decisions.find((x) => x.id === 'FSFO.TARGET_SELECTION');
-    expect(d?.claim.basis).toBe('model');
-    expect(d?.claim.note).toContain('order');
-    expect(d?.claim.note).toContain('never "the first viable one in the list"');
+    for (const id of ['FSFO.TARGET_CHANGE', 'FSFO.TARGET_SELECTION']) {
+      const d = t.decisions.find((x) => x.id === id);
+      expect(d?.claim.basis, id).toBe('model');
+      expect(d?.claim.note, id).toContain('order');
+      expect(d?.claim.note, id).toContain('never "the first viable one in the list"');
+    }
   });
 
-  it('stops at the first candidate under the active-target-only policy', () => {
+  it('promotes nobody when the two are lost at the same instant, in either edition', () => {
+    for (const edition of ['19c', '26ai'] as const) {
+      const d = p.doc();
+      d.config.edition = edition;
+      const t = simulate(d, [
+        { at: 0, kind: 'site.down', site: 'dc2' as never },
+        { at: 0, kind: 'host.down', host: 'dc1-prm01' as never },
+      ]);
+      expect(t.facts.newPrimary, edition).toBe(null);
+      const f = t.findings.find((x) => x.id === 'FSFO.NO_SECOND_TARGET');
+      expect(f?.basis, edition).toBe(edition === '26ai' ? 'documented' : 'doc-later');
+      expect(f?.cite, edition).toContain('FSFO.NO_SECOND_TARGET_26AI');
+    }
+  });
+
+  it('never changes the target under the active-target-only policy', () => {
     const only = simulate(doc, p.events(), { targetPolicy: 'active-target-only' });
     expect(only.facts.newPrimary).toBe(null);
   });

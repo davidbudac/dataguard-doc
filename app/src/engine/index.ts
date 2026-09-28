@@ -150,11 +150,14 @@ export {
   preferredHostsClaim, preferredRank, readinessGate, selectTarget, targetKindClaim,
   transportLagOf,
 } from './sim/fsfo';
+export { noSecondTarget, notReadyClaim, pingInEffect, pingNotIn19c, resyncClaim } from './sim/fsfo';
 export {
   abortClaim, commitHangClaim, maxAvailDegraded, maxProtectionShutdown, modeName,
   netTimeoutForMode, netTimeoutOf, stallClaim, syncAckDatabases, syncAckMembers,
 } from './sim/protection';
-export type { SwitchoverGateInput, SwitchoverRefusal } from './sim/roles';
+export { honestLevel, modeAfterFailover, noStallClaim } from './sim/protection';
+export type { ManualFailoverInput, SwitchoverGateInput, SwitchoverRefusal } from './sim/roles';
+export { bystanderAhead, manualLossClaim, reinstateCommandFindings } from './sim/roles';
 export {
   bystanderClaim, bystanders, executionClaim, manualFailoverFindings, nominalBandsClaim,
   reinstateBandClaim, reinstateFindings, SW_CONVERT, SW_VERIFY, switchoverGate,
@@ -175,6 +178,7 @@ export {
   CLASSIC_DEFAULTS, CLASSIC_IDS, classicTopology, effectiveScenario, legacyComputeFsfo,
   scenarioEvents, toLegacyModel,
 } from './compat/classic';
+export { PUBLISHED_PAGE } from './compat/classic';
 
 export { importCollectedTopology, COLLECTION_LIMIT, COLLECTION_NOTE } from './collect';
 export type { CollectedTopology } from './collect';

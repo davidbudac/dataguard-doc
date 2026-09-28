@@ -54,16 +54,21 @@ describe('computeApp: an ADDRESS_LIST of three', () => {
   });
 
   it('a dead data centre in the middle of the list costs a second timeout', () => {
+    /* The data centre goes first and the primary ten seconds later: the
+       broker changes the target to sby02 while the primary is there to change
+       it. Losing the two at the same instant promotes nobody (fact check
+       SIM-05), and then there is no service to connect to. */
     const { app } = threeAddress([
-      { at: 0, kind: 'host.down', host: hostId('dc1-prm01') },
       { at: 0, kind: 'site.down', site: 'dc2' as never },
+      { at: 10, kind: 'host.down', host: hostId('dc1-prm01') },
     ]);
     expect(app.addresses.map((a) => a.kind)).toEqual(['timeout', 'timeout', 'refuse']);
     expect(app.passCost).toBeCloseTo(120.2, 9);
     const last = app.attempts[app.attempts.length - 1];
-    /* sby02 is the second candidate: the first is skipped, not preferred. */
+    /* sby02 is the second candidate, and the target by the time of the failure. */
     expect(last?.dials[last.dials.length - 1]?.index).toBe(2);
-    expect(app.tConn).toBeCloseTo(120.3, 9);
+    /* The ladder starts when the primary stops answering, at 10 s. */
+    expect(app.tConn).toBeCloseTo(130.3, 9);
   });
 
   it('every claim it carries is well formed, and the model ones say so', () => {
