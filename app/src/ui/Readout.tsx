@@ -27,7 +27,9 @@ import { mode, tNow } from '@/state/view';
    `?t=200` on an axis that ends at 63 s used to print 200 here and 63.25 on
    the badge. */
 import { clampToAxis, fmt } from './timeline/build';
+import { Fragment } from 'preact';
 import { Chip } from './common/Chip';
+import { showExplanation } from './break/RunExplanation';
 import '@/styles/readout.css';
 
 export function Readout() {
@@ -63,7 +65,24 @@ export function Readout() {
         <Chip chip={at} />
         <div class="ro-run" role="group" aria-label="Run">
           <span class="ro-run-k">Run</span>
-          {chips.map((c) => <Chip key={c.id} chip={c} />)}
+          {chips.map((c) => (
+            <Fragment key={c.id}>
+              <Chip chip={c} />
+              {/* The way from the verdict to its reasons: the rail's
+                  "Why this result?" fold, opened and brought into view. */}
+              {c.id === 'outcome' ? (
+                <button
+                  type="button"
+                  class="ro-why btn is-quiet"
+                  aria-label="Why this result?"
+                  title="Why this result? The run's decisions, step by step"
+                  onClick={showExplanation}
+                >
+                  Why?
+                </button>
+              ) : null}
+            </Fragment>
+          ))}
         </div>
       </div>
     </section>

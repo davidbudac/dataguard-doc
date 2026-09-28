@@ -35,6 +35,19 @@
   border-left: 0;
 }
 
+/* "Why?" beside the outcome: a quiet pill that belongs to the chip before it,
+   so it sits inside that chip's hairlines rather than opening a column. */
+.ro-run .btn.ro-why {
+  align-self: center;
+  margin: 0 8px 0 -14px;
+  padding: 2px 8px;
+  min-height: 0;
+  font-size: 11.5px;
+  white-space: nowrap;
+  color: var(--vi);
+}
+.ro-run .btn.ro-why:hover:not(:disabled) { color: var(--vi); background: var(--vif); }
+
 /* On a phone every chip takes its own line (shell.css); the label goes with them. */
 @media (max-width: 767px) {
   .ro-run-k { flex: 1 0 100%; padding-left: 0; border-left: 0; }

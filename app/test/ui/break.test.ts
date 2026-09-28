@@ -202,7 +202,7 @@ describe('the order of the rail', () => {
     applyTemplate(byId(doc.value.topology, 'isolated')!);
     const root = mount(BreakRail);
     await tick();
-    expect(eyebrows(root)).toEqual(['Events (2)', 'One-click scenarios', 'Validation']);
+    expect(eyebrows(root)).toEqual(['Events (2)', 'Why this result?', 'One-click scenarios', 'Validation']);
     /* Every event row is drawn before the first scenario row. */
     const nodes = [...root.querySelectorAll('.evt, .tmpl')];
     const firstTmpl = nodes.findIndex((n) => n.classList.contains('tmpl'));

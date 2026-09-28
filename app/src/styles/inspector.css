@@ -267,6 +267,31 @@
 .insp .evt-at .field-in{width:64px;height:28px}
 .evt-u{font-family:var(--mono);font-size:11.5px;color:var(--ik3)}
 
+/* ---------------- Break rail: why this result ---------------- */
+
+/* The run's decisions (break/RunExplanation.tsx): a fold like the
+   inspector's, each step a row -- its time in mono where the event number
+   sits in the list above, what happened beside it, and under that the basis
+   and the sources of the claim behind it. */
+.run-explain-body{padding:0 var(--px) var(--s3)}
+.run-explain-note{margin:0 0 var(--s2);font-size:12px;line-height:1.45;color:var(--ik3)}
+.run-explain-list{list-style:none;margin:0;padding:0;border-top:1px solid var(--ln)}
+.run-explain-step{padding:var(--s1) 0 var(--s2);border-bottom:1px solid var(--ln)}
+.run-explain-seek{display:grid;grid-template-columns:48px minmax(0,1fr);gap:var(--s2);width:100%;
+  margin:0 -6px;padding:5px 6px;box-sizing:content-box;border:0;border-radius:var(--r-ctl,7px);
+  background:transparent;text-align:left;color:var(--ik);font:inherit;cursor:pointer}
+.run-explain-seek:hover{background:var(--sf2)}
+.run-explain-time{font-size:11.5px;line-height:18px;color:var(--ik3)}
+.run-explain-copy{display:flex;flex-direction:column;gap:2px;min-width:0;font-size:12px;line-height:1.4;
+  color:var(--ik2)}
+.run-explain-copy strong{font-size:12.5px;font-weight:600;color:var(--ik)}
+.run-explain-source{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 6px;
+  margin:2px 0 0 calc(48px + var(--s2));font-size:11px;line-height:1.4;color:var(--ik3);
+  overflow-wrap:anywhere}
+.run-explain-source a{font-size:10.5px;color:var(--bl)}
+.insp .run-explain-settings{margin:var(--s1) 0 0 calc(48px + var(--s2) - 8px)}
+.run-explain-related{display:flex;flex-wrap:wrap;gap:2px;margin:var(--s2) 0 0 -8px}
+
 /* ---------------- Break rail: the scenario shelf ---------------- */
 
 /* The six scenarios as a shelf (on the rail only where there is no floating

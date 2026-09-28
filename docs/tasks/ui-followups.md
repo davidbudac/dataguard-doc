@@ -264,7 +264,10 @@ opening a copy changed it. Sheet also traps Tab now.
 `test/ui/workspaces.test.ts`. Mount in the new top bar / ⋯ menu.
 
 ### 7.2 Break run explanation
-Status: todo
+Status: done (on ui/track7-port)
+Note: a "Why this result?" fold on the Break rail under the events (inspector.css idiom, folded by
+default), opened and scrolled to by a quiet "Why?" beside the Outcome chip in the dock/readout.
+`explain.ts` unchanged from the branch; every step keeps its claim's basis and citations.
 `ui/break/RunExplanation.tsx`, `ui/break/explain.ts`, tests. Fit it into the
 new Break rail / timeline panel.
 

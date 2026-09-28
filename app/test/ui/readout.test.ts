@@ -15,7 +15,8 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { h, render } from 'preact';
 import { classicDoc } from '@/state/doc';
 import { resetHistory } from '@/state/history';
-import { mode, tNow } from '@/state/view';
+import { inspectorOpen, mode, tNow, viewport } from '@/state/view';
+import { explanationOpen } from '@/ui/break/RunExplanation';
 import { applyTemplate, templates } from '@/ui/break/events';
 import { Readout } from '@/ui/Readout';
 import { doc } from '@/state/doc';
@@ -39,6 +40,9 @@ beforeEach(() => {
   resetHistory(classicDoc());
   mode.value = 'break';
   tNow.value = 0;
+  explanationOpen.value = false;
+  inspectorOpen.value = false;
+  viewport.value = 'wide';
 });
 
 describe('the readout in Break', () => {
@@ -80,6 +84,23 @@ describe('the readout in Break', () => {
     expect(grp?.getAttribute('aria-label')).toBe('Run');
     expect(grp?.querySelector('.ro-run-k')?.textContent).toBe('Run');
     expect(grp?.textContent).toContain('Outcome');
+  });
+
+  it('opens the explanation from beside the outcome, including from Learn on a narrow screen', async () => {
+    crash();
+    mode.value = 'learn';
+    viewport.value = 'compact';
+    const root = mount();
+    await tick();
+    const why = root.querySelector<HTMLButtonElement>('.ro-why')!;
+    expect(why.getAttribute('aria-label')).toBe('Why this result?');
+    /* It sits right after the verdict it explains. */
+    expect(why.previousElementSibling?.querySelector('.chip-k')?.textContent).toBe('Outcome');
+    why.click();
+    await tick();
+    expect(explanationOpen.value).toBe(true);
+    expect(mode.value).toBe('break');
+    expect(inspectorOpen.value).toBe(true);
   });
 
   /**

@@ -32,7 +32,7 @@
  */
 
 import { signal } from '@preact/signals';
-import { events, topology } from '@/state/derived';
+import { events, topology, trace } from '@/state/derived';
 import { canEdit, tNow, viewport } from '@/state/view';
 import { IssuePanel } from '../IssuePanel';
 import { Action, Group, Note } from '../inspector/controls';
@@ -44,6 +44,7 @@ import {
   applyTemplate, clearEvents, describeEvent, removeEventAt, reorderEvent, setEventTime, templates,
 } from './events';
 import { eventTimeBounds, reorderRefusal } from './event-order';
+import { RunExplanation } from './RunExplanation';
 import '@/styles/inspector.css';
 
 /** Open the six scenario descriptions. View state, so it is not undoable. */
@@ -181,6 +182,9 @@ export function BreakRail({ scenarios = true, validation = true }: BreakRailProp
           </Note>
         )}
       </Group>
+
+      {/* What the run decided, and why: under the events that caused it. */}
+      {trace.value ? <RunExplanation doc={doc} trace={trace.value} /> : null}
 
       {scenarios ? (
       <Group
