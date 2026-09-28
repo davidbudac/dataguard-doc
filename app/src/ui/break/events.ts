@@ -16,7 +16,7 @@
  */
 
 import { scenarioEvents, stateAt } from '@/engine';
-import type { ClassicScenario, HostId, TimedEvent, TopologyDoc } from '@/engine';
+import type { ClassicScenario, DatabaseMember, HostId, TimedEvent, TopologyDoc } from '@/engine';
 import { isDatabase } from '@/engine';
 import { withEvents } from '@/state/doc';
 import { topology, trace } from '@/state/derived';
@@ -244,6 +244,22 @@ const simMemberState = (doc: TopologyDoc, key: string, at: number): string | und
   return (stateAt(t, at).members as Record<string, string>)[key];
 };
 
+/**
+ * Whether the run shows this member, at `at`, as the primary a role change
+ * has already replaced -- read off the trace's own facts (`newPrimary`) and
+ * its own per-instant state (`simMemberState`), never recomputed here.
+ * REINSTATE DATABASE is offered on the strength of this alone: a database
+ * that is still the primary in the drawing at this instant, still holds the
+ * role for the whole run, or never held it, is not what a reinstatement is
+ * for.
+ */
+const isFormerPrimary = (doc: TopologyDoc, member: DatabaseMember, at: number): boolean => {
+  const t = trace.value;
+  if (t === null || doc !== topology.value) return false;
+  if (member.role !== 'primary' || t.facts.newPrimary === null || t.facts.newPrimary === member.id) return false;
+  return simMemberState(doc, member.id as string, at) !== 'open-rw';
+};
+
 /** Every action the one selected object offers at `at`. */
 export function actionsForKey(doc: TopologyDoc, key: string, at: number): EventAction[] {
   const out: EventAction[] = [];
@@ -340,18 +356,31 @@ export function actionsForKey(doc: TopologyDoc, key: string, at: number): EventA
       });
     }
     if (isDatabase(member) && member.role !== 'primary') {
+      /* The engine refuses SWITCHOVER TO a down target, and refuses it while
+         the primary is down -- the broker verifies both databases before it
+         converts either. FAILOVER TO refuses only a down target: the primary
+         being down is exactly the case a failover is for. Neither check here
+         is the engine's connectivity gate (the two being unable to reach each
+         other): that reading is not one of this file's own helpers, so the
+         menu still offers the command and the run itself refuses it. */
+      const targetDown = isDownAt(doc, { kind: 'member', id: key }, at);
+      const primaryDown = primary !== undefined
+        && isDownAt(doc, { kind: 'member', id: primary.id as string }, at);
       out.push({
         id: 'cmd.switchover',
         label: `SWITCHOVER TO ${key}`,
         plural: 'Switch over',
-        enabled: primary ? ON : off(WHY.noTarget),
+        enabled: !primary ? off(WHY.noTarget)
+          : targetDown ? off(WHY.switchoverTargetDown)
+            : primaryDown ? off(WHY.switchoverPrimaryDown) : ON,
         events: [{ at, kind: 'cmd.switchover', to: member.id }],
       });
       out.push({
         id: 'cmd.failover',
         label: `FAILOVER TO ${key}`,
         plural: 'Fail over',
-        enabled: primary ? ON : off(WHY.noTarget),
+        enabled: !primary ? off(WHY.noTarget)
+          : targetDown ? off(WHY.failoverTargetDown) : ON,
         events: [{ at, kind: 'cmd.failover', to: member.id }],
       });
     }
@@ -360,7 +389,7 @@ export function actionsForKey(doc: TopologyDoc, key: string, at: number): EventA
         id: 'cmd.reinstate',
         label: `REINSTATE DATABASE ${key}`,
         plural: 'Reinstate',
-        enabled: ON,
+        enabled: isFormerPrimary(doc, member, at) ? ON : off(WHY.notFormerPrimary),
         events: [{ at, kind: 'cmd.reinstate', member: member.id }],
       });
       const running = member.applyRunning;

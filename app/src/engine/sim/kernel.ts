@@ -193,6 +193,18 @@ export interface SimState {
    * it could not reach has been opened somewhere else.
    */
   stallSince: Record<string, Seconds | null>;
+  /**
+   * The first instant, ever, the observer lost the primary -- kept even once
+   * it reconnects, unlike `obsLostPrimarySince` above, which tracks only the
+   * ongoing loss and clears the moment the observer is back. What the
+   * FastStartFailoverThreshold brace draws from (design's own words: "the
+   * clock starts when the observer FIRST loses its connection to the
+   * primary"), because by the time a trace is done a promoted target usually
+   * has the observer watching it again.
+   */
+  thresholdStartAt: Seconds | null;
+  /** The first instant the acting primary's own stall clock started, kept the same way. */
+  stallStartAt: Seconds | null;
   /** When the last synchronous acknowledgement went away. */
   ackLostSince: Seconds | null;
   /**

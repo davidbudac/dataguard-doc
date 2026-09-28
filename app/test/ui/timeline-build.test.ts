@@ -156,6 +156,67 @@ describe('buildTimeline: the classic crash', () => {
   });
 });
 
+/**
+ * "The clock starts when the observer FIRST loses its connection to the
+ * primary" -- so a failure injected well after t = 0 has to draw the
+ * FastStartFailoverThreshold brace, and the primary's own stall clock, from
+ * that instant, not from 0.
+ */
+describe('buildTimeline: a brace whose clock starts after t = 0', () => {
+  const late = (scenario: Parameters<typeof scenarioEvents>[0], at: number, over: Parameters<typeof classicTopology>[0] = {}) => {
+    const base = classicTopology(over);
+    const events = scenarioEvents(scenario, base).map((e) => ({ ...e, at }));
+    const doc: TopologyDoc = { ...base, events };
+    const trace = simulate(doc, events);
+    return { doc, trace, m: buildTimeline(trace, doc, { width: 980 }) };
+  };
+
+  it('draws the observer’s FastStartFailoverThreshold brace from the crash, not from 0', () => {
+    const { trace, m } = late('crash', 100);
+    const th = m.braces.find((b) => b.key === 'threshold');
+    expect(trace.facts.thresholdStartAt).toBe(100);
+    expect(th?.a).toBe(100);
+    expect(th?.b).toBe(trace.facts.initiateAt);
+    expect(th?.a).toBeGreaterThan(0);
+  });
+
+  it('draws the primary’s own stall clock from when it started stalling, not from 0', () => {
+    /* pmyShutdown stays TRUE (the default) so the primary aborts, and the
+       'abort' brace under a failover outcome is the one drawn from the stall. */
+    const { doc, trace, m } = late('isolated', 100);
+    expect(trace.facts.outcome).toBe('failover');
+    expect(trace.facts.stallStartAt).toBe(100);
+    const abort = m.braces.find((b) => b.key === 'abort');
+    expect(abort?.a).toBe(100);
+    expect(abort?.b).toBe(trace.facts.abortAt);
+    void doc;
+  });
+
+  it('draws stall-noone’s own FastStartFailoverThreshold brace from the stall, not from 0', () => {
+    /* A standby-site observer goes down with the standby site: nobody is left
+       to fail over to, and the primary stalls with nothing to confirm it. */
+    const { trace, m } = late('dc2down', 100, { observerLoc: 'dc2' });
+    expect(trace.facts.outcome).toBe('stall-noone');
+    expect(trace.facts.stallStartAt).toBe(100);
+    const th = m.braces.find((b) => b.key === 'stall-threshold');
+    expect(th?.a).toBe(100);
+    expect(th?.b).toBe(trace.facts.abortAt);
+  });
+
+  it('still anchors the NET_TIMEOUT brace at the failure instant it was already computed from', () => {
+    const p = preset('max-protection');
+    const doc = p.doc();
+    doc.config.fsfo.state = 'disabled';
+    const events = p.events().map((e) => ({ ...e, at: 100 }));
+    const trace = simulate(doc, events);
+    expect(trace.facts.outcome).toBe('maxprot-shutdown');
+    const m = buildTimeline(trace, doc, { width: 980 });
+    const nt = m.braces.find((b) => b.name === 'NET_TIMEOUT');
+    expect(nt?.a).toBe((trace.facts.abortAt ?? 0) - (trace.facts.netTimeoutSeconds ?? 0));
+    expect(nt?.a).toBeGreaterThan(0);
+  });
+});
+
 describe('buildTimeline: captions branch on the outcome', () => {
   it('never repeats the event name back', () => {
     for (const scenario of ['crash', 'partition', 'isolated', 'dc2down', 'observer-lost', 'switchover'] as const) {

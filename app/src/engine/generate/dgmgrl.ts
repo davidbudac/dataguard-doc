@@ -549,7 +549,7 @@ function fsfoPropertyLines(doc: TopologyDoc, defaults: (typeof BROKER_DEFAULTS)[
   if (f.pmyShutdown === defaults.pmyShutdown) out.push(nDoc('default', ['FSFO.PMY_SHUTDOWN']));
   if (f.pmyShutdown) {
     out.push(nDoc(
-      'TRUE is the default: a primary stalled longer than the threshold, able to reach neither the observer nor the target standby, aborts itself',
+      'TRUE is the default: a primary stalled longer than the threshold, able to reach neither the observer nor the target standby, will shut down',
       ['FSFO.PMY_SHUTDOWN', 'OBS.LOSS_ALONE_STALLS_NOTHING'],
     ));
   }

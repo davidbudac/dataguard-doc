@@ -581,7 +581,7 @@ function look(state: AnyState, group: LaneGroup, ctx: { pingSet: boolean }): Loo
     case 'commit-hang':
       return { phase: 'b-am', ink: 'f-am', labels: ['Commits wait for an acknowledgement', 'Commits waiting', 'Waiting'] };
     case 'aborted':
-      return { phase: 'b-hatch', ink: 'f-rd', labels: ['Aborted — instance shut itself down', 'Aborted'] };
+      return { phase: 'b-hatch', ink: 'f-rd', labels: ['Shut down — instance shut itself down', 'Shut down'] };
     case 'converting':
       return { phase: 'b-am', ink: 'f-am', labels: primary
         ? ['Converts, restarts as the new standby, then applies from the new primary',
@@ -759,7 +759,7 @@ function buildBraces(doc: TopologyDoc, f: Facts): BraceInput[] {
   if (f.outcome === 'stall-noone') {
     if (f.abortAt !== null) {
       braces.push({
-        key: 'stall-threshold', a: 0, b: f.abortAt, tone: 'br-rd', mono: true,
+        key: 'stall-threshold', a: f.stallStartAt ?? 0, b: f.abortAt, tone: 'br-rd', mono: true,
         name: 'FastStartFailoverThreshold',
         val: `${fmt(threshold)} s — primary stall clock, runs independently`,
       });
@@ -797,7 +797,7 @@ function buildBraces(doc: TopologyDoc, f: Facts): BraceInput[] {
     });
   } else {
     braces.push({
-      key: 'threshold', a: 0, b: f.initiateAt, tone: 'br-am', mono: true,
+      key: 'threshold', a: f.thresholdStartAt ?? 0, b: f.initiateAt, tone: 'br-am', mono: true,
       name: 'FastStartFailoverThreshold',
       val: stalled
         ? `${fmt(threshold)} s — observer clock`
@@ -807,7 +807,7 @@ function buildBraces(doc: TopologyDoc, f: Facts): BraceInput[] {
 
   if (stalled && f.abortAt !== null) {
     braces.push({
-      key: 'abort', a: 0, b: f.abortAt, tone: 'br-rd', mono: true,
+      key: 'abort', a: f.stallStartAt ?? 0, b: f.abortAt, tone: 'br-rd', mono: true,
       name: 'FastStartFailoverThreshold',
       val: `${fmt(threshold)} s — primary stall clock, runs independently`,
     });
@@ -1221,9 +1221,9 @@ export function buildTimeline(trace: Trace, doc: TopologyDoc, view: TimelineView
   if (f.abortAt !== null && f.abortAt >= t0 && f.abortAt <= t1) {
     const x = scale.x(f.abortAt);
     const cands = [
-      `Self-abort at t = ${fmt(f.abortAt)} s  (FastStartFailoverPmyShutdown = TRUE)`,
-      `Self-abort at t = ${fmt(f.abortAt)} s`,
-      'Self-abort',
+      `Shuts down at t = ${fmt(f.abortAt)} s  (FastStartFailoverPmyShutdown = TRUE)`,
+      `Shuts down at t = ${fmt(f.abortAt)} s`,
+      'Shuts down',
     ];
     let label = cands[cands.length - 1] as string;
     let fits = false;

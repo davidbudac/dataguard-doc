@@ -322,15 +322,15 @@ export function readoutFor(steady: boolean): ReadoutChip[] {
   }
   if (f.abortAt !== null) {
     /* Two different shutdowns, and the chip never confuses them. A stalled
-       primary aborts itself under FastStartFailoverPmyShutdown one threshold
-       after the stall began; a maximum protection primary is shut down because
-       no synchronized standby is acknowledging, and the instant it happens --
-       the last acknowledgement plus NET_TIMEOUT -- is this page's model, not a
-       documented interval and never a failover clock. */
+       primary shuts itself down under FastStartFailoverPmyShutdown one
+       threshold after the stall began; a maximum protection primary is shut
+       down because no synchronized standby is acknowledging, and the instant
+       it happens -- the last acknowledgement plus NET_TIMEOUT -- is this
+       page's model, not a documented interval and never a failover clock. */
     const maxprot = f.outcome === 'maxprot-shutdown';
     chips.push({
       id: 'abort', tone: 'rd',
-      k: maxprot ? 'Primary shut down' : 'Primary aborts',
+      k: maxprot ? 'Primary shut down' : 'Primary shuts down',
       v: fmt(f.abortAt), unit: 's',
       sub: maxprot
         ? `MaxProtection shut the primary down — no synchronized standby acknowledged. Drawn one NET_TIMEOUT (${fmt(f.netTimeoutSeconds)} s) after the last acknowledgement.`

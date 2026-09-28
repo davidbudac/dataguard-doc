@@ -575,14 +575,25 @@ describe('the SHOW mocks', () => {
   });
 
   it('name every observer, master first, and carry the edition count', () => {
-    const text = renderPlain(generateShowMocks(multiTargetThreeObservers())[2] as GeneratedFile);
+    const doc = multiTargetThreeObservers();
+    const text = renderPlain(generateShowMocks(doc)[2] as GeneratedFile);
     const heads = text.split('\n').filter((l) => l.startsWith('Observer "'));
     expect(heads).toEqual([
       'Observer "obs01" - Master',
       'Observer "obs02" - Backup',
       'Observer "obs03" - Backup',
     ]);
-    expect(text).toContain('19c registers up to three observers, one of them master');
+    /* The header the 19c broker commands reference's own SHOW OBSERVER
+       example opens with, ahead of the per-observer list. */
+    expect(text).toContain(`Configuration - ${doc.config.name}`);
+    expect(text).toContain('Primary: prm01');
+    expect(text).toContain('Active Target Standby: sby01');
+    /* 19c disagrees with itself the same way 26ai does: the switchover/
+       failover chapter and ORA-16647's own 19c tab say three, the command
+       reference's own START OBSERVER page says four. */
+    expect(text).toContain(
+      'the 19c fast-start failover chapter and ORA-16647 say up to three observers, while the 19c command reference’s START OBSERVER usage notes say four',
+    );
   });
 
   it('drop the master/backup distinction when fast-start failover is disabled', () => {

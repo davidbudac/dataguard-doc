@@ -402,13 +402,13 @@ export function ConfigForm({ doc }: ConfigFormProps) {
 
         <Check
           name="FastStartFailoverPmyShutdown"
-          label="A stalled primary aborts itself"
+          label="A stalled primary shuts itself down"
           checked={f.pmyShutdown}
           onChange={(v) => patchFsfo(
             `Set FastStartFailoverPmyShutdown to ${v ? 'TRUE' : 'FALSE'}`,
             (x): FsfoConfig => ({ ...x, pmyShutdown: v }),
           )}
-          note="Default TRUE: a primary stalled longer than the threshold, able to reach neither the observer nor the target standby, aborts itself."
+          note="Default TRUE: a primary stalled longer than the threshold, able to reach neither the observer nor the target standby, will shut down."
         />
         <Check
           name="FastStartFailoverAutoReinstate"

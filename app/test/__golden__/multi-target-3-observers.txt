@@ -29,7 +29,7 @@ EDIT CONFIGURATION SET PROPERTY FastStartFailoverThreshold = 30;
 -- FastStartFailoverLagLimit is not set -- the 19c broker default is 30 seconds, and in maximum availability a live 19.27 system prints it "(not in use)": the standby must be synchronized instead, which is about redo received, so an apply lag does not block it. The 19c documentation contradicts itself here -- its fast-start failover chapter says zero data loss in maximum availability needs the property set to zero, its property page says the property is used in maximum performance mode;
 EDIT CONFIGURATION SET PROPERTY FastStartFailoverPmyShutdown = TRUE;
 -- default;
--- TRUE is the default: a primary stalled longer than the threshold, able to reach neither the observer nor the target standby, aborts itself;
+-- TRUE is the default: a primary stalled longer than the threshold, able to reach neither the observer nor the target standby, will shut down;
 EDIT CONFIGURATION SET PROPERTY FastStartFailoverAutoReinstate = TRUE;
 -- it reinstates only after an observer-initiated failover caused by a primary crash or isolation -- never after a user-configurable health condition or a DBMS_DG.INITIATE_FS_FAILOVER call -- and it needs Flashback Database on both databases, the former primary started and mounted, and the master observer able to reach it;
 EDIT DATABASE 'prm01' SET PROPERTY 'FastStartFailoverTarget' = 'sby01,sby02';
@@ -156,6 +156,10 @@ Configurable Failover Conditions
 
 DGMGRL> SHOW OBSERVER;
 
+Configuration - dg_config
+Primary: prm01
+Active Target Standby: sby01
+
 Observer "obs01" - Master
   Host Name:            dc3-obs01
   Last Ping to Primary: (not modelled)   (model)
@@ -172,4 +176,4 @@ Observer "obs03" - Backup
   Last Ping to Target:  (not modelled)   (model)
 
 (only the master observer can coordinate fast-start failover)
-(19c registers up to three observers, one of them master)
+(the 19c fast-start failover chapter and ORA-16647 say up to three observers, while the 19c command reference’s START OBSERVER usage notes say four)
