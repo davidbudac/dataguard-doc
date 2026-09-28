@@ -19,7 +19,8 @@ import { eventPriority } from '../types/events';
 import type {
   Epoch, InternalDeadline, InternalDeadlineKind, Lane, Segment, Snapshot,
 } from '../types/trace';
-import type { FsfoState } from '../types/topology';
+import type { Claim } from '../types/claims';
+import type { FsfoState, ProtectionMode } from '../types/topology';
 import type { NetState } from '../net/graph';
 
 /** Times closer together than this are the same instant. */
@@ -40,6 +41,10 @@ const DEADLINE_PRIORITY: Record<InternalDeadlineKind, number> = {
   'net.timeout': 10,
   'dest.reopen': 11,
   'lag.grace': 12,
+  /* Before the failover clock at the same instant: a target that stops being
+     ready at the second the observer would initiate is not ready. */
+  'fsfo.readiness': 12,
+  'observer.master': 12,
   'fsfo.detect': 13,
   'fsfo.initiate': 14,
   'fsfo.exec': 15,
@@ -74,6 +79,9 @@ export type DeadlineAction =
   | 'abort.stall'
   | 'abort.maxprotection'
   | 'net.timeout'
+  | 'fsfo.readiness'
+  | 'fsfo.no-second-target'
+  | 'observer.master'
   | 'switchover.verify'
   | 'switchover.convert'
   | 'switchover.open';
@@ -197,8 +205,48 @@ export interface SimState {
    */
   ackArmed: boolean;
 
-  /* latched readiness: what the target was worth the last time it was fed */
-  lastKnownSync: Record<string, boolean>;
+  /* ---- fast-start failover readiness (fact check SIM-01, SIM-02, SIM-11) ---- */
+
+  /**
+   * The recorded state per member: true is SYNCHRONIZED (maximum availability
+   * and maximum protection) or TARGET UNDER LAG LIMIT (where the lag limit is
+   * the gate), false is UNSYNCHRONIZED or TARGET OVER LAG LIMIT.
+   *
+   * It is a latch only while nothing new is committed -- the primary dead,
+   * stalled or hanging on the commit. From the instant the primary carries on
+   * without a member, that member is not ready, and a fast-start failover to
+   * it "cannot occur".
+   */
+  fsfoReady: Record<string, boolean>;
+  /** When redo stopped reaching each member while the primary was alive. */
+  cutOffSince: Record<string, Seconds | null>;
+  /**
+   * Seconds of redo the primary generated that each member never received:
+   * the closed stretches, and the start of the one that is still open.
+   */
+  unsentAccum: Record<string, Seconds>;
+  unsentSince: Record<string, Seconds | null>;
+  /** When redo reached a member again after the primary had run without it. */
+  resyncedAt: Record<string, Seconds | null>;
+  /**
+   * The configuration is unobserved, as the primary and the target standby
+   * recorded it: the primary lost the master observer while it still reached
+   * the target. "While the configuration is in the unobserved state,
+   * fast-start failover cannot happen", so the primary does not stall when
+   * it then loses the target as well. Cleared when the observer reaches the
+   * primary again.
+   */
+  unobserved: boolean;
+  /**
+   * The current fast-start failover target. The broker changes it while the
+   * primary is there to coordinate the change, and not once the primary is
+   * gone.
+   */
+  activeTarget: MemberId | null;
+  /** What the readiness gate measured when the failover was initiated. */
+  gateLagAtFailure: Seconds | null;
+  /** The observer's clock expired with nothing it could fail over to. */
+  noTargetAt: Seconds | null;
 
   /* role transition bookkeeping */
   phase: Phase;
@@ -243,7 +291,15 @@ export interface SimState {
   manualFailoverAt: Seconds | null;
   /** Commands wait one step: they are answered against the epoch's own facts. */
   pendingSwitchover: MemberId | null;
-  pendingFailover: MemberId | null;
+  pendingFailover: { to: MemberId; immediate: boolean } | null;
+  pendingReinstate: MemberId | null;
+  pendingMasterObserver: ObserverId | null;
+  /** The protection mode the new primary runs in after a role change, where it differs. */
+  modeAfterRoleChange: ProtectionMode | null;
+  /** What the role change cost, decided where the role change was decided. */
+  loss: { kind: 'none' | 'bounded' | 'manual' | 'unknown'; seconds: Seconds; claim: Claim<number> } | null;
+  /** The primary was down in the epoch before this one. */
+  primaryWasDown: boolean;
 }
 
 /* ---------------- samples and lanes ---------------- */

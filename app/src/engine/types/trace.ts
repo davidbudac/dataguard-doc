@@ -73,6 +73,10 @@ export type InternalDeadlineKind =
   | 'net.timeout'
   | 'dest.reopen'
   | 'lag.grace'
+  /** The recorded readiness of a target changes (SYNCHRONIZED <-> UNSYNCHRONIZED, UNDER <-> OVER LAG LIMIT). */
+  | 'fsfo.readiness'
+  /** SET MASTEROBSERVER takes effect at the next contact between the primary and the target. */
+  | 'observer.master'
   | 'switchover.verify'
   | 'switchover.convert'
   | 'switchover.open';
@@ -192,4 +196,36 @@ export interface SimParams {
   maxEpochs?: number;
   /** Fixed horizon, when the caller wants one rather than the adaptive axis. */
   horizon?: Seconds;
+
+  /*
+   * The three switches below exist for one caller: `engine/compat/classic.ts`,
+   * which reproduces the frozen published page (`simulator/`, served at
+   * /dataguard/legacy/) number for number. That page's model predates the
+   * 2026-09-28 fact check and the workbench no longer shares three of its
+   * readings, so the adapter asks for them by name. Nothing else sets them:
+   * the share-link codec does not read them and no control offers them.
+   */
+
+  /**
+   * ED-01. ObserverPingInterval and ObserverPingRetry do not exist in 19c
+   * (absent from the 19c documentation and from the 19.27 binaries; first
+   * documented in 21c), so a 19c document detects on the threshold. The
+   * published page offers the two properties under 19c and draws the ping
+   * arithmetic there; TRUE keeps that arithmetic.
+   */
+  legacyPingUnder19c?: boolean;
+  /**
+   * SIM-02. Oracle stalls a primary only when the change to UNSYNCHRONIZED or
+   * TARGET OVER LAG LIMIT cannot be confirmed; a primary whose target was
+   * already not ready has nothing to confirm and keeps running. The published
+   * page stalls every primary that reaches neither the observer nor the
+   * target; TRUE keeps that.
+   */
+  legacyStallWhenNotReady?: boolean;
+  /**
+   * SIM-06. What a manual failover loses is redo the standby never received.
+   * The published page draws the apply lag as that number in maximum
+   * performance mode; TRUE keeps it.
+   */
+  legacyManualLossIsApplyLag?: boolean;
 }

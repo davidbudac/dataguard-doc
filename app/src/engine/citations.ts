@@ -78,7 +78,13 @@ const U = {
   habpt121: 'https://docs.oracle.com/database/121/HABPT/config_dg.htm',
   ora12514: 'https://docs.oracle.com/en/error-help/db/ora-12514/',
   ora16529: 'https://docs.oracle.com/en/error-help/db/ora-16529/',
+  ora16649: 'https://docs.oracle.com/en/error-help/db/ora-16649/',
   ora16654: 'https://docs.oracle.com/en/error-help/db/ora-16654/',
+  ora16655: 'https://docs.oracle.com/en/error-help/db/ora-16655/',
+  ora16661: 'https://docs.oracle.com/en/error-help/db/ora-16661/',
+  ora16819: 'https://docs.oracle.com/en/error-help/db/ora-16819/',
+  bkr26Manual: 'https://docs.oracle.com/en/database/oracle/oracle-database/26/dgbkr/manual-failover1.html',
+  bkr26Modes: 'https://docs.oracle.com/en/database/oracle/oracle-database/26/dgbkr/managing-data-protection-modes.html',
   ora16658: 'https://docs.oracle.com/en/error-help/db/ora-16658/',
   ora16820: 'https://docs.oracle.com/en/error-help/db/ora-16820/',
   ora16867: 'https://docs.oracle.com/en/error-help/db/ora-16867/',
@@ -558,6 +564,136 @@ export const CITATIONS = {
     note: "Sic 'thisproperty'. Broker default: 'Thedefault value is an empty string that means no restriction.' 'If the value provided does not contain the primary database, broker will add the primary database automatically'.",
   },
 
+  /* ---- Readiness, the stall and role changes (fact check 2026-09-28, SIM-01 to SIM-14) ---- */
+  'FSFO.GUARANTEE_STALL': {
+    url: U.bkr19Switch, edition: '19c', verified: 'primary',
+    quote: 'Once fast-start failover is enabled, the broker will ensure that fast-start failover is only possible when the configured data loss guarantee can be upheld. If the configured data loss guarantee cannot be upheld, redo generation on the primary database will be stalled. In maximum availability and maximum performance modes, to avoid a prolonged stall, either the observer or target standby database may allow the primary database to continue redo generation after first recording that a fast-start failover cannot happen.',
+    note: 'Fast-start failover overview; the same paragraph is in the 26ai chapter. When the recording lands is not stated.',
+  },
+  'FSFO.STATUS_STALLED': {
+    url: U.bkr19Switch, edition: '19c', verified: 'primary',
+    quote: 'Displays on the primary database after loss of connectivity to the target standby database and the change to the UNSYNCHRONIZED state (maximum availability mode) or to the TARGET OVER LAG LIMIT state (maximum performance mode) cannot be confirmed by either the target standby database or the observer.',
+    note: "Table 5-1, FS_FAILOVER_STATUS = STALLED (26ai Table 6-2, same sentence). The same table gives UNSYNCHRONIZED, TARGET OVER LAG LIMIT and PRIMARY UNOBSERVED as states in which fast-start failover 'Is not possible'.",
+  },
+  'FSFO.CANNOT_NOT_SYNCHRONIZED': {
+    url: U.bkr19Switch, edition: '19c', verified: 'primary',
+    quote: 'If the protection mode is maximum availability or maximum protection and the target standby database was not synchronized with the primary database at the time the primary database failed',
+    note: 'One entry in the list headed "Fast-start failover cannot occur if:"; identical in the 26ai chapter.',
+  },
+  'FSFO.CANNOT_OVER_LAG_LIMIT': {
+    url: U.bkr19Switch, edition: '19c', verified: 'primary',
+    quote: 'If the protection mode is maximum performance and the apply point of the target standby database lags the redo generation point of the primary database by more than the amount specified by the FastStartFailoverLagLimit configuration property at the time the primary database failed',
+    note: 'One entry in the list headed "Fast-start failover cannot occur if:"; identical in the 26ai chapter.',
+  },
+  'FSFO.UNOBSERVED_CONTINUES': {
+    url: U.bkr19Switch, edition: '19c', verified: 'primary',
+    quote: 'While the configuration is in the unobserved state, fast-start failover cannot happen. Therefore, the primary database can continue processing transactions, even if the target standby database fails.',
+    note: 'Identical in the 26ai chapter, which continues: "The configuration status returns the SUCCESS status after the observer reestablishes its connection to the primary database, which then notifies the target standby database."',
+  },
+  'OBS.OUTAGE_DIFFERENT_TIMES': {
+    url: U.haOptimize, edition: '19c', verified: 'primary',
+    quote: 'This is how we ensure that an observer or standby outage, or the outage of both at different times, does not impact the availability of the primary database in an FSFO configuration.',
+    note: 'The sentences before it: "If both the primary and standby have lost contact with the observer they fall into an UNOBSERVED state. If the primary has lost contact with the standby it falls into an UNSYNCHRONIZED state."',
+  },
+  'OBS.RESTART_NEEDS_PERMISSION': {
+    url: U.haOptimize, edition: '19c', verified: 'primary',
+    quote: 'If the primary aborts because the FSFO threshold is exceeded, then when the primary is restarted, it must receive permission from the observer or its original standby before it is able to open. When it makes contact, it is told that either a failover occurred while it was away, and it is automatically converted into a standby database or, if no failover occurred, it is allowed to open.',
+  },
+  'FSFO.RESYNC_RESTORES': {
+    url: U.bkr19Switch, edition: '19c', verified: 'primary',
+    quote: 'In maximum availability mode, the ability to automatically failover is restored once the target standby database has received all missing redo data.',
+    note: "The paragraph continues with the lag-limit modes: 'the ability to automatically failover is restored once the target standby database's redo applied point is no longer lagging the primary database's redo generation point by more than the value specified by the FastStartFailoverLagLimit configuration property.' How long either takes is not stated.",
+  },
+  'FSFO.FORMER_PRIMARY_NOT_OPEN': {
+    url: U.bkr19Switch, edition: '19c', verified: 'primary',
+    quote: 'To allow the master observer to automatically reinstate the former primary database, the database must be started and mounted. It will not be allowed to open in any event if fast-start failover is enabled.',
+    note: 'Identical in the 26ai chapter. The error is ORA-16649.',
+  },
+  'FSFO.REINSTATED_IS_TARGET': {
+    url: U.bkr19Switch, edition: '19c', verified: 'primary',
+    quote: 'The reinstated database acts as the fast-start failover target for the new primary database, making a subsequent fast-start failover possible.',
+    note: 'Identical in the 26ai chapter.',
+  },
+  'REINSTATE.NEEDS_FLASHBACK': {
+    url: U.bkr19Switch, edition: '19c', verified: 'primary',
+    quote: 'For the REINSTATE command to succeed, Flashback Database must have been enabled on the database prior to the failover and there must be sufficient flashback logs on that database. In addition, the database to be reinstated and the new primary database must have network connectivity.',
+    note: "Also: 'Reinstatement is supported only after failover in a broker configuration. It also requires Flashback Database to be enabled on both the primary and target standby databases.'",
+  },
+  'FAILOVER.PRIMARY_SHUT_DOWN': {
+    url: U.bkr19Switch, edition: '19c', verified: 'primary',
+    quote: 'Before beginning a failover, first determine that there is no possibility of recovering the primary database in a timely manner, and ensure that the primary database is shut down.',
+    note: 'Performing a Manual Failover Operation; identical on the 26ai manual failover page.',
+  },
+  'FAILOVER.LOSS_DEPENDS': {
+    url: U.bkr19Switch, edition: '19c', verified: 'primary',
+    quote: 'There may or may not be data loss depending upon whether your primary and target standby databases were synchronized at the time of the primary database failure.',
+    note: 'Manual Failover; identical on the 26ai manual failover page.',
+  },
+  'FAILOVER.CURRENT_TARGET_ONLY': {
+    url: U.bkr19Switch, edition: '19c', verified: 'primary',
+    quote: 'The failover can only be performed to the current target standby database.',
+    note: 'The note "If you perform a manual failover when fast-start failover is enabled"; identical on the 26ai manual failover page.',
+  },
+  'FAILOVER.NO_IMMEDIATE_WITH_FSFO': {
+    url: U.bkr19Cmds, edition: '19c', verified: 'primary',
+    quote: 'If fast-start failover is enabled, you can perform a complete manual failover only to the fast-start failover target standby database and only if the fast-start failover target standby database is synchronized with, or within the lag limit of, the primary database, and only when the observer is started. You cannot perform an immediate manual failover when fast-start failover is enabled.',
+    note: 'FAILOVER, Usage Notes; identical on the 26ai FAILOVER page.',
+  },
+  'SWITCHOVER.FSFO_TARGET_ONLY': {
+    url: U.bkr19Cmds, edition: '19c', verified: 'primary',
+    quote: 'If fast-start failover is enabled, you may switch over only to the fast-start failover target standby database.',
+    note: 'SWITCHOVER, Usage Notes. The error is ORA-16655.',
+  },
+  'SWITCHOVER.FARSYNC_NO_EFFECT': {
+    url: U.sbyRoles, edition: '19c', verified: 'primary',
+    quote: 'If there is a far sync instance (or a combination of preferred and alternate far sync instances) connecting the primary and standby databases, then the procedure to switchover to the standby is the same as described in this topic. Whether the far sync instances are available or unavailable does not affect switchover. During switchover, the primary and standby must be able to communicate directly with each other and perform the switchover role transition steps oblivious of the far sync instances.',
+  },
+  'FSFO.NO_SECOND_TARGET_26AI': {
+    url: U.bkr26Fsfo, edition: '26ai', verified: 'primary',
+    quote: 'Data Guard Broker cannot failover to second fast-start failover target if both the primary and first fast-start failover targets are down.',
+    note: 'Restrictions When Fast-Start Failover is Enabled. The 19c chapter does not carry the sentence and says nothing either way.',
+  },
+  'OBS.NOT_STARTED_16819': {
+    url: U.bkr19Cmds, edition: '19c', verified: 'primary',
+    quote: 'If you do not start the observer after you have enabled fast-start failover, the ORA-16819 warning is displayed for the primary and target standby databases.',
+    note: 'ENABLE FAST_START FAILOVER, Usage Notes. Enabled with no observer started is a legal state, and it is unobserved, not disabled.',
+  },
+  'OBS.SET_MASTEROBSERVER_CONDITIONS': {
+    url: U.bkr19Cmds, edition: '19c', verified: 'primary',
+    quote: 'When this command is issued, the actual switch does not happen until the next time the primary contacts the target standby, usually within three seconds if fast-start failover is enabled.',
+    note: "SET MASTEROBSERVER TO, Usage Notes, which go on: 'For the manual setting to succeed, the following conditions must be met during the next fast-start failover ping: The target standby is enabled and does not require reinstatement. There is no role change, reinstating, or fast-start failover target switch in progress'.",
+  },
+  'BYSTANDERS.ALL_AHEAD_DISABLED': {
+    url: U.bkr19Props, edition: '19c', verified: 'primary',
+    quote: 'If the bystander standbys are ahead, they will be disabled with a status of ORA-16661 as part of the failover operation. The bystander standbys must be reinstated after failover completes.',
+    note: "BystandersFollowRoleChange, ALL: 'During the failover process, the broker determines whether the bystander standby databases are ahead of or behind the failover target standby'. 'If the bystander standbys are behind, then the broker simply sets up the redo transport configuration from the soon-to-be-new-primary to these standbys and completes the failover process.'",
+  },
+  'BYSTANDERS.NONE_DISABLED': {
+    url: U.bkr19Props, edition: '19c', verified: 'primary',
+    quote: 'During the failover process, the broker does NOT evaluate the status of the bystander standbys as part of the failover operation. They are marked as disabled with a status of ORA-16661 so that they can be evaluated later.',
+    note: 'BystandersFollowRoleChange, NONE.',
+  },
+  'MODE.AFTER_FSFO_MAXPROT': {
+    url: U.bkr19Members, edition: '19c', verified: 'primary',
+    quote: 'If fast-start failover occurs, the broker preserves the protection mode that was in effect just prior to the fast-start failover. If the protection mode was maximum protection, then the configuration protection mode is preserved, but the new primary database is set to maximum availability to allow the instance to open.',
+    note: 'Identical on the 26ai protection modes page.',
+  },
+  'MODE.AFTER_MANUAL_MAXPROT': {
+    url: U.bkr19Switch, edition: '19c', verified: 'primary',
+    quote: 'If the protection mode was at maximum protection, it is reset to maximum performance.',
+    note: "Performing a Manual Failover Task 3; identical on the 26ai manual failover page. With fast-start failover enabled the 19c note reads 'The broker preserves the protection mode that was in effect prior to the failover.'",
+  },
+  'MODE.AFTER_MANUAL_FSFO_26AI': {
+    url: U.bkr26Manual, edition: '26ai', verified: 'primary',
+    quote: 'The broker preserves the protection mode that was in effect prior to the failover, unless the protection mode was max protection. In this case the broker sets the protection mode to maximum availability and will later upgrade the protection mode maximum protection mode when a synchronized physical standby database is available.',
+    note: 'The note "If you perform a manual failover when fast-start failover is enabled" (sic, "the protection mode maximum protection mode"). The 19c note stops after the first clause.',
+  },
+  'LEVEL.RESYNCHRONIZATION': {
+    url: U.refVDatabase, edition: '19c', verified: 'primary',
+    quote: 'RESYNCHRONIZATION - Database is running in resynchronization mode',
+    note: 'V$DATABASE.PROTECTION_LEVEL lists four values -- MAXIMUM PROTECTION, MAXIMUM AVAILABILITY, RESYNCHRONIZATION, MAXIMUM PERFORMANCE. No page states when RESYNCHRONIZATION is the one shown.',
+  },
+
   /* ---------------- Switchover ---------------- */
   'SWITCHOVER.ZERO_LOSS': {
     url: U.sbyRoles, edition: '19c', verified: 'primary',
@@ -720,6 +856,23 @@ export const CITATIONS = {
     url: U.ora16820, edition: '19c', verified: 'primary',
     quote: 'ORA-16820 fast-start failover observer is no longer observing this database Cause A previously started observer was no longer actively observing this database. A significant amount of time elapsed since this database last heard from the observer.',
     note: 'The standing health condition while unobserved.',
+  },
+  'ORA.16649': {
+    url: U.ora16649, edition: '19c', verified: 'primary',
+    quote: 'ORA-16649 Data Guard prevented this database from opening. Cause The primary database could not be opened because one of the following reasons. A fast-start failover has occurred, and there was another primary. Data Guard had detected a possible fast-start failover but could not contact the observer or target standby to verify.',
+    note: 'The broker guide prints the older message text: "ORA-16649: possible failover to another database prevents this database from being opened".',
+  },
+  'ORA.16655': {
+    url: U.ora16655, edition: '19c', verified: 'primary',
+    quote: 'ORA-16655 The specified standby database is not the current fast-start failover target standby database. Cause The attempted command was not allowed because fast-start failover was enabled for this Data Guard broker configuration and the standby database specified in the command was not the current fast-start failover target standby database associated with the current primary database.',
+  },
+  'ORA.16661': {
+    url: U.ora16661, edition: '19c', verified: 'primary',
+    quote: 'ORA-16661 The standby database must be reinstated. Cause A role change operation caused this database or pluggable database to require reinstatement.',
+  },
+  'ORA.16819': {
+    url: U.ora16819, edition: '19c', verified: 'primary',
+    quote: 'ORA-16819 fast-start failover observer not started Cause The observer for fast-start failover was not started. As a result, fast-start failover could not happen in the event of a primary database failure.',
   },
   'ORA.16867': {
     url: U.ora16867, edition: '19c', verified: 'primary',

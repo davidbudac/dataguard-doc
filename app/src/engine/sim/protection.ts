@@ -17,6 +17,7 @@
 
 import type { Claim } from '../types/claims';
 import { documented, model } from '../types/claims';
+import type { CitationId } from '../citations';
 import type { MemberId, Seconds } from '../ids';
 import type { ProtectionMode, TopologyDoc } from '../types/topology';
 import { isDatabase } from '../types/topology';
@@ -40,6 +41,65 @@ export function syncAckDatabases(doc: TopologyDoc, graph: RedoGraph): MemberId[]
 
 export function levelNow(graph: RedoGraph): Claim<ProtectionLevel> {
   return graph.protectionLevel;
+}
+
+/**
+ * The level a degraded maximum availability configuration is drawn at, with
+ * the label it has earned.
+ *
+ * Oracle's sentence is about behaviour: without an acknowledgement from at
+ * least one synchronized standby the primary "operates as if it were in
+ * maximum performance mode". What V$DATABASE.PROTECTION_LEVEL -- and with it
+ * the broker -- REPORTS meanwhile is a different question, and no page
+ * answers it: the reference lists RESYNCHRONIZATION as a value of its own
+ * beside MAXIMUM PERFORMANCE and does not say when either shows. So the
+ * MAXPERFORMANCE drawn here is this page's reading of "operates as if", and
+ * it must not carry a `documented` label.
+ */
+export function honestLevel(
+  level: Claim<ProtectionLevel>, configured: ProtectionMode,
+): Claim<ProtectionLevel> {
+  if (configured !== 'MAXAVAILABILITY' || level.value !== 'MAXPERFORMANCE') return level;
+  const cite = [...new Set<CitationId>([...level.cite, 'MAXAVAIL.AT_LEAST_ONE', 'LEVEL.RESYNCHRONIZATION'])];
+  return model<ProtectionLevel>('MAXPERFORMANCE',
+    `PROT.DEGRADED_LEVEL: the documented sentence is about behaviour -- without an acknowledgement from at least one synchronized standby, maximum availability "operates as if it were in maximum performance mode". Which value V$DATABASE.PROTECTION_LEVEL shows meanwhile is not stated on any page: the reference lists RESYNCHRONIZATION as a value of its own beside MAXIMUM PERFORMANCE without saying when each applies. MAXPERFORMANCE is this page's reading of "operates as if", not a level the broker is documented to report.${level.note ? ` ${level.note}` : ''}`,
+    cite);
+}
+
+/**
+ * The protection mode the new primary runs in after a failover out of maximum
+ * protection. Three documented cases, and they differ:
+ *
+ *  - fast-start failover: the configuration's mode is preserved, "but the new
+ *    primary database is set to maximum availability to allow the instance to
+ *    open" (19c and 26ai);
+ *  - manual failover with fast-start failover disabled: "it is reset to
+ *    maximum performance" (19c and 26ai);
+ *  - manual failover with fast-start failover enabled: 19c "preserves the
+ *    protection mode that was in effect prior to the failover", 26ai adds
+ *    "unless the protection mode was max protection. In this case the broker
+ *    sets the protection mode to maximum availability".
+ *
+ * Every other mode is unchanged by a failover, and a switchover changes none.
+ */
+export function modeAfterFailover(
+  doc: TopologyDoc, how: 'fsfo' | 'manual', fsfoEnabled: boolean,
+): Claim<ProtectionMode> | null {
+  if (doc.config.protectionMode !== 'MAXPROTECTION') return null;
+  if (how === 'fsfo') {
+    return documented<ProtectionMode>('MAXAVAILABILITY', ['MODE.AFTER_FSFO_MAXPROT'],
+      'The configuration was in maximum protection mode. The broker preserves the configuration protection mode, but the new primary database is set to maximum availability to allow the instance to open; it is elevated again when a standby that supports maximum protection is available.');
+  }
+  if (!fsfoEnabled) {
+    return documented<ProtectionMode>('MAXPERFORMANCE', ['MODE.AFTER_MANUAL_MAXPROT'],
+      'The configuration was in maximum protection mode, and after a manual failover it is reset to maximum performance. The protection mode can be upgraded again later.');
+  }
+  if (doc.config.edition === '26ai') {
+    return documented<ProtectionMode>('MAXAVAILABILITY', ['MODE.AFTER_MANUAL_FSFO_26AI'],
+      'A manual failover with fast-start failover enabled preserves the protection mode unless it was maximum protection: the broker then sets it to maximum availability and upgrades it later, when a synchronized physical standby database is available.');
+  }
+  return documented<ProtectionMode>('MAXPROTECTION', ['MODE.AFTER_MANUAL_MAXPROT', 'MODE.AFTER_MANUAL_FSFO_26AI'],
+    'A manual failover with fast-start failover enabled: the 19c note says only that the broker preserves the protection mode that was in effect prior to the failover. The 26ai page adds the maximum protection exception; 19c does not carry it.');
 }
 
 /**
@@ -78,12 +138,31 @@ export function netTimeoutForMode(doc: TopologyDoc, graph: RedoGraph): Seconds {
 }
 
 /**
- * A primary is STALLED when it can reach NEITHER the observer NOR the target
- * standby. Losing the observer alone stalls nothing.
+ * A primary is STALLED when the change to UNSYNCHRONIZED or TARGET OVER LAG
+ * LIMIT "cannot be confirmed by either the target standby database or the
+ * observer": it has lost the target, and it reaches neither of the two that
+ * could record that fast-start failover cannot happen. Losing the observer
+ * alone stalls nothing, and neither does losing the two at different times --
+ * a configuration that is already unobserved, or a target that is already
+ * not ready, leaves nothing to confirm.
  */
 export const stallClaim = (stalled: boolean): Claim<boolean> =>
-  documented(stalled, ['OBS.LOSS_ALONE_STALLS_NOTHING', 'FSFO.PMY_SHUTDOWN'],
-    'The primary stalls only when it can reach neither the observer nor the target standby; reaching either one is enough to keep committing.');
+  documented(stalled, ['FSFO.STATUS_STALLED', 'OBS.LOSS_ALONE_STALLS_NOTHING', 'FSFO.PMY_SHUTDOWN'],
+    'The primary stalls when it has lost the target standby and neither the target nor the observer can confirm the change of state -- it reaches neither of them; reaching either one is enough to keep committing. An outage of the observer and of the standby at different times stalls nothing.');
+
+/** The primary reaches nobody and keeps running, because nothing is left to confirm. */
+export function noStallClaim(why: 'unobserved' | 'not-ready', lagGate: boolean): Claim<string> {
+  if (why === 'unobserved') {
+    return documented(
+      'The primary reaches neither the observer nor the target standby, and it keeps processing transactions: the configuration was already unobserved, so fast-start failover cannot happen and there is nothing to stall for.',
+      ['FSFO.UNOBSERVED_CONTINUES', 'OBS.OUTAGE_DIFFERENT_TIMES'],
+      'While the configuration is in the unobserved state, fast-start failover cannot happen. Therefore, the primary database can continue processing transactions, even if the target standby database fails.');
+  }
+  return documented(
+    `The primary reaches neither the observer nor the target standby, and it keeps processing transactions: the target was already ${lagGate ? 'TARGET OVER LAG LIMIT' : 'UNSYNCHRONIZED'}, so no change of state is waiting to be confirmed and fast-start failover is not possible.`,
+    ['FSFO.STATUS_STALLED', 'OBS.OUTAGE_DIFFERENT_TIMES', 'FSFO.GUARANTEE_STALL'],
+    'STALLED is the state of a primary whose change to UNSYNCHRONIZED or TARGET OVER LAG LIMIT cannot be confirmed. Here it had been recorded before the observer was lost: the outage of the standby and of the observer at different times does not impact the availability of the primary database.');
+}
 
 /**
  * FastStartFailoverPmyShutdown, default TRUE: a primary stalled longer than
