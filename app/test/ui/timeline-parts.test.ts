@@ -267,3 +267,37 @@ describe('the playhead is focusable', () => {
     expect(svg.querySelector('[tabindex]')).not.toBeNull();
   });
 });
+
+describe('a press on the plot seeks there', () => {
+  it('moves the playhead to the time under the pointer, and pauses a run', async () => {
+    const { h, render } = await import('preact');
+    const { Timeline } = await import('@/ui/timeline/Timeline');
+    const { buildTimeline } = await import('@/ui/timeline/build');
+    const { simulate, scenarioEvents } = await import('@/engine');
+    const { classicDoc } = await import('@/state/doc');
+    const base = classicDoc().topology;
+    const doc = { ...base, events: scenarioEvents('crash', base) };
+    const trace = simulate(doc, doc.events);
+    const model = buildTimeline(trace, doc, { width: 900 });
+    const seeks: number[] = [];
+    const toggles: number[] = [];
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    render(h(Timeline, {
+      trace, doc, width: 900, tNow: 0, playing: true,
+      onSeek: (t: number) => seeks.push(t), onPlayToggle: () => toggles.push(1),
+    }), host);
+    const svg = host.querySelector<SVGSVGElement>('.tl-svg')!;
+    /* jsdom lays nothing out: give the drawing its own size, 1:1. */
+    svg.getBoundingClientRect = () => ({ left: 0, top: 0, width: 900, height: 300, right: 900, bottom: 300, x: 0, y: 0, toJSON: () => ({}) }) as DOMRect;
+    const target = (model.scale.t0 + model.scale.t1) / 2;
+    const x = model.scale.x(target);
+    /* jsdom has no `onpointerdown`, so preact listens under the event's
+       capitalised name: fire whichever one the element answers to. */
+    const type = 'onpointerdown' in svg ? 'pointerdown' : 'PointerDown';
+    svg.dispatchEvent(new MouseEvent(type, { bubbles: true, button: 0, clientX: x, clientY: 100 }));
+    expect(toggles).toEqual([1]);
+    expect(seeks).toHaveLength(1);
+    expect(seeks[0]).toBeCloseTo(target, 0);
+  });
+});

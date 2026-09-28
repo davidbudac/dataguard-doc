@@ -4,7 +4,7 @@ import type { ComponentChildren, JSX } from 'preact';
 import type { TimedEvent, TopologyDoc } from '@/engine';
 import { eventTimeBounds, snapEventTime } from '../break/event-order';
 import type { TimelineMarker, TimelineModel } from './build';
-import { fmt } from './build';
+import { fmt, TL } from './build';
 
 export interface EventDragProps {
   marker: TimelineMarker;
@@ -102,10 +102,11 @@ export function EventDrag({ marker, model, doc, onMove, onStart, children }: Eve
       }}
     >
       <title>{`Drag to change time. Arrow keys: 1 s; Shift: 0.1 s. Allowed: ${bounds.min}–${bounds.max} s; related events stay in order.`}</title>
-      <rect class="tl-event-hit" x={marker.nx - 11} y={marker.labelY - 24} width={22} height={22} rx={5} />
+      {/* Tall enough to take the icon over the badge too: either one grabs the event. */}
+      <rect class="tl-event-hit" x={marker.nx - 11} y={marker.labelY - TL.iconDy - 11} width={22} height={TL.iconDy - TL.badgeDy + 20} rx={5} />
       {children}
       {preview === null ? null : (
-        <text class="tl-event-time t-mono" x={marker.nx} y={marker.labelY - 28} text-anchor="middle">
+        <text class="tl-event-time t-mono" x={marker.nx} y={marker.labelY - TL.iconDy - 14} text-anchor="middle">
           {`${fmt(at)} s`}
         </text>
       )}

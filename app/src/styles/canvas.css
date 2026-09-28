@@ -452,7 +452,7 @@
   .tp-legend { color: var(--ik2); }
   /* There is nothing to press on a printout, and nothing to scroll: a zoomed
      drawing prints at the size the paper gives it. */
-  .cv-tools, .cv-add, .cv-zoom, .tp-actions, .tp-more, .tp-rename { display: none; }
+  .cv-tools, .cv-add, .cv-zoom, .tp-actions, .tp-more, .tp-rename, .tp-tools { display: none; }
   .tp-wrap.is-zoomed .topo-svg { max-width: 100%; max-height: none; }
 }
 
@@ -477,6 +477,25 @@
 /* ---- the handle, the selection rectangle, the name field ---- */
 /* The handle is the pointer's way to the action bar: a click only selects, so
    the bar has to be asked for, and this is where. */
+/* ---- Break: the event icons on whatever the pointer is over ---- */
+.topo-svg .tp-tools-bg {
+  fill: var(--sf); stroke: var(--ln2); stroke-width: 1;
+  filter: drop-shadow(0 1px 2px rgb(0 0 0 / .14));
+}
+.topo-svg .tp-tool { cursor: pointer; }
+.topo-svg .tp-tool-hit { fill: transparent; }
+.topo-svg .tp-tool-ico {
+  fill: none; stroke: var(--ik2); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;
+  pointer-events: none;
+}
+.topo-svg .tp-tool:hover .tp-tool-hit { fill: var(--vif); }
+.topo-svg .tp-tool:hover .tp-tool-ico { stroke: var(--vi); }
+.topo-svg .tp-tool.is-harm:hover .tp-tool-hit { fill: var(--rdf); }
+.topo-svg .tp-tool.is-harm:hover .tp-tool-ico { stroke: var(--rd); }
+.topo-svg .tp-tool.is-off { cursor: not-allowed; }
+.topo-svg .tp-tool.is-off .tp-tool-ico { stroke: var(--ik3); opacity: .45; }
+.topo-svg .tp-tool.is-off:hover .tp-tool-hit { fill: transparent; }
+
 .topo-svg .tp-more { cursor: pointer; }
 .topo-svg .tp-more-hit { fill: transparent; }
 .topo-svg .tp-more-dot { fill: var(--sf); stroke: var(--vi); stroke-width: 1.2; }

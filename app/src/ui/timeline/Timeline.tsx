@@ -7,7 +7,8 @@
  * `style-src 'self'` and carries no inline style anywhere (ui.md SS1).
  */
 
-import { useMemo, useState } from 'preact/hooks';
+import { useMemo, useRef, useState } from 'preact/hooks';
+import { GLYPH } from '../common/eventIcons';
 import type { JSX } from 'preact';
 import type { TimedEvent, TopologyDoc, Trace } from '@/engine';
 import { sortEvents } from '@/engine';
@@ -68,7 +69,7 @@ function Lane({ lane, model, selected, onSelect }: {
   lane: TimelineLane;
   model: TimelineModel;
   selected: boolean;
-  onSelect?: (id: string | null) => void;
+  onSelect?: ((id: string | null) => void) | undefined;
 }) {
   const { scale } = model;
   return (
@@ -157,10 +158,21 @@ function Marker({ marker }: { marker: TimelineMarker }) {
       {m.glyph === 'line' ? (
         <line class={m.stroke} x1={m.x} y1={m.y0} x2={m.x} y2={m.y1} stroke-width="2" />
       ) : null}
+      {m.index === null || m.icon === null ? null : (
+        /* What the event did, as the icon the canvas offered for it: one
+           chip over the number, joined to it by a short stem. */
+        <g class="tl-marker-ico" aria-hidden="true">
+          <line class="tl-marker-stem" x1={m.nx} y1={m.labelY - TL.iconDy + 9} x2={m.nx} y2={m.labelY - TL.badgeDy - 7} />
+          <rect class="tl-marker-chip" x={m.nx - 9} y={m.labelY - TL.iconDy - 9} width={18} height={18} rx={4} />
+          <g transform={`translate(${m.nx - 6.5},${m.labelY - TL.iconDy - 6.5}) scale(${13 / 24})`}>
+            {GLYPH[m.icon]}
+          </g>
+        </g>
+      )}
       {m.index === null ? null : (
         <g class="tl-marker-n">
-          <circle class="tl-marker-nb" cx={m.nx} cy={m.labelY - 13} r={7} />
-          <text class="tl-marker-nt t-mono" x={m.nx} y={m.labelY - 10} text-anchor="middle">
+          <circle class="tl-marker-nb" cx={m.nx} cy={m.labelY - TL.badgeDy} r={7} />
+          <text class="tl-marker-nt t-mono" x={m.nx} y={m.labelY - TL.badgeDy + 3} text-anchor="middle">
             {m.index}
           </text>
         </g>
@@ -229,6 +241,50 @@ export function Timeline(props: TimelineProps) {
     ...(onPlayToggle ? { onEnd: onPlayToggle } : {}),
   });
 
+  /* A press anywhere on the plot moves the playhead there, and a drag from it
+     keeps scrubbing. The playhead's own handle and the event markers stop the
+     press before it reaches here, so grabbing either still does what it did.
+     A press that seeks is not also a click on the lane under it: toggling a
+     lane's highlight on every seek would make the timeline flicker. */
+  const seek = useRef<{ pointer: number } | null>(null);
+  const seeked = useRef(false);
+  const tAtPointer = (e: JSX.TargetedPointerEvent<SVGSVGElement>): number | null => {
+    const box = e.currentTarget.getBoundingClientRect();
+    if (box.width <= 0) return null;
+    const x = (e.clientX - box.left) * (model.width / box.width);
+    if (x < model.scale.plotL - 4 || x > model.scale.plotR + 4) return null;
+    return Math.round(model.scale.clampT(model.scale.tAt(x)) * 10) / 10;
+  };
+  const canSeek = onSeek !== undefined && !pinnedScale && !model.empty;
+  const onPlotDown = (e: JSX.TargetedPointerEvent<SVGSVGElement>): void => {
+    seeked.current = false;
+    if (!canSeek || e.button !== 0) return;
+    const t = tAtPointer(e);
+    if (t === null) return;
+    e.preventDefault();
+    if (playing) onPlayToggle?.();
+    seek.current = { pointer: e.pointerId };
+    seeked.current = true;
+    e.currentTarget.setPointerCapture?.(e.pointerId);
+    onSeek(t);
+  };
+  const onPlotMove = (e: JSX.TargetedPointerEvent<SVGSVGElement>): void => {
+    if (seek.current?.pointer !== e.pointerId || !onSeek) return;
+    const box = e.currentTarget.getBoundingClientRect();
+    if (box.width <= 0) return;
+    const x = (e.clientX - box.left) * (model.width / box.width);
+    onSeek(Math.round(model.scale.clampT(model.scale.tAt(x)) * 10) / 10);
+  };
+  const onPlotUp = (e: JSX.TargetedPointerEvent<SVGSVGElement>): void => {
+    if (seek.current?.pointer !== e.pointerId) return;
+    seek.current = null;
+    if (e.currentTarget.hasPointerCapture?.(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId);
+  };
+  const selectLane = onSelect === undefined ? undefined : (id: string | null): void => {
+    if (seeked.current) { seeked.current = false; return; }
+    onSelect(id);
+  };
+
   const onPointerMove = (e: JSX.TargetedPointerEvent<HTMLDivElement>): void => {
     const text = tipFromEvent(e.target);
     if (text === null) { if (tip !== null) setTip(null); return; }
@@ -245,12 +301,16 @@ export function Timeline(props: TimelineProps) {
     <section class={model.empty ? 'tl is-empty' : 'tl'} aria-label="Timeline">
       <div class="tl-plot" onPointerMove={onPointerMove} onPointerLeave={() => setTip(null)}>
         <svg
-          class="tl-svg"
+          class={canSeek ? 'tl-svg is-seekable' : 'tl-svg'}
           width={model.width}
           height={model.height}
           viewBox={`0 0 ${model.width} ${model.height}`}
           role="group"
           aria-describedby={summaryId}
+          onPointerDown={canSeek ? onPlotDown : undefined}
+          onPointerMove={canSeek ? onPlotMove : undefined}
+          onPointerUp={canSeek ? onPlotUp : undefined}
+          onPointerCancel={canSeek ? onPlotUp : undefined}
         >
           <desc id={summaryId}>{summary}</desc>
           <Defs />
@@ -292,7 +352,7 @@ export function Timeline(props: TimelineProps) {
               lane={lane}
               model={model}
               selected={selection !== null && selection === lane.id}
-              onSelect={onSelect}
+              onSelect={selectLane}
             />
           ))}
           {model.ticks.map((tk) => (

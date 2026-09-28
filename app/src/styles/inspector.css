@@ -88,6 +88,7 @@
   text-align:left;padding:var(--s1) var(--px) 0;background:transparent;border:0;
   cursor:pointer;font:inherit;color:inherit}
 .grp-fold:not(.is-open) .grp-tog{padding-top:0}
+.grp-fold>.grp-hd>.grp-act{flex:0 0 auto;padding:var(--s1) var(--px) 0 0}
 .grp-tog:hover{background:var(--sf2)}
 .grp-tog:hover .eyebrow{color:var(--ik)}
 .grp-caret{font-family:var(--mono);font-size:10px;line-height:16px;color:var(--ik3);

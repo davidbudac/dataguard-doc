@@ -55,9 +55,9 @@ describe('buildTimeline: the classic crash', () => {
        has to hold a marker label and the ladder is the plain one. */
     const m = build('observer-lost');
     expect(m.scale.plotL).toBe(TL.gutter);
-    expect(m.lanes.map((l) => l.y)).toEqual([80, 128, 176]);
+    expect(m.lanes.map((l) => l.y)).toEqual([TL.laneTop, TL.laneTop + 48, TL.laneTop + 96]);
     expect(m.lanes.every((l) => l.height === 38)).toBe(true);
-    expect(m.lanesBottom).toBe(80 + 3 * 48 - 10);
+    expect(m.lanesBottom).toBe(TL.laneTop + 3 * 48 - 10);
     expect(m.axisY).toBe(m.lanesBottom + 24);
   });
 
@@ -65,8 +65,8 @@ describe('buildTimeline: the classic crash', () => {
     /* The observer lane carries "Initiates failover at t = 30 s" above it and
        the standby's carries "Opens read-write"; the primary's does not. */
     const m = build();
-    expect(m.lanes.map((l) => l.y)).toEqual([80, 128 + TL.markRow, 176 + 2 * TL.markRow]);
-    expect(m.lanesBottom).toBe(80 + 3 * 48 - 10 + 2 * TL.markRow);
+    expect(m.lanes.map((l) => l.y)).toEqual([TL.laneTop, TL.laneTop + 48 + TL.markRow, TL.laneTop + 96 + 2 * TL.markRow]);
+    expect(m.lanesBottom).toBe(TL.laneTop + 3 * 48 - 10 + 2 * TL.markRow);
   });
 
   it('keeps every marker label out of the lanes it sits between', () => {

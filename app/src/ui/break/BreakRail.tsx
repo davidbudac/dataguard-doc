@@ -35,7 +35,8 @@ import { signal } from '@preact/signals';
 import { events, topology, trace } from '@/state/derived';
 import { canEdit, tNow, viewport } from '@/state/view';
 import { IssuePanel } from '../IssuePanel';
-import { Action, Group, Note } from '../inspector/controls';
+import { Action, Fold, Group, Note } from '../inspector/controls';
+import { isSectionOpen, SCENARIOS_ID, toggleSection } from '../inspector/sections';
 import { hintsShown, HintsToggle } from '../hints';
 import { printing } from '../print';
 import { WHY } from '../inspector/why';
@@ -69,9 +70,19 @@ export interface BreakRailProps {
 export function ScenarioPalette() {
   const doc = topology.value;
   const editable = canEdit(viewport.value);
+  const open = isSectionOpen(SCENARIOS_ID);
   return (
-    <nav class="palette pal-scn float-card" aria-label="One-click scenarios">
-      <span class="pal-k">Scenarios</span>
+    <nav class={`palette pal-scn float-card${open ? ' is-open' : ''}`} aria-label="One-click scenarios">
+      <button
+        type="button"
+        class="pal-k pal-tog"
+        aria-expanded={open}
+        onClick={() => toggleSection(SCENARIOS_ID)}
+      >
+        <span class="grp-caret" aria-hidden="true">{open ? '▾' : '▸'}</span>
+        Scenarios
+      </button>
+      {open ? (
       <div class="pal-scn-list">
         {templates(doc, 0).map((t) => (
           <div class="tmpl" key={t.id}>
@@ -84,6 +95,7 @@ export function ScenarioPalette() {
           </div>
         ))}
       </div>
+      ) : null}
     </nav>
   );
 }
@@ -187,8 +199,10 @@ export function BreakRail({ scenarios = true, validation = true }: BreakRailProp
       {trace.value ? <RunExplanation doc={doc} trace={trace.value} /> : null}
 
       {scenarios ? (
-      <Group
+      <Fold
+        id={SCENARIOS_ID}
         title="One-click scenarios"
+        hint={`${templates(doc, 0).length} templates`}
         action={(
           <button
             type="button"
@@ -224,7 +238,7 @@ export function BreakRail({ scenarios = true, validation = true }: BreakRailProp
             </div>
           ))}
         </div>
-      </Group>
+      </Fold>
       ) : null}
 
       {/* The same validation the Build dock shows, worded and folded the same

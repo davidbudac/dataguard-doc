@@ -21,10 +21,11 @@ import { clearSelection, hintsOn, mode, selection, tNow, viewport } from '@/stat
 import { BreakRail, scenarioNotesOpen } from '@/ui/break/BreakRail';
 import { EventMenu, menuOpen } from '@/ui/canvas/EventMenu';
 import {
-  actionsFor, anythingDownUnder, applyTemplate, clearEvents, describeEvent, isDownAt,
+  actionsFor, anythingDownUnder, applyTemplate, clearEvents, describeEvent, hoverTools, isDownAt, NO_RESTART_AFTER_ABORT,
   removeEventAt, restoreQuietLine, runAction, setEventTime, templates,
 } from '@/ui/break/events';
 import { WHY } from '@/ui/inspector/why';
+import { DEFAULT_OPEN, openSections, SCENARIOS_ID } from '@/ui/inspector/sections';
 import { printing } from '@/ui/print';
 
 const mount = (component: () => unknown): HTMLElement => {
@@ -60,9 +61,13 @@ beforeEach(() => {
   tNow.value = 0;
   menuOpen.value = true;
   scenarioNotesOpen.value = false;
+  openSections.value = new Set<string>([DEFAULT_OPEN]);
   hintsOn.value = false;
   clearSelection();
 });
+
+/** Unfold the scenarios, which start folded. */
+const openScenarios = (): void => { openSections.value = new Set<string>([DEFAULT_OPEN, SCENARIOS_ID]); };
 
 describe('the six templates', () => {
   const t = classicTopology({});
@@ -199,6 +204,7 @@ describe('the order of the rail', () => {
   });
 
   it('counts the injected events in the eyebrow, above the scenarios', async () => {
+    openScenarios();
     applyTemplate(byId(doc.value.topology, 'isolated')!);
     const root = mount(BreakRail);
     await tick();
@@ -211,7 +217,23 @@ describe('the order of the rail', () => {
   });
 });
 
+describe('the scenario fold', () => {
+  it('starts folded: the six names are absent until the toggle is pressed', async () => {
+    const root = mount(BreakRail);
+    await tick();
+    expect(root.querySelectorAll('.tmpl')).toHaveLength(0);
+    const tog = [...root.querySelectorAll<HTMLButtonElement>('button.grp-tog')]
+      .find((b) => b.textContent?.includes('One-click scenarios'))!;
+    expect(tog.getAttribute('aria-expanded')).toBe('false');
+    tog.click();
+    await tick();
+    expect(root.querySelectorAll('.tmpl')).toHaveLength(templates(doc.value.topology, 0).length);
+  });
+});
+
 describe('the scenario descriptions', () => {
+  beforeEach(openScenarios);
+
   it('is a shelf of names, with every sentence one press away', async () => {
     const root = mount(BreakRail);
     await tick();
@@ -707,5 +729,53 @@ describe('the playhead after an injection', () => {
     const apply = actionsFor(doc.value.topology, ['sby01'], 7).find((a) => a.id === 'apply.toggle');
     runAction(apply!);
     expect(tNow.value).toBe(7);
+  });
+});
+
+const icons = (key: string, at = 0): string[] =>
+  hoverTools(doc.value.topology, key, at).map((t) => `${t.icon}:${t.enabled.state}`);
+
+describe('the hover icons', () => {
+  it('offers crash and isolate on a data centre, shutdown on a database, cut on a line', () => {
+    expect(icons('dc1')).toEqual(['crash:on', 'isolate:on']);
+    expect(icons('prm01')).toEqual(['shutdown:on', 'crash:on']);
+    expect(icons('obs01')).toEqual(['stop:on', 'crash:on']);
+    expect(icons('dc1-dc2')).toEqual(['cut:on']);
+  });
+
+  it('isolating cuts every link of the data centre, and the icon turns into reconnect', () => {
+    hoverTools(doc.value.topology, 'dc1', 0).find((t) => t.icon === 'isolate')!.run();
+    const cuts = doc.value.topology.events.filter((e) => e.kind === 'link.cut');
+    expect(cuts.map((e) => (e as { link: string }).link).sort()).toEqual(['dc1-dc2', 'dc1-dc3']);
+    expect(icons('dc1')).toEqual(['crash:on', 'reconnect:on']);
+    expect(icons('dc1-dc2')).toEqual(['heal:on']);
+  });
+
+  it('turns a shut-down database into a start, one undo', () => {
+    hoverTools(doc.value.topology, 'prm01', 0).find((t) => t.icon === 'shutdown')!.run();
+    expect(kinds(doc.value.topology.events)).toEqual(['member.down']);
+    expect(icons('prm01')).toEqual(['startup:on', 'crash:on']);
+    undo();
+    expect(doc.value.topology.events).toHaveLength(0);
+  });
+
+  it('draws a refused icon grey rather than dropping it', () => {
+    inject([{ at: 0, kind: 'site.down', site: 'dc1' }]);
+    /* The host is held down by its data centre: its restore says so. */
+    expect(icons('prm01')).toContain('startup:off');
+  });
+});
+
+describe('the hover icons follow the run, not only the events', () => {
+  it('turns a primary the broker aborted into a grey start, with the reason', () => {
+    applyTemplate(byId(doc.value.topology, 'isolated')!);
+    const abortAt = [...Array(1200).keys()].map((i) => i / 10)
+      .find((t) => membersAt(t)['prm01'] === 'aborted');
+    expect(abortAt).toBeDefined();
+    expect(icons('prm01', 0)).toEqual(['shutdown:on', 'crash:on']);
+    const late = hoverTools(doc.value.topology, 'prm01', abortAt! + 1);
+    expect(late.map((t) => `${t.icon}:${t.enabled.state}`)).toEqual(['startup:off', 'crash:on']);
+    const why = late[0]!.enabled;
+    expect(why.state === 'off' && why.why).toBe(NO_RESTART_AFTER_ABORT);
   });
 });

@@ -89,6 +89,14 @@
 /* numbered event markers: the number ties the drawing to the Break rail */
 .tl-svg .tl-marker-nb { fill: var(--sf); stroke: var(--rd); stroke-width: 1.25; }
 .tl-svg .tl-marker-nt { font-size: 9.5px; font-weight: 600; fill: var(--rd); }
+/* The injected event's icon, over its number: the canvas's hover-tool glyph. */
+.tl-svg .tl-marker-chip { fill: var(--rdf); stroke: var(--rd); stroke-width: 1; }
+.tl-svg .tl-marker-stem { stroke: var(--rd); stroke-width: 1; opacity: .55; }
+.tl-svg .tl-marker-ico g path,
+.tl-svg .tl-marker-ico g rect,
+.tl-svg .tl-marker-ico g circle {
+  fill: none; stroke: var(--rd); stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round;
+}
 
 /* ---------------- lanes: selection and hover ---------------- */
 
@@ -97,6 +105,8 @@
 .tl-svg .tl-lane.is-selected .lane-bg { stroke: var(--ik3); stroke-width: 1.5; }
 .tl-svg .tl-lane.is-selected .t-lane { fill: var(--vi); }
 .tl-svg .tl-seg { cursor: default; }
+/* A press anywhere on the plot seeks there (Timeline.tsx). */
+.tl-svg.is-seekable, .tl-svg.is-seekable .tl-lane, .tl-svg.is-seekable .tl-seg { cursor: pointer; }
 
 @media (prefers-reduced-motion: reduce) {
   .tl-svg .tl-lane .lane-bg { transition: none; }

@@ -251,6 +251,10 @@ button.issue{border-bottom:1px solid var(--ln)}
   /* Break's palette: the six scenarios, one click each. */
   .pal-scn{width:206px;gap:6px;padding:10px}
   .pal-k{font-size:12px;font-weight:600;color:var(--ik2);padding:0 4px}
+  .pal-scn:not(.is-open){width:auto}
+  .pal-tog{display:flex;align-items:center;gap:6px;background:transparent;border:0;
+    border-radius:6px;cursor:pointer;font-family:inherit;text-align:left;padding:4px}
+  .pal-tog:hover{background:var(--sf2);color:var(--ik)}
   .pal-scn-list{display:flex;flex-direction:column;gap:4px}
   .pal-scn .tmpl .btn{border:0;padding:6px 8px;font-size:12.5px;white-space:normal;
     text-align:left;justify-content:flex-start;width:100%}

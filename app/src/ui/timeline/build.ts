@@ -22,6 +22,8 @@ import type {
   AnyState, DerivedFacts, EngineFacts, Lane as EngineLane, HostId, LinkId, MemberId,
   Member, ObserverId, Seconds, SiteId, TimedEvent, TopologyDoc, Trace,
 } from '@/engine';
+import { eventIcon } from '../common/eventIcons';
+import type { EventIconName } from '../common/eventIcons';
 
 /* ---------------- geometry ---------------- */
 
@@ -37,9 +39,21 @@ export const TL = {
   topY: 16,
   /** The total-outage brace above the lanes. */
   braceY: 42,
-  /** Event marker labels. */
-  markY: 72,
-  laneTop: 80,
+  /**
+   * Event marker labels. The row above them carries each injected event's
+   * icon over its number badge (`iconDy`), so the lanes start lower than the
+   * fragment's 80 to leave that row room.
+   */
+  markY: 108,
+  laneTop: 116,
+  /**
+   * The number badge's centre, this far above `markY`: high enough that the
+   * badge clears the cap height of the label beside it, which starts at the
+   * marker's x and so runs under a badge that was shifted right.
+   */
+  badgeDy: 26,
+  /** The icon chip's centre, this far above `markY`. */
+  iconDy: 50,
   laneH: 38,
   laneGap: 10,
   /**
@@ -194,6 +208,8 @@ export interface TimelineMarker {
   showLabel: boolean;
   /** Where the number badge sits -- shifted right when several events share an x. */
   nx: number;
+  /** The injected event's icon, drawn over its badge; null for derived marks. */
+  icon: EventIconName | null;
   y0: number;
   y1: number;
   laneKey: string | null;
@@ -1041,6 +1057,7 @@ export function buildTimeline(trace: Trace, doc: TopologyDoc, view: TimelineView
       labelY: TL.markY,
       showLabel: true,
       nx: r1(x),
+      icon: eventIcon(e.kind),
       y0: TL.laneTop - 4,
       y1: partition ? lanesBottom + 4 : TL.laneTop + TL.laneH + 4,
       laneKey: partition ? null : primaryKey,
@@ -1071,6 +1088,7 @@ export function buildTimeline(trace: Trace, doc: TopologyDoc, view: TimelineView
       labelY: y - 8,
       showLabel: true,
       nx: r1(x),
+      icon: null,
       y0: y - 10,
       y1: y + TL.laneH + 4,
       laneKey: observerKey,
@@ -1106,6 +1124,7 @@ export function buildTimeline(trace: Trace, doc: TopologyDoc, view: TimelineView
       labelY: y + TL.laneH + 16,
       showLabel: true,
       nx: r1(x),
+      icon: null,
       y0: y + 2,
       y1: y + TL.laneH + 8,
       laneKey: primaryKey,
@@ -1134,6 +1153,7 @@ export function buildTimeline(trace: Trace, doc: TopologyDoc, view: TimelineView
       labelY: y - 6,
       showLabel: true,
       nx: r1(x),
+      icon: null,
       y0: y + 2,
       y1: y + TL.laneH - 2,
       laneKey: newPrimaryKey,

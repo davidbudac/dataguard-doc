@@ -30,7 +30,7 @@ import {
 import { inFlight, inFlightFrom, placeOver, renaming, setSiteAt } from './place';
 import { mergeVerdict } from './drop';
 import {
-  actionsFor, nothingToRestore, restoreQuietLine, runAction,
+  actionsFor, hoverTools, nothingToRestore, restoreQuietLine, runAction,
 } from '../break/events';
 import { AddToolbar } from '../inspector/adds';
 import type { WhyState } from '../common/WhyPill';
@@ -145,7 +145,10 @@ function commitRename(key: string, raw: string): void {
   const now = m || o ? raw.trim() : key;
   setTimeout(() => {
     for (const el of document.querySelectorAll<SVGGElement>('.topo-svg [data-node]')) {
-      if (el.getAttribute('data-node') === now && !el.hasAttribute('data-more')) { el.focus(); return; }
+      if (el.getAttribute('data-node') === now && !el.hasAttribute('data-more') && !el.hasAttribute('data-tools')) {
+        el.focus();
+        return;
+      }
     }
   }, 0);
 }
@@ -622,6 +625,9 @@ export function CanvasSlot({ interactive = true }: CanvasSlotProps) {
           }
           : {})}
         onHover={(key: string | null) => { hovered.value = key; }}
+        {...(editable && m === 'break'
+          ? { tools: (key: string) => hoverTools(topology.value, key, snapT(tNow.value)) }
+          : {})}
         onClear={() => { closeBar(); clearSelection(); }}
         onCloseBar={() => closeBar()}
         /* The context menu is a keyboard-shaped request -- `Shift+F10` is

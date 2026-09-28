@@ -26,6 +26,8 @@ import { anchorFor, barRoom, fittedScale, placeBar } from './anchor';
 import { InlineName } from './InlineName';
 import { siteLabelRect } from './layout';
 import { ActionBar, barFootprint } from './ActionBar';
+import { HoverTools, toolsSize } from './HoverTools';
+import type { CanvasTool } from './HoverTools';
 import type { BarAction } from './ActionBar';
 import type { WhyState } from '../common/WhyPill';
 import { approxW, CARD } from './measure';
@@ -166,6 +168,11 @@ export interface TopoCanvasProps {
    * bar can hang there rather than over the next card (`barRoom`).
    */
   barMargin?: { t: number; r: number; b: number; l: number };
+  /**
+   * The icons drawn on whatever the pointer is over (`HoverTools`). Absent
+   * means none: Build leaves it out, Break passes its short list.
+   */
+  tools?: (key: string) => readonly CanvasTool[];
   /**
    * How large the drawing is asked to be drawn, 1 being its own size.
    *
@@ -430,6 +437,10 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
      turns off anything a browser would do with the same press -- chiefly a
      text selection that would paint every label the pointer crosses. */
   const [moving, setMoving] = useState<string | null>(null);
+  /* What the pointer is over, for the hover icons: read off the event target
+     rather than the `hovered` prop, because a card inside a data centre hands
+     the hover back to nobody when the pointer leaves it for the panel's ground. */
+  const [toolKey, setToolKey] = useState<string | null>(null);
   /* A drag in flight, as the drawing shows it: the panel about to take the
      card, or the line from a port to the pointer and the card it is over. State
      rather than a ref, because the drawing has to repaint on every move. */
@@ -1186,6 +1197,12 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
     props.onClear?.();
   };
 
+  const onSvgPointerOver = (ev: JSX.TargetedPointerEvent<SVGSVGElement>): void => {
+    if (drag.current !== null) return;
+    const key = insideBar(ev.target) ? null : keyAt(ev.target);
+    if (key !== toolKey) setToolKey(key);
+  };
+
   const onSvgContextMenu = (ev: JSX.TargetedMouseEvent<SVGSVGElement>): void => {
     const key = keyAt(ev.target);
     if (key === null) return;
@@ -1310,6 +1327,24 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
       ? { key: handleKey, x: handleRect.x + handleRect.w, y: handleRect.y }
       /* A name band or a caption is too small to hang a corner off: beside it. */
       : { key: handleKey, x: handleRect.x + handleRect.w + 13, y: handleRect.y + handleRect.h / 2 };
+
+  /* The hover icons: over the top edge of a card, in the top right corner of a
+     data centre, over the caption of a line. */
+  const tools = !interactive || toolKey === null || moving !== null || !props.tools
+    ? [] : props.tools(toolKey);
+  const toolsAt = ((): { x: number; y: number } | null => {
+    if (toolKey === null || tools.length === 0) return null;
+    const px = toolsSize(tools.length);
+    const w = px.w / k;
+    const h = px.h / k;
+    const node = geo.byKey[toolKey];
+    if (node) return { x: node.x + node.w - w - 16, y: node.y - h + 4 };
+    const site = sitesDrawn.find((st) => (st.id as string) === toolKey);
+    if (site) return { x: site.x + site.w - w - 8, y: site.y + 6 };
+    const line = routed.links.find((l) => linkKey(l) === toolKey);
+    if (line) return { x: line.pill.x + line.pill.w / 2 - w / 2, y: line.pill.y - h + 2 };
+    return null;
+  })();
 
   /* The name field: over the name it edits. */
   const renameBox = ((): { x: number; y: number; w: number } | null => {
@@ -1438,6 +1473,8 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
         onPointerMove={interactive ? onPointerMove : undefined}
         onPointerUp={interactive ? onSvgPointerUp : undefined}
         onPointerCancel={interactive ? endDrag : undefined}
+        onPointerOver={interactive && props.tools ? onSvgPointerOver : undefined}
+        onPointerLeave={interactive && props.tools ? () => setToolKey(null) : undefined}
         onWheel={interactive && props.onZoomStep ? onSvgWheel : undefined}
         onContextMenu={interactive && props.onContextMenu ? onSvgContextMenu : undefined}
         onDblClick={interactive && props.onOpen ? onSvgDblClick : undefined}
@@ -1618,6 +1655,10 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
             />
           ))}
         </g>
+
+        {toolsAt === null || toolKey === null ? null : (
+          <HoverTools x={toolsAt.x} y={toolsAt.y} scale={k} subject={toolKey} tools={tools} />
+        )}
 
         {/* What is in the air, over every caption: a card carried across a
             line's caption covers it, the way the card in the hand would. */}

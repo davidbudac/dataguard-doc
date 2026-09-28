@@ -209,17 +209,13 @@ describe('dragging with a live document', () => {
   });
 });
 
-it('seeks only by dragging the playhead and preserves the badge grab offset', () => {
+it('preserves the badge grab offset when the playhead is dragged', () => {
   const d = configuration([crash(0)]);
   const seek = vi.fn();
   act(() => render(h(Timeline, { doc: d, trace: simulate(d, d.events), width: 900,
     tNow: 10, onSeek: seek }), root));
   const svg = root.querySelector('svg')!;
   svg.getBoundingClientRect = () => ({ width: 900, left: 0 } as DOMRect);
-  const lane = root.querySelector('.lane-bg')!;
-  pointer(lane, 'pointerdown', 500);
-  pointer(lane, 'pointerup', 500);
-  expect(seek).not.toHaveBeenCalled();
   expect(root.querySelector('.tl-scrub-hit')).toBeNull();
   const handle = root.querySelector<SVGGElement>('.tl-playhead-g')!;
   handle.setPointerCapture = vi.fn();

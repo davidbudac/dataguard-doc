@@ -15,7 +15,7 @@
  *    so selecting three cards offers exactly what all three can do.
  */
 
-import { scenarioEvents } from '@/engine';
+import { scenarioEvents, stateAt } from '@/engine';
 import type { ClassicScenario, HostId, TimedEvent, TopologyDoc } from '@/engine';
 import { isDatabase } from '@/engine';
 import { withEvents } from '@/state/doc';
@@ -24,6 +24,7 @@ import { edit } from '@/state/history';
 import { playing, tNow, toast } from '@/state/view';
 import { lastInterestingT } from '@/ui/timeline/build';
 import type { WhyState } from '../common/WhyPill';
+import type { CanvasTool, ToolIconName } from '../canvas/HoverTools';
 import { off, ON, WHY } from '../inspector/why';
 
 import { eventTimeRefusal, reorderRefusal, snapEventTime } from './event-order';
@@ -222,6 +223,24 @@ const heldByHost = (doc: TopologyDoc, host: HostId, at: number): string | null =
     ? `${hostName(doc, host)} is down: restore the host first.`
     : null);
 
+/**
+ * A database the broker itself shut down: FastStartFailoverPmyShutdown on a
+ * stalled primary, or maximum protection with no standby left to acknowledge.
+ * No injected event names it, so the literal reading calls it up -- but the
+ * run has it aborted, and the drawing shows it so.
+ */
+export const ABORTED_BY_BROKER =
+  'The broker has already shut it down (SHUTDOWN ABORT) at this point on the clock.';
+export const NO_RESTART_AFTER_ABORT =
+  'The broker shut it down. Restarting a database the broker aborted is not modelled on this page.';
+
+/** The run's own state for a member at `at`, when the trace is this document's. */
+const simMemberState = (doc: TopologyDoc, key: string, at: number): string | undefined => {
+  const t = trace.value;
+  if (t === null || doc !== topology.value) return undefined;
+  return (stateAt(t, at).members as Record<string, string>)[key];
+};
+
 /** Every action the one selected object offers at `at`. */
 export function actionsForKey(doc: TopologyDoc, key: string, at: number): EventAction[] {
   const out: EventAction[] = [];
@@ -232,6 +251,9 @@ export function actionsForKey(doc: TopologyDoc, key: string, at: number): EventA
   const primary = doc.members.find((m) => isDatabase(m) && m.role === 'primary');
 
   if (member) {
+    /* Aborted by the broker and not by any event: shutting it down again is
+       nothing, and starting it is outside what the run models. */
+    const aborted = simMemberState(doc, key, at) === 'aborted';
     const hosts = member.instances.map((i) => i.host);
     const first = hosts[0];
     const allDown = hosts.length > 0 && hosts.every((h) => isDownAt(doc, { kind: 'host', id: h as string }, at));
@@ -264,7 +286,7 @@ export function actionsForKey(doc: TopologyDoc, key: string, at: number): EventA
           id: `instance.down:${inst.name}`,
           label: `SHUTDOWN ABORT the instance ${inst.name}`,
           plural: 'SHUTDOWN ABORT the instance',
-          enabled: down ? off(WHY.alreadyDown) : ON,
+          enabled: down ? off(WHY.alreadyDown) : aborted ? off(ABORTED_BY_BROKER) : ON,
           events: [{ at, kind: 'instance.down', member: member.id, instance: inst.name }],
         });
         const held = heldByHost(doc, inst.host, at);
@@ -272,7 +294,8 @@ export function actionsForKey(doc: TopologyDoc, key: string, at: number): EventA
           id: `instance.up:${inst.name}`,
           label: `Start the instance ${inst.name}`,
           plural: 'Start the instance',
-          enabled: held !== null ? off(held) : (down ? ON : off(WHY.nothingDown)),
+          enabled: held !== null ? off(held) : down ? ON
+            : aborted ? off(NO_RESTART_AFTER_ABORT) : off(WHY.nothingDown),
           events: [{ at, kind: 'instance.up', member: member.id, instance: inst.name }],
         });
       }
@@ -283,14 +306,15 @@ export function actionsForKey(doc: TopologyDoc, key: string, at: number): EventA
         id: 'member.down',
         label: `SHUTDOWN ABORT ${key}`,
         plural: 'SHUTDOWN ABORT the database',
-        enabled: down ? off(WHY.alreadyDown) : ON,
+        enabled: down ? off(WHY.alreadyDown) : aborted ? off(ABORTED_BY_BROKER) : ON,
         events: [{ at, kind: 'member.down', member: member.id }],
       });
       out.push({
         id: 'member.up',
         label: `Start ${key}`,
         plural: 'Start the database',
-        enabled: held !== null ? off(held) : (down ? ON : off(WHY.nothingDown)),
+        enabled: held !== null ? off(held) : down ? ON
+          : aborted ? off(NO_RESTART_AFTER_ABORT) : off(WHY.nothingDown),
         events: [{ at, kind: 'member.up', member: member.id }],
       });
     }
@@ -518,9 +542,100 @@ export function actionsForKey(doc: TopologyDoc, key: string, at: number): EventA
       enabled: down ? ON : off(WHY.nothingDown),
       events: [{ at, kind: 'site.up', site: site.id }],
     });
+    /* Isolating is the classic "isolated" scenario aimed at this data centre:
+       every site link that touches it is cut, and the data centre itself keeps
+       running. Reconnecting heals whichever of those links are down now. */
+    const own = doc.links.filter((l) => l.scope === 'site' && (l.ends as readonly string[]).includes(key));
+    const open = own.filter((l) => !isDownAt(doc, { kind: 'link', id: l.id as string }, at));
+    const shut = own.filter((l) => isDownAt(doc, { kind: 'link', id: l.id as string }, at));
+    out.push({
+      id: 'site.isolate',
+      label: `Isolate ${site.name}`,
+      plural: 'Isolate the sites',
+      enabled: own.length === 0
+        ? off('No link leaves this data centre, so there is nothing to cut.')
+        : open.length === 0 ? off(WHY.alreadyDown) : ON,
+      events: open.map((l) => ({ at, kind: 'link.cut', link: l.id }) as TimedEvent),
+    });
+    out.push({
+      id: 'site.reconnect',
+      label: `Reconnect ${site.name}`,
+      plural: 'Reconnect the sites',
+      enabled: shut.length === 0 ? off(WHY.nothingDown) : ON,
+      events: shut.map((l) => ({ at, kind: 'link.heal', link: l.id }) as TimedEvent),
+    });
   }
 
   return out;
+}
+
+/* ---------------- the icons on hover ---------------- */
+
+type HoverTool = CanvasTool;
+type ToolIcon = ToolIconName;
+
+/**
+ * The few actions worth an icon on the thing under the pointer, in Break.
+ *
+ * Read off `actionsForKey` rather than beside it, so an icon and the menu row
+ * it abbreviates share one label and one refusal. Each pair of opposites is one
+ * slot: the way down while the thing is up, the way back once it is down --
+ * grey with its reason as its title when that way back is refused.
+ */
+export function hoverTools(doc: TopologyDoc, key: string, at: number): CanvasTool[] {
+  const all = actionsForKey(doc, key, at);
+  const find = (id: string): EventAction | undefined => all.find((a) => a.id === id);
+  const tool = (a: EventAction, icon: ToolIcon): HoverTool => ({
+    id: a.id, icon, label: a.label, enabled: a.enabled, run: () => runAction(a),
+  });
+  const pair = (downId: string, downIcon: ToolIcon, upId: string, upIcon: ToolIcon): HoverTool | null => {
+    const d = find(downId);
+    const u = find(upId);
+    /* Down already: the slot is the way back, even when that is refused --
+       "restore the site first" says more than "it is already down". */
+    const isDown = d !== undefined && d.enabled.state === 'off'
+      && (d.enabled.why === WHY.alreadyDown || d.enabled.why === ABORTED_BY_BROKER);
+    if (u && (isDown || (u.enabled.state === 'on' && (!d || d.enabled.state === 'off')))) return tool(u, upIcon);
+    if (d) return tool(d, downIcon);
+    return u ? tool(u, upIcon) : null;
+  };
+  /* A RAC database has no member-wide shutdown in the table, only one per
+     instance: its icon folds them into one entry, one undo. */
+  const perInstance = (prefix: 'instance.down' | 'instance.up', label: string, why: WhyState): EventAction | undefined => {
+    const each = all.filter((a) => a.id.startsWith(`${prefix}:`));
+    if (each.length === 0) return undefined;
+    const live = each.filter((a) => a.enabled.state === 'on');
+    return {
+      id: prefix,
+      label,
+      plural: label,
+      enabled: live.length > 0 ? ON : (each[0]?.enabled ?? why),
+      events: live.flatMap((a) => a.events),
+    };
+  };
+
+  const out: (HoverTool | null)[] = [];
+  const member = doc.members.find((m) => (m.id as string) === key);
+  if (member) {
+    const rac = perInstance('instance.down', `SHUTDOWN ABORT every instance of ${key}`, off(WHY.alreadyDown));
+    if (rac) {
+      const up = perInstance('instance.up', `Start every instance of ${key}`, off(WHY.nothingDown));
+      all.push(rac, ...(up ? [up] : []));
+      out.push(pair('instance.down', 'shutdown', 'instance.up', 'startup'));
+    } else {
+      out.push(pair('member.down', 'shutdown', 'member.up', 'startup'));
+    }
+    out.push(pair('host.down', 'crash', 'host.up', 'restore'));
+  } else if (doc.observers.some((o) => (o.id as string) === key)) {
+    out.push(pair('observer.stop', 'stop', 'observer.start', 'start'));
+    out.push(pair('host.down', 'crash', 'host.up', 'restore'));
+  } else if (doc.links.some((l) => (l.id as string) === key)) {
+    out.push(pair('link.cut', 'cut', 'link.heal', 'heal'));
+  } else if (doc.sites.some((st) => (st.id as string) === key)) {
+    out.push(pair('site.down', 'crash', 'site.up', 'restore'));
+    out.push(pair('site.isolate', 'isolate', 'site.reconnect', 'reconnect'));
+  }
+  return out.filter((t): t is HoverTool => t !== null);
 }
 
 /**
@@ -532,7 +647,7 @@ export function actionsForKey(doc: TopologyDoc, key: string, at: number): EventA
  * `:name` suffix taken off first.
  */
 const RESTORE_IDS: readonly string[] = [
-  'host.up', 'member.up', 'instance.up', 'site.up', 'link.heal', 'observer.start',
+  'host.up', 'member.up', 'instance.up', 'site.up', 'site.reconnect', 'link.heal', 'observer.start',
 ];
 
 export const isRestore = (a: EventAction): boolean =>

@@ -59,8 +59,13 @@ export function Group(
  * (ui.md SS3, "on paper the panels stack").
  */
 export function Fold(
-  { id, title, hint, children }:
-  { id: string; title: string; hint?: string; children: ComponentChildren },
+  { id, title, hint, action, children }:
+  {
+    id: string; title: string; hint?: string;
+    /** Controls for the open group, beside the toggle; absent while it is folded. */
+    action?: ComponentChildren;
+    children: ComponentChildren;
+  },
 ) {
   const open = isSectionOpen(id) || printing.value;
   return (
@@ -76,6 +81,7 @@ export function Fold(
           <span class="eyebrow">{title}</span>
           {hint === undefined || open ? null : <span class="grp-sum mono">{hint}</span>}
         </button>
+        {action === undefined || !open ? null : <span class="grp-act">{action}</span>}
       </header>
       {open ? children : null}
     </section>
