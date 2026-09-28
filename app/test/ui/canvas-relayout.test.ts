@@ -149,6 +149,76 @@ describe('adding to every preset', () => {
   });
 });
 
+/* ---- task 5.2: observer lines of one kind to one card run as one trunk ---- */
+
+describe('three or more observers: their lines run as trunks (5.2)', () => {
+  const horizontalYs = (l: ReturnType<typeof draw>['links'][number]): number[] => l.points
+    .flatMap((p, i) => {
+      const q = l.points[i + 1];
+      return q && Math.abs(p.y - q.y) < 0.5 && Math.abs(p.x - q.x) > 0.5 ? [p.y] : [];
+    });
+
+  it('the three pings share one lane and one drop into the primary', () => {
+    load('multi-target-three-observers');
+    const { links } = draw(topo());
+    const pings = links.filter((l) => l.kind === 'ping');
+    expect(pings).toHaveLength(3);
+    expect(new Set(pings.flatMap(horizontalYs)).size).toBe(1);
+    expect(new Set(pings.map((l) => JSON.stringify(l.points.slice(-2)))).size).toBe(1);
+  });
+
+  it('every readiness target is reached by one trunk: its checks share their lane', () => {
+    load('multi-target-three-observers');
+    const { links } = draw(topo());
+    for (const to of ['sby01', 'sby02']) {
+      const ys = new Set(links.filter((l) => l.kind === 'check' && l.to === to).flatMap(horizontalYs));
+      expect(ys.size, `checks to ${to}`).toBeLessThanOrEqual(1);
+    }
+    /* Three trunks, three lanes: pings, checks to sby01, checks to sby02. */
+    const lanes = new Set(links.filter((l) => l.kind !== 'redo').flatMap(horizontalYs));
+    expect(lanes.size).toBe(3);
+  });
+
+  it('opens the gap between the bands only with three or more observers', () => {
+    load('classic');
+    const one = draw(topo()).geo;
+    expect(one.trunks).toBe(0);
+    load('multi-target-three-observers');
+    const three = draw(topo()).geo;
+    expect(three.trunks).toBe(3);
+  });
+
+  for (const p of PRESETS) {
+    it(`${p.id} with two more observers: clear cards, no line through a card, no caption on a caption`, () => {
+      load(p.id);
+      addObserver();
+      addObserver();
+      addDatabase();
+      const { geo, links } = draw(topo());
+      expect(geo.nodes.filter((n) => n.kind === 'observer').length).toBeGreaterThanOrEqual(3);
+      expect(cardClashes(geo)).toEqual([]);
+      const through: string[] = [];
+      for (const l of links) {
+        for (let i = 0; i + 1 < l.points.length; i++) {
+          for (const c of geo.nodes) {
+            if (c.key === l.from || c.key === l.to) continue;
+            if (segmentHitsRect(l.points[i]!, l.points[i + 1]!, c, 1)) through.push(`${l.id}>${c.key}`);
+          }
+        }
+      }
+      expect(through).toEqual([]);
+      const pills: string[] = [];
+      for (let i = 0; i < links.length; i++) {
+        for (let j = i + 1; j < links.length; j++) {
+          if (overlaps(links[i]!.pill, links[j]!.pill)) pills.push(`${links[i]!.id}/${links[j]!.id}`);
+        }
+        for (const c of geo.nodes) if (overlaps(links[i]!.pill, c)) pills.push(`${links[i]!.id}@${c.key}`);
+      }
+      expect(pills).toEqual([]);
+    });
+  }
+});
+
 /* ---- task 5.1: a grown data centre pushes its neighbours ---- */
 
 const siteClashes = (geo: Geometry): string[] => {

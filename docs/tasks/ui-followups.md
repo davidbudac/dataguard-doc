@@ -178,7 +178,13 @@ column; columns never push each other. Make a grown/resized column push the
 columns to its right (and the corridor stays clear for links/pills).
 
 ### 5.2 Busy observer lines with 3+ observers
-Status: todo
+Status: done (on ui/track5-canvas)
+Note: `routing.ts` bundles ping/check lines by kind + target (one channel per corridor, so they run
+together); with 3+ observers the band gap opens to one lane per trunk (`layout.ts` `trunkCount`) and
+observer lines take the trunk before a corridor of their own -- no more crossings in the corridors.
+Captions prefer their line's own stretch (`ownStretches`); shared lines are drawn from the card end so
+dashes coincide. Left: 9 captions for 9 lines still; a stub shared by two trunks from one observer
+shows slightly denser dashes. Golden `multi-target-three-observers` moved (geometry).
 Ping and readiness-check lines crowd the drawing. Bundle/merge parallel
 observer lines where they share a corridor, or route them through one trunk.
 

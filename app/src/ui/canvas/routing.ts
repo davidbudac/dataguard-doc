@@ -13,7 +13,9 @@
 import type { Member, RedoGraph, Snapshot, TopologyDoc, XptMode } from '@/engine';
 import { isDatabase, linkRttMs } from '@/engine';
 import type { Geometry, NodeBox } from './layout';
-import { nodeKey, siteLabelRect } from './layout';
+import { LAYOUT, nodeKey, readinessTargets, siteLabelRect } from './layout';
+
+export { readinessTargets };
 import type { Pt, Rect } from './measure';
 import { channelOffset, overlaps, PILL_H, pillWidth, r1, segmentHitsRect } from './measure';
 
@@ -87,19 +89,6 @@ const rttBetween = (doc: TopologyDoc, a: Member | undefined, b: Member | undefin
 };
 
 const xptWord = (x: XptMode): string => `redo (${x})`;
-
-/**
- * The FSFO targets a readiness check runs against: the declared list, or every
- * physical and logical standby when the property is ANY.
- */
-export function readinessTargets(doc: TopologyDoc): string[] {
-  const t = doc.config.fsfo.target;
-  if (t.kind === 'list') return t.members.map((m) => m as string);
-  return doc.members
-    .filter((m) => isDatabase(m) && (m.role === 'physical' || m.role === 'logical'))
-    .map((m) => m.id as string);
-}
-
 
 /**
  * The document link two members' hosts talk over: a host-scope link between
@@ -421,9 +410,20 @@ function candidatesFor(
     }
     /* Two observers in one band row cannot both leave sideways, so the second
        one drops into the gap between the bands and crosses there. */
+    /* On its way down to a trunk, a line from an observer standing in a data
+       centre of its own would strike through that data centre's name, which
+       hangs centred under the card: it leaves from the side of the card that
+       faces its destination instead. */
+    const ownSite = geo.trunks > 0 ? geo.sites.find((st) => st.id === a.site) : undefined;
+    const label = ownSite ? siteLabelRect(ownSite) : null;
+    const struck = label !== null && ax >= label.x - 4 && ax <= label.x + label.w + 4
+      && label.y + label.h > a.y + a.h && label.y < geo.bandLaneY;
+    const stubX = struck && label !== null
+      ? (bx >= ax ? Math.max(ax, label.x + label.w + 12) : Math.min(ax, label.x - 12))
+      : ax;
     out.push({
       points: [
-        { x: ax, y: a.y + a.h }, { x: ax, y: geo.bandLaneY },
+        { x: stubX, y: a.y + a.h }, { x: stubX, y: geo.bandLaneY },
         { x: bx, y: geo.bandLaneY }, { x: bx, y: b.y },
       ],
       corridor: 'band',
@@ -558,11 +558,12 @@ const laneStep = (corridor: string): number =>
   corridor === 'over' || corridor === 'under' ? 14
     : corridor.startsWith('gap:') ? 24 : 12;
 
-const laneOffset = (corridor: string, index: number): number => {
+const laneOffset = (corridor: string, index: number, trunks = 0): number => {
   if (corridor === 'under') return index * 14;
   if (corridor === 'over') return -index * 14;
-  /* The band gap is 28 px tall; three channels fit inside it. */
-  if (corridor === 'band') return -index * 8;
+  /* The band gap is 28 px tall; three channels fit inside it -- unless it
+     was opened up for the observer trunks, which ride a caption apart. */
+  if (corridor === 'band') return -index * (trunks > 1 ? LAYOUT.trunkStep : 8);
   return channelOffset(index, laneStep(corridor));
 };
 
@@ -665,8 +666,11 @@ function placePill(
   cards: readonly NodeBox[], placedPills: readonly Rect[], sites: readonly Rect[],
   otherLines: readonly { a: Pt; b: Pt }[] = [],
   labels: readonly Rect[] = [],
+  own: readonly { a: Pt; b: Pt }[] = [],
 ): Rect {
-  const segs = pillSegments(points);
+  /* A line that shares a trunk tries the stretch that is its own first, and
+     leaves the shared run to the one that has nothing else. */
+  const segs = [...own, ...pillSegments(points)];
   const rectOn = (seg: { a: Pt; b: Pt }, slide: number, off: number): Rect => {
     const horizontal = Math.abs(seg.b.y - seg.a.y) < Math.abs(seg.b.x - seg.a.x);
     const mid = { x: (seg.a.x + seg.b.x) / 2, y: (seg.a.y + seg.b.y) / 2 };
@@ -761,9 +765,70 @@ function slashesFor(seg: { a: Pt; b: Pt }, pill: Rect): RoutedLink['slashes'] {
 /** Extra pill width for the "this page's model" chip riding beside it. */
 export const MODEL_CHIP_W = 42;
 
+/**
+ * The trunk an observer line may share (task 5.2).
+ *
+ * Every observer pings the one primary, and every observer checks the same
+ * fast-start failover targets, so with three observers the drawing carries
+ * three lines to each of those cards -- and where they bend through the same
+ * corridor or run along the same lane, each used to take a channel of its
+ * own: three parallel dotted lines where one says it. Lines of one kind to
+ * one card are one bundle; a bundle takes one channel per corridor, so its
+ * lines run on top of each other from where they meet to the card they all
+ * reach, the way a trunk does, and each keeps its own stretch -- and its own
+ * caption -- from its observer to the trunk. Redo lines never bundle: two of
+ * them to one card are two different transports.
+ */
+/**
+ * The stretches of a route no other line of its trunk runs along, longest
+ * first: where its own caption says whose line it is. Axis-aligned runs only,
+ * which is every run the router draws.
+ */
+function ownStretches(points: readonly Pt[], mates: readonly { a: Pt; b: Pt }[]): { a: Pt; b: Pt }[] {
+  if (mates.length === 0) return [];
+  const out: { a: Pt; b: Pt; len: number }[] = [];
+  for (let i = 0; i + 1 < points.length; i++) {
+    const p = points[i]; const q = points[i + 1];
+    if (!p || !q) continue;
+    const horizontal = Math.abs(p.y - q.y) < 0.5;
+    const lo = horizontal ? Math.min(p.x, q.x) : Math.min(p.y, q.y);
+    const hi = horizontal ? Math.max(p.x, q.x) : Math.max(p.y, q.y);
+    const covered = mates
+      .filter((m) => (horizontal
+        ? Math.abs(m.a.y - p.y) < 0.5 && Math.abs(m.b.y - p.y) < 0.5
+        : Math.abs(m.a.x - p.x) < 0.5 && Math.abs(m.b.x - p.x) < 0.5))
+      .map((m) => (horizontal
+        ? [Math.min(m.a.x, m.b.x), Math.max(m.a.x, m.b.x)]
+        : [Math.min(m.a.y, m.b.y), Math.max(m.a.y, m.b.y)]) as [number, number])
+      .sort((x, y) => x[0] - y[0]);
+    let at = lo;
+    const free: [number, number][] = [];
+    for (const [c0, c1] of covered) {
+      if (c1 <= at) continue;
+      if (c0 >= hi) break;
+      if (c0 > at) free.push([at, c0]);
+      at = Math.max(at, c1);
+    }
+    if (at < hi) free.push([at, hi]);
+    if (free.length === 1 && free[0]![0] === lo && free[0]![1] === hi) continue;
+    for (const [f0, f1] of free) {
+      out.push(horizontal
+        ? { a: { x: f0, y: p.y }, b: { x: f1, y: p.y }, len: f1 - f0 }
+        : { a: { x: p.x, y: f0 }, b: { x: p.x, y: f1 }, len: f1 - f0 });
+    }
+  }
+  return out.sort((x, y) => y.len - x.len).map(({ a, b }) => ({ a, b }));
+}
+
+function bundleOf(link: CanvasLink): string | null {
+  return link.kind === 'ping' || link.kind === 'check' ? `${link.kind}>${link.to}` : null;
+}
+
 export function routeLinks(links: readonly CanvasLink[], geo: Geometry): RoutingResult {
   const cards = geo.nodes;
   const used = new Map<string, Set<number>>();
+  /* `corridor|bundle` -> the channel that bundle's trunk runs in. */
+  const trunks = new Map<string, number>();
   const bounds: Rect[] = [];
 
   const ordered = [...links].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
@@ -774,21 +839,35 @@ export function routeLinks(links: readonly CanvasLink[], geo: Geometry): Routing
     const a = geo.byKey[link.from];
     const b = geo.byKey[link.to];
     if (!a || !b) continue;
-    const cands = candidatesFor(a, b, geo, link.kind);
+    const raw = candidatesFor(a, b, geo, link.kind);
+    /* With the trunks laid out, an observer line that cannot drop straight
+       onto its card goes by the trunk before any corridor of its own. */
+    const cands = geo.trunks > 0 && bundleOf(link) !== null
+      ? [
+        ...raw.filter((c) => c.points.length === 2),
+        ...raw.filter((c) => c.corridor === 'band' && c.points.length > 2),
+        ...raw.filter((c) => c.corridor !== 'band' && c.points.length > 2),
+      ]
+      : raw;
 
     let chosen: Pt[] | null = null;
     let chosenCorridor: string | null = null;
     let chosenIndex = 0;
+    const bundle = bundleOf(link);
     for (const cand of cands) {
       const corridor = cand.corridor;
       /* A straight run has no corner to move, so it is take it or leave it. */
       const straight = cand.points.length === 2;
       const taken = corridor === null ? new Set<number>() : (used.get(corridor) ?? new Set<number>());
-      for (let k = 0; k < (straight ? 1 : 8); k++) {
-        if (!straight && taken.has(k)) continue;
+      /* An observer line joins the trunk its bundle already runs in this
+         corridor before it looks for a channel of its own. */
+      const shared = bundle === null || corridor === null ? undefined : trunks.get(`${corridor}|${bundle}`);
+      const order = shared === undefined ? [...Array(8).keys()] : [shared, ...[...Array(8).keys()].filter((k) => k !== shared)];
+      for (const k of straight ? [0] : order) {
+        if (!straight && taken.has(k) && k !== shared) continue;
         const pts = straight || corridor === null
           ? cand.points
-          : cand.shift(cand.points, laneOffset(corridor, k));
+          : cand.shift(cand.points, laneOffset(corridor, k, geo.trunks));
         if (crossesACard(pts, cards, a, b)) continue;
         chosen = pts;
         chosenCorridor = straight ? null : corridor;
@@ -808,7 +887,7 @@ export function routeLinks(links: readonly CanvasLink[], geo: Geometry): Routing
         while (taken.has(k) && k < 32) k++;
         const pts = cand.points.length === 2 || corridor === null
           ? cand.points
-          : cand.shift(cand.points, laneOffset(corridor, k));
+          : cand.shift(cand.points, laneOffset(corridor, k, geo.trunks));
         const n = cardsCrossed(pts, cards, a, b);
         if (best === null || n < best.n) best = { pts, corridor: cand.points.length === 2 ? null : corridor, k, n };
       }
@@ -820,6 +899,9 @@ export function routeLinks(links: readonly CanvasLink[], geo: Geometry): Routing
       const set = used.get(chosenCorridor) ?? new Set<number>();
       set.add(chosenIndex);
       used.set(chosenCorridor, set);
+      if (bundle !== null && !trunks.has(`${chosenCorridor}|${bundle}`)) {
+        trunks.set(`${chosenCorridor}|${bundle}`, chosenIndex);
+      }
     }
     paths.push({ link, points: chosen });
   }
@@ -841,15 +923,25 @@ export function routeLinks(links: readonly CanvasLink[], geo: Geometry): Routing
     const entry = paths[i];
     if (!entry) continue;
     const { link, points: chosen } = entry;
-    const others = paths.flatMap((p, j) => (j === i ? [] : segmentsOf(p.points)));
+    /* A trunk's own lines are not in the way of its captions: they are the
+       line the caption names, run together. */
+    const own = bundleOf(link);
+    const others = paths.flatMap((p, j) => (j === i || (own !== null && bundleOf(p.link) === own)
+      ? [] : segmentsOf(p.points)));
     const seg = pillSegment(chosen);
     const w = pillWidth(link.caption, link.value) + (link.model ? MODEL_CHIP_W : 0);
-    const pill = placePill(chosen, w, cards, pills, geo.sites, others, labels);
+    const mates = own === null ? [] : paths.flatMap((p, j) => (j !== i && bundleOf(p.link) === own
+      ? segmentsOf(p.points) : []));
+    const pill = placePill(chosen, w, cards, pills, geo.sites, others, labels, ownStretches(chosen, mates));
     pills.push(pill);
     const routed: RoutedLink = {
       ...link,
       points: chosen,
-      d: orthPath(chosen),
+      /* Drawn from the card it reaches back to its observer when it shares a
+         trunk: the dashes then start at the one end every line of the trunk
+         shares, so where they run together their dashes coincide rather than
+         filling each other's gaps into what reads as a solid line. */
+      d: mates.length > 0 ? orthPath([...chosen].reverse()) : orthPath(chosen),
       pill,
       slashes: link.cut ? slashesFor(seg, pill) : [],
     };

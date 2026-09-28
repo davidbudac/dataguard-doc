@@ -45,7 +45,40 @@ export const LAYOUT = {
    * them (a divider line stands in for the gap instead).
    */
   stackHeaderH: 18,
+  /**
+   * With three or more observers their lines run as trunks along the gap
+   * between the bands (task 5.2) -- one for the pings, one per readiness
+   * target -- and the gap grows to hold them this far apart, so a caption
+   * riding one trunk clears the next.
+   */
+  trunkStep: 24,
+  /** No more trunks than this; a further bundle finds its own corridor. */
+  maxTrunks: 4,
 } as const;
+
+/**
+ * The fast-start failover targets an observer's readiness check runs against:
+ * the declared list, or every physical and logical standby when the property
+ * is ANY.
+ */
+export function readinessTargets(doc: TopologyDoc): string[] {
+  const t = doc.config.fsfo.target;
+  if (t.kind === 'list') return t.members.map((m) => m as string);
+  return doc.members
+    .filter((m) => isDatabase(m) && (m.role === 'physical' || m.role === 'logical'))
+    .map((m) => m.id as string);
+}
+
+/**
+ * How many observer trunks the gap between the bands carries: none below
+ * three observers (their lines route one by one, as they always have), else
+ * one for the pings and one per readiness target.
+ */
+export function trunkCount(doc: TopologyDoc): number {
+  if (doc.observers.length < 3) return 0;
+  const checks = doc.config.fsfo.state === 'disabled' ? 0 : readinessTargets(doc).length;
+  return Math.min(LAYOUT.maxTrunks, 1 + checks);
+}
 
 export type NodeKind = 'member' | 'observer';
 export type Glyph = 'db' | 'farsync' | 'snapshot' | 'observer';
@@ -164,6 +197,11 @@ export interface Geometry {
   bandLaneY: number;
   /** Below every site rect: the lane backwards and column-skipping edges use. */
   underLaneY: number;
+  /**
+   * How many observer trunks run along `bandLaneY` and up from it, `trunkStep`
+   * apart (task 5.2); zero when the observer lines route one by one.
+   */
+  trunks: number;
   maxRank: number;
   unreachableRank: number;
 }
@@ -539,7 +577,14 @@ export function layoutTopology(
     ? 0
     : rows.reduce((acc, r) => acc + memRowHeight(r), 0) + (memGaps[ci] ?? []).reduce((acc: number, g) => acc + g, 0)));
   const bandH = Math.max(0, ...obsStackH);
-  const memberBandTop = bandH === 0 ? 0 : bandH + LAYOUT.bandGap;
+  const trunks = bandH === 0 ? 0 : trunkCount(doc);
+  /* Opened up by one step per trunk past the first, and by a name band more:
+     an observer-only data centre's box hangs its name into the gap, and the
+     top trunk must pass under it rather than through it. */
+  const bandGap = trunks > 1
+    ? LAYOUT.bandGap + LAYOUT.labelBand + (trunks - 1) * LAYOUT.trunkStep
+    : LAYOUT.bandGap;
+  const memberBandTop = bandH === 0 ? 0 : bandH + bandGap;
   const memberBandH = Math.max(0, ...memStackH);
 
   /* ---- 6. place ---- */
@@ -933,6 +978,7 @@ export function layoutTopology(
     overLaneY: vy0 - LAYOUT.padTop + 2,
     bandLaneY: bandH === 0 ? vy0 - LAYOUT.padTop + 2 : memberBandTop - 10,
     underLaneY: vy1 + 4,
+    trunks,
     maxRank,
     unreachableRank,
   };
