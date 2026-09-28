@@ -75,6 +75,9 @@ const U = {
   haTns: 'https://docs.oracle.com/en/database/oracle/oracle-database/19/haovw/oracle-net-tns-string-parameters.html',
   haConnEstimates: 'https://docs.oracle.com/en/database/oracle/oracle-database/19/haovw/connection-time-estimates-data-guard-switchover-or-failover.html',
   netrfTns: 'https://docs.oracle.com/en/database/oracle/oracle-database/19/netrf/local-naming-parameters-in-tns-ora-file.html',
+  netrfSqlnet19: 'https://docs.oracle.com/en/database/oracle/oracle-database/19/netrf/parameters-for-the-sqlnet.ora.html',
+  netrfSqlnet26: 'https://docs.oracle.com/en/database/oracle/oracle-database/26/netrf/parameters-for-the-sqlnet.ora.html',
+  haConfigDeploy: 'https://docs.oracle.com/en/database/oracle/oracle-database/19/haovw/configure-and-deploy-oracle-data-guard.html',
   jdbc19: 'https://docs.oracle.com/en/database/oracle/oracle-database/19/jajdb/oracle/jdbc/OracleConnection.html',
   jdbc26: 'https://docs.oracle.com/en/database/oracle/oracle-database/26/jajdb/oracle/jdbc/OracleConnection.html',
   habpt121: 'https://docs.oracle.com/database/121/HABPT/config_dg.htm',
@@ -845,6 +848,23 @@ export const CITATIONS = {
     url: U.jdbc26, edition: '26ai', verified: 'primary',
     quote: 'This value is assumed in seconds if set in the URL with no explicit units and in milliseconds if set in the connection\'s properties. Starting in 23.6, the default value was changed from "0" (no timeout) to "20000" (20 seconds). This affects only the thin driver.',
     note: 'The 26ai OracleConnection page now names the release that changed the default (23.6); the 19c page does not.',
+  },
+
+  /* ---------------- Session data unit ---------------- */
+  'NET.SDU_HA_MAX_65535': {
+    url: U.haConfigDeploy, edition: '19c', verified: 'primary',
+    quote: 'Oracle testing has shown that setting the SDU parameter to its maximum value of 65535 improves performance of synchronous transport.',
+    note: "'Set SDU Size to 65535 for Synchronous Transport Only', in the HA overview's configure-and-deploy chapter. Calls 65535 the maximum value, which DEFAULT_SDU_SIZE's own range (NET.SDU_RANGE_19C) contradicts -- Oracle does not reconcile the two.",
+  },
+  'NET.SDU_RANGE_19C': {
+    url: U.netrfSqlnet19, edition: '19c', verified: 'primary',
+    quote: 'Default 8192 bytes (8 KB) Value 512 to 2097152 bytes',
+    note: 'DEFAULT_SDU_SIZE on the 19c sqlnet.ora parameters page: one default (8192) for both client and server, range 512 to 2097152 bytes -- so 65535 is neither required (SYNC runs at the default) nor the ceiling (2097152 is higher), and the HA guide calling it "the maximum value" (NET.SDU_HA_MAX_65535) is the contradiction.',
+  },
+  'NET.DEFAULT_SDU_26AI': {
+    url: U.netrfSqlnet26, edition: '26ai', verified: 'primary',
+    quote: 'For clients: 8192 bytes (8 KB) For servers: 65536 bytes (64KB)',
+    note: 'DEFAULT_SDU_SIZE on the 26ai sqlnet.ora parameters page splits the default by role; the 19c page (NET.SDU_RANGE_19C) gives one flat default, 8192, for both. Range unchanged: 512 to 2097152 bytes.',
   },
 
   /* ---------------- Errors and limits ---------------- */
