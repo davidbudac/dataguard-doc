@@ -1177,9 +1177,12 @@ export function simulate(
 
       const cut = state.cutOffSince[key] ?? at;
       state.cutOffSince[key] = cut;
+      /* The stretch starts when the primary drops the member, which may lie
+         ahead of this epoch: a bystander's count needs no epoch of its own. */
       const drop = cut + dropDelay(key);
-      if (generating && drop <= at + EPS) state.unsentSince[key] = at;
-      const growing = state.unsentSince[key] !== null && state.unsentSince[key] !== undefined;
+      if (generating) state.unsentSince[key] = Math.max(at, drop);
+      const from = state.unsentSince[key];
+      const growing = from !== null && from !== undefined && from <= at + EPS;
       const missed = state.unsentAccum[key] ?? 0;
       let ready = was;
       if (gated) {
@@ -1456,14 +1459,17 @@ export function simulate(
     if (state.phase === 'normal' && view.primaryAlive) {
       for (const m of doc.members) {
         if (m.id === state.primary || !isDatabase(m)) continue;
+        /* Only a candidate's state is drawn, so only a candidate gets an epoch. */
+        if (!view.candidates.includes(m.id)) continue;
         const key = m.id as string;
         const subject = { kind: 'member' as const, id: key };
         const cut = state.cutOffSince[key];
         if (cut === null || cut === undefined) continue;
+        if (!(state.fsfoReady[key] ?? false)) continue;
         const drop = cut + dropDelay(key);
         if (drop > at + EPS) q.push({ kind: 'fsfo.readiness', at: drop, subject }, 'fsfo.readiness', true);
         const since = state.unsentSince[key];
-        if (lagGated(doc) && since !== null && since !== undefined && (state.fsfoReady[key] ?? false)) {
+        if (lagGated(doc) && since !== null && since !== undefined) {
           const room = doc.config.fsfo.lagLimitSeconds - gateLagSeconds(doc, m, state)
             - (state.unsentAccum[key] ?? 0);
           const cross = since + Math.max(0, room);
@@ -2280,8 +2286,8 @@ function gateFinding(doc: TopologyDoc, target: MemberId, readiness: Readiness): 
     id: 'FSFO.READINESS_GATE', severity: 'warning', basis: 'documented', cite,
     subject: { kind: 'member', id: target as string },
     message: gated
-      ? `Fast-start failover cannot occur: the ${effectiveLagType(doc)} lag of ${target as string} (${readiness.gateLag} s) was past FastStartFailoverLagLimit (${doc.config.fsfo.lagLimitSeconds} s) at the time the primary database failed.`
-      : `Fast-start failover cannot occur: ${target as string} was not synchronized with the primary database at the time the primary database failed.`,
+      ? `Fast-start failover is forbidden while the ${effectiveLagType(doc)} lag (${readiness.gateLag} s) is past FastStartFailoverLagLimit (${doc.config.fsfo.lagLimitSeconds} s): it cannot occur if ${target as string} lags by more than the limit at the time the primary database failed.`
+      : `Fast-start failover is forbidden while the target standby is not synchronized: it cannot occur if ${target as string} was not synchronized with the primary database at the time the primary database failed.`,
   };
 }
 

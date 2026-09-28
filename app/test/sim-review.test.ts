@@ -58,7 +58,7 @@ describe('the nomination rule is never extended past its precondition', () => {
     expect(trace.facts.observers[observerId('obs02')]?.becameMasterAt).toBe(5);
   });
 
-  it('SET MASTEROBSERVER TO is the manual override and needs no precondition', () => {
+  it('SET MASTEROBSERVER TO is the manual override: it needs no lost connection', () => {
     const doc = multiObserverDoc();
     const trace = simulate(doc, [
       { at: 0, kind: 'cmd.setMasterObserver', observer: observerId('obs02') },
@@ -67,7 +67,14 @@ describe('the nomination rule is never extended past its precondition', () => {
   });
 });
 
-describe('no observer deployed is not "unobserved" and arms nothing', () => {
+/* Fact check VAL-04 (engine half). This block used to read "no observer
+   deployed is not unobserved and arms nothing": it treated fast-start failover
+   ENABLED with no observer as DISABLED. Oracle documents that state -- "If you
+   do not start the observer after you have enabled fast-start failover, the
+   ORA-16819 warning is displayed" -- and it is enabled and unobserved. What
+   the old assertions said about a configuration that arms nothing is still
+   true of fast-start failover DISABLED, and is asserted for it below. */
+describe('no observer deployed: disabled arms nothing, enabled is unobserved', () => {
   const noObserver = (fsfo: 'enabled' | 'disabled', mode: 'MAXAVAILABILITY' | 'MAXPERFORMANCE' = 'MAXAVAILABILITY') => {
     const prm = db('prm01', ['dc1-prm01'], 'primary');
     const sby = db('sby01', ['dc2-sby01'], 'physical', { applyLagSeconds: 40 });
@@ -80,30 +87,87 @@ describe('no observer deployed is not "unobserved" and arms nothing', () => {
     });
   };
 
-  it('losing the standby site with no observer deployed stalls nothing and reports nothing unobserved', () => {
-    const trace = simulate(noObserver('enabled'), [{ at: 0, kind: 'site.down', site: siteId('dc2') }]);
+  it('disabled: losing the standby site stalls nothing and reports nothing unobserved', () => {
+    const trace = simulate(noObserver('disabled'), [{ at: 0, kind: 'site.down', site: siteId('dc2') }]);
     expect(trace.facts.conditions.stalled).toBe(false);
     expect(trace.facts.abortAt).toBe(null);
     expect(trace.findings.some((f) => f.id === 'OBS.UNOBSERVED')).toBe(false);
+    expect(trace.findings.some((f) => f.id === 'OBS.NOT_STARTED')).toBe(false);
     expect(decision(trace, 'OBS.MASTER_LOST')).toBeUndefined();
+    expect(trace.facts.unobserved).toBe(false);
     expect(trace.facts.outcome).toBe('continues');
   });
 
-  it('the maximum performance switchover refusal is fast-start failover\'s own gate, so it cannot fire here', () => {
-    const doc = noObserver('enabled', 'MAXPERFORMANCE');
+  it('enabled: the configuration is unobserved, ORA-16819 is its warning, and losing the standby stalls nothing', () => {
+    const trace = simulate(noObserver('enabled'), [{ at: 0, kind: 'site.down', site: siteId('dc2') }]);
+    expect(trace.facts.unobserved).toBe(true);
+    const f = trace.findings.find((x) => x.id === 'OBS.NOT_STARTED');
+    expect(f?.severity).toBe('warning');
+    expect(f?.basis).toBe('documented');
+    expect(f?.ora).toBe('ORA-16819');
+    expect(f?.cite).toContain('OBS.NOT_STARTED_16819');
+    /* "While the configuration is in the unobserved state ... the primary
+       database can continue processing transactions, even if the target
+       standby database fails." */
+    expect(trace.facts.conditions.stalled).toBe(false);
+    expect(trace.facts.abortAt).toBe(null);
+    expect(trace.facts.initiateAt).toBe(null);
+    for (const lane of trace.lanes) {
+      if (lane.subject.id !== 'prm01') continue;
+      expect(lane.segments.some((sg) => sg.state === 'stalled' || sg.state === 'aborted')).toBe(false);
+      expect(lane.segments[lane.segments.length - 1]?.state).toBe('open-rw');
+    }
+    expect(decision(trace, 'PRIMARY.NO_STALL')?.claim.cite).toContain('FSFO.UNOBSERVED_CONTINUES');
+  });
+
+  it('enabled: nothing fails over when the primary dies, because nobody is observing', () => {
+    const trace = simulate(noObserver('enabled'), [{ at: 0, kind: 'host.down', host: hostId('dc1-prm01') }]);
+    expect(trace.facts.initiateAt).toBe(null);
+    expect(trace.facts.newPrimary).toBe(null);
+    expect(trace.facts.outcome).toBe('manual');
+  });
+
+  it('disabled: the maximum performance switchover refusal is fast-start failover\'s own gate, so it cannot fire', () => {
+    const doc = noObserver('disabled', 'MAXPERFORMANCE');
     doc.config.fsfo.lagLimitSeconds = 30; /* apply lag 40 > 30 */
     const trace = simulate(doc, [{ at: 0, kind: 'cmd.switchover', to: memberId('sby01') }]);
     expect(trace.facts.blocked).toBe(false);
     expect(trace.facts.newPrimary).toBe(memberId('sby01'));
   });
 
-  it('a manual FAILOVER TO needs no observer while nothing is armed', () => {
-    const trace = simulate(noObserver('enabled'), [
+  it('enabled: the gate is fast-start failover\'s and it is enabled, observer or not', () => {
+    const doc = noObserver('enabled', 'MAXPERFORMANCE');
+    doc.config.fsfo.lagLimitSeconds = 30; /* apply lag 40 > 30 */
+    const trace = simulate(doc, [{ at: 0, kind: 'cmd.switchover', to: memberId('sby01') }]);
+    expect(trace.facts.blocked).toBe(true);
+    expect(trace.facts.newPrimary).toBe(null);
+  });
+
+  it('disabled: a manual FAILOVER TO needs no observer', () => {
+    const trace = simulate(noObserver('disabled'), [
       { at: 0, kind: 'host.down', host: hostId('dc1-prm01') },
       { at: 5, kind: 'cmd.failover', to: memberId('sby01') },
     ]);
     expect(trace.findings.some((f) => f.id === 'FSFO.MANUAL_FAILOVER_UNOBSERVED')).toBe(false);
     expect(trace.facts.newPrimary).toBe(memberId('sby01'));
+  });
+
+  it('enabled: a manual FAILOVER TO is refused until fast-start failover is disabled', () => {
+    const events = [
+      { at: 0, kind: 'host.down' as const, host: hostId('dc1-prm01') },
+      { at: 5, kind: 'cmd.failover' as const, to: memberId('sby01') },
+    ];
+    const refused = simulate(noObserver('enabled'), events);
+    const f = refused.findings.find((x) => x.id === 'FSFO.MANUAL_FAILOVER_UNOBSERVED');
+    expect(f?.ora).toBe('ORA-16658');
+    expect(refused.facts.newPrimary).toBe(null);
+    expect(refused.facts.blocked).toBe(true);
+    /* DISABLE FAST_START FAILOVER FORCE first, and it goes through. */
+    const forced = simulate(noObserver('enabled'), [
+      events[0]!, { at: 3, kind: 'cmd.disableFsfo', force: true }, events[1]!,
+    ]);
+    expect(forced.facts.newPrimary).toBe(memberId('sby01'));
+    expect(forced.facts.blocked).toBe(false);
   });
 });
 
@@ -343,30 +407,69 @@ describe('wording traps', () => {
   });
 });
 
+/* Fact check SIM-02 and SIM-05. The two tests here used to cut the observer's
+   link first and the target's ten seconds later, and expected a failover.
+   That sequence leaves the configuration UNOBSERVED from the first cut --
+   the primary lost the observer while it still reached the target -- and
+   "while the configuration is in the unobserved state, fast-start failover
+   cannot happen". What the tests were written to pin is ObserverOverride
+   FALSE: the target has to have lost the primary for the threshold itself.
+   That is pinned below with the target losing the primary FIRST, which keeps
+   the configuration observed. */
 describe('the target standby must itself have lost the primary for the threshold', () => {
-  it('a candidate that lost the primary later than the observer is not promoted at the observer\'s deadline', () => {
-    /* Observer and sby02 in dc3 lose the primary at 0; sby01 (first in the
-       list) loses it only at 10. At 30 the observer's threshold is up, but
-       ObserverOverride is FALSE: sby01 has lost the primary for 20 s only, so
-       the walk lands on sby02, and sby01 would qualify at 40 at the earliest. */
-    const doc = multiTargetDoc();
-    const trace = simulate(doc, [
-      { at: 0, kind: 'link.cut', link: doc.links.find((l) => l.id === 'dc1-dc3')!.id },
-      { at: 10, kind: 'link.cut', link: doc.links.find((l) => l.id === 'dc1-dc2')!.id },
-    ]);
-    expect(trace.facts.initiateAt).toBe(30);
-    expect(trace.facts.target).toBe(memberId('sby02'));
-    expect(trace.facts.newPrimary).toBe(memberId('sby02'));
-  });
-
-  it('with a single candidate the later loss delays the initiation', () => {
+  const link = (doc: ReturnType<typeof multiTargetDoc>, id: string) =>
+    doc.links.find((l) => l.id === id)!.id;
+  const single = () => {
     const doc = multiTargetDoc();
     doc.config.fsfo.target = { kind: 'list', members: [memberId('sby01')] };
+    return doc;
+  };
+
+  it('the clock that expires last decides: the observer lost the primary later than the target', () => {
+    /* sby01 loses the primary at 0 and the observer at 10. The primary is
+       still hanging on the commit at 10, so sby01 is still synchronized and
+       the primary stalls; the failover waits for the observer's own 30 s. */
+    const doc = single();
     const trace = simulate(doc, [
-      { at: 0, kind: 'link.cut', link: doc.links.find((l) => l.id === 'dc1-dc3')!.id },
-      { at: 10, kind: 'link.cut', link: doc.links.find((l) => l.id === 'dc1-dc2')!.id },
+      { at: 0, kind: 'link.cut', link: link(doc, 'dc1-dc2') },
+      { at: 10, kind: 'link.cut', link: link(doc, 'dc1-dc3') },
     ]);
     expect(trace.facts.initiateAt).toBe(40);
+    expect(trace.facts.newPrimary).toBe(memberId('sby01'));
+    expect(stateAt(trace, 20).members[memberId('prm01')]).toBe('stalled');
+    expect(trace.facts.perMember[memberId('sby01')]?.rpoSeconds?.value).toBe(0);
+  });
+
+  it('a target that still reaches the primary vetoes the failover, however long the observer has been cut off', () => {
+    const doc = single();
+    const trace = simulate(doc, [{ at: 0, kind: 'link.cut', link: link(doc, 'dc1-dc3') }]);
+    expect(trace.facts.initiateAt).toBe(null);
+    expect(trace.facts.outcome).not.toBe('failover');
+  });
+
+  it('observer cut off first, target second: unobserved, so no failover and no stall', () => {
+    const doc = single();
+    const trace = simulate(doc, [
+      { at: 0, kind: 'link.cut', link: link(doc, 'dc1-dc3') },
+      { at: 10, kind: 'link.cut', link: link(doc, 'dc1-dc2') },
+    ]);
+    expect(decision(trace, 'OBS.UNOBSERVED')?.at).toBe(0);
+    expect(trace.facts.initiateAt).toBe(null);
+    expect(trace.facts.abortAt).toBe(null);
+    expect(trace.facts.newPrimary).toBe(null);
+    expect(trace.facts.outcome).toBe('continues');
+    expect(stateAt(trace, 120).members[memberId('prm01')]).toBe('open-rw');
+  });
+
+  it('with two candidates the primary changes the target to the one it still reaches', () => {
+    /* sby02 and the observer share dc3. Cutting dc1-dc2 leaves the primary
+       with the observer and with sby02, so the target changes to sby02 --
+       which still reaches the primary, and vetoes any failover. */
+    const doc = multiTargetDoc();
+    const trace = simulate(doc, [{ at: 0, kind: 'link.cut', link: link(doc, 'dc1-dc2') }]);
+    expect(decision(trace, 'FSFO.TARGET_CHANGE')?.subject?.id).toBe('sby02');
+    expect(trace.facts.activeTarget).toBe(memberId('sby02'));
+    expect(trace.facts.initiateAt).toBe(null);
   });
 });
 
@@ -383,15 +486,44 @@ describe('the threshold clock belongs to a running master observer', () => {
   });
 });
 
+/* Fact check SIM-14b. The decision used to sit at the instant of the command
+   and say "its preconditions are not [documented]". The command reference
+   documents both: the switch happens "the next time the primary contacts the
+   target standby, usually within three seconds", and two conditions have to
+   hold at that ping. */
 describe('SET MASTEROBSERVER is a command, not a nomination', () => {
-  it('moves the role without the nomination claim', () => {
+  it('moves the role at the next ping, without the nomination claim', () => {
     const doc = multiObserverDoc();
     const trace = simulate(doc, [{ at: 5, kind: 'cmd.setMasterObserver', observer: observerId('obs02') }]);
     expect(decision(trace, 'NOMINATION.NEW_MASTER')).toBeUndefined();
     const d = decision(trace, 'OBS.SET_MASTEROBSERVER');
-    expect(d?.at).toBe(5);
-    expect(d?.claim.basis).toBe('documented');
+    expect(d?.taken).toBe(true);
+    expect(d?.at).toBe(8);
+    /* "usually within three seconds" is documented; taking three as the
+       instant is the page's model. */
+    expect(d?.claim.basis).toBe('model');
+    expect(d?.claim.cite).toContain('OBS.SET_MASTEROBSERVER_CONDITIONS');
+    expect(d?.claim.note).toContain('usually within three seconds');
+    expect(d?.claim.note).not.toContain('preconditions are not');
+    expect(stateAt(trace, 7).observers[observerId('obs01')]).toBe('master');
+    expect(stateAt(trace, 8).observers[observerId('obs02')]).toBe('master');
     expect(trace.facts.observers[observerId('obs02')]?.endState).toBe('master');
     expect(trace.facts.observers[observerId('obs01')]?.endState).toBe('backup');
+  });
+
+  it('does not take effect while the primary cannot contact the target standby', () => {
+    const doc = multiObserverDoc();
+    const trace = simulate(doc, [
+      { at: 0, kind: 'site.down', site: siteId('dc2') },
+      { at: 5, kind: 'cmd.setMasterObserver', observer: observerId('obs02') },
+    ]);
+    const d = decision(trace, 'OBS.SET_MASTEROBSERVER');
+    expect(d?.taken).toBe(false);
+    expect(d?.claim.basis).toBe('documented');
+    expect(trace.findings.find((f) => f.id === 'OBS.SET_MASTEROBSERVER_REFUSED')?.cite)
+      .toContain('OBS.SET_MASTEROBSERVER_CONDITIONS');
+    /* obs01 keeps the role; what its lane says is that it has lost the target. */
+    expect(trace.facts.observers[observerId('obs01')]?.endState).toBe('lost-target');
+    expect(trace.facts.observers[observerId('obs02')]?.endState).toBe('backup');
   });
 });

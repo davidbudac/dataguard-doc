@@ -17,28 +17,40 @@ import {
   cascadeDoc, farSyncDoc, maxProtDoc, multiObserverDoc, multiTargetDoc, racDoc,
 } from './topologies';
 
-describe('multi-target with a dead first candidate (SS4.7)', () => {
+/* Fact check SIM-05. The first candidate is lost FIRST, while the primary is
+   there to change the target; the primary fails later. That is the sequence
+   Oracle documents. The assertions this block replaced took the second data
+   centre and the primary down at the same instant and expected a failover to
+   the second candidate, which 26ai documents as impossible. */
+describe('multi-target: the first candidate is lost, then the primary (SS4.7)', () => {
   const doc = multiTargetDoc();
   const events: TimedEvent[] = [
     { at: 0, kind: 'site.down', site: siteId('dc2') },
-    { at: 0, kind: 'host.down', host: hostId('dc1-prm01') },
+    { at: 10, kind: 'host.down', host: hostId('dc1-prm01') },
   ];
   const trace = simulate(doc, events);
 
-  it('walks the candidate list in order and lands on the second one', () => {
+  it('changes the target while the primary is alive, and fails over to it later', () => {
+    const change = trace.decisions.find((x) => x.id === 'FSFO.TARGET_CHANGE');
+    expect(change?.at).toBe(0);
+    expect(change?.subject?.id).toBe('sby02');
+    expect(change?.claim.cite).toContain('FSFO.TARGET_AUTO_CHANGE');
     expect(trace.facts.outcome).toBe('failover');
     expect(trace.facts.target).toBe(memberId('sby02'));
     expect(trace.facts.newPrimary).toBe(memberId('sby02'));
-    expect(trace.facts.initiateAt).toBe(30);
+    /* The observer and sby02 both lost the primary at 10 s. */
+    expect(trace.facts.initiateAt).toBe(40);
     /* execStart + the apply lag it still has to replay + the role change. */
-    expect(trace.facts.tOpen).toBe(30 + 10 + 15);
+    expect(trace.facts.tOpen).toBe(40 + 10 + 15);
   });
 
-  it('says in so many words that the order is the model, not "first viable"', () => {
-    const d = trace.decisions.find((x) => x.id === 'FSFO.TARGET_SELECTION');
-    expect(d?.claim.basis).toBe('model');
-    expect(d?.claim.note).toContain('order');
-    expect(d?.claim.note).toContain('never "the first viable one in the list"');
+  it('says in so many words that the change and its instant are the model, not "first viable"', () => {
+    for (const id of ['FSFO.TARGET_CHANGE', 'FSFO.TARGET_SELECTION']) {
+      const d = trace.decisions.find((x) => x.id === id);
+      expect(d?.claim.basis, id).toBe('model');
+      expect(d?.claim.note, id).toContain('order');
+      expect(d?.claim.note, id).toContain('never "the first viable one in the list"');
+    }
   });
 
   it("the new primary's own routing rules are what feed the configuration afterwards", () => {
@@ -56,12 +68,12 @@ describe('multi-target with a dead first candidate (SS4.7)', () => {
   const threeObs = simulate(preset('multi-target-three-observers').doc(),
     preset('multi-target-three-observers').events());
 
-  it('the master observer is described against the target it selected, not the first candidate', () => {
+  it('the master observer is described against the current target, not the first candidate', () => {
     /* The broker "automatically changes the fast-start failover target to one
-       of the other candidate targets": after the retarget the observer's
-       target is sby02, and once sby02 is the primary the observer is watching
-       it. Reporting "lost the failover target" there is reporting the
-       candidate that was skipped. */
+       of the other candidate targets": after the change the observer's target
+       is sby02, and once sby02 is the primary the observer is watching it.
+       Reporting "lost the failover target" there is reporting the candidate
+       that was replaced. */
     expect(threeObs.facts.newPrimary).toBe(memberId('sby02'));
     expect(threeObs.facts.observers[observerId('obs01')]?.endState).toBe('master');
     const lane = threeObs.lanes.find((l) => l.subject.id === 'obs01');
@@ -84,12 +96,44 @@ describe('multi-target with a dead first candidate (SS4.7)', () => {
     expect(threeObs.facts.perMember[memberId('sby02')]?.endState).toBe('open-rw');
   });
 
-  it("the 'active-target-only' toggle stops at the first candidate", () => {
+  it("the 'active-target-only' toggle never changes the target", () => {
     const only = simulate(doc, events, { targetPolicy: 'active-target-only' });
+    expect(only.decisions.find((x) => x.id === 'FSFO.TARGET_CHANGE')).toBeUndefined();
     expect(only.facts.initiateAt).toBe(null);
     expect(only.facts.newPrimary).toBe(null);
     expect(only.facts.outcome).toBe('manual');
   });
+});
+
+describe('multi-target: the primary and the first target are lost together (SIM-05)', () => {
+  const events: TimedEvent[] = [
+    { at: 0, kind: 'site.down', site: siteId('dc2') },
+    { at: 0, kind: 'host.down', host: hostId('dc1-prm01') },
+  ];
+
+  for (const edition of ['19c', '26ai'] as const) {
+    it(`${edition}: no fast-start failover to the second target`, () => {
+      const doc = multiTargetDoc();
+      doc.config.edition = edition;
+      const trace = simulate(doc, events);
+      expect(trace.facts.initiateAt).toBe(null);
+      expect(trace.facts.newPrimary).toBe(null);
+      expect(trace.facts.outcome).toBe('manual');
+      expect(trace.decisions.find((x) => x.id === 'FSFO.TARGET_CHANGE')).toBeUndefined();
+      expect(stateAt(trace, 120).members[memberId('sby02')]).not.toBe('open-rw');
+
+      const f = trace.findings.find((x) => x.id === 'FSFO.NO_SECOND_TARGET');
+      expect(f?.cite).toContain('FSFO.NO_SECOND_TARGET_26AI');
+      expect(f?.message).toContain('cannot fail over to the second target');
+      /* Documented on the 26ai page; the 19c chapter is silent. */
+      expect(f?.basis).toBe(edition === '26ai' ? 'documented' : 'doc-later');
+      if (edition === '19c') expect(f?.note).toContain('19c chapter');
+      const d = trace.decisions.find((x) => x.id === 'FSFO.NO_SECOND_TARGET');
+      expect(d?.taken).toBe(false);
+      /* Where the observer's clock would have expired. */
+      expect(d?.at).toBe(30);
+    });
+  }
 });
 
 describe('RAC instance failure (SS4.8)', () => {
@@ -117,12 +161,19 @@ describe('far sync host down under MaxAvailability (SS3.2)', () => {
   const doc = farSyncDoc('MAXAVAILABILITY');
   const trace = simulate(doc, [{ at: 10, kind: 'host.down', host: hostId('dc1-fs01') }]);
 
-  it('the protection level drops to maximum performance, and the primary keeps committing', () => {
+  it('the primary operates as if in maximum performance, and keeps committing', () => {
     const before = trace.epochs[0];
     expect(before?.protectionLevel.value).toBe('MAXAVAILABILITY');
+    expect(before?.protectionLevel.basis).toBe('documented');
     const after = trace.epochs[trace.epochs.length - 1];
     expect(after?.protectionLevel.value).toBe('MAXPERFORMANCE');
-    expect(after?.protectionLevel.basis).toBe('documented');
+    /* Fact check SIM-12: replaces `basis === 'documented'`. The documented
+       sentence is about behaviour ("operates as if"); which value
+       PROTECTION_LEVEL shows is not stated, and RESYNCHRONIZATION is listed
+       as a value of its own. */
+    expect(after?.protectionLevel.basis).toBe('model');
+    expect(after?.protectionLevel.cite).toContain('LEVEL.RESYNCHRONIZATION');
+    expect(after?.protectionLevel.note).toContain('operates as if it were in maximum performance mode');
     expect(after?.protectionLevel.note).toContain('at least one synchronized standby');
     expect(trace.facts.outcome).toBe('continues');
     expect(stateAt(trace, 60).members[memberId('prm01')]).not.toBe('aborted');
@@ -189,13 +240,15 @@ describe('observer master lost with the primary and target connected', () => {
 });
 
 describe('manual failover to a terminal standby', () => {
-  const doc = cascadeDoc();
-  const trace = simulate(doc, [
+  const events: TimedEvent[] = [
     { at: 0, kind: 'host.down', host: hostId('dc1-prm01') },
     { at: 5, kind: 'cmd.failover', to: memberId('remote_sby') },
-  ]);
+  ];
 
-  it('is legal and documented, and warns about the unsent redo', () => {
+  it('is legal and documented with fast-start failover disabled, and warns about the unsent redo', () => {
+    const doc = cascadeDoc();
+    doc.config.fsfo.state = 'disabled';
+    const trace = simulate(doc, events);
     expect(trace.facts.outcome).toBe('manual');
     expect(trace.facts.newPrimary).toBe(memberId('remote_sby'));
     const f = trace.findings.find((x) => x.id === 'CASCADE.MANUAL_FAILOVER_TERMINAL');
@@ -204,9 +257,27 @@ describe('manual failover to a terminal standby', () => {
     expect(f?.message).toContain('no attempt is made to transmit any unsent redo');
   });
 
-  it('with fast-start failover enabled it is conditional, and says which condition fails', () => {
-    const ids = trace.findings.map((x) => x.id);
-    expect(ids).toContain('FSFO.MANUAL_FAILOVER_NOT_TARGET');
+  it('with fast-start failover enabled it is refused: the terminal standby is not the current target', () => {
+    /* Fact check SIM-08: this replaces an assertion that the failover went
+       ahead beside the error. "The failover can only be performed to the
+       current target standby database." */
+    const trace = simulate(cascadeDoc(), events);
+    const f = trace.findings.find((x) => x.id === 'FSFO.MANUAL_FAILOVER_NOT_TARGET');
+    expect(f?.severity).toBe('error');
+    expect(f?.cite).toContain('FAILOVER.CURRENT_TARGET_ONLY');
+    expect(f?.ora).toBe('ORA-16655');
+    const d = trace.decisions.find((x) => x.id === 'FSFO.MANUAL_FAILOVER');
+    expect(d?.taken).toBe(false);
+    expect(d?.at).toBe(5);
+    /* Nothing changes role at the command. Fast-start failover is still
+       enabled, so at the threshold the observer fails over to the target. */
+    expect(stateAt(trace, 29).members[memberId('remote_sby')]).not.toBe('converting');
+    expect(trace.facts.outcome).toBe('failover');
+    expect(trace.facts.initiateAt).toBe(30);
+    expect(trace.facts.newPrimary).toBe(memberId('sby01'));
+    for (let t = 0; t <= 120; t += 10) {
+      expect(stateAt(trace, t).members[memberId('remote_sby')]).not.toBe('open-rw');
+    }
   });
 });
 
@@ -223,7 +294,7 @@ describe('observe-only and the bystanders', () => {
     expect(stateAt(trace, 30).observers[observerId('obs01')]).toBe('observe-only');
   });
 
-  it('BystandersFollowRoleChange = NONE leaves the bystander out of the new configuration', () => {
+  it('BystandersFollowRoleChange = NONE marks the bystander disabled, to be evaluated later', () => {
     const doc = multiTargetDoc();
     doc.config.bystandersFollowRoleChange = 'NONE';
     const trace = simulate(doc, [{ at: 0, kind: 'host.down', host: hostId('dc1-prm01') }]);
@@ -231,6 +302,8 @@ describe('observe-only and the bystanders', () => {
     const d = trace.decisions.find((x) => x.id === 'BYSTANDERS.FOLLOW');
     expect(d?.taken).toBe(false);
     expect(d?.claim.basis).toBe('documented');
+    expect(d?.claim.note).toContain('marked as disabled with a status of ORA-16661 so that they can be evaluated later');
+    expect(d?.claim.note).not.toContain('left out of the new configuration');
     expect(trace.facts.perMember[memberId('sby02')]?.endState).toBe('disabled');
     /* The default is ALL, and then the bystander simply follows. */
     const all = simulate(multiTargetDoc(), [{ at: 0, kind: 'host.down', host: hostId('dc1-prm01') }]);
@@ -302,9 +375,13 @@ describe('a destination that fails past MaxFailure (Example 4-3 and the ALT spel
 
   it('counts the retries at REOPEN and says the ladder is an idealization', () => {
     /* ReopenSecs is 300 s and MaxFailure is 1, so the first attempt to
-       reestablish the destination falls at 300 s -- and the epoch is there. */
+       reestablish the destination falls at 300 s -- and the epoch is there.
+       The one at 30 s is the target's: Local_Sales is the fast-start failover
+       target, and one NET_TIMEOUT after it stopped answering the primary
+       carries on without it, which is where it stops being ready. */
     const t = simulate(priorityDoc(), [down(0), up(1000)]);
-    expect(t.epochs.map((e) => e.t0)).toEqual([0, 300, 1000]);
+    expect(t.epochs.map((e) => e.t0)).toEqual([0, 30, 300, 1000]);
+    expect(t.decisions.find((x) => x.id === 'FSFO.NOT_READY')?.at).toBe(30);
     const f = t.findings.find((x) => x.id === 'DEST.REOPEN_SCHEDULE_MODEL');
     expect(f?.basis).toBe('model');
     expect(f?.note ?? '').toContain('log switch');
