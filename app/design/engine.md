@@ -101,11 +101,15 @@ when some instances are gone. Instance-level LGWR/NSS ownership is out of scope 
 ### 1.4 RedoRoutes
 ```ts
 interface RedoRouteRule { source: 'LOCAL' | 'ANY' | MemberId[]; groups: DestGroup[]; }
-interface DestGroup { priority?: 1|2|3|4|5|6|7|8; dests: RouteDest[]; }  // default 1 for far sync members, 8 otherwise
-interface RouteDest { target: 'ALL' | MemberId; xpt?: XptMode; alt?: { target: MemberId; xpt?: XptMode; fallback?: boolean }; }
+interface DestGroup { dests: RouteDest[]; explicitGroup?: boolean; }  // parenthesised = one redo destination group
+interface RouteDest { target: 'ALL' | MemberId; xpt?: XptMode; priority?: 1|2|3|4|5|6|7|8;  // default by the DESTINATION: 1 far sync, 8 otherwise
+  alt?: { target: MemberId; xpt?: XptMode; fallback?: boolean }; }                      // 12.1 grammar only
 ```
-Both grammars round-trip (12.1 `ALT=(… FALLBACK)`, 19c/26ai `PRIORITY=n`). A
-`parseRedoRoutes(text)` recursive-descent parser round-trips the DGMGRL spelling.
+`PRIORITY=n` belongs to a destination inside a parenthesised group (19c properties page and
+26ai *Redo Routing Rules*, Examples 1–4); an unparenthesised destination is a group of one. A
+`parseRedoRoutes(text)` recursive-descent parser round-trips the DGMGRL spelling, and still
+parses the 12.1 `ALT=(… FALLBACK)` form. Documents saved before 2026-09-28 carried PRIORITY
+on the group; `parseTopologyDoc` migrates them (see §10).
 
 ### 1.5 Observers
 ```ts
@@ -231,12 +235,12 @@ export interface RedoGraph { primary: MemberId; edges: RedoEdge[]; members: Reco
 export function resolveRedoGraph(doc: TopologyDoc, opts: { primary: MemberId; net?: NetState }): RedoGraph;
 ```
 Algorithm:
-1. Rule activation: active iff source names the current primary. `LOCAL` iff `m.id === primary`. `ANY` iff `primary !== m.id` (model: ROUTES.ANY_SEMANTICS). Standby `(prm : x ASYNC)` is active now (cascading); `(LOCAL : …)` waits for role change. Nothing rewrites on role change (A7); `SHOW CONFIGURATION WHEN PRIMARY IS x` = resolve with another primary.
+1. Rule activation: active iff source names the current primary. `LOCAL` iff `m.id === primary`. `ANY` always — "an alias for any database in the configuration", this member included [D]. Standby `(prm : x ASYNC)` is active now (cascading); `(LOCAL : …)` waits for role change. Nothing rewrites on role change (A7); `SHOW CONFIGURATION WHEN PRIMARY IS x` = resolve with another primary.
 2. Defaults: `[]` at a database = `(LOCAL : ALL)` [D]; at a far sync = forwards nothing (model ROUTES.FARSYNC_NULL_DEFAULT).
-3. `ALL` = every other enabled member except snapshot standbys (inferred).
+3. `ALL` = every other enabled member, snapshot standbys included [D: a snapshot standby receives and archives redo], the current primary excluded (inferred).
 4. `xpt = dest.xpt ?? receiver.logXptMode` [D].
-5. Groups: lowest priority number whose destinations are all up, else lowest with ≥1 up (model ROUTES.PRIORITY_ACTIVATION).
-6. ALT/FALLBACK: alt active when primary dest MaxFailure-disabled or unreachable; FALLBACK reverts. `(alternate of X)` in VERBOSE [D].
+5. Groups [D, Examples 1–4]: one active path per parenthesised group, all groups at once. Within a group the usable destination with the lowest PRIORITY; ties go to the one already chosen (`ResolveOptions.groupChoice`, carried by the simulation) else the first listed; when 8 is the best, every PRIORITY=8 destination. Unparenthesised destinations and ALL each ship. The instant of the move is model (ROUTES.GROUP_SWITCH_INSTANT).
+6. ALT/FALLBACK (12.1 only): alt active when the named destination is MaxFailure-disabled, unreachable or latched; with FALLBACK the named destination is resumed once available, even from MaxFailure [D 12.1]; without it the alternate latches. `(alternate of X)` in VERBOSE [D].
 7. BFS from primary over active+up edges: depth, feedPath, role; cycles → ROUTES.CYCLE. No cascade depth limit (UNDOC, stated).
 8. Synchronized: direct SYNC/FASTSYNC up & transport gap 0 → true (documented). MaxPerformance / 26ai bounded MaxAvail → lag-limit gate (existing `lagGated`). Across a far sync hop: synchronized iff primary→FS edge SYNC/FASTSYNC & up and FS→target up — **model SYNC.ACROSS_FARSYNC**. Cascaded terminal: false (inferred PROT.CASCADE_NOT_COUNTED).
 9. Protection ack set: members with an up SYNC/FASTSYNC edge from the primary; MaxProtection restricted to databases [D]; MaxAvail counts far sync. Level degrades to MAXPERFORMANCE when MaxAvail has no synchronized ack [D C4]; RESYNCHRONIZATION timing is model.
@@ -372,9 +376,18 @@ the design did not state, so it is recorded rather than left to be rediscovered.
   `RedoEdge`, `ResolvedMember`, `RedoGraph`, `EdgeRole`, `EdgeInactiveReason`,
   `ProtectionLevel`. They are derived output like the trace, nothing authored refers to
   them, and `redo/resolve.ts` imports them from there.
-- **`ALL` excludes the current primary as well as snapshot standbys.** §3.3 names only
-  the snapshot exclusion. Redo travelling back to its own source is not a destination,
-  so `expandAll` drops the primary too — an inference from the grammar, stated as one.
+- **`ALL` excludes the current primary.** Redo travelling back to its own source is not a
+  destination, so `expandAll` drops the primary — an inference from the grammar, stated as
+  one. It includes snapshot standbys (corrected 2026-09-28, fact check VAL-04).
+- **RedoRoutes PRIORITY moved onto the destination (2026-09-28, fact check VAL-01).** The
+  first build put PRIORITY on a group and activated one group at a time. Documents,
+  share links and workspaces in that shape still load: a rule whose groups carry
+  `priority` becomes ONE parenthesised group whose destinations take their old group's
+  priority (so "A, else B" stays "A, else B"); a multi-destination group that was the
+  last resort becomes PRIORITY=8 (all ship together); anything that cannot be said
+  exactly is reported as a repair. MaxFailure defaults to 1 for a destination inside a
+  parenthesised group (`defaultDestProps({ inGroup })`), and `sim/dests.ts` counts
+  MaxFailure the 26ai way under 26ai (the initial failure counts).
 - **`disabledDests` and `altLatched` are carried by the simulation, in `sim/dests.ts`.**
   §3.6 describes the resolver's inputs but not who fills them. The epoch loop counts
   REOPEN attempts per destination (drawn at exact `ReopenSecs` multiples — a model of
@@ -384,9 +397,8 @@ the design did not state, so it is recorded rather than left to be rediscovered.
   except for a destination written in a parenthesised PRIORITY group, which re-enters
   service when it is found accessible (documented, 12.2+). An alternate declared **without**
   `FALLBACK` latches once it takes over and stays in service after the named destination
-  heals; **with** `FALLBACK` the named destination returns as soon as it is usable again —
-  unless it was disabled at `MaxFailure`, which outlives the heal. Only the grammar is
-  documented there, so the latch emits `ROUTES.ALT_LATCHED` (model). Resetting the
+  heals; **with** `FALLBACK` the named destination returns as soon as it is available again,
+  even from `MaxFailure` — both documented in 12.1 (`ROUTES.ALT_LATCHED`, `ROUTES.FALLBACK_121`). Resetting the
   consecutive-failure counter on a successful reopen is likewise a reading, not a rule
   (`DEST.MAXFAILURE_RESET_UNDOC`), and `max-failure-disabled` outranks the other
   `inactiveReason`s because it is the reason that outlives them.

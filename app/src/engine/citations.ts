@@ -214,7 +214,7 @@ export const CITATIONS = {
   'ROUTES.LOGICAL_LOCAL_ONLY': {
     url: U.bkr19Props, edition: '19c', verified: 'primary',
     quote: 'The RedoRoutes property can be set for a logical standby database only if the redo source field is set to LOCAL.',
-    note: "The same page's property table lists the standby type as physical standby and far sync instance only; the engine reports the disagreement as a conflict.",
+    note: 'The same sentence is on the 26ai redo-routing-rules page. The restriction is on the redo SOURCE field; the 12.1 page wrote "redo destination field" (and, beside it, "cannot be set on a logical or snapshot standby database"), which 19c and 26ai no longer say.',
   },
   'ROUTES.ALT_MAXFAILURE': {
     url: U.bkr121Props, edition: '12.1', verified: 'cross-edition',
