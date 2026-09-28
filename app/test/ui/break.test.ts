@@ -139,7 +139,7 @@ describe('the event list', () => {
   it('is empty, and says something true, until something is injected', async () => {
     const root = mount(BreakRail);
     await tick();
-    expect(root.textContent).toContain('Nothing has happened yet');
+    expect(root.textContent).toContain('No events yet');
     /* The scenarios sit under the list now, so the empty state points down. */
     expect(root.textContent).toContain('Pick a scenario below');
     expect(root.textContent).not.toContain('Pick a scenario above');
@@ -278,7 +278,7 @@ describe('the scenario descriptions', () => {
     await tick();
     const lede = root.querySelectorAll('.tmpl-lede');
     expect(lede).toHaveLength(1);
-    expect(lede[0]!.textContent).toContain('replaces whatever is injected now');
+    expect(lede[0]!.textContent).toContain('replaces the current events');
     expect(root.querySelector('.tmpls')!.previousElementSibling).toBe(lede[0]!);
   });
 
@@ -387,12 +387,12 @@ describe('the menu says where an event will land', () => {
     /* The clock reading is the fact, and it is in the header at every
        setting; the sentence that spells it out is a hint. */
     expect(title).toContain('Inject at t =');
-    expect(root.textContent).not.toContain('Events land at the playhead');
+    expect(root.textContent).not.toContain('New events use the playhead time');
 
     hintsOn.value = true;
     const withHints = mount(EventMenu);
     await tick();
-    expect(withHints.textContent).toContain('Events land at the playhead');
+    expect(withHints.textContent).toContain('New events use the playhead time');
   });
 
   it('makes the clock reading the control, and moving it moves the playhead', async () => {

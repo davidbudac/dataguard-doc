@@ -13,7 +13,8 @@
 
 import { beforeEach, describe, expect, it } from 'vitest';
 import { h, render } from 'preact';
-import { classicDoc } from '@/state/doc';
+import { classicDoc, makeDoc } from '@/state/doc';
+import { classicTopology, hostId } from '@/engine';
 import { resetHistory } from '@/state/history';
 import { inspectorOpen, mode, tNow, viewport } from '@/state/view';
 import { explanationOpen } from '@/ui/break/RunExplanation';
@@ -101,6 +102,18 @@ describe('the readout in Break', () => {
     expect(explanationOpen.value).toBe(true);
     expect(mode.value).toBe('break');
     expect(inspectorOpen.value).toBe(true);
+  });
+
+  it('asks for manual action when the primary is down and nobody was promoted', async () => {
+    const base = classicTopology();
+    doc.value = makeDoc({
+      ...base,
+      config: { ...base.config, fsfo: { ...base.config.fsfo, state: 'disabled' } },
+      events: [{ at: 0, kind: 'host.down', host: hostId('dc1-prm01') }],
+    });
+    const root = mount();
+    await tick();
+    expect(root.querySelector('.ro-run .chip-v')?.textContent).toBe('manual action needed');
   });
 
   /**

@@ -259,8 +259,8 @@ function TimelineSlot() {
           <span class="empty-k">Timeline</span>
           <p>
             {learn
-              ? 'Steady state -- this step injects no event. A step whose "Show me" breaks something draws its clocks here.'
-              : 'Steady state -- no events injected. Click a card on the canvas to inject one.'}
+              ? 'No events in this step. A step whose "Show me" breaks something draws its timeline here.'
+              : 'No events yet. Select a card to add an event, or pick a scenario.'}
           </p>
         </div>
       ) : (
@@ -461,8 +461,8 @@ export function App() {
               <div class="empty">
                 <span class="empty-k">Viewer</span>
                 <p>
-                  Editing needs a wider screen. Everything below is the configuration this link
-                  carries, drawn and simulated -- only the controls that change it are absent.
+                  Editing needs a wider screen. You can view the configuration this link carries
+                  and play its simulation here.
                 </p>
               </div>
             )}

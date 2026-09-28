@@ -236,8 +236,10 @@ export function readoutFor(steady: boolean): ReadoutChip[] {
           ? { v2: `${observersRunning} observer${observersRunning === 1 ? '' : 's'} running` }
           : {}),
         sub: fsfo.state === 'enabled'
-          ? 'The broker fails over on its own when the observer and the target agree the primary is gone.'
-          : 'Nothing fails over on its own; a failover here is one somebody types.',
+          ? 'With ObserverOverride FALSE, automatic failover requires both the observer and the target to lose the primary, and the target to pass its readiness check.'
+          : fsfo.state === 'observe-only'
+            ? 'The observer reports what it would do but does not initiate failover.'
+            : 'Fast-start failover is disabled. A failover here is one an operator types.',
       },
       findingsChip(),
     ];
@@ -256,16 +258,20 @@ export function readoutFor(steady: boolean): ReadoutChip[] {
       id: 'outcome',
       tone: f.blocked ? 'am' : (f.outcome === 'failover' || f.outcome === 'switchover' ? 'vi' : 'ik'),
       k: 'Outcome',
-      v: f.blocked ? 'blocked' : OUTCOME_WORD[f.outcome],
+      /* With nobody promoted, "manual failover" would name a failover that
+         did not happen: what is left is an action for an operator. */
+      v: f.blocked ? 'blocked'
+        : f.outcome === 'manual' && f.newPrimary === null ? 'manual action needed'
+          : OUTCOME_WORD[f.outcome],
       sub: f.blocked
-        ? 'The transition was ordered and then forbidden; nothing changed role.'
-        : 'What the configuration did, not what was done to it.',
+        ? 'The transition was ordered and then refused; nothing changed role.'
+        : 'The outcome of the whole simulation, not of the moment on screen.',
     },
   ];
   if (moved && f.tOpen !== null) {
     chips.push({
       id: 'open', tone: 'tl', k: 'New primary open', v: fmt(f.tOpen), unit: 's',
-      sub: 'Measured from the first injected event.',
+      sub: 'Modelled time from the first injected event. How long it takes in practice depends on the environment.',
     });
   }
   /* What the failover cost, in seconds of redo. Zero is the whole promise of

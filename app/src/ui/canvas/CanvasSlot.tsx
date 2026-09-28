@@ -545,8 +545,8 @@ export function CanvasSlot({ interactive = true }: CanvasSlotProps) {
         <div class="empty">
           <span class="empty-k">Canvas</span>
           <p>
-            No member carries the primary role, so there is no redo to draw. Give one
-            database <span class="mono">role: primary</span> and the drawing comes back.
+            No database has the primary role, so there is no redo to draw. Give one
+            database <span class="mono">role: primary</span> to show the redo routes.
           </p>
         </div>
       </>

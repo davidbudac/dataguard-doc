@@ -41,11 +41,11 @@ export const MODE_LABEL: Record<Mode, string> = {
  */
 export const MODE_SUB: Record<Mode, string> = {
   build: 'Build — draw the configuration: sites, members, redo routes, observers',
-  break: 'Break — inject failures and watch the clocks run',
+  break: 'Break — add failures and follow the simulation timeline',
   configure:
     'Configure — generated from the drawing: DGMGRL, init parameters and connect strings; '
     + 'hover a line to see which member it configures.',
-  learn: 'Learn — nine lessons, and the reference tables behind them',
+  learn: 'Learn — nine guided lessons and the reference tables behind them',
 };
 
 export const PANEL_LABEL: Record<PanelTab, string> = {
@@ -315,12 +315,12 @@ export function modeGuide(m: Mode, v: Viewport = viewport.value): string {
         + `Double-click to rename; ⋯ opens actions, and the full properties are in ${railWhere(v)}.`;
     case 'break':
       return 'Click a card to add an event, drag a numbered timeline marker to change its time; '
-        + 'use Earlier / Later in Events to swap adjacent times, or pick a scenario below.';
+        + 'Earlier / Later in Events swaps adjacent times, or pick a scenario.';
     case 'configure':
       return 'Generated from the drawing — DGMGRL, init parameters, connect strings. '
         + `Settings are in ${railWhere(v)}.`;
     case 'learn':
-      return 'Each step sets up the workbench beside it.';
+      return 'Choose a lesson, then press Show me to set the workbench up for a step.';
   }
 }
 

@@ -56,7 +56,7 @@ export function Readout() {
     k: 'Drawing at',
     v: `t = ${fmt(clampToAxis(tNow.value, t, topology.value.events))}`,
     unit: 's',
-    sub: 'The drawing above holds the state at this moment on the timeline. The chips under Run are the run as a whole. Scrub the playhead to move this one.',
+    sub: 'The drawing shows this moment on the timeline; the readings under Run describe the whole simulation. Move the playhead to inspect another moment.',
   };
 
   return (

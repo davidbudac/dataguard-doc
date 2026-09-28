@@ -239,7 +239,7 @@ describe('what is not a hint', () => {
     mode.value = 'break';
     const rail = mount(BreakRail);
     await tick();
-    expect(rail.textContent).toContain('Nothing has happened yet');
+    expect(rail.textContent).toContain('No events yet');
     expect(rail.textContent).toContain('Pick a scenario below');
   });
 });

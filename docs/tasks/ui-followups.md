@@ -272,7 +272,11 @@ default), opened and scrolled to by a quiet "Why?" beside the Outcome chip in th
 new Break rail / timeline panel.
 
 ### 7.3 Plainer wording
-Status: todo
+Status: done (on ui/track7-port)
+Note: re-applied where the text still exists (App empty states, Guidance, BreakRail, Readout, EventMenu,
+CanvasSlot, view.ts guides, IntroPage, derived.ts chips). Kept main's where the plain one lost a fact:
+hero note, "Primary and standby", the footer's "everything here is a model". Outcome now says "manual
+action needed" when nobody was promoted; the FSFO chip states the ObserverOverride FALSE assumption.
 Re-apply the copy simplifications from that branch's diffs (App empty
 states, Guidance, BreakRail, IntroPage, Readout...), checked against the
 accuracy rules.

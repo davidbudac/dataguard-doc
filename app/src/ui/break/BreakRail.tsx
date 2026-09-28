@@ -113,7 +113,7 @@ export function BreakRail({ scenarios = true, validation = true }: BreakRailProp
       >
         {list.length === 0 ? (
           <div class="empty">
-            <span class="empty-k">Nothing has happened yet</span>
+            <span class="empty-k">No events yet</span>
             <p>
               {scenarios
                 ? 'Pick a scenario below, or select a card to add an event.'
@@ -207,8 +207,7 @@ export function BreakRail({ scenarios = true, validation = true }: BreakRailProp
             it names itself. */}
         {hintsShown() ? (
           <p class="caption tmpl-lede">
-            Each one replaces whatever is injected now — the observer stays wherever its
-            card sits.
+            A scenario replaces the current events. The topology stays the same.
           </p>
         ) : null}
 
