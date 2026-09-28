@@ -113,6 +113,21 @@ export interface EngineFacts extends DerivedFacts {
    * is drawn from. Never a failover clock.
    */
   netTimeoutSeconds: Seconds;
+  /**
+   * When the master observer's own FastStartFailoverThreshold clock started:
+   * "The clock starts when the observer FIRST loses its connection to the
+   * primary database." Null while the observer has never lost the primary.
+   * Not the instant fast-start failover initiates at -- with ObserverOverride
+   * FALSE that also waits on the target -- only where this clock itself began.
+   */
+  thresholdStartAt: Seconds | null;
+  /**
+   * When the acting primary's own stall clock started: the instant it first
+   * reached neither the observer nor the target standby, which is independent
+   * of the observer's threshold clock above and runs whether or not fast-start
+   * failover is even armed. Null where the primary has never stalled.
+   */
+  stallStartAt: Seconds | null;
 }
 
 export interface EngineTrace extends Trace {
@@ -1044,6 +1059,9 @@ export function simulate(
     state.obsLostPrimarySince = view.fsfoEnabled && view.master !== null && !view.obsSeesPrimary
       ? state.obsLostPrimarySince ?? at
       : null;
+    if (state.thresholdStartAt === null && state.obsLostPrimarySince !== null) {
+      state.thresholdStartAt = state.obsLostPrimarySince;
+    }
 
     for (const id of view.candidates) {
       const key = id as string;
@@ -1056,6 +1074,9 @@ export function simulate(
        reach keeps counting down to its own abort after the role change. */
     for (const [id, actor] of Object.entries(view.actors)) {
       state.stallSince[id] = actor.stalled ? state.stallSince[id] ?? at : null;
+      if (id === (state.primary as string) && state.stallStartAt === null && state.stallSince[id] !== null) {
+        state.stallStartAt = state.stallSince[id];
+      }
     }
 
     /* A commit hangs on a synchronous acknowledgement that stopped arriving.
@@ -2157,6 +2178,8 @@ function deriveFacts(
     protectionLevel: honestLevel(view.graph.protectionLevel, modeNow(doc, state)),
     abortReason: state.abortReason,
     netTimeoutSeconds: netTimeoutForMode(doc, view.graph),
+    thresholdStartAt: state.thresholdStartAt,
+    stallStartAt: state.stallStartAt,
   };
 }
 
@@ -2356,6 +2379,8 @@ function initialState(doc: TopologyDoc): SimState {
     obsLostPrimarySince: null,
     targetLostPrimarySince: {},
     stallSince: {},
+    thresholdStartAt: null,
+    stallStartAt: null,
     ackLostSince: null,
     /* The configuration as declared is acknowledging; the first epoch is where
        a destination can start to be missed. */

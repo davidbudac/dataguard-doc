@@ -759,7 +759,7 @@ function buildBraces(doc: TopologyDoc, f: Facts): BraceInput[] {
   if (f.outcome === 'stall-noone') {
     if (f.abortAt !== null) {
       braces.push({
-        key: 'stall-threshold', a: 0, b: f.abortAt, tone: 'br-rd', mono: true,
+        key: 'stall-threshold', a: f.stallStartAt ?? 0, b: f.abortAt, tone: 'br-rd', mono: true,
         name: 'FastStartFailoverThreshold',
         val: `${fmt(threshold)} s — primary stall clock, runs independently`,
       });
@@ -797,7 +797,7 @@ function buildBraces(doc: TopologyDoc, f: Facts): BraceInput[] {
     });
   } else {
     braces.push({
-      key: 'threshold', a: 0, b: f.initiateAt, tone: 'br-am', mono: true,
+      key: 'threshold', a: f.thresholdStartAt ?? 0, b: f.initiateAt, tone: 'br-am', mono: true,
       name: 'FastStartFailoverThreshold',
       val: stalled
         ? `${fmt(threshold)} s — observer clock`
@@ -807,7 +807,7 @@ function buildBraces(doc: TopologyDoc, f: Facts): BraceInput[] {
 
   if (stalled && f.abortAt !== null) {
     braces.push({
-      key: 'abort', a: 0, b: f.abortAt, tone: 'br-rd', mono: true,
+      key: 'abort', a: f.stallStartAt ?? 0, b: f.abortAt, tone: 'br-rd', mono: true,
       name: 'FastStartFailoverThreshold',
       val: `${fmt(threshold)} s — primary stall clock, runs independently`,
     });
