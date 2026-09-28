@@ -1576,10 +1576,6 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
           );
         })()}
 
-        {airTip === null || air === null ? null : (
-          <PointerTip x={air.x} y={air.y} text={airTip.text} refused={airTip.refused} />
-        )}
-
         <g class="tp-pills">
           {routed.links.map((l, i) => (
             <LinkPath
@@ -1626,6 +1622,11 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
             </g>
           ))}
 
+        {/* Over the captions: it is about the drop in hand, not the drawing. */}
+        {airTip === null || air === null ? null : (
+          <PointerTip x={air.x} y={air.y} text={airTip.text} refused={airTip.refused} />
+        )}
+
         {band === null ? null : (
           <rect class="tp-band" aria-hidden="true" x={band.x} y={band.y} width={band.w} height={band.h} />
         )}
@@ -1635,7 +1636,9 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
             press on it is a press on the subject -- not on the ground, which
             would clear the selection, and not outside the bar, which would
             close it before this click could. */}
-        {handleAt === null || !props.onContextMenu ? null : (
+        {/* Not while something is being dragged: it hangs off the live
+            geometry, which a drag holds still only in what it draws. */}
+        {handleAt === null || !props.onContextMenu || moving !== null ? null : (
           <g
             class={`tp-more${bar !== null ? ' is-open' : ''}`}
             role="button"
