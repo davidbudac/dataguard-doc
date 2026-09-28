@@ -30,7 +30,7 @@ import type { Doc } from './doc';
 import { classicDoc, doc, exportFileName } from './doc';
 import { fromWire, parseJsonText, toJsonText } from './codec';
 import type { DecodeResult } from './codec';
-import { hintsOn, issuesOpen } from './view';
+import { gridOn, hintsOn, issuesOpen } from './view';
 import type { ThemePref } from './view';
 
 export const DOC_KEY = 'dg-doc-v1';
@@ -39,6 +39,7 @@ export const EDITION_KEY = 'dg-ed';
 export const LEGACY_DOC_KEY = 'dg-fsfo-cfg-v1';
 export const INTRO_KEY = 'dg-intro-v1';
 export const HINTS_KEY = 'dg-hints';
+export const GRID_KEY = 'dg-grid';
 export const ISSUES_KEY = 'dg-issues';
 
 export const AUTOSAVE_MS = 500;
@@ -124,6 +125,18 @@ export function setHints(on: boolean): void {
 }
 
 export const toggleHints = (): void => setHints(!hintsOn.value);
+
+/* ---------------- the dotted ground ---------------- */
+
+/** The canvas's dots, on or off -- `gridOn` in `view.ts`; unset means on. */
+export function loadGrid(): void {
+  gridOn.value = read(GRID_KEY) !== '0';
+}
+
+export function toggleGrid(): void {
+  gridOn.value = !gridOn.value;
+  write(GRID_KEY, gridOn.value ? '1' : '0');
+}
 
 /* ---------------- the validation panel ---------------- */
 

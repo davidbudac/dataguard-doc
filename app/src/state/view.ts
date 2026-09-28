@@ -135,6 +135,12 @@ export const issuesOpen = signal<boolean>(true);
  */
 export const hintsOn = signal<boolean>(false);
 /**
+ * Whether the floating canvas shows its dotted ground. On by default; the
+ * dots button on the zoom pill turns it off, remembered under `dg-grid`
+ * (persist.ts) and read once at boot like `hintsOn`.
+ */
+export const gridOn = signal<boolean>(true);
+/**
  * A field the rail should focus on its next render, then forget.
  *
  * Double-clicking a card on the drawing means "rename it": the rail opens on

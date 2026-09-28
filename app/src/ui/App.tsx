@@ -16,7 +16,7 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { topology, trace } from '@/state/derived';
 import {
-  canEdit, floating, inspectorOpen, introOpen, introPage, mode, playing, selection, speed, tNow,
+  canEdit, floating, gridOn, inspectorOpen, introOpen, introPage, mode, playing, selection, speed, tNow,
   toast, viewport,
 } from '@/state/view';
 import type { Mode } from '@/state/view';
@@ -255,7 +255,7 @@ export function App() {
   useEffect(() => installShortcuts(), []);
 
   return (
-    <div class={intro ? 'app m-intro' : `app m-${m}${float ? ' is-float' : ''}`}>
+    <div class={intro ? 'app m-intro' : `app m-${m}${float ? ' is-float' : ''}${float && !gridOn.value ? ' no-grid' : ''}`}>
       {/* One header, three bands: the modes and the small controls, then the
           quieter document row, then the line that says what to do in the mode
           that is open. It is one element so the toast can be anchored to the

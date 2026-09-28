@@ -194,8 +194,12 @@ button.issue{border-bottom:1px solid var(--ln)}
   /* The ground: the whole window, dotted. */
   .app.is-float .app-stage{position:absolute;inset:0;display:block;min-height:0;
     overflow:hidden;background-color:var(--bg);
-    background-image:radial-gradient(var(--ln2) 1px,transparent 1.2px);
+    background-image:radial-gradient(var(--dot) 1px,transparent 1.2px);
     background-size:20px 20px;background-position:10px 10px}
+  /* The dots are paper, not content: faint, and off at the reader's word
+     (the dots button on the zoom pill). */
+  .app.is-float{--dot:color-mix(in srgb,var(--ln) 70%,var(--bg))}
+  .app.is-float.no-grid .app-stage{background-image:none}
   /* The drawing fits the room the cards leave, not the window: the wrap is
      inset by the bar above, the palette on the left, the inspector on the
      right and the dock below, so a fitted drawing never sits under any of
@@ -302,6 +306,7 @@ button.issue{border-bottom:1px solid var(--ln)}
     font-size:12px}
   .app.is-float .zoom-pill .cv-zoom>:nth-child(2){order:2}
   .app.is-float .zoom-pill .cv-zoom>:nth-child(3){order:3}
+  .app.is-float .zoom-pill .cv-zoom>:nth-child(4){order:4;margin-left:2px;padding-left:10px;border-left:1px solid var(--ln);border-radius:0}
   .app.is-float .zoom-pill .btn{padding:4px 9px;border-color:transparent}
 
   /* The most serious finding, once, above the dock. */
@@ -355,3 +360,8 @@ button.issue{border-bottom:1px solid var(--ln)}
   .app-head{padding:8px 8px 0}
   .topbar-group{flex-wrap:wrap}
 }
+
+/* The dotted-ground toggle on the zoom pill: lit while the dots are on. */
+.cv-dots-ico{display:block;fill:currentColor}
+.zoom-pill .btn[aria-pressed="true"]{color:var(--ik)}
+.zoom-pill .btn[aria-pressed="false"]{color:var(--ik3)}

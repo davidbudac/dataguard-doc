@@ -10,14 +10,16 @@
  * canvas workflow owns this file from here.
  */
 
+import type { JSX } from 'preact';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import type { TopologyDoc } from '@/engine';
 import { hostId, siteId } from '@/engine';
 import { frame, geometry, redoGraph, topology } from '@/state/derived';
 import { doc, withLayout } from '@/state/doc';
 import { breakCoalescing, edit, undo, undoLabel } from '@/state/history';
+import { toggleGrid } from '@/state/persist';
 import {
-  canEdit, clearSelection, floating, focusField, hovered, mode, railWhere, select, selection, tNow,
+  canEdit, clearSelection, floating, focusField, gridOn, hovered, mode, railWhere, select, selection, tNow,
   toast, viewport,
 } from '@/state/view';
 import { buildActionsFor, openInspectorFor, removeAction } from '../build/actions';
@@ -287,7 +289,7 @@ function useCanvasScale(
  */
 export const WHY_TIDY = 'No card has been moved and no data centre resized by hand, so there is nothing to tidy.';
 
-function ZoomStrip({ tidy }: { tidy: boolean }) {
+function ZoomStrip({ tidy, grid = false }: { tidy: boolean; grid?: boolean }) {
   const at = zoom.value;
   const moved = Object.keys(doc.value.layout);
   const picked = selection.value.filter((k) => moved.includes(k));
@@ -298,9 +300,12 @@ function ZoomStrip({ tidy }: { tidy: boolean }) {
     inn ? ON : { state: 'off', why: WHY_MAX },
     { state: 'on' },
     ...(tidy ? [moved.length === 0 ? { state: 'off' as const, why: WHY_TIDY } : ON] : []),
+    ...(grid ? [ON] : []),
   ];
   const roving = useRovingToolbar(states.map((w) => w.state !== 'off'));
-  const rows: { label: string; name: string; title: string; run: () => void }[] = [
+  const rows: {
+    label: string | JSX.Element; name: string; title: string; run: () => void; pressed?: boolean;
+  }[] = [
     {
       label: '−',
       name: 'Zoom out',
@@ -329,6 +334,15 @@ function ZoomStrip({ tidy }: { tidy: boolean }) {
         run: () => tidyLayout(picked),
       }]
       : []),
+    ...(grid
+      ? [{
+        label: <DotsIcon />,
+        name: 'Dotted background',
+        title: gridOn.value ? 'Hide the dotted background.' : 'Show the dotted background.',
+        run: toggleGrid,
+        pressed: gridOn.value,
+      }]
+      : []),
   ];
 
   return (
@@ -343,6 +357,7 @@ function ZoomStrip({ tidy }: { tidy: boolean }) {
             class={`btn${isOff ? ' is-faded' : ''}`}
             disabled={isOff}
             aria-label={r.name}
+            aria-pressed={r.pressed}
             title={why.state === 'off' ? why.why : r.title}
             tabIndex={roving.tabIndex(i)}
             ref={roving.itemRef(i)}
@@ -355,6 +370,15 @@ function ZoomStrip({ tidy }: { tidy: boolean }) {
       })}
       <span class="cv-zoom-pct">{zoomLabel(at)}</span>
     </div>
+  );
+}
+
+/** Nine dots: the toggle for the canvas's dotted ground. */
+function DotsIcon() {
+  return (
+    <svg class="cv-dots-ico" viewBox="0 0 12 12" width="12" height="12" aria-hidden="true">
+      {[2, 6, 10].flatMap((y) => [2, 6, 10].map((x) => <circle key={`${x}-${y}`} cx={x} cy={y} r="1.1" />))}
+    </svg>
   );
 }
 
@@ -505,7 +529,7 @@ export function CanvasSlot({ interactive = true }: CanvasSlotProps) {
             <TidyButton />
           </nav>
         )}
-        {zooming ? <div class="zoom-pill float-card"><ZoomStrip tidy={false} /></div> : null}
+        {zooming ? <div class="zoom-pill float-card"><ZoomStrip tidy={false} grid /></div> : null}
       </>
     )
     : adds === null && !zooming ? null : (
