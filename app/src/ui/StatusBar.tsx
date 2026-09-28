@@ -22,6 +22,7 @@ import { edition, inspectorOpen, mode, toast, viewport } from '@/state/view';
 import { TOO_LARGE_MESSAGE } from '@/state/codec';
 import { revealFindings } from './IssuePanel';
 import { WhyPill } from './common/WhyPill';
+import { exportPng } from './export/diagram';
 
 const busy = signal(false);
 
@@ -293,6 +294,14 @@ export function DocActions() {
         </summary>
         <div class="ovf-menu float-card">
           <button type="button" class="btn" onClick={() => exportDoc(doc.value)}>Export</button>
+          <button
+            type="button"
+            class="btn"
+            title="Save the drawing as a PNG picture, in the current theme"
+            onClick={() => { void exportPng(); }}
+          >
+            Diagram as PNG
+          </button>
 
           <label class="btn">
             Import

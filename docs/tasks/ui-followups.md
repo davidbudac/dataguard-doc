@@ -57,7 +57,10 @@ position (ghost outline) where it will land.
 ## Track 2 — export (`app/src/ui/TopBar.tsx` ⋯ menu, new module)
 
 ### 2.1 Export the diagram as PNG
-Status: todo
+Status: done (on ui/track2-export)
+Note: ⋯ → "Diagram as PNG" (`app/src/ui/export/diagram.tsx`). Re-draws the canvas off
+screen (no selection/handles), copies computed styles onto a clone (`svg-style.ts`),
+rasterises it at 2x from a `data:` URL. No CSP change: `img-src 'self' data:` already admits it.
 From the ⋯ menu: rasterise the current topology SVG (fonts, theme colours
 resolved, transparent or page-coloured ground) and download `<config>.png`.
 No new network access; CSP-safe.

@@ -117,8 +117,16 @@ export function withMember(
   });
 }
 
+/**
+ * The stem every exported file shares -- the `.dgtopo.json`, the diagram's
+ * `.png` -- safe on every platform.
+ */
+export function exportStem(d: Doc): string {
+  const base = d.meta.name.trim().replace(/[^A-Za-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '');
+  return base === '' ? 'topology' : base.slice(0, 64);
+}
+
 /** A file name that is safe on every platform, for the export path. */
 export function exportFileName(d: Doc): string {
-  const base = d.meta.name.trim().replace(/[^A-Za-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '');
-  return `${base === '' ? 'topology' : base.slice(0, 64)}.dgtopo.json`;
+  return `${exportStem(d)}.dgtopo.json`;
 }

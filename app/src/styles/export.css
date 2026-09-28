@@ -1,0 +1,7 @@
+/* The off-screen room the diagram export draws in (ui/export/diagram.tsx).
+
+   Rendered, not hidden: `display:none` or `visibility:hidden` would be copied
+   into the picture along with every other computed style. So the room is laid
+   out like any other element, just far off the left edge where no reader and
+   no pointer can reach it. */
+.export-stage{position:fixed;left:-100000px;top:0;pointer-events:none}
