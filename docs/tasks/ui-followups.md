@@ -278,7 +278,14 @@ states, Guidance, BreakRail, IntroPage, Readout...), checked against the
 accuracy rules.
 
 ### 7.4 ConfigForm: advanced count and target editor
-Status: todo
+Status: skipped
+Note: does not fit 3.2 cleanly. Its reason (a tall always-open FSFO group) is gone: every group folds
+and errors open theirs (`sectionOfRule`). The rebuild adds an `Advanced` fold with a second heading
+style (`.adv-title`) and plain names over Oracle ones (`Field property`), against 3.2's one heading
+style and ConfigForm's "spelled the way DGMGRL spells it"; the editor toggle adds a click to the
+target rows. `isTargetRule` would clear the selection for `FSFO.FARSYNC_XPT` / `TARGET_DIRECT_REDO`,
+where the fix is on the member. Would take: a naming decision, an Advanced fold of `.sub` blocks, a
+`SECTION_IDS` migration (IssuePanel, explain.ts, lessons) and ~10 inspector tests.
 Rebuild the branch's ConfigForm/sections.ts changes (advanced-settings count,
 failover-target editor, revealTargetForFlagged) on the new panel system.
 
