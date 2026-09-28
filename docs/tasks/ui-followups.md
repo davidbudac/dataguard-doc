@@ -214,3 +214,48 @@ Status: todo
 Wide configurations (4 DCs in a row) print the diagram small on A4 portrait.
 Give the diagram its own landscape page when its aspect ratio calls for it
 (`@page` named pages), or scale it to use the page's full width.
+
+## Track 7 — port `feat/usability-workflows` onto main
+
+The branch `feat/usability-workflows` (WIP snapshot `eb7eca0`, based on the
+pre-redesign `5e2f24e`) holds a parallel line of work. Do **not** merge or
+rebase it wholesale: 19 files overlap with main's rewrite (ConfigForm,
+StatusBar, inspector.css, App, CanvasSlot, ...) and it carries a competing
+restyle of the old docked layout. Port it feature by feature once Tracks 5
+and 6 are merged, one commit each:
+
+### 7.1 Workspaces (named local copies + recovery)
+Status: todo
+`state/workspaces.ts`, `state/workspace-id.ts`, `ui/workspaces/Workspaces.tsx`,
+`test/ui/workspaces.test.ts`. Mount in the new top bar / ⋯ menu.
+
+### 7.2 Break run explanation
+Status: todo
+`ui/break/RunExplanation.tsx`, `ui/break/explain.ts`, tests. Fit it into the
+new Break rail / timeline panel.
+
+### 7.3 Plainer wording
+Status: todo
+Re-apply the copy simplifications from that branch's diffs (App empty
+states, Guidance, BreakRail, IntroPage, Readout...), checked against the
+accuracy rules.
+
+### 7.4 ConfigForm: advanced count and target editor
+Status: todo
+Rebuild the branch's ConfigForm/sections.ts changes (advanced-settings count,
+failover-target editor, revealTargetForFlagged) on the new panel system.
+
+### 7.5 Classic walkthrough
+Status: todo
+`ui/intro/Walkthrough.tsx`: position it for the floating layout.
+
+### 7.6 Review panel
+Status: todo
+`state/review.ts`, `ui/review/*`: keep the comparison/expectations model but
+produce its report through main's `?report=1` report, not its own HTML
+generator.
+
+### 7.7 Drop
+Status: todo
+`styles/calm.css` and the old-layout restyle hunks in tokens.css, shell.css,
+inspector.css, intro.css, readout.css; `app/design/mockups/` (superseded).
