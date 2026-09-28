@@ -142,11 +142,23 @@ deploys — and only ever when the user asks for it. The nginx and CSP details,
 the pre-publish checklist and the rest are in
 [`../AGENTS.md`](../AGENTS.md#publishing).
 
-Existing installations can be drawn through **⋯ → Import existing setup**.
-Download the read-only [SQL collector](public/collectors/dataguard-topology.sql),
-run it once per member, and paste/load the combined output. An optional
-[Bash wrapper](public/collectors/collect-dataguard.sh) runs the same SQL through
-wallet aliases. [Instructions and limitations](public/collectors/README.txt)
+## Importing an existing setup
+
+1. On each database / far sync, from CDB$ROOT, as SYSDBA:
+   ```bash
+   sqlplus -s / as sysdba @dataguard-topology.sql </dev/null > <member>.txt
+   # or: bash collect-dataguard.sh > <member>.txt
+   ```
+2. Combine: `cat primary.txt standby.txt > topology.txt`
+3. In the workbench: **⋯ → Import existing setup** → load or paste
+   `topology.txt` → **Preview import** → **Draw imported topology**.
+
+Each file holds one `DGTOPO_BEGIN_V1` … `DGTOPO_END_V1` block of JSON lines.
+Undo restores the previous drawing.
+
+The read-only [SQL collector](public/collectors/dataguard-topology.sql) and the
+optional [Bash wrapper](public/collectors/collect-dataguard.sh) (which also takes
+wallet aliases) are downloadable from the dialog. [Instructions and limitations](public/collectors/README.txt)
 explain privileges, mounted members and which broker settings need manual review.
 Import previews assumptions before replacing the drawing; replacement is undoable.
 This reconstructs current topology, not all broker configuration.

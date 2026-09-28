@@ -1,5 +1,15 @@
 IMPORT AN EXISTING DATA GUARD TOPOLOGY
 
+Quick start
+  1. On each database / far sync, from CDB$ROOT, as SYSDBA:
+       sqlplus -s / as sysdba @dataguard-topology.sql </dev/null > <member>.txt
+     (or: bash collect-dataguard.sh > <member>.txt)
+  2. Combine:  cat primary.txt standby.txt > topology.txt
+  3. Workbench: ... menu -> Import existing setup -> load or paste
+     topology.txt -> Preview import -> Draw imported topology.
+  Each file holds one DGTOPO_BEGIN_V1 ... DGTOPO_END_V1 block of JSON lines.
+  Undo restores the previous drawing. Details and limits follow.
+
 This collector targets Oracle 19c+ using documented dynamic views. It reads
 metadata only: no ALTER, broker changes, database links, application-table scans,
 password collection or server-side files. Output contains infrastructure names.
