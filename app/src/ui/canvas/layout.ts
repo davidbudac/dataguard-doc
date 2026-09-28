@@ -108,7 +108,25 @@ export interface SiteBox extends Rect {
   col: number;
   /** Nothing stands in it yet: drawn as an empty panel a card can be dropped into. */
   empty: boolean;
+  /**
+   * The smallest box this data centre may be drawn at: its cards and stack
+   * headers plus the padding and the name band -- what a resize may not cut
+   * into. For an empty panel, the empty panel's own default box.
+   */
+  fit: Rect;
+  /**
+   * The origin a stored size is measured from: the top-left corner of the
+   * box the layout would draw with no card moved by hand. A sized override's
+   * `dx`/`dy` are relative to it, so the box travels with its column when an
+   * addition elsewhere moves the columns.
+   */
+  anchor: { x: number; y: number };
+  /** The reader gave it a size of its own (`LayoutOffset.w`/`h`). */
+  sized: boolean;
 }
+
+/** The minimum a data centre may be resized to when nothing stands in it. */
+export const SITE_MIN = { w: 120, h: 64 } as const;
 
 /**
  * The site's name band: the rectangle its label actually occupies.
@@ -148,11 +166,22 @@ export interface Geometry {
   unreachableRank: number;
 }
 
-export interface LayoutOffset { dx: number; dy: number }
+/**
+ * A hand-made offset. Under a data centre's key it may also carry `w`/`h`,
+ * the size the reader gave the box (doc.ts `LayoutOverride`).
+ */
+export interface LayoutOffset { dx: number; dy: number; w?: number; h?: number }
 
 export interface LayoutOptions {
   /** Drag overrides, keyed by node key, snapped to 8 px. */
   overrides?: Readonly<Record<string, LayoutOffset>>;
+  /**
+   * Cards being carried right now. Their overrides are drawn, but nothing
+   * makes way for them (step 7b) until they are let go: a card slid across
+   * another must not shove it aside mid-air, or the host the reader is aiming
+   * a merge at would jump out from under the pointer.
+   */
+  transient?: readonly string[];
 }
 
 /** The key a node is selected, hovered and dragged by: its own id. */
@@ -704,13 +733,13 @@ export function layoutTopology(
   });
 
   /* ---- 7. drag overrides, snapped ---- */
-  const nodes = placed.map(({ node }) => {
+  const nodes = makeWay(opts.transient ?? [], placed.map(({ node }) => {
     const ov = overrides[node.key];
     if (!ov) return node;
     const dx = snap8(ov.dx); const dy = snap8(ov.dy);
     if (dx === 0 && dy === 0) return node;
     return { ...node, x: node.x + dx, y: node.y + dy, moved: true };
-  });
+  }));
 
   const byKey: Record<string, NodeBox> = {};
   for (const n of nodes) byKey[n.key] = n;
@@ -731,10 +760,25 @@ export function layoutTopology(
   });
 
   /* ---- 8. site rects, recomputed after the overrides moved cards ---- */
+  /* The box around a set of cards: their extent, a stack's header above its
+     top blade (a blade's own `y` is under the header, so `y - headerH` is the
+     stack's top for the top blade and inside the stack for the others), the
+     padding, and the name band at the bottom. */
+  const boxAround = (list: readonly NodeBox[]): { x0: number; y0: number; x1: number; y1: number } => ({
+    x0: Math.min(...list.map((n) => n.x)) - LAYOUT.colPad,
+    y0: Math.min(...list.map((n) => (n.stackKey === undefined ? n.y : n.y - LAYOUT.stackHeaderH))) - LAYOUT.colPad,
+    x1: Math.max(...list.map((n) => n.x + n.w)) + LAYOUT.colPad,
+    y1: Math.max(...list.map((n) => n.y + n.h)) + LAYOUT.colPad + LAYOUT.labelBand,
+  });
   const sites: SiteBox[] = [];
   columns.forEach((c, ci) => {
     const own = nodes.filter((n) => (n.site as string) === (c.site as string));
+    const ov = overrides[c.site as string];
+    const sized = ov !== undefined && typeof ov.w === 'number' && typeof ov.h === 'number'
+      && isFinite(ov.w) && isFinite(ov.h);
     let x0: number; let y0: number; let x1: number; let y1: number;
+    let anchor: { x: number; y: number };
+    let fit: Rect;
     if (own.length === 0) {
       /* The empty panel: one column wide, the member band tall -- or one card
          tall when there is no member band to match. */
@@ -745,23 +789,39 @@ export function layoutTopology(
       x0 = cx; x1 = cx + cw;
       y0 = top - LAYOUT.colPad;
       y1 = top + tall + LAYOUT.colPad + LAYOUT.labelBand;
-      /* The one place a site-keyed offset is read: an empty panel has no
-         member whose own drag would carry it, so a drag on the panel itself
-         (`TopoCanvas` `onSitePointerDown`) writes its delta under the site's
-         own id instead. */
-      const ov = overrides[c.site as string];
-      if (ov) {
+      anchor = { x: x0, y: y0 };
+      fit = { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
+      /* The one place a site-keyed offset is read without a size: an empty
+         panel has no member whose own drag would carry it, so a drag on the
+         panel itself (`TopoCanvas` `onSitePointerDown`) writes its delta
+         under the site's own id instead. */
+      if (ov && !sized) {
         const dx = snap8(ov.dx); const dy = snap8(ov.dy);
         x0 += dx; x1 += dx; y0 += dy; y1 += dy;
+        fit = { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
       }
     } else {
-      /* A stack's header sits above its topmost blade, so the panel's own
-         top has to clear it too -- `own` alone would crop the header band. */
-      const ownStacks = stacks.filter((s) => (s.site as string) === (c.site as string));
-      x0 = Math.min(...own.map((n) => n.x)) - LAYOUT.colPad;
-      y0 = Math.min(...own.map((n) => n.y), ...ownStacks.map((s) => s.y)) - LAYOUT.colPad;
-      x1 = Math.max(...own.map((n) => n.x + n.w)) + LAYOUT.colPad;
-      y1 = Math.max(...own.map((n) => n.y + n.h)) + LAYOUT.colPad + LAYOUT.labelBand;
+      const natural = boxAround(placed
+        .map((p) => p.node)
+        .filter((n) => (n.site as string) === (c.site as string)));
+      anchor = { x: natural.x0, y: natural.y0 };
+      ({ x0, y0, x1, y1 } = boxAround(own));
+      fit = { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
+    }
+    /* A size of its own: the stored box, grown to whatever it has to hold --
+       never smaller than its cards, whatever the link or the file says. */
+    if (sized) {
+      const bx = anchor.x + Math.round(ov.dx);
+      const by = anchor.y + Math.round(ov.dy);
+      const bw = Math.max(own.length === 0 ? SITE_MIN.w : 0, Math.round(ov.w as number));
+      const bh = Math.max(own.length === 0 ? SITE_MIN.h : 0, Math.round(ov.h as number));
+      if (own.length === 0) {
+        x0 = bx; y0 = by; x1 = bx + bw; y1 = by + bh;
+        fit = { x: x0, y: y0, w: SITE_MIN.w, h: SITE_MIN.h };
+      } else {
+        x0 = Math.min(x0, bx); y0 = Math.min(y0, by);
+        x1 = Math.max(x1, bx + bw); y1 = Math.max(y1, by + bh);
+      }
     }
     const site = doc.sites.find((s) => (s.id as string) === (c.site as string));
     const name = site?.name ?? (c.site as string);
@@ -774,6 +834,9 @@ export function layoutTopology(
       labelY: y1 - 5,
       col: ci,
       empty: own.length === 0,
+      fit,
+      anchor,
+      sized,
     });
   });
 
@@ -801,6 +864,77 @@ export function layoutTopology(
     maxRank,
     unreachableRank,
   };
+}
+
+/**
+ * Step 7b: a card the layout placed makes way for one the reader placed.
+ *
+ * The auto-layout never overlaps two of its own cards, but a card moved by
+ * hand keeps its offset from a slot the layout may since have given to
+ * something new -- a standby added to that data centre, a card dropped into
+ * it -- and the newcomer then landed on top of it. Here every unit the layout
+ * placed (a card alone, or a chassis stack with every blade) that overlaps a
+ * hand-moved card, or a unit already settled above it, slides straight down
+ * until it is clear, one row gap below. Hand-moved cards never move, and
+ * nothing is written anywhere: the next layout starts from the natural slots
+ * again, so a card that no longer collides returns to its own.
+ *
+ * With nothing moved by hand this returns its input untouched, which keeps
+ * every preset's geometry golden exactly where it was.
+ */
+function makeWay(transient: readonly string[], nodes: NodeBox[]): NodeBox[] {
+  if (!nodes.some((n) => n.moved && !transient.includes(n.key))) return nodes;
+  const headerOf = (n: NodeBox): number => (n.stackKey === undefined ? 0 : LAYOUT.stackHeaderH);
+  const boxOf = (list: readonly NodeBox[]): Rect => {
+    const x0 = Math.min(...list.map((n) => n.x));
+    const y0 = Math.min(...list.map((n) => n.y - headerOf(n)));
+    const x1 = Math.max(...list.map((n) => n.x + n.w));
+    const y1 = Math.max(...list.map((n) => n.y + n.h));
+    return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
+  };
+  /* Units: a stack moves as one, unless a blade of it was moved by hand --
+     then every blade of it stays where it is, as an obstacle. */
+  const units = new Map<string, NodeBox[]>();
+  for (const n of nodes) {
+    const k = n.stackKey ?? `card:${n.key}`;
+    units.set(k, [...(units.get(k) ?? []), n]);
+  }
+  const fixed: Rect[] = [];
+  const auto: { key: string; list: NodeBox[]; box: Rect }[] = [];
+  for (const [key, list] of units) {
+    /* In the air: neither an obstacle nor pushed. */
+    if (list.some((n) => transient.includes(n.key))) continue;
+    if (list.some((n) => n.moved)) fixed.push(...list.map((n) => ({ x: n.x, y: n.y - headerOf(n), w: n.w, h: n.h + headerOf(n) })));
+    else auto.push({ key, list, box: boxOf(list) });
+  }
+  /* Top to bottom, left to right: a unit pushed down meets the ones under it
+     in the order the reader reads them. */
+  auto.sort((a, b) => a.box.y - b.box.y || a.box.x - b.box.x);
+  /* Clear by a hair counts as clear -- a card nudged one grid step towards its
+     neighbour must not shove it -- but whatever has to move lands a full row
+     gap below what it met. */
+  const gap = LAYOUT.rowGap;
+  const hair = 4;
+  const clash = (a: Rect, b: Rect): boolean =>
+    a.x < b.x + b.w + hair && b.x < a.x + a.w + hair && a.y < b.y + b.h + hair && b.y < a.y + a.h + hair;
+  const settled: Rect[] = [...fixed];
+  const shift = new Map<string, number>();
+  for (const u of auto) {
+    let box = u.box;
+    for (let guard = 0; guard < 64; guard++) {
+      const hit = settled.filter((r) => clash(box, r));
+      if (hit.length === 0) break;
+      const below = Math.max(...hit.map((r) => r.y + r.h)) + gap;
+      box = { ...box, y: below };
+    }
+    settled.push(box);
+    if (box.y !== u.box.y) for (const n of u.list) shift.set(n.key, box.y - u.box.y);
+  }
+  if (shift.size === 0) return nodes;
+  return nodes.map((n) => {
+    const dy = shift.get(n.key);
+    return dy === undefined ? n : { ...n, y: n.y + dy };
+  });
 }
 
 /** A cascaded member whose feeder shares its site is indented under it. */

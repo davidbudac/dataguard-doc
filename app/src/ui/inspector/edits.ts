@@ -25,6 +25,7 @@ import { edit } from '@/state/history';
 import { select, toast } from '@/state/view';
 import type { WhyState } from '../common/WhyPill';
 import { off, ON, WHY } from './why';
+import { siteForNewFarSync, siteForNewObserver, siteForNewStandby } from '../build/placement';
 
 /* ---------------- the two primitives ---------------- */
 
@@ -122,23 +123,11 @@ const hostNames = (t: TopologyDoc): string[] => t.hosts.map((h) => h.id as strin
 /* ---------------- adding ---------------- */
 
 /**
- * Where a new database belongs: a data centre that has no database in it yet
- * -- so a second database lands opposite the first, which is the deployment
- * anyone drawing Data Guard means -- and the last site otherwise.
+ * Where a new database belongs when the reader named no place: an empty data
+ * centre, else beside the standbys already drawn -- never the observer's data
+ * centre while another will do (`build/placement.ts`).
  */
-function siteForNewMember(t: TopologyDoc): SiteId | null {
-  const siteOf = new Map<string, string>();
-  for (const h of t.hosts) siteOf.set(h.id as string, h.site as string);
-  const occupied = new Set<string>();
-  for (const m of t.members) {
-    for (const i of m.instances) {
-      const s = siteOf.get(i.host as string);
-      if (s) occupied.add(s);
-    }
-  }
-  const free = t.sites.find((s) => !occupied.has(s.id as string));
-  return free?.id ?? t.sites.at(-1)?.id ?? null;
-}
+const siteForNewMember = (t: TopologyDoc): SiteId | null => siteForNewStandby(t);
 
 /** The data centre a caller named, when this document actually has it. */
 const placeIn = (t: TopologyDoc, where: SiteId | undefined): SiteId | null =>
@@ -224,7 +213,7 @@ export function addDatabase(where?: SiteId): MemberId | null {
 /** Add a far sync instance: no role, no apply, no open mode. */
 export function addFarSync(where?: SiteId): MemberId | null {
   const t = doc.value.topology;
-  const site = placeIn(t, where) ?? siteForNewMember(t) ?? t.sites.at(-1)?.id ?? null;
+  const site = placeIn(t, where) ?? siteForNewFarSync(t) ?? t.sites.at(-1)?.id ?? null;
   if (site === null) return null;
   const name = nextName('fs', memberNames(t));
   const hname = uniqueHost(t, `${site as string}-${name}`);
@@ -250,17 +239,7 @@ export function addFarSync(where?: SiteId): MemberId | null {
  */
 export function addObserver(where?: SiteId): ObserverId | null {
   const t = doc.value.topology;
-  const dbSites = new Set<string>();
-  const siteOf = new Map<string, string>();
-  for (const h of t.hosts) siteOf.set(h.id as string, h.site as string);
-  for (const m of t.members) {
-    for (const i of m.instances) {
-      const s = siteOf.get(i.host as string);
-      if (s) dbSites.add(s);
-    }
-  }
-  const site = placeIn(t, where)
-    ?? t.sites.find((s) => !dbSites.has(s.id as string))?.id ?? t.sites.at(-1)?.id ?? null;
+  const site = placeIn(t, where) ?? siteForNewObserver(t);
   if (site === null) return null;
   const name = nextName('obs', t.observers.map((o) => o.id as string));
   const id = observerId(name);

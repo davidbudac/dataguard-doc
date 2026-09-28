@@ -68,6 +68,31 @@
 .tp-wrap.is-pannable .topo-svg { cursor: grab; }
 .topo-svg.is-pan, .topo-svg.is-pan * { cursor: grabbing; }
 
+/* The drawing is a thing to press and drag, not a page of text: a press that
+   starts on a card's name must move the card, never begin a browser text
+   selection that then paints every label the pointer crosses. The two HTML
+   islands painted into the drawing -- the action bar and the name field --
+   keep ordinary text behaviour, so a rename can still select what it typed. */
+.topo-svg { -webkit-user-select: none; user-select: none; }
+.topo-svg .tp-actions, .topo-svg .tp-rename { -webkit-user-select: text; user-select: text; }
+/* While something is being dragged, the grip shows everywhere the pointer
+   goes -- the pointer is captured, so the element under it means nothing. */
+.topo-svg.is-dragging, .topo-svg.is-dragging * { cursor: grabbing; }
+.topo-svg.is-dragging.cur-ns, .topo-svg.is-dragging.cur-ns * { cursor: ns-resize; }
+.topo-svg.is-dragging.cur-ew, .topo-svg.is-dragging.cur-ew * { cursor: ew-resize; }
+.topo-svg.is-dragging.cur-nwse, .topo-svg.is-dragging.cur-nwse * { cursor: nwse-resize; }
+.topo-svg.is-dragging.cur-nesw, .topo-svg.is-dragging.cur-nesw * { cursor: nesw-resize; }
+
+/* A selected data centre's resize handles: a square on each corner and each
+   edge's middle, over a wider invisible strip that is what the pointer grabs. */
+.topo-svg .tp-rsz-hit { fill: transparent; }
+.topo-svg .tp-rsz-dot { fill: var(--sf); stroke: var(--fc); stroke-width: 1.25; pointer-events: none; }
+.topo-svg .tp-rsz:hover .tp-rsz-dot { fill: var(--fc); }
+.topo-svg .tp-rsz.cur-ns { cursor: ns-resize; }
+.topo-svg .tp-rsz.cur-ew { cursor: ew-resize; }
+.topo-svg .tp-rsz.cur-nwse { cursor: nwse-resize; }
+.topo-svg .tp-rsz.cur-nesw { cursor: nesw-resize; }
+
 /* ---- the strips above the stage ---- */
 /* One row along the top of the stage, holding Build's additions and the zoom
    ladder. In the stage's own flow rather than floating over it, for the reason
@@ -224,6 +249,15 @@
 .topo-svg .tp-ico.is-down { stroke: var(--rd); }
 
 .topo-svg .tp-node.is-live { cursor: pointer; }
+/* The whole card is the grab target. A blade's own rect paints no fill (the
+   chassis behind it does) and a down card's fill is the hatch underneath, and
+   SVG hit-tests only painted fill by default -- so a press on the empty part
+   of either fell through to the chassis or the ground, and only the name or
+   the icon picked the card up. `all` hit-tests the rect's geometry whatever
+   it paints. */
+.topo-svg .tp-node.is-live > rect.tp-card,
+.topo-svg .tp-node.is-live > rect.tp-hatchfill { pointer-events: all; }
+.topo-svg.is-movable .tp-node.is-live { cursor: grab; }
 .topo-svg .tp-node:focus { outline: none; }
 .topo-svg .tp-node:focus-visible .tp-card {
   stroke: var(--fc); stroke-width: 2;
@@ -253,6 +287,7 @@
 .topo-svg .tp-stack-frame.is-drop { fill: var(--vif); stroke: var(--vi); stroke-width: 1.5; }
 .topo-svg .tp-stack-hd { fill: var(--sf3); }
 .topo-svg .tp-stack-hd.is-live { cursor: pointer; pointer-events: auto; }
+.topo-svg.is-movable .tp-stack-hd.is-live { cursor: grab; }
 .topo-svg .tp-stack-hd-tx {
   font-family: var(--mono); font-size: 10.5px; font-weight: 600; letter-spacing: .04em;
   fill: var(--ik2); pointer-events: none;
@@ -473,6 +508,19 @@
 }
 .topo-svg .tp-rubber-ln.is-on { stroke: var(--vi); stroke-dasharray: none; }
 .topo-svg .tp-rubber-ln.is-no { stroke: var(--rd); }
+/* A card in the air (task 1.5): what would take it is lit quietly -- another
+   data centre, another host's card or stack -- the one under the pointer is
+   lit fully (`is-drop`, `is-target`), and what cannot take it fades. */
+.topo-svg .tp-site.is-can-drop { stroke: var(--vi); stroke-width: 1.25; stroke-dasharray: 6 4; }
+.topo-svg .tp-card.is-target-maybe { stroke: var(--vi); stroke-width: 1.25; stroke-dasharray: 4 3; }
+.topo-svg .tp-stack-frame.is-can-drop { stroke: var(--vi); stroke-dasharray: 4 3; }
+.topo-svg .tp-stack-frame.is-drop-no { stroke: var(--rd); stroke-width: 1.5; stroke-dasharray: 3 3; }
+.topo-svg .tp-node.is-dim, .topo-svg .tp-stack.is-dim { opacity: .4; }
+/* Where it will land: an outline on the grid, or its place in the target. */
+.topo-svg .tp-ghost {
+  fill: var(--vif); fill-opacity: .5; stroke: var(--vi); stroke-width: 1.5; stroke-dasharray: 5 3;
+  pointer-events: none;
+}
 .topo-svg .tp-card.is-target { stroke: var(--vi); stroke-width: 1.5; }
 .topo-svg .tp-card.is-target-no { stroke: var(--rd); stroke-width: 1.5; stroke-dasharray: 3 3; }
 /* The label beside the pointer: what the drop would do, or why it will not. */

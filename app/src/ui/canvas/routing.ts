@@ -437,6 +437,7 @@ function candidatesFor(
       corridor: 'over',
       shift: shiftY([1, 2]),
     });
+    out.push(...sideEntries(a, b, geo));
     return out;
   }
 
@@ -512,6 +513,44 @@ function candidatesFor(
     corridor: 'over',
     shift: shiftY([1, 2]),
   });
+  out.push(...sideEntries(a, b, geo));
+  return out;
+}
+
+/**
+ * The last resort before a line has to cross a card (task 1.6): along the
+ * lane above -- or below -- everything, down the free side of the
+ * destination's column, and into the card from the side. The two lane
+ * templates above drop straight onto the card's top or bottom edge, which
+ * runs through whatever else that column stacks there -- an observer over the
+ * standby it watches, a second standby added under the first. Tried only
+ * after every shorter shape has failed, so a drawing that routed cleanly
+ * before routes exactly as it did.
+ */
+function sideEntries(a: NodeBox, b: NodeBox, geo: Geometry): Candidate[] {
+  const ax = centreX(a); const by = centreY(b);
+  const fromLeft = centreX(a) <= centreX(b);
+  const col = geo.columns[b.col];
+  const sideX = fromLeft ? (col ? col.x - 16 : b.x - 16) : (col ? col.x + col.w + 16 : b.x + b.w + 16);
+  const entry = { x: fromLeft ? b.x : b.x + b.w, y: by };
+  const out: Candidate[] = [];
+  for (const lane of ['over', 'under'] as const) {
+    const laneY = lane === 'over' ? geo.overLaneY : geo.underLaneY;
+    const start = lane === 'over' ? { x: ax, y: a.y } : { x: ax, y: a.y + a.h };
+    out.push({
+      points: [start, { x: ax, y: laneY }, { x: sideX, y: laneY }, { x: sideX, y: by }, entry],
+      corridor: lane,
+      /* The lane channel moves the run along the lane; the drop beside the
+         column steps outwards with it, so two of them never share a line. */
+      shift: (pts: Pt[], off: number): Pt[] => pts.map((pt, i) => {
+        const dx = (fromLeft ? -1 : 1) * Math.abs(off) * 0.5;
+        if (i === 1) return { x: pt.x, y: pt.y + off };
+        if (i === 2) return { x: pt.x + dx, y: pt.y + off };
+        if (i === 3) return { x: pt.x + dx, y: pt.y };
+        return pt;
+      }),
+    });
+  }
   return out;
 }
 
@@ -528,15 +567,21 @@ const laneOffset = (corridor: string, index: number): number => {
 };
 
 function crossesACard(points: readonly Pt[], cards: readonly NodeBox[], a: NodeBox, b: NodeBox): boolean {
+  return cardsCrossed(points, cards, a, b) > 0;
+}
+
+/** How many cards other than its own two ends a route runs through. */
+function cardsCrossed(points: readonly Pt[], cards: readonly NodeBox[], a: NodeBox, b: NodeBox): number {
+  const hit = new Set<string>();
   for (let i = 0; i + 1 < points.length; i++) {
     const p = points[i]; const q = points[i + 1];
     if (!p || !q) continue;
     for (const c of cards) {
       if (c.key === a.key || c.key === b.key) continue;
-      if (segmentHitsRect(p, q, c, 1)) return true;
+      if (segmentHitsRect(p, q, c, 1)) hit.add(c.key);
     }
   }
-  return false;
+  return hit.size;
 }
 
 /** Rounded orthogonal path: every corner is one 7 px arc, as the strip draws them. */
@@ -753,14 +798,23 @@ export function routeLinks(links: readonly CanvasLink[], geo: Geometry): Routing
       if (chosen) break;
     }
     if (!chosen) {
-      const fallback = cands[cands.length - 1] ?? cands[0];
-      const corridor = fallback?.corridor ?? null;
-      const taken = corridor === null ? new Set<number>() : (used.get(corridor) ?? new Set<number>());
-      let k = 0;
-      while (taken.has(k) && k < 32) k++;
-      chosen = fallback ? fallback.shift(fallback.points, laneOffset(corridor ?? 'over', k)) : [];
-      chosenCorridor = corridor;
-      chosenIndex = k;
+      /* Nothing is clear: the shape that runs through the fewest cards, in
+         its first free channel -- ties to the earlier, shorter template. */
+      let best: { pts: Pt[]; corridor: string | null; k: number; n: number } | null = null;
+      for (const cand of cands) {
+        const corridor = cand.corridor;
+        const taken = corridor === null ? new Set<number>() : (used.get(corridor) ?? new Set<number>());
+        let k = 0;
+        while (taken.has(k) && k < 32) k++;
+        const pts = cand.points.length === 2 || corridor === null
+          ? cand.points
+          : cand.shift(cand.points, laneOffset(corridor, k));
+        const n = cardsCrossed(pts, cards, a, b);
+        if (best === null || n < best.n) best = { pts, corridor: cand.points.length === 2 ? null : corridor, k, n };
+      }
+      chosen = best?.pts ?? [];
+      chosenCorridor = best?.corridor ?? null;
+      chosenIndex = best?.k ?? 0;
     }
     if (chosenCorridor !== null && chosen.length > 2) {
       const set = used.get(chosenCorridor) ?? new Set<number>();

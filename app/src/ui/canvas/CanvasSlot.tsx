@@ -15,7 +15,7 @@ import type { TopologyDoc } from '@/engine';
 import { hostId, siteId } from '@/engine';
 import { frame, geometry, redoGraph, topology } from '@/state/derived';
 import { doc, withLayout } from '@/state/doc';
-import { breakCoalescing, edit, undo } from '@/state/history';
+import { breakCoalescing, edit, undo, undoLabel } from '@/state/history';
 import {
   canEdit, clearSelection, floating, focusField, hovered, mode, railWhere, select, selection, tNow,
   toast, viewport,
@@ -25,7 +25,8 @@ import {
   addDatabase, addFsfoTarget, addLink, connectVerdict, mergeIntoHost, moveToSite, renameMember,
   renameObserver, renameSite, renameVerdict, shipRedo, tidyLayout,
 } from '../inspector/edits';
-import { placeOver, renaming, setSiteAt } from './place';
+import { inFlight, placeOver, renaming, setSiteAt } from './place';
+import { mergeVerdict } from './drop';
 import {
   actionsFor, nothingToRestore, restoreQuietLine, runAction,
 } from '../break/events';
@@ -37,7 +38,7 @@ import type { BarAction } from './ActionBar';
 import { MAX_ROWS_BREAK } from './ActionBar';
 import { barFocus, barOpen, closeBar, openBar } from './bar';
 import { menuOpen, snapT } from './EventMenu';
-import { TopoCanvas } from './TopoCanvas';
+import { resizedBox, TopoCanvas } from './TopoCanvas';
 import {
   canZoom, fitZoom, WHY_MAX, WHY_MIN, zoom, zoomBy, zoomLabel,
 } from './zoom';
@@ -284,7 +285,7 @@ function useCanvasScale(
  * explains itself in a tooltip rather than in a sentence beside it, and
  * ui.md SS3d says so.
  */
-export const WHY_TIDY = 'No card has been moved by hand, so there is nothing to tidy.';
+export const WHY_TIDY = 'No card has been moved and no data centre resized by hand, so there is nothing to tidy.';
 
 function ZoomStrip({ tidy }: { tidy: boolean }) {
   const at = zoom.value;
@@ -324,7 +325,7 @@ function ZoomStrip({ tidy }: { tidy: boolean }) {
         name: 'Tidy the drawing',
         title: picked.length > 0
           ? 'Put the selected cards back where the layout draws them.'
-          : 'Put every card moved by hand back where the layout draws it.',
+          : 'Put every card moved by hand back where the layout draws it, and every resized data centre back to its own size.',
         run: () => tidyLayout(picked),
       }]
       : []),
@@ -376,7 +377,7 @@ function TidyButton() {
           ? WHY_TIDY
           : picked.length > 0
             ? 'Put the selected cards back where the layout draws them.'
-            : 'Put every card moved by hand back where the layout draws it.'}
+            : 'Put every card moved by hand back where the layout draws it, and every resized data centre back to its own size.'}
         onClick={() => tidyLayout(picked)}
       >
         <svg viewBox="0 0 16 16" aria-hidden="true">
@@ -636,10 +637,43 @@ export function CanvasSlot({ interactive = true }: CanvasSlotProps) {
             /* A card dropped on another host's card or stack merges into it --
                same host, hosts and all, one undo with the drag. */
             onMergeIntoHost: (key: string, host: string): void => mergeIntoHost(key, hostId(host)),
+            /* ...unless the placement rule refuses it: an observer never
+               shares a host with a database. */
+            mergeWhat: (key: string, host: string) => mergeVerdict(topology.value, key, host),
             onConnect: connectFromCanvas,
             connectWhat: (from: string, to: string) => connectVerdict(topology.value, from, to),
+            /* A data centre's handles: its box, a sized override under its
+               own key -- one undo for the whole gesture. */
+            onResizeSite: (site: string, box: { dx: number; dy: number; w?: number; h?: number }): void => {
+              const name = topology.value.sites.find((s) => (s.id as string) === site)?.name ?? site;
+              edit(`Resize the ${name} data centre`, (d) => withLayout(d, site, box), `resize:${site}`);
+            },
+            onResizeEnd: () => breakCoalescing(),
+            onResizeBy: (site: string, dx: number, dy: number): void => {
+              /* Read live, not from the render: a second press before the
+                 repaint must grow from where the first one left the box. */
+              const st = geometry.value?.sites.find((s) => (s.id as string) === site);
+              if (!st) return;
+              const box = resizedBox(
+                { start: st, fit: st.fit, anchor: st.anchor, empty: st.empty },
+                { l: false, r: true, t: false, b: true }, dx, dy,
+              );
+              edit(`Resize the ${st.name} data centre`, (d) => withLayout(d, site, box), `resize:${site}`);
+            },
           }
           : {})}
+        /* A card let go inside its own data centre: the boxes it would have
+           shrunk keep their size, in the drag's own edit (`drag:${key}`), so
+           the move and the kept size undo as one. */
+        onHoldSites={(key: string, boxes: Readonly<Record<string, { dx: number; dy: number; w?: number; h?: number }>>) => {
+          /* The drag's own label: the kept boxes are part of that move, not a
+             second thing the reader did. */
+          edit(
+            undoLabel.peek() ?? `Move the ${key} card`,
+            (d) => Object.entries(boxes).reduce((acc, [id, box]) => withLayout(acc, id, box), d),
+            `drag:${key}`,
+          );
+        }}
         onDrag={(
           key: string, _offset: { dx: number; dy: number },
           all: Readonly<Record<string, { dx: number; dy: number }>>,
@@ -652,6 +686,7 @@ export function CanvasSlot({ interactive = true }: CanvasSlotProps) {
              observers along, so the label says "data centre" rather than
              "card" when that is what moved. */
           const ids = Object.keys(all);
+          if (inFlight.peek().join('\u0000') !== ids.join('\u0000')) inFlight.value = ids;
           const site = topology.value.sites.find((s) => (s.id as string) === key);
           const label = site
             ? `Move the ${site.name} data centre`
@@ -662,7 +697,11 @@ export function CanvasSlot({ interactive = true }: CanvasSlotProps) {
             `drag:${key}`,
           );
         }}
-        onDragEnd={() => breakCoalescing()}
+        onDragEnd={() => {
+          /* Landed: from here on, what it overlaps makes way for it. */
+          inFlight.value = [];
+          breakCoalescing();
+        }}
       />
     </>
   );

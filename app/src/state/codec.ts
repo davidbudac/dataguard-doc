@@ -115,10 +115,19 @@ function parseUi(raw: unknown, dropped: string[]): WireUi {
       const dx = typeof o['dx'] === 'number' && isFinite(o['dx']) ? o['dx'] : null;
       const dy = typeof o['dy'] === 'number' && isFinite(o['dy']) ? o['dy'] : null;
       if (dx === null || dy === null) { dropped.push(`ui.layout.${id}`); continue; }
-      layout[id] = {
-        dx: snapToGrid(Math.max(-4000, Math.min(4000, dx))),
-        dy: snapToGrid(Math.max(-4000, Math.min(4000, dy))),
-      };
+      const w = typeof o['w'] === 'number' && isFinite(o['w']) ? o['w'] : null;
+      const h = typeof o['h'] === 'number' && isFinite(o['h']) ? o['h'] : null;
+      const clamp = (v: number): number => Math.max(-4000, Math.min(4000, v));
+      /* A data centre's own box (doc.ts `LayoutOverride`): kept to the pixel,
+         because it is measured off a rectangle that is not on the grid. An
+         entry with only one of the two sizes is read as a plain offset --
+         an older page wrote neither, so an older link reads exactly as it did. */
+      layout[id] = w !== null && h !== null
+        ? {
+          dx: Math.round(clamp(dx)), dy: Math.round(clamp(dy)),
+          w: Math.round(Math.max(16, Math.min(8000, w))), h: Math.round(Math.max(16, Math.min(8000, h))),
+        }
+        : { dx: snapToGrid(clamp(dx)), dy: snapToGrid(clamp(dy)) };
     }
     out.layout = layout;
   }

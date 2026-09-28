@@ -21,11 +21,27 @@ import { signal } from '@preact/signals';
 import { classicTopology, sortEvents } from '@/engine';
 import type { Edition, MemberId, SimParams, TimedEvent, TopologyDoc } from '@/engine';
 
-/** A drag override for one card, in canvas units, snapped to the 8 px grid. */
+/**
+ * A drag override for one card, in canvas units, snapped to the 8 px grid.
+ *
+ * Under a data centre's key it may also carry `w` and `h`: the box the reader
+ * gave that data centre (a resize, or a drag that must not shrink it). Its
+ * rectangle is then its natural rectangle moved by `dx`/`dy`, at that size --
+ * and still grown to hold every card in it, so it is never smaller than its
+ * contents. A sized box is not snapped: it is measured from a rectangle the
+ * layout does not put on the grid, and snapping it would nudge the box by up
+ * to 4 px on every drop. Documents without `w`/`h` read exactly as before.
+ */
 export interface LayoutOverride {
   dx: number;
   dy: number;
+  w?: number;
+  h?: number;
 }
+
+/** True when the override gives a data centre a box of its own. */
+export const isSized = (o: LayoutOverride | undefined): o is Required<LayoutOverride> =>
+  o !== undefined && typeof o.w === 'number' && typeof o.h === 'number';
 
 export interface DocMeta {
   /** Used for the export file name and the window title. */
@@ -95,7 +111,11 @@ export function withoutEventAt(d: Doc, index: number): Doc {
 export function withLayout(d: Doc, id: string, over: LayoutOverride | null): Doc {
   const layout = { ...d.layout };
   if (over === null) delete layout[id];
-  else layout[id] = { dx: snapToGrid(over.dx), dy: snapToGrid(over.dy) };
+  else if (isSized(over)) {
+    layout[id] = {
+      dx: Math.round(over.dx), dy: Math.round(over.dy), w: Math.round(over.w), h: Math.round(over.h),
+    };
+  } else layout[id] = { dx: snapToGrid(over.dx), dy: snapToGrid(over.dy) };
   return { ...d, layout };
 }
 

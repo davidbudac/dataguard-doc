@@ -887,7 +887,13 @@ modes changes what is around it.
   (every route, then every caption; every line, then every card, then every
   caption) so a caption is never painted over by a line routed after it.
   `app/test/ui/canvas-presets.test.ts` holds all eleven presets to the collision
-  rules and to a geometry golden.
+  rules and to a geometry golden. A data centre's box is the bounding box of
+  its cards unless it has a size of its own: `layout[siteId]` may carry `w`/`h`
+  (a handle resize, or a card drop that would otherwise shrink it), measured
+  from the box's natural anchor and never smaller than its cards; Tidy resets it.
+  A card the layout placed slides down out of the way of one moved by hand
+  (`makeWay`, step 7b), and where a new standby, far sync or observer goes when
+  no data centre is named is `ui/build/placement.ts`.
 - **Timeline** (`ui/timeline/`): `build.ts` is a pure
   `buildTimeline(trace, topology, view) → TimelineModel`; the component maps it
   to VNodes. Lane order is primary, observers (master first, and no master at

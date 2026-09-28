@@ -18,8 +18,8 @@ import {
   useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState,
 } from 'preact/hooks';
 import type { RedoGraph, Snapshot, TopologyDoc } from '@/engine';
-import type { Geometry, LayoutOffset, NodeBox } from './layout';
-import { layoutTopology } from './layout';
+import type { Geometry, LayoutOffset, NodeBox, SiteBox, ViewBox } from './layout';
+import { layoutTopology, SITE_MIN } from './layout';
 import { cardFrameFor, cardRoleFor, chipsFor, routeTopology, siteIsDown, unionViewBox } from './routing';
 import { describeTopology, cardLabel, linkLabel, siteLabel } from './aria';
 import { anchorFor, barRoom, fittedScale, placeBar } from './anchor';
@@ -29,10 +29,12 @@ import { ActionBar, barFootprint } from './ActionBar';
 import type { BarAction } from './ActionBar';
 import type { WhyState } from '../common/WhyPill';
 import { approxW, CARD } from './measure';
+import type { Rect } from './measure';
 import { NodeCard } from './NodeCard';
 import { StackChassis } from './StackChassis';
 import { LinkPath, linkKey } from './LinkPath';
 import { SiteRect, siteKey } from './SiteRect';
+import { landingFor } from './drop';
 import { snap8 } from './measure';
 import '@/styles/canvas.css';
 
@@ -72,6 +74,27 @@ export interface TopoCanvasProps {
   onDrag?: (key: string, offset: LayoutOffset, all: Readonly<Record<string, LayoutOffset>>) => void;
   onDragEnd?: (key: string, offset: LayoutOffset, all: Readonly<Record<string, LayoutOffset>>) => void;
   /**
+   * A card let go inside the data centre it came from, where the box would
+   * otherwise shrink round it: these data centres keep the box they had when
+   * the drag began, as a sized override each (`LayoutOffset.w`/`h`). Called
+   * before `onDragEnd`, so the caller can write it into the drag's own edit.
+   */
+  onHoldSites?: (key: string, boxes: Readonly<Record<string, LayoutOffset>>) => void;
+  /**
+   * A data centre resized from one of its handles (or `Alt`+arrow on it): its
+   * new box as a sized override. Passing it draws the handles on a selected
+   * data centre. Every call of one gesture is the same edit.
+   */
+  onResizeSite?: (site: string, box: LayoutOffset) => void;
+  /** The resize gesture is over: the next one is a new edit. */
+  onResizeEnd?: () => void;
+  /**
+   * `Alt` and an arrow on a data centre: its bottom right corner, this far.
+   * A delta rather than a box, so two presses inside one render add up (the
+   * `onNudge` contract).
+   */
+  onResizeBy?: (site: string, dx: number, dy: number) => void;
+  /**
    * `Alt` and an arrow on a card: these cards, this far. A delta rather than
    * the offsets it comes to, so two presses inside one render add up.
    */
@@ -96,6 +119,12 @@ export interface TopoCanvasProps {
    * the layout the way it always has, `onMoveToSite` included.
    */
   onMergeIntoHost?: (key: string, hostId: string) => void;
+  /**
+   * Whether a lone card may share `hostId`: asked while it is in the air, so
+   * a host that would refuse it is dimmed rather than lit, says why under the
+   * pointer, and does not take the drop. Absent means every host may.
+   */
+  mergeWhat?: (key: string, hostId: string) => WhyState;
   /**
    * A line drawn from one card's port to another card. Passing it draws the
    * ports; the caller decides what a member-to-member or a member-to-observer
@@ -237,7 +266,58 @@ interface MarqueeDrag {
   additive: boolean;
 }
 
-type DragState = CardDrag | PanDrag | LinkDrag | MarqueeDrag;
+/** A data centre's handle being dragged: which edges move, from which box. */
+interface ResizeDrag {
+  kind: 'resize';
+  site: string;
+  edges: ResizeEdges;
+  /** The box as drawn when the handle was pressed, and what bounds it. */
+  start: Rect;
+  fit: Rect;
+  anchor: { x: number; y: number };
+  empty: boolean;
+  startX: number;
+  startY: number;
+  scale: number;
+  moved: boolean;
+}
+
+export interface ResizeEdges { l: boolean; r: boolean; t: boolean; b: boolean }
+
+type DragState = CardDrag | PanDrag | LinkDrag | MarqueeDrag | ResizeDrag;
+
+/** The eight handles of a data centre's box, by compass point. */
+const HANDLES: readonly { id: string; edges: ResizeEdges; cursor: string }[] = [
+  { id: 'n', edges: { l: false, r: false, t: true, b: false }, cursor: 'ns' },
+  { id: 's', edges: { l: false, r: false, t: false, b: true }, cursor: 'ns' },
+  { id: 'w', edges: { l: true, r: false, t: false, b: false }, cursor: 'ew' },
+  { id: 'e', edges: { l: false, r: true, t: false, b: false }, cursor: 'ew' },
+  { id: 'nw', edges: { l: true, r: false, t: true, b: false }, cursor: 'nwse' },
+  { id: 'se', edges: { l: false, r: true, t: false, b: true }, cursor: 'nwse' },
+  { id: 'ne', edges: { l: false, r: true, t: true, b: false }, cursor: 'nesw' },
+  { id: 'sw', edges: { l: true, r: false, t: false, b: true }, cursor: 'nesw' },
+];
+
+/**
+ * A data centre's box with some of its edges moved by (dx, dy), in the
+ * drawing's units: snapped to the 8 px grid, never smaller than `SITE_MIN`,
+ * and never cutting into the cards it holds (`fit`) -- as the sized override
+ * `layoutTopology` reads back (`dx`/`dy` from the box's `anchor`).
+ */
+export function resizedBox(
+  from: { start: Rect; fit: Rect; anchor: { x: number; y: number }; empty: boolean },
+  edges: ResizeEdges, dx: number, dy: number,
+): LayoutOffset {
+  const { start, fit } = from;
+  let x0 = start.x; let y0 = start.y; let x1 = start.x + start.w; let y1 = start.y + start.h;
+  const sx = snap8(dx); const sy = snap8(dy);
+  const hold = !from.empty;
+  if (edges.l) x0 = Math.min(x0 + sx, x1 - SITE_MIN.w, hold ? fit.x : Infinity);
+  if (edges.r) x1 = Math.max(x1 + sx, x0 + SITE_MIN.w, hold ? fit.x + fit.w : -Infinity);
+  if (edges.t) y0 = Math.min(y0 + sy, y1 - SITE_MIN.h, hold ? fit.y : Infinity);
+  if (edges.b) y1 = Math.max(y1 + sy, y0 + SITE_MIN.h, hold ? fit.y + fit.h : -Infinity);
+  return { dx: x0 - from.anchor.x, dy: y0 - from.anchor.y, w: x1 - x0, h: y1 - y0 };
+}
 
 const DRAG_THRESHOLD = 4;
 
@@ -272,6 +352,28 @@ const scrollerFor = (svg: SVGSVGElement): Element | null => {
   return svg.closest('.app-stage');
 };
 
+/** Grab thickness of a handle, and the size of the square drawn on it. */
+const HANDLE_HIT = 12;
+const HANDLE_DOT = 7;
+
+/** Where a handle can be grabbed: a square on a corner, a strip along an edge. */
+function handleHit(r: Rect, e: ResizeEdges): Rect {
+  const t = HANDLE_HIT;
+  const corner = (e.l || e.r) && (e.t || e.b);
+  if (corner) {
+    return { x: (e.l ? r.x : r.x + r.w) - t / 2 - 2, y: (e.t ? r.y : r.y + r.h) - t / 2 - 2, w: t + 4, h: t + 4 };
+  }
+  if (e.t || e.b) return { x: r.x + t, y: (e.t ? r.y : r.y + r.h) - t / 2, w: Math.max(0, r.w - 2 * t), h: t };
+  return { x: (e.l ? r.x : r.x + r.w) - t / 2, y: r.y + t, w: t, h: Math.max(0, r.h - 2 * t) };
+}
+
+/** The small square drawn on a handle: on the corner, or mid-edge. */
+function handleDot(r: Rect, e: ResizeEdges): Rect {
+  const cx = e.l ? r.x : e.r ? r.x + r.w : r.x + r.w / 2;
+  const cy = e.t ? r.y : e.b ? r.y + r.h : r.y + r.h / 2;
+  return { x: cx - HANDLE_DOT / 2, y: cy - HANDLE_DOT / 2, w: HANDLE_DOT, h: HANDLE_DOT };
+}
+
 export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
   const {
     doc, graph, frame = null, prefix = 'tp', interactive = true, zoomFactor = 1,
@@ -286,7 +388,24 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
   );
   const routed = useMemo(() => routeTopology(doc, graph, geo, frame), [doc, graph, geo, frame]);
   const aria = useMemo(() => describeTopology(doc, graph, frame), [doc, graph, frame]);
-  const view = unionViewBox(geo.viewBox, routed.bounds);
+  /* What a drag in flight holds still: the viewBox, so the drawing does not
+     rescale under the pointer as the thing being dragged changes the bounds,
+     and -- for a card's drag -- every data centre's rectangle, so the panel a
+     card is carried inside or out of keeps its size until the drop (task 1.2).
+     A data centre's own drag leaves `sites` live: its panel is what moves. */
+  const [frozen, setFrozen] = useState<{ view: ViewBox; sites: readonly SiteBox[] | null } | null>(null);
+  const view = frozen?.view ?? unionViewBox(geo.viewBox, routed.bounds);
+  /* The panels as the reader sees them, and so as the drop is aimed at them. */
+  const sitesDrawn = frozen?.sites ?? geo.sites;
+  /* A card drag in flight, as the drawing shows it (task 1.5): the cards it
+     carries, how far short of the pointer the 8 px grid holds them (`rx`,
+     `ry` -- the cards follow the pointer, their outline shows the snap), the
+     pointer itself for the note beside it, and a host that refuses the card. */
+  const [air, setAir] = useState<{
+    key: string; keys: readonly string[]; group: boolean; canMerge: boolean;
+    rx: number; ry: number; x: number; y: number;
+    denied: { host: string; why: string } | null;
+  } | null>(null);
 
   const svgRef = useRef<SVGSVGElement | null>(null);
   /* Every focusable thing on the drawing, by key: cards, site panels and the
@@ -307,6 +426,10 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
      survive the pointer leaving the ground it was pressed on, so it is state
      rather than a `:active` rule. */
   const [panning, setPanning] = useState(false);
+  /* A card, a data centre or a selection rectangle in flight: the drawing
+     turns off anything a browser would do with the same press -- chiefly a
+     text selection that would paint every label the pointer crosses. */
+  const [moving, setMoving] = useState<string | null>(null);
   /* A drag in flight, as the drawing shows it: the panel about to take the
      card, or the line from a port to the pointer and the card it is over. State
      rather than a ref, because the drawing has to repaint on every move. */
@@ -364,7 +487,7 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
     p.x >= r.x && p.x <= r.x + r.w && p.y >= r.y && p.y <= r.y + r.h;
   /** The other site panel under the point, or null. */
   const siteUnder = (p: { x: number; y: number }, own: string): string | null =>
-    geo.sites.find((s) => (s.id as string) !== own && inside(s, p))?.id as string | undefined ?? null;
+    sitesDrawn.find((s) => (s.id as string) !== own && inside(s, p))?.id as string | undefined ?? null;
   /** The other card under the point, or null: cards only, never a panel or a caption. */
   const cardUnder = (p: { x: number; y: number }, own: string): string | null =>
     geo.nodes.find((n) => n.key !== own && inside(n, p))?.key ?? null;
@@ -600,6 +723,23 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
     }
   };
 
+  /**
+   * A data centre's keys: `Alt` and an arrow resizes it from its bottom right
+   * corner -- one 8 px step, four with `Shift` -- the keyboard's way to what
+   * the handles do; everything else is every entity's.
+   */
+  const onSiteKey = (key: string, ev: JSX.TargetedKeyboardEvent<SVGGElement>): void => {
+    if (ev.altKey && props.onResizeBy && ev.key.startsWith('Arrow')) {
+      ev.preventDefault();
+      const step = ev.shiftKey ? 32 : 8;
+      const dx = ev.key === 'ArrowLeft' ? -step : ev.key === 'ArrowRight' ? step : 0;
+      const dy = ev.key === 'ArrowUp' ? -step : ev.key === 'ArrowDown' ? step : 0;
+      props.onResizeBy(key, dx, dy);
+      return;
+    }
+    onEntityKey(key, ev);
+  };
+
   /** The captions are one stop and a list: the arrows walk them in routed order. */
   const onLinkKey = (key: string, ev: JSX.TargetedKeyboardEvent<SVGGElement>): void => {
     const at = linkAt(key);
@@ -707,7 +847,8 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
     const rect = svg.getBoundingClientRect();
     const scale = rect.width > 0 ? view.w / rect.width : 1;
     const members = geo.nodes.filter((n) => (n.site as string) === key).map((n) => n.key);
-    const keys = members.length > 0 ? members : [key];
+    /* A box with a size of its own is carried with its cards, under its own key. */
+    const keys = members.length === 0 ? [key] : site.sized ? [...members, key] : members;
     const bases: Record<string, LayoutOffset> = {};
     for (const k of keys) bases[k] = overrides[k] ?? { dx: 0, dy: 0 };
     drag.current = {
@@ -780,6 +921,18 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
     };
   };
 
+  /**
+   * The moment a press becomes a drag: capture the pointer, and drop any text
+   * selection a browser may already have begun from the press (Safari starts
+   * one on `mousedown` whatever `user-select` says about the target, once the
+   * pointer has crossed into ordinary page text).
+   */
+  const takeDrag = (ev: JSX.TargetedPointerEvent<SVGSVGElement>, cursor = 'grab'): void => {
+    svgRef.current?.setPointerCapture?.(ev.pointerId);
+    if (typeof window !== 'undefined') window.getSelection?.()?.removeAllRanges();
+    setMoving(cursor);
+  };
+
   const onPointerMove = (ev: JSX.TargetedPointerEvent<SVGSVGElement>): void => {
     const d = drag.current;
     if (!d) return;
@@ -789,7 +942,7 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
       if (!d.moved && Math.hypot(dx, dy) < DRAG_THRESHOLD) return;
       /* Capture on the same terms as a card drag: only once this has become a
          pan, so a plain click on the ground still reaches its own handler. */
-      if (!d.moved) { svgRef.current?.setPointerCapture?.(ev.pointerId); setPanning(true); }
+      if (!d.moved) { takeDrag(ev); setPanning(true); }
       d.moved = true;
       /* The paper follows the pointer, so the scroll goes the other way. */
       d.stage.scrollLeft = d.left - dx;
@@ -798,16 +951,29 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
     }
     if (d.kind === 'marquee') {
       if (!d.moved && Math.hypot(ev.clientX - d.startX, ev.clientY - d.startY) < DRAG_THRESHOLD) return;
-      if (!d.moved) svgRef.current?.setPointerCapture?.(ev.pointerId);
+      if (!d.moved) takeDrag(ev);
       d.moved = true;
       setBand(bandOf(d, ev.clientX, ev.clientY));
+      return;
+    }
+    if (d.kind === 'resize') {
+      if (!d.moved && Math.hypot(ev.clientX - d.startX, ev.clientY - d.startY) < DRAG_THRESHOLD) return;
+      if (!d.moved) {
+        const h = HANDLES.find((x) => x.edges.l === d.edges.l && x.edges.r === d.edges.r
+          && x.edges.t === d.edges.t && x.edges.b === d.edges.b);
+        takeDrag(ev, h?.cursor ?? 'grab');
+        setFrozen({ view, sites: null });
+      }
+      d.moved = true;
+      props.onResizeSite?.(d.site, resizedBox(d, d.edges,
+        (ev.clientX - d.startX) * d.scale, (ev.clientY - d.startY) * d.scale));
       return;
     }
     if (d.kind === 'link') {
       const dx = ev.clientX - d.startX;
       const dy = ev.clientY - d.startY;
       if (!d.moved && Math.hypot(dx, dy) < DRAG_THRESHOLD) return;
-      if (!d.moved) svgRef.current?.setPointerCapture?.(ev.pointerId);
+      if (!d.moved) takeDrag(ev);
       d.moved = true;
       const p = toUser(ev.clientX, ev.clientY, d.scale);
       d.over = linkTargetUnder(p, d.from);
@@ -818,13 +984,32 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
     const dx = (ev.clientX - d.startX) * d.scale;
     const dy = (ev.clientY - d.startY) * d.scale;
     if (!d.moved && Math.hypot(dx, dy) < DRAG_THRESHOLD) return;
-    if (!d.moved) svgRef.current?.setPointerCapture?.(ev.pointerId);
+    if (!d.moved) {
+      takeDrag(ev);
+      const ownPanel = geo.sites.some((st) => (st.id as string) === d.key);
+      setFrozen({ view, sites: ownPanel ? null : geo.sites });
+    }
     d.moved = true;
     const all = offsetsOf(d, dx, dy);
     props.onDrag?.(d.key, all[d.key] as LayoutOffset, all);
     const p = toUser(ev.clientX, ev.clientY, d.scale);
-    const hostOver = props.onMergeIntoHost && d.canMerge ? mergeTargetUnder(p, d.key) : null;
+    const aimed = props.onMergeIntoHost && d.canMerge ? mergeTargetUnder(p, d.key) : null;
+    const verdict = aimed === null ? null : props.mergeWhat?.(d.key, aimed) ?? null;
+    const denied = aimed !== null && verdict !== null && verdict.state === 'off'
+      ? { host: aimed, why: verdict.why } : null;
+    const hostOver = denied === null ? aimed : null;
     if (hostOver !== d.hostOver) { d.hostOver = hostOver; setHostDropTarget(hostOver); }
+    setAir({
+      key: d.key,
+      keys: Object.keys(d.bases),
+      group: geo.sites.some((st) => (st.id as string) === d.key),
+      canMerge: d.canMerge && props.onMergeIntoHost !== undefined,
+      rx: dx - snap8(dx),
+      ry: dy - snap8(dy),
+      x: p.x,
+      y: p.y,
+      denied,
+    });
     if (props.onMoveToSite) {
       /* A host takes the drop first: the site highlight underneath it would
          only repeat what the card or the stack already says. */
@@ -836,8 +1021,12 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
 
   const offsetsOf = (d: CardDrag, dx: number, dy: number): Record<string, LayoutOffset> => {
     const all: Record<string, LayoutOffset> = {};
+    /* The delta is snapped, not the sum: every card's base is already on the
+       grid, so for a card the two agree, and a data centre's sized box -- which
+       is not on the grid -- keeps its place relative to its cards as it goes. */
+    const sx = snap8(dx); const sy = snap8(dy);
     for (const [k, base] of Object.entries(d.bases)) {
-      all[k] = { dx: snap8(base.dx + dx), dy: snap8(base.dy + dy) };
+      all[k] = { ...base, dx: base.dx + sx, dy: base.dy + sy };
     }
     return all;
   };
@@ -852,7 +1041,9 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
     if (!d) return;
     drag.current = null;
     svgRef.current?.releasePointerCapture?.(ev.pointerId);
+    if (d.moved) { setMoving(null); setFrozen(null); }
     if (d.kind === 'pan') { if (d.moved) setPanning(false); return; }
+    if (d.kind === 'resize') { if (d.moved) props.onResizeEnd?.(); return; }
     if (d.kind === 'marquee') {
       setBand(null);
       if (!d.moved) return;
@@ -878,6 +1069,7 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
     if (!d.moved) return;
     if (d.over !== null) setDropSite(null);
     if (d.hostOver !== null) setHostDropTarget(null);
+    setAir(null);
     const dx = (ev.clientX - d.startX) * d.scale;
     const dy = (ev.clientY - d.startY) * d.scale;
     const all = offsetsOf(d, dx, dy);
@@ -894,7 +1086,8 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
        highlight already showed while it was still in the air. */
     if (props.onMergeIntoHost && d.canMerge) {
       const target = mergeTargetUnder(toUser(ev.clientX, ev.clientY, d.scale), d.key);
-      if (target !== null) { props.onMergeIntoHost(d.key, target); dropped = true; }
+      const refused = target !== null && props.mergeWhat?.(d.key, target).state === 'off';
+      if (target !== null && !refused) { props.onMergeIntoHost(d.key, target); dropped = true; }
     }
     /* Dropped in another data centre: the move is the caller's edit, coalesced
        under the same key the drag itself carries. The pressed card goes
@@ -908,7 +1101,59 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
         }
       }
     }
+    /* Let go inside the data centre it came from: a box that would now shrink
+       round what is left in it keeps the size it had when the drag began, and
+       only grows -- to take a card let go past its edge (task 1.2). */
+    if (!dropped && d.over === null && props.onHoldSites && frozen?.sites) {
+      const held = holdsAfter(frozen.sites, d, all);
+      if (Object.keys(held).length > 0) props.onHoldSites(d.key, held);
+    }
     props.onDragEnd?.(d.key, all[d.key] as LayoutOffset, all);
+  };
+
+  /** The data centres a card drag would shrink, with the box each should keep. */
+  const holdsAfter = (
+    was: readonly SiteBox[], d: CardDrag, all: Readonly<Record<string, LayoutOffset>>,
+  ): Record<string, LayoutOffset> => {
+    const after = layoutTopology(doc, graph, { overrides: { ...overrides, ...all } });
+    const touched = new Set(Object.keys(d.bases)
+      .map((k) => geo.byKey[k]?.site as string | undefined)
+      .filter((x): x is string => x !== undefined));
+    const out: Record<string, LayoutOffset> = {};
+    for (const id of touched) {
+      const before = was.find((st) => (st.id as string) === id);
+      const now = after.sites.find((st) => (st.id as string) === id);
+      if (!before || !now) continue;
+      const holds = now.x <= before.x && now.y <= before.y
+        && now.x + now.w >= before.x + before.w && now.y + now.h >= before.y + before.h;
+      if (holds) continue;
+      out[id] = { dx: before.x - now.anchor.x, dy: before.y - now.anchor.y, w: before.w, h: before.h };
+    }
+    return out;
+  };
+
+  /** A press on one of a data centre's handles: the start of a resize. */
+  const onHandlePointerDown = (
+    site: SiteBox, edges: ResizeEdges, ev: JSX.TargetedPointerEvent<SVGGElement>,
+  ): void => {
+    if (!props.onResizeSite || ev.button !== 0) return;
+    const svg = svgRef.current;
+    if (!svg) return;
+    ev.stopPropagation();
+    const rect = svg.getBoundingClientRect();
+    drag.current = {
+      kind: 'resize',
+      site: site.id as string,
+      edges,
+      start: { x: site.x, y: site.y, w: site.w, h: site.h },
+      fit: site.fit,
+      anchor: site.anchor,
+      empty: site.empty,
+      startX: ev.clientX,
+      startY: ev.clientY,
+      scale: rect.width > 0 ? view.w / rect.width : 1,
+      moved: false,
+    };
   };
 
   /**
@@ -933,7 +1178,7 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
    */
   const onSvgPointerUp = (ev: JSX.TargetedPointerEvent<SVGSVGElement>): void => {
     const d = drag.current;
-    const wasCard = d !== null && (d.kind === 'card' || d.kind === 'link');
+    const wasCard = d !== null && (d.kind === 'card' || d.kind === 'link' || d.kind === 'resize');
     const panned = d !== null && (d.kind === 'pan' || d.kind === 'marquee') && d.moved;
     endDrag(ev);
     if (wasCard || panned) return;
@@ -954,6 +1199,61 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
     ev.preventDefault();
     props.onOpen?.(key);
   };
+
+  /* ---- a card in the air: what may take it, and where it will land ---- */
+  const airOwnSite = air === null ? null : (geo.byKey[air.key]?.site as string | undefined) ?? null;
+  /** Another data centre the carried cards may be dropped into. */
+  const canDropIn = (site: string): boolean => air !== null && !air.group
+    && props.onMoveToSite !== undefined && airOwnSite !== null && site !== airOwnSite;
+  /**
+   * How a host other than the carried card's own answers the drag: `maybe`
+   * where it would take the card, `no` where the pointer is on one that
+   * refuses it, `dim` where it cannot take it at all -- a RAC card, which
+   * stands on no single host, or a host that refuses. Only a lone card's drag
+   * has a merge to offer, so only it lights anything up.
+   */
+  const hostHint = (host: string | undefined): 'maybe' | 'no' | 'dim' | null => {
+    if (air === null || !air.canMerge) return null;
+    const own = hostIdOf(air.key);
+    if (host === undefined) return 'dim';
+    if (host === own) return null;
+    if (air.denied?.host === host) return 'no';
+    const v = props.mergeWhat?.(air.key, host);
+    return v !== undefined && v.state === 'off' ? 'dim' : 'maybe';
+  };
+  const cardHint = (key: string): 'maybe' | 'no' | 'dim' | null => (air === null || !air.canMerge
+    ? null : hostHint(hostIdOf(key)));
+  /* The landing outlines, worked out once per target rather than per move. */
+  const airKey = air?.key ?? null;
+  const airKeys = air?.keys.join('\u0000') ?? '';
+  const airGroup = air?.group ?? false;
+  const ghosts = useMemo((): Rect[] => {
+    if (airKey === null || airGroup) return [];
+    if (hostDropTarget !== null || dropSite !== null) {
+      const to = hostDropTarget !== null ? { host: hostDropTarget } : { site: dropSite as string };
+      const r = landingFor(doc, graph, overrides, geo, sitesDrawn, airKey, to);
+      return r === null ? [] : [r];
+    }
+    return airKeys.split('\u0000').map((k) => geo.byKey[k]).filter((n): n is NodeBox => n !== undefined);
+  }, [airKey, airKeys, airGroup, hostDropTarget, dropSite, doc, graph, overrides, geo, sitesDrawn]);
+  /** What the drop would do, said beside the pointer. */
+  const airTip = ((): { text: string; refused: boolean } | null => {
+    if (air === null) return null;
+    const siteName = (id: string): string => doc.sites.find((st) => (st.id as string) === id)?.name ?? id;
+    /* Refused by the host under it, but still over another data centre: the
+       drop is the move, and the note says both. */
+    if (air.denied !== null && dropSite !== null) {
+      return { text: `Move to ${siteName(dropSite)} — not onto that host`, refused: false };
+    }
+    if (air.denied !== null) return { text: air.denied.why, refused: true };
+    if (hostDropTarget !== null) {
+      return { text: `Share host ${doc.hosts.find((h) => (h.id as string) === hostDropTarget)?.name ?? hostDropTarget}`, refused: false };
+    }
+    if (dropSite !== null) {
+      return { text: `Move to ${siteName(dropSite)}`, refused: false };
+    }
+    return null;
+  })();
 
   /* ---- one tab stop per site: Tab steps between sites, arrows walk one ---- */
   const tabStops = new Set<string>();
@@ -1062,7 +1362,8 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
       ref={props.wrapRef}
     >
       <svg
-        class={`topo-svg${panning ? ' is-pan' : ''}`}
+        class={`topo-svg${panning ? ' is-pan' : ''}${moving === null ? '' : ` is-dragging cur-${moving}`}${
+          interactive && (props.onDrag || props.onDragEnd) ? ' is-movable' : ''}`}
         ref={svgRef}
         viewBox={`${view.x} ${view.y} ${view.w} ${view.h}`}
         width={Math.round(view.w * zoomFactor)}
@@ -1134,7 +1435,7 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
         </defs>
 
         <g class="tp-sites">
-          {geo.sites.map((s) => (
+          {sitesDrawn.map((s) => (
             <SiteRect
               key={s.id as string}
               site={s}
@@ -1144,6 +1445,7 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
               hovered={hovered === siteKey(s.id as string)}
               drop={dropSite === (s.id as string) || props.dropHint === (s.id as string)
                 || (rubber !== null && rubber.over === (s.id as string))}
+              canDrop={canDropIn(s.id as string)}
               port={interactive && props.onConnect !== undefined && geo.sites.length > 1}
               onPortPointerDown={onPortPointerDown}
               label={siteLabel(doc, { id: s.id as string, name: s.name }, frame)}
@@ -1151,7 +1453,7 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
               interactive={interactive}
               onSelect={onCardSelect}
               onHover={props.onHover}
-              onKeyDown={onEntityKey}
+              onKeyDown={onSiteKey}
               onPointerDown={onSitePointerDown}
               nodeRef={cardRef}
             />
@@ -1179,20 +1481,41 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
         </g>
 
         <g class="tp-stacks">
-          {geo.stacks.map((s) => (
-            <StackChassis
-              key={s.key}
-              stack={s}
-              byKey={geo.byKey}
-              interactive={interactive}
-              onHeaderPointerDown={onHeaderPointerDown}
-              dropTarget={hostDropTarget !== null && s.hostId === hostDropTarget}
-            />
-          ))}
+          {geo.stacks.map((s) => {
+            const carried = air !== null && s.memberKeys.every((k) => air.keys.includes(k));
+            const chassis = (
+              <StackChassis
+                key={s.key}
+                stack={s}
+                byKey={geo.byKey}
+                interactive={interactive}
+                onHeaderPointerDown={onHeaderPointerDown}
+                dropTarget={hostDropTarget !== null && s.hostId === hostDropTarget}
+                hint={carried ? null : hostHint(s.hostId)}
+              />
+            );
+            return carried && air !== null
+              ? <g key={s.key} transform={`translate(${air.rx},${air.ry})`}>{chassis}</g>
+              : chassis;
+          })}
         </g>
 
+        {/* Where the card will land: its outline on the 8 px grid under a card
+            that follows the pointer, or its place in the stack or data centre
+            the pointer is over. */}
+        {ghosts.length === 0 ? null : (
+          <g class="tp-ghosts" aria-hidden="true">
+            {ghosts.map((r, i) => (
+              <rect key={i} class="tp-ghost" x={r.x} y={r.y} width={r.w} height={r.h} rx={5} />
+            ))}
+          </g>
+        )}
+
         <g class="tp-nodes">
-          {geo.nodes.map((n) => (
+          {geo.nodes.map((n) => {
+            const carried = air !== null && air.keys.includes(n.key);
+            const hint = carried ? null : cardHint(n.key);
+            const card = (
             <NodeCard
               key={n.key}
               node={n}
@@ -1206,7 +1529,9 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
               dragging={drag.current?.kind === 'card' && drag.current.moved && n.key in drag.current.bases}
               target={rubber !== null && rubber.over === n.key
                 ? (rubber.what?.enabled.state === 'off' ? 'no' : 'yes')
-                : hostDropTarget !== null && hostIdOf(n.key) === hostDropTarget ? 'yes' : null}
+                : hostDropTarget !== null && hostIdOf(n.key) === hostDropTarget ? 'yes'
+                  : hint === 'maybe' || hint === 'no' ? hint : null}
+              dim={hint === 'dim'}
               port={interactive && props.onConnect !== undefined}
               interactive={interactive}
               tabIndex={tabStops.has(n.key) ? 0 : -1}
@@ -1217,7 +1542,11 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
               onKeyDown={onCardKey}
               cardRef={cardRef}
             />
-          ))}
+            );
+            return carried && air !== null
+              ? <g key={n.key} transform={`translate(${air.rx},${air.ry})`}>{card}</g>
+              : card;
+          })}
         </g>
 
         {/* The line being drawn from a port, while it is being drawn. */}
@@ -1236,23 +1565,13 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
           /* The label rides beside the pointer: what the drop would do, or
              why it will not. Kept short on the drawing -- a refusal is a
              sentence, and the toast after the drop carries the whole of it. */
-          const tipText = tip === null ? null : (tip.length > 64 ? `${tip.slice(0, 61)}…` : tip);
-          const tipW = tipText === null ? 0 : Math.round(approxW(tipText, 10.5, true) + 14);
           return (
             <g class="tp-rubber" aria-hidden="true">
               <line
                 class={`tp-rubber-ln${rubber.over !== null ? (refused ? ' is-no' : ' is-on') : ''}`}
                 x1={x1} y1={y1} x2={rubber.x} y2={rubber.y}
               />
-              {tipText === null ? null : (
-                <g class={`tp-rubber-tip${refused ? ' is-no' : ''}`}>
-                  <rect
-                    class="tp-rubber-tip-bg"
-                    x={rubber.x + 12} y={rubber.y - 22} width={tipW} height={18} rx={3}
-                  />
-                  <text class="tp-rubber-tip-tx" x={rubber.x + 19} y={rubber.y - 9}>{tipText}</text>
-                </g>
-              )}
+              {tip === null ? null : <PointerTip x={rubber.x} y={rubber.y} text={tip} refused={refused} />}
             </g>
           );
         })()}
@@ -1279,6 +1598,35 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
           ))}
         </g>
 
+        {/* The handles of a selected data centre: over the cards, because the
+            edge they sit on is the edge of the box, not of what is inside. */}
+        {!interactive || !props.onResizeSite ? null : sitesDrawn
+          .filter((st) => isSelected(siteKey(st.id as string)))
+          .map((st) => (
+            <g key={`rsz-${st.id as string}`} class="tp-resize" data-node={st.id as string} aria-hidden="true">
+              {HANDLES.map((hd) => {
+                const hit = handleHit(st, hd.edges);
+                const dot = handleDot(st, hd.edges);
+                return (
+                  <g
+                    key={hd.id}
+                    class={`tp-rsz cur-${hd.cursor}`}
+                    onPointerDown={(ev) => onHandlePointerDown(st, hd.edges, ev)}
+                  >
+                    <title>Drag to resize {st.name} (also: Alt+arrow on the data centre)</title>
+                    <rect class="tp-rsz-hit" x={hit.x} y={hit.y} width={hit.w} height={hit.h} />
+                    <rect class="tp-rsz-dot" x={dot.x} y={dot.y} width={dot.w} height={dot.h} rx={1.5} />
+                  </g>
+                );
+              })}
+            </g>
+          ))}
+
+        {/* Over the captions: it is about the drop in hand, not the drawing. */}
+        {airTip === null || air === null ? null : (
+          <PointerTip x={air.x} y={air.y} text={airTip.text} refused={airTip.refused} />
+        )}
+
         {band === null ? null : (
           <rect class="tp-band" aria-hidden="true" x={band.x} y={band.y} width={band.w} height={band.h} />
         )}
@@ -1288,7 +1636,9 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
             press on it is a press on the subject -- not on the ground, which
             would clear the selection, and not outside the bar, which would
             close it before this click could. */}
-        {handleAt === null || !props.onContextMenu ? null : (
+        {/* Not while something is being dragged: it hangs off the live
+            geometry, which a drag holds still only in what it draws. */}
+        {handleAt === null || !props.onContextMenu || moving !== null ? null : (
           <g
             class={`tp-more${bar !== null ? ' is-open' : ''}`}
             role="button"
@@ -1386,6 +1736,22 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
         </figcaption>
       )}
     </figure>
+  );
+}
+
+/**
+ * The note beside the pointer during a drag: what the drop would do, or why it
+ * will not. Kept short on the drawing -- a refusal is a sentence, and the
+ * toast or the rail carries the whole of it.
+ */
+function PointerTip({ x, y, text, refused }: { x: number; y: number; text: string; refused: boolean }) {
+  const shown = text.length > 64 ? `${text.slice(0, 61)}…` : text;
+  const w = Math.round(approxW(shown, 10.5, true) + 14);
+  return (
+    <g class={`tp-rubber-tip${refused ? ' is-no' : ''}`} aria-hidden="true">
+      <rect class="tp-rubber-tip-bg" x={x + 12} y={y - 22} width={w} height={18} rx={3} />
+      <text class="tp-rubber-tip-tx" x={x + 19} y={y - 9}>{shown}</text>
+    </g>
   );
 }
 
