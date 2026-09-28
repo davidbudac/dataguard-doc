@@ -42,6 +42,47 @@ describe('RedoRoutes: the documented spellings round-trip', () => {
   });
 });
 
+describe('RedoRoutes: Oracle Examples 1-4 (19c properties page, 26ai redo routing rules)', () => {
+  /* The pages write them with spaces inside the parentheses and a lower-case
+     `local`; the formatter's spelling is the only difference. */
+  it('Example 1: different priorities within a group keep both priorities', () => {
+    const rules = parseRedoRoutesOrThrow('(local : ( FS1 PRIORITY=1, SB1 PRIORITY=2 ) )');
+    expect(rules[0]?.groups).toHaveLength(1);
+    expect(rules[0]?.groups[0]?.dests.map((d) => [d.target, d.priority]))
+      .toEqual([['FS1', 1], ['SB1', 2]]);
+    expect(formatRedoRoutes(rules)).toBe('(LOCAL : (FS1 PRIORITY=1, SB1 PRIORITY=2))');
+    expect(roundTrip('(LOCAL : ( FS1 PRIORITY=1, SB1 PRIORITY=2 ))'))
+      .toBe('(LOCAL : (FS1 PRIORITY=1, SB1 PRIORITY=2))');
+    expect(roundTrip('( PRI : SB1 )')).toBe('(PRI : SB1)');
+  });
+
+  it('Example 2: the same priorities within a group', () => {
+    expect(roundTrip('(local : ( FS1 PRIORITY=1, FS2 PRIORITY=1 ) )'))
+      .toBe('(LOCAL : (FS1 PRIORITY=1, FS2 PRIORITY=1))');
+  });
+
+  it('Example 3: two groups, each with its own priorities', () => {
+    const text = '(local : ( FS1 PRIORITY=1, SB1 PRIORITY=2 ), ( FS2 PRIORITY=1, SB2 PRIORITY=2 ) )';
+    const rules = parseRedoRoutesOrThrow(text);
+    expect(rules[0]?.groups).toHaveLength(2);
+    expect(rules[0]?.groups.map((g) => g.dests.map((d) => `${d.target as string}=${d.priority}`)))
+      .toEqual([['FS1=1', 'SB1=2'], ['FS2=1', 'SB2=2']]);
+    expect(formatRedoRoutes(rules))
+      .toBe('(LOCAL : (FS1 PRIORITY=1, SB1 PRIORITY=2), (FS2 PRIORITY=1, SB2 PRIORITY=2))');
+  });
+
+  it('Example 4: PRIORITY=8, and the far sync forwarding to two standbys', () => {
+    expect(roundTrip('(local : ( FS1 PRIORITY=1, SB1 PRIORITY=8, SB2 PRIORITY=8 ) )'))
+      .toBe('(LOCAL : (FS1 PRIORITY=1, SB1 PRIORITY=8, SB2 PRIORITY=8))');
+    expect(roundTrip('( PRI : SB1, SB2 )')).toBe('(PRI : SB1, SB2)');
+  });
+
+  it('broker Example 4-3 (19c): the PRIORITY form of a remote alternate', () => {
+    const text = '(LOCAL : (Local_Sales ASYNC PRIORITY=1, Remote_Sales ASYNC PRIORITY=2))';
+    expect(roundTrip('(LOCAL : ( Local_Sales ASYNC PRIORITY=1, Remote_Sales ASYNC PRIORITY=2 ))')).toBe(text);
+  });
+});
+
 describe('RedoRoutes: structure', () => {
   it('a source is LOCAL, ANY or a list of member names', () => {
     expect(parseRedoRoutesOrThrow('(LOCAL : ALL)')[0]?.source).toBe('LOCAL');
@@ -56,16 +97,26 @@ describe('RedoRoutes: structure', () => {
     expect(dest?.xpt).toBeUndefined();
   });
 
-  it('a parenthesised group keeps its priority and its member list', () => {
+  it('PRIORITY belongs to the destination it follows, not to the parenthesis', () => {
+    /* ( db_unique_name_1 [xpt_mode] [PRIORITY=n] [,db_unique_name_n [xpt_mode] [PRIORITY=n]] ) */
     const rule = parseRedoRoutesOrThrow('(LOCAL : (a, b PRIORITY=3))')[0];
     expect(rule?.groups).toHaveLength(1);
-    expect(rule?.groups[0]?.priority).toBe(3);
-    expect(rule?.groups[0]?.dests.map((d) => d.target)).toEqual(['a', 'b']);
+    expect(rule?.groups[0]?.explicitGroup).toBe(true);
+    expect(rule?.groups[0]?.dests.map((d) => [d.target, d.priority])).toEqual([['a', undefined], ['b', 3]]);
   });
 
-  it('a bare destination carrying a priority becomes a group of its own', () => {
-    const rule = parseRedoRoutesOrThrow('(LOCAL : a PRIORITY=1, b PRIORITY=2)')[0];
-    expect(rule?.groups.map((g) => g.priority)).toEqual([1, 2]);
+  it('a bare destination carrying a priority is read as a parenthesised group of one', () => {
+    const rules = parseRedoRoutesOrThrow('(LOCAL : a PRIORITY=1, b PRIORITY=2)');
+    const rule = rules[0];
+    expect(rule?.groups.map((g) => g.explicitGroup)).toEqual([true, true]);
+    expect(rule?.groups.map((g) => g.dests[0]?.priority)).toEqual([1, 2]);
+    expect(formatRedoRoutes(rules)).toBe('(LOCAL : (a PRIORITY=1), (b PRIORITY=2))');
+  });
+
+  it('unparenthesised destinations stay together and are not a parenthesised group', () => {
+    const rule = parseRedoRoutesOrThrow('(LOCAL : a SYNC, b ASYNC)')[0];
+    expect(rule?.groups).toHaveLength(1);
+    expect(rule?.groups[0]?.explicitGroup).toBeUndefined();
   });
 
   it('quoted names are accepted and stored unquoted', () => {

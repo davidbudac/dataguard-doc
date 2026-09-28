@@ -1,19 +1,28 @@
 /**
- * RedoRoutes text <-> rules, both spellings -- engine design SS1.4.
+ * RedoRoutes text <-> rules -- engine design SS1.4.
  *
- * Grammar (fact sheet A5, 12.1 broker chapter 4):
+ * Grammar (19c broker properties page, "Redo Routing Rules"; the 26ai
+ * redo-routing-rules page repeats it word for word):
  *
  *   routes   := rule*
  *   rule     := '(' source ':' destlist ')'
  *   source   := 'LOCAL' | 'ANY' | name [',' name]*
- *   destlist := item [',' item]*
- *   item     := '(' dest [',' dest]* ['PRIORITY' '=' n] ')'      -- 19c/26ai
- *             | dest ['PRIORITY' '=' n]                          -- flat list
- *   dest     := ('ALL' | name) [xpt] ['ALT' '=' '(' name [xpt] ['FALLBACK'] ')']
+ *   destlist := 'ALL' [xpt] | group [',' group]*
+ *   group    := dest                                          -- a group of one
+ *             | '(' dest ['PRIORITY' '=' n] [',' dest ['PRIORITY' '=' n]]* ')'
+ *   dest     := name [xpt] [alt]
+ *   alt      := 'ALT' '=' '(' name [xpt] ['FALLBACK'] ')'      -- 12.1 only
  *   xpt      := 'SYNC' | 'FASTSYNC' | 'ASYNC'
  *
- * Both forms round-trip. `GROUP` is deliberately not in this grammar: it is a
- * LOG_ARCHIVE_DEST_n attribute, never RedoRoutes syntax.
+ * PRIORITY belongs to the destination it follows, never to the parenthesis
+ * around it. Consecutive unparenthesised destinations are kept together in one
+ * `DestGroup` without `explicitGroup`, which the resolver reads as one group
+ * per destination -- the text round-trips either way. Two leniencies, so that
+ * older text still loads: a bare destination carrying PRIORITY=n is read as a
+ * parenthesised group of one, and the 12.1 `ALT=( ... )` form is still parsed
+ * although 12.2, 19c and 26ai no longer carry it. `GROUP` is deliberately not
+ * in this grammar: it is a LOG_ARCHIVE_DEST_n attribute, never RedoRoutes
+ * syntax.
  */
 
 import { memberId } from '../ids';
@@ -153,31 +162,28 @@ export function parseRedoRoutes(text: string): RedoRoutesParseResult {
     return v as RoutePriority;
   };
 
+  /* PRIORITY=n belongs to the destination it follows. */
+  const parseDestWithPriority = (): RouteDest | undefined => {
+    const d = parseDest();
+    if (!d) return undefined;
+    const prio = parsePriority();
+    if (prio !== undefined) d.priority = prio;
+    return d;
+  };
+
   const parseGroupParen = (): DestGroup | undefined => {
     if (!expect('(')) return undefined;
     const dests: RouteDest[] = [];
-    let priority: RoutePriority | undefined;
     for (;;) {
-      const lead = parsePriority();
-      if (lead !== undefined) {
-        priority = lead;
-      } else {
-        const d = parseDest();
-        if (!d) return undefined;
-        dests.push(d);
-        /* PRIORITY belongs to the group and may be written after any of its
-           destinations, which is where the documented examples put it. */
-        const trailing = parsePriority();
-        if (trailing !== undefined) priority = trailing;
-      }
+      const d = parseDestWithPriority();
+      if (!d) return undefined;
+      dests.push(d);
       const t = peek();
       if (t && t.type === ',') { p++; continue; }
       break;
     }
     if (!expect(')')) return undefined;
-    const g: DestGroup = { dests, explicitGroup: true };
-    if (priority !== undefined) g.priority = priority;
-    return g;
+    return { dests, explicitGroup: true };
   };
 
   const parseRule = (): RedoRouteRule | undefined => {
@@ -205,11 +211,9 @@ export function parseRedoRoutes(text: string): RedoRoutesParseResult {
     /* destinations */
     const groups: DestGroup[] = [];
     let flat: RouteDest[] = [];
-    const flushFlat = (priority?: RoutePriority): void => {
+    const flushFlat = (): void => {
       if (flat.length === 0) return;
-      const g: DestGroup = { dests: flat };
-      if (priority !== undefined) g.priority = priority;
-      groups.push(g);
+      groups.push({ dests: flat });
       flat = [];
     };
 
@@ -223,15 +227,15 @@ export function parseRedoRoutes(text: string): RedoRoutesParseResult {
         if (!g) return undefined;
         groups.push(g);
       } else {
-        const d = parseDest();
+        const d = parseDestWithPriority();
         if (!d) return undefined;
-        flat.push(d);
-        const prio = parsePriority();
-        if (prio !== undefined) {
-          /* a priority-annotated bare destination is a group of its own */
-          const own = flat.pop() as RouteDest;
+        if (d.priority !== undefined) {
+          /* Not the documented spelling -- PRIORITY is written inside the
+             parentheses -- so it is read as the group of one it must mean. */
           flushFlat();
-          groups.push({ dests: [own], priority: prio });
+          groups.push({ dests: [d], explicitGroup: true });
+        } else {
+          flat.push(d);
         }
       }
       const sep = peek();
@@ -275,13 +279,16 @@ export type RedoRoutesDialect = 'auto' | '12.1' | 'priority';
 
 export interface FormatOptions {
   /**
-   * 'auto' writes the parenthesised PRIORITY form only where a group needs it,
-   * so a plain `(LOCAL : FS1 SYNC)` round-trips unchanged.
+   * 'auto' writes parentheses only where the rules have them (or where a
+   * destination carries a PRIORITY, which needs them), so a plain
+   * `(LOCAL : FS1 SYNC)` round-trips unchanged. 'priority' parenthesises every
+   * group, each unparenthesised destination on its own; '12.1' drops the
+   * parentheses and every PRIORITY, since 12.1 has neither.
    */
   dialect?: RedoRoutesDialect;
 }
 
-const formatDest = (d: RouteDest): string => {
+const formatDest = (d: RouteDest, withPriority: boolean): string => {
   let s = d.target === 'ALL' ? 'ALL' : String(d.target);
   if (d.xpt) s += ` ${d.xpt}`;
   if (d.alt) {
@@ -290,23 +297,25 @@ const formatDest = (d: RouteDest): string => {
     if (d.alt.fallback) a += ' FALLBACK';
     s += ` ALT=(${a})`;
   }
+  if (withPriority && d.priority !== undefined) s += ` PRIORITY=${d.priority}`;
   return s;
 };
 
 const formatSource = (s: RedoRouteRule['source']): string =>
   s === 'LOCAL' || s === 'ANY' ? s : s.map(String).join(', ');
 
+/** Written in parentheses: explicitly, or because a destination carries PRIORITY. */
+export const isParenthesised = (g: DestGroup): boolean =>
+  g.explicitGroup === true || g.dests.some((d) => d.priority !== undefined);
+
 export function formatRedoRule(rule: RedoRouteRule, opts: FormatOptions = {}): string {
   const dialect = opts.dialect ?? 'auto';
-  const parenthesise = (g: DestGroup): boolean => {
-    if (dialect === '12.1') return false;
-    if (dialect === 'priority') return true;
-    return g.priority !== undefined || g.explicitGroup === true;
-  };
   const parts = rule.groups.map((g) => {
-    const dests = g.dests.map(formatDest).join(', ');
-    if (!parenthesise(g)) return dests;
-    return g.priority === undefined ? `(${dests})` : `(${dests} PRIORITY=${g.priority})`;
+    if (dialect === '12.1') return g.dests.map((d) => formatDest(d, false)).join(', ');
+    const inner = g.dests.map((d) => formatDest(d, true));
+    if (isParenthesised(g)) return `(${inner.join(', ')})`;
+    if (dialect === 'priority') return inner.map((x) => `(${x})`).join(', ');
+    return inner.join(', ');
   });
   return `(${formatSource(rule.source)} : ${parts.join(', ')})`;
 }
