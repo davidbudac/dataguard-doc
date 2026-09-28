@@ -23,6 +23,35 @@ import type {
 import type { ReadoutChip } from '@/state/derived';
 import { describeEvent } from '../break/events';
 
+/* ---------------- the diagram's page ---------------- */
+
+/**
+ * The room an A4 page gives the diagram, in CSS pixels (96 per inch): the
+ * sheet less report.css's 15 mm side margins, and -- landscape -- less the
+ * top and bottom margins and the section heading. Portrait's height is what
+ * is left under the title block and the summary, where the diagram sits.
+ */
+export const A4_PORTRAIT_ROOM = { w: 680, h: 520 } as const;
+export const A4_LANDSCAPE_ROOM = { w: 1009, h: 620 } as const;
+
+/** The scale a drawing of `w` x `h` user units prints at in `room`; never above 1:1. */
+export const printScale = (w: number, h: number, room: { w: number; h: number }): number =>
+  Math.min(1, room.w / w, room.h / h);
+
+/**
+ * Whether the diagram gets a landscape page of its own. Only when the
+ * portrait page would print it below 60 % -- about where an 11 px card name
+ * drops under 5 pt: three data centres in a row stay on the first page, four
+ * go landscape -- and only when turning the page actually buys at least a
+ * fifth more scale, which a tall drawing's does not.
+ */
+export function diagramLandscape(w: number, h: number): boolean {
+  if (!(w > 0) || !(h > 0)) return false;
+  const portrait = printScale(w, h, A4_PORTRAIT_ROOM);
+  const landscape = printScale(w, h, A4_LANDSCAPE_ROOM);
+  return portrait < 0.6 && landscape >= portrait * 1.2;
+}
+
 /* ---------------- shape ---------------- */
 
 export interface SummaryRow {

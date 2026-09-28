@@ -7,6 +7,9 @@
    resolves to its light value in both. */
 
 @page{size:A4;margin:15mm 15mm 17mm}
+/* A wide drawing's own page (Report.tsx, `diagramLandscape`): four data
+   centres in a row print at under half size across a portrait sheet. */
+@page diagram{size:A4 landscape;margin:15mm 15mm 17mm}
 
 html.is-report,html.is-report body{height:auto}
 .report{min-height:100vh;background:var(--bg);color:var(--ik);padding-bottom:40px}
@@ -117,6 +120,12 @@ html.is-report,html.is-report body{height:auto}
   .rp-bar{display:none}
   .rp{width:auto;max-width:none;margin:0;padding:0;border:0;border-radius:0}
   .rp-sec.is-page{break-before:page;margin-top:0}
+  /* A named page breaks before and after itself; the drawing is held to the
+     sheet's height so a moderately wide one does not spill onto a second. */
+  .rp-diagram.is-landscape{page:diagram;break-before:page;margin-top:0}
+  .rp-diagram.is-landscape .topo-svg{width:auto;height:auto;max-width:100%;max-height:160mm;
+    margin:0 auto}
+  .rp-screen{display:none}
   .rp a[href^="http"]::after{content:none}
   .rp-code,.rp .fact,.rp-sev{-webkit-print-color-adjust:exact;print-color-adjust:exact}
 }

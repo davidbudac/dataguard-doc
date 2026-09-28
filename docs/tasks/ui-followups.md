@@ -221,7 +221,10 @@ The row-or-stack choice assumes the 340 px floating rail; in the wider drawer
 the choice on the rail's actual width (container query or measured width).
 
 ### 6.4 Report: wide diagrams
-Status: todo
+Status: done (on ui/track6-shell)
+Note: `diagramLandscape` (report-model.ts) turns the page when portrait would print the drawing
+under 60 % and landscape buys ≥ 20 % more: 4-DC presets (~1480 wide) print at 68 % instead of
+46 % on `@page diagram{size:A4 landscape}`; classic (3 DCs) stays on page 1 in portrait.
 Wide configurations (4 DCs in a row) print the diagram small on A4 portrait.
 Give the diagram its own landscape page when its aspect ratio calls for it
 (`@page` named pages), or scale it to use the page's full width.

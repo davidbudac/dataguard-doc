@@ -7,6 +7,9 @@
  * @vitest-environment jsdom
  */
 
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { h, render } from 'preact';
 import { CITATIONS } from '@/engine';
@@ -18,7 +21,9 @@ import {
 } from '@/state/derived';
 import { parseUrlQuery, serializeUrlQuery, URL_DEFAULTS } from '@/state/url';
 import { applyTheme, reportPage, theme } from '@/state/view';
-import { buildReport, fsfoWord } from '@/ui/export/report-model';
+import {
+  A4_LANDSCAPE_ROOM, A4_PORTRAIT_ROOM, buildReport, diagramLandscape, fsfoWord, printScale,
+} from '@/ui/export/report-model';
 import type { ReportModel } from '@/ui/export/report-model';
 import { closeReport, Report } from '@/ui/export/Report';
 import { Root } from '@/ui/Root';
@@ -170,5 +175,50 @@ describe('report page', () => {
     render(h(Root, {}), root);
     expect(root.querySelector('.report')).toBeNull();
     render(null, root);
+  });
+});
+
+/**
+ * A wide diagram gets a landscape page of its own (ui-followups 6.4). The
+ * choice is made from the drawing's viewBox; the page itself is report.css's
+ * named `@page diagram`, which only a stylesheet read can see.
+ */
+describe('the diagram page', () => {
+  it('turns the page for four data centres in a row, not for three', () => {
+    /* classic: three columns, 1066 x 224 -- 64 % on portrait, kept there. */
+    expect(printScale(1066, 224, A4_PORTRAIT_ROOM)).toBeGreaterThan(0.6);
+    expect(diagramLandscape(1066, 224)).toBe(false);
+    /* multi-target / cascade: four columns, ~1480 wide -- 46 % -> 68 %. */
+    expect(printScale(1498, 232, A4_PORTRAIT_ROOM)).toBeLessThan(0.5);
+    expect(printScale(1498, 232, A4_LANDSCAPE_ROOM)).toBeGreaterThan(0.65);
+    expect(diagramLandscape(1498, 232)).toBe(true);
+  });
+
+  it('keeps a tall drawing portrait, where turning the page buys nothing', () => {
+    expect(diagramLandscape(1200, 1400)).toBe(false);
+    expect(diagramLandscape(0, 0)).toBe(false);
+  });
+
+  it('marks the section from the drawing it rendered', async () => {
+    for (const [id, wide] of [['classic', false], ['multi-target-three-observers', true]] as const) {
+      load(id);
+      const root = document.createElement('div');
+      document.body.appendChild(root);
+      render(h(Report, {}), root);
+      /* The class follows a measurement of the rendered viewBox: one more render. */
+      await new Promise((r) => setTimeout(r, 0));
+      expect(root.querySelector('.rp-diagram')?.classList.contains('is-landscape'), id).toBe(wide);
+      expect(root.querySelector('.rp-diagram .rp-screen') !== null, id).toBe(wide);
+      render(null, root);
+    }
+  });
+
+  it('prints it on a named landscape page, the screen note left off paper', () => {
+    const css = readFileSync(
+      join(dirname(fileURLToPath(import.meta.url)), '../../src/styles/report.css'), 'utf8',
+    );
+    expect(css).toContain('@page diagram{size:A4 landscape;');
+    expect(css).toMatch(/\.rp-diagram\.is-landscape\{page:diagram;/);
+    expect(css).toMatch(/@media print\{[\s\S]*\.rp-screen\{display:none\}/);
   });
 });
