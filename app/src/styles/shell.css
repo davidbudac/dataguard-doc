@@ -334,14 +334,17 @@
 .issue-b .mono{font-size:12px;color:var(--ik)}
 .issue-id{font-family:var(--mono);font-size:10px;letter-spacing:.1em;color:var(--ik3);
   grid-column:2}
-.issue.sv-error{border-left:3px solid var(--rd)}
-.issue.sv-warning{border-left:3px solid var(--am)}
-.issue.sv-info{border-left:3px solid var(--ln2)}
+/* Severity is the tag at the head of the row (Error / Warning / Info, in the
+   tone tokens.css gives it), not a thick left border: on a rounded card a
+   3 px left border curves into a wedge at the corners. An error row also
+   takes a faint wash of its colour, so it still reads first in a long list. */
+.issue.sv-error{background:color-mix(in srgb,var(--rd) 5%,var(--sf))}
+.issue.sv-warning{background:color-mix(in srgb,var(--am) 5%,var(--sf))}
 /* The fold. Information is never an alarm, so the toggle is slate and quiet,
    and what it hides is genuinely absent from the document until it is open. */
 .notes-tog{display:flex;align-items:center;gap:10px;width:100%;text-align:left;
   padding:11px var(--gut);background:var(--sf);border:0;border-bottom:1px solid var(--ln);
-  border-left:3px solid var(--ln2);cursor:pointer;
+  cursor:pointer;
   font-family:var(--mono);font-size:11.5px;letter-spacing:.04em;color:var(--ik2)}
 .notes-tog:hover{background:var(--sf2);color:var(--ik)}
 .notes-caret{color:var(--ik3);width:9px}

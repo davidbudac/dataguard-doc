@@ -39,7 +39,6 @@
   text-transform:none;color:var(--ik2)}
 .empty .empty-k{font-family:var(--sans);font-size:12px;font-weight:600;letter-spacing:0;
   text-transform:none;color:var(--ik2)}
-.rr-k,.sum dt{font-family:var(--sans);font-size:12px;letter-spacing:0;text-transform:none}
 .fact{font-family:var(--sans);font-size:10.5px;letter-spacing:0;text-transform:none;
   border-color:transparent}
 .tag{font-family:var(--sans);font-size:11px;font-weight:600;letter-spacing:0;
@@ -73,9 +72,6 @@ select.btn{padding-right:8px}
 .seg button[aria-pressed="true"]{color:var(--ik);background:var(--seg-on);font-weight:600;
   box-shadow:0 1px 2px rgba(16,25,34,.14)}
 .seg button:focus-visible{outline-offset:0;border-radius:6px}
-/* Inside a form the options are Oracle values -- SYNC, MAXAVAILABILITY -- and
-   keep the face Oracle vocabulary has everywhere else. */
-.field .seg button{font-family:var(--mono);font-size:11px;letter-spacing:0;padding:4px 8px}
 
 /* The top bar's two segmented controls: the modes are the page's own
    navigation, so they are the one full-size pill; the release is small. */
@@ -91,46 +87,13 @@ select.btn{padding-right:8px}
 
 .why{border-color:transparent}
 
-/* ================= the inspector: rows, not stacks ================= */
+/* ================= the rails ================= */
 
-/* Label left, value right. A field is a two-column row -- name, then its
-   control -- and anything that is prose under it (a note, a refusal) takes
-   the full width on the next line. A range keeps the old stack: a slider
-   needs the width more than the name does. */
-.field{display:flex;flex-direction:row;flex-wrap:wrap;align-items:center;
-  justify-content:space-between;column-gap:14px;row-gap:6px;padding:7px var(--gut);
-  border-bottom:0}
-/* Name and control share a line while they fit; a control too wide for the
-   line drops under the name and keeps to the right. Prose takes a line of its
-   own. */
-.field>*{flex:1 1 100%;min-width:0}
-.field>.field-hd{flex:1 0 auto;max-width:100%}
-.field>.field-in,.field>.seg,.field>.opt,.field>select{flex:0 1 auto;margin-left:auto;
-  max-width:100%}
-.field>input.field-in[type="text"],.field>input.field-in[type="number"]{width:150px}
-.field>select.field-in{width:auto;max-width:200px}
-.field>input[type="range"]{flex:1 1 100%;margin-left:0}
-.field>.why{flex:0 1 auto}
-.field-name{font-size:12px;color:var(--ik2)}
-.field-name.is-prose{font-size:12.5px;color:var(--ik2)}
-.field-val{font-size:12px;font-weight:500;color:var(--ik)}
-.field .seg{flex-wrap:wrap;justify-content:flex-end}
+/* The inspector and the Break rail have one system of their own, in
+   inspector.css: header, group headings, label-left/value-right rows, list
+   rows and sub-blocks. Nothing here restyles them. */
 
-.insp-hd{background:var(--sf);border-bottom:1px solid var(--ln);padding:14px var(--gut) 12px}
-.insp-subj{flex-direction:column;align-items:flex-start;gap:0}
-.insp-subj .eyebrow{font-size:11.5px;color:var(--ik3)}
-.insp-hd .title{font-size:15px}
-.insp-hd .btn{padding:4px 8px;font-size:12px}
-.grp-hd{padding:14px var(--gut) 6px}
-.grp-tog{padding:11px var(--gut)}
-.grp-fold>.grp-hd{padding:0}
-.grp-caret{color:var(--ik3)}
-.grp-sum{font-family:var(--mono);font-size:11.5px}
-.grp-note{border-top:0}
-.sum-row{border-bottom:0;padding:4px 0}
-
-/* The event list and the scenario shelf, restyled with the rest. */
-.evt{border-top:0;padding:8px var(--gut)}
+/* The scenario buttons, on the rail's shelf and on the palette. */
 .tmpl .btn{border:1px solid var(--ln);border-radius:var(--r-ctl)}
 .tmpl .btn:hover:not(:disabled){border-color:var(--ln2)}
 
@@ -275,10 +238,9 @@ button.issue{border-bottom:1px solid var(--ln)}
   .app.is-float .app-rail{position:absolute;right:var(--float-m);
     top:calc(var(--bar-bottom,80px) + 12px);bottom:var(--float-m);width:var(--w-float-rail);
     z-index:20;overflow:auto;border-left:1px solid var(--ln);border-radius:var(--r-card);
-    box-shadow:var(--sh-card)}
+    box-shadow:var(--sh-card);scrollbar-width:thin}
   .app.is-float .app-rail .insp-hd{border-radius:var(--r-card) var(--r-card) 0 0}
   .app.is-float .app-rail .evmenu{border-radius:var(--r-card) var(--r-card) 0 0}
-  .app.is-float .app-rail>.evmenu+.insp .grp:first-child .grp-hd{padding-top:12px}
 
   /* The dock at the bottom: Build's readings, Break's timeline panel. */
   .app.is-float .app-dock{position:absolute;left:var(--float-m);
@@ -344,12 +306,11 @@ button.issue{border-bottom:1px solid var(--ln)}
 
   /* The most serious finding, once, above the dock. */
   .fnd-toast{position:absolute;left:104px;bottom:calc(var(--dock-h,72px) + var(--float-m) + 12px);
-    z-index:21;display:flex;align-items:center;gap:10px;padding:5px 6px 5px 10px;
-    border-left:3px solid var(--am);
+    z-index:21;display:flex;align-items:center;gap:10px;padding:5px 6px 5px 6px;
     max-width:calc(100vw - 104px - var(--rail-space) - 200px)}
   .app.is-float.m-break .fnd-toast{left:236px;
     max-width:calc(100vw - 236px - var(--rail-space) - 200px)}
-  .fnd-toast.t-rd{border-left-color:var(--rd)}
+  /* The tone is the chip at its head (Error / Warning), not a left border. */
   .fnd-toast-m{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
     font-size:12.5px;color:var(--ik2)}
   .fnd-toast .btn{padding:3px 8px}
@@ -393,6 +354,4 @@ button.issue{border-bottom:1px solid var(--ln)}
 @media (max-width:767px){
   .app-head{padding:8px 8px 0}
   .topbar-group{flex-wrap:wrap}
-  .field{grid-template-columns:minmax(0,1fr)}
-  .field>.field-in,.field>.seg,.field>.opt,.field>select{grid-column:1;justify-self:stretch}
 }

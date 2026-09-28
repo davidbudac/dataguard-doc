@@ -28,16 +28,16 @@ export function ObserverForm({ observer, doc }: ObserverFormProps) {
 
   return (
     <>
-      <Group title="Observer">
+      <Group title="General">
         <Text
-          name="Name"
+          name="Name" prose
           value={id as string}
           onCommit={(v) => renameObserver(id, v)}
           focusKey={`name:${id as string}`}
           note="The name START OBSERVER gives it, and how SET MASTEROBSERVER TO names it."
         />
         <Pick
-          name="Host"
+          name="Host" prose
           value={observer.host as string}
           options={doc.hosts.map((h) => ({
             value: h.id as string,
@@ -49,20 +49,25 @@ export function ObserverForm({ observer, doc }: ObserverFormProps) {
           note="An observer is never deployed at the primary or standby database server or cluster. A third site is the first placement Oracle documents; the standby's data centre, on a host of its own, is the documented last resort."
         />
         <Check
-          name="Running"
+          name="Running" prose
           label="The observer process is running"
           checked={observer.running}
           onChange={(v) => patchObserver(
             id, `${v ? 'Start' : 'Stop'} the observer ${id as string}`, (o) => ({ ...o, running: v }),
           )}
         />
-        <div class="rr-line">
-          <Action
-            label="Make it the master"
-            enabled={observer.role === 'master' ? off(WHY.alreadyMaster) : ON}
-            onClick={() => setMasterObserver(id)}
-          />
-          <span class="tag t-vi">{observer.role}</span>
+        <div class="field is-row">
+          <div class="field-hd">
+            <span class="field-name is-prose">Role</span>
+          </div>
+          <div class="field-ctl">
+            <span class="tag t-vi">{observer.role}</span>
+            <Action
+              label="Make it the master"
+              enabled={observer.role === 'master' ? off(WHY.alreadyMaster) : ON}
+              onClick={() => setMasterObserver(id)}
+            />
+          </div>
         </div>
         <Note>
           Only the master coordinates fast-start failover. If the master is lost while the

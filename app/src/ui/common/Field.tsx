@@ -20,6 +20,14 @@ export interface FieldProps {
   /** The property name. Oracle vocabulary is mono; prose labels set `prose`. */
   name: string;
   prose?: boolean;
+  /**
+   * `row`: the name on the left, the control on the right, one line.
+   * `stack` (the default): the name (and its value) on one line, the control
+   * full width under it. The caller decides from the control's own width --
+   * `fitsBeside` -- so a control is never pushed under its name by an accident
+   * of wrapping.
+   */
+  layout?: 'row' | 'stack';
   value?: string;
   note?: string;
   /** Amber note: state the reader is looking at, not documentation. */
@@ -43,17 +51,37 @@ export function FieldNote(
   return <p class={warn ? 'field-note is-warn' : 'field-note'}>{children}</p>;
 }
 
+/**
+ * Whether a control of about `controlPx` fits on the same line as a name.
+ *
+ * An estimate from the text, not a measurement: the rail is a fixed width,
+ * and deciding the layout from the content rather than from the window is
+ * what makes it the same every time. A mono character is 0.6 em wide, a sans
+ * one about 0.55 em -- so a field name (11.5 px mono, or 12.5 px sans for
+ * this page's own words) is ~6.9 px a character either way.
+ */
+export const RAIL_ROW_PX = 292;
+export const textPx = (text: string, sizePx: number, mono = true): number =>
+  Math.ceil(text.length * sizePx * (mono ? 0.6 : 0.55));
+const NAME_PX = (name: string, prose: boolean): number =>
+  (prose ? textPx(name, 12.5, false) : textPx(name, 11.5));
+export const fitsBeside = (name: string, prose: boolean, controlPx: number): boolean =>
+  NAME_PX(name, prose) + 12 + controlPx <= RAIL_ROW_PX;
+
 export function Field(
-  { name, prose = false, value, note, warn = false, enabled = { state: 'on' }, children }: FieldProps,
+  {
+    name, prose = false, layout = 'stack', value, note, warn = false, enabled = { state: 'on' },
+    children,
+  }: FieldProps,
 ) {
   const off = enabled.state === 'off';
   return (
-    <div class={off ? 'field is-off' : 'field'}>
+    <div class={`field is-${layout}${off ? ' is-off' : ''}`}>
       <div class="field-hd">
         <span class={prose ? 'field-name is-prose' : 'field-name'}>{name}</span>
         {value === undefined ? null : <span class="field-val">{value}</span>}
       </div>
-      {children}
+      <div class="field-ctl">{children}</div>
       {note === undefined || !(warn || hintsShown()) ? null : (
         <p class={warn ? 'field-note is-warn' : 'field-note'}>{note}</p>
       )}

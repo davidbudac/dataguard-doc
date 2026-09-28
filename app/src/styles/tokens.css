@@ -56,6 +56,10 @@
    between two groups of a rail. */
 --s1:4px;--s2:8px;--s3:12px;--s4:16px;--s5:20px;--s6:24px;--s7:28px;
 --gut:20px;
+/* The rails (inspector, Break rail, event menu): the inset of every row and
+   the height of a label-left/value-right row. Inside a sub-block (a
+   destination, a RedoRoutes rule) the inset steps down to --s3. */
+--rail-px:16px;--row-h:32px;
 /* The shell's cap. The page ground shows in the gutters beside it. */
 --w-app:1920px;
 }

@@ -60,7 +60,9 @@ export function MemberForm({ member, doc, graph }: MemberFormProps) {
 
   return (
     <>
-      <Group title={member.kind === 'farsync' ? 'Far sync instance' : 'Database'}>
+      {/* The header already says what this is (a primary database, a far sync
+          instance); the first group is its identity. */}
+      <Group title="General">
         <Text
           name="db_unique_name"
           value={id as string}
@@ -69,7 +71,7 @@ export function MemberForm({ member, doc, graph }: MemberFormProps) {
           note="The member's identity. Renaming it rewrites every reference in this configuration in the same edit."
         />
         <Text
-          name="Connect identifier"
+          name="Connect identifier" prose
           value={member.connectIdentifier}
           onCommit={(v) => patchMember(
             id, `Set the connect identifier on ${id as string}`, (m) => ({ ...m, connectIdentifier: v }),
@@ -77,7 +79,7 @@ export function MemberForm({ member, doc, graph }: MemberFormProps) {
           note="What DGMGRL and the observer dial to reach this member."
         />
         <Check
-          name="Enabled"
+          name="Enabled" prose
           label="In the broker configuration"
           checked={member.enabled}
           onChange={(v) => patchMember(
@@ -87,14 +89,14 @@ export function MemberForm({ member, doc, graph }: MemberFormProps) {
       </Group>
 
       {db === null ? (
-        <Group title="Role">
+        <Group title="Redo">
           <Note>
             A far sync instance has no role, no apply lag, no open mode and no broker
             state of its own: it receives redo and forwards it. It can never be a
             primary and is never converted into one.
           </Note>
           <Num
-            name="Transport lag"
+            name="Transport lag" prose
             bound="transportLagSeconds"
             value={member.transportLagSeconds}
             coalesce={`xlag:${id as string}`}
@@ -109,7 +111,7 @@ export function MemberForm({ member, doc, graph }: MemberFormProps) {
       ) : (
         <Group title="Role and apply">
           <Choice
-            name="Role"
+            name="Role" prose
             value={db.role}
             options={[
               { value: 'primary', label: ROLE_LABEL.primary },
@@ -126,7 +128,7 @@ export function MemberForm({ member, doc, graph }: MemberFormProps) {
               : undefined}
           />
           <Choice
-            name="Open mode"
+            name="Open mode" prose
             value={db.openMode}
             options={[
               { value: 'mount', label: 'MOUNTED' },
@@ -138,7 +140,7 @@ export function MemberForm({ member, doc, graph }: MemberFormProps) {
             )}
           />
           <Num
-            name="Apply lag"
+            name="Apply lag" prose
             bound="applyLagSeconds"
             value={db.applyLagSeconds}
             coalesce={`alag:${id as string}`}
@@ -151,7 +153,7 @@ export function MemberForm({ member, doc, graph }: MemberFormProps) {
             note="Redo this standby holds but has not applied. It lengthens the catch-up a role change pays; it does not make the standby unsynchronized."
           />
           <Num
-            name="Transport lag"
+            name="Transport lag" prose
             bound="transportLagSeconds"
             value={db.transportLagSeconds}
             coalesce={`xlag:${id as string}`}
@@ -164,7 +166,7 @@ export function MemberForm({ member, doc, graph }: MemberFormProps) {
             note="Redo the standby has not received. Clamped to the apply lag, because redo cannot be applied before it arrives."
           />
           <Check
-            name="Apply running"
+            name="Apply running" prose
             label="Redo apply is running"
             checked={db.applyRunning}
             enabled={gateOff(isPrimary, WHY.primaryNoApply)}
@@ -174,7 +176,7 @@ export function MemberForm({ member, doc, graph }: MemberFormProps) {
             )}
           />
           <Check
-            name="Real-time apply"
+            name="Real-time apply" prose
             label="Applies from the standby redo logs"
             checked={db.realTimeApply}
             enabled={gateOff(isPrimary, WHY.primaryNoApply)}
@@ -183,7 +185,7 @@ export function MemberForm({ member, doc, graph }: MemberFormProps) {
             )}
           />
           <Check
-            name="Flashback Database"
+            name="Flashback Database" prose
             label="Flashback Database is on"
             checked={db.flashbackOn}
             onChange={(v) => patchDatabase(
@@ -192,7 +194,7 @@ export function MemberForm({ member, doc, graph }: MemberFormProps) {
             note="Automatic reinstatement needs it on both databases."
           />
           <Check
-            name="Static services"
+            name="Static services" prose
             label="A static service name is registered"
             checked={db.staticServices}
             onChange={(v) => patchDatabase(
@@ -233,7 +235,7 @@ export function MemberForm({ member, doc, graph }: MemberFormProps) {
         hint={member.instances.map((inst) => inst.name).join(', ')}
       >
         {member.instances.map((inst, i) => (
-          <div class="rr-dest" key={`inst-${i}`}>
+          <div class="rr-dest lrow is-inst" key={`inst-${i}`}>
             <input
               class="field-in"
               type="text"
@@ -263,7 +265,7 @@ export function MemberForm({ member, doc, graph }: MemberFormProps) {
             />
           </div>
         ))}
-        <div class="rr-line">
+        <div class="rr-line lrow is-acts">
           <Action label="+ Instance" onClick={() => addInstance(id)} />
         </div>
         <Note>
@@ -294,11 +296,11 @@ export function MemberForm({ member, doc, graph }: MemberFormProps) {
           const xpt = effectiveXpt(member, to.id, doc, graph);
           const async = xpt === 'ASYNC';
           return (
-            <div class="dest" key={to.id as string}>
-              <div class="rr-line">
-                <span class="field-name">{to.id as string}</span>
+            <div class="dest sub" key={to.id as string}>
+              <div class="sub-hd">
+                <span class="sub-t mono">{to.id as string}</span>
                 <span class="rr-spacer" />
-                <span class="tag t-sl">{xpt ?? 'not resolved'}</span>
+                <span class={xpt === null ? 'tag t-sl' : 'tag t-sl mono'}>{xpt ?? 'not resolved'}</span>
               </div>
               <Num
                 name="NetTimeout"
