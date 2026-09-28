@@ -139,11 +139,48 @@ describe('the WhyPill contract', () => {
     expect(whyTexts(root)).not.toContain(WHY.lagLimitMaxAvail19c);
   });
 
-  it('gates PreferredObserverHosts on the release', async () => {
+  it('never gates PreferredObserverHosts on the release: it is documented since 12.2', async () => {
+    /* ED-05: the property is on the 12.2, 18c and 19c property pages and in
+       a live 19.27 system -- never grey this control under 19c. */
     const root = mount(Inspector);
     await tick();
     await unfold(root, 'PreferredObserverHosts');
-    expect(whyTexts(root)).toContain(WHY.needs26ai);
+    expect(whyTexts(root)).not.toContain(WHY.needs26ai);
+    const addHost = [...root.querySelectorAll('.field-name')]
+      .find((el) => el.textContent === 'Add a host');
+    expect(addHost?.closest('.field')?.classList.contains('is-off')).toBe(false);
+    edition.value = '26ai';
+    await tick();
+    expect(whyTexts(root)).not.toContain(WHY.needs26ai);
+  });
+
+  it('gates ObserverPingInterval/Retry on the release: neither exists in 19c (ED-01)', async () => {
+    const root = mount(Inspector);
+    await tick();
+    await unfold(root, 'Fast-start failover');
+    expect(whyTexts(root)).toContain(WHY.pingPropsNotIn19c);
+    edition.value = '26ai';
+    await tick();
+    expect(whyTexts(root)).not.toContain(WHY.pingPropsNotIn19c);
+  });
+
+  it('gates LagType/LagGraceTime and PrimaryDatabaseCandidates on the release (ED-02)', async () => {
+    const root = mount(Inspector);
+    await tick();
+    await unfold(root, 'Fast-start failover');
+    await unfold(root, 'PrimaryDatabaseCandidates');
+    /* LagType and LagGraceTime carry the reason as a WhyPill; the checkbox
+       list for PrimaryDatabaseCandidates carries it as the fold's own note.
+       All three are present under 19c because the properties are documented
+       from 26ai and absent from the 19c and 21c properties references, even
+       though a live 19.27 system carries all three. */
+    const pills = whyTexts(root);
+    expect(pills.filter((t) => t === WHY.docLater26aiObservedIn1927).length).toBe(2);
+    expect(root.textContent).toContain(WHY.docLater26aiObservedIn1927);
+    edition.value = '26ai';
+    await tick();
+    expect(whyTexts(root)).not.toContain(WHY.docLater26aiObservedIn1927);
+    expect(root.textContent).not.toContain(WHY.docLater26aiObservedIn1927);
   });
 
   it('gates FASTSYNC on the protection mode', async () => {
@@ -165,11 +202,14 @@ describe('the WhyPill contract', () => {
   });
 
   it('says it once when a whole control is off, not once per option', async () => {
+    /* FastStartFailoverLagType is documented as maximum performance mode
+       behaviour, and the classic configuration runs maximum availability.
+       Under 26ai, so the edition gate (ED-02) does not also apply and mask
+       the mode-based reason this test is about. */
+    edition.value = '26ai';
     const root = mount(Inspector);
     await tick();
     await unfold(root, 'Fast-start failover');
-    /* FastStartFailoverLagType is documented as maximum performance mode
-       behaviour, and the classic configuration runs maximum availability. */
     const field = [...root.querySelectorAll('.field.is-off')]
       .find((el) => (el.textContent ?? '').includes('FastStartFailoverLagType'));
     expect(field).toBeDefined();
