@@ -9,10 +9,13 @@
  * transport retries a failed destination at log switch time, once the last
  * error plus the interval is in the past -- so the ladder drawn at exact
  * multiples is an idealization, and says so. `MAX_FAILURE` counts consecutive
- * attempts to REESTABLISH the destination, which is why the initial error at
- * t = 0 is not one of them; at the limit the destination is disabled with no
- * further access until it is manually reenabled, and the network healing does
- * not bring it back.
+ * attempts, and the two editions count them differently (ED-04): 19c keeps
+ * the 12.1 reading, where the initial error at t = 0 is not one of them, and
+ * at the limit the destination is disabled with no further access until it
+ * is manually reenabled; 26ai's usage notes count the initial failure too,
+ * so MaxFailure = 1 disables it with no retry at all and no further attempt
+ * to reactivate it is ever made. Either way the network healing does not
+ * bring it back on its own.
  */
 
 import { signal } from '@preact/signals';
@@ -55,6 +58,19 @@ export function rpOrd(n: number): string {
   return n + (['th', 'st', 'nd', 'rd'][n % 10] ?? 'th');
 }
 
+/**
+ * What Oracle says happens to a disabled destination, per edition (ED-04):
+ * 19c keeps the 12.1 wording, "no further access until it is manually
+ * reenabled"; 26ai's usage notes say only that "no further attempts are
+ * made to reactivate" it. Either way the network healing does not bring it
+ * back on its own.
+ */
+const reactivationText = (rp: ReopenModel): string => (
+  rp.edition === '26ai'
+    ? 'no further attempts are made to reactivate it'
+    : 'no further access until it is manually reenabled'
+);
+
 /* ---------------- the figure ---------------- */
 
 function lanesOf(rp: ReopenModel, destName: string, t0: number, t1: number): FigLane[] {
@@ -81,7 +97,7 @@ function lanesOf(rp: ReopenModel, destName: string, t0: number, t1: number): Fig
       {
         a: rp.disabledAt, b: t1, cls: 'b-hatch', ink: 'f-rd',
         labs: [
-          'Destination disabled -- no further access until it is manually reenabled',
+          `Destination disabled -- ${reactivationText(rp)}`,
           'Destination disabled', 'Disabled',
         ],
       },
@@ -133,10 +149,13 @@ function bracesOf(rp: ReopenModel): BraceInput[] {
     val: `${fmt(rp.reopen)} s -- the earliest the destination is eligible again`,
   }];
   if (rp.disabledAt !== null) {
+    /* The retries actually drawn before disabling, not the raw MaxFailure
+       value: under 26ai the initial failure counts, so MaxFailure = n draws
+       n - 1 of them (rp.failedRetries carries the edition-correct count). */
     braces.push({
       key: 'maxfailure', a: 0, b: rp.disabledAt, tone: 'br-rd', mono: true,
-      name: 'MaxFailure × ReopenSecs',
-      val: `${rp.maxFailure} × ${fmt(rp.reopen)} s = ${fmt(rp.disabledAt)} s to the last attempt`,
+      name: rp.edition === '26ai' ? 'retries before MaxFailure × ReopenSecs' : 'MaxFailure × ReopenSecs',
+      val: `${rp.failedRetries} × ${fmt(rp.reopen)} s = ${fmt(rp.disabledAt)} s to the last attempt`,
     });
   } else if (rp.reconnectAt !== null && rp.resyncAt !== null && rp.catchupSecs !== null) {
     braces.push({
@@ -205,8 +224,8 @@ function ReopenFigure({ rp, destName, fsfoOn, width }: {
     'Redo flows again',
   ].find((c) => scale.x(back) + 9 + approxW(c, 11.5) <= scale.plotR) ?? 'Redo flows again';
   const disLab = rp.disabledAt === null ? '' : [
-    `MaxFailure reached at t = ${rpDur(rp.disabledAt)} -- destination disabled until manually reenabled`,
-    'MaxFailure reached -- disabled until manually reenabled',
+    `MaxFailure reached at t = ${rpDur(rp.disabledAt)} -- destination disabled, ${reactivationText(rp)}`,
+    `MaxFailure reached -- disabled, ${reactivationText(rp)}`,
     'MaxFailure reached',
   ].find((c) => scale.x(rp.disabledAt ?? 0) + 9 + approxW(c, 11.5) <= scale.plotR) ?? 'MaxFailure reached';
 
@@ -216,13 +235,13 @@ function ReopenFigure({ rp, destName, fsfoOn, width }: {
 
   const topLab = back !== null && rp.resyncAt !== null
     ? `Redo stops flowing for ${rpDur(back)} -- back in step at ${rpDur(rp.resyncAt)}`
-    : `Redo never resumes on its own -- the destination is disabled at ${rpDur(rp.disabledAt ?? 0)} and stays that way until a human reenables it`;
+    : `Redo never resumes on its own -- the destination is disabled at ${rpDur(rp.disabledAt ?? 0)} and stays that way, ${reactivationText(rp)}`;
   const topW = approxW(topLab, 12);
 
   const summary = `Reopen panel: the destination was closed at t = 0 and retried every ${fmt(rp.reopen)} seconds. `
     + (rp.reconnectAt !== null && rp.resyncAt !== null
       ? `Redo flowed again at ${fmt(rp.reconnectAt)} seconds after ${rp.failedRetries} failed retries, and it was back in step at ${fmt(rp.resyncAt)} seconds.`
-      : `MaxFailure was reached at ${fmt(rp.disabledAt ?? 0)} seconds and the destination was disabled until it is manually reenabled; redo never resumes.`)
+      : `MaxFailure was reached at ${fmt(rp.disabledAt ?? 0)} seconds and the destination was disabled: ${reactivationText(rp)}; redo never resumes.`)
     + ` Peak unshipped redo ${fmt(rp.peakExposureSecs)} seconds, about ${fmt(rp.peakExposureMB)} megabytes.`;
 
   return (
@@ -255,8 +274,7 @@ function ReopenFigure({ rp, destName, fsfoOn, width }: {
             d={`M${r1(scale.x(rp.disabledAt))},${r1(AY(rp.disabledAt))} L${r1(scale.plotR)},${r1(aTop)} L${r1(scale.plotR)},${r1(aBot)} L${r1(scale.x(rp.disabledAt))},${r1(aBot)} Z`}
           >
             <title>
-              Past the disable nothing stops it: the gap keeps growing until the destination
-              is manually reenabled
+              {`Past the disable nothing stops it: the gap keeps growing -- ${reactivationText(rp)}`}
             </title>
           </path>
         </>
@@ -392,13 +410,15 @@ function chipsFor(rp: ReopenModel, fsfoOn: boolean): ReadoutChip[] {
       }
       : {
         id: 'back', tone: 'rd', k: 'Redo flows again', v: 'never',
-        sub: `The destination was disabled at ${fmt(rp.disabledAt ?? 0)} s -- manual re-enable required, and the network healing at ${fmt(rp.outage)} s changes nothing`,
+        sub: `The destination was disabled at ${fmt(rp.disabledAt ?? 0)} s -- ${reactivationText(rp)}, and the network healing at ${fmt(rp.outage)} s changes nothing`,
       },
     {
       id: 'fails', tone: rp.disabledAt !== null ? 'rd' : 'ik', k: 'Failed retries',
       v: fmt(rp.failedRetries),
-      unit: rp.maxFailure > 0 ? `of ${fmt(rp.maxFailure)}` : 'of no limit',
-      sub: `Plus the initial error at t = 0 that closed the destination: ${rp.failures} logged ${rp.failures === 1 ? 'error' : 'errors'} in all. MAX_FAILURE counts only the attempts to reestablish.`,
+      unit: rp.retryLimit !== null ? `of ${fmt(rp.retryLimit)}` : 'of no limit',
+      sub: rp.edition === '26ai'
+        ? `Plus the initial error at t = 0 that closed the destination: ${rp.failures} logged ${rp.failures === 1 ? 'error' : 'errors'} in all. Under 26ai MAX_FAILURE counts that initial failure too, so MaxFailure = ${fmt(rp.maxFailure)} allows ${fmt(rp.retryLimit ?? 0)} of these retries.`
+        : `Plus the initial error at t = 0 that closed the destination: ${rp.failures} logged ${rp.failures === 1 ? 'error' : 'errors'} in all. MAX_FAILURE counts only the attempts to reestablish.`,
     },
     {
       id: 'peak', tone: 'am', k: 'Peak unshipped redo', v: fmt(rp.peakExposureSecs), unit: 's of redo',
@@ -447,7 +467,11 @@ function chipsFor(rp: ReopenModel, fsfoOn: boolean): ReadoutChip[] {
 function caption(rp: ReopenModel, fsfoOn: boolean): string {
   const over = rp.reconnectAt === null ? 0 : rp.reconnectAt - rp.outage;
   const body = rp.disabledAt !== null
-    ? `The destination was retried ${rp.failedRetries} ${rp.failedRetries === 1 ? 'time' : 'times'}, every ${fmt(rp.reopen)} s, and the ${rpOrd(rp.maxFailure)} failure at ${fmt(rp.disabledAt)} s disabled it for good. The gap never stops growing on this drawing, because nothing on the primary will try that destination again.`
+    ? rp.failedRetries === 0
+      /* 26ai, MaxFailure = 1: the initial failure counts, so nothing is
+         retried at all before the destination is disabled. */
+      ? `The destination failed once at t = 0, and MaxFailure = 1 disabled it immediately -- no retry was ever attempted. The gap never stops growing on this drawing, because nothing on the primary will try that destination again.`
+      : `The destination was retried ${rp.failedRetries} ${rp.failedRetries === 1 ? 'time' : 'times'}, every ${fmt(rp.reopen)} s, and the ${rpOrd(rp.failedRetries)} retry at ${fmt(rp.disabledAt)} s disabled it for good. The gap never stops growing on this drawing, because nothing on the primary will try that destination again.`
     : rp.failedRetries === 0
       ? `The network healed at ${fmt(rp.outage)} s, inside the first ReopenSecs, so the very first retry at ${fmt(rp.reopen)} s succeeded and MaxFailure never counted anything. Even so the destination stayed closed for a full ${fmt(rp.reopen)} s, which is the floor ReopenSecs imposes.`
       : over > 0

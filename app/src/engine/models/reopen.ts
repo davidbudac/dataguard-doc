@@ -9,12 +9,17 @@
  * time. Retries are drawn here at exact REOPEN multiples, which is an
  * idealization -- see footnote 4.
  *
- * MAX_FAILURE counts the consecutive attempts to REESTABLISH communication, so
- * the initial error at t = 0 is not one of them. Reaching the limit disables
- * the destination: no further access until it is manually reenabled, and the
- * network healing does not bring it back. The one documented exception is a
- * 12.2+ GROUP/PRIORITY destination, which re-enters service when it is found
- * accessible -- that is what `inPriorityGroup` draws.
+ * MAX_FAILURE counts the consecutive attempts to REESTABLISH communication,
+ * and the two editions count them differently (ED-04). 19c: the initial
+ * error at t = 0 is not one of them, so MaxFailure retries run before the
+ * destination is disabled -- no further access until it is manually
+ * reenabled, and the network healing does not bring it back. 26ai's usage
+ * notes count the initial failure too, so MaxFailure = 1 disables the
+ * destination immediately (no retry at all) and MaxFailure = n gives n - 1
+ * retries; `retryLimit` in `sim/dests.ts` is the same arithmetic. Either way
+ * the network healing does not bring it back. The one documented exception is
+ * a 12.2+ GROUP/PRIORITY destination, which re-enters service when it is
+ * found accessible -- that is what `inPriorityGroup` draws.
  */
 
 import { assertCitesAllowed } from '../citations';
@@ -74,6 +79,13 @@ export interface ReopenClaims {
 export interface ReopenModel {
   reopen: Seconds;
   maxFailure: number;
+  /**
+   * Failed reopen attempts that end the destination, edition-adjusted --
+   * MaxFailure under 19c, MaxFailure - 1 under 26ai (ED-04); null when
+   * MaxFailure is 0 (no limit). Read this for "how many retries", never
+   * `maxFailure` directly.
+   */
+  retryLimit: number | null;
   outage: Seconds;
   rate: number;
   mode: ProtectionMode;
@@ -113,12 +125,26 @@ const REOPEN_GATES = documented<string>(
   ['DEST.REOPEN'],
 );
 
-const MAX_FAILURE_CITES: CitationId[] = ['DEST.MAX_FAILURE'];
-assertCitesAllowed('MAX_FAILURE_SEMANTICS', MAX_FAILURE_CITES);
+/* MAX_FAILURE counts consecutive attempts, but the two editions count them
+   differently (ED-04): 19c keeps the 12.1 reading -- the initial error is
+   not one of them, disabled until manually reenabled. 26ai's usage notes
+   count the initial failure too, so MAX_FAILURE=1 is no retry at all and
+   MAX_FAILURE=n gives n-1 retries; sim/dests.ts's retryLimit is the same
+   arithmetic, kept in step here. */
+const MAX_FAILURE_19C_CITES: CitationId[] = ['DEST.MAX_FAILURE', 'DEST.MAX_FAILURE_DISABLED_19C'];
+assertCitesAllowed('MAX_FAILURE_SEMANTICS', MAX_FAILURE_19C_CITES);
 
-const MAX_FAILURE = documented<string>(
+const MAX_FAILURE_19C = documented<string>(
   'MAX_FAILURE counts consecutive attempts to reestablish the destination; at the limit it is disabled until it is manually reenabled',
-  MAX_FAILURE_CITES,
+  MAX_FAILURE_19C_CITES,
+);
+
+const MAX_FAILURE_26AI_CITES: CitationId[] = ['DEST.MAX_FAILURE', 'DEST.MAX_FAILURE_26AI'];
+assertCitesAllowed('MAX_FAILURE_SEMANTICS', MAX_FAILURE_26AI_CITES);
+
+const MAX_FAILURE_26AI = documented<string>(
+  'MAX_FAILURE counts the initial failure too: MAX_FAILURE=1 makes no reactivation attempt at all, and above 1 reactivation stops once the count is reached',
+  MAX_FAILURE_26AI_CITES,
 );
 
 const PRIORITY_GROUP_CITES: CitationId[] = ['DEST.GROUP_PRIORITY_REENTER'];
@@ -179,6 +205,12 @@ export function computeReopen(r: ReopenInput): ReopenModel {
   const edition: Edition = r.edition === '26ai' ? '26ai' : '19c';
   const inGroup = r.inPriorityGroup === true;
 
+  /* Failed reopen attempts that end the destination: 19c counts them after
+     the initial error, so it is MaxFailure itself; 26ai counts the initial
+     failure too, so it is one fewer -- MAX_FAILURE=1 is no retry at all
+     (sim/dests.ts's retryLimit, kept in step here). */
+  const limit = maxFailure > 0 ? (edition === '26ai' ? maxFailure - 1 : maxFailure) : null;
+
   /* t = 0 is the error that closed the destination. It is the "last error"
      the interval is measured from, and it is not a reestablish attempt. */
   const attempts: ReopenAttempt[] = [{ t: 0, ok: false }];
@@ -187,20 +219,28 @@ export function computeReopen(r: ReopenInput): ReopenModel {
   let disabledAt: Seconds | null = null;
   let reenters = false;
   let capped = true;
-  for (let k = 1; k <= MAXA; k++) {
-    const t = k * reopen;
-    if (t >= outage) {                             // the network has healed
-      attempts.push({ t, ok: true });
-      reconnectAt = t; capped = false; break;
-    }
-    attempts.push({ t, ok: false });
-    failedRetries++;
-    if (maxFailure > 0 && failedRetries >= maxFailure) {
-      /* The documented 12.2+ exception: a destination in a group is not
-         disabled until someone reenables it -- it re-enters service the
-         moment it is found accessible, so the ladder keeps running. */
-      if (inGroup) { reenters = true; continue; }
-      disabledAt = t; capped = false; break;
+  if (limit === 0 && !inGroup) {
+    /* 26ai, MAX_FAILURE=1: "no attempts are made to reactivate this archive
+       destination when it fails" -- disabled at the initial failure, before
+       any retry is drawn. */
+    disabledAt = 0;
+    capped = false;
+  } else {
+    for (let k = 1; k <= MAXA; k++) {
+      const t = k * reopen;
+      if (t >= outage) {                             // the network has healed
+        attempts.push({ t, ok: true });
+        reconnectAt = t; capped = false; break;
+      }
+      attempts.push({ t, ok: false });
+      failedRetries++;
+      if (limit !== null && failedRetries >= limit) {
+        /* The documented 12.2+ exception: a destination in a group is not
+           disabled until someone reenables it -- it re-enters service the
+           moment it is found accessible, so the ladder keeps running. */
+        if (inGroup) { reenters = true; continue; }
+        disabledAt = t; capped = false; break;
+      }
     }
   }
 
@@ -252,7 +292,9 @@ export function computeReopen(r: ReopenInput): ReopenModel {
   const peakExposureSecs = reconnectAt !== null ? reconnectAt : axis.horizon;
 
   const claims: ReopenClaims = {
-    reopenGates: REOPEN_GATES, maxFailure: MAX_FAILURE, retries: RETRIES, catchup: CATCHUP,
+    reopenGates: REOPEN_GATES,
+    maxFailure: edition === '26ai' ? MAX_FAILURE_26AI : MAX_FAILURE_19C,
+    retries: RETRIES, catchup: CATCHUP,
     lagGate: lagGatedR ? LAG_GATE_BOUNDED
       : mode === 'MAXPROTECTION' ? LAG_GATE_MAXPROT : LAG_GATE_ZERO,
   };
@@ -260,7 +302,7 @@ export function computeReopen(r: ReopenInput): ReopenModel {
   if (v26 && maxperf) claims.lagGrace = LAG_GRACE;
 
   return {
-    reopen, maxFailure, outage, rate, mode, edition,
+    reopen, maxFailure, retryLimit: limit, outage, rate, mode, edition,
     attempts, failedRetries, failures, dense, capped,
     disabledAt, reentersWhenAccessible: reenters, reconnectAt,
     catchupSecs, resyncAt,

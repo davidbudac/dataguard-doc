@@ -176,6 +176,29 @@ describe('computeReopen: one destination at a time', () => {
     expect(grouped.claims.priorityGroup?.cite).toContain('DEST.GROUP_PRIORITY_REENTER');
   });
 
+  /* ED-04 (fact check 2026-09-28): 26ai's usage notes count the initial
+     failure, so MAX_FAILURE=1 disables the destination with no retry at
+     all, and MAX_FAILURE=n gives n-1 retries -- one fewer than 19c. */
+  it('26ai counts the initial failure: MaxFailure=1 is no retry at all', () => {
+    const base = { reopenSeconds: 300, maxFailure: 1, outageSeconds: 1800, redoRateMBs: 5,
+      mode: 'MAXAVAILABILITY' as const, lagLimitSeconds: 30, edition: '26ai' as const };
+    const rp = computeReopen(base);
+    expect(rp.disabledAt).toBe(0);
+    expect(rp.reconnectAt).toBe(null);
+    expect(rp.claims.maxFailure.basis).toBe('documented');
+    expect(rp.claims.maxFailure.cite).toContain('DEST.MAX_FAILURE_26AI');
+  });
+
+  it('26ai MaxFailure=3 gives two retries, one fewer than 19c gives', () => {
+    const base = { reopenSeconds: 60, maxFailure: 3, outageSeconds: 1800, redoRateMBs: 5,
+      mode: 'MAXAVAILABILITY' as const, lagLimitSeconds: 30 };
+    const under19c = computeReopen(base);
+    const under26ai = computeReopen({ ...base, edition: '26ai' as const });
+    expect(under19c.disabledAt).toBe(180);           // three retries at 60 s
+    expect(under26ai.disabledAt).toBe(120);           // two retries at 60 s
+    expect(under19c.claims.maxFailure.cite).toContain('DEST.MAX_FAILURE_DISABLED_19C');
+  });
+
   it('reads the destination attributes off the member, and the outage off the trace', () => {
     const doc = classicTopology({ scenario: 'dc2down', reopen: 60, maxFailure: 3, transportLag: 0 });
     const trace = simulate(doc, doc.events);
