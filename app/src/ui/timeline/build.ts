@@ -19,8 +19,8 @@ import {
   pickTickStep, pingSet, resolveRedoGraph, sortEvents,
 } from '@/engine';
 import type {
-  AnyState, AppModel, DerivedFacts, EngineFacts, Lane as EngineLane, HostId, LinkId, MemberId,
-  Member, ObserverId, Seconds, SiteId, TimedEvent, TopologyDoc, Trace,
+  AnyState, AppModel, DerivedFacts, EngineFacts, Finding, Lane as EngineLane, HostId, LinkId,
+  MemberId, Member, ObserverId, Seconds, SiteId, TimedEvent, TopologyDoc, Trace,
 } from '@/engine';
 import { eventIcon } from '../common/eventIcons';
 import { appLanes } from './app-lanes';
@@ -793,7 +793,7 @@ function buildBraces(doc: TopologyDoc, f: Facts): BraceInput[] {
     braces.push({
       key: 'detect', a: 0, b: f.detectSeconds, tone: 'br-am', mono: true,
       name: 'ObserverPingInterval × (ObserverPingRetry + 1)',
-      val: `${fmt(iv)} ms × ${rt} = ${fmt(f.detectSeconds)} s detection`,
+      val: `${fmt(iv)} ms × ${rt} = ${fmt(f.detectSeconds)} s — this page's model; Oracle states only "nearly 1 second"`,
     });
   } else {
     braces.push({
@@ -842,7 +842,33 @@ function buildBraces(doc: TopologyDoc, f: Facts): BraceInput[] {
 
 /* ---------------- caption (branches on the outcome, never on the event) ---- */
 
-function buildCaption(doc: TopologyDoc, f: Facts, empty: boolean): TimelineCaption {
+/**
+ * The reason a blocked SWITCHOVER is refused, read off the trace's own
+ * SWITCHOVER.REFUSED finding rather than recomputed here -- the finding's
+ * message already names one of the broker's three documented reasons (not
+ * the pre-specified target, not synchronized, or past the lag limit); a
+ * fourth case -- the target or the primary itself unavailable -- is refused
+ * before that finding is ever raised, so it falls to the generic caption.
+ */
+function switchoverRefusalCaption(findings: readonly Finding[]): string {
+  const refused = findings.find((fi) => fi.id === 'SWITCHOVER.REFUSED');
+  if (!refused) return 'SWITCHOVER refused';
+  const msg = refused.message;
+  if (msg.includes('FastStartFailoverTarget candidates')) {
+    return 'SWITCHOVER refused — this member is not the pre-specified fast-start failover target';
+  }
+  if (msg.includes('FastStartFailoverLagLimit')) {
+    return 'SWITCHOVER refused — the target standby is outside FastStartFailoverLagLimit';
+  }
+  if (msg.includes('synchronized')) {
+    return 'SWITCHOVER refused — the target standby is not synchronized';
+  }
+  return 'SWITCHOVER refused';
+}
+
+function buildCaption(
+  doc: TopologyDoc, f: Facts, empty: boolean, findings: readonly Finding[] = [],
+): TimelineCaption {
   if (empty) {
     return { text: 'Steady state — no events injected', tone: 'f-sl', x: null, anchor: 'start' };
   }
@@ -869,7 +895,7 @@ function buildCaption(doc: TopologyDoc, f: Facts, empty: boolean): TimelineCapti
     case 'switchover':
       if (!f.switchover || f.switchover.blocked || f.switchover.downtime === null) {
         return {
-          text: 'SWITCHOVER refused — the target standby is outside FastStartFailoverLagLimit',
+          text: switchoverRefusalCaption(findings),
           tone: 'f-rd', x: null, anchor: 'start',
         };
       }
@@ -1386,7 +1412,7 @@ export function buildTimeline(trace: Trace, doc: TopologyDoc, view: TimelineView
   const stateChanges = [...changes].sort((a, b) => a - b);
 
   const empty = events.length === 0;
-  const caption = buildCaption(doc, f, empty);
+  const caption = buildCaption(doc, f, empty, trace.findings);
   if (caption.anchor === 'middle') {
     const w = approxW(caption.text, 12);
     const a = f.outcome === 'switchover' && f.switchover?.tDown !== null && f.switchover?.tDown !== undefined
