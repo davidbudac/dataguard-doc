@@ -69,6 +69,18 @@ all: while the document is still, value for value, the preset it names,
 `?preset=<id>` is the whole address. Old links to the legacy page are upgraded on
 load by `src/state/legacy-url.ts`.
 
+**Saved configurations** (⋯ menu → Saved configurations) are named copies in
+this browser. Save updates the open named copy; Duplicate creates another.
+Each copy holds the document and its 19c/26ai edition. Opening an example,
+lesson, imported file or saved copy is one undoable step, and the outgoing
+draft is also kept in a browser-local list of the 30 most recent ones
+(`dg-recovery-v1`) -- an untouched preset is not kept, the picker has it.
+Named copies use `dg-workspaces-v1`. Both stores are read back through the
+normal import codec and a record that does not decode cleanly is refused; a
+storage error is shown in the dialog, and a failed recovery write leaves
+Undo available for the current visit. Export a JSON file to move a
+configuration to another browser or device.
+
 ## Testing
 
 `npm test` runs everything. Three suites are load-bearing:

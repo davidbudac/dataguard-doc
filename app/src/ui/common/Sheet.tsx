@@ -16,7 +16,16 @@
  *    lands on the first control inside rather than back in the page behind.
  *  - **Closing gives the focus back** to whatever opened it -- the status
  *    bar's Inspector button -- because a reader who pressed Escape has not
- *    asked to be sent to the top of the document.
+ *    asked to be sent to the top of the document. An opener that has since
+ *    been folded away (an item of the ⋯ menu, which shuts on a press) hands
+ *    it to the menu's own button instead.
+ *  - **Tab stays inside** while it is open: it is `aria-modal`, and a Tab
+ *    that walks out into the page behind it is a Tab into controls the scrim
+ *    says are not there.
+ *
+ * `variant="card"` is the same dialog as a floating card under the top bar
+ * (float.css) -- the look of the page's other floating panels -- for the
+ * dialogs the ⋯ menu opens, rather than the drawer's full-height edge.
  */
 
 import type { ComponentChildren } from 'preact';
@@ -26,11 +35,32 @@ export interface SheetProps {
   open: boolean;
   title: string;
   position?: 'right' | 'bottom';
+  variant?: 'edge' | 'card';
+  /** Extra classes on the panel, for a dialog that needs its own width. */
+  class?: string;
   onClose: () => void;
   children: ComponentChildren;
 }
 
-export function Sheet({ open, title, position = 'right', onClose, children }: SheetProps) {
+/** What Tab may land on inside the panel, in document order. */
+function tabbable(panel: HTMLElement): HTMLElement[] {
+  return [...panel.querySelectorAll<HTMLElement>(
+    'button:not(:disabled), a[href], input:not(:disabled), select:not(:disabled), '
+    + 'textarea:not(:disabled), summary, [tabindex="0"]',
+  )].filter((el) => {
+    if (el.closest('[hidden]')) return false;
+    for (let up: HTMLElement | null = el; up && up !== panel; up = up.parentElement) {
+      if (up.matches('details:not([open])') && el !== up.querySelector('summary')) return false;
+      const cs = getComputedStyle(up);
+      if (cs.display === 'none' || cs.visibility === 'hidden') return false;
+    }
+    return true;
+  });
+}
+
+export function Sheet({
+  open, title, position = 'right', variant = 'edge', class: extra, onClose, children,
+}: SheetProps) {
   const panel = useRef<HTMLElement | null>(null);
   const opener = useRef<Element | null>(null);
   /* `onClose` is an inline arrow at every call site, so it is a new function
@@ -45,6 +75,19 @@ export function Sheet({ open, title, position = 'right', onClose, children }: Sh
     opener.current = document.activeElement;
     panel.current?.focus();
     const onKey = (ev: KeyboardEvent): void => {
+      const box = panel.current;
+      if (ev.key === 'Tab' && box) {
+        const stops = tabbable(box);
+        const first = stops[0];
+        const last = stops.at(-1);
+        const at = document.activeElement;
+        if (!first || !last) { ev.preventDefault(); box.focus(); } else if (ev.shiftKey && (at === first || at === box)) {
+          ev.preventDefault(); last.focus();
+        } else if (!ev.shiftKey && (at === last || !box.contains(at))) {
+          ev.preventDefault(); first.focus();
+        }
+        return;
+      }
       if (ev.key !== 'Escape') return;
       ev.preventDefault();
       close.current();
@@ -54,16 +97,18 @@ export function Sheet({ open, title, position = 'right', onClose, children }: Sh
       document.removeEventListener('keydown', onKey);
       const back = opener.current;
       opener.current = null;
-      if (back instanceof HTMLElement && back.isConnected) back.focus();
+      const shut = back instanceof HTMLElement ? back.closest('details:not([open])') : null;
+      if (shut) shut.querySelector<HTMLElement>('summary')?.focus();
+      else if (back instanceof HTMLElement && back.isConnected) back.focus();
     };
   }, [open]);
 
   if (!open) return null;
   return (
     <>
-      <div class="scrim" onClick={onClose} />
+      <div class={variant === 'card' ? 'scrim is-light' : 'scrim'} onClick={onClose} />
       <aside
-        class={`sheet p-${position}`}
+        class={`sheet p-${position}${variant === 'card' ? ' is-card' : ''}${extra ? ` ${extra}` : ''}`}
         ref={panel}
         role="dialog"
         aria-modal="true"

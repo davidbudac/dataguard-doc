@@ -12,7 +12,7 @@
 import { signal } from '@preact/signals';
 import type { Doc } from '@/state/doc';
 import { classicDoc, doc, makeDoc } from '@/state/doc';
-import { edit, resetHistory } from '@/state/history';
+import { edit } from '@/state/history';
 import { errors, issues, warnings } from '@/state/derived';
 import { exportDoc, importFile, restored, startFresh } from '@/state/persist';
 import { buildShareUrl, isPristinePreset, presetId, shareHref, shareTooLarge } from '@/state/url';
@@ -22,6 +22,8 @@ import { edition, inspectorOpen, mode, toast, viewport } from '@/state/view';
 import { TOO_LARGE_MESSAGE } from '@/state/codec';
 import { revealFindings } from './IssuePanel';
 import { WhyPill } from './common/WhyPill';
+import { activeWorkspaceId, replaceWorkingDocument, workspacesOpen } from '@/state/workspaces';
+import { openWorkspaces } from './workspaces/Workspaces';
 import { exportPng } from './export/diagram';
 import { openReport } from './export/Report';
 
@@ -67,10 +69,11 @@ async function onImport(file: File | null): Promise<void> {
     toast.value = { kind: 'error', text: report.message };
     return;
   }
-  const restoredDoc = report.doc;
-  resetHistory(restoredDoc);
-  presetId.value = null;
-  toast.value = { kind: 'info', text: report.message };
+  /* One undoable step, and the draft it replaces is kept (workspaces.ts). A
+     recovery copy that could not be written says so itself. */
+  if (replaceWorkingDocument('Import configuration', report.doc, null)) {
+    toast.value = { kind: 'info', text: report.message };
+  }
 }
 
 /**
@@ -160,9 +163,9 @@ export function DocPicker() {
           if (!chosen) return;
           /* A preset replaces the whole Document, events included:
              reproducibility is the point, and the events are part of the story
-             the preset tells (presets/types.ts). */
-          resetHistory(makeDoc(chosen.doc()));
-          presetId.value = chosen.id;
+             the preset tells (presets/types.ts). One undoable step, and the
+             draft it replaces is kept in Saved configurations. */
+          replaceWorkingDocument(`Open ${chosen.short}`, makeDoc(chosen.doc()), chosen.id);
         }}
       >
         <option value="">
@@ -191,7 +194,7 @@ export function DocPicker() {
                deployment in its steady state, and the preset of that name
                carries the crash at t = 0 as well. Naming it would make the
                picker say "edited" about a document nobody has edited. */
-            onClick={() => { resetHistory(startFresh(edition.value)); presetId.value = null; }}
+            onClick={() => { replaceWorkingDocument('Start fresh', startFresh(edition.value), null); }}
           >
             Start fresh
           </button>
@@ -290,10 +293,20 @@ export function DocActions() {
           }
         }}
       >
-        <summary class="btn is-icon" aria-label="More" title="Export, import, reset">
+        <summary class="btn is-icon" aria-label="More" title="Saved configurations, export, import, reset">
           <span aria-hidden="true">⋯</span>
         </summary>
         <div class="ovf-menu float-card">
+          <button
+            type="button"
+            class="btn"
+            aria-haspopup="dialog"
+            aria-expanded={workspacesOpen.value}
+            title="Named copies in this browser, and drafts replaced by opening something else"
+            onClick={() => openWorkspaces()}
+          >
+            Saved configurations
+          </button>
           <button type="button" class="btn" onClick={() => exportDoc(doc.value)}>Export</button>
           <button
             type="button"
@@ -336,6 +349,7 @@ export function DocActions() {
               /* Same reason as Start fresh: this is the classic deployment, not
                  the `classic` preset, which brings its own event. */
               presetId.value = null;
+              activeWorkspaceId.value = null;
             }}
           >
             Reset

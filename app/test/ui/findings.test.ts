@@ -81,6 +81,6 @@ describe('the floating findings', () => {
     const menu = root.querySelector('details.ovf .ovf-menu');
     expect(menu).not.toBeNull();
     expect([...menu!.querySelectorAll('.btn')].map((b) => b.textContent?.trim()))
-      .toEqual(['Export', 'Diagram as PNG', 'Report as PDF', 'Import', 'Reset']);
+      .toEqual(['Saved configurations', 'Export', 'Diagram as PNG', 'Report as PDF', 'Import', 'Reset']);
   });
 });

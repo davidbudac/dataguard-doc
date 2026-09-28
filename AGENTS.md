@@ -850,6 +850,13 @@ component computes domain state locally.**
   `requestAnimationFrame`: rAF stops in a background tab and never fires in a
   headless dump, and the permalink is a reading of the state that has to exist
   in both.
+- **Saved configurations** (`workspaces.ts`, ⋯ menu): named copies under
+  `dg-workspaces-v1` and the last 30 drafts that opening a preset, lesson,
+  file or saved copy replaced under `dg-recovery-v1`, both validated through
+  the import codec on read. Every "open" goes through
+  `replaceWorkingDocument` → `history.replaceDoc`: one undoable step that
+  carries the preset id, the saved copy (`activeWorkspaceId`) and -- only when
+  it changed -- the edition; an ordinary edit never records the edition.
 - **Persistence** (`persist.ts`): `dg-doc-v1` (the Document, debounced),
   `dg-theme` and `dg-ed` (the two reading preferences, same keys the legacy page
   uses, so a reader who set them there keeps them here). `dg-fsfo-cfg-v1`, the

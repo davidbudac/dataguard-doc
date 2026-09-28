@@ -39,6 +39,7 @@ import { LearnShell, LearnWorkbenchHeader } from './learn/LearnShell';
 import { IntroPage } from './intro/IntroPage';
 import { Timeline } from './timeline/Timeline';
 import { DockGrip, FullToggle } from './timeline/DockControls';
+import { WorkspacesDialog } from './workspaces/Workspaces';
 
 /** Which modes keep a rail beside the canvas. Learn's right half is the workbench. */
 const HAS_RAIL: Record<Mode, boolean> = {
@@ -499,6 +500,10 @@ export function App() {
           <Rail m={m} wide={false} float={float} />
         </Sheet>
       ) : null}
+
+      {/* The dialogs the ⋯ menu opens live here, not in the menu: it is a
+          <details> that shuts on a press, taking its contents with it. */}
+      {intro ? null : <WorkspacesDialog />}
     </div>
   );
 }

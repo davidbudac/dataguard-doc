@@ -631,7 +631,7 @@ and it is read by scanning.
   `header.test.ts`'s "first-visit strip" suite is now "what writes
   dg-intro-v1", and `test/ui/intro.test.ts` pins the rest.
 - **Every button loads before it switches.** `route.ts` owns the jumps: preset
-  first (`resetHistory(makeDoc(preset.doc()))` + `presetId`), then the Break
+  first (`replaceWorkingDocument`, one undoable step that keeps the reader's draft), then the Break
   template if the button named one (`templates`/`applyTemplate`, so the
   scenario is the engine's own `scenarioEvents` and the playhead rests on the
   outcome), then the panel tab, then the mode — the same order

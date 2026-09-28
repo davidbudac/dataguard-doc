@@ -414,3 +414,21 @@ button.issue{border-bottom:1px solid var(--ln)}
 .cv-dots-ico{display:block;fill:currentColor}
 .zoom-pill .btn[aria-pressed="true"]{color:var(--ik)}
 .zoom-pill .btn[aria-pressed="false"]{color:var(--ik3)}
+
+/* ================= dialogs the ⋯ menu opens ================= */
+
+/* A floating card under the bar at the right, where the menu was, rather
+   than the drawer's full-height edge (common/Sheet.tsx `variant="card"`).
+   The page behind stays readable: the scrim only dims it. */
+.sheet.is-card{top:calc(var(--bar-bottom,80px) + 8px);right:var(--float-m);bottom:auto;
+  left:auto;width:min(420px,calc(100vw - 2 * var(--float-m)));
+  max-height:calc(100dvh - var(--bar-bottom,80px) - 8px - var(--float-m));
+  border:1px solid var(--ln);border-radius:var(--r-card);box-shadow:var(--sh-card);
+  overflow:hidden}
+.sheet.is-card .sheet-hd{background:var(--sf);padding:10px 8px 10px 16px}
+.sheet.is-card .sheet-hd .title{font-size:13px;font-weight:650;color:var(--ik)}
+.scrim.is-light{background:rgba(16,25,34,.12)}
+@media (max-width:767px){
+  .sheet.is-card{top:auto;bottom:0;right:0;left:0;width:auto;max-height:80dvh;
+    border-radius:var(--r-card) var(--r-card) 0 0}
+}

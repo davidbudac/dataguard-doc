@@ -255,7 +255,11 @@ restyle of the old docked layout. Port it feature by feature once Tracks 5
 and 6 are merged, one commit each:
 
 ### 7.1 Workspaces (named local copies + recovery)
-Status: todo
+Status: done (on ui/track7-port)
+Note: ⋯ → "Saved configurations" opens a floating card dialog (`Sheet variant="card"`, float.css);
+presets/lessons/imports/Start fresh now replace the document as one undoable step (`history.replaceDoc`)
+and keep the outgoing draft (untouched presets and repeats skipped). Undo restores the edition only when
+opening a copy changed it. Sheet also traps Tab now.
 `state/workspaces.ts`, `state/workspace-id.ts`, `ui/workspaces/Workspaces.tsx`,
 `test/ui/workspaces.test.ts`. Mount in the new top bar / ⋯ menu.
 

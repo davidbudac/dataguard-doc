@@ -19,12 +19,26 @@
  * document that *is* a preset while the address bar and the picker say it is
  * not. "Undoing back to the preset drops the fragment again" (`state/url.ts`)
  * is only true if the id comes back with the bytes.
+ *
+ * The saved copy a document was opened from (`activeWorkspaceId`,
+ * state/workspaces.ts) is provenance of the same kind and travels the same
+ * way, so Undo after opening a saved copy is back on the draft that was open
+ * before -- and a later Save goes to the copy that draft belonged to.
+ *
+ * The edition is a reading preference, not part of the Document, and an
+ * ordinary edit never records it: undoing a card drag must not flip the
+ * release the reader chose since. Only a replacement that changed it --
+ * opening a saved copy made under the other release (`replaceDoc`) -- stores
+ * the edition it replaced, and only that entry gives it back.
  */
 
 import { batch, computed, signal } from '@preact/signals';
 import type { Doc } from './doc';
 import { doc } from './doc';
 import { presetId } from './url';
+import { edition } from './view';
+import type { Edition } from '@/engine';
+import { activeWorkspaceId } from './workspace-id';
 
 /**
  * One reversible step: the label of the edit, the Document before it, and
@@ -34,6 +48,10 @@ export interface HistoryEntry {
   label: string;
   doc: Doc;
   preset: string | null;
+  /** The saved copy `doc` belonged to, or null. */
+  workspace: string | null;
+  /** Present only when the step changed the edition: the one to go back to. */
+  edition?: Edition;
 }
 
 /** Consecutive edits with the same coalesce key fold together inside this. */
@@ -67,6 +85,7 @@ export function edit(
   /* Read before `fn` runs, and stored beside the snapshot: a caller that
      changes the provenance does it around the `edit()`, not inside it. */
   const beforePreset = presetId.value;
+  const beforeWorkspace = activeWorkspaceId.value;
   const next = fn(before);
   /* An edit that changes nothing is not an edit -- it must not cost an undo. */
   if (next === before) return;
@@ -84,9 +103,9 @@ export function edit(
          from -- and take the newer label, which describes where it ended. */
       const head = stack.slice(0, -1);
       const top = stack[stack.length - 1] as HistoryEntry;
-      undoStack.value = [...head, { label, doc: top.doc, preset: top.preset }];
+      undoStack.value = [...head, { ...top, label }];
     } else {
-      const grown = [...stack, { label, doc: before, preset: beforePreset }];
+      const grown = [...stack, { label, doc: before, preset: beforePreset, workspace: beforeWorkspace }];
       undoStack.value = grown.length > HISTORY_CAP
         ? grown.slice(grown.length - HISTORY_CAP)
         : grown;
@@ -99,17 +118,30 @@ export function edit(
   lastAt = t;
 }
 
+/** Where the reader is now, in the shape of an entry that would come back here. */
+function here(label: string, from: HistoryEntry): HistoryEntry {
+  const out: HistoryEntry = {
+    label, doc: doc.value, preset: presetId.value, workspace: activeWorkspaceId.value,
+  };
+  if (from.edition !== undefined) out.edition = edition.value;
+  return out;
+}
+
+function land(entry: HistoryEntry): void {
+  doc.value = entry.doc;
+  presetId.value = entry.preset;
+  activeWorkspaceId.value = entry.workspace;
+  if (entry.edition !== undefined) edition.value = entry.edition;
+}
+
 export function undo(): void {
   const stack = undoStack.value;
   const entry = stack.at(-1);
   if (!entry) return;
   batch(() => {
     undoStack.value = stack.slice(0, -1);
-    redoStack.value = [
-      ...redoStack.value, { label: entry.label, doc: doc.value, preset: presetId.value },
-    ];
-    doc.value = entry.doc;
-    presetId.value = entry.preset;
+    redoStack.value = [...redoStack.value, here(entry.label, entry)];
+    land(entry);
   });
   breakCoalescing();
 }
@@ -120,11 +152,32 @@ export function redo(): void {
   if (!entry) return;
   batch(() => {
     redoStack.value = stack.slice(0, -1);
-    undoStack.value = [
-      ...undoStack.value, { label: entry.label, doc: doc.value, preset: presetId.value },
-    ];
-    doc.value = entry.doc;
-    presetId.value = entry.preset;
+    undoStack.value = [...undoStack.value, here(entry.label, entry)];
+    land(entry);
+  });
+  breakCoalescing();
+}
+
+/**
+ * Replace the whole Document as one undoable step, with its provenance: the
+ * preset it is, the saved copy it came from and -- when it differs -- the
+ * edition it was made under. Opening a preset, a lesson, a file or a saved
+ * copy goes through here (state/workspaces.ts `replaceWorkingDocument`), so
+ * one Undo puts back the draft that was open before, provenance and all.
+ */
+export function replaceDoc(
+  label: string, next: Doc,
+  to: { preset: string | null; workspace: string | null; edition: Edition },
+): void {
+  const entry: HistoryEntry = {
+    label, doc: doc.value, preset: presetId.value, workspace: activeWorkspaceId.value,
+  };
+  if (to.edition !== edition.value) entry.edition = edition.value;
+  batch(() => {
+    const grown = [...undoStack.value, entry];
+    undoStack.value = grown.length > HISTORY_CAP ? grown.slice(grown.length - HISTORY_CAP) : grown;
+    redoStack.value = [];
+    land({ label, doc: next, preset: to.preset, workspace: to.workspace, edition: to.edition });
   });
   breakCoalescing();
 }
@@ -139,14 +192,19 @@ export function breakCoalescing(): void {
 }
 
 /**
- * Replace the Document wholesale and forget the past: a preset, a lesson step,
- * an import or a restored session is a new starting point, not an edit.
+ * Replace the Document wholesale and forget the past: what the page boots on
+ * (a link, a lesson step it names, a restored session) is a starting point,
+ * not an edit. Opening something once the page is running is an edit that
+ * keeps the draft it replaced -- `replaceDoc`, via state/workspaces.ts.
  */
 export function resetHistory(next?: Doc): void {
   batch(() => {
     undoStack.value = [];
     redoStack.value = [];
-    if (next) doc.value = next;
+    if (next) {
+      doc.value = next;
+      activeWorkspaceId.value = null;
+    }
   });
   breakCoalescing();
 }
