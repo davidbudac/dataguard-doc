@@ -395,6 +395,56 @@ describe('the canvas menu', () => {
 });
 
 /**
+ * The engine now refuses a SWITCHOVER TO a down target or with the primary
+ * down, refuses a FAILOVER TO a down target, and draws no reinstatement where
+ * its preconditions fail. The menu used to offer all three unconditionally;
+ * each now carries the same reading the run itself acts on.
+ */
+describe('SWITCHOVER, FAILOVER and REINSTATE say why they are off', () => {
+  it('SWITCHOVER is off while the target is down, and on again once it is restored', () => {
+    inject([{ at: 0, kind: 'host.down', host: 'dc2-sby01' }]);
+    expect(actionsFor(doc.value.topology, ['sby01'], 0).find((a) => a.id === 'cmd.switchover')?.enabled)
+      .toEqual({ state: 'off', why: WHY.switchoverTargetDown });
+    inject([]);
+    expect(actionsFor(doc.value.topology, ['sby01'], 0).find((a) => a.id === 'cmd.switchover')?.enabled)
+      .toEqual({ state: 'on' });
+  });
+
+  it('SWITCHOVER is off while the primary is down', () => {
+    inject([{ at: 0, kind: 'host.down', host: 'dc1-prm01' }]);
+    expect(actionsFor(doc.value.topology, ['sby01'], 0).find((a) => a.id === 'cmd.switchover')?.enabled)
+      .toEqual({ state: 'off', why: WHY.switchoverPrimaryDown });
+  });
+
+  it('FAILOVER is off while the target is down, but not while the primary is', () => {
+    inject([{ at: 0, kind: 'host.down', host: 'dc2-sby01' }]);
+    expect(actionsFor(doc.value.topology, ['sby01'], 0).find((a) => a.id === 'cmd.failover')?.enabled)
+      .toEqual({ state: 'off', why: WHY.failoverTargetDown });
+    inject([{ at: 0, kind: 'host.down', host: 'dc1-prm01' }]);
+    expect(actionsFor(doc.value.topology, ['sby01'], 0).find((a) => a.id === 'cmd.failover')?.enabled)
+      .toEqual({ state: 'on' });
+  });
+
+  it('REINSTATE DATABASE is off for the current primary and for a standby that never held the role', () => {
+    const t = doc.value.topology;
+    expect(actionsFor(t, ['prm01'], 0).find((a) => a.id === 'cmd.reinstate')?.enabled)
+      .toEqual({ state: 'off', why: WHY.notFormerPrimary });
+    expect(actionsFor(t, ['sby01'], 0).find((a) => a.id === 'cmd.reinstate')?.enabled)
+      .toEqual({ state: 'off', why: WHY.notFormerPrimary });
+  });
+
+  it('REINSTATE DATABASE turns on for the primary a failover left behind, and stays off for the new primary', () => {
+    applyTemplate(byId(doc.value.topology, 'crash')!);
+    /* The published scenario's failover is open by t = 55 (see
+       sim-fact-check.test.ts's ED-01/SIM-03 readings of the same threshold). */
+    const acts = actionsFor(doc.value.topology, ['prm01'], 60);
+    expect(acts.find((a) => a.id === 'cmd.reinstate')?.enabled).toEqual({ state: 'on' });
+    expect(actionsFor(doc.value.topology, ['sby01'], 60).find((a) => a.id === 'cmd.reinstate')?.enabled)
+      .toEqual({ state: 'off', why: WHY.notFormerPrimary });
+  });
+});
+
+/**
  * The menu injects at the playhead, and until it said so the header's
  * "Inject at t = 0 s" read as a property of the menu rather than as a reading
  * of where the playhead happened to be.

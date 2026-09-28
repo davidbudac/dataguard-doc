@@ -92,6 +92,14 @@ export const WHY = {
     'It is already down at this point on the clock.',
   noTarget:
     'No physical or logical standby is configured to move the role to.',
+  switchoverTargetDown:
+    'SWITCHOVER needs the target standby up: it is down at this point on the clock.',
+  switchoverPrimaryDown:
+    'SWITCHOVER needs the primary up: it is down at this point on the clock.',
+  failoverTargetDown:
+    'FAILOVER needs the target standby up: it is down at this point on the clock.',
+  notFormerPrimary:
+    'REINSTATE DATABASE is for a former primary the run left needing reinstatement; the run does not show this one as that.',
   /**
    * The two ends of a range this page models, said without the numbers: the
    * range itself lives in the engine's `BOUNDS`, and a sentence here carrying
