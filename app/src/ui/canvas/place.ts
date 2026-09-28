@@ -20,6 +20,12 @@ export const placing = signal<string | null>(null);
 export const placeOver = signal<string | null>(null);
 /** The key whose name is being edited in place, or null. */
 export const renaming = signal<string | null>(null);
+/**
+ * The cards a drag on the drawing is carrying right now: the layout draws
+ * them where the drag puts them but makes nothing else move out of their way
+ * until they land (`layout.ts` step 7b). Empty when nothing is in the air.
+ */
+export const inFlight = signal<readonly string[]>([]);
 
 let hit: ((clientX: number, clientY: number) => string | null) | null = null;
 

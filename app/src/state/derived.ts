@@ -13,6 +13,7 @@
 
 import { computed } from '@preact/signals';
 import { layoutTopology } from '@/ui/canvas/layout';
+import { inFlight } from '@/ui/canvas/place';
 import type { Geometry } from '@/ui/canvas/layout';
 import {
   declaredPrimary, resolveRedoGraph, simulate, sortFindings, stateAt, validate,
@@ -57,7 +58,7 @@ export const redoGraph = computed(() => {
 export const geometry = computed<Geometry | null>(() => {
   const graph = redoGraph.value;
   if (graph === null) return null;
-  return layoutTopology(topology.value, graph, { overrides: doc.value.layout });
+  return layoutTopology(topology.value, graph, { overrides: doc.value.layout, transient: inFlight.value });
 });
 
 /** Validation findings, sorted by (severity, subject, id) the way the engine sorts. */

@@ -175,6 +175,13 @@ export interface LayoutOffset { dx: number; dy: number; w?: number; h?: number }
 export interface LayoutOptions {
   /** Drag overrides, keyed by node key, snapped to 8 px. */
   overrides?: Readonly<Record<string, LayoutOffset>>;
+  /**
+   * Cards being carried right now. Their overrides are drawn, but nothing
+   * makes way for them (step 7b) until they are let go: a card slid across
+   * another must not shove it aside mid-air, or the host the reader is aiming
+   * a merge at would jump out from under the pointer.
+   */
+  transient?: readonly string[];
 }
 
 /** The key a node is selected, hovered and dragged by: its own id. */
@@ -726,13 +733,13 @@ export function layoutTopology(
   });
 
   /* ---- 7. drag overrides, snapped ---- */
-  const nodes = placed.map(({ node }) => {
+  const nodes = makeWay(opts.transient ?? [], placed.map(({ node }) => {
     const ov = overrides[node.key];
     if (!ov) return node;
     const dx = snap8(ov.dx); const dy = snap8(ov.dy);
     if (dx === 0 && dy === 0) return node;
     return { ...node, x: node.x + dx, y: node.y + dy, moved: true };
-  });
+  }));
 
   const byKey: Record<string, NodeBox> = {};
   for (const n of nodes) byKey[n.key] = n;
@@ -857,6 +864,77 @@ export function layoutTopology(
     maxRank,
     unreachableRank,
   };
+}
+
+/**
+ * Step 7b: a card the layout placed makes way for one the reader placed.
+ *
+ * The auto-layout never overlaps two of its own cards, but a card moved by
+ * hand keeps its offset from a slot the layout may since have given to
+ * something new -- a standby added to that data centre, a card dropped into
+ * it -- and the newcomer then landed on top of it. Here every unit the layout
+ * placed (a card alone, or a chassis stack with every blade) that overlaps a
+ * hand-moved card, or a unit already settled above it, slides straight down
+ * until it is clear, one row gap below. Hand-moved cards never move, and
+ * nothing is written anywhere: the next layout starts from the natural slots
+ * again, so a card that no longer collides returns to its own.
+ *
+ * With nothing moved by hand this returns its input untouched, which keeps
+ * every preset's geometry golden exactly where it was.
+ */
+function makeWay(transient: readonly string[], nodes: NodeBox[]): NodeBox[] {
+  if (!nodes.some((n) => n.moved && !transient.includes(n.key))) return nodes;
+  const headerOf = (n: NodeBox): number => (n.stackKey === undefined ? 0 : LAYOUT.stackHeaderH);
+  const boxOf = (list: readonly NodeBox[]): Rect => {
+    const x0 = Math.min(...list.map((n) => n.x));
+    const y0 = Math.min(...list.map((n) => n.y - headerOf(n)));
+    const x1 = Math.max(...list.map((n) => n.x + n.w));
+    const y1 = Math.max(...list.map((n) => n.y + n.h));
+    return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
+  };
+  /* Units: a stack moves as one, unless a blade of it was moved by hand --
+     then every blade of it stays where it is, as an obstacle. */
+  const units = new Map<string, NodeBox[]>();
+  for (const n of nodes) {
+    const k = n.stackKey ?? `card:${n.key}`;
+    units.set(k, [...(units.get(k) ?? []), n]);
+  }
+  const fixed: Rect[] = [];
+  const auto: { key: string; list: NodeBox[]; box: Rect }[] = [];
+  for (const [key, list] of units) {
+    /* In the air: neither an obstacle nor pushed. */
+    if (list.some((n) => transient.includes(n.key))) continue;
+    if (list.some((n) => n.moved)) fixed.push(...list.map((n) => ({ x: n.x, y: n.y - headerOf(n), w: n.w, h: n.h + headerOf(n) })));
+    else auto.push({ key, list, box: boxOf(list) });
+  }
+  /* Top to bottom, left to right: a unit pushed down meets the ones under it
+     in the order the reader reads them. */
+  auto.sort((a, b) => a.box.y - b.box.y || a.box.x - b.box.x);
+  /* Clear by a hair counts as clear -- a card nudged one grid step towards its
+     neighbour must not shove it -- but whatever has to move lands a full row
+     gap below what it met. */
+  const gap = LAYOUT.rowGap;
+  const hair = 4;
+  const clash = (a: Rect, b: Rect): boolean =>
+    a.x < b.x + b.w + hair && b.x < a.x + a.w + hair && a.y < b.y + b.h + hair && b.y < a.y + a.h + hair;
+  const settled: Rect[] = [...fixed];
+  const shift = new Map<string, number>();
+  for (const u of auto) {
+    let box = u.box;
+    for (let guard = 0; guard < 64; guard++) {
+      const hit = settled.filter((r) => clash(box, r));
+      if (hit.length === 0) break;
+      const below = Math.max(...hit.map((r) => r.y + r.h)) + gap;
+      box = { ...box, y: below };
+    }
+    settled.push(box);
+    if (box.y !== u.box.y) for (const n of u.list) shift.set(n.key, box.y - u.box.y);
+  }
+  if (shift.size === 0) return nodes;
+  return nodes.map((n) => {
+    const dy = shift.get(n.key);
+    return dy === undefined ? n : { ...n, y: n.y + dy };
+  });
 }
 
 /** A cascaded member whose feeder shares its site is indented under it. */

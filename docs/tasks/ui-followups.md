@@ -80,7 +80,21 @@ hosts/stacks it may merge into) and dim/deny invalid ones; show the snap
 position (ghost outline) where it will land.
 
 ### 1.6 Re-layout when an element is added
-Status: todo
+Status: done (on ui/track1-canvas)
+Note: three parts. (1) Site choice (`ui/build/placement.ts`, called from
+`inspector/edits.ts`): a standby goes to an empty DC, else beside the existing
+standbys, never into an observer-only DC while another will do (that used to
+re-order the columns); a far sync goes beside the primary; an observer joins the
+observers. (2) `layout.ts` step 7b `makeWay`: an auto-placed card/stack that
+overlaps a hand-moved card slides down clear of it (not while the card is still
+being dragged -- `LayoutOptions.transient`, fed by `place.ts` `inFlight`).
+(3) `routing.ts`: two last-resort templates (over/under lane, then into the card
+from the side of its column) and a fewest-crossings fallback. Presets route as
+before (goldens unchanged); `test/ui/canvas-relayout.test.ts` adds to every
+preset and asserts no card overlap and no line through a card.
+Left for later: DC boxes can still overlap a neighbouring column when hand-moved
+cards or a resize push them into it (columns never push each other); the
+observer ping/readiness mesh with 3+ observers is still busy.
 Adding a standby / far sync / observer / data centre (palette buttons, drops
 from the palette) makes a mess: redo and observer lines run through existing
 cards and labels, and new items land on top of or awkwardly next to existing
