@@ -34,11 +34,14 @@
 }
 
 /* note cards ------------------------------------------------------------- */
+/* The kind is a soft wash and a hairline in its colour, and a dot before the
+   heading -- not a 3 px left border, which curves into a wedge at the rounded
+   corners. */
 .ct-note {
-  border: 1px solid var(--ln, #DCE2EA);
-  border-left-width: 3px;
-  border-radius: 3px;
-  background: var(--sf, #FFF);
+  --k: var(--sl, #475569);
+  border: 1px solid color-mix(in srgb, var(--k) 28%, var(--ln, #DCE2EA));
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--k) 6%, var(--sf, #FFF));
   padding: 10px 12px;
   margin: 0 0 10px;
 }
@@ -48,12 +51,22 @@
   font-weight: 620;
   color: var(--ik, #101922);
 }
-.ct-k-tl { border-left-color: var(--tl, #0E7C6B); }
-.ct-k-bl { border-left-color: var(--bl, #2563EB); }
-.ct-k-am { border-left-color: var(--am, #D97706); }
-.ct-k-rd { border-left-color: var(--rd, #D64545); }
-.ct-k-vi { border-left-color: var(--vi, #6D5AE6); }
-.ct-k-sl { border-left-color: var(--sl, #475569); }
+.ct-note-h::before {
+  content: "";
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin: 0 7px 1px 0;
+  border-radius: 999px;
+  background: var(--k);
+  vertical-align: middle;
+}
+.ct-k-tl { --k: var(--tl, #0E7C6B); }
+.ct-k-bl { --k: var(--bl, #2563EB); }
+.ct-k-am { --k: var(--am, #D97706); }
+.ct-k-rd { --k: var(--rd, #D64545); }
+.ct-k-vi { --k: var(--vi, #6D5AE6); }
+.ct-k-sl { --k: var(--sl, #475569); }
 
 /* fact chips ------------------------------------------------------------- */
 .ct-fact-block { display: block; }

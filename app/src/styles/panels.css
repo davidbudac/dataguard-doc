@@ -67,7 +67,7 @@
   font-family:var(--mono);font-size:12.5px;line-height:1.55;
   background:var(--sf);counter-reset:none}
 .cb-ln{display:grid;grid-template-columns:34px minmax(0,1fr);gap:10px;
-  padding:0 12px;border-left:2px solid transparent}
+  padding:0 12px}
 .cb-ln .cb-g{font-size:10px;color:var(--ik3);text-align:right;user-select:none;
   padding-top:2px;font-variant-numeric:tabular-nums}
 .cb-ln .cb-t{white-space:pre-wrap;overflow-wrap:anywhere;color:var(--ik)}
@@ -76,8 +76,12 @@
   color:var(--ik3);line-height:1.45}
 .cb-ln.k-note.b-model .cb-g,.cb-ln.k-note.b-conflict .cb-g{color:var(--vi)}
 .cb-ln.has-subject{cursor:default}
-.cb-ln.is-hot{background:var(--vif);border-left-color:var(--vi)}
-.cb-ln.is-sel{background:var(--sf2);border-left-color:var(--ik3)}
+/* A cross-highlighted line is a wash plus a gutter number in the same tone --
+   no left rule. */
+.cb-ln.is-hot{background:var(--vif)}
+.cb-ln.is-hot .cb-g{color:var(--vi);font-weight:600}
+.cb-ln.is-sel{background:var(--sf2)}
+.cb-ln.is-sel .cb-g{color:var(--ik);font-weight:600}
 @media (prefers-reduced-motion:no-preference){
   .cb-ln{transition:background-color .12s ease-out}}
 
@@ -140,6 +144,7 @@
   .panel{break-before:page}
   .panel:first-of-type{break-before:auto}
   .cb,.fig,.panel-ctl{break-inside:avoid}
-  .cb-ln.is-hot,.cb-ln.is-sel{background:none;border-left-color:#000000}
+  .cb-ln.is-hot,.cb-ln.is-sel{background:none}
+  .cb-ln.is-hot .cb-g,.cb-ln.is-sel .cb-g{color:#000000}
   .panel-ctl input[type="range"]{display:none}
 }

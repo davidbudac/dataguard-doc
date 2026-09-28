@@ -344,12 +344,11 @@ button.issue{border-bottom:1px solid var(--ln)}
 
   /* The most serious finding, once, above the dock. */
   .fnd-toast{position:absolute;left:104px;bottom:calc(var(--dock-h,72px) + var(--float-m) + 12px);
-    z-index:21;display:flex;align-items:center;gap:10px;padding:5px 6px 5px 10px;
-    border-left:3px solid var(--am);
+    z-index:21;display:flex;align-items:center;gap:10px;padding:5px 6px 5px 6px;
     max-width:calc(100vw - 104px - var(--rail-space) - 200px)}
   .app.is-float.m-break .fnd-toast{left:236px;
     max-width:calc(100vw - 236px - var(--rail-space) - 200px)}
-  .fnd-toast.t-rd{border-left-color:var(--rd)}
+  /* The tone is the chip at its head (Error / Warning), not a left border. */
   .fnd-toast-m{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
     font-size:12.5px;color:var(--ik2)}
   .fnd-toast .btn{padding:3px 8px}

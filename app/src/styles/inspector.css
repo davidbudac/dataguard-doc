@@ -98,8 +98,10 @@ input[type="range"].field-in:focus-visible{outline:2px solid var(--fc);outline-o
 .rr-row .field-in{width:auto;min-width:96px;flex:0 1 auto}
 .rr-k{font-family:var(--mono);font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;
   color:var(--ik3);flex:0 0 auto}
-.rr-grp{display:flex;flex-direction:column;gap:6px;padding:8px 0 8px 10px;
-  border-left:2px solid var(--ln2)}
+/* A PRIORITY group is a sunken box inside its rule, not a rule down its left
+   edge. */
+.rr-grp{display:flex;flex-direction:column;gap:6px;padding:8px 10px;
+  background:var(--sf2);border-radius:8px}
 .rr-dest{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:2px 0}
 .rr-dest .field-in{width:auto;min-width:104px;flex:0 1 auto}
 .rr-dest .mono{font-size:12px;color:var(--ik)}
@@ -180,9 +182,9 @@ input[type="range"].field-in:focus-visible{outline:2px solid var(--fc);outline-o
 button.issue{width:100%;text-align:left;background:var(--sf);border-top:0;border-right:0;
   border-bottom:1px solid var(--ln);cursor:pointer;font:inherit;color:inherit}
 button.issue:hover{background:var(--sf2)}
-button.issue.sv-error{border-left:3px solid var(--rd)}
-button.issue.sv-warning{border-left:3px solid var(--am)}
-button.issue.sv-info{border-left:3px solid var(--ln2)}
+button.issue.sv-error{background:color-mix(in srgb,var(--rd) 5%,var(--sf))}
+button.issue.sv-warning{background:color-mix(in srgb,var(--am) 5%,var(--sf))}
+button.issue.sv-error:hover,button.issue.sv-warning:hover{background:var(--sf2)}
 
 /* Break rail ---------------------------------------------------------------
 
