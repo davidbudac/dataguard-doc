@@ -26,7 +26,7 @@ EDIT CONFIGURATION SET PROPERTY FastStartFailoverThreshold = 30;
 -- default;
 -- the clock starts when the observer first loses its connection to the primary, and a failover needs BOTH the observer and the target standby to have lost the primary for that long -- ObserverOverride is FALSE, the broker default, and this page models the default only;
 -- ObserverPingInterval and ObserverPingRetry stay unset -- detection runs on the threshold;
--- FastStartFailoverLagLimit is not evaluated in maximum availability under 19c -- the standby must be synchronized instead, which is about redo received, so an apply lag does not block it;
+-- FastStartFailoverLagLimit is not set -- the 19c broker default is 30 seconds, and in maximum availability a live 19.27 system prints it "(not in use)": the standby must be synchronized instead, which is about redo received, so an apply lag does not block it. The 19c documentation contradicts itself here -- its fast-start failover chapter says zero data loss in maximum availability needs the property set to zero, its property page says the property is used in maximum performance mode;
 EDIT CONFIGURATION SET PROPERTY FastStartFailoverPmyShutdown = TRUE;
 -- default;
 -- TRUE is the default: a primary stalled longer than the threshold, able to reach neither the observer nor the target standby, aborts itself;

@@ -39,6 +39,10 @@ import type { Finding, RedoGraph, TopologyDoc } from '../src/engine';
 import { memberId } from '../src/engine/ids';
 import type { MemberId } from '../src/engine/ids';
 import { formatRedoRoutes } from '../src/engine/redo/parse';
+import { lagLimitIsSet, lagLimitOf } from '../src/engine/defaults';
+import { lagGated } from '../src/engine/sim/fsfo';
+import { showFastStartFailover } from '../src/engine/generate/show';
+import { renderPlain } from '../src/engine/generate/lines';
 
 const M = (s: string): MemberId => memberId(s);
 
@@ -280,6 +284,53 @@ describe('the recorded validation output', () => {
   });
 });
 
+/* ---------------- both editions ---------------- */
+
+/**
+ * The edition is a reading preference laid over the document, so a preset
+ * has to be a configuration Oracle accepts under either one (VAL-06). Two
+ * things used to break that. The primary's own LogXptMode was the builder's
+ * ASYNC, so after a role change it was a standby the mode could not use --
+ * XPT.PRIMARY_LOGXPTMODE now says so, and every preset gives the primary the
+ * transport its mode needs unless a pre-declared reverse rule supplies it.
+ * And every preset stored FastStartFailoverLagLimit = 30, which under 26ai
+ * made maximum availability bounded-loss although nobody set a limit; the
+ * presets now leave it not set, so the edition's default is in force.
+ */
+describe.each(PRESETS.map((p) => [p.id, p] as const))('preset %s, read under 19c and 26ai', (_id, p) => {
+  const under = (edition: '19c' | '26ai'): TopologyDoc => {
+    const d = p.doc();
+    d.config.edition = edition;
+    return d;
+  };
+
+  it.each(['19c', '26ai'] as const)('validates with no error under %s, and raises what it raises natively', (edition) => {
+    const findings = validate(under(edition));
+    expect(findings.filter((f) => f.severity === 'error')
+      .map((f) => `${f.id} ${f.subject.id ?? ''}: ${f.message}`)).toEqual([]);
+    /* No finding is edition-specific for any preset: the same record holds
+       whichever edition reads it. */
+    expect(fingerprints(findings)).toEqual(EXPECTED_FINDINGS[p.id]);
+    expect(findings.some((f) => f.id === 'XPT.PRIMARY_LOGXPTMODE')).toBe(false);
+  });
+
+  it('leaves FastStartFailoverLagLimit not set', () => {
+    expect(lagLimitIsSet(p.doc().config.fsfo)).toBe(false);
+  });
+
+  it.each(['19c', '26ai'] as const)('is zero data loss under %s', (edition) => {
+    const d = under(edition);
+    /* Every preset is in maximum availability or maximum protection. */
+    expect(d.config.protectionMode).not.toBe('MAXPERFORMANCE');
+    expect(lagGated(d)).toBe(false);
+    expect(lagLimitOf(d)).toBe(edition === '26ai' && d.config.protectionMode === 'MAXAVAILABILITY' ? 0 : 30);
+    const word = d.config.fsfo.state === 'observe-only'
+      ? 'Fast-Start Failover: Enabled in Observe-Only Mode'
+      : 'Fast-Start Failover: Enabled in Zero Data Loss Mode';
+    expect(renderPlain(showFastStartFailover(d))).toContain(word);
+  });
+});
+
 /* ---------------- what every preset must satisfy ---------------- */
 
 describe.each(PRESETS.map((p) => [p.id, p] as const))('preset %s', (_id, p) => {
@@ -475,6 +526,18 @@ describe('classic: primary, standby, observer at a third site', () => {
     /* Execution is environment-dependent, and the engine says so. */
     expect(t.decisions.some((d) => d.id === 'EXEC.ENV_DEPENDENT')).toBe(true);
   });
+  it('shuts an isolated primary down one threshold into the stall, in Oracle\'s verb', () => {
+    /* "the primary database will shut down after FastStartFailoverThreshold
+       seconds has elapsed" -- the state is still called aborted. */
+    const iso = simulate(doc, [
+      { at: 0, kind: 'link.cut', link: 'dc1-dc2' as never },
+      { at: 0, kind: 'link.cut', link: 'dc1-dc3' as never },
+    ]);
+    expect(iso.facts.abortAt).toBe(30);
+    const d = iso.decisions.find((x) => x.id === 'PRIMARY.ABORT');
+    expect(d?.claim.note).toContain('the stalled primary shuts down');
+    expect(d?.claim.note).not.toContain('aborts itself');
+  });
 });
 
 describe('observe-only: the observer that never fails over', () => {
@@ -516,6 +579,73 @@ describe('observe-only: the observer that never fails over', () => {
     expect(iso.facts.abortAt).toBe(null);
     expect(iso.facts.conditions.stalled).toBe(false);
     expect(iso.facts.outcome).toBe('continues');
+  });
+});
+
+describe('observe-only: the manual role changes Oracle leaves open', () => {
+  /* The observe-only notes of the 19c and 26ai fast-start failover chapters:
+     "Manual failover to the fast-start failover target can be performed
+     without receiving an acknowledgement from the observer." / "Manual
+     failover can be performed even if the pre-condition checks are not met."
+     / "You can switch over or manual failover to a bystander database." The
+     enabled-mode conditions (FSFO.MANUAL_FAILOVER_CONDITIONS) do not apply. */
+  const REFUSALS = [
+    'FSFO.MANUAL_FAILOVER_UNOBSERVED', 'FSFO.MANUAL_FAILOVER_NOT_TARGET',
+    'FSFO.MANUAL_FAILOVER_NOT_READY', 'SWITCHOVER.REFUSED',
+  ];
+  const refused = (t: ReturnType<typeof simulate>): string[] =>
+    t.findings.filter((f) => REFUSALS.includes(f.id)).map((f) => f.id);
+
+  it('fails over to the target without the observer', () => {
+    const p = preset('observe-only');
+    const t = simulate(p.doc(), [
+      { at: 0, kind: 'host.down', host: 'dc1-prm01' as never },
+      { at: 1, kind: 'observer.stop', observer: 'obs01' as never },
+      { at: 5, kind: 'cmd.failover', to: M('sby01') },
+    ]);
+    expect(refused(t)).toEqual([]);
+    expect(t.facts.newPrimary).toBe(M('sby01'));
+  });
+
+  it('fails over although the target is not synchronized -- a pre-condition not met', () => {
+    const p = preset('observe-only');
+    const t = simulate(p.doc(), [
+      { at: 0, kind: 'link.cut', link: 'dc1-dc2' as never },
+      { at: 45, kind: 'host.down', host: 'dc1-prm01' as never },
+      { at: 50, kind: 'cmd.failover', to: M('sby01') },
+    ]);
+    expect(refused(t)).toEqual([]);
+    expect(t.facts.newPrimary).toBe(M('sby01'));
+    /* ... and pays for it: past NET_TIMEOUT the primary carried on without
+       the standby, and that redo is lost. */
+    expect(t.facts.dataLossSeconds).toBeGreaterThan(0);
+  });
+
+  it('switches over, and fails over, to a bystander', () => {
+    const observeOnlyTwoStandbys = (): TopologyDoc => {
+      const d = preset('multi-target-three-observers').doc();
+      d.config.fsfo.state = 'observe-only';
+      d.config.fsfo.target = { kind: 'list', members: [M('sby01')] };
+      return d;
+    };
+    const sw = simulate(observeOnlyTwoStandbys(), [{ at: 0, kind: 'cmd.switchover', to: M('sby02') }]);
+    expect(refused(sw)).toEqual([]);
+    expect(sw.facts.switchover?.blocked).toBe(false);
+    expect(sw.facts.newPrimary).toBe(M('sby02'));
+    const fo = simulate(observeOnlyTwoStandbys(), [
+      { at: 0, kind: 'host.down', host: 'dc1-prm01' as never },
+      { at: 5, kind: 'cmd.failover', to: M('sby02') },
+    ]);
+    expect(refused(fo)).toEqual([]);
+    expect(fo.facts.newPrimary).toBe(M('sby02'));
+    /* The contrast: enabled, the same failover names a member that is not the target. */
+    const enabled = observeOnlyTwoStandbys();
+    enabled.config.fsfo.state = 'enabled';
+    const no = simulate(enabled, [
+      { at: 0, kind: 'site.down', site: 'dc1' as never },
+      { at: 5, kind: 'cmd.failover', to: M('sby02') },
+    ]);
+    expect(refused(no)).toContain('FSFO.MANUAL_FAILOVER_NOT_TARGET');
   });
 });
 

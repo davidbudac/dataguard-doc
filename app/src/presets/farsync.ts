@@ -19,10 +19,15 @@ import type { TopologyDoc } from '../engine';
    RedoRoutes group here: (LOCAL : (FS1 SYNC PRIORITY=1, South_Sales ASYNC
    PRIORITY=2)). */
 function zeroLossDoc(): TopologyDoc {
+  /* Only this direction is declared. After a role change South_Sales has no
+     RedoRoutes of its own and ships straight to North_Sales at North_Sales's
+     LogXptMode -- SYNC, which the fast-start failover prerequisites ask of
+     the primary as of the target. */
   const north = database('North_Sales', ['dc1-north'], 'primary', {
     redoRoutes: [localGroups(group(
       prio(1, to('FS1', 'SYNC')), prio(2, to('South_Sales', 'ASYNC')),
     ))],
+    logXptMode: 'SYNC',
   });
   const fs1 = farSync('FS1', 'dc1-fs1', {
     redoRoutes: [when('North_Sales', to('South_Sales', 'ASYNC'))],
@@ -75,7 +80,14 @@ export const farSyncZeroLoss: Preset = {
     + '-- "This does reduce the protection level because redo transmission is then in ASYNC '
     + 'mode", so maximum availability, without acknowledgement from at least one synchronized '
     + 'standby, operates as if it were in maximum performance mode. When FS1 is back, the '
-    + 'primary ships to it again, because priority 1 is higher than priority 2. Two things here '
+    + 'primary ships to it again, because priority 1 is higher than priority 2. Only this '
+    + 'direction is declared. After a role change South_Sales has no RedoRoutes of its own, so '
+    + "it ships straight to North_Sales at North_Sales's LogXptMode -- SYNC, because the fast-start "
+    + "failover prerequisites set the primary's LogXptMode as well as the target's -- over the "
+    + 'long hop, with no far sync instance in front of it; the "second far sync near the standby" '
+    + 'preset is the one that declares both directions. With a far sync instance in the path, '
+    + 'enabling fast-start failover also needs FastStartFailoverTarget set on both the primary '
+    + 'and the target standby first. Two things here '
     + "are this page's model rather than documentation: how SYNCHRONIZED is computed across the "
     + 'far sync hop, and the instant the primary moves from one destination to the other.',
   cite: [
@@ -84,6 +96,7 @@ export const farSyncZeroLoss: Preset = {
     'FSFO.FARSYNC_MODES_26AI',
     'FS.FAILURE_ADD_DEST', 'ROUTES.ONE_PATH_PER_GROUP', 'ROUTES.PRIORITY_EX1',
     'ROUTES.PRIORITY_26AI', 'ROUTES.MAXFAILURE_GROUP_DEFAULT', 'MAXAVAIL.AT_LEAST_ONE',
+    'FSFO.TASK3_PRIMARY_XPT_19C', 'FS.ROUTES_BOTH_DIRECTIONS', 'FSFO.FARSYNC_TARGET_SCENARIO7',
   ],
   doc: zeroLossDoc,
   events: () => [hostDown(0, 'dc1-fs1')],
@@ -94,10 +107,13 @@ export const farSyncZeroLoss: Preset = {
    (LOCAL : (FS1 SYNC PRIORITY=1, FS2 SYNC PRIORITY=1, South_Sales ASYNC
    PRIORITY=2)). Losing one far sync keeps the configuration zero data loss. */
 function haPairDoc(): TopologyDoc {
+  /* As in Example 5-2, one direction only: North_Sales carries SYNC for when
+     it is the standby, and receives it straight from South_Sales. */
   const north = database('North_Sales', ['dc1-north'], 'primary', {
     redoRoutes: [localGroups(group(
       prio(1, to('FS1', 'SYNC')), prio(1, to('FS2', 'SYNC')), prio(2, to('South_Sales', 'ASYNC')),
     ))],
+    logXptMode: 'SYNC',
   });
   const fs1 = farSync('FS1', 'dc1-fs1', {
     redoRoutes: [when('North_Sales', to('South_Sales', 'ASYNC'))],
@@ -150,13 +166,18 @@ export const farSyncHaPair: Preset = {
     + 'default event kills the first far sync host, and redo moves to the second one, still '
     + 'SYNC, so committed redo still reaches disk at a far sync instance instead of dropping to '
     + 'the direct ASYNC destination, which takes over only if both far sync instances are '
-    + "lost. What SYNCHRONIZED means for the terminal standby across that hop stays this page's "
-    + 'model, and so does the instant the primary moves from one destination to the next.',
+    + 'lost. The pair protects one direction only: after a role change South_Sales, with no '
+    + "RedoRoutes of its own, ships straight to North_Sales at North_Sales's LogXptMode, SYNC, and "
+    + 'neither far sync instance is in that path -- the "second far sync near the standby" preset '
+    + 'is the one that declares both directions. What SYNCHRONIZED means for the terminal '
+    + "standby across the far sync hop stays this page's model, and so does the instant the "
+    + 'primary moves from one destination to the next.',
   cite: [
     'FS.HA_PAIR_SAME_PRIORITY', 'ROUTES.PRIORITY_26AI', 'ROUTES.ONE_PATH_PER_GROUP', 'ROUTES.PRIORITY_EX2_STICKY',
     'ROUTES.PRIORITY_EX1', 'ROUTES.GROUP_MAXFAILURE_ZERO', 'ROUTES.MAXFAILURE_GROUP_DEFAULT',
     'ROUTES.GROUP_IS_NOT_ROUTES_SYNTAX', 'FS.SYNC_TO_FARSYNC', 'FS.ONWARD_ASYNC',
-    'FS.FAILURE_ADD_DEST', 'FSFO.FARSYNC_XPT',
+    'FS.FAILURE_ADD_DEST', 'FSFO.FARSYNC_XPT', 'FSFO.TASK3_PRIMARY_XPT_19C',
+    'FS.ROUTES_BOTH_DIRECTIONS',
   ],
   doc: haPairDoc,
   events: () => [hostDown(0, 'dc1-fs1')],

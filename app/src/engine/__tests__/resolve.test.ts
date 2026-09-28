@@ -127,6 +127,26 @@ describe('far sync: the worked example from the design', () => {
     expect(g.protectionLevel.basis).toBe('documented');
   });
 
+  it('the far sync acknowledgement is documented under 26ai and inferred under 19c (ED-06)', () => {
+    /* 26ai: "... on at least one synchronized standby database or far sync
+       instance"; the 19c sentence does not name the far sync instance. */
+    const d19 = farSyncDoc();
+    d19.config.edition = '19c';
+    const a19 = resolveRedoGraph(d19, { primary: PRM }).members[memberId('FS1')]!.countsTowardProtectionAck;
+    expect(a19.value).toBe(true);
+    expect(a19.basis).toBe('inferred');
+    const d26 = farSyncDoc();
+    d26.config.edition = '26ai';
+    const a26 = resolveRedoGraph(d26, { primary: PRM }).members[memberId('FS1')]!.countsTowardProtectionAck;
+    expect(a26.value).toBe(true);
+    expect(a26.basis).toBe('documented');
+    expect(a26.cite).toContain('MAXAVAIL.FARSYNC_ACK_26AI');
+    /* Maximum protection is not maximum availability's sentence: still inferred, and not counted. */
+    d26.config.protectionMode = 'MAXPROTECTION';
+    const p26 = resolveRedoGraph(d26, { primary: PRM }).members[memberId('FS1')]!.countsTowardProtectionAck;
+    expect(p26.value).toBe(false);
+  });
+
   it('losing the far sync host drops MaxAvailability to maximum performance', () => {
     const net = applyNetEvent(initialNetState(doc), { kind: 'host.down', host: hostId('dc1-FS1') });
     const g2 = resolveRedoGraph(doc, { primary: PRM, net });

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { importCollectedTopology, memberId, parseTopologyDoc, resolveRedoGraph } from '@/engine';
+import { importCollectedTopology, lagLimitIsSet, lagLimitOf, memberId, parseTopologyDoc, resolveRedoGraph } from '@/engine';
 import { makeDoc } from '@/state/doc';
 import { parseJsonText, toJsonText } from '@/state/codec';
 
@@ -84,8 +84,14 @@ it('maps FASTSYNC, accepts non-CDB names different from DB_UNIQUE_NAME and retai
 
 it('uses the selected edition and protection mode for uncollected lag-limit defaults', () => {
   const input = sample().replaceAll('MAXIMUM AVAILABILITY', 'MAXIMUM PERFORMANCE');
-  expect(importCollectedTopology(input, '26ai').topology.config.fsfo.lagLimitSeconds).toBe(30);
-  expect(importCollectedTopology(sample(), '26ai').topology.config.fsfo.lagLimitSeconds).toBe(0);
+  /* The collector does not read the property, so it is left not set and the
+     limit in force follows the edition and the collected mode. */
+  const perf = importCollectedTopology(input, '26ai').topology;
+  const avail = importCollectedTopology(sample(), '26ai').topology;
+  expect(lagLimitIsSet(perf.config.fsfo)).toBe(false);
+  expect(lagLimitOf(perf)).toBe(30);
+  expect(lagLimitOf(avail)).toBe(0);
+  expect(lagLimitOf({ config: { ...avail.config, edition: '19c' } })).toBe(30);
 });
 
 it('retains a valid route with a configured alternate without inventing the fallback', () => {

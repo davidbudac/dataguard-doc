@@ -12,7 +12,7 @@
 import type { Edition, Millis, Seconds } from './ids';
 import type { Claim } from './types/claims';
 import { conflict, docLater, documented } from './types/claims';
-import type { LagType, ProtectionMode, XptMode } from './types/topology';
+import type { Configuration, FsfoConfig, LagType, ProtectionMode, XptMode } from './types/topology';
 
 export interface Bound {
   min: number;
@@ -239,6 +239,36 @@ export function defaultLagLimit(edition: Edition, mode: ProtectionMode): Seconds
     return d.lagLimitMaxAvailSeconds;
   }
   return d.lagLimitSeconds;
+}
+
+/**
+ * What a document stores in `lagLimitSeconds` while FastStartFailoverLagLimit
+ * is not set: the one universal default every document carried before "not
+ * set" existed. The serializer reads a stored 30 with no marker as not set,
+ * so a document written before the marker keeps following its edition.
+ */
+export const LAG_LIMIT_UNSET_STORED: Seconds = 30;
+
+/** Was FastStartFailoverLagLimit set, or is it at the broker default? */
+export const lagLimitIsSet = (f: Pick<FsfoConfig, 'lagLimitSet'>): boolean => f.lagLimitSet === true;
+
+/**
+ * The FastStartFailoverLagLimit in force: the value as set, or -- until
+ * someone sets it -- the broker default for the edition and protection mode
+ * being read. The reading edition is a preference applied on top of the
+ * document, which is exactly why "not set" cannot be stored as a number:
+ * 30 under 19c is 0 under 26ai in maximum availability.
+ *
+ * Every reader of the lag limit goes through here; a source scan
+ * (engine/__tests__/lag-limit.test.ts) fails on a new direct read.
+ */
+export function lagLimitOf(
+  doc: { config: Pick<Configuration, 'edition' | 'protectionMode' | 'fsfo'> },
+): Seconds {
+  const c = doc.config;
+  return lagLimitIsSet(c.fsfo)
+    ? c.fsfo.lagLimitSeconds
+    : defaultLagLimit(c.edition, c.protectionMode);
 }
 
 /** Nominal drawing constants -- footnote 3 of the published page, not documented numbers. */

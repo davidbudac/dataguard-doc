@@ -17,7 +17,8 @@ import {
 } from '@/engine';
 import type { DatabaseMember, MemberId } from '@/engine';
 import { hostId, memberId, observerId, siteId } from '@/engine';
-import { classicDoc, doc } from '@/state/doc';
+import { classicDoc, doc, makeDoc } from '@/state/doc';
+import { presetDoc } from '@/presets';
 import { resetHistory, undo } from '@/state/history';
 import { errors } from '@/state/derived';
 import {
@@ -941,5 +942,35 @@ describe('bounds', () => {
     const threshold = root.querySelector<HTMLInputElement>('input[aria-label="FastStartFailoverThreshold"]');
     expect(threshold?.min).toBe(String(BOUNDS.thresholdSeconds.min));
     expect(threshold?.max).toBe(String(BOUNDS.thresholdSeconds.max));
+  });
+});
+
+describe('FastStartFailoverLagLimit: the limit in force until it is set (ED-03)', () => {
+  const lagField = (root: HTMLElement): HTMLElement | undefined =>
+    [...root.querySelectorAll<HTMLElement>('.field')]
+      .find((el) => el.querySelector('.field-name')?.textContent === 'FastStartFailoverLagLimit');
+
+  it('reads the edition\'s broker default while the property is not set, and an edit sets it', async () => {
+    resetHistory(makeDoc(presetDoc('classic')));
+    expect(doc.value.topology.config.fsfo.lagLimitSet).toBeUndefined();
+    edition.value = '26ai';
+    const root = mount(Inspector);
+    await tick();
+    await unfold(root, 'Fast-start failover');
+    /* 26ai maximum availability: the broker default is 0, zero data loss. */
+    expect(lagField(root)?.querySelector('.field-val')?.textContent).toBe('0 s');
+    edition.value = '19c';
+    await tick();
+    expect(lagField(root)?.querySelector('.field-val')?.textContent).toBe('30 s');
+    edition.value = '26ai';
+    await tick();
+    const input = lagField(root)?.querySelector<HTMLInputElement>('input');
+    expect(input).toBeDefined();
+    (input as HTMLInputElement).value = '10';
+    (input as HTMLInputElement).dispatchEvent(new Event('input', { bubbles: true }));
+    await tick();
+    expect(doc.value.topology.config.fsfo.lagLimitSet).toBe(true);
+    expect(doc.value.topology.config.fsfo.lagLimitSeconds).toBe(10);
+    expect(lagField(root)?.querySelector('.field-val')?.textContent).toBe('10 s');
   });
 });

@@ -14,7 +14,7 @@
 import { useLayoutEffect } from 'preact/hooks';
 import { BOUNDS } from '@/engine';
 import type { FsfoConfig, MemberId, RoutePriority, TopologyDoc } from '@/engine';
-import { hostId, isDatabase } from '@/engine';
+import { hostId, isDatabase, lagLimitIsSet, lagLimitOf } from '@/engine';
 import { errors } from '@/state/derived';
 import { Fact } from '../common/Chip';
 import { Action, Check, Choice, Fold, Note, Num, Pick, Text } from './controls';
@@ -36,6 +36,9 @@ export function ConfigForm({ doc }: ConfigFormProps) {
   const perf = c.protectionMode === 'MAXPERFORMANCE';
   const avail = c.protectionMode === 'MAXAVAILABILITY';
   const pingSet = f.pingIntervalMs !== null && f.pingRetry !== null;
+  /* The limit in force: as set, or the broker default for the edition and
+     mode being read until somebody sets it. Editing it sets it. */
+  const lagLimit = lagLimitOf(doc);
   const fsfoOn = f.state !== 'disabled';
   const databases = doc.members.filter(isDatabase);
   const targetList = f.target.kind === 'list' ? f.target.members : [];
@@ -299,21 +302,22 @@ export function ConfigForm({ doc }: ConfigFormProps) {
         <Num
           name="FastStartFailoverLagLimit"
           bound="lagLimitSeconds"
-          value={f.lagLimitSeconds}
+          value={lagLimit}
           coalesce="fsfo:laglimit"
           enabled={lagLimitOff}
-          warn={f.lagLimitSeconds > f.thresholdSeconds}
+          warn={lagLimit > f.thresholdSeconds}
           onChange={(v) => patchFsfo(
             `Set FastStartFailoverLagLimit to ${v} s`,
-            (x): FsfoConfig => ({ ...x, lagLimitSeconds: v }), 'fsfo:laglimit',
+            (x): FsfoConfig => ({ ...x, lagLimitSeconds: v, lagLimitSet: true }), 'fsfo:laglimit',
           )}
-          note={f.lagLimitSeconds > f.thresholdSeconds
+          note={(lagLimitIsSet(f) ? '' : 'Not set: the broker default for this edition and mode applies. ')
+            + (lagLimit > f.thresholdSeconds
             ? 'Oracle recommends the lag limit at or below the threshold: past it the old primary can keep committing after fast-start failover is initiated, briefly risking two primaries.'
             : ed === '26ai' && avail
               ? '26ai gives maximum availability a lag limit too, with a broker default of 0 -- the standby must have received everything and the failover is zero-loss. Any non-zero value, minimum 5 s, makes it bounded-loss. The role arrived in 21c; 26ai\'s own contribution is the per-mode default.'
               : ed === '19c' && avail
                 ? 'Under 19c this control is greyed because the property page and the fast-start failover chapter disagree about whether it reaches maximum availability at all -- see the why-pill. Default 30 s, minimum 5 s.'
-                : 'Default 30 s, minimum 5 s. Failover is permitted while the gated lag stays within it.'}
+                : 'Default 30 s, minimum 5 s. Failover is permitted while the gated lag stays within it.')}
         />
 
         <Choice

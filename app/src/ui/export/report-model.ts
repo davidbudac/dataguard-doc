@@ -14,7 +14,7 @@
 
 import {
   buildJdbc, buildTns, citation, CITATIONS, declaredPrimary, generateDgmgrl, generateInitOraFiles,
-  isDatabase,
+  isDatabase, lagLimitOf,
 } from '@/engine';
 import type {
   Basis, CitationId, Claim, DocEdition, EngineTrace, Finding, GeneratedFile, Member,
@@ -309,7 +309,7 @@ export function fsfoWord(t: TopologyDoc): string {
   const target = f.target.kind === 'ANY'
     ? 'any target'
     : `target ${f.target.members.map((id) => t.members.find((m) => m.id === id)?.name ?? id).join(', ') || 'none'}`;
-  return `${f.state}, threshold ${f.thresholdSeconds} s, lag limit ${f.lagLimitSeconds} s, ${target}`;
+  return `${f.state}, threshold ${f.thresholdSeconds} s, lag limit ${lagLimitOf(t)} s, ${target}`;
 }
 
 export function buildReport(input: ReportInput): ReportModel {

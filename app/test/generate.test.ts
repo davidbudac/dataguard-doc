@@ -711,3 +711,77 @@ describe('the SHOW mocks', () => {
     expect(text).not.toContain('not evaluated in this mode');
   });
 });
+
+describe('FastStartFailoverLagLimit follows the broker default until it is set (ED-03)', () => {
+  /** The classic document with the property not set, read under `edition` and `mode`. */
+  const unset = (edition: '19c' | '26ai', mode: TopologyDoc['config']['protectionMode']): TopologyDoc => {
+    const base = classicDoc();
+    const { lagLimitSet: _dropped, ...fsfo } = base.config.fsfo;
+    return {
+      ...base,
+      config: { ...base.config, edition, protectionMode: mode, fsfo: { ...fsfo, lagLimitSeconds: 30 } },
+    };
+  };
+  const setTo = (doc: TopologyDoc, v: number): TopologyDoc => ({
+    ...doc,
+    config: { ...doc.config, fsfo: { ...doc.config.fsfo, lagLimitSeconds: v, lagLimitSet: true } },
+  });
+  const SET = 'EDIT CONFIGURATION SET PROPERTY FastStartFailoverLagLimit';
+  const lagLines = (doc: TopologyDoc): Line[] =>
+    generateDgmgrl(doc).lines.filter((l) => lineText(l).includes('FastStartFailoverLagLimit'));
+
+  it('emits no SET PROPERTY for a limit that was never set, in any edition or mode', () => {
+    for (const edition of ['19c', '26ai'] as const) {
+      for (const mode of ['MAXPERFORMANCE', 'MAXAVAILABILITY', 'MAXPROTECTION'] as const) {
+        const text = renderPlain(generateDgmgrl(unset(edition, mode)));
+        expect(text, `${edition} ${mode}`).not.toContain(SET);
+      }
+    }
+  });
+
+  it('names the default in force instead', () => {
+    expect(renderPlain(generateDgmgrl(unset('26ai', 'MAXAVAILABILITY'))))
+      .toContain('FastStartFailoverLagLimit is not set -- the 26ai broker default in maximum availability mode is 0 seconds');
+    expect(renderPlain(generateDgmgrl(unset('26ai', 'MAXAVAILABILITY')))).toContain('ZERO DATA LOSS');
+    expect(renderPlain(generateDgmgrl(unset('19c', 'MAXPERFORMANCE'))))
+      .toContain('FastStartFailoverLagLimit is not set -- the broker default in maximum performance mode is 30 seconds');
+    expect(renderPlain(generateDgmgrl(unset('26ai', 'MAXPROTECTION'))))
+      .toContain('FastStartFailoverLagLimit is not used in maximum protection mode');
+  });
+
+  it('emits the command for a limit that was set, and the bounded-loss note under 26ai', () => {
+    const doc = setTo(unset('26ai', 'MAXAVAILABILITY'), 10);
+    const text = renderPlain(generateDgmgrl(doc));
+    expect(text).toContain(`${SET} = 10;`);
+    expect(text).toContain('POTENTIAL DATA LOSS');
+    expect(renderPlain(generateDgmgrl(setTo(unset('19c', 'MAXPERFORMANCE'), 30)))).toContain(`${SET} = 30;`);
+  });
+
+  it('carries the 19c maximum availability disagreement as a conflict, in Oracle\'s spelling', () => {
+    for (const doc of [unset('19c', 'MAXAVAILABILITY'), setTo(unset('19c', 'MAXAVAILABILITY'), 45)]) {
+      const notes = lagLines(doc).filter((l) => l.kind === 'note');
+      const c = notes.find((l) => l.basis === 'conflict');
+      expect(c).toBeDefined();
+      expect(c?.cite).toEqual(['FSFO.LAGLIMIT_ZERO_MAXAVAIL_19C', 'FSFO.LAGLIMIT_MAXPERF_ONLY_19C']);
+      expect(lineText(c as Line)).toContain('"(not in use)"');
+      expect(c?.note ?? '').not.toBe('');
+    }
+    const all = [
+      ...['19c', '26ai'].flatMap((e) => ['MAXPERFORMANCE', 'MAXAVAILABILITY', 'MAXPROTECTION']
+        .map((m) => unset(e as '19c' | '26ai', m as TopologyDoc['config']['protectionMode']))),
+    ];
+    for (const doc of all) expect(renderPlain(generateDgmgrl(doc))).not.toContain('not evaluated');
+  });
+
+  it('SHOW FAST_START FAILOVER prints the limit in force: 26ai zero-loss prints 0 bare, 19c prints 30 (not in use)', () => {
+    const v26 = renderPlain(showFastStartFailover(unset('26ai', 'MAXAVAILABILITY')));
+    expect(v26).toContain('Fast-Start Failover: Enabled in Zero Data Loss Mode');
+    expect(v26).toMatch(/Lag Limit: +0 seconds\n/);
+    const v19 = renderPlain(showFastStartFailover(unset('19c', 'MAXAVAILABILITY')));
+    expect(v19).toContain('Fast-Start Failover: Enabled in Zero Data Loss Mode');
+    expect(v19).toMatch(/Lag Limit: +30 seconds \(not in use\)/);
+    const bounded = renderPlain(showFastStartFailover(setTo(unset('26ai', 'MAXAVAILABILITY'), 10)));
+    expect(bounded).toContain('Fast-Start Failover: Enabled in Potential Data Loss Mode');
+    expect(bounded).toMatch(/Lag Limit: +10 seconds\n/);
+  });
+});

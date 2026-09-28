@@ -391,6 +391,7 @@ describe('FastStartFailoverLagType is maximum performance behaviour in the resol
       members: [prm, sby], observers: [observer('obs01', 'dc3-obs01')], targets: [sby.id],
     });
     doc.config.fsfo.lagLimitSeconds = 5;
+    doc.config.fsfo.lagLimitSet = true;
     doc.config.fsfo.lagType = 'TRANSPORT';
     const g = resolveRedoGraph(doc, { primary: memberId('prm01') });
     expect(g.members[memberId('sby01')]?.synchronized.value).toBe(false);

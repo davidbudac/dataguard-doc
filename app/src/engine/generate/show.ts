@@ -18,6 +18,7 @@ import type { CitationId } from '../citations';
 import type { MemberId } from '../ids';
 import { isParenthesised } from '../redo/parse';
 import { defaultDestPriority, resolveRedoGraph } from '../redo/resolve';
+import { lagLimitOf } from '../defaults';
 import { lagGated, pingPropertiesSet } from '../sim/fsfo';
 import { docLater, documented, model } from '../types/claims';
 import type { Member, TopologyDoc } from '../types/topology';
@@ -342,13 +343,19 @@ export function showFastStartFailover(doc: TopologyDoc): GeneratedFile {
   lines.push(cmd(`${pad('Protection Mode')}${MODE_WORD[doc.config.protectionMode]}`, {
     indent: 2, basis: 'documented', cite: ['XPT.TABLE_4_2', fieldsCite],
   }));
-  const gated = lagGated(doc);
-  lines.push(cmd(`${pad('Lag Limit')}${f.lagLimitSeconds} seconds${gated ? '' : ' (not in use)'}`, {
+  /* The limit in force -- the broker default for the edition and mode
+     until the property is set. In use in maximum performance, and under
+     26ai in maximum availability too, where 0 prints bare, as in the 26ai
+     chapter's own example; everywhere else the live 19.27 spelling. */
+  const limit = lagLimitOf(doc);
+  const inUse = doc.config.protectionMode === 'MAXPERFORMANCE'
+    || (v26 && doc.config.protectionMode === 'MAXAVAILABILITY');
+  lines.push(cmd(`${pad('Lag Limit')}${limit} seconds${inUse ? '' : ' (not in use)'}`, {
     indent: 2, basis: 'documented', cite: [...LAG_LIMIT_MODE_CITES, fieldsCite],
   }));
   if (v26 && doc.config.protectionMode === 'MAXAVAILABILITY') {
     lines.push(nDoc(
-      f.lagLimitSeconds === 0
+      limit === 0
         ? 'zero means the standby must have received everything and the failover is zero data loss'
         : 'a non-zero limit makes maximum availability bounded-loss: failover is permitted while the lag is at or below the limit',
       LAG_LIMIT_MODE_CITES,

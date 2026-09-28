@@ -12,8 +12,11 @@ import type { TopologyDoc } from '../engine';
 /* Example 4-2: (LOCAL : Local_Sales SYNC) on the primary and
    (North_Sales : Remote_Sales ASYNC) on the cascading standby. */
 function cascadeDoc(): TopologyDoc {
+  /* SYNC as the standby it becomes after a role change: the prerequisites
+     set the LogXptMode of the primary as well as the target. */
   const north = database('North_Sales', ['dc1-north'], 'primary', {
     redoRoutes: [local(to('Local_Sales', 'SYNC'))],
+    logXptMode: 'SYNC',
   });
   const localSby = database('Local_Sales', ['dc2-local'], 'physical', {
     logXptMode: 'SYNC',
@@ -92,6 +95,7 @@ function priorityDoc(): TopologyDoc {
       prio(1, to('Local_Sales', 'SYNC')),
       prio(2, to('Alternate_Sales', 'SYNC')),
     ))],
+    logXptMode: 'SYNC',
   });
   const localSby = database('Local_Sales', ['dc2-local'], 'physical', { logXptMode: 'SYNC' });
   const altSby = database('Alternate_Sales', ['dc3-alt'], 'physical', {

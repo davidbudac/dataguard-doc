@@ -14,7 +14,8 @@
  * NULL property forwards.
  */
 
-import type { MemberId } from '../ids';
+import type { Edition, MemberId } from '../ids';
+import { lagLimitOf } from '../defaults';
 import type { Claim, Finding } from '../types/claims';
 import { documented, inferred, model } from '../types/claims';
 import type {
@@ -306,7 +307,7 @@ export function resolveRedoGraph(doc: TopologyDoc, opts: ResolveOptions): RedoGr
       feedPath: feed,
       effectiveXpt: m.id === primary ? null : xpt,
       synchronized: synchronizedClaim(doc, m, primary, d, feed, directEdge, edges),
-      countsTowardProtectionAck: ackClaim(m, primary, mode, directEdge),
+      countsTowardProtectionAck: ackClaim(m, primary, mode, directEdge, doc.config.edition),
     };
     members[m.id] = rm;
   }
@@ -403,7 +404,7 @@ const lagGated = (doc: TopologyDoc): boolean => {
   if (mode === 'MAXPERFORMANCE') return true;
   return doc.config.edition === '26ai'
     && mode === 'MAXAVAILABILITY'
-    && doc.config.fsfo.lagLimitSeconds > 0;
+    && lagLimitOf(doc) > 0;
 };
 
 /**
@@ -442,7 +443,7 @@ function synchronizedClaim(
 
   if (lagGated(doc)) {
     const gate = gateLagOf(doc, m);
-    const limit = doc.config.fsfo.lagLimitSeconds;
+    const limit = lagLimitOf(doc);
     return inferred(gate <= limit,
       ['FSFO.LAGLIMIT_MAXAVAIL_26AI', 'FSFO.LAGTYPE'],
       `This configuration gates on FastStartFailoverLagLimit rather than on a synchronized state: ${effectiveLagTypeOf(doc)} lag ${gate} s against a ${limit} s limit. Maximum performance mode has no SYNCHRONIZED state to report, so the readiness gate is what this flag carries.`);
@@ -495,6 +496,7 @@ function ackClaim(
   primary: MemberId,
   mode: ProtectionMode,
   directEdge: RedoEdge | undefined,
+  edition: Edition,
 ): Claim<boolean> {
   if (m.id === primary) {
     return documented(false, ['MAXAVAIL.AT_LEAST_ONE'], 'The primary does not acknowledge to itself.');
@@ -509,6 +511,12 @@ function ackClaim(
     if (mode === 'MAXPROTECTION') {
       return inferred(false, ['FS.MAXPROT_BROKER_19C'],
         'Maximum protection cannot be used if a far sync instance is the only member receiving redo synchronously, so a far sync acknowledgement alone does not hold the mode up. Whether it counts alongside a database is not stated; this engine counts only databases here.');
+    }
+    /* ED-06: 26ai writes the far sync instance into maximum availability's
+       own sentence; 19c's does not name it, so there it stays inferred. */
+    if (mode === 'MAXAVAILABILITY' && edition === '26ai') {
+      return documented(true, ['MAXAVAIL.FARSYNC_ACK_26AI', 'FS.SYNC_TO_FARSYNC'],
+        'In maximum availability a transaction commits once its redo is on the standby redo log of at least one synchronized standby database or far sync instance, so the far sync acknowledgement counts.');
     }
     return inferred(true, ['FS.SYNC_TO_FARSYNC', 'FS.MAXPROT_BROKER_19C'],
       'A far sync instance holds all committed redo on disk, and maximum availability is the mode Oracle documents far sync for, so its acknowledgement is counted here.');

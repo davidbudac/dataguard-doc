@@ -110,6 +110,10 @@ export const RULE_CATALOGUE = {
     severity: 'error', severities: ['error', 'warning', 'info'], basis: 'documented',
     summary: 'At least one standby in the configuration must support the mode (MEM19); an ASYNC bystander beside a SYNC standby is legal. The fast-start failover prerequisites carry a stricter, per-member requirement for the target and the primary only, while fast-start failover is enabled: maximum protection SYNC, maximum availability SYNC or FASTSYNC (26ai\'s prerequisites list add ASYNC there, a conflict with Table 4-2 and the LogXptMode page that 26ai does not name), maximum performance lists ASYNC as the only mode -- never "SYNC is illegal there".',
   },
+  'XPT.PRIMARY_LOGXPTMODE': {
+    severity: 'error', severities: ['error', 'warning'], basis: 'documented',
+    summary: 'With fast-start failover enabled or observe-only in maximum availability or maximum protection, the primary is a standby after a role change: what it would then receive -- its LogXptMode, or a pre-declared RedoRoutes rule -- must meet the prerequisite set for both databases (19c Task 3: SYNC or FASTSYNC, SYNC in maximum protection). A warning under 26ai maximum availability, whose prerequisites list adds ASYNC.',
+  },
   'XPT.FASTSYNC_MAXAVAIL_ONLY': {
     severity: 'error', basis: 'documented',
     summary: 'FASTSYNC is 12.1+ and maximum availability mode only.',

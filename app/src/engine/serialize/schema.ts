@@ -9,7 +9,7 @@
  * is an `error`.
  */
 
-import { BOUNDS, BROKER_DEFAULTS, WORKBENCH_DEFAULT_PROTECTION_MODE, clamp, defaultLagLimit } from '../defaults';
+import { BOUNDS, BROKER_DEFAULTS, LAG_LIMIT_UNSET_STORED, WORKBENCH_DEFAULT_PROTECTION_MODE, clamp } from '../defaults';
 import type { BoundKey } from '../defaults';
 import { applicationId, hostId, memberId, observerId, siteId, linkId } from '../ids';
 import type { Edition, HostId, LinkId, MemberId, ObserverId, SiteId } from '../ids';
@@ -117,11 +117,12 @@ export function defaultFsfo(edition: Edition = '19c'): FsfoConfig {
     state: 'disabled',
     target: { kind: 'list', members: [] },
     thresholdSeconds: d.thresholdSeconds,
-    /* 26ai gives maximum availability its own default of 0 -- zero data loss;
-       under 19c the limit is a maximum performance property at 30 s. Against
-       the workbench's own starting mode, not the broker's default protection
-       mode (BROKER_DEFAULTS[edition].protectionMode is MAXPERFORMANCE). */
-    lagLimitSeconds: defaultLagLimit(edition, WORKBENCH_DEFAULT_PROTECTION_MODE),
+    /* Not set: the limit in force is the broker default for whichever edition
+       and protection mode the document is read under -- 30 s in maximum
+       performance, and under 26ai 0 in maximum availability, zero data loss
+       (lagLimitOf). No `lagLimitSet` marker; the stored number is the
+       placeholder every unset document carries. */
+    lagLimitSeconds: LAG_LIMIT_UNSET_STORED,
     lagType: d.lagType,
     lagGraceTimeSeconds: d.lagGraceTimeSeconds,
     pingIntervalMs: null,
@@ -665,6 +666,15 @@ function parseFsfo(
     pmyShutdown: c.bool(raw['pmyShutdown'], 'config.fsfo.pmyShutdown', d.pmyShutdown),
     autoReinstate: c.bool(raw['autoReinstate'], 'config.fsfo.autoReinstate', d.autoReinstate),
   };
+  /* Set or not set. The marker as written wins. A document written before
+     the marker existed carries a number and no marker: 30 was the universal
+     default every such document stored, so it reads as not set -- and
+     follows the edition's broker default from here on -- while any other
+     number is somebody's setting. A legacy #cfg= / query migration always
+     writes the marker, because the published page's lag limit is explicit. */
+  if (raw['lagLimitSet'] === true || out.lagLimitSeconds !== LAG_LIMIT_UNSET_STORED) {
+    out.lagLimitSet = true;
+  }
   /* A non-zero lag limit below the documented 5 s minimum is not a legal
      setting; 0 is the 26ai maximum availability default and stays. */
   if (out.lagLimitSeconds > 0 && out.lagLimitSeconds < BOUNDS.lagLimitSeconds.min) {

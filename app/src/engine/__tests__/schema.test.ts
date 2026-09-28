@@ -6,8 +6,8 @@ import {
 import { formatRedoRoutes } from '../redo/parse';
 import { resolveRedoGraph } from '../redo/resolve';
 import {
-  BOUNDS, BROKER_DEFAULTS, WORKBENCH_DEFAULT_PROTECTION_MODE, clamp, defaultLagLimit, pingSet,
-  withinBounds,
+  BOUNDS, BROKER_DEFAULTS, LAG_LIMIT_UNSET_STORED, WORKBENCH_DEFAULT_PROTECTION_MODE, clamp,
+  defaultLagLimit, lagLimitIsSet, lagLimitOf, pingSet, withinBounds,
 } from '../defaults';
 import { classicTopology } from '../compat/classic';
 
@@ -68,9 +68,18 @@ describe('broker defaults per edition', () => {
     expect(d.observerCount.basis).toBe('conflict');
   });
 
-  it('the fresh-document lag limit is the mode default for the edition', () => {
-    expect(defaultFsfo('19c').lagLimitSeconds).toBe(30);
-    expect(defaultFsfo('26ai').lagLimitSeconds).toBe(0);
+  it('the fresh-document lag limit is not set, so the mode default for the edition is in force', () => {
+    /* ED-03 / VAL-06: the fresh document used to store the edition's number,
+       which the reading edition then overrode -- a 19c 30 read under 26ai
+       made maximum availability bounded-loss although nobody set a limit. */
+    for (const edition of ['19c', '26ai'] as const) {
+      expect(lagLimitIsSet(defaultFsfo(edition))).toBe(false);
+      expect(defaultFsfo(edition).lagLimitSeconds).toBe(LAG_LIMIT_UNSET_STORED);
+    }
+    const doc = emptyDoc('19c');
+    expect(lagLimitOf(doc)).toBe(30);
+    expect(lagLimitOf({ config: { ...doc.config, edition: '26ai' } })).toBe(0);
+    expect(lagLimitOf({ config: { ...doc.config, edition: '26ai', protectionMode: 'MAXPERFORMANCE' } })).toBe(30);
   });
 
   it('separates the broker\'s own default protection mode from the workbench\'s starting mode (ED-07)', () => {

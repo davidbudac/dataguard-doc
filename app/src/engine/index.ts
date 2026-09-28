@@ -55,6 +55,7 @@ export type { Bound, BoundKey, BrokerDefaults } from './defaults';
 export {
   BOUNDS, boundOf, BROKER_DEFAULTS, clamp, defaultLagLimit, NOMINAL, pingSet, withinBounds,
 } from './defaults';
+export { LAG_LIMIT_UNSET_STORED, lagLimitIsSet, lagLimitOf } from './defaults';
 
 /* serialization */
 export type { IssueSeverity, ParseResult, SchemaIssue } from './serialize/schema';
