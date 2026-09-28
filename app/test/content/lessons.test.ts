@@ -31,10 +31,10 @@ const factNodes = LESSONS.flatMap((l) =>
 ).concat(FOOTNOTES.flatMap((f) => vnodes(f.body).filter((n) => n.type === Fact)));
 
 describe('lessons', () => {
-  it('has the nine lessons, in reading order', () => {
+  it('has the ten lessons, in reading order', () => {
     expect(LESSONS.map((l) => l.id)).toEqual([
       'failover-clocks', 'transport-layer', 'application-view', 'configuration',
-      'sync-transport', 'reference', 'far-sync', 'cascading', 'multi-observer',
+      'sync-transport', 'reference', 'far-sync', 'cascading', 'multi-observer', 'rac',
     ]);
   });
 
@@ -118,7 +118,7 @@ describe('lessons', () => {
 describe('<Fact> chips', () => {
   it('are used at all, in the new lessons especially', () => {
     expect(factNodes.length).toBeGreaterThan(20);
-    for (const id of ['far-sync', 'cascading', 'multi-observer'] as const) {
+    for (const id of ['far-sync', 'cascading', 'multi-observer', 'rac'] as const) {
       const lesson = LESSON_BY_ID[id];
       const used = lesson.steps.flatMap((s) => vnodes(s.prose).filter((n) => n.type === Fact));
       expect(used.length, id).toBeGreaterThanOrEqual(5);

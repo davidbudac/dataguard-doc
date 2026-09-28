@@ -45,6 +45,14 @@ const U = {
   bkr19Props: 'https://docs.oracle.com/en/database/oracle/oracle-database/19/dgbkr/oracle-data-guard-broker-properties.html',
   bkr19Cmds: 'https://docs.oracle.com/en/database/oracle/oracle-database/19/dgbkr/oracle-data-guard-broker-commands.html',
   bkr19Scenarios: 'https://docs.oracle.com/en/database/oracle/oracle-database/19/dgbkr/examples-using-data-guard-broker-DGMGRL-utility.html',
+  bkr19Concepts: 'https://docs.oracle.com/en/database/oracle/oracle-database/19/dgbkr/oracle-data-guard-broker-concepts.html',
+  bkr19Install: 'https://docs.oracle.com/en/database/oracle/oracle-database/19/dgbkr/oracle-data-guard-broker-installation-requirements.html',
+  sbyRac: 'https://docs.oracle.com/en/database/oracle/oracle-database/19/sbydb/configuring-data-guard-standby-databases-in-oracle-RAC.html',
+  racIntro: 'https://docs.oracle.com/en/database/oracle/oracle-database/19/racad/introduction-to-oracle-rac.html',
+  racInstances: 'https://docs.oracle.com/en/database/oracle/oracle-database/19/racad/administering-database-instances-and-cluster-databases.html',
+  refInstanceNumber: 'https://docs.oracle.com/en/database/oracle/oracle-database/19/refrn/INSTANCE_NUMBER.html',
+  haDeployDg: 'https://docs.oracle.com/en/database/oracle/oracle-database/19/haovw/configure-and-deploy-oracle-data-guard.html',
+  haLevel1: 'https://docs.oracle.com/en/database/oracle/oracle-database/19/haovw/configuring-level-1-basic-application-high-availability.html',
   bkr121Props: 'https://docs.oracle.com/database/121/DGBKR/dbresource.htm',
   bkr121Changes: 'https://docs.oracle.com/database/121/DGBKR/release_changes.htm',
   bkr122Changes: 'https://docs.oracle.com/en/database/oracle/oracle-database/12.2/dgbkr/release-changes.html',
@@ -431,6 +439,104 @@ export const CITATIONS = {
   'OBS.PLACEMENT_NEVER_ON_DB_HOST': {
     url: U.haOptimize, edition: '19c', verified: 'primary',
     quote: 'the observer should never be deployed at the primary database server or cluster, or on the standby database server or cluster',
+  },
+  /* ---- RAC members (facts.md F1-F4, fetched 2026-09-28) ---- */
+  'RAC.PRIMARY_AVAILABLE': {
+    url: U.bkr19Concepts, edition: '19c', verified: 'primary',
+    quote: 'From an Oracle Data Guard perspective, the primary database remains available as long as at least one instance of the clustered database continues to transport redo data to the standby databases.',
+  },
+  'RAC.LAST_INSTANCE_FSFO': {
+    url: U.bkr19Concepts, edition: '19c', verified: 'primary',
+    quote: 'If the last instance of the primary database fails, and fast-start failover is enabled, the broker can continue to provide high availability by automatically failing over to a pre-determined standby database.',
+  },
+  'RAC.TRANSPORT_ALL_INSTANCES': {
+    url: U.bkr19Members, edition: '19c', verified: 'primary',
+    quote: 'If this is an Oracle RAC database, all instances open in read/write mode will have redo transport services running.',
+    note: 'Table 4-1, the TRANSPORT-ON state of a primary database.',
+  },
+  'RAC.APPLY_INSTANCE': {
+    url: U.bkr19Members, edition: '19c', verified: 'primary',
+    quote: 'If the standby database is an Oracle RAC database, the broker starts Redo Apply on exactly one standby instance, called the apply instance. If this instance fails, the broker automatically chooses another instance that is either mounted or open read-only. This new instance then becomes the apply instance.',
+    note: 'Table 4-1, the APPLY-ON state of a physical standby. For a logical standby the same table says SQL Apply runs on one instance, and a failed one is replaced by another open instance.',
+  },
+  'RAC.APPLY_INSTANCE_FAILOVER': {
+    url: U.bkr19Members, edition: '19c', verified: 'primary',
+    quote: 'If the apply instance fails, then the broker automatically restarts SQL Apply, or the Redo Apply coordinator, as appropriate, on a different instance. This is called apply instance failover',
+  },
+  'RAC.APPLY_INSTANCE_SELECTION': {
+    url: U.bkr19Members, edition: '19c', verified: 'primary',
+    quote: 'if the PreferredApplyInstance property indicates an instance that is currently running, select it as the new apply instance; otherwise pick a random instance that is currently running to be the new apply instance.',
+    note: 'With no preference the broker "randomly picks an apply instance" to begin with, too. Random is Oracle\'s word: a drawing that picks the first running instance is drawing its own model of it.',
+  },
+  'RAC.PREFERRED_APPLY_INSTANCE': {
+    url: U.bkr19Props, edition: '19c', verified: 'primary',
+    quote: 'The PreferredApplyInstance configurable property indicates that a particular instance is the preferred choice for serving log apply services. It is only used when the database is a standby Oracle RAC database. The value could be an empty string (default) which means the broker chooses the apply instance.',
+  },
+  'RAC.APPLY_INSTANCE_TIMEOUT': {
+    url: U.bkr19Props, edition: '19c', verified: 'primary',
+    quote: 'The ApplyInstanceTimeout configurable property specifies the number of seconds the broker waits after detecting the current apply instance failed before initiating the apply instance failover.',
+    note: 'Broker default 0, which "results in immediate apply instance failover". How long the detection itself takes is not documented.',
+  },
+  'RAC.PREFERRED_FOR_SWITCHOVER': {
+    url: U.bkr19Members, edition: '19c', verified: 'primary',
+    quote: 'The broker starts log apply services on that instance if no apply instance is yet selected in the Oracle RAC standby database. This could be the case before you enable the standby database for the first time, or if the apply instance just failed and the broker is about to do an apply instance failover, or if the Oracle RAC database is currently the primary and you want to specify its apply instance in preparation for a switchover.',
+    note: '"That instance" is the one PreferredApplyInstance names (Selecting the Apply Instance, the first method).',
+  },
+  'RAC.CLUSTERWARE_REQUIRED': {
+    url: U.racIntro, edition: '19c', verified: 'primary',
+    quote: 'Oracle Clusterware is a required component for using Oracle RAC that provides the infrastructure necessary to run Oracle RAC.',
+  },
+  'RAC.STATIC_ONLY_WITHOUT_CLUSTERWARE': {
+    url: U.bkr19Install, edition: '19c', verified: 'primary',
+    quote: 'A static service needs to be defined and registered only if Oracle Clusterware or Oracle Restart is not being used.',
+    note: 'Same page: "To enable DGMGRL to restart instances during the course of broker operations, a static service must be registered with the local listener of each instance." and "By default, the broker assumes a static service name of db_unique_name_DGMGRL.db_domain". StaticConnectIdentifier is an instance-specific property.',
+  },
+  'RAC.SRL_PER_THREAD': {
+    url: U.sbyTransport, edition: '19c', verified: 'primary',
+    quote: 'The standby redo log must have at least one more redo log group than the redo log at the redo source database, for each redo thread at the redo source database.',
+    note: 'Same section: for an Oracle RAC redo source, query V$LOG for the threads "and specify the corresponding thread numbers when adding redo log groups to the standby redo log" -- ALTER DATABASE ADD STANDBY LOGFILE THREAD 1 SIZE 500M; -- and "Each standby redo log file must be at least as large as the largest redo log file in the redo log of the redo source database." racad: "Each instance must have at least two groups of redo log files."',
+  },
+  'RAC.SRL_SHARED': {
+    url: U.sbyRac, edition: '19c', verified: 'primary',
+    quote: 'The redo log files in the standby redo log must reside in a location that can be accessed by all of the standby database instances, such as on a cluster file system or Oracle ASM instance.',
+  },
+  'RAC.SAME_DEST_EVERY_INSTANCE': {
+    url: U.sbyRac, edition: '19c', verified: 'primary',
+    quote: 'Use the same LOG_ARCHIVE_DEST_n parameter on each primary database instance to send redo data to a given standby database.',
+    note: 'A best practice, worded as one. The same appendix: "The thread parameters %t or %T are mandatory for Oracle RAC to uniquely identify the archived redo log files with the LOG_ARCHIVE_FORMAT parameter."',
+  },
+  'RAC.SPFILE_SID_PREFIX': {
+    url: U.racInstances, edition: '19c', verified: 'primary',
+    quote: 'The value before the period (.) in an SPFILE entry identifies the instance to which the particular parameter value belongs. When an asterisk (*) precedes the period, the value is applied to all instances that do not have a subsequent, individual value listed in the SPFILE.',
+  },
+  'RAC.INSTANCE_NUMBER': {
+    url: U.refInstanceNumber, edition: '19c', verified: 'primary',
+    quote: 'You must set this parameter for every instance, and all instances must have different values.',
+    note: 'THREAD likewise must differ across instances when specified, and "has been superseded by the INSTANCE_NAME and INSTANCE_NUMBER parameters".',
+  },
+  'RAC.SCAN_ALIASES': {
+    url: U.haDeployDg, edition: '19c', verified: 'primary',
+    quote: 'For Oracle RAC configurations, the aliases should connect using the SCAN name.',
+    note: 'The MAA level 1 page gives the client form: two ADDRESS_LISTs, HOST=clu_site1-scan and HOST=clu_site2-scan. The haovw pages under /19/ are maintained and updated in place, not frozen at 19c.',
+  },
+  'RAC.SHOW_DATABASE_INSTANCES': {
+    url: U.bkr19Members, edition: '19c', verified: 'primary', paraphrase: true,
+    quote: 'SHOW DATABASE lists Instance(s): with "(apply instance)" after the instance running apply on a RAC standby (south_sales1 (apply instance), south_sales2); a RAC primary lists its instances too.',
+  },
+  'RAC.MULTI_INSTANCE_APPLY': {
+    url: U.bkr19Members, edition: '19c', verified: 'primary',
+    quote: 'Redo Apply can run on all instances of an Oracle RAC database at the same time, but only one of the instances is the apply coordinator and that is the instance that the broker considers to be the apply instance.',
+    note: 'The ApplyInstances property (0-16 or ALL, default 0: "recovery will be started in single instance mode") sets how many. C&A D.1.1: ALL "causes redo apply to run on all instances in an Oracle RAC standby database that are in an open or mounted state at the time recovery is started", and "The database chooses the instances on which to perform Redo Apply; you cannot specify particular instances." What happens when an instance other than the coordinator fails is not documented.',
+  },
+  'RAC.APPLY_INSTANCES_PROPERTY': {
+    url: U.bkr19Props, edition: '19c', verified: 'primary',
+    quote: 'The ApplyInstances property lets you specify how many physical standby instances run Redo Apply.',
+    note: 'Valid values 0 to 16 or ALL; 0 and 1 start recovery in single instance mode; >1 means no more than that many instances; ALL means every currently active instance. Broker default 0.',
+  },
+  'RAC.SET_APPLY_INSTANCE': {
+    url: U.bkr19Members, edition: '19c', verified: 'primary',
+    quote: "DGMGRL> EDIT DATABASE 'South_Sales' SET STATE='APPLY-ON' WITH APPLY INSTANCE='south_sales2';",
+    note: 'Once the apply instance is selected and still running, the broker disregards a change to PreferredApplyInstance; this command is how the running apply instance is moved. SHOW DATABASE lists the instances with "(apply instance)" after the one running apply.',
   },
   'OBS.PLACEMENT_STANDBY_DC': {
     url: U.habpt121, edition: '12.1', verified: 'cross-edition',

@@ -49,6 +49,11 @@ export const BOUNDS = {
   /* Wider than the published simulator's 0-10. 0 stays "unlimited". */
   maxFailure: { min: 0, max: 20, step: 1, default: 0, unit: 'count', label: 'MaxFailure' },
 
+  /* ---- RAC standby ---- */
+  /* The broker default is 0, "immediate apply instance failover"; the ceiling
+     is this page's, not Oracle's -- the property takes any value >= 0. */
+  applyInstanceTimeoutSeconds: { min: 0, max: 600, step: 5, default: 0, unit: 's', label: 'ApplyInstanceTimeout' },
+
   /* ---- commit anatomy ---- */
   localWriteMs: { min: 0, max: 25, step: 1, default: 2, unit: 'ms', label: 'local redo write' },
   standbyWriteMs: { min: 0, max: 25, step: 1, default: 2, unit: 'ms', label: 'standby redo log write' },

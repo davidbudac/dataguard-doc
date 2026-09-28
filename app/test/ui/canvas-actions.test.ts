@@ -21,7 +21,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { h, render } from 'preact';
 import type { TopologyDoc } from '@/engine';
-import { ActionBar, barFootprint, MAX_ROWS_BREAK } from '@/ui/canvas/ActionBar';
+import { ActionBar, barFootprint, MAX_ROWS, MAX_ROWS_BREAK } from '@/ui/canvas/ActionBar';
 import type { BarAction } from '@/ui/canvas/ActionBar';
 import { anchorFor, barRoom, placeBar } from '@/ui/canvas/anchor';
 import { barOpen, closeBar } from '@/ui/canvas/bar';
@@ -247,10 +247,11 @@ describe('the bar renders what the table gave it', () => {
     expect([...root.querySelectorAll('.cv-bar-quiet')].map((p) => p.textContent)).toEqual([line]);
   });
 
-  it('stops at six rows and says where the rest are', () => {
+  it('stops at seven rows and says where the rest are', () => {
     const many = Array.from({ length: 9 }, (_, i) => act(`a${i}`, `Action ${i}`));
     const root = mountBar({ actions: many });
-    expect(root.querySelectorAll('.cv-bar-row')).toHaveLength(6);
+    expect(root.querySelectorAll('.cv-bar-row')).toHaveLength(MAX_ROWS);
+    expect(MAX_ROWS).toBe(7);
     expect(root.querySelector('.cv-bar-quiet')?.textContent)
       .toBe('More in the panel on the right.');
   });
@@ -488,5 +489,34 @@ describe('the handle on the selected thing offers what can be done to it', () =>
     const root = await mountApp();
     await clickCard(root, 'sby01');
     expect(root.querySelector('.cv-bar')).toBeNull();
+  });
+});
+
+describe('RAC on the bar and in the Break menu', () => {
+  it('offers + Instance on a database card and keeps Remove on the bar', async () => {
+    const { buildActionsForKey } = await import('@/ui/build/actions');
+    const doc = classicDoc().topology;
+    const ids = buildActionsForKey(doc, 'sby01').map((a) => a.id);
+    expect(ids).toContain('instance:add');
+    expect(ids.indexOf('instance:add')).toBeLessThan(ids.indexOf('remove'));
+    expect(ids.indexOf('remove')).toBeLessThan(MAX_ROWS);
+    /* A far sync card has no + Instance. */
+    const { PRESETS } = await import('@/presets');
+    const fs = PRESETS.find((p) => p.id === 'far-sync-zero-loss')!.doc();
+    const fsId = fs.members.find((m) => m.kind === 'farsync')!.id as string;
+    expect(buildActionsForKey(fs, fsId).map((a) => a.id)).not.toContain('instance:add');
+  });
+
+  it('offers "Move apply to" on a RAC standby, refused on a stopped instance', async () => {
+    const { PRESETS } = await import('@/presets');
+    const doc = PRESETS.find((p) => p.id === 'rac-standby')!.doc();
+    const acts = actionsFor(doc, ['sby01'], 1);
+    const to11 = acts.find((a) => a.id === 'cmd.setApplyInstance:sby011');
+    const to12 = acts.find((a) => a.id === 'cmd.setApplyInstance:sby012');
+    expect(to12?.enabled.state).toBe('on');
+    /* The preset stops sby011 at t = 0. */
+    expect(to11?.enabled.state).toBe('off');
+    /* The primary is not offered it. */
+    expect(actionsFor(doc, ['prm01'], 1).some((a) => a.id.startsWith('cmd.setApplyInstance'))).toBe(false);
   });
 });

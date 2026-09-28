@@ -52,7 +52,7 @@ beforeEach(() => {
 });
 
 describe('learn shell', () => {
-  it('lists the nine lessons as real links', () => {
+  it('lists the ten lessons as real links', () => {
     const root = mount();
     const links = [...root.querySelectorAll('.learn-ol a')];
     expect(links.length).toBe(LESSONS.length);
@@ -164,7 +164,7 @@ describe('learn shell', () => {
     expect(other.querySelector('.lesson-fn')).toBeNull();
   });
 
-  it('says so, in words, when a lesson id is not one of the nine', () => {
+  it('says so, in words, when a lesson id is not one of the ten', () => {
     lessonId.value = 'not-a-lesson';
     const root = mount();
     expect(root.textContent).toContain('No lesson is called');

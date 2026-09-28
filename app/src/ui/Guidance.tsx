@@ -164,7 +164,7 @@ export function IntroCard() {
         {' — what this is, what the drawing shows and how to do things. '}
         <LearnLink />
         {' '}
-        walks through it in nine lessons.
+        walks through it in ten lessons.
       </p>
 
       {/* The one place the toggle is explained rather than merely offered. The

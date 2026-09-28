@@ -142,7 +142,7 @@ use it"* — and every item below is one reading of it:
   "Start here" group at the head of the empty Build inspector, above the
   configuration summary.
 - **The status bar names what it is showing and goes where it points.** The preset
-  picker files the eleven under six headings (`GROUPED_PRESETS`) with a title of
+  picker files the twelve under six headings (`GROUPED_PRESETS`) with a title of
   five words at most (`Preset.short`; the sentence is the option's own `title`),
   and it compares rather than trusting `?preset=`: the picker names the preset
   while the document still *is* that preset and says "Current configuration
@@ -350,7 +350,7 @@ just did, and the control that does it must sit where they are looking.*
    differs. It had its own key-sorted canonicaliser and its own per-id cache beside
    the write path's — two answers to the one question "is this still the preset it
    names?", which is exactly how the picker and the address bar come to disagree
-   about one document (see item 11). The eleven are filed under six `<optgroup>`s
+   about one document (see item 11). The twelve are filed under six `<optgroup>`s
    (`PRESET_GROUPS` / `GROUPED_PRESETS`) with `Preset.short` (≤ 6 words, which is
    what the data and `test/ui/statusbar.test.ts` both hold every one of them to) as
    the label and the old sentence as the option's `title`; ids unchanged. Reset and "Start fresh" set `presetId` to `null` rather than
@@ -520,7 +520,7 @@ it."* Five things landed, and one rule bent:
   (`restoreQuietLine`, one function feeding both surfaces). `Edit` puts the
   rail on the subject — and below 1280 it also opens the drawer
   (`openInspectorFor`), which a bare selection deliberately does not.
-  The bar caps at six rows and hands the rest to the panel; it closes on
+  The bar caps at seven rows (six until `+ Instance` joined a database card) and hands the rest to the panel; it closes on
   Escape (before the selection clears), on a background click, on a mode
   change, or by selecting something else. `Shift+F10`, the ContextMenu key
   and the right button open it with focus inside; a plain click opens it
@@ -700,6 +700,26 @@ fewer. One bullet per change.
   a finding does), so the switch that asks the page to say more about itself
   opens the rail's own statement of what is drawn — and the fold stays a real
   toggle the reader can shut again.
+- **A RAC standby wears an `APPLY` tag.** The instance row running apply carries a blue
+  `APPLY` chip (blue = applying): in Build the instance the configuration starts on, under a
+  frame the one `Snapshot.applyInstances` names -- so in Break the chip jumps when the
+  apply instance fails, and is absent while `ApplyInstanceTimeout` runs. The timeline
+  splits a standby lane per apply instance ("Applying redo — apply instance sby012"). The
+  `Instances (RAC, n)` fold carries `PreferredApplyInstance` (empty = the broker chooses)
+  and `ApplyInstanceTimeout`; renaming an instance carries the preference with it and
+  removing one drops it. `+ Instance` puts every node of the member in one cluster
+  (`<member>-crs` when it had none), which is what `RAC.OBSERVER_ON_CLUSTER` reads.
+- **RAC, second pass.** A database card's bar carries `+ Instance` (seven rows, Remove
+  still on it). Break's menu on a RAC standby offers "Move apply to <instance>" — the
+  documented `SET STATE='APPLY-ON' WITH APPLY INSTANCE` as the `cmd.setApplyInstance`
+  event. Under `ApplyInstances` (multi-instance Redo Apply) the coordinator's row reads
+  `COORDINATOR` and the other instances applying `APPLY`. Configure gains a mock
+  `SHOW DATABASE` per RAC database (`Instance(s):` with `(apply instance)`, walked by the
+  playhead), a `RAC -- per-instance parameters and standby redo logs` card (`<sid>.` /
+  `*.` entries, INSTANCE_NUMBER, `%t`, standby redo logs per thread), the SCAN form of
+  the connect string, and static-service notes in the DGMGRL script. A tenth lesson,
+  *RAC primary and standby*, walks the `rac-standby` preset. A former primary on its way
+  back as a standby names, in its timeline band, the instance its apply will start on.
 - **A member's tail folds.** `Instance`/`Instances (RAC, n)` and
   `Destinations` are `Fold`s now, keyed in the same open set as the
   configuration's five, so which drawers are open is a habit rather than a
@@ -915,7 +935,7 @@ does was taken away; what went was the second and third copy of it around the ed
   needs the attribute explicit (facts A5, B2), every worked example writes it
   (`(North_Sales : South_Sales ASYNC)`), and a SYNC receiver would otherwise turn the
   line into `ROUTES.CASCADE_SYNC_UNDOC` / `FARSYNC_ONWARD_SYNC_UNDOC`. Checked across
-  all eleven presets: neither `+ Standby` nor a line from a non-primary onto a data
+  all twelve presets: neither `+ Standby` nor a line from a non-primary onto a data
   centre adds an error or a warning.
 - A row set straight into a rail group (`.grp>.rr-line`, `.grp>.rr-dest` — the
   observer's *Make it the master*, a member's instances) now sits inside the gutter.

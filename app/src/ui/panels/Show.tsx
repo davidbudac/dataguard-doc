@@ -15,7 +15,9 @@
  */
 
 import { signal } from '@preact/signals';
-import { declaredPrimary, generateShowMocks } from '@/engine';
+import {
+  declaredPrimary, generateShowMocks, hasApplyInstance, initialApplyInstance, stoppedInstances,
+} from '@/engine';
 import { frame, topology, trace } from '@/state/derived';
 import { tNow } from '@/state/view';
 import { fmt } from '@/ui/timeline/build';
@@ -33,9 +35,18 @@ export function Show() {
   const at = f?.epoch.primary ?? null;
   const moved = at !== null && declared !== null && at !== declared;
 
+  /* Before any event the steady state: each RAC standby on the instance it
+     starts with. */
+  const steadyApply: Record<string, string> = {};
+  for (const m of doc.members) {
+    const first = hasApplyInstance(m) ? initialApplyInstance(m) : null;
+    if (first !== null) steadyApply[m.id as string] = first;
+  }
   const files = generateShowMocks(doc, {
     verbose: showVerbose.value,
     ...(moved ? { whenPrimaryIs: at } : {}),
+    applyInstances: f === null ? steadyApply : f.applyInstances ?? {},
+    downInstances: f === null ? [] : stoppedInstances(doc, f.epoch.net),
   });
 
   const nameOf = (id: string): string => doc.members.find((m) => m.id === id)?.name ?? id;

@@ -204,6 +204,7 @@ export function describeEvent(doc: TopologyDoc, e: TimedEvent): string {
     case 'cmd.failover': return `FAILOVER TO ${n(e.to)}${e.immediate === true ? ' IMMEDIATE' : ''}`;
     case 'cmd.reinstate': return `REINSTATE DATABASE ${n(e.member)}`;
     case 'cmd.setMasterObserver': return `SET MASTEROBSERVER TO ${n(e.observer)}`;
+    case 'cmd.setApplyInstance': return `apply on ${n(e.member)} moves to ${e.instance}`;
     case 'cmd.disableFsfo':
       return `DISABLE FAST_START FAILOVER${e.force === true ? ' FORCE' : ''}`;
     case 'lag.set': return `${n(e.member)} is given the lag the step needs`;

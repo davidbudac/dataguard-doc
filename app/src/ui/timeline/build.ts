@@ -15,8 +15,8 @@
  */
 
 import {
-  findHost, findLink, findMember, findObserver, findSite, isDatabase, isFarSync,
-  pickTickStep, pingSet, resolveRedoGraph, sortEvents,
+  findHost, findLink, findMember, findObserver, findSite, hasApplyInstance, initialApplyInstance,
+  isDatabase, isFarSync, pickTickStep, pingSet, resolveRedoGraph, sortEvents,
 } from '@/engine';
 import type {
   AnyState, DerivedFacts, EngineFacts, Lane as EngineLane, HostId, LinkId, MemberId,
@@ -597,6 +597,7 @@ export function describeEvent(doc: TopologyDoc, e: TimedEvent): string {
     case 'cmd.failover': return `FAILOVER TO ${memberName(doc, e.to)}`;
     case 'cmd.reinstate': return `REINSTATE DATABASE ${memberName(doc, e.member)}`;
     case 'cmd.setMasterObserver': return `SET MASTEROBSERVER TO ${observerName(doc, e.observer)}`;
+    case 'cmd.setApplyInstance': return `SET STATE='APPLY-ON' WITH APPLY INSTANCE='${e.instance}' on ${memberName(doc, e.member)}`;
     case 'cmd.disableFsfo': return 'DISABLE FAST_START FAILOVER';
     case 'lag.set': {
       const parts: string[] = [];
@@ -934,16 +935,26 @@ export function buildTimeline(trace: Trace, doc: TopologyDoc, view: TimelineView
     /* The pre-roll is the steady state, and the engine's first band starts at
        the first event: synthesize the band before it from the document rather
        than painting the failure over a time when nothing had happened yet. */
-    const bands: { t0: Seconds; t1: Seconds; state: AnyState; open: boolean }[] = [];
+    /* A RAC standby's bands carry the instance running apply, so a move from
+       one instance to another is a seam even where the state is unchanged. */
+    const bands: {
+      t0: Seconds; t1: Seconds; state: AnyState; open: boolean; apply: string | undefined;
+    }[] = [];
+    const seedMember = seed.kind === 'member' ? findMember(doc, seed.id as MemberId) : undefined;
+    const seedApply = seedMember && hasApplyInstance(seedMember)
+      && (seed.initial === 'mounted-apply' || seed.initial === 'open-ro')
+      ? initialApplyInstance(seedMember) ?? undefined : undefined;
     const firstT = raw[0]?.t0 ?? t1;
-    if (firstT > t0) bands.push({ t0, t1: Math.min(firstT, t1), state: seed.initial, open: false });
+    if (firstT > t0) {
+      bands.push({ t0, t1: Math.min(firstT, t1), state: seed.initial, open: false, apply: seedApply });
+    }
     for (const s of raw) {
       const a = Math.max(t0, s.t0);
       const b = Math.min(t1, s.t1 === null ? t1 : s.t1);
       if (b < a) continue;
-      bands.push({ t0: a, t1: b, state: s.state, open: s.open === true });
+      bands.push({ t0: a, t1: b, state: s.state, open: s.open === true, apply: s.applyInstance });
     }
-    if (bands.length === 0) bands.push({ t0, t1, state: seed.initial, open: false });
+    if (bands.length === 0) bands.push({ t0, t1, state: seed.initial, open: false, apply: seedApply });
     const last = bands[bands.length - 1];
     if (last && last.t1 < t1) last.t1 = t1;
     /* Two touching bands in the same state are one band: the synthesized
@@ -952,7 +963,8 @@ export function buildTimeline(trace: Trace, doc: TopologyDoc, view: TimelineView
     const merged: typeof bands = [];
     for (const b of bands) {
       const prev = merged[merged.length - 1];
-      if (prev && prev.state === b.state && prev.open === b.open && Math.abs(prev.t1 - b.t0) < 1e-9) {
+      if (prev && prev.state === b.state && prev.open === b.open && prev.apply === b.apply
+        && Math.abs(prev.t1 - b.t0) < 1e-9) {
         prev.t1 = b.t1;
       } else {
         merged.push(b);
@@ -965,15 +977,32 @@ export function buildTimeline(trace: Trace, doc: TopologyDoc, view: TimelineView
     bands.forEach((b, k) => {
       if (b.t1 - b.t0 <= 0 && bands.length > 1) return;
       const lk = look(b.state, seed.group, { pingSet: ping });
+      const applying = b.state === 'mounted-apply' || b.state === 'open-ro';
+      /* A RAC standby open read-only with no instance applying is waiting out
+         ApplyInstanceTimeout: open, and not applying. */
+      const racGap = b.apply === undefined && b.state === 'open-ro'
+        && seedMember !== undefined && hasApplyInstance(seedMember);
+      /* An applying band names the instance doing it; a former primary on its
+         way back as a standby names the one its apply will start on. */
+      const labels = racGap
+        ? ['Open read-only — apply stopped, no apply instance', 'Open read-only — apply stopped', 'Open read-only']
+        : b.apply === undefined ? lk.labels : applying ? [
+        `${lk.labels[0] ?? String(b.state)} — apply instance ${b.apply}`,
+        `${lk.labels[lk.labels.length - 1] ?? String(b.state)} on ${b.apply}`,
+        ...lk.labels,
+      ] : [
+        `${lk.labels[0] ?? String(b.state)} — apply will start on ${b.apply}`,
+        ...lk.labels,
+      ];
       const x = Math.max(scale.plotL, scale.x(b.t0));
       const w = Math.min(scale.plotR, scale.x(b.t1)) - x;
       segments.push({
         key: `${seed.kind}:${seed.id}:${k}`,
         t0: b.t0, t1: b.t1, x: r1(x), w: r1(Math.max(0, w)),
         state: b.state, phase: lk.phase, ink: lk.ink,
-        labels: lk.labels,
-        label: fitLabel(lk.labels, w),
-        title: lk.labels[0] ?? String(b.state),
+        labels,
+        label: fitLabel(labels, w),
+        title: labels[0] ?? String(b.state),
         open: b.open,
       });
     });

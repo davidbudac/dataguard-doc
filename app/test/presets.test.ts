@@ -64,12 +64,13 @@ const edge = (g: RedoGraph, from: string, to: string) =>
 /* ---------------- the registry ---------------- */
 
 describe('the preset registry', () => {
-  it('carries the eleven documents the workbench offers', () => {
-    expect(PRESETS).toHaveLength(11);
+  it('carries the twelve documents the workbench offers', () => {
+    expect(PRESETS).toHaveLength(12);
     expect(PRESET_IDS).toEqual([
       'classic', 'observe-only', 'far-sync-zero-loss', 'far-sync-ha-pair',
       'far-sync-role-change', 'cascade-terminal', 'priority-alternates',
-      'multi-target-three-observers', 'rac-primary', 'bystanders', 'max-protection',
+      'multi-target-three-observers', 'rac-primary', 'rac-standby', 'bystanders',
+      'max-protection',
     ]);
   });
 
@@ -117,7 +118,7 @@ const fingerprints = (fs: readonly Finding[]): string[] => fs.map(fingerprint).s
 /**
  * What every preset is expected to raise.
  *
- * Two notes are on all eleven, because both are true of every fast-start
+ * Two notes are on all twelve, because both are true of every fast-start
  * failover configuration this workbench draws: the broker refuses the edits
  * ORA-16654 covers while fast-start failover is enabled, and ObserverOverride
  * is at its default of FALSE, which is a property of the model and says so.
@@ -196,6 +197,14 @@ const EXPECTED_FINDINGS: Record<PresetId, string[]> = {
 
   'rac-primary': [
     /* A second instance changes the failure, not the configuration. */
+    'info documented EDIT.FSFO_ENABLED_BLOCKS',
+    'info documented EDIT.REMOVE_TARGET sby01',
+    'info model MODEL.OBSERVER_OVERRIDE',
+  ].sort(),
+
+  'rac-standby': [
+    /* PreferredApplyInstance names one of the standby's own instances, so it
+       raises nothing either. */
     'info documented EDIT.FSFO_ENABLED_BLOCKS',
     'info documented EDIT.REMOVE_TARGET sby01',
     'info model MODEL.OBSERVER_OVERRIDE',
@@ -415,6 +424,7 @@ const STEADY_LEVEL: Record<PresetId, string> = {
   'priority-alternates': 'MAXAVAILABILITY',
   'multi-target-three-observers': 'MAXAVAILABILITY',
   'rac-primary': 'MAXAVAILABILITY',
+  'rac-standby': 'MAXAVAILABILITY',
   bystanders: 'MAXAVAILABILITY',
   'max-protection': 'MAXPROTECTION',
 };

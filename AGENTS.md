@@ -19,7 +19,7 @@ produced, and how to extend it without breaking consistency or accuracy.
 | `diagrams/fsfo-sequence.svg` (+`.png`) | Sequence diagram of the crash case with an elapsed-time gutter |
 | `diagrams/fsfo-net-timeout.svg` (+`.png`) | Two panels separating NET_TIMEOUT (redo transport) from the broker failover clocks |
 | `diagrams/README.md` | Figure embeds, broker-property and redo-transport-property tables with verified defaults, the ping-properties quirk, the verified-facts sections behind the commit/reopen/observer/placement/side-topics views (including the 24-cell observer-placement outcome matrix) and behind the 26ai edition switch (the MaxAvailability lag-limit semantics and Oracle's self-contradiction on them, `PrimaryDatabaseCandidates`, `V$FS_FAILOVER_OBSERVERS`), the drawing idealizations, Oracle doc links. Its *Topology features* section points at `app/design/facts.md` for far sync, cascading, RedoRoutes, multi-target and multi-observer sources |
-| `app/` | The workbench: TypeScript + Vite + Preact + signals. A pure, DOM-free engine in `app/src/engine` (types, citation catalogue, validation rules, redo-graph resolver, epoch-loop simulator, generators, the legacy adapter), the interface in `app/src/ui` (including the on-canvas action bar, the Introduction page and the `Hints` toggle — see `app/design/ui.md` §3c–§3i; §3h is how the drawing is driven: click selects, `⋯` for the bar, drag-to-place, inline rename, marquee, shortcuts; §3i is the lean pass: the toolbar is the one add surface, Remove sits in the rail header), state in `app/src/state`, eleven presets in `app/src/presets`, nine lessons and the reference tables in `app/src/content`, 1641 vitest tests across 60 files in `app/src/**/__tests__` and `app/test`. Built to `_site/` and served at `/dataguard/`. Zero external requests, no inline script and no inline style — the page is meant to run under `script-src 'self'; style-src 'self'` |
+| `app/` | The workbench: TypeScript + Vite + Preact + signals. A pure, DOM-free engine in `app/src/engine` (types, citation catalogue, validation rules, redo-graph resolver, epoch-loop simulator, generators, the legacy adapter), the interface in `app/src/ui` (including the on-canvas action bar, the Introduction page and the `Hints` toggle — see `app/design/ui.md` §3c–§3i; §3h is how the drawing is driven: click selects, `⋯` for the bar, drag-to-place, inline rename, marquee, shortcuts; §3i is the lean pass: the toolbar is the one add surface, Remove sits in the rail header), state in `app/src/state`, twelve presets in `app/src/presets`, ten lessons and the reference tables in `app/src/content`, 1752 vitest tests across 61 files in `app/src/**/__tests__` and `app/test`. Built to `_site/` and served at `/dataguard/`. Zero external requests, no inline script and no inline style — the page is meant to run under `script-src 'self'; style-src 'self'` |
 | `app/design/facts.md` | The verified Oracle fact sheet for the topology features (far sync, cascading, multiple standbys and FSFO targets, multiple observers, RedoRoutes, member types, destination counts), researched 2026-08-16 against docs.oracle.com and re-verified 2026-08-17, marked `[D]` / `[D-later]` / `[UNDOC]` / `[CONFLICT]` per claim. **The only permitted source of a "documented" claim in the application.** Its top-five traps are restated in the accuracy rules below |
 | `app/design/engine.md` | The engine design: `Claim`/`Basis` labelling, the topology data model, the validation catalogue, the redo-graph resolver, the epoch-loop failure engine, the compat adapter and the 24-cell matrix gate, the generators, the module layout — plus §10, *Deviations from the design as built*, which is where the code and the specification differ |
 | `app/design/ui.md` | The application architecture: premises carried over from the legacy page, project structure and the CSP goal, Document-vs-View state, the four modes, canvas layout/routing, timeline, the migration table from the six legacy chapters, and the taste notes. Its as-built notes (event-menu placement, the mode-aware readout, the drawer's focus contract, the print pass) are the record of what the code does where it went past the design |
@@ -62,8 +62,8 @@ public URL.
 
 The three gates, and what each one can catch that the others cannot:
 
-1. `npm --prefix app run test` — the application's own suite (**1641 tests
-   across 60 files**): the engine's invariants, the 24-cell matrix through the
+1. `npm --prefix app run test` — the application's own suite (**1752 tests
+   across 61 files**): the engine's invariants, the 24-cell matrix through the
    compat adapter, the validation catalogue, the generator goldens, the canvas
    and timeline geometry, the URL and file round trips.
 2. `node --test site/test.mjs` — the same kind of assertion against the legacy
@@ -164,10 +164,10 @@ the top bar, and both are reading preferences that survive a reload:
   outcome chip. Configure: all seven tabs render, Copy works, hovering a
   generated line highlights the member it belongs to. Learn: the lesson list,
   a "Show me" step, and the workbench beside the prose reacting to it.
-- **Every preset opens.** Eleven of them (`classic`, `observe-only`,
+- **Every preset opens.** Twelve of them (`classic`, `observe-only`,
   `far-sync-zero-loss`, `far-sync-ha-pair`, `far-sync-role-change`,
   `cascade-terminal`, `priority-alternates`, `multi-target-three-observers`,
-  `rac-primary`, `bystanders`, `max-protection`). Each one draws without a
+  `rac-primary`, `rac-standby`, `bystanders`, `max-protection`). Each one draws without a
   crossing link or a caption over a card, opens at the protection level it was
   configured in, and raises only issues that are true of it.
 - **The share link round-trips.** Copy it, open it in a fresh tab, and get the
@@ -874,8 +874,8 @@ Four modes over one persistent canvas — **Build** (inspector, validation issue
 steady-state readout), **Break** (event menu and event list, timeline,
 transport, outcome readout), **Configure** (seven generated panels: DGMGRL ·
 `LOG_ARCHIVE_DEST_n` · tnsnames/JDBC · SHOW · Application view · Commit ·
-Reopen) and **Learn** (nine lessons: the six ported chapters plus Far sync,
-Cascading, Multiple observers and targets). The canvas never blinks: switching
+Reopen) and **Learn** (ten lessons: the six ported chapters plus Far sync,
+Cascading, Multiple observers and targets, and RAC primary and standby). The canvas never blinks: switching
 modes changes what is around it.
 
 - **Canvas** (`ui/canvas/`): `layout.ts` ranks members by BFS over the resolved
@@ -886,7 +886,7 @@ modes changes what is around it.
   rectangles and other links' lines. Routing and drawing both run in two passes
   (every route, then every caption; every line, then every card, then every
   caption) so a caption is never painted over by a line routed after it.
-  `app/test/ui/canvas-presets.test.ts` holds all eleven presets to the collision
+  `app/test/ui/canvas-presets.test.ts` holds all twelve presets to the collision
   rules and to a geometry golden.
 - **Timeline** (`ui/timeline/`): `build.ts` is a pure
   `buildTimeline(trace, topology, view) → TimelineModel`; the component maps it
@@ -940,7 +940,7 @@ modes changes what is around it.
 
 ### Tests
 
-`npm --prefix app run test` is **1641 tests across 60 files**. What is where:
+`npm --prefix app run test` is **1752 tests across 61 files**. What is where:
 
 - `app/src/engine/__tests__/` — the engine's own unit tests (purity, citations,
   claims, schema, migrate, URL codec, parse, resolve, graph, axis, classic).
@@ -949,12 +949,12 @@ modes changes what is around it.
 - `app/test/legacy-models.test.ts`, `legacy-fragment-parity.test.ts` — the three
   ported models and the fragment's numbers.
 - `app/test/sim-*.test.ts`, `models-general.test.ts`, `presets.test.ts` —
-  scenario, property and invariant tests over the general engine and all eleven
+  scenario, property and invariant tests over the general engine and all twelve
   presets.
 - `app/test/generate.test.ts` + `app/test/__golden__/` — the generated DGMGRL,
   `LOG_ARCHIVE_DEST_n`, tnsnames/JDBC and SHOW output for five topologies.
 - `app/test/ui/` + `app/test/ui/__golden__/` — canvas layout and routing
-  goldens for all eleven presets, keyboard and aria, the timeline model, the
+  goldens for all twelve presets, keyboard and aria, the timeline model, the
   panels, the inspector, the shell, history, the share-link round trip, the
   legacy-URL upgrade.
 - `app/test/content/` — every lesson and reference table renders.

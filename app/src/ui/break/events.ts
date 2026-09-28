@@ -17,7 +17,7 @@
 
 import { scenarioEvents } from '@/engine';
 import type { ClassicScenario, HostId, TimedEvent, TopologyDoc } from '@/engine';
-import { isDatabase } from '@/engine';
+import { hasApplyInstance, isDatabase } from '@/engine';
 import { withEvents } from '@/state/doc';
 import { topology, trace } from '@/state/derived';
 import { edit } from '@/state/history';
@@ -273,6 +273,20 @@ export function actionsForKey(doc: TopologyDoc, key: string, at: number): EventA
           enabled: held !== null ? off(held) : (down ? ON : off(WHY.nothingDown)),
           events: [{ at, kind: 'instance.up', member: member.id, instance: inst.name }],
         });
+      }
+      /* A RAC standby: move apply by hand, the documented
+         SET STATE='APPLY-ON' WITH APPLY INSTANCE. */
+      if (hasApplyInstance(member)) {
+        for (const inst of member.instances) {
+          const down = isDownAt(doc, { kind: 'instance', member: key, id: inst.name }, at);
+          out.push({
+            id: `cmd.setApplyInstance:${inst.name}`,
+            label: `Move apply to ${inst.name}`,
+            plural: 'Move apply to the instance',
+            enabled: down ? off('The instance is down: apply runs only on a running instance.') : ON,
+            events: [{ at, kind: 'cmd.setApplyInstance', member: member.id, instance: inst.name }],
+          });
+        }
       }
     } else {
       const down = isDownAt(doc, { kind: 'member', id: key }, at);
@@ -781,6 +795,7 @@ export function describeEvent(doc: TopologyDoc, e: TimedEvent): string {
     case 'cmd.failover': return `FAILOVER TO ${e.to as string}${e.immediate === true ? ' IMMEDIATE' : ''}`;
     case 'cmd.reinstate': return `REINSTATE ${e.member as string}`;
     case 'cmd.setMasterObserver': return `SET MASTEROBSERVER TO ${e.observer as string}`;
+    case 'cmd.setApplyInstance': return `Move apply on ${e.member as string} to ${e.instance}`;
     case 'cmd.disableFsfo':
       return `DISABLE FAST_START FAILOVER${e.force === true ? ' FORCE' : ''}`;
     case 'lag.set': return `Set the lag on ${e.member as string}`;

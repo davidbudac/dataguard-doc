@@ -15,8 +15,8 @@ import { failoverAxis, fixedAxis, secondsAxis } from '../models/axis';
 import type { CitationId } from '../citations';
 import type { HostId, MemberId, ObserverId, Seconds, SiteId } from '../ids';
 import {
-  applyNetEvent, buildReachability, hostUp, initialNetState, linkRttMs, memberAlive,
-  memberReachableFromHost, membersReachable, netSummary,
+  applyNetEvent, buildReachability, hostUp, initialNetState, linkRttMs, liveInstances,
+  memberAlive, memberReachableFromHost, membersReachable, netSummary,
 } from '../net/graph';
 import type { NetState, Reachability } from '../net/graph';
 import { resolveRedoGraph } from '../redo/resolve';
@@ -24,8 +24,8 @@ import type { Claim, Finding } from '../types/claims';
 import { documented, model } from '../types/claims';
 import type { FarSyncState, MemberState, ObserverState, TimedEvent } from '../types/events';
 import { sortEvents } from '../types/events';
-import type { Member, TopologyDoc } from '../types/topology';
-import { isDatabase, isFarSync } from '../types/topology';
+import type { DatabaseMember, Member, TopologyDoc } from '../types/topology';
+import { isDatabase, isFarSync, isRac } from '../types/topology';
 import type {
   Decision, DerivedFacts, Epoch, InternalDeadline, PerMemberFacts, ProtectionLevel, RedoGraph,
   SimParams, Snapshot, Trace,
@@ -33,7 +33,7 @@ import type {
 import { buildLanes, EPS, isDue, Queue, snapshotFrom } from './kernel';
 import type { Pending, Sample, SimState, SwitchoverFacts } from './kernel';
 import {
-  applyLagOf, candidateTargets, detectClaim, effectiveLagType, gateLagSeconds,
+  applyGapOf, applyLagOf, candidateTargets, detectClaim, effectiveLagType, gateLagSeconds,
   initiateDelayClaim, lagGated, nominationClaim, pickMaster, pingPropertiesSet, preferredRank,
   readinessGate, selectTarget,
 } from './fsfo';
@@ -47,6 +47,11 @@ import {
   maxFailureDisabled, maxFailureResetUndoc, reopenScheduleModel,
 } from './dests';
 import type { AuthoredDest } from './dests';
+import {
+  applyFailoverClaim, applyGapFailoverClaim, applyInstanceTimeout, applyWaitClaim,
+  hasApplyInstance, initialApplyInstance, nextApplyInstance, primaryDegradedClaim,
+  isMultiInstanceApply, participantLostClaim, roleChangeApplyClaim, setApplyClaim,
+} from './rac';
 import {
   bystanderClaim, bystanders, executionClaim, manualFailoverFindings, nominalBandsClaim,
   reinstateBandClaim, reinstateFindings, switchoverGate, switchoverLossClaim, switchoverRefused,
@@ -162,11 +167,13 @@ export function simulate(
     seenFinding.add(k);
     findings.push(f);
   };
+  /* `once` widens the dedupe key for a decision that can recur for the same
+     subject, such as a second apply instance failover. */
   const decide = (
     at: Seconds, id: string, taken: boolean, claim: Claim<string>,
-    subject?: Decision['subject'],
+    subject?: Decision['subject'], once?: string,
   ): void => {
-    const k = `${id}|${String(taken)}|${subject?.id ?? ''}`;
+    const k = `${id}|${String(taken)}|${subject?.id ?? ''}|${once ?? ''}`;
     if (seenDecision.has(k)) return;
     seenDecision.add(k);
     const d: Decision = { at, id, taken, claim };
@@ -210,6 +217,8 @@ export function simulate(
       break;
     }
 
+    state.now = t;
+
     /* 1. every external event at this instant, in queue order. */
     let cause: TimedEvent | InternalDeadline | null = null;
     while (ei < evts.length && isDue((evts[ei] as TimedEvent).at, t)) {
@@ -237,6 +246,7 @@ export function simulate(
     /* 4. the clocks, and the decisions this epoch is where to record. */
     updateClocks(view, t);
     updateDests(view, t);
+    updateRac(view, t);
     noteMasterChange(view, t);
     recordEpochDecisions(view, t);
 
@@ -319,6 +329,9 @@ export function simulate(
         break;
       case 'net.timeout':
         break;
+      /* The move itself is made in `updateRac`, against this epoch's network. */
+      case 'apply.failover':
+        break;
       /* The retry itself is bookkeeping: what it changes is counted in
          `updateDests`, against the epoch this deadline opened. */
       case 'dest.reopen':
@@ -383,6 +396,11 @@ export function simulate(
 
     const netHop = netHopSeconds(doc, view, target);
     const applyRemaining = applyLagOf(targetMember, state);
+    const gap = applyGapOf(targetMember, state);
+    if (gap > 0 && isDatabase(targetMember)) {
+      decide(at, 'RAC.APPLY_GAP_IN_FAILOVER', true, applyGapFailoverClaim(targetMember, gap),
+        { kind: 'member', id: target as string });
+    }
     state.target = target;
     state.detectSeconds = detectClaim(doc).value;
     state.initiateAt = at;
@@ -447,6 +465,7 @@ export function simulate(
       const fm = doc.members.find((m) => m.id === former);
       if (doc.config.fsfo.autoReinstate && fm && isDatabase(fm) && fm.flashbackOn) {
         state.reinstating = former;
+        rearmApply(former, at);
         decide(at, 'REINSTATE.OPEN_BAND', true, asString(reinstateBandClaim(),
           `${former as string} is reinstated as the new standby; how long that takes is environment-dependent, so the band is drawn with no end.`));
       }
@@ -571,6 +590,7 @@ export function simulate(
     state.tOpenAt = at;
     state.ackArmed = false;
     state.ackLostSince = null;
+    if (state.formerPrimary !== null) rearmApply(state.formerPrimary, at);
     decide(at, 'SWITCHOVER.ZERO_LOSS', true, asString(switchoverLossClaim(),
       'The roles swap only once the standby has everything: zero data loss in every protection mode. The former primary restarts as the new standby, and the new primary does not wait for it.'));
   }
@@ -719,6 +739,123 @@ export function simulate(
       state.altLatched.push(d.key);
       addFinding(alternateLatched(d, nameOf(d.from), nameOf(d.to), nameOf(d.alt.target)));
     }
+  }
+
+  /**
+   * RAC members (facts.md F1-F4). A standby's apply instance moves to a
+   * running instance once ApplyInstanceTimeout has passed since it failed; a
+   * primary that still has an instance running stays available, and says so.
+   */
+  function updateRac(view: View, at: Seconds): void {
+    /* The primary runs no apply: a standby that has just taken the role drops
+       its apply instance, and any gap it was waiting out with it. */
+    const pid = state.primary as string;
+    if (state.applyInstance[pid] !== undefined) {
+      delete state.applyInstance[pid];
+      state.applyLostSince[pid] = null;
+    }
+
+    const primary = doc.members.find((m) => m.id === state.primary);
+    if (primary && isRac(primary) && view.primaryAlive) {
+      const running = liveInstances(doc, state.net, primary).map((i) => i.name);
+      const down = primary.instances.map((i) => i.name).filter((n) => !running.includes(n));
+      if (down.length > 0) {
+        decide(at, 'RAC.PRIMARY_DEGRADED', true,
+          primaryDegradedClaim(primary.id, down, running),
+          { kind: 'member', id: primary.id as string });
+      }
+    }
+
+    /* Moving apply by hand. The command also rewrites PreferredApplyInstance
+       on a real broker; the drawing's document is not the broker's, so the
+       engine says so rather than editing it. */
+    const move = state.pendingApplyMove;
+    state.pendingApplyMove = null;
+    if (move !== null) {
+      const m = doc.members.find((x) => x.id === move.member);
+      const subject = { kind: 'member' as const, id: move.member as string };
+      const ok = m !== undefined && tracksApply(state, m)
+        && liveInstances(doc, state.net, m).some((i) => i.name === move.instance);
+      decide(at, 'RAC.SET_APPLY_INSTANCE', ok, setApplyClaim(move.member, move.instance, ok),
+        subject, `${move.instance}@${at}`);
+      if (ok) {
+        state.applyInstance[move.member as string] = move.instance;
+        state.applyLostSince[move.member as string] = null;
+      } else {
+        addFinding({
+          id: 'RAC.SET_APPLY_INSTANCE', severity: 'warning', basis: 'documented',
+          cite: ['RAC.SET_APPLY_INSTANCE', 'RAC.APPLY_INSTANCE'],
+          subject,
+          message: `SET STATE='APPLY-ON' WITH APPLY INSTANCE='${move.instance}' on ${move.member as string} changes nothing here: apply runs on a running instance of a RAC standby, and ${move.instance} is not one.`,
+        });
+      }
+    }
+
+    for (const m of doc.members) {
+      if (!tracksApply(state, m)) continue;
+      const id = m.id as string;
+      const holder = state.applyInstance[id] as string;
+      const running = liveInstances(doc, state.net, m);
+      /* A former primary on its way back as a standby is not applying yet:
+         the instance its apply will start on simply follows the running ones. */
+      if (m.id === state.formerPrimary) {
+        if (running.some((i) => i.name === holder) || running.length === 0) continue;
+        const to = nextApplyInstance(m, running);
+        if (to === null) continue;
+        state.applyInstance[id] = to;
+        decide(at, 'RAC.APPLY_AFTER_ROLE_CHANGE', true, roleChangeApplyClaim(m, to),
+          { kind: 'member', id }, `${to}@${at}`);
+        continue;
+      }
+      if (running.some((i) => i.name === holder)) {
+        state.applyLostSince[id] = null;
+        /* Multi-instance Redo Apply: an instance other than the coordinator
+           stopping leaves apply running on the rest (a model). */
+        if (isMultiInstanceApply(m)) {
+          for (const i of m.instances) {
+            if (i.name === holder || running.some((r) => r.name === i.name)) continue;
+            decide(at, 'RAC.MIRA_PARTICIPANT_LOST', true, participantLostClaim(m, i.name, holder),
+              { kind: 'member', id }, i.name);
+          }
+        }
+        continue;
+      }
+      const since = state.applyLostSince[id] ?? at;
+      state.applyLostSince[id] = since;
+      /* With nothing running there is nowhere to move apply; the member is
+         down, and the move is made when an instance comes back. */
+      if (running.length === 0) continue;
+      const timeout = applyInstanceTimeout(m);
+      const subject = { kind: 'member' as const, id };
+      if (since + timeout > at + EPS) {
+        decide(since, 'RAC.APPLY_INSTANCE_WAIT', true,
+          applyWaitClaim(m, holder, since + timeout), subject, `${holder}@${since}`);
+        continue;
+      }
+      const to = nextApplyInstance(m, running);
+      if (to === null) continue;
+      decide(at, 'RAC.APPLY_INSTANCE_FAILOVER', true,
+        applyFailoverClaim(m, holder, to, timeout), subject, `${holder}>${to}@${at}`);
+      state.applyInstance[id] = to;
+      state.applyLostSince[id] = null;
+    }
+  }
+
+  /**
+   * A RAC database leaving the primary role: which instance its apply will
+   * start on once it runs as a standby. (`updateRac` drops the apply instance
+   * of the member taking the role.)
+   */
+  function rearmApply(member: MemberId, at: Seconds): void {
+    const m = doc.members.find((x) => x.id === member);
+    if (!m || !isDatabase(m) || !isRac(m)) return;
+    const running = liveInstances(doc, state.net, m);
+    const to = nextApplyInstance(m, running.length > 0 ? running : m.instances);
+    if (to === null) return;
+    state.applyInstance[member as string] = to;
+    state.applyLostSince[member as string] = null;
+    decide(at, 'RAC.APPLY_AFTER_ROLE_CHANGE', true, roleChangeApplyClaim(m, to),
+      { kind: 'member', id: member as string });
   }
 
   function noteMasterChange(view: View, at: Seconds): void {
@@ -889,6 +1026,20 @@ export function simulate(
       );
     }
 
+    /* ApplyInstanceTimeout: the instant a RAC standby's apply moves. */
+    for (const m of doc.members) {
+      if (!tracksApply(state, m)) continue;
+      const since = state.applyLostSince[m.id as string];
+      if (since === null || since === undefined) continue;
+      if (liveInstances(doc, state.net, m).length === 0) continue;
+      const due = since + applyInstanceTimeout(m);
+      if (due <= at + EPS) continue;
+      q.push(
+        { kind: 'apply.failover', at: due, subject: { kind: 'member', id: m.id as string } },
+        'apply.failover', true, m.id,
+      );
+    }
+
     /* NET_TIMEOUT bounds the commit hang, and is never a failover clock. In a
        full fast-start failover stall the stall overrides it. */
     if (state.ackLostSince !== null && !view.stalled
@@ -903,10 +1054,22 @@ export function simulate(
     const observers: Record<string, ObserverState> = {};
     const links: Record<string, 'up' | 'down'> = {};
     const open: string[] = [];
+    const applyInstances: Record<string, string> = {};
     for (const m of d.members) {
-      members[m.id as string] = memberStateOf(d, s, view, m, at);
+      const st = memberStateOf(d, s, view, m, at);
+      members[m.id as string] = st;
       const restarting = s.phase === 'switched' && s.formerPrimary === m.id;
       if (s.reinstating === m.id || restarting) open.push(m.id as string);
+      const holder = s.applyInstance[m.id as string];
+      if (holder !== undefined && tracksApply(s, m)) {
+        /* Applying: the instance doing it, never one that has failed and is
+           being waited out. A former primary restarting or being reinstated
+           as a standby carries the instance its apply will start on. */
+        const lost = s.applyLostSince[m.id as string];
+        const applying = (st === 'mounted-apply' || st === 'open-ro') && (lost === null || lost === undefined);
+        const returning = s.formerPrimary === m.id && (st === 'mounted-noapply' || st === 'reinstating');
+        if (applying || returning) applyInstances[m.id as string] = holder;
+      }
     }
     for (const o of d.observers) observers[o.id as string] = observerStateOf(d, s, view, o.id);
     for (const l of d.links) {
@@ -915,7 +1078,9 @@ export function simulate(
         : (l.ends as [SiteId, SiteId]).every((x) => !s.net.downSites.has(x));
       links[l.id as string] = s.net.downLinks.has(l.id) || !bothEndsUp ? 'down' : 'up';
     }
-    return { t: at, members, observers, links, open };
+    return Object.keys(applyInstances).length > 0
+      ? { t: at, members, applyInstances, observers, links, open }
+      : { t: at, members, observers, links, open };
   }
 }
 
@@ -948,14 +1113,11 @@ function applyEvent(doc: TopologyDoc, state: SimState, e: TimedEvent): void {
     case 'member.down': case 'member.up':
       state.net = applyNetEvent(state.net, e);
       break;
+    /* An instance stops on a host that stays up: the listener, an observer or
+       another member's instance beside it keep running. */
     case 'instance.down': case 'instance.up': {
       const m = doc.members.find((x) => x.id === e.member);
-      const inst = m?.instances.find((i) => i.name === e.instance);
-      if (inst) {
-        state.net = applyNetEvent(state.net, e.kind === 'instance.down'
-          ? { kind: 'host.down', host: inst.host }
-          : { kind: 'host.up', host: inst.host });
-      }
+      if (m?.instances.some((i) => i.name === e.instance)) state.net = applyNetEvent(state.net, e);
       break;
     }
     case 'observer.stop': {
@@ -969,6 +1131,7 @@ function applyEvent(doc: TopologyDoc, state: SimState, e: TimedEvent): void {
       break;
     }
     case 'cmd.setMasterObserver': state.masterOverride = e.observer; break;
+    case 'cmd.setApplyInstance': state.pendingApplyMove = { member: e.member, instance: e.instance }; break;
     case 'cmd.disableFsfo': state.fsfoState = 'disabled'; break;
     case 'cmd.switchover': state.pendingSwitchover = e.to; break;
     case 'cmd.failover': state.pendingFailover = e.to; break;
@@ -1168,6 +1331,20 @@ function primaryReachableFromOutside(
   return any ? ways.length > 0 : true;
 }
 
+/* ---------------- RAC ---------------- */
+
+/**
+ * Does the loop track an apply instance for this member right now? A RAC
+ * database that is not the primary at this point in the run and has an entry:
+ * the declared standbys get one at the start, a former primary when it leaves
+ * the role, and the member taking the role loses its own. Keyed on the role in
+ * the run, never on the role the document declares.
+ */
+function tracksApply(state: SimState, m: Member): m is DatabaseMember {
+  return isDatabase(m) && isRac(m) && m.id !== state.primary
+    && state.applyInstance[m.id as string] !== undefined;
+}
+
 /* ---------------- lane states ---------------- */
 
 function memberStateOf(
@@ -1210,6 +1387,9 @@ function memberStateOf(
   const r = view.graph.members[m.id];
   if (!r || !r.reachableFromPrimary) return 'unreachable';
   if (m.openMode === 'read-only-adg') return 'open-ro';
+  /* A RAC standby waiting out ApplyInstanceTimeout has no instance applying. */
+  const lost = state.applyLostSince[m.id as string];
+  if (tracksApply(state, m) && lost !== null && lost !== undefined) return 'mounted-noapply';
   return m.applyRunning ? 'mounted-apply' : 'mounted-noapply';
 }
 
@@ -1510,7 +1690,14 @@ function initialState(doc: TopologyDoc): SimState {
   const observers: SimState['observers'] = {};
   for (const o of doc.observers) observers[o.id as string] = { running: o.running, role: o.role };
   const primary = doc.members.find((m) => isDatabase(m) && m.role === 'primary');
+  const applyInstance: SimState['applyInstance'] = {};
+  for (const m of doc.members) {
+    if (!hasApplyInstance(m)) continue;
+    const first = initialApplyInstance(m);
+    if (first !== null) applyInstance[m.id as string] = first;
+  }
   return {
+    now: 0,
     net: initialNetState(doc),
     primary: primary?.id ?? (doc.members[0]?.id as MemberId),
     fsfoState: doc.config.fsfo.state,
@@ -1548,8 +1735,11 @@ function initialState(doc: TopologyDoc): SimState {
     nominatedAt: null,
     applyLag: {},
     transportLag: {},
+    applyInstance,
+    applyLostSince: {},
     manualFailoverAt: null,
     pendingSwitchover: null,
+    pendingApplyMove: null,
     pendingFailover: null,
   };
 }

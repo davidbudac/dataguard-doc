@@ -95,8 +95,10 @@ type Member = DatabaseMember | FarSyncMember;
 type XptMode = 'SYNC' | 'FASTSYNC' | 'ASYNC';
 interface DestProps { netTimeoutSeconds: Seconds; reopenSeconds: Seconds; maxFailure: number; affirm?: 'AFFIRM' | 'NOAFFIRM'; }
 ```
-RAC: a member is reachable if any instance host is up and reachable; degraded, not down,
-when some instances are gone. Instance-level LGWR/NSS ownership is out of scope (labelled).
+RAC: a member is reachable if any instance is running on a host that is up and reachable;
+degraded, not down, when some instances are gone (facts.md F1, documented). Instance-level
+LGWR/NSS ownership is out of scope (labelled). A RAC physical or logical standby runs apply
+on one instance, the apply instance (F2-F4); see §10 for how the loop moves it.
 
 ### 1.4 RedoRoutes
 ```ts
@@ -409,3 +411,43 @@ the design did not state, so it is recorded rather than left to be rediscovered.
   switchover gate asks the transport directly rather than a lag-gated readiness flag. Every
   preset therefore opens at the level it was configured in, and the classic 1+1+1 steady
   state is `MAXAVAILABILITY` with zero data loss.
+- **An instance stops without its host (RAC).** `instance.down` / `instance.up` used to be
+  folded into `host.down` / `host.up` of the instance's host, which took down anything else
+  on that host (an observer, another member's instance), and let `instance.up` resurrect a
+  host a `host.down` had crashed. `NetState` now carries `downInstances` (`member/instance`
+  keys, surfaced in `NetStateSummary`), `liveInstances` filters on it, and the canvas and
+  the client-connect model read it: a stopped instance's listener answers and refuses
+  (the service is not registered there) instead of dropping packets.
+- **The RAC standby apply instance (`sim/rac.ts`, facts.md F2-F4).** A RAC physical or
+  logical standby with apply running starts on `PreferredApplyInstance` when it names an
+  instance, else on the first instance (the broker "randomly picks" -- labelled model).
+  When the apply instance stops, `updateRac` waits `ApplyInstanceTimeout` (default 0,
+  immediate) and moves apply to the preferred instance if it is running, else the first
+  running one (model for "random"); while it waits the member is `mounted-noapply`. A
+  running apply instance is never moved back to a preference that returns ("the broker
+  disregards the value of the PreferredApplyInstance property" while it runs). Detection is
+  drawn as instantaneous (undocumented, labelled). Lane segments carry `applyInstance`, so a
+  move is a new segment in the same state, and `Snapshot.applyInstances` feeds the canvas's
+  `APPLY` tag. The apply-lag input is not advanced by the gap, and multi-instance Redo Apply
+  (`ApplyInstances`) is not drawn. A RAC primary that loses some instances records a
+  documented `RAC.PRIMARY_DEGRADED` decision.
+- **RAC, second pass.** A RAC database leaving the primary role (switchover, or a failover
+  followed by reinstatement) gets an apply instance at that instant: `PreferredApplyInstance`
+  when it names a running instance (documented "in preparation for a switchover"), else the
+  first running one (model); its restart band carries it. While a RAC standby has no instance
+  applying, `applyLagOf` adds the gap (`applyGapOf`, one second per second, `SimState.now`);
+  a failover initiated in the gap records `RAC.APPLY_GAP_IN_FAILOVER` and opens that much
+  later (model: the backlog is drawn as cleared the instant apply resumes). The
+  `cmd.setApplyInstance` event moves apply to a running instance (documented command; the
+  engine leaves the document's `PreferredApplyInstance` alone and says so). `ApplyInstances`
+  (physical standby, 0-16 or ALL) is carried; `applyParticipants` reads which instances run
+  apply (coordinator first, then declared order -- model, since "the database chooses"),
+  and a non-coordinator instance stopping is `RAC.MIRA_PARTICIPANT_LOST`, a model (undocumented).
+  Which members carry an apply instance is read from the role in the run (`tracksApply`:
+  a RAC database that is not the primary at that instant), never from the declared role: a
+  standby that takes the role drops its apply instance and any gap it was waiting out, and
+  a former primary's "apply will start on" follows its running instances. An Active Data
+  Guard standby waiting out ApplyInstanceTimeout stays `open-ro` but names no apply instance.
+  Reinstatement no longer asks a RAC member for static service names: they are needed "only
+  if Oracle Clusterware or Oracle Restart is not being used", and "Oracle Clusterware is a
+  required component for using Oracle RAC" (`isRac`).

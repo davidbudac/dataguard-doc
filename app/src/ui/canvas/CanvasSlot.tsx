@@ -152,7 +152,7 @@ function commitRename(key: string, raw: string): void {
  *
  * The order is the table's own -- `Edit` first, the properties between,
  * `Remove` last -- and it is load-bearing rather than cosmetic: the bar shows
- * the first six rows and says the rest are in the rail, so what gets dropped
+ * the first seven rows and says the rest are in the rail, so what gets dropped
  * has to be the least destructive thing on the list, never the way out.
  */
 function buildBar(d: TopologyDoc, keys: readonly string[]): BarAction[] {

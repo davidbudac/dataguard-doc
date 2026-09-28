@@ -29,7 +29,8 @@ import { detectClaim, lagGated, pingPropertiesSet } from '../sim/fsfo';
 import type { Claim, Finding } from '../types/claims';
 import { docLater, documented, model } from '../types/claims';
 import type { DestProps, Member, TopologyDoc } from '../types/topology';
-import { declaredPrimary, isDatabase, isFarSync } from '../types/topology';
+import { declaredPrimary, isDatabase, isFarSync, isRac } from '../types/topology';
+import { isMultiInstanceApply } from '../sim/rac';
 import type { GeneratedFile, Line, Span } from './lines';
 import { blank, cmd, hl, note, span } from './lines';
 
@@ -155,6 +156,79 @@ export function generateDgmgrl(doc: TopologyDoc, opts: DgmgrlOptions = {}): Gene
     ));
   }
   lines.push(blank());
+
+  /* ---- RAC: the apply instance of a standby (facts.md F2-F4) ---- */
+  const racDbs = members.filter((m) => isDatabase(m) && isRac(m)
+    && m.role !== 'snapshot'
+    && (m.id !== primary.id || m.preferredApplyInstance !== undefined));
+  for (const m of racDbs) {
+    if (!isDatabase(m)) continue;
+    const preferred = m.preferredApplyInstance;
+    if (preferred !== undefined) {
+      lines.push(cmd(
+        [span(`${editOf(m)} SET PROPERTY 'PreferredApplyInstance' = '`), hl(preferred), span("';")],
+        { basis: 'documented', cite: ['RAC.PREFERRED_APPLY_INSTANCE'] },
+      ));
+      if (m.id === primary.id) {
+        lines.push(nDoc(
+          `${m.name} is the primary: the property is only used while it is a standby, and names its apply instance for after a switchover`,
+          ['RAC.PREFERRED_APPLY_INSTANCE', 'RAC.APPLY_INSTANCE_SELECTION'],
+        ));
+      }
+    } else {
+      lines.push(nDoc(
+        `${m.name} runs ${m.instances.length} instances and PreferredApplyInstance is empty (the default): the broker picks the apply instance`,
+        ['RAC.PREFERRED_APPLY_INSTANCE', 'RAC.APPLY_INSTANCE_SELECTION'],
+      ));
+    }
+    /* ApplyInstances is a physical standby property; a primary carries it for
+       when it runs as one. */
+    if (m.applyInstances !== undefined && (m.role === 'physical' || m.role === 'primary')) {
+      lines.push(cmd(
+        [span(`${editOf(m)} SET PROPERTY 'ApplyInstances' = `), hl(String(m.applyInstances)), span(';')],
+        { basis: 'documented', cite: ['RAC.APPLY_INSTANCES_PROPERTY', 'RAC.MULTI_INSTANCE_APPLY'] },
+      ));
+    }
+    const timeout = m.applyInstanceTimeoutSeconds ?? 0;
+    if (timeout > 0) {
+      lines.push(cmd(
+        [span(`${editOf(m)} SET PROPERTY 'ApplyInstanceTimeout' = `), hl(String(timeout)), span(';')],
+        { basis: 'documented', cite: ['RAC.APPLY_INSTANCE_TIMEOUT'] },
+      ));
+    }
+  }
+  if (racDbs.length > 0) {
+    const mira = racDbs.some((m) => isDatabase(m) && isMultiInstanceApply(m));
+    lines.push(nDoc(
+      mira
+        ? 'with ApplyInstances above 1 Redo Apply runs on several instances, one of them the coordinator, which the broker treats as the apply instance; if the apply instance fails the broker restarts the coordinator on another running instance after ApplyInstanceTimeout (default 0, immediate). To move it by hand: EDIT DATABASE ... SET STATE=\'APPLY-ON\' WITH APPLY INSTANCE=\'name\';'
+        : 'apply runs on one instance of a RAC standby, the apply instance; if it fails the broker restarts apply on another running instance after ApplyInstanceTimeout (default 0, immediate). To move it by hand: EDIT DATABASE ... SET STATE=\'APPLY-ON\' WITH APPLY INSTANCE=\'name\';',
+      mira
+        ? ['RAC.MULTI_INSTANCE_APPLY', 'RAC.APPLY_INSTANCE_TIMEOUT', 'RAC.SET_APPLY_INSTANCE']
+        : ['RAC.APPLY_INSTANCE', 'RAC.APPLY_INSTANCE_TIMEOUT', 'RAC.SET_APPLY_INSTANCE'],
+    ));
+    lines.push(blank());
+  }
+
+  /* ---- static services, where a RAC database is in the configuration ---- */
+  const anyRac = members.some((m) => isDatabase(m) && isRac(m));
+  if (anyRac) {
+    for (const m of members) {
+      if (!isDatabase(m)) continue;
+      if (isRac(m)) {
+        lines.push(nDoc(
+          `${m.name} is RAC and runs under Oracle Clusterware, so it needs no static service: one is defined and registered only if Oracle Clusterware or Oracle Restart is not being used`,
+          ['RAC.STATIC_ONLY_WITHOUT_CLUSTERWARE', 'RAC.CLUSTERWARE_REQUIRED'],
+        ));
+      } else if (!m.staticServices) {
+        lines.push(nDoc(
+          `${m.name} is a single instance: unless Oracle Restart manages it, register the static service ${m.name}_DGMGRL with its listener so DGMGRL and the observer can restart it`,
+          ['RAC.STATIC_ONLY_WITHOUT_CLUSTERWARE'],
+        ));
+      }
+    }
+    lines.push(blank());
+  }
 
   /* ---- RedoRoutes, pre-declared in both directions ---- */
   const routed = members.filter((m) => m.redoRoutes.length > 0);

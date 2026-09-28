@@ -23,12 +23,13 @@ export type PresetId =
   | 'priority-alternates'
   | 'multi-target-three-observers'
   | 'rac-primary'
+  | 'rac-standby'
   | 'bystanders'
   | 'max-protection'
   | 'observe-only';
 
 /**
- * The headings the picker groups the eleven under. Order is the order they are
+ * The headings the picker groups the twelve under. Order is the order they are
  * offered in: the shapes a reader meets first, then the ones that answer a
  * question they have already asked.
  */
@@ -50,7 +51,7 @@ export interface Preset {
    * The title as a picker offers it: six words at most, and no sentence --
    * the bound `test/ui/statusbar.test.ts` holds every one of them to.
    * `title` is the sentence -- it is what a lesson prints and what the
-   * option's `title` carries -- and eleven of those in a dropdown is eleven
+   * option's `title` carries -- and twelve of those in a dropdown is twelve
    * lines of prose to read before choosing one.
    */
   short: string;

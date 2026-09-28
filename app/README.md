@@ -51,8 +51,8 @@ src/
     compat/      the 1+1+1 adapter the legacy 24-cell matrix runs against
   state/       Document vs View signals, undo, URL, persistence, legacy URLs
   ui/          shell, canvas, timeline, inspector, panels, learn, intro
-  content/     the nine lessons, the reference tables, the footnotes
-  presets/     eleven worked topologies
+  content/     the ten lessons, the reference tables, the footnotes
+  presets/     twelve worked topologies
   styles/      tokens.css and the per-area stylesheets
 test/          vitest suites and goldens (see below)
 design/        engine.md, ui.md, facts.md
@@ -85,7 +85,7 @@ load by `src/state/legacy-url.ts`.
   no source is cited for a fact the accuracy rules forbid it for.
 
 Goldens live in `test/__golden__/` (generated configuration files) and
-`test/ui/__golden__/` (canvas geometry for all eleven presets). When one moves,
+`test/ui/__golden__/` (canvas geometry for all twelve presets). When one moves,
 say in the commit message whether it recorded geometry or a domain fact.
 
 `node ../site/smoke.mjs` is the browser check of the built tree — it needs

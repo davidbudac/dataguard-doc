@@ -3,7 +3,7 @@
  * never have.
  *
  * `canvas-routing.test.ts` holds the router to its invariants on hand-built
- * fixtures; this file holds it to them on the eleven documents the workbench
+ * fixtures; this file holds it to them on the twelve documents the workbench
  * actually offers, which are the dense ones -- three observers watching two
  * candidate targets, a priority group standing down behind another. Two kinds
  * of assertion, and both matter:
@@ -368,5 +368,32 @@ describe('RAC instance hosts', () => {
     expect(card.downInstances).toEqual(['prm011']);
     expect(card.down).toBe(false);
     expect(card.degraded).toBe(true);
+    /* A primary has no apply instance. */
+    expect(card.applyInstance).toBeUndefined();
+  });
+
+  it('marks the standby apply instance, and moves the mark when it fails', () => {
+    const preset = PRESETS.find((p) => p.id === 'rac-standby')!;
+    const d = draw(preset.doc());
+    const node = d.geo.byKey.sby01!;
+    expect(node.instanceHosts?.map((i) => i.name)).toEqual(['sby011', 'sby012']);
+    /* Build mode: the instance the configuration starts on. */
+    expect(cardFrameFor(d.doc, node).applyInstance).toBe('sby011');
+    const card = cardFrameFor(d.doc, node, stateAt(simulate(d.doc, preset.events()), 0));
+    expect(card.downInstances).toEqual(['sby011']);
+    expect(card.applyInstance).toBe('sby012');
+    expect(card.degraded).toBe(true);
+    expect(card.applyParticipants).toEqual(['sby012']);
+  });
+
+  it('lists every instance running apply under multi-instance Redo Apply', () => {
+    const preset = PRESETS.find((p) => p.id === 'rac-standby')!;
+    const doc = preset.doc();
+    (doc.members[1] as { applyInstances?: number | 'ALL' }).applyInstances = 'ALL';
+    const d = draw(doc);
+    const node = d.geo.byKey.sby01!;
+    expect(cardFrameFor(d.doc, node).applyParticipants).toEqual(['sby011', 'sby012']);
+    const later = cardFrameFor(d.doc, node, stateAt(simulate(d.doc, preset.events()), 1));
+    expect(later.applyParticipants).toEqual(['sby012']);
   });
 });

@@ -3,7 +3,7 @@
  *
  * Nothing here is engine machinery: every helper writes the same plain JSON a
  * user would produce in the editor, so a preset is a document like any other.
- * The helpers exist so that eleven presets do not repeat eleven copies of the
+ * The helpers exist so that twelve presets do not repeat twelve copies of the
  * same site/host/link boilerplate.
  */
 

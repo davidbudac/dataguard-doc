@@ -144,7 +144,7 @@ export function StatusBar({ hostRef }: StatusBarProps) {
       <select
         id="preset-picker"
         class="btn"
-        title="Load one of the eleven configurations this page ships with"
+        title="Load one of the twelve configurations this page ships with"
         /* The preset's own option while the document still is that preset;
            the first option, which then says so, once it is not. */
         value={showing ? (preset as Preset).id : ''}
@@ -162,8 +162,8 @@ export function StatusBar({ hostRef }: StatusBarProps) {
         <option value="">
           {edited ? 'Current configuration (edited)' : 'Current configuration'}
         </option>
-        {/* Short titles under headings: eleven sentences in a dropdown is
-            eleven lines of prose to read before choosing one. The sentence is
+        {/* Short titles under headings: twelve sentences in a dropdown is
+            twelve lines of prose to read before choosing one. The sentence is
             still there, as the option's title. */}
         {GROUPED_PRESETS.map(({ group, presets }) => (
           <optgroup key={group} label={group}>

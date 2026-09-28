@@ -233,6 +233,8 @@
 .topo-svg .tp-chip.is-violet .tp-chip-tx { fill: var(--vi); }
 .topo-svg .tp-chip.is-slate .tp-chip-bg { fill: var(--sf2); }
 .topo-svg .tp-chip.is-slate .tp-chip-tx { fill: var(--sl); }
+.topo-svg .tp-chip.is-blue .tp-chip-bg { fill: var(--blf); }
+.topo-svg .tp-chip.is-blue .tp-chip-tx { fill: var(--bl); }
 
 /* ---- chassis stacks ---- */
 /* Two or more cards sharing a host: one continuous frame behind the blades,

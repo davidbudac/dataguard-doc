@@ -450,6 +450,63 @@ const CASES: Case[] = [
     silent: () => racClusterDoc(false),
   },
   {
+    id: 'RAC.PREFERRED_APPLY_UNKNOWN',
+    fires: 'PreferredApplyInstance names an instance the member does not have',
+    quiet: 'it names one of its own instances',
+    trigger: () => {
+      const d = racClusterDoc(false);
+      dbOf(d, 'prm01').preferredApplyInstance = 'prm019';
+      return d;
+    },
+    silent: () => {
+      const d = racClusterDoc(false);
+      dbOf(d, 'prm01').preferredApplyInstance = 'prm012';
+      return d;
+    },
+  },
+  {
+    id: 'RAC.PREFERRED_APPLY_UNUSED',
+    fires: 'PreferredApplyInstance is set on a single-instance standby',
+    quiet: 'it is set on a RAC primary, ready for a switchover',
+    trigger: () => {
+      const d = racClusterDoc(false);
+      dbOf(d, 'sby01').preferredApplyInstance = 'sby01';
+      return d;
+    },
+    silent: () => {
+      const d = racClusterDoc(false);
+      dbOf(d, 'prm01').preferredApplyInstance = 'prm011';
+      return d;
+    },
+  },
+  {
+    id: 'RAC.APPLY_INSTANCES_UNUSED',
+    fires: 'ApplyInstances is set on a single-instance standby',
+    quiet: 'it is set on a RAC primary, for when it is a physical standby',
+    trigger: () => {
+      const d = racClusterDoc(false);
+      dbOf(d, 'sby01').applyInstances = 'ALL';
+      return d;
+    },
+    silent: () => {
+      const d = racClusterDoc(false);
+      dbOf(d, 'prm01').applyInstances = 'ALL';
+      return d;
+    },
+  },
+  {
+    id: 'RAC.INSTANCES_SHARE_HOST',
+    fires: 'two instances of the RAC primary run on one node',
+    quiet: 'each instance has a node of its own',
+    trigger: () => {
+      const d = racClusterDoc(false);
+      const prm = dbOf(d, 'prm01');
+      prm.instances = prm.instances.map((i) => ({ ...i, host: prm.instances[0]!.host }));
+      return d;
+    },
+    silent: () => racClusterDoc(false),
+  },
+  {
     id: 'REINSTATE.PRECONDITIONS',
     fires: 'FastStartFailoverAutoReinstate is on with Flashback Database off',
     quiet: 'both databases meet the preconditions',

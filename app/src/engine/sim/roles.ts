@@ -14,7 +14,7 @@ import type { Claim, Finding } from '../types/claims';
 import { documented, model } from '../types/claims';
 import type { MemberId, Seconds } from '../ids';
 import type { TopologyDoc } from '../types/topology';
-import { isDatabase } from '../types/topology';
+import { isDatabase, isRac } from '../types/topology';
 import type { SwitchoverFacts } from './kernel';
 
 /** Broker verifies both databases before it starts. Nominal, footnote 3. */
@@ -204,12 +204,14 @@ export function reinstateFindings(
   const missing: string[] = [];
   if (f && isDatabase(f) && !f.flashbackOn) missing.push(`Flashback Database is off on ${f.name}`);
   if (n && isDatabase(n) && !n.flashbackOn) missing.push(`Flashback Database is off on ${n.name}`);
-  if (f && isDatabase(f) && !f.staticServices) missing.push(`${f.name} has no static service names`);
+  /* Static service names are needed only without Oracle Clusterware or Oracle
+     Restart, and a RAC database runs under Clusterware. */
+  if (f && isDatabase(f) && !f.staticServices && !isRac(f)) missing.push(`${f.name} has no static service names`);
   if (!doc.config.fsfo.autoReinstate) missing.push('FastStartFailoverAutoReinstate is FALSE');
   if (missing.length > 0) {
     out.push({
       id: 'REINSTATE.PRECONDITIONS', severity: 'warning', basis: 'documented',
-      cite: ['FSFO.AUTO_REINSTATE'],
+      cite: ['FSFO.AUTO_REINSTATE', 'RAC.STATIC_ONLY_WITHOUT_CLUSTERWARE', 'RAC.CLUSTERWARE_REQUIRED'],
       subject: { kind: 'member', id: former as string },
       message: `Automatic reinstatement of ${former} is not available here: ${missing.join('; ')}. It reinstates only after an observer-initiated failover caused by a primary crash or isolation, and needs Flashback Database on both databases, the former primary started and mounted, the master observer able to reach it, and static service names without Clusterware or Oracle Restart.`,
     });

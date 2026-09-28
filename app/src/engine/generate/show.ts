@@ -20,7 +20,7 @@ import { resolveRedoGraph } from '../redo/resolve';
 import { lagGated } from '../sim/fsfo';
 import { docLater, documented, model } from '../types/claims';
 import type { Member, TopologyDoc } from '../types/topology';
-import { declaredPrimary, isDatabase, isFarSync } from '../types/topology';
+import { declaredPrimary, isDatabase, isFarSync, isRac } from '../types/topology';
 import type { GeneratedFile, Line } from './lines';
 import { blank, cmd, note } from './lines';
 
@@ -58,6 +58,10 @@ export interface ShowConfigurationOptions {
   verbose?: boolean;
   /** `SHOW CONFIGURATION WHEN PRIMARY IS name` -- resolve with another primary. */
   whenPrimaryIs?: MemberId;
+  /** SHOW DATABASE, read at a frame: the instance running apply per RAC standby. */
+  applyInstances?: Readonly<Record<string, string>>;
+  /** SHOW DATABASE, read at a frame: stopped instances as `member/instance`. */
+  downInstances?: readonly string[];
 }
 
 function roleWord(m: Member, primary: MemberId): string {
@@ -400,10 +404,81 @@ export function showObserver(doc: TopologyDoc): GeneratedFile {
   return { id: 'show.observer', title: 'SHOW OBSERVER', syntax: 'show', lines, findings: [] };
 }
 
-/* ---------------- all three ---------------- */
+/* ---------------- SHOW DATABASE, for a RAC member ---------------- */
 
+const DB_ROLE_WORD = {
+  primary: 'PRIMARY', physical: 'PHYSICAL STANDBY', logical: 'LOGICAL STANDBY', snapshot: 'SNAPSHOT STANDBY',
+} as const;
+
+/**
+ * `SHOW DATABASE` for a database with more than one instance: the field that
+ * matters here is `Instance(s):`, which marks the one running apply on a RAC
+ * standby `(apply instance)` -- the documented example (facts.md F9).
+ */
+export function showDatabase(
+  doc: TopologyDoc, member: MemberId, opts: ShowConfigurationOptions = {},
+): GeneratedFile | null {
+  const m = doc.members.find((x) => x.id === member);
+  if (!m || !isDatabase(m) || !isRac(m)) return null;
+  const primary = opts.whenPrimaryIs ?? declaredPrimary(doc);
+  const role = m.id === primary ? 'primary' : m.role === 'primary' ? 'physical' : m.role;
+  const lines: Line[] = [...headerLines()];
+  const show: CitationId[] = ['RAC.SHOW_DATABASE_INSTANCES'];
+  lines.push(cmd(`DGMGRL> SHOW DATABASE '${m.name}';`, { basis: 'documented', cite: ['DGMGRL.BROKER_COMMANDS'] }));
+  lines.push(blank());
+  lines.push(cmd(`Database - ${m.name}`, { basis: 'documented', cite: show }));
+  lines.push(blank());
+  lines.push(cmd(`Role:               ${DB_ROLE_WORD[role]}`, { indent: 2, basis: 'documented', cite: show }));
+  const state = role === 'primary' ? 'TRANSPORT-ON'
+    : role === 'snapshot' ? 'APPLY-OFF'
+      : m.applyRunning ? 'APPLY-ON' : 'APPLY-OFF';
+  lines.push(cmd(`Intended State:     ${state}`, {
+    indent: 2, basis: 'documented',
+    cite: role === 'primary' ? ['RAC.TRANSPORT_ALL_INSTANCES'] : ['RAC.APPLY_INSTANCE'],
+  }));
+  lines.push(cmd('Instance(s):', { indent: 2, basis: 'documented', cite: show }));
+  const apply = opts.applyInstances?.[m.id as string];
+  const stopped = new Set(opts.downInstances ?? []);
+  for (const i of m.instances) {
+    const isApply = role !== 'primary' && role !== 'snapshot' && apply === i.name;
+    const down = stopped.has(`${m.id as string}/${i.name}`);
+    lines.push(cmd(`${i.name.padEnd(14, ' ')}${isApply ? ' (apply instance)' : ''}${down ? `  (not running)${MODEL_MARK}` : ''}`, down
+      ? {
+        indent: 4, basis: 'model', cite: show,
+        note: 'How SHOW DATABASE spells an instance that has stopped was not found in the documentation that was verified; this marker is the page\'s own.',
+      }
+      : { indent: 4, basis: 'documented', cite: show }));
+  }
+  lines.push(blank());
+  if (role === 'primary') {
+    lines.push(nDoc(
+      'every instance open read-write runs redo transport, and the primary stays available while at least one of them still ships redo',
+      ['RAC.TRANSPORT_ALL_INSTANCES', 'RAC.PRIMARY_AVAILABLE'],
+    ));
+  } else if (role !== 'snapshot') {
+    lines.push(nDoc(
+      apply === undefined
+        ? 'no instance is applying at this point: the apply instance failed and the broker has not moved apply yet, or none is running'
+        : 'apply runs on exactly one instance, the apply instance; if it fails the broker restarts apply on another running instance',
+      ['RAC.APPLY_INSTANCE', 'RAC.APPLY_INSTANCE_FAILOVER'],
+    ));
+  }
+  return {
+    id: `show.database.${m.id as string}`, title: `SHOW DATABASE ${m.name}`, syntax: 'show', lines, findings: [],
+  };
+}
+
+/* ---------------- all of them ---------------- */
+
+/**
+ * The three configuration-wide blocks, then one SHOW DATABASE per RAC
+ * database -- appended, so a configuration without RAC reads as it always did.
+ */
 export function generateShowMocks(
   doc: TopologyDoc, opts: ShowConfigurationOptions = {},
 ): GeneratedFile[] {
-  return [showConfiguration(doc, opts), showFastStartFailover(doc), showObserver(doc)];
+  const rac = doc.members
+    .map((m) => showDatabase(doc, m.id, opts))
+    .filter((f): f is GeneratedFile => f !== null);
+  return [showConfiguration(doc, opts), showFastStartFailover(doc), showObserver(doc), ...rac];
 }

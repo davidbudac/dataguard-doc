@@ -45,7 +45,7 @@ export const MODE_SUB: Record<Mode, string> = {
   configure:
     'Configure — generated from the drawing: DGMGRL, init parameters and connect strings; '
     + 'hover a line to see which member it configures.',
-  learn: 'Learn — nine lessons, and the reference tables behind them',
+  learn: 'Learn — ten lessons, and the reference tables behind them',
 };
 
 export const PANEL_LABEL: Record<PanelTab, string> = {

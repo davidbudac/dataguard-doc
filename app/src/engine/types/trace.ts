@@ -75,7 +75,9 @@ export type InternalDeadlineKind =
   | 'lag.grace'
   | 'switchover.verify'
   | 'switchover.convert'
-  | 'switchover.open';
+  | 'switchover.open'
+  /** ApplyInstanceTimeout expires: a RAC standby moves apply to another instance. */
+  | 'apply.failover';
 
 export interface InternalDeadline {
   kind: InternalDeadlineKind;
@@ -89,6 +91,8 @@ export interface NetStateSummary {
   downSites: SiteId[];
   downLinks: LinkId[];
   partitioned: boolean;
+  /** RAC instances stopped on a host that stays up, as `member/instance`. */
+  downInstances: string[];
 }
 
 export interface Epoch {
@@ -107,6 +111,8 @@ export interface Segment {
   t1: Seconds | null;
   state: AnyState;
   label?: string;
+  /** A RAC standby: the instance running apply for the whole segment. */
+  applyInstance?: string;
   /** An open band with no documented end (environment-dependent). */
   open?: boolean;
 }
@@ -179,6 +185,8 @@ export interface Snapshot {
   epoch: Epoch;
   members: Record<MemberId, MemberState | FarSyncState>;
   observers: Record<ObserverId, ObserverState>;
+  /** RAC standbys running apply at `t`, and on which instance. */
+  applyInstances?: Record<MemberId, string>;
 }
 
 export interface SimParams {

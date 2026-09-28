@@ -27,8 +27,8 @@ import { barOpen, closeBar } from '@/ui/canvas/bar';
 import { fitZoom } from '@/ui/canvas/zoom';
 import { mode, selection, toast, viewport } from '@/state/view';
 import {
-  addDatabase, addFsfoTarget, addInstance, addObserver, addSite, moveToSite, shipRedo,
-  transportForMode,
+  addDatabase, addFsfoTarget, addInstance, addObserver, addSite, moveToSite, patchDatabase,
+  patchInstance, removeInstance, shipRedo, transportForMode,
 } from '@/ui/inspector/edits';
 import { actionsForKey, runAction } from '@/ui/break/events';
 import { farSyncFixture } from './canvas-fixtures';
@@ -92,6 +92,24 @@ describe('moveToSite: a card dropped in another data centre', () => {
     expect(member(id as string).instances[0]!.host).toBe(host);
     expect(member('sby01').instances[0]!.host as string).toBe('dc1-sby01');
     expect(siteOfHost('dc1-sby01')).toBe('dc1');
+  });
+
+  it('puts every node of a member that becomes RAC in one cluster', () => {
+    addInstance(memberId('sby01'));
+    const hosts = member('sby01').instances.map((i) => i.host as string);
+    const clusters = hosts.map((h) => topo().hosts.find((x) => (x.id as string) === h)?.cluster);
+    expect(clusters).toEqual(['sby01-crs', 'sby01-crs']);
+    /* The observer runs on a host of its own, outside the new cluster. */
+    expect(validate(topo()).some((f) => f.id === 'RAC.OBSERVER_ON_CLUSTER')).toBe(false);
+  });
+
+  it('keeps PreferredApplyInstance pointing at the instance through a rename and a removal', () => {
+    addInstance(memberId('sby01'));
+    patchDatabase(memberId('sby01'), 'prefer', (m) => ({ ...m, preferredApplyInstance: 'sby012' }));
+    patchInstance(memberId('sby01'), 1, (i) => ({ ...i, name: 'sby01b' }), 'rename');
+    expect((member('sby01') as { preferredApplyInstance?: string }).preferredApplyInstance).toBe('sby01b');
+    removeInstance(memberId('sby01'), 1);
+    expect('preferredApplyInstance' in member('sby01')).toBe(false);
   });
 
   it('moves every instance of a RAC member together', () => {

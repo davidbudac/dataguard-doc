@@ -1,7 +1,8 @@
 /**
  * Presets with more than two members or more than one observer: multi-target
- * fast-start failover, a RAC primary, snapshot and logical bystanders, and
- * maximum protection with two synchronous standbys.
+ * fast-start failover, a RAC primary, a RAC primary with a RAC standby,
+ * snapshot and logical bystanders, and maximum protection with two synchronous
+ * standbys.
  */
 
 import {
@@ -124,6 +125,59 @@ export const racPrimary: Preset = {
   ],
   doc: racDoc,
   events: () => [instanceDown(0, 'prm01', 'prm011')],
+};
+
+/* A two-instance RAC primary shipping to a two-instance RAC standby. */
+function racStandbyDoc(): TopologyDoc {
+  const prm = database('prm01', ['dc1-node1', 'dc1-node2'], 'primary', {
+    redoRoutes: [local(to('sby01', 'SYNC'))],
+  });
+  const sby = database('sby01', ['dc2-node1', 'dc2-node2'], 'physical', {
+    logXptMode: 'SYNC', preferredApplyInstance: 'sby011',
+  });
+  dest(prm, sby.id);
+  return topology({
+    name: 'rac_standby',
+    sites: ['dc1', 'dc2', 'dc3'],
+    hosts: [
+      host('dc1-node1', 'dc1', { cluster: 'rac1' }),
+      host('dc1-node2', 'dc1', { cluster: 'rac1' }),
+      host('dc2-node1', 'dc2', { cluster: 'rac2' }),
+      host('dc2-node2', 'dc2', { cluster: 'rac2' }),
+      host('dc3-obs01', 'dc3'),
+    ],
+    links: [['dc1', 'dc2', 5], ['dc1', 'dc3', 5], ['dc2', 'dc3', 5]],
+    members: [prm, sby],
+    observers: [observer('obs01', 'dc3-obs01')],
+    targets: ['sby01'],
+    events: [instanceDown(0, 'sby01', 'sby011')],
+  });
+}
+
+export const racStandby: Preset = {
+  id: 'rac-standby',
+  title: 'A RAC standby losing its apply instance',
+  short: 'RAC primary and RAC standby',
+  group: 'RAC',
+  summary:
+    'Both databases are two-instance clusters, and the observer runs on a host of its own at a '
+    + 'third site. The standby runs Redo Apply on exactly one instance, the apply instance -- '
+    + 'here sby011, because PreferredApplyInstance names it. The default event stops sby011 at '
+    + 't = 0. "If the apply instance fails, then the broker automatically restarts SQL Apply, or '
+    + 'the Redo Apply coordinator, as appropriate, on a different instance"; ApplyInstanceTimeout '
+    + 'is at its default of 0, "immediate apply instance failover", so apply moves to sby012 at '
+    + 'once. Nothing else changes: sby012 still receives redo, the observer and the primary still '
+    + 'reach the standby, and no fast-start failover clock starts. One modelling note belongs to '
+    + 'this preset rather than to Oracle: how long the broker takes to detect the failure is not '
+    + 'documented, and the engine draws it as instantaneous. Set ApplyInstanceTimeout on sby01 '
+    + 'to see apply stand still for that long; take sby012 down too and the standby is down.',
+  cite: [
+    'RAC.APPLY_INSTANCE', 'RAC.APPLY_INSTANCE_FAILOVER', 'RAC.APPLY_INSTANCE_SELECTION',
+    'RAC.PREFERRED_APPLY_INSTANCE', 'RAC.APPLY_INSTANCE_TIMEOUT', 'RAC.PRIMARY_AVAILABLE',
+    'OBS.PLACEMENT_NEVER_ON_DB_HOST',
+  ],
+  doc: racStandbyDoc,
+  events: () => [instanceDown(0, 'sby01', 'sby011')],
 };
 
 /* A physical target with a logical and a snapshot standby as bystanders. */

@@ -48,8 +48,12 @@ export interface BarAction {
   run: () => void;
 }
 
-/** Six rows, and the rest is the rail's business. */
-export const MAX_ROWS = 6;
+/**
+ * Seven rows, and the rest is the rail's business. A database card fills all
+ * seven -- Edit, three transports, the primary role, `+ Instance`, Remove --
+ * and Remove, the way out, is never the row that falls off.
+ */
+export const MAX_ROWS = 7;
 /** Break's bar is shorter still: its stage is the short one, and its rail carries the whole list. */
 export const MAX_ROWS_BREAK = 4;
 

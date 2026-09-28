@@ -113,6 +113,22 @@ export interface DatabaseMember extends MemberBase {
   realTimeApply: boolean;
   openMode: OpenMode;
   staticServices: boolean;
+  /**
+   * PreferredApplyInstance: the instance a RAC standby prefers to run apply
+   * on. Absent is the broker default, the empty string -- the broker chooses.
+   */
+  preferredApplyInstance?: string;
+  /**
+   * ApplyInstanceTimeout: how long the broker waits after detecting that the
+   * apply instance failed before it moves apply. Absent is the default, 0.
+   */
+  applyInstanceTimeoutSeconds?: Seconds;
+  /**
+   * ApplyInstances, physical standby only: how many instances run Redo Apply.
+   * Absent is the broker default 0 -- recovery in single-instance mode; 1 is
+   * the same; `ALL` is every running instance.
+   */
+  applyInstances?: number | 'ALL';
 }
 
 /** No role, no apply lag, no open mode, no broker state. */
@@ -124,6 +140,11 @@ export interface FarSyncMember extends MemberBase {
 export type Member = DatabaseMember | FarSyncMember;
 
 export const isDatabase = (m: Member): m is DatabaseMember => m.kind === 'database';
+/**
+ * More than one instance is RAC, and RAC runs under Oracle Clusterware -- which
+ * is what spares it the static service names reinstatement otherwise needs.
+ */
+export const isRac = (m: Member): boolean => m.instances.length > 1;
 export const isFarSync = (m: Member): m is FarSyncMember => m.kind === 'farsync';
 
 /* ---------------- SS1.5 observers ---------------- */

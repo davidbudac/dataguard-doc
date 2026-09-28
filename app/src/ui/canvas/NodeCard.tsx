@@ -56,6 +56,8 @@ const PHASE_CLASS: Record<Phase, string> = {
 
 const CHIP_H = 14;
 const chipWidth = (text: string): number => Math.round(approxW(text, 9, true) + 12);
+const APPLY_TAG = 'APPLY';
+const COORD_TAG = 'COORDINATOR';
 
 export function NodeCard(props: NodeCardProps): JSX.Element {
   const { node, frame, chips, prefix } = props;
@@ -154,11 +156,26 @@ export function NodeCard(props: NodeCardProps): JSX.Element {
         const y = node.y + CARD.dbH + index * CARD.instanceRowH;
         const host = `${inst.host} · ${inst.site}`;
         const down = frame.downInstances?.includes(inst.name) ?? false;
+        /* One instance applying wears APPLY; under multi-instance Redo Apply
+           the coordinator -- the broker's apply instance -- wears COORDINATOR
+           and the others APPLY. */
+        const participants = frame.applyParticipants ?? [];
+        const coordinator = !down && frame.applyInstance === inst.name;
+        const apply = !down && (coordinator || participants.includes(inst.name));
+        const tag = coordinator && participants.length > 1 ? COORD_TAG : APPLY_TAG;
+        const tagW = chipWidth(tag);
         return <g key={inst.name} class="tp-instance">
-          <title>{inst.name} on host {inst.host} in {inst.site}{down ? ' — down' : ''}</title>
+          <title>{inst.name} on host {inst.host} in {inst.site}{down ? ' — down' : coordinator ? ' — the apply instance' : apply ? ' — running Redo Apply' : ''}</title>
           <rect class={`tp-card${down ? ' is-down' : ''}`} x={node.x + 8} y={y} width={node.w - 16} height={CARD.instanceRowH - 6} rx={3} />
-          <text class="tp-host" x={node.x + 16} y={y + 14}>{elide(inst.name, 27)}{down ? ' ×' : ''}</text>
+          <text class="tp-host" x={node.x + 16} y={y + 14}>{elide(inst.name, apply ? 20 : 27)}{down ? ' ×' : ''}</text>
           <text class="tp-sub" x={node.x + 16} y={y + 29}>{elide(host, 34)}</text>
+          {apply ? (
+            /* The one instance a RAC standby runs apply on (facts.md F2). */
+            <g class="tp-chip is-blue">
+              <rect class="tp-chip-bg" x={node.x + node.w - 14 - tagW} y={y + 4} width={tagW} height={CHIP_H} rx={3} />
+              <text class="tp-chip-tx" x={node.x + node.w - 14 - tagW / 2} y={y + 4 + 10} text-anchor="middle">{tag}</text>
+            </g>
+          ) : null}
         </g>;
       })}
       {chipNodes}

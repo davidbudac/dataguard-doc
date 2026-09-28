@@ -347,7 +347,14 @@ export function addHost(site: SiteId): HostId | null {
   return hostId(name);
 }
 
-/** Add an instance to a member -- one more instance is what makes it RAC. */
+/**
+ * Add an instance to a member -- one more instance is what makes it RAC. The
+ * new instance gets a node of its own in the same data centre, and every node
+ * of the member joins one cluster: the first host's cluster where it has one,
+ * `<member>-crs` where the member was a single instance until now. The name
+ * is what the observer-placement rule reads -- an observer is never deployed
+ * on the database's cluster either.
+ */
 export function addInstance(id: MemberId): void {
   mutate(`Add an instance to ${id as string}`, (t) => {
     const m = t.members.find((member) => member.id === id);
@@ -358,10 +365,12 @@ export function addInstance(id: MemberId): void {
     const name = `${m.name}${n}`;
     const hostname = uniqueHost(t, `${firstHost.site as string}-${name}`);
     const next = withHost(t, hostname, firstHost.site);
+    const cluster = firstHost.cluster ?? `${m.name}-crs`;
+    const nodes = new Set<string>([...m.instances.map((i) => i.host as string), hostname]);
     return {
       ...next,
-      hosts: next.hosts.map((h) => h.id === hostId(hostname) && firstHost.cluster
-        ? { ...h, cluster: firstHost.cluster } : h),
+      hosts: next.hosts.map((h) => (nodes.has(h.id as string) && h.cluster === undefined
+        ? { ...h, cluster } : h)),
       members: next.members.map((member) => member.id === id
         ? { ...member, instances: [...member.instances, { name, host: hostId(hostname) }] }
         : member),
@@ -369,20 +378,35 @@ export function addInstance(id: MemberId): void {
   });
 }
 
+/** PreferredApplyInstance follows an instance that is renamed, and goes with one removed. */
+function followPreferred(m: Member, from: string, to: string | null): Member {
+  if (m.kind !== 'database' || m.preferredApplyInstance !== from) return m;
+  const { preferredApplyInstance: _drop, ...rest } = m;
+  return to === null ? rest : { ...rest, preferredApplyInstance: to };
+}
+
 export function removeInstance(id: MemberId, index: number): void {
-  patchMember(id, `Remove an instance from ${id as string}`, (m) => ({
-    ...m,
-    instances: m.instances.filter((_, i) => i !== index),
-  }));
+  patchMember(id, `Remove an instance from ${id as string}`, (m) => {
+    const gone = m.instances[index]?.name;
+    const next = { ...m, instances: m.instances.filter((_, i) => i !== index) };
+    return gone === undefined ? next : followPreferred(next, gone, null);
+  });
 }
 
 export function patchInstance(
   id: MemberId, index: number, fn: (i: Instance) => Instance, label: string, key?: string,
 ): void {
-  patchMember(id, label, (m) => ({
-    ...m,
-    instances: m.instances.map((inst, i) => (i === index ? fn(inst) : inst)),
-  }), key);
+  patchMember(id, label, (m) => {
+    const before = m.instances[index];
+    const after = before === undefined ? undefined : fn(before);
+    const next = {
+      ...m,
+      instances: m.instances.map((inst, i) => (i === index && after !== undefined ? after : inst)),
+    };
+    return before !== undefined && after !== undefined && before.name !== after.name
+      ? followPreferred(next, before.name, after.name)
+      : next;
+  }, key);
 }
 
 /** A site link between two data centres, when there is not one already. */

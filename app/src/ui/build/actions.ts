@@ -22,13 +22,13 @@
  * out of the configuration -- and the surface decides how that looks.
  */
 
-import { BOUNDS, clamp, isDatabase } from '@/engine';
+import { BOUNDS, clamp, isDatabase, isRac } from '@/engine';
 import type { TopologyDoc, XptMode } from '@/engine';
 import { inspectorOpen, select, viewport } from '@/state/view';
 import type { WhyState } from '../common/WhyPill';
 import { resolveSubject } from '../inspector/Inspector';
 import {
-  addDatabase, addHost, addObserver, patchLink, removeLink, removeMember, removeObserver,
+  addDatabase, addHost, addInstance, addObserver, patchLink, removeLink, removeMember, removeObserver,
   removeSite, setLogXptMode, setMasterObserver, setPrimary,
 } from '../inspector/edits';
 import { off, ON, WHY } from '../inspector/why';
@@ -107,6 +107,18 @@ export function buildActionsForKey(doc: TopologyDoc, key: string): BuildAction[]
       pressed: isPrimary,
       run: () => setPrimary(member.id),
     });
+    /* One more instance is what makes a database RAC: a node of its own in
+       the same data centre, in the member's cluster. */
+    if (db !== null) {
+      out.push({
+        id: 'instance:add',
+        label: isRac(db) ? `+ Instance (RAC, ${db.instances.length})` : '+ Instance (make it RAC)',
+        plural: '+ Instance',
+        enabled: ON,
+        kind: 'prop',
+        run: () => addInstance(member.id),
+      });
+    }
     out.push({
       id: 'remove',
       label: `Remove ${key}`,

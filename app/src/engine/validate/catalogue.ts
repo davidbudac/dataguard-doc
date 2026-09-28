@@ -174,6 +174,22 @@ export const RULE_CATALOGUE = {
     severity: 'error', basis: 'documented',
     summary: 'The observer is never deployed on the primary or standby database cluster either.',
   },
+  'RAC.PREFERRED_APPLY_UNKNOWN': {
+    severity: 'warning', basis: 'documented',
+    summary: 'PreferredApplyInstance takes an instance name (SID) or the empty string; it names no instance of this member.',
+  },
+  'RAC.PREFERRED_APPLY_UNUSED': {
+    severity: 'info', basis: 'documented',
+    summary: 'PreferredApplyInstance is only used when the database is a standby Oracle RAC database.',
+  },
+  'RAC.APPLY_INSTANCES_UNUSED': {
+    severity: 'info', basis: 'documented',
+    summary: 'ApplyInstances is valid only on physical standby databases with more than one instance.',
+  },
+  'RAC.INSTANCES_SHARE_HOST': {
+    severity: 'warning', basis: 'model',
+    summary: 'Two instances of one database on one host: this page draws each RAC instance on a node of its own.',
+  },
   'REINSTATE.PRECONDITIONS': {
     severity: 'warning', basis: 'documented',
     summary: 'FastStartFailoverAutoReinstate needs Flashback Database on both databases and static service names, and covers only an observer-initiated failover after a primary crash or isolation.',

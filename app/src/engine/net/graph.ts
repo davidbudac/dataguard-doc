@@ -9,7 +9,7 @@
  */
 
 import type { HostId, LinkId, MemberId, SiteId } from '../ids';
-import type { Member, TopologyDoc } from '../types/topology';
+import type { Instance, Member, TopologyDoc } from '../types/topology';
 import type { NetStateSummary } from '../types/trace';
 
 export interface NetState {
@@ -24,7 +24,16 @@ export interface NetState {
   partitions: HostId[][] | null;
   /** Members taken down without their host going down. */
   downMembers: ReadonlySet<MemberId>;
+  /**
+   * RAC instances stopped without their host going down, keyed by
+   * `instanceKey`. The host, its listener and anything else on it stay up.
+   */
+  downInstances: ReadonlySet<string>;
 }
+
+/** `prm01/prm011`: an instance name is unique only inside its member. */
+export const instanceKey = (member: MemberId | string, instance: string): string =>
+  `${member as string}/${instance}`;
 
 export function emptyNetState(): NetState {
   return {
@@ -33,6 +42,7 @@ export function emptyNetState(): NetState {
     downLinks: new Set(),
     partitions: null,
     downMembers: new Set(),
+    downInstances: new Set(),
   };
 }
 
@@ -49,6 +59,7 @@ export function netSummary(net: NetState): NetStateSummary {
     downSites: [...net.downSites].sort(),
     downLinks: [...net.downLinks].sort(),
     partitioned: net.partitions !== null,
+    downInstances: [...net.downInstances].sort(),
   };
 }
 
@@ -239,15 +250,43 @@ export function reachable(
 /* ---------------- members ---------------- */
 
 /**
- * RAC: a member is reachable if any instance host is up and reachable. Some
- * instances gone is degraded, not down; instance-level LGWR/NSS ownership is
- * out of scope and labelled as such wherever it would matter.
+ * RAC: a member is reachable if any instance is running on a host that is up
+ * and reachable. Some instances gone is degraded, not down -- "the primary
+ * database remains available as long as at least one instance of the
+ * clustered database continues to transport redo data to the standby
+ * databases" -- and which instance ships which redo thread is out of scope.
  */
+export function liveInstances(
+  doc: TopologyDoc, net: NetState, m: Member,
+): Instance[] {
+  if (net.downMembers.has(m.id)) return [];
+  return m.instances.filter(
+    (i) => !net.downInstances.has(instanceKey(m.id, i.name)) && hostUp(doc, net, i.host),
+  );
+}
+
+/**
+ * Every instance not running at a recorded epoch, as `member/instance`: one
+ * stopped on its own, or one on a host or in a site that is down. What the
+ * SHOW DATABASE mock and anything else reading a frame calls "not running".
+ */
+export function stoppedInstances(doc: TopologyDoc, net: NetStateSummary): string[] {
+  const out: string[] = [];
+  for (const m of doc.members) {
+    for (const i of m.instances) {
+      const key = instanceKey(m.id, i.name);
+      const site = doc.hosts.find((h) => h.id === i.host)?.site;
+      if (net.downInstances.includes(key) || net.downHosts.includes(i.host)
+        || (site !== undefined && net.downSites.includes(site))) out.push(key);
+    }
+  }
+  return out;
+}
+
 export function liveInstanceHosts(
   doc: TopologyDoc, net: NetState, m: Member,
 ): HostId[] {
-  if (net.downMembers.has(m.id)) return [];
-  return m.instances.map((i) => i.host).filter((h) => hostUp(doc, net, h));
+  return liveInstances(doc, net, m).map((i) => i.host);
 }
 
 export function memberAlive(doc: TopologyDoc, net: NetState, m: Member): boolean {
@@ -286,7 +325,9 @@ export function applyNetEvent(
     | { kind: 'site.down'; site: SiteId } | { kind: 'site.up'; site: SiteId }
     | { kind: 'link.cut'; link: LinkId } | { kind: 'link.heal'; link: LinkId }
     | { kind: 'partition'; groups: HostId[][] }
-    | { kind: 'member.down'; member: MemberId } | { kind: 'member.up'; member: MemberId },
+    | { kind: 'member.down'; member: MemberId } | { kind: 'member.up'; member: MemberId }
+    | { kind: 'instance.down'; member: MemberId; instance: string }
+    | { kind: 'instance.up'; member: MemberId; instance: string },
 ): NetState {
   const next: NetState = {
     downHosts: new Set(net.downHosts),
@@ -294,6 +335,7 @@ export function applyNetEvent(
     downLinks: new Set(net.downLinks),
     partitions: net.partitions,
     downMembers: new Set(net.downMembers),
+    downInstances: new Set(net.downInstances),
   };
   switch (e.kind) {
     case 'host.down': (next.downHosts as Set<HostId>).add(e.host); break;
@@ -305,6 +347,8 @@ export function applyNetEvent(
     case 'partition': next.partitions = e.groups.map((g) => [...g]); break;
     case 'member.down': (next.downMembers as Set<MemberId>).add(e.member); break;
     case 'member.up': (next.downMembers as Set<MemberId>).delete(e.member); break;
+    case 'instance.down': (next.downInstances as Set<string>).add(instanceKey(e.member, e.instance)); break;
+    case 'instance.up': (next.downInstances as Set<string>).delete(instanceKey(e.member, e.instance)); break;
   }
   return next;
 }

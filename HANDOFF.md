@@ -15,7 +15,7 @@ Data Guard configuration (N standbys — physical / logical / snapshot —, far 
 instances, cascading standbys, RAC members, up to 3 (19c) / 4 (26ai) observers,
 multi-target `FastStartFailoverTarget`), inject failures on a timeline, scrub it, and
 read the generated DGMGRL / `LOG_ARCHIVE_DEST_n` / tnsnames+JDBC / `SHOW …` output.
-Four modes: **Build · Break · Configure · Learn**. Eleven presets, nine lessons
+Four modes: **Build · Break · Configure · Learn**. Twelve presets, ten lessons
 (the six legacy chapters ported by copy plus far sync, cascading, multi-observer /
 multi-target). English only. Zero external requests. No inline script or style
 (built for `script-src 'self'; style-src 'self'`).

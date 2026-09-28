@@ -11,7 +11,9 @@
  */
 
 import type { Member, RedoGraph, Snapshot, TopologyDoc, XptMode } from '@/engine';
-import { isDatabase, linkRttMs } from '@/engine';
+import {
+  applyParticipants, hasApplyInstance, initialApplyInstance, instanceKey, isDatabase, isRac, linkRttMs,
+} from '@/engine';
 import type { Geometry, NodeBox } from './layout';
 import { nodeKey, siteLabelRect } from './layout';
 import type { Pt, Rect } from './measure';
@@ -70,13 +72,19 @@ const hostSiteDown = (frame: Snapshot | null | undefined, doc: TopologyDoc, host
   return site !== undefined && net.downSites.some((s) => (s as string) === (site as string));
 };
 
+/** An instance is gone when its host or site is, or when it was stopped itself. */
+const instanceDown = (
+  frame: Snapshot | null | undefined, doc: TopologyDoc, m: Member, name: string, host: string,
+): boolean => hostSiteDown(frame, doc, host)
+  || (frame?.epoch.net.downInstances ?? []).includes(instanceKey(m.id, name));
+
 const memberDown = (doc: TopologyDoc, frame: Snapshot | null | undefined, m: Member): boolean => {
   if (frame) {
     const st = frame.members[m.id];
     if (st === 'down' || st === 'aborted') return true;
   }
   return m.instances.length > 0
-    && m.instances.every((i) => hostSiteDown(frame, doc, i.host as string));
+    && m.instances.every((i) => instanceDown(frame, doc, m, i.name, i.host as string));
 };
 
 const rttBetween = (doc: TopologyDoc, a: Member | undefined, b: Member | undefined): number => {
@@ -839,6 +847,14 @@ export type Phase = 'neutral' | 'serving' | 'applying' | 'waiting' | 'observer' 
 
 export interface CardFrame {
   downInstances?: string[];
+  /**
+   * A RAC standby: the instance running apply. In Build mode it is the one
+   * the configuration starts with; under a frame, the one running apply at
+   * that instant -- absent while no instance is.
+   */
+  applyInstance?: string;
+  /** Multi-instance Redo Apply: every instance running apply, coordinator first. */
+  applyParticipants?: string[];
   phase: Phase;
   /** Hatched fill and a red border: this component is gone. */
   down: boolean;
@@ -916,8 +932,14 @@ export function cardFrameFor(
   const hosts = m.instances.map((i) => i.host as string);
   const downHosts = hosts.filter((h) => hostSiteDown(frame, doc, h)).length;
   const allDown = hosts.length > 0 && downHosts === hosts.length;
+  const downNames = m.instances
+    .filter((i) => instanceDown(frame, doc, m, i.name, i.host as string)).map((i) => i.name);
   const st = frame ? frame.members[m.id] : undefined;
   const down = allDown || st === 'down' || st === 'aborted';
+  const applyingNow = st === 'mounted-apply' || st === 'open-ro';
+  const apply = !hasApplyInstance(m) ? undefined
+    : frame ? (applyingNow ? frame.applyInstances?.[m.id] : undefined)
+      : initialApplyInstance(m) ?? undefined;
   /* "No active redo route reaches this member from the primary" is a fact
      about the instant once there is one: the alternate that has taken over
      reaches its destination, and a card left dashed under a line that is
@@ -928,8 +950,16 @@ export function cardFrameFor(
     down,
     crashed: allDown,
     stalled: st === 'stalled',
-    degraded: downHosts > 0 && !allDown,
-    ...(m.instances.length > 1 ? { downInstances: m.instances.filter((i) => down || hostSiteDown(frame, doc, i.host as string)).map((i) => i.name) } : {}),
+    degraded: downNames.length > 0 && !down,
+    ...(isRac(m)
+      ? { downInstances: down ? m.instances.map((i) => i.name) : downNames }
+      : {}),
+    ...(apply === undefined || down ? {} : {
+      applyInstance: apply,
+      applyParticipants: isDatabase(m)
+        ? applyParticipants(m, apply, m.instances.map((i) => i.name).filter((n) => !downNames.includes(n)))
+        : [apply],
+    }),
     unreachable: live ? !live.reachableFromPrimary : node.unreachable,
   };
 }

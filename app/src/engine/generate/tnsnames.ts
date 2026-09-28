@@ -14,7 +14,7 @@
 import type { Claim } from '../types/claims';
 import { documented, model } from '../types/claims';
 import type { ClientAddress, ClientDescriptor, TopologyDoc } from '../types/topology';
-import { isDatabase } from '../types/topology';
+import { isDatabase, isRac } from '../types/topology';
 import type { GeneratedFile, Line, Span } from './lines';
 import { blank, cmd, comment, hl, note, span, svc } from './lines';
 
@@ -64,6 +64,17 @@ const WIDE_SERVICE = documented<string>(
   'ConfigurationWideServiceName is the alternative to a role-based service',
   ['CFG.WIDE_SERVICE_NAME'],
   'Introduced in 12.2 and documented on the 19c broker properties page: the default is primarydbname_CFG and it does not change after a role transition.',
+);
+
+const SCAN_ALIASES = documented<string>(
+  'for Oracle RAC the aliases connect using the SCAN name',
+  ['RAC.SCAN_ALIASES'],
+  'The MAA example writes one ADDRESS_LIST per site, HOST=clu_site1-scan and HOST=clu_site2-scan.',
+);
+
+const SCAN_NAME_MODEL = model<string>(
+  'the SCAN host names are placeholders',
+  'The drawing has no SCAN names, so each cluster is written <cluster>-scan. The connection ladder in the client panel still dials one address per node: that is the list above, not this one.',
 );
 
 /* ---------------- the file ---------------- */
@@ -132,6 +143,48 @@ export function buildTns(doc: TopologyDoc): GeneratedFile {
   }
 
   const claims: Claim<string>[] = [DEFAULTS_OMITTED, FAILOVER_SPELLED, SINGLE_IP];
+
+  /* Oracle RAC: MAA writes the alias with the cluster's SCAN name rather than
+     a node per address. Shown commented out, as the alternative spelling of
+     the same alias with the same tokens -- a second live definition of one
+     alias in one file would leave which one a client reads to chance. The
+     connection ladder this page draws keeps the node-per-address list. */
+  const racs = doc.members.filter(
+    (m) => isDatabase(m) && m.enabled && m.role !== 'snapshot' && isRac(m),
+  );
+  if (racs.length > 0) {
+    const scanAddrs: string[] = [];
+    const seen = new Set<string>();
+    for (const m of doc.members) {
+      if (!isDatabase(m) || !m.enabled || m.role === 'snapshot') continue;
+      for (const i of m.instances) {
+        const h = doc.hosts.find((x) => x.id === i.host);
+        const name = isRac(m) ? `${h?.cluster ?? m.name}-scan` : (h?.name ?? (i.host as string));
+        if (seen.has(name)) continue;
+        seen.add(name);
+        scanAddrs.push(`(ADDRESS = (PROTOCOL = tcp)(HOST = ${name})(PORT = ${h?.listenerPort ?? 1521}))`);
+      }
+    }
+    const tokenText = (sp: Span[]): string => sp.map((x) => x.text).join('');
+    lines.push(blank());
+    lines.push(note('for Oracle RAC configurations the aliases should connect using the SCAN name', SCAN_ALIASES));
+    lines.push(comment('the same alias written with SCAN names -- use it instead of the one above:'));
+    lines.push(comment(`${service} =`));
+    lines.push(comment('  (DESCRIPTION ='));
+    for (let i = 0; i < set.length; i += 2) {
+      lines.push(comment(`    ${set.slice(i, i + 2).map(tokenText).join('')}`));
+    }
+    lines.push(comment(`    ${listHead}`));
+    scanAddrs.forEach((a, i) => {
+      lines.push(comment(`      ${a}${i === scanAddrs.length - 1 ? ')' : ''}`));
+    });
+    lines.push(comment(`    (CONNECT_DATA = (SERVICE_NAME = ${service})))`));
+    lines.push(note('<cluster>-scan is a placeholder for the cluster\'s SCAN name', SCAN_NAME_MODEL));
+    if (doc.client.addresses.length > 0) {
+      lines.push(comment('the address list above is the one set on the client; the SCAN form is drawn from the members'));
+    }
+    claims.push(SCAN_ALIASES, SCAN_NAME_MODEL);
+  }
   if (doc.config.configurationWideServiceName) {
     lines.push(blank());
     lines.push(note(

@@ -32,7 +32,7 @@ export type {
 } from './types/topology';
 export {
   declaredPrimary, destProps, findHost, findLink, findMember, findObserver, findSite,
-  isDatabase, isFarSync, memberHosts,
+  isDatabase, isFarSync, isRac, memberHosts,
 } from './types/topology';
 
 /* events and states */
@@ -78,7 +78,7 @@ export {
 export type { NetState, Reachability, ReachabilityOptions } from './net/graph';
 export {
   applyNetEvent, buildReachability, emptyNetState, expandLinks, hostUp, initialNetState,
-  linkRttMs, liveInstanceHosts, memberAlive, memberDegraded, memberReachableFromHost,
+  instanceKey, linkRttMs, liveInstanceHosts, liveInstances, memberAlive, stoppedInstances, memberDegraded, memberReachableFromHost,
   membersReachable, netSummary, reachable, upHosts,
 } from './net/graph';
 
@@ -126,10 +126,10 @@ export { buildJdbc } from './generate/jdbc';
 export type { DgmgrlOptions } from './generate/dgmgrl';
 export { generateDgmgrl } from './generate/dgmgrl';
 export type { InitOraOptions } from './generate/initora';
-export { generateInitOra, generateInitOraFiles } from './generate/initora';
+export { generateInitOra, generateInitOraFiles, generateRacParameters } from './generate/initora';
 export type { ShowConfigurationOptions } from './generate/show';
 export {
-  generateShowMocks, showConfiguration, showFastStartFailover, showObserver,
+  generateShowMocks, showConfiguration, showDatabase, showFastStartFailover, showObserver,
 } from './generate/show';
 
 /* simulation */
@@ -151,6 +151,10 @@ export {
   netTimeoutForMode, netTimeoutOf, stallClaim, syncAckDatabases, syncAckMembers,
 } from './sim/protection';
 export type { SwitchoverGateInput, SwitchoverRefusal } from './sim/roles';
+export {
+  applyFailoverClaim, applyInstanceTimeout, applyParticipants, hasApplyInstance,
+  initialApplyInstance, isMultiInstanceApply, nextApplyInstance, primaryDegradedClaim,
+} from './sim/rac';
 export {
   bystanderClaim, bystanders, executionClaim, manualFailoverFindings, nominalBandsClaim,
   reinstateBandClaim, reinstateFindings, SW_CONVERT, SW_VERIFY, switchoverGate,

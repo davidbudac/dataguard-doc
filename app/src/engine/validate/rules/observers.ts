@@ -10,7 +10,7 @@
 import type { Edition } from '../../ids';
 import type { Finding } from '../../types/claims';
 import type { DatabaseMember } from '../../types/topology';
-import { isDatabase } from '../../types/topology';
+import { isDatabase, isRac } from '../../types/topology';
 import type { Rule } from '../context';
 import { configSubject, mk, q } from '../context';
 
@@ -142,19 +142,22 @@ export const reinstatePreconditions: Rule = (ctx): Finding[] => {
   const primary = ctx.primary;
   const involved = [primary, ...ctx.candidates.map((id) => ctx.member(id))]
     .filter((m): m is DatabaseMember => !!m && isDatabase(m));
-  const missing = involved.filter((m) => !m.flashbackOn || !m.staticServices);
+  /* "If you are not using Oracle Clusterware or Oracle Restart, then you must
+     create static service names" -- a RAC database runs under Clusterware. */
+  const needsStatic = (m: DatabaseMember): boolean => !m.staticServices && !isRac(m);
+  const missing = involved.filter((m) => !m.flashbackOn || needsStatic(m));
   if (missing.length === 0) return [];
   const detail = missing.map((m) => {
     const gaps = [
       m.flashbackOn ? null : 'Flashback Database is off',
-      m.staticServices ? null : 'no static service name is registered',
+      needsStatic(m) ? 'no static service name is registered' : null,
     ].filter((s): s is string => s !== null).join(' and ');
     return `${q(m.name)} (${gaps})`;
   }).join(', ');
   return [mk('REINSTATE.PRECONDITIONS', {
     subject: configSubject(),
     message: `FastStartFailoverAutoReinstate is TRUE but ${detail}. Automatic reinstatement needs Flashback Database on both databases, the former primary started and mounted -- a manual restart where FastStartFailoverPmyShutdown aborted it -- the master observer able to reach it, and static service names without Clusterware or Oracle Restart. It reinstates only after an observer-initiated failover caused by a primary crash or isolation, never after a user-configurable health condition or a DBMS_DG.INITIATE_FS_FAILOVER call.`,
-    cite: ['FSFO.AUTO_REINSTATE', 'FSFO.PMY_SHUTDOWN'],
+    cite: ['FSFO.AUTO_REINSTATE', 'FSFO.PMY_SHUTDOWN', 'RAC.STATIC_ONLY_WITHOUT_CLUSTERWARE', 'RAC.CLUSTERWARE_REQUIRED'],
   })];
 };
 

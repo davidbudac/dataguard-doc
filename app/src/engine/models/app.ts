@@ -21,6 +21,7 @@
  */
 
 import { NOMINAL } from '../defaults';
+import { instanceKey } from '../net/graph';
 import type { HostId, MemberId, Seconds } from '../ids';
 import type { Claim } from '../types/claims';
 import { documented, model } from '../types/claims';
@@ -179,6 +180,7 @@ class TraceReader {
   private readonly hostById = new Map<string, Host>();
   private readonly siteById = new Map<string, Site>();
   private readonly memberByHost = new Map<string, MemberId>();
+  private readonly instanceByHost = new Map<string, string>();
   private readonly laneByMember = new Map<string, Lane>();
 
   constructor(private readonly doc: TopologyDoc, private readonly trace: Trace) {
@@ -186,7 +188,10 @@ class TraceReader {
     for (const s of doc.sites) this.siteById.set(s.id as string, s);
     for (const m of doc.members) {
       for (const i of m.instances) {
-        if (!this.memberByHost.has(i.host as string)) this.memberByHost.set(i.host as string, m.id);
+        if (!this.memberByHost.has(i.host as string)) {
+          this.memberByHost.set(i.host as string, m.id);
+          this.instanceByHost.set(i.host as string, i.name);
+        }
       }
     }
     for (const l of trace.lanes) {
@@ -268,10 +273,17 @@ class TraceReader {
     return !declared;
   }
 
-  /** Is the read-write service published at this address right now? */
+  /**
+   * Is the read-write service published at this address right now? Not where
+   * the RAC instance on this host is stopped: the listener answers and the
+   * service is not registered with it.
+   */
   publishing(host: HostId, t: Seconds): boolean {
     const member = this.memberOn(host);
     if (!member) return false;
+    const inst = this.instanceByHost.get(host as string);
+    const stopped = this.epochAt(t)?.net.downInstances ?? [];
+    if (inst !== undefined && stopped.includes(instanceKey(member, inst))) return false;
     const lane = this.laneByMember.get(member as string);
     if (!lane) return false;
     const seg = this.segmentAt(lane, t);

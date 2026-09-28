@@ -20,7 +20,7 @@ import { activeRule } from '../redo/resolve';
 import type { CitationId } from '../citations';
 import { documented, model } from '../types/claims';
 import type { DestProps, Member, RouteDest, TopologyDoc, XptMode } from '../types/topology';
-import { declaredPrimary, isDatabase, isFarSync } from '../types/topology';
+import { declaredPrimary, isDatabase, isFarSync, isRac } from '../types/topology';
 import type { GeneratedFile, Line, Span } from './lines';
 import { blank, cmd, comment, hl, note, span } from './lines';
 
@@ -188,7 +188,89 @@ export function generateInitOraFiles(doc: TopologyDoc, opts: InitOraOptions = {}
     if (slots.length === 0) continue;
     out.push(generateInitOra(doc, { ...opts, primary: primaryId, member: m.id }));
   }
+  const rac = generateRacParameters(doc, primaryId);
+  if (rac !== null) out.push(rac);
   return out;
+}
+
+/* ---------------- RAC: per-instance parameters and standby redo logs ---------------- */
+
+/**
+ * What a RAC database adds to the parameter files (facts.md F6, F7): one
+ * SPFILE whose `<sid>.` entries set one instance and `*.` entries every
+ * instance, a distinct INSTANCE_NUMBER and THREAD per instance, `%t` in
+ * LOG_ARCHIVE_FORMAT, and -- on every standby of a RAC primary -- standby
+ * redo log groups for each of the primary's redo threads. Only written when
+ * some database runs more than one instance, so a configuration without RAC
+ * reads as it always did.
+ */
+export function generateRacParameters(doc: TopologyDoc, primaryId: MemberId): GeneratedFile | null {
+  const racs = doc.members.filter((m) => isDatabase(m) && m.enabled && isRac(m));
+  const primary = doc.members.find((m) => m.id === primaryId);
+  if (racs.length === 0 || !primary) return null;
+  const lines: Line[] = [];
+
+  lines.push(comment('one SPFILE per RAC database: <sid>.name sets one instance, *.name',
+    { basis: 'documented', cite: ['RAC.SPFILE_SID_PREFIX'] }));
+  lines.push(comment('every instance that has no value of its own'));
+  lines.push(blank());
+  for (const m of racs) {
+    lines.push(comment(`${m.name}`));
+    m.instances.forEach((inst, i) => {
+      lines.push(cmd([span(`${inst.name}.instance_number=`), hl(String(i + 1))],
+        { basis: 'documented', cite: ['RAC.INSTANCE_NUMBER'] }));
+      lines.push(cmd([span(`${inst.name}.thread=`), hl(String(i + 1))], {
+        basis: 'model', cite: ['RAC.INSTANCE_NUMBER'],
+        note: 'Every instance needs a different INSTANCE_NUMBER, and a THREAD that differs from the others where one is set; numbering both in instance order is this page\'s choice. THREAD is superseded by INSTANCE_NAME and INSTANCE_NUMBER in 19c.',
+      }));
+    });
+    lines.push(cmd([span("*.log_archive_format='"), hl('%t_%s_%r.arc'), span("'")], {
+      basis: 'model', cite: ['RAC.SAME_DEST_EVERY_INSTANCE'],
+      note: 'The %t (thread) element is mandatory for Oracle RAC, and every instance of a Data Guard database must use the same LOG_ARCHIVE_FORMAT; the rest of the pattern is an example.',
+    }));
+    lines.push(blank());
+  }
+  if (isRac(primary)) {
+    lines.push(nDoc(
+      `set the same LOG_ARCHIVE_DEST_n on every instance of ${primary.name} (*.log_archive_dest_n), with a SERVICE whose address list reaches every instance of the standby`,
+      ['RAC.SAME_DEST_EVERY_INSTANCE'],
+    ));
+    lines.push(blank());
+  }
+
+  /* Standby redo logs: one set per redo thread of the redo source. */
+  const threads = primary.instances.length;
+  const receivers = doc.members.filter((m) => isDatabase(m) && m.enabled && m.id !== primaryId);
+  if (isRac(primary) && receivers.length > 0) {
+    lines.push(comment(`standby redo logs: ${primary.name} writes ${threads} redo threads, and each standby needs`,
+      { basis: 'documented', cite: ['RAC.SRL_PER_THREAD'] }));
+    lines.push(comment('at least one more standby redo log group than the online groups, for each thread'));
+    for (const r of receivers) {
+      lines.push(blank());
+      lines.push(comment(`on ${r.name}:`));
+      for (let t = 1; t <= threads; t++) {
+        for (let g = 0; g < 3; g++) {
+          lines.push(cmd([span('ALTER DATABASE ADD STANDBY LOGFILE THREAD '), hl(String(t)), span(' SIZE 500M;')],
+            { basis: 'documented', cite: ['RAC.SRL_PER_THREAD'] }));
+        }
+      }
+      if (isRac(r)) {
+        lines.push(nDoc(
+          `${r.name} is RAC too: its standby redo logs must sit where all of its instances can reach them, such as Oracle ASM or a cluster file system`,
+          ['RAC.SRL_SHARED'],
+        ));
+      }
+    }
+    lines.push(nModel(
+      'three groups per thread and SIZE 500M are examples: three is one more than the two online groups each instance must have at least, and each standby redo log must be at least as large as the largest online redo log',
+      'The rule is documented; the online log count and size of this drawing are not modelled, so the numbers are placeholders.',
+      ['RAC.SRL_PER_THREAD', 'RAC.INSTANCE_NUMBER'],
+    ));
+  }
+  return {
+    id: 'initora.rac', title: 'RAC -- per-instance parameters and standby redo logs',
+    filename: 'init.ora', syntax: 'initora', lines, findings: [],
+  };
 }
 
 /* ---------------- resolving the destinations ---------------- */

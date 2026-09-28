@@ -494,6 +494,20 @@ function parseMembers(c: Ctx, raw: unknown, hostIds: ReadonlySet<string>): Membe
       openMode: c.oneOf(v['openMode'], `members[${i}].openMode`, OPEN_MODES, 'mount'),
       staticServices: c.bool(v['staticServices'], `members[${i}].staticServices`, false),
     };
+    /* Both RAC standby properties are optional and absent at their broker
+       defaults, so a document that never touched them round-trips unchanged. */
+    const preferred = c.str(v['preferredApplyInstance'], `members[${i}].preferredApplyInstance`, '', 64);
+    if (preferred !== '') db.preferredApplyInstance = preferred;
+    const ai = v['applyInstances'];
+    if (ai === 'ALL') db.applyInstances = 'ALL';
+    else if (typeof ai === 'number' && Number.isInteger(ai) && ai >= 2 && ai <= 16) db.applyInstances = ai;
+    else if (ai !== undefined && ai !== 0 && ai !== 1) {
+      c.repaired(`members[${i}].applyInstances`, 'ApplyInstances takes 0 to 16 or ALL; dropped');
+    }
+    if (v['applyInstanceTimeoutSeconds'] !== undefined) {
+      const timeout = c.bounded(v['applyInstanceTimeoutSeconds'], `members[${i}].applyInstanceTimeoutSeconds`, 'applyInstanceTimeoutSeconds', 0);
+      if (timeout > 0) db.applyInstanceTimeoutSeconds = timeout;
+    }
     out.push(db);
   });
 
@@ -749,6 +763,12 @@ function parseEvents(c: Ctx, raw: unknown, refs: EventRefs): TimedEvent[] {
       }
       case 'instance.down': case 'instance.up': {
         if (!refs.memberIds.has(s('member'))) { drop(`unknown member ${s('member')}; dropped`); return; }
+        out.push({ at, kind, member: memberId(s('member')), instance: s('instance') });
+        return;
+      }
+      case 'cmd.setApplyInstance': {
+        if (!refs.memberIds.has(s('member'))) { drop(`unknown member ${s('member')}; dropped`); return; }
+        if (s('instance') === '') { drop('no instance named; dropped'); return; }
         out.push({ at, kind, member: memberId(s('member')), instance: s('instance') });
         return;
       }

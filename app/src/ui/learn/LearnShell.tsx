@@ -62,8 +62,9 @@ function Intro() {
       </p>
       <p class="caption">
         The first six lessons are the chapters of the published document, carried over
-        sentence by sentence. The last three cover shapes the earlier page could not draw:
-        far sync, cascading standbys, and several observers with several failover targets.
+        sentence by sentence. The last four cover shapes the earlier page could not draw:
+        far sync, cascading standbys, several observers with several failover targets, and
+        RAC databases in both roles.
       </p>
     </header>
   );
@@ -159,7 +160,7 @@ export function LearnShell() {
         {current === null ? null : (
           <p class="empty">
             <span class="empty-k">Not found</span>
-            No lesson is called <span class="mono">{current}</span> here. The nine above are
+            No lesson is called <span class="mono">{current}</span> here. The ten above are
             all of them.
           </p>
         )}

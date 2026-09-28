@@ -8,16 +8,17 @@ import { reference } from './reference';
 import { farSync } from './far-sync';
 import { cascading } from './cascading';
 import { multiObserver } from './multi-observer';
+import { rac } from './rac';
 
 export {
   failoverClocks, transportLayer, applicationView, configuration, syncTransport, reference,
-  farSync, cascading, multiObserver,
+  farSync, cascading, multiObserver, rac,
 };
 
-/** Reading order: the six ported chapters, then the three topology lessons. */
+/** Reading order: the six ported chapters, then the four topology lessons. */
 export const LESSONS: Lesson[] = [
   failoverClocks, transportLayer, applicationView, configuration, syncTransport, reference,
-  farSync, cascading, multiObserver,
+  farSync, cascading, multiObserver, rac,
 ];
 
 export const LESSON_BY_ID: Record<LessonId, Lesson> = LESSONS.reduce(

@@ -10,7 +10,7 @@
  */
 
 import type { Member, MemberId, RedoGraph, TopologyDoc, XptMode } from '@/engine';
-import { hostId, isDatabase } from '@/engine';
+import { hostId, isDatabase, isRac } from '@/engine';
 import { Fact } from '../common/Chip';
 import { Action, Check, Choice, Fold, Group, Note, Num, Pick, Text } from './controls';
 import { DESTS_ID, INSTANCES_ID } from './sections';
@@ -198,7 +198,9 @@ export function MemberForm({ member, doc, graph }: MemberFormProps) {
             onChange={(v) => patchDatabase(
               id, `Set static services on ${id as string}`, (m) => ({ ...m, staticServices: v }),
             )}
-            note="One of the reinstatement preconditions, where Clusterware or Oracle Restart is not doing it."
+            note={isRac(member)
+              ? 'Not needed here: static service names are a reinstatement precondition only without Oracle Clusterware or Oracle Restart, and a RAC database runs under Clusterware.'
+              : 'One of the reinstatement preconditions, where Clusterware or Oracle Restart is not doing it.'}
           />
         </Group>
       )}
@@ -266,10 +268,73 @@ export function MemberForm({ member, doc, graph }: MemberFormProps) {
         <div class="rr-line">
           <Action label="+ Instance" onClick={() => addInstance(id)} />
         </div>
+        {db !== null && isRac(member) && db.role !== 'snapshot' ? (
+          <>
+            <Pick
+              name="PreferredApplyInstance"
+              value={db.preferredApplyInstance ?? ''}
+              options={[
+                { value: '', label: 'empty — the broker chooses' },
+                ...member.instances.map((inst) => ({ value: inst.name, label: inst.name })),
+                ...(db.preferredApplyInstance !== undefined
+                  && !member.instances.some((inst) => inst.name === db.preferredApplyInstance)
+                  ? [{ value: db.preferredApplyInstance, label: `${db.preferredApplyInstance} (not an instance)` }]
+                  : []),
+              ]}
+              onChange={(v) => patchDatabase(
+                id, `Set PreferredApplyInstance on ${id as string}`,
+                (m) => {
+                  const { preferredApplyInstance: _drop, ...rest } = m;
+                  return v === '' ? rest : { ...rest, preferredApplyInstance: v };
+                },
+              )}
+              note={isPrimary
+                ? 'Only used while the database is a standby: set on a primary it names the apply instance for after a switchover.'
+                : 'The instance apply starts on, and the one it returns to after the apply instance fails, when that one is running. Empty, the broker picks at random; this page draws the first running instance.'}
+            />
+            <Num
+              name="ApplyInstanceTimeout"
+              bound="applyInstanceTimeoutSeconds"
+              kind="number"
+              value={db.applyInstanceTimeoutSeconds ?? 0}
+              onChange={(v) => patchDatabase(
+                id, `Set ApplyInstanceTimeout on ${id as string}`,
+                (m) => {
+                  const { applyInstanceTimeoutSeconds: _drop, ...rest } = m;
+                  return v > 0 ? { ...rest, applyInstanceTimeoutSeconds: v } : rest;
+                },
+              )}
+              note="How long the broker waits after detecting that the apply instance failed before it moves apply. Broker default 0: immediate apply instance failover."
+            />
+            {db.role === 'physical' || db.role === 'primary' ? (
+              <Pick
+                name="ApplyInstances"
+                value={db.applyInstances === undefined ? '0' : String(db.applyInstances)}
+                options={[
+                  { value: '0', label: '0 — one instance (the default)' },
+                  ...Array.from({ length: member.instances.length - 1 }, (_, k) => ({
+                    value: String(k + 2), label: `${k + 2} — up to ${k + 2} instances`,
+                  })),
+                  { value: 'ALL', label: 'ALL — every running instance' },
+                ]}
+                onChange={(v) => patchDatabase(
+                  id, `Set ApplyInstances on ${id as string}`,
+                  (m) => {
+                    const { applyInstances: _drop, ...rest } = m;
+                    return v === '0' ? rest : { ...rest, applyInstances: v === 'ALL' ? 'ALL' : Number(v) };
+                  },
+                )}
+                note="Physical standby only. Above 1, Redo Apply runs on several instances with one of them the coordinator, the broker's apply instance; the database picks which, and this page draws the first running ones. What happens when an instance other than the coordinator fails is not documented: this page keeps apply going on the rest."
+              />
+            ) : null}
+          </>
+        ) : null}
         <Note>
-          More than one instance is RAC: the member is reachable while any instance host
-          is up and reachable, and losing some of them leaves it degraded rather than
-          down. Which instance owns the redo transport is out of scope here.
+          More than one instance is RAC. A RAC primary stays available while at least one
+          instance still ships redo, so losing some of them leaves it degraded rather than
+          down. A RAC standby runs apply on exactly one instance, the apply instance; if it
+          fails, the broker moves apply to another running instance. Which instance ships
+          which redo thread is not modelled, and a failed apply instance is detected at once.
           <Fact basis="model" id="RAC.INSTANCE_SCOPE" />
         </Note>
       </Fold>

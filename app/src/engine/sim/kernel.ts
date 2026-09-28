@@ -47,6 +47,7 @@ const DEADLINE_PRIORITY: Record<InternalDeadlineKind, number> = {
   'switchover.verify': 17,
   'switchover.convert': 18,
   'switchover.open': 19,
+  'apply.failover': 19.5,
   /* Last at its instant on purpose: a primary that aborts at the threshold
      does so after the observer has initiated the failover at the same second. */
   'primary.abort': 20,
@@ -76,7 +77,8 @@ export type DeadlineAction =
   | 'net.timeout'
   | 'switchover.verify'
   | 'switchover.convert'
-  | 'switchover.open';
+  | 'switchover.open'
+  | 'apply.failover';
 
 export class Queue {
   private items: Pending[] = [];
@@ -158,6 +160,8 @@ export interface SwitchoverFacts {
 }
 
 export interface SimState {
+  /** The instant the loop is at: what a lag that grows with time is read against. */
+  now: Seconds;
   net: NetState;
   primary: MemberId;
   fsfoState: FsfoState;
@@ -240,9 +244,17 @@ export interface SimState {
   /** Lag inputs can be moved by a lag.set event. */
   applyLag: Record<string, Seconds>;
   transportLag: Record<string, Seconds>;
+  /**
+   * RAC standbys (`rac.ts`): the instance holding the apply role -- or, while
+   * it is down, the one that last held it -- and since when it has been down.
+   */
+  applyInstance: Record<string, string>;
+  applyLostSince: Record<string, Seconds | null>;
   manualFailoverAt: Seconds | null;
   /** Commands wait one step: they are answered against the epoch's own facts. */
   pendingSwitchover: MemberId | null;
+  /** SET STATE='APPLY-ON' WITH APPLY INSTANCE, answered in `updateRac`. */
+  pendingApplyMove: { member: MemberId; instance: string } | null;
   pendingFailover: MemberId | null;
 }
 
@@ -251,6 +263,8 @@ export interface SimState {
 export interface Sample {
   t: Seconds;
   members: Record<string, MemberState | FarSyncState>;
+  /** RAC standbys running apply: which instance is doing it. */
+  applyInstances?: Record<string, string>;
   observers: Record<string, ObserverState>;
   links: Record<string, 'up' | 'down'>;
   /** Subjects whose band has no documented end (environment-dependent). */
@@ -275,22 +289,29 @@ export function buildLanes(samples: readonly Sample[]): Lane[] {
 
   const build = (
     kind: 'member' | 'observer' | 'link', id: string, at: (s: Sample) => string | undefined,
+    apply: (s: Sample) => string | undefined = () => undefined,
   ): void => {
     const segments: Segment[] = [];
     for (const s of samples) {
       const state = at(s);
       if (state === undefined) continue;
+      const inst = apply(s);
       const last = segments[segments.length - 1];
-      if (last && last.state === state) continue;
+      /* A RAC standby whose apply moved to another instance is a new segment
+         in the same state: the move is the thing to see. */
+      if (last && last.state === state && last.applyInstance === inst) continue;
       if (last) last.t1 = s.t;
       const seg: Segment = { t0: s.t, t1: null, state: state as Segment['state'] };
+      if (inst !== undefined) seg.applyInstance = inst;
       if (s.open.includes(id)) seg.open = true;
       segments.push(seg);
     }
     if (segments.length > 0) lanes.push({ subject: { kind, id }, segments });
   };
 
-  for (const id of ids((s) => s.members)) build('member', id, (s) => s.members[id]);
+  for (const id of ids((s) => s.members)) {
+    build('member', id, (s) => s.members[id], (s) => s.applyInstances?.[id]);
+  }
   for (const id of ids((s) => s.observers)) build('observer', id, (s) => s.observers[id]);
   for (const id of ids((s) => s.links)) build('link', id, (s) => s.links[id]);
   void first;
@@ -330,14 +351,18 @@ export function snapshotFrom(
   if (!epoch) return null;
   const members: Record<MemberId, MemberState | FarSyncState> = {};
   const observers: Record<ObserverId, ObserverState> = {};
+  const applyInstances: Record<MemberId, string> = {};
   for (const lane of lanes) {
     const seg = segmentAt(lane, t);
     if (!seg) continue;
     if (lane.subject.kind === 'member') {
       members[lane.subject.id as MemberId] = seg.state as MemberState | FarSyncState;
+      if (seg.applyInstance !== undefined) applyInstances[lane.subject.id as MemberId] = seg.applyInstance;
     } else if (lane.subject.kind === 'observer') {
       observers[lane.subject.id as ObserverId] = seg.state as ObserverState;
     }
   }
-  return { t, epoch, members, observers };
+  return Object.keys(applyInstances).length > 0
+    ? { t, epoch, members, observers, applyInstances }
+    : { t, epoch, members, observers };
 }

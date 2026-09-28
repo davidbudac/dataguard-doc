@@ -119,8 +119,20 @@ export function gateLagSeconds(doc: TopologyDoc, m: Member, state?: SimState): S
 
 export function applyLagOf(m: Member, state?: SimState): Seconds {
   const override = state?.applyLag[m.id as string];
-  if (override !== undefined) return override;
-  return isDatabase(m) ? m.applyLagSeconds : 0;
+  const base = override !== undefined ? override : isDatabase(m) ? m.applyLagSeconds : 0;
+  return base + applyGapOf(m, state);
+}
+
+/**
+ * A RAC standby whose apply instance failed applies nothing until apply moves
+ * (`rac.ts`), so its apply lag grows one second per second of the gap. Once
+ * apply resumes the backlog is drawn as cleared at once: the catch-up rate is
+ * environment-dependent (RAC.APPLY_GAP_LAG, a model).
+ */
+export function applyGapOf(m: Member, state?: SimState): Seconds {
+  const since = state?.applyLostSince[m.id as string];
+  if (state === undefined || since === null || since === undefined) return 0;
+  return Math.max(0, state.now - since);
 }
 
 export function transportLagOf(m: Member, state?: SimState): Seconds {
