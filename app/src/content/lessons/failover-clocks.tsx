@@ -174,10 +174,17 @@ export const failoverClocks: Lesson = {
       prose: (
         <P>
           The primary still commits and the standby still applies, and which database you query
-          decides what you see: on the primary <M>V$DATABASE.FS_FAILOVER_STATUS</M> stays{' '}
-          <M>SYNCHRONIZED</M> while <M>FS_FAILOVER_OBSERVER_PRESENT</M> reads <M>NO</M>; the target
-          standby is where <M>FS_FAILOVER_STATUS</M> reads <M>PRIMARY UNOBSERVED</M>. In time the
-          broker raises <M>ORA-16820</M>.{' '}
+          decides what you see: on the primary{' '}
+          <Fact
+            id="FSFO.FS_FAILOVER_COLUMNS_DEPRECATED_26AI"
+            basis="documented"
+            note="26ai still carries these V$DATABASE columns, but deprecates them in favour of the new V$FAST_START_FAILOVER_CONFIG view."
+          >
+            <M>V$DATABASE.FS_FAILOVER_STATUS</M>
+          </Fact>{' '}
+          stays <M>SYNCHRONIZED</M> while <M>FS_FAILOVER_OBSERVER_PRESENT</M> reads <M>NO</M>; the
+          target standby is where <M>FS_FAILOVER_STATUS</M> reads <M>PRIMARY UNOBSERVED</M>. In time
+          the broker raises <M>ORA-16820</M>.{' '}
           <Fact
             id={['OBS.THREE_19C', 'OBS.FOUR_26AI']}
             basis="conflict"

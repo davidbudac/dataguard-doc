@@ -70,6 +70,7 @@ const U = {
   refSyncLatency19: 'https://docs.oracle.com/en/database/oracle/oracle-database/19/refrn/DATA_GUARD_SYNC_LATENCY.html',
   refSyncLatency26: 'https://docs.oracle.com/en/database/oracle/oracle-database/26/refrn/DATA_GUARD_SYNC_LATENCY.html',
   refVDatabase: 'https://docs.oracle.com/en/database/oracle/oracle-database/19/refrn/V-DATABASE.html',
+  refVDatabase26: 'https://docs.oracle.com/en/database/oracle/oracle-database/26/refrn/V-DATABASE.html',
   haOptimize: 'https://docs.oracle.com/en/database/oracle/oracle-database/19/haovw/optimizing-automatic-failover-common-scenarios-minimize-downtime1.html',
   haRedoTuning: 'https://docs.oracle.com/en/database/oracle/oracle-database/19/haovw/redo-transport-troubleshooting-and-tuning.html',
   haTns: 'https://docs.oracle.com/en/database/oracle/oracle-database/19/haovw/oracle-net-tns-string-parameters.html',
@@ -432,6 +433,11 @@ export const CITATIONS = {
     quote: 'It shows this information for all the observers (up to 3) in this single configuration.',
     note: 'The 26ai self-contradiction on observer count; cite both sides.',
   },
+  'OBS.FOUR_CMD19': {
+    url: U.bkr19Cmds, edition: '19c', verified: 'primary',
+    quote: 'You can register up to four observers to monitor a single Data Guard broker configuration.',
+    note: "The 19c command reference's own START OBSERVER page, against the 19c switchover/failover chapter's three (OBS.THREE_19C) and the 19c tab of ORA-16647 ('a maximum of three observers can be started'). A second, 19c-internal version of the 26ai OBS.FOUR_26AI / OBS.THREE_26AI_SHOW conflict, not documented as resolved either.",
+  },
   'OBS.MASTER_ONLY_COORDINATES': {
     url: U.bkr19Switch, edition: '19c', verified: 'primary',
     quote: 'Only the master observer can coordinate fast-start failover with Data Guard broker. All other registered observers are considered to be backup observers.',
@@ -665,6 +671,11 @@ export const CITATIONS = {
     url: U.refVDatabase, edition: '19c', verified: 'primary',
     quote: 'If the value of this column is DISABLED, then the values for the FS_FAILOVER_CURRENT_TARGET, FS_FAILOVER_THRESHOLD, FS_FAILOVER_OBSERVER_PRESENT, and FS_FAILOVER_OBSERVER_HOST columns in this table are not meaningful.',
     note: "The FS_FAILOVER_STATUS column note; broker Table 5-1 reads 'DISABLED Fast-start failover is disabled.' No observer deployed means fast-start failover was never enabled, so the status is DISABLED -- a third state, not 'unobserved'.",
+  },
+  'FSFO.FS_FAILOVER_COLUMNS_DEPRECATED_26AI': {
+    url: U.refVDatabase26, edition: '26ai', verified: 'primary',
+    quote: 'Oracle AI Database 26ai introduces the V$FAST_START_FAILOVER_CONFIG view, which contains configuration details about Oracle Data Guard fast-start failover. As a result, the FS_FAILOVER_* columns in the V$DATABASE view are deprecated.',
+    note: "Footnote on the 26ai V$DATABASE reference page. Named columns still work under 26ai; the page just points at V$FAST_START_FAILOVER_CONFIG as the current source. 19c has no such view or footnote.",
   },
   'FSFO.PRIMARY_DB_CANDIDATES': {
     url: U.bkr26Candidates, edition: '26ai', verified: 'cross-edition',

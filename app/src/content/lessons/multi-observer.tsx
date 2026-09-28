@@ -22,11 +22,14 @@ export const multiObserver: Lesson = {
       prose: (
         <>
           <P>
-            <Fact id="OBS.THREE_19C">
-              19c registers up to three observers: one is the master observer and the others are backup
-              observers
+            <Fact
+              id={['OBS.THREE_19C', 'OBS.FOUR_CMD19']}
+              basis="conflict"
+              note="19c's switchover/failover chapter and the 19c tab of ORA-16647 both say three; the 19c command reference's own START OBSERVER page says four. Neither page resolves the other."
+            >
+              19c says three in its switchover chapter and four in its command reference
             </Fact>
-            .{' '}
+            : one is the master observer and the others are backup observers.{' '}
             <Fact
               id={['OBS.FOUR_26AI', 'OBS.THREE_26AI_SHOW']}
               basis="conflict"
