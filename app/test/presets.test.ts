@@ -140,30 +140,39 @@ const EXPECTED_FINDINGS: Record<PresetId, string[]> = {
 
   'far-sync-zero-loss': [
     /* One MaxFailure destination on the primary, so one deprecation notice and
-       one note on what reaching the limit does. */
+       one note on what reaching the limit does. The fast-start failover
+       target is fed through a far sync instance, so Scenario 7's "set on
+       both sides" note applies (VAL-07.7). */
     'info documented DEST.DEPRECATED_19C North_Sales',
     'info documented EDIT.FSFO_ENABLED_BLOCKS',
     'info documented EDIT.REMOVE_TARGET South_Sales',
+    'info documented FSFO.FARSYNC_TARGET_BOTH_SIDES South_Sales',
     'info model DEST.MAXFAILURE_RESET_UNDOC North_Sales',
     'info model MODEL.OBSERVER_OVERRIDE',
   ].sort(),
 
   'far-sync-ha-pair': [
     /* Two far syncs, so both notes twice -- once per destination. The subject
-       is the sending database, which is why the two lines look alike. */
+       is the sending database, which is why the two lines look alike. The
+       fast-start failover target is fed through a far sync instance too
+       (VAL-07.7). */
     'info documented DEST.DEPRECATED_19C North_Sales',
     'info documented DEST.DEPRECATED_19C North_Sales',
     'info documented EDIT.FSFO_ENABLED_BLOCKS',
     'info documented EDIT.REMOVE_TARGET South_Sales',
+    'info documented FSFO.FARSYNC_TARGET_BOTH_SIDES South_Sales',
     'info model DEST.MAXFAILURE_RESET_UNDOC North_Sales',
     'info model DEST.MAXFAILURE_RESET_UNDOC North_Sales',
     'info model MODEL.OBSERVER_OVERRIDE',
   ].sort(),
 
   'far-sync-role-change': [
-    /* Both directions are pre-declared and neither carries MaxFailure. */
+    /* Both directions are pre-declared and neither carries MaxFailure. The
+       fast-start failover target is fed through a far sync instance
+       (VAL-07.7). */
     'info documented EDIT.FSFO_ENABLED_BLOCKS',
     'info documented EDIT.REMOVE_TARGET South_Sales',
+    'info documented FSFO.FARSYNC_TARGET_BOTH_SIDES South_Sales',
     'info model MODEL.OBSERVER_OVERRIDE',
   ].sort(),
 
@@ -202,14 +211,15 @@ const EXPECTED_FINDINGS: Record<PresetId, string[]> = {
   ].sort(),
 
   bystanders: [
-    /* The two warnings are the preset's subject: under 26ai a logical and a
-       snapshot standby may sit in a maximum availability configuration on
-       ASYNC, which Table 4-2 flags without forbidding. */
+    /* VAL-02: a logical and a snapshot standby sitting on ASYNC in a maximum
+       availability configuration are legal bystanders -- Oracle asks only
+       that at least one standby in the configuration supports the mode
+       (here, sby01's SYNC), not that every destination does. Neither
+       bystander is the fast-start failover target, so the stricter
+       per-target prerequisite list does not apply to them either. */
     'info documented EDIT.FSFO_ENABLED_BLOCKS',
     'info documented EDIT.REMOVE_TARGET sby01',
     'info model MODEL.OBSERVER_OVERRIDE',
-    'warning documented XPT.TABLE_4_2 lsby01',
-    'warning documented XPT.TABLE_4_2 snp01',
   ].sort(),
 
   'max-protection': [
@@ -257,7 +267,8 @@ describe('the recorded validation output', () => {
     );
     expect([...reached].sort()).toEqual([
       'DEST.DEPRECATED_19C', 'DEST.MAXFAILURE_RESET_UNDOC', 'EDIT.FSFO_ENABLED_BLOCKS',
-      'EDIT.REMOVE_TARGET', 'FSFO.OBSERVE_ONLY', 'MODEL.OBSERVER_OVERRIDE', 'XPT.TABLE_4_2',
+      'EDIT.REMOVE_TARGET', 'FSFO.FARSYNC_TARGET_BOTH_SIDES', 'FSFO.OBSERVE_ONLY',
+      'MODEL.OBSERVER_OVERRIDE',
     ]);
   });
 });
@@ -709,12 +720,15 @@ describe('snapshot and logical standbys as bystanders', () => {
   const p = preset('bystanders');
   const doc = p.doc();
 
-  it('is drawn under 26ai, where an ASYNC maximum availability member is allowed', () => {
+  it('is drawn under 26ai, where an ASYNC bystander raises nothing at all', () => {
+    /* VAL-02: Oracle asks only that at least one standby in the
+       configuration support the mode (here sby01's SYNC); an ASYNC
+       bystander next to it is legal in every edition, and neither bystander
+       is the fast-start failover target, so no rule fires for them. */
     expect(doc.config.edition).toBe('26ai');
     expect(doc.config.protectionMode).toBe('MAXAVAILABILITY');
     const warn = validate(doc).filter((f) => f.id === 'XPT.TABLE_4_2');
-    expect(warn.every((f) => f.severity === 'warning')).toBe(true);
-    expect(warn.map((f) => f.subject.id)).toEqual(['lsby01', 'snp01']);
+    expect(warn).toEqual([]);
   });
 
   it('leaves the snapshot standby out of the candidate list', () => {

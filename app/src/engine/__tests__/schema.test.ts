@@ -47,16 +47,19 @@ describe('BOUNDS', () => {
 });
 
 describe('broker defaults per edition', () => {
-  it('19c carries the ping defaults, cited to 21c because 19c does not list them', () => {
+  it('19c claims no default for the ping properties: neither exists in 19c', () => {
+    /* ED-01: absent from the 12.2, 18c and 19c property pages and from a
+       live 19.27 system (neither `strings dgmgrl`/`strings oracle` nor SHOW
+       CONFIGURATION VERBOSE shows it). First documented in 21c -- so 19c
+       carries no default value for either at all, not even a borrowed one. */
     const d = BROKER_DEFAULTS['19c'];
-    expect(d.pingIntervalMs.value).toBe(100);
-    expect(d.pingRetry.value).toBe(10);
-    /* 19c is silent and a later edition states it: that is doc-later, and it
-       carries the note explaining where the number comes from. */
+    expect(d.pingIntervalMs.value).toBeNull();
+    expect(d.pingRetry.value).toBeNull();
     expect(d.pingIntervalMs.basis).toBe('doc-later');
     expect(d.pingIntervalMs.cite).toContain('FSFO.PING_PROPS_21C');
-    expect(d.pingIntervalMs.note).toMatch(/does not list ObserverPingInterval/);
+    expect(d.pingIntervalMs.note).toMatch(/does not exist in 19c/);
     expect(d.observerCount.value).toBe(3);
+    expect(d.observerCount.basis).toBe('conflict');
   });
 
   it('the fresh-document lag limit is the mode default for the edition', () => {

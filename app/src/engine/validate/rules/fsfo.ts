@@ -306,7 +306,7 @@ export const lagType19cDocLater: Rule = (ctx): Finding[] => {
   if (set.length === 0) return [];
   return [mk('FSFO.LAGTYPE_GRACETIME_19C', {
     subject: configSubject(),
-    message: `${set.join(' and ')} is set under 19c. Both properties are documented from 26ai; the 19c and 21c properties references do not mention them. A live 19.27 system carries them regardless (Lag Type: and Lag Grace Time: appear in SHOW FAST_START FAILOVER) -- an observation, never documentation, so this reads doc-later rather than as an illegal 19c document.`,
+    message: `${set.join(' and ')} is set under 19c. Both properties are documented from 26ai; the 19c and 21c properties references do not mention them. A live 19.27 system carries them regardless (Lag Type: and Lag Grace Time: appear in SHOW FAST_START FAILOVER) -- an observation, never documentation, so this reads doc-later rather than as illegal under 19c.`,
     cite: ['FSFO.LAGTYPE', 'FSFO.LAGGRACETIME'],
     note: 'Observed present in a live 19.27 system\'s property list, which Oracle\'s 19c documentation does not mention.',
   })];
@@ -319,7 +319,7 @@ export const primaryCandidates19cDocLater: Rule = (ctx): Finding[] => {
   if (list.length === 0) return [];
   return [mk('CFG.PRIMARY_CANDIDATES_19C', {
     subject: configSubject(),
-    message: `PrimaryDatabaseCandidates is set under 19c. The property is documented from 26ai; the 19c and 21c properties references do not mention it. A live 19.27 system carries it regardless (SHOW CONFIGURATION VERBOSE lists PrimaryDatabaseCandidates = '') -- an observation, never documentation, so this reads doc-later rather than as an illegal 19c document.`,
+    message: `PrimaryDatabaseCandidates is set under 19c. The property is documented from 26ai; the 19c and 21c properties references do not mention it. A live 19.27 system carries it regardless (SHOW CONFIGURATION VERBOSE lists PrimaryDatabaseCandidates = '') -- an observation, never documentation, so this reads doc-later rather than as illegal under 19c.`,
     cite: ['FSFO.PRIMARY_DB_CANDIDATES'],
     note: 'Observed present in a live 19.27 system\'s property list, which Oracle\'s 19c documentation does not mention.',
   })];
