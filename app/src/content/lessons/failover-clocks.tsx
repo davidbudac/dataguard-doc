@@ -13,7 +13,6 @@ import { P } from '../prose';
 import type { Lesson } from '../types';
 
 const PRIMARY_HOST = hostId('dc1-prm01');
-const OBSERVER_HOST = hostId('dc3-obs01');
 
 /** The classic preset's member order: 0 = prm01, 1 = sby01. */
 const STANDBY = '/members/1';
@@ -52,8 +51,9 @@ export const failoverClocks: Lesson = {
       prose: (
         <P>
           In MaxAvailability and MaxProtection the standby must have been synchronized at failure
-          time. In MaxPerformance its apply lag must be at or below <M>FastStartFailoverLagLimit</M>.
-          If the check fails, failover is not permitted.
+          time. In MaxPerformance its apply lag must be at or below <M>FastStartFailoverLagLimit</M> —
+          under 26ai, MaxAvailability carries that same lag limit, defaulting to 0.<Fn n={5} /> If the
+          check fails, failover is not permitted.
         </P>
       ),
       apply: {
@@ -80,10 +80,11 @@ export const failoverClocks: Lesson = {
       title: 'The ping properties override the threshold',
       prose: (
         <P>
-          Per the broker documentation, <M>FastStartFailoverThreshold</M> is ignored when{' '}
-          <M>ObserverPingRetry</M> and <M>ObserverPingInterval</M> are set. That much is documented;
-          the arithmetic is not. The documentation says only that detection can be reduced to nearly
-          one second, and{' '}
+          <M>ObserverPingInterval</M> and <M>ObserverPingRetry</M> do not exist in 19c — neither
+          property is on the 12.2, 18c or 19c pages, or in a live 19.27 system. Documented from 21c:
+          per the broker documentation, <M>FastStartFailoverThreshold</M> is ignored once both are
+          set. That much is documented; the arithmetic is not. The documentation says only that
+          detection can be reduced to nearly one second, and{' '}
           <Fact
             id={['FSFO.PING_NEARLY_ONE_SECOND', 'FSFO.PING_PROPS_21C']}
             basis="model"
@@ -97,11 +98,12 @@ export const failoverClocks: Lesson = {
       apply: {
         events: [{ at: 0, kind: 'host.down', host: PRIMARY_HOST }],
         patches: [
+          { op: 'replace', path: '/config/edition', value: '26ai' },
           { op: 'replace', path: '/config/fsfo/pingIntervalMs', value: 100 },
           { op: 'replace', path: '/config/fsfo/pingRetry', value: 10 },
         ],
       },
-      note: 'Both ping properties set: detection collapses to about a second.',
+      note: 'Read under 26ai: both ping properties set, detection collapses to about a second. Neither property exists in 19c.',
     },
     {
       title: 'An isolated primary runs its own clock',
@@ -109,7 +111,7 @@ export const failoverClocks: Lesson = {
         <P>
           Cut off from both the observer and the standby, the primary stalls (
           <M>V$DATABASE.FS_FAILOVER_STATUS</M> goes to <M>STALLED</M>) and, if{' '}
-          <M>FastStartFailoverPmyShutdown</M> is TRUE, aborts itself after one threshold.
+          <M>FastStartFailoverPmyShutdown</M> is TRUE, shuts down after one threshold.
         </P>
       ),
       apply: {
@@ -160,10 +162,10 @@ export const failoverClocks: Lesson = {
       title: 'The former primary is the one that restarts',
       prose: (
         <P>
-          Sessions on the primary are terminated when it converts to a standby; the downtime window
-          runs from that moment to the new primary&rsquo;s read-write open. The broker restarts the
-          old primary in its new role and starts Redo Apply — the documentation is explicit that the{' '}
-          <em>new</em> primary does not need to be restarted and does not wait for the old one.
+          The broker restarts the old primary as part of the switchover — that restart is what ends
+          its sessions — before starting Redo Apply in its new standby role; the downtime window runs
+          from there to the new primary&rsquo;s read-write open. The documentation is explicit that
+          the <em>new</em> primary does not need to be restarted and does not wait for the old one.
         </P>
       ),
     },
@@ -190,11 +192,10 @@ export const failoverClocks: Lesson = {
       ),
       apply: {
         events: [
-          { at: 0, kind: 'host.down', host: OBSERVER_HOST },
-          { at: 0, kind: 'host.down', host: PRIMARY_HOST },
+          { at: 0, kind: 'link.cut', link: CLASSIC_IDS.linkDc1Dc3 },
         ],
       },
-      note: 'The observer dies first, then the primary: nobody is left to initiate.',
+      note: 'Only the link between the primary and the observer is cut: the standby still reaches both, which is the documented condition below.',
     },
     {
       title: 'A third site is what arbitrates a partition',
@@ -213,7 +214,7 @@ export const failoverClocks: Lesson = {
         <P>
           Move the observer into the standby&rsquo;s site and the cut takes it away with the standby.
           Both clocks run out and the standby is promoted; the primary, which never stopped serving,
-          stalls and — with <M>FastStartFailoverPmyShutdown</M> TRUE — aborts itself at the threshold.
+          stalls and — with <M>FastStartFailoverPmyShutdown</M> TRUE — shuts down at the threshold.
         </P>
       ),
       /* The observer moves by being given a host in DC 2 -- a host of its own,
@@ -238,7 +239,7 @@ export const failoverClocks: Lesson = {
       prose: (
         <P>
           An observer in the standby&rsquo;s data centre dies with it. The primary then reaches neither
-          the observer nor the standby, so it stalls from t = 0 and aborts itself one threshold later —
+          the observer nor the standby, so it stalls from t = 0 and shuts down one threshold later —
           with no standby left to promote. The spare site takes production down with it.
         </P>
       ),
@@ -249,11 +250,13 @@ export const failoverClocks: Lesson = {
       title: 'Deploying no observer is not the same as losing one',
       prose: (
         <P>
-          With no observer in the topology, fast-start failover is never enabled: the{' '}
-          <M>FastStartFailover*</M> properties can be set, but nothing arms them, and{' '}
-          <M>V$DATABASE.FS_FAILOVER_STATUS</M> simply reads <M>DISABLED</M>. <M>FAILOVER TO</M> is
-          then the only thing that promotes the standby — it needs no observer while fast-start
-          failover is disabled, subject to the broker&rsquo;s ordinary failover prerequisites.
+          Enabling fast-start failover needs no observer running — Oracle allows it, and raises{' '}
+          <M>ORA-16819</M> on the primary and target standby until one starts. This page instead
+          disables fast-start failover before the crash: the <M>FastStartFailover*</M> properties can
+          be set, but nothing arms them, and <M>V$DATABASE.FS_FAILOVER_STATUS</M> simply reads{' '}
+          <M>DISABLED</M>. <M>FAILOVER TO</M> is then the only thing that promotes the standby — it
+          needs no observer while fast-start failover is disabled, subject to the broker&rsquo;s
+          ordinary failover prerequisites.
         </P>
       ),
       apply: {

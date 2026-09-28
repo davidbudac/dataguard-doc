@@ -41,15 +41,6 @@ const EXPECTED: Record<string, readonly string[]> = {
      puts the far-sync configuration into MaxProtection precisely so the
      validation panel names the two rules that refuse it. Its own note says so. */
   'far-sync/3': ['FSFO.FARSYNC_MODE_19C', 'MODE.MAXPROT_NEEDS_SYNC_DB'],
-  /* ED-01 (fact check 2026-09-28): ObserverPingInterval/ObserverPingRetry do
-     not exist in 19c, and the `classic` preset this lesson starts from is
-     19c. The step's own prose already cites FSFO.PING_PROPS_21C for the
-     properties it sets, so the content is aware they are a later-edition
-     fact; the preset's edition is what makes FSFO.PING_PROPS_NOT_IN_19C
-     fire now. This is a lessons-content fix (switch the step to 26ai, or
-     make the point without setting the properties under 19c) outside this
-     branch's file ownership -- named here rather than silently left red. */
-  'failover-clocks/4': ['FSFO.PING_PROPS_NOT_IN_19C'],
 };
 
 const key = (lesson: string, i: number): string => `${lesson}/${i}`;
