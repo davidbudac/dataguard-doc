@@ -14,30 +14,98 @@ export interface ExplanationStep {
   setting?: 'Fast-start failover' | 'PrimaryDatabaseCandidates';
 }
 
+/**
+ * One title per decision id the engine can record (`decide`/`decideAt` in
+ * `engine/sim/*.ts`). A run's own reading of the decision -- `decision.claim.value`,
+ * already worded for a reader -- is the detail; this is only ever the noun
+ * phrase over it. An id missing here would still be in `trace.decisions`, but
+ * `buildExplanation` would never turn it into a step: this table is what makes
+ * an id "explained" at all, and the coverage test below holds it to that.
+ */
 const DECISION_TITLE: Record<string, string> = {
+  'BYSTANDERS.AHEAD': 'Bystander ahead of the new primary',
+  'BYSTANDERS.FOLLOW': 'Bystanders follow the new primary',
+  'EXEC.ENV_DEPENDENT': 'Role transition',
   'FSFO.BOTH_MUST_HAVE_LOST': 'Failure confirmed',
-  'FSFO.OBSERVER_REACHES_TARGET': 'Observer reaches target',
-  'FSFO.READINESS_GATE': 'Standby readiness',
-  'FSFO.OBSERVE_ONLY': 'Observe only',
   'FSFO.MANUAL_FAILOVER': 'Manual failover',
-  'OBS.MASTER_LOST': 'Observer unavailable',
+  'FSFO.NO_SECOND_TARGET': 'No second target',
+  'FSFO.NOT_POSSIBLE': 'Failover not possible',
+  'FSFO.NOT_READY': 'Target not ready',
+  'FSFO.OBSERVE_ONLY': 'Observe only',
+  'FSFO.OBSERVE_ONLY_SCOPE': 'Observe-only scope',
+  'FSFO.OBSERVER_REACHES_TARGET': 'Observer reaches target',
+  'FSFO.PING_ARITHMETIC': 'Ping detection time',
+  'FSFO.READINESS_GATE': 'Standby readiness',
+  'FSFO.RESYNC': 'Target resynchronized',
+  'FSFO.TARGET_CHANGE': 'Active target changed',
+  'FSFO.TARGET_SELECTION': 'Target selected',
   'NOMINATION.NEW_MASTER': 'Backup observer nominated',
   'NOMINATION.PRECONDITION': 'Observer nomination check',
-  'PRIMARY.STALL': 'Primary stalled',
+  'OBS.MASTER_LOST': 'Observer unavailable',
+  'OBS.OBSERVED_AGAIN': 'Observer reconnects',
+  'OBS.SET_MASTEROBSERVER': 'Master observer set',
+  'OBS.UNOBSERVED': 'Configuration unobserved',
   'PRIMARY.ABORT': 'Primary aborted',
+  'PRIMARY.NO_STALL': 'Primary keeps running',
+  'PRIMARY.REOPEN': 'Primary reopens',
+  'PRIMARY.STALL': 'Primary stalled',
+  'PROT.COMMIT_HANG': 'Commits wait',
+  'PROT.MAXAVAIL_DEGRADED': 'Protection degraded',
   'PROT.MAXPROT_SHUTDOWN': 'Primary shut down',
+  'PROT.MODE_AFTER_FAILOVER': 'Protection mode after failover',
+  'REINSTATE.COMMAND': 'Reinstatement',
+  'REINSTATE.OPEN_BAND': 'Reinstated automatically',
+  'ROLE.PRIMARY_DB_CANDIDATES': 'Candidate check',
+  'SIM.ONE_ROLE_CHANGE': 'One role change per run',
+  'SWITCHOVER.CONVERT': 'Primary converts to standby',
   'SWITCHOVER.GATE': 'Switchover check',
   'SWITCHOVER.ZERO_LOSS': 'Roles changed',
-  'ROLE.PRIMARY_DB_CANDIDATES': 'Candidate check',
-  'EXEC.ENV_DEPENDENT': 'Role transition',
 };
 
-const COMMON_DECISIONS = new Set([
-  'FSFO.BOTH_MUST_HAVE_LOST', 'FSFO.READINESS_GATE', 'FSFO.OBSERVE_ONLY',
-  'FSFO.MANUAL_FAILOVER', 'OBS.MASTER_LOST', 'NOMINATION.NEW_MASTER',
-  'PRIMARY.STALL', 'PRIMARY.ABORT', 'PROT.MAXPROT_SHUTDOWN',
-  'SWITCHOVER.GATE', 'SWITCHOVER.ZERO_LOSS', 'ROLE.PRIMARY_DB_CANDIDATES',
-  'EXEC.ENV_DEPENDENT',
+/** Every decision id above is common enough to show: the two tables agree by construction. */
+const COMMON_DECISIONS = new Set(Object.keys(DECISION_TITLE));
+
+/**
+ * Findings the engine can raise with nothing recorded in `trace.decisions` of
+ * the same id -- `addFinding` on its own, no companion `decide` -- so without
+ * an entry here the reader never sees them at all: the readiness gate, a
+ * refused switchover and the candidate check already fold their finding's
+ * message into a decision above (see `buildExplanation`'s `refusal` lookup),
+ * and stay out of this table so they are not shown twice.
+ */
+const FINDING_TITLE: Record<string, string> = {
+  'BYSTANDERS.AHEAD_DISABLED': 'Bystander disabled',
+  'CASCADE.MANUAL_FAILOVER_TERMINAL': 'Cascaded redo not sent',
+  'DEST.GROUP_PRIORITY_REENTER': 'Destination re-enters its group',
+  'DEST.MAX_FAILURE_DISABLED': 'Destination disabled after failures',
+  'DEST.MAXFAILURE_RESET_UNDOC': 'Failure count reset',
+  'DEST.REOPEN_SCHEDULE_MODEL': 'Destination reopen schedule',
+  'FAILOVER.FORMER_PRIMARY_MOUNTED': 'Former primary mounted',
+  'FAILOVER.PRIMARY_STILL_OPEN': 'Primary still open',
+  'FSFO.FORMER_PRIMARY_NOT_OPEN': 'Former primary not open',
+  'FSFO.PING_NOT_IN_19C': 'Ping properties not in 19c',
+  'FSFO.RESYNC_INSTANT': 'Resync timing note',
+  'FSFO.TARGET_KIND': 'Target kind',
+  'MEMBER.FARSYNC_NOT_PRIMARY': 'Far sync cannot be primary',
+  'OBS.NOT_STARTED': 'No observer started',
+  'OBS.SET_MASTEROBSERVER_REFUSED': 'Master observer change refused',
+  'OBS.UNOBSERVED': 'Configuration unobserved',
+  'PRIMARY.REOPEN_INSTANT': 'Reopen timing note',
+  'REINSTATE.NOTHING_TO_REINSTATE': 'Nothing to reinstate',
+  'REINSTATE.PRECONDITIONS': 'Automatic reinstatement unavailable',
+  'ROUTES.ALT_LATCHED': 'Alternate destination latched',
+  'SIM.EPOCH_CAP': 'Simulation cut short',
+  'SWITCHOVER.TO_TERMINAL_UNDOC': 'Switchover to a terminal standby',
+};
+
+/**
+ * The handful of findings above that describe the configuration as read at
+ * the start, rather than something the run arrived at: seeking to them lands
+ * on the opening instant instead of the last injected event.
+ */
+const FINDING_AT_START = new Set([
+  'FSFO.PING_NOT_IN_19C', 'FSFO.TARGET_KIND', 'MEMBER.FARSYNC_NOT_PRIMARY',
+  'OBS.NOT_STARTED', 'SIM.EPOCH_CAP',
 ]);
 
 function membersOnHosts(doc: TopologyDoc, hosts: readonly string[]): string[] {
@@ -121,6 +189,26 @@ export function buildExplanation(doc: TopologyDoc, trace: EngineTrace): Explanat
     });
   }
 
+  /* Findings with no decision of the same id -- `addFinding` on its own, so
+     nothing above ever turns them into a step. Anchored at the opening
+     instant for the handful that describe the configuration as read, and
+     otherwise after the last injected event: a finding carries no `at` of its
+     own for `buildExplanation` to read. */
+  const openAt = 0;
+  const afterEvents = Math.max(0, ...doc.events.map((e) => e.at));
+  for (const [index, f] of trace.findings.entries()) {
+    const title = FINDING_TITLE[f.id];
+    if (title === undefined) continue;
+    steps.push({
+      key: `finding-${index}`,
+      at: FINDING_AT_START.has(f.id) ? openAt : afterEvents,
+      title,
+      detail: f.message,
+      subjects: f.subject.id ? [f.subject.id] : [],
+      claim: f,
+    });
+  }
+
   if (trace.facts.outcome === 'continues' && doc.config.fsfo.state === 'enabled'
     && !trace.decisions.some((d) => d.id === 'FSFO.BOTH_MUST_HAVE_LOST')) {
     steps.push({
@@ -150,9 +238,22 @@ export function buildExplanation(doc: TopologyDoc, trace: EngineTrace): Explanat
     });
   }
 
-  const resultAt = (trace.facts.blocked ? trace.facts.initiateAt : trace.facts.tOpen)
-    ?? trace.facts.abortAt
-    ?? trace.facts.initiateAt ?? Math.max(0, ...doc.events.map((e) => e.at));
+  /*
+   * "Run result" closes the list, so its instant has to be at least as late
+   * as every step already on it -- an injected event, a decision (a wider
+   * `COMMON_DECISIONS` now reaches into ones an internal deadline decides
+   * after the last event, e.g. the readiness check a stalled threshold
+   * settles at t = 30 s with nothing injected past t = 0) or a standalone
+   * finding. Without the `steps.map` term here the fallback below found only
+   * the injected events, and a later decision or finding sorted after it.
+   */
+  const resultAt = Math.max(
+    (trace.facts.blocked ? trace.facts.initiateAt : trace.facts.tOpen)
+      ?? trace.facts.abortAt
+      ?? trace.facts.initiateAt ?? 0,
+    ...doc.events.map((e) => e.at),
+    ...steps.map((s) => s.at),
+  );
   steps.push({
     key: 'result', at: resultAt, title: trace.facts.blocked ? 'Transition blocked' : 'Run result',
     detail: trace.facts.blocked ? 'The role transition was refused; no member changed role.'
