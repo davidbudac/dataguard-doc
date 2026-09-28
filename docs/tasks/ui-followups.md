@@ -57,7 +57,7 @@ position (ghost outline) where it will land.
 ## Track 2 — export (`app/src/ui/TopBar.tsx` ⋯ menu, new module)
 
 ### 2.1 Export the diagram as PNG
-Status: done (on ui/track2-export)
+Status: done (7d622ef, on main)
 Note: ⋯ → "Diagram as PNG" (`app/src/ui/export/diagram.tsx`). Re-draws the canvas off
 screen (no selection/handles), copies computed styles onto a clone (`svg-style.ts`),
 rasterises it at 2x from a `data:` URL. No CSP change: `img-src 'self' data:` already admits it.
@@ -66,7 +66,7 @@ resolved, transparent or page-coloured ground) and download `<config>.png`.
 No new network access; CSP-safe.
 
 ### 2.2 Export the whole project as a PDF report
-Status: done (on ui/track2-export)
+Status: done (7d622ef, on main)
 Note: chose a print-styled report page + `window.print()` ("Save as PDF") over a client-side
 PDF library: no dependency, no CSP change, vector diagram, selectable text. ⋯ → "Report as PDF"
 opens `?report=1` (`ui/export/Report.tsx`, contents assembled in `report-model.ts`), always light, A4.
@@ -79,7 +79,7 @@ approach that stays CSP-safe and document the choice here.
 ## Track 3 — right side panel (`app/src/ui/inspector/*`, `styles/inspector.css`, `styles/float.css`)
 
 ### 3.1 Remove wedge "active item" markers
-Status: done (on ui/track3-panel)
+Status: done (on main via merge)
 Note: no thick left borders remain. Findings carry severity in their tag plus a
 faint error/warning wash; the toast in its chip; Learn's active step, Explain and
 note cards use a soft wash (`color-mix` of the tone token); code-line highlights a
@@ -91,7 +91,7 @@ something that does not rely on a left border on a rounded box (a dot/tag, a
 background tint, or square corners).
 
 ### 3.2 Clean up and polish the right side menu
-Status: done (on ui/track3-panel)
+Status: done (on main via merge)
 Note: one system in `styles/inspector.css` (float.css no longer restyles the rails):
 header with kind + name, one heading style, `Field` rows are `row` or `stack` by a
 content-width estimate (`fitsBeside`), list rows (`.lrow`), sub-blocks (`.sub`).
