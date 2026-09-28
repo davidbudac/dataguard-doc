@@ -236,6 +236,12 @@ export const lagLimitVsThreshold: Rule = (ctx): Finding[] => {
   const limit = lagLimitOf(ctx.doc);
   if (!ctx.fsfoOn || limit <= f.thresholdSeconds) return [];
   const is19c = ctx.doc.config.edition === '19c';
+  /* Only where the limit is in use: maximum performance, and maximum
+     availability under 26ai. Under 19c maximum availability it reads
+     "(not in use)", and it is never used in maximum protection. */
+  const mode = ctx.doc.config.protectionMode;
+  const inUse = mode === 'MAXPERFORMANCE' || (mode === 'MAXAVAILABILITY' && !is19c);
+  if (!inUse) return [];
   return [mk('FSFO.LAGLIMIT_VS_THRESHOLD', {
     subject: configSubject(),
     ...(is19c ? { basis: 'doc-later' as const } : {}),

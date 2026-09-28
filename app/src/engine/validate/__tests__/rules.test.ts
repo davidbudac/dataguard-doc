@@ -141,17 +141,21 @@ const CASES: Case[] = [
   },
   {
     id: 'FSFO.LAGLIMIT_VS_THRESHOLD',
-    fires: 'the lag limit is above the threshold',
-    quiet: 'the lag limit equals the threshold',
+    fires: 'maximum performance, the lag limit above the threshold',
+    quiet: 'the same limit under 19c maximum availability, where it is not in use',
     trigger: () => {
       const d = baseDoc();
+      d.config.protectionMode = 'MAXPERFORMANCE';
       d.config.fsfo.lagLimitSeconds = 45;
       d.config.fsfo.lagLimitSet = true;
       return d;
     },
     silent: () => {
       const d = baseDoc();
-      d.config.fsfo.lagLimitSeconds = d.config.fsfo.thresholdSeconds;
+      d.config.edition = '19c';
+      d.config.protectionMode = 'MAXAVAILABILITY';
+      d.config.fsfo.lagLimitSeconds = 45;
+      d.config.fsfo.lagLimitSet = true;
       return d;
     },
   },
