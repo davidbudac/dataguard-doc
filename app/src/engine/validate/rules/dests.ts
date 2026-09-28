@@ -128,7 +128,7 @@ export const fsfoBlocksEdits: Rule = (ctx): Finding[] => {
   if (!ctx.fsfoOn) return [];
   return [mk('EDIT.FSFO_ENABLED_BLOCKS', {
     subject: configSubject(),
-    message: 'Fast-start failover is enabled, so the broker refuses a change to FastStartFailoverTarget, to LogXptMode on the primary or the target standby, and to the protection mode, with ORA-16654. DISABLE FAST_START FAILOVER; first, or DISABLE FAST_START FAILOVER FORCE; where the configuration is unobserved.',
+    message: 'Fast-start failover is enabled, so the broker refuses a change to LogXptMode on the primary or the target standby and a change to the protection mode, with ORA-16654 -- and a change to FastStartFailoverTarget unless the new property value still contains the current fast-start failover target. DISABLE FAST_START FAILOVER; first, or DISABLE FAST_START FAILOVER FORCE; where the configuration is unobserved.',
     cite: ['ORA.16654'],
     ora: 'ORA-16654',
   })];

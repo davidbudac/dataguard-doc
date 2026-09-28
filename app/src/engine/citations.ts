@@ -82,6 +82,13 @@ const U = {
   ora16658: 'https://docs.oracle.com/en/error-help/db/ora-16658/',
   ora16820: 'https://docs.oracle.com/en/error-help/db/ora-16820/',
   ora16867: 'https://docs.oracle.com/en/error-help/db/ora-16867/',
+  ora16819: 'https://docs.oracle.com/en/error-help/db/ora-16819/',
+  ora16827: 'https://docs.oracle.com/en/error-help/db/ora-16827/',
+  ora16647: 'https://docs.oracle.com/en/error-help/db/ora-16647/',
+  bkr19Configs: 'https://docs.oracle.com/en/database/oracle/oracle-database/19/dgbkr/managing-oracle-data-guard-broker-configurations.html',
+  bkr26Configs: 'https://docs.oracle.com/en/database/oracle/oracle-database/26/dgbkr/managing-oracle-data-guard-broker-configurations.html',
+  bkr26Modes: 'https://docs.oracle.com/en/database/oracle/oracle-database/26/dgbkr/managing-data-protection-modes.html',
+  bkr19Roles: 'https://docs.oracle.com/en/database/oracle/oracle-database/19/sbydb/managing-oracle-data-guard-role-transitions.html',
 } as const;
 
 /**
@@ -90,7 +97,7 @@ const U = {
  */
 export const FORBIDDEN_FACTS = {
   LAG_LIMIT_MODE:
-    'Which protection modes FastStartFailoverLagLimit applies in (26ai gave it a MaxAvailability role).',
+    'Which protection modes FastStartFailoverLagLimit applies in (the MaxAvailability role arrived in 21c; 26ai gives that role its own default of 0). 19c disagrees with itself about whether the property reaches MaxAvailability at all.',
   MAXAVAIL_TRANSPORTS:
     'Which redo transport modes a MaxAvailability target may use under 26ai.',
   MAX_FAILURE_SEMANTICS:
@@ -150,9 +157,9 @@ export const CITATIONS = {
     quote: 'If the far sync instance fails, then redo should be shipped directly to the terminal standby by adding an additional log archive destination to the primary database, chicago. This does reduce the protection level because redo transmission is then in ASYNC mode instead of SYNC mode.',
   },
   'FS.ROUTES_BOTH_DIRECTIONS': {
-    url: U.bkr19Members, edition: '19c', verified: 'primary',
+    url: U.bkr19Members, edition: '19c', verified: 'primary', paraphrase: true,
     quote: "ADD FAR_SYNC FS2 AS CONNECT IDENTIFIER IS FS2.example.com; EDIT FAR_SYNC 'FS2' SET PROPERTY 'RedoRoutes' = '(South_Sales : North_Sales ASYNC)'; ENABLE FAR_SYNC FS2; EDIT DATABASE 'South_Sales' SET PROPERTY 'RedoRoutes' = '(LOCAL : FS2 SYNC)';",
-    note: 'Routes are pre-declared for both directions; nothing rewrites on role change.',
+    note: "Four consecutive DGMGRL prompts from the second-far-sync example, spliced together with their own output lines ('Far Sync FS2 added', 'Enabled.') dropped -- marked paraphrase because the splice, not the wording, is this page's doing. Routes are pre-declared for both directions; nothing rewrites on role change.",
   },
   'DGMGRL.FAR_SYNC_COMMANDS': {
     url: U.bkr19Cmds, edition: '19c', verified: 'primary', paraphrase: true,
@@ -235,8 +242,8 @@ export const CITATIONS = {
     quote: 'GROUP is a LOG_ARCHIVE_DEST_n attribute, not RedoRoutes syntax.',
   },
   'ROUTES.CANONICAL_PAIR': {
-    url: U.bkr19Members, edition: '19c', verified: 'primary',
-    note: 'The 19c broker chapter 4 far sync example (Managing Far Sync Instances).',
+    url: U.bkr19Members, edition: '19c', verified: 'primary', paraphrase: true,
+    note: "The 19c broker chapter 4 far sync example (Managing Far Sync Instances): two consecutive DGMGRL prompts, spliced together with the output line between them dropped -- marked paraphrase because the splice, not the wording, is this page's doing.",
     quote: "EDIT DATABASE 'North_Sales' SET PROPERTY 'RedoRoutes' = '(LOCAL : FS1 SYNC)'; EDIT FAR_SYNC 'FS1' SET PROPERTY 'RedoRoutes' = '(North_Sales : South_Sales ASYNC)';",
   },
 
@@ -417,7 +424,12 @@ export const CITATIONS = {
   'OBS.PREFERRED_HOSTS': {
     url: U.bkr19Props, edition: '19c', verified: 'primary',
     quote: 'Only observers running on hosts specified in the PreferredObserverHosts will observe databases and become the master observer which will initiate a failover in case of loss of the primary database.',
-    note: 'The 19c broker properties page documents the property (verified 2026-08-17): host_name:priority, priority 1 to 8, lower is higher, default 8, broker default Null, and a change "does not affect the location of the master observer until the next role change". The 26ai property page says the same.',
+    note: 'The 19c broker properties page documents the property (verified 2026-08-17, and on the 12.2 and 18c pages too): host_name:priority, priority 1 to 8, lower is higher, default 8, broker default Null, Scope Database. A change "does not affect the location of the master observer until the next role change" under 19c; 26ai (OBS.PREFERRED_HOSTS_26AI) changes the master observer automatically instead. Present since 12.2 -- never grey this control under 19c.',
+  },
+  'OBS.PREFERRED_HOSTS_26AI': {
+    url: U.bkr26Preferred, edition: '26ai', verified: 'primary',
+    quote: 'The master observer will be changed automatically to an observer running on a higher priority host.',
+    note: '26ai PreferredObserverHosts property page, replacing the 19c sentence that a change does not take effect until the next role change. Scope Database, same as 19c.',
   },
   'OBS.PLACEMENT_THIRD_SITE': {
     url: U.haOptimize, edition: '19c', verified: 'primary',
@@ -446,6 +458,24 @@ export const CITATIONS = {
     url: U.bkr19Switch, edition: '19c', verified: 'primary',
     quote: 'The master observer is not running',
     note: 'One entry (the fourth of ten) in the list headed "Fast-start failover cannot occur if:"; the list opens with "Fast-start failover is no longer enabled".',
+  },
+  'ORA.16819': {
+    url: U.ora16819, edition: '19c', verified: 'primary',
+    quote: 'ORA-16819 fast-start failover observer not started Cause The observer for fast-start failover was not started. As a result, fast-start failover could not happen in the case of a primary database failure.',
+    note: "Action: 'Start the fast-start failover observer by using, for example, the DGMGRL START OBSERVER command.' Enabling fast-start failover with no observer started is legal -- it is this warning, not a refusal.",
+  },
+  'ORA.16647': {
+    url: U.ora16647, edition: '26ai', verified: 'primary',
+    quote: 'For Oracle Database releases earlier than 12.2, only a single observer can be started. For Oracle Database releases 12.2 through 19c, a maximum of three observers can be started. For Oracle Database release 21c and later, a maximum of 4 observers can be started.',
+    note: "The move from three to four is settled: 21c. Carried on the 26ai tab of the error-help page only -- the 21c and 19c tabs of the same page still read '12.2 and later, a maximum of three', which is itself a documentation conflict distinct from OBS.THREE_26AI_SHOW.",
+  },
+  'OBS.NAME_UNIQUE': {
+    url: U.bkr19Switch, edition: '19c', verified: 'primary',
+    quote: 'No two observers on the same Data Guard Broker configuration can have the same name.',
+  },
+  'OBS.NAME_NONAME_RESERVED': {
+    url: U.bkr19Switch, edition: '19c', verified: 'primary',
+    quote: 'The string "NONAME" cannot be used as an observer name.',
   },
 
   /* ---------------- FSFO clocks and properties ---------------- */
@@ -511,6 +541,18 @@ export const CITATIONS = {
     note: "Task 3 of the 26ai fast-start failover chapter. STALE: it also still says maximum availability takes SYNC or FASTSYNC, against the prerequisites list's SYNC or FASTSYNC or ASYNC.",
     forbiddenFor: ['LAG_LIMIT_MODE', 'MAXAVAIL_TRANSPORTS'],
   },
+  'FSFO.LAGLIMIT_ZERO_MAXAVAIL_19C': {
+    url: U.bkr19Switch, edition: '19c', verified: 'primary',
+    quote: 'For zero data loss in maximum availability mode, the FastStartFailoverLagLimit property must be set to zero.',
+    note: "The 19c fast-start failover chapter, against the same edition's own property page (FSFO.LAGLIMIT_MAXPERF_ONLY_19C). A live 19.27 system in MaxAvailability prints 'Lag Limit: 30 seconds (not in use)' -- an observation, not documentation, matching neither sentence outright but closer to the property page's silence on MaxAvailability. This page follows the observed behaviour: the lag limit is not evaluated in MaxAvailability under 19c. The role the property plays in MaxAvailability is a 21c feature (21c change list and 21c chapter); the per-mode default of 0 is 26ai only.",
+    forbiddenFor: ['LAG_LIMIT_MODE'],
+  },
+  'FSFO.LAGLIMIT_MAXPERF_ONLY_19C': {
+    url: U.bkr19Props, edition: '19c', verified: 'primary',
+    quote: 'This property is used when fast-start failover is enabled and the configuration is operating in maximum performance mode.',
+    note: 'The 19c FastStartFailoverLagLimit property page closing line, against the same edition\'s own fast-start failover chapter (FSFO.LAGLIMIT_ZERO_MAXAVAIL_19C). Valid value >= 5, broker default 30.',
+    forbiddenFor: ['LAG_LIMIT_MODE'],
+  },
   'FSFO.LAGLIMIT_STALE_PROPERTY_CLOSING_LINE': {
     url: U.bkr26LagLimit, edition: '26ai', verified: 'primary',
     quote: 'This property is used when fast-start failover is enabled and the configuration is operating in maximum performance mode.',
@@ -541,6 +583,24 @@ export const CITATIONS = {
     url: U.bkr19Switch, edition: '19c', verified: 'primary',
     quote: 'For manual failover, the observer is started and communicating with the target standby database. You must ensure that the primary database is shut down prior to performing a manual failover.',
     note: "Performing Manual Role Changes When Fast-Start Failover Is Enabled: 'If fast-start failover is enabled you can still perform a switchover or a manual failover as long as certain conditions are met. The conditions are as follows: The role change is directed to the same standby database that was specified for the FastStartFailoverTarget database property on the primary database. The target standby database is synchronized with the primary database if it is a configuration operating in maximum availability or maximum protection mode, or the target standby database is within the lag limit if it is a configuration operating in maximum performance mode.' -- and then the quoted third condition.",
+  },
+  'ORA.16827': {
+    url: U.ora16827, edition: '19c', verified: 'primary',
+    quote: 'ORA-16827 Flashback Database is disabled Cause The broker detected that the Flashback Database feature was disabled. With Flashback Database disabled, the broker could not reinstate a database that required reinstatement.',
+    note: "Action: 'reenable Flashback Database with the ALTER DATABASE FLASHBACK DATABASE ON command.' A warning, independent of FastStartFailoverAutoReinstate: raised for Flashback Database being off on the primary or the target while fast-start failover is enabled, not only after a failover is attempted.",
+  },
+  'FSFO.FARSYNC_TARGET_SCENARIO7': {
+    url: U.bkr19Scenarios, edition: '19c', verified: 'primary',
+    quote: 'To enable fast-start failover when a far sync instance is used to ship redo data to the standby database, the FastStartFailoverTarget property must first be set on both the primary and target standby database',
+    note: 'Scenario 7: Enabling Fast-Start Failover When a Far Sync Instance Is In Use.',
+  },
+  'MEMBER.SNAPSHOT_CONVERT_NEEDS_FLASHBACK': {
+    url: U.bkr19Members, edition: '19c', verified: 'primary',
+    quote: 'To convert a physical standby database to a snapshot standby database you must have Flashback Database enabled.',
+  },
+  'FSFO.SNAPSHOT_NOT_TARGET': {
+    url: U.bkr19Switch, edition: '19c', verified: 'primary',
+    quote: 'A snapshot standby cannot be the target of a switchover or fast-start failover operation. You can, however, perform a manual failover to a snapshot standby.',
   },
   'FSFO.PRIMARY_UNOBSERVED': {
     url: U.bkr19Switch, edition: '19c', verified: 'primary',
@@ -594,12 +654,32 @@ export const CITATIONS = {
   'XPT.TABLE_4_2': {
     url: U.bkr19Members, edition: '19c', verified: 'primary',
     quote: 'Table 4-2 Oracle Data Guard Protection Modes and Requirements Protection Mode Redo Transport Standby Redo Log Files Needed? Usable with Fast-Start Failover? MAXPROTECTION SYNC Yes Yes MAXAVAILABILITY SYNC, FASTSYNC Yes Yes MAXPERFORMANCE ASYNC Yes Yes',
-    note: 'The table flattened. ASYNC is the only mode LISTED under maximum performance -- never write that SYNC is illegal there.',
+    note: 'The table flattened. ASYNC is the only mode LISTED under maximum performance -- never write that SYNC is illegal there. 26ai Table 4-2 reads the same, and 26ai LogXptMode still gives SYNC or FASTSYNC for maximum availability: ASYNC is added only by the fast-start failover prerequisites list (XPT.MAXAVAIL_ASYNC_26AI), never by this table -- the two disagree and 26ai does not name the conflict.',
   },
   'XPT.MAXAVAIL_ASYNC_26AI': {
     url: U.bkr26Fsfo, edition: '26ai', verified: 'primary',
     quote: 'Maximum availability -- SYNC or FASTSYNC or ASYNC',
     note: 'The LogXptMode line of the 26ai prerequisites list. Zero data loss still wants SYNC or FASTSYNC.',
+  },
+  'MODE.AT_LEAST_ONE_SUPPORTS': {
+    url: U.bkr19Members, edition: '19c', verified: 'primary',
+    quote: 'At the time when you change the protection mode or reset the redo transport service of a standby database, the broker verifies that there is at least one standby database in the configuration that can support the desired grade of protection. If not, then the broker does not change the protection mode and returns an error.',
+    note: 'Also on the 26ai managing-data-protection-modes page, the same sentence. A configuration-level check across every destination from the primary: an ASYNC bystander beside a SYNC standby is legal in every edition. The fast-start failover prerequisites carry a stricter, per-member requirement for the target and the primary only -- FSFO.PREREQ_TRANSPORTS_19C / FSFO.PREREQ_TRANSPORTS_26AI -- and only while fast-start failover is enabled.',
+  },
+  'FSFO.PREREQ_TRANSPORTS_19C': {
+    url: U.bkr19Switch, edition: '19c', verified: 'primary',
+    quote: 'Ensure that the standby database you choose to be the target of fast-start failover has its LogXptMode property set as follows, depending on the protection mode: Maximum protection — SYNC Maximum availability — SYNC or FASTSYNC Maximum performance — ASYNC The current primary database must have its LogXptMode property set accordingly',
+    note: 'Enabling Fast-Start Failover Task 3. Scoped to the fast-start failover target standby and the primary only, never every destination in the configuration -- that is Table 4-2 and MODE.AT_LEAST_ONE_SUPPORTS.',
+  },
+  'MODE.UPGRADE_WITHOUT_SYNC_26AI': {
+    url: U.bkr26Modes, edition: '26ai', verified: 'primary',
+    quote: 'Starting with Oracle Database Release 21c, you can upgrade the protection mode to maximum availability even if the primary does not have any SYNC standbys.',
+    note: 'Managing Data Protection Modes, Upgrading or Downgrading the Current Protection Mode -- a 21c change, on the 26ai page.',
+  },
+  'FSFO.PREREQ_TRANSPORTS_26AI': {
+    url: U.bkr26Fsfo, edition: '26ai', verified: 'primary',
+    quote: 'Ensure that the standby database you choose to be the target of fast-start failover has its LogXptMode property set as follows, depending on the protection mode: Maximum protection — SYNC Maximum availability — SYNC or FASTSYNC or ASYNC Maximum performance — ASYNC',
+    note: '26ai Enabling Fast-Start Failover prerequisites. The maximum availability row adds ASYNC against 19c and against 26ai Table 4-2 itself (XPT.TABLE_4_2).',
   },
   'XPT.FASTSYNC_12_1': {
     url: U.bkr121Changes, edition: '12.1', verified: 'cross-edition',
@@ -629,7 +709,12 @@ export const CITATIONS = {
   'DEST.NET_TIMEOUT': {
     url: U.sbyDestAttrs, edition: '19c', verified: 'primary',
     quote: 'The NET_TIMEOUT attribute specifies the number of seconds that the LGWR background process blocks waiting for a redo transport destination to acknowledge redo data sent to it. If an acknowledgement is not received within NET_TIMEOUT seconds, an error is logged and the redo transport session to that destination is terminated.',
-    note: "Valid values 1 to 1200, default value 30 seconds; footnote: 'Although a minimum value of 1 second is allowed, Oracle recommends a minimum value of 8 to 10 seconds'; requires SYNC, and under ASYNC 'redo transport services ignores it; no error is returned'. Broker property NetTimeout. It is never a failover clock.",
+    note: "Valid values 1 to 1200, default value 30 seconds; footnote: 'Although a minimum value of 1 second is allowed, Oracle recommends a minimum value of 8 to 10 seconds'; requires SYNC, and under ASYNC 'redo transport services ignores it; no error is returned'. This is the LOG_ARCHIVE_DEST_n attribute; the broker property of the same value is NetTimeout (BROKER.NET_TIMEOUT_PROPERTY), whose own page states a wider range. It is never a failover clock.",
+  },
+  'BROKER.NET_TIMEOUT_PROPERTY': {
+    url: U.bkr19Props, edition: '19c', verified: 'primary',
+    quote: 'The NetTimeout configurable property specifies the number of seconds the LGWR waits for Oracle Net Services to respond to a LGWR request.',
+    note: "Valid values 0 to 1200, broker default 30 -- a wider floor than the NET_TIMEOUT attribute page's 1 to 1200 (DEST.NET_TIMEOUT); Oracle does not reconcile the two ranges.",
   },
   'DEST.REOPEN': {
     url: U.sbyDestAttrs, edition: '19c', verified: 'primary',
@@ -697,9 +782,9 @@ export const CITATIONS = {
 
   /* ---------------- Errors and limits ---------------- */
   'ORA.12514': {
-    url: U.ora12514, edition: '19c', verified: 'primary',
+    url: U.ora12514, edition: '26ai', verified: 'primary',
     quote: "The connection request received by the listener specified a service name (usually for a database service) that either has not been dynamically registered with the listener or that has not been statically configured in the listener's listener.ora configuration file.",
-    note: "The Cause on the error-help page (message text in the current release: 'Cannot connect to database. Service service_name is not registered with the listener at host_port.'). What a role-based service costs a client dialling the wrong database: an instant refusal, not a timeout.",
+    note: "The Cause on the 26ai tab of the error-help page (message text in the current release: 'Cannot connect to database. Service service_name is not registered with the listener at host_port.'). The 21c and 19c tabs carry older wording: 'TNS:listener does not currently know of service requested in connect descriptor.' What a role-based service costs a client dialling the wrong database: an instant refusal, not a timeout, on either wording.",
   },
   'ORA.16529': {
     url: U.ora16529, edition: '26ai', verified: 'cross-edition',
@@ -707,14 +792,14 @@ export const CITATIONS = {
     note: "Cause: 'An attempt is being made to switchover or failover to a database that is not specified in the PrimaryDatabaseCandidates configuration property.' The error-help page lists this text under Release 26ai only; the 26ai PrimaryDatabaseCandidates property page prints the same message.",
   },
   'ORA.16654': {
-    url: U.ora16654, edition: '19c', verified: 'primary',
+    url: U.ora16654, edition: '26ai', verified: 'primary',
     quote: 'ORA-16654 fast-start failover is enabled Cause The attempted command was not allowed while fast-start failover was enabled. This occurred because: The FastStartFailoverTarget property may not be modified. The LogXptMode property for either the primary database or the fast-start failover target standby database may not be modified. The protection mode of the configuration may not be modified.',
-    note: 'The Cause list continues with DISABLE/REMOVE of the configuration or the target, FAILOVER IMMEDIATE and DG_BROKER_START. The error-help page lists 26ai, 21c and 19c.',
+    note: "The Cause list continues with DISABLE/REMOVE of the configuration or the target, FAILOVER IMMEDIATE and DG_BROKER_START. This is the 26ai tab; the 21c and 19c tabs read 'The attempted command was not allowed while fast-start failover was enabled:' (no 'This occurred because') and \"The configuration's protection mode may not be modified\" for the third bullet -- the same three restrictions, worded slightly differently. FastStartFailoverTarget itself is refused only unless the new value still contains the current target (EDIT.FSFO_ENABLED_BLOCKS).",
   },
   'ORA.16658': {
-    url: U.ora16658, edition: '19c', verified: 'primary',
+    url: U.ora16658, edition: '26ai', verified: 'primary',
     quote: 'ORA-16658 unobserved fast-start failover configuration Cause The fast-start failover configuration was currently unobserved and so failover was not possible.',
-    note: "Raised only when a failover is attempted while unobserved -- never interchangeable with ORA-16820. Action: 'If the primary is not available and failover must be performed, then disable fast-start failover to perform a failover in the absence of the observer process.'",
+    note: "Raised only when a failover is attempted while unobserved -- never interchangeable with ORA-16820. Action: 'If the primary is not available and failover must be performed, then disable fast-start failover to perform a failover in the absence of the observer process.' This is the 26ai tab; the 21c and 19c tabs read 'was currently unobserved therefore failover was disallowed', same meaning.",
   },
   'ORA.16820': {
     url: U.ora16820, edition: '19c', verified: 'primary',
@@ -726,9 +811,13 @@ export const CITATIONS = {
     quote: 'ORA-16867 cannot remove a database that is specified in a FastStartFailoverTarget configuration property Cause An attempt was made to remove a database that was specified in the FastStartFailoverTarget configuration property of another database.',
   },
   'LIMIT.MEMBERS_253': {
-    url: U.bkr121Changes, edition: '12.1', verified: 'cross-edition',
-    quote: 'An Oracle Data Guard broker configuration can now contain up to 253 members, including one primary database and a combination of standby databases and far sync instances that receive redo directly from the primary database.',
-    note: 'Other Changes, 12.1.0.2. Documented in 12.1 only; not restated in 19c or 26ai.',
+    url: U.bkr19Configs, edition: '19c', verified: 'primary',
+    quote: 'Oracle Data Guard broker enables you to create a broker configuration consisting of up to 253 members, including one primary database and a combination of standby databases, far sync instances, and Zero Data Loss Recovery Appliances.',
+    note: 'Managing Oracle Data Guard Broker Configurations, restated word for word on the 26ai page at the same path. The 12.1.0.2 change note (ROUTES-adjacent history) first introduced the number; it is documented, current text in both 19c and 26ai, not doc-later.',
+  },
+  'LIMIT.MEMBERS_253_26AI': {
+    url: U.bkr26Configs, edition: '26ai', verified: 'primary',
+    quote: 'Oracle Data Guard broker enables you to create a broker configuration consisting of up to 253 members, including one primary database and a combination of standby databases, far sync instances, and Zero Data Loss Recovery Appliances.',
   },
   'CFG.WIDE_SERVICE_NAME': {
     url: U.bkr19Props, edition: '19c', verified: 'primary',

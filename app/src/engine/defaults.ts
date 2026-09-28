@@ -121,13 +121,18 @@ export interface BrokerDefaults {
   observerCount: Claim<number>;
 }
 
-/* The properties exist since 12.2, but the 19c properties reference does not
-   list them: 19c is silent and a later edition states the default, which is
-   what doc-later means. Same precedent as the 12.1 FASTSYNC notice. */
-const PING_INTERVAL_19C = docLater<Millis | null>(100, ['FSFO.PING_PROPS_21C'],
-  'The 19c properties reference does not list ObserverPingInterval, so the default is cited to the 21c page.');
-const PING_RETRY_19C = docLater<number | null>(10, ['FSFO.PING_PROPS_21C'],
-  'The 19c properties reference does not list ObserverPingRetry, so the default is cited to the 21c page.');
+/* Absent from the 12.2, 18c and 19c property pages, the fast-start failover
+   chapter and the command reference -- and absent from a live 19.27 system
+   too: `strings` on the `dgmgrl` and `oracle` binaries finds neither name, and
+   SHOW CONFIGURATION VERBOSE lists neither property. First documented in 21c.
+   Under 19c these two do not exist; this page carries no 19c default for them
+   at all -- `value: null` here means that, not "not set". A 19c document that
+   sets one anyway is a validation error, not a doc-later note (see
+   FSFO.PING_PROPS_NOT_IN_19C in validate/rules/fsfo.ts). */
+const PING_INTERVAL_19C = docLater<Millis | null>(null, ['FSFO.PING_PROPS_21C'],
+  'ObserverPingInterval does not exist in 19c: absent from the 12.2, 18c and 19c property pages and from a live 19.27 system (neither `strings dgmgrl`/`strings oracle` nor SHOW CONFIGURATION VERBOSE shows it). First documented in 21c.');
+const PING_RETRY_19C = docLater<number | null>(null, ['FSFO.PING_PROPS_21C'],
+  'ObserverPingRetry does not exist in 19c: absent from the 12.2, 18c and 19c property pages and from a live 19.27 system. First documented in 21c.');
 
 /* The 26ai contradiction, carried rather than resolved: the property pages give
    the broker defaults as 0 -- not set, detection governed by the threshold --
@@ -141,10 +146,19 @@ const PING_RETRY_26AI = conflict<number | null>(null,
   ['FSFO.PING_RETRY_26AI', 'FSFO.PING_DEFAULTS_26AI_TABLE'],
   'Same disagreement as ObserverPingInterval: the property page gives 0 -- not set -- and the chapter table still shows 10. The explicitly-set minimum stays 10.');
 
-const OBSERVERS_19C = documented(3, ['OBS.THREE_19C'],
-  'The "three" is 19c-specific; later releases allow more, so it is not carried across editions.');
+/* The move from three observers to four is settled: 21c (ORA-16647 help:
+   "For Oracle Database releases 12.2 through 19c, a maximum of three
+   observers can be started. For Oracle Database release 21c and later, a
+   maximum of 4 observers can be started."). Two separate documentation
+   conflicts survive the move and are carried as conflicts of their own: the
+   19c command reference's START OBSERVER section says "up to four observers"
+   against the same edition's fast-start failover chapter saying three, and
+   the 26ai SHOW OBSERVER page still says three against the 26ai fast-start
+   failover chapter's four. */
+const OBSERVERS_19C = conflict(3, ['OBS.THREE_19C', 'ORA.16647'],
+  'The 19c fast-start failover chapter says three; the 19c command reference\'s START OBSERVER section and ORA-16647 both say four. The move to four is settled at 21c; this engine reads three for 19c, the chapter\'s number, and names the command-reference conflict rather than resolving it.');
 const OBSERVERS_26AI = conflict(4, ['OBS.FOUR_26AI', 'OBS.THREE_26AI_SHOW'],
-  'The 26ai fast-start failover chapter says four; the 26ai SHOW OBSERVER page still says three. Which release moved three to four is unsettled, so the engine reads four for 26ai and three for 19c.');
+  'The 26ai fast-start failover chapter says four, matching the settled 21c-and-later limit (ORA-16647); the 26ai SHOW OBSERVER page still says three. This engine reads four for 26ai and names the SHOW OBSERVER conflict.');
 
 const COMMON = {
   protectionMode: 'MAXAVAILABILITY',
@@ -172,11 +186,18 @@ export const BROKER_DEFAULTS: Record<Edition, BrokerDefaults> = {
   },
   '26ai': {
     ...COMMON,
-    /* 26ai gave FastStartFailoverLagLimit a MaxAvailability role, where the
-       broker default is 0: the standby must have received everything and the
-       failover is zero-loss. Source: the 26ai fast-start failover chapter's
-       "Fast-start Failover Protection Modes" section -- never that chapter's
-       Task 3 and never the property page's closing line. */
+    /* FastStartFailoverLagLimit's MaxAvailability role is a 21c feature (21c
+       change list and 21c chapter), not a 26ai one; 26ai's own contribution
+       is the per-mode broker default, 0 in MaxAvailability -- the standby
+       must have received everything and the failover is zero-loss. Source:
+       the 26ai fast-start failover chapter's "Fast-start Failover Protection
+       Modes" section -- never that chapter's Task 3 and never the property
+       page's closing line, both stale (FSFO.LAGLIMIT_STALE_TASK3,
+       FSFO.LAGLIMIT_STALE_PROPERTY_CLOSING_LINE). 19c disagrees with itself
+       about whether the property reaches MaxAvailability at all
+       (FSFO.LAGLIMIT_ZERO_MAXAVAIL_19C, FSFO.LAGLIMIT_MAXPERF_ONLY_19C); this
+       engine follows the observed 19.27 behaviour and does not evaluate it
+       there. */
     lagLimitMaxAvailSeconds: 0,
     pingIntervalMs: PING_INTERVAL_26AI,
     pingRetry: PING_RETRY_26AI,
