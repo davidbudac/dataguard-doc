@@ -135,12 +135,20 @@ export const transportLayer: Lesson = {
       title: 'MaxFailure disables the destination',
       prose: (
         <P>
-          <M>MaxFailure</M> counts consecutive reestablish attempts at log switches; the default for a
-          destination in the default log-archive group — <M>LOG_ARCHIVE_DEST_2</M> here — is 0, no
-          limit, while non-default groups default to 1. Reaching the limit disables the destination —
-          no further access until it is manually reenabled, and <M>REOPEN</M> is then treated as
-          unspecified. One documented exception: destinations with the 12.2 <M>GROUP</M> and{' '}
-          <M>PRIORITY</M> attributes re-enter service on their own.{' '}
+          <M>MaxFailure</M> counts consecutive reestablish attempts at log switches under 19c; the
+          default for a destination in the default log-archive group — <M>LOG_ARCHIVE_DEST_2</M> here
+          — is 0, no limit, while a RedoRoutes group defaults to 1. Reaching the limit disables the
+          destination — no further access until it is manually reenabled, and <M>REOPEN</M> is then
+          treated as unspecified.{' '}
+          <Fact
+            id="DEST.MAX_FAILURE_26AI"
+            basis="documented"
+          >
+            26ai counts the initial failure too: MaxFailure = 1 makes no reactivation attempt at all,
+            and above 1 attempts continue until the count is reached, then stop
+          </Fact>
+          . One documented exception, in both editions: destinations with the 12.2 <M>GROUP</M> and
+          {' '}<M>PRIORITY</M> attributes re-enter service on their own.{' '}
           <Fact
             id="DEST.MAX_FAILURE"
             basis="model"
@@ -161,9 +169,10 @@ export const transportLayer: Lesson = {
       prose: (
         <P>
           With nothing arriving the standby falls behind in real time: <M>UNSYNCHRONIZED</M> from the
-          first second in MaxAvailability, past <M>FastStartFailoverLagLimit</M> (default 30 s) in
-          MaxPerformance. Either way, no failover is permitted until the destination ships again and
-          the standby resynchronizes.
+          first second in MaxAvailability under 19c — under 26ai that same instant is{' '}
+          <M>FastStartFailoverLagLimit</M>&rsquo;s own MaxAvailability default of 0 — past{' '}
+          <M>FastStartFailoverLagLimit</M> (default 30 s) in MaxPerformance. Either way, no failover
+          is permitted until the destination ships again and the standby resynchronizes.
         </P>
       ),
       apply: {

@@ -127,14 +127,19 @@ const FAR_SYNC = documented<string>(
   ['FS.SYNC_TO_FARSYNC', 'FS.ONWARD_ASYNC', 'FSFO.FARSYNC_XPT'],
 );
 
-const MULTI_SYNC_ALL = model<string>(
+const MULTI_SYNC_ALL_CITES: CitationId[] = ['XPT.DATA_GUARD_SYNC_LATENCY'];
+assertCitesAllowed('COMMIT_MAX_NOT_SUM', MULTI_SYNC_ALL_CITES);
+
+const MULTI_SYNC_ALL = documented<string>(
   'the commit waits for every synchronous leg',
-  'COMMIT.MULTI_SYNC_WAIT: what a commit with more than one SYNC destination waits for is not documented. The engine waits for all of them, which is the pessimistic reading; the first-ack toggle draws the other one.',
+  MULTI_SYNC_ALL_CITES,
+  "DATA_GUARD_SYNC_LATENCY defaults to 0, which is documented to mean the LGWR waits up to NET_TIMEOUT for each SYNC standby destination in turn -- this page's default.",
 );
 
 const MULTI_SYNC_FIRST = model<string>(
   'the commit waits for the first acknowledgement',
-  'COMMIT.MULTI_SYNC_WAIT: what a commit with more than one SYNC destination waits for is not documented. This is the optimistic reading of the two the engine offers; the default waits for all of them.',
+  "A non-zero DATA_GUARD_SYNC_LATENCY (XPT.DATA_GUARD_SYNC_LATENCY) bounds how much longer the LGWR waits past the first acknowledgement, rather than returning at it; this toggle's immediate return at the first ack is this page's simplification of that documented behaviour.",
+  MULTI_SYNC_ALL_CITES,
 );
 
 const MODE_CONFLICT = documented<string>(
@@ -207,8 +212,14 @@ export function computeCommit(input: CommitInput): CommitModel {
   const syncFarSync = legs.some((l) => l.kind === 'farsync' && l.waits);
   const asyncToDatabase = !syncFarSync
     && legs.some((l) => l.kind === 'database' && l.xpt === 'ASYNC');
+  /* "the broker verifies that there is at least one standby database in the
+     configuration that can support the desired grade of protection"
+     (MODE.AT_LEAST_ONE_SUPPORTS) -- a configuration-level check, so an ASYNC
+     leg beside a SYNC or FASTSYNC one is never the mismatch by itself. */
+  const hasQualifyingLeg = syncFarSync
+    || legs.some((l) => l.kind === 'database' && (l.xpt === 'SYNC' || l.xpt === 'FASTSYNC'));
   const maxavail = input.mode === 'MAXAVAILABILITY';
-  const modeConflict = asyncToDatabase && maxavail && edition !== '26ai';
+  const modeConflict = asyncToDatabase && !hasQualifyingLeg && maxavail && edition !== '26ai';
   const modeAllowed26 = asyncToDatabase && maxavail && edition === '26ai';
 
   /* Axis. Guard the all-zero case so the ticks still have somewhere to go. */

@@ -184,9 +184,12 @@ export interface ReportInput {
 
 /* ---------------- words ---------------- */
 
+/* Oracle titles the 26ai documentation set "Oracle AI Database" (the TOC's
+   own "Changes in Oracle AI Database Release 26ai" and "Downgrading from
+   Oracle AI Database 26ai") -- the short edition label stays "26ai". */
 const EDITION_WORD: Record<string, string> = {
   '19c': 'Oracle Database 19c',
-  '26ai': 'Oracle Database 26ai',
+  '26ai': 'Oracle AI Database 26ai',
 };
 
 const ROLE_WORD: Record<string, string> = {

@@ -233,9 +233,9 @@ const heldByHost = (doc: TopologyDoc, host: HostId, at: number): string | null =
  * run has it aborted, and the drawing shows it so.
  */
 export const ABORTED_BY_BROKER =
-  'The broker has already shut it down (SHUTDOWN ABORT) at this point on the clock.';
+  'The broker has already shut it down at this point on the clock.';
 export const NO_RESTART_AFTER_ABORT =
-  'The broker shut it down. Restarting a database the broker aborted is not modelled on this page.';
+  'The broker shut it down. Restarting a database the broker shut down is not modelled on this page.';
 
 /** The run's own state for a member at `at`, when the trace is this document's. */
 const simMemberState = (doc: TopologyDoc, key: string, at: number): string | undefined => {
@@ -358,7 +358,7 @@ export function actionsForKey(doc: TopologyDoc, key: string, at: number): EventA
     if (isDatabase(member)) {
       out.push({
         id: 'cmd.reinstate',
-        label: `REINSTATE ${key}`,
+        label: `REINSTATE DATABASE ${key}`,
         plural: 'Reinstate',
         enabled: ON,
         events: [{ at, kind: 'cmd.reinstate', member: member.id }],
@@ -944,7 +944,7 @@ export function describeEvent(doc: TopologyDoc, e: TimedEvent): string {
     case 'observer.start': return `Start the observer ${e.observer as string}`;
     case 'cmd.switchover': return `SWITCHOVER TO ${e.to as string}`;
     case 'cmd.failover': return `FAILOVER TO ${e.to as string}${e.immediate === true ? ' IMMEDIATE' : ''}`;
-    case 'cmd.reinstate': return `REINSTATE ${e.member as string}`;
+    case 'cmd.reinstate': return `REINSTATE DATABASE ${e.member as string}`;
     case 'cmd.setMasterObserver': return `SET MASTEROBSERVER TO ${e.observer as string}`;
     case 'cmd.disableFsfo':
       return `DISABLE FAST_START FAILOVER${e.force === true ? ' FORCE' : ''}`;

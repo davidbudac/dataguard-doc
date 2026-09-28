@@ -67,12 +67,18 @@ const U = {
   sbyRoles: 'https://docs.oracle.com/en/database/oracle/oracle-database/19/sbydb/managing-oracle-data-guard-role-transitions.html',
   sbyDestAttrs: 'https://docs.oracle.com/en/database/oracle/oracle-database/19/sbydb/LOG_ARCHIVE_DEST_n-parameter-attributes.html',
   refDestN: 'https://docs.oracle.com/en/database/oracle/oracle-database/19/refrn/LOG_ARCHIVE_DEST_n.html',
+  refSyncLatency19: 'https://docs.oracle.com/en/database/oracle/oracle-database/19/refrn/DATA_GUARD_SYNC_LATENCY.html',
+  refSyncLatency26: 'https://docs.oracle.com/en/database/oracle/oracle-database/26/refrn/DATA_GUARD_SYNC_LATENCY.html',
   refVDatabase: 'https://docs.oracle.com/en/database/oracle/oracle-database/19/refrn/V-DATABASE.html',
+  refVDatabase26: 'https://docs.oracle.com/en/database/oracle/oracle-database/26/refrn/V-DATABASE.html',
   haOptimize: 'https://docs.oracle.com/en/database/oracle/oracle-database/19/haovw/optimizing-automatic-failover-common-scenarios-minimize-downtime1.html',
   haRedoTuning: 'https://docs.oracle.com/en/database/oracle/oracle-database/19/haovw/redo-transport-troubleshooting-and-tuning.html',
   haTns: 'https://docs.oracle.com/en/database/oracle/oracle-database/19/haovw/oracle-net-tns-string-parameters.html',
   haConnEstimates: 'https://docs.oracle.com/en/database/oracle/oracle-database/19/haovw/connection-time-estimates-data-guard-switchover-or-failover.html',
   netrfTns: 'https://docs.oracle.com/en/database/oracle/oracle-database/19/netrf/local-naming-parameters-in-tns-ora-file.html',
+  netrfSqlnet19: 'https://docs.oracle.com/en/database/oracle/oracle-database/19/netrf/parameters-for-the-sqlnet.ora.html',
+  netrfSqlnet26: 'https://docs.oracle.com/en/database/oracle/oracle-database/26/netrf/parameters-for-the-sqlnet.ora.html',
+  haConfigDeploy: 'https://docs.oracle.com/en/database/oracle/oracle-database/19/haovw/configure-and-deploy-oracle-data-guard.html',
   jdbc19: 'https://docs.oracle.com/en/database/oracle/oracle-database/19/jajdb/oracle/jdbc/OracleConnection.html',
   jdbc26: 'https://docs.oracle.com/en/database/oracle/oracle-database/26/jajdb/oracle/jdbc/OracleConnection.html',
   habpt121: 'https://docs.oracle.com/database/121/HABPT/config_dg.htm',
@@ -434,6 +440,11 @@ export const CITATIONS = {
     quote: 'It shows this information for all the observers (up to 3) in this single configuration.',
     note: 'The 26ai self-contradiction on observer count; cite both sides.',
   },
+  'OBS.FOUR_CMD19': {
+    url: U.bkr19Cmds, edition: '19c', verified: 'primary',
+    quote: 'You can register up to four observers to monitor a single Data Guard broker configuration.',
+    note: "The 19c command reference's own START OBSERVER page, against the 19c switchover/failover chapter's three (OBS.THREE_19C) and the 19c tab of ORA-16647 ('a maximum of three observers can be started'). A second, 19c-internal version of the 26ai OBS.FOUR_26AI / OBS.THREE_26AI_SHOW conflict, not documented as resolved either.",
+  },
   'OBS.MASTER_ONLY_COORDINATES': {
     url: U.bkr19Switch, edition: '19c', verified: 'primary',
     quote: 'Only the master observer can coordinate fast-start failover with Data Guard broker. All other registered observers are considered to be backup observers.',
@@ -667,6 +678,11 @@ export const CITATIONS = {
     url: U.refVDatabase, edition: '19c', verified: 'primary',
     quote: 'If the value of this column is DISABLED, then the values for the FS_FAILOVER_CURRENT_TARGET, FS_FAILOVER_THRESHOLD, FS_FAILOVER_OBSERVER_PRESENT, and FS_FAILOVER_OBSERVER_HOST columns in this table are not meaningful.',
     note: "The FS_FAILOVER_STATUS column note; broker Table 5-1 reads 'DISABLED Fast-start failover is disabled.' No observer deployed means fast-start failover was never enabled, so the status is DISABLED -- a third state, not 'unobserved'.",
+  },
+  'FSFO.FS_FAILOVER_COLUMNS_DEPRECATED_26AI': {
+    url: U.refVDatabase26, edition: '26ai', verified: 'primary',
+    quote: 'Oracle AI Database 26ai introduces the V$FAST_START_FAILOVER_CONFIG view, which contains configuration details about Oracle Data Guard fast-start failover. As a result, the FS_FAILOVER_* columns in the V$DATABASE view are deprecated.',
+    note: "Footnote on the 26ai V$DATABASE reference page. Named columns still work under 26ai; the page just points at V$FAST_START_FAILOVER_CONFIG as the current source. 19c has no such view or footnote.",
   },
   'FSFO.PRIMARY_DB_CANDIDATES': {
     url: U.bkr26Candidates, edition: '26ai', verified: 'cross-edition',
@@ -907,6 +923,11 @@ export const CITATIONS = {
     quote: 'Redo transport services attempt to reopen failed destinations at log switch time. Redo transport services check if the time of the last error plus the REOPEN interval is less than the current time. If it is, redo transport services attempt to reopen the destination. REOPEN applies to all errors, not just connection failures.',
     note: 'Valid values >=0 seconds, default value 300 seconds; broker property ReopenSecs. The meaning of 0 is not documented.',
   },
+  'XPT.DATA_GUARD_SYNC_LATENCY': {
+    url: U.refSyncLatency19, edition: '19c', verified: 'primary',
+    quote: 'The default value is 0, which means that the LGWR will wait up to the number of seconds specified by the NET_TIMEOUT attribute of the LOG_ARCHIVE_DEST_n parameter for each SYNC standby destination.',
+    note: "DATA_GUARD_SYNC_LATENCY: 'controls how many seconds the Log Writer (LGWR) process waits beyond the response of the first in a series of Oracle Data Guard SYNC redo transport mode connections.' At its default (0) a commit waits for every SYNC destination, up to NET_TIMEOUT each -- the documented default is this page's 'all' policy. A non-zero value bounds how much longer LGWR waits past the first acknowledgement before giving up on the stragglers, which is what the 'first-ack' toggle approximates; the property does not make the commit return the instant the first ack lands, only shortens how long it keeps waiting for the rest. Identical wording on the 26ai page (refSyncLatency26).",
+  },
   'DEST.MAX_FAILURE': {
     url: U.sbyDestAttrs, edition: '19c', verified: 'primary',
     quote: 'The MAX_FAILURE attribute controls the consecutive number of times at a log switch that redo transport services attempts to reestablish communication and transmit redo data to a failed destination before the primary database gives up on the destination.',
@@ -975,6 +996,23 @@ export const CITATIONS = {
     url: U.jdbc26, edition: '26ai', verified: 'primary',
     quote: 'This value is assumed in seconds if set in the URL with no explicit units and in milliseconds if set in the connection\'s properties. Starting in 23.6, the default value was changed from "0" (no timeout) to "20000" (20 seconds). This affects only the thin driver.',
     note: 'The 26ai OracleConnection page now names the release that changed the default (23.6); the 19c page does not.',
+  },
+
+  /* ---------------- Session data unit ---------------- */
+  'NET.SDU_HA_MAX_65535': {
+    url: U.haConfigDeploy, edition: '19c', verified: 'primary',
+    quote: 'Oracle testing has shown that setting the SDU parameter to its maximum value of 65535 improves performance of synchronous transport.',
+    note: "'Set SDU Size to 65535 for Synchronous Transport Only', in the HA overview's configure-and-deploy chapter. Calls 65535 the maximum value, which DEFAULT_SDU_SIZE's own range (NET.SDU_RANGE_19C) contradicts -- Oracle does not reconcile the two.",
+  },
+  'NET.SDU_RANGE_19C': {
+    url: U.netrfSqlnet19, edition: '19c', verified: 'primary',
+    quote: 'Default 8192 bytes (8 KB) Value 512 to 2097152 bytes',
+    note: 'DEFAULT_SDU_SIZE on the 19c sqlnet.ora parameters page: one default (8192) for both client and server, range 512 to 2097152 bytes -- so 65535 is neither required (SYNC runs at the default) nor the ceiling (2097152 is higher), and the HA guide calling it "the maximum value" (NET.SDU_HA_MAX_65535) is the contradiction.',
+  },
+  'NET.DEFAULT_SDU_26AI': {
+    url: U.netrfSqlnet26, edition: '26ai', verified: 'primary',
+    quote: 'For clients: 8192 bytes (8 KB) For servers: 65536 bytes (64KB)',
+    note: 'DEFAULT_SDU_SIZE on the 26ai sqlnet.ora parameters page splits the default by role; the 19c page (NET.SDU_RANGE_19C) gives one flat default, 8192, for both. Range unchanged: 512 to 2097152 bytes.',
   },
 
   /* ---------------- Errors and limits ---------------- */

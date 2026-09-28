@@ -9,6 +9,8 @@ import { describe, expect, it } from 'vitest';
 import { classicTopology, scenarioEvents, simulate } from '@/engine';
 import type { TopologyDoc, Trace } from '@/engine';
 import { preset } from '@/presets';
+import { memberId } from '../../src/engine/ids';
+import { multiTargetDoc } from '../topologies';
 import {
   approxW, axisSpan, buildTimeline, clampToAxis, describeEvent, fitLabel, packBraces,
   PINNED, snapNice, TL,
@@ -174,6 +176,38 @@ describe('buildTimeline: captions branch on the outcome', () => {
     expect(m.caption.text).toContain(`${trace.facts.tOpen} s`);
     expect(m.caption.text).not.toContain('Total outage');
     expect(m.caption.anchor).toBe('middle');
+  });
+});
+
+/* SIM-14 g (fact check 2026-09-28): the blocked-switchover caption used to
+   say "outside FastStartFailoverLagLimit" for every refusal, including one
+   that has nothing to do with the lag limit. It now reads the reason off
+   the trace's own SWITCHOVER.REFUSED finding. */
+describe('buildTimeline: a blocked switchover names its own refusal reason', () => {
+  it('names the lag limit when that is the refusal', () => {
+    const { doc, trace } = classic('switchover');
+    doc.config.fsfo.state = 'enabled';
+    doc.config.protectionMode = 'MAXPERFORMANCE';
+    doc.config.fsfo.lagLimitSeconds = 0;
+    const events = scenarioEvents('switchover', doc);
+    const t2 = simulate(doc, events);
+    if (!t2.facts.blocked) return; // engine still landing
+    const m = buildTimeline(t2, doc, { width: 980 });
+    expect(m.caption.text).toContain('SWITCHOVER refused');
+    expect(m.caption.text).toContain('FastStartFailoverLagLimit');
+  });
+
+  it('names the target, not the lag limit, when the member is not the pre-specified target', () => {
+    const doc = multiTargetDoc();
+    doc.config.fsfo.state = 'enabled';
+    doc.config.fsfo.target = { kind: 'list', members: [memberId('sby01')] };
+    const events = [{ at: 0, kind: 'cmd.switchover' as const, to: memberId('sby02') }];
+    const trace = simulate(doc, events);
+    expect(trace.facts.blocked).toBe(true);
+    const m = buildTimeline(trace, { ...doc, events }, { width: 980 });
+    expect(m.caption.text).toContain('SWITCHOVER refused');
+    expect(m.caption.text).not.toContain('FastStartFailoverLagLimit');
+    expect(m.caption.text).toContain('not the pre-specified fast-start failover target');
   });
 });
 

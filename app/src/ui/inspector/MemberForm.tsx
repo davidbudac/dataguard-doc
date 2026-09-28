@@ -337,7 +337,9 @@ export function MemberForm({ member, doc, graph }: MemberFormProps) {
                   id, to.id, `Set MaxFailure to ${v} on ${id as string} to ${to.id as string}`,
                   (d) => ({ ...d, maxFailure: v }),
                 )}
-                note="Consecutive attempts to reestablish the destination at log switches; 0 is unlimited and is the default. At the limit the destination is disabled with no further access until it is manually reenabled -- healing the network does not bring it back. Whether a successful reopen resets the count is not documented."
+                note={doc.config.edition === '26ai'
+                  ? 'Consecutive failures, counting the initial one; default 0 (continuous retries) outside a RedoRoutes group, 1 inside one. MaxFailure = 1 makes no reactivation attempt at all; above 1, attempts continue until the count is reached, then stop. Whether a successful reopen resets the count is not documented.'
+                  : 'Consecutive attempts to reestablish the destination at log switches; default 0 (unlimited) outside a RedoRoutes group, 1 inside one. At the limit the destination is disabled with no further access until it is manually reenabled -- healing the network does not bring it back. Whether a successful reopen resets the count is not documented.'}
               />
               <Pick
                 name="AFFIRM"

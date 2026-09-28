@@ -156,7 +156,7 @@ describe('learn shell', () => {
     lessonId.value = 'failover-clocks';
     const root = mount();
     const numbers = [...root.querySelectorAll('.lesson-fn .ct-fn-n')].map((n) => n.textContent);
-    expect(numbers).toEqual(['1', '2', '3']);
+    expect(numbers).toEqual(['1', '2', '3', '5']);
 
     document.body.innerHTML = '';
     lessonId.value = 'multi-observer';
