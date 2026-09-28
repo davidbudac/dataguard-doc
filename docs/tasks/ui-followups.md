@@ -284,7 +284,10 @@ Status: todo
 `ui/intro/Walkthrough.tsx`: position it for the floating layout.
 
 ### 7.6 Review panel
-Status: todo
+Status: done (on ui/track7-port)
+Note: ⋯ → "Compare alternatives" (card dialog, tabs Baseline / Common failures; `ui/review/*`,
+`state/review.ts`). Its HTML download (`report.ts`) was dropped: `?report=1` gains a "Compare
+alternatives" section (`comparisonSection` → `report-model.ts`), model-labelled, citing ObserverOverride.
 `state/review.ts`, `ui/review/*`: keep the comparison/expectations model but
 produce its report through main's `?report=1` report, not its own HTML
 generator.

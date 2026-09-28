@@ -24,6 +24,8 @@ import { revealFindings } from './IssuePanel';
 import { WhyPill } from './common/WhyPill';
 import { activeWorkspaceId, replaceWorkingDocument, workspacesOpen } from '@/state/workspaces';
 import { openWorkspaces } from './workspaces/Workspaces';
+import { reviewOpen } from '@/state/review';
+import { openReview } from './review/ReviewPanel';
 import { exportPng } from './export/diagram';
 import { openReport } from './export/Report';
 
@@ -293,7 +295,7 @@ export function DocActions() {
           }
         }}
       >
-        <summary class="btn is-icon" aria-label="More" title="Saved configurations, export, import, reset">
+        <summary class="btn is-icon" aria-label="More" title="Saved configurations, compare, export, import, reset">
           <span aria-hidden="true">⋯</span>
         </summary>
         <div class="ovf-menu float-card">
@@ -306,6 +308,16 @@ export function DocActions() {
             onClick={() => openWorkspaces()}
           >
             Saved configurations
+          </button>
+          <button
+            type="button"
+            class="btn"
+            aria-haspopup="dialog"
+            aria-expanded={reviewOpen.value}
+            title="Compare this configuration with a baseline, or run the common failures against it"
+            onClick={() => openReview()}
+          >
+            Compare alternatives
           </button>
           <button type="button" class="btn" onClick={() => exportDoc(doc.value)}>Export</button>
           <button

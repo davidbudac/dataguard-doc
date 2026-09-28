@@ -81,6 +81,17 @@ storage error is shown in the dialog, and a failed recovery write leaves
 Undo available for the current visit. Export a JSON file to move a
 configuration to another browser or device.
 
+**Compare alternatives** (⋯ menu) saves a baseline in this browser
+(`dg-review-baseline-v1`) and reads it beside the configuration on screen
+under one named scenario, or runs the six common scenarios one by one against
+the configuration, each with its scenario at t = 0 in place of the authored
+events. Optional expected outcomes, opening deadlines and loss limits are
+checked against the model -- they are not measured recovery objectives. A
+run made against other settings is marked stale; opening a result restores
+the tested configuration, with Undo available. The ⋯ → Report as PDF page
+prints the comparison and an up-to-date scenario run as its own section; the
+branch's standalone HTML review download was not ported (one report system).
+
 ## Testing
 
 `npm test` runs everything. Three suites are load-bearing:

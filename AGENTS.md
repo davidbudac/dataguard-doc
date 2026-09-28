@@ -857,6 +857,11 @@ component computes domain state locally.**
   `replaceWorkingDocument` → `history.replaceDoc`: one undoable step that
   carries the preset id, the saved copy (`activeWorkspaceId`) and -- only when
   it changed -- the edition; an ordinary edit never records the edition.
+- **Compare alternatives** (`review.ts`, `ui/review/`, ⋯ menu): a baseline under
+  `dg-review-baseline-v1`, compared with the document under one scenario, and
+  the six scenarios run one by one; every value is labelled as this page's
+  model. It prints through `?report=1` (`comparisonSection` → `report-model.ts`),
+  never through a report generator of its own.
 - **Persistence** (`persist.ts`): `dg-doc-v1` (the Document, debounced),
   `dg-theme` and `dg-ed` (the two reading preferences, same keys the legacy page
   uses, so a reader who set them there keeps them here). `dg-fsfo-cfg-v1`, the

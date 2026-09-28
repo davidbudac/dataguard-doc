@@ -21,12 +21,14 @@ import { doc } from '@/state/doc';
 import {
   geometry, issues, readoutFor, redoGraph, runFindings, topology, trace,
 } from '@/state/derived';
-import { applyTheme, reportPage, theme } from '@/state/view';
+import { applyTheme, edition, reportPage, theme } from '@/state/view';
+import { baseline, comparisonScenario, expectations, suite } from '@/state/review';
 import { Fact } from '../common/Chip';
 import { TopoCanvas } from '../canvas/TopoCanvas';
 import { Timeline } from '../timeline/Timeline';
+import { comparisonSection } from '../review/model';
 import { buildReport, diagramLandscape } from './report-model';
-import type { FindingRow, ReportModel } from './report-model';
+import type { ComparisonSection, FindingRow, ReportModel } from './report-model';
 import '@/styles/report.css';
 
 /* ---------------- opening and closing ---------------- */
@@ -180,6 +182,103 @@ function useWideDiagram(): { ref: (el: HTMLElement | null) => void; landscape: b
   return { ref: (el) => { host.current = el; }, landscape };
 }
 
+/**
+ * Compare alternatives, when the reader made a baseline or a scenario run
+ * (ui/review). Printed as the dialog shows it, with the assumption it rests
+ * on stated once and every value labelled as this page's model.
+ */
+function Comparison({ c, refs, n }: { c: ComparisonSection; refs: number[]; n: number }) {
+  return (
+    <section class="rp-sec is-page" aria-labelledby="rp-s-compare">
+      <h2 id="rp-s-compare"><span class="rp-n">{n}</span> Compare alternatives</h2>
+      <p class="rp-lead">
+        Each run starts from the declared topology with the named scenario at t = 0 in place of
+        its own events. ObserverOverride is FALSE: automatic failover needs both the observer and
+        the target standby to have lost the primary.<Refs refs={refs} />{' '}
+        <Basis
+          basis="model"
+          note="Outcomes, opening times, loss bounds and commit latency are the simulator's, not measured recovery objectives."
+        />
+      </p>
+      {c.compare === null ? null : (
+        <div class="rp-group">
+          <h3>Baseline and current: {c.compare.scenario}</h3>
+          <table class="rp-tab">
+            <thead>
+              <tr>
+                <th>Measure</th>
+                <th>Baseline <span class="mono">{c.compare.baseline.name}</span> · {c.compare.baseline.edition}</th>
+                <th>Current <span class="mono">{c.compare.current.name}</span> · {c.compare.current.edition}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {c.compare.rows.map((r) => (
+                <tr key={r.k}><td>{r.k}</td><td class="mono">{r.baseline}</td><td class="mono">{r.current}</td></tr>
+              ))}
+            </tbody>
+          </table>
+          <h3>Changed settings</h3>
+          {c.compare.settings.length === 0 ? (
+            <p class="rp-empty">Settings are identical. Names, canvas positions and authored events are not compared.</p>
+          ) : (
+            <table class="rp-tab">
+              <thead><tr><th>Setting</th><th>Baseline</th><th>Current</th></tr></thead>
+              <tbody>
+                {c.compare.settings.map((x) => (
+                  <tr key={x.path}><td class="mono">{x.path}</td><td class="mono">{x.before}</td><td class="mono">{x.after}</td></tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+          {c.compare.commands.length === 0 ? null : (
+            <>
+              <h3>Changed commands</h3>
+              <p class="rp-lead">Whole command blocks, so address and target order stay visible.</p>
+              {c.compare.commands.map((f) => (
+                <div key={f.title} class="rp-file">
+                  <p class="rp-file-hd"><span class="rp-file-t">{f.title}</span></p>
+                  {([['Baseline', f.removed], ['Current', f.added]] as const).map(([k, lines]) => (
+                    <div key={k}>
+                      <p class="rp-lead">{k}</p>
+                      <div class="rp-code">
+                        {lines.length === 0
+                          ? <div class="rp-ln k-comment"><code>(No commands)</code></div>
+                          : lines.map((l, i) => <div key={i} class="rp-ln k-cmd"><code>{l}</code></div>)}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ))}
+            </>
+          )}
+        </div>
+      )}
+      {c.suite === null ? (
+        c.suiteLeftOut
+          ? <p class="rp-empty">A scenario run was made against other settings and is left out.</p>
+          : null
+      ) : (
+        <div class="rp-group">
+          <h3>Common failures</h3>
+          <table class="rp-tab">
+            <thead>
+              <tr><th>Scenario</th><th>Outcome</th><th>New primary opens</th><th>Modelled loss</th><th>Expected</th><th>Check</th></tr>
+            </thead>
+            <tbody>
+              {c.suite.map((r) => (
+                <tr key={r.label}>
+                  <td>{r.label}</td><td class="mono">{r.outcome}</td><td class="mono">{r.open}</td>
+                  <td class="mono">{r.loss}</td><td>{r.expected}</td><td>{r.check}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
+  );
+}
+
 /* ---------------- the report ---------------- */
 
 export function Report() {
@@ -195,6 +294,12 @@ export function Report() {
     trace: tr,
     runFindings: runFindings.value,
     outcome: tr === null ? null : readoutFor(false),
+    comparison: comparisonSection({ doc: doc.value, edition: edition.value }, {
+      baseline: baseline.value,
+      scenario: comparisonScenario.value,
+      suite: suite.value,
+      expectations: expectations.value,
+    }),
   });
   useReportChrome(model.title);
   const wide = useWideDiagram();
@@ -375,6 +480,10 @@ export function Report() {
             <h3>What the run reported</h3>
             <Findings rows={model.run.findings} empty="The run raised no findings of its own." />
           </section>
+        )}
+
+        {model.comparison === null ? null : (
+          <Comparison c={model.comparison} refs={model.comparisonRefs} n={num()} />
         )}
 
         <section class="rp-sec is-page rp-sources" aria-labelledby="rp-s-sources">

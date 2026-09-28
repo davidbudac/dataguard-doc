@@ -112,6 +112,31 @@ export interface RunSection {
   findings: FindingRow[];
 }
 
+/**
+ * Compare alternatives (ui/review/model.ts `comparisonSection`): a baseline
+ * and the configuration under one scenario, and the six scenarios run one by
+ * one. Every value in it is this page's model; the report says so once, on
+ * the section, with the ObserverOverride assumption it rests on.
+ */
+export interface ComparisonSection {
+  compare: {
+    baseline: { name: string; edition: string };
+    current: { name: string; edition: string };
+    scenario: string;
+    rows: { k: string; baseline: string; current: string }[];
+    settings: { path: string; before: string; after: string }[];
+    commands: { title: string; removed: string[]; added: string[] }[];
+  } | null;
+  suite: {
+    label: string; outcome: string; open: string; loss: string; expected: string; check: string;
+  }[] | null;
+  /** A scenario run existed but was made against other settings. */
+  suiteLeftOut: boolean;
+}
+
+/** The citations the comparison's assumption rests on. */
+export const COMPARISON_CITES: readonly CitationId[] = ['FSFO.OBSERVER_OVERRIDE_FALSE', 'FSFO.BOTH_MUST_HAVE_LOST'];
+
 export interface SourceRow {
   n: number;
   id: CitationId;
@@ -132,6 +157,9 @@ export interface ReportModel {
   findings: FindingRow[];
   files: FileGroup[];
   run: RunSection | null;
+  comparison: ComparisonSection | null;
+  /** Source numbers for the comparison's stated assumption. */
+  comparisonRefs: number[];
   sources: SourceRow[];
   /** Citation id -> its number in `sources`. */
   refs: Readonly<Record<string, number>>;
@@ -150,6 +178,8 @@ export interface ReportInput {
   runFindings: readonly Finding[];
   /** The run's readout chips, when there is a run. */
   outcome: readonly ReadoutChip[] | null;
+  /** Compare alternatives, when a baseline or a current scenario run exists. */
+  comparison?: ComparisonSection | null;
 }
 
 /* ---------------- words ---------------- */
@@ -358,6 +388,9 @@ export function buildReport(input: ReportInput): ReportModel {
     };
   }
 
+  const comparison = input.comparison ?? null;
+  const comparisonRefs = comparison === null ? [] : refs.add(COMPARISON_CITES);
+
   const sources: SourceRow[] = refs.order.map((id, i) => {
     const c = citation(id);
     return {
@@ -381,6 +414,8 @@ export function buildReport(input: ReportInput): ReportModel {
     findings,
     files,
     run,
+    comparison,
+    comparisonRefs,
     sources,
     refs: refs.map,
   };

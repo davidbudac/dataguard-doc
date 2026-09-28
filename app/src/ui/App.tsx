@@ -40,6 +40,7 @@ import { IntroPage } from './intro/IntroPage';
 import { Timeline } from './timeline/Timeline';
 import { DockGrip, FullToggle } from './timeline/DockControls';
 import { WorkspacesDialog } from './workspaces/Workspaces';
+import { ReviewDialog } from './review/ReviewPanel';
 
 /** Which modes keep a rail beside the canvas. Learn's right half is the workbench. */
 const HAS_RAIL: Record<Mode, boolean> = {
@@ -504,6 +505,7 @@ export function App() {
       {/* The dialogs the ⋯ menu opens live here, not in the menu: it is a
           <details> that shuts on a press, taking its contents with it. */}
       {intro ? null : <WorkspacesDialog />}
+      {intro ? null : <ReviewDialog />}
     </div>
   );
 }
