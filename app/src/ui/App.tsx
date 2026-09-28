@@ -13,11 +13,11 @@
  * supply.
  */
 
-import { useEffect, useRef, useState } from 'preact/hooks';
+import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { topology, trace } from '@/state/derived';
 import {
-  canEdit, floating, gridOn, inspectorOpen, introOpen, introPage, mode, playing, selection, speed, tNow,
-  toast, viewport,
+  canEdit, floating, gridOn, inspectorOpen, introOpen, introPage, mode, playing, selection, speed,
+  timelineFull, timelineH, tNow, toast, viewport,
 } from '@/state/view';
 import type { Mode } from '@/state/view';
 import { TopBar } from './TopBar';
@@ -38,6 +38,7 @@ import { Panels } from './panels/Panels';
 import { LearnShell, LearnWorkbenchHeader } from './learn/LearnShell';
 import { IntroPage } from './intro/IntroPage';
 import { Timeline } from './timeline/Timeline';
+import { DockGrip, FullToggle } from './timeline/DockControls';
 
 /** Which modes keep a rail beside the canvas. Learn's right half is the workbench. */
 const HAS_RAIL: Record<Mode, boolean> = {
@@ -111,6 +112,9 @@ function useDockAnchor(): (el: HTMLElement | null) => void {
     observer.current = null;
     if (!el) return;
     const write = (): void => {
+      /* Full screen is a moment over the drawing, not a new room for it: the
+         drawing keeps the fit it had, and has it back on the way out. */
+      if (timelineFull.peek()) return;
       const h = Math.round(el.getBoundingClientRect().height);
       if (h > 0) el.ownerDocument.documentElement.style.setProperty('--dock-h', `${h}px`);
     };
@@ -207,14 +211,35 @@ function Stage({ m, wide }: { m: Mode; wide: boolean }) {
   );
 }
 
+/**
+ * The reader's height for Break's timeline panel, as `--tl-h` on the root --
+ * the same escape hatch as `--dock-h`, and on the root for the same reason:
+ * nothing inside the application ever carries a style attribute. Unset, the
+ * panel takes float.css's default. The drawing follows through `--dock-h`,
+ * which the dock's own observer writes as the panel changes size.
+ */
+function useTimelineHeight(): void {
+  const h = timelineH.value;
+  useLayoutEffect(() => {
+    if (typeof document === 'undefined') return;
+    const root = document.documentElement;
+    if (h === null) root.style.removeProperty('--tl-h');
+    else root.style.setProperty('--tl-h', `${h}px`);
+  }, [h]);
+}
+
 /* The floating dock: the readings and the finding chips on one row -- the
-   whole of it in Build, the head of the timeline panel in Break. */
-function FloatDock({ m }: { m: Mode }) {
+   whole of it in Build, the head of the timeline panel in Break. With a run
+   on it, the panel has a grab handle on its top edge and a full-screen button
+   at the end of that row (timeline/DockControls.tsx). */
+function FloatDock({ m, sized }: { m: Mode; sized: boolean }) {
   return (
     <>
       <div class="dock-status">
+        {sized && !timelineFull.value ? <DockGrip /> : null}
         <Readout />
         <FindingsChips />
+        {sized ? <FullToggle /> : null}
       </div>
       {m === 'break' ? <TimelineSlot /> : null}
     </>
@@ -247,6 +272,14 @@ export function App() {
   const t = toast.value;
   const barRef = useBarAnchor();
   const dockRef = useDockAnchor();
+  useTimelineHeight();
+  /* Break's timeline panel is sized by the reader once there is a run to
+     show; the steady state's one sentence keeps its own height. */
+  const sized = float && m === 'break' && trace.value !== null;
+  const full = sized && timelineFull.value;
+  /* Full screen belongs to the run on screen: leaving Break, or clearing the
+     events, puts the drawing back. */
+  useEffect(() => { if (!sized) timelineFull.value = false; }, [sized]);
   /* Installed by the shell, not by a mode: `beforeprint` fires once on the
      window, and both the Configure panels and Build's folded notes expand off
      the same signal (ui/print.ts). */
@@ -255,7 +288,7 @@ export function App() {
   useEffect(() => installShortcuts(), []);
 
   return (
-    <div class={intro ? 'app m-intro' : `app m-${m}${float ? ' is-float' : ''}${float && !gridOn.value ? ' no-grid' : ''}`}>
+    <div class={intro ? 'app m-intro' : `app m-${m}${float ? ' is-float' : ''}${float && !gridOn.value ? ' no-grid' : ''}${full ? ' tl-full' : ''}`}>
       {/* One header, three bands: the modes and the small controls, then the
           quieter document row, then the line that says what to do in the mode
           that is open. It is one element so the toast can be anchored to the
@@ -326,7 +359,9 @@ export function App() {
             <>
               <FindingToast />
               <FindingsPopover />
-              <div class="app-dock float-card" ref={dockRef}><FloatDock m={m} /></div>
+              <div class={sized ? 'app-dock float-card has-tl' : 'app-dock float-card'} ref={dockRef}>
+                <FloatDock m={m} sized={sized} />
+              </div>
             </>
           ) : null}
 

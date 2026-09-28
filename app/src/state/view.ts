@@ -141,6 +141,48 @@ export const hintsOn = signal<boolean>(false);
  */
 export const gridOn = signal<boolean>(true);
 /**
+ * The height of Break's floating timeline panel, in CSS pixels, as the reader
+ * dragged it by its top edge -- or null for the default (`timelineDefaultH`).
+ * Remembered under `dg-tl-h` (persist.ts), read once at boot like `hintsOn`.
+ * It is a wish, not a measurement: the panel is clamped to the window it is
+ * shown in (`clampTimelineH`), so a height chosen on a tall screen does not
+ * push the top bar off a short one.
+ */
+export const timelineH = signal<number | null>(null);
+/**
+ * Whether Break's timeline fills the window below the top bar. A moment's
+ * view, not a preference: not remembered, and Escape leaves it.
+ */
+export const timelineFull = signal<boolean>(false);
+
+/** The panel never gets shorter than its header row (readings and chips). */
+export const TL_MIN_H = 64;
+/** One arrow-key step on the resize handle; `Shift` takes four. */
+export const TL_STEP = 16;
+/* The gaps the floating layout keeps: the card margin at the window's foot
+   and the room under the header. Same numbers as float.css's `--float-m` and
+   the `+ 12px` under `--bar-bottom`. */
+const TL_FOOT = 14;
+const TL_HEAD_GAP = 12;
+
+/**
+ * The panel's height before the reader has touched it: a bit over a third of
+ * the window, so the drawing keeps the larger share. Mirrored in float.css as
+ * `clamp(220px, 36dvh, 400px)`.
+ */
+export function timelineDefaultH(viewH: number): number {
+  return Math.round(Math.min(400, Math.max(220, viewH * 0.36)));
+}
+
+/** The tallest the panel may be: it stops short of the header's foot. */
+export function timelineMaxH(viewH: number, headBottom: number): number {
+  return Math.max(TL_MIN_H, Math.round(viewH - TL_FOOT - headBottom - TL_HEAD_GAP));
+}
+
+export function clampTimelineH(h: number, viewH: number, headBottom: number): number {
+  return Math.min(timelineMaxH(viewH, headBottom), Math.max(TL_MIN_H, Math.round(h)));
+}
+/**
  * A field the rail should focus on its next render, then forget.
  *
  * Double-clicking a card on the drawing means "rename it": the rail opens on

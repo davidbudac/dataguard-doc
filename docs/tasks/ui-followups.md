@@ -186,7 +186,11 @@ card out of a stack stretches the stack's frame.
 ## Track 6 — rough edges left by round 1 (shell, panel, report) + timeline
 
 ### 6.1 Resizable Break timeline, with full screen
-Status: todo
+Status: done (on ui/track6-shell)
+Note: `ui/timeline/DockControls.tsx`: a `role="separator"` grip on the panel's top edge
+(drag, arrows/PageUp/Home/End, double-click or Enter resets), `timelineH` → `--tl-h`,
+remembered as `dg-tl-h`; default `clamp(220px,36dvh,400px)`. `⤢` button → `timelineFull`
+(`.tl-full`), Escape leaves (after the findings popover). Docked layout unchanged.
 User request: in Break, the timeline panel at the bottom can be dragged taller
 (a grab handle on its top edge; height remembered; min/max sensible, keyboard
 accessible), and a full-screen button on the panel toggles it to fill the
