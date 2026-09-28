@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
-  defaultFsfo, emptyDoc, isTopologyDoc, parseTopologyDoc, parseTopologyDocOrThrow,
+  defaultDestProps, defaultFsfo, emptyDoc, isTopologyDoc, parseTopologyDoc, parseTopologyDocOrThrow,
 } from '../serialize/schema';
+import { formatRedoRoutes } from '../redo/parse';
+import { resolveRedoGraph } from '../redo/resolve';
 import { BOUNDS, BROKER_DEFAULTS, clamp, defaultLagLimit, pingSet, withinBounds } from '../defaults';
 import { classicTopology } from '../compat/classic';
 
@@ -189,5 +191,130 @@ describe('document validation', () => {
     expect(parseTopologyDoc(clone(doc)).ok).toBe(true);
     expect(doc.config.fsfo.state).toBe('disabled');
     expect(defaultFsfo('26ai').pingIntervalMs).toBeNull();
+  });
+});
+
+/* ---------------- RedoRoutes saved with PRIORITY on the group ---------------- */
+
+describe('RedoRoutes written before PRIORITY moved onto the destination', () => {
+  /* Until 2026-09-28 a document put PRIORITY on the group and drew exactly
+     one group at a time. Such a document must still load, and mean what its
+     author saw on screen. */
+  const withRoutes = (routes: unknown, memberIndex = 0, kind?: 'farsync'): Record<string, unknown> => {
+    const raw = clone(classicTopology()) as unknown as Record<string, unknown>;
+    const members = raw['members'] as Array<Record<string, unknown>>;
+    const m = members[memberIndex] as Record<string, unknown>;
+    m['redoRoutes'] = routes;
+    if (kind) m['kind'] = kind;
+    /* a second standby to route to */
+    const sby = clone(members[1]) as Record<string, unknown>;
+    sby['id'] = 'sby02';
+    sby['name'] = 'sby02';
+    members.push(sby);
+    return raw;
+  };
+  const routesOf = (raw: unknown) => {
+    const r = parseTopologyDoc(raw);
+    expect(r.doc).not.toBeNull();
+    return { rules: r.doc!.members[0]!.redoRoutes, issues: r.issues };
+  };
+
+  it('"A, else B" -- two groups at PRIORITY 1 and 2 -- becomes one group, (A PRIORITY=1, B PRIORITY=2)', () => {
+    const { rules, issues } = routesOf(withRoutes([{
+      source: 'LOCAL',
+      groups: [
+        { priority: 1, explicitGroup: true, dests: [{ target: 'sby01', xpt: 'SYNC' }] },
+        { priority: 2, explicitGroup: true, dests: [{ target: 'sby02', xpt: 'ASYNC' }] },
+      ],
+    }]));
+    expect(formatRedoRoutes(rules)).toBe('(LOCAL : (sby01 SYNC PRIORITY=1, sby02 ASYNC PRIORITY=2))');
+    const note = issues.find((i) => i.path === 'members[0].redoRoutes[0].groups');
+    expect(note?.severity).toBe('repaired');
+    expect(note?.message).toMatch(/ships where the old drawing did/);
+  });
+
+  it('keeps what the old drawing showed: the PRIORITY=1 destination ships, the other stands by', () => {
+    const { rules } = routesOf(withRoutes([{
+      source: 'LOCAL',
+      groups: [
+        { priority: 2, explicitGroup: true, dests: [{ target: 'sby02' }] },
+        { priority: 1, explicitGroup: true, dests: [{ target: 'sby01' }] },
+      ],
+    }]));
+    const doc = parseTopologyDoc(withRoutes(rules)).doc!;
+    const g = resolveRedoGraph(doc, { primary: doc.members[0]!.id });
+    expect(g.edges.filter((e) => e.active).map((e) => e.to as string)).toEqual(['sby01']);
+  });
+
+  it('a group of several destinations that shipped together keeps shipping together, as PRIORITY=8', () => {
+    const { rules, issues } = routesOf(withRoutes([{
+      source: 'LOCAL',
+      groups: [
+        { priority: 1, explicitGroup: true, dests: [{ target: 'sby01' }] },
+        { priority: 2, explicitGroup: true, dests: [{ target: 'sby02' }, { target: 'prm01' }] },
+      ],
+    }]));
+    expect(formatRedoRoutes(rules)).toBe('(LOCAL : (sby01 PRIORITY=1, sby02 PRIORITY=8, prm01 PRIORITY=8))');
+    expect(issues.find((i) => i.path.endsWith('.groups'))?.message).toMatch(/ships where the old drawing did/);
+  });
+
+  it('says so when the old drawing cannot be said exactly', () => {
+    const { issues } = routesOf(withRoutes([{
+      source: 'LOCAL',
+      groups: [
+        { priority: 1, explicitGroup: true, dests: [{ target: 'sby01' }, { target: 'sby02' }] },
+        { priority: 2, explicitGroup: true, dests: [{ target: 'prm01' }] },
+      ],
+    }]));
+    expect(issues.find((i) => i.path.endsWith('.groups'))?.message).toMatch(/fewer destinations/);
+  });
+
+  it('a group without PRIORITY took the SENDER default; at a far sync that was 1', () => {
+    const { rules } = routesOf(withRoutes([{
+      source: ['prm01'],
+      groups: [
+        { explicitGroup: true, dests: [{ target: 'sby01', xpt: 'ASYNC' }] },
+        { priority: 2, explicitGroup: true, dests: [{ target: 'sby02', xpt: 'ASYNC' }] },
+      ],
+    }], 0, 'farsync'));
+    expect(formatRedoRoutes(rules)).toBe('(prm01 : (sby01 ASYNC PRIORITY=1, sby02 ASYNC PRIORITY=2))');
+  });
+
+  it('ALL is never inside a group and stays a path of its own', () => {
+    const { rules } = routesOf(withRoutes([{
+      source: 'LOCAL',
+      groups: [
+        { priority: 1, explicitGroup: true, dests: [{ target: 'sby01' }] },
+        { priority: 2, dests: [{ target: 'ALL' }] },
+      ],
+    }]));
+    expect(formatRedoRoutes(rules)).toBe('(LOCAL : (sby01 PRIORITY=1), ALL)');
+  });
+
+  it('the new shape loads as it stands, with no migration note, and round-trips', () => {
+    const current = [{
+      source: 'LOCAL',
+      groups: [{ explicitGroup: true, dests: [{ target: 'sby01', priority: 1 }, { target: 'sby02', priority: 2 }] }],
+    }];
+    const r = parseTopologyDoc(withRoutes(current));
+    expect(r.issues.filter((i) => i.path.includes('redoRoutes'))).toEqual([]);
+    const again = parseTopologyDoc(clone(r.doc));
+    expect(again.doc!.members[0]!.redoRoutes).toEqual(r.doc!.members[0]!.redoRoutes);
+    expect(again.issues.filter((i) => i.path.includes('redoRoutes'))).toEqual([]);
+  });
+
+  it('a group with no PRIORITY anywhere is the current shape, untouched', () => {
+    const { rules, issues } = routesOf(withRoutes([{
+      source: 'LOCAL', groups: [{ dests: [{ target: 'sby01' }, { target: 'sby02' }] }],
+    }]));
+    expect(formatRedoRoutes(rules)).toBe('(LOCAL : sby01, sby02)');
+    expect(issues.filter((i) => i.path.includes('redoRoutes'))).toEqual([]);
+  });
+});
+
+describe('MaxFailure defaults inside a RedoRoutes group', () => {
+  it('is 1 for a destination written in a parenthesised group and 0 otherwise', () => {
+    expect(defaultDestProps().maxFailure).toBe(0);
+    expect(defaultDestProps({ inGroup: true }).maxFailure).toBe(1);
   });
 });

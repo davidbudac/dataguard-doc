@@ -12,7 +12,7 @@
  */
 
 import {
-  activeRule, applicationId, defaultDestProps, hostId, linkId, memberId, observerId, primarySite,
+  activeRule, applicationId, defaultDestProps, hostId, isParenthesised, linkId, memberId, observerId, primarySite,
   siteId, withApplication,
 } from '@/engine';
 import type {
@@ -893,10 +893,19 @@ function routesWith(m: Member, primary: MemberId, dest: RouteDest): RedoRouteRul
     g.dests.some((dd) => dd.target === 'ALL' || dd.target === dest.target);
   if (act && act.rule.groups.some(names)) return m.redoRoutes;
   if (act && m.redoRoutes.length > 0) {
-    return m.redoRoutes.map((r, i) => (i !== act.index ? r : {
-      ...r,
-      groups: r.groups.map((g, gi) => (gi !== 0 ? g : { ...g, dests: [...g.dests, dest] })),
-    }));
+    /* Joined to the first unparenthesised entry, so that it ships: added to a
+       parenthesised group it would only stand by, since a group has one
+       active redo path. */
+    return m.redoRoutes.map((r, i) => {
+      if (i !== act.index) return r;
+      const open = r.groups.findIndex((g) => !isParenthesised(g));
+      return {
+        ...r,
+        groups: open < 0
+          ? [...r.groups, { dests: [dest] }]
+          : r.groups.map((g, gi) => (gi !== open ? g : { ...g, dests: [...g.dests, dest] })),
+      };
+    });
   }
   const source: RedoRouteRule['source'] = m.id === primary ? 'LOCAL' : 'ANY';
   return [...m.redoRoutes, { source, groups: [{ dests: [dest] }] }];

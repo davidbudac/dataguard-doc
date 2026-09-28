@@ -10,7 +10,7 @@ import {
 } from '@/state/codec';
 import { classicDoc, withEvents, withLayout, withMeta, withParams } from '@/state/doc';
 import type { Doc } from '@/state/doc';
-import { base64UrlEncode, hostId, utf8Encode } from '@/engine';
+import { base64UrlEncode, formatRedoRoutes, hostId, utf8Encode } from '@/engine';
 
 const sample = (): Doc => {
   let d = classicDoc('26ai');
@@ -74,6 +74,28 @@ describe('codec', () => {
     wire['ui'] = { ...(wire['ui'] as object), layout: { prm01: { dx: 23, dy: -17 }, dc3: { dx: 9, dy: 0 } } };
     const back = await decodeFragment(`#t0=${base64UrlEncode(utf8Encode(JSON.stringify(wire)))}`);
     expect(back?.doc?.layout).toEqual({ prm01: { dx: 24, dy: -16 }, dc3: { dx: 8, dy: 0 } });
+  });
+
+  it('reads a link written with PRIORITY on the group as the one group it was drawn as', async () => {
+    /* Before 2026-09-28 the far sync HA pair travelled as two groups, one
+       active at a time. The link opens as Oracle's spelling of that drawing,
+       and a second trip through the address bar leaves it as it is. */
+    const wire = JSON.parse(toJsonText(classicDoc())) as Record<string, unknown>;
+    const members = wire['members'] as Array<Record<string, unknown>>;
+    members[0]!['redoRoutes'] = [{
+      source: 'LOCAL',
+      groups: [
+        { priority: 1, explicitGroup: true, dests: [{ target: 'sby01', xpt: 'SYNC' }] },
+        { priority: 2, explicitGroup: true, dests: [{ target: 'prm01', xpt: 'ASYNC' }] },
+      ],
+    }];
+    const back = await decodeFragment(`#t0=${base64UrlEncode(utf8Encode(JSON.stringify(wire)))}`);
+    const routes = back?.doc?.topology.members[0]?.redoRoutes ?? [];
+    expect(formatRedoRoutes(routes)).toBe('(LOCAL : (sby01 SYNC PRIORITY=1, prm01 ASYNC PRIORITY=2))');
+    expect(back?.issues.some((i) => i.severity === 'repaired' && i.path.includes('redoRoutes'))).toBe(true);
+    const again = await decodeFragment(`#${encodeDocPlain(back!.doc!).fragment}`);
+    expect(again?.doc?.topology.members[0]?.redoRoutes).toEqual(routes);
+    expect(again?.issues.some((i) => i.path.includes('redoRoutes'))).toBe(false);
   });
 
   it('treats a size with one half missing as a plain offset, and clamps a silly one', () => {
