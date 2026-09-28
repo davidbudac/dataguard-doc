@@ -119,7 +119,7 @@ export function DockGrip() {
  * "forget the selection".
  */
 export function onFullKey(e: KeyboardEvent): void {
-  if (e.key !== 'Escape' || !timelineFull.value || findingsOpen.value) return;
+  if (e.key !== 'Escape' || e.defaultPrevented || !timelineFull.value || findingsOpen.value) return;
   timelineFull.value = false;
   e.preventDefault();
   e.stopPropagation();

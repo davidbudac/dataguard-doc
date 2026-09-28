@@ -36,7 +36,7 @@ function LessonList({ current }: { current: string | null }) {
             >
               <span class="learn-n">{String(i + 1).padStart(2, '0')}</span>
               <span class="learn-title">{l.title}</span>
-              <span class="learn-steps mono">
+              <span class="learn-steps">
                 {l.steps.length} step{l.steps.length === 1 ? '' : 's'}
               </span>
             </a>

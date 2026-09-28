@@ -198,7 +198,11 @@ window (Escape exits). Also fixes the round-1 note that the panel took ~46 % of
 the height by default -- pick a sensible default now that it is resizable.
 
 ### 6.2 Shell leftovers
-Status: todo
+Status: done (on ui/track6-shell)
+Note: Findings' Escape is capture-phase and stops there. `useChromeInsets` (App.tsx) measures
+the palette (`--pal-r`) and, 1024-1279, the event menu -- the drawing goes under or beside it,
+whichever fits larger (`--evm-t`/`--evm-r`). One-row top bar down to 1024; tabs, lesson list,
+step anchor and Explain are sans sentence case.
 - Escape with the findings popover open also clears the canvas selection.
 - Modes wrap to a second row of the top bar below ~1100 px.
 - The canvas insets use fixed palette widths (104 px Build, 236 px Break)

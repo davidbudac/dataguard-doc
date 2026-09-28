@@ -18,15 +18,15 @@
 /* The row stands in two groups -- generated files, then the behaviour this
    page draws -- separated by a hairline with air on both sides.
 
-   Case does the separating, not the face. "Files" and "Behaviour" are this
-   page's words about the tabs rather than Oracle vocabulary, so they are set
-   the way this page sets prose: sans, sentence case, no tracking, against a
-   row of mono uppercase tabs. The face alone could not carry it -- three of
-   the seven tab labels ("Application view", "Commit", "Reopen") are this
-   page's words too, and system-ui against ui-monospace is not legible as a
-   distinction at label size anyway. No opacity: in this application a faded
-   thing is a switched-off thing (shell.css), and it costs contrast a 3.6:1
-   ink token has none of to spare. */
+   "Files" and "Behaviour" are this page's words about the tabs rather than
+   Oracle vocabulary, so they are set the way this page sets prose: sans,
+   sentence case, no tracking. The tabs are sentence-case sans too now -- the
+   mono uppercase row shouted every label, the Oracle ones included, and
+   nothing else on the page does that any more -- so what separates the
+   group name from its tabs is size, weight and ink: 11 px semibold in the
+   quietest ink against 12.5 px tabs one step louder. No opacity: in this
+   application a faded thing is a switched-off thing (shell.css), and it
+   costs contrast a 3.6:1 ink token has none of to spare. */
 .panel-group{display:flex;align-items:stretch;flex:0 0 auto}
 .panel-group+.panel-group{margin-left:12px;border-left:1px solid var(--ln)}
 .panel-group-lbl{display:inline-flex;align-items:center;flex:0 0 auto;
@@ -35,8 +35,8 @@
   padding:0 8px 0 12px;white-space:nowrap}
 
 .panel-tab{display:inline-flex;align-items:center;gap:7px;flex:0 0 auto;
-  font-family:var(--mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;
-  color:var(--ik3);background:transparent;border:0;border-bottom:2px solid transparent;
+  font-family:var(--sans);font-size:12.5px;font-weight:500;letter-spacing:0;
+  color:var(--ik2);background:transparent;border:0;border-bottom:2px solid transparent;
   padding:8px 14px;white-space:nowrap;cursor:pointer;text-decoration:none}
 .panel-tab:hover{color:var(--ik);background:var(--sf)}
 /* The tab strip scrolls sideways, which clips an outside ring: draw it inside. */

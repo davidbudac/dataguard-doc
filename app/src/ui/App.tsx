@@ -13,7 +13,7 @@
  * supply.
  */
 
-import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { topology, trace } from '@/state/derived';
 import {
   canEdit, floating, gridOn, inspectorOpen, introOpen, introPage, mode, playing, selection, speed,
@@ -124,6 +124,123 @@ function useDockAnchor(): (el: HTMLElement | null) => void {
     ro.observe(el);
     observer.current = ro;
   };
+}
+
+/**
+ * Measure the chrome floating at the canvas's sides and hand the numbers to
+ * float.css, so the drawing's fit leaves room for what is actually there
+ * rather than for a width somebody once read off a screenshot:
+ *
+ *   `--pal-r`  the right edge of the palette at the left (Build's tools,
+ *              Break's scenarios), from the window's left edge
+ *   `--evm-t`, `--evm-r`  the drawing's top and right insets while Break's
+ *              event menu floats at the top right of the stage (1024-1279,
+ *              where the rail has become a drawer)
+ *
+ * The menu is a card in one corner, so the drawing can clear it by starting
+ * below it or by stopping left of it; whichever lets the drawing (its viewBox)
+ * fit larger wins -- a row of four data centres goes under the menu, a tall
+ * cascade beside it. Unset when the thing is absent, and float.css falls back.
+ * The elements belong to other components, so they are found after each
+ * render of the shell and observed while they live; same `style.setProperty`
+ * escape hatch as `--bar-bottom`, on the root.
+ */
+const INSET_PARTS = ['.palette', '.app-stage > .evmenu', '.app-stage > .tp-wrap'] as const;
+
+/** Where the drawing's fit box starts and stops, beside or under the menu. */
+export function evmenuInsets(
+  wrap: { left: number; top: number; right: number; bottom: number },
+  menu: { left: number; top: number; right: number; bottom: number },
+  pad: { l: number; b: number },
+  view: { w: number; h: number },
+): { t: number; r: number } {
+  const top0 = menu.top - wrap.top + 6;
+  const beside = { t: top0, r: wrap.right - menu.left + 8 };
+  const under = { t: menu.bottom - wrap.top + 12, r: wrap.right - menu.right + 18 };
+  const fit = (o: { t: number; r: number }): number => Math.min(
+    (wrap.right - wrap.left - pad.l - o.r) / view.w,
+    (wrap.bottom - wrap.top - o.t - pad.b) / view.h,
+  );
+  const pick = fit(under) > fit(beside) ? under : beside;
+  return { t: Math.round(pick.t), r: Math.round(pick.r) };
+}
+
+function useChromeInsets(): (el: HTMLElement | null) => void {
+  const host = useRef<HTMLElement | null>(null);
+  const observer = useRef<ResizeObserver | null>(null);
+  const seen = useRef<(Element | null)[]>([]);
+  const write = useCallback((): void => {
+    const app = host.current;
+    if (!app) return;
+    const root = app.ownerDocument.documentElement.style;
+    const set = (prop: string, v: number | null): void => {
+      if (v !== null && v > 0) root.setProperty(prop, `${v}px`);
+      else root.removeProperty(prop);
+    };
+    const [pal, menu, wrap] = INSET_PARTS.map((sel) => app.querySelector(sel));
+    const p = pal?.getBoundingClientRect();
+    set('--pal-r', p && p.width > 0 ? Math.round(p.right) : null);
+    const m = menu?.getBoundingClientRect();
+    const w = wrap?.getBoundingClientRect();
+    const box = wrap?.querySelector('.topo-svg')?.getAttribute('viewBox')?.trim().split(/[\s,]+/).map(Number);
+    if (m && w && wrap && box && m.width > 0 && w.width > 0 && (box[2] ?? 0) > 0 && (box[3] ?? 0) > 0) {
+      const cs = getComputedStyle(wrap);
+      const at = evmenuInsets(w, m, {
+        l: parseFloat(cs.paddingLeft) || 0, b: parseFloat(cs.paddingBottom) || 0,
+      }, { w: box[2] as number, h: box[3] as number });
+      set('--evm-t', at.t);
+      set('--evm-r', at.r);
+    } else {
+      set('--evm-t', null);
+      set('--evm-r', null);
+    }
+  }, []);
+  /* Re-find the parts and re-observe them when one has been swapped for
+     another element (the event menu shut to its one button is a new node). */
+  const rescan = useCallback((): void => {
+    const app = host.current;
+    if (!app) return;
+    const now = INSET_PARTS.map((sel) => app.querySelector(sel));
+    if (now.some((el, i) => el !== seen.current[i])) {
+      seen.current = now;
+      observer.current?.disconnect();
+      observer.current = null;
+      if (typeof ResizeObserver !== 'undefined') {
+        const ro = new ResizeObserver(write);
+        for (const el of now) if (el) ro.observe(el);
+        observer.current = ro;
+      }
+    }
+    write();
+  }, [write]);
+  /* After every render of the shell -- and, since the parts re-render on
+     their own signals without the shell, whenever the stage's children or
+     the shell's change (a frame later, once per frame). */
+  useLayoutEffect(rescan);
+  const mutations = useRef<MutationObserver | null>(null);
+  useEffect(() => () => {
+    observer.current?.disconnect();
+    mutations.current?.disconnect();
+  }, []);
+  return useCallback((el: HTMLElement | null): void => {
+    host.current = el;
+    mutations.current?.disconnect();
+    mutations.current = null;
+    if (!el || typeof MutationObserver === 'undefined') return;
+    let queued = false;
+    const mo = new MutationObserver((records) => {
+      if (queued) return;
+      /* Only a child of the shell or of the stage coming or going: the
+         drawing's own churn (playback repaints it every frame) is not it. */
+      const near = records.some((r) => r.target === el
+        || (r.target instanceof Element && r.target.classList.contains('app-stage')));
+      if (!near) return;
+      queued = true;
+      requestAnimationFrame(() => { queued = false; rescan(); });
+    });
+    mo.observe(el, { childList: true, subtree: true });
+    mutations.current = mo;
+  }, [rescan]);
 }
 
 const MIN_TIMELINE_W = 640;
@@ -272,6 +389,7 @@ export function App() {
   const t = toast.value;
   const barRef = useBarAnchor();
   const dockRef = useDockAnchor();
+  const appRef = useChromeInsets();
   useTimelineHeight();
   /* Break's timeline panel is sized by the reader once there is a run to
      show; the steady state's one sentence keeps its own height. */
@@ -288,7 +406,7 @@ export function App() {
   useEffect(() => installShortcuts(), []);
 
   return (
-    <div class={intro ? 'app m-intro' : `app m-${m}${float ? ' is-float' : ''}${float && !gridOn.value ? ' no-grid' : ''}${full ? ' tl-full' : ''}`}>
+    <div ref={appRef} class={intro ? 'app m-intro' : `app m-${m}${float ? ' is-float' : ''}${float && !gridOn.value ? ' no-grid' : ''}${full ? ' tl-full' : ''}${float && m === 'break' && !wide ? ' has-evm' : ''}`}>
       {/* One header, three bands: the modes and the small controls, then the
           quieter document row, then the line that says what to do in the mode
           that is open. It is one element so the toast can be anchored to the

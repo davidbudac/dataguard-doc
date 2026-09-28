@@ -24,9 +24,9 @@
   padding:9px 4px;color:var(--ik2);border-bottom:0;
 }
 .learn-ol a:hover{color:var(--ik);background:var(--sf2)}
-.learn-n{font-family:var(--mono);font-size:10.5px;letter-spacing:.12em;color:var(--ik3)}
+.learn-n{font-size:12px;font-variant-numeric:tabular-nums;color:var(--ik3)}
 .learn-title{font-size:14px;min-width:0}
-.learn-steps{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ik3)}
+.learn-steps{font-size:12px;color:var(--ik3);white-space:nowrap}
 .learn-ol li.is-current a{color:var(--ik);font-weight:600}
 .learn-ol li.is-current .learn-n{color:var(--vi)}
 .learn-back{font-size:12px}
@@ -52,8 +52,7 @@
 .ls.is-active{background:color-mix(in srgb,var(--vi) 6%,transparent)}
 .ls.is-active .ls-anchor{color:var(--vi)}
 .ls-hd{display:flex;align-items:baseline;justify-content:space-between;gap:10px}
-.ls-anchor{font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;
-  color:var(--ik3);border-bottom:0}
+.ls-anchor{font-size:12px;color:var(--ik3);border-bottom:0}
 .ls-anchor:hover{color:var(--vi)}
 .ls-t{font-size:15.5px;font-weight:620;letter-spacing:-.01em;color:var(--ik)}
 .ls-prose{max-width:60ch}
@@ -69,7 +68,7 @@
 
 .explain-wrap{display:flex;flex-direction:column;gap:8px;align-items:flex-start}
 .explain{align-self:flex-start;display:inline-flex;align-items:center;gap:9px;
-  font-family:var(--mono);font-size:11.5px;letter-spacing:.12em;text-transform:uppercase;
+  font-family:var(--sans);font-size:12.5px;letter-spacing:0;
   font-weight:600;color:var(--vi);background:var(--vif);border:0;border-radius:var(--r-ctl,7px);
   padding:7px 14px 7px 12px;cursor:pointer;text-align:left}
 /* CSS escapes, decoded by the parser: down arrow closed, up arrow open. */
