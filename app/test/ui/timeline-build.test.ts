@@ -9,7 +9,7 @@ import { describe, expect, it } from 'vitest';
 import { classicTopology, scenarioEvents, simulate } from '@/engine';
 import type { TopologyDoc, Trace } from '@/engine';
 import { preset } from '@/presets';
-import { memberId } from '../../src/engine/ids';
+import { hostId, memberId } from '../../src/engine/ids';
 import { multiTargetDoc } from '../topologies';
 import {
   approxW, axisSpan, buildTimeline, clampToAxis, describeEvent, fitLabel, packBraces,
@@ -181,8 +181,8 @@ describe('buildTimeline: captions branch on the outcome', () => {
 
 /* SIM-14 g (fact check 2026-09-28): the blocked-switchover caption used to
    say "outside FastStartFailoverLagLimit" for every refusal, including one
-   that has nothing to do with the lag limit. It now reads the reason off
-   the trace's own SWITCHOVER.REFUSED finding. */
+   that has nothing to do with the lag limit. It now reads the reason the
+   engine recorded on the switchover facts (`facts.switchover.refusal`). */
 describe('buildTimeline: a blocked switchover names its own refusal reason', () => {
   it('names the lag limit when that is the refusal', () => {
     const { doc, trace } = classic('switchover');
@@ -208,6 +208,19 @@ describe('buildTimeline: a blocked switchover names its own refusal reason', () 
     expect(m.caption.text).toContain('SWITCHOVER refused');
     expect(m.caption.text).not.toContain('FastStartFailoverLagLimit');
     expect(m.caption.text).toContain('not the pre-specified fast-start failover target');
+  });
+
+  it('names the standby that is down, which no fast-start failover gate has anything to do with', () => {
+    const { doc } = classic('switchover');
+    const events = [
+      { at: 0, kind: 'host.down' as const, host: hostId('dc2-sby01') },
+      { at: 5, kind: 'cmd.switchover' as const, to: memberId('sby01') },
+    ];
+    const trace = simulate(doc, events);
+    expect(trace.facts.blocked).toBe(true);
+    expect(trace.facts.switchover?.refusal).toBe('target-down');
+    const m = buildTimeline(trace, { ...doc, events }, { width: 980 });
+    expect(m.caption.text).toBe('SWITCHOVER refused — the target standby is down');
   });
 });
 

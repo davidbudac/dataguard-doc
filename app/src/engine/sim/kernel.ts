@@ -22,6 +22,7 @@ import type {
 import type { Claim } from '../types/claims';
 import type { FsfoState, ProtectionMode } from '../types/topology';
 import type { NetState } from '../net/graph';
+import type { SwitchoverRefusal } from './roles';
 
 /** Times closer together than this are the same instant. */
 export const EPS = 1e-9;
@@ -163,6 +164,8 @@ export interface SwitchoverFacts {
   tRestartDraw: Seconds | null;
   blocked: boolean;
   applyRemaining: Seconds;
+  /** Why the broker refused the command; present only on a refused switchover. */
+  refusal?: SwitchoverRefusal;
 }
 
 export interface SimState {

@@ -843,27 +843,22 @@ function buildBraces(doc: TopologyDoc, f: Facts): BraceInput[] {
 /* ---------------- caption (branches on the outcome, never on the event) ---- */
 
 /**
- * The reason a blocked SWITCHOVER is refused, read off the trace's own
- * SWITCHOVER.REFUSED finding rather than recomputed here -- the finding's
- * message already names one of the broker's three documented reasons (not
- * the pre-specified target, not synchronized, or past the lag limit); a
- * fourth case -- the target or the primary itself unavailable -- is refused
- * before that finding is ever raised, so it falls to the generic caption.
+ * The reason a blocked SWITCHOVER is refused, read off the trace -- the engine
+ * decides it and records it on the switchover facts; nothing is recomputed
+ * here, and nothing is guessed from the wording of a finding.
  */
-function switchoverRefusalCaption(findings: readonly Finding[]): string {
-  const refused = findings.find((fi) => fi.id === 'SWITCHOVER.REFUSED');
-  if (!refused) return 'SWITCHOVER refused';
-  const msg = refused.message;
-  if (msg.includes('FastStartFailoverTarget candidates')) {
-    return 'SWITCHOVER refused — this member is not the pre-specified fast-start failover target';
-  }
-  if (msg.includes('FastStartFailoverLagLimit')) {
-    return 'SWITCHOVER refused — the target standby is outside FastStartFailoverLagLimit';
-  }
-  if (msg.includes('synchronized')) {
-    return 'SWITCHOVER refused — the target standby is not synchronized';
-  }
-  return 'SWITCHOVER refused';
+const REFUSAL_CAPTION: Record<string, string> = {
+  'primary-down': 'SWITCHOVER refused — the primary is down',
+  'target-down': 'SWITCHOVER refused — the target standby is down',
+  'not-connected': 'SWITCHOVER refused — the primary and the target standby cannot reach each other',
+  'not-target': 'SWITCHOVER refused — this member is not the pre-specified fast-start failover target',
+  'not-synchronized': 'SWITCHOVER refused — the target standby is not synchronized',
+  'past-lag-limit': 'SWITCHOVER refused — the target standby is outside FastStartFailoverLagLimit',
+};
+
+function switchoverRefusalCaption(f: Facts): string {
+  const reason = f.switchover?.refusal;
+  return (reason !== undefined ? REFUSAL_CAPTION[reason] : undefined) ?? 'SWITCHOVER refused';
 }
 
 function buildCaption(
@@ -895,7 +890,7 @@ function buildCaption(
     case 'switchover':
       if (!f.switchover || f.switchover.blocked || f.switchover.downtime === null) {
         return {
-          text: switchoverRefusalCaption(findings),
+          text: switchoverRefusalCaption(f),
           tone: 'f-rd', x: null, anchor: 'start',
         };
       }

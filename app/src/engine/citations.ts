@@ -100,7 +100,6 @@ const U = {
   bkr26Modes: 'https://docs.oracle.com/en/database/oracle/oracle-database/26/dgbkr/managing-data-protection-modes.html',
   bkr19Roles: 'https://docs.oracle.com/en/database/oracle/oracle-database/19/sbydb/managing-oracle-data-guard-role-transitions.html',
   sbyAlternate19: 'https://docs.oracle.com/en/database/oracle/oracle-database/19/sbydb/using-ALTERNATE-attribute-to-configure-alternate-destinations.html',
-  refVDatabase26: 'https://docs.oracle.com/en/database/oracle/oracle-database/26/refrn/V-DATABASE.html',
   jdbc26Urls: 'https://docs.oracle.com/en/database/oracle/oracle-database/26/jjdbc/data-sources-and-URLs.html',
 } as const;
 

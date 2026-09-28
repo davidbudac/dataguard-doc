@@ -130,11 +130,15 @@ export function switchoverSchedule(
   };
 }
 
-export function switchoverRefused(at: Seconds, to: MemberId): SwitchoverFacts {
-  return {
+export function switchoverRefused(
+  at: Seconds, to: MemberId, refusal?: SwitchoverRefusal | null,
+): SwitchoverFacts {
+  const facts: SwitchoverFacts = {
     at, to, tDown: null, tConvertEnd: null, tOpen: null, downtime: null,
     tRestartDraw: null, blocked: true, applyRemaining: 0,
   };
+  if (refusal) facts.refusal = refusal;
+  return facts;
 }
 
 export const switchoverLossClaim = (): Claim<number> =>

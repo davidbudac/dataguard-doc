@@ -739,7 +739,7 @@ export function simulate(
         : 'The broker permits the SWITCHOVER.'), { kind: 'member', id: to as string });
 
     if (gate.blocked) {
-      state.switchover = switchoverRefused(at, to);
+      state.switchover = switchoverRefused(at, to, gate.reason);
       const needs = gate.reason === 'primary-down' || gate.reason === 'target-down'
         || gate.reason === 'not-connected';
       addFinding({
