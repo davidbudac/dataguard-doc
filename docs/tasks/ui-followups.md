@@ -151,3 +151,66 @@ system: section headings, label-left/value-right rows, full-width controls
 under the label where they do not fit, consistent spacing and dividers, same
 look for Build and Break rails. Check every selection type (nothing selected,
 DC, member, RAC member, observer, far sync, link) in light and dark.
+
+## Round 2 (2026-09-28)
+
+### 4.1 Small data centre / host icons beside their names
+Status: done (735ef5f)
+Building icon before each DC label, server icon before host names on cards,
+RAC instance rows and shared-host stack headers (`MiniIcon` in NodeCard.tsx).
+
+### 4.2 Fainter dots, with an on/off toggle
+Status: done (3dbb468)
+`--dot` tint in float.css; nine-dot button at the end of the floating zoom
+pill, `gridOn` in view.ts, remembered under `dg-grid`.
+
+## Track 5 — rough edges left by round 1 (canvas)
+
+### 5.1 Data centre columns push each other
+Status: todo
+Hand-moved cards or a resized DC can make a DC box overlap the neighbouring
+column; columns never push each other. Make a grown/resized column push the
+columns to its right (and the corridor stays clear for links/pills).
+
+### 5.2 Busy observer lines with 3+ observers
+Status: todo
+Ping and readiness-check lines crowd the drawing. Bundle/merge parallel
+observer lines where they share a corridor, or route them through one trunk.
+
+### 5.3 Drag polish
+Status: todo
+Link captions drawn over the card being dragged (the dragged card must be on
+top); a line lags the dragged card by up to 4 px (snap remainder); lifting one
+card out of a stack stretches the stack's frame.
+
+## Track 6 — rough edges left by round 1 (shell, panel, report) + timeline
+
+### 6.1 Resizable Break timeline, with full screen
+Status: todo
+User request: in Break, the timeline panel at the bottom can be dragged taller
+(a grab handle on its top edge; height remembered; min/max sensible, keyboard
+accessible), and a full-screen button on the panel toggles it to fill the
+window (Escape exits). Also fixes the round-1 note that the panel took ~46 % of
+the height by default -- pick a sensible default now that it is resizable.
+
+### 6.2 Shell leftovers
+Status: todo
+- Escape with the findings popover open also clears the canvas selection.
+- Modes wrap to a second row of the top bar below ~1100 px.
+- The canvas insets use fixed palette widths (104 px Build, 236 px Break)
+  instead of measuring the palette.
+- Between 1024 and 1279 px the Break event menu floats over the canvas and the
+  drawing's fit doesn't leave room for it.
+- Configure's tab strip and Learn's lesson list still use uppercase mono labels.
+
+### 6.3 Right panel in wider rails
+Status: todo
+The row-or-stack choice assumes the 340 px floating rail; in the wider drawer
+(1024-1279 px) and Configure's docked rail some fields stack needlessly. Base
+the choice on the rail's actual width (container query or measured width).
+
+### 6.4 Report: wide diagrams
+Status: todo
+Wide configurations (4 DCs in a row) print the diagram small on A4 portrait.
+Give the diagram its own landscape page when its aspect ratio calls for it
+(`@page` named pages), or scale it to use the page's full width.
