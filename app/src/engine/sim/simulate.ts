@@ -135,6 +135,8 @@ interface ActorView {
 
 /** How each member is fed in the configuration as declared. */
 interface Feed {
+  /** The member the primary itself ships to on the way here. */
+  firstHop: MemberId | null;
   /** The hop out of the primary is SYNC or FASTSYNC. */
   sync: boolean;
   /** NetTimeout of that hop: how long the primary waits before it drops it. */
@@ -1183,7 +1185,7 @@ export function simulate(
       state.cutOffSince[key] = cut;
       /* The stretch starts when the primary drops the member, which may lie
          ahead of this epoch: a bystander's count needs no epoch of its own. */
-      const drop = cut + dropDelay(key);
+      const drop = cut + dropDelay(key, view);
       if (generating) state.unsentSince[key] = Math.max(at, drop);
       const from = state.unsentSince[key];
       const growing = from !== null && from !== undefined && from <= at + EPS;
@@ -1207,12 +1209,21 @@ export function simulate(
     }
   }
 
-  /** How long after a member is cut off the primary drops it and carries on. */
-  function dropDelay(key: string): Seconds {
+  /**
+   * How long after a member is cut off the primary carries on without it.
+   *
+   * One NET_TIMEOUT where the primary is waiting for it: the hop out of the
+   * primary is synchronous and that hop is what broke. Not at all where the
+   * primary never waits -- maximum performance, an ASYNC hop -- or where the
+   * hop out of the primary is fine and the break is further along, behind a
+   * far sync instance that is still acknowledging.
+   */
+  function dropDelay(key: string, view: View): Seconds {
     const f = feeds[key];
-    /* Maximum performance never waits, whatever the transport is called. */
-    if (!f || !f.sync || modeNow(doc, state) === 'MAXPERFORMANCE') return 0;
-    return f.netTimeout;
+    if (!f || !f.sync || f.firstHop === null || modeNow(doc, state) === 'MAXPERFORMANCE') return 0;
+    const hopUp = view.graph.edges.some((e) => e.from === state.primary && e.to === f.firstHop
+      && e.active && e.up);
+    return hopUp ? 0 : f.netTimeout;
   }
 
   /**
@@ -1473,7 +1484,7 @@ export function simulate(
         const cut = state.cutOffSince[key];
         if (cut === null || cut === undefined) continue;
         if (!(state.fsfoReady[key] ?? false)) continue;
-        const drop = cut + dropDelay(key);
+        const drop = cut + dropDelay(key, view);
         if (drop > at + EPS) q.push({ kind: 'fsfo.readiness', at: drop, subject }, 'fsfo.readiness', true);
         const since = state.unsentSince[key];
         if (lagGated(doc) && since !== null && since !== undefined) {
@@ -1635,6 +1646,7 @@ function feedOf(doc: TopologyDoc, declared: RedoGraph, id: MemberId): Feed {
   const between = path.slice(1, -1);
   const kindOf = (x: MemberId): Member | undefined => doc.members.find((m) => m.id === x);
   return {
+    firstHop: first ?? null,
     sync: !!hop && (hop.xpt === 'SYNC' || hop.xpt === 'FASTSYNC'),
     netTimeout: first === undefined ? 0 : netTimeoutOf(doc, declared.primary, first),
     farSyncs: between.filter((x) => { const m = kindOf(x); return !!m && isFarSync(m); }),
