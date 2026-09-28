@@ -202,7 +202,7 @@ card out of a stack stretches the stack's frame.
 ## Track 6 — rough edges left by round 1 (shell, panel, report) + timeline
 
 ### 6.1 Resizable Break timeline, with full screen
-Status: done (on ui/track6-shell)
+Status: done (on main via merge)
 Note: `ui/timeline/DockControls.tsx`: a `role="separator"` grip on the panel's top edge
 (drag, arrows/PageUp/Home/End, double-click or Enter resets), `timelineH` → `--tl-h`,
 remembered as `dg-tl-h`; default `clamp(220px,36dvh,400px)`. `⤢` button → `timelineFull`
@@ -214,7 +214,7 @@ window (Escape exits). Also fixes the round-1 note that the panel took ~46 % of
 the height by default -- pick a sensible default now that it is resizable.
 
 ### 6.2 Shell leftovers
-Status: done (on ui/track6-shell)
+Status: done (on main via merge)
 Note: Findings' Escape is capture-phase and stops there. `useChromeInsets` (App.tsx) measures
 the palette (`--pal-r`) and, 1024-1279, the event menu -- the drawing goes under or beside it,
 whichever fits larger (`--evm-t`/`--evm-r`). One-row top bar down to 1024; tabs, lesson list,
@@ -228,7 +228,7 @@ step anchor and Explain are sans sentence case.
 - Configure's tab strip and Learn's lesson list still use uppercase mono labels.
 
 ### 6.3 Right panel in wider rails
-Status: done (on ui/track6-shell)
+Status: done (on main via merge)
 Note: measured, not container queries: `useRailRow` on each `.insp` root writes the rail's row
 width into `railRow` (common/Field.tsx), floored at the 340 px card's 292; `fitsBeside` reads it.
 The 360 px drawer gets 312, the 900 px bottom sheet 852 (Role / Open mode go beside their names).
@@ -237,7 +237,7 @@ The row-or-stack choice assumes the 340 px floating rail; in the wider drawer
 the choice on the rail's actual width (container query or measured width).
 
 ### 6.4 Report: wide diagrams
-Status: done (on ui/track6-shell)
+Status: done (on main via merge)
 Note: `diagramLandscape` (report-model.ts) turns the page when portrait would print the drawing
 under 60 % and landscape buys ≥ 20 % more: 4-DC presets (~1480 wide) print at 68 % instead of
 46 % on `@page diagram{size:A4 landscape}`; classic (3 DCs) stays on page 1 in portrait.
