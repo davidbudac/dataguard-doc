@@ -29,6 +29,9 @@ export interface StackChassisProps {
   /** A single card is being dragged over this stack's host: it says so the
       way an empty data centre panel does (`SiteRect`'s `is-drop`). */
   dropTarget?: boolean;
+  /** A lone card is in the air: `maybe` where this host would take it, `dim`
+      where it cannot, `no` where the pointer is on it and it refuses. */
+  hint?: 'maybe' | 'no' | 'dim' | null;
 }
 
 export function StackChassis(props: StackChassisProps): JSX.Element | null {
@@ -48,14 +51,15 @@ export function StackChassis(props: StackChassisProps): JSX.Element | null {
   const r = 6;
   return (
     <g
-      class="tp-stack"
+      class={`tp-stack${props.hint === 'dim' ? ' is-dim' : ''}`}
       aria-hidden="true"
       onPointerDown={props.interactive
         ? (ev) => props.onHeaderPointerDown?.(topKey, ev)
         : undefined}
     >
       <rect
-        class={`tp-stack-frame${props.dropTarget ? ' is-drop' : ''}`}
+        class={`tp-stack-frame${props.dropTarget ? ' is-drop'
+          : props.hint === 'no' ? ' is-drop-no' : props.hint === 'maybe' ? ' is-can-drop' : ''}`}
         x={stack.x} y={stack.y} width={stack.w} height={stack.h} rx={r}
       />
       <path

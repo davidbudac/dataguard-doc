@@ -26,6 +26,7 @@ import {
   renameObserver, renameSite, renameVerdict, shipRedo, tidyLayout,
 } from '../inspector/edits';
 import { placeOver, renaming, setSiteAt } from './place';
+import { mergeVerdict } from './drop';
 import {
   actionsFor, nothingToRestore, restoreQuietLine, runAction,
 } from '../break/events';
@@ -636,6 +637,9 @@ export function CanvasSlot({ interactive = true }: CanvasSlotProps) {
             /* A card dropped on another host's card or stack merges into it --
                same host, hosts and all, one undo with the drag. */
             onMergeIntoHost: (key: string, host: string): void => mergeIntoHost(key, hostId(host)),
+            /* ...unless the placement rule refuses it: an observer never
+               shares a host with a database. */
+            mergeWhat: (key: string, host: string) => mergeVerdict(topology.value, key, host),
             onConnect: connectFromCanvas,
             connectWhat: (from: string, to: string) => connectVerdict(topology.value, from, to),
             /* A data centre's handles: its box, a sized override under its

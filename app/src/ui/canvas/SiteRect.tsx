@@ -23,6 +23,8 @@ export interface SiteRectProps {
   hovered: boolean;
   /** A card is being dragged over it: it is about to take that card. */
   drop?: boolean;
+  /** A card is in the air and this panel would take it: lit, more quietly. */
+  canDrop?: boolean;
   /** Draw the port a site link can be dragged from, beside the name. */
   port?: boolean;
   onPortPointerDown?: (key: string, ev: JSX.TargetedPointerEvent<SVGGElement>) => void;
@@ -49,7 +51,7 @@ export function SiteRect(props: SiteRectProps): JSX.Element {
     props.down ? 'is-down' : '',
     props.selected ? 'is-sel' : '',
     props.hovered ? 'is-hov' : '',
-    props.drop ? 'is-drop' : '',
+    props.drop ? 'is-drop' : props.canDrop ? 'is-can-drop' : '',
     site.empty ? 'is-empty' : '',
   ].filter(Boolean).join(' ');
   const key = siteKey(site.id as string);

@@ -67,7 +67,14 @@ elsewhere. If the proper fix turns out to be large, write a handoff note here
 instead of the fix.
 
 ### 1.5 Show where a dragged card can go
-Status: todo
+Status: done (on ui/track1-canvas)
+Note: while a card is in the air (`TopoCanvas.tsx` `air` state) other DCs are
+dashed violet (`is-can-drop`), other hosts' cards/stacks `is-target-maybe`, and
+what cannot take it fades (`is-dim`: RAC cards, a host that refuses). The card
+follows the pointer; a `.tp-ghost` outline shows the snapped spot, or its place
+in the target stack/DC (`ui/canvas/drop.ts` `landingFor`, laid out on a copy of
+the doc). A note by the pointer says what the drop does. New refusal: an observer
+and a database never share a host (`mergeVerdict`, the `OBS.ON_DB_HOST` rule).
 While dragging: light up valid drop targets (data centres it may move into,
 hosts/stacks it may merge into) and dim/deny invalid ones; show the snap
 position (ghost outline) where it will land.

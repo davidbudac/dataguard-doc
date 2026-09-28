@@ -508,6 +508,19 @@
 }
 .topo-svg .tp-rubber-ln.is-on { stroke: var(--vi); stroke-dasharray: none; }
 .topo-svg .tp-rubber-ln.is-no { stroke: var(--rd); }
+/* A card in the air (task 1.5): what would take it is lit quietly -- another
+   data centre, another host's card or stack -- the one under the pointer is
+   lit fully (`is-drop`, `is-target`), and what cannot take it fades. */
+.topo-svg .tp-site.is-can-drop { stroke: var(--vi); stroke-width: 1.25; stroke-dasharray: 6 4; }
+.topo-svg .tp-card.is-target-maybe { stroke: var(--vi); stroke-width: 1.25; stroke-dasharray: 4 3; }
+.topo-svg .tp-stack-frame.is-can-drop { stroke: var(--vi); stroke-dasharray: 4 3; }
+.topo-svg .tp-stack-frame.is-drop-no { stroke: var(--rd); stroke-width: 1.5; stroke-dasharray: 3 3; }
+.topo-svg .tp-node.is-dim, .topo-svg .tp-stack.is-dim { opacity: .4; }
+/* Where it will land: an outline on the grid, or its place in the target. */
+.topo-svg .tp-ghost {
+  fill: var(--vif); fill-opacity: .5; stroke: var(--vi); stroke-width: 1.5; stroke-dasharray: 5 3;
+  pointer-events: none;
+}
 .topo-svg .tp-card.is-target { stroke: var(--vi); stroke-width: 1.5; }
 .topo-svg .tp-card.is-target-no { stroke: var(--rd); stroke-width: 1.5; stroke-dasharray: 3 3; }
 /* The label beside the pointer: what the drop would do, or why it will not. */

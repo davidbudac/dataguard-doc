@@ -34,6 +34,7 @@ import { NodeCard } from './NodeCard';
 import { StackChassis } from './StackChassis';
 import { LinkPath, linkKey } from './LinkPath';
 import { SiteRect, siteKey } from './SiteRect';
+import { landingFor } from './drop';
 import { snap8 } from './measure';
 import '@/styles/canvas.css';
 
@@ -118,6 +119,12 @@ export interface TopoCanvasProps {
    * the layout the way it always has, `onMoveToSite` included.
    */
   onMergeIntoHost?: (key: string, hostId: string) => void;
+  /**
+   * Whether a lone card may share `hostId`: asked while it is in the air, so
+   * a host that would refuse it is dimmed rather than lit, says why under the
+   * pointer, and does not take the drop. Absent means every host may.
+   */
+  mergeWhat?: (key: string, hostId: string) => WhyState;
   /**
    * A line drawn from one card's port to another card. Passing it draws the
    * ports; the caller decides what a member-to-member or a member-to-observer
@@ -390,6 +397,15 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
   const view = frozen?.view ?? unionViewBox(geo.viewBox, routed.bounds);
   /* The panels as the reader sees them, and so as the drop is aimed at them. */
   const sitesDrawn = frozen?.sites ?? geo.sites;
+  /* A card drag in flight, as the drawing shows it (task 1.5): the cards it
+     carries, how far short of the pointer the 8 px grid holds them (`rx`,
+     `ry` -- the cards follow the pointer, their outline shows the snap), the
+     pointer itself for the note beside it, and a host that refuses the card. */
+  const [air, setAir] = useState<{
+    key: string; keys: readonly string[]; group: boolean; canMerge: boolean;
+    rx: number; ry: number; x: number; y: number;
+    denied: { host: string; why: string } | null;
+  } | null>(null);
 
   const svgRef = useRef<SVGSVGElement | null>(null);
   /* Every focusable thing on the drawing, by key: cards, site panels and the
@@ -977,8 +993,23 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
     const all = offsetsOf(d, dx, dy);
     props.onDrag?.(d.key, all[d.key] as LayoutOffset, all);
     const p = toUser(ev.clientX, ev.clientY, d.scale);
-    const hostOver = props.onMergeIntoHost && d.canMerge ? mergeTargetUnder(p, d.key) : null;
+    const aimed = props.onMergeIntoHost && d.canMerge ? mergeTargetUnder(p, d.key) : null;
+    const verdict = aimed === null ? null : props.mergeWhat?.(d.key, aimed) ?? null;
+    const denied = aimed !== null && verdict !== null && verdict.state === 'off'
+      ? { host: aimed, why: verdict.why } : null;
+    const hostOver = denied === null ? aimed : null;
     if (hostOver !== d.hostOver) { d.hostOver = hostOver; setHostDropTarget(hostOver); }
+    setAir({
+      key: d.key,
+      keys: Object.keys(d.bases),
+      group: geo.sites.some((st) => (st.id as string) === d.key),
+      canMerge: d.canMerge && props.onMergeIntoHost !== undefined,
+      rx: dx - snap8(dx),
+      ry: dy - snap8(dy),
+      x: p.x,
+      y: p.y,
+      denied,
+    });
     if (props.onMoveToSite) {
       /* A host takes the drop first: the site highlight underneath it would
          only repeat what the card or the stack already says. */
@@ -1038,6 +1069,7 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
     if (!d.moved) return;
     if (d.over !== null) setDropSite(null);
     if (d.hostOver !== null) setHostDropTarget(null);
+    setAir(null);
     const dx = (ev.clientX - d.startX) * d.scale;
     const dy = (ev.clientY - d.startY) * d.scale;
     const all = offsetsOf(d, dx, dy);
@@ -1054,7 +1086,8 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
        highlight already showed while it was still in the air. */
     if (props.onMergeIntoHost && d.canMerge) {
       const target = mergeTargetUnder(toUser(ev.clientX, ev.clientY, d.scale), d.key);
-      if (target !== null) { props.onMergeIntoHost(d.key, target); dropped = true; }
+      const refused = target !== null && props.mergeWhat?.(d.key, target).state === 'off';
+      if (target !== null && !refused) { props.onMergeIntoHost(d.key, target); dropped = true; }
     }
     /* Dropped in another data centre: the move is the caller's edit, coalesced
        under the same key the drag itself carries. The pressed card goes
@@ -1166,6 +1199,61 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
     ev.preventDefault();
     props.onOpen?.(key);
   };
+
+  /* ---- a card in the air: what may take it, and where it will land ---- */
+  const airOwnSite = air === null ? null : (geo.byKey[air.key]?.site as string | undefined) ?? null;
+  /** Another data centre the carried cards may be dropped into. */
+  const canDropIn = (site: string): boolean => air !== null && !air.group
+    && props.onMoveToSite !== undefined && airOwnSite !== null && site !== airOwnSite;
+  /**
+   * How a host other than the carried card's own answers the drag: `maybe`
+   * where it would take the card, `no` where the pointer is on one that
+   * refuses it, `dim` where it cannot take it at all -- a RAC card, which
+   * stands on no single host, or a host that refuses. Only a lone card's drag
+   * has a merge to offer, so only it lights anything up.
+   */
+  const hostHint = (host: string | undefined): 'maybe' | 'no' | 'dim' | null => {
+    if (air === null || !air.canMerge) return null;
+    const own = hostIdOf(air.key);
+    if (host === undefined) return 'dim';
+    if (host === own) return null;
+    if (air.denied?.host === host) return 'no';
+    const v = props.mergeWhat?.(air.key, host);
+    return v !== undefined && v.state === 'off' ? 'dim' : 'maybe';
+  };
+  const cardHint = (key: string): 'maybe' | 'no' | 'dim' | null => (air === null || !air.canMerge
+    ? null : hostHint(hostIdOf(key)));
+  /* The landing outlines, worked out once per target rather than per move. */
+  const airKey = air?.key ?? null;
+  const airKeys = air?.keys.join('\u0000') ?? '';
+  const airGroup = air?.group ?? false;
+  const ghosts = useMemo((): Rect[] => {
+    if (airKey === null || airGroup) return [];
+    if (hostDropTarget !== null || dropSite !== null) {
+      const to = hostDropTarget !== null ? { host: hostDropTarget } : { site: dropSite as string };
+      const r = landingFor(doc, graph, overrides, geo, sitesDrawn, airKey, to);
+      return r === null ? [] : [r];
+    }
+    return airKeys.split('\u0000').map((k) => geo.byKey[k]).filter((n): n is NodeBox => n !== undefined);
+  }, [airKey, airKeys, airGroup, hostDropTarget, dropSite, doc, graph, overrides, geo, sitesDrawn]);
+  /** What the drop would do, said beside the pointer. */
+  const airTip = ((): { text: string; refused: boolean } | null => {
+    if (air === null) return null;
+    const siteName = (id: string): string => doc.sites.find((st) => (st.id as string) === id)?.name ?? id;
+    /* Refused by the host under it, but still over another data centre: the
+       drop is the move, and the note says both. */
+    if (air.denied !== null && dropSite !== null) {
+      return { text: `Move to ${siteName(dropSite)} — not onto that host`, refused: false };
+    }
+    if (air.denied !== null) return { text: air.denied.why, refused: true };
+    if (hostDropTarget !== null) {
+      return { text: `Share host ${doc.hosts.find((h) => (h.id as string) === hostDropTarget)?.name ?? hostDropTarget}`, refused: false };
+    }
+    if (dropSite !== null) {
+      return { text: `Move to ${siteName(dropSite)}`, refused: false };
+    }
+    return null;
+  })();
 
   /* ---- one tab stop per site: Tab steps between sites, arrows walk one ---- */
   const tabStops = new Set<string>();
@@ -1357,6 +1445,7 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
               hovered={hovered === siteKey(s.id as string)}
               drop={dropSite === (s.id as string) || props.dropHint === (s.id as string)
                 || (rubber !== null && rubber.over === (s.id as string))}
+              canDrop={canDropIn(s.id as string)}
               port={interactive && props.onConnect !== undefined && geo.sites.length > 1}
               onPortPointerDown={onPortPointerDown}
               label={siteLabel(doc, { id: s.id as string, name: s.name }, frame)}
@@ -1392,20 +1481,41 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
         </g>
 
         <g class="tp-stacks">
-          {geo.stacks.map((s) => (
-            <StackChassis
-              key={s.key}
-              stack={s}
-              byKey={geo.byKey}
-              interactive={interactive}
-              onHeaderPointerDown={onHeaderPointerDown}
-              dropTarget={hostDropTarget !== null && s.hostId === hostDropTarget}
-            />
-          ))}
+          {geo.stacks.map((s) => {
+            const carried = air !== null && s.memberKeys.every((k) => air.keys.includes(k));
+            const chassis = (
+              <StackChassis
+                key={s.key}
+                stack={s}
+                byKey={geo.byKey}
+                interactive={interactive}
+                onHeaderPointerDown={onHeaderPointerDown}
+                dropTarget={hostDropTarget !== null && s.hostId === hostDropTarget}
+                hint={carried ? null : hostHint(s.hostId)}
+              />
+            );
+            return carried && air !== null
+              ? <g key={s.key} transform={`translate(${air.rx},${air.ry})`}>{chassis}</g>
+              : chassis;
+          })}
         </g>
 
+        {/* Where the card will land: its outline on the 8 px grid under a card
+            that follows the pointer, or its place in the stack or data centre
+            the pointer is over. */}
+        {ghosts.length === 0 ? null : (
+          <g class="tp-ghosts" aria-hidden="true">
+            {ghosts.map((r, i) => (
+              <rect key={i} class="tp-ghost" x={r.x} y={r.y} width={r.w} height={r.h} rx={5} />
+            ))}
+          </g>
+        )}
+
         <g class="tp-nodes">
-          {geo.nodes.map((n) => (
+          {geo.nodes.map((n) => {
+            const carried = air !== null && air.keys.includes(n.key);
+            const hint = carried ? null : cardHint(n.key);
+            const card = (
             <NodeCard
               key={n.key}
               node={n}
@@ -1419,7 +1529,9 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
               dragging={drag.current?.kind === 'card' && drag.current.moved && n.key in drag.current.bases}
               target={rubber !== null && rubber.over === n.key
                 ? (rubber.what?.enabled.state === 'off' ? 'no' : 'yes')
-                : hostDropTarget !== null && hostIdOf(n.key) === hostDropTarget ? 'yes' : null}
+                : hostDropTarget !== null && hostIdOf(n.key) === hostDropTarget ? 'yes'
+                  : hint === 'maybe' || hint === 'no' ? hint : null}
+              dim={hint === 'dim'}
               port={interactive && props.onConnect !== undefined}
               interactive={interactive}
               tabIndex={tabStops.has(n.key) ? 0 : -1}
@@ -1430,7 +1542,11 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
               onKeyDown={onCardKey}
               cardRef={cardRef}
             />
-          ))}
+            );
+            return carried && air !== null
+              ? <g key={n.key} transform={`translate(${air.rx},${air.ry})`}>{card}</g>
+              : card;
+          })}
         </g>
 
         {/* The line being drawn from a port, while it is being drawn. */}
@@ -1449,26 +1565,20 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
           /* The label rides beside the pointer: what the drop would do, or
              why it will not. Kept short on the drawing -- a refusal is a
              sentence, and the toast after the drop carries the whole of it. */
-          const tipText = tip === null ? null : (tip.length > 64 ? `${tip.slice(0, 61)}…` : tip);
-          const tipW = tipText === null ? 0 : Math.round(approxW(tipText, 10.5, true) + 14);
           return (
             <g class="tp-rubber" aria-hidden="true">
               <line
                 class={`tp-rubber-ln${rubber.over !== null ? (refused ? ' is-no' : ' is-on') : ''}`}
                 x1={x1} y1={y1} x2={rubber.x} y2={rubber.y}
               />
-              {tipText === null ? null : (
-                <g class={`tp-rubber-tip${refused ? ' is-no' : ''}`}>
-                  <rect
-                    class="tp-rubber-tip-bg"
-                    x={rubber.x + 12} y={rubber.y - 22} width={tipW} height={18} rx={3}
-                  />
-                  <text class="tp-rubber-tip-tx" x={rubber.x + 19} y={rubber.y - 9}>{tipText}</text>
-                </g>
-              )}
+              {tip === null ? null : <PointerTip x={rubber.x} y={rubber.y} text={tip} refused={refused} />}
             </g>
           );
         })()}
+
+        {airTip === null || air === null ? null : (
+          <PointerTip x={air.x} y={air.y} text={airTip.text} refused={airTip.refused} />
+        )}
 
         <g class="tp-pills">
           {routed.links.map((l, i) => (
@@ -1623,6 +1733,22 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
         </figcaption>
       )}
     </figure>
+  );
+}
+
+/**
+ * The note beside the pointer during a drag: what the drop would do, or why it
+ * will not. Kept short on the drawing -- a refusal is a sentence, and the
+ * toast or the rail carries the whole of it.
+ */
+function PointerTip({ x, y, text, refused }: { x: number; y: number; text: string; refused: boolean }) {
+  const shown = text.length > 64 ? `${text.slice(0, 61)}…` : text;
+  const w = Math.round(approxW(shown, 10.5, true) + 14);
+  return (
+    <g class={`tp-rubber-tip${refused ? ' is-no' : ''}`} aria-hidden="true">
+      <rect class="tp-rubber-tip-bg" x={x + 12} y={y - 22} width={w} height={18} rx={3} />
+      <text class="tp-rubber-tip-tx" x={x + 19} y={y - 9}>{shown}</text>
+    </g>
   );
 }
 

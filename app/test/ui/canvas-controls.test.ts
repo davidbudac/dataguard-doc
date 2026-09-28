@@ -23,9 +23,9 @@ import { fitZoom } from '@/ui/canvas/zoom';
 import { WHY_TIDY } from '@/ui/canvas/CanvasSlot';
 import { mode, selection, toast, viewport } from '@/state/view';
 import { WHY_DROP_ON_SITE } from '@/ui/inspector/adds';
-import { removeLink } from '@/ui/inspector/edits';
+import { addDatabase, removeLink } from '@/ui/inspector/edits';
 import { WHY } from '@/ui/inspector/why';
-import { hostId, linkId } from '@/engine';
+import { hostId, linkId, siteId } from '@/engine';
 
 /**
  * The layout's card offsets alone. A card let go inside its own data centre
@@ -585,15 +585,37 @@ describe('a single card is dropped onto another host', () => {
   });
 
   it('moves a blade dropped on another host between stacks, keeping the old host while it is still shared', async () => {
-    coHostObserverWithPrimary();
-    const root = await mountApp();
+    /* A second standby on the primary's host: a stack of two databases. */
+    addDatabase(siteId('dc1'));
     const prmHost = topo().members.find((m) => (m.id as string) === 'prm01')!.instances[0]!.host;
+    const before = docSignal.value;
+    resetHistory({
+      ...before,
+      topology: {
+        ...before.topology,
+        members: before.topology.members.map((m) => ((m.id as string) === 'sby02'
+          ? { ...m, instances: m.instances.map((i) => ({ ...i, host: prmHost })) }
+          : m)),
+      },
+    });
+    const root = await mountApp();
     const sbyHost = topo().members.find((m) => (m.id as string) === 'sby01')!.instances[0]!.host;
-    await dragOnto(root, 'obs01', rectOf(root, 'sby01', 'rect.tp-card'));
-    expect(topo().observers.find((o) => (o.id as string) === 'obs01')!.host).toBe(sbyHost);
+    await dragOnto(root, 'sby02', rectOf(root, 'sby01', 'rect.tp-card'));
+    expect(topo().members.find((m) => (m.id as string) === 'sby02')!.instances[0]!.host).toBe(sbyHost);
     /* `prm01` still stands on the old host, so it is not removed. */
     expect(topo().hosts.some((h) => h.id === prmHost)).toBe(true);
     expect(topo().members.find((m) => (m.id as string) === 'prm01')!.instances[0]!.host).toBe(prmHost);
+  });
+
+  it('will not put an observer on a database\'s host: the host refuses and the drop is only the move', async () => {
+    coHostObserverWithPrimary();
+    const root = await mountApp();
+    const sbyHost = topo().members.find((m) => (m.id as string) === 'sby01')!.instances[0]!.host;
+    await dragOnto(root, 'obs01', rectOf(root, 'sby01', 'rect.tp-card'));
+    const obs = topo().observers.find((o) => (o.id as string) === 'obs01')!;
+    expect(obs.host).not.toBe(sbyHost);
+    /* Let go over DC 2, so it moves there -- on a host of its own. */
+    expect(topo().hosts.find((x) => x.id === obs.host)?.site as string).toBe('dc2');
   });
 
   it('highlights the target card while a merge is in reach, in place of the site highlight', async () => {

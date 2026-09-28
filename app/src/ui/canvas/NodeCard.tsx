@@ -29,8 +29,11 @@ export interface NodeCardProps {
   selected: boolean;
   hovered: boolean;
   dragging: boolean;
-  /** A line from another card is over it: about to be connected, or refused. */
-  target?: 'yes' | 'no' | null;
+  /** A line from another card is over it: about to be connected, or refused --
+      or, while a card is in the air, one it could be dropped on (`maybe`). */
+  target?: 'yes' | 'no' | 'maybe' | null;
+  /** A card is in the air and this one cannot take it: drawn faded. */
+  dim?: boolean;
   /** Draw the port a line can be dragged from. */
   port?: boolean;
   interactive: boolean;
@@ -89,7 +92,8 @@ export function NodeCard(props: NodeCardProps): JSX.Element {
     props.selected ? 'is-sel' : '',
     props.hovered ? 'is-hov' : '',
     props.dragging ? 'is-drag' : '',
-    props.target === 'yes' ? 'is-target' : props.target === 'no' ? 'is-target-no' : '',
+    props.target === 'yes' ? 'is-target' : props.target === 'no' ? 'is-target-no'
+      : props.target === 'maybe' ? 'is-target-maybe' : '',
   ].filter(Boolean).join(' ');
   const portX = node.x + node.w;
   const portY = node.y + Math.round(node.h / 2);
@@ -113,7 +117,7 @@ export function NodeCard(props: NodeCardProps): JSX.Element {
 
   return (
     <g
-      class={`tp-node${props.interactive ? ' is-live' : ''}`}
+      class={`tp-node${props.interactive ? ' is-live' : ''}${props.dim ? ' is-dim' : ''}`}
       role="button"
       aria-label={props.label}
       aria-pressed={props.selected}
