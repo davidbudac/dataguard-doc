@@ -45,7 +45,7 @@ const DECISION_TITLE: Record<string, string> = {
   'OBS.OBSERVED_AGAIN': 'Observer reconnects',
   'OBS.SET_MASTEROBSERVER': 'Master observer set',
   'OBS.UNOBSERVED': 'Configuration unobserved',
-  'PRIMARY.ABORT': 'Primary aborted',
+  'PRIMARY.ABORT': 'Primary shuts down',
   'PRIMARY.NO_STALL': 'Primary keeps running',
   'PRIMARY.REOPEN': 'Primary reopens',
   'PRIMARY.STALL': 'Primary stalled',

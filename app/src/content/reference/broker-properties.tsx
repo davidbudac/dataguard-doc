@@ -131,7 +131,7 @@ export const brokerProperties: RefTableData = {
         <>
           When TRUE, a primary whose <M>V$DATABASE.FS_FAILOVER_STATUS</M> has been <M>STALLED</M> for
           longer than <M>FastStartFailoverThreshold</M> seconds, and that cannot reach the observer or
-          the target standby, shuts itself down with an abort.
+          the target standby, will shut down.
         </>,
       ],
     },
@@ -160,7 +160,7 @@ export const brokerProperties: RefTableData = {
           because the primary crashed or was isolated &mdash; never after a user-configurable health
           condition or a <M>DBMS_DG.INITIATE_FS_FAILOVER</M> call. It needs Flashback Database enabled
           on both databases and the former primary started and mounted, which is a manual restart when{' '}
-          <M>FastStartFailoverPmyShutdown</M> aborted it, with the master observer able to connect to
+          <M>FastStartFailoverPmyShutdown</M> shut it down, with the master observer able to connect to
           it. Without Oracle Clusterware or Oracle Restart, static service names are required.
         </>,
       ],

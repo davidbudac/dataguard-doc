@@ -581,7 +581,7 @@ function look(state: AnyState, group: LaneGroup, ctx: { pingSet: boolean }): Loo
     case 'commit-hang':
       return { phase: 'b-am', ink: 'f-am', labels: ['Commits wait for an acknowledgement', 'Commits waiting', 'Waiting'] };
     case 'aborted':
-      return { phase: 'b-hatch', ink: 'f-rd', labels: ['Aborted — instance shut itself down', 'Aborted'] };
+      return { phase: 'b-hatch', ink: 'f-rd', labels: ['Shut down — instance shut itself down', 'Shut down'] };
     case 'converting':
       return { phase: 'b-am', ink: 'f-am', labels: primary
         ? ['Converts, restarts as the new standby, then applies from the new primary',
@@ -1221,9 +1221,9 @@ export function buildTimeline(trace: Trace, doc: TopologyDoc, view: TimelineView
   if (f.abortAt !== null && f.abortAt >= t0 && f.abortAt <= t1) {
     const x = scale.x(f.abortAt);
     const cands = [
-      `Self-abort at t = ${fmt(f.abortAt)} s  (FastStartFailoverPmyShutdown = TRUE)`,
-      `Self-abort at t = ${fmt(f.abortAt)} s`,
-      'Self-abort',
+      `Shuts down at t = ${fmt(f.abortAt)} s  (FastStartFailoverPmyShutdown = TRUE)`,
+      `Shuts down at t = ${fmt(f.abortAt)} s`,
+      'Shuts down',
     ];
     let label = cands[cands.length - 1] as string;
     let fits = false;
