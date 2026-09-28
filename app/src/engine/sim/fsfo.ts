@@ -17,7 +17,7 @@
  *    the target while the primary is there to change it.
  */
 
-import { NOMINAL } from '../defaults';
+import { lagLimitOf, NOMINAL } from '../defaults';
 import type { Claim, Finding } from '../types/claims';
 import { documented, inferred, model } from '../types/claims';
 import { assertCitesAllowed } from '../citations';
@@ -61,7 +61,7 @@ export function lagGated(doc: TopologyDoc): boolean {
   if (mode === 'MAXPERFORMANCE') return true;
   return doc.config.edition === '26ai'
     && mode === 'MAXAVAILABILITY'
-    && doc.config.fsfo.lagLimitSeconds > 0;
+    && lagLimitOf(doc) > 0;
 }
 
 export const pingPropertiesSet = (doc: TopologyDoc): boolean =>
@@ -185,7 +185,7 @@ export function readinessGate(
 ): Readiness {
   const gateLag = gateLagSeconds(doc, target, state) + unsentSeconds;
   if (lagGated(doc)) {
-    const limit = doc.config.fsfo.lagLimitSeconds;
+    const limit = lagLimitOf(doc);
     const passes = ready && gateLag <= limit;
     const grown = unsentSeconds > 0
       ? ` The lag is the configured ${gateLagSeconds(doc, target, state)} s plus the ${unsentSeconds} s the primary generated redo this standby did not receive -- drawn second for second, which is this page's model.`

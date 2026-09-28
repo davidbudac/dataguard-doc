@@ -15,6 +15,7 @@
  */
 
 import type { MemberId } from '../ids';
+import { lagLimitOf } from '../defaults';
 import type { Claim, Finding } from '../types/claims';
 import { documented, inferred, model } from '../types/claims';
 import type {
@@ -403,7 +404,7 @@ const lagGated = (doc: TopologyDoc): boolean => {
   if (mode === 'MAXPERFORMANCE') return true;
   return doc.config.edition === '26ai'
     && mode === 'MAXAVAILABILITY'
-    && doc.config.fsfo.lagLimitSeconds > 0;
+    && lagLimitOf(doc) > 0;
 };
 
 /**
@@ -442,7 +443,7 @@ function synchronizedClaim(
 
   if (lagGated(doc)) {
     const gate = gateLagOf(doc, m);
-    const limit = doc.config.fsfo.lagLimitSeconds;
+    const limit = lagLimitOf(doc);
     return inferred(gate <= limit,
       ['FSFO.LAGLIMIT_MAXAVAIL_26AI', 'FSFO.LAGTYPE'],
       `This configuration gates on FastStartFailoverLagLimit rather than on a synchronized state: ${effectiveLagTypeOf(doc)} lag ${gate} s against a ${limit} s limit. Maximum performance mode has no SYNCHRONIZED state to report, so the readiness gate is what this flag carries.`);

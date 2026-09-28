@@ -24,7 +24,7 @@
 
 import { assertCitesAllowed } from '../citations';
 import type { CitationId } from '../citations';
-import { BOUNDS } from '../defaults';
+import { BOUNDS, lagLimitOf } from '../defaults';
 import type { Edition, MemberId, Seconds } from '../ids';
 import { defaultDestProps } from '../serialize/schema';
 import type { Claim } from '../types/claims';
@@ -348,7 +348,7 @@ export function reopenInputFrom(
     outageSeconds: outage,
     redoRateMBs: doc.environment.redoRateMBs,
     mode: doc.config.protectionMode,
-    lagLimitSeconds: fsfo.lagLimitSeconds,
+    lagLimitSeconds: lagLimitOf(doc),
     edition: doc.config.edition,
     lagGraceTimeSeconds: fsfo.lagGraceTimeSeconds,
     thresholdSeconds: fsfo.thresholdSeconds,

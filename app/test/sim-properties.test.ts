@@ -10,6 +10,7 @@
 import { describe, expect, it } from 'vitest';
 import { CITATION_IDS } from '../src/engine/citations';
 import type { CitationId } from '../src/engine/citations';
+import { lagLimitOf } from '../src/engine/defaults';
 import { classicTopology } from '../src/engine/compat/classic';
 import type { ClassicMode, ClassicObserverLoc, ClassicScenario } from '../src/engine/compat/classic';
 import { hostId, memberId, observerId, siteId } from '../src/engine/ids';
@@ -263,9 +264,10 @@ describe('SS8.2 properties', () => {
       const first = c.doc.members.find((m) => m.id === targets[0]);
       const steady = resolveRedoGraph(c.doc, { primary: primary.id });
       const gatedOnLag = c.doc.config.protectionMode === 'MAXPERFORMANCE'
-        || (c.doc.config.edition === '26ai' && c.doc.config.fsfo.lagLimitSeconds > 0);
+        || (c.doc.config.edition === '26ai' && c.doc.config.protectionMode === 'MAXAVAILABILITY'
+          && lagLimitOf(c.doc) > 0);
       const ready = !!first && first.kind === 'database' && (gatedOnLag
-        ? first.applyLagSeconds <= c.doc.config.fsfo.lagLimitSeconds
+        ? first.applyLagSeconds <= lagLimitOf(c.doc)
         : steady.members[first.id]?.synchronized.value === true);
       const expected = armed && alive && !obsSees && !targetSees && ready;
       expect(trace.facts.conditions.stalled, c.name).toBe(expected);

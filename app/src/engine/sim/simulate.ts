@@ -13,6 +13,7 @@
 
 import { failoverAxis, fixedAxis, secondsAxis } from '../models/axis';
 import type { CitationId } from '../citations';
+import { lagLimitOf } from '../defaults';
 import type { HostId, MemberId, ObserverId, Seconds, SiteId } from '../ids';
 import {
   applyNetEvent, buildReachability, hostUp, initialNetState, linkRttMs, memberAlive,
@@ -715,7 +716,7 @@ export function simulate(
       fsfoEnabled: view.fsfoEnabled,
       maxPerformance: doc.config.protectionMode === 'MAXPERFORMANCE',
       gateLag,
-      lagLimit: doc.config.fsfo.lagLimitSeconds,
+      lagLimit: lagLimitOf(doc),
       isTarget: state.activeTarget === to,
       /* Synchronized is about redo RECEIVED, and under SYNC or FASTSYNC the
          commit waits for the acknowledgement: an apply lag never blocks a
@@ -796,7 +797,7 @@ export function simulate(
       case 'not-synchronized':
         return 'with fast-start failover enabled, in maximum availability the broker permits it only while the target standby is synchronized, and this one has redo it has not received';
       case 'past-lag-limit':
-        return `with fast-start failover enabled, in maximum performance mode the broker permits it only inside FastStartFailoverLagLimit (${gateLag} s against ${doc.config.fsfo.lagLimitSeconds} s)`;
+        return `with fast-start failover enabled, in maximum performance mode the broker permits it only inside FastStartFailoverLagLimit (${gateLag} s against ${lagLimitOf(doc)} s)`;
       default:
         return '';
     }
@@ -1144,7 +1145,7 @@ export function simulate(
       && state.ackLostSince + netTimeoutForMode(doc, view.graph) > at + EPS;
     const generating = view.primaryAlive && !view.stalled && !hanging;
     const gated = lagGated(doc);
-    const limit = doc.config.fsfo.lagLimitSeconds;
+    const limit = lagLimitOf(doc);
 
     for (const m of doc.members) {
       if (m.id === state.primary) continue;
@@ -1489,7 +1490,7 @@ export function simulate(
         if (drop > at + EPS) q.push({ kind: 'fsfo.readiness', at: drop, subject }, 'fsfo.readiness', true);
         const since = state.unsentSince[key];
         if (lagGated(doc) && since !== null && since !== undefined) {
-          const room = doc.config.fsfo.lagLimitSeconds - gateLagSeconds(doc, m, state)
+          const room = lagLimitOf(doc) - gateLagSeconds(doc, m, state)
             - (state.unsentAccum[key] ?? 0);
           const cross = since + Math.max(0, room);
           if (cross > at + EPS) q.push({ kind: 'fsfo.readiness', at: cross, subject }, 'fsfo.readiness', true);
@@ -1663,7 +1664,7 @@ function worthOf(
   doc: TopologyDoc, state: SimState, m: Member, r: RedoGraph['members'][MemberId],
 ): boolean {
   if (lagGated(doc)) {
-    return !isDatabase(m) || gateLagSeconds(doc, m, state) <= doc.config.fsfo.lagLimitSeconds;
+    return !isDatabase(m) || gateLagSeconds(doc, m, state) <= lagLimitOf(doc);
   }
   return r.synchronized.value;
 }
@@ -2313,7 +2314,7 @@ function gateFinding(doc: TopologyDoc, target: MemberId, readiness: Readiness): 
     id: 'FSFO.READINESS_GATE', severity: 'warning', basis: 'documented', cite,
     subject: { kind: 'member', id: target as string },
     message: gated
-      ? `Fast-start failover is forbidden while the ${effectiveLagType(doc)} lag (${readiness.gateLag} s) is past FastStartFailoverLagLimit (${doc.config.fsfo.lagLimitSeconds} s): it cannot occur if ${target as string} lags by more than the limit at the time the primary database failed.`
+      ? `Fast-start failover is forbidden while the ${effectiveLagType(doc)} lag (${readiness.gateLag} s) is past FastStartFailoverLagLimit (${lagLimitOf(doc)} s): it cannot occur if ${target as string} lags by more than the limit at the time the primary database failed.`
       : `Fast-start failover is forbidden while the target standby is not synchronized: it cannot occur if ${target as string} was not synchronized with the primary database at the time the primary database failed.`,
   };
 }

@@ -146,6 +146,7 @@ const CASES: Case[] = [
     trigger: () => {
       const d = baseDoc();
       d.config.fsfo.lagLimitSeconds = 45;
+      d.config.fsfo.lagLimitSet = true;
       return d;
     },
     silent: () => {

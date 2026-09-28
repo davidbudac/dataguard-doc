@@ -625,6 +625,16 @@ export const CITATIONS = {
     note: "STALE: the property page's closing line, contradicted by the same release's Fast-start Failover Protection Modes section.",
     forbiddenFor: ['LAG_LIMIT_MODE'],
   },
+  'FSFO.LAGLIMIT_DEFAULT_19C': {
+    url: U.bkr19Props, edition: '19c', verified: 'primary',
+    quote: 'Integral number of seconds. Must be greater than, or equal to, 5. Broker default 30 seconds',
+    note: "The 19c FastStartFailoverLagLimit property table, flattened (Valid value / Broker default). One default for every mode -- the per-mode default is 26ai's (FSFO.LAGLIMIT_RANGES). Valid for the value and the default only, never for which modes the property applies in.",
+  },
+  'FSFO.LAGLIMIT_NOT_MAXPROT_26AI': {
+    url: U.bkr26LagLimit, edition: '26ai', verified: 'primary',
+    quote: 'The FastStartFailoverLagLimit property is not used in maximum protection mode.',
+    note: 'The 26ai property page, beside the valid value. The 19c pages agree by omission: neither the property page (maximum performance) nor the fast-start failover chapter (maximum availability) gives it a maximum protection role.',
+  },
   'FSFO.LAGTYPE': {
     url: U.bkr26LagType, edition: '26ai', verified: 'primary',
     quote: 'The FastStartFailoverLagType configuration property specifies the type of lag (apply lag or transport lag) the user wishes to use to specify their data loss threshold.',

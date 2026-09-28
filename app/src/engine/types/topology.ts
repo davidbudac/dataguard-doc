@@ -178,7 +178,20 @@ export interface FsfoConfig {
   state: FsfoState;
   target: FsfoTarget;
   thresholdSeconds: Seconds;
+  /**
+   * The FastStartFailoverLagLimit value as set. Meaningful only with
+   * `lagLimitSet`; while the property is not set it holds
+   * LAG_LIMIT_UNSET_STORED. Never read it directly: `lagLimitOf(doc)` is the
+   * limit in force.
+   */
   lagLimitSeconds: Seconds;
+  /**
+   * FastStartFailoverLagLimit was set on this configuration. Absent, the
+   * property is at the broker default, which follows the edition and the
+   * protection mode (defaultLagLimit) -- "not set" is a first-class state,
+   * as it is for the ping properties.
+   */
+  lagLimitSet?: true;
   lagType: LagType;
   lagGraceTimeSeconds: Seconds;
   /** Both non-null is the documented "explicitly set" pair. */

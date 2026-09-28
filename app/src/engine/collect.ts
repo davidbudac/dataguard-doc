@@ -1,6 +1,5 @@
 /** Read-only collector format; strict framing prevents accepting partial SQL output. */
 import { emptyDoc, parseTopologyDoc } from './serialize/schema';
-import { defaultLagLimit } from './defaults';
 import { utf8Encode } from './serialize/url';
 import { hostId, linkId, memberId, observerId, siteId } from './ids';
 import type { Edition } from './ids';
@@ -111,7 +110,6 @@ export function importCollectedTopology(text: string, edition: Edition = '19c'):
   const protection = str(p.db, 'protection');
   if (!Object.hasOwn(PROTECTION_MODES, protection)) throw new Error(`Cannot map protection mode ${protection}; collect from a running primary.`);
   topology.config.protectionMode = PROTECTION_MODES[protection as keyof typeof PROTECTION_MODES];
-  topology.config.fsfo.lagLimitSeconds = defaultLagLimit(edition, topology.config.protectionMode);
   const notes = [
     'Current topology only, not a complete broker configuration or a health check. Collect all members close together, with no role transition in progress.',
     'Sites are provisional host groups, not discovered data centres. Links assume connectivity and 0 ms RTT; listener ports use 1521. Review placement, connectivity and ports.',

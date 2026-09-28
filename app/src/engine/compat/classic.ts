@@ -271,6 +271,10 @@ export function classicTopology(o: ClassicKnobs = {}): TopologyDoc {
     target: { kind: 'list', members: [standby.id] },
     thresholdSeconds: k.threshold,
     lagLimitSeconds: lagLimitFor(edition, k.mode, k.lagPolicy, k.lagLimit),
+    /* The published page always carries an explicit lag limit -- its 26ai
+       policy is already folded in by lagLimitFor -- so a migrated document
+       says it was set, and never follows the reading edition's default. */
+    lagLimitSet: true,
     lagType: k.lagType === 'transport' ? 'TRANSPORT' : 'APPLY',
     lagGraceTimeSeconds: k.lagGraceTime,
     pingIntervalMs: k.pingSet ? k.pingInterval : null,

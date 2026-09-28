@@ -12,6 +12,7 @@
 import type { CitationId } from '../../citations';
 import { assertCitesAllowed } from '../../citations';
 import type { MemberId } from '../../ids';
+import { lagLimitOf } from '../../defaults';
 import type { Finding } from '../../types/claims';
 import type { DatabaseMember, Member } from '../../types/topology';
 import { isDatabase, isFarSync } from '../../types/topology';
@@ -232,17 +233,21 @@ assertCitesAllowed('LAG_LIMIT_MODE', LAG_RECOMMENDATION_CITES);
 
 export const lagLimitVsThreshold: Rule = (ctx): Finding[] => {
   const f = ctx.doc.config.fsfo;
-  if (!ctx.fsfoOn || f.lagLimitSeconds <= f.thresholdSeconds) return [];
+  const limit = lagLimitOf(ctx.doc);
+  if (!ctx.fsfoOn || limit <= f.thresholdSeconds) return [];
   const is19c = ctx.doc.config.edition === '19c';
   return [mk('FSFO.LAGLIMIT_VS_THRESHOLD', {
     subject: configSubject(),
     ...(is19c ? { basis: 'doc-later' as const } : {}),
-    message: `FastStartFailoverLagLimit is ${f.lagLimitSeconds} s against a FastStartFailoverThreshold of ${f.thresholdSeconds} s. Oracle recommends the lag limit at or below the threshold: past it the old primary can keep committing after fast-start failover has been initiated, briefly risking two open primaries.`,
+    message: `FastStartFailoverLagLimit is ${limit} s against a FastStartFailoverThreshold of ${f.thresholdSeconds} s. Oracle recommends the lag limit at or below the threshold: past it the old primary can keep committing after fast-start failover has been initiated, briefly risking two open primaries.`,
     cite: LAG_RECOMMENDATION_CITES,
     ...(is19c ? { note: 'The recommendation sentence is on the 26ai FastStartFailoverLagLimit property page only; the 19c property page does not carry it, so this reads doc-later under 19c even though the underlying risk -- two open primaries -- does not depend on the edition.' } : {}),
     fix: {
       label: `Set FastStartFailoverLagLimit to ${f.thresholdSeconds} s`,
-      patch: [{ op: 'replace', path: '/config/fsfo/lagLimitSeconds', value: f.thresholdSeconds }],
+      patch: [
+        { op: 'replace', path: '/config/fsfo/lagLimitSeconds', value: f.thresholdSeconds },
+        { op: 'add', path: '/config/fsfo/lagLimitSet', value: true },
+      ],
     },
   })];
 };

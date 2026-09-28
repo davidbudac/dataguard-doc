@@ -22,14 +22,14 @@
 
 import { assertCitesAllowed } from '../citations';
 import type { CitationId } from '../citations';
-import { BROKER_DEFAULTS, defaultLagLimit } from '../defaults';
+import { BROKER_DEFAULTS, defaultLagLimit, lagLimitIsSet, lagLimitOf } from '../defaults';
 import type { MemberId } from '../ids';
 import { formatRedoRoutes, isParenthesised } from '../redo/parse';
 import { resolveRedoGraph } from '../redo/resolve';
 import { defaultDestProps } from '../serialize/schema';
-import { detectClaim, lagGated, pingPropertiesSet } from '../sim/fsfo';
+import { detectClaim, pingPropertiesSet } from '../sim/fsfo';
 import type { Claim, Finding } from '../types/claims';
-import { docLater, documented, model } from '../types/claims';
+import { conflict, docLater, documented, model } from '../types/claims';
 import type { DestProps, Member, TopologyDoc } from '../types/topology';
 import { declaredPrimary, isDatabase, isFarSync } from '../types/topology';
 import type { GeneratedFile, Line, Span } from './lines';
@@ -457,35 +457,54 @@ function fsfoPropertyLines(doc: TopologyDoc, defaults: (typeof BROKER_DEFAULTS)[
     ));
   }
 
-  /* The lag limit, whose protection-mode story changed in 26ai. */
+  /* The lag limit, whose protection-mode story changed in 21c and whose
+     broker default follows the edition and the mode until someone sets it.
+     The command is emitted only for a limit that was set; a limit at its
+     broker default is a note saying which default is in force. */
   const mode = cfg.protectionMode;
+  const limitSet = lagLimitIsSet(f);
+  const limit = lagLimitOf(doc);
+  const lagDefault = defaultLagLimit(cfg.edition, mode);
+  const setLagLimit = (cite: CitationId[]): Line => cmd(
+    [span('EDIT CONFIGURATION SET PROPERTY FastStartFailoverLagLimit = '),
+      val(limit, limit === lagDefault), span(';')],
+    { basis: 'documented', cite },
+  );
   if (mode === 'MAXAVAILABILITY' && !v26) {
-    out.push(nDoc(
-      'FastStartFailoverLagLimit is not evaluated in maximum availability under 19c -- the standby must be synchronized instead, which is about redo received, so an apply lag does not block it',
-      LAG_LIMIT_MODE_CITES,
-    ));
+    /* ED-03: 19c contradicts itself, and a live 19.27 system prints the limit
+       "(not in use)" in maximum availability; the page follows the live
+       system and names the conflict rather than resolving it. */
+    if (limitSet) out.push(setLagLimit(['FSFO.LAGLIMIT_DEFAULT_19C']));
+    const text = `${limitSet ? `FastStartFailoverLagLimit is set to ${limit} seconds` : `FastStartFailoverLagLimit is not set -- the 19c broker default is ${lagDefault} seconds`}, and in maximum availability a live 19.27 system prints it "(not in use)": the standby must be synchronized instead, which is about redo received, so an apply lag does not block it. The 19c documentation contradicts itself here -- its fast-start failover chapter says zero data loss in maximum availability needs the property set to zero, its property page says the property is used in maximum performance mode`;
+    out.push(note(text, conflict(text,
+      ['FSFO.LAGLIMIT_ZERO_MAXAVAIL_19C', 'FSFO.LAGLIMIT_MAXPERF_ONLY_19C'],
+      'The 19c fast-start failover chapter and the 19c FastStartFailoverLagLimit property page disagree about whether the property reaches maximum availability. A live 19.27 system in MaxAvailability prints "Lag Limit: 30 seconds (not in use)" -- an observation, not documentation -- and this page follows it.')));
   } else if (mode === 'MAXAVAILABILITY') {
-    const dflt = defaultLagLimit('26ai', 'MAXAVAILABILITY');
-    out.push(cmd(
-      [span('EDIT CONFIGURATION SET PROPERTY FastStartFailoverLagLimit = '),
-        val(f.lagLimitSeconds, f.lagLimitSeconds === dflt), span(';')],
-      { basis: 'documented', cite: LAG_LIMIT_MODE_CITES },
-    ));
+    if (limitSet) out.push(setLagLimit(LAG_LIMIT_MODE_CITES));
+    else {
+      out.push(nDoc(
+        `FastStartFailoverLagLimit is not set -- the 26ai broker default in maximum availability mode is ${lagDefault} seconds`,
+        ['FSFO.LAGLIMIT_RANGES'],
+      ));
+    }
     out.push(nDoc(
-      f.lagLimitSeconds === 0
-        ? '0 is the maximum availability default in 26ai: the standby must have received every change, so the failover loses nothing -- V$FAST_START_FAILOVER_CONFIG names that ZERO DATA LOSS'
+      limit === 0
+        ? '0 in maximum availability: the standby must have received every change, so the failover loses nothing -- V$FAST_START_FAILOVER_CONFIG names that ZERO DATA LOSS'
         : 'non-zero in maximum availability: fast-start failover is permitted while the lag is at or below the limit and loses at most that much -- POTENTIAL DATA LOSS',
       LAG_LIMIT_MODE_CITES,
     ));
   } else if (mode === 'MAXPERFORMANCE') {
-    const isDefault = f.lagLimitSeconds === defaults.lagLimitSeconds;
-    out.push(cmd(
-      [span('EDIT CONFIGURATION SET PROPERTY FastStartFailoverLagLimit = '),
-        val(f.lagLimitSeconds, isDefault), span(';')],
-      { basis: 'documented', cite: ['FSFO.LAGLIMIT_RANGES'] },
-    ));
-    if (isDefault) out.push(nDoc('default', ['FSFO.LAGLIMIT_RANGES']));
-    if (f.lagLimitSeconds > f.thresholdSeconds) {
+    const rangeCite: CitationId = v26 ? 'FSFO.LAGLIMIT_RANGES' : 'FSFO.LAGLIMIT_DEFAULT_19C';
+    if (limitSet) {
+      out.push(setLagLimit([rangeCite]));
+      if (limit === lagDefault) out.push(nDoc('default', [rangeCite]));
+    } else {
+      out.push(nDoc(
+        `FastStartFailoverLagLimit is not set -- the broker default in maximum performance mode is ${lagDefault} seconds`,
+        [rangeCite],
+      ));
+    }
+    if (limit > f.thresholdSeconds) {
       out.push(nDoc(
         'Oracle recommends FastStartFailoverLagLimit at or below FastStartFailoverThreshold: past it the old primary can keep committing after a fast-start failover is initiated, briefly risking two primaries',
         ['FSFO.LAGLIMIT_RECOMMENDATION'],
@@ -514,10 +533,11 @@ function fsfoPropertyLines(doc: TopologyDoc, defaults: (typeof BROKER_DEFAULTS)[
         ['FSFO.LAGTYPE', 'FSFO.LAGGRACETIME'],
       ));
     }
-  } else if (!lagGated(doc)) {
+  } else {
+    if (limitSet) out.push(setLagLimit([v26 ? 'FSFO.LAGLIMIT_RANGES' : 'FSFO.LAGLIMIT_DEFAULT_19C']));
     out.push(nDoc(
-      'the readiness check in maximum protection is that the standby is synchronized, so the lag limit is not evaluated',
-      LAG_LIMIT_MODE_CITES,
+      'FastStartFailoverLagLimit is not used in maximum protection mode: the readiness check is that the standby is synchronized',
+      ['FSFO.LAGLIMIT_NOT_MAXPROT_26AI'],
     ));
   }
 
