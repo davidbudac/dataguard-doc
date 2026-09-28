@@ -42,6 +42,14 @@ below that were [D-later] only because of the truncation are now [D] and say so.
 ### C. Multiple standbys / FSFO targets
 
 - C1 [D] multi-target new in 12.2 (https://docs.oracle.com/en/database/oracle/oracle-database/12.2/dgbkr/release-changes.html). 19c: "candidate targets. The broker selects a target based on the order in which they are specified"; "If the designated fast-start failover target develops a problem ... the broker automatically changes the fast-start failover target to one of the other candidate targets"; with >1 standby the property must be set explicitly. Property: names or `ANY`; "Targets are verified when fast-start failover is enabled"; reciprocal value on the target set automatically. Physical or logical only. 19c: `SET FAST_START FAILOVER TARGET TO name [NOWAIT]` (dynamic retarget). `SHOW FAST_START FAILOVER` shows Active Target / Potential Targets / per-target valid flag. **Do not write "first viable in list order".**
+- C1a **[Addition, 2026-09-28, SIM-05]** [D, 26ai] "Data Guard Broker cannot failover to second
+  fast-start failover target if both the primary and first fast-start failover targets are down."
+  (26ai FSFO chapter, *Restrictions When Fast-Start Failover is Enabled*.) The automatic target
+  change is the broker acting at the primary, so a second candidate is only reached while the
+  primary can still reach it; once the primary and the active target are lost together there is
+  no failover to a live second candidate, however far down the list it sits. **[D-later, 19c]**
+  the 19c chapter documents the automatic change of target and is silent on this restriction, so
+  under 19c it is applied as documented in a later edition, not as a 19c fact.
 - C2 [D] bystanders: `BystandersFollowRoleChange` default ALL; viability check on complete failover. Observer treatment of non-targets: [UNDOC] (observer pings primary + target only).
 - C3 MaxProtection: C&A protection-modes page: "shuts the primary database down rather than allowing it to continue"; "Oracle recommends that a minimum of two standby databases be used ... to prevent a single standby database failure from causing the primary database to shut down". [D] 19c broker ch.4 (members page, *Maximum Protection*, verified 2026-08-17): "the primary database will shut down, rather than continue processing transactions, if it cannot write its redo stream to at least one synchronized standby database" and "If only one standby database is supporting maximum protection mode, Oracle Data Guard broker will disallow the shutdown of the apply instance." So "any one SYNC ack suffices" is documented in the broker guide's wording; the C&A page's own MaxProtection paragraph does not spell out "at least one" (its MaxAvailability paragraph does, C4). Cite the broker page for it.
 - C4 [D, explicit] MaxAvailability: "If the primary does not receive acknowledgement from at least one synchronized standby, then it operates as if it were in maximum performance mode".
@@ -49,6 +57,14 @@ below that were [D-later] only because of the truncation are now [D] and say so.
 ### D. Multiple observers
 
 - D1 [D] 19c: "There can be up to three observers for a single Data Guard configuration. One is the master observer and the others are backup observers." 21c broker ch.5 (https://docs.oracle.com/en/database/oracle/oracle-database/21/dgbkr/using-data-guard-broker-to-manage-switchovers-failovers.html, verified 2026-08-17) and 26ai FSFO chapter: "There can be up to four observers for a single Data Guard configuration."; 26ai `START OBSERVER` page: "You can register up to four observers", ORA-16647 "could not start more than four observers"; 26ai SHOW OBSERVER page still says "up to 3" [CONFLICT] (the 19c SHOW OBSERVER entry says the same, consistently). So the move 3→4 is documented from 21c; the 21c change page itself 404s → "four from 21c; 19c is three". One more wrinkle: the 26ai Database Reference `V$FS_FAILOVER_OBSERVERS` page (https://docs.oracle.com/en/database/oracle/oracle-database/26/refrn/V-FS_FAILOVER_OBSERVERS.html) still says "If you are querying on the primary database, this view returns three rows, each describing one observer" — count it with the SHOW OBSERVER side of the conflict. [D, 19c] "When fast-start failover is disabled, no observer is called the master observer; all observers have the same functionality." (19c broker ch.5, *Managing Observers*). [D] "Only the master observer can coordinate fast-start failover with Data Guard broker.""
+  **[Correction, 2026-09-28, ED-07]** "19c is three" is not the whole of it: the 19c command
+  reference's own `START OBSERVER` usage notes say "You can register up to four observers to
+  monitor a single Data Guard broker configuration" (CMD19) — a second, 19c-internal version of
+  the same three-vs-four conflict, not previously labelled here. Against it: the 19c FSFO chapter
+  ("up to three", above) and ORA-16647's own 19c tab ("For Oracle Database releases 12.2 through
+  19c, a maximum of three observers can be started"). A 19c document should cite all three
+  (`OBS.THREE_19C`, `OBS.FOUR_CMD19`, `ORA.16647`) as a `conflict`, the same way a 26ai one cites
+  its own two sides, never a single source as though 19c agreed with itself.
 - D2 [D] nomination precondition (19c Scenario 6 https://docs.oracle.com/en/database/oracle/oracle-database/19/dgbkr/examples-using-data-guard-broker-DGMGRL-utility.html): "If the primary and target standby databases stay connected but the connection to the master observer is lost, then the broker tries to nominate a backup observer as the new master observer." 12.2 release note overstates ("never in an unobserved state") — precondition wording wins.
 - D3 [D] `START OBSERVER [name] [FILE IS f] [LOGFILE IS l] [CONNECT IDENTIFIER IS ci] [IN BACKGROUND];` — **`FILE IS`, not `FILE=`**. IN BACKGROUND preferred. `-logfile` deprecated 12.2.
 - D4 [D, 19c — re-verified 2026-08-17] SHOW OBSERVER (19c broker commands page): "displays the observer name, the host name where the observer is running, whether the observer is the master observer, and the last time the observer pinged the primary and standby"; example output `Observer "ob2" - Master / Host Name: / Last Ping to Primary: / Last Ping to Target:`; usage note "This command can report correct last ping information only when FSFO is enabled.""
@@ -57,12 +73,34 @@ below that were [D-later] only because of the truncation are now [D] and say so.
 - D7 [D] observe-only (19c): `ENABLE FAST_START FAILOVER OBSERVE ONLY;` (broker ch.5 *Configuring Fast-Start Failover in Observe-only Mode*: "The primary database can be opened even if there is no acknowledgement from the observer or target standby", "You can switch over or manual failover to a bystander database"); the log line "Unable to failover since this observer is in observe-only mode" is in Scenario 16 of the DGMGRL scenarios page (https://docs.oracle.com/en/database/oracle/oracle-database/19/dgbkr/examples-using-data-guard-broker-DGMGRL-utility.html), together with `SELECT fs_failover_mode from V$DATABASE;`; `V$DATABASE.FS_FAILOVER_MODE` = `OBSERVE-ONLY` (Database Reference).
 - D8 [D, 19c — re-verified 2026-08-17] `PreferredObserverHosts` is on the 19c broker properties page (same text as the 26ai page https://docs.oracle.com/en/database/oracle/oracle-database/26/dgbkr/preferredobserverhosts.html): "Only observers running on hosts specified in the PreferredObserverHosts will observe databases and become the master observer which will initiate a failover in case of loss of the primary database."; "The priority range is from 1 to 8 and the default value of the priority is 8. A lower number has a higher priority."; value `host_name_1:1 [, host_name_n : priority]`; broker default Null; "the change does not affect the location of the master observer until the next role change." Cite 19c.
 - D9 no `SET OBSERVER` heartbeat; knobs are ObserverPingInterval/Retry, `ObserverReconnect`, `ObserverConnectIdentifier`.
+  **[Addition, 2026-09-28, ED-01]** `ObserverPingInterval` and `ObserverPingRetry` are
+  **[D-later]**, not 19c facts, which this sheet had not previously recorded: zero occurrences in
+  the 12.2, 18c or 19c property pages, the 19c fast-start failover chapter, the 19c command
+  reference, or the strings of a live 19.27 `dgmgrl`/`oracle` binary or its own
+  `SHOW CONFIGURATION VERBOSE`. First documented in 21c. The page had stated "they exist since
+  12.2"; that claim traces to no Oracle page.
 
 ### E. Other
 
 - E1 member matrix: physical (cascades yes, FSFO yes, primary yes); logical (cascade no, FSFO yes, primary yes); snapshot (cascade no, FSFO no); far sync (forwards, FSFO no, primary never); ZDLRA (FSFO no). MaxProtection cannot be used if the only standby is a snapshot standby; logical standbys not supported in MaxProtection for FSFO.
 - E2 [D] LOG_ARCHIVE_DEST_n n=1..31; 1–10 LOCATION|SERVICE, 11–31 SERVICE only; cascader fan-out 30. Do not write "30 remote destinations".
-- E3 [D 12.1 only] 253 members per configuration; not restated in 19c/26ai → cross-edition citation.
+- E2a **[Addition, 2026-09-28, ED-04]** `MAX_FAILURE` counting was rewritten for 26ai and this
+  sheet had not recorded either reading. **[D, 26ai]** (`LOG_ARCHIVE_DEST_n` parameter
+  attributes page): "If MAX_FAILURE is set to 1, no attempts are made to reactivate this archive
+  destination when it fails. If MAX_FAILURE > 1, reactivation attempts are made until the number
+  of consecutive failures is equal to the value of MAX_FAILURE. ... If MAX_FAILURE is 0,
+  reactivation attempts are continuous." — so under 26ai the *first* failure already counts
+  toward the limit, and higher-priority alternates are checked for reactivation at regular
+  intervals regardless of `REOPEN`. The 19c reading this page otherwise still uses (the initial
+  failure is not counted; disabled at `MaxFailure × ReopenSecs`, manual reenable only) is a
+  separate, older sentence, so counting the 26ai way only under `edition: '26ai'` is a documented
+  edition difference, not a free choice. **[D, both editions]** the broker default for
+  `MaxFailure` is 1 for a member inside a RedoRoutes group, 0 otherwise (19c properties page;
+  26ai `maxfailure.html`) — not 0 everywhere.
+- E3 **[Correction, 2026-09-28, ED-07]** [D] 253 members per configuration is on the 19c and
+  26ai *Managing Oracle Data Guard Broker Configurations* pages too, not only 12.1 as this entry
+  previously had it. A 19c or 26ai document should cite that edition's own page directly, not
+  only the 12.1 one as a cross-edition citation.
 - E4 [D, 19c — re-verified 2026-08-17] `ConfigurationWideServiceName` (19c broker properties page; introduced 12.2 per the 12.2 release-changes page): "The default service name of this configuration-wide service is primarydbname_CFG, where the primary database name is appended with a suffix of _CFG. The service name does not change after a role transition.""
 - E5 [D] rules are active per-rule when their source is the current primary — a standby's `(prm : x ASYNC)` is active *now* (cascading); its `(LOCAL : ...)` activates when it becomes primary.
 - E6 [D, 19c — re-verified 2026-08-17] `TransportDisconnectedThreshold` (19c broker properties page): "can be used to generate a warning status for a logical, physical, or snapshot standby, or a far sync instance when the last communication from the primary database exceeds the property value"; broker default 30 seconds; "A value of 0 seconds results in no warnings being generated." Warning status only, never a failover clock. Siblings ApplyLagThreshold, TransportLagThreshold (12.1).

@@ -283,12 +283,76 @@ fsfoArmed := fsfo.state === 'enabled' && observers.some(running)
 master := running observer with role 'master' (filtered by PreferredObserverHosts)
 obsSeesPrimary := reachable(master.host, anyLiveInstanceHost(primary))
 obsSeesTarget(t), targetSeesPrimary(t) := redoGraph.members[t].reachableFromPrimary
-stalled := fsfoArmed && primaryAlive && !obsSeesPrimary && !targets.some(targetSeesPrimary); abort at stallStart+threshold iff pmyShutdown
+ready(t) := fsfoReady[t]      // the recorded SYNCHRONIZED / UNDER-LAG-LIMIT state, a latch (below)
 ```
-Failover at `initiateAt` iff master lost the primary for threshold (or ping window when both ping props set) AND chosen target lost the primary (ObserverOverride FALSE) AND master reaches target AND readiness gate passes. `detect = pingSet ? pingIntervalMs*(pingRetry+1)/1000 : 0.3` (model FSFO.PING_ARITHMETIC); `initiate = pingSet ? detect : threshold`; primary stall clock always uses threshold.
-Target selection: walk candidate list in order, skip unreachable/gate-failing → **model FSFO.TARGET_SELECTION** ("order", never "first viable"); toggle `targetPolicy: 'skip-to-next' | 'active-target-only'`, default skip-to-next.
-Readiness gate: MaxAvail/MaxProt (19c; 26ai with limit 0) synchronized; MaxPerf and 26ai bounded MaxAvail: gateLag ≤ lagLimit (transport lag under TRANSPORT, clamped to apply lag); terminal recovery pays the apply lag.
-MaxAvail at-least-one-synchronized [D]; MaxProt shutdown when no SYNC-acking database → aborted at lastAck+netTimeout (model PROT.MAXPROT_SHUTDOWN_TIMING). Bystanders per BystandersFollowRoleChange (default ALL). Reinstate: open band with no end (environment-dependent), preconditions as Findings.
+**Readiness is state, not a live query.** `ready(t)` is the target's *recorded* state --
+SYNCHRONIZED or TARGET UNDER LAG LIMIT -- and it is a latch: it stays true while nothing new
+is committed, because a primary that is dead, stalled or hanging on the commit generates no
+redo the standby could be missing. It flips to UNSYNCHRONIZED / TARGET OVER LAG LIMIT only
+from the instant the primary carries on committing without the target (`fsfo.readiness`
+deadline), and under the lag limit the recorded lag keeps *growing* while the target receives
+nothing -- one second of lag per second of redo the primary generates it does not get
+(`FSFO.NOT_READY_TIMING`, model: the fact that the change must be recorded is documented, when
+it lands is not). Redo reaching the target again resynchronizes it at once, drawn as immediate
+(`FSFO.RESYNC_INSTANT`, model) -- Oracle only says the ability is restored "once the target
+standby database has received all missing redo data", not how long that takes.
+**The primary stalls only where a change cannot be confirmed.** Being reachable by neither the
+observer nor any target isolates a primary, but isolation alone is not STALLED: a primary that
+was never observed, or whose target was never ready, has no recorded state left to change, so
+it keeps running and the run says why (`running: 'unobserved' | 'not-ready'`). It stalls once
+isolation coincides with something that *would* have to change to confirm it -- the
+configuration was observed and the active target was ready, or it is already stalled, or it is
+a former primary a role change has already passed by. `legacyStallWhenNotReady` (below) is the
+one switch that widens this back to "isolated stalls, full stop".
+Failover at `initiateAt` iff master lost the primary for threshold (or ping window when both
+ping props set) AND chosen target lost the primary (ObserverOverride FALSE) AND master reaches
+target AND readiness gate passes. `detect = pingSet ? pingIntervalMs*(pingRetry+1)/1000 : 0.3`
+(model FSFO.PING_ARITHMETIC); `initiate = pingSet ? detect : threshold`; primary stall clock
+always uses threshold, independently of the observer's clock, and both are exposed as the
+instant they first started (`EngineFacts.thresholdStartAt` / `stallStartAt`), not just the
+instant of the outage they belong to.
+**ObserverPingInterval and ObserverPingRetry are not 19c properties.** Absent from the 19c
+property reference, the 19c fast-start failover chapter, the 19c command reference and a live
+19.27 system; first documented in 21c. `pingInEffect` reads them only when the edition is not
+19c (`FSFO.PING_NOT_IN_19C`, doc-later) -- a 19c document that sets them anyway detects on the
+threshold like any other, and the run says so.
+Target selection: walk candidate list in order, skip unreachable/gate-failing → **model
+FSFO.TARGET_SELECTION** ("order", never "first viable"); toggle `targetPolicy: 'skip-to-next'
+| 'active-target-only'`, default skip-to-next. **The walk runs only while the primary is
+alive.** "The broker automatically changes the fast-start failover target" is the broker at the
+primary acting, so a second candidate is reached only while the primary can still reach it;
+once the primary and the active target are down together there is no second failover, even
+with a live second candidate -- documented for 26ai ("Data Guard Broker cannot failover to
+second fast-start failover target if both the primary and first fast-start failover targets are
+down"), carried as `doc-later` under 19c because its chapter states the automatic change but is
+silent on this case (`FSFO.NO_SECOND_TARGET`).
+Readiness gate: MaxAvail/MaxProt (19c; 26ai with limit 0) synchronized; MaxPerf and 26ai bounded
+MaxAvail: gateLag ≤ lagLimit (transport lag under TRANSPORT, clamped to apply lag); terminal
+recovery pays the apply lag.
+MaxAvail at-least-one-synchronized [D]; MaxProt shutdown when no SYNC-acking database → aborted
+at lastAck+netTimeout (model PROT.MAXPROT_SHUTDOWN_TIMING). Bystanders per
+BystandersFollowRoleChange (default ALL). Reinstate: open band with no end
+(environment-dependent), preconditions as Findings.
+**Refused commands never change role.** SWITCHOVER TO refuses a down target, a down primary or
+the two unable to reach each other (`SWITCHOVER.GATE`); FAILOVER TO refuses a down target
+(`FAILOVER.TARGET_DOWN`), and separately raises an error -- without refusing the command -- when
+the primary is still open, because the broker cannot see to it that an operator shuts it down
+first (`FAILOVER.PRIMARY_STILL_OPEN`). A manual failover with fast-start failover enabled is
+conditional on the target being the current target, synchronized or inside the lag limit, and
+the observer reaching it (`manualFailoverFindings`, roles.ts); the loss it books is the redo the
+target never received -- never documented as bounded, zero or lossless, always model
+(`FAILOVER.LOSS_DEPENDS`).
+**A former primary is never drawn open beside the new one.** After a role change it is mounted,
+not open, whether or not fast-start failover armed the failover (`FSFO.FORMER_PRIMARY_NOT_OPEN`
+where it did, `FAILOVER.FORMER_PRIMARY_MOUNTED` -- this page's reading -- where it did not,
+since only the fast-start-failover case has ORA-16649 spelling out the mounted state). It stays
+that way until REINSTATE DATABASE or a fresh START/STARTUP the run does not model.
+**One role change per run.** A second failover after a role change -- fast-start failover stays
+armed, and "the reinstated database acts as the fast-start failover target for the new primary
+database, making a subsequent fast-start failover possible" -- is not simulated. The run stops
+evaluating at the first role change and says so (`SIM.ONE_ROLE_CHANGE`, model, a Finding and a
+`taken: false` Decision together): the lanes after that instant are where the simulation ends,
+not a second Oracle outcome.
 
 Output:
 ```ts
@@ -315,6 +379,20 @@ Model labels from §4: FSFO.PING_ARITHMETIC, FSFO.TARGET_SELECTION, PROT.MAXPROT
 `classicTopology({observerLoc, edition, …CDEF knobs})`: sites dc1/dc2/dc3; hosts dc1-prm01, dc2-sby01, observer host of its own in the chosen site; members prm01/sby01 with `redoRoutes: []`; three site links at `latency`; FSFO enabled unless `none`; target [sby01].
 Scenario → events: crash = host.down dc1-prm01; isolated = link.cut dc1↔dc2 + dc1↔dc3; partition = link.cut dc1↔dc2; dc2down = site.down dc2; observer-lost = host.down observer host; switchover = cmd.switchover to sby01.
 `legacyComputeFsfo(c) = classicTopology + scenarioEvents + simulate + toLegacyModel`; `site/test.mjs`'s matrix, stall table, clock invariants, 26ai tests and back-compat deepEquals run against it unmodified — the M3 gate.
+`simulate`'s third argument, `SimParams`, carries three switches that exist for this adapter
+alone and are set nowhere else -- not by any control, not by the share-link codec:
+- `legacyPingUnder19c` (ED-01): the published page offers ObserverPingInterval/Retry under 19c
+  and draws the ping arithmetic there; the general engine's default is that they are 21c
+  properties a 19c document cannot reach.
+- `legacyStallWhenNotReady` (SIM-02): the published page stalls every primary that reaches
+  neither the observer nor any target; the general engine's default stalls one only where a
+  recorded state actually has to change to confirm it (§4).
+- `legacyManualLossIsApplyLag` (SIM-06): the published page draws a manual failover's loss, in
+  maximum performance mode, as the apply lag; the general engine's default is the redo the
+  standby never received, which the transport lag already bounds separately.
+Both readings are legitimate: the published fragment is frozen (`simulator/`, served at
+`/dataguard/legacy/`) and its own parity tests hold it to `site/test.mjs` exactly, so it keeps
+its pre-fact-check model rather than silently changing what a saved link once showed.
 Surviving quantities (same name/value/formula): initiate, detect, execStart (= initiate + netHop, netHop = observer→target rtt/2000), tOpen, applyRemaining, abort, blocked, gateLagSeconds, dataLossKind/Seconds, ifDiedNow, stalled/standbyGone/redoFlowing/pmyReachable (derived from graph), tDown/tConvertEnd/downtime/tRestartDraw (SW_VERIFY=1, SW_CONVERT=2 nominal), horizon/preRoll/tickStep, outcome (six values + additive new ones), lagStall/lagType, observerLost/pingSet/switchover/scenario (derived label preserving observer-lost+none → crash).
 
 ## 6. Porting the other three models
