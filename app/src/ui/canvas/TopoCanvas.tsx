@@ -18,7 +18,7 @@ import {
   useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState,
 } from 'preact/hooks';
 import type { RedoGraph, Snapshot, TopologyDoc } from '@/engine';
-import type { Geometry, LayoutOffset, NodeBox } from './layout';
+import type { Geometry, LayoutOffset, NodeBox, SiteBox, ViewBox } from './layout';
 import { layoutTopology } from './layout';
 import { cardFrameFor, cardRoleFor, chipsFor, routeTopology, siteIsDown, unionViewBox } from './routing';
 import { describeTopology, cardLabel, linkLabel, siteLabel } from './aria';
@@ -286,7 +286,15 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
   );
   const routed = useMemo(() => routeTopology(doc, graph, geo, frame), [doc, graph, geo, frame]);
   const aria = useMemo(() => describeTopology(doc, graph, frame), [doc, graph, frame]);
-  const view = unionViewBox(geo.viewBox, routed.bounds);
+  /* What a drag in flight holds still: the viewBox, so the drawing does not
+     rescale under the pointer as the thing being dragged changes the bounds,
+     and -- for a card's drag -- every data centre's rectangle, so the panel a
+     card is carried inside or out of keeps its size until the drop (task 1.2).
+     A data centre's own drag leaves `sites` live: its panel is what moves. */
+  const [frozen, setFrozen] = useState<{ view: ViewBox; sites: readonly SiteBox[] | null } | null>(null);
+  const view = frozen?.view ?? unionViewBox(geo.viewBox, routed.bounds);
+  /* The panels as the reader sees them, and so as the drop is aimed at them. */
+  const sitesDrawn = frozen?.sites ?? geo.sites;
 
   const svgRef = useRef<SVGSVGElement | null>(null);
   /* Every focusable thing on the drawing, by key: cards, site panels and the
@@ -368,7 +376,7 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
     p.x >= r.x && p.x <= r.x + r.w && p.y >= r.y && p.y <= r.y + r.h;
   /** The other site panel under the point, or null. */
   const siteUnder = (p: { x: number; y: number }, own: string): string | null =>
-    geo.sites.find((s) => (s.id as string) !== own && inside(s, p))?.id as string | undefined ?? null;
+    sitesDrawn.find((s) => (s.id as string) !== own && inside(s, p))?.id as string | undefined ?? null;
   /** The other card under the point, or null: cards only, never a panel or a caption. */
   const cardUnder = (p: { x: number; y: number }, own: string): string | null =>
     geo.nodes.find((n) => n.key !== own && inside(n, p))?.key ?? null;
@@ -834,7 +842,11 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
     const dx = (ev.clientX - d.startX) * d.scale;
     const dy = (ev.clientY - d.startY) * d.scale;
     if (!d.moved && Math.hypot(dx, dy) < DRAG_THRESHOLD) return;
-    if (!d.moved) takeDrag(ev);
+    if (!d.moved) {
+      takeDrag(ev);
+      const ownPanel = geo.sites.some((st) => (st.id as string) === d.key);
+      setFrozen({ view, sites: ownPanel ? null : geo.sites });
+    }
     d.moved = true;
     const all = offsetsOf(d, dx, dy);
     props.onDrag?.(d.key, all[d.key] as LayoutOffset, all);
@@ -868,7 +880,7 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
     if (!d) return;
     drag.current = null;
     svgRef.current?.releasePointerCapture?.(ev.pointerId);
-    if (d.moved) setMoving(false);
+    if (d.moved) { setMoving(false); setFrozen(null); }
     if (d.kind === 'pan') { if (d.moved) setPanning(false); return; }
     if (d.kind === 'marquee') {
       setBand(null);
@@ -1152,7 +1164,7 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
         </defs>
 
         <g class="tp-sites">
-          {geo.sites.map((s) => (
+          {sitesDrawn.map((s) => (
             <SiteRect
               key={s.id as string}
               site={s}

@@ -32,7 +32,11 @@ does not. The whole card rectangle must be the grab target (ports and the `⋯`
 button keep their own behaviour).
 
 ### 1.2 Dragging a card must not resize its data centre
-Status: todo
+Status: in progress (ui/track1-canvas)
+Note: step 1 done -- `TopoCanvas.tsx` freezes every data centre rect (and the
+viewBox, so the drawing no longer rescales under the pointer) from the moment a
+card drag crosses the threshold until the drop. Keeping the size *after* the drop
+needs the stored DC size from 1.3.
 While a card is dragged inside/out of a data centre, the DC rectangle grows /
 shrinks with it. The DC box must keep its size during the drag; it may only
 re-fit on drop if the card lands outside the current box (or not at all, once 1.3
