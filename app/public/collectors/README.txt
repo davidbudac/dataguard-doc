@@ -38,7 +38,9 @@ Optional Bash wrapper (requires SQL*Plus)
 Aliases must already work with SQL*Plus wallet authentication and have the
 necessary privileges. Do not pass passwords. The wrapper buffers output and
 returns a failure without releasing partial output if SQL*Plus fails, reports
-a client error, or omits completion markers. Diagnostics go to stderr. It does
+a client error, omits completion markers, or a connection takes longer than
+DG_COLLECT_TIMEOUT seconds (default 120; needs the timeout command, and an alias
+that does not resolve can otherwise hang). Diagnostics go to stderr. It does
 not discover credentials or connect remotely by SSH. Without a wallet, use
 SQL*Plus interactively on each member. The wrapper runs the same SQL; it does
 not enrich it with broker data.
@@ -90,9 +92,12 @@ What remains unknown / needs review
   Generated scripts must be reviewed against the real broker configuration.
 
 Validation status
-  Automated parser, UI and engine tests cover the format and mapping. No live
-  Oracle database was available during development; validate the collector in
-  your 19c test environment before relying on its output operationally.
+  Automated parser, UI and engine tests cover the format and mapping. The SQL
+  and the local/failing-alias wrapper paths were run on a 19.27 two-member test
+  configuration (CDB primary, mounted physical standby, FSFO, SYSDBA OS
+  authentication). Wallet authentication, least-privilege accounts, RAC, far
+  sync, cascades and ASYNC routes are not yet verified live; validate the
+  collector in your own test environment before relying on it operationally.
 
 Oracle sources
   https://docs.oracle.com/en/database/oracle/oracle-database/19/refrn/V-DATABASE.html

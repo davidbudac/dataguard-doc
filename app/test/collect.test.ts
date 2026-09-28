@@ -33,7 +33,7 @@ describe('collector import', () => {
     expect(() => importCollectedTopology(input())).toThrow(error);
   });
   it('deduplicates matching RAC destination rows and rejects mismatched transport', () => {
-    const input = block('P', 'PRIMARY', [dest(), { ...dest(), instance: 2 }], [{ type: 'instance', name: 'P2', host: 'p2.example', version: '19.0.0.0.0' }]) + '\n' + block('S', 'PHYSICAL STANDBY');
+    const input = block('P', 'PRIMARY', [dest(), { ...dest(), instance: 2 }], [{ type: 'instance', name: 'P2', host: 'p2.example', version: '19.27.0.0.0' }]) + '\n' + block('S', 'PHYSICAL STANDBY');
     expect(importCollectedTopology(input).topology.members[0]!.instances).toHaveLength(2);
     expect(() => importCollectedTopology(block('P', 'PRIMARY', [dest(), { ...dest(), instance: 2, affirm: 'NO' }]) + '\n' + block('S', 'PHYSICAL STANDBY'))).toThrow(/differing destinations/);
   });
@@ -94,6 +94,12 @@ it('retains a valid route with a configured alternate without inventing the fall
   const result = importCollectedTopology(input);
   expect(resolveRedoGraph(result.topology, { primary: memberId('P') }).edges).toHaveLength(1);
   expect(result.notes.join(' ')).toContain('alternate LOG_ARCHIVE_DEST_3 is not reconstructed');
+});
+
+it('reads Oracle\'s ALTERNATE value NONE as no alternate', () => {
+  const result = importCollectedTopology(sample());
+  expect(resolveRedoGraph(result.topology, { primary: memberId('P') }).edges).toHaveLength(1);
+  expect(result.notes.join(' ')).not.toMatch(/alternate \S+ is not reconstructed/);
 });
 
 it('enforces the same UTF-8 byte limit for paste and file contents', () => {

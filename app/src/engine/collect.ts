@@ -168,7 +168,9 @@ export function importCollectedTopology(text: string, edition: Edition = '19c'):
         notes.push(`${s.name} → ${name}: omitted from current routes (${str(r, 'status')}, ${str(r, 'validNow')}).`);
         continue;
       }
-      if (str(r, 'alternate')) notes.push(`${s.name} → ${name}: current route retained; alternate ${str(r, 'alternate')} is not reconstructed.`);
+      // V$ARCHIVE_DEST reports ALTERNATE as the string NONE when none is set.
+      const alternate = str(r, 'alternate');
+      if (alternate && key(alternate) !== 'NONE') notes.push(`${s.name} → ${name}: current route retained; alternate ${alternate} is not reconstructed.`);
       const transmit = required(r, 'transmit');
       if (!['SYNCHRONOUS', 'PARALLELSYNC', 'ASYNCHRONOUS'].includes(transmit)) throw new Error(`Unsupported transmit mode ${transmit}.`);
       const affirm = required(r, 'affirm');

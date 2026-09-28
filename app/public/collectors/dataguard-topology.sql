@@ -25,7 +25,7 @@ select json_object(
   'cdb' value cdb, 'container' value sys_context('USERENV', 'CON_NAME')
   returning varchar2(4000)) payload from v$database;
 select json_object('type' value 'instance', 'name' value instance_name,
-  'host' value host_name, 'version' value version
+  'host' value host_name, 'version' value version_full
   returning varchar2(4000)) payload from gv$instance order by inst_id;
 select json_object('type' value 'member', 'name' value db_unique_name,
   'role' value dest_role, 'parent' value parent_dbun

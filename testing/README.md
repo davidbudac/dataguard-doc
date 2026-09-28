@@ -847,7 +847,10 @@ Referenced directly by this runbook:
 
 ## Existing-setup collector acceptance drill
 
-This is the live Oracle validation still needed for `app/public/collectors/`.
+This is the live Oracle validation for `app/public/collectors/`. Steps 1–2, the
+local wrapper and its failing-alias path passed on 2026-09-28 against a 19.27 CDB
+primary + mounted physical standby with FSFO; wallet aliases, least-privilege
+grants, RAC, far sync and cascades are still open.
 The automated importer tests use synthetic records; they do not prove SQL runs
 against a mounted 19c database or an installation's privilege configuration.
 
