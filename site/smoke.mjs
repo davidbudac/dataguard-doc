@@ -38,10 +38,11 @@ const PROBE_MS = 20_000;
    The counts are what these two configurations are: the classic 1+1+1 is a
    primary, a standby and an observer; Example 5-2 adds a far sync instance in
    front of the standby. Every member and every observer is a card on the
-   canvas and a lane on the timeline. */
+   canvas and a lane on the timeline; the application beside the primary is
+   one card more, and its point of view three lanes more. */
 const CASES = [
-  { preset: 'classic', cards: 3, lanes: 3 },
-  { preset: 'far-sync-zero-loss', cards: 4, lanes: 4 },
+  { preset: 'classic', cards: 4, lanes: 6 },
+  { preset: 'far-sync-zero-loss', cards: 5, lanes: 7 },
 ];
 
 const MIME = {
@@ -313,8 +314,8 @@ for (const [query, mark, what] of [
   for (const line of page.console) fail(`${what}: console said ${line}`);
   if (!page.dom.includes(mark)) { fail(`${what} mode did not open`); continue; }
   const cards = countCards(page.dom);
-  if (cards === 3) pass(`${what}: opens, draws the canvas, says nothing`);
-  else fail(`${what}: expected 3 node cards, the page drew ${cards}`);
+  if (cards === 4) pass(`${what}: opens, draws the canvas, says nothing`);
+  else fail(`${what}: expected 4 node cards, the page drew ${cards}`);
 }
 
 /* ---------------- the links the published page handed out ---------------- */

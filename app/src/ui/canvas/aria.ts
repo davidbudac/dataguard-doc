@@ -15,7 +15,7 @@ import type { AnyState, Member, RedoGraph, Snapshot, TopologyDoc } from '@/engin
 import { isFarSync, linkRttMs } from '@/engine';
 import type { NodeBox } from './layout';
 import { roleWord } from './layout';
-import { cardRoleFor, siteIsDown } from './routing';
+import { applicationTargets, cardFrameFor, cardRoleFor, siteIsDown } from './routing';
 
 export interface AriaRow {
   site: string;
@@ -140,7 +140,30 @@ export function structuralRows(doc: TopologyDoc, graph: RedoGraph): AriaRow[] {
       rtt: '',
     });
   }
+  const app = doc.application;
+  if (app) {
+    rows.push({
+      site: siteNameOfHost(doc, app.host as string),
+      member: app.name,
+      role: 'Application',
+      host: hostNameOf(doc, app.host as string),
+      receivesFrom: '',
+      transport: '',
+      rtt: '',
+    });
+  }
   return rows;
+}
+
+/** Where the application stands and which databases its connect string names. */
+export function applicationSentences(doc: TopologyDoc): string[] {
+  const app = doc.application;
+  if (!app) return [];
+  const names = applicationTargets(doc).map((m) => m.name);
+  const where = `The application ${app.name} runs on host ${hostNameOf(doc, app.host as string)} in ${siteNameOfHost(doc, app.host as string)}`;
+  if (names.length === 0) return [`${where}; its connect string names no database.`];
+  if (names.length > SENTENCE_LIMIT) return [`${where}; its connect string names ${names.length} databases.`];
+  return [`${where}; its connect string names ${names.join(', ')}.`];
 }
 
 /** Where the members are: one sentence, or a count when there are many. */
@@ -241,12 +264,13 @@ export function describeTopology(
   const sentences: string[] = [shapeSentence(doc, graph)];
   sentences.push(...redoSentences(doc, graph));
   sentences.push(...observerSentences(doc, frame));
+  sentences.push(...applicationSentences(doc));
   const lat = latencySentence(doc);
   if (lat) sentences.push(lat);
   if (frame) sentences.push(frameSentence(doc, frame));
   const summary = `Topology of the Data Guard configuration ${doc.config.name}: `
     + `${doc.members.length} members, ${doc.observers.length} observers, `
-    + `${doc.sites.length} sites.`;
+    + `${doc.application ? '1 application, ' : ''}${doc.sites.length} sites.`;
   return { summary, sentences, rows: structuralRows(doc, graph) };
 }
 
@@ -254,6 +278,16 @@ export function describeTopology(
 export function cardLabel(
   doc: TopologyDoc, graph: RedoGraph, node: NodeBox, frame?: Snapshot | null,
 ): string {
+  if (node.kind === 'application') {
+    const app = doc.application;
+    if (!app) return 'Application';
+    const host = hostNameOf(doc, app.host as string);
+    const site = siteNameOfHost(doc, app.host as string);
+    const state = cardFrameFor(doc, node, frame);
+    const now = !frame ? '' : state.down ? ' It is down.'
+      : state.phase === 'serving' ? ' It reaches the service.' : ' It cannot reach the service.';
+    return `${app.name}, the application on host ${host} in ${site}.${now}`;
+  }
   if (node.kind === 'observer') {
     const o = doc.observers.find((x) => (x.id as string) === node.id);
     if (!o) return 'Observer';
@@ -308,9 +342,11 @@ export function siteLabel(
     (m) => m.instances.some((i) => hosts.has(i.host as string)),
   ).length;
   const observers = doc.observers.filter((o) => hosts.has(o.host as string)).length;
+  const app = doc.application;
   const count = [
     `${members} ${members === 1 ? 'member' : 'members'}`,
     `${observers} ${observers === 1 ? 'observer' : 'observers'}`,
+    ...(app && hosts.has(app.host as string) ? ['the application'] : []),
   ].join(', ');
   const down = siteIsDown(doc, site.id, frame) ? ' It is down.' : '';
   return `Data centre ${site.name}: ${count}.${down}`;

@@ -52,6 +52,8 @@ export const WHY = {
     'NET_TIMEOUT bounds the wait for a SYNC acknowledgement, so an ASYNC destination is not given one.',
   farSyncNoRole:
     'A far sync instance has no role, no apply and no open mode.',
+  farSyncNotAddress:
+    'A far sync instance cannot be opened for access, so no connect string names it.',
   farSyncNotTarget:
     'FastStartFailoverTarget takes a physical or logical standby; a far sync instance cannot be one.',
   snapshotNotTarget:
@@ -77,7 +79,7 @@ export const WHY = {
   siteHasHosts:
     'This site still has hosts in it: move or remove them first.',
   hostInUse:
-    'This host still runs a database instance or an observer.',
+    'This host still runs a database instance, an observer or the application.',
   noObserverDeployed:
     'No observer is deployed, so there is none to lose. Deploying no observer is not the same as being unobserved.',
   nothingDown:
@@ -109,6 +111,8 @@ export const WHY = {
     'Another member already carries that db_unique_name.',
   observerNameTaken:
     'Another observer already carries that name.',
+  idTaken:
+    'Something else in this configuration already carries that name.',
 } as const;
 
 export type WhyKey = keyof typeof WHY;

@@ -1,46 +1,56 @@
 -- sites
-dc1  0,132 212x118
-dc4  412,-14 222x98
-dc2  834,-14 222x264
-dc3  1256,-14 222x264
+dc1  0,132 232x282
+dc4  432,-24 242x118
+dc2  874,-24 242x294
+dc3  1316,-24 242x294
 -- cards
-prm01  col 0 row 0  14,146 184x72
-obs01  col 1 row 0  426,0 194x52
-obs02  col 2 row 0  848,0 194x52
-sby01  col 2 row 0  853,146 184x72
-obs03  col 3 row 0  1270,0 194x52
-sby02  col 3 row 0  1275,146 184x72
+prm01  col 0 row 0  24,156 184x72
+app01  col 0 row 1  24,320 184x52
+obs01  col 1 row 0  456,0 194x52
+obs02  col 2 row 0  898,0 194x52
+sby01  col 2 row 0  903,156 184x72
+obs03  col 3 row 0  1340,0 194x52
+sby02  col 3 row 0  1345,156 184x72
 -- links
 check:obs01:sby01  readiness check [10 ms]
-  path 549,52 -> 549,136 -> 945,136 -> 945,146
-  pill 676,126 143x20
+  path 579,52 -> 579,146 -> 995,146 -> 995,156
+  pill 716,136 143x20
 check:obs01:sby02  readiness check [10 ms]
-  path 549,52 -> 549,112 -> 1367,112 -> 1367,146
-  pill 676,102 143x20
+  path 579,52 -> 579,122 -> 1437,122 -> 1437,156
+  pill 716,112 143x20
 check:obs02:sby01  readiness check [0 ms]
-  path 945,52 -> 945,146
-  pill 877,89 137x20
+  path 995,52 -> 995,156
+  pill 927,94 137x20
 check:obs02:sby02  readiness check [10 ms]
-  path 945,52 -> 945,112 -> 1367,112 -> 1367,146
-  pill 1085,102 143x20
+  path 995,52 -> 995,122 -> 1437,122 -> 1437,156
+  pill 1145,112 143x20
 check:obs03:sby01  readiness check [10 ms]
-  path 1367,52 -> 1367,136 -> 945,136 -> 945,146
-  pill 1085,126 143x20
+  path 1437,52 -> 1437,146 -> 995,146 -> 995,156
+  pill 1145,136 143x20
 check:obs03:sby02  readiness check [0 ms]
-  path 1367,52 -> 1367,146
-  pill 1299,89 137x20
+  path 1437,52 -> 1437,156
+  pill 1369,94 137x20
+connect:app01:prm01  sessions [0 ms]
+  path 55,320 -> 55,228
+  pill 6,264 98x20
+connect:app01:sby01  address [10 ms]
+  path 208,346 -> 953,346 -> 953,228
+  pill 532,336 98x20
+connect:app01:sby02  address [10 ms]
+  path 208,346 -> 1395,346 -> 1395,228
+  pill 1125,336 98x20
 ping:obs01:prm01  ping [10 ms]
-  path 483,52 -> 483,88 -> 106,88 -> 106,146
-  pill 254,78 82x20
+  path 513,52 -> 513,98 -> 116,98 -> 116,156
+  pill 274,88 82x20
 ping:obs02:prm01  ping [10 ms]
-  path 945,52 -> 945,88 -> 106,88 -> 106,146
-  pill 637,78 82x20
+  path 995,52 -> 995,98 -> 116,98 -> 116,156
+  pill 675,88 82x20
 ping:obs03:prm01  ping [10 ms]
-  path 1367,52 -> 1367,88 -> 106,88 -> 106,146
-  pill 1115,78 82x20
+  path 1437,52 -> 1437,98 -> 116,98 -> 116,156
+  pill 1175,88 82x20
 redo:prm01:sby01  redo (SYNC) [10 ms RTT]
-  path 198,182 -> 853,182
-  pill 453,172 146x20
+  path 208,192 -> 903,192
+  pill 483,182 146x20
 redo:prm01:sby02  redo (SYNC) [10 ms RTT]
-  path 106,218 -> 106,254 -> 1367,254 -> 1367,218
-  pill 664,244 146x20
+  path 116,228 -> 116,278 -> 1465,278 -> 1465,228
+  pill 718,268 146x20

@@ -12,15 +12,18 @@
  */
 
 import type {
-  Member, Observer, RedoGraph, SiteId, TopologyDoc,
+  Application, Member, Observer, RedoGraph, SiteId, TopologyDoc,
 } from '@/engine';
 import { isDatabase, isFarSync } from '@/engine';
 import type { CardLines, Rect } from './measure';
 import { approxW, CARD, elide, fitLabel, measureCardWidth, MINI_ICON, snap8 } from './measure';
 
 export const LAYOUT = {
-  /** Site rect padding; twice this is the "max card + 28" column box. */
-  colPad: 14,
+  /** Site rect padding as the layout draws it: room round the cards, so a
+      data centre reads as a place with things in it rather than a frame. */
+  colPad: 24,
+  /** The padding a data centre may be resized down to (`SiteBox.fit`). */
+  fitPad: 14,
   /** Free space between two column boxes -- the corridor links and pills ride. */
   corridor: 200,
   /** Before an empty panel, which no link reaches: room to see it is a panel, no more. */
@@ -32,6 +35,13 @@ export const LAYOUT = {
   hopGap: 46,
   /** Between the observer band and the member band. */
   bandGap: 28,
+  /** Between the member band and the application under it: room for the
+      hop up to the primary with its caption, and for the lanes a redo route
+      takes between the two (`midLane`). */
+  appGap: 92,
+  /** The first lane between the member band and the application, this far
+      under the member band: just clear of the data centres' own boxes. */
+  midLane: 50,
   /** The site rect's bottom label band. */
   labelBand: 18,
   /** A cascaded standby is indented under its cascader when they share a site. */
@@ -80,8 +90,8 @@ export function trunkCount(doc: TopologyDoc): number {
   return Math.min(LAYOUT.maxTrunks, 1 + checks);
 }
 
-export type NodeKind = 'member' | 'observer';
-export type Glyph = 'db' | 'farsync' | 'snapshot' | 'observer';
+export type NodeKind = 'member' | 'observer' | 'application';
+export type Glyph = 'db' | 'farsync' | 'snapshot' | 'observer' | 'app';
 
 export interface NodeBox {
   /**
@@ -97,7 +107,8 @@ export interface NodeBox {
   site: SiteId;
   col: number;
   row: number;
-  /** Hops from the primary; -1 for the observer band, `unreachableRank` when nothing feeds it. */
+  /** Hops from the primary; -1 for the observer band and the application,
+      `unreachableRank` when nothing feeds it. */
   rank: number;
   unreachable: boolean;
   /** More than one instance is RAC. */
@@ -197,6 +208,12 @@ export interface Geometry {
   bandLaneY: number;
   /** Below every site rect: the lane backwards and column-skipping edges use. */
   underLaneY: number;
+  /**
+   * Between the member band and the application: the lane those edges use
+   * instead while an application stands under a card they would leave by.
+   * Null when no application is drawn.
+   */
+  midLaneY: number | null;
   /**
    * How many observer trunks run along `bandLaneY` and up from it, `trunkStep`
    * apart (task 5.2); zero when the observer lines route one by one.
@@ -317,10 +334,25 @@ function observerLines(doc: TopologyDoc, o: Observer): CardLines {
   return { name, host: roled, hostAt: roled === combined ? 'Observer, '.length : 0 };
 }
 
+/**
+ * The application's card: two lines, as an observer's is -- its name, and the
+ * host it runs on. What it is rides on the card as a chip (`chipsFor`), so
+ * the card stays the width of the databases it stands under.
+ */
+function applicationLines(doc: TopologyDoc, a: Application): CardLines {
+  const host = hostName(doc, a.host as string);
+  const avail = CARD.maxW - CARD.textXObs - CARD.padRight;
+  const name = fitLabel([a.name], avail) ?? elide(a.name, 24);
+  return { name, host: fitLabel([host], avail - MINI_ICON.gap) ?? elide(host, 17), hostAt: 0 };
+}
+
 interface Placed {
   node: NodeBox;
   indent: number;
 }
+
+/** What the layout's own padding leaves over the tightest a box may be drawn. */
+const SLACK = LAYOUT.colPad - LAYOUT.fitPad;
 
 /**
  * Rank: the BFS depth the resolver already computed. A member nothing feeds
@@ -382,9 +414,15 @@ export function layoutTopology(
     observersBySite.set(s, list);
   }
 
+  /* The application stands where its host does; a document without one, or
+     one naming a host that is gone, draws no card for it. */
+  const app = doc.application;
+  const appSite = app === undefined ? undefined : siteOfHost.get(app.host as string);
+
   /* ---- 2. column order: sites by the shallowest rank they hold ---- */
   const occupied = (s: string): boolean =>
-    (membersBySite.get(s)?.length ?? 0) + (observersBySite.get(s)?.length ?? 0) > 0;
+    (membersBySite.get(s)?.length ?? 0) + (observersBySite.get(s)?.length ?? 0)
+      + (appSite === s ? 1 : 0) > 0;
   const siteIds = doc.sites.map((s) => s.id as string).filter(occupied);
   /* A data centre with nothing in it yet is still drawn -- as an empty panel
      past the last occupied column, so "Add a data centre" puts something on
@@ -416,7 +454,7 @@ export function layoutTopology(
       if (ka !== kb) return ka - kb;
       return a.name < b.name ? -1 : a.name > b.name ? 1 : 0;
     });
-    return { site: s as SiteId, col, obs, mems };
+    return { site: s as SiteId, col, obs, mems, app: appSite === s ? app : undefined };
   });
 
   /* ---- 3b. chassis stacks: 2+ occupants sharing a host snap into one ----
@@ -539,10 +577,16 @@ export function layoutTopology(
     ? CARD.obsH
     : LAYOUT.stackHeaderH + row.observers.length * CARD.obsH);
 
+  const appCard = app === undefined || appSite === undefined ? null : (() => {
+    const lines = applicationLines(doc, app);
+    return { lines, w: measureCardWidth(lines, true), hostFull: hostName(doc, app.host as string) };
+  })();
+
   const colW = columns.map((c, ci) => {
     const widths = [
       ...(memRowsByCol[ci] ?? []).map(memRowWidth),
       ...(obsRowsByCol[ci] ?? []).map(obsRowWidth),
+      ...(c.app !== undefined && appCard !== null ? [appCard.w] : []),
     ];
     const indent = c.mems.some((m) => sameSiteCascade(doc, graph, m, memberSite))
       ? LAYOUT.cascadeIndent : 0;
@@ -553,7 +597,9 @@ export function layoutTopology(
   let cursor = 0;
   for (let i = 0; i < columns.length; i++) {
     colX.push(cursor);
-    const nextEmpty = (columns[i + 1]?.mems.length ?? 1) + (columns[i + 1]?.obs.length ?? 1) === 0;
+    const after = columns[i + 1];
+    const nextEmpty = after !== undefined
+      && after.mems.length + after.obs.length + (after.app === undefined ? 0 : 1) === 0;
     cursor += (colW[i] ?? 0) + (nextEmpty ? LAYOUT.emptyGap : LAYOUT.corridor);
   }
 
@@ -582,10 +628,13 @@ export function layoutTopology(
      an observer-only data centre's box hangs its name into the gap, and the
      top trunk must pass under it rather than through it. */
   const bandGap = trunks > 1
-    ? LAYOUT.bandGap + LAYOUT.labelBand + (trunks - 1) * LAYOUT.trunkStep
+    ? LAYOUT.bandGap + LAYOUT.labelBand + SLACK + (trunks - 1) * LAYOUT.trunkStep
     : LAYOUT.bandGap;
   const memberBandTop = bandH === 0 ? 0 : bandH + bandGap;
   const memberBandH = Math.max(0, ...memStackH);
+  /* The application's band, under every member: a line that leaves its card
+     sideways then runs below every database on the drawing. */
+  const appBandTop = memberBandTop + memberBandH + (memberBandH === 0 ? 0 : LAYOUT.appGap);
 
   /* ---- 6. place ---- */
   const overrides = opts.overrides ?? {};
@@ -788,6 +837,31 @@ export function layoutTopology(
       }
       my += memRowHeight(row) + (memGaps[ci]?.[rowIdx] ?? LAYOUT.rowGap);
     });
+
+    if (c.app !== undefined && appCard !== null) {
+      placed.push({
+        indent: 0,
+        node: {
+          key: nodeKey('application', c.app.id as string),
+          id: c.app.id as string,
+          kind: 'application',
+          glyph: 'app',
+          site: c.site,
+          col: ci,
+          row: (memRowsByCol[ci] ?? []).length,
+          rank: -1,
+          unreachable: false,
+          instances: 1,
+          x: Math.round(cx + (cw - appCard.w) / 2),
+          y: Math.round(appBandTop),
+          w: appCard.w,
+          h: CARD.obsH,
+          lines: appCard.lines,
+          hostFull: appCard.hostFull,
+          moved: false,
+        },
+      });
+    }
   });
 
   /* ---- 7. drag overrides, snapped ---- */
@@ -832,6 +906,9 @@ export function layoutTopology(
       ? { x0: nat.x0, x1: nat.x1 }
       : { x0: Math.min(...xs.map((b) => b.x0)), x1: Math.max(...xs.map((b) => b.x1)) };
     const empty = !madeWay.some((n) => (n.site as string) === site);
+    /* A size of its own is held against the cards at the tighter padding: the
+       reader may draw a data centre smaller than the layout would. */
+    if (sized && xs.length > 0) box = { x0: box.x0 + SLACK, x1: box.x1 - SLACK };
     if (sized) {
       const bx = nat.x0 + Math.round(ov.dx);
       const bw = Math.max(empty ? SITE_MIN.w : 0, Math.round(ov.w as number));
@@ -874,11 +951,13 @@ export function layoutTopology(
      top blade (a blade's own `y` is under the header, so `y - headerH` is the
      stack's top for the top blade and inside the stack for the others), the
      padding, and the name band at the bottom. */
-  const boxAround = (list: readonly NodeBox[]): { x0: number; y0: number; x1: number; y1: number } => ({
-    x0: Math.min(...list.map((n) => n.x)) - LAYOUT.colPad,
-    y0: Math.min(...list.map((n) => (n.stackKey === undefined ? n.y : n.y - LAYOUT.stackHeaderH))) - LAYOUT.colPad,
-    x1: Math.max(...list.map((n) => n.x + n.w)) + LAYOUT.colPad,
-    y1: Math.max(...list.map((n) => n.y + n.h)) + LAYOUT.colPad + LAYOUT.labelBand,
+  const boxAround = (
+    list: readonly NodeBox[], pad: number = LAYOUT.colPad,
+  ): { x0: number; y0: number; x1: number; y1: number } => ({
+    x0: Math.min(...list.map((n) => n.x)) - pad,
+    y0: Math.min(...list.map((n) => (n.stackKey === undefined ? n.y : n.y - LAYOUT.stackHeaderH))) - pad,
+    x1: Math.max(...list.map((n) => n.x + n.w)) + pad,
+    y1: Math.max(...list.map((n) => n.y + n.h)) + pad + LAYOUT.labelBand,
   });
   const sites: SiteBox[] = [];
   columns.forEach((c, ci) => {
@@ -917,8 +996,12 @@ export function layoutTopology(
         .filter((n) => (n.site as string) === (c.site as string)));
       /* Pushed with its column, so a size of its own travels with it. */
       anchor = { x: natural.x0 + s, y: natural.y0 };
-      ({ x0, y0, x1, y1 } = boxAround(own));
-      fit = { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
+      /* What a resize may not cut into is the cards at the tighter padding;
+         a box with a size of its own starts from there, the layout's own box
+         from the roomier one. */
+      const tight = boxAround(own, LAYOUT.fitPad);
+      fit = { x: tight.x0, y: tight.y0, w: tight.x1 - tight.x0, h: tight.y1 - tight.y0 };
+      ({ x0, y0, x1, y1 } = sized ? tight : boxAround(own));
     }
     /* A size of its own: the stored box, grown to whatever it has to hold --
        never smaller than its cards, whatever the link or the file says. */
@@ -983,6 +1066,8 @@ export function layoutTopology(
     overLaneY: vy0 - LAYOUT.padTop + 2,
     bandLaneY: bandH === 0 ? vy0 - LAYOUT.padTop + 2 : memberBandTop - 10,
     underLaneY: vy1 + 4,
+    midLaneY: appCard === null || memberBandH === 0
+      ? null : memberBandTop + memberBandH + LAYOUT.midLane,
     trunks,
     maxRank,
     unreachableRank,

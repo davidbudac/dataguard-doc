@@ -141,7 +141,7 @@ describe('the readout in Break', () => {
     await tick();
     const { axisSpan, fmt } = await import('@/ui/timeline/build');
     const { topology, trace } = await import('@/state/derived');
-    const span = axisSpan(trace.value!, topology.value.events);
+    const span = axisSpan(trace.value!, topology.value.events, topology.value);
     tNow.value = 500;
     await tick();
     const hi = root.querySelector('.chip-v')?.textContent;

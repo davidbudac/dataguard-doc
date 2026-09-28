@@ -7,7 +7,8 @@
  *    placement rule the validator already states (`OBS.ON_DB_HOST`): an
  *    observer is never deployed on a database's host, so neither a drop of an
  *    observer onto a database's host nor of a database onto an observer's is
- *    offered. Everything else the merge does today it still does.
+ *    offered. The application is the page's own second refusal: it is drawn
+ *    on a host of its own. Everything else the merge does today it still does.
  *  - `landingFor`: the rectangle the card would occupy after the drop, in the
  *    coordinates of the drawing as it is now -- laid out on a copy of the
  *    document with the move already made, then carried across by a card the
@@ -32,7 +33,8 @@ function hostsOf(t: TopologyDoc, key: string): HostId[] {
   const m = t.members.find((x) => (x.id as string) === key);
   if (m) return [...new Set(m.instances.map((i) => i.host))];
   const o = t.observers.find((x) => (x.id as string) === key);
-  return o ? [o.host] : [];
+  if (o) return [o.host];
+  return t.application !== undefined && (t.application.id as string) === key ? [t.application.host] : [];
 }
 
 const hasDatabase = (t: TopologyDoc, host: string): boolean =>
@@ -40,8 +42,15 @@ const hasDatabase = (t: TopologyDoc, host: string): boolean =>
 const hasObserver = (t: TopologyDoc, host: string): boolean =>
   t.observers.some((o) => (o.host as string) === host);
 
+/** This page's own rule, not Oracle's: the application is drawn on a host of its own. */
+export const WHY_APPLICATION_OWN_HOST = 'This page draws the application on a host of its own.';
+
 /** May the card `key` be dropped onto `host`'s card or stack, to share it? */
 export function mergeVerdict(t: TopologyDoc, key: string, host: string): WhyState {
+  const app = t.application;
+  if (app !== undefined && ((app.id as string) === key || (app.host as string) === host)) {
+    return { state: 'off', why: WHY_APPLICATION_OWN_HOST };
+  }
   const isObserver = t.observers.some((o) => (o.id as string) === key);
   const member = t.members.find((m) => (m.id as string) === key);
   if (isObserver && hasDatabase(t, host)) return { state: 'off', why: WHY_OBSERVER_ON_DB_HOST };

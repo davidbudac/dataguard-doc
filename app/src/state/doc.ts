@@ -18,7 +18,7 @@
  */
 
 import { signal } from '@preact/signals';
-import { classicTopology, sortEvents } from '@/engine';
+import { classicTopology, sortEvents, withApplication } from '@/engine';
 import type { Edition, MemberId, SimParams, TimedEvent, TopologyDoc } from '@/engine';
 
 /**
@@ -82,7 +82,9 @@ export function classicDoc(edition: Edition = '19c'): Doc {
      scenario (a primary crash), and a document the reader has not broken yet
      must open in its steady state. Break mode injects them, and a legacy share
      link brings its own -- both go through the migration path, not this one. */
-  return makeDoc({ ...classicTopology({ version: edition }), events: [] });
+  /* With the application beside the primary: the published deployment has no
+     card for it, the document a reader starts from does. */
+  return makeDoc(withApplication({ ...classicTopology({ version: edition }), events: [] }));
 }
 
 export const doc = signal<Doc>(classicDoc());

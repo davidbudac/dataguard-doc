@@ -1,23 +1,33 @@
 -- sites
-dc1  0,66 212x118
-dc4  412,-14 222x98
-dc2  834,66 212x118
-dc3  1246,66 212x118
+dc1  0,56 232x282
+dc4  432,-24 242x118
+dc2  874,56 232x138
+dc3  1306,56 232x138
 -- cards
-North_Sales  col 0 row 0  14,80 184x72
-obs01  col 1 row 0  426,0 194x52
-Local_Sales  col 2 row 0  848,80 184x72
-Remote_Sales  col 3 row 0  1260,80 184x72
+North_Sales  col 0 row 0  24,80 184x72
+app01  col 0 row 1  24,244 184x52
+obs01  col 1 row 0  456,0 194x52
+Local_Sales  col 2 row 0  898,80 184x72
+Remote_Sales  col 3 row 0  1330,80 184x72
 -- links
 check:obs01:Local_Sales  readiness check [5 ms]
-  path 620,26 -> 940,26 -> 940,80
-  pill 712,16 137x20
+  path 650,26 -> 990,26 -> 990,80
+  pill 752,16 137x20
+connect:app01:Local_Sales  address [2 ms]
+  path 208,270 -> 948,270 -> 948,152
+  pill 532,260 92x20
+connect:app01:North_Sales  sessions [0 ms]
+  path 55,244 -> 55,152
+  pill 6,188 98x20
+connect:app01:Remote_Sales  address [60 ms]
+  path 208,270 -> 1380,270 -> 1380,152
+  pill 1115,260 98x20
 ping:obs01:North_Sales  ping [5 ms]
-  path 426,26 -> 106,26 -> 106,80
-  pill 229,16 75x20
+  path 456,26 -> 116,26 -> 116,80
+  pill 249,16 75x20
 redo:Local_Sales:Remote_Sales  redo (ASYNC) [60 ms RTT]
-  path 1032,116 -> 1260,116
-  pill 1071,106 151x20
+  path 1082,116 -> 1330,116
+  pill 1131,106 151x20
 redo:North_Sales:Local_Sales  redo (SYNC) [2 ms RTT]
-  path 198,116 -> 848,116
-  pill 453,106 140x20
+  path 208,116 -> 898,116
+  pill 483,106 140x20

@@ -16,7 +16,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { topology, trace } from '@/state/derived';
 import {
-  canEdit, floating, gridOn, inspectorOpen, introOpen, introPage, mode, playing, selection, speed,
+  appLanesShown, canEdit, floating, gridOn, inspectorOpen, introOpen, introPage, mode, playing, selection, speed,
   timelineFull, timelineH, tNow, toast, viewport,
 } from '@/state/view';
 import type { Mode } from '@/state/view';
@@ -291,6 +291,8 @@ function TimelineSlot({ popup = false }: { popup?: boolean }) {
           selection={selection.value[0] ?? null}
           onSelect={(id) => { selection.value = id === null ? [] : [id]; }}
           showTransport
+          appView={appLanesShown.value}
+          onAppView={(shown) => { appLanesShown.value = shown; }}
         />
       )}
     </div>

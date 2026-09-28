@@ -105,6 +105,11 @@
 .tl-svg .tl-lane.is-selected .lane-bg { stroke: var(--ik3); stroke-width: 1.5; }
 .tl-svg .tl-lane.is-selected .t-lane { fill: var(--vi); }
 .tl-svg .tl-seg { cursor: default; }
+/* The application's lanes: a hairline and one line of text over the three. */
+.tl-svg .tl-app-rule { stroke: var(--ln2); stroke-width: 1; stroke-dasharray: 2 3; }
+.tl-svg .t-app-note { font-weight: 400; fill: var(--ik2); }
+.tl-svg .t-app-note.f-am { fill: var(--am); }
+.tl-svg .t-app-note.f-rd { fill: var(--rd); }
 /* A press anywhere on the plot seeks there (Timeline.tsx). */
 .tl-svg.is-seekable, .tl-svg.is-seekable .tl-lane, .tl-svg.is-seekable .tl-seg { cursor: pointer; }
 

@@ -421,3 +421,42 @@ export and reload; older documents retain their existing semantics. Collected
 edges apply only under the captured primary. The importer returns assumptions
 and any schema repairs beside the document. No live database verification was
 available; the collector and mapping need a real Oracle test-environment drill.
+
+### The application as a card (2026-09-28)
+
+`TopologyDoc.application?: { id, name, host }` draws the application tier on a host
+of its own; `doc.client` stays the connect descriptor and is what the card's form
+edits. The field is optional schema-2: a document without it parses, exports and
+reloads without it, and `parseApplication` drops (and reports) one whose host is
+gone. `engine/application.ts` (`withApplication`, `primarySite`) is the one place
+that puts it on a document: in the primary's data centre, filling an empty
+ADDRESS_LIST with the primary and then every standby database, never a far sync
+instance.
+
+- **`computeApp` has two vantages, and the document picks.** With no application the
+  published reading stands, word for word and number for number (`APP.CLIENT_VANTAGE`:
+  outside every site, an address answers when its site still has a way out) — that is
+  what `classicTopology`, a legacy link and `legacy-models.test.ts` run. With one, an
+  address is dialable when its host is up and the application's host reaches it
+  (`APP.CLIENT_PLACED`, model), asked of `buildReachability` with the engine's
+  no-transit default. A dead host behind a severed link is a `timeout` whatever
+  `deadBehaviour` says (`pathTo`: reachability with that host brought back).
+- **`NetStateSummary.groups`** carries an explicit partition's host groups, and
+  `netFromSummary` turns an epoch's summary back into a `NetState`, so reachability
+  can be asked of a recorded epoch. `partitioned` is unchanged.
+- **The outcome no longer short-circuits a placed application.** The published model
+  returns `noEvent` on `observer-lost`, a refused switchover and `stall-noone` before
+  looking at the addresses. Placed, the order is the other way round: while the
+  service stays in reach nothing happened (the outcome only names the kind of quiet),
+  and once it does not there is a ladder, whatever the broker decided — so a stalled
+  primary that aborts at the threshold is a ladder from the abort.
+- **New on `AppModel`:** `placed`, `appDownAt`, `spans` (stretches over which the
+  application's picture is constant: `appUp`, `serving`, `servingState`, `published`)
+  and `steady` (the same for the configuration as declared — a trace opens on its
+  first event, so its first span is already the failure). `NoEventKind` gains
+  `app-down`: the application's host went down and never came back, so nothing is
+  dialled; when it does come back the ladder starts there.
+- **The application decides nothing.** No rule, clock or decision in `sim/*` reads it;
+  `test/app-placement.test.ts` pins that the run's facts are the same with and
+  without it, beside the placement outcomes on the classic 1 + 1 + 1.
+

@@ -14,6 +14,7 @@
 import { computed } from '@preact/signals';
 import { layoutTopology } from '@/ui/canvas/layout';
 import { inFlight, inFlightFrom } from '@/ui/canvas/place';
+import { appModelFor } from '@/ui/timeline/build';
 import type { Geometry } from '@/ui/canvas/layout';
 import {
   declaredPrimary, resolveRedoGraph, simulate, sortFindings, stateAt, validate,
@@ -312,6 +313,26 @@ export function readoutFor(steady: boolean): ReadoutChip[] {
         }
         : {}),
     });
+  }
+  /* What the run cost the application: when its connect string got through,
+     or that it never did. This page's model, from where the card stands. */
+  const ap = appModelFor(t, topo);
+  if (ap !== null && (!ap.noEvent || ap.noEventKind === 'app-down')) {
+    const name = topo.application?.name ?? 'the application';
+    chips.push(ap.tConn !== null
+      ? {
+        id: 'app', tone: 'tl', k: 'Application reconnects', v: fmt(ap.tConn), unit: 's',
+        sub: `${name} gets a new connection at this instant: the connect string's own waits, on top of the role change.`,
+        basis: 'model',
+      }
+      : {
+        id: 'app', tone: 'rd', k: 'Application',
+        v: ap.noEventKind === 'app-down' ? 'down' : 'stays down',
+        sub: ap.noEventKind === 'app-down'
+          ? `${name} is down with its host, so nothing is dialled.`
+          : `${name} exhausts its connect string${ap.gaveUp === null ? '' : ` at t = ${fmt(ap.gaveUp)} s`} without reaching the service.`,
+        basis: 'model',
+      });
   }
   const observerStates = Object.values(f.observers).map((o) => o.endState);
   if (observerStates.length > 0) {

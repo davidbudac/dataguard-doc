@@ -42,6 +42,10 @@ export interface TimelineProps {
   pinnedScale?: boolean;
   /** The transport bar is the shell's business; lessons draw without it. */
   showTransport?: boolean;
+  /** Whether the application's lanes are drawn; they are unless this is false. */
+  appView?: boolean;
+  /** Present where the reader may fold the application's lanes away. */
+  onAppView?: (shown: boolean) => void;
 }
 
 /* ---------------- pieces ---------------- */
@@ -200,7 +204,7 @@ export function Timeline(props: TimelineProps) {
   const {
     trace, doc, width, tNow, playing = false, speed = 1,
     onSeek, onMoveEvent, onPlayToggle, onSpeed, selection = null, onSelect,
-    pinnedScale = false, showTransport = true,
+    pinnedScale = false, showTransport = true, appView = true, onAppView,
   } = props;
 
   // Hold the viewport only for the exact document produced by our drop.
@@ -211,8 +215,8 @@ export function Timeline(props: TimelineProps) {
   } | null>(null);
   const axis = heldAxis?.scenario === scenario ? heldAxis : undefined;
   const model = useMemo(
-    () => buildTimeline(trace, doc, { width, pinnedScale, selection, ...(axis ? { axis } : {}) }),
-    [trace, doc, width, pinnedScale, selection, axis],
+    () => buildTimeline(trace, doc, { width, pinnedScale, selection, app: appView, ...(axis ? { axis } : {}) }),
+    [trace, doc, width, pinnedScale, selection, axis, appView],
   );
   const moveEvent = (index: number, at: number, expected: TimedEvent) => {
     const result = onMoveEvent?.(index, at, expected);
@@ -358,6 +362,28 @@ export function Timeline(props: TimelineProps) {
               onSelect={selectLane}
             />
           ))}
+          {model.appSection ? (
+            /* The line that heads the application's three lanes, and the one
+               reading they add up to -- this page's model, said in its tip. */
+            <g class="tl-app-head" data-tip={model.appSection.basis}>
+              <line
+                class="tl-app-rule" x1={model.scale.plotL} y1={model.appSection.y - 15}
+                x2={model.scale.plotR} y2={model.appSection.y - 15}
+              />
+              <text class="t-top" x={model.scale.plotL} y={model.appSection.y}>
+                {model.appSection.title}
+                <tspan
+                  class={model.appSection.tone === 'ink' ? 't-app-note' : `t-app-note ${model.appSection.tone}`}
+                  dx="8"
+                >
+                  {model.appSection.note}
+                </tspan>
+              </text>
+              <text class="t-tick" x={model.scale.plotR} y={model.appSection.y} text-anchor="end">
+                this page&rsquo;s model
+              </text>
+            </g>
+          ) : null}
           {model.ticks.map((tk) => (
             <text key={`t${tk.t}`} class="t-tick t-mono" x={tk.x} y={model.axisY + 16} text-anchor="middle">
               {tk.label}
@@ -409,6 +435,15 @@ export function Timeline(props: TimelineProps) {
           the transport is what has to stay reachable. */}
       <div class="legend tl-legend">
         {axis && !pinnedScale ? <button type="button" class="btn" onClick={() => setHeldAxis(null)}>Fit timeline</button> : null}
+        {onAppView && doc.application !== undefined && !pinnedScale ? (
+          <button
+            type="button" class="btn" aria-pressed={appView}
+            title="The same run as the application sees it: where the service is, what the sessions see, and the connect string at work."
+            onClick={() => onAppView(!appView)}
+          >
+            Application&rsquo;s view
+          </button>
+        ) : null}
         {model.legend.map((l) => (
           <span key={l.swatch}><i class={l.swatch} />{l.label}</span>
         ))}

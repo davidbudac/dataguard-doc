@@ -250,9 +250,9 @@ describe('a data centre is dragged as a group', () => {
     await tick();
     pointer(svg, 'Up', start[0] + 24, start[1] + 16);
     await painted();
-    /* dc1 holds only prm01: that offset moves, and nothing that stands in
-       another data centre does. */
-    expect(docSignal.value.layout).toEqual({ prm01: { dx: 24, dy: 16 } });
+    /* dc1 holds prm01 and the application under it: those offsets move, and
+       nothing that stands in another data centre does. */
+    expect(docSignal.value.layout).toEqual({ prm01: { dx: 24, dy: 16 }, app01: { dx: 24, dy: 16 } });
     expect(siteOf('prm01')).toBe('dc1');
     expect(undoStack.value.length).toBe(n + 1);
     expect(undoLabel.value).toBe('Move the DC 1 data centre');
@@ -352,7 +352,10 @@ describe('a selection is made, moved and removed as one', () => {
     await painted();
     key(document.body, 'a', { ctrlKey: true });
     expect([...selection.value].sort()).toEqual(
-      [...memberIds(), ...topo().observers.map((o) => o.id as string)].sort(),
+      [
+        ...memberIds(), ...topo().observers.map((o) => o.id as string),
+        ...(topo().application ? [topo().application!.id as string] : []),
+      ].sort(),
     );
     chip(root, '+ Data centre').click();
     await painted();

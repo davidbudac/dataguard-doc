@@ -175,7 +175,7 @@ describe('three or more observers: their lines run as trunks (5.2)', () => {
       expect(ys.size, `checks to ${to}`).toBeLessThanOrEqual(1);
     }
     /* Three trunks, three lanes: pings, checks to sby01, checks to sby02. */
-    const lanes = new Set(links.filter((l) => l.kind !== 'redo').flatMap(horizontalYs));
+    const lanes = new Set(links.filter((l) => l.kind === 'ping' || l.kind === 'check').flatMap(horizontalYs));
     expect(lanes.size).toBe(3);
   });
 
@@ -325,7 +325,9 @@ describe('a data centre grown by hand pushes the columns beside it (5.1)', () =>
 
   it('never pulls a column back to close a corridor a drag has widened', () => {
     const natural = draw(topo()).geo;
-    const { geo } = draw(topo(), { prm01: { dx: -200, dy: 0 } });
+    /* Everything in the data centre moves away: the application under the
+       primary holds the box's edge as much as the primary does. */
+    const { geo } = draw(topo(), { prm01: { dx: -200, dy: 0 }, app01: { dx: -200, dy: 0 } });
     expect(geo.byKey['sby01']!.x).toBe(natural.byKey['sby01']!.x);
     expect(corridors(geo)[0]).toBe(corridors(natural)[0]! + 200);
   });

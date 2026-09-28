@@ -19,7 +19,7 @@ import { siteId as toSiteId } from '@/engine';
 import { WhyPill } from '../common/WhyPill';
 import type { WhyState } from '../common/WhyPill';
 import { useRovingToolbar } from '../common/useRovingToolbar';
-import { addDatabase, addFarSync, addObserver, addSite } from './edits';
+import { addApplication, addDatabase, addFarSync, addObserver, addSite } from './edits';
 import { off, ON } from './why';
 import { toast } from '@/state/view';
 import { endPlacing, placeOver, placing, renaming, siteAt } from '../canvas/place';
@@ -50,13 +50,18 @@ export interface AddAction {
   /** True when a drop has to land on a data centre to mean anything. */
   needsWhere: boolean;
   enabled: (doc: TopologyDoc) => WhyState;
+  /**
+   * Whether the addition is on offer at all. The application is one card: once
+   * it is on the drawing the button is absent, rather than grey for good.
+   */
+  offered?: (doc: TopologyDoc) => boolean;
 }
 
 const needsSite = (doc: TopologyDoc): WhyState =>
   (doc.sites.length === 0 ? off(WHY_NO_SITE) : ON);
 
 /**
- * The four additions that need no argument. `+ Host` and `+ Link` are not
+ * The five additions that need no argument. `+ Host` and `+ Link` are not
  * here because they take a data centre (or two) to be told about first, and a
  * picker does not belong on a four-button toolbar.
  */
@@ -87,6 +92,16 @@ export const ADD_ACTIONS: readonly AddAction[] = [
     run: (where) => addObserver(where),
     needsWhere: true,
     enabled: needsSite,
+  },
+  {
+    key: 'application',
+    label: '+ Application',
+    short: '+ Application',
+    title: 'Add the application on a host of its own, in the primary\'s data centre: where the connect string is dialled from.',
+    run: (where) => addApplication(where),
+    needsWhere: true,
+    enabled: needsSite,
+    offered: (doc) => doc.application === undefined,
   },
   {
     key: 'site',
@@ -126,6 +141,12 @@ const PLACE_THRESHOLD = 4;
  * test read is the same `+ Standby` the docked strip prints.
  */
 const ICON: Record<string, JSX.Element> = {
+  application: (
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      <rect x="2" y="3" width="12" height="10" rx="1.5" />
+      <path d="M2 6h12M6.5 8.5 5 10l1.5 1.5M9.5 8.5 11 10l-1.5 1.5" />
+    </svg>
+  ),
   database: (
     <svg viewBox="0 0 16 16" aria-hidden="true">
       <ellipse cx="8" cy="4" rx="5" ry="2" />
@@ -154,7 +175,8 @@ const ICON: Record<string, JSX.Element> = {
 export const WHY_DROP_ON_SITE = 'Drop it on a data centre to put it there.';
 
 export function AddToolbar({ doc }: { doc: TopologyDoc }) {
-  const states = ADD_ACTIONS.map((a) => a.enabled(doc));
+  const offered = ADD_ACTIONS.filter((a) => a.offered === undefined || a.offered(doc));
+  const states = offered.map((a) => a.enabled(doc));
   /* A disabled button cannot be focused, so parking the tab stop on one would
      make the whole strip unreachable by Tab. `+ Data centre` is never off, so
      there is always somewhere to park it. */
@@ -215,7 +237,7 @@ export function AddToolbar({ doc }: { doc: TopologyDoc }) {
       aria-label="Add to the configuration"
       onKeyDown={roving.onKeyDown}
     >
-      {ADD_ACTIONS.map((a, i) => {
+      {offered.map((a, i) => {
         const why = states[i] as WhyState;
         const isOff = why.state === 'off';
         return (

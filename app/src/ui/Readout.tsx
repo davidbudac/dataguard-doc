@@ -20,7 +20,7 @@
 
 import { readout, topology, trace } from '@/state/derived';
 import type { ReadoutChip } from '@/state/derived';
-import { mode, tNow } from '@/state/view';
+import { appLanesShown, mode, tNow } from '@/state/view';
 /* The same formatter *and the same horizon* the playhead badge and the
    transport's time field use, so the three places that print the playhead can
    never print it differently. Sharing only the formatter was not enough:
@@ -54,7 +54,7 @@ export function Readout() {
     id: 'at',
     tone: 'ik',
     k: 'Drawing at',
-    v: `t = ${fmt(clampToAxis(tNow.value, t, topology.value.events))}`,
+    v: `t = ${fmt(clampToAxis(tNow.value, t, topology.value.events, appLanesShown.value ? topology.value : undefined))}`,
     unit: 's',
     sub: 'The drawing shows this moment on the timeline; the readings under Run describe the whole simulation. Move the playhead to inspect another moment.',
   };

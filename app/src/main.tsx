@@ -107,9 +107,11 @@ async function boot(): Promise<void> {
   if (!next && state.lesson !== null) next = classicDoc(state.ed);
 
   /* 3. a published-page link */
+  let upgraded = false;
   if (!next) {
     const legacy = upgradeLegacyUrl(search, hash);
     if (legacy) {
+      upgraded = true;
       next = { ...classicDoc(state.ed), topology: legacy.topology };
       if (legacy.view.mode) state.mode = legacy.view.mode;
       if (legacy.view.panel) state.panel = legacy.view.panel;
@@ -141,7 +143,9 @@ async function boot(): Promise<void> {
   introPage.value = introOnBoot({
     asked: state.intro,
     seen: introDismissed.value,
-    hasDocument: fragmentKind(hash) !== null,
+    /* A published-page link is a link to something too: its old query keys
+       are a configuration, and the Introduction does not open over it. */
+    hasDocument: fragmentKind(hash) !== null || upgraded,
     keys: [...present],
   });
 

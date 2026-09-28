@@ -21,7 +21,7 @@ import { isDatabase } from '@/engine';
 import { withEvents } from '@/state/doc';
 import { topology, trace } from '@/state/derived';
 import { edit } from '@/state/history';
-import { playing, tNow, toast } from '@/state/view';
+import { appLanesShown, playing, tNow, toast } from '@/state/view';
 import { lastInterestingT } from '@/ui/timeline/build';
 import type { WhyState } from '../common/WhyPill';
 import type { CanvasTool, ToolIconName } from '../canvas/HoverTools';
@@ -178,6 +178,9 @@ export function anythingDownUnder(doc: TopologyDoc, key: string, t: number): boo
   }
   if (doc.observers.some((o) => (o.id as string) === key)) {
     return isDownAt(doc, { kind: 'observer', id: key }, t);
+  }
+  if (doc.application !== undefined && (doc.application.id as string) === key) {
+    return isDownAt(doc, { kind: 'host', id: doc.application.host as string }, t);
   }
   if (doc.links.some((l) => (l.id as string) === key)) {
     return isDownAt(doc, { kind: 'link', id: key }, t);
@@ -382,6 +385,29 @@ export function actionsForKey(doc: TopologyDoc, key: string, at: number): EventA
         ),
       });
     }
+  }
+
+  /* The application is its host: crashing the host is the one thing that
+     happens to it, and it decides nothing about what the configuration does. */
+  const app = doc.application !== undefined && (doc.application.id as string) === key
+    ? doc.application : undefined;
+  if (app) {
+    const hDown = isDownAt(doc, { kind: 'host', id: app.host as string }, at);
+    const hostHeld = heldBySite(doc, app.host, at);
+    out.push({
+      id: 'host.down',
+      label: `Crash ${hostName(doc, app.host)}`,
+      plural: 'Crash the hosts',
+      enabled: hDown ? off(WHY.alreadyDown) : ON,
+      events: [{ at, kind: 'host.down', host: app.host }],
+    });
+    out.push({
+      id: 'host.up',
+      label: `Restore ${hostName(doc, app.host)}`,
+      plural: 'Restore the hosts',
+      enabled: hostHeld !== null ? off(hostHeld) : (hDown ? ON : off(WHY.nothingDown)),
+      events: [{ at, kind: 'host.up', host: app.host }],
+    });
   }
 
   if (observer) {
@@ -629,6 +655,8 @@ export function hoverTools(doc: TopologyDoc, key: string, at: number): CanvasToo
   } else if (doc.observers.some((o) => (o.id as string) === key)) {
     out.push(pair('observer.stop', 'stop', 'observer.start', 'start'));
     out.push(pair('host.down', 'crash', 'host.up', 'restore'));
+  } else if ((doc.application?.id as string | undefined) === key) {
+    out.push(pair('host.down', 'crash', 'host.up', 'restore'));
   } else if (doc.links.some((l) => (l.id as string) === key)) {
     out.push(pair('link.cut', 'cut', 'link.heal', 'heal'));
   } else if (doc.sites.some((st) => (st.id as string) === key)) {
@@ -739,7 +767,7 @@ export function actionsFor(doc: TopologyDoc, keys: readonly string[], at: number
 export function restPlayhead(): void {
   const t = trace.value;
   if (t === null) { tNow.value = 0; return; }
-  const end = lastInterestingT(t, topology.value.events);
+  const end = lastInterestingT(t, topology.value.events, appLanesShown.value ? topology.value : undefined);
   /* A tenth of a second, the way the axis is read (EventMenu's `snapT`). */
   tNow.value = Math.max(0, Math.round(end * 10) / 10);
 }

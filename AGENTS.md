@@ -19,7 +19,7 @@ produced, and how to extend it without breaking consistency or accuracy.
 | `diagrams/fsfo-sequence.svg` (+`.png`) | Sequence diagram of the crash case with an elapsed-time gutter |
 | `diagrams/fsfo-net-timeout.svg` (+`.png`) | Two panels separating NET_TIMEOUT (redo transport) from the broker failover clocks |
 | `diagrams/README.md` | Figure embeds, broker-property and redo-transport-property tables with verified defaults, the ping-properties quirk, the verified-facts sections behind the commit/reopen/observer/placement/side-topics views (including the 24-cell observer-placement outcome matrix) and behind the 26ai edition switch (the MaxAvailability lag-limit semantics and Oracle's self-contradiction on them, `PrimaryDatabaseCandidates`, `V$FS_FAILOVER_OBSERVERS`), the drawing idealizations, Oracle doc links. Its *Topology features* section points at `app/design/facts.md` for far sync, cascading, RedoRoutes, multi-target and multi-observer sources |
-| `app/` | The workbench: TypeScript + Vite + Preact + signals. A pure, DOM-free engine in `app/src/engine` (types, citation catalogue, validation rules, redo-graph resolver, epoch-loop simulator, generators, the legacy adapter), the interface in `app/src/ui` (including the on-canvas action bar, the Introduction page and the `Hints` toggle — see `app/design/ui.md` §3c–§3i; §3h is how the drawing is driven: click selects, `⋯` for the bar, drag-to-place, inline rename, marquee, shortcuts; §3i is the lean pass: the toolbar is the one add surface, Remove sits in the rail header), state in `app/src/state`, eleven presets in `app/src/presets`, nine lessons and the reference tables in `app/src/content`, 1641 vitest tests across 60 files in `app/src/**/__tests__` and `app/test`. Built to `_site/` and served at `/dataguard/`. Zero external requests, no inline script and no inline style — the page is meant to run under `script-src 'self'; style-src 'self'` |
+| `app/` | The workbench: TypeScript + Vite + Preact + signals. A pure, DOM-free engine in `app/src/engine` (types, citation catalogue, validation rules, redo-graph resolver, epoch-loop simulator, generators, the legacy adapter), the interface in `app/src/ui` (including the on-canvas action bar, the Introduction page and the `Hints` toggle — see `app/design/ui.md` §3c–§3i; §3h is how the drawing is driven: click selects, `⋯` for the bar, drag-to-place, inline rename, marquee, shortcuts; §3i is the lean pass: the toolbar is the one add surface, Remove sits in the rail header), state in `app/src/state`, eleven presets in `app/src/presets`, nine lessons and the reference tables in `app/src/content`, 1962 vitest tests across 82 files in `app/src/**/__tests__` and `app/test`. Built to `_site/` and served at `/dataguard/`. Zero external requests, no inline script and no inline style — the page is meant to run under `script-src 'self'; style-src 'self'` |
 | `app/public/collectors/` | Read-only SQL collector, optional Bash/SQL*Plus wrapper and run instructions for existing setups. The ⋯ menu's **Import existing setup** sheet previews pasted/file output before drawing it. `engine/collect.ts` maps current routes; imported `routesObserved` prevents invented NULL-default routes. Missing broker settings and placement assumptions remain in document notes. Validated live on a 19c primary + mounted standby (SYSDBA, local OS auth); wallet, least-privilege, RAC and far sync remain unverified. DGMGRL transcripts are not parsed. |
 | `app/design/facts.md` | The verified Oracle fact sheet for the topology features (far sync, cascading, multiple standbys and FSFO targets, multiple observers, RedoRoutes, member types, destination counts), researched 2026-08-16 against docs.oracle.com and re-verified 2026-08-17, marked `[D]` / `[D-later]` / `[UNDOC]` / `[CONFLICT]` per claim. **The only permitted source of a "documented" claim in the application.** Its top-five traps are restated in the accuracy rules below |
 | `app/design/engine.md` | The engine design: `Claim`/`Basis` labelling, the topology data model, the validation catalogue, the redo-graph resolver, the epoch-loop failure engine, the compat adapter and the 24-cell matrix gate, the generators, the module layout — plus §10, *Deviations from the design as built*, which is where the code and the specification differ |
@@ -65,8 +65,8 @@ public URL.
 
 The three gates, and what each one can catch that the others cannot:
 
-1. `npm --prefix app run test` — the application's own suite (**1641 tests
-   across 60 files**): the engine's invariants, the 24-cell matrix through the
+1. `npm --prefix app run test` — the application's own suite (**1962 tests
+   across 82 files**): the engine's invariants, the 24-cell matrix through the
    compat adapter, the validation catalogue, the generator goldens, the canvas
    and timeline geometry, the URL and file round trips.
 2. `node --test site/test.mjs` — the same kind of assertion against the legacy
@@ -345,6 +345,15 @@ agree on:
   verify and 2 s convert bands are nominal drawing constants (footnote 3), not documented numbers.
 - Reinstate (`FastStartFailoverAutoReinstate`, Flashback Database) is
   deliberately out of scope; at most a footnote.
+- **Where the connect string is dialled from is this page's model, never a
+  documented fact.** The published page dials from outside every data centre;
+  the workbench dials from the application's card when the document has one. An
+  address the application cannot reach gives no answer (a timeout), whatever the
+  dead-address switch says. The application decides nothing about a failover —
+  no clock or decision reads it — and the three costs below stay nominal drawing
+  constants. `test/app-placement.test.ts` pins the placement outcomes; the
+  published numbers stay pinned by `legacy-models.test.ts` on a document with no
+  application, so neither may be "fixed" to match the other.
 - Client connect-string facts (simulator "application's view" section; sources
   in `diagrams/README.md`): `TRANSPORT_CONNECT_TIMEOUT` default 60 s per
   ADDRESS — and per IP address a host name resolves to; the page draws
@@ -745,7 +754,8 @@ global appears in it; `app/test/import-boundary.test.ts` keeps the layering
 - **Types** (`types/topology.ts`, `types/events.ts`, `types/trace.ts`,
   `types/claims.ts`). The authored document is `TopologyDoc`: sites, hosts,
   links, members (`DatabaseMember` | `FarSyncMember`), observers, one
-  `Configuration` with its `FsfoConfig`, a `ClientDescriptor`, environment
+  `Configuration` with its `FsfoConfig`, a `ClientDescriptor`, an optional
+  `Application` (the card the descriptor is dialled from), environment
   params and the event list. Derived output — `RedoEdge`, `ResolvedMember`,
   `RedoGraph`, `Epoch`, `Lane`, `Segment`, `Trace`, `DerivedFacts` — lives in
   `types/trace.ts`, because it is output rather than something anyone authors.
@@ -804,7 +814,9 @@ global appears in it; `app/test/import-boundary.test.ts` keeps the layering
   sorted `Finding[]`; the UI's issue list, the generated scripts' notes and the
   inspector's refusals all read that one list, so a rule is worded once.
 - **The other three models** (`models/*`) are the ported legacy views:
-  `computeApp` (the client's retry ladder over N addresses), `computeCommit`
+  `computeApp` (the client's retry ladder over N addresses — dialled from the
+  application's host when the document draws one, and from outside every site,
+  as the published page dials it, when it does not), `computeCommit`
   (one commit under SYNC/FASTSYNC/ASYNC, `max(local write, remote ack path)`,
   the far sync hop terminating the commit) and `computeReopen` (the
   `ReopenSecs`/`MaxFailure` aftermath), plus `models/axis.ts`, which is the
@@ -916,13 +928,24 @@ modes changes what is around it.
   (`makeWay`, step 7b); a data centre grown by a hand move or a resize pushes
   the columns beside it so every corridor keeps its width (`columnPush`, step
   7c: growth to the right pushes right, to the left pushes left); and where a new standby, far sync or observer goes when
-  no data centre is named is `ui/build/placement.ts`.
+  no data centre is named is `ui/build/placement.ts`. The box is drawn with
+  `LAYOUT.colPad` (24) round its cards and may be resized down to
+  `LAYOUT.fitPad` (14). **The application** is a card of its own under the
+  member band, in the primary's data centre to start with: one dash-dot
+  `connect` line to every database on its ADDRESS_LIST, coming up onto the
+  card's bottom edge, and a lane between the member band and the application
+  (`Geometry.midLaneY`) for the redo routes that would otherwise run through
+  it. A document without an application draws none of this
+  (`app/design/ui.md`, "The application on the drawing").
 - **Timeline** (`ui/timeline/`): `build.ts` is a pure
   `buildTimeline(trace, topology, view) → TimelineModel`; the component maps it
   to VNodes. Lane order is primary, observers (master first, and no master at
   all while FSFO is disabled), far syncs, then standbys in BFS order with
-  cascaded ones indented. The playhead is its own component subscribing to
-  `tNow` alone.
+  cascaded ones indented. Under them, when the document draws an application,
+  its point of view: `Service`, `Sessions` and `New connections`
+  (`timeline/app-lanes.ts`, pure, from `computeApp`), on the same axis — which
+  stretches to the application's reconnect — and labelled as this page's model.
+  The playhead is its own component subscribing to `tNow` alone.
 - **Panels** (`ui/panels/`): the generated files, rendered from the engine's
   structured lines, with copy buttons and line ⇄ canvas cross-highlighting. On
   paper all seven stack: `Panels` listens for `beforeprint` and for a
@@ -969,7 +992,7 @@ modes changes what is around it.
 
 ### Tests
 
-`npm --prefix app run test` is **1641 tests across 60 files**. What is where:
+`npm --prefix app run test` is **1962 tests across 82 files**. What is where:
 
 - `app/src/engine/__tests__/` — the engine's own unit tests (purity, citations,
   claims, schema, migrate, URL codec, parse, resolve, graph, axis, classic).

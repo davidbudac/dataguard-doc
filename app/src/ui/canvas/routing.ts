@@ -11,7 +11,7 @@
  */
 
 import type { Member, RedoGraph, Snapshot, TopologyDoc, XptMode } from '@/engine';
-import { isDatabase, linkRttMs } from '@/engine';
+import { buildReachability, initialNetState, isDatabase, linkRttMs, netFromSummary } from '@/engine';
 import type { Geometry, NodeBox } from './layout';
 import { LAYOUT, nodeKey, readinessTargets, siteLabelRect } from './layout';
 
@@ -19,7 +19,7 @@ export { readinessTargets };
 import type { Pt, Rect } from './measure';
 import { channelOffset, overlaps, PILL_H, pillWidth, r1, segmentHitsRect } from './measure';
 
-export type LinkKind = 'redo' | 'ping' | 'check';
+export type LinkKind = 'redo' | 'ping' | 'check' | 'connect';
 
 export interface CanvasLink {
   id: string;
@@ -91,6 +91,94 @@ const rttBetween = (doc: TopologyDoc, a: Member | undefined, b: Member | undefin
 };
 
 const xptWord = (x: XptMode): string => `redo (${x})`;
+
+/** The states in which a database publishes the read-write service. */
+const PUBLISHING = new Set<string>(['open-rw', 'stalled', 'commit-hang']);
+
+/** Does this member publish the role-based service at this instant? */
+const publishes = (doc: TopologyDoc, graph: RedoGraph, frame: Snapshot | null | undefined, m: Member): boolean => {
+  if (!isDatabase(m)) return false;
+  if (frame) return PUBLISHING.has(frame.members[m.id] ?? '');
+  return (m.id as string) === (graph.primary as string);
+};
+
+/**
+ * The members the application's connect descriptor names, in the order it
+ * lists them: one per member, however many of its instances are addresses.
+ */
+export function applicationTargets(doc: TopologyDoc): Member[] {
+  const out: Member[] = [];
+  for (const a of doc.client.addresses) {
+    const m = doc.members.find((x) => x.instances.some((i) => i.host === a.host));
+    if (m && !out.includes(m)) out.push(m);
+  }
+  return out;
+}
+
+/** What the application's host reaches at this instant, host by host. */
+function applicationReach(
+  doc: TopologyDoc, frame: Snapshot | null | undefined,
+): (host: string) => boolean {
+  const app = doc.application;
+  if (!app) return () => false;
+  const net = frame ? netFromSummary(frame.epoch.net) : initialNetState(doc);
+  const reach = buildReachability(doc, net);
+  return (host) => reach.reachable(app.host, host as typeof app.host);
+}
+
+/**
+ * The application's lines: one to every member its ADDRESS_LIST names. The
+ * line to the member publishing the service is the one carrying sessions; the
+ * others are addresses that would refuse until the role moves there.
+ */
+function connectLinks(
+  doc: TopologyDoc, graph: RedoGraph, geo: Geometry, frame: Snapshot | null | undefined,
+): CanvasLink[] {
+  const app = doc.application;
+  if (!app) return [];
+  const akey = nodeKey('application', app.id as string);
+  if (geo.byKey[akey] === undefined) return [];
+  const appDown = hostSiteDown(frame, doc, app.host as string);
+  const reaches = applicationReach(doc, frame);
+  const service = doc.client.serviceName;
+  const out: CanvasLink[] = [];
+  for (const m of applicationTargets(doc)) {
+    const mkey = nodeKey('member', m.id as string);
+    if (geo.byKey[mkey] === undefined) continue;
+    const hosts = m.instances.map((i) => i.host as string);
+    const mDown = memberDown(doc, frame, m);
+    const down = appDown || mDown;
+    const cut = !down && !hosts.some((h) => !hostSiteDown(frame, doc, h) && reaches(h));
+    const serving = !down && !cut && publishes(doc, graph, frame, m);
+    const rtt = linkRttMs(doc, app.host, m.instances[0]?.host ?? app.host);
+    const dl = docLinkBetween(doc, app.host as string, hosts[0]);
+    out.push({
+      id: `connect:${app.id as string}:${m.id as string}`,
+      ...(dl === undefined ? {} : { docLink: dl }),
+      kind: 'connect',
+      from: akey,
+      to: mkey,
+      active: serving,
+      up: !down && !cut,
+      cut,
+      down,
+      caption: serving ? 'sessions' : 'address',
+      value: down ? 'down' : cut ? 'cut' : `${rtt} ms`,
+      model: false,
+      arrow: false,
+      title: appDown
+        ? `${app.name} is down, so nothing dials ${m.name}.`
+        : mDown
+          ? `${app.name} lists ${m.name} in its ADDRESS_LIST, but ${m.name} is down.`
+          : cut
+            ? `${app.name} lists ${m.name} in its ADDRESS_LIST, but cannot reach it: the network between them is severed.`
+            : serving
+              ? `${app.name} connects to ${service} on ${m.name}; round trip ${rtt} ms.`
+              : `${app.name} lists ${m.name} in its ADDRESS_LIST; ${service} is not published there, so a connection is refused with ORA-12514. Round trip ${rtt} ms.`,
+    });
+  }
+  return out;
+}
 
 /**
  * The document link two members' hosts talk over: a host-scope link between
@@ -229,6 +317,7 @@ export function buildLinks(
     }
   }
 
+  out.push(...connectLinks(doc, graph, geo, frame));
   return out;
 }
 
@@ -367,6 +456,8 @@ function candidatesFor(
   const ay = centreY(a); const by = centreY(b);
   const ax = centreX(a); const bx = centreX(b);
 
+  if (kind === 'connect') return connectCandidates(a, b, geo);
+
   if (kind === 'ping' || kind === 'check') {
     /* The observer band sits above the member band, so an observer link comes
        down onto the top edge of the card it watches -- unless the two are
@@ -497,6 +588,21 @@ function candidatesFor(
     if (gap) out.push(gap);
   }
 
+  /* With an application drawn, the lane between the member band and its
+     card: the way under the databases that does not run through it. */
+  const mid = geo.midLaneY;
+  if (mid !== null && a.y + a.h < mid && b.y + b.h < mid) {
+    const riseX = clearOfName(b, geo, bx, ax <= bx ? 'right' : 'left');
+    out.push({
+      points: [
+        { x: ax, y: a.y + a.h }, { x: ax, y: mid },
+        { x: riseX, y: mid }, { x: riseX, y: b.y + b.h },
+      ],
+      corridor: 'mid',
+      shift: shiftY([1, 2]),
+    });
+  }
+
   /* The lane under every site rect: backwards edges, and edges that would
      otherwise cross a card in a column they only pass through. */
   out.push({
@@ -513,6 +619,89 @@ function candidatesFor(
       { x: bx, y: geo.overLaneY }, { x: bx, y: b.y },
     ],
     corridor: 'over',
+    shift: shiftY([1, 2]),
+  });
+  out.push(...sideEntries(a, b, geo));
+  return out;
+}
+
+/**
+ * The application stands under the member band, so its lines come up onto the
+ * bottom edge of the card they reach -- the observer's come down onto the top
+ * one, and the two never share an edge. In its own column the line is a
+ * straight hop; to another column it leaves the card sideways, runs under
+ * every database on the drawing, and rises beside the data centre's name
+ * rather than through it.
+ */
+/**
+ * Where a line rising onto a card's bottom edge goes up: at `x`, unless the
+ * data centre's name hangs there -- then beside it, on the side asked for.
+ */
+function clearOfName(b: NodeBox, geo: Geometry, x: number, side: 'left' | 'right'): number {
+  const site = geo.sites.find((st) => st.id === b.site);
+  if (!site) return x;
+  const label = siteLabelRect(site);
+  const struck = label.y >= b.y + b.h && x >= label.x - 6 && x <= label.x + label.w + 6;
+  if (!struck) return x;
+  return side === 'left'
+    ? Math.max(b.x + 12, label.x - 14)
+    : Math.min(b.x + b.w - 12, label.x + label.w + 14);
+}
+
+function connectCandidates(a: NodeBox, b: NodeBox, geo: Geometry): Candidate[] {
+  const out: Candidate[] = [];
+  const ay = centreY(a); const by = centreY(b);
+  const ax = centreX(a); const bx = centreX(b);
+  const below = a.y >= b.y + b.h;
+
+  if (a.col === b.col) {
+    if (below && a.y - (b.y + b.h) >= 40) {
+      /* Left of the card's middle: the middle is where a redo route leaves
+         for the lane between the bands. */
+      const hopX = Math.round(bx - b.w / 3);
+      const midY = (b.y + b.h + a.y) / 2;
+      out.push({
+        points: hopX >= a.x + 12 && hopX <= a.x + a.w - 12
+          ? [{ x: hopX, y: a.y }, { x: hopX, y: b.y + b.h }]
+          : [{ x: ax, y: a.y }, { x: ax, y: midY }, { x: bx, y: midY }, { x: bx, y: b.y + b.h }],
+        corridor: `v:${a.col}:app`,
+        shift: shiftY([1, 2]),
+      });
+    }
+    const col = geo.columns[a.col];
+    const rightmost = a.col === geo.columns.length - 1;
+    const sideX = col
+      ? (rightmost ? col.x - 14 : col.x + col.w + 14)
+      : (rightmost ? a.x - 14 : a.x + a.w + 14);
+    const exitA = rightmost ? { x: a.x, y: ay } : { x: a.x + a.w, y: ay };
+    const exitB = rightmost ? { x: b.x, y: by } : { x: b.x + b.w, y: by };
+    out.push({
+      points: [exitA, { x: sideX, y: ay }, { x: sideX, y: by }, exitB],
+      corridor: `side:${a.col}`,
+      shift: shiftX([1, 2]),
+    });
+  } else {
+    const side = b.col > a.col ? a.x + a.w : a.x;
+    if (below) {
+      /* Beside the name of the data centre it rises into, on the side it
+         comes from: the name hangs centred under the card. */
+      const riseX = clearOfName(b, geo, bx, b.col > a.col ? 'left' : 'right');
+      out.push({
+        points: [{ x: side, y: ay }, { x: riseX, y: ay }, { x: riseX, y: b.y + b.h }],
+        corridor: `rise:${b.key}`,
+        shift: shiftX([1, 2]),
+      });
+    }
+    const gap = corridorRoute(a, b, geo);
+    if (gap) out.push(gap);
+  }
+
+  out.push({
+    points: [
+      { x: ax, y: a.y + a.h }, { x: ax, y: geo.underLaneY },
+      { x: bx, y: geo.underLaneY }, { x: bx, y: b.y + b.h },
+    ],
+    corridor: 'under',
     shift: shiftY([1, 2]),
   });
   out.push(...sideEntries(a, b, geo));
@@ -561,7 +750,7 @@ const laneStep = (corridor: string): number =>
     : corridor.startsWith('gap:') ? 24 : 12;
 
 const laneOffset = (corridor: string, index: number, trunks = 0): number => {
-  if (corridor === 'under') return index * 14;
+  if (corridor === 'under' || corridor === 'mid') return index * 14;
   if (corridor === 'over') return -index * 14;
   /* The band gap is 28 px tall; three channels fit inside it -- unless it
      was opened up for the observer trunks, which ride a caption apart. */
@@ -823,8 +1012,14 @@ function ownStretches(points: readonly Pt[], mates: readonly { a: Pt; b: Pt }[])
 }
 
 function bundleOf(link: CanvasLink): string | null {
+  /* The application's lines leave one card along one run: a bundle by where
+     they start, so each caption prefers the stretch that is its line's own. */
+  if (link.kind === 'connect') return `connect<${link.from}`;
   return link.kind === 'ping' || link.kind === 'check' ? `${link.kind}>${link.to}` : null;
 }
+
+/** A trunk that gathers at the card its lines reach, not at the one they leave. */
+const gathersAtEnd = (link: CanvasLink): boolean => link.kind === 'ping' || link.kind === 'check';
 
 export function routeLinks(links: readonly CanvasLink[], geo: Geometry): RoutingResult {
   const cards = geo.nodes;
@@ -844,7 +1039,7 @@ export function routeLinks(links: readonly CanvasLink[], geo: Geometry): Routing
     const raw = candidatesFor(a, b, geo, link.kind);
     /* With the trunks laid out, an observer line that cannot drop straight
        onto its card goes by the trunk before any corridor of its own. */
-    const cands = geo.trunks > 0 && bundleOf(link) !== null
+    const cands = geo.trunks > 0 && gathersAtEnd(link)
       ? [
         ...raw.filter((c) => c.points.length === 2),
         ...raw.filter((c) => c.corridor === 'band' && c.points.length > 2),
@@ -863,7 +1058,8 @@ export function routeLinks(links: readonly CanvasLink[], geo: Geometry): Routing
       const taken = corridor === null ? new Set<number>() : (used.get(corridor) ?? new Set<number>());
       /* An observer line joins the trunk its bundle already runs in this
          corridor before it looks for a channel of its own. */
-      const shared = bundle === null || corridor === null ? undefined : trunks.get(`${corridor}|${bundle}`);
+      const shared = bundle === null || corridor === null || !gathersAtEnd(link)
+        ? undefined : trunks.get(`${corridor}|${bundle}`);
       const order = shared === undefined ? [...Array(8).keys()] : [shared, ...[...Array(8).keys()].filter((k) => k !== shared)];
       for (const k of straight ? [0] : order) {
         if (!straight && taken.has(k) && k !== shared) continue;
@@ -901,7 +1097,7 @@ export function routeLinks(links: readonly CanvasLink[], geo: Geometry): Routing
       const set = used.get(chosenCorridor) ?? new Set<number>();
       set.add(chosenIndex);
       used.set(chosenCorridor, set);
-      if (bundle !== null && !trunks.has(`${chosenCorridor}|${bundle}`)) {
+      if (bundle !== null && gathersAtEnd(link) && !trunks.has(`${chosenCorridor}|${bundle}`)) {
         trunks.set(`${chosenCorridor}|${bundle}`, chosenIndex);
       }
     }
@@ -943,8 +1139,8 @@ export function routeLinks(links: readonly CanvasLink[], geo: Geometry): Routing
          trunk: the dashes then start at the one end every line of the trunk
          shares, so where they run together their dashes coincide rather than
          filling each other's gaps into what reads as a solid line. */
-      d: mates.length > 0 ? orthPath([...chosen].reverse()) : orthPath(chosen),
-      ...(mates.length > 0 ? { fromEnd: true } : {}),
+      d: mates.length > 0 && gathersAtEnd(link) ? orthPath([...chosen].reverse()) : orthPath(chosen),
+      ...(mates.length > 0 && gathersAtEnd(link) ? { fromEnd: true } : {}),
       pill,
       slashes: link.cut ? slashesFor(seg, pill) : [],
     };
@@ -1075,6 +1271,18 @@ const OBSERVER_PHASE: Record<string, Phase> = {
 export function cardFrameFor(
   doc: TopologyDoc, node: NodeBox, frame?: Snapshot | null,
 ): CardFrame {
+  if (node.kind === 'application') {
+    const app = doc.application;
+    if (!app) return NEUTRAL_FRAME;
+    const hostDown = hostSiteDown(frame, doc, app.host as string);
+    if (!frame || hostDown) return { ...NEUTRAL_FRAME, down: hostDown, crashed: hostDown };
+    /* Serving while the service is published somewhere it reaches; waiting
+       while it is not -- the card is up, and it is not getting anywhere. */
+    const reaches = applicationReach(doc, frame);
+    const served = applicationTargets(doc).some((m) => PUBLISHING.has(frame.members[m.id] ?? '')
+      && m.instances.some((i) => !hostSiteDown(frame, doc, i.host as string) && reaches(i.host as string)));
+    return { ...NEUTRAL_FRAME, phase: served ? 'serving' : 'waiting', stalled: !served };
+  }
   if (node.kind === 'observer') {
     const o = doc.observers.find((x) => (x.id as string) === node.id);
     if (!o) return NEUTRAL_FRAME;
@@ -1140,6 +1348,14 @@ export function siteIsDown(doc: TopologyDoc, site: string, frame?: Snapshot | nu
  */
 export function chipsFor(doc: TopologyDoc, node: NodeBox): CardChip[] {
   const chips: CardChip[] = [];
+  if (node.kind === 'application') {
+    chips.push({
+      text: 'APP',
+      tone: 'ink',
+      title: 'The application: where the connect string is dialled from.',
+    });
+    return chips;
+  }
   if (node.kind === 'observer') {
     const o = doc.observers.find((x) => (x.id as string) === node.id);
     if (!o) return chips;

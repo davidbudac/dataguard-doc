@@ -6,7 +6,7 @@
  */
 
 import type {
-  Edition, HostId, LinkId, MemberId, Millis, ObserverId, Seconds, SiteId,
+  ApplicationId, Edition, HostId, LinkId, MemberId, Millis, ObserverId, Seconds, SiteId,
 } from '../ids';
 import type { TimedEvent } from './events';
 
@@ -213,6 +213,17 @@ export interface ClientDescriptor {
   deadBehaviour: 'drop' | 'rst';
 }
 
+/**
+ * The application tier, as one card on a host of its own. Where it stands is
+ * the vantage its connect descriptor is dialled from: an address answers when
+ * this host can reach that one. `doc.client` stays the descriptor itself.
+ */
+export interface Application {
+  id: ApplicationId;
+  name: string;
+  host: HostId;
+}
+
 export interface EnvironmentParams {
   roleTransitionSeconds: Seconds;
   localWriteMs: Millis;
@@ -234,6 +245,12 @@ export interface TopologyDoc {
   observers: Observer[];
   config: Configuration;
   client: ClientDescriptor;
+  /**
+   * Absent in a document written before the application was a card, and in
+   * the published 1+1+1 deployment: the descriptor is then dialled from
+   * outside every data centre, as the published page dials it.
+   */
+  application?: Application;
   environment: EnvironmentParams;
   events: TimedEvent[];
 }

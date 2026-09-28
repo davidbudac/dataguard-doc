@@ -41,7 +41,7 @@ describe('routing: what gets drawn', () => {
     expect(redo.caption).toBe('redo (SYNC)');
     expect(redo.value).toBe('0 ms RTT');
     expect(redo.arrow).toBe(true);
-    expect(redo.d).toBe('M198,116 L848,116');
+    expect(redo.d).toBe('M208,116 L898,116');
     expect(byId(links, 'ping:obs01:prm01').arrow).toBe(false);
   });
 
@@ -243,7 +243,9 @@ describe('routing: a frame is what the line says, not the declaration', () => {
     const quiet = simulate(preset, []);
     const links = routeTopology(preset, graph, geo, stateAt(quiet, 0)).links;
     expect(links.map((l) => l.id)).toEqual([
-      'check:obs01:South_Sales', 'ping:obs01:North_Sales',
+      'check:obs01:South_Sales',
+      'connect:app01:North_Sales', 'connect:app01:South_Sales',
+      'ping:obs01:North_Sales',
       'redo:FS1:South_Sales', 'redo:North_Sales:FS1',
     ]);
   });

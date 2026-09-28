@@ -1,29 +1,36 @@
 -- sites
-dc1  0,66 212x326
-dc3  412,-14 222x98
-dc2  834,170 212x118
+dc1  0,56 232x490
+dc3  432,-24 242x118
+dc2  874,160 232x138
 -- cards
-North_Sales  col 0 row 0  14,80 184x72
-FS1  col 0 row 1  14,198 184x72
-FS2  col 0 row 2  14,288 184x72
-obs01  col 1 row 0  426,0 194x52
-South_Sales  col 2 row 0  848,184 184x72
+North_Sales  col 0 row 0  24,80 184x72
+FS1  col 0 row 1  24,198 184x72
+FS2  col 0 row 2  24,288 184x72
+app01  col 0 row 3  24,452 184x52
+obs01  col 1 row 0  456,0 194x52
+South_Sales  col 2 row 0  898,184 184x72
 -- links
 check:obs01:South_Sales  readiness check [20 ms]
-  path 620,26 -> 940,26 -> 940,184
-  pill 709,16 143x20
+  path 650,26 -> 990,26 -> 990,184
+  pill 749,16 143x20
+connect:app01:North_Sales  sessions [0 ms]
+  path 208,478 -> 246,478 -> 246,116 -> 208,116
+  pill 197,367 98x20
+connect:app01:South_Sales  address [40 ms]
+  path 208,478 -> 948,478 -> 948,256
+  pill 548,468 98x20
 ping:obs01:North_Sales  ping [20 ms]
-  path 426,26 -> 106,26 -> 106,80
-  pill 225,16 82x20
+  path 456,26 -> 116,26 -> 116,80
+  pill 245,16 82x20
 redo:FS1:South_Sales  redo (ASYNC) [40 ms RTT]
-  path 198,234 -> 312,234 -> 312,220 -> 848,220
-  pill 505,210 151x20
+  path 208,234 -> 332,234 -> 332,220 -> 898,220
+  pill 540,210 151x20
 redo:FS2:South_Sales  redo (ASYNC) [40 ms RTT]
-  path 198,324 -> 324,324 -> 324,220 -> 848,220
-  pill 234,314 151x20
+  path 208,324 -> 344,324 -> 344,220 -> 898,220
+  pill 265,314 151x20
 redo:North_Sales:FS1  redo (SYNC) [0 ms RTT]
-  path 106,152 -> 106,198
-  pill 36,165 140x20
+  path 116,152 -> 116,198
+  pill 46,165 140x20
 redo:North_Sales:FS2  PRIORITY 2 [SYNC]
-  path 198,116 -> 226,116 -> 226,324 -> 198,324
-  pill 179,170 151x20
+  path 208,116 -> 258,116 -> 258,324 -> 208,324
+  pill 197,170 151x20

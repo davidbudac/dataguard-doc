@@ -158,6 +158,11 @@ export const timelineH = signal<number | null>(null);
  * view, not a preference: not remembered, and Escape leaves it.
  */
 export const timelineFull = signal<boolean>(false);
+/**
+ * Whether Break's timeline draws the application's three lanes under the
+ * configuration's. On to start with; a moment's view, not remembered.
+ */
+export const appLanesShown = signal<boolean>(true);
 
 /** The panel never gets shorter than its header row (readings and chips). */
 export const TL_MIN_H = 64;

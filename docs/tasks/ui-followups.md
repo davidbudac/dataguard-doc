@@ -315,3 +315,19 @@ Note: nothing of `calm.css`, the old-layout restyle hunks or `app/design/mockups
 branch's `ui.md` edits only what is still true went in (a Track 7 section, the intro button count).
 `styles/calm.css` and the old-layout restyle hunks in tokens.css, shell.css,
 inspector.css, intro.css, readout.css; `app/design/mockups/` (superseded).
+
+## Track 8 — the application on the drawing
+
+### 8.1 Application card, connect lines, roomier data centres, application timeline
+Status: done (on main)
+Note: `TopologyDoc.application?` (optional schema-2) on a host of its own beside the primary;
+`computeApp` dials from there, and from outside every site when the document has none (legacy links,
+old files — published numbers unchanged). Card under the member band, `connect` lines per ADDRESS,
+`midLaneY` for redo routes that used to leave by the primary's bottom edge. `LAYOUT.colPad` 24,
+`fitPad` 14. `ApplicationForm` edits `doc.client`. Break draws Service / Sessions / New connections
+under the configuration's lanes (`timeline/app-lanes.ts`). Tests: `test/app-placement.test.ts`,
+`test/ui/application.test.ts`; canvas goldens regenerated (geometry). Details: `app/design/ui.md`
+("The application on the drawing"), `app/design/engine.md` §10.
+Open: a driver selector (OCI / JDBC thin) — needs its own citations; per-line cuts between the
+application and one database (today a site link or the data centre is what fails).
+

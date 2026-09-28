@@ -342,6 +342,8 @@
 .topo-svg .tp-link.is-async { stroke: var(--lk); stroke-dasharray: 6 3; }
 .topo-svg .tp-link.is-ping { stroke: var(--pg); stroke-dasharray: 1.5 3; stroke-linecap: round; }
 .topo-svg .tp-link.is-check { stroke: var(--ck); stroke-dasharray: 5 4; }
+/* The application's connection: dash-dot, in a colour of its own. */
+.topo-svg .tp-link.is-connect { stroke: var(--cn); stroke-dasharray: 9 3 1.5 3; stroke-linecap: round; }
 .topo-svg .tp-link.is-x { stroke: var(--rd); stroke-dasharray: 4 3; }
 .topo-svg .tp-link.is-inactive { opacity: .55; }
 .topo-svg .tp-linkwrap.is-dim { opacity: .45; }

@@ -1098,3 +1098,62 @@ Draw imported topology uses `replaceWorkingDocument` with recovery and undo.
 Assumptions are retained in document notes (the codec's 4000-character limit,
 with explicit truncation notice), and a persistent disclosure above the drawing
 keeps them visible across export, share and reload. DGMGRL text is not accepted.
+
+## The application on the drawing (as built, 2026-09-28)
+
+- **A card of its own** (`NodeKind 'application'`, glyph `app`, an `APP` chip): two
+  lines, the width of a database card, on a host of its own in the primary's data
+  centre to start with. It is dragged into another data centre like any card
+  (`moveToSite`), renamed in place, removed from the rail's header, and added from
+  the toolbar — where `+ Application` is offered only while the drawing has none
+  (`AddAction.offered`): there is one, and a button grey for good says nothing. It
+  shares no host (`mergeVerdict`, `WHY_APPLICATION_OWN_HOST` — the page's own rule,
+  not Oracle's, and worded that way).
+- **Its band is under the member band** (`LAYOUT.appGap`), the observers' is over
+  it, so an observer's line comes down onto a card's top edge and the application's
+  comes up onto its bottom one. In its own column the line is a straight hop, left
+  of the card's middle; to another column it leaves the card sideways, runs under
+  every database and rises beside the data centre's name (`clearOfName`), never
+  through it. `LinkKind 'connect'`: dash-dot, colour `--cn`, one line per database
+  on the ADDRESS_LIST, captioned `sessions` to the database publishing the service
+  and `address` (faded) to the others; `cut` and `down` as every line says them.
+- **The lane between the bands** (`Geometry.midLaneY`, `LAYOUT.midLane`): with an
+  application under the primary, a redo route that used to leave by the card's
+  bottom edge for the lane under everything would run through the application's
+  card. It takes the lane between the member band and the application instead
+  (`corridor 'mid'`), tried before `under`; null — and nothing changes — when no
+  application is drawn.
+- **A data centre has room in it.** `LAYOUT.colPad` is 24 (was 14): the box the
+  layout draws. `LAYOUT.fitPad` stays 14: `SiteBox.fit`, what a resize may not cut
+  into, so a box with a size of its own can still be drawn tighter than the
+  layout's. The observers' trunk gap grew by the difference, so the top trunk still
+  passes under an observer-only data centre's name. All eleven canvas goldens moved;
+  they record geometry.
+- **The rail** (`ApplicationForm`): name, data centre, then the connect string as
+  the descriptor spells it — `SERVICE_NAME`, `TRANSPORT_CONNECT_TIMEOUT`,
+  `CONNECT_TIMEOUT` (0 is "not set": no default is documented), `RETRY_COUNT`,
+  `RETRY_DELAY`, `FAILOVER`, `LOAD_BALANCE` — the ADDRESS_LIST as a tick per
+  database (a far sync instance grey, with its reason), and the dead-address answer
+  under *This page's model*. A line drawn between the application and a database
+  lists that database. A new standby joins the list; a standby moved to another
+  data centre stays on it.
+- **Break: the application's view.** Three lanes under the configuration's, on the
+  same axis and under the same playhead (`timeline/app-lanes.ts`, pure): `Service`,
+  `Sessions`, `New connections`, headed by one line that says what they add up to
+  ("outage 60.3 s — 15.3 s of it inside the connect string") and that it is this
+  page's model. The ladder is drawn address by address; the reconnect and the
+  exhausted string are marks. The axis stretches to the application's own end
+  (`axisSpan(trace, events, doc)`, capped as the Configure panel caps it), because
+  the reconnect is usually past the role change. `Application's view` in the legend
+  row folds the lanes away (`appLanesShown`, a moment's view); the pinned export
+  scale never draws them. The readout gains `Application reconnects` / `Application
+  stays down`.
+- **What a document without one does.** Nothing new: no card, no lanes, no lane
+  between the bands, the published vantage. A link or a file written before the
+  card existed, and every published-page link, opens that way; `+ Application` adds
+  it. The presets, the first-visit document and Reset carry it.
+- **Found on the way, and fixed:** a published-page link opened the Introduction
+  over itself on a first visit (its query keys are not in `ADDRESSED`), so
+  `site/smoke.mjs` failed its two legacy-link checks. Boot now counts an upgraded
+  link as a document.
+

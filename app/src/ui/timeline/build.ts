@@ -15,14 +15,15 @@
  */
 
 import {
-  findHost, findLink, findMember, findObserver, findSite, isDatabase, isFarSync,
+  computeApp, findHost, findLink, findMember, findObserver, findSite, isDatabase, isFarSync,
   pickTickStep, pingSet, resolveRedoGraph, sortEvents,
 } from '@/engine';
 import type {
-  AnyState, DerivedFacts, EngineFacts, Lane as EngineLane, HostId, LinkId, MemberId,
+  AnyState, AppModel, DerivedFacts, EngineFacts, Lane as EngineLane, HostId, LinkId, MemberId,
   Member, ObserverId, Seconds, SiteId, TimedEvent, TopologyDoc, Trace,
 } from '@/engine';
 import { eventIcon } from '../common/eventIcons';
+import { appLanes } from './app-lanes';
 import type { EventIconName } from '../common/eventIcons';
 
 /* ---------------- geometry ---------------- */
@@ -73,6 +74,8 @@ export const TL = {
   braceRow: 50,
   /** Cascaded standbys sit one indent right of their cascader. */
   indent: 10,
+  /** The room over the application's three lanes, for the line that heads them. */
+  appHead: 34,
 } as const;
 
 /** The static figures' scale: `x(t) = 280 + 10 * t`, domain -14 s .. +80 s. */
@@ -128,7 +131,7 @@ const r1 = (n: number): number => Math.round(n * 10) / 10;
 
 export type PhaseClass = 'b-tl' | 'b-bl' | 'b-am' | 'b-sl' | 'b-vi' | 'b-hatch';
 export type InkClass = 'f-tl' | 'f-bl' | 'f-am' | 'f-sl' | 'f-vi' | 'f-rd';
-export type LaneGroup = 'primary' | 'observer' | 'farsync' | 'standby' | 'link';
+export type LaneGroup = 'primary' | 'observer' | 'farsync' | 'standby' | 'link' | 'app';
 
 export interface TimelineScale {
   t0: Seconds;
@@ -164,7 +167,7 @@ export interface TimelineSegment {
 
 export interface TimelineLane {
   key: string;
-  kind: 'member' | 'observer' | 'link';
+  kind: 'member' | 'observer' | 'link' | 'application';
   id: string;
   group: LaneGroup;
   /** db_unique_name, observer name, link name -- always rendered mono. */
@@ -187,7 +190,7 @@ export type MarkerGlyph = 'cross' | 'diamond' | 'dot' | 'line' | 'partition';
 
 export interface TimelineMarker {
   key: string;
-  kind: 'event' | 'decision' | 'open' | 'abort';
+  kind: 'event' | 'decision' | 'open' | 'abort' | 'app';
   glyph: MarkerGlyph;
   t: Seconds;
   x: number;
@@ -274,6 +277,19 @@ export interface TimelineModel {
   /** Link lanes left out because nothing happened on them. */
   quietLinks: number;
   pinned: boolean;
+  /**
+   * The line that heads the application's lanes: what they are, and the one
+   * reading the three of them add up to. Null when the document draws no
+   * application, or the view left its lanes out.
+   */
+  appSection: {
+    y: number;
+    title: string;
+    note: string;
+    tone: 'ink' | InkClass;
+    /** What the numbers rest on: this page's model, said in the tooltip. */
+    basis: string;
+  } | null;
 }
 
 export interface TimelineView {
@@ -293,6 +309,8 @@ export interface TimelineView {
    * stated rather than silent.
    */
   links?: 'auto' | 'always' | 'never';
+  /** The application's lanes under the configuration's; drawn unless false. */
+  app?: boolean;
 }
 
 /* ---------------- scale ---------------- */
@@ -331,8 +349,38 @@ function makeScale(t0: Seconds, t1: Seconds, plotL: number, plotR: number): Time
  * reading of the run, or the drawing would settle at a moment the axis calls
  * uninteresting.
  */
-export function lastInterestingT(trace: Trace, events: readonly TimedEvent[]): Seconds {
-  let last = 0;
+/**
+ * The application's model for a run, computed once per trace: the axis, the
+ * readout and the lanes all ask for it, and a scrub asks on every frame.
+ */
+const appModels = new WeakMap<Trace, { doc: TopologyDoc; model: AppModel }>();
+
+export function appModelFor(trace: Trace, doc: TopologyDoc): AppModel | null {
+  if (doc.application === undefined) return null;
+  const hit = appModels.get(trace);
+  if (hit && hit.doc === doc) return hit.model;
+  const model = computeApp(doc.client, trace, doc);
+  appModels.set(trace, { doc, model });
+  return model;
+}
+
+/**
+ * When the application's own story ends: the reconnect, or the string giving
+ * up. Capped the way the Configure panel caps it, so a retry budget of an hour
+ * does not flatten the failover into the first pixel of the axis.
+ */
+function appEnd(trace: Trace, doc: TopologyDoc | undefined): Seconds | null {
+  const ap = doc === undefined ? null : appModelFor(trace, doc);
+  if (ap === null || ap.noEvent) return null;
+  const end = ap.tConn ?? ap.gaveUp;
+  if (end === null) return null;
+  return Math.min(end, Math.max(160, (ap.tService ?? 0) + 100));
+}
+
+export function lastInterestingT(
+  trace: Trace, events: readonly TimedEvent[], doc?: TopologyDoc,
+): Seconds {
+  let last = appEnd(trace, doc) ?? 0;
   for (const e of events) last = Math.max(last, e.at);
   for (const lane of trace.lanes) {
     for (const s of lane.segments) {
@@ -358,16 +406,18 @@ export function lastInterestingT(trace: Trace, events: readonly TimedEvent[]): S
  * "Drawing at t = 500 s" while the badge on the playhead said "t = 51.75",
  * because only one of them clamped. One formula, one axis.
  */
-export function axisSpan(trace: Trace, events: readonly TimedEvent[]): { t0: Seconds; t1: Seconds } {
-  const t1 = clampNum(1.15 * lastInterestingT(trace, events), 30, 900);
+export function axisSpan(
+  trace: Trace, events: readonly TimedEvent[], doc?: TopologyDoc,
+): { t0: Seconds; t1: Seconds } {
+  const t1 = clampNum(1.15 * lastInterestingT(trace, events, doc), 30, 900);
   return { t0: -snapNice(0.15 * t1), t1 };
 }
 
 /** `axisSpan`'s clamp, for anything that only has to hold a reading on the axis. */
 export const clampToAxis = (
-  t: Seconds, trace: Trace, events: readonly TimedEvent[],
+  t: Seconds, trace: Trace, events: readonly TimedEvent[], doc?: TopologyDoc,
 ): Seconds => {
-  const { t0, t1 } = axisSpan(trace, events);
+  const { t0, t1 } = axisSpan(trace, events, doc);
   return clampNum(t, t0, t1);
 };
 
@@ -898,7 +948,7 @@ export function buildTimeline(trace: Trace, doc: TopologyDoc, view: TimelineView
     t1 = PINNED.t1;
     tickStep = PINNED.tickStep;
   } else {
-    ({ t0, t1 } = view.axis ?? axisSpan(trace, events));
+    ({ t0, t1 } = view.axis ?? axisSpan(trace, events, view.app === false ? undefined : doc));
     tickStep = pickTickStep(t1 - t0);
   }
   const scale = pinned
@@ -1010,9 +1060,60 @@ export function buildTimeline(trace: Trace, doc: TopologyDoc, view: TimelineView
     };
   });
 
-  const lanesBottom = lanes.length > 0
+  /* ---- the application's lanes, under the configuration's ---- */
+  const membersBottom = lanes.length > 0
     ? (laneTops[laneTops.length - 1] ?? TL.laneTop) + TL.laneH
     : TL.laneTop + TL.laneH;
+  const ap = pinned || view.app === false ? null : appModelFor(trace, doc);
+  const section = ap === null || doc.application === undefined ? null : appLanes(ap, doc, t0, t1);
+  let appSection: TimelineModel['appSection'] = null;
+  /* The lane the reconnect is marked on, and the row its label is given. */
+  let connectKey: string | null = null;
+  if (section !== null && doc.application !== undefined) {
+    const appId = doc.application.id as string;
+    appSection = {
+      y: membersBottom + TL.appHead - 12,
+      title: "The application's view",
+      note: section.note,
+      tone: section.tone,
+      basis: section.basis,
+    };
+    let y = membersBottom + TL.appHead;
+    for (const al of section.lanes) {
+      /* The mark's sentence sits over the lane it belongs to. */
+      if (al.key === 'connect' && section.marks.some((mk) => mk.t >= t0 && mk.t <= t1)) y += TL.markRow;
+      const key = `application:${al.key}`;
+      if (al.key === 'connect') connectKey = key;
+      lanes.push({
+        key,
+        kind: 'application',
+        id: appId,
+        group: 'app',
+        name: al.name,
+        sub: fitSub(al.subs, TL.gutter - TL.gutterPad) ?? al.subs[al.subs.length - 1] ?? '',
+        indent: 0,
+        y,
+        height: TL.laneH,
+        segments: al.bands.map((bd, k) => {
+          const x = Math.max(scale.plotL, scale.x(bd.a));
+          const w = Math.min(scale.plotR, scale.x(bd.b)) - x;
+          return {
+            key: `${key}:${k}`,
+            t0: bd.a, t1: bd.b, x: r1(x), w: r1(Math.max(0, w)),
+            state: bd.state, phase: bd.phase, ink: bd.ink,
+            labels: bd.labels,
+            label: fitLabel(bd.labels, w),
+            title: bd.labels[0] ?? al.name,
+            open: false,
+          };
+        }),
+      });
+      y += TL.laneH + TL.laneGap;
+    }
+  }
+
+  const lastLane = lanes[lanes.length - 1];
+  const lanesBottom = lastLane ? lastLane.y + lastLane.height : TL.laneTop + TL.laneH;
   const axisY = lanesBottom + TL.axisGap;
   const braceTop = axisY + TL.braceGap;
 
@@ -1161,6 +1262,38 @@ export function buildTimeline(trace: Trace, doc: TopologyDoc, view: TimelineView
     markerRow.set('open', newPrimaryRow >= 0 ? `gap:${newPrimaryRow}` : 'top');
   }
 
+  /* The application's two marks: the reconnect, and the string giving up. */
+  if (section !== null && connectKey !== null) {
+    const y = laneY.get(connectKey) ?? lanesBottom - TL.laneH;
+    for (const mk of section.marks) {
+      if (mk.t < t0 || mk.t > t1) continue;
+      const x = scale.x(mk.t);
+      const fits = x + 9 + approxW(mk.label, 11.5) <= scale.plotR;
+      const good = mk.key === 'reconnect';
+      markers.push({
+        key: `app-${mk.key}`,
+        kind: 'app',
+        glyph: good ? 'diamond' : 'cross',
+        t: mk.t,
+        x: r1(x),
+        index: null,
+        tone: mk.tone,
+        stroke: good ? 'm-vi' : 'm-rd',
+        label: mk.label,
+        labelAnchor: fits ? 'start' : 'end',
+        labelX: r1(fits ? x + 9 : x - 9),
+        labelY: y - 6,
+        showLabel: true,
+        nx: r1(x),
+        icon: null,
+        y0: good ? y - 8 : y + 2,
+        y1: good ? y + TL.laneH + 4 : y + TL.laneH - 2,
+        laneKey: connectKey,
+      });
+      markerRow.set(`app-${mk.key}`, 'gap:app');
+    }
+  }
+
   /* ---- the marker labels, one deterministic sweep per row ----
 
      Two labels in one row would print on top of each other -- two injected
@@ -1289,5 +1422,6 @@ export function buildTimeline(trace: Trace, doc: TopologyDoc, view: TimelineView
     empty,
     quietLinks,
     pinned,
+    appSection,
   };
 }

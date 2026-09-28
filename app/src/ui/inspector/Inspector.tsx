@@ -14,7 +14,7 @@
  */
 
 import { useLayoutEffect } from 'preact/hooks';
-import type { Link, Member, Observer, Site, TopologyDoc } from '@/engine';
+import type { Application, Link, Member, Observer, Site, TopologyDoc } from '@/engine';
 import { errors, issues, redoGraph, topology, warnings } from '@/state/derived';
 import { canEdit, clearSelection, hintsOn, mode, selection, viewport } from '@/state/view';
 import { Fold, Note } from './controls';
@@ -22,6 +22,7 @@ import { isOff, WhyPill } from '../common/WhyPill';
 import { removeAction } from '../build/actions';
 import { hintsShown, HintsToggle } from '../hints';
 import { revealSections, SUMMARY_ID } from './sections';
+import { ApplicationForm } from './ApplicationForm';
 import { ConfigForm } from './ConfigForm';
 import { LinkForm } from './LinkForm';
 import { MemberForm } from './MemberForm';
@@ -34,6 +35,7 @@ import '@/styles/inspector.css';
 type Subject =
   | { kind: 'member'; member: Member }
   | { kind: 'observer'; observer: Observer }
+  | { kind: 'application'; application: Application }
   | { kind: 'link'; link: Link }
   | { kind: 'site'; site: Site }
   | null;
@@ -44,6 +46,9 @@ export function resolveSubject(doc: TopologyDoc, key: string | undefined): Subje
   if (member) return { kind: 'member', member };
   const observer = doc.observers.find((o) => (o.id as string) === key);
   if (observer) return { kind: 'observer', observer };
+  if (doc.application !== undefined && (doc.application.id as string) === key) {
+    return { kind: 'application', application: doc.application };
+  }
   const link = doc.links.find((l) => (l.id as string) === key);
   if (link) return { kind: 'link', link };
   const site = doc.sites.find((s) => (s.id as string) === key);
@@ -58,6 +63,7 @@ function subjectWord(s: Exclude<Subject, null>): string {
       if (s.member.kind === 'farsync') return 'Far sync instance';
       return s.member.role === 'primary' ? 'Primary database' : `Standby database (${s.member.role})`;
     case 'observer': return `Observer (${s.observer.role})`;
+    case 'application': return 'Application';
     case 'link': return s.link.scope === 'site' ? 'Site link' : 'Host link';
     case 'site': return 'Data centre';
   }
@@ -76,6 +82,7 @@ function subjectName(doc: TopologyDoc, s: Exclude<Subject, null>): string {
   switch (s.kind) {
     case 'member': return s.member.id as string;
     case 'observer': return s.observer.id as string;
+    case 'application': return s.application.id as string;
     case 'site': return s.site.name;
     case 'link': {
       const [a, b] = s.link.ends as [string, string];
@@ -102,6 +109,7 @@ function Summary({ doc }: { doc: TopologyDoc }) {
     ['Far sync', farsyncs.length === 0 ? 'none' : farsyncs.map((m) => m.id as string).join(', ')],
     ['Fast-start failover', doc.config.fsfo.state],
     ['Target', target.kind === 'ANY' ? 'ANY' : (target.members.join(', ') || 'not set')],
+    ['Application', doc.application ? (doc.application.id as string) : 'not drawn'],
     [
       'Observers',
       doc.observers.length === 0
@@ -249,6 +257,9 @@ export function Inspector() {
         : null}
       {subject?.kind === 'observer'
         ? <ObserverForm observer={subject.observer} doc={doc} />
+        : null}
+      {subject?.kind === 'application'
+        ? <ApplicationForm application={subject.application} doc={doc} />
         : null}
       {subject?.kind === 'link' ? <LinkForm link={subject.link} doc={doc} /> : null}
       {subject?.kind === 'site' ? <SiteForm site={subject.site} doc={doc} /> : null}

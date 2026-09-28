@@ -514,7 +514,9 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
     const member = doc.members.find((m) => (m.id as string) === key);
     if (member) return member.instances.length === 1 ? (member.instances[0]?.host as string | undefined) : undefined;
     const observer = doc.observers.find((o) => (o.id as string) === key);
-    return observer ? (observer.host as string) : undefined;
+    if (observer) return observer.host as string;
+    return doc.application !== undefined && (doc.application.id as string) === key
+      ? (doc.application.host as string) : undefined;
   };
   /**
    * Where a single-card drag on `own` would merge it: a chassis stack whose
@@ -1355,7 +1357,7 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
     if (r === null) return null;
     const node = geo.byKey[r.key];
     if (node) {
-      const tx = node.kind === 'observer' ? CARD.textXObs : CARD.textXDb;
+      const tx = node.kind === 'member' ? CARD.textXDb : CARD.textXObs;
       return { x: node.x + tx - 5, y: node.y + 7, w: Math.max(96, node.w - tx - 3) };
     }
     const site = geo.sites.find((st) => (st.id as string) === r.key);
@@ -1372,7 +1374,10 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
     if (bar) cards.current.get(bar.key)?.focus();
   };
 
-  const legend = legendLines(doc, geo, routed.links.some((l) => !l.active));
+  const legend = legendLines(
+    doc, geo, routed.links.some((l) => !l.active && l.kind !== 'connect'),
+    routed.links.some((l) => !l.active && l.kind === 'connect'),
+  );
   if (!interactive) {
     legend.unshift(props.readOnlyWhy
       ?? 'This drawing is read-only here: nothing on it can be selected or moved.');
@@ -1538,6 +1543,11 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
           <g id={`${prefix}-ico-dc`} fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M2,21 H22 M4,21 V4.5 L13,2 V21 M13,8 H20 V21" />
             <path d="M7,8 H10 M7,12 H10 M7,16 H10 M16,12 H17 M16,16 H17" />
+          </g>
+          <g id={`${prefix}-ico-app`} fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="4.5" width="18" height="15" rx="2" />
+            <path d="M3,9 H21" />
+            <path d="M9.5,12.5 L7,14.75 L9.5,17 M14.5,12.5 L17,14.75 L14.5,17" />
           </g>
           <g id={`${prefix}-ico-observer`} fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
             <path d="M2.5,12 C5.5,6.8 8.6,4.6 12,4.6 s6.5,2.2 9.5,7.4 C18.5,17.2 15.4,19.4 12,19.4 s-6.5,-2.2 -9.5,-7.4 Z" />
@@ -1831,7 +1841,7 @@ function PointerTip({ x, y, text, refused }: { x: number; y: number; text: strin
 
 /** Said once, under the drawing: what an absent chip and a faded line mean. */
 export function legendLines(
-  doc: TopologyDoc, geo: Geometry, anyInactive: boolean,
+  doc: TopologyDoc, geo: Geometry, anyInactive: boolean, fadedAddress = false,
 ): string[] {
   const out: string[] = [];
   if (doc.members.some((m) => m.instances.length > 1)) {
@@ -1845,6 +1855,9 @@ export function legendLines(
   }
   if (anyInactive) {
     out.push('A faded line is a destination this configuration declares but is not shipping to now.');
+  }
+  if (fadedAddress) {
+    out.push('A faded dash-dot line is an address on the application\'s connect string where the service is not published now.');
   }
   return out;
 }

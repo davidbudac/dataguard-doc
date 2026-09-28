@@ -11,6 +11,7 @@ export type HostId = string & { readonly __brand: 'HostId' };
 export type MemberId = string & { readonly __brand: 'MemberId' }; // db_unique_name
 export type ObserverId = string & { readonly __brand: 'ObserverId' };
 export type LinkId = string & { readonly __brand: 'LinkId' };
+export type ApplicationId = string & { readonly __brand: 'ApplicationId' };
 
 /** All engine time is seconds relative to t = 0. */
 export type Seconds = number;
@@ -25,10 +26,11 @@ export const hostId = (s: string): HostId => s as HostId;
 export const memberId = (s: string): MemberId => s as MemberId;
 export const observerId = (s: string): ObserverId => s as ObserverId;
 export const linkId = (s: string): LinkId => s as LinkId;
+export const applicationId = (s: string): ApplicationId => s as ApplicationId;
 
 /** Erase a brand for map keys, sorting and messages. */
 export const idString = (
-  id: SiteId | HostId | MemberId | ObserverId | LinkId,
+  id: SiteId | HostId | MemberId | ObserverId | LinkId | ApplicationId,
 ): string => id as string;
 
 export const isEdition = (v: unknown): v is Edition => v === '19c' || v === '26ai';

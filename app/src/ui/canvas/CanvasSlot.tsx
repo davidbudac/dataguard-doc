@@ -24,8 +24,9 @@ import {
 } from '@/state/view';
 import { buildActionsFor, openInspectorFor, removeAction } from '../build/actions';
 import {
-  addDatabase, addFsfoTarget, addLink, connectVerdict, mergeIntoHost, moveToSite, renameMember,
-  renameObserver, renameSite, renameVerdict, shipRedo, tidyLayout,
+  addDatabase, addFsfoTarget, addLink, connectVerdict, mergeIntoHost, moveToSite,
+  renameApplication, renameMember, renameObserver, renameSite, renameVerdict, setAddressListed,
+  shipRedo, tidyLayout,
 } from '../inspector/edits';
 import { inFlight, inFlightFrom, placeOver, renaming, setSiteAt } from './place';
 import { mergeVerdict } from './drop';
@@ -79,6 +80,13 @@ export function connectFromCanvas(from: string, to: string): void {
   /* A line from one data centre's name to another's: the site link between them. */
   if (isSite(from) && isSite(to)) { addLink(siteId(from), siteId(to)); return; }
   const a = member(from); const b = member(to);
+  /* The application and a database: the database joins its ADDRESS_LIST. */
+  const app = t.application?.id as string | undefined;
+  if (app !== undefined && (from === app || to === app)) {
+    const m = from === app ? b : a;
+    if (m) setAddressListed(m.id, true);
+    return;
+  }
   if (a && b) { shipRedo(a.id, b.id); return; }
   if (a && observer(to)) { addFsfoTarget(a.id); return; }
   if (observer(from) && b) { addFsfoTarget(b.id); return; }
@@ -127,10 +135,11 @@ function nameOf(t: TopologyDoc, key: string): string {
   return t.sites.find((x) => (x.id as string) === key)?.name ?? key;
 }
 
-/** What can be renamed on the drawing: a member, an observer, a data centre. */
+/** What can be renamed on the drawing: a member, an observer, the application, a data centre. */
 const canRename = (t: TopologyDoc, key: string): boolean =>
   t.members.some((m) => (m.id as string) === key)
   || t.observers.some((o) => (o.id as string) === key)
+  || (t.application?.id as string | undefined) === key
   || t.sites.some((x) => (x.id as string) === key);
 
 function commitRename(key: string, raw: string, where: Document = document): void {
@@ -138,12 +147,14 @@ function commitRename(key: string, raw: string, where: Document = document): voi
   const m = t.members.find((x) => (x.id as string) === key);
   const o = t.observers.find((x) => (x.id as string) === key);
   renaming.value = null;
+  const isApp = (t.application?.id as string | undefined) === key;
   if (m) renameMember(m.id, raw);
   else if (o) renameObserver(o.id, raw);
+  else if (isApp) renameApplication(raw);
   else renameSite(siteId(key), raw);
   /* The field took the focus and is gone: hand it to the thing it named, under
      the name it now has, once that has been drawn. */
-  const now = m || o ? raw.trim() : key;
+  const now = m || o || isApp ? raw.trim() : key;
   setTimeout(() => {
     for (const el of where.querySelectorAll<SVGGElement>('.topo-svg [data-node]')) {
       if (el.getAttribute('data-node') === now && !el.hasAttribute('data-more') && !el.hasAttribute('data-tools')) {

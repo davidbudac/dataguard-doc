@@ -20,6 +20,7 @@ import { mode, selection, toast, viewport } from '@/state/view';
 import { menuOpen } from '@/ui/canvas/EventMenu';
 import { closeBar } from '@/ui/canvas/bar';
 import { fitZoom } from '@/ui/canvas/zoom';
+import { LAYOUT } from '@/ui/canvas/layout';
 import { siteId } from '@/engine';
 import { addDatabase, tidyLayout } from '@/ui/inspector/edits';
 
@@ -218,7 +219,12 @@ describe('resizing a data centre from its handles', () => {
     await tick();
     pointer(svg, 'Up', start[0] + 200, start[1] + 200);
     await tick();
-    expect(siteRect(root, 'dc2')).toEqual(before);
+    /* The corner stops at the cards, held at the tighter padding a resize
+       is allowed: the layout's own box is drawn roomier than that. */
+    const slack = LAYOUT.colPad - LAYOUT.fitPad;
+    expect(siteRect(root, 'dc2')).toEqual({
+      x: before.x + slack, y: before.y + slack, w: before.w - slack, h: before.h - slack,
+    });
   });
 
   it('resizes from the keyboard too: Alt and an arrow on the data centre', async () => {

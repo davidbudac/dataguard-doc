@@ -11,11 +11,11 @@
 
 import { BOUNDS, BROKER_DEFAULTS, clamp, defaultLagLimit } from '../defaults';
 import type { BoundKey } from '../defaults';
-import { hostId, memberId, observerId, siteId, linkId } from '../ids';
+import { applicationId, hostId, memberId, observerId, siteId, linkId } from '../ids';
 import type { Edition, HostId, LinkId, MemberId, ObserverId, SiteId } from '../ids';
 import type { TimedEvent } from '../types/events';
 import type {
-  ClientDescriptor, Configuration, DatabaseMember, DbRole, DestGroup, DestProps,
+  Application, ClientDescriptor, Configuration, DatabaseMember, DbRole, DestGroup, DestProps,
   EnvironmentParams, FarSyncMember, FsfoConfig, Host, Instance, Link, Member, Observer,
   OpenMode, ProtectionMode, RedoRouteRule, RoutePriority, RouteDest, ServiceDef, Site,
   TopologyDoc, XptMode,
@@ -221,6 +221,7 @@ export function parseTopologyDoc(raw: unknown): ParseResult {
   const observers = parseObservers(c, raw['observers'], hostIds);
   const config = parseConfiguration(c, raw['config'], edition, memberIds, hostIds);
   const client = parseClient(c, raw['client'], hostIds);
+  const application = parseApplication(c, raw['application'], hostIds);
   const environment = parseEnvironment(c, raw['environment']);
   const events = parseEvents(c, raw['events'], { hostIds, siteIds, memberIds, links, observers });
 
@@ -237,7 +238,9 @@ export function parseTopologyDoc(raw: unknown): ParseResult {
   const doc: TopologyDoc = {
     app: 'dg-topology',
     schema: 2,
-    sites, hosts, links, members, observers, config, client, environment, events,
+    sites, hosts, links, members, observers, config, client,
+    ...(application ? { application } : {}),
+    environment, events,
   };
   const savedAt = typeof raw['savedAt'] === 'string' ? raw['savedAt'] : undefined;
   if (savedAt) doc.savedAt = savedAt;
@@ -692,6 +695,30 @@ function parseClient(c: Ctx, raw: unknown, hostIds: ReadonlySet<string>): Client
     failover: c.bool(raw['failover'], 'client.failover', d.failover),
     loadBalance: c.bool(raw['loadBalance'], 'client.loadBalance', d.loadBalance),
     deadBehaviour: c.oneOf(raw['deadBehaviour'], 'client.deadBehaviour', ['drop', 'rst'] as const, d.deadBehaviour),
+  };
+}
+
+/**
+ * The application card. Absent stays absent: a document written before the
+ * card existed keeps dialling from outside every data centre, which is what
+ * its numbers were computed for.
+ */
+function parseApplication(
+  c: Ctx, raw: unknown, hostIds: ReadonlySet<string>,
+): Application | undefined {
+  if (raw === undefined || raw === null) return undefined;
+  if (!isObj(raw)) { c.repaired('application', 'not an object; dropped'); return undefined; }
+  const id = c.str(raw['id'], 'application.id', '', 64);
+  if (!id) { c.repaired('application.id', 'missing; dropped'); return undefined; }
+  const host = c.str(raw['host'], 'application.host', '', 64);
+  if (!hostIds.has(host)) {
+    c.repaired('application.host', `${host || '(none)'} is not a host; the application was dropped`);
+    return undefined;
+  }
+  return {
+    id: applicationId(id),
+    name: c.str(raw['name'], 'application.name', id, 64),
+    host: hostId(host),
   };
 }
 

@@ -2,9 +2,9 @@
  * One routed link, with the pill that names it.
  *
  * Transport is spelled by the line itself -- SYNC solid with a filled arrow,
- * FASTSYNC solid with a hollow one, ASYNC dashed, the observer's ping dotted
- * and its readiness check dashed orchid -- and arrowheads mean redo flow and
- * nothing else. A destination that is declared but not shipping keeps its line
+ * FASTSYNC solid with a hollow one, ASYNC dashed, the observer's ping dotted,
+ * its readiness check dashed orchid and the application's connection dash-dot
+ * -- and arrowheads mean redo flow and nothing else. A destination that is declared but not shipping keeps its line
  * at reduced weight and says why in the pill, because a route that is standing
  * down is still part of the configuration.
  *
@@ -58,6 +58,7 @@ function lineClass(link: RoutedLink): string {
   if (link.cut || link.down) parts.push('is-x');
   else if (link.kind === 'ping') parts.push('is-ping');
   else if (link.kind === 'check') parts.push('is-check');
+  else if (link.kind === 'connect') parts.push('is-connect');
   else if (link.xpt === 'ASYNC') parts.push('is-async');
   else parts.push('is-sync');
   if (!link.active) parts.push('is-inactive');

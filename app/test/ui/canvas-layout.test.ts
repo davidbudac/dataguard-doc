@@ -10,7 +10,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { hostId } from '@/engine';
-import { layoutTopology, nodeKey, SITE_MIN } from '@/ui/canvas/layout';
+import { LAYOUT, layoutTopology, nodeKey, SITE_MIN } from '@/ui/canvas/layout';
 import { resizedBox } from '@/ui/canvas/TopoCanvas';
 import type { Geometry, NodeBox } from '@/ui/canvas/layout';
 import { overlaps } from '@/ui/canvas/measure';
@@ -34,15 +34,15 @@ describe('layoutTopology: the classic 1+1+1', () => {
   it('draws the observer in the third site between the two databases', () => {
     const geo = geometryOf(classic('dc3'));
     expect(geo.nodes.map((n) => n.key)).toEqual(['prm01', 'obs01', 'sby01']);
-    expect(box(node(geo, 'prm01'))).toEqual([14, 80, 184, 72]);
-    expect(box(node(geo, 'obs01'))).toEqual([426, 0, 194, 52]);
-    expect(box(node(geo, 'sby01'))).toEqual([848, 80, 184, 72]);
+    expect(box(node(geo, 'prm01'))).toEqual([24, 80, 184, 72]);
+    expect(box(node(geo, 'obs01'))).toEqual([456, 0, 194, 52]);
+    expect(box(node(geo, 'sby01'))).toEqual([898, 80, 184, 72]);
     expect(geo.sites.map((s) => [s.id as string, s.x, s.y, s.w, s.h])).toEqual([
-      ['dc1', 0, 66, 212, 118],
-      ['dc3', 412, -14, 222, 98],
-      ['dc2', 834, 66, 212, 118],
+      ['dc1', 0, 56, 232, 138],
+      ['dc3', 432, -24, 242, 118],
+      ['dc2', 874, 56, 232, 138],
     ]);
-    expect(geo.viewBox).toEqual({ x: -10, y: -24, w: 1066, h: 224 });
+    expect(geo.viewBox).toEqual({ x: -10, y: -34, w: 1126, h: 244 });
   });
 
   it('grows the primary site upward when the observer runs there', () => {
@@ -53,7 +53,7 @@ describe('layoutTopology: the classic 1+1+1', () => {
     const dc1 = geo.sites.find((s) => (s.id as string) === 'dc1');
     const dc2 = geo.sites.find((s) => (s.id as string) === 'dc2');
     expect(dc1?.h).toBeGreaterThan(dc2?.h ?? 0);
-    expect(box(node(geo, 'obs01'))).toEqual([14, 0, 194, 52]);
+    expect(box(node(geo, 'obs01'))).toEqual([24, 0, 194, 52]);
   });
 
   it('mirrors onto the standby site', () => {
@@ -215,8 +215,8 @@ describe('layoutTopology: drag overrides', () => {
     expect(after.y - before.y).toBe(-16);
     expect(after.moved).toBe(true);
     const dc1 = moved.sites.find((s) => (s.id as string) === 'dc1');
-    expect(dc1!.x).toBe(after.x - 14);
-    expect(dc1!.y).toBe(after.y - 14);
+    expect(dc1!.x).toBe(after.x - LAYOUT.colPad);
+    expect(dc1!.y).toBe(after.y - LAYOUT.colPad);
   });
 
   it('leaves the untouched cards where they were', () => {
@@ -284,7 +284,10 @@ describe('layoutTopology: a data centre with a size of its own', () => {
     const dc2 = siteOf(geo, 'dc2');
     expect(dc2.sized).toBe(false);
     expect(dc2.anchor).toEqual({ x: dc2.x, y: dc2.y });
-    expect([dc2.fit.x, dc2.fit.y, dc2.fit.w, dc2.fit.h]).toEqual([dc2.x, dc2.y, dc2.w, dc2.h]);
+    /* The layout draws the box roomier than a resize may make it. */
+    const slack = LAYOUT.colPad - LAYOUT.fitPad;
+    expect([dc2.fit.x, dc2.fit.y, dc2.fit.w, dc2.fit.h])
+      .toEqual([dc2.x + slack, dc2.y + slack, dc2.w - 2 * slack, dc2.h - 2 * slack]);
   });
 
   it('draws a sized box at its anchor plus the offset, at the stored size', () => {
@@ -307,7 +310,7 @@ describe('layoutTopology: a data centre with a size of its own', () => {
     const base = siteOf(geometryOf(doc), 'dc2');
     const geo = layoutTopology(doc, graphOf(doc), { overrides: { dc2: { dx: 40, dy: 40, w: 16, h: 16 } } });
     const dc2 = siteOf(geo, 'dc2');
-    expect([dc2.x, dc2.y, dc2.w, dc2.h]).toEqual([base.x, base.y, base.w, base.h]);
+    expect([dc2.x, dc2.y, dc2.w, dc2.h]).toEqual([base.fit.x, base.fit.y, base.fit.w, base.fit.h]);
   });
 
   it('grows to take a card moved past its stored edge', () => {
@@ -318,7 +321,7 @@ describe('layoutTopology: a data centre with a size of its own', () => {
     });
     const dc2 = siteOf(geo, 'dc2');
     expect(dc2.x).toBe(base.x);
-    expect(dc2.x + dc2.w).toBe(base.x + base.w + 80);
+    expect(dc2.x + dc2.w).toBe(base.fit.x + base.fit.w + 80);
     for (const n of geo.nodes.filter((x) => (x.site as string) === 'dc2')) {
       expect(n.x).toBeGreaterThanOrEqual(dc2.x);
       expect(n.x + n.w).toBeLessThanOrEqual(dc2.x + dc2.w);

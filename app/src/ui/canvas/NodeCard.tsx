@@ -94,7 +94,8 @@ export function NodeCard(props: NodeCardProps): JSX.Element {
   const roleText = role === 'primary' ? 'Primary'
     : role === 'former-primary' ? 'Former primary'
     : role === 'standby' && originalRoleText === 'Primary' ? 'Standby' : originalRoleText;
-  const isObs = node.kind === 'observer';
+  /* The two-line card: an observer's, and the application's. */
+  const isObs = node.kind !== 'member';
   /* A blade in a chassis stack: its own border and fill go quiet (the
      chassis behind it draws the one continuous outline and the divider
      between blades) until something -- selection, hover, a drag, a down

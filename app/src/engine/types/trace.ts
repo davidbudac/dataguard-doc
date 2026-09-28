@@ -89,6 +89,8 @@ export interface NetStateSummary {
   downSites: SiteId[];
   downLinks: LinkId[];
   partitioned: boolean;
+  /** The groups of an explicit partition, so reachability can be asked again. */
+  groups?: HostId[][];
 }
 
 export interface Epoch {

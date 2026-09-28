@@ -24,7 +24,7 @@ export { assertCitesAllowed, citation, CITATION_IDS, CITATIONS, FORBIDDEN_FACTS,
 
 /* topology */
 export type {
-  ClientAddress, ClientDescriptor, Configuration, DatabaseMember, DbRole, DestGroup,
+  Application, ClientAddress, ClientDescriptor, Configuration, DatabaseMember, DbRole, DestGroup,
   DestProps, EnvironmentParams, FarSyncMember, FsfoConfig, FsfoState, FsfoTarget, Host,
   Instance, LagType, Link, LinkScope, Member, MemberBase, MemberKind, Observer, OpenMode,
   PreferredObserverHost, ProtectionMode, RedoRouteRule, RouteAlternate, RouteDest,
@@ -34,6 +34,8 @@ export {
   declaredPrimary, destProps, findHost, findLink, findMember, findObserver, findSite,
   isDatabase, isFarSync, memberHosts,
 } from './types/topology';
+
+export { primarySite, withApplication } from './application';
 
 /* events and states */
 export type {
@@ -79,7 +81,7 @@ export type { NetState, Reachability, ReachabilityOptions } from './net/graph';
 export {
   applyNetEvent, buildReachability, emptyNetState, expandLinks, hostUp, initialNetState,
   linkRttMs, liveInstanceHosts, memberAlive, memberDegraded, memberReachableFromHost,
-  membersReachable, netSummary, reachable, upHosts,
+  membersReachable, netFromSummary, netSummary, reachable, upHosts,
 } from './net/graph';
 
 /* redo routing */
@@ -101,7 +103,7 @@ export {
 
 /* the other three models: the application's view, one commit, the reopen ladder */
 export type {
-  AddressPlan, AppAttempt, AppClaims, AppModel, AppOptions, Dial, DialKind, NoEventKind,
+  AddressPlan, AppAttempt, AppClaims, AppModel, AppOptions, AppSpan, Dial, DialKind, NoEventKind,
 } from './models/app';
 export { computeApp } from './models/app';
 export type {

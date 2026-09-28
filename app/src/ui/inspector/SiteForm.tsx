@@ -23,6 +23,7 @@ export function SiteForm({ site, doc }: SiteFormProps) {
   const used = new Set<string>();
   for (const m of doc.members) for (const i of m.instances) used.add(i.host as string);
   for (const o of doc.observers) used.add(o.host as string);
+  if (doc.application) used.add(doc.application.host as string);
   const others = doc.sites.filter((s) => s.id !== site.id);
   const linked = (o: Site): boolean => doc.links.some((l) => l.scope === 'site'
     && (l.ends as [string, string]).includes(site.id as string)

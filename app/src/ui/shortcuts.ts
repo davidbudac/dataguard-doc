@@ -37,7 +37,10 @@ export function onGlobalKey(ev: KeyboardEvent): void {
   if (mod && !ev.altKey && !ev.shiftKey && key === 'a' && drawing) {
     ev.preventDefault();
     const t = topology.value;
-    selection.value = [...t.members.map((m) => m.id as string), ...t.observers.map((o) => o.id as string)];
+    selection.value = [
+      ...t.members.map((m) => m.id as string), ...t.observers.map((o) => o.id as string),
+      ...(t.application ? [t.application.id as string] : []),
+    ];
     return;
   }
   /* `Escape` with the focus nowhere: the cards handle their own, this is the
