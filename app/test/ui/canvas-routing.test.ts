@@ -41,7 +41,7 @@ describe('routing: what gets drawn', () => {
     expect(redo.caption).toBe('redo (SYNC)');
     expect(redo.value).toBe('0 ms RTT');
     expect(redo.arrow).toBe(true);
-    expect(redo.d).toBe('M198,116 L838,116');
+    expect(redo.d).toBe('M198,116 L848,116');
     expect(byId(links, 'ping:obs01:prm01').arrow).toBe(false);
   });
 

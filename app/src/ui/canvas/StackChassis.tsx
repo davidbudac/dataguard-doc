@@ -17,12 +17,16 @@
 
 import type { JSX } from 'preact';
 import type { NodeBox, StackBox } from './layout';
+import { approxW, MINI_ICON } from './measure';
+import { MiniIcon } from './NodeCard';
 
 export interface StackChassisProps {
   stack: StackBox;
   /** Every blade's own box, keyed the same way `Geometry.byKey` is. */
   byKey: Record<string, NodeBox>;
   interactive: boolean;
+  /** The id prefix of the drawing's `<defs>`, for the host icon. */
+  prefix: string;
   /** A press on the header: the same "move the whole stack" gesture a press
       on any one of its blades already starts. */
   onHeaderPointerDown?: (topKey: string, ev: JSX.TargetedPointerEvent<SVGGElement>) => void;
@@ -67,9 +71,14 @@ export function StackChassis(props: StackChassisProps): JSX.Element | null {
         d={`M${stack.x},${headerBottom} v-${stack.headerH - r} a${r},${r} 0 0 1 ${r},-${r} `
           + `h${stack.w - 2 * r} a${r},${r} 0 0 1 ${r},${r} v${stack.headerH - r} z`}
       />
+      <MiniIcon
+        prefix={props.prefix} kind="host"
+        x={stack.x + stack.w / 2 - (approxW(stack.label, 10.5, true) + stack.label.length * 0.42) / 2 - MINI_ICON.gap / 2 - MINI_ICON.size / 2}
+        baseline={stack.y + stack.headerH / 2 + 3.5}
+      />
       <text
         class="tp-stack-hd-tx"
-        x={stack.x + stack.w / 2}
+        x={stack.x + stack.w / 2 + MINI_ICON.gap / 2}
         y={stack.y + stack.headerH / 2 + 3.5}
         text-anchor="middle"
       >

@@ -16,7 +16,7 @@ import type {
 } from '@/engine';
 import { isDatabase, isFarSync } from '@/engine';
 import type { CardLines, Rect } from './measure';
-import { approxW, CARD, elide, fitLabel, measureCardWidth, snap8 } from './measure';
+import { approxW, CARD, elide, fitLabel, measureCardWidth, MINI_ICON, snap8 } from './measure';
 
 export const LAYOUT = {
   /** Site rect padding; twice this is the "max card + 28" column box. */
@@ -139,7 +139,9 @@ export const SITE_MIN = { w: 120, h: 64 } as const;
  */
 export function siteLabelRect(s: SiteBox): Rect {
   const w = Math.round(approxW(s.label, 10) + s.label.length * 1.2 + 8);
-  return { x: Math.round(s.labelX - w / 2), y: Math.round(s.labelY) - 11, w, h: 15 };
+  /* The building icon sits left of the name (`SiteRect`), inside the rect, so
+     the router keeps captions off it too. */
+  return { x: Math.round(s.labelX - w / 2) - MINI_ICON.gap, y: Math.round(s.labelY) - 11, w: w + MINI_ICON.gap, h: 15 };
 }
 
 export interface ViewBox { x: number; y: number; w: number; h: number }
@@ -234,7 +236,7 @@ function memberLines(doc: TopologyDoc, m: Member): CardLines {
   const name = fitLabel([m.name], avail) ?? elide(m.name, 26);
   return m.instances.length > 1
     ? { name, host: roleWord(m), sub: 'Shared database' }
-    : { name, host: elide(host), sub: roleWord(m) };
+    : { name, host: elide(host, 17), hostAt: 0, sub: roleWord(m) };
 }
 
 /** A member's blade inside a chassis stack: the host line moves to the shared
@@ -262,8 +264,10 @@ function observerLines(doc: TopologyDoc, o: Observer): CardLines {
      that would need a taller card -- the same fitting the name line above
      went through, falling back to the host alone when even that is tight. */
   const combined = `Observer, ${host}`;
-  const roled = fitLabel([combined, host], avail) ?? elide(host);
-  return { name, host: roled };
+  const iconAvail = avail - MINI_ICON.gap;
+  const roled = fitLabel([combined, host], iconAvail) ?? elide(host, 17);
+  /* The server icon goes in front of the host name, wherever it starts. */
+  return { name, host: roled, hostAt: roled === combined ? 'Observer, '.length : 0 };
 }
 
 interface Placed {

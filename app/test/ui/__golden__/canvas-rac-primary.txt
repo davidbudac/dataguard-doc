@@ -1,18 +1,18 @@
 -- sites
 dc1  0,66 288x214
-dc3  488,-14 212x98
-dc2  900,114 212x118
+dc3  488,-14 222x98
+dc2  910,114 212x118
 -- cards
 prm01  col 0 row 0  14,80 260x168
-obs01  col 1 row 0  502,0 184x52
-sby01  col 2 row 0  914,128 184x72
+obs01  col 1 row 0  502,0 194x52
+sby01  col 2 row 0  924,128 184x72
 -- links
 check:obs01:sby01  readiness check [5 ms]
-  path 686,26 -> 1006,26 -> 1006,128
-  pill 778,16 137x20
+  path 696,26 -> 1016,26 -> 1016,128
+  pill 788,16 137x20
 ping:obs01:prm01  ping [5 ms]
   path 502,26 -> 144,26 -> 144,80
   pill 286,16 75x20
 redo:prm01:sby01  redo (SYNC) [5 ms RTT]
-  path 274,164 -> 914,164
-  pill 524,154 140x20
+  path 274,164 -> 924,164
+  pill 529,154 140x20

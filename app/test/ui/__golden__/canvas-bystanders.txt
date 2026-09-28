@@ -1,27 +1,27 @@
 -- sites
 dc1  0,111 212x118
-dc4  412,-14 212x98
-dc2  824,111 212x118
-dc3  1236,66 212x208
+dc4  412,-14 222x98
+dc2  834,111 212x118
+dc3  1246,66 212x208
 -- cards
 prm01  col 0 row 0  14,125 184x72
-obs01  col 1 row 0  426,0 184x52
-sby01  col 2 row 0  838,125 184x72
-lsby01  col 3 row 0  1250,80 184x72
-snp01  col 3 row 1  1250,170 184x72
+obs01  col 1 row 0  426,0 194x52
+sby01  col 2 row 0  848,125 184x72
+lsby01  col 3 row 0  1260,80 184x72
+snp01  col 3 row 1  1260,170 184x72
 -- links
 check:obs01:sby01  readiness check [5 ms]
-  path 610,26 -> 930,26 -> 930,125
-  pill 702,16 137x20
+  path 620,26 -> 940,26 -> 940,125
+  pill 712,16 137x20
 ping:obs01:prm01  ping [5 ms]
   path 426,26 -> 106,26 -> 106,125
   pill 229,16 75x20
 redo:prm01:lsby01  redo (ASYNC) [20 ms RTT]
-  path 198,161 -> 312,161 -> 312,116 -> 1250,116
-  pill 666,106 151x20
+  path 198,161 -> 312,161 -> 312,116 -> 1260,116
+  pill 679,106 151x20
 redo:prm01:sby01  redo (SYNC) [5 ms RTT]
-  path 198,161 -> 838,161
-  pill 448,151 140x20
+  path 198,161 -> 848,161
+  pill 453,151 140x20
 redo:prm01:snp01  redo (ASYNC) [20 ms RTT]
-  path 198,161 -> 324,161 -> 324,206 -> 1250,206
-  pill 672,196 151x20
+  path 198,161 -> 324,161 -> 324,206 -> 1260,206
+  pill 677,196 151x20

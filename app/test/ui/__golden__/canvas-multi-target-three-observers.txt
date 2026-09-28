@@ -1,46 +1,46 @@
 -- sites
 dc1  0,66 212x118
-dc4  412,-14 212x98
-dc2  824,-14 212x198
-dc3  1236,-14 212x198
+dc4  412,-14 222x98
+dc2  834,-14 222x198
+dc3  1256,-14 222x198
 -- cards
 prm01  col 0 row 0  14,80 184x72
-obs01  col 1 row 0  426,0 184x52
-obs02  col 2 row 0  838,0 184x52
-sby01  col 2 row 0  838,80 184x72
-obs03  col 3 row 0  1250,0 184x52
-sby02  col 3 row 0  1250,80 184x72
+obs01  col 1 row 0  426,0 194x52
+obs02  col 2 row 0  848,0 194x52
+sby01  col 2 row 0  853,80 184x72
+obs03  col 3 row 0  1270,0 194x52
+sby02  col 3 row 0  1275,80 184x72
 -- links
 check:obs01:sby01  readiness check [10 ms]
-  path 610,26 -> 724,26 -> 724,116 -> 838,116
-  pill 628,16 143x20
+  path 620,26 -> 734,26 -> 734,116 -> 853,116
+  pill 638,16 143x20
 check:obs01:sby02  readiness check [10 ms]
-  path 518,52 -> 518,70 -> 1342,70 -> 1342,80
-  pill 1043,60 143x20
+  path 523,52 -> 523,70 -> 1367,70 -> 1367,80
+  pill 1058,60 143x20
 check:obs02:sby01  readiness check [0 ms]
-  path 930,52 -> 930,80
-  pill 862,56 137x20
+  path 945,52 -> 945,80
+  pill 877,56 137x20
 check:obs02:sby02  readiness check [10 ms]
-  path 1022,26 -> 1136,26 -> 1136,116 -> 1250,116
-  pill 1040,16 143x20
+  path 1042,26 -> 1156,26 -> 1156,116 -> 1275,116
+  pill 1112,106 143x20
 check:obs03:sby01  readiness check [10 ms]
-  path 1250,26 -> 1160,26 -> 1160,116 -> 1022,116
-  pill 1036,106 143x20
+  path 1270,26 -> 1180,26 -> 1180,116 -> 1037,116
+  pill 1109,37 143x20
 check:obs03:sby02  readiness check [0 ms]
-  path 1342,52 -> 1342,80
-  pill 1274,56 137x20
+  path 1367,52 -> 1367,80
+  pill 1299,56 137x20
 ping:obs01:prm01  ping [10 ms]
   path 426,26 -> 106,26 -> 106,80
   pill 225,16 82x20
 ping:obs02:prm01  ping [10 ms]
-  path 930,52 -> 930,62 -> 106,62 -> 106,80
-  pill 629,52 82x20
+  path 945,52 -> 945,62 -> 106,62 -> 106,80
+  pill 637,52 82x20
 ping:obs03:prm01  ping [10 ms]
-  path 1342,52 -> 1342,54 -> 106,54 -> 106,80
-  pill 715,44 82x20
+  path 1367,52 -> 1367,54 -> 106,54 -> 106,80
+  pill 728,44 82x20
 redo:prm01:sby01  redo (SYNC) [10 ms RTT]
-  path 198,116 -> 838,116
-  pill 445,106 146x20
+  path 198,116 -> 853,116
+  pill 453,106 146x20
 redo:prm01:sby02  redo (SYNC) [10 ms RTT]
-  path 106,152 -> 106,188 -> 1342,188 -> 1342,152
-  pill 651,178 146x20
+  path 106,152 -> 106,188 -> 1367,188 -> 1367,152
+  pill 664,178 146x20

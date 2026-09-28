@@ -13,7 +13,7 @@
 
 import type { JSX } from 'preact';
 import type { NodeBox } from './layout';
-import { approxW, CARD, elide } from './measure';
+import { approxW, CARD, elide, MINI_ICON } from './measure';
 import type { CardChip, CardFrame, Phase } from './routing';
 
 export type { CardChip, CardFrame, ChipTone, Phase } from './routing';
@@ -57,6 +57,33 @@ const PHASE_CLASS: Record<Phase, string> = {
 
 const CHIP_H = 14;
 const chipWidth = (text: string): number => Math.round(approxW(text, 9, true) + 12);
+
+/** A small data centre or host icon whose bottom sits on a text baseline. */
+export function MiniIcon(props: { prefix: string; kind: 'host' | 'dc'; x: number; baseline: number }): JSX.Element {
+  const k = MINI_ICON.size / 24;
+  return (
+    <use
+      href={`#${props.prefix}-ico-${props.kind}`}
+      class="tp-mini"
+      transform={`translate(${props.x},${props.baseline - MINI_ICON.size + 1.5}) scale(${k})`}
+    />
+  );
+}
+
+/** The host line with the server icon in front of the host name -- which may
+    start part-way along, after "Observer, ". */
+function hostLineWithIcon(line: string, at: number, tx: number, y: number, prefix: string): JSX.Element {
+  const before = line.slice(0, at);
+  const ix = tx + (before ? approxW(before, CARD.hostSize, true) : 0);
+  return (
+    <>
+      <MiniIcon prefix={prefix} kind="host" x={ix} baseline={y} />
+      <text class="tp-host" x={tx} y={y}>
+        {before}<tspan x={ix + MINI_ICON.gap}>{line.slice(at)}</tspan>
+      </text>
+    </>
+  );
+}
 
 export function NodeCard(props: NodeCardProps): JSX.Element {
   const { node, frame, chips, prefix } = props;
@@ -162,9 +189,10 @@ export function NodeCard(props: NodeCardProps): JSX.Element {
         </g>
       ) : null}
       <text class="tp-name" x={tx} y={nameY}>{node.lines.name}</text>
-      {node.lines.host === undefined ? null : (
-        <text class="tp-host" x={tx} y={nameY + 16}>{roleInHostLine ? roleText : node.lines.host}</text>
-      )}
+      {node.lines.host === undefined ? null
+        : roleInHostLine || node.lines.hostAt === undefined ? (
+          <text class="tp-host" x={tx} y={nameY + 16}>{roleInHostLine ? roleText : node.lines.host}</text>
+        ) : hostLineWithIcon(node.lines.host, node.lines.hostAt, tx, nameY + 16, prefix)}
       {node.lines.sub === undefined ? null : (
         <text class="tp-sub" x={tx} y={nameY + 30}>{roleInHostLine ? node.lines.sub : roleText}</text>
       )}
@@ -176,7 +204,8 @@ export function NodeCard(props: NodeCardProps): JSX.Element {
           <title>{inst.name} on host {inst.host} in {inst.site}{down ? ' — down' : ''}</title>
           <rect class={`tp-card${down ? ' is-down' : ''}`} x={node.x + 8} y={y} width={node.w - 16} height={CARD.instanceRowH - 6} rx={3} />
           <text class="tp-host" x={node.x + 16} y={y + 14}>{elide(inst.name, 27)}{down ? ' ×' : ''}</text>
-          <text class="tp-sub" x={node.x + 16} y={y + 29}>{elide(host, 34)}</text>
+          <MiniIcon prefix={prefix} kind="host" x={node.x + 16} baseline={y + 29} />
+          <text class="tp-sub" x={node.x + 16 + MINI_ICON.gap} y={y + 29}>{elide(host, 32)}</text>
         </g>;
       })}
       {chipNodes}

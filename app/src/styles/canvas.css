@@ -236,6 +236,8 @@
 .topo-svg .tp-bdg.is-standby { fill: var(--blf); }
 .topo-svg .tp-bdg.is-down { fill: var(--rdf); }
 .topo-svg .tp-ico { stroke: var(--ik2); fill: none; }
+/* The small data centre / host icons beside a name: quieter than the text. */
+.topo-svg .tp-mini { stroke: var(--ik3); fill: none; pointer-events: none; }
 .topo-svg .tp-ico.is-primary { stroke: var(--tl); }
 .topo-svg .tp-ico.is-standby { stroke: var(--bl); }
 .topo-svg .tp-role-mark rect { fill: var(--blf); stroke: var(--bl); stroke-width: 1; }

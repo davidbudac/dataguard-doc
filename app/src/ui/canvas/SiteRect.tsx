@@ -15,6 +15,7 @@
 import type { JSX } from 'preact';
 import type { SiteBox } from './layout';
 import { siteLabelRect } from './layout';
+import { MiniIcon } from './NodeCard';
 
 export interface SiteRectProps {
   site: SiteBox;
@@ -86,6 +87,7 @@ export function SiteRect(props: SiteRectProps): JSX.Element {
         />
       ) : null}
       <rect class={cls} x={site.x} y={site.y} width={site.w} height={site.h} rx={6} />
+      <MiniIcon prefix={props.prefix} kind="dc" x={lab.x + 2} baseline={site.labelY} />
       <text class="tp-sitelab" x={site.labelX} y={site.labelY} text-anchor="middle">
         {site.label}
       </text>

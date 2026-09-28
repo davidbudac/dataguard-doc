@@ -35,14 +35,14 @@ describe('layoutTopology: the classic 1+1+1', () => {
     const geo = geometryOf(classic('dc3'));
     expect(geo.nodes.map((n) => n.key)).toEqual(['prm01', 'obs01', 'sby01']);
     expect(box(node(geo, 'prm01'))).toEqual([14, 80, 184, 72]);
-    expect(box(node(geo, 'obs01'))).toEqual([426, 0, 184, 52]);
-    expect(box(node(geo, 'sby01'))).toEqual([838, 80, 184, 72]);
+    expect(box(node(geo, 'obs01'))).toEqual([426, 0, 194, 52]);
+    expect(box(node(geo, 'sby01'))).toEqual([848, 80, 184, 72]);
     expect(geo.sites.map((s) => [s.id as string, s.x, s.y, s.w, s.h])).toEqual([
       ['dc1', 0, 66, 212, 118],
-      ['dc3', 412, -14, 212, 98],
-      ['dc2', 824, 66, 212, 118],
+      ['dc3', 412, -14, 222, 98],
+      ['dc2', 834, 66, 212, 118],
     ]);
-    expect(geo.viewBox).toEqual({ x: -10, y: -24, w: 1056, h: 224 });
+    expect(geo.viewBox).toEqual({ x: -10, y: -24, w: 1066, h: 224 });
   });
 
   it('grows the primary site upward when the observer runs there', () => {
@@ -53,7 +53,7 @@ describe('layoutTopology: the classic 1+1+1', () => {
     const dc1 = geo.sites.find((s) => (s.id as string) === 'dc1');
     const dc2 = geo.sites.find((s) => (s.id as string) === 'dc2');
     expect(dc1?.h).toBeGreaterThan(dc2?.h ?? 0);
-    expect(box(node(geo, 'obs01'))).toEqual([14, 0, 184, 52]);
+    expect(box(node(geo, 'obs01'))).toEqual([14, 0, 194, 52]);
   });
 
   it('mirrors onto the standby site', () => {
@@ -198,7 +198,7 @@ describe('layoutTopology: invariants', () => {
       expect(n.w).toBeGreaterThanOrEqual(184);
       expect(n.w).toBeLessThanOrEqual(260);
     }
-    expect(node(geo, 'prm01').lines.host).toBe('an-extremely-long-…');
+    expect(node(geo, 'prm01').lines.host).toBe('an-extremely-lon…');
   });
 });
 
