@@ -38,6 +38,7 @@ import { LinkPath, linkKey } from './LinkPath';
 import { SiteRect, siteKey } from './SiteRect';
 import { landingFor } from './drop';
 import { snap8 } from './measure';
+import { isElement, useHostWindow } from '../common/dom';
 import '@/styles/canvas.css';
 
 export interface TopoCanvasProps {
@@ -330,13 +331,13 @@ const DRAG_THRESHOLD = 4;
 
 /** The entity a pointer or context-menu event landed on, or `null` for ground. */
 const keyAt = (target: EventTarget | null): string | null => {
-  if (!(target instanceof Element)) return null;
+  if (!isElement(target)) return null;
   return target.closest('[data-node]')?.getAttribute('data-node') ?? null;
 };
 
 /** True inside the action bar, which is HTML painted into the drawing. */
 const insideBar = (target: EventTarget | null): boolean =>
-  target instanceof Element
+  isElement(target)
   && (target.closest('.tp-actions') !== null || target.closest('.tp-rename') !== null);
 
 /**
@@ -463,17 +464,19 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
      drawing tool that gives the plain drag to selection. A ref, because it is
      read at the press and never painted. */
   const spaceHeld = useRef(false);
+  /* The window the drawing is in, which may be a popup (common/popout.tsx). */
+  const host = useHostWindow();
   useEffect(() => {
-    if (!interactive || !props.onSelectMany) return undefined;
+    if (!interactive || !props.onSelectMany || host === null) return undefined;
     const down = (ev: KeyboardEvent): void => { if (ev.key === ' ') spaceHeld.current = true; };
     const up = (ev: KeyboardEvent): void => { if (ev.key === ' ') spaceHeld.current = false; };
-    window.addEventListener('keydown', down);
-    window.addEventListener('keyup', up);
+    host.addEventListener('keydown', down);
+    host.addEventListener('keyup', up);
     return () => {
-      window.removeEventListener('keydown', down);
-      window.removeEventListener('keyup', up);
+      host.removeEventListener('keydown', down);
+      host.removeEventListener('keyup', up);
     };
-  }, [interactive, props.onSelectMany !== undefined]);
+  }, [interactive, props.onSelectMany !== undefined, host]);
 
   /**
    * The pointer in the drawing's own units.
@@ -812,7 +815,7 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
     const node = geo.byKey[key];
     if (!svgRef.current || !node) return;
     /* A press on the card's port starts a line, not a move. */
-    if (ev.target instanceof Element && ev.target.closest('.tp-port') !== null) return;
+    if (isElement(ev.target) && ev.target.closest('.tp-port') !== null) return;
     const keys = carriedByBlade(key);
     beginCardDrag(key, keys, keys.length === 1, ev);
   };
@@ -851,7 +854,7 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
     if (!props.onDrag && !props.onDragEnd) return;
     if (ev.button !== 0) return;
     /* A press on the site's own port starts a line, not a move. */
-    if (ev.target instanceof Element && ev.target.closest('.tp-port') !== null) return;
+    if (isElement(ev.target) && ev.target.closest('.tp-port') !== null) return;
     const svg = svgRef.current;
     const site = geo.sites.find((s) => (s.id as string) === key);
     if (!svg || !site) return;
@@ -940,7 +943,7 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
    */
   const takeDrag = (ev: JSX.TargetedPointerEvent<SVGSVGElement>, cursor = 'grab'): void => {
     svgRef.current?.setPointerCapture?.(ev.pointerId);
-    if (typeof window !== 'undefined') window.getSelection?.()?.removeAllRanges();
+    host?.getSelection?.()?.removeAllRanges();
     setMoving(cursor);
   };
 

@@ -31,6 +31,7 @@
 import type { JSX } from 'preact';
 import { useEffect, useLayoutEffect, useRef } from 'preact/hooks';
 import { WhyPill } from '../common/WhyPill';
+import { isHTMLElement } from '../common/dom';
 import type { WhyState } from '../common/WhyPill';
 import { Action } from '../inspector/controls';
 
@@ -186,7 +187,7 @@ export function ActionBar(props: ActionBarProps): JSX.Element {
     if (!el) return;
     const first = el.querySelector('.cv-bar-row button:not(:disabled)')
       ?? el.querySelector('.cv-bar-x');
-    if (first instanceof HTMLElement) first.focus();
+    if (isHTMLElement(first)) first.focus();
   }, [props.subject, props.focusOnOpen]);
 
   const onKeyDown = (ev: JSX.TargetedKeyboardEvent<HTMLDivElement>): void => {

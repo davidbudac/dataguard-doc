@@ -18,6 +18,7 @@ import { Brace, TopBrace } from './Brace';
 import { EventDrag } from './EventDrag';
 import { Playhead } from './Playhead';
 import { usePlayback } from './playback';
+import { useHostWindow } from '../common/dom';
 import { Transport } from './Transport';
 import { Tooltip, tipFromEvent } from './Tooltip';
 import type { TooltipState } from './Tooltip';
@@ -230,7 +231,9 @@ export function Timeline(props: TimelineProps) {
      clock (CLAUDE.md) -- and leaves through the same `onSeek` a drag uses, so
      there is one way for the playhead to move and playback is a timer on it.
      Nothing to play in the steady state or at the export scale. */
+  const view = useHostWindow();
   usePlayback({
+    view,
     playing,
     speed,
     tNow,

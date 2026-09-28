@@ -43,6 +43,7 @@ import { DockGrip, FullToggle } from './timeline/DockControls';
 import { WorkspacesDialog } from './workspaces/Workspaces';
 import { ClassicWalkthrough } from './intro/Walkthrough';
 import { ReviewDialog } from './review/ReviewPanel';
+import { Popout, PopoutButton, PoppedAway, popped } from './common/popout';
 
 /** Which modes keep a rail beside the canvas. Learn's right half is the workbench. */
 const HAS_RAIL: Record<Mode, boolean> = {
@@ -60,9 +61,13 @@ function useWidth(): [(el: HTMLElement | null) => void, number] {
   useEffect(() => () => observer.current?.disconnect(), []);
   const ref = (el: HTMLElement | null): void => {
     observer.current?.disconnect();
-    if (!el || typeof ResizeObserver === 'undefined') return;
+    /* The observer of the window the element is in: the timeline may be
+       rendered into a popup (common/popout.tsx). */
+    const RO = el?.ownerDocument.defaultView?.ResizeObserver
+      ?? (typeof ResizeObserver === 'undefined' ? undefined : ResizeObserver);
+    if (!el || RO === undefined) return;
     setWidth(el.clientWidth);
-    const ro = new ResizeObserver(() => setWidth(el.clientWidth));
+    const ro = new RO(() => setWidth(el.clientWidth));
     ro.observe(el);
     observer.current = ro;
   };
@@ -249,10 +254,15 @@ function useChromeInsets(): (el: HTMLElement | null) => void {
 
 const MIN_TIMELINE_W = 640;
 
-function TimelineSlot() {
+function TimelineSlot({ popup = false }: { popup?: boolean }) {
   const [ref, width] = useWidth();
   const t = trace.value;
   const learn = mode.value === 'learn';
+  /* Popped out, the timeline is drawn in its own window and this is only
+     the note that says where it went. */
+  if (!popup && popped.value.timeline !== undefined) {
+    return <div class="tl-slot"><PoppedAway kind="timeline" label="Timeline" /></div>;
+  }
   return (
     <div class="tl-slot" ref={ref}>
       {t === null ? (
@@ -295,7 +305,7 @@ function Workbench() {
   return (
     <>
       <LearnWorkbenchHeader />
-      <CanvasSlot />
+      <HomeCanvas />
       <Readout />
       <TimelineSlot />
     </>
@@ -322,11 +332,16 @@ function Rail({ m, wide, float = false }: { m: Mode; wide: boolean; float?: bool
   }
 }
 
+/** The drawing, unless it has been popped out into a window of its own. */
+function HomeCanvas() {
+  return popped.value.canvas === undefined ? <CanvasSlot /> : <PoppedAway kind="canvas" label="Drawing" />;
+}
+
 function Stage({ m, wide }: { m: Mode; wide: boolean }) {
   if (m === 'learn') return <LearnShell />;
   return (
     <>
-      <CanvasSlot />
+      <HomeCanvas />
       {m === 'break' && !wide ? <EventMenu /> : null}
     </>
   );
@@ -360,10 +375,37 @@ function FloatDock({ m, sized }: { m: Mode; sized: boolean }) {
         {sized && !timelineFull.value ? <DockGrip /> : null}
         <Readout />
         <FindingsChips />
+        {sized ? <PopoutButton kind="timeline" /> : null}
         {sized ? <FullToggle /> : null}
       </div>
       {m === 'break' ? <TimelineSlot /> : null}
     </>
+  );
+}
+
+/* The two parts that can be popped out into a window of their own
+   (common/popout.tsx). Each is the floating layout's part on its own, filling
+   the popup: the timeline panel with its header row, the stage with the
+   drawing and its zoom pill. */
+function TimelinePop() {
+  return (
+    <div class="app is-float m-break po po-tl">
+      <div class="app-dock has-tl">
+        <div class="dock-status">
+          <Readout />
+          <PopoutButton kind="timeline" />
+        </div>
+        <TimelineSlot popup />
+      </div>
+    </div>
+  );
+}
+
+function CanvasPop() {
+  return (
+    <div class={`app is-float m-${mode.value} po po-cv${gridOn.value ? '' : ' no-grid'}`}>
+      <main class="app-stage"><CanvasSlot /></main>
+    </div>
   );
 }
 
@@ -396,8 +438,9 @@ export function App() {
   const appRef = useChromeInsets();
   useTimelineHeight();
   /* Break's timeline panel is sized by the reader once there is a run to
-     show; the steady state's one sentence keeps its own height. */
-  const sized = float && m === 'break' && trace.value !== null;
+     show; the steady state's one sentence keeps its own height, and so
+     does the note left behind when the timeline is popped out. */
+  const sized = float && m === 'break' && trace.value !== null && popped.value.timeline === undefined;
   const full = sized && timelineFull.value;
   /* Full screen belongs to the run on screen: leaving Break, or clearing the
      events, puts the drawing back. */
@@ -513,6 +556,9 @@ export function App() {
       {intro ? null : <WorkspacesDialog />}
       {intro ? null : <ReviewDialog />}
       {intro ? null : <CollectDialog />}
+
+      <Popout kind="timeline"><TimelinePop /></Popout>
+      <Popout kind="canvas"><CanvasPop /></Popout>
     </div>
   );
 }

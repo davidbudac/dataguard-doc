@@ -41,6 +41,7 @@ import { MAX_ROWS_BREAK } from './ActionBar';
 import { barFocus, barOpen, closeBar, openBar } from './bar';
 import { menuOpen, snapT } from './EventMenu';
 import { resizedBox, TopoCanvas } from './TopoCanvas';
+import { isElement, PopIcon, popIn, popOut, popped, useHostWindow } from '../common/popout';
 import {
   canZoom, fitZoom, WHY_MAX, WHY_MIN, zoom, zoomBy, zoomLabel,
 } from './zoom';
@@ -132,7 +133,7 @@ const canRename = (t: TopologyDoc, key: string): boolean =>
   || t.observers.some((o) => (o.id as string) === key)
   || t.sites.some((x) => (x.id as string) === key);
 
-function commitRename(key: string, raw: string): void {
+function commitRename(key: string, raw: string, where: Document = document): void {
   const t = topology.value;
   const m = t.members.find((x) => (x.id as string) === key);
   const o = t.observers.find((x) => (x.id as string) === key);
@@ -144,7 +145,7 @@ function commitRename(key: string, raw: string): void {
      the name it now has, once that has been drawn. */
   const now = m || o ? raw.trim() : key;
   setTimeout(() => {
-    for (const el of document.querySelectorAll<SVGGElement>('.topo-svg [data-node]')) {
+    for (const el of where.querySelectorAll<SVGGElement>('.topo-svg [data-node]')) {
       if (el.getAttribute('data-node') === now && !el.hasAttribute('data-more') && !el.hasAttribute('data-tools')) {
         el.focus();
         return;
@@ -265,8 +266,12 @@ function useCanvasScale(
     host.current = el;
     if (!el) return;
     read();
-    if (typeof ResizeObserver === 'undefined') return;
-    const ro = new ResizeObserver(read);
+    /* The observer of the window the drawing is in: it may be a popup
+       (common/popout.tsx). */
+    const RO = el.ownerDocument.defaultView?.ResizeObserver
+      ?? (typeof ResizeObserver === 'undefined' ? undefined : ResizeObserver);
+    if (RO === undefined) return;
+    const ro = new RO(read);
     ro.observe(el);
     observer.current = ro;
   }, [read]);
@@ -292,7 +297,7 @@ function useCanvasScale(
  */
 export const WHY_TIDY = 'No card has been moved and no data centre resized by hand, so there is nothing to tidy.';
 
-function ZoomStrip({ tidy, grid = false }: { tidy: boolean; grid?: boolean }) {
+function ZoomStrip({ tidy, grid = false, pop = false }: { tidy: boolean; grid?: boolean; pop?: boolean }) {
   const at = zoom.value;
   const moved = Object.keys(doc.value.layout);
   const picked = selection.value.filter((k) => moved.includes(k));
@@ -304,10 +309,12 @@ function ZoomStrip({ tidy, grid = false }: { tidy: boolean; grid?: boolean }) {
     { state: 'on' },
     ...(tidy ? [moved.length === 0 ? { state: 'off' as const, why: WHY_TIDY } : ON] : []),
     ...(grid ? [ON] : []),
+    ...(pop ? [ON] : []),
   ];
   const roving = useRovingToolbar(states.map((w) => w.state !== 'off'));
   const rows: {
     label: string | JSX.Element; name: string; title: string; run: () => void; pressed?: boolean;
+    cls?: string;
   }[] = [
     {
       label: '−',
@@ -346,6 +353,18 @@ function ZoomStrip({ tidy, grid = false }: { tidy: boolean; grid?: boolean }) {
         pressed: gridOn.value,
       }]
       : []),
+    ...(pop
+      ? [{
+        label: <PopIcon out={popped.value.canvas !== undefined} />,
+        name: 'Open the drawing in a new window',
+        title: popped.value.canvas !== undefined
+          ? 'Bring the drawing back into the main window.'
+          : 'Open the drawing in a new window you can drag to another screen.',
+        run: () => { if (popped.value.canvas !== undefined) popIn('canvas'); else popOut('canvas'); },
+        pressed: popped.value.canvas !== undefined,
+        cls: 'po-btn',
+      }]
+      : []),
   ];
 
   return (
@@ -357,7 +376,7 @@ function ZoomStrip({ tidy, grid = false }: { tidy: boolean; grid?: boolean }) {
           <button
             key={r.name}
             type="button"
-            class={`btn${isOff ? ' is-faded' : ''}`}
+            class={`btn${isOff ? ' is-faded' : ''}${r.cls === undefined ? '' : ` ${r.cls}`}`}
             disabled={isOff}
             aria-label={r.name}
             aria-pressed={r.pressed}
@@ -437,6 +456,7 @@ export function CanvasSlot({ interactive = true }: CanvasSlotProps) {
   const zooming = interactive && (m === 'build' || m === 'break');
   const zoomFactor = zooming ? zoom.value : 1;
   const [wrapRef, scale, barMargin] = useCanvasScale(zoomFactor);
+  const host = useHostWindow();
   const anchored = barOpen.value;
 
   /* The bar closes rather than moves. A selection that no longer holds the key
@@ -470,12 +490,14 @@ export function CanvasSlot({ interactive = true }: CanvasSlotProps) {
     if (anchored === null) return;
     const onPress = (ev: PointerEvent): void => {
       const t = ev.target;
-      if (!(t instanceof Element)) return;
+      if (!isElement(t)) return;
       if (t.closest('.tp-actions') !== null || t.closest('[data-node]') !== null) return;
       closeBar();
     };
-    document.addEventListener('pointerdown', onPress, true);
-    return () => document.removeEventListener('pointerdown', onPress, true);
+    /* The drawing's own document: it may be in a popup (common/popout.tsx). */
+    const where = host?.document ?? document;
+    where.addEventListener('pointerdown', onPress, true);
+    return () => where.removeEventListener('pointerdown', onPress, true);
   }, [anchored]);
 
   const building = editable && m === 'build';
@@ -532,7 +554,7 @@ export function CanvasSlot({ interactive = true }: CanvasSlotProps) {
             <TidyButton />
           </nav>
         )}
-        {zooming ? <div class="zoom-pill float-card"><ZoomStrip tidy={false} grid /></div> : null}
+        {zooming ? <div class="zoom-pill float-card"><ZoomStrip tidy={false} grid pop /></div> : null}
       </>
     )
     : adds === null && !zooming ? null : (
@@ -618,7 +640,7 @@ export function CanvasSlot({ interactive = true }: CanvasSlotProps) {
                 key: renameKey,
                 initial: nameOf(topology.value, renameKey),
                 verdict: (raw: string) => renameVerdict(topology.value, renameKey, raw),
-                commit: (raw: string) => commitRename(renameKey, raw),
+                commit: (raw: string) => commitRename(renameKey, raw, host?.document),
                 cancel: () => { renaming.value = null; },
               }
               : null,

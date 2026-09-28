@@ -58,6 +58,9 @@ export interface PlaybackProps {
   /** False when there is nothing to play: steady state, or the export scale. */
   enabled: boolean;
   onSeek?: (t: number) => void;
+  /** The window whose frames drive the loop: a popped-out timeline's own, so
+      it keeps playing while the main window is hidden (common/popout.tsx). */
+  view?: Window | null;
   /** Called once, when the playhead lands on the end of the axis. */
   onEnd?: () => void;
 }
@@ -72,8 +75,8 @@ interface Frames {
  * jsdom, a print worker, anything headless. Resolved per run rather than at
  * module load so a test can install a stub and get it.
  */
-function frames(): Frames {
-  const g = globalThis as unknown as {
+function frames(view?: Window | null): Frames {
+  const g = (view ?? globalThis) as unknown as {
     requestAnimationFrame?: (cb: (ts: number) => void) => number;
     cancelAnimationFrame?: (id: number) => void;
   };
@@ -124,7 +127,7 @@ export function usePlayback(props: PlaybackProps): void {
   useLayoutEffect(() => {
     if (!playing || !enabled || speed <= 0 || !(t1 > t0)) return undefined;
 
-    const { request, cancel } = frames();
+    const { request, cancel } = frames(live.current.view);
     let id = 0;
     let last: number | null = null;
     let stopped = false;

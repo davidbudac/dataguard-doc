@@ -45,6 +45,7 @@ import './styles/tokens.css';
 import './styles/base.css';
 import './styles/shell.css';
 import './styles/float.css';
+import './styles/popout.css';
 import './styles/print.css';
 
 async function boot(): Promise<void> {

@@ -8,6 +8,7 @@
  */
 
 import { useLayoutEffect, useRef } from 'preact/hooks';
+import { isElement } from '../common/dom';
 
 export interface TooltipState {
   text: string;
@@ -21,7 +22,7 @@ export interface TooltipProps {
 
 /** Read the delegated tip out of an event target, or null when there is none. */
 export function tipFromEvent(target: EventTarget | null): string | null {
-  if (!(target instanceof Element)) return null;
+  if (!isElement(target)) return null;
   const host = target.closest('[data-tip]');
   const text = host?.getAttribute('data-tip');
   return text && text.length > 0 ? text : null;
