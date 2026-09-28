@@ -87,7 +87,6 @@ const U = {
   ora16658: 'https://docs.oracle.com/en/error-help/db/ora-16658/',
   ora16820: 'https://docs.oracle.com/en/error-help/db/ora-16820/',
   ora16867: 'https://docs.oracle.com/en/error-help/db/ora-16867/',
-  ora16819: 'https://docs.oracle.com/en/error-help/db/ora-16819/',
   ora16827: 'https://docs.oracle.com/en/error-help/db/ora-16827/',
   ora16647: 'https://docs.oracle.com/en/error-help/db/ora-16647/',
   bkr19Configs: 'https://docs.oracle.com/en/database/oracle/oracle-database/19/dgbkr/managing-oracle-data-guard-broker-configurations.html',
@@ -1013,10 +1012,6 @@ export const CITATIONS = {
   'ORA.16661': {
     url: U.ora16661, edition: '19c', verified: 'primary',
     quote: 'ORA-16661 The standby database must be reinstated. Cause A role change operation caused this database or pluggable database to require reinstatement.',
-  },
-  'ORA.16819': {
-    url: U.ora16819, edition: '19c', verified: 'primary',
-    quote: 'ORA-16819 fast-start failover observer not started Cause The observer for fast-start failover was not started. As a result, fast-start failover could not happen in the event of a primary database failure.',
   },
   'ORA.16867': {
     url: U.ora16867, edition: '19c', verified: 'primary',
