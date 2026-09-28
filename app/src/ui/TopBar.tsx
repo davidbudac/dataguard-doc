@@ -79,7 +79,7 @@ export function TopBar({ doc, actions }: TopBarProps = {}) {
           value={edition.value}
           options={[
             { value: '19c', label: '19c', title: 'Oracle Database 19c' },
-            { value: '26ai', label: '26ai', title: 'Oracle Database 26ai' },
+            { value: '26ai', label: '26ai', title: 'Oracle AI Database 26ai' },
           ]}
           onChange={(v) => { edition.value = v; saveEdition(v); }}
         />

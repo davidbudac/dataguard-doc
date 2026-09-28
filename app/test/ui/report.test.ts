@@ -20,7 +20,7 @@ import {
   issues, readoutFor, redoGraph, runFindings, topology, trace,
 } from '@/state/derived';
 import { parseUrlQuery, serializeUrlQuery, URL_DEFAULTS } from '@/state/url';
-import { applyTheme, reportPage, theme } from '@/state/view';
+import { applyTheme, edition, reportPage, theme } from '@/state/view';
 import {
   A4_LANDSCAPE_ROOM, A4_PORTRAIT_ROOM, buildReport, diagramLandscape, fsfoWord, printScale,
 } from '@/ui/export/report-model';
@@ -65,6 +65,20 @@ describe('report model', () => {
     expect(k['Protection mode']).toBe(topology.value.config.protectionMode);
     expect(k['Fast-start failover']).toBe(fsfoWord(topology.value));
     expect(k['Fast-start failover']).toMatch(/^enabled, threshold \d+ s/);
+  });
+
+  /* Oracle titles the 26ai documentation set "Oracle AI Database" (the TOC's
+     "Changes in Oracle AI Database Release 26ai"); the short edition label
+     stays "26ai". */
+  it('spells out the 26ai release as "Oracle AI Database 26ai"', () => {
+    load('classic');
+    edition.value = '26ai';
+    try {
+      const k = Object.fromEntries(model().summary.map((r) => [r.k, r.v]));
+      expect(k['Oracle release']).toBe('Oracle AI Database 26ai');
+    } finally {
+      edition.value = '19c';
+    }
   });
 
   it('reports the protection level at rest, with its basis', () => {
