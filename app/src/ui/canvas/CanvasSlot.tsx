@@ -27,7 +27,7 @@ import {
   addDatabase, addFsfoTarget, addLink, connectVerdict, mergeIntoHost, moveToSite, renameMember,
   renameObserver, renameSite, renameVerdict, shipRedo, tidyLayout,
 } from '../inspector/edits';
-import { inFlight, placeOver, renaming, setSiteAt } from './place';
+import { inFlight, inFlightFrom, placeOver, renaming, setSiteAt } from './place';
 import { mergeVerdict } from './drop';
 import {
   actionsFor, nothingToRestore, restoreQuietLine, runAction,
@@ -710,7 +710,12 @@ export function CanvasSlot({ interactive = true }: CanvasSlotProps) {
              observers along, so the label says "data centre" rather than
              "card" when that is what moved. */
           const ids = Object.keys(all);
-          if (inFlight.peek().join('\u0000') !== ids.join('\u0000')) inFlight.value = ids;
+          if (inFlight.peek().join('\u0000') !== ids.join('\u0000')) {
+            /* Read before this move's own edit: where they stood when picked up. */
+            const was = doc.peek().layout;
+            inFlightFrom.value = Object.fromEntries(ids.map((k) => [k, was[k] ?? { dx: 0, dy: 0 }]));
+            inFlight.value = ids;
+          }
           const site = topology.value.sites.find((s) => (s.id as string) === key);
           const label = site
             ? `Move the ${site.name} data centre`
@@ -724,6 +729,7 @@ export function CanvasSlot({ interactive = true }: CanvasSlotProps) {
         onDragEnd={() => {
           /* Landed: from here on, what it overlaps makes way for it. */
           inFlight.value = [];
+          inFlightFrom.value = {};
           breakCoalescing();
         }}
       />

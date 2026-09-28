@@ -883,7 +883,13 @@ modes changes what is around it.
   pure and deterministic, so it has goldens. `routing.ts` routes the links with
   at most two bends, allocates channels per corridor, and places each link's
   caption on a four-rung ladder that keeps it out of cards, other captions, site
-  rectangles and other links' lines. Routing and drawing both run in two passes
+  rectangles and other links' lines. With three or more observers their lines
+  run as trunks (task 5.2): the gap between the observer band and the member
+  band opens to one lane per trunk (`Geometry.trunks`, pings plus one per
+  readiness target), lines of one kind to one card share one channel per
+  corridor (`bundleOf`), each caption prefers its line's own stretch, and a
+  shared line is drawn from its card end so the dashes coincide.
+  Routing and drawing both run in two passes
   (every route, then every caption; every line, then every card, then every
   caption) so a caption is never painted over by a line routed after it.
   `app/test/ui/canvas-presets.test.ts` holds all eleven presets to the collision
@@ -892,7 +898,9 @@ modes changes what is around it.
   (a handle resize, or a card drop that would otherwise shrink it), measured
   from the box's natural anchor and never smaller than its cards; Tidy resets it.
   A card the layout placed slides down out of the way of one moved by hand
-  (`makeWay`, step 7b), and where a new standby, far sync or observer goes when
+  (`makeWay`, step 7b); a data centre grown by a hand move or a resize pushes
+  the columns beside it so every corridor keeps its width (`columnPush`, step
+  7c: growth to the right pushes right, to the left pushes left); and where a new standby, far sync or observer goes when
   no data centre is named is `ui/build/placement.ts`.
 - **Timeline** (`ui/timeline/`): `build.ts` is a pure
   `buildTimeline(trace, topology, view) → TimelineModel`; the component maps it

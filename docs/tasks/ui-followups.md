@@ -167,18 +167,34 @@ pill, `gridOn` in view.ts, remembered under `dg-grid`.
 ## Track 5 — rough edges left by round 1 (canvas)
 
 ### 5.1 Data centre columns push each other
-Status: todo
+Status: done (on ui/track5-canvas)
+Note: `layout.ts` step 7c `columnPush`: where a box (hand-moved cards, a size of its own) eats
+into a corridor, the columns beyond it slide -- right growth pushes right, left growth pushes
+left, so what was moved stays put; never pulls back. `geo.columns` follow the pushed/grown boxes,
+so corridor routes stay centred. While a card is in the air the push is measured from where it
+was picked up (`place.ts` `inFlightFrom`), so nothing slides under the frozen boxes.
 Hand-moved cards or a resized DC can make a DC box overlap the neighbouring
 column; columns never push each other. Make a grown/resized column push the
 columns to its right (and the corridor stays clear for links/pills).
 
 ### 5.2 Busy observer lines with 3+ observers
-Status: todo
+Status: done (on ui/track5-canvas)
+Note: `routing.ts` bundles ping/check lines by kind + target (one channel per corridor, so they run
+together); with 3+ observers the band gap opens to one lane per trunk (`layout.ts` `trunkCount`) and
+observer lines take the trunk before a corridor of their own -- no more crossings in the corridors.
+Captions prefer their line's own stretch (`ownStretches`); shared lines are drawn from the card end so
+dashes coincide. Left: 9 captions for 9 lines still; a stub shared by two trunks from one observer
+shows slightly denser dashes. Golden `multi-target-three-observers` moved (geometry).
 Ping and readiness-check lines crowd the drawing. Bundle/merge parallel
 observer lines where they share a corridor, or route them through one trunk.
 
 ### 5.3 Drag polish
-Status: todo
+Status: done (on ui/track5-canvas)
+Note: cards (and whole stacks) in the air render in `.tp-carried`, after the captions; lines to them
+follow the snap remainder (`routing.ts` `carryEnds`: end + adjacent corner, captions stay put); a
+blade lifted alone leaves the frame round the blades that stayed (`layout.ts` stacks skip transient
+blades, `StackChassis` no stray divider) and paints its own fill (`.tp-lifted`). Left: a blade let go
+on free ground (no merge) is still on its host, so the frame then spans the gap to it, as before.
 Link captions drawn over the card being dragged (the dragged card must be on
 top); a line lags the dragged card by up to 4 px (snap remainder); lifting one
 card out of a stack stretches the stack's frame.

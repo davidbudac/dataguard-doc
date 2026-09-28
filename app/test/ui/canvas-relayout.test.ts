@@ -20,7 +20,7 @@ import type { Geometry, LayoutOffset, NodeBox } from '@/ui/canvas/layout';
 import { overlaps, segmentHitsRect } from '@/ui/canvas/measure';
 import { routeTopology } from '@/ui/canvas/routing';
 import { siteForNewFarSync, siteForNewObserver, siteForNewStandby } from '@/ui/build/placement';
-import { addDatabase, addFarSync, addObserver, addSite } from '@/ui/inspector/edits';
+import { addDatabase, addFarSync, addObserver, addSite, mergeIntoHost } from '@/ui/inspector/edits';
 
 const topo = (): TopologyDoc => docSignal.value.topology;
 const siteOf = (t: TopologyDoc, key: string): string => {
@@ -147,4 +147,225 @@ describe('adding to every preset', () => {
     const { geo } = draw(topo(), docSignal.value.layout);
     expect(cardClashes(geo)).toEqual([]);
   });
+});
+
+/* ---- task 5.2: observer lines of one kind to one card run as one trunk ---- */
+
+describe('three or more observers: their lines run as trunks (5.2)', () => {
+  const horizontalYs = (l: ReturnType<typeof draw>['links'][number]): number[] => l.points
+    .flatMap((p, i) => {
+      const q = l.points[i + 1];
+      return q && Math.abs(p.y - q.y) < 0.5 && Math.abs(p.x - q.x) > 0.5 ? [p.y] : [];
+    });
+
+  it('the three pings share one lane and one drop into the primary', () => {
+    load('multi-target-three-observers');
+    const { links } = draw(topo());
+    const pings = links.filter((l) => l.kind === 'ping');
+    expect(pings).toHaveLength(3);
+    expect(new Set(pings.flatMap(horizontalYs)).size).toBe(1);
+    expect(new Set(pings.map((l) => JSON.stringify(l.points.slice(-2)))).size).toBe(1);
+  });
+
+  it('every readiness target is reached by one trunk: its checks share their lane', () => {
+    load('multi-target-three-observers');
+    const { links } = draw(topo());
+    for (const to of ['sby01', 'sby02']) {
+      const ys = new Set(links.filter((l) => l.kind === 'check' && l.to === to).flatMap(horizontalYs));
+      expect(ys.size, `checks to ${to}`).toBeLessThanOrEqual(1);
+    }
+    /* Three trunks, three lanes: pings, checks to sby01, checks to sby02. */
+    const lanes = new Set(links.filter((l) => l.kind !== 'redo').flatMap(horizontalYs));
+    expect(lanes.size).toBe(3);
+  });
+
+  it('opens the gap between the bands only with three or more observers', () => {
+    load('classic');
+    const one = draw(topo()).geo;
+    expect(one.trunks).toBe(0);
+    load('multi-target-three-observers');
+    const three = draw(topo()).geo;
+    expect(three.trunks).toBe(3);
+  });
+
+  for (const p of PRESETS) {
+    it(`${p.id} with two more observers: clear cards, no line through a card, no caption on a caption`, () => {
+      load(p.id);
+      addObserver();
+      addObserver();
+      addDatabase();
+      const { geo, links } = draw(topo());
+      expect(geo.nodes.filter((n) => n.kind === 'observer').length).toBeGreaterThanOrEqual(3);
+      expect(cardClashes(geo)).toEqual([]);
+      const through: string[] = [];
+      for (const l of links) {
+        for (let i = 0; i + 1 < l.points.length; i++) {
+          for (const c of geo.nodes) {
+            if (c.key === l.from || c.key === l.to) continue;
+            if (segmentHitsRect(l.points[i]!, l.points[i + 1]!, c, 1)) through.push(`${l.id}>${c.key}`);
+          }
+        }
+      }
+      expect(through).toEqual([]);
+      const pills: string[] = [];
+      for (let i = 0; i < links.length; i++) {
+        for (let j = i + 1; j < links.length; j++) {
+          if (overlaps(links[i]!.pill, links[j]!.pill)) pills.push(`${links[i]!.id}/${links[j]!.id}`);
+        }
+        for (const c of geo.nodes) if (overlaps(links[i]!.pill, c)) pills.push(`${links[i]!.id}@${c.key}`);
+      }
+      expect(pills).toEqual([]);
+    });
+  }
+});
+
+/* ---- task 5.3: a blade lifted out of its stack ---- */
+
+describe('a blade lifted out of its chassis stack (5.3)', () => {
+  it('leaves the frame round the blades that stayed while it is in the air', () => {
+    const fs = addFarSync()!;
+    const prmHost = topo().members.find((m) => (m.id as string) === 'prm01')!.instances[0]!.host;
+    mergeIntoHost(fs as string, prmHost);
+    const rest = draw(topo()).geo;
+    const stack = rest.stacks.find((s) => s.memberKeys.includes(fs as string))!;
+    expect(stack).toBeDefined();
+    const graph = resolveRedoGraph(topo(), { primary: declaredPrimary(topo())! });
+    const air = layoutTopology(topo(), graph, {
+      overrides: { [fs as string]: { dx: 240, dy: 160 } }, transient: [fs as string],
+    });
+    const lifted = air.stacks.find((s) => s.key === stack.key)!;
+    const prm = air.byKey['prm01']!;
+    /* Round prm01 alone: its header above it, its bottom at prm01's. */
+    expect(lifted.y).toBe(prm.y - lifted.headerH);
+    expect(lifted.y + lifted.h).toBe(prm.y + prm.h);
+    /* Once it lands the frame is the whole stack's again. */
+    const landed = layoutTopology(topo(), graph, { overrides: { [fs as string]: { dx: 240, dy: 160 } } });
+    expect(landed.stacks.find((s) => s.key === stack.key)!.h).toBeGreaterThan(lifted.h);
+  });
+});
+
+/* ---- task 5.1: a grown data centre pushes its neighbours ---- */
+
+const siteClashes = (geo: Geometry): string[] => {
+  const out: string[] = [];
+  for (let i = 0; i < geo.sites.length; i++) {
+    for (let j = i + 1; j < geo.sites.length; j++) {
+      const a = geo.sites[i]!; const b = geo.sites[j]!;
+      if (overlaps(a, b)) out.push(`${a.id as string}/${b.id as string}`);
+    }
+  }
+  return out;
+};
+/** Every corridor between two neighbouring boxes, left to right. */
+const corridors = (geo: Geometry): number[] => {
+  const byCol = [...geo.sites].sort((a, b) => a.col - b.col);
+  return byCol.slice(1).map((s, i) => s.x - (byCol[i]!.x + byCol[i]!.w));
+};
+const linesThroughCards = (geo: Geometry, links: ReturnType<typeof draw>['links']): string[] => {
+  const out: string[] = [];
+  for (const l of links) {
+    for (let i = 0; i + 1 < l.points.length; i++) {
+      for (const c of geo.nodes) {
+        if (c.key === l.from || c.key === l.to) continue;
+        if (segmentHitsRect(l.points[i]!, l.points[i + 1]!, c, 1)) out.push(`${l.id}>${c.key}`);
+      }
+    }
+  }
+  return out;
+};
+
+describe('a data centre grown by hand pushes the columns beside it (5.1)', () => {
+  it('a card moved right into the corridor pushes every column right of it, and the corridor keeps its width', () => {
+    const natural = draw(topo()).geo;
+    const { geo, links } = draw(topo(), { prm01: { dx: 160, dy: 0 } });
+    expect(siteClashes(geo)).toEqual([]);
+    expect(corridors(geo)).toEqual(corridors(natural));
+    /* The card stays where it was put; the neighbours make way. */
+    expect(geo.byKey['prm01']!.x).toBe(natural.byKey['prm01']!.x + 160);
+    expect(geo.byKey['sby01']!.x).toBe(natural.byKey['sby01']!.x + 160);
+    expect(linesThroughCards(geo, links)).toEqual([]);
+  });
+
+  it('a card moved left into the corridor pushes the columns left of it, and stays where it was put', () => {
+    const natural = draw(topo()).geo;
+    const { geo } = draw(topo(), { sby01: { dx: -120, dy: 0 } });
+    expect(siteClashes(geo)).toEqual([]);
+    expect(corridors(geo)).toEqual(corridors(natural));
+    expect(geo.byKey['sby01']!.x).toBe(natural.byKey['sby01']!.x - 120);
+    expect(geo.byKey['prm01']!.x).toBe(natural.byKey['prm01']!.x - 120);
+    /* The observer's data centre sits between the two (column order dc1,
+       dc3, dc2): it goes along too, by the same amount. */
+    const obs = geo.nodes.find((n) => n.kind === 'observer')!;
+    expect(obs.x).toBe(natural.byKey[obs.key]!.x - 120);
+  });
+
+  it('a data centre resized wider pushes its neighbours, and a size of its own travels with a pushed column', () => {
+    const natural = draw(topo()).geo;
+    const dc1 = natural.sites.find((s) => (s.id as string) === 'dc1')!;
+    const dc2 = natural.sites.find((s) => (s.id as string) === 'dc2')!;
+    const grown = { dx: 0, dy: 0, w: dc1.w + 200, h: dc1.h };
+    const dc2Box = { dx: dc2.x - dc2.anchor.x, dy: dc2.y - dc2.anchor.y, w: dc2.w + 40, h: dc2.h };
+    const { geo, links } = draw(topo(), { dc1: grown, dc2: dc2Box });
+    expect(siteClashes(geo)).toEqual([]);
+    expect(corridors(geo)).toEqual(corridors(natural));
+    const dc2After = geo.sites.find((s) => (s.id as string) === 'dc2')!;
+    expect(dc2After.x).toBe(dc2.x + 200);
+    expect(dc2After.w).toBe(dc2.w + 40);
+    expect(linesThroughCards(geo, links)).toEqual([]);
+  });
+
+  it('a data centre resized from its left edge pushes the columns left of it', () => {
+    const natural = draw(topo()).geo;
+    const dc2 = natural.sites.find((s) => (s.id as string) === 'dc2')!;
+    const { geo } = draw(topo(), { dc2: { dx: -96, dy: 0, w: dc2.w + 96, h: dc2.h } });
+    expect(siteClashes(geo)).toEqual([]);
+    expect(corridors(geo)).toEqual(corridors(natural));
+    expect(geo.sites.find((s) => (s.id as string) === 'dc2')!.x).toBe(dc2.x - 96);
+  });
+
+  it('never pulls a column back to close a corridor a drag has widened', () => {
+    const natural = draw(topo()).geo;
+    const { geo } = draw(topo(), { prm01: { dx: -200, dy: 0 } });
+    expect(geo.byKey['sby01']!.x).toBe(natural.byKey['sby01']!.x);
+    expect(corridors(geo)[0]).toBe(corridors(natural)[0]! + 200);
+  });
+
+  it('holds every column still while the card is in the air, measured from where it was picked up', () => {
+    const natural = draw(topo()).geo;
+    /* prm01 was already moved right (so dc2 and dc3 were pushed); it is
+       picked up again and carried further. */
+    const before = draw(topo(), { prm01: { dx: 160, dy: 0 } }).geo;
+    const graph = resolveRedoGraph(topo(), { primary: declaredPrimary(topo())! });
+    const air = layoutTopology(topo(), graph, {
+      overrides: { prm01: { dx: 320, dy: 40 } },
+      transient: ['prm01'],
+      transientFrom: { prm01: { dx: 160, dy: 0 } },
+    });
+    expect(air.byKey['sby01']!.x).toBe(before.byKey['sby01']!.x);
+    expect(air.byKey['prm01']!.x).toBe(natural.byKey['prm01']!.x + 320);
+  });
+
+  for (const p of PRESETS) {
+    it(`${p.id}: cards moved right and boxes resized wider -- no box overlaps, no corridor narrows, no line through a card`, () => {
+      load(p.id);
+      const natural = draw(topo()).geo;
+      const overrides: Record<string, LayoutOffset> = {};
+      for (const s of natural.sites) {
+        const first = natural.nodes.find((n) => n.site === s.id);
+        if (first) overrides[first.key] = { dx: 160, dy: 0 };
+      }
+      const moved = draw(topo(), overrides);
+      expect(siteClashes(moved.geo)).toEqual([]);
+      expect(cardClashes(moved.geo)).toEqual([]);
+      corridors(moved.geo).forEach((c, i) => expect(c).toBeGreaterThanOrEqual(corridors(natural)[i]!));
+      expect(linesThroughCards(moved.geo, moved.links)).toEqual([]);
+
+      const sized: Record<string, LayoutOffset> = {};
+      for (const s of natural.sites) sized[s.id as string] = { dx: 0, dy: 0, w: s.w + 120, h: s.h };
+      const grown = draw(topo(), sized);
+      expect(siteClashes(grown.geo)).toEqual([]);
+      expect(corridors(grown.geo)).toEqual(corridors(natural));
+      expect(linesThroughCards(grown.geo, grown.links)).toEqual([]);
+    });
+  }
 });
