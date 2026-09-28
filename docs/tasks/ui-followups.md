@@ -290,7 +290,10 @@ Rebuild the branch's ConfigForm/sections.ts changes (advanced-settings count,
 failover-target editor, revealTargetForFlagged) on the new panel system.
 
 ### 7.5 Classic walkthrough
-Status: todo
+Status: done (on ui/track7-port)
+Note: a small card centred under the guidance line, in the header's flow (`.walk`, float.css), so
+`--bar-bottom` grows and the drawing/palette/rail move down. Started by a third Introduction hero
+button ("Walk through it step by step"); main's two hero buttons and the Break card are unchanged.
 `ui/intro/Walkthrough.tsx`: position it for the floating layout.
 
 ### 7.6 Review panel

@@ -40,6 +40,7 @@ import { IntroPage } from './intro/IntroPage';
 import { Timeline } from './timeline/Timeline';
 import { DockGrip, FullToggle } from './timeline/DockControls';
 import { WorkspacesDialog } from './workspaces/Workspaces';
+import { ClassicWalkthrough } from './intro/Walkthrough';
 import { ReviewDialog } from './review/ReviewPanel';
 
 /** Which modes keep a rail beside the canvas. Learn's right half is the workbench. */
@@ -425,6 +426,9 @@ export function App() {
           />
         )}
         {intro ? null : <Guidance />}
+        {/* The classic walkthrough, when one is running: in the header's
+            flow, so the drawing moves down for it (intro/Walkthrough.tsx). */}
+        {intro ? null : <ClassicWalkthrough />}
         {/* The `?` is in the header on every page, so it opens the same card
             on every page -- the Introduction has no guidance line to hang it
             under, and a control that silently does nothing is worse than one

@@ -95,7 +95,9 @@ branch's standalone HTML review download was not ported (one report system).
 In Break, **Why this result?** (a fold on the rail under the events, and the
 "Why?" beside the outcome in the readout) lists the run's recorded decisions
 with the basis and sources of each; selecting a step moves the playhead there
-and selects what it is about.
+and selects what it is about. The Introduction's **Walk through it step by
+step** runs a three-step classic walkthrough (crash, advance to the failover,
+change `FastStartFailoverThreshold`) in a card under the guidance line.
 
 ## Testing
 

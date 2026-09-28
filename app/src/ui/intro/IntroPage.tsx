@@ -32,6 +32,7 @@ import { TopoCanvas } from '@/ui/canvas/TopoCanvas';
 import { LEGACY_PATH } from '@/state/legacy-url';
 import { introOpen } from '@/state/view';
 import { jump, leaveIntro, openLesson } from './route';
+import { startClassicWalkthrough } from './Walkthrough';
 
 import '@/content/content.css';
 import '@/styles/intro.css';
@@ -357,6 +358,9 @@ export function IntroPage(): JSX.Element {
             onClick={() => jump({ preset: 'classic', scenario: 'crash', mode: 'break' })}
           >
             Watch a failover
+          </button>
+          <button type="button" class="btn" onClick={startClassicWalkthrough}>
+            Walk through it step by step
           </button>
         </div>
         <p class="caption ip-hero-note">
