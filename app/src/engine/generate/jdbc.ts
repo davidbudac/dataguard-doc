@@ -36,6 +36,11 @@ const INLINE_DESCRIPTOR = documented<string>(
   ['CLIENT.JDBC_19C'],
 );
 
+const RETRY_DELAY_26AI = documented<string>(
+  'starting from 26ai, the default value of RETRY_DELAY is 1 second',
+  ['CLIENT.JDBC_RETRY_DELAY_26AI'],
+);
+
 export interface JdbcOptions {
   /**
    * Draw the lead comment. Chapter 3 sits the two cards unlabelled under one
@@ -49,12 +54,16 @@ export function buildJdbc(doc: TopologyDoc, opts: JdbcOptions = {}): GeneratedFi
   const addresses = serviceAddresses(doc);
   const service = c.serviceName;
 
+  const v26 = doc.config.edition === '26ai';
   const set: string[] = [];
   if (c.connectTimeoutSeconds !== null && c.connectTimeoutSeconds > 0) {
     set.push(`(CONNECT_TIMEOUT=${c.connectTimeoutSeconds}sec)`);
   }
   if (c.retryCount > 0) set.push(`(RETRY_COUNT=${c.retryCount})`);
-  if (c.retryDelaySeconds > 0) set.push(`(RETRY_DELAY=${c.retryDelaySeconds})`);
+  /* "Starting from Oracle AI Database Release 26ai, the default value of
+     this parameter is 1 second" -- so under 26ai an explicit 0 is not the
+     driver default and is worth spelling out, not just omitting. */
+  if (c.retryDelaySeconds > 0 || v26) set.push(`(RETRY_DELAY=${c.retryDelaySeconds})`);
 
   const tct = `(TRANSPORT_CONNECT_TIMEOUT=${c.transportConnectTimeoutSeconds}sec)`;
   const url: Span[] = [span('jdbc:oracle:thin:@(DESCRIPTION=')];
@@ -83,8 +92,15 @@ export function buildJdbc(doc: TopologyDoc, opts: JdbcOptions = {}): GeneratedFi
     `or keep the alias: jdbc:oracle:thin:@${service}, with oracle.net.tns_admin pointing at the tnsnames.ora directory`,
     { indent: 2 },
   ));
+  if (v26 && c.retryDelaySeconds === 0) {
+    lines.push(comment(
+      'RETRY_DELAY=0 written out on purpose: starting in 26ai the driver default is 1 second, so an omitted value would not mean the same thing it did in earlier drivers',
+      { indent: 2, basis: RETRY_DELAY_26AI.basis, cite: [...RETRY_DELAY_26AI.cite] },
+    ));
+  }
 
   const claims: Claim<string>[] = [INLINE_DESCRIPTOR, SEC_SUFFIX];
+  if (v26 && c.retryDelaySeconds === 0) claims.push(RETRY_DELAY_26AI);
   return {
     id: 'jdbc', title: 'JDBC thin URL', syntax: 'jdbc', lines, claims,
   };

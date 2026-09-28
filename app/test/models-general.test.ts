@@ -222,6 +222,19 @@ describe('tnsnames.ora and the JDBC thin URL', () => {
     expect(text).not.toMatch(/1[89]c driver changed|21c|23ai/);
   });
 
+  it('spells RETRY_DELAY=0 out under 26ai, where the driver default is 1 second', () => {
+    const v19 = buildJdbc(classicTopology({ rd: 0, transportLag: 0 }));
+    expect(renderPlain(v19)).not.toContain('RETRY_DELAY');
+
+    const v26 = buildJdbc(classicTopology({ version: '26ai', rd: 0, transportLag: 0 }));
+    const text = renderPlain(v26);
+    expect(text).toContain('(RETRY_DELAY=0)');
+    expect(text).toContain('starting in 26ai the driver default is 1 second');
+
+    const v26tuned = buildJdbc(classicTopology({ version: '26ai', rd: 3, transportLag: 0 }));
+    expect(renderPlain(v26tuned)).toContain('(RETRY_DELAY=3)');
+  });
+
   it('the lead comment is the caller choice', () => {
     expect(buildJdbc(doc(), { lead: true }).lines[0]?.kind).toBe('comment');
     expect(buildJdbc(doc()).lines[0]?.kind).toBe('cmd');
