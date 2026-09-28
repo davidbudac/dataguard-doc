@@ -68,6 +68,17 @@
 .tp-wrap.is-pannable .topo-svg { cursor: grab; }
 .topo-svg.is-pan, .topo-svg.is-pan * { cursor: grabbing; }
 
+/* The drawing is a thing to press and drag, not a page of text: a press that
+   starts on a card's name must move the card, never begin a browser text
+   selection that then paints every label the pointer crosses. The two HTML
+   islands painted into the drawing -- the action bar and the name field --
+   keep ordinary text behaviour, so a rename can still select what it typed. */
+.topo-svg { -webkit-user-select: none; user-select: none; }
+.topo-svg .tp-actions, .topo-svg .tp-rename { -webkit-user-select: text; user-select: text; }
+/* While something is being dragged, the grip shows everywhere the pointer
+   goes -- the pointer is captured, so the element under it means nothing. */
+.topo-svg.is-dragging, .topo-svg.is-dragging * { cursor: grabbing; }
+
 /* ---- the strips above the stage ---- */
 /* One row along the top of the stage, holding Build's additions and the zoom
    ladder. In the stage's own flow rather than floating over it, for the reason

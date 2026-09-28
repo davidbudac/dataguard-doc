@@ -41,7 +41,10 @@ size persists in the document/URL like positions do, undoable, and never smaller
 than the cards it contains. Tidy may reset it.
 
 ### 1.4 No text selection while dragging
-Status: todo
+Status: done (on ui/track1-canvas)
+Note: `.topo-svg` is `user-select: none` (the action bar and the rename field
+opt back in), and `takeDrag` in `TopoCanvas.tsx` clears any selection a browser
+already began once a press becomes a drag; `.is-dragging` shows the grip cursor.
 Dragging a card highlights text on the page (browser text selection). Stop it
 (e.g. `user-select:none` on the drawing during a drag, `preventDefault` on the
 pointerdown that starts a drag) without breaking inline rename / copy of text
@@ -53,6 +56,17 @@ Status: todo
 While dragging: light up valid drop targets (data centres it may move into,
 hosts/stacks it may merge into) and dim/deny invalid ones; show the snap
 position (ghost outline) where it will land.
+
+### 1.6 Re-layout when an element is added
+Status: todo
+Adding a standby / far sync / observer / data centre (palette buttons, drops
+from the palette) makes a mess: redo and observer lines run through existing
+cards and labels, and new items land on top of or awkwardly next to existing
+ones. Wanted: the new item goes into a free, sensible slot (inside the right
+data centre, not overlapping anything), existing items only shift when they
+have to, and link routing avoids crossing cards and their label pills where
+possible. Relevant: `ui/canvas/place.ts`, `layout.ts`, `routing.ts`,
+`LinkPath.tsx`, the add actions in `ui/build/actions.ts` / `inspector/adds.tsx`.
 
 ## Track 2 — export (`app/src/ui/TopBar.tsx` ⋯ menu, new module)
 

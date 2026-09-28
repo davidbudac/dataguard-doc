@@ -307,6 +307,10 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
      survive the pointer leaving the ground it was pressed on, so it is state
      rather than a `:active` rule. */
   const [panning, setPanning] = useState(false);
+  /* A card, a data centre or a selection rectangle in flight: the drawing
+     turns off anything a browser would do with the same press -- chiefly a
+     text selection that would paint every label the pointer crosses. */
+  const [moving, setMoving] = useState(false);
   /* A drag in flight, as the drawing shows it: the panel about to take the
      card, or the line from a port to the pointer and the card it is over. State
      rather than a ref, because the drawing has to repaint on every move. */
@@ -780,6 +784,18 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
     };
   };
 
+  /**
+   * The moment a press becomes a drag: capture the pointer, and drop any text
+   * selection a browser may already have begun from the press (Safari starts
+   * one on `mousedown` whatever `user-select` says about the target, once the
+   * pointer has crossed into ordinary page text).
+   */
+  const takeDrag = (ev: JSX.TargetedPointerEvent<SVGSVGElement>): void => {
+    svgRef.current?.setPointerCapture?.(ev.pointerId);
+    if (typeof window !== 'undefined') window.getSelection?.()?.removeAllRanges();
+    setMoving(true);
+  };
+
   const onPointerMove = (ev: JSX.TargetedPointerEvent<SVGSVGElement>): void => {
     const d = drag.current;
     if (!d) return;
@@ -789,7 +805,7 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
       if (!d.moved && Math.hypot(dx, dy) < DRAG_THRESHOLD) return;
       /* Capture on the same terms as a card drag: only once this has become a
          pan, so a plain click on the ground still reaches its own handler. */
-      if (!d.moved) { svgRef.current?.setPointerCapture?.(ev.pointerId); setPanning(true); }
+      if (!d.moved) { takeDrag(ev); setPanning(true); }
       d.moved = true;
       /* The paper follows the pointer, so the scroll goes the other way. */
       d.stage.scrollLeft = d.left - dx;
@@ -798,7 +814,7 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
     }
     if (d.kind === 'marquee') {
       if (!d.moved && Math.hypot(ev.clientX - d.startX, ev.clientY - d.startY) < DRAG_THRESHOLD) return;
-      if (!d.moved) svgRef.current?.setPointerCapture?.(ev.pointerId);
+      if (!d.moved) takeDrag(ev);
       d.moved = true;
       setBand(bandOf(d, ev.clientX, ev.clientY));
       return;
@@ -807,7 +823,7 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
       const dx = ev.clientX - d.startX;
       const dy = ev.clientY - d.startY;
       if (!d.moved && Math.hypot(dx, dy) < DRAG_THRESHOLD) return;
-      if (!d.moved) svgRef.current?.setPointerCapture?.(ev.pointerId);
+      if (!d.moved) takeDrag(ev);
       d.moved = true;
       const p = toUser(ev.clientX, ev.clientY, d.scale);
       d.over = linkTargetUnder(p, d.from);
@@ -818,7 +834,7 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
     const dx = (ev.clientX - d.startX) * d.scale;
     const dy = (ev.clientY - d.startY) * d.scale;
     if (!d.moved && Math.hypot(dx, dy) < DRAG_THRESHOLD) return;
-    if (!d.moved) svgRef.current?.setPointerCapture?.(ev.pointerId);
+    if (!d.moved) takeDrag(ev);
     d.moved = true;
     const all = offsetsOf(d, dx, dy);
     props.onDrag?.(d.key, all[d.key] as LayoutOffset, all);
@@ -852,6 +868,7 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
     if (!d) return;
     drag.current = null;
     svgRef.current?.releasePointerCapture?.(ev.pointerId);
+    if (d.moved) setMoving(false);
     if (d.kind === 'pan') { if (d.moved) setPanning(false); return; }
     if (d.kind === 'marquee') {
       setBand(null);
@@ -1062,7 +1079,7 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
       ref={props.wrapRef}
     >
       <svg
-        class={`topo-svg${panning ? ' is-pan' : ''}`}
+        class={`topo-svg${panning ? ' is-pan' : ''}${moving ? ' is-dragging' : ''}`}
         ref={svgRef}
         viewBox={`${view.x} ${view.y} ${view.w} ${view.h}`}
         width={Math.round(view.w * zoomFactor)}
