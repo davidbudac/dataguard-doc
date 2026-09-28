@@ -66,6 +66,10 @@ const nLater = (text: string, cite: CitationId[], why: string): Line =>
 
 export function generateDgmgrl(doc: TopologyDoc, opts: DgmgrlOptions = {}): GeneratedFile {
   const lines: Line[] = [];
+  if (doc.members.some(m => m.routesObserved)) {
+    lines.push(nModel('Imported SQL snapshot: this is not a recovered broker configuration. Review all generated commands before use.',
+      'Only current collected routes are known. Empty observed routes suppress simulator defaults, but cannot express an empty broker RedoRoutes policy; future-role routes and uncollected settings need manual review.'));
+  }
   const findings = [...(opts.findings ?? [])];
   const cfg = doc.config;
   const fsfo = cfg.fsfo;

@@ -98,6 +98,8 @@ export interface MemberBase {
   dests: Record<MemberId, DestProps>;
   /** [] means the property is NULL. */
   redoRoutes: RedoRouteRule[];
+  /** Imported current routes: an empty list means no observed route, not broker NULL. */
+  routesObserved?: true;
   /** As a receiver; broker default ASYNC. */
   logXptMode: XptMode;
 }

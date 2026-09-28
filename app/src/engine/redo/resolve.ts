@@ -42,7 +42,7 @@ export const defaultGroupPriority = (m: Member): number => (isFarSync(m) ? 1 : 8
 export function activeRule(
   m: Member, primary: MemberId,
 ): { rule: RedoRouteRule; index: number } | undefined {
-  const rules = m.redoRoutes.length > 0 ? m.redoRoutes : defaultRules(m);
+  const rules = m.redoRoutes.length > 0 || m.routesObserved ? m.redoRoutes : defaultRules(m);
   for (let i = 0; i < rules.length; i++) {
     const r = rules[i] as RedoRouteRule;
     if (ruleIsActive(r, m, primary)) return { rule: r, index: i };
@@ -110,7 +110,7 @@ export function resolveRedoGraph(doc: TopologyDoc, opts: ResolveOptions): RedoGr
   const edges: RedoEdge[] = [];
 
   for (const sender of enabledMembers(doc)) {
-    if (isFarSync(sender) && sender.redoRoutes.length === 0) {
+    if (isFarSync(sender) && sender.redoRoutes.length === 0 && !sender.routesObserved) {
       addFinding({
         id: 'ROUTES.FARSYNC_NULL_DEFAULT', severity: 'info', basis: 'model',
         cite: ['ROUTES.DEFAULT_NULL', 'ROUTES.LOCAL_NOT_AT_FARSYNC'],

@@ -171,3 +171,6 @@ export {
   CLASSIC_DEFAULTS, CLASSIC_IDS, classicTopology, effectiveScenario, legacyComputeFsfo,
   scenarioEvents, toLegacyModel,
 } from './compat/classic';
+
+export { importCollectedTopology, COLLECTION_LIMIT, COLLECTION_NOTE } from './collect';
+export type { CollectedTopology } from './collect';

@@ -1087,3 +1087,14 @@ docked layout (`calm.css`, the mockups) was not ported.
   bar, mounted by the shell (the menu is a `<details>` that shuts on a press).
   `Sheet` keeps Tab inside a dialog and returns focus to the menu when its
   opener was folded away.
+
+### Existing setup import
+
+The ⋯ menu opens a sheet for SQL collector output, separate from native document
+Import. SQL and optional Bash downloads are static same-origin assets. Paste or
+file input is capped at 2 MB of UTF-8. A newer paste or file selection invalidates
+an earlier pending file read and its preview. Preview does not mutate the current document;
+Draw imported topology uses `replaceWorkingDocument` with recovery and undo.
+Assumptions are retained in document notes (the codec's 4000-character limit,
+with explicit truncation notice), and a persistent disclosure above the drawing
+keeps them visible across export, share and reload. DGMGRL text is not accepted.

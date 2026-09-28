@@ -28,6 +28,7 @@ import { reviewOpen } from '@/state/review';
 import { openReview } from './review/ReviewPanel';
 import { exportPng } from './export/diagram';
 import { openReport } from './export/Report';
+import { collectOpen } from './import/CollectDialog';
 
 const busy = signal(false);
 
@@ -337,6 +338,9 @@ export function DocActions() {
             Report as PDF
           </button>
 
+          <button type="button" class="btn" aria-haspopup="dialog" onClick={() => { collectOpen.value = true; }}>
+            Import existing setup
+          </button>
           <label class="btn">
             Import
             <input

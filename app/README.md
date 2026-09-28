@@ -141,3 +141,12 @@ From the repository root, `./site/publish.sh` builds, runs the three gates and
 deploys — and only ever when the user asks for it. The nginx and CSP details,
 the pre-publish checklist and the rest are in
 [`../AGENTS.md`](../AGENTS.md#publishing).
+
+Existing installations can be drawn through **⋯ → Import existing setup**.
+Download the read-only [SQL collector](public/collectors/dataguard-topology.sql),
+run it once per member, and paste/load the combined output. An optional
+[Bash wrapper](public/collectors/collect-dataguard.sh) runs the same SQL through
+wallet aliases. [Instructions and limitations](public/collectors/README.txt)
+explain privileges, mounted members and which broker settings need manual review.
+Import previews assumptions before replacing the drawing; replacement is undoable.
+This reconstructs current topology, not all broker configuration.

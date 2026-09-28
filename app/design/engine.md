@@ -409,3 +409,15 @@ the design did not state, so it is recorded rather than left to be rediscovered.
   switchover gate asks the transport directly rather than a lag-gated readiness flag. Every
   preset therefore opens at the level it was configured in, and the classic 1+1+1 steady
   state is `MAXAVAILABILITY` with zero data loss.
+
+### Collected current routes
+
+The v1 SQL collector importer (`engine/collect.ts`) accepts framed JSON records,
+requires all advertised members and a single primary, and rejects conflicting
+RAC destinations. `MemberBase.routesObserved?: true` distinguishes a collected
+empty route list from the broker NULL default; `activeRule` must not synthesize
+LOCAL:ALL for that list. This optional schema-2 field survives normalization,
+export and reload; older documents retain their existing semantics. Collected
+edges apply only under the captured primary. The importer returns assumptions
+and any schema repairs beside the document. No live database verification was
+available; the collector and mapping need a real Oracle test-environment drill.

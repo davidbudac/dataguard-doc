@@ -20,6 +20,7 @@ import {
   timelineFull, timelineH, tNow, toast, viewport,
 } from '@/state/view';
 import type { Mode } from '@/state/view';
+import { CollectDialog, CollectionNotice } from './import/CollectDialog';
 import { TopBar } from './TopBar';
 import { DocActions, DocCount, DocPicker } from './StatusBar';
 import { FindingsChips, FindingsPopover, FindingToast } from './Findings';
@@ -426,6 +427,7 @@ export function App() {
           />
         )}
         {intro ? null : <Guidance />}
+        {intro ? null : <CollectionNotice />}
         {/* The classic walkthrough, when one is running: in the header's
             flow, so the drawing moves down for it (intro/Walkthrough.tsx). */}
         {intro ? null : <ClassicWalkthrough />}
@@ -510,6 +512,7 @@ export function App() {
           <details> that shuts on a press, taking its contents with it. */}
       {intro ? null : <WorkspacesDialog />}
       {intro ? null : <ReviewDialog />}
+      {intro ? null : <CollectDialog />}
     </div>
   );
 }

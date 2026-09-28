@@ -61,6 +61,10 @@ export function generateInitOra(doc: TopologyDoc, opts: InitOraOptions = {}): Ge
   const sender = doc.members.find((m) => m.id === senderId);
   const defaults = BROKER_DEFAULTS[doc.config.edition];
   const lines: Line[] = [];
+  if (doc.members.some(m => m.routesObserved)) {
+    lines.push(nModel('Imported SQL snapshot: this is not a recovered broker configuration. Review all generated commands before use.',
+      'Only current collected routes are known. Empty observed routes suppress simulator defaults, but cannot express an empty broker RedoRoutes policy; future-role routes and uncollected settings need manual review.'));
+  }
 
   const file = (ls: Line[], title: string): GeneratedFile => ({
     id: sender ? `initora.${sender.id as string}` : 'initora',

@@ -71,3 +71,36 @@ below that were [D-later] only because of the truncation are now [D] and say so.
 Top-5 traps: `FILE IS`; GROUP not RedoRoutes; "order", not "first viable"; the C&A protection-modes page spells out "at least one synchronized standby" for MaxAvailability only — for MaxProtection the "at least one" wording lives on the 19c broker ch.4 members page, so cite that page, never the C&A one; terminal standby = valid manual failover target but fails FSFO prereq; 26ai contradicts itself on observer count (four in the FSFO chapter and START OBSERVER, "up to 3" on SHOW OBSERVER).
 
 Also worth pinning (verified 2026-08-17): the 19c list headed "Fast-start failover cannot occur if:" opens with "Fast-start failover is no longer enabled"; "The master observer is not running" is its fourth of ten entries — never call it the first.
+
+## Existing-setup collection (verified 2026-09-28)
+
+- [D] [V$DATABASE](https://docs.oracle.com/en/database/oracle/oracle-database/19/refrn/V-DATABASE.html)
+  exposes DB_UNIQUE_NAME, DATABASE_ROLE (including FAR SYNC), protection/open
+  mode, flashback and FS_FAILOVER_* values. The current-target, threshold and
+  observer values are not meaningful when FS_FAILOVER_STATUS is DISABLED.
+  OBSERVER_PRESENT describes connection to the local database, not a global
+  observer-process health check. The collector takes FSFO values from the primary.
+- [D] [V$DATAGUARD_CONFIG](https://docs.oracle.com/en/database/oracle/oracle-database/19/refrn/V-DATAGUARD_CONFIG.html)
+  lists names from DB_UNIQUE_NAME and LOG_ARCHIVE_CONFIG, and exposes parent and
+  destination role. A listed name does not supply remote host/instance metadata;
+  this importer requires a local snapshot from each advertised member.
+- [D] [V$ARCHIVE_DEST](https://docs.oracle.com/en/database/oracle/oracle-database/19/refrn/V-ARCHIVE_DEST.html)
+  reports destination status, VALID_NOW, transmission mode, AFFIRM and transport
+  properties. The collector uses GV$ to retain per-instance differences.
+- [D] [V$INSTANCE](https://docs.oracle.com/en/database/oracle/oracle-database/19/refrn/V-INSTANCE.html)
+  exposes instance/host names and version. [Global dynamic views](https://docs.oracle.com/en/database/oracle/oracle-database/19/refrn/about-dynamic-performance-views.html)
+  provide instance-specific rows; collection is not an inventory of stopped RAC instances.
+- [D] [V$DATAGUARD_STATS](https://docs.oracle.com/en/database/oracle/oracle-database/19/refrn/V-DATAGUARD_STATS.html)
+  supplies lag metrics with TIME_COMPUTED and DATUM_TIME; no rows on the primary.
+- [D] [DGMGRL commands](https://docs.oracle.com/en/database/oracle/oracle-database/19/dgbkr/oracle-data-guard-broker-commands.html)
+  provide broker configuration/database/far-sync properties, FSFO details and
+  observers through SHOW. These are the companion review surface, not parsed by
+  the SQL collector importer.
+- [MODEL] The importer draws only VALID, currently valid remote destinations,
+  maps their transport/affirm pair to a drawing edge, and reports excluded ones.
+  A configured ALTERNATE property does not itself exclude a VALID current
+  destination; the fallback relationship remains uncollected.
+  It does not claim to recover broker RedoRoutes or routes after a role change.
+  Provisional sites, assumed connectivity/latency and uncollected properties are
+  explicitly listed in the preview and retained in document notes. This is a
+  reconstruction of current topology, not a complete operational configuration.

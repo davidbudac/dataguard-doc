@@ -459,6 +459,7 @@ function parseMembers(c: Ctx, raw: unknown, hostIds: ReadonlySet<string>): Membe
       enabled: c.bool(v['enabled'], `members[${i}].enabled`, true),
       dests: parseDests(c, v['dests'], `members[${i}].dests`),
       redoRoutes: parseRedoRoutes(c, v['redoRoutes'], `members[${i}].redoRoutes`),
+      ...(v['routesObserved'] === true ? { routesObserved: true as const } : {}),
       logXptMode: c.oneOf(v['logXptMode'], `members[${i}].logXptMode`, XPT_MODES, 'ASYNC'),
     };
     if (base.instances.length === 0) {
