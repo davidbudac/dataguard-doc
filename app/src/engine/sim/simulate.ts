@@ -2182,6 +2182,10 @@ function conditionsAt(
  */
 function outcomeOf(state: SimState, view: View): EngineFacts['outcome'] {
   if (state.switchover) return 'switchover';
+  /* A fast-start failover the readiness check refused, and then an operator's
+     FAILOVER TO that went through: the role change that happened is the
+     manual one. The two are only ever both set in that order. */
+  if (state.initiateAt !== null && state.manualFailoverAt !== null) return 'manual';
   if (state.initiateAt !== null) return 'failover';
   if (state.manualFailoverAt !== null) return 'manual';
   if (state.abortReason === 'maxprotection') return 'maxprot-shutdown';

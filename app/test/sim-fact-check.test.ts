@@ -441,6 +441,29 @@ describe('SIM-06: what a manual failover loses', () => {
     expect(rpo?.note).toContain('70 s the primary generated redo this standby never received');
   });
 
+  it('after a refused fast-start failover: disable it, fail over by hand, and the loss is what the standby missed', () => {
+    const t = simulate(classic(), [
+      cut(0, DC1_DC2), down(100, PRM),
+      { at: 140, kind: 'cmd.disableFsfo', force: true },
+      { at: 150, kind: 'cmd.failover', to: CLASSIC_IDS.standby },
+    ]);
+    /* Refused at the threshold, because the standby was not synchronized ... */
+    expect(decision(t, 'FSFO.READINESS_GATE')?.taken).toBe(false);
+    /* ... and promoted by the operator, who takes the loss with it. */
+    expect(t.facts.outcome).toBe('manual');
+    expect(t.facts.blocked).toBe(false);
+    expect(t.facts.newPrimary).toBe(sby01);
+    expect(t.facts.dataLossKind).toBe('manual');
+    expect(t.facts.perMember[sby01]?.rpoSeconds?.value).toBe(70);
+    /* With fast-start failover still enabled the same command is refused. */
+    const kept = simulate(classic(), [
+      cut(0, DC1_DC2), down(100, PRM), { at: 150, kind: 'cmd.failover', to: CLASSIC_IDS.standby },
+    ]);
+    expect(finding(kept, 'FSFO.MANUAL_FAILOVER_NOT_READY')).toBeDefined();
+    expect(kept.facts.newPrimary).toBe(null);
+    expect(kept.facts.blocked).toBe(true);
+  });
+
   it('never labels a manual failover\'s loss documented, zero or not', () => {
     const t = simulate(classic({ observerLoc: 'none' }), [
       down(0, PRM), { at: 5, kind: 'cmd.failover', to: CLASSIC_IDS.standby },
