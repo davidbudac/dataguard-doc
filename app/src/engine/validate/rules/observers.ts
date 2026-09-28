@@ -27,11 +27,14 @@ export const observerCount: Rule = (ctx): Finding[] => {
   const limit = observerLimit(edition);
   const n = ctx.doc.observers.length;
   if (n <= limit) return [];
+  const is26 = edition === '26ai';
   return [mk('OBS.COUNT', {
     subject: configSubject(),
-    message: `${n} observers are deployed. ${edition === '26ai' ? 'The 26ai fast-start failover chapter registers up to four observers' : '19c registers up to three observers'}, one of them the master observer and the others backup observers.`,
-    cite: ['OBS.THREE_19C', 'OBS.FOUR_26AI', 'OBS.THREE_26AI_SHOW'],
-    note: 'The number is edition-specific and 26ai disagrees with itself: its fast-start failover chapter says four, its SHOW OBSERVER page still says three, and which release moved three to four is unsettled. This engine reads four for 26ai and three for 19c, and never carries one edition\'s number across to the other.',
+    message: `${n} observers are deployed. ${is26 ? 'The 26ai fast-start failover chapter registers up to four observers' : '19c registers up to three observers'}, one of them the master observer and the others backup observers.`,
+    cite: is26 ? ['OBS.FOUR_26AI', 'OBS.THREE_26AI_SHOW'] : ['OBS.THREE_19C', 'ORA.16647'],
+    note: is26
+      ? 'The 26ai fast-start failover chapter says four, matching the settled 21c-and-later limit (ORA-16647); its own SHOW OBSERVER page still says three -- a 26ai self-contradiction this engine names rather than resolves.'
+      : 'The 19c fast-start failover chapter says three; the 19c command reference\'s START OBSERVER section and ORA-16647 both say four -- a 19c self-contradiction. The move to four is settled at 21c (ORA-16647: "For Oracle Database releases 12.2 through 19c, a maximum of three observers can be started. For Oracle Database release 21c and later, a maximum of 4 observers can be started."); this engine reads three for 19c, the fast-start failover chapter\'s number.',
   })];
 };
 
@@ -77,33 +80,68 @@ export const observerInPrimarySite: Rule = (ctx): Finding[] => {
     if (site === undefined || !primarySites.has(site)) continue;
     out.push(mk('OBS.PRIMARY_SITE', {
       subject: { kind: 'observer', id: o.id as string },
-      message: `The observer ${q(o.name)} runs in ${q(site as string)}, the primary's site. The documented hierarchy has three rungs: a third site or third data center first, so that the primary, observer, and standby have isolated power, server, storage, and network infrastructure; failing that, wherever the observer uses the same path to connect to the production database as is used by the application tier; failing that, the standby's data center on a separate host. The primary's site is on none of them -- a site failure takes the observer with the primary, and an observer on one side of a cut cannot arbitrate it. It is defensible only where the application tier is local to the primary.`,
+      message: `The observer ${q(o.name)} runs in ${q(site as string)}, the primary's site. The documented hierarchy has three rungs: a third site or third data center first, so that the primary, observer, and standby have isolated power, server, storage, and network infrastructure; failing that, wherever the observer uses the same path to connect to the production database as is used by the application tier -- and the guide's own caveat there is that when the application tier is local to the production database, the observer belongs at either the standby location or a third data center instead; failing that, the standby's data center on a separate host. The primary's site is on none of the three rungs -- a site failure takes the observer with the primary, and an observer on one side of a cut cannot arbitrate it.`,
       cite: ['OBS.PLACEMENT_THIRD_SITE', 'OBS.PLACEMENT_APP_PATH', 'OBS.PLACEMENT_STANDBY_DC'],
+      basis: 'inferred',
+      note: 'A deduction from reading the three documented rungs together, not a single sentence that names the primary\'s site: none of the three rungs is the primary\'s own site, in any circumstance the guide describes.',
     }));
   }
   return out;
 };
 
 /**
- * No observer deployed is a third state, not "unobserved".
- *
- * And where the document says fast-start failover is enabled while carrying no
- * observer at all, it is saying two things that cannot both be true: nothing
- * arms fast-start failover but an observer, so the run reads the document as
- * not armed -- FS_FAILOVER_STATUS = DISABLED -- and says so here rather than
- * drawing clocks the deployment would never start.
+ * No observer deployed is a third state, not "unobserved" -- and legal:
+ * "If you do not start the observer after you have enabled fast-start
+ * failover, the ORA-16819 warning is displayed for the primary and target
+ * standby databases." Enabling fast-start failover with no observer running
+ * is a documented, supported configuration; it just cannot fail over.
  */
 export const noObserverDeployed: Rule = (ctx): Finding[] => {
   if (ctx.doc.observers.length > 0) return [];
   const claimsEnabled = ctx.doc.config.fsfo.state !== 'disabled';
   const base = 'No observer is deployed. That is not the same as being unobserved: V$DATABASE.FS_FAILOVER_STATUS reads DISABLED, the FastStartFailover* properties can be set and nothing arms them, and a manual FAILOVER TO is the only thing that promotes a standby. Unobserved means fast-start failover is enabled and the master observer is missing -- PRIMARY UNOBSERVED on the target standby, ORA-16820 as the standing health condition, and "The master observer is not running" among the documented reasons fast-start failover cannot occur. One corollary: the maximum performance switchover refusal past FastStartFailoverLagLimit is fast-start failover\'s own gate, so it cannot fire with no observer deployed.';
-  const inconsistent = ` This document also carries fsfo.state = ${ctx.doc.config.fsfo.state}, which no observer can be running to serve: the simulation reads the configuration as not armed -- FS_FAILOVER_STATUS = DISABLED -- so no fast-start failover clock starts, no readiness check gates anything and no command is refused on fast-start failover's behalf. Deploy an observer, or set the state to disabled, so that the document says one thing.`;
+  const enabled = ` This document also carries fsfo.state = ${ctx.doc.config.fsfo.state}. That is legal: enabling fast-start failover with no observer started is a documented, supported configuration -- ORA-16819 fast-start failover observer not started is displayed for the primary and target standby databases, and fast-start failover could not happen in the case of a primary database failure. The configuration is unobserved and no failover can happen until an observer is started.`;
   return [mk('OBS.NONE_DEPLOYED', {
     subject: configSubject(),
     ...(claimsEnabled ? { severity: 'warning' as const } : {}),
-    message: claimsEnabled ? base + inconsistent : base,
-    cite: ['FSFO.STATUS_DISABLED', 'FSFO.PRIMARY_UNOBSERVED', 'OBS.CANNOT_OCCUR_LIST'],
+    message: claimsEnabled ? base + enabled : base,
+    cite: claimsEnabled
+      ? ['FSFO.STATUS_DISABLED', 'FSFO.PRIMARY_UNOBSERVED', 'OBS.CANNOT_OCCUR_LIST', 'ORA.16819']
+      : ['FSFO.STATUS_DISABLED', 'FSFO.PRIMARY_UNOBSERVED', 'OBS.CANNOT_OCCUR_LIST'],
+    ...(claimsEnabled ? { ora: 'ORA-16819' } : {}),
   })];
+};
+
+/**
+ * "No two observers on the same Data Guard Broker configuration can have the
+ * same name." "The string \"NONAME\" cannot be used as an observer name."
+ * Observer names are case-insensitive.
+ */
+export const observerNamesReserved: Rule = (ctx): Finding[] => {
+  const out: Finding[] = [];
+  const seen = new Map<string, string>();
+  for (const o of ctx.doc.observers) {
+    const name = o.name;
+    const lower = name.toLowerCase();
+    if (lower === 'noname') {
+      out.push(mk('OBS.NAME_RESERVED', {
+        subject: { kind: 'observer', id: o.id as string },
+        message: `The observer named ${q(name)} uses the reserved name. The string "NONAME" cannot be used as an observer name.`,
+        cite: ['OBS.NAME_NONAME_RESERVED'],
+      }));
+    }
+    const dup = seen.get(lower);
+    if (dup !== undefined) {
+      out.push(mk('OBS.NAME_RESERVED', {
+        subject: { kind: 'observer', id: o.id as string },
+        message: `${q(name)} and ${q(dup)} are both observers in this configuration. No two observers on the same Data Guard broker configuration can have the same name; observer names are case-insensitive.`,
+        cite: ['OBS.NAME_UNIQUE'],
+      }));
+    } else {
+      seen.set(lower, name);
+    }
+  }
+  return out;
 };
 
 /** One master observer; only the master coordinates fast-start failover. */
@@ -124,11 +162,14 @@ export const preferredObserverHosts: Rule = (ctx): Finding[] => {
   const allowed = new Set(list.map((p) => p.host));
   const excluded = ctx.doc.observers.filter((o) => !allowed.has(o.host));
   if (excluded.length === 0) return [];
+  const is26 = ctx.doc.config.edition === '26ai';
   return [mk('OBS.PREFERRED_HOSTS', {
     subject: configSubject(),
-    message: `PreferredObserverHosts does not name ${excluded.map((o) => q(o.host as string)).join(', ')}, where ${excluded.map((o) => q(o.name)).join(', ')} ${excluded.length === 1 ? 'runs' : 'run'}. Only observers running on hosts specified in the property will observe databases and become the master observer; the priority runs 1 to 8, lower wins, and the default is 8.`,
-    cite: ['OBS.PREFERRED_HOSTS'],
-    note: 'PreferredObserverHosts is documented on the 19c broker properties page and again on the 26ai property page; a change to it does not affect the location of the master observer until the next role change.',
+    message: `PreferredObserverHosts does not name ${excluded.map((o) => q(o.host as string)).join(', ')}, where ${excluded.map((o) => q(o.name)).join(', ')} ${excluded.length === 1 ? 'runs' : 'run'}. Only observers running on hosts specified in the property will observe databases and become the master observer; the priority runs 1 to 8, lower wins, and the default is 8. Property scope is Database in both editions.`,
+    cite: is26 ? ['OBS.PREFERRED_HOSTS', 'OBS.PREFERRED_HOSTS_26AI'] : ['OBS.PREFERRED_HOSTS'],
+    note: is26
+      ? 'Documented since 12.2 (present on the 12.2, 18c and 19c property pages too, and in a live 19.27 system -- never grey this control under 19c). Under 26ai the master observer changes automatically to an observer running on a higher priority host.'
+      : 'Documented since 12.2 (present on the 12.2 and 18c property pages too, and in a live 19.27 system -- never grey this control under 19c). Under 19c a change to it does not affect the location of the master observer until the next role change; 26ai changes it automatically instead.',
   })];
 };
 
@@ -171,6 +212,6 @@ export const observerOverrideAssumption: Rule = (ctx): Finding[] => {
 
 export const observerRules: Rule[] = [
   observerCount, observerOnDatabaseHost, observerOnDatabaseCluster, observerInPrimarySite,
-  noObserverDeployed, masterObserverUnique, preferredObserverHosts, reinstatePreconditions,
-  observerOverrideAssumption,
+  noObserverDeployed, masterObserverUnique, observerNamesReserved, preferredObserverHosts,
+  reinstatePreconditions, observerOverrideAssumption,
 ];

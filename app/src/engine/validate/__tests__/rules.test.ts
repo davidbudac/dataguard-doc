@@ -551,6 +551,85 @@ const CASES: Case[] = [
     trigger: () => baseDoc(),
     silent: () => baseDoc({ fsfo: 'disabled' }),
   },
+  {
+    id: 'FSFO.PING_PROPS_NOT_IN_19C',
+    fires: 'ObserverPingInterval/Retry are set under 19c',
+    quiet: 'they are left unset',
+    trigger: () => {
+      const d = baseDoc({ edition: '19c' });
+      d.config.fsfo.pingIntervalMs = 100;
+      d.config.fsfo.pingRetry = 10;
+      return d;
+    },
+    silent: () => baseDoc({ edition: '19c' }),
+  },
+  {
+    id: 'FSFO.LAGTYPE_GRACETIME_19C',
+    fires: 'FastStartFailoverLagType is TRANSPORT under 19c',
+    quiet: 'it is left at APPLY',
+    trigger: () => {
+      const d = baseDoc({ edition: '19c' });
+      d.config.fsfo.lagType = 'TRANSPORT';
+      return d;
+    },
+    silent: () => baseDoc({ edition: '19c' }),
+  },
+  {
+    id: 'CFG.PRIMARY_CANDIDATES_19C',
+    fires: 'PrimaryDatabaseCandidates is set under 19c',
+    quiet: 'it is left empty',
+    trigger: () => {
+      const d = baseDoc({ edition: '19c' });
+      d.config.primaryDatabaseCandidates = [M('prm01')];
+      return d;
+    },
+    silent: () => baseDoc({ edition: '19c' }),
+  },
+  {
+    id: 'FSFO.FARSYNC_TARGET_BOTH_SIDES',
+    fires: 'the fast-start failover target is fed through a far sync instance',
+    quiet: 'fast-start failover is disabled',
+    trigger: () => farSyncDoc(),
+    silent: () => farSyncDoc({ fsfo: 'disabled' }),
+  },
+  {
+    id: 'FSFO.FLASHBACK_REQUIRED',
+    fires: 'fast-start failover is enabled with Flashback Database off on the target',
+    quiet: 'Flashback Database is on',
+    trigger: () => {
+      const d = baseDoc();
+      dbOf(d, 'sby01').flashbackOn = false;
+      return d;
+    },
+    silent: () => baseDoc(),
+  },
+  {
+    id: 'MEMBER.SNAPSHOT_NEEDS_FLASHBACK',
+    fires: 'a snapshot standby has Flashback Database off',
+    quiet: 'Flashback Database is on',
+    trigger: () => {
+      const d = baseDoc({ fsfo: 'disabled' });
+      const sby = dbOf(d, 'sby01');
+      sby.role = 'snapshot';
+      sby.flashbackOn = false;
+      return d;
+    },
+    silent: () => {
+      const d = baseDoc({ fsfo: 'disabled' });
+      dbOf(d, 'sby01').role = 'snapshot';
+      return d;
+    },
+  },
+  {
+    id: 'OBS.NAME_RESERVED',
+    fires: 'two observers share a name',
+    quiet: 'their names differ',
+    trigger: () => baseDoc({
+      hosts: observerHosts(2),
+      observers: [observer('obs01', 'dc3-obs01', 'master'), observer('obs01', 'dc3-obs02')],
+    }),
+    silent: () => baseDoc({ hosts: observerHosts(2), observers: observers(2) }),
+  },
 ];
 
 describe('the rule catalogue is covered', () => {
@@ -613,16 +692,22 @@ describe('a document that says fast-start failover is enabled with no observer',
   const find = (doc: ReturnType<typeof baseDoc>) =>
     validate(doc).find((f) => f.id === 'OBS.NONE_DEPLOYED');
 
-  it('warns, and says the run reads the configuration as not armed', () => {
+  it('warns, and says the configuration is unobserved with ORA-16819, never "cannot both be true"', () => {
+    /* Enabling fast-start failover with no observer started is legal and
+       documented (ORA-16819), not an inconsistency the document is caught
+       in -- VAL-04. */
     const f = find(baseDoc({ observers: [] }));
     expect(f?.severity).toBe('warning');
     expect(f?.basis).toBe('documented');
     expect(f?.message).toContain('fsfo.state = enabled');
-    expect(f?.message).toContain('FS_FAILOVER_STATUS = DISABLED');
-    expect(f?.message).toContain('no fast-start failover clock starts');
+    expect(f?.message).toContain('ORA-16819');
+    expect(f?.message).toContain('is unobserved and no failover can happen');
+    expect(f?.ora).toBe('ORA-16819');
+    expect(f?.cite).toContain('ORA.16819');
     /* Never "unobserved": that is the state with fast-start failover enabled
        and the master observer missing. */
     expect(f?.message).toContain('That is not the same as being unobserved');
+    expect(f?.message).not.toContain('cannot both be true');
   });
 
   it('warns for observe-only too, which arms nothing either', () => {
@@ -635,6 +720,44 @@ describe('a document that says fast-start failover is enabled with no observer',
     const f = find(baseDoc({ observers: [], fsfo: 'disabled' }));
     expect(f?.severity).toBe('info');
     expect(f?.message).not.toContain('fsfo.state');
+  });
+});
+
+describe('the three conditions of enabling fast-start failover (VAL-04)', () => {
+  it('FSFO.MULTI_TARGET_EXPLICIT is info while disabled, error while enabled', () => {
+    const enabledDoc = twoStandbyDoc({ targets: [] });
+    const enabled = validate(enabledDoc).find((f) => f.id === 'FSFO.MULTI_TARGET_EXPLICIT');
+    const disabledDoc = twoStandbyDoc({ targets: [] });
+    disabledDoc.config.fsfo.state = 'disabled';
+    const disabled = validate(disabledDoc).find((f) => f.id === 'FSFO.MULTI_TARGET_EXPLICIT');
+    expect(enabled?.severity).toBe('error');
+    expect(disabled?.severity).toBe('info');
+    expect(disabled?.message).toContain('enabling it would require');
+  });
+
+  it('FSFO.LOGICAL_MAXPROT is info while disabled, error while enabled', () => {
+    const base = { mode: 'MAXPROTECTION' as const, secondRole: 'logical' as const, targets: [M('sby02')] };
+    const enabled = validate(twoStandbyDoc(base)).find((f) => f.id === 'FSFO.LOGICAL_MAXPROT');
+    const disabledDoc = twoStandbyDoc(base);
+    disabledDoc.config.fsfo.state = 'disabled';
+    const disabled = validate(disabledDoc).find((f) => f.id === 'FSFO.LOGICAL_MAXPROT');
+    expect(enabled?.severity).toBe('error');
+    expect(disabled?.severity).toBe('info');
+    expect(disabled?.message).toContain('Enabling it would fail');
+  });
+
+  it('FSFO.TARGET_DIRECT_REDO is info while disabled, error while enabled', () => {
+    /* cascadeDoc has no fsfo option; the paired CASES entry above already
+       checks the enabled (default) severity, so this checks the disabled
+       branch directly against the rule. */
+    const enabled = validate(cascadeDoc({ targets: [M('term1')] }))
+      .find((f) => f.id === 'FSFO.TARGET_DIRECT_REDO');
+    const doc = cascadeDoc({ targets: [M('term1')] });
+    doc.config.fsfo.state = 'disabled';
+    const disabled = validate(doc).find((f) => f.id === 'FSFO.TARGET_DIRECT_REDO');
+    expect(enabled?.severity).toBe('error');
+    expect(disabled?.severity).toBe('info');
+    expect(disabled?.message).toContain('Enabling fast-start failover would require');
   });
 });
 

@@ -30,9 +30,12 @@ describe('reference tables', () => {
   });
 
   it('carries both editions where a default moved', () => {
+    /* ED-01: ObserverPingRetry does not exist in 19c at all (absent from the
+       12.2, 18c and 19c property pages and from a live 19.27 system) --
+       never a borrowed number. */
     const pingRetry = brokerProperties.rows.find((r) => r.key === 'ping-retry');
     expect(pingRetry).toBeDefined();
-    expect(pingRetry?.cells[1]).toEqual(byEdition('10', '0 — not set'));
+    expect(pingRetry?.cells[1]).toEqual(byEdition('does not exist in 19c', '0 — not set'));
   });
 
   it('labels 26ai-only rows rather than hiding them', () => {

@@ -9,7 +9,7 @@
  * is an `error`.
  */
 
-import { BOUNDS, BROKER_DEFAULTS, clamp, defaultLagLimit } from '../defaults';
+import { BOUNDS, BROKER_DEFAULTS, WORKBENCH_DEFAULT_PROTECTION_MODE, clamp, defaultLagLimit } from '../defaults';
 import type { BoundKey } from '../defaults';
 import { applicationId, hostId, memberId, observerId, siteId, linkId } from '../ids';
 import type { Edition, HostId, LinkId, MemberId, ObserverId, SiteId } from '../ids';
@@ -118,8 +118,10 @@ export function defaultFsfo(edition: Edition = '19c'): FsfoConfig {
     target: { kind: 'list', members: [] },
     thresholdSeconds: d.thresholdSeconds,
     /* 26ai gives maximum availability its own default of 0 -- zero data loss;
-       under 19c the limit is a maximum performance property at 30 s. */
-    lagLimitSeconds: defaultLagLimit(edition, d.protectionMode),
+       under 19c the limit is a maximum performance property at 30 s. Against
+       the workbench's own starting mode, not the broker's default protection
+       mode (BROKER_DEFAULTS[edition].protectionMode is MAXPERFORMANCE). */
+    lagLimitSeconds: defaultLagLimit(edition, WORKBENCH_DEFAULT_PROTECTION_MODE),
     lagType: d.lagType,
     lagGraceTimeSeconds: d.lagGraceTimeSeconds,
     pingIntervalMs: null,
@@ -134,7 +136,9 @@ export function defaultConfiguration(edition: Edition = '19c'): Configuration {
   return {
     name: 'dg_config',
     edition,
-    protectionMode: d.protectionMode,
+    /* The workbench's own starting mode, not the broker's default protection
+       mode -- see WORKBENCH_DEFAULT_PROTECTION_MODE in engine/defaults.ts. */
+    protectionMode: WORKBENCH_DEFAULT_PROTECTION_MODE,
     bystandersFollowRoleChange: d.bystandersFollowRoleChange,
     fsfo: defaultFsfo(edition),
     services: [],

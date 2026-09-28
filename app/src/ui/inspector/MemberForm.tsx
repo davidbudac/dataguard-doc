@@ -315,7 +315,7 @@ export function MemberForm({ member, doc, graph }: MemberFormProps) {
                 warn={p.netTimeoutSeconds < 8 && !async}
                 note={p.netTimeoutSeconds < 8 && !async
                   ? 'Below the 8 to 10 seconds Oracle recommends. It bounds how long LGWR waits for the standby acknowledgement; it is never a failover clock.'
-                  : 'Default 30 s, minimum 1 s, 8 to 10 s recommended. It bounds how long LGWR waits for the standby acknowledgement; it is never a failover clock.'}
+                  : 'Default 30 s, 8 to 10 s recommended. The broker property page gives 0 to 1200; the underlying NET_TIMEOUT attribute of LOG_ARCHIVE_DEST_n gives 1 to 1200 -- Oracle does not reconcile the two. It bounds how long LGWR waits for the standby acknowledgement; it is never a failover clock.'}
               />
               <Num
                 name="ReopenSecs"

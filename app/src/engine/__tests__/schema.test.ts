@@ -1,10 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import {
-  defaultDestProps, defaultFsfo, emptyDoc, isTopologyDoc, parseTopologyDoc, parseTopologyDocOrThrow,
+  defaultConfiguration, defaultDestProps, defaultFsfo, emptyDoc, isTopologyDoc, parseTopologyDoc,
+  parseTopologyDocOrThrow,
 } from '../serialize/schema';
 import { formatRedoRoutes } from '../redo/parse';
 import { resolveRedoGraph } from '../redo/resolve';
-import { BOUNDS, BROKER_DEFAULTS, clamp, defaultLagLimit, pingSet, withinBounds } from '../defaults';
+import {
+  BOUNDS, BROKER_DEFAULTS, WORKBENCH_DEFAULT_PROTECTION_MODE, clamp, defaultLagLimit, pingSet,
+  withinBounds,
+} from '../defaults';
 import { classicTopology } from '../compat/classic';
 
 const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v)) as T;
@@ -49,21 +53,38 @@ describe('BOUNDS', () => {
 });
 
 describe('broker defaults per edition', () => {
-  it('19c carries the ping defaults, cited to 21c because 19c does not list them', () => {
+  it('19c claims no default for the ping properties: neither exists in 19c', () => {
+    /* ED-01: absent from the 12.2, 18c and 19c property pages and from a
+       live 19.27 system (neither `strings dgmgrl`/`strings oracle` nor SHOW
+       CONFIGURATION VERBOSE shows it). First documented in 21c -- so 19c
+       carries no default value for either at all, not even a borrowed one. */
     const d = BROKER_DEFAULTS['19c'];
-    expect(d.pingIntervalMs.value).toBe(100);
-    expect(d.pingRetry.value).toBe(10);
-    /* 19c is silent and a later edition states it: that is doc-later, and it
-       carries the note explaining where the number comes from. */
+    expect(d.pingIntervalMs.value).toBeNull();
+    expect(d.pingRetry.value).toBeNull();
     expect(d.pingIntervalMs.basis).toBe('doc-later');
     expect(d.pingIntervalMs.cite).toContain('FSFO.PING_PROPS_21C');
-    expect(d.pingIntervalMs.note).toMatch(/does not list ObserverPingInterval/);
+    expect(d.pingIntervalMs.note).toMatch(/does not exist in 19c/);
     expect(d.observerCount.value).toBe(3);
+    expect(d.observerCount.basis).toBe('conflict');
   });
 
   it('the fresh-document lag limit is the mode default for the edition', () => {
     expect(defaultFsfo('19c').lagLimitSeconds).toBe(30);
     expect(defaultFsfo('26ai').lagLimitSeconds).toBe(0);
+  });
+
+  it('separates the broker\'s own default protection mode from the workbench\'s starting mode (ED-07)', () => {
+    /* "The default protection mode for the configuration is MAXPERFORMANCE."
+       -- Oracle's own broker default, in both editions. The workbench itself
+       still starts a fresh document or an unset import in MAXAVAILABILITY:
+       that is a product choice kept in its own constant so the two are never
+       conflated, and so this fix does not change what a fresh document or a
+       preset starts in. */
+    expect(BROKER_DEFAULTS['19c'].protectionMode).toBe('MAXPERFORMANCE');
+    expect(BROKER_DEFAULTS['26ai'].protectionMode).toBe('MAXPERFORMANCE');
+    expect(WORKBENCH_DEFAULT_PROTECTION_MODE).toBe('MAXAVAILABILITY');
+    expect(defaultConfiguration('19c').protectionMode).toBe('MAXAVAILABILITY');
+    expect(defaultConfiguration('26ai').protectionMode).toBe('MAXAVAILABILITY');
   });
 
   it('26ai reads the ping defaults as not set, and names the contradiction', () => {

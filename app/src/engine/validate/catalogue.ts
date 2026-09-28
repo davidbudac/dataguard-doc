@@ -35,12 +35,12 @@ export const RULE_CATALOGUE = {
     summary: 'FastStartFailoverTarget takes physical or logical standbys only: not a snapshot standby, a far sync instance or a ZDLRA (A6/C1).',
   },
   'FSFO.TARGET_DIRECT_REDO': {
-    severity: 'error', basis: 'inferred',
-    summary: 'The target must receive redo directly from the primary; a far sync feed is the sanctioned exception and a cascaded terminal standby fails it (B3).',
+    severity: 'error', severities: ['error', 'info'], basis: 'inferred',
+    summary: 'The target must receive redo directly from the primary; a far sync feed is the sanctioned exception and a cascaded terminal standby fails it (B3). A condition of enabling fast-start failover: with it disabled, at most an info about what enabling would require.',
   },
   'FSFO.MULTI_TARGET_EXPLICIT': {
-    severity: 'error', basis: 'documented',
-    summary: 'With more than one standby database the property must be set explicitly (C1).',
+    severity: 'error', severities: ['error', 'info'], basis: 'documented',
+    summary: 'With more than one standby database the property must be set explicitly (C1). A condition of enabling fast-start failover: with it disabled, at most an info about what enabling would require.',
   },
   'FSFO.FARSYNC_XPT': {
     severity: 'error', basis: 'documented',
@@ -48,15 +48,43 @@ export const RULE_CATALOGUE = {
   },
   'FSFO.FARSYNC_MODE_19C': {
     severity: 'error', basis: 'conflict',
-    summary: '19c: not maximum protection and not maximum performance with fast-start failover; 26ai drops the maximum performance exclusion (A4).',
+    summary: '19c: not maximum protection and not maximum performance with fast-start failover; 26ai drops the maximum performance exclusion (A4). Scoped to a far sync feeding the fast-start failover target only.',
   },
   'FSFO.LOGICAL_MAXPROT': {
-    severity: 'error', basis: 'documented',
-    summary: 'Logical standbys are not supported in maximum protection mode for fast-start failover (E1).',
+    severity: 'error', severities: ['error', 'info'], basis: 'documented',
+    summary: 'Logical standbys are not supported in maximum protection mode for fast-start failover (E1). A condition of enabling fast-start failover: with it disabled, at most an info about what enabling would require.',
   },
   'FSFO.LAGLIMIT_VS_THRESHOLD': {
+    severity: 'warning', basis: 'documented', bases: ['documented', 'doc-later'],
+    summary: 'FastStartFailoverLagLimit at or below FastStartFailoverThreshold is the documented recommendation -- on the 26ai property page only, so doc-later under 19c.',
+  },
+  'FSFO.PING_PROPS_NOT_IN_19C': {
+    severity: 'error', basis: 'doc-later',
+    summary: 'ObserverPingInterval and ObserverPingRetry do not exist in 19c: absent from the 12.2, 18c and 19c property pages and from a live 19.27 system. Documented from 21c (D1/ED-01).',
+  },
+  'FSFO.LAGTYPE_GRACETIME_19C': {
+    severity: 'warning', basis: 'doc-later',
+    summary: 'FastStartFailoverLagType and FastStartFailoverLagGraceTime are documented from 26ai, absent from the 19c and 21c property pages, but present in a live 19.27 system (D1/ED-02).',
+  },
+  'CFG.PRIMARY_CANDIDATES_19C': {
+    severity: 'warning', basis: 'doc-later',
+    summary: 'PrimaryDatabaseCandidates is documented from 26ai, absent from the 19c and 21c property pages, but present in a live 19.27 system (D1/ED-02).',
+  },
+  'FSFO.FARSYNC_TARGET_BOTH_SIDES': {
+    severity: 'info', basis: 'documented',
+    summary: 'Far sync feeding the fast-start failover target: FastStartFailoverTarget must first be set on both the primary and the target standby database (Scenario 7, VAL-07.7).',
+  },
+  'FSFO.FLASHBACK_REQUIRED': {
     severity: 'warning', basis: 'documented',
-    summary: 'FastStartFailoverLagLimit at or below FastStartFailoverThreshold is the documented recommendation.',
+    summary: 'Fast-start failover enabled with Flashback Database off on the primary or a candidate target raises ORA-16827, independent of FastStartFailoverAutoReinstate (VAL-07.1).',
+  },
+  'MEMBER.SNAPSHOT_NEEDS_FLASHBACK': {
+    severity: 'warning', basis: 'documented',
+    summary: 'A snapshot standby needs Flashback Database; it cannot be the target of a switchover or fast-start failover, though a manual failover to one is allowed (VAL-07.3).',
+  },
+  'OBS.NAME_RESERVED': {
+    severity: 'error', basis: 'documented',
+    summary: 'Observer names are unique in a configuration and NONAME is reserved (VAL-07.5).',
   },
   'FSFO.LAGTYPE_MODE': {
     severity: 'info', basis: 'documented',
@@ -80,7 +108,7 @@ export const RULE_CATALOGUE = {
   },
   'XPT.TABLE_4_2': {
     severity: 'error', severities: ['error', 'warning', 'info'], basis: 'documented',
-    summary: 'Broker Table 4-2: maximum protection SYNC; maximum availability SYNC or FASTSYNC (26ai lists ASYNC too); maximum performance lists ASYNC as the only mode -- never "SYNC is illegal there".',
+    summary: 'At least one standby in the configuration must support the mode (MEM19); an ASYNC bystander beside a SYNC standby is legal. The fast-start failover prerequisites carry a stricter, per-member requirement for the target and the primary only, while fast-start failover is enabled: maximum protection SYNC, maximum availability SYNC or FASTSYNC (26ai\'s prerequisites list add ASYNC there, a conflict with Table 4-2 and the LogXptMode page that 26ai does not name), maximum performance lists ASYNC as the only mode -- never "SYNC is illegal there".',
   },
   'XPT.FASTSYNC_MAXAVAIL_ONLY': {
     severity: 'error', basis: 'documented',
@@ -151,16 +179,16 @@ export const RULE_CATALOGUE = {
     summary: '19c registers up to three observers; the 26ai fast-start failover chapter says four and its SHOW OBSERVER page still says three (D1).',
   },
   'OBS.ON_DB_HOST': {
-    severity: 'error', basis: 'documented',
-    summary: 'The observer is never deployed at the primary or standby database server.',
+    severity: 'warning', basis: 'documented',
+    summary: 'As a best practice the observer is never deployed at the primary or standby database server -- Oracle documents no refusal, so this is a warning, not an error.',
   },
   'OBS.PRIMARY_SITE': {
-    severity: 'warning', basis: 'documented',
-    summary: "The primary's site is not on the documented placement hierarchy.",
+    severity: 'warning', basis: 'inferred',
+    summary: "The primary's site is on none of the placement hierarchy's three documented rungs -- an inference from reading all three together, not a single quoted sentence.",
   },
   'OBS.NONE_DEPLOYED': {
     severity: 'info', severities: ['info', 'warning'], basis: 'documented',
-    summary: 'No observer deployed is not the same as unobserved: FS_FAILOVER_STATUS reads DISABLED. A warning where the document also says fast-start failover is enabled -- the two cannot both be true, and the engine reads the observers.',
+    summary: 'No observer deployed is legal: enabling fast-start failover with no observer started raises ORA-16819, the configuration is unobserved, and no failover can happen. A warning where the document says fast-start failover is enabled or observe-only; the standing info otherwise.',
   },
   'OBS.MASTER_UNIQUE': {
     severity: 'error', basis: 'documented',
@@ -171,8 +199,8 @@ export const RULE_CATALOGUE = {
     summary: 'Only observers running on the hosts PreferredObserverHosts names will observe or become master.',
   },
   'RAC.OBSERVER_ON_CLUSTER': {
-    severity: 'error', basis: 'documented',
-    summary: 'The observer is never deployed on the primary or standby database cluster either.',
+    severity: 'warning', basis: 'documented',
+    summary: 'As a best practice the observer is never deployed on the primary or standby database cluster either -- a warning, same as OBS.ON_DB_HOST.',
   },
   'REINSTATE.PRECONDITIONS': {
     severity: 'warning', basis: 'documented',
@@ -207,8 +235,8 @@ export const RULE_CATALOGUE = {
     summary: 'A member named by FastStartFailoverTarget cannot be removed (ORA-16867).',
   },
   'LIMIT.MEMBERS_253': {
-    severity: 'info', basis: 'doc-later',
-    summary: '253 members per configuration, documented in 12.1 only.',
+    severity: 'error', basis: 'documented',
+    summary: '253 members per configuration, documented on the 19c and 26ai Managing Broker Configurations pages, word for word.',
   },
   'MODEL.OBSERVER_OVERRIDE': {
     severity: 'info', basis: 'model',

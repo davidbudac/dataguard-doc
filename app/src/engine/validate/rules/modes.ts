@@ -63,20 +63,61 @@ export const maxProtectionOneStandby: Rule = (ctx): Finding[] => {
 };
 
 /**
- * Broker Table 4-2. The 26ai maximum availability row is the one place the
- * documentation argues with itself: the prerequisites list gives SYNC or
- * FASTSYNC or ASYNC while Task 3 of the same chapter still says SYNC or
- * FASTSYNC -- and Task 3 is a source AGENTS.md rules out for this question.
+ * Broker Table 4-2 / MEM19: "the broker verifies that there is at least one
+ * standby database in the configuration that can support the desired grade
+ * of protection" -- a configuration-level check across every destination
+ * from the primary. An ASYNC bystander beside a SYNC standby is legal in
+ * every edition: one SYNC standby is enough for MAXPROTECTION or
+ * MAXAVAILABILITY, whatever every other destination is doing. MAXPERFORMANCE
+ * asks nothing here -- every transport mode supports it.
+ */
+export const atLeastOneSupportsMode: Rule = (ctx): Finding[] => {
+  const mode = ctx.doc.config.protectionMode;
+  if (mode === 'MAXPERFORMANCE') return [];
+  const edges = ctx.primaryEdges();
+  if (edges.length === 0) return [];
+  const is26 = ctx.doc.config.edition === '26ai';
+  /* 26ai: "Starting with Oracle Database Release 21c, you can upgrade the
+     protection mode to maximum availability even if the primary does not
+     have any SYNC standbys" -- ASYNC counts under 26ai's own prerequisites. */
+  const supports = (xpt: string): boolean =>
+    (mode === 'MAXPROTECTION' ? xpt === 'SYNC' : syncish(xpt) || (is26 && xpt === 'ASYNC'));
+  if (edges.some((e) => supports(e.xpt))) return [];
+  const wants = mode === 'MAXPROTECTION' ? 'SYNC' : is26 ? 'SYNC, FASTSYNC or ASYNC' : 'SYNC or FASTSYNC';
+  return [mk('XPT.TABLE_4_2', {
+    subject: configSubject(),
+    message: `No destination from the primary receives ${wants} while the configuration is in ${mode}. When the protection mode or a standby's redo transport service changes, the broker verifies that there is at least one standby database in the configuration that can support the desired grade of protection; none does here.`,
+    cite: is26 && mode === 'MAXAVAILABILITY'
+      ? ['MODE.AT_LEAST_ONE_SUPPORTS', 'XPT.LOGXPTMODE_VALUES', 'MODE.UPGRADE_WITHOUT_SYNC_26AI']
+      : ['MODE.AT_LEAST_ONE_SUPPORTS', 'XPT.LOGXPTMODE_VALUES'],
+  })];
+};
+
+/**
+ * The fast-start failover prerequisites' per-member transport list is
+ * stricter than MEM19's "at least one" and scoped to the target and the
+ * primary only, and only while fast-start failover is enabled or
+ * observe-only: 19c "Maximum protection -- SYNC, Maximum availability --
+ * SYNC or FASTSYNC, Maximum performance -- ASYNC"; 26ai's maximum
+ * availability row adds ASYNC, a conflict with Table 4-2 that 26ai does not
+ * name. A far sync feed is farSyncTransports' concern, not this rule's.
  */
 const MAXAVAIL_26AI_CITES: CitationId[] = ['XPT.MAXAVAIL_ASYNC_26AI', 'XPT.TABLE_4_2'];
 assertCitesAllowed('MAXAVAIL_TRANSPORTS', MAXAVAIL_26AI_CITES);
 
-export const transportTable: Rule = (ctx): Finding[] => {
-  const out: Finding[] = [];
+export const fsfoTargetTransport: Rule = (ctx): Finding[] => {
+  if (!ctx.fsfoOn) return [];
+  const g = ctx.graph;
+  if (!g) return [];
   const mode = ctx.doc.config.protectionMode;
   const is26 = ctx.doc.config.edition === '26ai';
-  for (const e of ctx.primaryEdges()) {
-    const m = ctx.member(e.to);
+  const out: Finding[] = [];
+  for (const id of ctx.candidates) {
+    const rm = g.members[id];
+    if (!rm || rm.depth !== 1) continue; /* far sync / cascaded: other rules */
+    const e = ctx.primaryEdges().find((x) => x.to === id);
+    if (!e) continue;
+    const m = ctx.member(id);
     if (!m) continue;
     const name = q(m.name);
     const fixTo = (want: string): Finding['fix'] | undefined => {
@@ -88,42 +129,49 @@ export const transportTable: Rule = (ctx): Finding[] => {
       };
     };
     if (mode === 'MAXPROTECTION' && e.xpt !== 'SYNC') {
-      const fix = fixTo('SYNC');
       out.push(mk('XPT.TABLE_4_2', {
         subject: memberSubject(m),
-        message: `${name} receives ${e.xpt} while the configuration is in MAXPROTECTION. Broker Table 4-2 gives SYNC as the transport for maximum protection mode.`,
-        cite: ['XPT.TABLE_4_2', 'XPT.LOGXPTMODE_VALUES'],
-        ...(fix ? { fix } : {}),
+        message: `${name} is a fast-start failover candidate target and receives ${e.xpt} while the configuration is in MAXPROTECTION. The fast-start failover prerequisites require SYNC for the target standby (and the primary) in maximum protection mode.`,
+        cite: [is26 ? 'FSFO.PREREQ_TRANSPORTS_26AI' : 'FSFO.PREREQ_TRANSPORTS_19C'],
+        ...(fixTo('SYNC') ? { fix: fixTo('SYNC') } : {}),
       }));
       continue;
     }
-    if (mode === 'MAXAVAILABILITY' && e.xpt === 'ASYNC') {
-      if (is26) {
+    if (mode === 'MAXAVAILABILITY') {
+      if (is26 && e.xpt === 'ASYNC') {
         out.push(mk('XPT.TABLE_4_2', {
           severity: 'warning',
           subject: memberSubject(m),
-          message: `${name} receives ASYNC in MAXAVAILABILITY. Under 26ai the fast-start failover prerequisites list SYNC or FASTSYNC or ASYNC for a maximum availability target, so this is allowed rather than a mode conflict -- but zero data loss still wants SYNC or FASTSYNC.`,
+          message: `${name} is a fast-start failover candidate target and receives ASYNC while the configuration is in MAXAVAILABILITY. Under 26ai the fast-start failover prerequisites allow SYNC, FASTSYNC or ASYNC for a maximum availability target -- a conflict with Table 4-2 and the LogXptMode page, which still give SYNC or FASTSYNC and which 26ai does not name -- but zero data loss still wants SYNC or FASTSYNC.`,
           cite: MAXAVAIL_26AI_CITES,
         }));
-      } else {
-        const fix = fixTo('SYNC');
+      } else if (!syncish(e.xpt)) {
         out.push(mk('XPT.TABLE_4_2', {
           subject: memberSubject(m),
-          message: `${name} receives ASYNC while the configuration is in MAXAVAILABILITY. Broker Table 4-2 gives SYNC or FASTSYNC for maximum availability mode under 19c.`,
-          cite: ['XPT.TABLE_4_2', 'XPT.LOGXPTMODE_VALUES'],
-          ...(fix ? { fix } : {}),
+          message: `${name} is a fast-start failover candidate target and receives ${e.xpt} while the configuration is in MAXAVAILABILITY. The fast-start failover prerequisites require SYNC or FASTSYNC for the target standby (and the primary) in maximum availability mode${is26 ? ' -- 26ai\'s own prerequisites list also allows ASYNC, which this destination does not use either' : ' under 19c'}.`,
+          cite: [is26 ? 'FSFO.PREREQ_TRANSPORTS_26AI' : 'FSFO.PREREQ_TRANSPORTS_19C'],
+          ...(fixTo('SYNC') ? { fix: fixTo('SYNC') } : {}),
         }));
       }
-      continue;
     }
-    if (mode === 'MAXPERFORMANCE' && e.xpt !== 'ASYNC') {
-      out.push(mk('XPT.TABLE_4_2', {
-        severity: 'info',
-        subject: memberSubject(m),
-        message: `${name} receives ${e.xpt} in MAXPERFORMANCE. ASYNC is the only transport mode broker Table 4-2 lists for maximum performance; the table does not say the others cannot be used there. Under ${e.xpt} the primary waits for this destination on commit, which is what maximum performance otherwise avoids.`,
-        cite: ['XPT.TABLE_4_2'],
-      }));
-    }
+  }
+  return out;
+};
+
+/** ASYNC is the only mode Table 4-2 lists for maximum performance; it never says the others are illegal there. */
+export const maxPerformanceOtherTransportNote: Rule = (ctx): Finding[] => {
+  const out: Finding[] = [];
+  if (ctx.doc.config.protectionMode !== 'MAXPERFORMANCE') return [];
+  for (const e of ctx.primaryEdges()) {
+    if (e.xpt === 'ASYNC') continue;
+    const m = ctx.member(e.to);
+    if (!m) continue;
+    out.push(mk('XPT.TABLE_4_2', {
+      severity: 'info',
+      subject: memberSubject(m),
+      message: `${q(m.name)} receives ${e.xpt} in MAXPERFORMANCE. ASYNC is the only transport mode broker Table 4-2 lists for maximum performance; the table does not say the others cannot be used there. Under ${e.xpt} the primary waits for this destination on commit, which is what maximum performance otherwise avoids.`,
+      cite: ['XPT.TABLE_4_2'],
+    }));
   }
   return out;
 };
@@ -170,6 +218,7 @@ export const fastSyncFsfoGap: Rule = (ctx): Finding[] => {
 
 export const modeRules: Rule[] = [
   maxProtectionNeedsSyncDatabase, maxProtectionSnapshotOnly, maxProtectionOneStandby,
-  transportTable, fastSyncMaxAvailOnly, fastSyncFsfoGap,
+  atLeastOneSupportsMode, fsfoTargetTransport, maxPerformanceOtherTransportNote,
+  fastSyncMaxAvailOnly, fastSyncFsfoGap,
 ];
 
