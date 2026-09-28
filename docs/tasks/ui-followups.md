@@ -212,7 +212,10 @@ step anchor and Explain are sans sentence case.
 - Configure's tab strip and Learn's lesson list still use uppercase mono labels.
 
 ### 6.3 Right panel in wider rails
-Status: todo
+Status: done (on ui/track6-shell)
+Note: measured, not container queries: `useRailRow` on each `.insp` root writes the rail's row
+width into `railRow` (common/Field.tsx), floored at the 340 px card's 292; `fitsBeside` reads it.
+The 360 px drawer gets 312, the 900 px bottom sheet 852 (Role / Open mode go beside their names).
 The row-or-stack choice assumes the 340 px floating rail; in the wider drawer
 (1024-1279 px) and Configure's docked rail some fields stack needlessly. Base
 the choice on the rail's actual width (container query or measured width).

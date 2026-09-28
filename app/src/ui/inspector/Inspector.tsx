@@ -28,6 +28,7 @@ import { MemberForm } from './MemberForm';
 import { ObserverForm } from './ObserverForm';
 import { SiteForm } from './SiteForm';
 import { WHY } from './why';
+import { useRailRow } from '../common/Field';
 import '@/styles/inspector.css';
 
 type Subject =
@@ -141,6 +142,9 @@ function Summary({ doc }: { doc: TopologyDoc }) {
 /* ---------------- the rail ---------------- */
 
 export function Inspector() {
+  /* The row-or-stack choice of every field below is made against this
+     rail's measured width (common/Field.tsx), not the floating card's. */
+  const railRef = useRailRow();
   const doc = topology.value;
   const sel = selection.value;
   const subject = resolveSubject(doc, sel[0]);
@@ -157,7 +161,7 @@ export function Inspector() {
 
   if (!canEdit(viewport.value)) {
     return (
-      <div class="insp">
+      <div class="insp" ref={railRef}>
         <header class="insp-hd">
           <span class="insp-subj">
             <span class="insp-kind">Configuration</span>
@@ -180,7 +184,7 @@ export function Inspector() {
   const title = subject === null ? doc.config.name : subjectName(doc, subject);
 
   return (
-    <div class="insp">
+    <div class="insp" ref={railRef}>
       {/* The header is the rail's one fixed row, so it is where the `Hints`
           switch lives -- including on the empty rail, which is exactly where a
           reader who wants the prose back is looking. With nothing selected it
