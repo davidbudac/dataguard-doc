@@ -169,9 +169,10 @@ export const transportLayer: Lesson = {
       prose: (
         <P>
           With nothing arriving the standby falls behind in real time: <M>UNSYNCHRONIZED</M> from the
-          first second in MaxAvailability, past <M>FastStartFailoverLagLimit</M> (default 30 s) in
-          MaxPerformance. Either way, no failover is permitted until the destination ships again and
-          the standby resynchronizes.
+          first second in MaxAvailability under 19c — under 26ai that same instant is{' '}
+          <M>FastStartFailoverLagLimit</M>&rsquo;s own MaxAvailability default of 0 — past{' '}
+          <M>FastStartFailoverLagLimit</M> (default 30 s) in MaxPerformance. Either way, no failover
+          is permitted until the destination ships again and the standby resynchronizes.
         </P>
       ),
       apply: {

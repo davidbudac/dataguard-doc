@@ -32,8 +32,9 @@ export const FOOTNOTES: Footnote[] = [
         >
           interval &times; (retries + 1)
         </Fact>{' '}
-        &mdash; is this page&rsquo;s model as well: the documentation states only that the threshold
-        is then ignored and that detection can be reduced to nearly one second.
+        &mdash; is this page&rsquo;s model as well. The minimum for each property is <M>100 ms</M> and{' '}
+        <M>10</M> retries, and Oracle&rsquo;s own arithmetic is left implicit: &ldquo;the detection
+        time can be reduced to nearly 1 second,&rdquo; never interval &times; (retries + 1).
       </p>
     ),
   },
