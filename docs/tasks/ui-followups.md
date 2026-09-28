@@ -22,7 +22,7 @@ Status values: `todo` · `in progress (branch)` · `done (sha)` · `handoff` (se
 ## Track 1 — canvas interactions (`app/src/ui/canvas/*`)
 
 ### 1.1 Drag a card from anywhere on it
-Status: done (on ui/track1-canvas)
+Status: done (on main via merge)
 Note: root cause was SVG hit-testing only painted fill -- a chassis blade's rect
 and a down card's rect paint `fill: none`, so presses fell through to the chassis
 or the ground. `canvas.css` now gives `.tp-node > rect.tp-card` `pointer-events: all`;
@@ -32,7 +32,7 @@ does not. The whole card rectangle must be the grab target (ports and the `⋯`
 button keep their own behaviour).
 
 ### 1.2 Dragging a card must not resize its data centre
-Status: done (on ui/track1-canvas)
+Status: done (on main via merge)
 Note: `TopoCanvas.tsx` freezes every DC rect and the viewBox from the moment a
 card drag starts until the drop (no rescaling under the pointer either). On a
 drop inside its own DC, `holdsAfter` writes the pre-drag box as a sized override
@@ -44,7 +44,7 @@ re-fit on drop if the card lands outside the current box (or not at all, once 1.
 exists).
 
 ### 1.3 User-resizable data centre box
-Status: done (on ui/track1-canvas)
+Status: done (on main via merge)
 Note: `layout[siteId]` may now carry `w`/`h` (`state/doc.ts` `LayoutOverride`,
 codec reads/writes it; old links without it decode identically). `layout.ts`
 draws a sized box at its natural anchor + dx/dy, grown to its cards (`SiteBox.fit`,
@@ -56,7 +56,7 @@ size persists in the document/URL like positions do, undoable, and never smaller
 than the cards it contains. Tidy may reset it.
 
 ### 1.4 No text selection while dragging
-Status: done (on ui/track1-canvas)
+Status: done (on main via merge)
 Note: `.topo-svg` is `user-select: none` (the action bar and the rename field
 opt back in), and `takeDrag` in `TopoCanvas.tsx` clears any selection a browser
 already began once a press becomes a drag; `.is-dragging` shows the grip cursor.
@@ -67,7 +67,7 @@ elsewhere. If the proper fix turns out to be large, write a handoff note here
 instead of the fix.
 
 ### 1.5 Show where a dragged card can go
-Status: done (on ui/track1-canvas)
+Status: done (on main via merge)
 Note: while a card is in the air (`TopoCanvas.tsx` `air` state) other DCs are
 dashed violet (`is-can-drop`), other hosts' cards/stacks `is-target-maybe`, and
 what cannot take it fades (`is-dim`: RAC cards, a host that refuses). The card
@@ -80,7 +80,7 @@ hosts/stacks it may merge into) and dim/deny invalid ones; show the snap
 position (ghost outline) where it will land.
 
 ### 1.6 Re-layout when an element is added
-Status: done (on ui/track1-canvas)
+Status: done (on main via merge)
 Note: three parts. (1) Site choice (`ui/build/placement.ts`, called from
 `inspector/edits.ts`): a standby goes to an empty DC, else beside the existing
 standbys, never into an observer-only DC while another will do (that used to
