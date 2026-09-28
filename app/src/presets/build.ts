@@ -143,17 +143,18 @@ export function alternate(target: string, xpt?: XptMode, fallback = true): Route
   return a;
 }
 
-/** A parenthesised destination group with an explicit PRIORITY=n, n = 1..8. */
-export const group = (priority: RoutePriority, ...dests: RouteDest[]): DestGroup => ({
-  priority, dests, explicitGroup: true,
-});
+/** A parenthesised destination group: one active redo path among `dests`. */
+export const group = (...dests: RouteDest[]): DestGroup => ({ dests, explicitGroup: true });
+
+/** A destination written with PRIORITY=n (n = 1..8) inside a group. */
+export const prio = (priority: RoutePriority, d: RouteDest): RouteDest => ({ ...d, priority });
 
 /** `(LOCAL : ...)` -- active while this member is the primary. */
 export const local = (...dests: RouteDest[]): RedoRouteRule => ({
   source: 'LOCAL', groups: [{ dests }],
 });
 
-/** `(LOCAL : (a PRIORITY=1), (b PRIORITY=2))`. */
+/** `(LOCAL : (a PRIORITY=1, b PRIORITY=2))`. */
 export const localGroups = (...groups: DestGroup[]): RedoRouteRule => ({
   source: 'LOCAL', groups,
 });

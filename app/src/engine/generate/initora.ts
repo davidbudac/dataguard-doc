@@ -16,7 +16,9 @@
 
 import { BROKER_DEFAULTS } from '../defaults';
 import type { MemberId } from '../ids';
-import { activeRule } from '../redo/resolve';
+import { isParenthesised } from '../redo/parse';
+import { activeRule, defaultDestPriority, expandAll as expandAllOf } from '../redo/resolve';
+import { defaultDestProps } from '../serialize/schema';
 import type { CitationId } from '../citations';
 import { documented, model } from '../types/claims';
 import type { DestProps, Member, RouteDest, TopologyDoc, XptMode } from '../types/topology';
@@ -51,7 +53,9 @@ interface Slot {
   /** The destination number of this one's alternate, when it has one. */
   alternate?: number;
   fallback?: boolean;
-  /** Only written when the member's rule declares more than one group. */
+  /** GROUP=k: the k-th parenthesised group of the active rule. */
+  group?: number;
+  /** Written with `group`: the destination's PRIORITY, as written or its default. */
   priority?: number;
 }
 
@@ -161,7 +165,7 @@ export function generateInitOra(doc: TopologyDoc, opts: InitOraOptions = {}): Ge
   lines.push(comment('not deprecated in 19c; EDIT DATABASE ... SET PARAMETER reaches the same attributes'));
   if (slots.some((s) => s.priority !== undefined)) {
     lines.push(nModel(
-      "GROUP= and PRIORITY= are LOG_ARCHIVE_DEST_n attributes, never RedoRoutes syntax; writing the RedoRoutes priority groups as GROUP=1 with one PRIORITY per group is this page's reading of the same intent",
+      "GROUP= and PRIORITY= are LOG_ARCHIVE_DEST_n attributes, never RedoRoutes syntax; writing each parenthesised RedoRoutes group as a GROUP of its own, with each destination's PRIORITY, is this page's reading of the same intent",
       'The RedoRoutes PRIORITY grammar and the LOG_ARCHIVE_DEST_n GROUP/PRIORITY attributes are both documented; that the broker writes the one as the other is not, so the mapping is this page\'s model.',
       ['ROUTES.GROUP_IS_NOT_ROUTES_SYNTAX', 'DEST.ATTRIBUTE_SPELLINGS', 'DEST.GROUP_PRIORITY_REENTER'],
     ));
@@ -202,46 +206,53 @@ function slotsFor(doc: TopologyDoc, sender: Member, primary: MemberId, startAt: 
   if (!act) return [];
   const slots: Slot[] = [];
   let n = startAt;
-  const multiGroup = act.rule.groups.length > 1;
 
   const receiver = (id: MemberId): Member | undefined => doc.members.find((m) => m.id === id);
-  /* `ALL` is every other enabled member except snapshot standbys and except
-     the primary itself -- the same reading the redo graph resolver uses. */
-  const expandAll = (): MemberId[] => doc.members
-    .filter((m) => m.enabled && m.id !== sender.id && m.id !== primary)
-    .filter((m) => !(isDatabase(m) && m.role === 'snapshot'))
-    .map((m) => m.id);
+  /* `ALL` is every other enabled member except the primary itself -- the
+     same reading the redo graph resolver uses. */
+  const expandAll = (): MemberId[] => expandAllOf(doc, sender.id, primary);
 
-  const push = (to: Member, d: RouteDest, priority: number | undefined, viaAlt: boolean): Slot => {
+  const push = (
+    to: Member, d: RouteDest, viaAlt: boolean, grouped?: { group: number; priority: number },
+  ): Slot => {
     const xptFromRule = viaAlt ? d.alt?.xpt : d.xpt;
     const slot: Slot = {
       n: n++,
       to,
       xpt: xptFromRule ?? to.logXptMode,
-      props: sender.dests[to.id] ?? { netTimeoutSeconds: 30, reopenSeconds: 300, maxFailure: 0 },
+      props: sender.dests[to.id] ?? defaultDestProps({ inGroup: grouped !== undefined }),
     };
-    if (priority !== undefined) slot.priority = priority;
+    if (grouped !== undefined) {
+      slot.group = grouped.group;
+      slot.priority = grouped.priority;
+    }
     slots.push(slot);
     return slot;
   };
 
+  /* Each parenthesised RedoRoutes group is one LOG_ARCHIVE_DEST_n GROUP, its
+     destinations carrying their own PRIORITY. */
+  let groupNo = 0;
   for (const g of act.rule.groups) {
-    const priority = multiGroup ? (g.priority ?? (isFarSync(sender) ? 1 : 8)) : undefined;
+    const grouped = isParenthesised(g);
+    if (grouped) groupNo++;
     for (const d of g.dests) {
       if (d.target === 'ALL') {
         for (const id of expandAll()) {
           const to = receiver(id);
-          if (to) push(to, d, priority, false);
+          if (to) push(to, d, false);
         }
         continue;
       }
       const to = receiver(d.target);
       if (!to || !to.enabled) continue;
-      const main = push(to, d, priority, false);
+      const main = push(to, d, false, grouped
+        ? { group: groupNo, priority: d.priority ?? defaultDestPriority(to) }
+        : undefined);
       if (d.alt) {
         const altTo = receiver(d.alt.target);
         if (altTo) {
-          const alt = push(altTo, d, priority, true);
+          const alt = push(altTo, d, true);
           alt.alternateFor = main.n;
           if (d.alt.fallback === true) alt.fallback = true;
           main.alternate = alt.n;
@@ -292,8 +303,8 @@ function blockLines(
     out.push(cmd([span('    ALTERNATE='), hl(`LOG_ARCHIVE_DEST_${s.alternate}`)],
       { basis: 'documented', cite: ['DEST.ATTRIBUTE_SPELLINGS'] }));
   }
-  if (s.priority !== undefined) {
-    out.push(cmd([span('    GROUP='), hl('1'), span(' PRIORITY='), hl(String(s.priority))],
+  if (s.group !== undefined && s.priority !== undefined) {
+    out.push(cmd([span('    GROUP='), hl(String(s.group)), span(' PRIORITY='), hl(String(s.priority))],
       { basis: 'documented', cite: ['DEST.ATTRIBUTE_SPELLINGS'] }));
   }
   out.push(cmd(

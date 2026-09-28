@@ -75,17 +75,20 @@ const farSync52 = (): TopologyDoc => withObserverFiles(farSyncDoc());
 const cascade42 = (): TopologyDoc => withObserverFiles(cascadeDoc());
 
 /**
- * Example 4-3 in document form: two destination groups on the primary, the
- * second a lower priority, so VERBOSE marks its member `(alternate of ...)`.
+ * Example 4-3 in document form: one destination group on the primary, the
+ * second destination a lower priority, so VERBOSE marks it `(alternate of ...)`.
  */
 function priority43(): TopologyDoc {
   const prm = db('prm01', ['dc1-prm01'], 'primary', {
     redoRoutes: [{
       source: 'LOCAL',
-      groups: [
-        { priority: 1, explicitGroup: true, dests: [{ target: memberId('sby01'), xpt: 'SYNC' }] },
-        { priority: 2, explicitGroup: true, dests: [{ target: memberId('sby02'), xpt: 'ASYNC' }] },
-      ],
+      groups: [{
+        explicitGroup: true,
+        dests: [
+          { target: memberId('sby01'), xpt: 'SYNC', priority: 1 },
+          { target: memberId('sby02'), xpt: 'ASYNC', priority: 2 },
+        ],
+      }],
     }],
   });
   const sby01 = db('sby01', ['dc2-sby01'], 'physical', { logXptMode: 'SYNC' });

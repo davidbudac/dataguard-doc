@@ -82,10 +82,11 @@ export const cutLink = (doc: TopologyDoc, id: string): void => {
   l.up = false;
 };
 
+/** With `priority`, one parenthesised group whose destinations all carry it. */
 export const rule = (source: RedoRouteRule['source'], dests: RouteDest[], priority?: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8): RedoRouteRule =>
   priority === undefined
     ? { source, groups: [{ dests }] }
-    : { source, groups: [{ priority, dests, explicitGroup: true }] };
+    : { source, groups: [{ dests: dests.map((d) => ({ ...d, priority })), explicitGroup: true }] };
 
 /* ---------------- far sync ---------------- */
 
@@ -231,9 +232,9 @@ export function corpus(): TopologyDoc[] {
       memberOf(alt, 'prm01').redoRoutes = [{
         source: 'LOCAL',
         groups: [{
-          priority: 1, explicitGroup: true,
+          explicitGroup: true,
           dests: [{
-            target: M('sby01'), xpt: 'SYNC',
+            target: M('sby01'), xpt: 'SYNC', priority: 1,
             alt: { target: M('sby02'), xpt: 'ASYNC', fallback: true },
           }],
         }],

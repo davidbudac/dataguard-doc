@@ -38,8 +38,15 @@ import { declaredPrimary, findMember, isDatabase, isFarSync } from '../src/engin
 import type { Finding, RedoGraph, TopologyDoc } from '../src/engine';
 import { memberId } from '../src/engine/ids';
 import type { MemberId } from '../src/engine/ids';
+import { formatRedoRoutes } from '../src/engine/redo/parse';
 
 const M = (s: string): MemberId => memberId(s);
+
+const member = (doc: TopologyDoc, id: string) => {
+  const m = findMember(doc, M(id));
+  expect(m).toBeDefined();
+  return m as NonNullable<typeof m>;
+};
 
 const graphOf = (doc: TopologyDoc): RedoGraph => {
   const primary = declaredPrimary(doc);
@@ -536,14 +543,23 @@ describe('a high-availability far sync pair (Example 5-4)', () => {
   const doc = p.doc();
   const g = graphOf(doc);
 
-  it('ships to the first group and stands the second one down', () => {
+  it('is one group, as Example 5-4 writes it, so the drawing is what the broker would do', () => {
+    expect(formatRedoRoutes(member(doc, 'North_Sales').redoRoutes))
+      .toBe('(LOCAL : (FS1 SYNC PRIORITY=1, FS2 SYNC PRIORITY=1, South_Sales ASYNC PRIORITY=2))');
+  });
+
+  it('ships to one far sync instance and stands the rest of the group down', () => {
     expect(activeEdge(g, 'North_Sales', 'FS1')).toBe(true);
-    expect(edge(g, 'North_Sales', 'FS1')?.groupPriority).toBe(1);
+    expect(edge(g, 'North_Sales', 'FS1')?.priority).toBe(1);
     expect(edge(g, 'North_Sales', 'FS2')?.active).toBe(false);
-    expect(edge(g, 'North_Sales', 'FS2')?.inactiveReason).toBe('lower-priority-group');
-    const f = g.findings.find((x) => x.id === 'ROUTES.PRIORITY_ACTIVATION');
+    expect(edge(g, 'North_Sales', 'FS2')?.inactiveReason).toBe('group-standby');
+    expect(edge(g, 'North_Sales', 'South_Sales')?.inactiveReason).toBe('group-standby');
+    /* Which destination ships is documented; the instant it moves is not. */
+    expect(g.findings.find((x) => x.id === 'ROUTES.GROUP_SELECTION')?.basis).toBe('documented');
+    const f = g.findings.find((x) => x.id === 'ROUTES.GROUP_SWITCH_INSTANT');
     expect(f?.basis).toBe('model');
     expect(f?.note ?? '').not.toBe('');
+    expect(g.findings.some((x) => x.id === 'ROUTES.PRIORITY_ACTIVATION')).toBe(false);
   });
 
   it('keeps zero data loss when the first far sync host dies', () => {
@@ -637,10 +653,15 @@ describe('PRIORITY groups and the stood-down destination (Example 4-3)', () => {
     expect(f?.basis).toBe('inferred');
   });
 
-  it('activates the second group when the first destination host dies', () => {
+  it('is one group with a PRIORITY per destination, as 19c Example 4-3 writes it', () => {
+    expect(formatRedoRoutes(member(doc, 'North_Sales').redoRoutes))
+      .toBe('(LOCAL : (Local_Sales SYNC PRIORITY=1, Alternate_Sales SYNC PRIORITY=2))');
+  });
+
+  it('moves to the PRIORITY=2 destination when the first destination host dies', () => {
     const g = graphOf(doc);
     expect(edge(g, 'North_Sales', 'Alternate_Sales')?.inactiveReason)
-      .toBe('lower-priority-group');
+      .toBe('group-standby');
     const t = simulate(doc, p.events());
     expect(t.facts.outcome).toBe('continues');
     expect(t.facts.abortAt).toBe(null);

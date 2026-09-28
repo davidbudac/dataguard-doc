@@ -16,7 +16,8 @@
 import { assertCitesAllowed } from '../citations';
 import type { CitationId } from '../citations';
 import type { MemberId } from '../ids';
-import { resolveRedoGraph } from '../redo/resolve';
+import { isParenthesised } from '../redo/parse';
+import { defaultDestPriority, resolveRedoGraph } from '../redo/resolve';
 import { lagGated } from '../sim/fsfo';
 import { docLater, documented, model } from '../types/claims';
 import type { Member, TopologyDoc } from '../types/topology';
@@ -74,32 +75,35 @@ function roleWord(m: Member, primary: MemberId): string {
  * Which members DGMGRL marks `(alternate of X)` in VERBOSE output.
  *
  * Two spellings reach the same place: the 12.1 `ALT=(...)` form names its
- * alternate outright, and the PRIORITY form of Example 4-3 makes every
- * destination in a higher-numbered priority group the alternate of the group
- * the broker is using -- which is how that example's output reads.
+ * alternate outright, and in the PRIORITY form of 19c Example 4-3 --
+ * `( Local_Sales ASYNC PRIORITY=1, Remote_Sales ASYNC PRIORITY=2 )` -- every
+ * destination of a parenthesised group with a higher PRIORITY number than the
+ * group's best is the alternate of the first destination at that best
+ * priority, which is how that example's output reads. Destinations sharing the
+ * best priority are not marked: what VERBOSE prints for them is not shown in
+ * any example.
  */
 function alternateOf(doc: TopologyDoc): Map<string, string> {
   const out = new Map<string, string>();
-  const nameOfId = (id: MemberId): string => doc.members.find((m) => m.id === id)?.name ?? String(id);
+  const byId = new Map(doc.members.map((m) => [m.id as string, m] as const));
+  const nameOfId = (id: MemberId): string => byId.get(id as string)?.name ?? String(id);
   for (const m of doc.members) {
     for (const r of m.redoRoutes) {
       for (const g of r.groups) {
         for (const d of g.dests) {
           if (d.alt && d.target !== 'ALL') out.set(d.alt.target as string, nameOfId(d.target));
         }
-      }
-      if (r.groups.length < 2) continue;
-      const priorities = r.groups.map((g, i) => ({ i, p: g.priority ?? 8 }));
-      const best = priorities.reduce((a, b) => (b.p < a.p ? b : a));
-      const primaryGroup = r.groups[best.i];
-      const first = primaryGroup?.dests.find((d) => d.target !== 'ALL')?.target;
-      if (first === undefined || first === 'ALL') continue;
-      for (const { i } of priorities) {
-        if (i === best.i) continue;
-        for (const d of r.groups[i]?.dests ?? []) {
-          if (d.target !== 'ALL' && !out.has(d.target as string)) {
-            out.set(d.target as string, nameOfId(first));
-          }
+        if (!isParenthesised(g)) continue;
+        const named = g.dests.flatMap((d) => {
+          if (d.target === 'ALL') return [];
+          const to = byId.get(d.target as string);
+          return to ? [{ id: d.target, p: d.priority ?? defaultDestPriority(to) }] : [];
+        });
+        if (named.length < 2) continue;
+        const best = Math.min(...named.map((x) => x.p));
+        const first = named.find((x) => x.p === best) as { id: MemberId; p: number };
+        for (const x of named) {
+          if (x.p > best && !out.has(x.id as string)) out.set(x.id as string, nameOfId(first.id));
         }
       }
     }

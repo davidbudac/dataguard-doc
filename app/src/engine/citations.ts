@@ -149,6 +149,11 @@ export const CITATIONS = {
     url: U.farSync19, edition: '19c', verified: 'primary',
     quote: 'If the far sync instance fails, then redo should be shipped directly to the terminal standby by adding an additional log archive destination to the primary database, chicago. This does reduce the protection level because redo transmission is then in ASYNC mode instead of SYNC mode.',
   },
+  'FS.HA_PAIR_SAME_PRIORITY': {
+    url: U.farSync19, edition: '19c', verified: 'primary',
+    quote: 'In this case though, the two far sync instances have the same priority and when one takes over for the other it remains the active far sync instance until it fails. To ensure that redo continues to be shipped to the terminal standby database in the event that both far sync instances fail, the terminal standby database is configured as before with PRIORITY=2.',
+    note: 'Far Sync Instance High Availability, before Example 5-4 (chicagoFS and chicagoFS1 at GROUP=1 PRIORITY=1, boston at PRIORITY=2).',
+  },
   'FS.ROUTES_BOTH_DIRECTIONS': {
     url: U.bkr19Members, edition: '19c', verified: 'primary',
     quote: "ADD FAR_SYNC FS2 AS CONNECT IDENTIFIER IS FS2.example.com; EDIT FAR_SYNC 'FS2' SET PROPERTY 'RedoRoutes' = '(South_Sales : North_Sales ASYNC)'; ENABLE FAR_SYNC FS2; EDIT DATABASE 'South_Sales' SET PROPERTY 'RedoRoutes' = '(LOCAL : FS2 SYNC)';",

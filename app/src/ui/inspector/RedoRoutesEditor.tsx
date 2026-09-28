@@ -8,16 +8,19 @@
  * `EDIT DATABASE ... SET PROPERTY RedoRoutes` would be given, and a property
  * pasted from a live configuration comes in without being retyped.
  *
- * Two spellings round-trip, deliberately: the 12.1 `ALT=(... FALLBACK)` form
- * and the 19c/26ai `PRIORITY=n` groups. `GROUP` is not RedoRoutes syntax at
- * all -- it is a `LOG_ARCHIVE_DEST_n` attribute -- so it is not offered here.
+ * The 19c/26ai grammar is edited here: a group in parentheses has one active
+ * redo path, and `PRIORITY=n` belongs to each destination inside it. The
+ * 12.1 `ALT=(... FALLBACK)` form still round-trips, so an old property is not
+ * lost, although 12.2 and later no longer document it. `GROUP` is not
+ * RedoRoutes syntax at all -- it is a `LOG_ARCHIVE_DEST_n` attribute -- so it
+ * is not offered here.
  *
  * An empty rule list is the property at NULL, which at a database means
  * `(LOCAL : ALL)` and at a far sync instance forwards nothing.
  */
 
 import { useState } from 'preact/hooks';
-import { formatRedoRoutes, parseRedoRoutes } from '@/engine';
+import { formatRedoRoutes, isParenthesised, parseRedoRoutes } from '@/engine';
 import type {
   DestGroup, Member, MemberId, RedoRouteRule, RoutePriority, RouteDest, TopologyDoc, XptMode,
 } from '@/engine';
@@ -143,9 +146,14 @@ export function RedoRoutesEditor({ member, doc }: RedoRoutesEditorProps) {
                   i,
                   (r) => ({
                     ...r,
-                    groups: [...r.groups, { dests: [{ target: 'ALL' }], explicitGroup: true }],
+                    groups: [
+                      ...r.groups,
+                      others[0] === undefined
+                        ? { dests: [{ target: 'ALL' }] }
+                        : { dests: [{ target: others[0].id }], explicitGroup: true },
+                    ],
                   }),
-                  `Add a PRIORITY group on ${member.id as string}`,
+                  `Add a RedoRoutes group on ${member.id as string}`,
                 )}
               />
               <Action
@@ -192,32 +200,32 @@ export function RedoRoutesEditor({ member, doc }: RedoRoutesEditorProps) {
 
             {rule.groups.map((g, gi) => (
               <div class="rr-grp" key={`grp-${i}-${gi}`}>
-                <div class="rr-row lrow">
-                  <span class="rr-k lrow-k mono">PRIORITY</span>
-                  <select
-                    class="field-in"
-                    aria-label={`Rule ${i + 1} group ${gi + 1} priority`}
-                    value={g.priority === undefined ? '' : String(g.priority)}
+                <label class="rr-row lrow opt">
+                  <input
+                    type="checkbox"
+                    aria-label={`Rule ${i + 1} group ${gi + 1} in parentheses`}
+                    checked={isParenthesised(g)}
                     onChange={(e) => {
-                      const v = (e.currentTarget as HTMLSelectElement).value;
+                      const on = (e.currentTarget as HTMLInputElement).checked;
                       patchGroup(
                         i, gi,
                         (x) => {
-                          const p = asPriority(v);
-                          const next: DestGroup = { ...x, dests: x.dests };
-                          if (p === undefined) delete next.priority;
-                          else next.priority = p;
-                          next.explicitGroup = p !== undefined || x.explicitGroup === true;
+                          if (on) return { ...x, explicitGroup: true };
+                          /* PRIORITY is written inside the parentheses only. */
+                          const next: DestGroup = {
+                            dests: x.dests.map(({ priority: _p, ...d }) => d),
+                          };
                           return next;
                         },
-                        `Set a RedoRoutes group priority on ${member.id as string}`,
+                        `Set a RedoRoutes group on ${member.id as string}`,
                       );
                     }}
-                  >
-                    <option value="">not set</option>
-                    {PRIORITIES.map((p) => <option key={p} value={String(p)}>{p}</option>)}
-                  </select>
-                </div>
+                  />
+                  <span>
+                    In parentheses: one active redo path, lowest{' '}
+                    <span class="mono">PRIORITY</span> first
+                  </span>
+                </label>
                 <div class="rr-row lrow is-acts">
                   <Action
                     label="+ Destination"
@@ -283,6 +291,34 @@ export function RedoRoutesEditor({ member, doc }: RedoRoutesEditorProps) {
                       <option value="SYNC">SYNC</option>
                       <option value="FASTSYNC">FASTSYNC</option>
                       <option value="ASYNC">ASYNC</option>
+                    </select>
+                    <select
+                      class="field-in"
+                      aria-label={`Rule ${i + 1} destination ${di + 1} priority`}
+                      disabled={d.target === 'ALL'}
+                      value={d.priority === undefined ? '' : String(d.priority)}
+                      onChange={(e) => {
+                        const v = (e.currentTarget as HTMLSelectElement).value;
+                        patchGroup(
+                          i, gi,
+                          (x) => {
+                            const p = asPriority(v);
+                            const dests = x.dests.map((y, j) => {
+                              if (j !== di) return y;
+                              const next: RouteDest = { ...y };
+                              if (p === undefined) delete next.priority;
+                              else next.priority = p;
+                              return next;
+                            });
+                            /* PRIORITY=n needs the parentheses around its group. */
+                            return p === undefined ? { ...x, dests } : { ...x, dests, explicitGroup: true };
+                          },
+                          `Set a RedoRoutes destination priority on ${member.id as string}`,
+                        );
+                      }}
+                    >
+                      <option value="">PRIORITY default</option>
+                      {PRIORITIES.map((p) => <option key={p} value={String(p)}>PRIORITY={p}</option>)}
                     </select>
                     <select
                       class="field-in"

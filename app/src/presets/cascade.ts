@@ -4,7 +4,7 @@
  */
 
 import {
-  database, dest, group, host, hostDown, local, localGroups, observer, to, topology, when,
+  database, dest, group, host, hostDown, local, localGroups, observer, prio, to, topology, when,
 } from './build';
 import type { Preset } from './types';
 import type { TopologyDoc } from '../engine';
@@ -83,14 +83,15 @@ export const cascadeTerminal: Preset = {
   events: () => [hostDown(0, 'dc1-north')],
 };
 
-/* Example 4-3: priority groups, and the stood-down destination that VERBOSE
-   marks "(alternate of Local_Sales)". */
+/* Example 4-3: one group, a PRIORITY per destination -- (LOCAL : (
+   Local_Sales ASYNC PRIORITY=1, Remote_Sales ASYNC PRIORITY=2 )) there -- and
+   the stood-down destination that VERBOSE marks "(alternate of Local_Sales)". */
 function priorityDoc(): TopologyDoc {
   const north = database('North_Sales', ['dc1-north'], 'primary', {
-    redoRoutes: [localGroups(
-      group(1, to('Local_Sales', 'SYNC')),
-      group(2, to('Alternate_Sales', 'SYNC')),
-    )],
+    redoRoutes: [localGroups(group(
+      prio(1, to('Local_Sales', 'SYNC')),
+      prio(2, to('Alternate_Sales', 'SYNC')),
+    ))],
   });
   const localSby = database('Local_Sales', ['dc2-local'], 'physical', { logXptMode: 'SYNC' });
   const altSby = database('Alternate_Sales', ['dc3-alt'], 'physical', {
@@ -123,29 +124,33 @@ export const priorityAlternates: Preset = {
   group: 'Cascading & bystanders',
   source: '19c broker chapter 4, Example 4-3',
   summary:
-    'Two destinations, one at a time. The primary declares them in parenthesised destination '
-    + 'groups with PRIORITY=n, n = 1 to 8, lower number first, and the broker ships to one '
-    + 'group; VERBOSE output marks the destination that is standing by as "(alternate of '
-    + 'Local_Sales)". Two spelling traps live here: GROUP is a LOG_ARCHIVE_DEST_n attribute '
-    + 'and never RedoRoutes syntax, and a member whose MaxFailure property is zero cannot be '
-    + 'part of a RedoRoutes group, which is why both destinations carry a non-zero one. Since '
+    'Two destinations, one at a time. The primary declares both in one parenthesised '
+    + 'destination group, each with its own PRIORITY=n, n = 1 to 8, lower number first; there is '
+    + 'one active redo path for each group, so the broker ships to the usable destination with '
+    + 'the lowest number, and returns to it once it is back. VERBOSE output marks the '
+    + 'destination that is standing by as "(alternate of Local_Sales)". Two spelling traps live '
+    + 'here: GROUP is a LOG_ARCHIVE_DEST_n attribute and never RedoRoutes syntax, and a member '
+    + 'whose MaxFailure property is zero cannot be part of a RedoRoutes group -- inside a group '
+    + 'it defaults to 1, which both destinations carry. Since '
     + 'there is more than one standby, FastStartFailoverTarget has to be set explicitly -- and '
     + 'here it names only the destination that is actually receiving redo. The stood-down one '
-    + 'receives nothing while its group is inactive, and the prerequisite for a fast-start '
+    + 'receives nothing while it stands by, and the prerequisite for a fast-start '
     + 'failover target is that it "must receive redo directly from the primary database", so '
     + 'naming it as a candidate would fail that check; where a configuration really does want '
     + 'two candidates, the broker "selects a target based on the order in which they are '
     + 'specified" -- the order, never the first viable one in the list. The default event '
-    + 'kills the first destination host at t = 0. The primary keeps running and the second '
-    + 'group takes the redo, still SYNC, so the configuration keeps an acknowledgement from a '
-    + 'synchronized standby and maximum availability does not fall back to behaving like '
-    + 'maximum performance mode. Documented too: if the designated fast-start failover target '
-    + 'develops a problem the broker changes the target to one of the other candidate targets. '
-    + 'Which group activates when a group is '
-    + "only partly up, and the instant the target moves, are this page's model.",
+    + 'kills the first destination host at t = 0. The primary keeps running and the PRIORITY=2 '
+    + 'destination takes the redo, still SYNC, so the configuration keeps an acknowledgement '
+    + 'from a synchronized standby and maximum availability does not fall back to behaving '
+    + 'like maximum performance mode. Documented too: if the designated fast-start failover '
+    + 'target develops a problem the broker changes the target to one of the other candidate '
+    + 'targets. Which destination ships is documented; the instant the primary moves to the '
+    + "other one, and the instant the target moves, are this page's model.",
   cite: [
-    'ROUTES.PRIORITY_19C_EX_4_3', 'ROUTES.PRIORITY_26AI', 'DGMGRL.VERBOSE_ALTERNATE',
+    'ROUTES.PRIORITY_19C_EX_4_3', 'ROUTES.PRIORITY_26AI', 'ROUTES.ONE_PATH_PER_GROUP',
+    'ROUTES.PRIORITY_EX1', 'DGMGRL.VERBOSE_ALTERNATE',
     'ROUTES.GROUP_IS_NOT_ROUTES_SYNTAX', 'ROUTES.GROUP_MAXFAILURE_ZERO',
+    'ROUTES.MAXFAILURE_GROUP_DEFAULT',
     'FSFO.TARGET_MUST_BE_EXPLICIT', 'FSFO.TARGET_ORDER', 'FSFO.TARGET_AUTO_CHANGE',
     'FSFO.TARGET_DIRECT_REDO',
     'MAXAVAIL.AT_LEAST_ONE',

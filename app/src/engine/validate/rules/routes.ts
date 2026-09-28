@@ -4,18 +4,27 @@
  * is undocumented rather than forbidden.
  *
  * GROUP never appears here: it is a LOG_ARCHIVE_DEST_n attribute, not
- * RedoRoutes syntax. The parenthesised destination groups the 26ai grammar
- * carries are spelled PRIORITY=n.
+ * RedoRoutes syntax. The parenthesised destination groups the 19c and 26ai
+ * grammar carries give each destination its own PRIORITY=n.
  */
 
-import type { Finding } from '../../types/claims';
+import type { Finding, FindingFix } from '../../types/claims';
 import type { Member, RedoRouteRule } from '../../types/topology';
+import type { MemberId } from '../../ids';
+import { isParenthesised } from '../../redo/parse';
+import { defaultDestProps } from '../../serialize/schema';
 import { isDatabase, isFarSync } from '../../types/topology';
-import type { DeclaredDest, Rule, ValidateContext } from '../context';
+import type { Rule, ValidateContext } from '../context';
 import { mk, q, routeSubject } from '../context';
 
-const sourceKeys = (r: RedoRouteRule): string[] =>
-  r.source === 'LOCAL' || r.source === 'ANY' ? [r.source] : r.source.map((s) => s as string);
+/**
+ * The databases a rule names as its redo source. LOCAL is "an alias for the
+ * local database name", so it names this member -- "either explicitly or
+ * implicitly through use of the LOCAL keyword".
+ */
+const sourceKeys = (r: RedoRouteRule, m: Member): string[] =>
+  r.source === 'LOCAL' ? [m.id as string]
+    : r.source === 'ANY' ? ['ANY'] : r.source.map((s) => s as string);
 
 /** A source may appear in only one rule per member. */
 export const sourceUnique: Rule = (ctx): Finding[] => {
@@ -23,16 +32,19 @@ export const sourceUnique: Rule = (ctx): Finding[] => {
   for (const m of ctx.doc.members) {
     const seen = new Map<string, number>();
     const reported = new Set<string>();
+    const viaLocal = new Set<string>();
     m.redoRoutes.forEach((rule) => {
-      for (const key of sourceKeys(rule)) {
+      for (const key of sourceKeys(rule, m)) {
+        if (rule.source === 'LOCAL') viaLocal.add(key);
         const n = (seen.get(key) ?? 0) + 1;
         seen.set(key, n);
         if (n < 2 || reported.has(key)) continue;
         reported.add(key);
+        const name = key === (m.id as string) ? m.name : key;
         out.push(mk('ROUTES.SOURCE_UNIQUE', {
           subject: routeSubject(m),
-          message: `RedoRoutes on ${q(m.name)} names the redo source ${key} in more than one rule. A source may appear in only one rule per member.`,
-          cite: ['ROUTES.SOURCE_ONCE', 'ROUTES.GRAMMAR_121'],
+          message: `RedoRoutes on ${q(m.name)} names the redo source ${name} in more than one rule${viaLocal.has(key) ? ` (LOCAL is ${m.name} itself)` : ''}. A database cannot be specified as a redo source in more than one redo routing rule defined at a given database, either explicitly or implicitly through use of the LOCAL keyword.`,
+          cite: ['ROUTES.SOURCE_ONCE'],
         }));
       }
     });
@@ -54,21 +66,30 @@ export const localAtFarSync: Rule = (ctx): Finding[] => {
   return out;
 };
 
-/** RedoRoutes cannot be set on a snapshot standby database. */
+/**
+ * A snapshot standby may not forward: "The RedoRoutes property cannot be
+ * configured such that when a physical standby database is converted to a
+ * snapshot standby, the snapshot standby would send redo data to another
+ * member." Receiving is not restricted, and a LOCAL rule sends nothing while
+ * the member is a standby.
+ */
 export const snapshotForbidden: Rule = (ctx): Finding[] => {
   const out: Finding[] = [];
   for (const m of ctx.databases) {
-    if (m.role !== 'snapshot' || m.redoRoutes.length === 0) continue;
+    if (m.role !== 'snapshot') continue;
+    const forwards = ctx.forwardedDests(m);
+    if (forwards.length === 0) continue;
+    const to = [...new Set(forwards.map((d) => d.to.name))];
     out.push(mk('ROUTES.SNAPSHOT_FORBIDDEN', {
       subject: routeSubject(m),
-      message: `RedoRoutes is set on ${q(m.name)}, a snapshot standby database. The property cannot be set on a snapshot standby.`,
-      cite: ['ROUTES.SNAPSHOT_FORBIDDEN'],
+      message: `RedoRoutes on ${q(m.name)}, a snapshot standby database, forwards redo to ${to.map(q).join(', ')}. The property cannot be configured so that a snapshot standby would send redo data to another member; a snapshot standby still receives and archives redo from the primary.`,
+      cite: ['ROUTES.SNAPSHOT_FORBIDDEN', 'ROUTES.SNAPSHOT_RECEIVES_REDO'],
     }));
   }
   return out;
 };
 
-/** A logical standby is documented with LOCAL only -- on a page that argues with itself. */
+/** "The RedoRoutes property can be set for a logical standby database only if the redo source field is set to LOCAL." */
 export const logicalLocalOnly: Rule = (ctx): Finding[] => {
   const out: Finding[] = [];
   for (const m of ctx.databases) {
@@ -76,15 +97,29 @@ export const logicalLocalOnly: Rule = (ctx): Finding[] => {
     if (!m.redoRoutes.some((r) => r.source !== 'LOCAL')) continue;
     out.push(mk('ROUTES.LOGICAL_LOCAL_ONLY', {
       subject: routeSubject(m),
-      message: `RedoRoutes on the logical standby ${q(m.name)} carries a rule whose redo source is not LOCAL. A logical standby is documented as taking RedoRoutes only with LOCAL.`,
-      cite: ['ROUTES.LOGICAL_LOCAL_ONLY', 'ROUTES.GRAMMAR_121'],
-      note: 'The 12.1 broker property page contradicts itself here: the restriction is stated, and the grammar it gives alongside allows a named source at any member. Both readings are carried rather than resolved, which is why this is a warning and not a refusal.',
+      message: `RedoRoutes on the logical standby ${q(m.name)} carries a rule whose redo source field is not LOCAL. The RedoRoutes property can be set for a logical standby database only if the redo source field is set to LOCAL.`,
+      cite: ['ROUTES.LOGICAL_LOCAL_ONLY'],
     }));
   }
   return out;
 };
 
-/** An alternate requires a non-zero MaxFailure on the non-alternate member. */
+/** A fix that sets MaxFailure to 1 for the destination `to` on `from`. */
+const maxFailureFix = (ctx: ValidateContext, from: Member, to: MemberId, toName: string): FindingFix | undefined => {
+  const i = ctx.indexOf(from.id);
+  if (i < 0) return undefined;
+  const path = `/members/${i}/dests/${to as string}`;
+  return {
+    label: `Set MaxFailure for ${toName} to 1`,
+    patch: from.dests[to] !== undefined
+      ? [{ op: 'replace', path: `${path}/maxFailure`, value: 1 }]
+      : [{ op: 'add', path, value: { ...defaultDestProps(), maxFailure: 1 } }],
+  };
+};
+
+const editOf = (m: Member): string => (isFarSync(m) ? 'EDIT FAR_SYNC' : 'EDIT DATABASE');
+
+/** 12.1: an alternate requires a non-zero MaxFailure on the non-alternate member. */
 export const alternateNeedsMaxFailure: Rule = (ctx): Finding[] => {
   const out: Finding[] = [];
   for (const m of ctx.doc.members) {
@@ -93,18 +128,18 @@ export const alternateNeedsMaxFailure: Rule = (ctx): Finding[] => {
       if (!alt || d.fromAll) continue;
       const props = ctx.destPropsFor(m, d.to.id);
       if (props.maxFailure !== 0) continue;
+      const fix = maxFailureFix(ctx, m, d.to.id, d.to.name);
       out.push(mk('ROUTES.ALT_NEEDS_MAXFAILURE', {
         subject: routeSubject(m),
-        message: `RedoRoutes on ${q(m.name)} gives ${q(alt.target as string)} as the alternate of ${q(d.to.name)}, but MaxFailure for ${q(d.to.name)} is 0 (unlimited). An alternate requires a non-zero MaxFailure on the non-alternate member: EDIT DATABASE ${q(m.name)} SET PARAMETER 'LOG_ARCHIVE_DEST_n' MAX_FAILURE.`,
+        message: `RedoRoutes on ${q(m.name)} gives ${q(alt.target as string)} as the alternate of ${q(d.to.name)}, but the MaxFailure property of ${q(d.to.name)} is 0. The non-alternate member must have a non-zero value for its MaxFailure configurable property in order for an alternate to be specified: ${editOf(d.to)} ${q(d.to.name)} SET PROPERTY 'MaxFailure' = 1;`,
         cite: ['ROUTES.ALT_MAXFAILURE', 'ROUTES.GRAMMAR_121'],
+        note: 'The sentence is in the 12.1 broker guide, the only edition that documents the ALT form at all; the 12.2, 19c and 26ai grammar no longer carries ALT, so the precondition is carried over to this configuration rather than stated for it.',
+        ...(fix ? { fix } : {}),
       }));
     }
   }
   return out;
 };
-
-const inExplicitGroup = (d: DeclaredDest): boolean =>
-  d.group.explicitGroup === true || d.group.priority !== undefined;
 
 /** 26ai: a member whose MaxFailure property is zero cannot be part of a RedoRoutes group. */
 export const groupNeedsMaxFailure: Rule = (ctx): Finding[] => {
@@ -113,36 +148,40 @@ export const groupNeedsMaxFailure: Rule = (ctx): Finding[] => {
   const seen = new Set<string>();
   for (const m of ctx.doc.members) {
     for (const d of ctx.declaredDests(m)) {
-      if (!inExplicitGroup(d)) continue;
-      if (ctx.destPropsFor(m, d.to.id).maxFailure !== 0) continue;
+      if (!isParenthesised(d.group) || d.fromAll) continue;
+      /* Untouched, a member in a group has MaxFailure 1: "If the standby
+         database is part of a group as specified with the broker RedoRoutes
+         property, then the default value 1." */
+      if (ctx.destPropsFor(m, d.to.id, true).maxFailure !== 0) continue;
       const key = `${m.id as string}>${d.to.id as string}`;
       if (seen.has(key)) continue;
       seen.add(key);
+      const fix = maxFailureFix(ctx, m, d.to.id, d.to.name);
       out.push(mk('ROUTES.GROUP_NEEDS_MAXFAILURE', {
         subject: routeSubject(m),
-        message: `RedoRoutes on ${q(m.name)} puts ${q(d.to.name)} in a PRIORITY group while its MaxFailure is 0. A member whose MaxFailure property is set to zero cannot be part of a RedoRoutes group.`,
-        cite: ['ROUTES.GROUP_MAXFAILURE_ZERO', 'ROUTES.PRIORITY_26AI'],
-        note: 'The sentence appears on the 26ai RedoRoutes page; 19c is silent about it, so the rule is applied to 26ai configurations only.',
+        message: `RedoRoutes on ${q(m.name)} puts ${q(d.to.name)} in a parenthesised group while its MaxFailure property is set to 0. A member whose MaxFailure property is set to zero cannot be part of a RedoRoutes group; inside a group the property defaults to 1.`,
+        cite: ['ROUTES.GROUP_MAXFAILURE_ZERO', 'ROUTES.MAXFAILURE_GROUP_DEFAULT'],
+        ...(fix ? { fix } : {}),
       }));
     }
   }
   return out;
 };
 
-/** The 26ai grammar carries PRIORITY groups and no ALT/FALLBACK form. */
-export const alternateNotIn26ai: Rule = (ctx): Finding[] => {
-  if (ctx.doc.config.edition !== '26ai') return [];
+/** `ALT=( ... [FALLBACK])` is 12.1 grammar: the 12.2, 19c and 26ai grammar carries PRIORITY instead. */
+export const alternate121Only: Rule = (ctx): Finding[] => {
   const out: Finding[] = [];
   const seen = new Set<string>();
   for (const m of ctx.doc.members) {
     for (const d of ctx.declaredDests(m)) {
       if (!d.dest.alt || seen.has(m.id as string)) continue;
       seen.add(m.id as string);
-      out.push(mk('ROUTES.ALT_NOT_IN_26AI', {
+      const alt = d.dest.alt;
+      out.push(mk('ROUTES.ALT_12_1_ONLY', {
         subject: routeSubject(m),
-        message: `RedoRoutes on ${q(m.name)} uses the ALT form. The 26ai grammar gives parenthesised destination groups with PRIORITY=n, n from 1 to 8, and carries no ALT or FALLBACK form.`,
-        cite: ['ROUTES.PRIORITY_26AI', 'ROUTES.GRAMMAR_121', 'ROUTES.INTRODUCED_121'],
-        note: 'ALT is documented from 12.1.0.2 and the PRIORITY spelling already appears in 19c Example 4-3. Whether 26ai still accepts ALT is not stated on the 26ai page, so this is a warning about a spelling that has disappeared from the grammar rather than a refusal.',
+        message: `RedoRoutes on ${q(m.name)} uses the 12.1 ALT form. The ${ctx.doc.config.edition} grammar has no ALT or FALLBACK: it writes a remote alternate as one parenthesised group with a PRIORITY per destination, as in (LOCAL : (${d.to.name}${d.explicitXpt ? ` ${d.explicitXpt}` : ''} PRIORITY=1, ${alt.target as string}${alt.xpt ? ` ${alt.xpt}` : ''} PRIORITY=2)).`,
+        cite: ['ROUTES.PRIORITY_26AI', 'ROUTES.PRIORITY_19C_EX_4_3', 'ROUTES.GRAMMAR_121', 'ROUTES.INTRODUCED_121'],
+        note: 'ALT and FALLBACK are documented in the 12.1 broker guide only (from 12.1.0.2); the 12.2, 19c and 26ai grammar does not carry them, and 19c Example 4-3 writes the same remote alternate with PRIORITY. No page says whether a later broker still accepts the old spelling, so this is a warning about a form that has left the grammar rather than a refusal.',
       }));
     }
   }
@@ -242,7 +281,7 @@ export const routeCycle: Rule = (ctx): Finding[] =>
 
 export const routeRules: Rule[] = [
   sourceUnique, localAtFarSync, snapshotForbidden, logicalLocalOnly,
-  alternateNeedsMaxFailure, groupNeedsMaxFailure, alternateNotIn26ai,
+  alternateNeedsMaxFailure, groupNeedsMaxFailure, alternate121Only,
   cascadePhysicalOnly, cascadeRealTimeAsync, cascadeFanout, cascadeSyncUndocumented,
   farSyncOnwardSync, routeCycle,
 ];

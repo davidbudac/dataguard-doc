@@ -326,7 +326,7 @@ const edgeOrder = (a: RedoGraph['edges'][number], b: RedoGraph['edges'][number])
   const k2 = `${b.from as string}>${b.to as string}`;
   if (k1 !== k2) return k1 < k2 ? -1 : 1;
   if (a.active !== b.active) return a.active ? -1 : 1;
-  return a.groupPriority - b.groupPriority;
+  return a.priority - b.priority;
 };
 
 /**
@@ -364,11 +364,12 @@ function redoLink(
   if (!e.active) {
     const parts: string[] = [];
     if (e.inactiveReason === 'alternate-standby') parts.push('ALT');
-    if (e.inactiveReason === 'lower-priority-group') parts.push(`PRIORITY ${e.groupPriority}`);
+    if (e.inactiveReason === 'group-standby') parts.push(`PRIORITY ${e.priority}`);
     if (e.inactiveReason === 'max-failure-disabled') parts.push('MaxFailure reached');
     if (parts.length === 0) parts.push('not shipping');
-    const modelled = e.inactiveReason === 'alternate-standby'
-      || e.inactiveReason === 'lower-priority-group';
+    /* Which destination of a group stands by is documented; the 12.1 ALT
+       swap-over point is not. */
+    const modelled = e.inactiveReason === 'alternate-standby';
     return {
       id: `redo:${e.from as string}:${e.to as string}`,
       kind: 'redo',

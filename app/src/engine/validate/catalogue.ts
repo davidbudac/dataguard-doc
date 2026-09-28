@@ -92,7 +92,7 @@ export const RULE_CATALOGUE = {
   },
   'ROUTES.SOURCE_UNIQUE': {
     severity: 'error', basis: 'documented',
-    summary: 'A source may appear in only one rule per member (A5).',
+    summary: 'A database may be a redo source in only one rule per member, LOCAL counting as the local database (A5).',
   },
   'ROUTES.LOCAL_AT_FARSYNC': {
     severity: 'error', basis: 'documented',
@@ -100,23 +100,23 @@ export const RULE_CATALOGUE = {
   },
   'ROUTES.SNAPSHOT_FORBIDDEN': {
     severity: 'error', basis: 'documented',
-    summary: 'RedoRoutes cannot be set on a snapshot standby database (A5).',
+    summary: 'RedoRoutes cannot be configured so that a snapshot standby would send redo to another member; receiving is not restricted (A5).',
   },
   'ROUTES.LOGICAL_LOCAL_ONLY': {
-    severity: 'warning', basis: 'conflict',
-    summary: 'A logical standby is documented with LOCAL only, on a page that contradicts itself (A5).',
+    severity: 'warning', basis: 'documented',
+    summary: 'RedoRoutes can be set for a logical standby only if the redo source field is LOCAL (A5, 19c and 26ai).',
   },
   'ROUTES.ALT_NEEDS_MAXFAILURE': {
-    severity: 'error', basis: 'documented',
-    summary: 'An alternate requires a non-zero MaxFailure on the non-alternate member (A5).',
+    severity: 'error', basis: 'inferred',
+    summary: '12.1: an alternate requires a non-zero MaxFailure property on the non-alternate member; carried over, since only 12.1 documents ALT (A5).',
   },
   'ROUTES.GROUP_NEEDS_MAXFAILURE': {
-    severity: 'error', basis: 'doc-later', edition26aiOnly: true,
-    summary: '26ai: a member whose MaxFailure property is set to zero cannot be part of a RedoRoutes group.',
+    severity: 'error', basis: 'documented', edition26aiOnly: true,
+    summary: '26ai: a member whose MaxFailure property is set to zero cannot be part of a RedoRoutes group (the property defaults to 1 there).',
   },
-  'ROUTES.ALT_NOT_IN_26AI': {
-    severity: 'warning', basis: 'doc-later', edition26aiOnly: true,
-    summary: 'The 26ai grammar carries PRIORITY groups and no ALT/FALLBACK form.',
+  'ROUTES.ALT_12_1_ONLY': {
+    severity: 'warning', basis: 'documented',
+    summary: 'ALT=( ... FALLBACK) is 12.1 grammar; the 12.2, 19c and 26ai grammar writes PRIORITY per destination instead.',
   },
   'ROUTES.CASCADE_PHYSICAL_ONLY': {
     severity: 'error', basis: 'documented',

@@ -51,10 +51,13 @@ const altRoutes = () => [rule('LOCAL', [{
 
 const priorityRoutes = () => [{
   source: 'LOCAL' as const,
-  groups: [
-    { priority: 1 as const, dests: [{ target: M('sby01'), xpt: 'SYNC' as const }], explicitGroup: true },
-    { priority: 2 as const, dests: [{ target: M('sby02'), xpt: 'ASYNC' as const }], explicitGroup: true },
-  ],
+  groups: [{
+    dests: [
+      { target: M('sby01'), xpt: 'SYNC' as const, priority: 1 as const },
+      { target: M('sby02'), xpt: 'ASYNC' as const, priority: 2 as const },
+    ],
+    explicitGroup: true,
+  }],
 }];
 
 /** A RAC cluster with a third node the observer would sit on. */
@@ -241,11 +244,11 @@ const CASES: Case[] = [
   },
   {
     id: 'ROUTES.SOURCE_UNIQUE',
-    fires: 'LOCAL appears in two rules on one member',
+    fires: 'a rule sourced at LOCAL and one naming the member itself -- LOCAL is the local database',
     quiet: 'the second rule names a different source',
     trigger: () => withRoutes(baseDoc(), 'prm01', [
       rule('LOCAL', [{ target: M('sby01'), xpt: 'SYNC' }]),
-      rule('LOCAL', [{ target: M('sby01'), xpt: 'ASYNC' }]),
+      rule([M('prm01')], [{ target: M('sby01'), xpt: 'ASYNC' }]),
     ]),
     silent: () => withRoutes(baseDoc(), 'prm01', [
       rule('LOCAL', [{ target: M('sby01'), xpt: 'SYNC' }]),
@@ -261,18 +264,20 @@ const CASES: Case[] = [
   },
   {
     id: 'ROUTES.SNAPSHOT_FORBIDDEN',
-    fires: 'RedoRoutes is set on a snapshot standby',
-    quiet: 'the snapshot standby leaves the property NULL',
+    fires: 'a snapshot standby carries a rule that would forward redo to another member',
+    quiet: 'the snapshot standby carries only a LOCAL rule, which sends nothing while it is a standby',
     trigger: () => {
-      const d = baseDoc({ fsfo: 'disabled' });
-      const sby = dbOf(d, 'sby01');
+      const d = twoStandbyDoc({ targets: [M('sby01')] });
+      const sby = dbOf(d, 'sby02');
       sby.role = 'snapshot';
-      sby.redoRoutes = [rule('LOCAL', [{ target: 'ALL' }])];
+      sby.redoRoutes = [rule([M('prm01')], [{ target: M('sby01'), xpt: 'ASYNC' }])];
       return d;
     },
     silent: () => {
       const d = baseDoc({ fsfo: 'disabled' });
-      dbOf(d, 'sby01').role = 'snapshot';
+      const sby = dbOf(d, 'sby01');
+      sby.role = 'snapshot';
+      sby.redoRoutes = [rule('LOCAL', [{ target: 'ALL' }])];
       return d;
     },
   },
@@ -304,12 +309,13 @@ const CASES: Case[] = [
   },
   {
     id: 'ROUTES.GROUP_NEEDS_MAXFAILURE',
-    fires: '26ai, a PRIORITY group holding a member whose MaxFailure is 0',
+    fires: '26ai, a PRIORITY group holding a member whose MaxFailure is set to 0',
     quiet: 'the same group with MaxFailure at 2',
     trigger: () => {
       const d = twoStandbyDoc();
       d.config.edition = '26ai';
       memberOf(d, 'prm01').redoRoutes = priorityRoutes();
+      setDest(d, 'prm01', 'sby01', { maxFailure: 0 });
       return d;
     },
     silent: () => {
@@ -322,15 +328,17 @@ const CASES: Case[] = [
     },
   },
   {
-    id: 'ROUTES.ALT_NOT_IN_26AI',
-    fires: '26ai with an ALT destination',
-    quiet: 'the same rule under 19c',
-    trigger: () => {
-      const d = withRoutes(twoStandbyDoc(), 'prm01', altRoutes());
-      d.config.edition = '26ai';
+    id: 'ROUTES.ALT_12_1_ONLY',
+    fires: 'an ALT destination, under 19c as under 26ai',
+    quiet: 'the same remote alternate written with PRIORITY',
+    trigger: () => withRoutes(twoStandbyDoc(), 'prm01', altRoutes()),
+    silent: () => {
+      const d = twoStandbyDoc();
+      memberOf(d, 'prm01').redoRoutes = priorityRoutes();
+      setDest(d, 'prm01', 'sby01', { maxFailure: 1 });
+      setDest(d, 'prm01', 'sby02', { maxFailure: 1 });
       return d;
     },
-    silent: () => withRoutes(twoStandbyDoc(), 'prm01', altRoutes()),
   },
   {
     id: 'ROUTES.CASCADE_PHYSICAL_ONLY',
