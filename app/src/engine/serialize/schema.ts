@@ -165,11 +165,24 @@ export function defaultEnvironment(): EnvironmentParams {
   };
 }
 
-export function defaultDestProps(): DestProps {
+/**
+ * MaxFailure's broker default inside a RedoRoutes group: "If the standby
+ * database is part of a group as specified with the broker RedoRoutes
+ * property, then the default value 1. Otherwise, the default value is 0."
+ * (19c and 26ai property pages alike.)
+ */
+export const MAX_FAILURE_IN_GROUP_DEFAULT = 1;
+
+/**
+ * The broker defaults for a destination that has no properties of its own.
+ * `inGroup` is true when the destination is written inside a parenthesised
+ * RedoRoutes group, where MaxFailure defaults to 1 instead of 0.
+ */
+export function defaultDestProps(opts: { inGroup?: boolean } = {}): DestProps {
   return {
     netTimeoutSeconds: BOUNDS.netTimeoutSeconds.default,
     reopenSeconds: BOUNDS.reopenSeconds.default,
-    maxFailure: BOUNDS.maxFailure.default,
+    maxFailure: opts.inGroup === true ? MAX_FAILURE_IN_GROUP_DEFAULT : BOUNDS.maxFailure.default,
   };
 }
 
@@ -375,8 +388,16 @@ function parseRoutePriority(c: Ctx, v: unknown, path: string): RoutePriority | u
   return n as RoutePriority;
 }
 
+/** A group as it was read, before the old PRIORITY-on-the-group shape is migrated. */
+interface RawGroup {
+  dests: RouteDest[];
+  explicitGroup: boolean;
+  /** The pre-2026-09-28 shape put PRIORITY on the group. */
+  groupPriority?: RoutePriority;
+}
+
 function parseRedoRoutes(
-  c: Ctx, raw: unknown, path: string,
+  c: Ctx, raw: unknown, path: string, senderIsFarSync: boolean,
 ): RedoRouteRule[] {
   const out: RedoRouteRule[] = [];
   asArray(raw).forEach((v, i) => {
@@ -389,7 +410,7 @@ function parseRedoRoutes(
       if (source.length === 0) { c.repaired(`${path}[${i}].source`, 'empty source; dropped'); return; }
     } else { c.repaired(`${path}[${i}].source`, 'missing; dropped'); return; }
 
-    const groups: DestGroup[] = [];
+    const raws: RawGroup[] = [];
     asArray(v['groups']).forEach((gv, gi) => {
       if (!isObj(gv)) { c.repaired(`${path}[${i}].groups[${gi}]`, 'not an object; dropped'); return; }
       const dests: RouteDest[] = [];
@@ -404,6 +425,8 @@ function parseRedoRoutes(
         if (typeof dv['xpt'] === 'string' && (XPT_MODES as string[]).includes(dv['xpt'])) {
           d.xpt = dv['xpt'] as XptMode;
         }
+        const dp = parseRoutePriority(c, dv['priority'], `${dpath}.priority`);
+        if (dp !== undefined) d.priority = dp;
         const alt = dv['alt'];
         if (isObj(alt) && typeof alt['target'] === 'string') {
           d.alt = { target: memberId(alt['target']) };
@@ -415,15 +438,69 @@ function parseRedoRoutes(
         dests.push(d);
       });
       if (dests.length === 0) return;
-      const group: DestGroup = { dests };
+      const rg: RawGroup = { dests, explicitGroup: gv['explicitGroup'] === true };
       const p = parseRoutePriority(c, gv['priority'], `${path}[${i}].groups[${gi}].priority`);
-      if (p !== undefined) group.priority = p;
-      if (gv['explicitGroup'] === true) group.explicitGroup = true;
-      groups.push(group);
+      if (p !== undefined) rg.groupPriority = p;
+      raws.push(rg);
     });
-    if (groups.length === 0) { c.repaired(`${path}[${i}].groups`, 'no destinations; rule dropped'); return; }
+    if (raws.length === 0) { c.repaired(`${path}[${i}].groups`, 'no destinations; rule dropped'); return; }
+    const groups = raws.some((g) => g.groupPriority !== undefined)
+      ? migrateGroupPriority(c, raws, `${path}[${i}].groups`, senderIsFarSync)
+      : raws.map((g) => (g.explicitGroup ? { dests: g.dests, explicitGroup: true } : { dests: g.dests }));
     out.push({ source, groups });
   });
+  return out;
+}
+
+/**
+ * Documents, share links and workspaces saved before 2026-09-28 put PRIORITY
+ * on a parenthesised group and drew exactly one group at a time: the lowest
+ * priority number (the SENDER's kind deciding the default), with every
+ * destination in it shipping. Oracle's grammar puts PRIORITY on a destination
+ * and has one active path per group, so the rule migrates to what its author
+ * saw on screen:
+ *
+ *  - several groups, one active at a time, become ONE group whose destinations
+ *    carry their old group's priority: `(A PRIORITY=1), (B PRIORITY=2)` was
+ *    drawn "A, else B" and becomes `(A PRIORITY=1, B PRIORITY=2)`;
+ *  - a group of several destinations shipped to all of them, which the new
+ *    grammar says with PRIORITY=8 -- possible where that group was the last
+ *    resort (or the only group); elsewhere it cannot be said exactly, and the
+ *    migration reports it;
+ *  - ALL is never inside a group and stays a path of its own.
+ */
+function migrateGroupPriority(
+  c: Ctx, raws: readonly RawGroup[], path: string, senderIsFarSync: boolean,
+): DestGroup[] {
+  const senderDefault: RoutePriority = senderIsFarSync ? 1 : 8;
+  const withAll = raws.filter((g) => g.dests.some((d) => d.target === 'ALL'));
+  const named = raws.filter((g) => !withAll.includes(g));
+  const prio = (g: RawGroup): RoutePriority => g.groupPriority ?? senderDefault;
+  const last = named.length > 0 ? Math.max(...named.map(prio)) : 8;
+  const lastCount = named.filter((g) => prio(g) === last).length;
+  let exact = true;
+  const dests: RouteDest[] = [];
+  for (const g of named) {
+    const several = g.dests.length > 1;
+    const allAtOnce = several && (named.length === 1 || (prio(g) === last && lastCount === 1));
+    if (several && !allAtOnce) exact = false;
+    const p: RoutePriority = allAtOnce ? 8 : prio(g);
+    for (const d of g.dests) dests.push({ ...d, priority: p });
+  }
+  const tied = new Set<number>();
+  for (const g of named) {
+    /* Two old groups at 8 took turns; two destinations at 8 ship together. */
+    if (tied.has(prio(g)) && prio(g) === 8) exact = false;
+    tied.add(prio(g));
+  }
+  const out: DestGroup[] = [];
+  if (dests.length > 0) out.push({ dests, explicitGroup: true });
+  for (const g of withAll) {
+    out.push({ dests: g.dests.map(({ priority: _p, ...d }) => d) });
+  }
+  c.repaired(path, exact
+    ? 'PRIORITY was saved on the group (the pre-2026-09-28 reading); migrated to one group with PRIORITY on each destination, which ships where the old drawing did'
+    : 'PRIORITY was saved on the group (the pre-2026-09-28 reading); migrated to one group with PRIORITY on each destination, but the old drawing shipped to every destination of a group at once and RedoRoutes ships to one per group, so this rule now ships to fewer destinations than it was drawn with');
   return out;
 }
 
@@ -461,7 +538,7 @@ function parseMembers(c: Ctx, raw: unknown, hostIds: ReadonlySet<string>): Membe
       connectIdentifier: c.str(v['connectIdentifier'], `members[${i}].connectIdentifier`, name, 256),
       enabled: c.bool(v['enabled'], `members[${i}].enabled`, true),
       dests: parseDests(c, v['dests'], `members[${i}].dests`),
-      redoRoutes: parseRedoRoutes(c, v['redoRoutes'], `members[${i}].redoRoutes`),
+      redoRoutes: parseRedoRoutes(c, v['redoRoutes'], `members[${i}].redoRoutes`, kind === 'farsync'),
       ...(v['routesObserved'] === true ? { routesObserved: true as const } : {}),
       logXptMode: c.oneOf(v['logXptMode'], `members[${i}].logXptMode`, XPT_MODES, 'ASYNC'),
     };

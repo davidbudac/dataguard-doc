@@ -89,10 +89,12 @@ export type {
   FormatOptions, RedoRoutesDialect, RedoRoutesParseError, RedoRoutesParseResult,
 } from './redo/parse';
 export {
-  formatRedoRoutes, formatRedoRule, parseRedoRoutes, parseRedoRoutesOrThrow,
+  formatRedoRoutes, formatRedoRule, isParenthesised, parseRedoRoutes, parseRedoRoutesOrThrow,
 } from './redo/parse';
 export type { ResolveOptions } from './redo/resolve';
-export { activeRule, defaultGroupPriority, destKey, resolveRedoGraph } from './redo/resolve';
+export {
+  activeRule, defaultDestPriority, destKey, expandAll, groupKey, resolveRedoGraph,
+} from './redo/resolve';
 
 /* axes */
 export type { AxisSpec, CommitAxisSpec } from './models/axis';

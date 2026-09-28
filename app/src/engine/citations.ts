@@ -240,6 +240,50 @@ export const CITATIONS = {
     quote: "EDIT DATABASE 'North_Sales' SET PROPERTY 'RedoRoutes' = '(LOCAL : FS1 SYNC)'; EDIT FAR_SYNC 'FS1' SET PROPERTY 'RedoRoutes' = '(North_Sales : South_Sales ASYNC)';",
   },
 
+  'ROUTES.ONE_PATH_PER_GROUP': {
+    url: U.bkr19Props, edition: '19c', verified: 'primary',
+    quote: 'The general rule is that there is one active redo path for each group.',
+    note: 'Redo Routing Rules, Example 3 (two groups: the primary ships to one member of each). The 26ai redo-routing-rules page repeats it word for word.',
+  },
+  'ROUTES.PRIORITY_EX1': {
+    url: U.bkr19Props, edition: '19c', verified: 'primary',
+    quote: 'If FS1 is available, then the primary ships to FS1 which has PRIORITY=1. If FS1 is unavailable, then the primary ships to SB1 which has PRIORITY=2. When FS1 becomes active again, the primary will ship to it again because priority 1 is higher than priority 2.',
+    note: "Redo Routing Rules, Example 1, for PRI's (local : ( FS1 PRIORITY=1, SB1 PRIORITY=2 ) ). Identical on the 26ai redo-routing-rules page.",
+  },
+  'ROUTES.PRIORITY_EX2_STICKY': {
+    url: U.bkr19Props, edition: '19c', verified: 'primary',
+    quote: 'Even after FS1 becomes active again, the primary continues shipping to FS2 because FS1 and FS2 have the same priority. If FS2 fails, then the primary ships to FS1.',
+    note: 'Redo Routing Rules, Example 2, for (local : ( FS1 PRIORITY=1, FS2 PRIORITY=1 ) ): among equal priorities the choice is sticky. Identical on the 26ai page.',
+  },
+  'ROUTES.PRIORITY_8': {
+    url: U.bkr19Props, edition: '19c', verified: 'primary',
+    quote: 'Setting PRIORITY=8 has special meaning. If a primary ships redo to a destination with PRIORITY=8, then it must ship to every PRIORITY=8 destination.',
+    note: 'Redo Routing Rules, Example 4. Identical on the 26ai page.',
+  },
+  'ROUTES.ALL_ALIAS': {
+    url: U.bkr19Props, edition: '19c', verified: 'primary',
+    quote: 'The ALL keyword is an alias for all possible destinations in the configuration.',
+  },
+  'ROUTES.ANY_ALIAS': {
+    url: U.bkr19Props, edition: '19c', verified: 'primary',
+    quote: 'The ANY keyword is an alias for any database in the configuration.',
+  },
+  'ROUTES.SNAPSHOT_RECEIVES_REDO': {
+    url: U.bkr19Members, edition: '19c', verified: 'primary',
+    quote: 'Like a physical or logical standby database, a snapshot standby database receives and archives redo data from a primary database.',
+    note: 'Why ALL includes a snapshot standby: only a snapshot standby forwarding redo is restricted (ROUTES.SNAPSHOT_FORBIDDEN).',
+  },
+  'ROUTES.FALLBACK_121': {
+    url: U.bkr121Props, edition: '12.1', verified: 'cross-edition',
+    quote: 'The optional FALLBACK keyword is used to specify that redo transport to the non-alternate member should be resumed if it becomes available. Oracle recommends that you use the FALLBACK keyword. If you omit it and the ALTERNATE redo destination subsequently fails, no redo will be shipped to the terminal standby databases serviced by the alternate destination.',
+    note: "The 12.1 broker chapter 4 (Advanced Redo Transport Settings). Its Example 4-3 adds: 'If it is not set and the connection to Remote_Sales fails, then redo will not be sent to either Local_Sales or Remote_Sales even if Local_Sales becomes operational again.' The ALT/FALLBACK form is absent from the 12.2, 19c and 26ai grammar, where 19c Example 4-3 writes the same remote alternate with PRIORITY.",
+  },
+  'ROUTES.MAXFAILURE_GROUP_DEFAULT': {
+    url: U.bkr19Props, edition: '19c', verified: 'primary',
+    quote: 'If the standby database is part of a group as specified with the broker RedoRoutes property, then the default value 1. Otherwise, the default value is 0.',
+    note: 'The MaxFailure property row, Broker default. The 26ai maxfailure.html page carries the same sentence. A default, not the semantics of the count: those live on the sbydb LOG_ARCHIVE_DEST_n attributes page.',
+  },
+
   /* ---------------- A6 / C1. Fast-start failover targets ---------------- */
   'FSFO.TARGET_NOT_FARSYNC': {
     url: U.bkr19Switch, edition: '19c', verified: 'primary',
@@ -651,6 +695,17 @@ export const CITATIONS = {
     url: U.sbyDestAttrs, edition: '19c', verified: 'primary',
     quote: 'For redo destinations that use the new GROUP and PRIORITY attributes, if the error count reaches the value specified for the MAX_FAILURE attribute, then the destination enters the ERROR state where it remains until it is found to be accessible.',
     note: 'Usage Notes for MAX_FAILURE in Oracle Database 12c Release 2 (12.2). The one documented exception to the manual-reenable rule.',
+  },
+  'DEST.MAX_FAILURE_DISABLED_19C': {
+    url: U.sbyDestAttrs, edition: '19c', verified: 'primary',
+    quote: 'For log archive destinations not configured as a preferred alternate, if the error count reaches the value specified for the MAX_FAILURE attribute, then the destination is disabled and there is no further access until the destination is manually reenabled.',
+    note: 'Usage Notes for MAX_FAILURE in Oracle Database 12c Release 1 (12.1), which the 19c page keeps, together with the 12.2 exception for GROUP and PRIORITY destinations (DEST.GROUP_PRIORITY_REENTER).',
+  },
+  'DEST.MAX_FAILURE_26AI': {
+    url: 'https://docs.oracle.com/en/database/oracle/oracle-database/26/sbydb/LOG_ARCHIVE_DEST_n-parameter-attributes.html',
+    edition: '26ai', verified: 'primary',
+    quote: 'If MAX_FAILURE is set to 1, no attempts are made to reactivate this archive destination when it fails. If MAX_FAILURE > 1, reactivation attempts are made until the number of consecutive failures is equal to the value of MAX_FAILURE. After this number is reached, no further attempts are made to reactivate the archive destination. If MAX_FAILURE is 0, reactivation attempts are continuous.',
+    note: "Usage Notes for MAX_FAILURE, 'Standalone archive destination, with no alternate location set' -- three list items, joined here. The initial failure counts: MAX_FAILURE=1 is no retry at all, 2 is one retry. The 26ai page also says 'All archive destinations in the group must have MAX_FAILURE attribute set to a non-zero value.' The 19c page keeps the older wording (DEST.MAX_FAILURE_DISABLED_19C).",
   },
   'DEST.DEPRECATED_19C': {
     url: U.bkr19Changes, edition: '19c', verified: 'primary',

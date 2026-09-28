@@ -5,9 +5,13 @@
  * are active, which destinations they feed, what transport each hop uses, who
  * is reachable from the primary and what the resulting protection level is.
  *
- * Everything the docs do not state outright comes back as a Claim or a Finding
- * with a model label: the priority-group activation rule, what SYNCHRONIZED
- * means across a far sync hop, and the semantics of an ANY source.
+ * Which destination of a parenthesised group carries the redo is documented
+ * (Examples 1-4 of the Redo Routing Rules: one active path per group, lowest
+ * PRIORITY number first, sticky among equals, every PRIORITY=8 destination at
+ * once). Everything the docs do not state outright comes back as a Claim or a
+ * Finding with a model label: the instant the primary moves within a group,
+ * what SYNCHRONIZED means across a far sync hop, and what a far sync with a
+ * NULL property forwards.
  */
 
 import type { MemberId } from '../ids';
@@ -16,6 +20,7 @@ import { documented, inferred, model } from '../types/claims';
 import type {
   DestGroup, Member, ProtectionMode, RedoRouteRule, RouteDest, TopologyDoc, XptMode,
 } from '../types/topology';
+import { isParenthesised } from './parse';
 import { isDatabase, isFarSync } from '../types/topology';
 import type {
   EdgeInactiveReason, EdgeRole, ProtectionLevel, RedoEdge, RedoGraph, ResolvedMember,
@@ -33,10 +38,23 @@ export interface ResolveOptions {
   disabledDests?: ReadonlySet<string>;
   /** Destination keys already latched onto their alternate in an earlier epoch. */
   altLatched?: ReadonlySet<string>;
+  /**
+   * The destination each parenthesised group (keyed by `groupKey`) was
+   * shipping to in the previous epoch. Among destinations of equal priority
+   * the primary stays where it is: "Even after FS1 becomes active again, the
+   * primary continues shipping to FS2 because FS1 and FS2 have the same
+   * priority." The simulation carries it between epochs, as it does
+   * `altLatched`; without it the first listed destination is the choice.
+   */
+  groupChoice?: Readonly<Record<string, MemberId>>;
 }
 
-/** Group priority default: 1 for far sync members, 8 otherwise. */
-export const defaultGroupPriority = (m: Member): number => (isFarSync(m) ? 1 : 8);
+/** PRIORITY=n default, from the kind of the DESTINATION: 1 for a far sync member, 8 otherwise. */
+export const defaultDestPriority = (receiver: Member): number => (isFarSync(receiver) ? 1 : 8);
+
+/** One parenthesised group of one rule at one member. */
+export const groupKey = (from: MemberId, ruleIndex: number, groupIndex: number): string =>
+  `${from as string}|${ruleIndex}|${groupIndex}`;
 
 /** The rule whose source names the current primary, or undefined. */
 export function activeRule(
@@ -50,9 +68,15 @@ export function activeRule(
   return undefined;
 }
 
+/**
+ * "A redo routing rule is active if its redo source field specifies the
+ * current primary database." LOCAL is the local database; "The ANY keyword is
+ * an alias for any database in the configuration", so an ANY rule is active
+ * whoever is primary -- this member included.
+ */
 function ruleIsActive(r: RedoRouteRule, m: Member, primary: MemberId): boolean {
   if (r.source === 'LOCAL') return m.id === primary;
-  if (r.source === 'ANY') return m.id !== primary;
+  if (r.source === 'ANY') return true;
   return r.source.includes(primary);
 }
 
@@ -68,15 +92,16 @@ function defaultRules(m: Member): RedoRouteRule[] {
 const enabledMembers = (doc: TopologyDoc): Member[] => doc.members.filter((m) => m.enabled);
 
 /**
- * ALL is every other enabled member except snapshot standbys, and except the
- * current primary: RedoRoutes cannot be set on a snapshot standby, and redo
- * travelling back to its own source is not a destination. Both are inferences
- * from the grammar rather than sentences of their own.
+ * "The ALL keyword is an alias for all possible destinations in the
+ * configuration": every other enabled member, snapshot standbys included --
+ * "Like a physical or logical standby database, a snapshot standby database
+ * receives and archives redo data from a primary database." The current
+ * primary is left out: redo travelling back to its own source is not a
+ * destination, which is an inference from the grammar rather than a sentence.
  */
-function expandAll(doc: TopologyDoc, from: MemberId, primary: MemberId): MemberId[] {
+export function expandAll(doc: TopologyDoc, from: MemberId, primary: MemberId): MemberId[] {
   return enabledMembers(doc)
     .filter((m) => m.id !== from && m.id !== primary)
-    .filter((m) => !(isDatabase(m) && m.role === 'snapshot'))
     .map((m) => m.id);
 }
 
@@ -84,9 +109,15 @@ interface CandidateDest {
   to: MemberId;
   xpt: XptMode;
   xptSource: 'rule-attribute' | 'dest-logxptmode';
+  /** PRIORITY=n as written, else the destination-kind default. */
+  priority: number;
   viaAlternate: boolean;
   /** The named destination an active alternate is standing in for. */
   supersededByAlternate?: boolean;
+  /** Came from ALL, which is never inside a group: always its own path. */
+  fromAll?: boolean;
+  /** Disabled at MaxFailure and not brought back by FALLBACK. */
+  disabled: boolean;
 }
 
 export function resolveRedoGraph(doc: TopologyDoc, opts: ResolveOptions): RedoGraph {
@@ -108,6 +139,7 @@ export function resolveRedoGraph(doc: TopologyDoc, opts: ResolveOptions): RedoGr
     memberAlive(doc, net, a) && memberAlive(doc, net, b) && membersReachable(doc, net, a, b, reach);
 
   const edges: RedoEdge[] = [];
+  const groupChoice: Record<string, MemberId> = {};
 
   for (const sender of enabledMembers(doc)) {
     if (isFarSync(sender) && sender.redoRoutes.length === 0 && !sender.routesObserved) {
@@ -123,36 +155,77 @@ export function resolveRedoGraph(doc: TopologyDoc, opts: ResolveOptions): RedoGr
     if (!act) continue;
     if (act.rule.source === 'ANY') {
       addFinding({
-        id: 'ROUTES.ANY_SEMANTICS', severity: 'info', basis: 'model', cite: ['ROUTES.RULE_ACTIVE'],
+        id: 'ROUTES.ANY_SEMANTICS', severity: 'info', basis: 'documented',
+        cite: ['ROUTES.ANY_ALIAS', 'ROUTES.RULE_ACTIVE'],
         subject: { kind: 'route', id: sender.id as string },
-        message: `The ANY source on ${sender.name} is read as "active whenever this member is not the primary".`,
-        note: "The documentation says a rule is active when its source names the current primary; how ANY behaves at the member that IS primary is not stated, so this reading is this page's model.",
+        message: `The ANY source on ${sender.name} names any database in the configuration, so the rule is active whichever database is primary -- ${sender.name} included.`,
       });
     }
 
-    /* Candidate destinations per group, with the alternate resolved. */
     const groups = act.rule.groups;
-    const groupCandidates: CandidateDest[][] = groups.map((g) =>
-      candidatesFor(doc, net, primary, sender, g, byId, opts, addFinding));
-
-    const chosen = chooseGroup(groups, groupCandidates, sender, byId, doc, net, reach);
-
     groups.forEach((g, gi) => {
-      const priority = g.priority ?? defaultGroupPriority(sender);
-      const cands = groupCandidates[gi] ?? [];
+      const cands = candidatesFor(doc, net, primary, sender, g, byId, opts, addFinding);
+      const receiverOf = (c: CandidateDest): Member | undefined => byId.get(c.to as string);
+      const usable = (c: CandidateDest): boolean => {
+        const r = receiverOf(c);
+        return !!r && !c.disabled && linkUp(sender, r);
+      };
+
+      /* Which candidates carry redo. Unparenthesised destinations, ALL and
+         the alternate pairs are each a path of their own; a parenthesised
+         group has one active path, chosen by PRIORITY. */
+      const chosen = new Set<CandidateDest>();
+      const slots = cands.filter((c) => !c.supersededByAlternate && !c.fromAll);
+      if (!isParenthesised(g)) {
+        for (const c of slots) chosen.add(c);
+      } else if (slots.length > 0) {
+        const key = groupKey(sender.id, act.index, gi);
+        const live = slots.filter(usable);
+        const pool = live.length > 0 ? live : slots.filter((c) => !c.disabled);
+        const from = pool.length > 0 ? pool : slots;
+        const best = Math.min(...from.map((c) => c.priority));
+        if (best === 8) {
+          /* "If a primary ships redo to a destination with PRIORITY=8, then
+             it must ship to every PRIORITY=8 destination." */
+          for (const c of slots) if (c.priority === 8 && !c.disabled) chosen.add(c);
+          if (chosen.size === 0) for (const c of from) if (c.priority === 8) chosen.add(c);
+        } else {
+          const top = from.filter((c) => c.priority === best);
+          const prev = opts.groupChoice?.[key];
+          const pick = top.find((c) => c.to === prev) ?? top[0] as CandidateDest;
+          chosen.add(pick);
+          if (usable(pick)) groupChoice[key] = pick.to;
+        }
+        if (slots.length > 1) {
+          addFinding({
+            id: 'ROUTES.GROUP_SELECTION', severity: 'info', basis: 'documented',
+            cite: ['ROUTES.ONE_PATH_PER_GROUP', 'ROUTES.PRIORITY_EX1', 'ROUTES.PRIORITY_EX2_STICKY', 'ROUTES.PRIORITY_8', 'ROUTES.PRIORITY_26AI'],
+            subject: { kind: 'route', id: sender.id as string },
+            message: `Each parenthesised group on ${sender.name} has one active redo path: the usable destination with the lowest PRIORITY number (1 for a far sync destination and 8 otherwise when none is written); among equal priorities the primary stays where it is, and when 8 is the best on offer every PRIORITY=8 destination is shipped to.`,
+          });
+          addFinding({
+            id: 'ROUTES.GROUP_SWITCH_INSTANT', severity: 'info', basis: 'model',
+            cite: ['ROUTES.PRIORITY_EX1', 'DEST.GROUP_PRIORITY_REENTER'],
+            subject: { kind: 'route', id: sender.id as string },
+            message: `${sender.name} moves to the next destination of a group in the same epoch the active one becomes unreachable, and back as soon as a better one is usable again.`,
+            note: 'Which destination of a group is shipped to is documented; the instant the primary moves -- after how many failed attempts, and how soon it notices a higher priority destination is back -- is not stated in the RedoRoutes examples, so the switching point here is this page\'s model.',
+          });
+        }
+      }
+
       for (const c of cands) {
-        const receiver = byId.get(c.to as string);
+        const receiver = receiverOf(c);
         if (!receiver) continue;
         const up = linkUp(sender, receiver);
-        const active = gi === chosen && !c.supersededByAlternate;
+        const active = c.fromAll || chosen.has(c);
         /* MaxFailure comes first, because it is the reason that outlives the
            others: a disabled destination is not standing by and is not merely
            down -- there is no further access to it until it is manually
            reenabled, which is also why the alternate beside it stays in. */
         let inactiveReason: EdgeInactiveReason | undefined;
-        if (opts.disabledDests?.has(destKey(sender.id, c.to))) inactiveReason = 'max-failure-disabled';
+        if (c.disabled) inactiveReason = 'max-failure-disabled';
         else if (c.supersededByAlternate) inactiveReason = 'alternate-standby';
-        else if (gi !== chosen) inactiveReason = 'lower-priority-group';
+        else if (!active) inactiveReason = 'group-standby';
         else if (!up) inactiveReason = 'destination-down';
         const edge: RedoEdge = {
           from: sender.id,
@@ -160,25 +233,16 @@ export function resolveRedoGraph(doc: TopologyDoc, opts: ResolveOptions): RedoGr
           xpt: c.xpt,
           xptSource: c.xptSource,
           ruleIndex: act.index,
-          groupPriority: priority,
+          groupIndex: gi,
+          priority: c.priority,
           role: edgeRole(sender, receiver, primary),
-          active: active && inactiveReason !== 'max-failure-disabled',
+          active: active && !c.disabled && !c.supersededByAlternate,
           up,
         };
         if (inactiveReason) edge.inactiveReason = inactiveReason;
         edges.push(edge);
       }
     });
-
-    if (groups.length > 1) {
-      addFinding({
-        id: 'ROUTES.PRIORITY_ACTIVATION', severity: 'info', basis: 'model',
-        cite: ['ROUTES.PRIORITY_26AI', 'ROUTES.PRIORITY_19C_EX_4_3'],
-        subject: { kind: 'route', id: sender.id as string },
-        message: `Group selection on ${sender.name}: the lowest priority number whose destinations are all up, otherwise the lowest with at least one up.`,
-        note: 'The grammar and the priority range are documented; which group the broker activates when a group is partly up is not, so this rule is the page\'s model.',
-      });
-    }
   }
 
   /* ---- BFS from the primary over active, up edges ---- */
@@ -249,7 +313,9 @@ export function resolveRedoGraph(doc: TopologyDoc, opts: ResolveOptions): RedoGr
 
   const protectionLevel = levelClaim(doc, members, mode);
 
-  return { primary, edges, members, protectionLevel, findings };
+  const out: RedoGraph = { primary, edges, members, protectionLevel, findings };
+  if (Object.keys(groupChoice).length > 0) out.groupChoice = groupChoice;
+  return out;
 }
 
 /* ---------------- destination candidates ---------------- */
@@ -266,7 +332,8 @@ function candidatesFor(
 ): CandidateDest[] {
   const out: CandidateDest[] = [];
   const push = (
-    target: MemberId, d: RouteDest, viaAlternate: boolean, superseded = false,
+    target: MemberId, d: RouteDest, viaAlternate: boolean,
+    extra: { superseded?: boolean; fromAll?: boolean; disabled?: boolean; priorityOf?: Member } = {},
   ): void => {
     const receiver = byId.get(target as string);
     if (!receiver || !receiver.enabled) return;
@@ -275,77 +342,52 @@ function candidatesFor(
       to: target,
       xpt: xptFromRule ?? receiver.logXptMode,
       xptSource: xptFromRule ? 'rule-attribute' : 'dest-logxptmode',
+      priority: d.priority ?? defaultDestPriority(extra.priorityOf ?? receiver),
       viaAlternate,
+      disabled: extra.disabled ?? false,
     };
-    if (superseded) c.supersededByAlternate = true;
+    if (extra.superseded) c.supersededByAlternate = true;
+    if (extra.fromAll) c.fromAll = true;
     out.push(c);
   };
 
   for (const d of g.dests) {
     if (d.target === 'ALL') {
-      for (const t of expandAll(doc, sender.id, primary)) push(t, d, false);
+      for (const t of expandAll(doc, sender.id, primary)) {
+        push(t, d, false, { fromAll: true, disabled: opts.disabledDests?.has(destKey(sender.id, t)) ?? false });
+      }
       continue;
     }
     const target = d.target;
+    const receiver = byId.get(target as string);
     const disabled = opts.disabledDests?.has(destKey(sender.id, target)) ?? false;
     const latched = opts.altLatched?.has(destKey(sender.id, target)) ?? false;
-    const receiver = byId.get(target as string);
-    const unreachable = receiver ? !memberAlive(doc, net, receiver) : true;
-    const useAlt = !!d.alt && (disabled || unreachable || latched);
+    const alive = receiver ? memberAlive(doc, net, receiver) : false;
+    /* 12.1: "The optional FALLBACK keyword is used to specify that redo
+       transport to the non-alternate member should be resumed if it becomes
+       available" -- so with FALLBACK the named destination comes back once it
+       is up again, even from MaxFailure; without it the alternate latches. */
+    const fallsBack = !!d.alt && d.alt.fallback === true && disabled && alive && !latched;
+    const useAlt = !!d.alt && (latched || !alive || (disabled && !fallsBack));
     if (useAlt && d.alt) {
-      push(d.alt.target, d, true);
+      push(d.alt.target, d, true, {
+        disabled: opts.disabledDests?.has(destKey(sender.id, d.alt.target)) ?? false,
+        ...(receiver ? { priorityOf: receiver } : {}),
+      });
       addFinding({
         id: 'ROUTES.ALT_ACTIVATION', severity: 'info', basis: 'model',
-        cite: ['ROUTES.GRAMMAR_121', 'ROUTES.ALT_MAXFAILURE', 'FS.FAILURE_ADD_DEST'],
+        cite: ['ROUTES.GRAMMAR_121', 'ROUTES.ALT_MAXFAILURE', 'ROUTES.FALLBACK_121', 'FS.FAILURE_ADD_DEST'],
         subject: { kind: 'route', id: sender.id as string },
         message: `${sender.name} is shipping to the alternate ${d.alt.target} instead of ${target}.`,
-        note: 'The alternate form and its MaxFailure precondition are documented; the exact instant the broker swaps over, and when FALLBACK reverts, are not, so the switch-over point here is this page\'s model. Where the alternate is ASYNC the documented consequence applies: the protection level is reduced.',
+        note: 'The ALT form, its MaxFailure precondition and FALLBACK are documented in the 12.1 broker guide only; the 12.2, 19c and 26ai grammar no longer carries them. 12.1 says the alternate takes the redo once the MaxFailure count is reached for the named member; this page swaps in the epoch the named member becomes unreachable, so the switch-over point is this page\'s model. Where the alternate is ASYNC the documented consequence applies: the protection level is reduced.',
       });
       /* The named destination still gets an edge, marked as stood down. */
-      push(target, d, false, true);
+      push(target, d, false, { superseded: true, disabled });
       continue;
     }
-    push(target, d, false);
+    push(target, d, false, { disabled: disabled && !fallsBack });
   }
   return out;
-}
-
-/**
- * Group selection (model): the lowest priority number whose destinations are
- * all up, else the lowest with at least one up, else the lowest declared.
- */
-function chooseGroup(
-  groups: readonly DestGroup[],
-  candidates: readonly CandidateDest[][],
-  sender: Member,
-  byId: Map<string, Member>,
-  doc: TopologyDoc,
-  net: NetState,
-  reach: ReturnType<typeof buildReachability>,
-): number {
-  const order = groups
-    .map((g, i) => ({ i, p: g.priority ?? defaultGroupPriority(sender) }))
-    .sort((a, b) => a.p - b.p || a.i - b.i);
-
-  const upCount = (gi: number): { up: number; total: number } => {
-    const cands = (candidates[gi] ?? []).filter((c) => !c.supersededByAlternate);
-    let up = 0;
-    for (const c of cands) {
-      const receiver = byId.get(c.to as string);
-      if (!receiver) continue;
-      if (memberAlive(doc, net, receiver) && membersReachable(doc, net, sender, receiver, reach)) up++;
-    }
-    return { up, total: cands.length };
-  };
-
-  for (const { i } of order) {
-    const { up, total } = upCount(i);
-    if (total > 0 && up === total) return i;
-  }
-  for (const { i } of order) {
-    if (upCount(i).up > 0) return i;
-  }
-  return order[0]?.i ?? 0;
 }
 
 function edgeRole(sender: Member, receiver: Member, primary: MemberId): EdgeRole {

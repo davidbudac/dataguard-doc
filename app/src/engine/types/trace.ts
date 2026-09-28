@@ -16,7 +16,8 @@ import type { ProtectionMode, XptMode } from './topology';
 export type EdgeRole = 'primary-direct' | 'primary-to-farsync' | 'farsync-onward' | 'cascade';
 
 export type EdgeInactiveReason =
-  | 'lower-priority-group'
+  /** A parenthesised group has one active path, and this destination is not it. */
+  | 'group-standby'
   | 'alternate-standby'
   | 'destination-down'
   | 'max-failure-disabled'
@@ -29,9 +30,12 @@ export interface RedoEdge {
   xpt: XptMode;
   xptSource: 'rule-attribute' | 'dest-logxptmode';
   ruleIndex: number;
-  groupPriority: number;
+  /** Which entry of the rule's destination field the edge came from. */
+  groupIndex: number;
+  /** The destination's PRIORITY: as written, else 1 for a far sync destination and 8 otherwise. */
+  priority: number;
   role: EdgeRole;
-  /** Chosen by the routing rules (priority group, alternate state). */
+  /** Chosen by the routing rules (group PRIORITY, alternate state). */
   active: boolean;
   inactiveReason?: EdgeInactiveReason;
   /** The network under it carries traffic right now. */
@@ -58,6 +62,13 @@ export interface RedoGraph {
   members: Record<MemberId, ResolvedMember>;
   protectionLevel: Claim<ProtectionLevel>;
   findings: Finding[];
+  /**
+   * The destination each parenthesised group is shipping to, keyed by
+   * `groupKey`, where one destination was chosen and is usable. Fed back as
+   * `ResolveOptions.groupChoice` it keeps the primary where it is among
+   * destinations of equal priority. Absent when no group chose.
+   */
+  groupChoice?: Record<string, MemberId>;
 }
 
 /* ---------------- SS4 trace ---------------- */

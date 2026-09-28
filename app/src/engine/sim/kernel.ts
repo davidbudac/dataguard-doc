@@ -230,6 +230,8 @@ export interface SimState {
    * was declared without FALLBACK.
    */
   altLatched: string[];
+  /** The destination each RedoRoutes group is shipping to (`groupKey`), kept among equal priorities. */
+  groupChoice: Record<string, MemberId>;
   /** When each destination's last error was, or null while it is carrying redo. */
   destDownSince: Record<string, Seconds | null>;
   /** Consecutive failed attempts to reestablish each destination. */

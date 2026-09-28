@@ -43,7 +43,7 @@ import {
   stallClaim, syncAckDatabases, syncAckMembers,
 } from './protection';
 import {
-  alternateLatched, authoredDests, destKey, disableAt, failedAttempts, groupReenters,
+  alternateLatched, authoredDests, carryGroupChoice, destKey, disableAt, failedAttempts, groupReenters,
   maxFailureDisabled, maxFailureResetUndoc, reopenScheduleModel,
 } from './dests';
 import type { AuthoredDest } from './dests';
@@ -698,7 +698,7 @@ export function simulate(
       const failures = failedAttempts(downSince, at, d.props.reopenSeconds);
       if (failures > (state.destFailures[d.key] ?? 0)) addFinding(reopenScheduleModel());
       state.destFailures[d.key] = failures;
-      if (d.props.maxFailure <= 0 || failures < d.props.maxFailure) continue;
+      if (d.retryLimit === null || failures < d.retryLimit) continue;
       if (d.inPriorityGroup) {
         addFinding(groupReenters(d, nameOf(d.from), nameOf(d.to)));
         continue;
@@ -719,6 +719,7 @@ export function simulate(
       state.altLatched.push(d.key);
       addFinding(alternateLatched(d, nameOf(d.from), nameOf(d.to), nameOf(d.alt.target)));
     }
+    state.groupChoice = carryGroupChoice(state.groupChoice, view.graph);
   }
 
   function noteMasterChange(view: View, at: Seconds): void {
@@ -876,11 +877,11 @@ export function simulate(
        draws, so drawing an epoch per REOPEN interval would be noise. */
     for (const d of authoredDests(doc, state.primary)) {
       if (state.disabledDests.includes(d.key)) continue;
-      if (d.props.maxFailure <= 0) continue;
+      if (d.retryLimit === null) continue;
       const since = state.destDownSince[d.key];
       if (since === null || since === undefined) continue;
       const failures = state.destFailures[d.key] ?? 0;
-      if (failures >= d.props.maxFailure) continue;
+      if (failures >= d.retryLimit) continue;
       const next = since + (failures + 1) * Math.max(1, d.props.reopenSeconds || 0);
       if (next <= at + EPS) continue;
       q.push(
@@ -1033,6 +1034,7 @@ function computeView(doc: TopologyDoc, state: SimState): View {
     net,
     disabledDests: new Set(state.disabledDests),
     altLatched: new Set(state.altLatched),
+    groupChoice: state.groupChoice,
   });
   const primary = doc.members.find((m) => m.id === state.primary) as Member;
   const alive = (m: Member): boolean =>
@@ -1542,6 +1544,7 @@ function initialState(doc: TopologyDoc): SimState {
     disabledMembers: [],
     disabledDests: [],
     altLatched: [],
+    groupChoice: {},
     destDownSince: {},
     destFailures: {},
     switchover: null,
