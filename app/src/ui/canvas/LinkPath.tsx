@@ -3,7 +3,7 @@
  *
  * Transport is spelled by the line itself -- SYNC solid with a filled arrow,
  * FASTSYNC solid with a hollow one, ASYNC dashed, the observer's ping dotted
- * and its readiness check dashed slate -- and arrowheads mean redo flow and
+ * and its readiness check dashed orchid -- and arrowheads mean redo flow and
  * nothing else. A destination that is declared but not shipping keeps its line
  * at reduced weight and says why in the pill, because a route that is standing
  * down is still part of the configuration.

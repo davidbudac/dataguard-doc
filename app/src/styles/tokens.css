@@ -1,7 +1,9 @@
 /* Token legend: bg page ground - sf surface - sf2 sunken - sf3 track - ln hairline
    ln2 strong line - ik/ik2/ik3 ink - tl teal (serving) - bl blue (applying)
    am amber (waiting) - rd red (down) - vi violet (observer decision) - sl slate
-   *f = the matching fill - fc focus - gd grid - sh shadow.
+   *f = the matching fill - fc focus - gd grid - sh shadow - lk redo route
+   pg observer ping - ck readiness check (the three link kinds, each its own
+   colour so a line reads without the dash pattern).
    Light is the default. Dark is redefined under the media query, and both are
    redefined again under [data-theme] so the host toggle wins in both directions.
    Components below style themselves only through these tokens.
@@ -15,6 +17,7 @@
 --tl:#0E7C6B;--tlf:#D5EDE8;--bl:#2563EB;--blf:#DBE6FE;--am:#D97706;--amf:#FAEAD2;
 --rd:#D64545;--rdf:#FADEDE;--vi:#6D5AE6;--vif:#E3DFFB;--sl:#475569;
 --fc:#2563EB;--gd:#E7ECF2;--sh:0 1px 2px rgba(16,25,34,.05),0 8px 24px rgba(16,25,34,.05);
+--lk:#4F7BB5;--pg:#6D5AE6;--ck:#B8479E;
 }
 @media (prefers-color-scheme:dark){:root{
 --bg:#0A0E13;--sf:#111821;--sf2:#0D141C;--sf3:#16202B;--ln:#1F2A36;--ln2:#33414F;
@@ -22,6 +25,7 @@
 --tl:#34D3B8;--tlf:#0D3A33;--bl:#6BA5FB;--blf:#14294A;--am:#F5B443;--amf:#402C10;
 --rd:#F58080;--rdf:#45191C;--vi:#AEA0F8;--vif:#241E4A;--sl:#8095AC;
 --fc:#6BA5FB;--gd:#182230;--sh:0 1px 2px rgba(0,0,0,.5),0 10px 30px rgba(0,0,0,.35);
+--lk:#7FA6D9;--pg:#AEA0F8;--ck:#E68BC6;
 }}
 :root[data-theme="dark"]{
 --bg:#0A0E13;--sf:#111821;--sf2:#0D141C;--sf3:#16202B;--ln:#1F2A36;--ln2:#33414F;
@@ -29,6 +33,7 @@
 --tl:#34D3B8;--tlf:#0D3A33;--bl:#6BA5FB;--blf:#14294A;--am:#F5B443;--amf:#402C10;
 --rd:#F58080;--rdf:#45191C;--vi:#AEA0F8;--vif:#241E4A;--sl:#8095AC;
 --fc:#6BA5FB;--gd:#182230;--sh:0 1px 2px rgba(0,0,0,.5),0 10px 30px rgba(0,0,0,.35);
+--lk:#7FA6D9;--pg:#AEA0F8;--ck:#E68BC6;
 }
 :root[data-theme="light"]{
 --bg:#F4F6F8;--sf:#FFFFFF;--sf2:#EDF1F5;--sf3:#E4E9EF;--ln:#DCE2EA;--ln2:#BFC9D6;
@@ -36,6 +41,28 @@
 --tl:#0E7C6B;--tlf:#D5EDE8;--bl:#2563EB;--blf:#DBE6FE;--am:#D97706;--amf:#FAEAD2;
 --rd:#D64545;--rdf:#FADEDE;--vi:#6D5AE6;--vif:#E3DFFB;--sl:#475569;
 --fc:#2563EB;--gd:#E7ECF2;--sh:0 1px 2px rgba(16,25,34,.05),0 8px 24px rgba(16,25,34,.05);
+--lk:#4F7BB5;--pg:#6D5AE6;--ck:#B8479E;
+}
+
+/* The colour-blind-safe palette, chosen from the top bar and stamped as
+   [data-palette="cvd"]. Only the hues move -- to the Okabe-Ito set, darkened
+   on light ground for text contrast -- so ground, ink and lines stay as they
+   are. It is redefined for both schemes the same way the base palette is, and
+   the doubled attribute selector outranks the plain [data-theme] rules above. */
+:root[data-palette="cvd"],:root[data-palette="cvd"][data-theme="light"]{
+--tl:#007A5A;--tlf:#D2EFE5;--bl:#0072B2;--blf:#D6E8F5;--am:#A86F00;--amf:#FBEDC9;
+--rd:#C45400;--rdf:#FBE0CE;--vi:#A8507F;--vif:#F5DDEA;
+--fc:#0072B2;--lk:#0072B2;--pg:#A8507F;--ck:#A86F00;
+}
+@media (prefers-color-scheme:dark){:root[data-palette="cvd"]{
+--tl:#2FC79A;--tlf:#0B3B2E;--bl:#56B4E9;--blf:#10304A;--am:#F0C040;--amf:#3F310C;
+--rd:#FF8A4C;--rdf:#45240F;--vi:#E29BC4;--vif:#3D1F32;
+--fc:#56B4E9;--lk:#56B4E9;--pg:#E29BC4;--ck:#F0C040;
+}}
+:root[data-palette="cvd"][data-theme="dark"]{
+--tl:#2FC79A;--tlf:#0B3B2E;--bl:#56B4E9;--blf:#10304A;--am:#F0C040;--amf:#3F310C;
+--rd:#FF8A4C;--rdf:#45240F;--vi:#E29BC4;--vif:#3D1F32;
+--fc:#56B4E9;--lk:#56B4E9;--pg:#E29BC4;--ck:#F0C040;
 }
 
 /* The two faces (design ui.md SS8). System sans for prose, mono for everything

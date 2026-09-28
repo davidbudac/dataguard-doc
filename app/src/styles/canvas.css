@@ -333,23 +333,24 @@
 .topo-svg .hatch-ln { stroke: var(--rd); stroke-width: 2; opacity: .5; }
 
 /* ---- links ---- */
-/* The line says the transport: SYNC and FASTSYNC solid, ASYNC dashed, the
-   observer's ping dotted violet, its readiness check dashed slate. Arrowheads
-   mean redo flow and nothing else. */
-.topo-svg .tp-link { fill: none; stroke: var(--ln2); stroke-width: 1.25; }
-.topo-svg .tp-link.is-sync { stroke: var(--ln2); }
-.topo-svg .tp-link.is-async { stroke: var(--ln2); stroke-dasharray: 6 3; }
-.topo-svg .tp-link.is-ping { stroke: var(--vi); stroke-dasharray: 1.5 3; stroke-linecap: round; }
-.topo-svg .tp-link.is-check { stroke: var(--sl); stroke-dasharray: 5 4; }
+/* The line says the transport: a redo route steel blue, SYNC and FASTSYNC
+   solid, ASYNC dashed; the observer's ping dotted violet, its readiness check
+   dashed orchid. Each kind has its own colour (--lk, --pg, --ck) as well as
+   its own dash. Arrowheads mean redo flow and nothing else. */
+.topo-svg .tp-link { fill: none; stroke: var(--lk); stroke-width: 1.25; }
+.topo-svg .tp-link.is-sync { stroke: var(--lk); }
+.topo-svg .tp-link.is-async { stroke: var(--lk); stroke-dasharray: 6 3; }
+.topo-svg .tp-link.is-ping { stroke: var(--pg); stroke-dasharray: 1.5 3; stroke-linecap: round; }
+.topo-svg .tp-link.is-check { stroke: var(--ck); stroke-dasharray: 5 4; }
 .topo-svg .tp-link.is-x { stroke: var(--rd); stroke-dasharray: 4 3; }
 .topo-svg .tp-link.is-inactive { opacity: .55; }
 .topo-svg .tp-linkwrap.is-dim { opacity: .45; }
 .topo-svg .tp-linkwrap.is-hov .tp-link { stroke-width: 2; }
 .topo-svg .tp-x { stroke: var(--rd); stroke-width: 2.5; stroke-linecap: round; }
-.topo-svg .tp-ahs { fill: var(--ln2); }
-.topo-svg .tp-ahh { fill: none; stroke: var(--ln2); stroke-width: 1.4; }
+.topo-svg .tp-ahs { fill: var(--lk); }
+.topo-svg .tp-ahh { fill: none; stroke: var(--lk); stroke-width: 1.4; }
 .topo-svg .tp-ahr { fill: var(--rd); }
-.topo-svg .tp-aha { fill: var(--ln2); opacity: .55; }
+.topo-svg .tp-aha { fill: var(--lk); opacity: .55; }
 
 /* The caption and the value of a link ride it in one pill; a severed link's
    pill flips to the red tint and trades its round trip for the failure word. */

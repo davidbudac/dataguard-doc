@@ -61,6 +61,9 @@ export const PANEL_LABEL: Record<PanelTab, string> = {
 /** 'auto' follows the host; the two explicit values stamp [data-theme]. */
 export type ThemePref = 'auto' | 'light' | 'dark';
 
+/** The hue set, orthogonal to light and dark. 'cvd' is colour-blind safe. */
+export type PalettePref = 'standard' | 'cvd';
+
 /**
  * How much of the shell fits. Measured in JS rather than keyed in CSS alone,
  * because below 1280 the inspector genuinely leaves the grid (it becomes a
@@ -88,6 +91,7 @@ export const lessonId = signal<string | null>(null);
 export const lessonStep = signal<number>(0);
 export const proseOpen = signal<boolean>(false);
 export const theme = signal<ThemePref>('auto');
+export const palette = signal<PalettePref>('standard');
 export const edition = signal<Edition>('19c');
 export const inspectorOpen = signal<boolean>(false);
 /** The "How this page works" card, opened again from the header's ? button. */
@@ -241,6 +245,18 @@ export function applyTheme(pref: ThemePref = theme.value): void {
   const root = document.documentElement;
   if (pref === 'auto') root.removeAttribute('data-theme');
   else root.setAttribute('data-theme', pref);
+}
+
+/**
+ * The palette is a second attribute beside [data-theme]: tokens.css redefines
+ * only the hues under [data-palette="cvd"], for both schemes, so it composes
+ * with whichever theme is in force. 'standard' removes the attribute.
+ */
+export function applyPalette(pref: PalettePref = palette.value): void {
+  if (typeof document === 'undefined') return;
+  const root = document.documentElement;
+  if (pref === 'standard') root.removeAttribute('data-palette');
+  else root.setAttribute('data-palette', pref);
 }
 
 /** What the toggle would move to, given the host preference. */

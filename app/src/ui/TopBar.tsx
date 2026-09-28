@@ -20,14 +20,15 @@
 import type { ComponentChildren } from 'preact';
 import { canUndo, canRedo, redo, redoLabel, undo, undoLabel } from '@/state/history';
 import {
-  applyTheme, edition, introOpen, mode, MODE_LABEL, MODE_SUB, MODES, nextTheme, theme,
+  applyPalette, applyTheme, edition, introOpen, mode, MODE_LABEL, MODE_SUB, MODES, nextTheme, palette, theme,
 } from '@/state/view';
-import type { Mode, ThemePref } from '@/state/view';
-import { saveEdition, saveTheme } from '@/state/persist';
+import type { Mode, PalettePref, ThemePref } from '@/state/view';
+import { saveEdition, savePalette, saveTheme } from '@/state/persist';
 import { Segmented } from './common/Segmented';
 import { INTRO_HREF, leaveIntro, openIntro } from './intro/route';
 
 const THEME_WORD: Record<ThemePref, string> = { auto: 'system', light: 'light', dark: 'dark' };
+const PALETTE_WORD: Record<PalettePref, string> = { standard: 'standard', cvd: 'colour-blind safe' };
 
 export interface TopBarProps {
   children?: unknown;
@@ -41,6 +42,8 @@ export function TopBar({ doc, actions }: TopBarProps = {}) {
   const m = mode.value;
   const pref = theme.value;
   const next = nextTheme(pref);
+  const pal = palette.value;
+  const nextPal: PalettePref = pal === 'standard' ? 'cvd' : 'standard';
   return (
     <header class="topbar app-top">
       <div class="topbar-brand">
@@ -119,6 +122,27 @@ export function TopBar({ doc, actions }: TopBarProps = {}) {
           <svg viewBox="0 0 16 16" aria-hidden="true">
             <circle cx="8" cy="8" r="5.5" />
             <path d="M8 2.5a5.5 5.5 0 0 1 0 11z" class="fill" />
+          </svg>
+        </button>
+
+        {/* The hue set, beside the theme and independent of it: light or
+            dark, either palette. Pressed while the alternative is on. */}
+        <button
+          type="button"
+          class="btn is-icon palette-tog"
+          aria-label={`Palette: ${PALETTE_WORD[pal]}. Switch to ${PALETTE_WORD[nextPal]}`}
+          aria-pressed={pal !== 'standard'}
+          title={`Palette: ${PALETTE_WORD[pal]} — switch to ${PALETTE_WORD[nextPal]}`}
+          onClick={() => {
+            palette.value = nextPal;
+            savePalette(nextPal);
+            applyPalette(nextPal);
+          }}
+        >
+          <svg viewBox="0 0 16 16" aria-hidden="true">
+            <circle cx="5" cy="6" r="2.5" class="pal-a" />
+            <circle cx="11" cy="6" r="2.5" class="pal-b" />
+            <circle cx="8" cy="11" r="2.5" class="pal-c" />
           </svg>
         </button>
 

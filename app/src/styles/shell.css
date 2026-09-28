@@ -215,6 +215,10 @@
 .btn.is-icon{width:28px;height:26px;padding:0;justify-content:center;background:var(--sf)}
 .btn.is-icon svg{display:block;width:14px;height:14px;fill:none;stroke:currentColor;
   stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+/* The palette toggle draws three of the palette's own hues, so the icon is a
+   swatch of whichever set is on. */
+.palette-tog svg circle{stroke:none}
+.palette-tog .pal-a{fill:var(--tl)}.palette-tog .pal-b{fill:var(--bl)}.palette-tog .pal-c{fill:var(--am)}
 @media (prefers-reduced-motion:no-preference){
   .btn{transition:background-color .16s ease,color .16s ease,border-color .16s ease}}
 

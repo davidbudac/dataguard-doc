@@ -3,6 +3,8 @@
  *
  *   `dg-doc-v1`      the Document, debounced 500 ms
  *   `dg-theme`       light / dark / auto -- same key the published page uses
+ *   `dg-palette`     standard / cvd -- this page only; the published page
+ *                    has one palette
  *   `dg-ed`          19c / 26ai -- likewise, so a reader who set the release
  *                    on the old page finds it set here
  *   `dg-intro-v1`    set once the reader has been shown the Introduction
@@ -32,10 +34,11 @@ import { classicDoc, doc, exportFileName } from './doc';
 import { fromWire, parseJsonText, toJsonText } from './codec';
 import type { DecodeResult } from './codec';
 import { gridOn, hintsOn, issuesOpen, timelineH, TL_MIN_H } from './view';
-import type { ThemePref } from './view';
+import type { PalettePref, ThemePref } from './view';
 
 export const DOC_KEY = 'dg-doc-v1';
 export const THEME_KEY = 'dg-theme';
+export const PALETTE_KEY = 'dg-palette';
 export const EDITION_KEY = 'dg-ed';
 export const LEGACY_DOC_KEY = 'dg-fsfo-cfg-v1';
 export const INTRO_KEY = 'dg-intro-v1';
@@ -78,6 +81,13 @@ export function loadTheme(): ThemePref | null {
 }
 
 export const saveTheme = (v: ThemePref): void => write(THEME_KEY, v);
+
+export function loadPalette(): PalettePref | null {
+  const v = read(PALETTE_KEY);
+  return v === 'standard' || v === 'cvd' ? v : null;
+}
+
+export const savePalette = (v: PalettePref): void => write(PALETTE_KEY, v);
 
 export function loadEdition(): '19c' | '26ai' | null {
   const v = read(EDITION_KEY);

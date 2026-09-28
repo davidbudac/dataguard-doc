@@ -26,7 +26,8 @@ import { findPreset } from './presets';
 import { resetHistory } from './state/history';
 import { decodeFragment, fragmentKind } from './state/codec';
 import {
-  announceRestore, introDismissed, loadDoc, loadEdition, loadGrid, loadHints, loadIntro, loadIssuesOpen, loadTheme,
+  announceRestore, introDismissed, loadDoc, loadEdition, loadGrid, loadHints, loadIntro, loadIssuesOpen, loadPalette,
+  loadTheme,
   loadTimelineH,
   startAutosave,
 } from './state/persist';
@@ -38,7 +39,7 @@ import {
   applyUrlState, parseUrlQuery, presetId, splitQuery, startUrlSync, URL_DEFAULTS,
 } from './state/url';
 import type { UrlState } from './state/url';
-import { applyTheme, introPage, startViewportWatch, toast } from './state/view';
+import { applyPalette, applyTheme, introPage, palette, startViewportWatch, toast } from './state/view';
 
 import './styles/tokens.css';
 import './styles/base.css';
@@ -59,6 +60,8 @@ async function boot(): Promise<void> {
   if (!present.has('theme')) state.theme = loadTheme() ?? URL_DEFAULTS.theme;
   if (!present.has('ed')) state.ed = loadEdition() ?? URL_DEFAULTS.ed;
   applyTheme(state.theme);
+  palette.value = loadPalette() ?? 'standard';
+  applyPalette();
   /* Whether the reader has already been told how the page works. Read once,
      here, so no component reaches into localStorage while it renders. */
   loadIntro();
