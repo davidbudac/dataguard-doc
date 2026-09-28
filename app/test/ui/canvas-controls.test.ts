@@ -392,7 +392,7 @@ describe('a selection is made, moved and removed as one', () => {
 
   it('Tidy is grey with its reason until a card has been moved, then puts it back in one undo', async () => {
     const root = await mountApp();
-    const tidy = (): HTMLButtonElement => root.querySelector('.cv-zoom button[aria-label="Tidy the drawing"]')!;
+    const tidy = (): HTMLButtonElement => root.querySelector('button[aria-label="Tidy the drawing"]')!;
     expect(tidy().disabled).toBe(true);
     expect(tidy().title).toBe(WHY_TIDY);
     key(cardEl(root, 'sby01'), 'ArrowRight', { altKey: true });

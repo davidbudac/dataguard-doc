@@ -119,6 +119,38 @@ export const ADD_ACTIONS: readonly AddAction[] = [
  * open for typing, so adding and naming are one gesture.
  */
 const PLACE_THRESHOLD = 4;
+
+/**
+ * A small glyph per addition, for the palette over the canvas. Decoration
+ * only: the button's text is still its name, so what a screen reader and a
+ * test read is the same `+ Standby` the docked strip prints.
+ */
+const ICON: Record<string, JSX.Element> = {
+  database: (
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      <ellipse cx="8" cy="4" rx="5" ry="2" />
+      <path d="M3 4v8c0 1.1 2.2 2 5 2s5-.9 5-2V4M3 8c0 1.1 2.2 2 5 2s5-.9 5-2" />
+    </svg>
+  ),
+  farsync: (
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      <circle cx="8" cy="8" r="2.5" />
+      <path d="M1.5 8h4M10.5 8h4M12 5.5 14.5 8 12 10.5" />
+    </svg>
+  ),
+  observer: (
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      <path d="M1.5 8S4 3.5 8 3.5 14.5 8 14.5 8 12 12.5 8 12.5 1.5 8 1.5 8z" />
+      <circle cx="8" cy="8" r="2" />
+    </svg>
+  ),
+  site: (
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      <rect x="2" y="3" width="12" height="10" rx="2" stroke-dasharray="2.5 2" />
+      <path d="M8 6v4M6 8h4" />
+    </svg>
+  ),
+};
 export const WHY_DROP_ON_SITE = 'Drop it on a data centre to put it there.';
 
 export function AddToolbar({ doc }: { doc: TopologyDoc }) {
@@ -205,7 +237,8 @@ export function AddToolbar({ doc }: { doc: TopologyDoc }) {
                 added(a.run());
               }}
             >
-              {a.short}
+              {ICON[a.key] ?? null}
+              <span class="pal-lbl">{a.short}</span>
             </button>
             <WhyPill why={why} />
           </span>

@@ -138,6 +138,29 @@ export const hintsOn = signal<boolean>(false);
 export const focusField = signal<string | null>(null);
 export const toast = signal<Toast | null>(null);
 export const viewport = signal<Viewport>('wide');
+/**
+ * Whether the validation details are open over the canvas.
+ *
+ * In the floating layout the findings are a pair of chips on the status card,
+ * and the rows themselves are a popover the chips open -- not a block that is
+ * always there under the drawing. View state: not remembered, not undoable.
+ */
+export const findingsOpen = signal<boolean>(false);
+/**
+ * The finding the reader waved away from the small warning card above the
+ * status bar, by its key. A different finding brings the card back.
+ */
+export const findingWaved = signal<string | null>(null);
+
+/**
+ * Whether the workbench draws its canvas full-bleed with the chrome floating
+ * over it. Build and Break do, while there is room for a canvas beside the
+ * panels; Configure and Learn are reading surfaces and keep the docked grid,
+ * and so does anything narrower than `medium`.
+ */
+export function floating(m: Mode, v: Viewport): boolean {
+  return (m === 'build' || m === 'break') && (v === 'wide' || v === 'medium');
+}
 
 /* ---------------- selection helpers ---------------- */
 

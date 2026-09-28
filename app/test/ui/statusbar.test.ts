@@ -20,7 +20,7 @@ import { isPristinePreset, parseUrlQuery, presetId, shareHref, shareTooLarge } f
 import { findingCount, presetState, share, sharedUrl } from '@/ui/StatusBar';
 import { parseTopologyDoc } from '@/engine';
 import { errors, issues, warnings } from '@/state/derived';
-import { inspectorOpen, mode, notesOpen, viewport } from '@/state/view';
+import { findingsOpen, inspectorOpen, mode, notesOpen, viewport } from '@/state/view';
 
 const mount = (): HTMLElement => {
   const root = document.createElement('div');
@@ -272,9 +272,20 @@ describe('the finding count', () => {
     }
   });
 
-  it('opens the drawer in Break, where the findings live at the foot of the rail', () => {
+  it('opens the findings popover in Break, over the floating canvas', () => {
     mode.value = 'break';
     viewport.value = 'medium';
+    findingsOpen.value = false;
+    const root = mount();
+    (root.querySelector('.count') as HTMLButtonElement).click();
+    expect(mode.value).toBe('break');
+    expect(findingsOpen.value).toBe(true);
+    expect(inspectorOpen.value).toBe(false);
+  });
+
+  it('opens the drawer in Break below the floating layout, where the findings close the rail', () => {
+    mode.value = 'break';
+    viewport.value = 'compact';
     const root = mount();
     (root.querySelector('.count') as HTMLButtonElement).click();
     expect(mode.value).toBe('break');

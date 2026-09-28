@@ -16,12 +16,13 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { topology, trace } from '@/state/derived';
 import {
-  canEdit, inspectorOpen, introOpen, introPage, mode, playing, selection, speed, tNow, toast,
-  viewport,
+  canEdit, floating, inspectorOpen, introOpen, introPage, mode, playing, selection, speed, tNow,
+  toast, viewport,
 } from '@/state/view';
 import type { Mode } from '@/state/view';
 import { TopBar } from './TopBar';
-import { StatusBar } from './StatusBar';
+import { DocActions, DocCount, DocPicker } from './StatusBar';
+import { FindingsChips, FindingsPopover, FindingToast } from './Findings';
 import { Guidance, IntroCard } from './Guidance';
 import { usePrintExpand } from './print';
 import { installShortcuts } from './shortcuts';
@@ -32,7 +33,7 @@ import { CanvasSlot } from './canvas/CanvasSlot';
 import { EventMenu } from './canvas/EventMenu';
 import { Inspector } from './inspector/Inspector';
 import { setEventTime } from './break/events';
-import { BreakRail } from './break/BreakRail';
+import { BreakRail, ScenarioPalette } from './break/BreakRail';
 import { Panels } from './panels/Panels';
 import { LearnShell, LearnWorkbenchHeader } from './learn/LearnShell';
 import { IntroPage } from './intro/IntroPage';
@@ -96,6 +97,31 @@ function useBarAnchor(): (el: HTMLElement | null) => void {
   };
 }
 
+/**
+ * Write the floating dock's measured height into `--dock-h`, so the drawing's
+ * inset, the zoom pill and the warning card above the dock follow it as it
+ * grows -- a Break run with twelve lanes is a much taller panel than Build's
+ * one row of readings. Same escape hatch as `--bar-bottom`.
+ */
+function useDockAnchor(): (el: HTMLElement | null) => void {
+  const observer = useRef<ResizeObserver | null>(null);
+  useEffect(() => () => observer.current?.disconnect(), []);
+  return (el: HTMLElement | null): void => {
+    observer.current?.disconnect();
+    observer.current = null;
+    if (!el) return;
+    const write = (): void => {
+      const h = Math.round(el.getBoundingClientRect().height);
+      if (h > 0) el.ownerDocument.documentElement.style.setProperty('--dock-h', `${h}px`);
+    };
+    write();
+    if (typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(write);
+    ro.observe(el);
+    observer.current = ro;
+  };
+}
+
 const MIN_TIMELINE_W = 640;
 
 function TimelineSlot() {
@@ -103,7 +129,7 @@ function TimelineSlot() {
   const t = trace.value;
   const learn = mode.value === 'learn';
   return (
-    <div ref={ref}>
+    <div class="tl-slot" ref={ref}>
       {t === null ? (
         <div class="empty">
           <span class="empty-k">Timeline</span>
@@ -155,10 +181,17 @@ function Workbench() {
    the rail is beside the canvas (the drawing keeps its whole stage), under the
    drawing when the rail has become a drawer (a menu inside a closed drawer is
    a menu nobody finds). It is never both. */
-function Rail({ m, wide }: { m: Mode; wide: boolean }) {
+function Rail({ m, wide, float = false }: { m: Mode; wide: boolean; float?: boolean }) {
   switch (m) {
     case 'build': return <Inspector />;
-    case 'break': return <>{wide ? <EventMenu /> : null}<BreakRail /></>;
+    /* Floating, the scenarios are on the palette and the findings behind the
+       status chips, so the rail is the reader's own events and nothing else. */
+    case 'break': return (
+      <>
+        {wide ? <EventMenu /> : null}
+        <BreakRail scenarios={!float} validation={!float} />
+      </>
+    );
     case 'configure': return <Inspector />;
     case 'learn': return <Workbench />;
   }
@@ -170,6 +203,20 @@ function Stage({ m, wide }: { m: Mode; wide: boolean }) {
     <>
       <CanvasSlot />
       {m === 'break' && !wide ? <EventMenu /> : null}
+    </>
+  );
+}
+
+/* The floating dock: the readings and the finding chips on one row -- the
+   whole of it in Build, the head of the timeline panel in Break. */
+function FloatDock({ m }: { m: Mode }) {
+  return (
+    <>
+      <div class="dock-status">
+        <Readout />
+        <FindingsChips />
+      </div>
+      {m === 'break' ? <TimelineSlot /> : null}
     </>
   );
 }
@@ -194,8 +241,12 @@ export function App() {
   const intro = introPage.value;
   const wide = viewport.value === 'wide';
   const railInGrid = wide && HAS_RAIL[m];
+  /* Build and Break draw the canvas full-bleed with everything else floating
+     over it; Configure and Learn keep the docked grid (state/view.ts). */
+  const float = !intro && floating(m, viewport.value);
   const t = toast.value;
   const barRef = useBarAnchor();
+  const dockRef = useDockAnchor();
   /* Installed by the shell, not by a mode: `beforeprint` fires once on the
      window, and both the Configure panels and Build's folded notes expand off
      the same signal (ui/print.ts). */
@@ -204,17 +255,22 @@ export function App() {
   useEffect(() => installShortcuts(), []);
 
   return (
-    <div class={intro ? 'app m-intro' : `app m-${m}`}>
+    <div class={intro ? 'app m-intro' : `app m-${m}${float ? ' is-float' : ''}`}>
       {/* One header, three bands: the modes and the small controls, then the
           quieter document row, then the line that says what to do in the mode
           that is open. It is one element so the toast can be anchored to the
           bottom of all three (ui.md SS3, "as built"). */}
       <header class="app-head" ref={barRef}>
-        <TopBar />
-        {/* The document row and the guidance line are about the workbench:
-            over the Introduction they would be a preset picker and a "click a
-            card" for a drawing that is a picture. */}
-        {intro ? null : <StatusBar />}
+        {/* One floating bar: the brand and the configuration on screen, the
+            modes, the small controls, then Share and the overflow. Over the
+            Introduction the document controls are absent: they would be a
+            preset picker for a drawing that is a picture. */}
+        {intro ? <TopBar /> : (
+          <TopBar
+            doc={<>{<DocPicker />}{float ? null : <DocCount />}</>}
+            actions={<div class="statusbar app-status"><DocActions /></div>}
+          />
+        )}
         {intro ? null : <Guidance />}
         {/* The `?` is in the header on every page, so it opens the same card
             on every page -- the Introduction has no guidance line to hang it
@@ -256,11 +312,25 @@ export function App() {
             <Stage m={m} wide={wide} />
           </main>
 
+          {float && m === 'break' && canEdit(viewport.value) ? <ScenarioPalette /> : null}
+
           {railInGrid
-            ? <aside class="app-rail" aria-label={RAIL_TITLE[m]}><Rail m={m} wide /></aside>
+            ? (
+              <aside class={float ? 'app-rail float-card' : 'app-rail'} aria-label={RAIL_TITLE[m]}>
+                <Rail m={m} wide float={float} />
+              </aside>
+            )
             : null}
 
-          {m === 'learn' && wide ? null : (
+          {float ? (
+            <>
+              <FindingToast />
+              <FindingsPopover />
+              <div class="app-dock float-card" ref={dockRef}><FloatDock m={m} /></div>
+            </>
+          ) : null}
+
+          {float || (m === 'learn' && wide) ? null : (
             <div class="app-dock"><Dock m={m} railInDock={!wide} /></div>
           )}
         </>
@@ -273,7 +343,7 @@ export function App() {
           position={viewport.value === 'compact' || viewport.value === 'narrow' ? 'bottom' : 'right'}
           onClose={() => { inspectorOpen.value = false; }}
         >
-          <Rail m={m} wide={false} />
+          <Rail m={m} wide={false} float={float} />
         </Sheet>
       ) : null}
     </div>

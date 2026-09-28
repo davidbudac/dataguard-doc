@@ -17,8 +17,8 @@ import { frame, geometry, redoGraph, topology } from '@/state/derived';
 import { doc, withLayout } from '@/state/doc';
 import { breakCoalescing, edit, undo } from '@/state/history';
 import {
-  canEdit, clearSelection, focusField, hovered, mode, railWhere, select, selection, tNow, toast,
-  viewport,
+  canEdit, clearSelection, floating, focusField, hovered, mode, railWhere, select, selection, tNow,
+  toast, viewport,
 } from '@/state/view';
 import { buildActionsFor, openInspectorFor, removeAction } from '../build/actions';
 import {
@@ -357,6 +357,38 @@ function ZoomStrip({ tidy }: { tidy: boolean }) {
   );
 }
 
+/**
+ * Tidy, on its own, for the floating palette: the same act, the same refusal
+ * in its title, as the zoom strip's `Tidy` in the docked layout.
+ */
+function TidyButton() {
+  const moved = Object.keys(doc.value.layout);
+  const picked = selection.value.filter((k) => moved.includes(k));
+  const off = moved.length === 0;
+  return (
+    <div class="pal-tidy">
+      <button
+        type="button"
+        class={`btn pal-btn${off ? ' is-faded' : ''}`}
+        disabled={off}
+        aria-label="Tidy the drawing"
+        title={off
+          ? WHY_TIDY
+          : picked.length > 0
+            ? 'Put the selected cards back where the layout draws them.'
+            : 'Put every card moved by hand back where the layout draws it.'}
+        onClick={() => tidyLayout(picked)}
+      >
+        <svg viewBox="0 0 16 16" aria-hidden="true">
+          <path d="M2.5 5.5V2.5h3M13.5 5.5V2.5h-3M2.5 10.5v3h3M13.5 10.5v3h-3" />
+          <rect x="5.5" y="5.5" width="5" height="5" rx="1" />
+        </svg>
+        <span class="pal-lbl">Tidy</span>
+      </button>
+    </div>
+  );
+}
+
 export interface CanvasSlotProps {
   /** False draws a static picture: no focus stops, no pointer handlers. */
   interactive?: boolean;
@@ -458,13 +490,29 @@ export function CanvasSlot({ interactive = true }: CanvasSlotProps) {
   const adds = editable && m === 'build'
     ? <AddToolbar doc={topology.value} />
     : null;
-  /* The zoom ladder rides in the same row as Build's additions. */
-  const toolbar = adds === null && !zooming ? null : (
-    <div class="cv-tools">
-      {adds}
-      {zooming ? <ZoomStrip tidy={editable && m === 'build'} /> : null}
-    </div>
-  );
+  /* Over a full-bleed canvas (App.tsx, `floating`) the additions and Tidy
+     are a palette at the left edge and the zoom ladder a pill at the bottom
+     right; both float over the drawing rather than taking a row above it.
+     Docked, the zoom ladder rides in the same row as Build's additions. */
+  const float = interactive && floating(m, viewport.value);
+  const toolbar = float
+    ? (
+      <>
+        {adds === null ? null : (
+          <nav class="palette pal-add float-card" aria-label="Tools">
+            {adds}
+            <TidyButton />
+          </nav>
+        )}
+        {zooming ? <div class="zoom-pill float-card"><ZoomStrip tidy={false} /></div> : null}
+      </>
+    )
+    : adds === null && !zooming ? null : (
+      <div class="cv-tools">
+        {adds}
+        {zooming ? <ZoomStrip tidy={editable && m === 'build'} /> : null}
+      </div>
+    );
   if (graph === null) {
     return (
       <>

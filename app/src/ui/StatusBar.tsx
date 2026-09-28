@@ -122,18 +122,22 @@ export interface StatusBarProps {
    * the nominal height would paint over it.
    */
   hostRef?: (el: HTMLElement | null) => void;
+  /**
+   * Whether the finding tally rides in this cluster. The floating layout
+   * carries it on the status card over the canvas instead (Findings.tsx).
+   */
+  count?: boolean;
 }
 
-export function StatusBar({ hostRef }: StatusBarProps) {
-  const errs = errors.value.length;
-  const warns = warnings.value.length;
-  const notes = issues.value.length - errs - warns;
-  const tone = errs > 0 ? 'is-error' : warns > 0 ? 'is-warn' : 'is-clean';
-  const link = sharedUrl.value;
+/**
+ * Which configuration is on screen: the picker, and -- once, after a reload --
+ * the note that it was restored, with the way back to a fresh one.
+ */
+export function DocPicker() {
   const { preset, edited } = presetState(doc.value, presetId.value);
   const showing = preset !== null && !edited;
   return (
-    <div class="statusbar app-status" ref={hostRef}>
+    <>
       {/* The word "Preset" is gone from the bar: the picker's first option
           names what is on screen ("1+1+1 with observer", "Current
           configuration (edited)"), the control's own title says what it is,
@@ -143,7 +147,7 @@ export function StatusBar({ hostRef }: StatusBarProps) {
       <label class="sr" for="preset-picker">Preset</label>
       <select
         id="preset-picker"
-        class="btn"
+        class="btn doc-picker"
         title="Load one of the eleven configurations this page ships with"
         /* The preset's own option while the document still is that preset;
            the first option, which then says so, once it is not. */
@@ -174,21 +178,8 @@ export function StatusBar({ hostRef }: StatusBarProps) {
         ))}
       </select>
 
-      {/* The tally is the way in, not a label: it takes the reader to the
-          findings it counts, in whichever mode they are (IssuePanel.tsx). */}
-      <button
-        type="button"
-        class={`count ${tone}`}
-        title={mode.value === 'build' || mode.value === 'break'
-          ? 'Show the validation findings'
-          : 'Show the validation findings, in Build'}
-        onClick={() => { revealFindings(); }}
-      >
-        {findingCount(errs, warns, notes)}
-      </button>
-
       {restored.value ? (
-        <span class="mono">
+        <span class="doc-restored">
           Restored your last configuration
           {' '}
           <button
@@ -204,9 +195,45 @@ export function StatusBar({ hostRef }: StatusBarProps) {
           </button>
         </span>
       ) : null}
+    </>
+  );
+}
 
-      <span class="statusbar-spacer" />
+/**
+ * The tally is the way in, not a label: it takes the reader to the findings
+ * it counts, in whichever mode they are (IssuePanel.tsx).
+ */
+export function DocCount() {
+  const errs = errors.value.length;
+  const warns = warnings.value.length;
+  const notes = issues.value.length - errs - warns;
+  const tone = errs > 0 ? 'is-error' : warns > 0 ? 'is-warn' : 'is-clean';
+  return (
+    <button
+      type="button"
+      class={`count ${tone}`}
+      title={mode.value === 'build' || mode.value === 'break'
+        ? 'Show the validation findings'
+        : 'Show the validation findings, in Build'}
+      onClick={() => { revealFindings(); }}
+    >
+      {findingCount(errs, warns, notes)}
+    </button>
+  );
+}
 
+/**
+ * What can be done to the configuration as a whole: the drawer toggle below
+ * `wide`, Share, and -- behind the overflow -- Export, Import and Reset.
+ *
+ * The overflow is a native `<details>`: a real disclosure with no script of
+ * its own, and its three items stay in the document while it is shut, so a
+ * keyboard, a test and a screen reader all find the same three buttons.
+ */
+export function DocActions() {
+  const link = sharedUrl.value;
+  return (
+    <>
       {viewport.value === 'wide' || mode.value === 'learn' ? null : (
         <button
           type="button"
@@ -225,7 +252,7 @@ export function StatusBar({ hostRef }: StatusBarProps) {
           never be a secret only the clipboard knows. */}
       <button
         type="button"
-        class="btn"
+        class="btn is-solid"
         disabled={busy.value}
         title="Copy a link that carries the whole configuration"
         data-permalink={shareHref.value}
@@ -239,39 +266,81 @@ export function StatusBar({ hostRef }: StatusBarProps) {
       {link === null || shareTooLarge.value ? null : (
         /* A real link, not a receipt: the address the reader can copy without
            a clipboard permission, and the one this page is at. */
-        <a class="sharelink mono" id="permalink" rel="bookmark" href={link}>
+        <a class="sharelink" id="permalink" rel="bookmark" href={link}>
           Link copied
         </a>
       )}
 
-      <button type="button" class="btn is-quiet" onClick={() => exportDoc(doc.value)}>Export</button>
-
-      <label class="btn is-quiet">
-        Import
-        <input
-          type="file"
-          class="sr"
-          accept=".json,.dgtopo.json,application/json"
-          onChange={(e) => {
-            const input = e.currentTarget as HTMLInputElement;
-            void onImport(input.files?.[0] ?? null).finally(() => { input.value = ''; });
-          }}
-        />
-      </label>
-
-      <button
-        type="button"
-        class="btn is-quiet"
-        title="Back to the classic 1+1+1 configuration"
-        onClick={() => {
-          edit('Reset to the classic configuration', () => classicDoc(edition.value));
-          /* Same reason as Start fresh: this is the classic deployment, not
-             the `classic` preset, which brings its own event. */
-          presetId.value = null;
+      <details
+        class="ovf"
+        onKeyDown={(e) => {
+          if (e.key !== 'Escape') return;
+          const el = e.currentTarget as HTMLDetailsElement;
+          if (!el.open) return;
+          el.open = false;
+          el.querySelector('summary')?.focus();
+        }}
+        /* A press on one of its items is the end of the errand: shut it. */
+        onClick={(e) => {
+          const t = e.target as Element;
+          if (t.closest('.ovf-menu button') !== null) {
+            (e.currentTarget as HTMLDetailsElement).open = false;
+          }
         }}
       >
-        Reset
-      </button>
+        <summary class="btn is-icon" aria-label="More" title="Export, import, reset">
+          <span aria-hidden="true">⋯</span>
+        </summary>
+        <div class="ovf-menu float-card">
+          <button type="button" class="btn" onClick={() => exportDoc(doc.value)}>Export</button>
+
+          <label class="btn">
+            Import
+            <input
+              type="file"
+              class="sr"
+              accept=".json,.dgtopo.json,application/json"
+              onChange={(e) => {
+                const input = e.currentTarget as HTMLInputElement;
+                void onImport(input.files?.[0] ?? null).finally(() => { input.value = ''; });
+                const host = input.closest('details');
+                if (host) host.open = false;
+              }}
+            />
+          </label>
+
+          <button
+            type="button"
+            class="btn"
+            title="Back to the classic 1+1+1 configuration"
+            onClick={() => {
+              edit('Reset to the classic configuration', () => classicDoc(edition.value));
+              /* Same reason as Start fresh: this is the classic deployment, not
+                 the `classic` preset, which brings its own event. */
+              presetId.value = null;
+            }}
+          >
+            Reset
+          </button>
+        </div>
+      </details>
+    </>
+  );
+}
+
+/**
+ * The document's controls in one cluster -- picker, tally, Share and the
+ * overflow. The shell splits it across the header (the picker beside the
+ * brand, the actions at the right end); this whole form is what a narrow
+ * header, and a test, gets.
+ */
+export function StatusBar({ hostRef, count = true }: StatusBarProps) {
+  return (
+    <div class="statusbar app-status" ref={hostRef}>
+      <DocPicker />
+      {count ? <DocCount /> : null}
+      <span class="statusbar-spacer" />
+      <DocActions />
     </div>
   );
 }

@@ -190,8 +190,10 @@ describe('the shell with the Introduction open', () => {
     introPage.value = false;
     const root = mount(TopBar);
     await tick();
+    /* The brand is the link: "Data Guard", titled as the Introduction. */
     const link = [...root.querySelectorAll('a')]
-      .find((a) => a.textContent === 'Introduction');
+      .find((a) => a.classList.contains('brand'));
+    expect(link?.getAttribute('title')).toContain('Introduction');
     expect(link?.getAttribute('href')).toBe(INTRO_HREF);
     link?.dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true }));
     await tick();

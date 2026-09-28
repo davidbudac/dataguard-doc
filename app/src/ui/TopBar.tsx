@@ -17,34 +17,45 @@
  * thing three times over and were the loudest text in the bar.
  */
 
+import type { ComponentChildren } from 'preact';
 import { canUndo, canRedo, redo, redoLabel, undo, undoLabel } from '@/state/history';
-import { edition, introOpen, mode, MODE_LABEL, MODE_SUB, MODES, theme } from '@/state/view';
+import {
+  applyTheme, edition, introOpen, mode, MODE_LABEL, MODE_SUB, MODES, nextTheme, theme,
+} from '@/state/view';
 import type { Mode, ThemePref } from '@/state/view';
 import { saveEdition, saveTheme } from '@/state/persist';
-import { applyTheme } from '@/state/view';
 import { Segmented } from './common/Segmented';
 import { INTRO_HREF, leaveIntro, openIntro } from './intro/route';
 
-export function TopBar() {
+const THEME_WORD: Record<ThemePref, string> = { auto: 'system', light: 'light', dark: 'dark' };
+
+export interface TopBarProps {
+  children?: unknown;
+  /** Beside the brand: which configuration is on screen (StatusBar's picker). */
+  doc?: ComponentChildren;
+  /** At the right end: what can be done to the configuration as a whole. */
+  actions?: ComponentChildren;
+}
+
+export function TopBar({ doc, actions }: TopBarProps = {}) {
   const m = mode.value;
+  const pref = theme.value;
+  const next = nextTheme(pref);
   return (
     <header class="topbar app-top">
       <div class="topbar-brand">
-        <b>Data Guard topology</b>
         {/* A real `<a href>` and not a button, so it can be middle-clicked,
             bookmarked and copied: `?intro=1` is the page's own address, and
             the click handler only saves the reload. */}
-        <span>
-          simulator
-          {' · '}
-          <a
-            href={INTRO_HREF}
-            title="What this is, and what to do with it"
-            onClick={(e) => { e.preventDefault(); openIntro(); }}
-          >
-            Introduction
-          </a>
-        </span>
+        <a
+          class="brand"
+          href={INTRO_HREF}
+          title="Introduction: what this is, and what to do with it"
+          onClick={(e) => { e.preventDefault(); openIntro(); }}
+        >
+          Data Guard
+        </a>
+        {doc}
       </div>
 
       <div class="topbar-modes">
@@ -59,8 +70,6 @@ export function TopBar() {
         />
       </div>
 
-      <div class="topbar-spacer" />
-
       <div class="topbar-group">
         <Segmented<'19c' | '26ai'>
           label="Oracle release"
@@ -71,23 +80,6 @@ export function TopBar() {
           ]}
           onChange={(v) => { edition.value = v; saveEdition(v); }}
         />
-
-        <select
-          class="btn theme-picker"
-          aria-label="Theme"
-          title="Theme"
-          value={theme.value}
-          onChange={(e) => {
-            const v = e.currentTarget.value as ThemePref;
-            theme.value = v;
-            saveTheme(v);
-            applyTheme(v);
-          }}
-        >
-          <option value="auto">System</option>
-          <option value="light">Light</option>
-          <option value="dark">Dark</option>
-        </select>
 
         <button
           type="button"
@@ -111,6 +103,25 @@ export function TopBar() {
           <span aria-hidden="true">↷</span>
         </button>
 
+        {/* One press flips light and dark; the name says which way it is
+            pointing now and which way it will go. */}
+        <button
+          type="button"
+          class="btn is-icon theme-tog"
+          aria-label={`Theme: ${THEME_WORD[pref]}. Switch to ${THEME_WORD[next]}`}
+          title={`Theme: ${THEME_WORD[pref]} — switch to ${THEME_WORD[next]}`}
+          onClick={() => {
+            theme.value = next;
+            saveTheme(next);
+            applyTheme(next);
+          }}
+        >
+          <svg viewBox="0 0 16 16" aria-hidden="true">
+            <circle cx="8" cy="8" r="5.5" />
+            <path d="M8 2.5a5.5 5.5 0 0 1 0 11z" class="fill" />
+          </svg>
+        </button>
+
         {/* A toggle, and it says which way it is pointing. Closing the card
             from here writes nothing to `dg-intro-v1`: opening an explanation
             and shutting it again is not the same as having read it, and only
@@ -125,7 +136,9 @@ export function TopBar() {
         >
           ?
         </button>
+        {actions === undefined ? null : <div class="topbar-acts">{actions}</div>}
       </div>
+
     </header>
   );
 }
