@@ -715,6 +715,44 @@ describe('a document that says fast-start failover is enabled with no observer',
   });
 });
 
+describe('the three conditions of enabling fast-start failover (VAL-04)', () => {
+  it('FSFO.MULTI_TARGET_EXPLICIT is info while disabled, error while enabled', () => {
+    const enabledDoc = twoStandbyDoc({ targets: [] });
+    const enabled = validate(enabledDoc).find((f) => f.id === 'FSFO.MULTI_TARGET_EXPLICIT');
+    const disabledDoc = twoStandbyDoc({ targets: [] });
+    disabledDoc.config.fsfo.state = 'disabled';
+    const disabled = validate(disabledDoc).find((f) => f.id === 'FSFO.MULTI_TARGET_EXPLICIT');
+    expect(enabled?.severity).toBe('error');
+    expect(disabled?.severity).toBe('info');
+    expect(disabled?.message).toContain('enabling it would require');
+  });
+
+  it('FSFO.LOGICAL_MAXPROT is info while disabled, error while enabled', () => {
+    const base = { mode: 'MAXPROTECTION' as const, secondRole: 'logical' as const, targets: [M('sby02')] };
+    const enabled = validate(twoStandbyDoc(base)).find((f) => f.id === 'FSFO.LOGICAL_MAXPROT');
+    const disabledDoc = twoStandbyDoc(base);
+    disabledDoc.config.fsfo.state = 'disabled';
+    const disabled = validate(disabledDoc).find((f) => f.id === 'FSFO.LOGICAL_MAXPROT');
+    expect(enabled?.severity).toBe('error');
+    expect(disabled?.severity).toBe('info');
+    expect(disabled?.message).toContain('Enabling it would fail');
+  });
+
+  it('FSFO.TARGET_DIRECT_REDO is info while disabled, error while enabled', () => {
+    /* cascadeDoc has no fsfo option; the paired CASES entry above already
+       checks the enabled (default) severity, so this checks the disabled
+       branch directly against the rule. */
+    const enabled = validate(cascadeDoc({ targets: [M('term1')] }))
+      .find((f) => f.id === 'FSFO.TARGET_DIRECT_REDO');
+    const doc = cascadeDoc({ targets: [M('term1')] });
+    doc.config.fsfo.state = 'disabled';
+    const disabled = validate(doc).find((f) => f.id === 'FSFO.TARGET_DIRECT_REDO');
+    expect(enabled?.severity).toBe('error');
+    expect(disabled?.severity).toBe('info');
+    expect(disabled?.message).toContain('Enabling fast-start failover would require');
+  });
+});
+
 describe('a far sync instance that is not in the redo path', () => {
   it('does not drag the mode gate in', () => {
     const d = baseDoc({
