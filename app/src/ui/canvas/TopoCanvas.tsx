@@ -20,7 +20,7 @@ import {
 import type { RedoGraph, Snapshot, TopologyDoc } from '@/engine';
 import type { Geometry, LayoutOffset, NodeBox, SiteBox, ViewBox } from './layout';
 import { layoutTopology, SITE_MIN } from './layout';
-import { cardFrameFor, cardRoleFor, chipsFor, routeTopology, siteIsDown, unionViewBox } from './routing';
+import { cardFrameFor, cardRoleFor, carryEnds, chipsFor, routeTopology, siteIsDown, unionViewBox } from './routing';
 import { describeTopology, cardLabel, linkLabel, siteLabel } from './aria';
 import { anchorFor, barRoom, fittedScale, placeBar } from './anchor';
 import { InlineName } from './InlineName';
@@ -1342,6 +1342,68 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
   const descId = `${prefix}-desc`;
   const sumId = `${prefix}-sum`;
 
+  /* ---- a card in the air is drawn last, and its lines follow it ---- */
+  const isCarried = (key: string): boolean => air !== null && air.keys.includes(key);
+  const stackCarried = (keys: readonly string[]): boolean =>
+    air !== null && keys.every((k) => air.keys.includes(k));
+  /* The lines to a card in the air reach the card where it is drawn -- on the
+     pointer -- not the 8 px grid spot it will snap to (task 5.3). */
+  const linesDrawn = air === null || (air.rx === 0 && air.ry === 0)
+    ? routed.links
+    : routed.links.map((l) => {
+      const by = { x: air.rx, y: air.ry };
+      return carryEnds(l, isCarried(l.from) ? by : null, isCarried(l.to) ? by : null);
+    });
+  const renderStack = (st: Geometry['stacks'][number]): JSX.Element => (
+    <StackChassis
+      key={st.key}
+      stack={st}
+      prefix={prefix}
+      byKey={geo.byKey}
+      interactive={interactive}
+      onHeaderPointerDown={onHeaderPointerDown}
+      dropTarget={hostDropTarget !== null && st.hostId === hostDropTarget}
+      hint={stackCarried(st.memberKeys) ? null : hostHint(st.hostId)}
+    />
+  );
+  const renderNode = (n: NodeBox): JSX.Element => {
+    const carried = isCarried(n.key);
+    const hint = carried ? null : cardHint(n.key);
+    /* A blade lifted out of its stack on its own leaves the chassis behind,
+       so it draws a card's own fill and border while it is in the air. */
+    const lifted = carried && n.stackKey !== undefined
+      && !geo.stacks.some((st) => st.key === n.stackKey && stackCarried(st.memberKeys));
+    const card = (
+      <NodeCard
+        key={n.key}
+        node={n}
+        prefix={prefix}
+        frame={cardFrameFor(doc, n, frame)}
+        databaseRole={cardRoleFor(doc, n, frame)}
+        chips={chipsFor(doc, n)}
+        label={cardLabel(doc, graph, n, frame)}
+        selected={isSelected(n.key)}
+        hovered={hovered === n.key}
+        dragging={drag.current?.kind === 'card' && drag.current.moved && n.key in drag.current.bases}
+        target={rubber !== null && rubber.over === n.key
+          ? (rubber.what?.enabled.state === 'off' ? 'no' : 'yes')
+          : hostDropTarget !== null && hostIdOf(n.key) === hostDropTarget ? 'yes'
+            : hint === 'maybe' || hint === 'no' ? hint : null}
+        dim={hint === 'dim'}
+        port={interactive && props.onConnect !== undefined}
+        interactive={interactive}
+        tabIndex={tabStops.has(n.key) ? 0 : -1}
+        onSelect={onCardSelect}
+        onHover={props.onHover}
+        onPointerDown={onCardPointerDown}
+        onPortPointerDown={onPortPointerDown}
+        onKeyDown={onCardKey}
+        cardRef={cardRef}
+      />
+    );
+    return lifted ? <g key={n.key} class="tp-lifted">{card}</g> : card;
+  };
+
   if (geo.nodes.length === 0) {
     return (
       <figure class="tp-wrap">
@@ -1472,7 +1534,7 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
         {/* Lines first, captions after every card: a caption is a label, and a
             label that another link's line is drawn across stops being one. */}
         <g class="tp-links">
-          {routed.links.map((l) => (
+          {linesDrawn.map((l) => (
             <LinkPath
               key={l.id}
               link={l}
@@ -1490,24 +1552,7 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
         </g>
 
         <g class="tp-stacks">
-          {geo.stacks.map((s) => {
-            const carried = air !== null && s.memberKeys.every((k) => air.keys.includes(k));
-            const chassis = (
-              <StackChassis
-                key={s.key}
-                stack={s}
-                prefix={prefix}
-                byKey={geo.byKey}
-                interactive={interactive}
-                onHeaderPointerDown={onHeaderPointerDown}
-                dropTarget={hostDropTarget !== null && s.hostId === hostDropTarget}
-                hint={carried ? null : hostHint(s.hostId)}
-              />
-            );
-            return carried && air !== null
-              ? <g key={s.key} transform={`translate(${air.rx},${air.ry})`}>{chassis}</g>
-              : chassis;
-          })}
+          {geo.stacks.filter((st) => !stackCarried(st.memberKeys)).map(renderStack)}
         </g>
 
         {/* Where the card will land: its outline on the 8 px grid under a card
@@ -1522,41 +1567,7 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
         )}
 
         <g class="tp-nodes">
-          {geo.nodes.map((n) => {
-            const carried = air !== null && air.keys.includes(n.key);
-            const hint = carried ? null : cardHint(n.key);
-            const card = (
-            <NodeCard
-              key={n.key}
-              node={n}
-              prefix={prefix}
-              frame={cardFrameFor(doc, n, frame)}
-              databaseRole={cardRoleFor(doc, n, frame)}
-              chips={chipsFor(doc, n)}
-              label={cardLabel(doc, graph, n, frame)}
-              selected={isSelected(n.key)}
-              hovered={hovered === n.key}
-              dragging={drag.current?.kind === 'card' && drag.current.moved && n.key in drag.current.bases}
-              target={rubber !== null && rubber.over === n.key
-                ? (rubber.what?.enabled.state === 'off' ? 'no' : 'yes')
-                : hostDropTarget !== null && hostIdOf(n.key) === hostDropTarget ? 'yes'
-                  : hint === 'maybe' || hint === 'no' ? hint : null}
-              dim={hint === 'dim'}
-              port={interactive && props.onConnect !== undefined}
-              interactive={interactive}
-              tabIndex={tabStops.has(n.key) ? 0 : -1}
-              onSelect={onCardSelect}
-              onHover={props.onHover}
-              onPointerDown={onCardPointerDown}
-              onPortPointerDown={onPortPointerDown}
-              onKeyDown={onCardKey}
-              cardRef={cardRef}
-            />
-            );
-            return carried && air !== null
-              ? <g key={n.key} transform={`translate(${air.rx},${air.ry})`}>{card}</g>
-              : card;
-          })}
+          {geo.nodes.filter((n) => !isCarried(n.key)).map(renderNode)}
         </g>
 
         {/* The line being drawn from a port, while it is being drawn. */}
@@ -1607,6 +1618,15 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
             />
           ))}
         </g>
+
+        {/* What is in the air, over every caption: a card carried across a
+            line's caption covers it, the way the card in the hand would. */}
+        {air === null ? null : (
+          <g class="tp-carried" transform={`translate(${air.rx},${air.ry})`}>
+            {geo.stacks.filter((st) => stackCarried(st.memberKeys)).map(renderStack)}
+            {geo.nodes.filter((n) => isCarried(n.key)).map(renderNode)}
+          </g>
+        )}
 
         {/* The handles of a selected data centre: over the cards, because the
             edge they sit on is the edge of the box, not of what is inside. */}

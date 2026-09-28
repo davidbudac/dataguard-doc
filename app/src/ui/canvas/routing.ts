@@ -50,6 +50,8 @@ export interface RoutedLink extends CanvasLink {
   pill: Rect;
   /** Two slashes across a severed link, as the published drawing cuts one. */
   slashes: { x1: number; y1: number; x2: number; y2: number }[];
+  /** `d` runs from the last point back to the first (a shared trunk, task 5.2). */
+  fromEnd?: boolean;
 }
 
 export interface RoutingResult {
@@ -942,6 +944,7 @@ export function routeLinks(links: readonly CanvasLink[], geo: Geometry): Routing
          shares, so where they run together their dashes coincide rather than
          filling each other's gaps into what reads as a solid line. */
       d: mates.length > 0 ? orthPath([...chosen].reverse()) : orthPath(chosen),
+      ...(mates.length > 0 ? { fromEnd: true } : {}),
       pill,
       slashes: link.cut ? slashesFor(seg, pill) : [],
     };
@@ -961,6 +964,35 @@ export function routeLinks(links: readonly CanvasLink[], geo: Geometry): Routing
     box = { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
   }
   return { links: out, bounds: box };
+}
+
+/**
+ * A routed line with the end on a card in the air moved by what the 8 px grid
+ * holds that card short of the pointer (task 5.3).
+ *
+ * The card follows the pointer; the route was made for its snapped place, so
+ * without this the line stops up to 4 px short of the card it is drawn to.
+ * The end moves with the card and the corner next to it moves along the same
+ * axis, so every run stays straight; the caption stays where it is -- 4 px is
+ * not worth a caption jumping about under the pointer.
+ */
+export function carryEnds(link: RoutedLink, from: Pt | null, to: Pt | null): RoutedLink {
+  if ((from === null && to === null) || link.points.length < 2) return link;
+  let pts = link.points.map((p) => ({ ...p }));
+  if (from !== null && to !== null && from.x === to.x && from.y === to.y) {
+    pts = pts.map((p) => ({ x: p.x + from.x, y: p.y + from.y }));
+  } else {
+    const nudge = (end: number, next: number, by: Pt): void => {
+      const e = pts[end]; const n = pts[next];
+      if (!e || !n) return;
+      const horizontal = Math.abs(e.y - n.y) < 0.5;
+      e.x += by.x; e.y += by.y;
+      if (horizontal) n.y += by.y; else n.x += by.x;
+    };
+    if (from !== null) nudge(0, 1, from);
+    if (to !== null) nudge(pts.length - 1, pts.length - 2, to);
+  }
+  return { ...link, points: pts, d: link.fromEnd ? orthPath([...pts].reverse()) : orthPath(pts) };
 }
 
 export function routeTopology(

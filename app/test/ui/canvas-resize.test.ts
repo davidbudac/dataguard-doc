@@ -74,6 +74,38 @@ const siteRect = (root: HTMLElement, id: string): Box =>
 const cardRect = (root: HTMLElement, id: string): Box =>
   boxOf(root.querySelector(`[data-node="${id}"] rect.tp-card`)!);
 
+describe('a card in the air (5.3)', () => {
+  it('is drawn over every caption, and the lines to it reach it where it is drawn', async () => {
+    const root = await mountApp();
+    const card = cardRect(root, 'sby01');
+    const svg = root.querySelector('.topo-svg')!;
+    const start = clientOf(root, card.x + 20, card.y + 20);
+    pointer(root.querySelector('[data-node="sby01"]')!, 'Down', ...start);
+    /* 123 and 61: off the 8 px grid, so the card rides short of its snap. */
+    pointer(svg, 'Move', start[0] + 123, start[1] + 61);
+    await tick();
+    const carried = root.querySelector('.tp-carried')!;
+    expect(carried).not.toBeNull();
+    expect(carried.querySelector('[data-node="sby01"]')).not.toBeNull();
+    const pills = root.querySelector('.tp-pills')!;
+    expect(pills.compareDocumentPosition(carried) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    const [rx, ry] = carried.getAttribute('transform')!.match(/-?[\d.]+/g)!.map(Number);
+    expect(rx).not.toBe(0);
+    /* The redo line ends on the card's left edge as drawn: snapped box + remainder. */
+    const drawn = cardRect(root, 'sby01');
+    const redo = [...root.querySelectorAll('.tp-links path.tp-link')]
+      .map((p) => p.getAttribute('d')!)
+      .find((d) => d.startsWith('M') && d.includes(`${Math.round((drawn.x + rx!) * 10) / 10},`));
+    expect(redo).toBeDefined();
+    const end = redo!.trim().split(/\s+/).pop()!.replace(/^L/, '').split(',').map(Number);
+    expect(end[0]).toBeCloseTo(drawn.x + rx!, 1);
+    expect(end[1]).toBeCloseTo(drawn.y + drawn.h / 2 + ry!, 1);
+    pointer(svg, 'Up', start[0] + 123, start[1] + 61);
+    await tick();
+    expect(root.querySelector('.tp-carried')).toBeNull();
+  });
+});
+
 describe('a card carried inside its data centre', () => {
   it('leaves the box where and how large it was while the card is in the air', async () => {
     const root = await mountApp();

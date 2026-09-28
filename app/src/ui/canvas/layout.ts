@@ -853,7 +853,12 @@ export function layoutTopology(
      never recomputed from the pre-drag geometry -- so a stack dragged as a
      group still reads as one touching chassis wherever the drag left it. */
   const stacks: StackBox[] = stackDefs.map((sd) => {
-    const blades = sd.memberKeys.map((k) => byKey[k]).filter((n): n is NodeBox => n !== undefined);
+    const all = sd.memberKeys.map((k) => byKey[k]).filter((n): n is NodeBox => n !== undefined);
+    /* A blade lifted out on its own is in the air, not in the chassis: the
+       frame stays round the blades that stayed (task 5.3) rather than
+       stretching after the one being carried away. */
+    const staying = all.filter((n) => !transient.includes(n.key));
+    const blades = staying.length > 0 ? staying : all;
     const x = blades[0]?.x ?? 0;
     const yTop = (blades.length === 0 ? 0 : Math.min(...blades.map((b) => b.y))) - LAYOUT.stackHeaderH;
     const yBottom = blades.length === 0 ? 0 : Math.max(...blades.map((b) => b.y + b.h));

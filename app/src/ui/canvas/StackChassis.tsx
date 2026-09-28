@@ -40,7 +40,10 @@ export interface StackChassisProps {
 
 export function StackChassis(props: StackChassisProps): JSX.Element | null {
   const { stack, byKey } = props;
-  const blades = stack.memberKeys.map((k) => byKey[k]).filter((n): n is NodeBox => n !== undefined);
+  /* The blades inside the frame: one lifted out and carried away is drawn
+     on its own, and no divider is left behind for it. */
+  const blades = stack.memberKeys.map((k) => byKey[k])
+    .filter((n): n is NodeBox => n !== undefined && n.y >= stack.y && n.y + n.h <= stack.y + stack.h);
   if (blades.length === 0) return null;
   const topKey = stack.memberKeys[0] as string;
   const headerBottom = stack.y + stack.headerH;

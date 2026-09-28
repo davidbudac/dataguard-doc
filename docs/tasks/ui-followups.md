@@ -189,7 +189,12 @@ Ping and readiness-check lines crowd the drawing. Bundle/merge parallel
 observer lines where they share a corridor, or route them through one trunk.
 
 ### 5.3 Drag polish
-Status: todo
+Status: done (on ui/track5-canvas)
+Note: cards (and whole stacks) in the air render in `.tp-carried`, after the captions; lines to them
+follow the snap remainder (`routing.ts` `carryEnds`: end + adjacent corner, captions stay put); a
+blade lifted alone leaves the frame round the blades that stayed (`layout.ts` stacks skip transient
+blades, `StackChassis` no stray divider) and paints its own fill (`.tp-lifted`). Left: a blade let go
+on free ground (no merge) is still on its host, so the frame then spans the gap to it, as before.
 Link captions drawn over the card being dragged (the dragged card must be on
 top); a line lags the dragged card by up to 4 px (snap remainder); lifting one
 card out of a stack stretches the stack's frame.

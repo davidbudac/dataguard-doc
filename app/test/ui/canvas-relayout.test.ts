@@ -20,7 +20,7 @@ import type { Geometry, LayoutOffset, NodeBox } from '@/ui/canvas/layout';
 import { overlaps, segmentHitsRect } from '@/ui/canvas/measure';
 import { routeTopology } from '@/ui/canvas/routing';
 import { siteForNewFarSync, siteForNewObserver, siteForNewStandby } from '@/ui/build/placement';
-import { addDatabase, addFarSync, addObserver, addSite } from '@/ui/inspector/edits';
+import { addDatabase, addFarSync, addObserver, addSite, mergeIntoHost } from '@/ui/inspector/edits';
 
 const topo = (): TopologyDoc => docSignal.value.topology;
 const siteOf = (t: TopologyDoc, key: string): string => {
@@ -217,6 +217,31 @@ describe('three or more observers: their lines run as trunks (5.2)', () => {
       expect(pills).toEqual([]);
     });
   }
+});
+
+/* ---- task 5.3: a blade lifted out of its stack ---- */
+
+describe('a blade lifted out of its chassis stack (5.3)', () => {
+  it('leaves the frame round the blades that stayed while it is in the air', () => {
+    const fs = addFarSync()!;
+    const prmHost = topo().members.find((m) => (m.id as string) === 'prm01')!.instances[0]!.host;
+    mergeIntoHost(fs as string, prmHost);
+    const rest = draw(topo()).geo;
+    const stack = rest.stacks.find((s) => s.memberKeys.includes(fs as string))!;
+    expect(stack).toBeDefined();
+    const graph = resolveRedoGraph(topo(), { primary: declaredPrimary(topo())! });
+    const air = layoutTopology(topo(), graph, {
+      overrides: { [fs as string]: { dx: 240, dy: 160 } }, transient: [fs as string],
+    });
+    const lifted = air.stacks.find((s) => s.key === stack.key)!;
+    const prm = air.byKey['prm01']!;
+    /* Round prm01 alone: its header above it, its bottom at prm01's. */
+    expect(lifted.y).toBe(prm.y - lifted.headerH);
+    expect(lifted.y + lifted.h).toBe(prm.y + prm.h);
+    /* Once it lands the frame is the whole stack's again. */
+    const landed = layoutTopology(topo(), graph, { overrides: { [fs as string]: { dx: 240, dy: 160 } } });
+    expect(landed.stacks.find((s) => s.key === stack.key)!.h).toBeGreaterThan(lifted.h);
+  });
 });
 
 /* ---- task 5.1: a grown data centre pushes its neighbours ---- */

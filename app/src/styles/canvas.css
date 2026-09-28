@@ -230,6 +230,9 @@
 .topo-svg .tp-card.is-hov { stroke: var(--ik3); }
 .topo-svg .tp-card.is-sel { stroke: var(--fc); stroke-width: 2; }
 .topo-svg .tp-card.is-drag { stroke: var(--fc); stroke-width: 2; stroke-dasharray: 5 3; }
+/* A blade lifted out of its stack on its own (task 5.3): the chassis stays
+   behind, so in the air it paints a card's own surface. */
+.topo-svg .tp-lifted .tp-card.is-blade { fill: var(--sf); }
 
 .topo-svg .tp-bdg { fill: var(--sf3); }
 .topo-svg .tp-bdg.is-primary { fill: var(--tlf); }
