@@ -423,13 +423,14 @@ describe('the SHOW mocks', () => {
     expect(remote).toBe('      remote_sby - Physical standby database (receiving current redo)');
   });
 
-  it('mark the far sync line as a model spelling', () => {
+  it('the far sync line is documented, not this page\'s model (GEN-13)', () => {
     const file = showConfiguration(farSync52());
     const text = renderPlain(file);
-    expect(text).toContain('fs1 - Far sync instance   (model)');
+    expect(text).toContain('fs1 - Far sync instance');
+    expect(text).not.toContain('fs1 - Far sync instance   (model)');
     const line = file.lines.find((l) => lineText(l).includes('Far sync instance'));
-    expect(line?.basis).toBe('model');
-    expect(line?.note).toMatch(/not found in the documentation/);
+    expect(line?.basis).toBe('documented');
+    expect(line?.cite).toContain('DGMGRL.FARSYNC_LINE_DOCUMENTED');
   });
 
   it('mark the lower-priority destination (alternate of ...) in VERBOSE only', () => {

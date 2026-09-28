@@ -326,8 +326,14 @@ export function generateDgmgrl(doc: TopologyDoc, opts: DgmgrlOptions = {}): Gene
       ['OBS.CANNOT_OCCUR_LIST'],
     ));
     lines.push(nDoc(
-      'with no observer deployed V$DATABASE.FS_FAILOVER_STATUS simply reads DISABLED -- deploying no observer is not the same as being unobserved',
-      ['FSFO.STATUS_DISABLED', 'FSFO.PRIMARY_UNOBSERVED'],
+      /* ED-06: 26ai deprecates the V$DATABASE.FS_FAILOVER_* columns in favour
+         of V$FAST_START_FAILOVER_CONFIG. */
+      cfg.edition === '26ai'
+        ? 'with no observer deployed V$FAST_START_FAILOVER_CONFIG simply reads DISABLED -- deploying no observer is not the same as being unobserved'
+        : 'with no observer deployed V$DATABASE.FS_FAILOVER_STATUS simply reads DISABLED -- deploying no observer is not the same as being unobserved',
+      cfg.edition === '26ai'
+        ? ['FSFO.FS_FAILOVER_CONFIG_26AI', 'FSFO.PRIMARY_UNOBSERVED']
+        : ['FSFO.STATUS_DISABLED', 'FSFO.PRIMARY_UNOBSERVED'],
     ));
     const target = firstTargetName(doc, primary.id);
     if (target !== null) {
@@ -440,7 +446,7 @@ function fsfoPropertyLines(doc: TopologyDoc, defaults: (typeof BROKER_DEFAULTS)[
     /* v19: the document specifies values for both properties, but they do
        not exist in 19c, so this script does not set them. */
     out.push(nLater(
-      'ObserverPingInterval and ObserverPingRetry are not documented for 19c -- zero occurrences on the 12.2, 18c or 19c properties pages, and neither name is present in a live 19.27 install -- so this script does not set them here even though the document specifies values for both; detection stays governed by the threshold above',
+      'the ObserverPing* properties are not documented for 19c -- zero occurrences on the 12.2, 18c or 19c properties pages, and neither name is present in a live 19.27 install -- so this script does not set them here even though the document specifies values for both; detection stays governed by the threshold above',
       ['FSFO.PING_PROPS_21C'],
       'First documented in the 21c broker properties page.',
     ));

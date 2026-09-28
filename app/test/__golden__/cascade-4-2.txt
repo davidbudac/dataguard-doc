@@ -119,10 +119,11 @@ Configuration - dg_config
   Protection Mode: MaxAvailability
   Members:
   prm01 - Primary database
-    sby01 - Physical standby database
+    sby01 - (*) Physical standby database
+    (*) Fast-Start Failover target
       remote_sby - Physical standby database (receiving current redo)
 
-Fast-Start Failover:  Enabled
+Fast-Start Failover: Enabled in Zero Data Loss Mode
 
 Configuration Status:
 SUCCESS
@@ -136,16 +137,35 @@ SUCCESS
 
 DGMGRL> SHOW FAST_START FAILOVER;
 
-Fast-Start Failover: ENABLED
+Fast-Start Failover: Enabled in Zero Data Loss Mode
+
+  Protection Mode:      MaxAvailability
+  Lag Limit:            30 seconds (not in use)
+  Lag Type:             APPLY
 
   Threshold:            30 seconds
   Active Target:        sby01
+  Potential Targets:    "sby01"
+    sby01:              valid   (model)
   Observer:             obs01
-  Lag Limit:            30 seconds (not evaluated in this mode)
   Shutdown Primary:     TRUE
   Auto-reinstate:       TRUE
+  Observer Reconnect:   (none)
   Observer Override:    FALSE
 (ObserverOverride is FALSE, the broker default, and this page models the default only: a failover needs both the observer and the target standby to have lost the primary)
+  Lag Grace Time:       0 seconds
+
+Configurable Failover Conditions
+  Health Conditions:
+    Corrupted Controlfile   YES
+    Corrupted Dictionary    YES
+    Inaccessible Logfile    NO
+    Stuck Archiver          NO
+    Datafile Write Errors   YES
+
+  Oracle Error Conditions:
+    (none)
+(these are the broker default failover health conditions; ENABLE/DISABLE FAST_START FAILOVER CONDITION is not modelled, so the mock always shows the defaults)
 
 ===== show.observer -- SHOW OBSERVER =====
 
