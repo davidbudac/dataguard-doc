@@ -1375,7 +1375,7 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
   };
 
   const legend = legendLines(
-    doc, geo, routed.links.some((l) => !l.active && l.kind !== 'connect'),
+    doc, routed.links.some((l) => !l.active && l.kind !== 'connect'),
     routed.links.some((l) => !l.active && l.kind === 'connect'),
   );
   if (!interactive) {
@@ -1841,7 +1841,7 @@ function PointerTip({ x, y, text, refused }: { x: number; y: number; text: strin
 
 /** Said once, under the drawing: what an absent chip and a faded line mean. */
 export function legendLines(
-  doc: TopologyDoc, geo: Geometry, anyInactive: boolean, fadedAddress = false,
+  doc: TopologyDoc, anyInactive: boolean, fadedAddress = false,
 ): string[] {
   const out: string[] = [];
   if (doc.members.some((m) => m.instances.length > 1)) {
@@ -1849,9 +1849,6 @@ export function legendLines(
   }
   if (doc.observers.length > 0 && doc.config.fsfo.state === 'disabled') {
     out.push('Fast-start failover is disabled, so no observer is called the master observer; all observers have the same functionality.');
-  }
-  if (geo.nodes.some((n) => n.unreachable)) {
-    out.push('A dashed card is a member no active redo route reaches from the primary.');
   }
   if (anyInactive) {
     out.push('A faded line is a destination this configuration declares but is not shipping to now.');
