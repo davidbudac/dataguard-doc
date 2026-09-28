@@ -470,7 +470,7 @@ export const CITATIONS = {
   'OBS.SHOW_OBSERVER_FIELDS': {
     url: U.bkr19Cmds, edition: '19c', verified: 'primary',
     quote: 'The SHOW OBSERVER command displays the observer name, the host name where the observer is running, whether the observer is the master observer, and the last time the observer pinged the primary and standby.',
-    note: 'The 19c broker commands reference documents SHOW OBSERVER with the same example output as 26ai (Observer "name" - Master/Backup, Host Name, Last Ping to Primary, Last Ping to Target).',
+    note: 'The 19c broker commands reference documents SHOW OBSERVER with the same example output as 26ai (Observer "name" - Master/Backup, Host Name, Last Ping to Primary, Last Ping to Target). Its example also opens with a header this prose sentence does not mention: "Configuration - DRSolution", "Primary: North_Sales", "Active Target Standby: South_Sales".',
   },
   'OBS.SET_MASTEROBSERVER': {
     url: U.bkr19Cmds, edition: '19c', verified: 'primary',

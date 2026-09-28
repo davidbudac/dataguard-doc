@@ -132,10 +132,14 @@ Configurable Failover Conditions
 
 DGMGRL> SHOW OBSERVER;
 
+Configuration - dg_config
+Primary: prm01
+Active Target Standby: sby01
+
 Observer "obs01" - Master
   Host Name:            dc3-obs01
   Last Ping to Primary: (not modelled)   (model)
   Last Ping to Target:  (not modelled)   (model)
 
 (only the master observer can coordinate fast-start failover)
-(19c registers up to three observers, one of them master)
+(the 19c fast-start failover chapter and ORA-16647 say up to three observers, while the 19c command reference’s START OBSERVER usage notes say four)

@@ -485,6 +485,28 @@ export function showObserver(doc: TopologyDoc): GeneratedFile {
     return a.name < b.name ? -1 : a.name > b.name ? 1 : 0;
   });
 
+  /* The example output in the 19c broker commands reference opens with a
+     three-line header before the per-observer list -- "Configuration - ...",
+     "Primary: ...", "Active Target Standby: ..." -- which OBS.SHOW_OBSERVER_FIELDS'
+     own prose sentence never mentions, and this mock dropped along with it. */
+  const primaryId = declaredPrimary(doc);
+  const primaryMember = doc.members.find((m) => m.id === primaryId);
+  const fsfoTargetList = doc.config.fsfo.target.kind === 'list' ? doc.config.fsfo.target.members : [];
+  const activeTargetId = armed ? fsfoTargetList[0] : undefined;
+  const targetMember = doc.members.find((m) => m.id === activeTargetId)
+    ?? doc.members.find((m) => isDatabase(m) && (m.role === 'physical' || m.role === 'logical'));
+  lines.push(cmd(`Configuration - ${doc.config.name}`, {
+    basis: 'documented', cite: ['OBS.SHOW_OBSERVER_FIELDS'],
+    note: 'The 19c broker commands reference’s own SHOW OBSERVER example opens with this header, ahead of the per-observer list.',
+  }));
+  lines.push(cmd(`Primary: ${primaryMember?.name ?? '(none)'}`, {
+    basis: 'documented', cite: ['OBS.SHOW_OBSERVER_FIELDS'],
+  }));
+  lines.push(cmd(`Active Target Standby: ${targetMember?.name ?? '(none)'}`, {
+    basis: 'documented', cite: ['OBS.SHOW_OBSERVER_FIELDS'],
+  }));
+  lines.push(blank());
+
   for (const o of ordered) {
     const roleSuffix = armed ? ` - ${o.role === 'master' ? 'Master' : 'Backup'}` : '';
     lines.push(cmd(`Observer "${o.name}"${roleSuffix}`, {
@@ -525,11 +547,21 @@ export function showObserver(doc: TopologyDoc): GeneratedFile {
     ));
   }
 
+  /* Named the same way the 26ai conflict just below is: 19c disagrees with
+     itself too, and this page must not paper over either one by picking a
+     single citation. The fast-start failover chapter and ORA-16647's own 19c
+     tab both say three; the command reference's own START OBSERVER usage
+     notes say four. */
   const limit = doc.config.edition === '19c'
-    ? '19c registers up to three observers, one of them master'
+    ? 'the 19c fast-start failover chapter and ORA-16647 say up to three observers, while the 19c command reference’s START OBSERVER usage notes say four'
     : 'the 26ai fast-start failover chapter says four observers, while the 26ai SHOW OBSERVER page still says three';
   lines.push(note(limit, doc.config.edition === '19c'
-    ? documented(limit, ['OBS.THREE_19C'])
+    ? {
+      value: limit,
+      basis: 'conflict',
+      cite: ['OBS.THREE_19C', 'OBS.FOUR_CMD19', 'ORA.16647'],
+      note: '19c disagrees with itself, the same way 26ai does below: the switchover/failover chapter and ORA-16647’s 19c tab both say three, the command reference’s own START OBSERVER page says four.',
+    }
     : {
       value: limit,
       basis: 'conflict',
