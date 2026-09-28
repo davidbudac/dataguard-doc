@@ -648,3 +648,68 @@ describe('a far sync instance that is not in the redo path', () => {
     expect(idsFor(d)).not.toContain('FSFO.FARSYNC_MODE_19C');
   });
 });
+
+describe('RedoRoutes rules, read the way Oracle writes them', () => {
+  const find = (doc: TopologyDoc, id: string): Finding | undefined => validate(doc).find((f) => f.id === id);
+
+  it('SOURCE_UNIQUE counts LOCAL as naming the local database', () => {
+    const f = find(withRoutes(baseDoc(), 'prm01', [
+      rule('LOCAL', [{ target: M('sby01'), xpt: 'SYNC' }]),
+      rule([M('prm01')], [{ target: M('sby01'), xpt: 'ASYNC' }]),
+    ]), 'ROUTES.SOURCE_UNIQUE');
+    expect(f?.message).toContain('LOCAL is prm01 itself');
+    expect(f?.cite).toEqual(['ROUTES.SOURCE_ONCE']);
+  });
+
+  it('SNAPSHOT_FORBIDDEN: a snapshot standby may receive redo, and may carry a LOCAL rule', () => {
+    const d = baseDoc({ fsfo: 'disabled' });
+    dbOf(d, 'sby01').role = 'snapshot';
+    dbOf(d, 'sby01').redoRoutes = [rule('LOCAL', [{ target: M('prm01') }])];
+    expect(find(d, 'ROUTES.SNAPSHOT_FORBIDDEN')).toBeUndefined();
+  });
+
+  it('LOGICAL_LOCAL_ONLY is plain documentation about the source field', () => {
+    const d = twoStandbyDoc({ secondRole: 'logical', targets: [M('sby01')] });
+    dbOf(d, 'sby02').redoRoutes = [rule([M('prm01')], [{ target: M('sby01'), xpt: 'ASYNC' }])];
+    const f = find(d, 'ROUTES.LOGICAL_LOCAL_ONLY');
+    expect(f?.severity).toBe('warning');
+    expect(f?.basis).toBe('documented');
+    expect(f?.message).toContain('redo source field');
+    expect(f?.note).toBeUndefined();
+  });
+
+  it('ALT_NEEDS_MAXFAILURE rests on 12.1 and names the MaxFailure property of the non-alternate member', () => {
+    const d = withRoutes(twoStandbyDoc(), 'prm01', altRoutes());
+    const f = find(d, 'ROUTES.ALT_NEEDS_MAXFAILURE');
+    expect(f?.basis).toBe('inferred');
+    expect(f?.note).toMatch(/12\.1/);
+    expect(f?.message).toContain("EDIT DATABASE 'sby01' SET PROPERTY 'MaxFailure' = 1;");
+    expect(f?.message).not.toContain('LOG_ARCHIVE_DEST_n');
+    expect(f?.fix?.patch).toEqual([{ op: 'replace', path: '/members/0/dests/sby01/maxFailure', value: 1 }]);
+  });
+
+  it('GROUP_NEEDS_MAXFAILURE stays quiet on an untouched group: MaxFailure defaults to 1 there', () => {
+    const d = twoStandbyDoc();
+    d.config.edition = '26ai';
+    const prm = memberOf(d, 'prm01');
+    prm.redoRoutes = priorityRoutes();
+    prm.dests = {};
+    expect(find(d, 'ROUTES.GROUP_NEEDS_MAXFAILURE')).toBeUndefined();
+    /* Set to 0 by hand, it fires -- documented under 26ai. */
+    prm.dests[M('sby02')] = { netTimeoutSeconds: 30, reopenSeconds: 300, maxFailure: 0 };
+    const f = find(d, 'ROUTES.GROUP_NEEDS_MAXFAILURE');
+    expect(f?.basis).toBe('documented');
+    expect(f?.cite).toContain('ROUTES.MAXFAILURE_GROUP_DEFAULT');
+  });
+
+  it('ALT_12_1_ONLY applies under 19c as under 26ai, and offers the PRIORITY spelling', () => {
+    for (const edition of ['19c', '26ai'] as const) {
+      const d = withRoutes(twoStandbyDoc(), 'prm01', altRoutes());
+      d.config.edition = edition;
+      const f = find(d, 'ROUTES.ALT_12_1_ONLY');
+      expect(f?.severity, edition).toBe('warning');
+      expect(f?.basis, edition).toBe('documented');
+      expect(f?.message, edition).toContain('(LOCAL : (sby01 SYNC PRIORITY=1, sby02 ASYNC PRIORITY=2))');
+    }
+  });
+});

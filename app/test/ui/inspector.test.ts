@@ -222,6 +222,45 @@ describe('the RedoRoutes editor', () => {
     expect(member('prm01').redoRoutes[0]?.groups).toHaveLength(2);
   });
 
+  it('keeps a PRIORITY on each destination of one group (Oracle Example 1)', async () => {
+    selection.value = ['prm01'];
+    const root = mount(Inspector);
+    await tick();
+    const input = root.querySelector<HTMLInputElement>('input[aria-label="RedoRoutes property"]');
+    (input as HTMLInputElement).value = '(local : ( FS1 PRIORITY=1, sby01 PRIORITY=2 ) )';
+    (input as HTMLInputElement).dispatchEvent(new Event('change', { bubbles: true }));
+    await tick();
+    expect(formatRedoRoutes(member('prm01').redoRoutes)).toBe('(LOCAL : (FS1 PRIORITY=1, sby01 PRIORITY=2))');
+    const second = root.querySelector<HTMLSelectElement>('select[aria-label="Rule 1 destination 2 priority"]');
+    expect(second?.value).toBe('2');
+  });
+
+  it('edits PRIORITY per destination, and a PRIORITY puts its group in parentheses', async () => {
+    selection.value = ['prm01'];
+    const root = mount(Inspector);
+    await tick();
+    const input = root.querySelector<HTMLInputElement>('input[aria-label="RedoRoutes property"]');
+    (input as HTMLInputElement).value = '(LOCAL : FS1 SYNC, sby01 ASYNC)';
+    (input as HTMLInputElement).dispatchEvent(new Event('change', { bubbles: true }));
+    await tick();
+    const paren = root.querySelector<HTMLInputElement>('input[aria-label="Rule 1 group 1 in parentheses"]');
+    expect(paren?.checked).toBe(false);
+
+    const prio = root.querySelector<HTMLSelectElement>('select[aria-label="Rule 1 destination 2 priority"]');
+    (prio as HTMLSelectElement).value = '2';
+    (prio as HTMLSelectElement).dispatchEvent(new Event('change', { bubbles: true }));
+    await tick();
+    expect(formatRedoRoutes(member('prm01').redoRoutes)).toBe('(LOCAL : (FS1 SYNC, sby01 ASYNC PRIORITY=2))');
+
+    /* Out of the parentheses, the PRIORITY goes with them: it is written inside them only. */
+    const paren2 = root.querySelector<HTMLInputElement>('input[aria-label="Rule 1 group 1 in parentheses"]');
+    expect(paren2?.checked).toBe(true);
+    (paren2 as HTMLInputElement).checked = false;
+    (paren2 as HTMLInputElement).dispatchEvent(new Event('change', { bubbles: true }));
+    await tick();
+    expect(formatRedoRoutes(member('prm01').redoRoutes)).toBe('(LOCAL : FS1 SYNC, sby01 ASYNC)');
+  });
+
   it('refuses what it cannot parse, and says so without changing the property', async () => {
     selection.value = ['prm01'];
     const root = mount(Inspector);
