@@ -892,7 +892,9 @@ modes changes what is around it.
   (a handle resize, or a card drop that would otherwise shrink it), measured
   from the box's natural anchor and never smaller than its cards; Tidy resets it.
   A card the layout placed slides down out of the way of one moved by hand
-  (`makeWay`, step 7b), and where a new standby, far sync or observer goes when
+  (`makeWay`, step 7b); a data centre grown by a hand move or a resize pushes
+  the columns beside it so every corridor keeps its width (`columnPush`, step
+  7c: growth to the right pushes right, to the left pushes left); and where a new standby, far sync or observer goes when
   no data centre is named is `ui/build/placement.ts`.
 - **Timeline** (`ui/timeline/`): `build.ts` is a pure
   `buildTimeline(trace, topology, view) → TimelineModel`; the component maps it

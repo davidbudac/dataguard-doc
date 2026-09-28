@@ -184,6 +184,15 @@ export interface LayoutOptions {
    * a merge at would jump out from under the pointer.
    */
   transient?: readonly string[];
+  /**
+   * Where the cards in the air stood when they were picked up: their
+   * overrides from before the drag (a data centre's own key included, for
+   * a whole data centre carried with its size). The columns push each other
+   * (step 7c) as if the carried cards were still there, so a neighbouring
+   * data centre does not slide about -- under a box the drag holds still --
+   * while a card is carried. A key missing here counts where it is drawn.
+   */
+  transientFrom?: Readonly<Record<string, LayoutOffset>>;
 }
 
 /** The key a node is selected, hovered and dragged by: its own id. */
@@ -737,13 +746,60 @@ export function layoutTopology(
   });
 
   /* ---- 7. drag overrides, snapped ---- */
-  const nodes = makeWay(opts.transient ?? [], placed.map(({ node }) => {
+  const transient = opts.transient ?? [];
+  const madeWay = makeWay(transient, placed.map(({ node }) => {
     const ov = overrides[node.key];
     if (!ov) return node;
     const dx = snap8(ov.dx); const dy = snap8(ov.dy);
     if (dx === 0 && dy === 0) return node;
     return { ...node, x: node.x + dx, y: node.y + dy, moved: true };
   }));
+
+  /* ---- 7c. the columns push each other ---- */
+  const naturalBoxes = columns.map((c, ci) => {
+    const own = placed.map((p) => p.node).filter((n) => (n.site as string) === (c.site as string));
+    if (own.length === 0) {
+      const cx = colX[ci] ?? 0;
+      return { x0: cx, x1: cx + (colW[ci] ?? CARD.minW + LAYOUT.colPad * 2) };
+    }
+    return {
+      x0: Math.min(...own.map((n) => n.x)) - LAYOUT.colPad,
+      x1: Math.max(...own.map((n) => n.x + n.w)) + LAYOUT.colPad,
+    };
+  });
+  const naturalX = new Map(placed.map((p) => [p.node.key, p.node.x]));
+  const from = opts.transientFrom ?? {};
+  /* Every column's left and right edge as the reader's hand has left it,
+     before anything is pushed: its cards (a card in the air where it was
+     picked up), a size of its own, an empty panel's own offset. */
+  const handBoxes = columns.map((c, ci) => {
+    const nat = naturalBoxes[ci] as { x0: number; x1: number };
+    const site = c.site as string;
+    const xs = madeWay.filter((n) => (n.site as string) === site).map((n) => {
+      const was = transient.includes(n.key) ? from[n.key] : undefined;
+      const x = was === undefined ? n.x : (naturalX.get(n.key) ?? n.x) + snap8(was.dx);
+      return { x0: x - LAYOUT.colPad, x1: x + n.w + LAYOUT.colPad };
+    });
+    const ov = transient.includes(site) ? from[site] : overrides[site];
+    const sized = ov !== undefined && typeof ov.w === 'number' && typeof ov.h === 'number'
+      && isFinite(ov.w) && isFinite(ov.h);
+    let box = xs.length === 0
+      ? { x0: nat.x0, x1: nat.x1 }
+      : { x0: Math.min(...xs.map((b) => b.x0)), x1: Math.max(...xs.map((b) => b.x1)) };
+    const empty = !madeWay.some((n) => (n.site as string) === site);
+    if (sized) {
+      const bx = nat.x0 + Math.round(ov.dx);
+      const bw = Math.max(empty ? SITE_MIN.w : 0, Math.round(ov.w as number));
+      box = empty ? { x0: bx, x1: bx + bw } : { x0: Math.min(box.x0, bx), x1: Math.max(box.x1, bx + bw) };
+    } else if (empty && ov) {
+      box = { x0: box.x0 + snap8(ov.dx), x1: box.x1 + snap8(ov.dx) };
+    }
+    return box;
+  });
+  const push = columnPush(naturalBoxes, handBoxes);
+  const nodes = push.every((s) => s === 0)
+    ? madeWay
+    : madeWay.map((n) => (push[n.col] ? { ...n, x: n.x + (push[n.col] as number) } : n));
 
   const byKey: Record<string, NodeBox> = {};
   for (const n of nodes) byKey[n.key] = n;
@@ -783,10 +839,11 @@ export function layoutTopology(
     let x0: number; let y0: number; let x1: number; let y1: number;
     let anchor: { x: number; y: number };
     let fit: Rect;
+    const s = push[ci] ?? 0;
     if (own.length === 0) {
       /* The empty panel: one column wide, the member band tall -- or one card
          tall when there is no member band to match. */
-      const cx = colX[ci] ?? 0;
+      const cx = (colX[ci] ?? 0) + s;
       const cw = colW[ci] ?? CARD.minW + LAYOUT.colPad * 2;
       const top = memberBandTop;
       const tall = Math.max(memberBandH, CARD.dbH);
@@ -808,7 +865,8 @@ export function layoutTopology(
       const natural = boxAround(placed
         .map((p) => p.node)
         .filter((n) => (n.site as string) === (c.site as string)));
-      anchor = { x: natural.x0, y: natural.y0 };
+      /* Pushed with its column, so a size of its own travels with it. */
+      anchor = { x: natural.x0 + s, y: natural.y0 };
       ({ x0, y0, x1, y1 } = boxAround(own));
       fit = { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
     }
@@ -855,7 +913,17 @@ export function layoutTopology(
     byKey,
     stacks,
     sites,
-    columns: columns.map((c, i) => ({ site: c.site, x: colX[i] ?? 0, w: colW[i] ?? 0 })),
+    /* The column as the router's corridors see it: pushed, and widened to
+       whatever its box reaches past its natural edges, so a corridor's middle
+       is the middle of the free space that is actually there. */
+    columns: columns.map((c, i) => {
+      const nat = naturalBoxes[i] as { x0: number; x1: number };
+      const hand = handBoxes[i] as { x0: number; x1: number };
+      const s = push[i] ?? 0;
+      const x = (colX[i] ?? 0) + s + Math.min(0, hand.x0 - nat.x0);
+      const x1 = (colX[i] ?? 0) + (colW[i] ?? 0) + s + Math.max(0, hand.x1 - nat.x1);
+      return { site: c.site, x, w: x1 - x };
+    }),
     viewBox: {
       x: vx0 - LAYOUT.padSide,
       y: vy0 - LAYOUT.padTop,
@@ -903,13 +971,17 @@ function makeWay(transient: readonly string[], nodes: NodeBox[]): NodeBox[] {
     const k = n.stackKey ?? `card:${n.key}`;
     units.set(k, [...(units.get(k) ?? []), n]);
   }
-  const fixed: Rect[] = [];
-  const auto: { key: string; list: NodeBox[]; box: Rect }[] = [];
+  /* Within one data centre only: a card moved by hand towards the next
+     column grows its own box, and the columns push each other apart for it
+     (step 7c) -- the neighbour's cards need not slide down as well. */
+  const fixed: (Rect & { site: string })[] = [];
+  const auto: { key: string; site: string; list: NodeBox[]; box: Rect }[] = [];
   for (const [key, list] of units) {
     /* In the air: neither an obstacle nor pushed. */
     if (list.some((n) => transient.includes(n.key))) continue;
-    if (list.some((n) => n.moved)) fixed.push(...list.map((n) => ({ x: n.x, y: n.y - headerOf(n), w: n.w, h: n.h + headerOf(n) })));
-    else auto.push({ key, list, box: boxOf(list) });
+    const site = list[0]?.site as string;
+    if (list.some((n) => n.moved)) fixed.push(...list.map((n) => ({ x: n.x, y: n.y - headerOf(n), w: n.w, h: n.h + headerOf(n), site })));
+    else auto.push({ key, site, list, box: boxOf(list) });
   }
   /* Top to bottom, left to right: a unit pushed down meets the ones under it
      in the order the reader reads them. */
@@ -921,17 +993,17 @@ function makeWay(transient: readonly string[], nodes: NodeBox[]): NodeBox[] {
   const hair = 4;
   const clash = (a: Rect, b: Rect): boolean =>
     a.x < b.x + b.w + hair && b.x < a.x + a.w + hair && a.y < b.y + b.h + hair && b.y < a.y + a.h + hair;
-  const settled: Rect[] = [...fixed];
+  const settled: (Rect & { site: string })[] = [...fixed];
   const shift = new Map<string, number>();
   for (const u of auto) {
     let box = u.box;
     for (let guard = 0; guard < 64; guard++) {
-      const hit = settled.filter((r) => clash(box, r));
+      const hit = settled.filter((r) => r.site === u.site && clash(box, r));
       if (hit.length === 0) break;
       const below = Math.max(...hit.map((r) => r.y + r.h)) + gap;
       box = { ...box, y: below };
     }
-    settled.push(box);
+    settled.push({ ...box, site: u.site });
     if (box.y !== u.box.y) for (const n of u.list) shift.set(n.key, box.y - u.box.y);
   }
   if (shift.size === 0) return nodes;
@@ -939,6 +1011,52 @@ function makeWay(transient: readonly string[], nodes: NodeBox[]): NodeBox[] {
     const dy = shift.get(n.key);
     return dy === undefined ? n : { ...n, y: n.y + dy };
   });
+}
+
+/**
+ * Step 7c: how far each column slides so no data centre's box eats into the
+ * corridor beside it (task 5.1).
+ *
+ * `natural` is each column's box as the layout places it, `hand` the same box
+ * once cards moved by hand and a size of its own have had their way. Between
+ * two neighbours the corridor must stay as wide as the layout made it -- it is
+ * where the links bend and their captions ride. Where it has narrowed, the
+ * column that grew into it pushes: a box grown to the right pushes every
+ * column right of it further right, a box grown to the left pushes every
+ * column left of it further left. So the thing the reader just moved or
+ * resized stays under the pointer and the neighbours give way, and nothing is
+ * ever pulled back to close a corridor a drag has widened.
+ *
+ * Nothing grown, nothing pushed: every shift is zero and every preset draws
+ * exactly as it did.
+ */
+export function columnPush(
+  natural: readonly { x0: number; x1: number }[], hand: readonly { x0: number; x1: number }[],
+): number[] {
+  const n = natural.length;
+  const right = new Array<number>(n).fill(0);
+  const left = new Array<number>(n).fill(0);
+  for (let i = 1; i < n; i++) {
+    const na = natural[i - 1]; const nb = natural[i];
+    const ha = hand[i - 1]; const hb = hand[i];
+    if (!na || !nb || !ha || !hb) continue;
+    const gap = nb.x0 - na.x1;
+    const short = gap - (hb.x0 - ha.x1);
+    if (short <= 0) continue;
+    /* The right-hand box's own growth leftwards pushes left; whatever is
+       left of the shortfall came from the left-hand box and pushes right. */
+    const byLeftward = Math.max(0, Math.min(short, nb.x0 - hb.x0));
+    left[i] = byLeftward;
+    right[i] = short - byLeftward;
+  }
+  const out = new Array<number>(n).fill(0);
+  for (let i = 0; i < n; i++) {
+    let s = 0;
+    for (let j = 1; j <= i; j++) s += right[j] as number;
+    for (let j = i + 1; j < n; j++) s -= left[j] as number;
+    out[i] = s;
+  }
+  return out;
 }
 
 /** A cascaded member whose feeder shares its site is indented under it. */

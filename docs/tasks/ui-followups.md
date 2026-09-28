@@ -167,7 +167,12 @@ pill, `gridOn` in view.ts, remembered under `dg-grid`.
 ## Track 5 — rough edges left by round 1 (canvas)
 
 ### 5.1 Data centre columns push each other
-Status: todo
+Status: done (on ui/track5-canvas)
+Note: `layout.ts` step 7c `columnPush`: where a box (hand-moved cards, a size of its own) eats
+into a corridor, the columns beyond it slide -- right growth pushes right, left growth pushes
+left, so what was moved stays put; never pulls back. `geo.columns` follow the pushed/grown boxes,
+so corridor routes stay centred. While a card is in the air the push is measured from where it
+was picked up (`place.ts` `inFlightFrom`), so nothing slides under the frozen boxes.
 Hand-moved cards or a resized DC can make a DC box overlap the neighbouring
 column; columns never push each other. Make a grown/resized column push the
 columns to its right (and the corridor stays clear for links/pills).

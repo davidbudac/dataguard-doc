@@ -222,7 +222,8 @@ describe('layoutTopology: drag overrides', () => {
   it('leaves the untouched cards where they were', () => {
     const doc = classic('dc3');
     const base = geometryOf(doc);
-    const moved = layoutTopology(doc, graphOf(doc), { overrides: { prm01: { dx: 40, dy: 0 } } });
+    /* Away from the corridor, and down: nothing grows into a neighbour. */
+    const moved = layoutTopology(doc, graphOf(doc), { overrides: { prm01: { dx: -40, dy: 32 } } });
     expect(box(node(moved, 'sby01'))).toEqual(box(node(base, 'sby01')));
     expect(node(moved, 'sby01').moved).toBe(false);
   });
@@ -243,12 +244,16 @@ describe('layoutTopology: drag overrides', () => {
     const dc1After = moved.sites.find((s) => (s.id as string) === 'dc1')!;
     expect(dc1After.x - dc1Before.x).toBe(40);
     expect(dc1After.y - dc1Before.y).toBe(24);
-    /* Nothing that stands in another data centre moves. */
-    expect(box(node(moved, 'sby01'))).toEqual(box(node(base, 'sby01')));
+    /* The next data centre is pushed along as a whole (task 5.1): the
+       corridor between the two keeps its width, and nothing in dc2 changes
+       shape or leaves its place relative to its own box. */
     const dc2Before = base.sites.find((s) => (s.id as string) === 'dc2')!;
     const dc2After = moved.sites.find((s) => (s.id as string) === 'dc2')!;
-    expect([dc2After.x, dc2After.y, dc2After.w, dc2After.h])
+    expect([dc2After.x - 40, dc2After.y, dc2After.w, dc2After.h])
       .toEqual([dc2Before.x, dc2Before.y, dc2Before.w, dc2Before.h]);
+    expect(dc2After.x - (dc1After.x + dc1After.w)).toBe(dc2Before.x - (dc1Before.x + dc1Before.w));
+    const [sx, sy, sw, sh] = box(node(base, 'sby01'));
+    expect(box(node(moved, 'sby01'))).toEqual([sx! + 40, sy, sw, sh]);
   });
 
   it('reads a site-keyed offset only for the empty panel it was written for', () => {

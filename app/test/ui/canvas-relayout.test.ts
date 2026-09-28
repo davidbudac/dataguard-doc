@@ -148,3 +148,129 @@ describe('adding to every preset', () => {
     expect(cardClashes(geo)).toEqual([]);
   });
 });
+
+/* ---- task 5.1: a grown data centre pushes its neighbours ---- */
+
+const siteClashes = (geo: Geometry): string[] => {
+  const out: string[] = [];
+  for (let i = 0; i < geo.sites.length; i++) {
+    for (let j = i + 1; j < geo.sites.length; j++) {
+      const a = geo.sites[i]!; const b = geo.sites[j]!;
+      if (overlaps(a, b)) out.push(`${a.id as string}/${b.id as string}`);
+    }
+  }
+  return out;
+};
+/** Every corridor between two neighbouring boxes, left to right. */
+const corridors = (geo: Geometry): number[] => {
+  const byCol = [...geo.sites].sort((a, b) => a.col - b.col);
+  return byCol.slice(1).map((s, i) => s.x - (byCol[i]!.x + byCol[i]!.w));
+};
+const linesThroughCards = (geo: Geometry, links: ReturnType<typeof draw>['links']): string[] => {
+  const out: string[] = [];
+  for (const l of links) {
+    for (let i = 0; i + 1 < l.points.length; i++) {
+      for (const c of geo.nodes) {
+        if (c.key === l.from || c.key === l.to) continue;
+        if (segmentHitsRect(l.points[i]!, l.points[i + 1]!, c, 1)) out.push(`${l.id}>${c.key}`);
+      }
+    }
+  }
+  return out;
+};
+
+describe('a data centre grown by hand pushes the columns beside it (5.1)', () => {
+  it('a card moved right into the corridor pushes every column right of it, and the corridor keeps its width', () => {
+    const natural = draw(topo()).geo;
+    const { geo, links } = draw(topo(), { prm01: { dx: 160, dy: 0 } });
+    expect(siteClashes(geo)).toEqual([]);
+    expect(corridors(geo)).toEqual(corridors(natural));
+    /* The card stays where it was put; the neighbours make way. */
+    expect(geo.byKey['prm01']!.x).toBe(natural.byKey['prm01']!.x + 160);
+    expect(geo.byKey['sby01']!.x).toBe(natural.byKey['sby01']!.x + 160);
+    expect(linesThroughCards(geo, links)).toEqual([]);
+  });
+
+  it('a card moved left into the corridor pushes the columns left of it, and stays where it was put', () => {
+    const natural = draw(topo()).geo;
+    const { geo } = draw(topo(), { sby01: { dx: -120, dy: 0 } });
+    expect(siteClashes(geo)).toEqual([]);
+    expect(corridors(geo)).toEqual(corridors(natural));
+    expect(geo.byKey['sby01']!.x).toBe(natural.byKey['sby01']!.x - 120);
+    expect(geo.byKey['prm01']!.x).toBe(natural.byKey['prm01']!.x - 120);
+    /* The observer's data centre sits between the two (column order dc1,
+       dc3, dc2): it goes along too, by the same amount. */
+    const obs = geo.nodes.find((n) => n.kind === 'observer')!;
+    expect(obs.x).toBe(natural.byKey[obs.key]!.x - 120);
+  });
+
+  it('a data centre resized wider pushes its neighbours, and a size of its own travels with a pushed column', () => {
+    const natural = draw(topo()).geo;
+    const dc1 = natural.sites.find((s) => (s.id as string) === 'dc1')!;
+    const dc2 = natural.sites.find((s) => (s.id as string) === 'dc2')!;
+    const grown = { dx: 0, dy: 0, w: dc1.w + 200, h: dc1.h };
+    const dc2Box = { dx: dc2.x - dc2.anchor.x, dy: dc2.y - dc2.anchor.y, w: dc2.w + 40, h: dc2.h };
+    const { geo, links } = draw(topo(), { dc1: grown, dc2: dc2Box });
+    expect(siteClashes(geo)).toEqual([]);
+    expect(corridors(geo)).toEqual(corridors(natural));
+    const dc2After = geo.sites.find((s) => (s.id as string) === 'dc2')!;
+    expect(dc2After.x).toBe(dc2.x + 200);
+    expect(dc2After.w).toBe(dc2.w + 40);
+    expect(linesThroughCards(geo, links)).toEqual([]);
+  });
+
+  it('a data centre resized from its left edge pushes the columns left of it', () => {
+    const natural = draw(topo()).geo;
+    const dc2 = natural.sites.find((s) => (s.id as string) === 'dc2')!;
+    const { geo } = draw(topo(), { dc2: { dx: -96, dy: 0, w: dc2.w + 96, h: dc2.h } });
+    expect(siteClashes(geo)).toEqual([]);
+    expect(corridors(geo)).toEqual(corridors(natural));
+    expect(geo.sites.find((s) => (s.id as string) === 'dc2')!.x).toBe(dc2.x - 96);
+  });
+
+  it('never pulls a column back to close a corridor a drag has widened', () => {
+    const natural = draw(topo()).geo;
+    const { geo } = draw(topo(), { prm01: { dx: -200, dy: 0 } });
+    expect(geo.byKey['sby01']!.x).toBe(natural.byKey['sby01']!.x);
+    expect(corridors(geo)[0]).toBe(corridors(natural)[0]! + 200);
+  });
+
+  it('holds every column still while the card is in the air, measured from where it was picked up', () => {
+    const natural = draw(topo()).geo;
+    /* prm01 was already moved right (so dc2 and dc3 were pushed); it is
+       picked up again and carried further. */
+    const before = draw(topo(), { prm01: { dx: 160, dy: 0 } }).geo;
+    const graph = resolveRedoGraph(topo(), { primary: declaredPrimary(topo())! });
+    const air = layoutTopology(topo(), graph, {
+      overrides: { prm01: { dx: 320, dy: 40 } },
+      transient: ['prm01'],
+      transientFrom: { prm01: { dx: 160, dy: 0 } },
+    });
+    expect(air.byKey['sby01']!.x).toBe(before.byKey['sby01']!.x);
+    expect(air.byKey['prm01']!.x).toBe(natural.byKey['prm01']!.x + 320);
+  });
+
+  for (const p of PRESETS) {
+    it(`${p.id}: cards moved right and boxes resized wider -- no box overlaps, no corridor narrows, no line through a card`, () => {
+      load(p.id);
+      const natural = draw(topo()).geo;
+      const overrides: Record<string, LayoutOffset> = {};
+      for (const s of natural.sites) {
+        const first = natural.nodes.find((n) => n.site === s.id);
+        if (first) overrides[first.key] = { dx: 160, dy: 0 };
+      }
+      const moved = draw(topo(), overrides);
+      expect(siteClashes(moved.geo)).toEqual([]);
+      expect(cardClashes(moved.geo)).toEqual([]);
+      corridors(moved.geo).forEach((c, i) => expect(c).toBeGreaterThanOrEqual(corridors(natural)[i]!));
+      expect(linesThroughCards(moved.geo, moved.links)).toEqual([]);
+
+      const sized: Record<string, LayoutOffset> = {};
+      for (const s of natural.sites) sized[s.id as string] = { dx: 0, dy: 0, w: s.w + 120, h: s.h };
+      const grown = draw(topo(), sized);
+      expect(siteClashes(grown.geo)).toEqual([]);
+      expect(corridors(grown.geo)).toEqual(corridors(natural));
+      expect(linesThroughCards(grown.geo, grown.links)).toEqual([]);
+    });
+  }
+});
