@@ -166,13 +166,15 @@ export function noStallClaim(why: 'unobserved' | 'not-ready', lagGate: boolean):
 
 /**
  * FastStartFailoverPmyShutdown, default TRUE: a primary stalled longer than
- * the threshold, unable to reach observer or target standby, aborts itself.
+ * the threshold, unable to reach observer or target standby, shuts down --
+ * Oracle's verb ("the primary database will shut down after
+ * FastStartFailoverThreshold seconds has elapsed"); the state is `aborted`.
  * The stall clock always runs on the threshold, even where the ping properties
  * have replaced it for the observer's detection.
  */
 export const abortClaim = (at: Seconds, thresholdSeconds: Seconds): Claim<Seconds> =>
   documented(at, ['FSFO.PMY_SHUTDOWN', 'FSFO.THRESHOLD'],
-    `FastStartFailoverPmyShutdown is TRUE, so the stalled primary aborts itself one FastStartFailoverThreshold (${thresholdSeconds} s) after the stall began. The ping properties never move this clock -- the quirk applies to the observer's detection only.`);
+    `FastStartFailoverPmyShutdown is TRUE, so the stalled primary shuts down one FastStartFailoverThreshold (${thresholdSeconds} s) after the stall began. The ping properties never move this clock -- the quirk applies to the observer's detection only.`);
 
 /**
  * In an ordinary transport failure NET_TIMEOUT bounds the commit hang and the

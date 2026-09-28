@@ -10,6 +10,8 @@
 import type { CitationId } from '../../citations';
 import { assertCitesAllowed } from '../../citations';
 import type { Finding } from '../../types/claims';
+import type { MemberId } from '../../ids';
+import { resolveRedoGraph } from '../../redo/resolve';
 import type { Member } from '../../types/topology';
 import { isDatabase, isFarSync } from '../../types/topology';
 import type { Rule } from '../context';
@@ -158,6 +160,97 @@ export const fsfoTargetTransport: Rule = (ctx): Finding[] => {
   return out;
 };
 
+/**
+ * The primary is a standby after a role change, so the fast-start failover
+ * prerequisites ask of its own transport what they ask of the target's:
+ * 19c Task 3, "set the LogXptMode database property for both the primary and
+ * target standby databases to SYNC or FASTSYNC" in maximum availability and
+ * SYNC in maximum protection; the prerequisites, "The current primary database
+ * must have its LogXptMode property set accordingly", or the RedoRoutes
+ * property configures it instead. What the primary would receive is read the
+ * way the broker would ship it: the redo graph resolved with each candidate
+ * target as the primary -- its LogXptMode, or the transport of a
+ * pre-declared rule that names it. Received across a far sync instance, it is
+ * the leg into the far sync that carries the guarantee, and maximum
+ * protection cannot use a far sync at all. Anything deeper is a cascade, and
+ * the cascade rules' concern. 26ai's prerequisites list adds ASYNC for
+ * maximum availability, so there it is a warning.
+ */
+const PRIMARY_XPT_26AI_ASYNC_CITES: CitationId[] = [
+  'FSFO.PREREQ_PRIMARY_XPT_26AI', 'FSFO.PREREQ_TRANSPORTS_26AI', 'XPT.MAXAVAIL_ASYNC_26AI',
+];
+assertCitesAllowed('MAXAVAIL_TRANSPORTS', PRIMARY_XPT_26AI_ASYNC_CITES);
+
+export const primaryTransportAfterRoleChange: Rule = (ctx): Finding[] => {
+  if (!ctx.fsfoOn) return [];
+  const mode = ctx.doc.config.protectionMode;
+  if (mode === 'MAXPERFORMANCE') return [];
+  const p = ctx.primary;
+  if (!p) return [];
+  const is26 = ctx.doc.config.edition === '26ai';
+  const out: Finding[] = [];
+  for (const id of ctx.candidates) {
+    const t = ctx.member(id);
+    if (!t || !isDatabase(t) || t.id === p.id) continue;
+    const after = resolveRedoGraph(ctx.doc, { primary: t.id, net: ctx.net });
+    const rp = after.members[p.id];
+    /* No route reaches it once the target is primary: the prerequisite still
+       names the primary's own LogXptMode, so that is what is read. */
+    const routed = !!rp && rp.reachableFromPrimary && rp.feedPath.length >= 2;
+    const path = routed ? (rp as { feedPath: MemberId[] }).feedPath : [t.id, p.id];
+    const hop = ctx.member(path[1] as MemberId);
+    const viaFarSync = path.length === 3 && !!hop && isFarSync(hop);
+    if (path.length > 2 && !viaFarSync) continue;
+    const leg = routed
+      ? after.edges.find((e) => e.from === path[0] && e.to === path[1] && e.active)
+      : undefined;
+    if (routed && !leg) continue;
+    const xpt = leg ? leg.xpt : p.logXptMode;
+    const fromOwn = !leg || leg.xptSource === 'dest-logxptmode';
+
+    const ok = mode === 'MAXPROTECTION'
+      ? !viaFarSync && xpt === 'SYNC'
+      : syncish(xpt);
+    if (ok) continue;
+
+    const pn = q(p.name);
+    const tn = q(t.name);
+    const why = !routed
+      ? `${pn} is the primary now, but after a role change to ${tn} it is the standby: no RedoRoutes rule would ship to it then, and its own LogXptMode is ${xpt}.`
+      : `${pn} is the primary now, but after a role change to ${tn} it is the standby, and it would receive ${xpt}${viaFarSync ? ` through the far sync instance ${q((hop as Member).name)}` : ''} -- from ${fromOwn ? (viaFarSync ? 'the far sync instance\'s LogXptMode' : 'its own LogXptMode') : `the RedoRoutes rule ${tn} holds for it`}.`;
+    const fix = (): Finding['fix'] | undefined => {
+      const i = ctx.indexOf(p.id);
+      if (i < 0 || viaFarSync || !fromOwn) return undefined;
+      return {
+        label: `Set LogXptMode on ${p.name} to SYNC`,
+        patch: [{ op: 'replace', path: `/members/${i}/logXptMode`, value: 'SYNC' }],
+      };
+    };
+    if (mode === 'MAXAVAILABILITY' && is26 && xpt === 'ASYNC') {
+      out.push(mk('XPT.PRIMARY_LOGXPTMODE', {
+        severity: 'warning',
+        subject: memberSubject(p),
+        message: `${why} Under 26ai the fast-start failover prerequisites list SYNC, FASTSYNC or ASYNC for maximum availability, and the current primary must have its LogXptMode set accordingly, so ASYNC is allowed -- but once ${pn} is the standby nothing it receives is synchronous, and zero data loss still wants SYNC or FASTSYNC.`,
+        cite: PRIMARY_XPT_26AI_ASYNC_CITES,
+        ...(fix() ? { fix: fix() } : {}),
+      }));
+      continue;
+    }
+    const wants = mode === 'MAXPROTECTION'
+      ? `SYNC in maximum protection mode${viaFarSync ? ', where a far sync instance cannot be used to ship redo to a standby' : ''}`
+      : 'SYNC or FASTSYNC in maximum availability mode';
+    out.push(mk('XPT.PRIMARY_LOGXPTMODE', {
+      subject: memberSubject(p),
+      message: `${why} The fast-start failover prerequisites set the LogXptMode of both the primary and the target standby -- ${wants} -- or configure the primary's transport with RedoRoutes. Oracle's own VALIDATE DATABASE example of a standby in this position reads "Switchover to this standby is not possible since there are no other standbys that can support the protection mode".`,
+      cite: is26
+        ? ['FSFO.PREREQ_PRIMARY_XPT_26AI', 'FSFO.PREREQ_TRANSPORTS_26AI', 'DGMGRL.VALIDATE_NO_SUPPORTING_STANDBY']
+        : ['FSFO.TASK3_PRIMARY_XPT_19C', 'FSFO.PREREQ_TRANSPORTS_19C', 'DGMGRL.VALIDATE_NO_SUPPORTING_STANDBY'],
+      ...(fix() ? { fix: fix() } : {}),
+    }));
+  }
+  return out;
+};
+
 /** ASYNC is the only mode Table 4-2 lists for maximum performance; it never says the others are illegal there. */
 export const maxPerformanceOtherTransportNote: Rule = (ctx): Finding[] => {
   const out: Finding[] = [];
@@ -218,7 +311,8 @@ export const fastSyncFsfoGap: Rule = (ctx): Finding[] => {
 
 export const modeRules: Rule[] = [
   maxProtectionNeedsSyncDatabase, maxProtectionSnapshotOnly, maxProtectionOneStandby,
-  atLeastOneSupportsMode, fsfoTargetTransport, maxPerformanceOtherTransportNote,
+  atLeastOneSupportsMode, fsfoTargetTransport, primaryTransportAfterRoleChange,
+  maxPerformanceOtherTransportNote,
   fastSyncMaxAvailOnly, fastSyncFsfoGap,
 ];
 

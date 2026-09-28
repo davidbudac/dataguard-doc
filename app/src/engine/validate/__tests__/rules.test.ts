@@ -214,6 +214,17 @@ const CASES: Case[] = [
     silent: () => baseDoc({ mode: 'MAXPROTECTION' }),
   },
   {
+    id: 'XPT.PRIMARY_LOGXPTMODE',
+    fires: 'the primary would receive ASYNC after a role change, in 19c maximum availability',
+    quiet: 'the primary carries SYNC for when it is the standby',
+    trigger: () => {
+      const d = baseDoc();
+      dbOf(d, 'prm01').logXptMode = 'ASYNC';
+      return d;
+    },
+    silent: () => baseDoc(),
+  },
+  {
     id: 'XPT.FASTSYNC_MAXAVAIL_ONLY',
     fires: 'FASTSYNC in maximum performance',
     quiet: 'FASTSYNC in maximum availability',
@@ -835,5 +846,79 @@ describe('RedoRoutes rules, read the way Oracle writes them', () => {
       expect(f?.basis, edition).toBe('documented');
       expect(f?.message, edition).toContain('(LOCAL : (sby01 SYNC PRIORITY=1, sby02 ASYNC PRIORITY=2))');
     }
+  });
+});
+
+describe('the primary is a standby after a role change (VAL-06)', () => {
+  const primaryFinding = (doc: TopologyDoc): Finding | undefined =>
+    validate(doc).find((f) => f.id === 'XPT.PRIMARY_LOGXPTMODE');
+  const asyncPrimary = (o: Parameters<typeof baseDoc>[0] = {}): TopologyDoc => {
+    const d = baseDoc(o);
+    dbOf(d, 'prm01').logXptMode = 'ASYNC';
+    return d;
+  };
+
+  it('is an error under 19c, and says why: after the role change this database is the standby', () => {
+    const f = primaryFinding(asyncPrimary());
+    expect(f?.severity).toBe('error');
+    expect(f?.basis).toBe('documented');
+    expect(f?.subject).toEqual({ kind: 'member', id: 'prm01' });
+    expect(f?.message).toContain('after a role change to \'sby01\' it is the standby');
+    expect(f?.cite).toContain('FSFO.TASK3_PRIMARY_XPT_19C');
+    expect(f?.fix?.patch).toEqual([{ op: 'replace', path: '/members/0/logXptMode', value: 'SYNC' }]);
+  });
+
+  it('is a warning under 26ai maximum availability, whose prerequisites list ASYNC', () => {
+    const f = primaryFinding(asyncPrimary({ edition: '26ai' }));
+    expect(f?.severity).toBe('warning');
+    expect(f?.cite).toContain('FSFO.PREREQ_PRIMARY_XPT_26AI');
+  });
+
+  it('is an error in maximum protection in both editions, FASTSYNC included', () => {
+    for (const edition of ['19c', '26ai'] as const) {
+      const d = baseDoc({ edition, mode: 'MAXPROTECTION' });
+      dbOf(d, 'prm01').logXptMode = 'FASTSYNC';
+      expect(primaryFinding(d)?.severity, edition).toBe('error');
+    }
+  });
+
+  it('asks nothing in maximum performance, or with fast-start failover disabled', () => {
+    expect(primaryFinding(asyncPrimary({ mode: 'MAXPERFORMANCE' }))).toBeUndefined();
+    const off = asyncPrimary();
+    off.config.fsfo.state = 'disabled';
+    expect(primaryFinding(off)).toBeUndefined();
+    const watch = asyncPrimary();
+    watch.config.fsfo.state = 'observe-only';
+    expect(primaryFinding(watch)?.severity).toBe('error');
+  });
+
+  it('reads a pre-declared reverse rule instead of the LogXptMode, and offers no LogXptMode fix then', () => {
+    const d = asyncPrimary();
+    memberOf(d, 'sby01').redoRoutes = [rule('LOCAL', [{ target: M('prm01'), xpt: 'SYNC' }])];
+    expect(primaryFinding(d)).toBeUndefined();
+    memberOf(d, 'sby01').redoRoutes = [rule('LOCAL', [{ target: M('prm01'), xpt: 'ASYNC' }])];
+    const f = primaryFinding(d);
+    expect(f?.severity).toBe('error');
+    expect(f?.message).toContain('the RedoRoutes rule');
+    expect(f?.fix).toBeUndefined();
+  });
+
+  it('reads the primary\'s own LogXptMode when no rule at the target would ship to it', () => {
+    const d = asyncPrimary();
+    memberOf(d, 'sby01').redoRoutes = [rule([M('prm01')], [{ target: M('prm01'), xpt: 'SYNC' }])];
+    const f = primaryFinding(d);
+    expect(f?.message).toContain('no RedoRoutes rule would ship to it');
+  });
+
+  it('reads the leg into a far sync instance when the reverse path goes through one', () => {
+    const d = farSyncDoc();
+    dbOf(d, 'prm01').logXptMode = 'ASYNC';
+    const fs2 = farSync('fs2', 'dc2-sby01');
+    fs2.redoRoutes = [rule([M('sby01')], [{ target: M('prm01'), xpt: 'ASYNC' }])];
+    d.members.push(fs2);
+    memberOf(d, 'sby01').redoRoutes = [rule('LOCAL', [{ target: M('fs2'), xpt: 'SYNC' }])];
+    expect(primaryFinding(d)).toBeUndefined();
+    d.config.protectionMode = 'MAXPROTECTION';
+    expect(primaryFinding(d)?.message).toContain('a far sync instance cannot be used');
   });
 });

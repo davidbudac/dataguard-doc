@@ -412,6 +412,11 @@ export const CITATIONS = {
     quote: 'If the primary does not receive acknowledgement from at least one synchronized standby, then it operates as if it were in maximum performance mode',
     note: 'The Concepts and Administration protection-modes page words MaxAvailability this way; its MaxProtection paragraph says only that the primary "shuts the primary database down rather than allowing it to continue". The 19c broker chapter 4 does add "if it cannot write its redo stream to at least one synchronized standby database" for MaxProtection, so the "any one SYNC ack suffices" reading is a documented broker statement there, not this page\'s inference.',
   },
+  'MAXAVAIL.FARSYNC_ACK_26AI': {
+    url: U.bkr26Modes, edition: '26ai', verified: 'primary',
+    quote: 'Transactions do not commit until all redo data needed to recover those transactions has been written to the online redo log and to the standby redo log on at least one synchronized standby database or far sync instance.',
+    note: 'Managing Data Protection Modes, Maximum Availability. The 19c broker page (chapter 4) reads "at least one synchronized standby database" with no far sync instance, so under 19c a far sync acknowledgement in maximum availability stays this page\'s inference.',
+  },
   'MAXPROT.AT_LEAST_ONE_BROKER': {
     url: U.bkr19Members, edition: '19c', verified: 'primary',
     quote: 'To ensure that data loss cannot occur, the primary database will shut down, rather than continue processing transactions, if it cannot write its redo stream to at least one synchronized standby database.',
@@ -486,6 +491,21 @@ export const CITATIONS = {
     url: U.bkr19Scenarios, edition: '19c', verified: 'primary',
     quote: 'Unable to failover since this observer is in observe-only mode',
     note: 'ENABLE FAST_START FAILOVER OBSERVE ONLY; the primary may open without acknowledgement and switchover or failover to a bystander stays allowed.',
+  },
+  'OBS.OBSERVE_ONLY_NO_ACK': {
+    url: U.bkr19Switch, edition: '19c', verified: 'primary',
+    quote: 'Manual failover to the fast-start failover target can be performed without receiving an acknowledgement from the observer.',
+    note: 'Observe-only mode, in the fast-start failover chapter; the same sentence is on the 26ai page.',
+  },
+  'OBS.OBSERVE_ONLY_NO_PRECHECKS': {
+    url: U.bkr19Switch, edition: '19c', verified: 'primary',
+    quote: 'Manual failover can be performed even if the pre-condition checks are not met. This includes the following: broker configuration is in UNSYNC or LAGGING state or unobserved state, failover target is invalid, reinstatement is in progress, or a master observer switch is in progress.',
+    note: 'Observe-only mode; the same sentences are on the 26ai page. The enabled-mode manual failover conditions (FSFO.MANUAL_FAILOVER_CONDITIONS) do not apply.',
+  },
+  'OBS.OBSERVE_ONLY_BYSTANDER': {
+    url: U.bkr19Switch, edition: '19c', verified: 'primary',
+    quote: 'You can switch over or manual failover to a bystander database.',
+    note: 'Observe-only mode; the same sentence is on the 26ai page.',
   },
   'OBS.PREFERRED_HOSTS': {
     url: U.bkr19Props, edition: '19c', verified: 'primary',
@@ -891,6 +911,21 @@ export const CITATIONS = {
     url: U.bkr26Fsfo, edition: '26ai', verified: 'primary',
     quote: 'Ensure that the standby database you choose to be the target of fast-start failover has its LogXptMode property set as follows, depending on the protection mode: Maximum protection — SYNC Maximum availability — SYNC or FASTSYNC or ASYNC Maximum performance — ASYNC',
     note: '26ai Enabling Fast-Start Failover prerequisites. The maximum availability row adds ASYNC against 19c and against 26ai Table 4-2 itself (XPT.TABLE_4_2).',
+  },
+  'FSFO.TASK3_PRIMARY_XPT_19C': {
+    url: U.bkr19Switch, edition: '19c', verified: 'primary',
+    quote: 'In maximum availability mode, set the LogXptMode database property for both the primary and target standby databases to SYNC or FASTSYNC. In maximum protection mode, set the LogXptMode database property to SYNC (note that in maximum protection mode, a far sync instance cannot be used to ship redo to a standby).',
+    note: "Enabling Fast-Start Failover, Task 3. The primary's own LogXptMode is what it receives once it is the standby. The prerequisites list beside it: 'The current primary database must have its LogXptMode property set accordingly and must have standby redo logs configured. Alternatively, use the RedoRoutes property to configure the redo transport mode for the target standby and the database currently in the primary role.'",
+  },
+  'FSFO.PREREQ_PRIMARY_XPT_26AI': {
+    url: U.bkr26Fsfo, edition: '26ai', verified: 'primary',
+    quote: 'The current primary database must have its LogXptMode property set accordingly and must have standby redo logs configured.',
+    note: "The 26ai Enabling Fast-Start Failover prerequisites, directly under the per-mode LogXptMode list (FSFO.PREREQ_TRANSPORTS_26AI), whose maximum availability row reads SYNC or FASTSYNC or ASYNC. Next sentence: 'If using either maximum availability or maximum performance mode, use the RedoRoutes property to configure the redo transport mode for the target standby and the database currently in the primary role.' The 26ai Task 3 still says SYNC or FASTSYNC for both databases -- stale (FSFO.LAGLIMIT_STALE_TASK3).",
+  },
+  'DGMGRL.VALIDATE_NO_SUPPORTING_STANDBY': {
+    url: U.bkr19Scenarios, edition: '19c', verified: 'primary',
+    quote: 'Error: Switchover to this standby is not possible since there are no other standbys that can support the protection mode',
+    note: "Scenario 3, Example: Validate the Physical Standby Database -- VALIDATE DATABASE 'South_Sales' in MaxAvailability, 'Ready for Switchover: No'. The standby is fine; what is missing is a database to support the protection mode once it is the primary.",
   },
   'XPT.FASTSYNC_12_1': {
     url: U.bkr121Changes, edition: '12.1', verified: 'cross-edition',
