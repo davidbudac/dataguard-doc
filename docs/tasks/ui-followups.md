@@ -255,7 +255,7 @@ restyle of the old docked layout. Port it feature by feature once Tracks 5
 and 6 are merged, one commit each:
 
 ### 7.1 Workspaces (named local copies + recovery)
-Status: done (on ui/track7-port)
+Status: done (on main)
 Note: ⋯ → "Saved configurations" opens a floating card dialog (`Sheet variant="card"`, float.css);
 presets/lessons/imports/Start fresh now replace the document as one undoable step (`history.replaceDoc`)
 and keep the outgoing draft (untouched presets and repeats skipped). Undo restores the edition only when
@@ -264,7 +264,7 @@ opening a copy changed it. Sheet also traps Tab now.
 `test/ui/workspaces.test.ts`. Mount in the new top bar / ⋯ menu.
 
 ### 7.2 Break run explanation
-Status: done (on ui/track7-port)
+Status: done (on main)
 Note: a "Why this result?" fold on the Break rail under the events (inspector.css idiom, folded by
 default), opened and scrolled to by a quiet "Why?" beside the Outcome chip in the dock/readout.
 `explain.ts` unchanged from the branch; every step keeps its claim's basis and citations.
@@ -272,7 +272,7 @@ default), opened and scrolled to by a quiet "Why?" beside the Outcome chip in th
 new Break rail / timeline panel.
 
 ### 7.3 Plainer wording
-Status: done (on ui/track7-port)
+Status: done (on main)
 Note: re-applied where the text still exists (App empty states, Guidance, BreakRail, Readout, EventMenu,
 CanvasSlot, view.ts guides, IntroPage, derived.ts chips). Kept main's where the plain one lost a fact:
 hero note, "Primary and standby", the footer's "everything here is a model". Outcome now says "manual
@@ -294,14 +294,14 @@ Rebuild the branch's ConfigForm/sections.ts changes (advanced-settings count,
 failover-target editor, revealTargetForFlagged) on the new panel system.
 
 ### 7.5 Classic walkthrough
-Status: done (on ui/track7-port)
+Status: done (on main)
 Note: a small card centred under the guidance line, in the header's flow (`.walk`, float.css), so
 `--bar-bottom` grows and the drawing/palette/rail move down. Started by a third Introduction hero
 button ("Walk through it step by step"); main's two hero buttons and the Break card are unchanged.
 `ui/intro/Walkthrough.tsx`: position it for the floating layout.
 
 ### 7.6 Review panel
-Status: done (on ui/track7-port)
+Status: done (on main)
 Note: ⋯ → "Compare alternatives" (card dialog, tabs Baseline / Common failures; `ui/review/*`,
 `state/review.ts`). Its HTML download (`report.ts`) was dropped: `?report=1` gains a "Compare
 alternatives" section (`comparisonSection` → `report-model.ts`), model-labelled, citing ObserverOverride.
@@ -310,7 +310,7 @@ produce its report through main's `?report=1` report, not its own HTML
 generator.
 
 ### 7.7 Drop
-Status: done (on ui/track7-port)
+Status: done (on main)
 Note: nothing of `calm.css`, the old-layout restyle hunks or `app/design/mockups/` was ported. Of the
 branch's `ui.md` edits only what is still true went in (a Track 7 section, the intro button count).
 `styles/calm.css` and the old-layout restyle hunks in tokens.css, shell.css,
