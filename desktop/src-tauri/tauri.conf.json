@@ -1,0 +1,43 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Data Guard Workbench",
+  "version": "../../app/package.json",
+  "identifier": "cz.davidbudac.dataguard",
+  "build": {
+    "beforeDevCommand": "npm --prefix ../app run dev -- --port 5179 --strictPort",
+    "devUrl": "http://localhost:5179",
+    "beforeBuildCommand": "node ../site/build.mjs",
+    "frontendDist": "../../_site"
+  },
+  "app": {
+    "withGlobalTauri": true,
+    "windows": [
+      {
+        "label": "main",
+        "title": "Data Guard Workbench",
+        "width": 1440,
+        "height": 900,
+        "minWidth": 800,
+        "minHeight": 600,
+        "create": false,
+        "dragDropEnabled": false
+      }
+    ],
+    "security": {
+      "csp": "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self' ipc: http://ipc.localhost; font-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; object-src 'none'"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "category": "DeveloperTool",
+    "shortDescription": "Draw an Oracle Data Guard configuration, break it, and watch the clocks.",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ]
+  }
+}

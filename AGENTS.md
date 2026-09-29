@@ -34,6 +34,7 @@ produced, and how to extend it without breaking consistency or accuracy.
 | `site/build-legacy.mjs` | What `site/build.mjs` used to be: wraps the fragment into a full page (doctype, charset, title, favicon, canonical + social meta) and enforces the ASCII-only guard — it exits non-zero on any byte above U+007E, naming the offending lines. Writes `_site/legacy/index.html` and copies `diagrams/` to `_site/diagrams`, which both pages share |
 | `site/smoke.mjs` | Dependency-free browser check of the built tree: serves `_site/` over `node:http`, loads it in headless Chrome (`--dump-dom`, console messages captured through `--enable-logging=stderr`), takes the page's own `data-permalink` for the `classic` and `far-sync-zero-loss` presets and reloads it cold — an untouched preset now carries no `#t=` at all, so the check accepts either a `#t=` document or a short link naming the preset (and asserts the latter is under 200 characters) — asserts the node cards, the timeline lanes and the outcome chip, opens each of the four modes by name, and checks that a published-page link (`?sc=iso&lat=2&lang=cs#ch-clocks`) upgrades into Break mode like any other old link, following *that* permalink cold to keep one real-browser `CompressionStream` → `DecompressionStream` round trip (an upgraded legacy link names no preset, so it must carry `#t=`). Probes HTTP first and falls back to an inlined single-file copy over `file://` where the machine's headless Chrome cannot fetch over HTTP. Exits non-zero on any failed check, any console message, or any file the page asked for and did not get |
 | `site/test.mjs` | Standalone node test for the **legacy** fragment: extracts its four model marker blocks and asserts the documented domain invariants — including the scenario × observer-location outcome matrix as literal tables (24 cells, plus the 19c-invariance loops over the version axis). No dependencies; `node --test site/test.mjs`, 63 tests. The application reproduces the same 24 cells through its compat adapter (`app/test/legacy-matrix.test.ts`) |
+| `desktop/` | The Tauri v2 desktop shell (macOS, Windows) around the workbench -- see *The desktop app* below. Not part of the published site; `.github/workflows/desktop.yml` builds it |
 | `site/publish.sh` | Builds, runs the three test gates (`npm --prefix app run test`, `node --test site/test.mjs`, `node site/smoke.mjs`), deploys to the VPS, then verifies the public URL |
 
 `_site/` is generated — never edit it, never commit it — and its shape is a
@@ -190,6 +191,50 @@ the top bar, and both are reading preferences that survive a reload:
 - **After the deploy**, `curl -s https://dataguard.davidbudac.cz/ | grep -E
   'og:image|canonical|theme-color|rel="icon"'` finds all four, and
   `curl -sI https://dataguard.davidbudac.cz/legacy/` still returns 200.
+
+## The desktop app (desktop/)
+
+`desktop/` wraps the workbench in a **Tauri v2** shell for macOS and Windows. It
+adds no page of its own: `frontendDist` is `_site/` as `node site/build.mjs`
+builds it (the whole site, so the `legacy/` and `diagrams/` links resolve), and
+`devUrl` is the Vite dev server on port 5179.
+
+- **Toolchain.** Install Rust with [`rustup`](https://rustup.rs) (stable; the
+  dialog plugin needs 1.90+). On Windows also the WebView2 runtime (already on
+  Windows 11) and the MSVC build tools.
+- **Run and build.** `cd desktop && npm install && npm run dev` (hot reload
+  against Vite) or `npm run build`. Installers land in
+  `desktop/src-tauri/target/release/bundle/` (`macos/*.app`, `dmg/*.dmg`,
+  `nsis/*.exe`, `msi/*.msi`); `npx tauri build --debug` writes under `target/debug/`.
+  `npm run icon` regenerates `src-tauri/icons/` from `desktop/app-icon.png`
+  (rendered from the favicon in `app/index.html`; `app-icon.svg` beside it).
+- **Version.** `tauri.conf.json` reads it from `app/package.json`. To release:
+  bump that, commit, tag `v<version>` and push the tag; `.github/workflows/desktop.yml`
+  then builds the universal macOS and the Windows installers and opens a draft
+  release. Without a tag (`workflow_dispatch`) the installers are workflow artifacts only.
+- **Unsigned.** No Apple or Windows signing is configured (placeholders are
+  commented in the workflow), so the installers trigger Gatekeeper (right-click,
+  Open) and SmartScreen ("More info", "Run anyway") warnings.
+- **The shims.** The page detects the shell through `window.__TAURI__`
+  (`withGlobalTauri`), read in exactly one place, `app/src/ui/common/desktop.ts`.
+  **Desktop-only code goes through that module and nowhere else, never under
+  `app/src/engine`, and adds no npm dependency to `app/`**; with the global
+  absent every path is the browser's own. What it covers: downloads (`downloadBlob`,
+  `exportDoc`, the collector links) go through a native save dialog (Rust
+  command `save_file`) because `<a download>` does nothing in a webview; Share
+  builds the link against `PUBLIC_URL` (`https://dataguard.davidbudac.cz/`)
+  because the page's own origin is `tauri://localhost`; the report prints through
+  `print_page` (WKWebView ignores `window.print()`); `<a target=_blank>` and
+  citations open in the system browser (`on_new_window`, `on_navigation` in
+  `lib.rs`); pop-outs work because `on_new_window` returns
+  `NewWindowResponse::Create`, which keeps the opener that `popout.tsx` renders
+  through (needs Tauri 2.8+, pinned `=2.12.0`).
+- **CSP.** The web page's policy is an nginx header; the shell sets the same one
+  in `app.security.csp`, plus `connect-src 'self' ipc: http://ipc.localhost`
+  (Tauri's IPC, and the collector fetch). Change one, change the other. The
+  webview gets only the `save_file` and `print_page` commands (`build.rs`, autogenerated into `permissions/`, which is git-ignored;
+  `capabilities/default.json`); the dialog and opener plugins are used from Rust
+  only, so they need no JS permission.
 
 ## Accuracy rules (non-negotiable)
 
