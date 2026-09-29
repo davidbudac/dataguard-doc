@@ -1,0 +1,460 @@
+/**
+ * Lanes' event buttons: the compact icons on every card, data centre header and
+ * link pill, aimed at the playhead and changing with it; the More menu with the
+ * whole grouped list; the empty run that is started from them; and the rest of
+ * what Lanes draws (the held axis, the braces, the data centres' order, the
+ * application inside its data centre).
+ *
+ * jsdom lays nothing out, so where things sit is pinned in the browser pass
+ * (app/design/ui.md, "Break's two layouts"); what is pinned here is which
+ * buttons there are, what they say, what a press does and what closes a menu.
+ *
+ * @vitest-environment jsdom
+ */
+
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { h, render } from 'preact';
+import { classicDoc } from '@/state/doc';
+import { resetHistory } from '@/state/history';
+import { geometry, topology } from '@/state/derived';
+import { breakLayout, findingsOpen, mode, playing, railCollapsed, selection, tNow, viewport } from '@/state/view';
+import { App } from '@/ui/App';
+import { applyTemplate, clearEvents, templates } from '@/ui/break/events';
+import { siteOrder } from '@/ui/break/lanes-layout';
+
+const memory = new Map<string, string>();
+const fakeStorage = {
+  getItem: (k: string) => memory.get(k) ?? null,
+  setItem: (k: string, v: string) => { memory.set(k, String(v)); },
+  removeItem: (k: string) => { memory.delete(k); },
+  clear: () => { memory.clear(); },
+  key: (i: number) => [...memory.keys()][i] ?? null,
+  get length() { return memory.size; },
+} as unknown as Storage;
+Object.defineProperty(window, 'localStorage', { configurable: true, value: fakeStorage });
+
+const tick = (): Promise<void> => new Promise((r) => setTimeout(r, 60));
+
+let root: HTMLElement | null = null;
+const mount = (): HTMLElement => {
+  root = document.createElement('div');
+  document.body.appendChild(root);
+  render(h(App, {}), root);
+  return root;
+};
+
+/** Crash the primary's host at `at`. */
+const crashAt = (at: number): void => {
+  const t = templates(topology.value, at).find((x) => x.id === 'crash');
+  if (!t) throw new Error('no crash template');
+  applyTemplate(t);
+};
+
+const click = (el: Element | null): void => {
+  if (!el) throw new Error('nothing to click');
+  el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+};
+const key = (el: Element | Window, k: string): void => {
+  el.dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true, cancelable: true }));
+};
+
+const strip = (r: HTMLElement, name: string): Element | null => r.querySelector(`.ln-cardwrap [data-ev-for="${name}"]`);
+const tools = (r: HTMLElement, name: string): Element[] => [...(strip(r, name)?.querySelectorAll('.ln-tool:not(.ln-more)') ?? [])];
+const toolIds = (r: HTMLElement, name: string): string[] => tools(r, name).map((g) => g.getAttribute('data-tool') as string);
+const tool = (r: HTMLElement, name: string, id: string): Element | null =>
+  strip(r, name)?.querySelector(`[data-tool="${id}"]`) ?? null;
+
+beforeEach(() => {
+  document.body.innerHTML = '';
+  document.documentElement.removeAttribute('style');
+  memory.clear();
+  resetHistory(classicDoc());
+  viewport.value = 'wide';
+  mode.value = 'break';
+  breakLayout.value = 'lanes';
+  railCollapsed.value = false;
+  findingsOpen.value = false;
+  playing.value = false;
+  selection.value = [];
+  tNow.value = 0;
+});
+
+afterEach(() => {
+  if (root) render(null, root);
+  root = null;
+});
+
+describe('the buttons on the cards', () => {
+  it('sit on every card, and on every data centre header, with a name and a More button', async () => {
+    const r = mount();
+    await tick();
+    const cards = [...r.querySelectorAll('.ln-cardwrap .ln-ev')].map((g) => g.getAttribute('data-ev-for'));
+    expect(cards).toEqual(['prm01', 'app01', 'sby01', 'obs01']);
+    const heads = [...r.querySelectorAll('.ln-dc .ln-ev')].map((g) => g.getAttribute('data-ev-for'));
+    expect(heads).toEqual(['DC 1', 'DC 2', 'DC 3']);
+    for (const g of r.querySelectorAll('.ln-ev')) {
+      expect(g.getAttribute('role')).toBe('toolbar');
+      expect(g.getAttribute('aria-label')).toMatch(/^Events for /);
+      expect(g.querySelector('.ln-more')?.getAttribute('aria-label')).toMatch(/^More events for /);
+    }
+    /* A database and its host, the application's host, a data centre and its links. */
+    expect(toolIds(r, 'prm01')).toEqual(['member.down', 'host.down']);
+    expect(toolIds(r, 'app01')).toEqual(['host.down']);
+    expect(toolIds(r, 'obs01')).toEqual(['observer.stop', 'host.down']);
+    const dc = [...r.querySelectorAll('.ln-dc [data-ev-for="DC 2"] .ln-tool:not(.ln-more)')].map((g) => g.getAttribute('data-tool'));
+    expect(dc).toEqual(['site.down', 'site.isolate']);
+  });
+
+  it('name themselves with the action, and are always there, not only under the pointer', async () => {
+    clearEvents();
+    const r = mount();
+    await tick();
+    const labels = tools(r, 'prm01').map((g) => g.getAttribute('aria-label'));
+    expect(labels).toEqual(['SHUTDOWN ABORT prm01', 'Crash dc1-prm01']);
+    for (const g of tools(r, 'prm01')) expect(g.querySelector('title')?.textContent).toBe(g.getAttribute('aria-label'));
+    expect(tools(r, 'prm01').every((g) => g.getAttribute('aria-disabled') === 'false')).toBe(true);
+  });
+
+  it('follow the playhead: a crash at 10 s is the way down before it and the way back after', async () => {
+    crashAt(10);
+    const r = mount();
+    await tick();
+    tNow.value = 5;
+    await tick();
+    expect(toolIds(r, 'prm01')).toEqual(['member.down', 'host.down']);
+    expect(r.querySelector('.ln-when-t')?.textContent).toBe('Events at t = 5 s');
+
+    tNow.value = 40;
+    await tick();
+    expect(toolIds(r, 'prm01')).toEqual(['member.up', 'host.up']);
+    expect(tool(r, 'prm01', 'host.up')?.getAttribute('aria-label')).toBe('Restore the host');
+    expect(r.querySelector('.ln-when-t')?.textContent).toBe('Events at t = 40 s');
+    /* The way back is the one that stands out. */
+    expect(tool(r, 'prm01', 'host.up')?.classList.contains('is-mend')).toBe(true);
+
+    tNow.value = 3;
+    await tick();
+    expect(toolIds(r, 'prm01')).toEqual(['member.down', 'host.down']);
+  });
+
+  it('keep the same element in a slot as it turns from the way down to the way back', async () => {
+    crashAt(10);
+    const r = mount();
+    await tick();
+    tNow.value = 5;
+    await tick();
+    const slot = tools(r, 'prm01')[1];
+    expect(slot?.getAttribute('data-tool')).toBe('host.down');
+    tNow.value = 40;
+    await tick();
+    /* So a keyboard reader who pressed it is still on it, reading what it is now. */
+    expect(tools(r, 'prm01')[1]).toBe(slot);
+    expect(slot?.getAttribute('data-tool')).toBe('host.up');
+  });
+
+  it('follow it for a data centre too, and refuse what the clock cannot allow', async () => {
+    const t = templates(topology.value, 10).find((x) => x.id === 'dc2down');
+    applyTemplate(t!);
+    const r = mount();
+    await tick();
+    tNow.value = 5;
+    await tick();
+    const dc2 = (): string[] => [...r.querySelectorAll('.ln-dc [data-ev-for="DC 2"] .ln-tool:not(.ln-more)')]
+      .map((g) => g.getAttribute('data-tool') as string);
+    expect(dc2()[0]).toBe('site.down');
+    tNow.value = 30;
+    await tick();
+    expect(dc2()[0]).toBe('site.up');
+    expect(r.querySelector('.ln-dc.is-down')).not.toBeNull();
+  });
+
+  it('are grey with the reason as their title when the moment refuses them', async () => {
+    crashAt(10);
+    const r = mount();
+    await tick();
+    tNow.value = 40;
+    await tick();
+    const startup = tool(r, 'prm01', 'member.up') as Element;
+    expect(startup.classList.contains('is-off')).toBe(true);
+    expect(startup.getAttribute('aria-disabled')).toBe('true');
+    expect(startup.getAttribute('aria-label')).toMatch(/ — .*down.*restore the host first/i);
+    expect(startup.querySelector('title')?.textContent).toBe(startup.getAttribute('aria-label'));
+    const before = topology.value.events.length;
+    click(startup);
+    await tick();
+    expect(topology.value.events.length).toBe(before);
+    /* A grey control is out of the tab order and the arrows; the live ones are in it. */
+    expect(startup.getAttribute('tabindex')).toBe('-1');
+
+    /* And a switchover is refused while the primary is down at this point on the clock. */
+    click(strip(r, 'sby01')?.querySelector('.ln-more') ?? null);
+    await tick();
+    const row = [...r.querySelectorAll('.ln-menu .cv-mi')].find((m) => /SWITCHOVER/.test(m.textContent ?? ''));
+    expect(row?.classList.contains('is-off')).toBe(true);
+    expect(row?.querySelector('.why')?.textContent?.length).toBeGreaterThan(0);
+  });
+
+  it('inject at the playhead and leave it where it is, and the marker is there at once', async () => {
+    clearEvents();
+    const r = mount();
+    await tick();
+    tNow.value = 12.34;
+    await tick();
+    expect(r.querySelector('.ln-empty-h')).not.toBeNull();
+    click(tool(r, 'prm01', 'host.down'));
+    await tick();
+    const events = topology.value.events;
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({ kind: 'host.down', at: 12.3 });
+    expect(tNow.value).toBe(12.34);
+    /* The run exists now: lanes, a marker for the event, and no hint. */
+    expect(r.querySelector('.ln-empty-h')).toBeNull();
+    expect(r.querySelectorAll('.ln-svg .tl-event-drag')).toHaveLength(1);
+    expect(r.querySelectorAll('.ln-svg .tl-lane').length).toBeGreaterThan(0);
+    /* The rail's clock reads the same number the buttons are aimed at. */
+    expect((r.querySelector('.evmenu-at') as HTMLInputElement).value).toBe('12.3');
+    /* And the slot that was the way down is now the way back. */
+    expect(toolIds(r, 'prm01')).toEqual(['member.up', 'host.up']);
+  });
+
+  it('press with Enter and Space as well, and walk the strip with the arrows', async () => {
+    clearEvents();
+    const r = mount();
+    await tick();
+    const first = tool(r, 'prm01', 'member.down') as SVGElement;
+    expect(first.getAttribute('tabindex')).toBe('0');
+    const second = tool(r, 'prm01', 'host.down') as SVGElement;
+    expect(second.getAttribute('tabindex')).toBe('-1');
+    key(strip(r, 'prm01') as Element, 'ArrowRight');
+    await tick();
+    expect(tool(r, 'prm01', 'host.down')?.getAttribute('tabindex')).toBe('0');
+    key(tool(r, 'prm01', 'host.down') as Element, 'Enter');
+    await tick();
+    expect(topology.value.events.map((e) => e.kind)).toEqual(['host.down']);
+  });
+
+  it('clicking the card is still selecting it, and pressing a button is not', async () => {
+    clearEvents();
+    const r = mount();
+    await tick();
+    click(r.querySelector('.ln-node[data-node="prm01"]'));
+    await tick();
+    expect(selection.value).toEqual(['prm01']);
+    selection.value = [];
+    await tick();
+    click(tool(r, 'sby01', 'host.down'));
+    await tick();
+    expect(selection.value).toEqual([]);
+  });
+});
+
+describe('the More menu', () => {
+  it('lists the whole grouped table for the card, at the playhead, and closes on Escape', async () => {
+    clearEvents();
+    const r = mount();
+    await tick();
+    tNow.value = 7;
+    await tick();
+    const more = strip(r, 'sby01')?.querySelector('.ln-more') as Element;
+    expect(more.getAttribute('aria-expanded')).toBe('false');
+    click(more);
+    await tick();
+    const menu = r.querySelector('.ln-menu') as HTMLElement;
+    expect(menu).not.toBeNull();
+    expect(more.getAttribute('aria-expanded')).toBe('true');
+    expect(menu.querySelector('.cv-bar-subj')?.textContent).toContain('sby01');
+    expect(menu.querySelector('.cv-bar-subj')?.textContent).toContain('at t = 7 s');
+    const groups = [...menu.querySelectorAll('.cv-menu-lbl')].map((p) => p.textContent);
+    expect(groups.slice(0, 2)).toEqual(['Fail', 'Role change']);
+    expect(groups).toContain('Restore');
+    const rows = [...menu.querySelectorAll('.cv-mi-btn')].map((b) => b.textContent);
+    expect(rows).toContain('Crash dc2-sby01');
+    expect(rows.some((t) => /SWITCHOVER TO sby01/.test(t ?? ''))).toBe(true);
+    /* The focus moved into it, on a row that can be pressed. */
+    expect(document.activeElement?.classList.contains('cv-mi-btn')).toBe(true);
+
+    /* Arrows walk the rows. */
+    const first = document.activeElement;
+    key(menu, 'ArrowDown');
+    expect(document.activeElement).not.toBe(first);
+
+    key(window, 'Escape');
+    await tick();
+    expect(r.querySelector('.ln-menu')).toBeNull();
+    expect(more.getAttribute('aria-expanded')).toBe('false');
+    expect(document.activeElement).toBe(more);
+    /* Escape closed the menu and forgot nothing else. */
+    expect(selection.value).toEqual([]);
+  });
+
+  it('closes on a press outside it, and a second press on its opener', async () => {
+    clearEvents();
+    const r = mount();
+    await tick();
+    const more = strip(r, 'prm01')?.querySelector('.ln-more') as Element;
+    click(more);
+    await tick();
+    expect(r.querySelector('.ln-menu')).not.toBeNull();
+    document.body.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true }));
+    await tick();
+    expect(r.querySelector('.ln-menu')).toBeNull();
+
+    click(more);
+    await tick();
+    expect(r.querySelector('.ln-menu')).not.toBeNull();
+    click(more);
+    await tick();
+    expect(r.querySelector('.ln-menu')).toBeNull();
+  });
+
+  it('presses a row: the event lands at the playhead and the menu has done its job', async () => {
+    clearEvents();
+    const r = mount();
+    await tick();
+    tNow.value = 20;
+    await tick();
+    click(strip(r, 'sby01')?.querySelector('.ln-more') ?? null);
+    await tick();
+    const row = [...r.querySelectorAll('.ln-menu .cv-mi-btn')].find((b) => /^SWITCHOVER TO/.test(b.textContent ?? ''));
+    click(row ?? null);
+    await tick();
+    expect(topology.value.events).toHaveLength(1);
+    expect(topology.value.events[0]).toMatchObject({ kind: 'cmd.switchover', at: 20 });
+    expect(tNow.value).toBe(20);
+    expect(r.querySelector('.ln-menu')).toBeNull();
+  });
+
+  it('belongs to a data centre too', async () => {
+    clearEvents();
+    const r = mount();
+    await tick();
+    click(r.querySelector('.ln-dc [data-ev-for="DC 2"] .ln-more'));
+    await tick();
+    expect(r.querySelector('.ln-menu .cv-bar-subj')?.textContent).toContain('DC 2');
+    const rows = [...r.querySelectorAll('.ln-menu .cv-mi-btn')].map((b) => b.textContent);
+    expect(rows).toEqual(['Take DC 2 down', 'Isolate DC 2']);
+  });
+});
+
+describe('the links', () => {
+  it('give their cut to the pill, as a menu, at the playhead', async () => {
+    clearEvents();
+    const r = mount();
+    await tick();
+    tNow.value = 15;
+    await tick();
+    const pills = [...r.querySelectorAll('.ln-pill.is-act')];
+    expect(pills.length).toBeGreaterThan(0);
+    for (const p of pills) {
+      expect(p.getAttribute('role')).toBe('button');
+      expect(p.getAttribute('aria-haspopup')).toBe('menu');
+    }
+    click(pills[0] as Element);
+    await tick();
+    const rows = [...r.querySelectorAll('.ln-menu .cv-mi-btn')];
+    const cut = rows.find((b) => /^Cut /.test(b.textContent ?? ''));
+    expect(cut).toBeDefined();
+    click(cut ?? null);
+    await tick();
+    expect(topology.value.events).toHaveLength(1);
+    expect(topology.value.events[0]).toMatchObject({ kind: 'link.cut', at: 15 });
+    /* The pill now reads cut, and its menu offers the way back. */
+    click(r.querySelector('.ln-pill.is-act.is-down'));
+    await tick();
+    expect([...r.querySelectorAll('.ln-menu .cv-mi-btn:not(:disabled)')]
+      .some((b) => /^(Reconnect|Restore|Heal|Take|Bring)/i.test(b.textContent ?? ''))).toBe(true);
+  });
+});
+
+describe('an empty run', () => {
+  it('shows the cards with their buttons, the tracks and the one-line hint', async () => {
+    clearEvents();
+    const r = mount();
+    await tick();
+    expect(r.querySelector('.ln-empty-h')?.textContent).toBe('Pick an event on a card to start.');
+    expect(r.querySelectorAll('.ln-cardwrap')).toHaveLength(4);
+    expect(r.querySelectorAll('.ln-cardwrap .ln-tool:not(.ln-more)').length).toBeGreaterThanOrEqual(7);
+    expect(r.querySelectorAll('.ln-track')).toHaveLength(4);
+    expect(r.querySelector('.ln-when-t')?.textContent).toBe('Events at t = 0 s');
+    /* Nothing to seek or play, but the bar still carries the findings. */
+    expect(r.querySelector('.ln-bar .tl-transport')).toBeNull();
+    expect(r.querySelector('.ln-bar .sb-chip')).not.toBeNull();
+  });
+});
+
+describe('the axis', () => {
+  const slider = (r: HTMLElement): Element => r.querySelector('.ln-svg .tl-event-drag') as Element;
+
+  it('is held where it was when an event is moved, and Fit lets go of it', async () => {
+    crashAt(0);
+    const r = mount();
+    await tick();
+    expect(r.querySelector('.ln-bar .sb-fit')).toBeNull();
+    const ticks = (): string => [...r.querySelectorAll('.ln-svg text.t-tick.t-mono')].map((x) => x.textContent).join(',');
+    const before = ticks();
+    key(slider(r), 'ArrowRight');
+    await tick();
+    expect(topology.value.events[0]?.at).toBe(1);
+    const fit = r.querySelector('.ln-bar .sb-fit') as HTMLButtonElement | null;
+    expect(fit).not.toBeNull();
+    expect(ticks()).toBe(before);
+    fit!.click();
+    await tick();
+    expect(r.querySelector('.ln-bar .sb-fit')).toBeNull();
+  });
+});
+
+describe('the braces', () => {
+  it('hang under the axis, below the last lane, as in the timeline, with the outage brace and caption above', async () => {
+    crashAt(0);
+    const r = mount();
+    await tick();
+    const svg = r.querySelector('.ln-svg') as SVGElement;
+    const height = Number(svg.getAttribute('height'));
+    const axis = r.querySelector('.ln-svg line.ax') as SVGLineElement;
+    const axisY = Number(axis.getAttribute('y1'));
+    const braces = [...r.querySelectorAll('.ln-svg .tl-brace path')];
+    expect(braces.length).toBeGreaterThan(0);
+    /* Every brace starts under the axis, and the drawing is tall enough to hold them. */
+    for (const p of braces) {
+      const y = Number(/^M[\d.-]+,([\d.-]+)/.exec(p.getAttribute('d') ?? '')?.[1]);
+      expect(y).toBeGreaterThan(axisY);
+      expect(y).toBeLessThan(height);
+    }
+    expect(r.querySelector('.ln-svg .t-top')?.textContent).toMatch(/\S/);
+    expect(r.querySelector('.ln-svg path.brace.br-sl')).not.toBeNull();
+  });
+});
+
+describe('the data centres', () => {
+  it('are listed in the order the document declares them, not in the drawing\'s column order', async () => {
+    const r = mount();
+    await tick();
+    const declared = topology.value.sites.map((s) => s.name);
+    const listed = [...r.querySelectorAll('.ln-dc-body')].map((b) => b.getAttribute('aria-label'));
+    expect(listed).toEqual(declared);
+    /* The drawing puts the observer-only data centre between the two it joins. */
+    const columns = (geometry.value?.columns ?? []).map((c) => c.site as string);
+    expect(columns).not.toEqual(topology.value.sites.map((s) => s.id as string));
+  });
+
+  it('siteOrder keeps the declared order, drops empty sites and gathers strays after', () => {
+    expect(siteOrder(['b', 'a', 'c'], new Set(['a', 'b', 'c']))).toEqual(['b', 'a', 'c']);
+    expect(siteOrder(['a', 'b', 'c'], new Set(['c', 'a']))).toEqual(['a', 'c']);
+    expect(siteOrder(['a'], new Set(['a', 'z', 'y']))).toEqual(['a', 'y', 'z']);
+  });
+
+  it('carry the application inside the one its host is in, and the application\'s view under them all', async () => {
+    crashAt(0);
+    const r = mount();
+    await tick();
+    const y = (sel: string): number => Number(r.querySelector(sel)?.getAttribute('y'));
+    const app = y('.ln-node[data-node="app01"] rect.ln-card');
+    const prm = y('.ln-node[data-node="prm01"] rect.ln-card');
+    const dc2 = Number(r.querySelector('.ln-dc[data-site="dc2"] rect')?.getAttribute('y'));
+    expect(app).toBeGreaterThan(prm);
+    expect(app).toBeLessThan(dc2);
+    const head = r.querySelector('.ln-apphead .ln-dc rect');
+    expect(Number(head?.getAttribute('y'))).toBeGreaterThan(y('.ln-node[data-node="obs01"] rect.ln-card'));
+  });
+});

@@ -187,7 +187,9 @@ describe('the switch', () => {
     expect(shell.classList.contains('bl-lanes')).toBe(true);
     expect(shell.classList.contains('bl-split')).toBe(false);
     expect(r.querySelector('.ln-view')).not.toBeNull();
-    expect(r.querySelector('.sb-bar')).toBeNull();
+    /* Lanes' bar is Split's parts on the view's own top edge, not the dock's. */
+    expect(r.querySelector('.app-dock .sb-bar')).toBeNull();
+    expect(r.querySelector('.ln-view .sb-bar.ln-bar')).not.toBeNull();
     expect(memory.get(BREAK_LAYOUT_KEY)).toBe('lanes');
     expect(switchButtons(r)[1]?.getAttribute('aria-pressed')).toBe('true');
 
@@ -402,7 +404,7 @@ describe('showing the findings', () => {
     expect(r.querySelector('.sb-pop-findings .issue')).not.toBeNull();
   });
 
-  it('unfolds the rail in Lanes, where the rows are the foot of it', async () => {
+  it('opens the dropdown on Lanes\' bar too, and leaves the rail as it was', async () => {
     breakLayout.value = 'lanes';
     railCollapsed.value = true;
     crash();
@@ -410,9 +412,9 @@ describe('showing the findings', () => {
     await tick();
     revealFindings();
     await tick();
-    expect(railCollapsed.value).toBe(false);
-    expect(r.querySelector('.sb-pop-findings')).toBeNull();
-    expect(r.querySelector('.app-rail .issues')).not.toBeNull();
+    expect(findingsOpen.value).toBe(true);
+    expect(railCollapsed.value).toBe(true);
+    expect(r.querySelector('.ln-view .sb-pop-findings .issue')).not.toBeNull();
   });
 });
 
