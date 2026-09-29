@@ -153,8 +153,9 @@ export async function exportPng(): Promise<void> {
       return;
     }
     const name = pngFileName();
-    downloadBlob(await rasterise(snap), name);
-    toast.value = { kind: 'info', text: `The diagram was saved as ${name}.` };
+    if (await downloadBlob(await rasterise(snap), name)) {
+      toast.value = { kind: 'info', text: `The diagram was saved as ${name}.` };
+    }
   } catch (e) {
     toast.value = {
       kind: 'error',

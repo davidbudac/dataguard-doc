@@ -34,6 +34,7 @@ import type { SchemaIssue } from '@/engine';
 import type { Doc } from './doc';
 import { classicDoc, doc, exportFileName } from './doc';
 import { fromWire, parseJsonText, toJsonText } from './codec';
+import { isDesktop, saveFile } from '@/ui/common/desktop';
 import type { DecodeResult } from './codec';
 import {
   BREAK_LAYOUTS, breakLayout, gridOn, hintsOn, inspectorOpen, issuesOpen, railCollapsed, timelineH,
@@ -301,9 +302,14 @@ export function startFresh(edition: '19c' | '26ai' = '19c'): Doc {
  * file is meant to be read, diffed and pasted into a ticket.
  */
 export function exportDoc(d: Doc = doc.value): void {
+  const json = new Blob([toJsonText(d)], { type: 'application/json' });
+  if (isDesktop()) {
+    /* No `<a download>` in the desktop webview: a native save dialog instead. */
+    void saveFile(exportFileName(d), json).catch(() => undefined);
+    return;
+  }
   if (typeof document === 'undefined' || typeof URL.createObjectURL !== 'function') return;
-  const blob = new Blob([toJsonText(d)], { type: 'application/json' });
-  const href = URL.createObjectURL(blob);
+  const href = URL.createObjectURL(json);
   const a = document.createElement('a');
   a.href = href;
   a.download = exportFileName(d);
