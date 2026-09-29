@@ -743,7 +743,7 @@ function Lanes({ run, fr }: { run: RunTimeline | null; fr: Frame }) {
   const steadyX = scale.x(scale.clampT(t));
 
   return (
-    <section class="ln-view float-card" aria-label="Break: topology and timeline" ref={section}>
+    <section class="ln-view float-card" aria-label="Simulate: topology and timeline" ref={section}>
       <LanesBar run={run} />
 
       <div

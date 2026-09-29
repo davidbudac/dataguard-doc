@@ -46,8 +46,8 @@ import { INTRO_HREF, openIntro } from './intro/route';
 /** The three working modes, one clause each; Learn is the link at the foot. */
 const BULLETS: [string, string][] = [
   ['Build', 'draw a configuration: data centres, databases, far syncs, observers and the redo between them.'],
-  ['Break', 'add a failure and follow the timeline through detection, threshold, role change and open.'],
-  ['Configure', 'generate DGMGRL commands, init parameters and connect strings from the drawing.'],
+  ['Simulate', 'add a failure and follow the timeline through detection, threshold, role change and open.'],
+  ['Config', 'generate DGMGRL commands, init parameters and connect strings from the drawing.'],
 ];
 
 /**
@@ -71,7 +71,7 @@ const KEYS: { where: string; rows: [string, string][] }[] = [
       /* `onEvents` is spread onto the canvas only in Break
          (`canvas/CanvasSlot.tsx`), exactly as `onDelete` is only in Build:
          a key that is bound in one mode says which one. */
-      ['E', 'open the events it offers, at the playhead, and move the focus into them (Break)'],
+      ['E', 'open the events it offers, at the playhead, and move the focus into them (Simulate)'],
       ['Delete', 'remove it, or everything selected (Build)'],
       ['Esc', 'close the actions first, then clear the selection'],
     ],
@@ -82,7 +82,7 @@ const KEYS: { where: string; rows: [string, string][] }[] = [
       ['Ctrl+Z · ⌘Z', 'undo'],
       ['Ctrl+Shift+Z · Ctrl+Y', 'redo'],
       ['Ctrl+A · ⌘A', 'select every card on the drawing'],
-      [']', 'collapse or expand the side panel (Build, Break, Configure)'],
+      [']', 'collapse or expand the side panel (Build, Simulate, Config)'],
     ],
   },
   {
@@ -171,7 +171,7 @@ export function IntroCard() {
           noticed it finds out what it does -- and can press it here. */}
       <p class="intro-foot caption">
         <b>{HINTS_LABEL}</b>
-        {', in the inspector header, shows help under each control and, in Configure, the '}
+        {', in the inspector header, shows help under each control and, in Config, the '}
         {'rest of the line above. It is off by default, and the setting is remembered.'}
         {' '}
         <HintsToggle />

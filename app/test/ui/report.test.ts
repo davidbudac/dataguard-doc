@@ -164,7 +164,7 @@ describe('report page', () => {
     const heads = [...root.querySelectorAll('.rp h2')].map((e) => e.textContent?.replace(/^\d+\s*/, ''));
     expect(heads).toEqual([
       'Summary', 'Diagram', 'Members and observers', 'Validation findings',
-      'Generated configuration', 'Break: injected events and outcome', 'Sources',
+      'Generated configuration', 'Simulate: injected events and outcome', 'Sources',
     ]);
     expect(root.querySelector('.rp .topo-svg')).not.toBeNull();
     /* A model claim wears its label on paper too. */
@@ -184,7 +184,7 @@ describe('report page', () => {
     expect(root.querySelector('.report')).not.toBeNull();
     expect(root.querySelector('.app')).toBeNull();
     /* No events, no Break section. */
-    expect([...root.querySelectorAll('.rp h2')].some((e) => e.textContent?.includes('Break'))).toBe(false);
+    expect([...root.querySelectorAll('.rp h2')].some((e) => e.textContent?.includes('Simulate'))).toBe(false);
     closeReport();
     render(h(Root, {}), root);
     expect(root.querySelector('.report')).toBeNull();

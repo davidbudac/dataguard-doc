@@ -168,7 +168,7 @@ function Comparison({ current }: { current: ReviewSnapshot }) {
             <summary>{commands.length} changed command file{commands.length === 1 ? '' : 's'}</summary>
             <p class="rv-cap">
               Whole command blocks, so address and target order stay visible. The notes and
-              citations are in Configure and in the report.
+              citations are in Config and in the report.
             </p>
             {commands.map((c) => (
               <section key={c.title} class="rv-cmd">

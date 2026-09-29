@@ -19,7 +19,7 @@ produced, and how to extend it without breaking consistency or accuracy.
 | `diagrams/fsfo-sequence.svg` (+`.png`) | Sequence diagram of the crash case with an elapsed-time gutter |
 | `diagrams/fsfo-net-timeout.svg` (+`.png`) | Two panels separating NET_TIMEOUT (redo transport) from the broker failover clocks |
 | `diagrams/README.md` | Figure embeds, broker-property and redo-transport-property tables with verified defaults, the ping-properties quirk, the verified-facts sections behind the commit/reopen/observer/placement/side-topics views (including the 24-cell observer-placement outcome matrix) and behind the 26ai edition switch (the MaxAvailability lag-limit semantics and Oracle's self-contradiction on them, `PrimaryDatabaseCandidates`, `V$FS_FAILOVER_OBSERVERS`), the drawing idealizations, Oracle doc links. Its *Topology features* section points at `app/design/facts.md` for far sync, cascading, RedoRoutes, multi-target and multi-observer sources |
-| `app/` | The workbench: TypeScript + Vite + Preact + signals. A pure, DOM-free engine in `app/src/engine` (types, citation catalogue, validation rules, redo-graph resolver, epoch-loop simulator, generators, the legacy adapter), the interface in `app/src/ui` (including the on-canvas action bar, the Introduction page and the `Hints` toggle — see `app/design/ui.md` §3c–§3i; §3h is how the drawing is driven: click selects, `⋯` for the bar, drag-to-place, inline rename, marquee, shortcuts; §3i is the lean pass: the toolbar is the one add surface, Remove sits in the rail header; "Break's two layouts", at the end, is the Split and Lanes layouts of the Break screen and the switch between them), state in `app/src/state`, twelve presets in `app/src/presets`, ten lessons and the reference tables in `app/src/content`, 2594 vitest tests across 98 files in `app/src/**/__tests__` and `app/test`. Built to `_site/` and served at `/dataguard/`. Zero external requests, no inline script and no inline style — the page is meant to run under `script-src 'self'; style-src 'self'` |
+| `app/` | The workbench: TypeScript + Vite + Preact + signals. A pure, DOM-free engine in `app/src/engine` (types, citation catalogue, validation rules, redo-graph resolver, epoch-loop simulator, generators, the legacy adapter), the interface in `app/src/ui` (including the on-canvas action bar, the Introduction page and the `Hints` toggle — see `app/design/ui.md` §3c–§3i; §3h is how the drawing is driven: click selects, `⋯` for the bar, drag-to-place, inline rename, marquee, shortcuts; §3i is the lean pass: the toolbar is the one add surface, Remove sits in the rail header; "Simulate's two layouts", at the end, is the Split and Lanes layouts of the Simulate screen and the switch between them), state in `app/src/state`, twelve presets in `app/src/presets`, ten lessons and the reference tables in `app/src/content`, 2594 vitest tests across 98 files in `app/src/**/__tests__` and `app/test`. Built to `_site/` and served at `/dataguard/`. Zero external requests, no inline script and no inline style — the page is meant to run under `script-src 'self'; style-src 'self'` |
 | `app/public/collectors/` | Read-only SQL collector, optional Bash/SQL*Plus wrapper and run instructions for existing setups. The ⋯ menu's **Import existing setup** sheet previews pasted/file output before drawing it. `engine/collect.ts` maps current routes; imported `routesObserved` prevents invented NULL-default routes. Missing broker settings and placement assumptions remain in document notes. Validated live on a 19c primary + mounted standby (SYSDBA, local OS auth); wallet, least-privilege, RAC and far sync remain unverified. DGMGRL transcripts are not parsed. |
 | `app/design/facts.md` | The verified Oracle fact sheet for the topology features (far sync, cascading, multiple standbys and FSFO targets, multiple observers, RedoRoutes, member types, destination counts), researched 2026-08-16 against docs.oracle.com and re-verified 2026-08-17, marked `[D]` / `[D-later]` / `[UNDOC]` / `[CONFLICT]` per claim. **The only permitted source of a "documented" claim in the application.** Its top-five traps are restated in the accuracy rules below |
 | `app/design/engine.md` | The engine design: `Claim`/`Basis` labelling, the topology data model, the validation catalogue, the redo-graph resolver, the epoch-loop failure engine, the compat adapter and the 24-cell matrix gate, the generators, the module layout — plus §10, *Deviations from the design as built*, which is where the code and the specification differ |
@@ -32,7 +32,7 @@ produced, and how to extend it without breaking consistency or accuracy.
 | `SIMULATOR_FACT_CHECK_2026-09-28.md` | The report of the first full review of `app/` against 19c and 26ai, with a read-only look at a live 19.27 configuration, **and what was done about each finding** (its *Resolution* section). The findings are fixed except where that section says a decision was taken instead — one role change per run, resynchronization drawn as immediate, the 19c edition meaning 19c as documented — and the accuracy rules below were corrected with them. A later review re-uses its finding ids |
 | `site/build.mjs` | The site build, in three steps: `npm run build` in `app/` (which empties `_site/` and writes the hashed bundle), then `site/build-legacy.mjs`, then `assertNoInline(_site/index.html)` — a built page carrying a `<script>` with a body, an `on*=` handler or a `style=` attribute fails the build rather than the browser's content security policy. The guard proves it can fail (three fixtures it must reject, one it must accept) before it is trusted to pass |
 | `site/build-legacy.mjs` | What `site/build.mjs` used to be: wraps the fragment into a full page (doctype, charset, title, favicon, canonical + social meta) and enforces the ASCII-only guard — it exits non-zero on any byte above U+007E, naming the offending lines. Writes `_site/legacy/index.html` and copies `diagrams/` to `_site/diagrams`, which both pages share |
-| `site/smoke.mjs` | Dependency-free browser check of the built tree: serves `_site/` over `node:http`, loads it in headless Chrome (`--dump-dom`, console messages captured through `--enable-logging=stderr`), takes the page's own `data-permalink` for the `classic` and `far-sync-zero-loss` presets and reloads it cold — an untouched preset now carries no `#t=` at all, so the check accepts either a `#t=` document or a short link naming the preset (and asserts the latter is under 200 characters) — asserts the node cards, the timeline lanes and the outcome chip, opens each of the four modes by name, and checks that a published-page link (`?sc=iso&lat=2&lang=cs#ch-clocks`) upgrades into Break mode like any other old link, following *that* permalink cold to keep one real-browser `CompressionStream` → `DecompressionStream` round trip (an upgraded legacy link names no preset, so it must carry `#t=`). Probes HTTP first and falls back to an inlined single-file copy over `file://` where the machine's headless Chrome cannot fetch over HTTP. Exits non-zero on any failed check, any console message, or any file the page asked for and did not get |
+| `site/smoke.mjs` | Dependency-free browser check of the built tree: serves `_site/` over `node:http`, loads it in headless Chrome (`--dump-dom`, console messages captured through `--enable-logging=stderr`), takes the page's own `data-permalink` for the `classic` and `far-sync-zero-loss` presets and reloads it cold — an untouched preset now carries no `#t=` at all, so the check accepts either a `#t=` document or a short link naming the preset (and asserts the latter is under 200 characters) — asserts the node cards, the timeline lanes and the outcome chip, opens each of the four modes by name, and checks that a published-page link (`?sc=iso&lat=2&lang=cs#ch-clocks`) upgrades into Simulate mode like any other old link, following *that* permalink cold to keep one real-browser `CompressionStream` → `DecompressionStream` round trip (an upgraded legacy link names no preset, so it must carry `#t=`). Probes HTTP first and falls back to an inlined single-file copy over `file://` where the machine's headless Chrome cannot fetch over HTTP. Exits non-zero on any failed check, any console message, or any file the page asked for and did not get |
 | `site/test.mjs` | Standalone node test for the **legacy** fragment: extracts its four model marker blocks and asserts the documented domain invariants — including the scenario × observer-location outcome matrix as literal tables (24 cells, plus the 19c-invariance loops over the version axis). No dependencies; `node --test site/test.mjs`, 63 tests. The application reproduces the same 24 cells through its compat adapter (`app/test/legacy-matrix.test.ts`) |
 | `desktop/` | The Tauri v2 desktop shell (macOS, Windows) around the workbench -- see *The desktop app* below. Not part of the published site; `.github/workflows/desktop.yml` builds it |
 | `site/publish.sh` | Builds, runs the three test gates (`npm --prefix app run test`, `node --test site/test.mjs`, `node site/smoke.mjs`), deploys to the VPS, then verifies the public URL |
@@ -164,8 +164,8 @@ the top bar, and both are reading preferences that survive a reload:
 
 - **All four modes on the classic preset.** Build: select a member, edit a
   property, undo it, watch the issue list and the steady-state readout follow.
-  Break: click a card and inject a crash from the bar it opens, scrub the timeline, read the
-  outcome chip. Configure: all seven tabs render, Copy works, hovering a
+  Simulate: click a card and inject a crash from the bar it opens, scrub the timeline, read the
+  outcome chip. Config: all seven tabs render, Copy works, hovering a
   generated line highlights the member it belongs to. Learn: the lesson list,
   a "Show me" step, and the workbench beside the prose reacting to it.
 - **Every preset opens.** Twelve of them (`classic`, `observe-only`,
@@ -186,7 +186,7 @@ the top bar, and both are reading preferences that survive a reload:
   alone; every gray control still carries the pill saying why; the drawer and
   the sheet still close on `Escape` and hand focus back; below 768 px the
   read-only card says editing needs a wider screen, once, not four times.
-- **Print.** `Ctrl+P` on Configure: all seven panels stack, the citation chips
+- **Print.** `Ctrl+P` on Config: all seven panels stack, the citation chips
   wrap rather than pushing the page sideways.
 - **After the deploy**, `curl -s https://dataguard.davidbudac.cz/ | grep -E
   'og:image|canonical|theme-color|rel="icon"'` finds all four, and
@@ -1014,7 +1014,7 @@ global appears in it; `app/test/import-boundary.test.ts` keeps the layering
   legacy tick-step and horizon arithmetic unchanged.
 - **The generators** (`generate/*`) emit structured `Line`s rather than text —
   `cmd`/`note`/`comment`/`blank`, a tone, a highlight flag and `data-member`
-  spans — which is what makes the Configure panels able to cross-highlight
+  spans — which is what makes the Config panels able to cross-highlight
   against the canvas. Files: DGMGRL script, `LOG_ARCHIVE_DEST_n`,
   `tnsnames.ora` + JDBC, and the `SHOW CONFIGURATION` / `SHOW FAST_START
   FAILOVER` / `SHOW OBSERVER` mocks. Every mock block carries a generated header
@@ -1078,8 +1078,8 @@ component computes domain state locally.**
   `lat`, `xpt`, `rs`, `mf`, `tct`, `ct`, `rc`, `rd`, …, plus `ver` for the
   edition) become a topology
   through `migrateLegacyQuery`, and the six chapter anchors become a mode and a
-  panel — `ch-clocks` → Break, `ch-transport` → Configure/Commit, `ch-app` →
-  Configure/Application view, `ch-config` → Configure/DGMGRL, `ch-side` →
+  panel — `ch-clocks` → Simulate, `ch-transport` → Config/Commit, `ch-app` →
+  Config/Application view, `ch-config` → Config/DGMGRL, `ch-side` →
   Learn/SYNC transport, `ch-reference` → Learn/Reference. `#cfg=` payloads go
   through `migrateV1`. The canonical URL is then written with `replaceState`.
   `lang` is a recognised key and is ignored: there is no Czech reading any more.
@@ -1089,8 +1089,8 @@ component computes domain state locally.**
 ### The interface (`app/src/ui`)
 
 Four modes over one persistent canvas — **Build** (inspector, validation issues,
-steady-state readout), **Break** (the event list, timeline,
-transport, outcome readout), **Configure** (seven generated panels: DGMGRL ·
+steady-state readout), **Simulate** (the event list, timeline,
+transport, outcome readout), **Config** (seven generated panels: DGMGRL ·
 `LOG_ARCHIVE_DEST_n` · tnsnames/JDBC · SHOW · Application view · Commit ·
 Reopen) and **Learn** (ten lessons: the six ported chapters plus Far sync,
 Cascading, Multiple observers and targets, and RAC primary and standby). The canvas never blinks: switching
@@ -1160,13 +1160,13 @@ modes changes what is around it.
   because both bars wrap on a narrow window and a toast pinned to their nominal
   height paints over them. `site/build.mjs` fails the build on an inline
   `<script>`, an `on*=` handler or a `style=` attribute in the built page.
-- **Break's events are added where the reader is looking**: a
+- **Simulate's events are added where the reader is looking**: a
   click on a card, data centre or link opens the action bar's grouped list under
   a header that says *at t = [n] s*, a card's hover icons are the short list, and
   Lanes' cards and pills carry their own buttons. The rail is the reader's events
   and nothing else. The playhead is the one clock (the transport's *t* field).
-- **The readout is mode-aware**: Build and Configure read the steady state even
-  when the Document carries events; Break and Learn read the outcome at `tNow`.
+- **The readout is mode-aware**: Build and Config read the steady state even
+  when the Document carries events; Simulate and Learn read the outcome at `tNow`.
   Those two lead the strip with a `Drawing at t = <n> s` chip and file the rest
   behind a `Run` label, because there are **two clocks on the strip** — the
   moment the drawing is frozen at, and the run as a whole — and unlabelled they
@@ -1175,7 +1175,7 @@ modes changes what is around it.
   sentence set and a visually hidden structural table; one card per site is the
   tab stop (a roving `tabindex`, spelled lower case — the camel-cased JSX
   spelling lands on an SVG `<g>` as an attribute SVG has never heard of, and the
-  card silently takes no focus). `E` opens the action bar in Break, `Delete`
+  card silently takes no focus). `E` opens the action bar in Simulate, `Delete`
   removes in Build with the same refusals the inspector's button gives. The
   drawer and the sheet are modal dialogs and keep a dialog's promises: `Escape`
   closes, opening moves focus in, closing hands it back.

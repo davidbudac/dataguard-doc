@@ -163,7 +163,7 @@ export const rac: Lesson = {
           <Fact id="RAC.SET_APPLY_INSTANCE">
             EDIT DATABASE 'South_Sales' SET STATE='APPLY-ON' WITH APPLY INSTANCE='south_sales2';
           </Fact>
-          . In Break mode the standby’s menu offers it as “Move apply to”.
+          . In Simulate mode the standby’s menu offers it as “Move apply to”.
         </P>
       ),
       apply: {

@@ -67,7 +67,7 @@ export function LinkForm({ link, doc }: LinkFormProps) {
           onChange={(v) => patchLink(
             id, `${v ? 'Restore' : 'Cut'} ${id as string}`, (l) => ({ ...l, up: v }),
           )}
-          note="This is the configuration's steady state. To cut the link at a moment on the clock, inject the event in Break mode."
+          note="This is the configuration's steady state. To cut the link at a moment on the clock, inject the event in Simulate mode."
         />
         <div class="field is-row">
           <div class="field-hd">

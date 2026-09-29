@@ -35,7 +35,17 @@ describe('url table', () => {
   it('serializes non-defaults only, in table order', () => {
     expect(serializeUrlQuery(URL_DEFAULTS)).toBe('');
     expect(serializeUrlQuery({ ...URL_DEFAULTS, mode: 'configure', ed: '26ai' }))
-      .toBe('ed=26ai&mode=configure');
+      .toBe('ed=26ai&mode=config');
+  });
+
+  it('writes the words on the buttons and reads both spellings', () => {
+    expect(serializeUrlQuery({ ...URL_DEFAULTS, mode: 'break' })).toBe('mode=simulate');
+    expect(serializeUrlQuery({ ...URL_DEFAULTS, mode: 'configure' })).toBe('mode=config');
+    for (const [raw, id] of [
+      ['simulate', 'break'], ['break', 'break'], ['config', 'configure'], ['configure', 'configure'],
+    ] as const) {
+      expect(parseUrlQuery(`?mode=${raw}`).state.mode).toBe(id);
+    }
   });
 
   it('round trips', () => {
@@ -57,7 +67,7 @@ describe('url table', () => {
   it('reports keys it does not know, and drops them from the link', () => {
     const { state, unknown } = parseUrlQuery('?mode=break&utm_source=wiki&zoom=3');
     expect(unknown).toEqual(['utm_source', 'zoom']);
-    expect(serializeUrlQuery(state)).toBe('mode=break');
+    expect(serializeUrlQuery(state)).toBe('mode=simulate');
   });
 
   it('clamps the playhead and the lesson step', () => {

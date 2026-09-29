@@ -241,7 +241,7 @@ for (const { preset, cards, lanes } of CASES) {
   /* Phase one: open the preset by name, and take the page's own share link.
      `mode=break` is where the timeline lives, and the preset carries the events
      its story needs, so there is a run to draw. */
-  const first = await load(`${base}?preset=${preset}&mode=break`);
+  const first = await load(`${base}?preset=${preset}&mode=simulate`);
   if (!first.ok) { fail(`${preset}: ${first.why}`); continue; }
   for (const line of first.console) fail(`${preset}: console said ${line}`);
 
@@ -305,8 +305,8 @@ for (const { preset, cards, lanes } of CASES) {
 console.log('\nmodes');
 for (const [query, mark, what] of [
   ['mode=build', 'class="app m-build', 'Build'],
-  ['mode=break', 'class="app m-break', 'Break'],
-  ['mode=configure&panel=dgmgrl', 'class="app m-configure', 'Configure'],
+  ['mode=simulate', 'class="app m-break', 'Simulate'],
+  ['mode=config&panel=dgmgrl', 'class="app m-configure', 'Config'],
   ['mode=learn&lesson=failover-clocks', 'class="app m-learn', 'Learn'],
 ]) {
   const page = await load(`${base}?preset=classic&${query}`);

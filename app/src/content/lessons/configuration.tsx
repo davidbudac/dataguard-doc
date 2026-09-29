@@ -21,7 +21,7 @@ export const configuration: Lesson = {
       prose: (
         <>
           <P>
-            The Configure panels print the topology as DGMGRL commands, as the{' '}
+            The Config panels print the topology as DGMGRL commands, as the{' '}
             <M>LOG_ARCHIVE_DEST_n</M> parameters the broker owns, as a <M>tnsnames.ora</M> entry and a
             JDBC thin URL, and as the <M>SHOW</M> output the broker would give back. Values that
             differ from their documented defaults are highlighted; the grey parenthetical lines are

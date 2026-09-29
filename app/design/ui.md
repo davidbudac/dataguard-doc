@@ -53,6 +53,8 @@ interface Doc { meta: {name, notes}; topology: TopologyDoc-ish (engine types); e
 doc = signal<Doc>(PRESETS.classic); edition = signal<'19c'|'26ai'>('19c')  // NOT in Doc (reading preference); theme likewise
 ```
 View signals: `mode: 'build'|'break'|'configure'|'learn'`, `selection`, `hovered`, `tNow`, `playing`, `speed`, `panelTab`, `lessonId`, `lessonStep`, `proseOpen`, `theme`, `inspectorOpen`, `toast`.
+
+**Mode names.** The modes are labelled Build / Simulate / Config / Learn. The internal ids stay `'break'` and `'configure'` (as do `BreakRail`, `ui/break/`, the `m-break` classes); only the labels and the address changed. The `mode` URL key writes `simulate` and `config`, and reads either those or the old `break` / `configure`, so older links keep working.
 Derived (one file, one direction): `primaryId`, `issues = validate(...)`, `errors`, `redoGraph`, `geometry = layoutTopology(...)`, `trace = simulate(...)`, `frame = stateAt(trace, tNow)`, `outcome`, `readout`, `scripts = {dgmgrl, dests, tns, show(frame)}` — `SHOW CONFIGURATION` takes `frame` so scrubbing walks it through states. No component computes domain state locally. `trace` budget ~8 ms; if slow, compute in an idle effect and mark `.is-stale` (never a spinner).
 
 **URL**: fragment `#t=<base64url(deflate-raw(JSON(compact doc)))>` (fallback `#t0=` plain), 8000-char cap with an honest refusal ("too large for a link — export the file"); query keys human-readable: `ed`, `mode`, `panel`, `sel`, `t`, `preset`, `lesson`/`step`, `theme`; one exported FIELDS-style table with parse/serialize/default/clamp; unknown tokens ignored then dropped. The fragment is written **only when the Doc differs from the preset it names** — compared by value on the codec's wire form, so `?preset=classic` alone is the whole address until the first edit and again after undoing back to it; `?preset=` stays on as provenance once it does differ. Write path: effect → 16 ms timer → 300 ms debounce → `replaceState`; `tNow` excluded while playing/scrubbing. Undo never uses `pushState`.
@@ -70,13 +72,13 @@ Four modes, one persistent canvas (the canvas never blinks):
 | Mode | Right rail | Bottom row | Canvas |
 |---|---|---|---|
 | Build | Inspector: `Add` group, then the summary and the config form (folded sections) | Validation issues + steady-state readout | select, drag, `Add` toolbar in the corner |
-| Break | The event list, then the scenarios (six legacy ones as one-click templates), then validation | Timeline + sticky transport + readout | click or `E` → the action bar's grouped events; cards tinted by `frame` |
-| Configure | Inspector narrowed | Tabs under two headings — **Files**: DGMGRL · LOG_ARCHIVE_DEST_n · tnsnames/JDBC · SHOW; **Behaviour**: Application view · Commit · Reopen | 180 px live strip |
+| Simulate | The event list, then the scenarios (six legacy ones as one-click templates), then validation | Timeline + sticky transport + readout | click or `E` → the action bar's grouped events; cards tinted by `frame` |
+| Config | Inspector narrowed | Tabs under two headings — **Files**: DGMGRL · LOG_ARCHIVE_DEST_n · tnsnames/JDBC · SHOW; **Behaviour**: Application view · Commit · Reopen | 180 px live strip |
 | Learn | — | — | prose-left (60ch) / live workbench-right (step header + drawing + readout + timeline) |
 
 As built, three things in that table are worth spelling out:
 
-- **Where Break's events come from.** The rail is the reader's events and nothing
+- **Where Simulate's events come from.** The rail is the reader's events and nothing
   else. What can be added to a selection is the action
   bar a click opens (§3d), the quick icons on a card, and in Lanes the card, data-centre
   and link buttons with their ⋯ menus. Every one of them says when the event lands:
@@ -85,8 +87,8 @@ As built, three things in that table are worth spelling out:
   field, in both layouts.
 - **Learn's workbench is the drawing, the readout *and* the timeline**, so a step whose
   "Show me" breaks something draws its clocks beside the prose that explains them.
-- **The readout is mode-aware.** Build and Configure are about the configuration, so
-  they read the steady state even when the Document carries events; Break and Learn
+- **The readout is mode-aware.** Build and Config are about the configuration, so
+  they read the steady state even when the Document carries events; Simulate and Learn
   read the outcome at `tNow`. The outcome belongs to the modes that draw the run.
 
 Desktop shell (≥1280): top bar 48 (brand, mode segmented control, 19c/26ai, theme, undo/redo with labels) · status bar 36 (preset picker, issue count, Share/Export/Import/Reset) · canvas (min 320) + inspector 360 · readout 62 (chips: outcome, RTO, per-member RPO, loss kind, observer state, issues) · timeline `clamp(220px, lanes*48+120, 46vh)`. Grid on `100dvh`, `overflow: clip` (not hidden).
@@ -126,13 +128,13 @@ use it"* — and every item below is one reading of it:
   depend on `navigator.clipboard`. The canonical address rides on the button as
   `data-permalink` at all times, which is what `site/smoke.mjs` follows and what a
   machine can read without pressing anything.
-- **The page says what to do, on one line — in Configure and Learn.** The guidance
+- **The page says what to do, on one line — in Config and Learn.** The guidance
   line under the header leads with the mode word and then says the first gesture
-  (`modeGuide` in `state/view.ts`, rendered by `Guidance.tsx`). **Build and Break
+  (`modeGuide` in `state/view.ts`, rendered by `Guidance.tsx`). **Build and Simulate
   draw no line** (2026-09-29): their gestures are the mode button's `title`
   (`MODE_SUB`) and the stage's `aria-description`, and the band's height is the
   drawing's (the header is measured into `--bar-bottom`, so the toast and the
-  floating chrome follow). Configure's line says what the mode *is* before it says what
+  floating chrome follow). Config's line says what the mode *is* before it says what
   to do in it — the word reads as "settings" and the panels are generated output,
   so the line names the settings' actual home, the inspector. The first visit gets
   a one-row **strip** of the same three clauses with a link to Learn and "Got it";
@@ -151,31 +153,31 @@ use it"* — and every item below is one reading of it:
   and it compares rather than trusting `?preset=`: the picker names the preset
   while the document still *is* that preset and says "Current configuration
   (edited)" once it is not. The finding count is a button — it takes the reader to
-  the panel it counts, which means Build's dock, the foot of the Break rail (its
-  drawer below 1280) or, from Configure and Learn, a hand-over to Build; when
+  the panel it counts, which means Build's dock, the foot of the Simulate rail (its
+  drawer below 1280) or, from Config and Learn, a hand-over to Build; when
   notes are all there is, it unfolds them, because a folded note is a panel with
   nothing in it.
 - **The readout is a strip of chips, not four billboards.** Label (sans, sentence
   case) + value (mono, 14 px, semantic colour) + an optional quieter second value,
   separated by hairlines, with the sentence behind each number in the chip's
-  `title`. Build and Configure read Protection level · Members · Fast-start
-  failover · Findings; Break adds Outcome, New primary open, **Data loss** (the new
+  `title`. Build and Config read Protection level · Members · Fast-start
+  failover · Findings; Simulate adds Outcome, New primary open, **Data loss** (the new
   primary's RPO — zero is the whole promise of SYNC and of a far sync) and Observer.
   Four 26 px numerals were the loudest thing on a page where nothing had happened
   yet.
 - **Errors and warnings are open; information is folded.** `IssuePanel` (Build's
-  dock and now also the foot of the Break rail) shows errors and warnings expanded
+  dock and now also the foot of the Simulate rail) shows errors and warnings expanded
   and puts INFO behind a `6 notes ▸` toggle whose rows are genuinely absent until
   it is pressed. The count everywhere reads `0 issues · 6 notes`, never `6 issues`:
   errors and warnings are issues, information is a note, and a healthy preset
   raising six notes was being reported as six things wrong.
-Configure: generated blocks mono, scrollable, Copy button (reuse `.cfg` styling), **line ⇄ canvas cross-highlighting** via `data-member` on emitted lines (generators emit structured lines).
+Config: generated blocks mono, scrollable, Copy button (reuse `.cfg` styling), **line ⇄ canvas cross-highlighting** via `data-member` on emitted lines (generators emit structured lines).
 Learn: lesson list + prose column, steps drive the workbench beside it (descendant of `DEMOS`).
 Degradation: 1024–1279 inspector as overlay drawer; 768–1023 single column with bottom-sheet inspector; <768 read-only viewer with an explicit "Editing needs a wider screen" card (nothing silently missing); print expands everything (`print.css` first-class).
 
 - **The drawer and the sheet are modal dialogs and keep a dialog's keyboard promises**: `Escape` closes from anywhere (the listener is on the document, not on the panel), opening moves focus into the panel, closing returns it to the control that opened it. The effect hangs on `open` alone — the `onClose` callback is a new arrow on every render of the shell, and an effect that depended on it would hand the focus back while the reader was still typing.
-- **The reason is said once.** On a phone the stage card spells it out ("Editing needs a wider screen…"); the drawing, the inspector, the action bar and the Break rail's grey controls say only that they are read-only. Three copies of one sentence on one screen is noise, not honesty.
-- **Every rail is its own scroll region, and it says so.** Two shading bands, `local`-attached so each is present only while content is hidden behind it and gone at the end of the scroll, plus `scrollbar-gutter: stable`. Configure gives the rail a 180–260 px strip, which is where a row cut by the bottom edge with nothing to mark it reads as a drawing error rather than as "there is more".
+- **The reason is said once.** On a phone the stage card spells it out ("Editing needs a wider screen…"); the drawing, the inspector, the action bar and the Simulate rail's grey controls say only that they are read-only. Three copies of one sentence on one screen is noise, not honesty.
+- **Every rail is its own scroll region, and it says so.** Two shading bands, `local`-attached so each is present only while content is hidden behind it and gone at the end of the scroll, plus `scrollbar-gutter: stable`. Config gives the rail a 180–260 px strip, which is where a row cut by the bottom edge with nothing to mark it reads as a drawing error rather than as "there is more".
 - **The toast is anchored to the measured bottom of the status bar**, through a `--bar-bottom` custom property written by a `ResizeObserver` in `App.tsx` (`el.style.setProperty` through a ref — the one escape hatch the policy leaves), with `calc(var(--h-top) + var(--h-status))` as the fallback. Both bars wrap on a narrow window, so their nominal heights are a guess and a toast pinned to that guess paints over the bar.
 - **On paper the panels stack.** `Panels` listens for `beforeprint` and for a `matchMedia('print')` change and renders all seven tabs while either is on; no CSS rule can do it, because the tab that is not open is not in the document. Two print traps are pinned by that verification: the citation chips' `white-space: nowrap` row plus the appended `a[href]::after` URL push the page ~90 px sideways unless the row is allowed to wrap on paper, and headless `--print-to-pdf` fires neither event, so print has to be checked with the media emulated (`Emulation.setEmulatedMedia`), not with a PDF.
 Chrome rules: collapsibles leave their button in place; panels are real links; `:focus-within`, never `:hover`, for notes.
@@ -189,7 +191,7 @@ just did, and the control that does it must sit where they are looking.*
 1. **The transport is never scrolled away — and it now drives something.**
    `.tl-foot` carries the transport and nothing else, and `timeline.css` makes it
    `position: sticky; bottom: 0` on an opaque `--sf` ground with a top hairline.
-   `.tl` is the sticky containing block and the scrollport is `.app-dock` in Break
+   `.tl` is the sticky containing block and the scrollport is `.app-dock` in Simulate
    (`.app-rail` in wide Learn), so the foot stays pinned for the whole scroll and
    releases only at the end. Below 768 px the *page* scrolls, so the foot goes
    `position: static`, and `@media print` takes the band out beside `print.css`'s
@@ -278,7 +280,7 @@ just did, and the control that does it must sit where they are looking.*
    something gone renders blank while the button beside it stays live; `+ Link`
    refuses in four rungs — no data centre, only one, the same one twice, already
    linked — so the blank is never the live half of that pair.
-4. **The Break rail leads with the reader's own work.** Order is now
+4. **The Simulate rail leads with the reader's own work.** Order is now
    **Events → One-click scenarios → Validation** (`BreakRail.tsx`). Injecting an
    event and finding no record of it — six scenario blurbs had pushed the list a
    thousand pixels down — reads as "nothing happened". The event numerals match
@@ -289,7 +291,7 @@ just did, and the control that does it must sit where they are looking.*
    cursor), with one `Show descriptions` toggle (`scenarioNotesOpen`) opening all
    six and print opening them too. Six rows: ~700 → 458 px.
 5. **Two clocks on the readout strip, each named** (`Readout.tsx`,
-   `styles/readout.css`). Break and Learn lead with a `Drawing at t = <n> s` chip
+   `styles/readout.css`). Simulate and Learn lead with a `Drawing at t = <n> s` chip
    and move the run's chips into `<div class="ro-run">` behind a sans `Run` label.
    Unlabelled, "Outcome failover / New primary open 45 s" beside a drawing frozen
    at t = 0 read as one reading taken at one instant. `fmt` **and `clampToAxis`**
@@ -326,9 +328,9 @@ just did, and the control that does it must sit where they are looking.*
    card — and closing it that way writes nothing to `dg-intro-v1`: opening an
    explanation and shutting it again is not the same as having read it, and "Got
    it" stays the only control that claims otherwise.
-8. **Configure says what it is before it says what to do in it — and the line
+8. **Config says what it is before it says what to do in it — and the line
    names the rail where the rail actually is.** `modeGuide(m, v)` and `railWhere(v)`
-   (`state/view.ts`) replaced the constant `MODE_GUIDE`. Configure reads "Generated
+   (`state/view.ts`) replaced the constant `MODE_GUIDE`. Config reads "Generated
    from the drawing — DGMGRL, init parameters, connect strings. Settings are in
    *<railWhere>*": the mode name reads as "settings" while the panels are generated
    *output*, so the line names the settings' actual home. That home moves. The rail
@@ -409,8 +411,8 @@ just did, and the control that does it must sit where they are looking.*
 12. **The finding count is a button that goes where it points.** `revealFindings()`
     (`IssuePanel.tsx`) unfolds the notes when notes are all there is (sending
     somebody to a panel whose whole content is behind a toggle is sending them to an
-    empty panel), hands over to Build from Configure and Learn, opens the drawer in
-    Break below 1280, then scrolls `.issues` into view on the next task. It was a
+    empty panel), hands over to Build from Config and Learn, opens the drawer in
+    Simulate below 1280, then scrolls `.issues` into view on the next task. It was a
     piece of text about a panel the reader had to go and find — and in two modes
     about a panel that is not on screen at all. **Leaving Learn is the one hand-over
     that costs the reader something** — the lesson they were reading goes off
@@ -423,7 +425,7 @@ just did, and the control that does it must sit where they are looking.*
     a warning or a note, which left those rows landing the reader on a rail the
     property is genuinely absent from. Purely additive, so it never fights that
     effect and is a no-op on an open section.
-13. **The seven Configure tabs are filed under two headings.** `PANEL_GROUPS` —
+13. **The seven Config tabs are filed under two headings.** `PANEL_GROUPS` —
     **Files** (DGMGRL · `LOG_ARCHIVE_DEST_n` · tnsnames/JDBC · SHOW) and
     **Behaviour** (Application view · Commit · Reopen) — inside the one existing
     `<nav class="panel-tabs">`, each an `role="group"` opened by a real visible
@@ -439,7 +441,7 @@ just did, and the control that does it must sit where they are looking.*
     ids, `panelHref()`, the `panel=` key, the dgmgrl badge and print are untouched.
 14. **Learn's workbench names the step it is set up for.** `LearnWorkbenchHeader`
     (`learn/LearnShell.tsx`) is a sticky `.lwh` above the drawing: `Step 3/14` plus
-    the step's title on the left, `Open in Break` / `Open in Build` on the right.
+    the step's title on the left, `Open in Simulate` / `Open in Build` on the right.
     Both go through `openStepInMode()` (`learn/route.ts`), which is exactly what
     `LessonStep`'s own button already did, so the prose button and the header button
     are one function. With no lesson open it says "No lesson open — the current
@@ -449,7 +451,7 @@ just did, and the control that does it must sit where they are looking.*
     ungated pair is the one that was right.** `canEdit` is about the controls that
     *change* a configuration — the inspector, the canvas, the action bar — which a
     phone has no room for. Following a lesson step is not one of them: the step's
-    own "Show me" and "Open in Break" in the prose column are ungated at every
+    own "Show me" and "Open in Simulate" in the prose column are ungated at every
     width, and so is arriving on `#/learn/<lesson>/<step>` from a link, so greying
     these two refused the reader an address they reach by scrolling down the same
     page. A refusal that restricts nothing is not a refusal. Two layout facts the
@@ -466,9 +468,9 @@ just did, and the control that does it must sit where they are looking.*
     ←/→ with the Shift 0.1 s step, Home/End, `.` and `,`) and `Sheet`'s document
     Escape. Nothing is listed that is not bound, and no handler was changed to
     match the list. A key bound in one mode says which one: `E` reads "open the
-    events it offers, at the playhead, and move the focus into them (Break)", the way
+    events it offers, at the playhead, and move the focus into them (Simulate)", the way
     the `Delete` row beside it already named Build, because `onEvents` reaches the
-    canvas in Break alone (`canvas/CanvasSlot.tsx`); it opens the same bar `Shift+F10`
+    canvas in Simulate alone (`canvas/CanvasSlot.tsx`); it opens the same bar `Shift+F10`
     does.
 
 A new stylesheet came out of this, on purpose: `styles/readout.css` (imported by
@@ -513,10 +515,10 @@ it."* Five things landed, and one rule bent:
   centre's name band or a link's caption selects it *and* opens a small menu
   anchored to it — Build offers the Build table's entries (Edit · the
   transport as three pressed/unpressed chips · Make it the primary · the RTT
-  nudges · Remove, each with its `WhyPill` refusal), Break offers the
+  nudges · Remove, each with its `WhyPill` refusal), Simulate offers the
   grouped list of events for that subject, quiet restore line included
   (`breakBar` over `actionsFor` and `restoreQuietLine`; Lanes' ⋯ menu calls the same
-  function), under a header that says *at t = [n] s*. In Break a plain click opens it;
+  function), under a header that says *at t = [n] s*. In Simulate a plain click opens it;
   in Build a click only selects. `Edit` puts the
   rail on the subject — and below 1280 it also opens the drawer
   (`openInspectorFor`), which a bare selection deliberately does not.
@@ -537,7 +539,7 @@ it."* Five things landed, and one rule bent:
   `CanvasSlot`, 1 in jsdom). The inspector keeps the full forms
   and Lanes keeps its own buttons — the bar is a second surface over the same
   tables (`build/actions.ts`, `break/events.ts`), and in Build never the only place
-  an action lives. (Break's rail no longer lists events to add, so there the bar and
+  an action lives. (Simulate's rail no longer lists events to add, so there the bar and
   the quick icons are how a selection is asked for its events.)
 - **One Build action table.** `ui/build/actions.ts` is the sibling of
   `break/events.ts`: label, refusal and act written once, consumed by the
@@ -571,8 +573,8 @@ it."* Five things landed, and one rule bent:
   drag threshold (`onPointerMove`), which is the only moment the pointer can
   leave the drawing mid-gesture. If a drag ever feels lost on a fast flick,
   this is the line to look at.
-- **The drawing zooms and pans.** (Break's Split sizes the drawing by its region until the
-  reader zooms: `zoomAuto`, `autoFactor`, see "Break's two layouts".) `canvas/zoom.ts` holds a six-rung ladder
+- **The drawing zooms and pans.** (Simulate's Split sizes the drawing by its region until the
+  reader zooms: `zoomAuto`, `autoFactor`, see "Simulate's two layouts".) `canvas/zoom.ts` holds a six-rung ladder
   (50–140 %) as view state — not in the Document, the undo stack or the URL.
   Zoom multiplies the svg's `width`/`height` *attributes* and leaves the
   viewBox alone, so routing, goldens and the bar's arithmetic see the same
@@ -584,7 +586,7 @@ it."* Five things landed, and one rule bent:
   `−`/`+` buttons go grey at the ends with the reason in their `title`, the
   one grey control that explains itself in a tooltip rather than a `WhyPill`
   beside it: a sentence under a one-glyph button doubled the strip's height
-  on every reach for 140 %. In Configure and Learn the factor is forced to 1
+  on every reach for 140 %. In Config and Learn the factor is forced to 1
   and the strip is absent.
 - **Double-click a card to rename it**: the rail opens on the member and the
   name field takes the caret (`focusField`, a one-shot signal the `Text`
@@ -593,7 +595,7 @@ it."* Five things landed, and one rule bent:
 - **Build's stage takes the room** (`.app.m-build` rows
   `auto minmax(260px,1fr) minmax(0,auto)`, dock capped at 46vh): the drawing
   renders at 1:1 in Build instead of the ~60 % the fit-content row forced.
-  Break keeps the fit-content stage — the timeline is that mode's point.
+  Simulate keeps the fit-content stage — the timeline is that mode's point.
 
 ## 3e. The Introduction (as built, 2026-08-19)
 
@@ -647,13 +649,13 @@ and it is read by scanning.
   `header.test.ts`'s "first-visit strip" suite is now "what writes
   dg-intro-v1", and `test/ui/intro.test.ts` pins the rest.
 - **Every button loads before it switches.** `route.ts` owns the jumps: preset
-  first (`replaceWorkingDocument`, one undoable step that keeps the reader's draft), then the Break
+  first (`replaceWorkingDocument`, one undoable step that keeps the reader's draft), then the Simulate
   template if the button named one (`templates`/`applyTemplate`, so the
   scenario is the engine's own `scenarioEvents` and the playhead rests on the
   outcome), then the panel tab, then the mode — the same order
   `learn/route.ts` uses, for the same reason. *Start with the classic 1+1+1* →
-  classic in Build; *Watch a failover* → classic + `crash` in Break; Build →
-  classic; Break → far sync zero-loss + `isolated`; Configure → classic on the
+  classic in Build; *Watch a failover* → classic + `crash` in Simulate; Build →
+  classic; Simulate → far sync zero-loss + `isolated`; Config → classic on the
   DGMGRL tab; Learn → lesson 1, step 1.
 - **The claims are labelled here too.** Two `<Fact>` chips carry the only two
   Oracle sentences the page quotes (observer placement, and what fast-start
@@ -718,7 +720,7 @@ fewer. One bullet per change.
   toggle the reader can shut again.
 - **A RAC standby wears an `APPLY` tag.** The instance row running apply carries a blue
   `APPLY` chip (blue = applying): in Build the instance the configuration starts on, under a
-  frame the one `Snapshot.applyInstances` names -- so in Break the chip jumps when the
+  frame the one `Snapshot.applyInstances` names -- so in Simulate the chip jumps when the
   apply instance fails, and is absent while `ApplyInstanceTimeout` runs. The timeline
   splits a standby lane per apply instance ("Applying redo — apply instance sby012"). The
   `Instances (RAC, n)` fold carries `PreferredApplyInstance` (empty = the broker chooses)
@@ -726,10 +728,10 @@ fewer. One bullet per change.
   removing one drops it. `+ Instance` puts every node of the member in one cluster
   (`<member>-crs` when it had none), which is what `RAC.OBSERVER_ON_CLUSTER` reads.
 - **RAC, second pass.** A database card's bar carries `+ Instance` (seven rows, Remove
-  still on it). Break's menu on a RAC standby offers "Move apply to <instance>" — the
+  still on it). Simulate's menu on a RAC standby offers "Move apply to <instance>" — the
   documented `SET STATE='APPLY-ON' WITH APPLY INSTANCE` as the `cmd.setApplyInstance`
   event. Under `ApplyInstances` (multi-instance Redo Apply) the coordinator's row reads
-  `COORDINATOR` and the other instances applying `APPLY`. Configure gains a mock
+  `COORDINATOR` and the other instances applying `APPLY`. Config gains a mock
   `SHOW DATABASE` per RAC database (`Instance(s):` with `(apply instance)`, walked by the
   playhead), a `RAC -- per-instance parameters and standby redo logs` card (`<sid>.` /
   `*.` entries, INSTANCE_NUMBER, `%t`, standby redo logs per thread), the SCAN form of
@@ -764,9 +766,9 @@ fewer. One bullet per change.
   `overflow-wrap: anywhere`, which broke `prm01` into `prm0` / `1` once the
   header carried three buttons; the whole name is the span's `title`.
 - **Verified** at 1440×900 and 1280×720, light and dark, on classic,
-  far-sync-zero-loss and multi-target-three-observers, in Build, Break and
-  Configure, through the §3b inline-bundle recipe. Nothing overflows: the
-  Break dock still ends in its transport bar at 1280×720, and the rail is
+  far-sync-zero-loss and multi-target-three-observers, in Build, Simulate and
+  Config, through the §3b inline-bundle recipe. Nothing overflows: the
+  Simulate dock still ends in its transport bar at 1280×720, and the rail is
   still in the grid there.
 
 ## 3g. Drops and lines on the drawing (as built, 2026-08-19)
@@ -807,7 +809,7 @@ Phase C of §3d, plus two defects the bar had grown.
   nothing else stands on it (with its host links, addresses and events, as
   Remove does) and leaves it when something does, and drops the drag
   override so the card lands where the new column puts it. It coalesces under
-  `drag:<key>`, so the drag and the move are one undo. Build only; in Break a
+  `drag:<key>`, so the drag and the move are one undo. Build only; in Simulate a
   drag is a drag.
 - **Drag from a card's port to another card to connect them.** Every card
   in Build carries a port (`.tp-port`, right edge, visible on hover/selection/
@@ -837,7 +839,7 @@ Phase C of §3d, plus two defects the bar had grown.
   never disagree. Dropped on another data centre's panel, the line adds a
   standby there and ships to it (two named undos). The panel the line started
   in is never a target — the port sits inside it.
-- **A cut link has a way back whatever the clock says.** Break's link rows
+- **A cut link has a way back whatever the clock says.** Simulate's link rows
   name what is holding it down: an injected cut at the playhead's own instant
   makes `Restore` take the cut back (no heal stacked on a cut in the same
   instant); a cut earlier gets the heal here *and* `Take back the cut at t =
@@ -861,7 +863,7 @@ Phase C of §3d, plus two defects the bar had grown.
 
 §3d and §3g made the drawing editable; this pass changed how it is *driven*, because
 the gestures were all there and the page was still clumsy to use. Where §3d or §3g say
-"a click opens the bar", this section supersedes them for Build. Break is unchanged.
+"a click opens the bar", this section supersedes them for Build. Simulate is unchanged.
 
 - **A click selects, and nothing else.** The rail shows the form. The action bar is
   asked for: the `⋯` handle `TopoCanvas` draws on the corner of the last selected
@@ -940,7 +942,7 @@ does was taken away; what went was the second and third copy of it around the ed
   right and left, and takes the first that covers no other card or caption, else the
   one that covers least. Measured on every render, because an edit resizes the
   drawing inside a wrap of the same size. Where the stage is exactly the drawing's
-  height (Break at 1280×720) there is no ground to use and the bar may still cover a
+  height (Simulate at 1280×720) there is no ground to use and the bar may still cover a
   card.
 - **A new standby arrives with the transport its protection mode wants.** `addDatabase`
   wrote `LogXptMode` ASYNC unconditionally, so in MAXAVAILABILITY (and MAXPROTECTION)
@@ -962,7 +964,7 @@ the rest of the drawing*), `canvas-gestures.test.ts` (*a new standby does not ar
 
 ## 4. Topology canvas
 
-**Node card** (generalised `nodeCard`): flat `--sf` rect, hairline, rx 5, badge rx 7 centred; role word / host mono (19-char elision, full value in aria) / subtitle; width clamp(184, measured, 260); height 72 (3-line DB) / 52 (observer). Glyphs: db cylinder, observer eye, far sync = cylinder + chevron (no base), snapshot = cylinder + shutter tick. RAC `⌗2` chip top-right (absent = single instance, legend says so once). Master observer `MASTER` violet chip only while FSFO is enabled ("all observers have the same functionality" when disabled); observe-only slate chip. Break-mode state: phase tint fill/border; down = hatch + red border; crashed host = two-stroke red cross on the name line; stalled primary = red border, no cross.
+**Node card** (generalised `nodeCard`): flat `--sf` rect, hairline, rx 5, badge rx 7 centred; role word / host mono (19-char elision, full value in aria) / subtitle; width clamp(184, measured, 260); height 72 (3-line DB) / 52 (observer). Glyphs: db cylinder, observer eye, far sync = cylinder + chevron (no base), snapshot = cylinder + shutter tick. RAC `⌗2` chip top-right (absent = single instance, legend says so once). Master observer `MASTER` violet chip only while FSFO is enabled ("all observers have the same functionality" when disabled); observe-only slate chip. Simulate-mode state: phase tint fill/border; down = hatch + red border; crashed host = two-stroke red cross on the name line; stalled primary = red border, no cross.
 
 **Auto-layout** (`canvas/layout.ts`, pure, deterministic): rank by BFS over the resolved redo graph (primary 0, far sync/standby = source+1, observers band −1, unreachable = max+1 dashed); columns = sites ordered by min rank (primary site leftmost, third site between); rows within a site: observers band, then members by (rank, roleOrder primary/farsync/physical/logical/snapshot); cascaded standby in the row below its cascader (indented 24 px if same site); pack (col width = max card + 28; row = max height + 18); site rect = union + 14 pad + 18 bottom label band; centre columns so the classic 1+1+1 redo edge is horizontal; apply drag overrides (snap 8 px) then recompute site rects; viewBox = union + 10 top / 16 bottom.
 
@@ -973,14 +975,14 @@ the rest of the drawing*), `canvas-gestures.test.ts` (*a new standby does not ar
 
 Routing runs in two phases for that reason: every route first, so channels are still handed out in id order, then every caption, so a caption can be placed against lines that were not yet routed when it was. The canvas draws in the same two passes — all lines, then all cards, then all captions — so a caption is never painted over by a line routed after it; both halves carry the same `data-node` and the same handlers, so either one hovers and selects the whole link. `test/ui/canvas-presets.test.ts` holds all eleven presets to the collision rules and to a golden of the geometry. Styles: SYNC solid + filled arrow; FASTSYNC solid + hollow arrow; ASYNC dashed 6-3; observer ping dotted violet, no arrow; readiness check dashed slate; inactive PRIORITY alternate 55% opacity `ALT · PRIORITY 8`; cut link dashed red + two slashes, RTT → `cut`/`down`. Arrows = redo flow only.
 
-**Event affordances**: click node → menu (Crash the host · SHUTDOWN ABORT the instance (RAC: pick) · Stop redo apply · Take the whole site down · Restore); click link → Cut · Add latency… · Restore; multi-select shows the intersection of valid actions. Each action = `edit('Crash dc1-prm01', …addEvent at tNow)`; events ride the share link, appear as numbered markers on the axis and in the Break rail (editable `at`, remove).
+**Event affordances**: click node → menu (Crash the host · SHUTDOWN ABORT the instance (RAC: pick) · Stop redo apply · Take the whole site down · Restore); click link → Cut · Add latency… · Restore; multi-select shows the intersection of valid actions. Each action = `edit('Crash dc1-prm01', …addEvent at tNow)`; events ride the share link, appear as numbered markers on the axis and in the Simulate rail (editable `at`, remove).
 
-**Keyboard/aria**: svg `role="group" aria-describedby` with generated sentence set + a visually hidden structural table (site/member/role/host/receives from/transport/RTT); every card is `role="button"`, and **one card per site is the tab stop** (a roving `tabindex` that follows the arrows, so tabbing away from a site and back returns to the card the reader left) — arrows within a site, Tab between them, Enter or Space selects (Shift adds), `E` opens the action bar in Break, `Delete`/`Backspace` removes in Build, `Esc` clears. Sentences composed per function (testable), collapse to counts above 8 members.
+**Keyboard/aria**: svg `role="group" aria-describedby` with generated sentence set + a visually hidden structural table (site/member/role/host/receives from/transport/RTT); every card is `role="button"`, and **one card per site is the tab stop** (a roving `tabindex` that follows the arrows, so tabbing away from a site and back returns to the card the reader left) — arrows within a site, Tab between them, Enter or Space selects (Shift adds), `E` opens the action bar in Simulate, `Delete`/`Backspace` removes in Build, `Esc` clears. Sentences composed per function (testable), collapse to counts above 8 members.
 
 Two things that spelling depends on:
 
 - **`tabindex`, lower case.** Attribute names are folded to lower case only for HTML elements, so the camel-cased JSX spelling lands on an SVG `<g>` as a literal `tabIndex` attribute that SVG2 has never heard of: the cards render, look focusable and take no focus at all. Same for the timeline's `<g role="slider">`. `test/ui/canvas-keyboard.test.ts` pins it.
-- **The shell has to pass the handlers.** `E` and `Delete` are the canvas's to detect and the shell's to mean: `CanvasSlot` wires `onEvents` only in Break (it opens the action bar, with the focus in it) and `onDelete` only in Build, where it removes exactly what the inspector's Remove button removes, refusals included — a shortcut that could delete the primary while the button beside it says why it cannot is two answers to one question, and the refusal is said out loud.
+- **The shell has to pass the handlers.** `E` and `Delete` are the canvas's to detect and the shell's to mean: `CanvasSlot` wires `onEvents` only in Simulate (it opens the action bar, with the focus in it) and `onDelete` only in Build, where it removes exactly what the inspector's Remove button removes, refusals included — a shortcut that could delete the primary while the button beside it says why it cannot is two answers to one question, and the refusal is said out loud.
 
 ## 5. Timeline
 
@@ -991,18 +993,18 @@ Pure `buildTimeline(trace, topology, view) → TimelineModel`; component maps to
 | Legacy | New home |
 |---|---|
 | topology strip / `renderTopo` | Canvas (auto-layout, ported card/pill/site/hatch/cross look) |
-| scenario radios | Break palette templates: Crash the primary host · Isolate the primary site · Cut DC1↔DC2 · Lose the standby site · Kill the master observer · Switch over |
+| scenario radios | Simulate palette templates: Crash the primary host · Isolate the primary site · Cut DC1↔DC2 · Lose the standby site · Kill the master observer · Switch over |
 | observer-location radio | gone as a control — placement is where the observer card sits; lessons move the observer |
 | threshold/ObserverPing*/lag limit/type/grace/PmyShutdown/protection mode | Inspector → Configuration/FSFO |
 | role transition, latency, apply lag | params.roleTransition, per-link RTT, per-member apply lag |
 | timeline + banner + callout | Timeline + `Alert`s (blocked, split brain) |
 | "What the timeline shows" | Lesson 1 prose + timeline Explain block |
-| commit view | Configure → Commit, one figure per SYNC/FASTSYNC destination sharing one ms scale |
-| reopen view | Configure → Reopen, scoped to the selected destination |
-| app view | Configure → Application view over N addresses |
+| commit view | Config → Commit, one figure per SYNC/FASTSYNC destination sharing one ms scale |
+| reopen view | Config → Reopen, scoped to the selected destination |
+| app view | Config → Application view over N addresses |
 | deployment identity | per-member fields in Inspector; deployment-level in ConfigForm |
 | export/import/share | status bar |
-| config cards | Configure → DGMGRL / LOG_ARCHIVE_DEST_n / tnsnames-JDBC / SHOW |
+| config cards | Config → DGMGRL / LOG_ARCHIVE_DEST_n / tnsnames-JDBC / SHOW |
 | side topics (SDU, impact, NET_TIMEOUT) | Learn → "SYNC transport" lesson (static TSX + inline SVG figure) |
 | reference tables + footnotes | Learn → Reference (`RefTable` data, `Footnotes`) |
 | DEMOS | `lesson.steps[].apply` |
@@ -1014,15 +1016,15 @@ Lessons: 1 Failover clocks · 2 The transport layer · 3 The application's view 
 **Deep-link compatibility** (`state/legacy-url.ts`): map legacy query keys (`sc`, `ol`, `pm`, `th`, `ps`, `pi`, `pr`, `lag`, `ll`, `rt`, `lat`, `sd`, `lt`, `tla`, `lgt`, `lp`, `xpt`, `lw`, `sbw`, `rs`, `mf`, `og`, `rr`, `tct`, `ct`, `rc`, `rd`, `da`, `lang` (drop + notice), `ver`) and anchors (`ch-clocks`→break, `ch-transport`→configure/commit, `ch-app`→configure/app, `ch-config`→configure/dgmgrl, `ch-side`→learn/sync-transport, `ch-reference`→learn/reference) onto the classic preset, then `replaceState` the canonical URL. `#cfg=` → `upgradeConfigV1()`. Legacy page kept at `/dataguard/legacy/` (Czech handover links carry `?lang=cs`; those go to legacy).
 
 ## 7. Milestones
-M1 shell + canvas drawing the classic 1+1+1 from the engine · M2 Build mode (inspector, validation, undo, persistence, share) · M3 Break mode (events, timeline, scrubber, readout; six templates reproduce the six legacy outcomes) · M4 Configure (generators, panels, cross-highlight, goldens) · M5 Learn (nine lessons, reference, legacy URLs, print; deploy flip; drop 'unsafe-inline') · M6 polish/a11y/perf.
+M1 shell + canvas drawing the classic 1+1+1 from the engine · M2 Build mode (inspector, validation, undo, persistence, share) · M3 Simulate mode (events, timeline, scrubber, readout; six templates reproduce the six legacy outcomes) · M4 Config (generators, panels, cross-highlight, goldens) · M5 Learn (nine lessons, reference, legacy URLs, print; deploy flip; drop 'unsafe-inline') · M6 polish/a11y/perf.
 
 ## 8. Taste notes
-Two faces only: system sans for prose, mono for everything Oracle/terminal (property names, modes, statuses, ORA numbers, DGMGRL, names, hosts, numerals with units). Prose 15/1.55, captions 11.5, eyebrows 11 mono uppercase .16em, chips 10.5 mono uppercase .12em, readout numbers 26/620 tabular. **As built the eyebrow is quieter and rarer** — 10.5 mono uppercase .08em, and only for a *section* label. It is not a chip label (the readout's are sans, sentence case), and it is not a title that reads as a sentence: the action bar's header says `at t = 40 s` in mono sentence case, because AT T = 40 S was a shout. Readout values are 14/620 tabular mono, and the site label under a data centre rectangle is 11 px, not 10 — it names a column of the drawing, not a footnote to it. Canvas airy, rails dense; elevation only on rail/sheet/drawer. Colour semantic never decorative; cards monochrome in Build, tinted only in Break at a t; red = down only; violet = app's voice + observer semantics. Empty states say something true (inspector → configuration summary; Break → "No events yet…"; timeline → "No events yet. Select a card…"; validation → "No issues … as modelled here"). Five invariants: WhyPill on every disabled control (`{state:'on'} | {state:'off', why}` prop); captions branch on outcome; nothing hidden by CSS alone; every demonstrable claim has "Show me"; undocumented labelled in place (`<Fact id>` chip). New principle: the drawing and the text are the same object seen twice (hover a generated line → highlight the member; select a member → scroll to its lines).
+Two faces only: system sans for prose, mono for everything Oracle/terminal (property names, modes, statuses, ORA numbers, DGMGRL, names, hosts, numerals with units). Prose 15/1.55, captions 11.5, eyebrows 11 mono uppercase .16em, chips 10.5 mono uppercase .12em, readout numbers 26/620 tabular. **As built the eyebrow is quieter and rarer** — 10.5 mono uppercase .08em, and only for a *section* label. It is not a chip label (the readout's are sans, sentence case), and it is not a title that reads as a sentence: the action bar's header says `at t = 40 s` in mono sentence case, because AT T = 40 S was a shout. Readout values are 14/620 tabular mono, and the site label under a data centre rectangle is 11 px, not 10 — it names a column of the drawing, not a footnote to it. Canvas airy, rails dense; elevation only on rail/sheet/drawer. Colour semantic never decorative; cards monochrome in Build, tinted only in Simulate at a t; red = down only; violet = app's voice + observer semantics. Empty states say something true (inspector → configuration summary; Simulate → "No events yet…"; timeline → "No events yet. Select a card…"; validation → "No issues … as modelled here"). Five invariants: WhyPill on every disabled control (`{state:'on'} | {state:'off', why}` prop); captions branch on outcome; nothing hidden by CSS alone; every demonstrable claim has "Show me"; undocumented labelled in place (`<Fact id>` chip). New principle: the drawing and the text are the same object seen twice (hover a generated line → highlight the member; select a member → scroll to its lines).
 
 
 RAC cards now retain one database identity and one set of redo links, with a
 separate inset row for each instance, naming its host and site. The card grows
-with the instance count; Break mode marks failed instance rows individually.
+with the instance count; Simulate mode marks failed instance rows individually.
 A RAC card never joins a chassis stack on its first host. Adding an instance
 creates a separate host in the same site in the same undoable edit.
 
@@ -1036,10 +1038,10 @@ zoom controls and no extra bordered, shadowed containers around each group.
 
 Validation counts remain in the header and validation panel; the readout no longer
 repeats them. Its protection, failover, playhead and run results are unchanged.
-The healthy validation heading and Break empty state use shorter copy. Warnings,
+The healthy validation heading and Simulate empty state use shorter copy. Warnings,
 refusal reasons, model labels and citations retain their existing visibility.
 
-Break also gives unused vertical space to the topology. Its timeline dock sizes
+Simulate also gives unused vertical space to the topology. Its timeline dock sizes
 to its content, capped at 56vh with scrolling for dense runs; the topology takes
 the remaining height (minimum 260px). Below 768px both return to natural page
 flow, so the mobile viewer does not inherit the dock cap.
@@ -1056,7 +1058,7 @@ retains its local reading widths. The toast shares the same shell cap.
 
 ## Editing the event sequence (2026-09-26)
 
-In Break, injected timeline markers are draggable and keyboard focusable. Dragging
+In Simulate, injected timeline markers are draggable and keyboard focusable. Dragging
 previews against the original axis and commits once on release. That axis stays
 fixed after a successful drop so automatic rescaling cannot visually undo the
 move; “Fit timeline” restores the automatic fit. Other document edits and undo
@@ -1111,7 +1113,7 @@ docked layout (`calm.css`, the mockups) was not ported.
   the `?report=1` report; there is no second report generator.
 - The Commit panel and the comparison share `panels/commit-model.ts`
   (`directCommitLegs`) and honour the document's `commitWaitPolicy`.
-- **Why this result?** is a fold on the Break rail under the event list, and
+- **Why this result?** is a fold on the Simulate rail under the event list, and
   the quiet "Why?" beside the Outcome chip opens it. Steps come from the events
   and the trace (`break/explain.ts`) and keep their claims' basis and
   citations; selecting one pauses playback, seeks and selects its subjects.
@@ -1173,13 +1175,13 @@ keeps them visible across export, share and reload. DGMGRL text is not accepted.
   under *This page's model*. A line drawn between the application and a database
   lists that database. A new standby joins the list; a standby moved to another
   data centre stays on it.
-- **Break: the application's view.** Three lanes under the configuration's, on the
+- **Simulate: the application's view.** Three lanes under the configuration's, on the
   same axis and under the same playhead (`timeline/app-lanes.ts`, pure): `Service`,
   `Sessions`, `New connections`, headed by one line that says what they add up to
   ("outage 60.3 s — 15.3 s of it inside the connect string") and that it is this
   page's model. The ladder is drawn address by address; the reconnect and the
   exhausted string are marks. The axis stretches to the application's own end
-  (`axisSpan(trace, events, doc)`, capped as the Configure panel caps it), because
+  (`axisSpan(trace, events, doc)`, capped as the Config panel caps it), because
   the reconnect is usually past the role change. `Application's view` in the legend
   row folds the lanes away (`appLanesShown`, a moment's view); the pinned export
   scale never draws them. The readout gains `Application reconnects` / `Application
@@ -1194,7 +1196,7 @@ keeps them visible across export, share and reload. DGMGRL text is not accepted.
   link as a document.
 
 
-## Break's context menu on the drawing (as built, 2026-09-29)
+## Simulate's context menu on the drawing (as built, 2026-09-29)
 
 The report: *"on the break screen, the context menu of the items is not rendering
 properly — not usable at all."* At 1440×900, a click on the right-hand standby put the
@@ -1219,7 +1221,7 @@ SHUTD / Take th". Two fixes and a redesign.
   room for an anchor partly outside it.
 - **The quick icons step aside.** `HoverTools` are not drawn on the key whose bar is
   open: they sat over the card's top edge, on the bar's header.
-- **Break's bar is a context menu** (`ActionBar` with `sections`; Build's bar is
+- **Simulate's bar is a context menu** (`ActionBar` with `sections`; Build's bar is
   unchanged). Header: the subject and the moment it lands, `sby01 · at t = 12.3 s`
   (the snapped playhead the rail reads), and ×. Every offered row — no row cap, no
   "More in the panel" — grouped under small mono labels read off the kind of event
@@ -1262,9 +1264,9 @@ SHUTD / Take th". Two fixes and a redesign.
 
 Tests: `canvas-actions.test.ts` (*the bar keeps out from under the floating chrome*,
 *a menu taller than its room scrolls*, *a data centre's menu keeps off the cards
-inside it*, *Break draws the bar as a grouped menu*, the
-whole Break table on the bar, the header's clock, the quick icons stepping aside),
-`canvas-presets.test.ts` (*the Break menu stays inside a room the rail has cut short*,
+inside it*, *Simulate draws the bar as a grouped menu*, the
+whole Simulate table on the bar, the header's clock, the quick icons stepping aside),
+`canvas-presets.test.ts` (*the Simulate menu stays inside a room the rail has cut short*,
 every preset, every scale).
 
 ## The side rail folds (as built, 2026-09-29)
@@ -1276,9 +1278,9 @@ much more user-friendly and nicer"*.
   bar naming the rail (`Inspector` / `Events`) with the fold button, and a scroll port
   under it (`.rail-body`) that carries the scroll shading the aside used to. The
   contents keep their own headers; the bar is the shell's, so folding works the same
-  in Build, Break and Configure. Learn has no bar: its right half is the workbench.
+  in Build, Simulate and Config. Learn has no bar: its right half is the workbench.
 - **Folded, the rail is a 44 px strip** that is one button, its full height: the panel
-  glyph, the rail's name and what is behind it (the selection, or Break's event count)
+  glyph, the rail's name and what is behind it (the selection, or Simulate's event count)
   set vertically. Nothing of the contents is rendered. Both buttons carry
   `aria-expanded` and `aria-controls="app-rail"` (the aside, present in both states).
   `]` toggles from anywhere outside a text field (AltGr let through, for layouts where
@@ -1302,20 +1304,20 @@ much more user-friendly and nicer"*.
   `title`, so the header's three buttons fit beside the name on a 340 px card. Remove
   goes red on hover.
 - Folds turn an SVG chevron (the shared `Caret`), an open section's heading is ink and
-  a shut one steps back, the summary's rows are ruled, and an empty state (Break's *No
+  a shut one steps back, the summary's rows are ruled, and an empty state (Simulate's *No
   events yet*) is a dashed box rather than a stray
   sentence.
 
 Tests: `test/ui/rail-collapse.test.ts`.
 
 
-## Break's two layouts (as built, 2026-09-29)
+## Simulate's two layouts (as built, 2026-09-29)
 
-Two prototypes of a Break redesign (`prototype/break-layout`: B, a split with the bar as
+Two prototypes of a Simulate redesign (`prototype/break-layout`: B, a split with the bar as
 the handle, and A, cards that continue as lanes) were both kept, as **Split** (the
-default) and **Lanes**, with a switch. The floating dock that used to carry Break's
+default) and **Lanes**, with a switch. The floating dock that used to carry Simulate's
 timeline is gone: Split is the same content, not overlapping the drawing, so the choice
-is Split or Lanes. This section supersedes the Break parts of §3b/§3f that describe that
+is Split or Lanes. This section supersedes the Simulate parts of §3b/§3f that describe that
 dock (its head row of readings and finding chips, the floating warning card, the grab
 handle on its top edge). Build's dock, chips and warning card are as they were.
 
@@ -1323,12 +1325,12 @@ handle on its top edge). Build's dock, chips and warning card are as they were.
   Lanes* (group label *Layout*, spoken, not drawn), in the top bar immediately left of the
   `19c | 26ai` switch and built the same way (a bare `Segmented` in `.topbar-group`, so it
   is styled by the same rule) — the one place both layouts leave alone, so it is in the
-  same spot whichever is on screen. Only in Break and only where Break floats (≥ 1024 px);
+  same spot whichever is on screen. Only in Simulate and only where Simulate floats (≥ 1024 px);
   elsewhere `TopBar` does not render it and the release switch does not move (the group is
   right-aligned). The docked fallback below 1024 px is a single layout and has no
-  switch. **Break has no guidance line** (`Guidance.tsx` renders nothing for it, apart
+  switch. **Simulate has no guidance line** (`Guidance.tsx` renders nothing for it, apart
   from the card the `?` opens): the band's height is the drawing's, and what it said —
-  click a card to add an event, drag a numbered marker to change its time — is the Break
+  click a card to add an event, drag a numbered marker to change its time — is the Simulate
   mode button's `title` (`MODE_SUB`) and the stage's `aria-description` (`modeGuide`).
   `aria-pressed` buttons (the shared `Segmented`), so it is reachable and pressed
   by keyboard; the titles say what each is for: *Split — see the diagram and the timeline
@@ -1371,7 +1373,7 @@ handle on its top edge). Build's dock, chips and warning card are as they were.
     state) and hands the result to the bar and to `TimelineBody`. The transport's steps
     and time field and the key come from the model the lanes are drawn from, so a held
     axis or a new width cannot leave them on different scales. `Timeline` itself is the
-    same hook plus the body, for the docked Break, Learn and the popped-out window.
+    same hook plus the body, for the docked Simulate, Learn and the popped-out window.
   - *The timeline under it* is drawn with `density="compact"` (22 px lanes, the name on
     the bar's own line, `TL_COMPACT`), `headline` (the run's sentence as a line of its own
     above the lanes, truncated with the whole text as its title, sticky while the lanes
@@ -1405,7 +1407,7 @@ handle on its top edge). Build's dock, chips and warning card are as they were.
   - *The rail folds to its strip on the way in* (`split-rail.ts`, `useFoldRailWhile`), so
     the drawing keeps its width. It is a plain signal write: `dg-rail` is not touched by a layout. If the reader
     unfolds or folds the rail themselves inside Split that is their choice, stored as
-    usual, and is left alone on the way out; otherwise leaving Break (to Build, say) puts
+    usual, and is left alone on the way out; otherwise leaving Simulate (to Build, say) puts
     the rail back as it was. Lanes folds it the same way, and a switch between the two
     layouts leaves it folded (see *The rail folds in both layouts*). A fold the reader chose beforehand is kept.
   - *Narrow*: the bar measures itself (`useWidth`, not a media query — this page removes
@@ -1558,7 +1560,7 @@ handle on its top edge). Build's dock, chips and warning card are as they were.
   the cards carry the events, and the rail (the events, the scenarios, validation)
   is one press on its strip away. Same rules as before: a plain signal write, never
   the shared `dg-rail` key; the reader's own fold or unfold inside a layout is theirs, stored
-  as usual and left alone on the way out; leaving Break gives the rail back as it was.
+  as usual and left alone on the way out; leaving Simulate gives the rail back as it was.
   The automatic fold and its undo raise `railSnap` for ~300 ms and the shell drops the
   width transition meanwhile (`.rail-snap`, rail.css): the rail's contents swap to the strip
   at once while its width took .22 s to follow, which was one frame of a wide, empty rail
@@ -1574,8 +1576,8 @@ handle on its top edge). Build's dock, chips and warning card are as they were.
   `layout` prop). Two timelines of different density — Split's, Lanes', the popped-out
   window's, the static figures' (always `full`) — cannot disagree, and a switch cannot
   leave the wrong one behind. `TL` (the old export) is `TL_FULL`.
-- **What went**: the Break branch of `FloatDock` (readout + finding chips + grip + two
-  buttons on the dock's head row), `FindingToast`/`FindingsPopover` in Break (Build
+- **What went**: the Simulate branch of `FloatDock` (readout + finding chips + grip + two
+  buttons on the dock's head row), `FindingToast`/`FindingsPopover` in Simulate (Build
   keeps both), the drag half of `DockGrip` (now `useDockDrag`, on the bar), the
   prototype's pill, `?variant=`, `import.meta.env.DEV` gating and `state/url.ts`'s
   carrying of the key.
@@ -1587,7 +1589,7 @@ Tests: `test/ui/polish-split.test.ts` (the badge against every label, chip and n
 spoken axis; the restore note's title; auto-fit, manual zoom and Fit; the divider's
 press-release, cancel and keyboard), `test/ui/break-layouts.test.ts` (the preference, the switch, Split's bar, the rail
 fold for both layouts, in memory and never `dg-rail`, round trips between them, the snap, the
-density, Build and Configure unchanged), `lanes-events.test.ts` (the buttons per card and
+density, Build and Config unchanged), `lanes-events.test.ts` (the buttons per card and
 header, changing with the playhead, refusals with their reason, a press landing at the
 playhead, the ⋯ menu and Esc, the state on a card at an event's own tick — down at the crash
 and open at the restore — the two-line card and its state word, the application host's lane,
@@ -1596,7 +1598,7 @@ braces, the data centres' order, the application in its data centre), `lanes-lay
 (rail lanes, pill planning and folding, `segmentAt`, `cardSub`, `hostBands`), `timeline-dock.test.ts` (the height and its clamp, the
 separator, full screen, `--tl-h`), `rail-collapse.test.ts` (with the Lanes Events drawer at 1024: open, Remove, close by button, Esc and scrim), `contrast.test.ts` (every band label token over its fill, four palettes, >= 4.5:1), and in `lanes-events.test.ts` the drag readout beside the pin. Browser pass (Lanes polish, 2026-09-29: dark, light, the colour-blind palette, 1440×900 and
 1280×800, a restore at 20 s with the playhead at 20 s, the empty run, Lanes↔Split↔Lanes and
-Build↔Break rail widths sampled frame by frame): Split and Lanes at
+Build↔Simulate rail widths sampled frame by frame): Split and Lanes at
 1440×900 and 1280×800, Split at 1024×768, the findings dropdown, the key popover and full
 screen, Build unchanged; Lanes empty, with a crash at 10 s at the playhead at 5 s and at 40 s,
 the ⋯ menu and a link pill's menu.

@@ -609,7 +609,7 @@ export function AppView() {
             <span class="empty-k">Steady state</span>
             <p>
               Nothing has happened yet, so the connect string has nothing to survive: every
-              address answers and the first one connects. Inject an event in Break mode --
+              address answers and the first one connects. Inject an event in Simulate mode --
               crash the primary's host, cut a link, issue a switchover -- and the
               application's view of it is drawn here.
             </p>
