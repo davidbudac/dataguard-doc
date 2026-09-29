@@ -32,7 +32,9 @@ const out = join(root, '_site');
 
 function run(cmd, args, cwd) {
   console.log(`==> ${cmd} ${args.join(' ')}`);
-  const r = spawnSync(cmd, args, { cwd, stdio: 'inherit', shell: false });
+  // On Windows `npm` is `npm.cmd`, and Node spawns a .cmd only through a shell
+  // (the desktop CI builds there). The arguments are this file's own literals.
+  const r = spawnSync(cmd, args, { cwd, stdio: 'inherit', shell: process.platform === 'win32' });
   if (r.error) fail(`${cmd} could not be run: ${r.error.message}`);
   if (r.status !== 0) fail(`${cmd} ${args.join(' ')} exited ${r.status}`);
 }
