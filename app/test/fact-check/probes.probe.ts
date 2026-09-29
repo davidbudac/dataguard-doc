@@ -25,10 +25,14 @@ import { generateDgmgrl } from '../../src/engine/generate/dgmgrl';
 import { renderPlain } from '../../src/engine/generate/lines';
 import { hostId, linkId, memberId, siteId } from '../../src/engine/ids';
 import { formatRedoRoutes, parseRedoRoutes } from '../../src/engine/redo/parse';
+import { withApplication } from '../../src/engine/application';
+import { computeApps } from '../../src/engine/models/app';
 import { simulate } from '../../src/engine/sim/simulate';
 import type { EngineTrace } from '../../src/engine/sim/simulate';
+import { splitBrainOf } from '../../src/engine/sim/split-brain';
 import type { TimedEvent } from '../../src/engine/types/events';
 import type { TopologyDoc } from '../../src/engine/types/topology';
+import { applicationsOf } from '../../src/engine/types/topology';
 import { validate } from '../../src/engine/validate';
 import { preset } from '../../src/presets';
 import {
@@ -311,6 +315,76 @@ const SIM: SimProbe[] = [
     open: (t) => promoted(t)
       && t.facts.perMember[memberId('sby01')]?.rpoSeconds?.basis === 'documented',
   },
+  /* ---- the Split brain reading (readout chip `split`, engine/sim/split-brain.ts) ----
+     Oracle never says "split brain": the reading is two lanes open read-write
+     at once, this page's model. Each probe records what the reading answers and
+     the sentence a reviewer holds that answer to. */
+  {
+    finding: 'SBR-01',
+    title: 'Primary isolated at 0, PmyShutdown TRUE: split brain no, the primary aborts before the standby opens',
+    doc: () => classic(),
+    events: () => [
+      { at: 0, kind: 'link.cut', link: DC1_DC2 },
+      { at: 0, kind: 'link.cut', link: DC1_DC3 },
+    ],
+    oracle: '"The primary database shuts down if fast-start failover is enabled and V$DATABASE.FS_FAILOVER_STATUS indicates the primary has been STALLED for longer than FastStartFailoverThreshold seconds." (19c property page)',
+    open: (t) => promoted(t) && splitBrainOf(t)?.split.value === false
+      && splitBrainOf(t)?.formerAtOpen?.kind === 'aborted',
+    lanes: ['prm01', 'sby01'],
+  },
+  {
+    finding: 'SBR-02',
+    title: 'The same, PmyShutdown FALSE: the old primary stays STALLED beside the new one, and the reading says no',
+    doc: () => classic({ pmyShutdown: false }),
+    events: () => [
+      { at: 0, kind: 'link.cut', link: DC1_DC2 },
+      { at: 0, kind: 'link.cut', link: DC1_DC3 },
+    ],
+    oracle: '"If the configured data loss guarantee cannot be upheld, redo generation on the primary database will be stalled." A stalled primary is not counted as open; whether Oracle would call two databases up, one stalled, a split brain is not stated (19c and 26ai FSFO chapter)',
+    open: (t) => promoted(t) && splitBrainOf(t)?.split.value === false
+      && splitBrainOf(t)?.formerAtOpen?.kind === 'stalled',
+    lanes: ['prm01', 'sby01'],
+  },
+  {
+    finding: 'SBR-03',
+    title: 'Fast-start failover off, primary cut off and running, manual failover at 5: split brain yes, to the end of the run',
+    doc: () => {
+      const d = classic();
+      return { ...d, config: { ...d.config, fsfo: { ...d.config.fsfo, state: 'disabled' } } };
+    },
+    events: () => [
+      { at: 0, kind: 'link.cut', link: DC1_DC2 },
+      { at: 0, kind: 'link.cut', link: DC1_DC3 },
+      { at: 5, kind: 'cmd.failover', to: CLASSIC_IDS.standby },
+    ],
+    oracle: '"Before beginning a failover, first determine that there is no possibility of recovering the primary database in a timely manner, and ensure that the primary database is shut down." (19c and 26ai, Performing a Manual Failover Operation) -- the run raises FAILOVER.PRIMARY_STILL_OPEN and draws the old primary open',
+    open: (t) => splitBrainOf(t)?.split.value === true && hasFinding(t, 'FAILOVER.PRIMARY_STILL_OPEN'),
+    lanes: ['prm01', 'sby01'],
+  },
+  {
+    finding: 'SBR-04',
+    title: 'Fast-start failover off, primary still running and reachable, manual failover at 0: split brain no, though the run also says the primary is still open',
+    doc: () => {
+      const d = classic();
+      return { ...d, config: { ...d.config, fsfo: { ...d.config.fsfo, state: 'disabled' } } };
+    },
+    events: () => [{ at: 0, kind: 'cmd.failover', to: CLASSIC_IDS.standby }],
+    oracle: 'the same sentence as SBR-03. The old primary is drawn mounted the instant the new one opens (FAILOVER.FORMER_PRIMARY_MOUNTED, this page\'s reading), which the finding FAILOVER.PRIMARY_STILL_OPEN -- "Until it is, two databases are open as the primary" -- pulls the other way',
+    open: (t) => splitBrainOf(t)?.split.value === false && hasFinding(t, 'FAILOVER.PRIMARY_STILL_OPEN'),
+    lanes: ['prm01', 'sby01'],
+  },
+  {
+    finding: 'SBR-05',
+    title: 'SBR-01 under 26ai',
+    doc: () => classic({ version: '26ai' }),
+    events: () => [
+      { at: 0, kind: 'link.cut', link: DC1_DC2 },
+      { at: 0, kind: 'link.cut', link: DC1_DC3 },
+    ],
+    oracle: 'as SBR-01 -- the abort is one threshold after the stall began in both editions',
+    open: (t) => promoted(t) && splitBrainOf(t)?.split.value === false
+      && splitBrainOf(t)?.formerAtOpen?.kind === 'aborted',
+  },
   {
     finding: 'ED-01',
     title: '19c with both ObserverPing properties set: crash',
@@ -390,6 +464,31 @@ const TEXT: TextProbe[] = [
       return {
         open: lines.length === 1 && /MAXPROTECTION/i.test(lines[0] ?? ''),
         now: lines.map((l) => l.trim()).join(' / ') || '(none)',
+      };
+    },
+  },
+  {
+    finding: 'APP-01',
+    title: 'Two applications, one run: each dials the descriptor it has, from where it stands',
+    oracle: '"If a connection attempt fails across all ADDRESS_LISTS, then additional attempts to connect beginning with the first ADDRESS_LIST will be made RETRY_COUNT times" (19c HA guide, Oracle Net TNS string parameters) -- per connect string, so a string with RETRY_COUNT 2 has a budget of three traversals and one with none of one',
+    run: () => {
+      /* Both apps stand in DC2, the standby's data centre; the primary's host crashes at 0.
+         app02 has a string of its own with RETRY_COUNT 2; app01 dials the shared one. */
+      const base = withApplication(withApplication(classic(), siteId('dc2')), siteId('dc2'));
+      const doc: TopologyDoc = {
+        ...base,
+        applications: applicationsOf(base).map((a, i) => (i === 1
+          ? { ...a, client: { ...base.client, retryCount: 2, retryDelaySeconds: 5 } }
+          : a)),
+      };
+      const t = simulate(doc, [{ at: 0, kind: 'host.down', host: PRM }]);
+      const [shared, own] = computeApps(t, doc);
+      const traversals = (m: NonNullable<typeof shared>): number => m.attempts.length;
+      return {
+        open: shared !== undefined && own !== undefined
+          && traversals(shared) === 1 && shared.application?.id === 'app01'
+          && own.application?.id === 'app02' && own.worst > shared.worst,
+        now: [shared, own].map((m) => `${m?.application?.id ?? '-'}: attempts=${m ? traversals(m) : '-'} tConn=${m?.tConn ?? '-'} worst=${m?.worst ?? '-'}`).join(' / '),
       };
     },
   },

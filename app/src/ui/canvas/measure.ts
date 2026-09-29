@@ -60,6 +60,10 @@ export const CARD = {
   subSize: 10,
 } as const;
 
+/** The top of instance row `index` on a RAC card whose top edge is `node.y`. */
+export const instanceRowY = (node: { y: number }, index: number): number =>
+  node.y + CARD.dbH + index * CARD.instanceRowH;
+
 export interface CardLines {
   /** The role word: Primary, Physical standby, Far sync, Observer. */
   name: string;

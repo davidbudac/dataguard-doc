@@ -15,7 +15,7 @@
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { h, render } from 'preact';
-import { CLIENT_TIMING_DEFAULTS, CLIENT_TIMING_TUNED } from '@/engine';
+import { applicationClient, applicationsOf, CLIENT_TIMING_DEFAULTS, CLIENT_TIMING_TUNED, withApplication } from '@/engine';
 import type { TopologyDoc } from '@/engine';
 import { classicDoc, makeDoc } from '@/state/doc';
 import { resetHistory, undo, undoStack } from '@/state/history';
@@ -23,11 +23,11 @@ import { topology } from '@/state/derived';
 import { BREAK_TIMELINE_KEY, loadBreakTimeline, setBreakTimeline } from '@/state/persist';
 import { URL_FIELDS } from '@/state/url';
 import {
-  breakLayout, breakTimeline, findingsOpen, mode, panelTab, railCollapsed, timelineFull, timelineH, viewport,
+  breakApp, breakLayout, breakTimeline, clearSelection, findingsOpen, mode, panelTab, railCollapsed, timelineFull, timelineH, viewport,
 } from '@/state/view';
 import { App } from '@/ui/App';
 import { applyTemplate, templates } from '@/ui/break/events';
-import { applyClientTiming, patchClient } from '@/ui/inspector/edits';
+import { applyClientTiming, patchClient, setOwnClient } from '@/ui/inspector/edits';
 
 const memory = new Map<string, string>();
 const fakeStorage = {
@@ -72,7 +72,7 @@ const button = (r: ParentNode, word: string): HTMLButtonElement => {
 };
 
 const withoutApplication = (): void => {
-  const { application: _none, ...bare } = classicDoc().topology as TopologyDoc;
+  const { applications: _none, ...bare } = classicDoc().topology as TopologyDoc;
   resetHistory(makeDoc(bare));
 };
 
@@ -85,6 +85,8 @@ beforeEach(() => {
   mode.value = 'break';
   breakLayout.value = 'split';
   breakTimeline.value = 'config';
+  breakApp.value = null;
+  clearSelection();
   railCollapsed.value = false;
   timelineH.value = null;
   timelineFull.value = false;
@@ -130,7 +132,7 @@ describe('the preference', () => {
 describe('the switch', () => {
   it('is hidden with no application, and the configuration timeline shows whatever is stored', async () => {
     withoutApplication();
-    expect(topology.value.application).toBeUndefined();
+    expect(applicationsOf(topology.value)).toHaveLength(0);
     breakTimeline.value = 'app';
     crash();
     const r = mount();
@@ -309,7 +311,7 @@ describe('Defaults and Tuned', () => {
   it('are in the rail\'s Connect string group too, and do the same', async () => {
     mode.value = 'build';
     const r = mount();
-    const { application } = topology.value;
+    const application = applicationsOf(topology.value)[0];
     expect(application).toBeDefined();
     const { select } = await import('@/state/view');
     select(application!.id as string);
@@ -378,5 +380,107 @@ describe('the Config panel', () => {
     const r = mount();
     await tick();
     expect(r.querySelector('[aria-label="Application view"] .empty')?.textContent).toMatch(/Inject an event in Simulate mode/);
+  });
+});
+
+describe('several applications', () => {
+  const two = (): { a: string; b: string } => {
+    resetHistory(makeDoc(withApplication(classicDoc().topology as TopologyDoc)));
+    const [a, b] = applicationsOf(topology.value).map((x) => x.id as string);
+    if (!a || !b) throw new Error('expected two applications');
+    setOwnClient(b, true);
+    return { a, b };
+  };
+  const picker = (r: ParentNode): HTMLSelectElement | null =>
+    r.querySelector('.app-tl-strip select[aria-label="Application"]');
+  const change = async (sel: HTMLSelectElement, v: string): Promise<void> => {
+    sel.value = v;
+    sel.dispatchEvent(new Event('change', { bubbles: true }));
+    await tick();
+  };
+  const own = (id: string) => applicationClient(topology.value, applicationsOf(topology.value).find((x) => x.id === id)!);
+
+  it('offers the picker only with two or more applications', async () => {
+    crash();
+    breakTimeline.value = 'app';
+    let r = mount();
+    await tick();
+    expect(applicationsOf(topology.value)).toHaveLength(1);
+    expect(r.querySelector('.app-tl-strip')).not.toBeNull();
+    expect(picker(r)).toBeNull();
+    render(null, r);
+    document.body.innerHTML = '';
+    two();
+    crash();
+    r = mount();
+    await tick();
+    const p = picker(r);
+    expect(p).not.toBeNull();
+    expect([...p!.options].map((o) => o.textContent)).toEqual(applicationsOf(topology.value).map((x) => x.name));
+  });
+
+  it('draws the first application, and choosing another switches the figure to it', async () => {
+    const { a, b } = two();
+    patchClient('Shorten b', (c) => ({ ...c, transportConnectTimeoutSeconds: 5 }), undefined, b);
+    crash();
+    breakTimeline.value = 'app';
+    const r = mount();
+    await tick();
+    const p = picker(r)!;
+    expect(p.value).toBe(a);
+    const figs = (): number => r.querySelectorAll('.app-tl-fig .app-fig').length;
+    expect(figs()).toBe(1);
+    const first = (r.querySelector('.app-tl-fig') as HTMLElement).innerHTML;
+    await change(p, b);
+    expect(picker(r)!.value).toBe(b);
+    expect(figs()).toBe(1);
+    expect((r.querySelector('.app-tl-fig') as HTMLElement).innerHTML).not.toBe(first);
+  });
+
+  it('follows an application selected on the canvas', async () => {
+    const { b } = two();
+    crash();
+    breakTimeline.value = 'app';
+    const { select } = await import('@/state/view');
+    select(b);
+    const r = mount();
+    await tick();
+    expect(picker(r)!.value).toBe(b);
+  });
+
+  it('presets edit only the chosen application, as one undo step', async () => {
+    const { a, b } = two();
+    crash();
+    breakTimeline.value = 'app';
+    const r = mount();
+    await tick();
+    await change(picker(r)!, b);
+    const sharedBefore = { ...client() };
+    const ownBefore = { ...own(b) };
+    const depth = undoStack.value.length;
+    const strip = r.querySelector('.app-tl-strip') as HTMLElement;
+    button(strip, 'Tuned').click();
+    await tick();
+    expect(undoStack.value.length).toBe(depth + 1);
+    expect(own(b)).toMatchObject(CLIENT_TIMING_TUNED);
+    expect(own(a)).toEqual(sharedBefore);
+    expect(client()).toEqual(sharedBefore);
+    undo();
+    expect(own(b)).toEqual(ownBefore);
+    expect(own(a)).toEqual(sharedBefore);
+  });
+
+  it('a first application on the shared string edits the shared string, and only that', async () => {
+    const { a, b } = two();
+    crash();
+    breakTimeline.value = 'app';
+    const r = mount();
+    await tick();
+    const ownBefore = { ...own(b) };
+    button(r.querySelector('.app-tl-strip') as HTMLElement, 'Tuned').click();
+    await tick();
+    expect(own(a)).toMatchObject(CLIENT_TIMING_TUNED);
+    expect(client()).toMatchObject(CLIENT_TIMING_TUNED);
+    expect(own(b)).toEqual(ownBefore);
   });
 });

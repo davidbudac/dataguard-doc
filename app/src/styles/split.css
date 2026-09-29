@@ -199,3 +199,6 @@
 .client-presets .btn[aria-pressed="true"] { color: var(--ik); background: var(--sf3); border-color: var(--ln2); font-weight: 600; }
 .client-presets .btn:disabled { opacity: .5; }
 .grp > .client-presets { padding: 2px var(--px, 0) 6px; }
+
+.app-tl-pick { display: flex; flex-direction: column; gap: 2px; flex: 0 0 auto; padding: 2px 0; }
+.app-tl-pick select { max-width: 200px; }

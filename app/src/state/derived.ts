@@ -14,13 +14,14 @@
 import { computed } from '@preact/signals';
 import { layoutTopology } from '@/ui/canvas/layout';
 import { inFlight, inFlightFrom } from '@/ui/canvas/place';
-import { appModelFor } from '@/ui/timeline/build';
+import { appModelsFor } from '@/ui/timeline/build';
 import type { Geometry } from '@/ui/canvas/layout';
 import {
-  declaredPrimary, honestLevel, resolveRedoGraph, simulate, sortFindings, stateAt, validate,
+  declaredPrimary, honestLevel, resolveRedoGraph, simulate, sortFindings, splitBrainOf, stateAt, validate,
 } from '@/engine';
 import type {
-  CitationId, Claim, EngineTrace, Finding, Outcome, ProtectionLevel, Snapshot, TopologyDoc,
+  CitationId, Claim, EngineTrace, Finding, MemberId, Outcome, ProtectionLevel, SplitBrain, Snapshot,
+  TopologyDoc,
 } from '@/engine';
 import { doc } from './doc';
 import { edition, mode, tNow } from './view';
@@ -127,7 +128,13 @@ export const protectionLevel = computed<Claim<ProtectionLevel> | null>(
 export type Tone = 'ik' | 'tl' | 'bl' | 'am' | 'rd' | 'vi' | 'sl';
 
 export interface ReadoutChip {
+  /** Unique on the line. */
   id: string;
+  /**
+   * The kind of reading, when several chips are of one kind (one per
+   * application): what the bar ranks and keeps by. Absent, the id is the kind.
+   */
+  group?: string;
   tone: Tone;
   /** The eyebrow. */
   k: string;
@@ -192,6 +199,41 @@ export const readout = computed<ReadoutChip[]>(
      outcome belongs to the modes that draw the run. */
   () => readoutFor(mode.value === 'build' || mode.value === 'configure'),
 );
+
+/**
+ * The Split brain chip's sentence. It branches on what the drawing shows --
+ * who is open, stalled, aborted or down at the instant the new primary opens --
+ * and never on the name of the event that led there.
+ */
+function splitBrainSentence(sb: SplitBrain, topo: TopologyDoc): string {
+  const name = (id: MemberId): string => topo.members.find((m) => m.id === id)?.name ?? (id as string);
+  const oldP = name(sb.former);
+  const newP = name(sb.newPrimary);
+  const open = `${newP} opens at ${fmt(sb.openAt)} s`;
+  const first = sb.windows[0];
+  if (first !== undefined) {
+    const more = sb.windows.length > 1
+      ? ` (and ${sb.windows.length - 1} more stretch${sb.windows.length === 2 ? '' : 'es'})` : '';
+    return first.to === null
+      ? `${oldP} and ${newP} are both open read-write from ${fmt(first.from)} s to the end of the run: ${oldP} is still open when ${open}, and nothing in this run closes it${more}.`
+      : `${oldP} and ${newP} are both open read-write from ${fmt(first.from)} s to ${fmt(first.to)} s: ${oldP} is still open when ${open}${more}.`;
+  }
+  const at = sb.formerAtOpen;
+  switch (at?.kind) {
+    case 'aborted':
+      return `${oldP} aborts at ${fmt(at.at)} s, before ${open}.`;
+    case 'stalled':
+      return at.abortsAt === null
+        ? `${oldP} is STALLED when ${open}, and nothing shuts it down; a stalled primary commits nothing.`
+        : `${oldP} is STALLED when ${open} and cannot commit; it shuts itself down at ${fmt(at.abortsAt)} s.`;
+    case 'closed':
+      return at.state.startsWith('mounted')
+        ? `${oldP} is mounted, not open, when ${open}: it needs reinstating before it can be a standby.`
+        : `${oldP} is not open read-write when ${open}.`;
+    default:
+      return `${oldP} is down when ${open}, so only one database is ever open read-write.`;
+  }
+}
 
 /**
  * The chips for one of the two readings, whichever mode is open: `steady`
@@ -343,26 +385,49 @@ export function readoutFor(steady: boolean): ReadoutChip[] {
         : {}),
     });
   }
-  /* What the run cost the application: when its connect string got through,
-     or that it never did. This page's model, from where the card stands. */
-  const ap = appModelFor(t, topo);
-  if (ap !== null && (!ap.noEvent || ap.noEventKind === 'app-down')) {
-    const name = topo.application?.name ?? 'the application';
+  /* Whether two members were ever open read-write together. Asked only where
+     a new primary opens by failover, and this page's model: Oracle has no
+     interval for it, so the answer is read off the drawing (splitBrainOf). */
+  const sb = splitBrainOf(t);
+  if (sb !== null) {
+    chips.push({
+      id: 'split', tone: sb.split.value ? 'rd' : 'tl', k: 'Split brain',
+      v: sb.split.value ? 'yes' : 'no',
+      sub: splitBrainSentence(sb, topo),
+      basis: sb.split.basis,
+      cite: [...sb.split.cite],
+    });
+  }
+  /* What the run cost each application: when its connect string got through,
+     or that it never did. This page's model, from where each card stands. One
+     reading per application, each naming its own; with a single application
+     the reading keeps the plain "Application" eyebrow. */
+  const models = appModelsFor(t, topo);
+  const many = models.length > 1;
+  models.forEach((ap, i) => {
+    if (ap.noEvent && ap.noEventKind !== 'app-down') return;
+    const name = ap.application?.name ?? 'the application';
+    const eyebrow = many ? name : 'Application';
+    const base = {
+      /* The first keeps the plain id; the rest are told apart by their place. */
+      id: i === 0 ? 'app' : `app~${i}`,
+      group: 'app',
+    };
     chips.push(ap.tConn !== null
       ? {
-        id: 'app', tone: 'tl', k: 'Application reconnects', v: fmt(ap.tConn), unit: 's',
+        ...base, tone: 'tl', k: many ? `${name} reconnects` : 'Application reconnects', v: fmt(ap.tConn), unit: 's',
         sub: `${name} gets a new connection at this instant: the connect string's own waits, on top of the role change.`,
         basis: 'model',
       }
       : {
-        id: 'app', tone: 'rd', k: 'Application',
+        ...base, tone: 'rd', k: eyebrow,
         v: ap.noEventKind === 'app-down' ? 'down' : 'stays down',
         sub: ap.noEventKind === 'app-down'
           ? `${name} is down with its host, so nothing is dialled.`
           : `${name} exhausts its connect string${ap.gaveUp === null ? '' : ` at t = ${fmt(ap.gaveUp)} s`} without reaching the service.`,
         basis: 'model',
       });
-  }
+  });
   const observerStates = Object.values(f.observers).map((o) => o.endState);
   if (observerStates.length > 0) {
     /* The master's, where there is one: every other running observer ends

@@ -233,6 +233,10 @@ export function MemberForm({ member, doc, graph }: MemberFormProps) {
           it is not painted out of view. */}
       <Fold
         id={INSTANCES_ID}
+        /* A RAC member's instances are what the reader came to a cluster for:
+           open until they shut it (remembered for the session). One instance
+           is the ordinary case and stays folded. */
+        defaultOpen={member.instances.length > 1}
         title={member.instances.length > 1 ? `Instances (RAC, ${member.instances.length})` : 'Instance'}
         hint={member.instances.map((inst) => inst.name).join(', ')}
       >

@@ -92,7 +92,7 @@ describe('an instance stops on a host that stays up', () => {
        drawn: the listeners on the two nodes still answer, and refuse. */
     const doc = p.doc();
     const t = simulate(doc, [...p.events(), down(5, 'prm01', 'prm012')]);
-    const app = computeApp({ ...doc.client, addresses: serviceAddresses(doc) }, t, doc);
+    const app = computeApp({ ...doc.client, addresses: serviceAddresses(doc) }, t, doc, { application: doc.applications![0]! });
     expect(app.startAt).toBe(5);
     const kinds = app.addresses.filter((a) => (a.member as string) === 'prm01').map((a) => a.kind);
     expect(kinds).toEqual(['refuse', 'refuse']);

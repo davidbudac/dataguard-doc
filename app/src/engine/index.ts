@@ -31,11 +31,12 @@ export type {
   RoutePriority, ServiceDef, Site, TopologyDoc, XptMode,
 } from './types/topology';
 export {
-  declaredPrimary, destProps, findHost, findLink, findMember, findObserver, findSite,
+  applicationClient, applicationsOf, declaredPrimary, destProps, findApplication, findHost,
+  hasOwnClient, findLink, findMember, findObserver, findSite,
   isDatabase, isFarSync, isRac, memberHosts,
 } from './types/topology';
 
-export { primarySite, withApplication } from './application';
+export { nextApplicationName, primarySite, withApplication } from './application';
 
 /* events and states */
 export type {
@@ -109,7 +110,7 @@ export {
 export type {
   AddressPlan, AppAttempt, AppClaims, AppModel, AppOptions, AppSpan, Dial, DialKind, NoEventKind,
 } from './models/app';
-export { computeApp } from './models/app';
+export { computeApp, computeApps } from './models/app';
 export type {
   CommitClaims, CommitInput, CommitLeg, CommitLegResult, CommitModel, CommitWaitPolicy,
 } from './models/commit';
@@ -126,9 +127,11 @@ export type {
 export {
   blank, cmd, comment, commentMarker, commentText, dim, hl, lineText, note, renderPlain, span, svc,
 } from './generate/lines';
+export type { TnsOptions } from './generate/tnsnames';
 export { buildTns, serviceAddresses } from './generate/tnsnames';
 export type { JdbcOptions } from './generate/jdbc';
 export { buildJdbc } from './generate/jdbc';
+export { buildClientFiles } from './generate/client';
 export type { DgmgrlOptions } from './generate/dgmgrl';
 export { generateDgmgrl } from './generate/dgmgrl';
 export type { InitOraOptions } from './generate/initora';
@@ -143,6 +146,8 @@ export type {
   Conditions, DataLossKind, EngineFacts, EngineTrace, LagStall,
 } from './sim/simulate';
 export { simulate, stateAt } from './sim/simulate';
+export type { FormerAtOpen, SplitBrain, SplitBrainWindow } from './sim/split-brain';
+export { splitBrainOf } from './sim/split-brain';
 export type { DeadlineAction, Pending, Phase, Sample, SimState, SwitchoverFacts } from './sim/kernel';
 export { buildLanes, epochAt, EPS, Queue, segmentAt, snapshotFrom } from './sim/kernel';
 export type { Readiness, TargetChoice } from './sim/fsfo';

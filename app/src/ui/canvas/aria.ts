@@ -12,7 +12,7 @@
  */
 
 import type { AnyState, Member, RedoGraph, Snapshot, TopologyDoc } from '@/engine';
-import { isFarSync, linkRttMs } from '@/engine';
+import { applicationsOf, findApplication, isFarSync, linkRttMs } from '@/engine';
 import type { NodeBox } from './layout';
 import { roleWord } from './layout';
 import { applicationTargets, cardFrameFor, cardRoleFor, siteIsDown } from './routing';
@@ -140,8 +140,7 @@ export function structuralRows(doc: TopologyDoc, graph: RedoGraph): AriaRow[] {
       rtt: '',
     });
   }
-  const app = doc.application;
-  if (app) {
+  for (const app of applicationsOf(doc)) {
     rows.push({
       site: siteNameOfHost(doc, app.host as string),
       member: app.name,
@@ -155,15 +154,15 @@ export function structuralRows(doc: TopologyDoc, graph: RedoGraph): AriaRow[] {
   return rows;
 }
 
-/** Where the application stands and which databases its connect string names. */
+/** Where each application stands and which databases its connect string names: one sentence apiece. */
 export function applicationSentences(doc: TopologyDoc): string[] {
-  const app = doc.application;
-  if (!app) return [];
-  const names = applicationTargets(doc).map((m) => m.name);
-  const where = `The application ${app.name} runs on host ${hostNameOf(doc, app.host as string)} in ${siteNameOfHost(doc, app.host as string)}`;
-  if (names.length === 0) return [`${where}; its connect string names no database.`];
-  if (names.length > SENTENCE_LIMIT) return [`${where}; its connect string names ${names.length} databases.`];
-  return [`${where}; its connect string names ${names.join(', ')}.`];
+  return applicationsOf(doc).flatMap((app) => {
+    const names = applicationTargets(doc, app).map((m) => m.name);
+    const where = `The application ${app.name} runs on host ${hostNameOf(doc, app.host as string)} in ${siteNameOfHost(doc, app.host as string)}`;
+    if (names.length === 0) return [`${where}; its connect string names no database.`];
+    if (names.length > SENTENCE_LIMIT) return [`${where}; its connect string names ${names.length} databases.`];
+    return [`${where}; its connect string names ${names.join(', ')}.`];
+  });
 }
 
 /** Where the members are: one sentence, or a count when there are many. */
@@ -270,16 +269,22 @@ export function describeTopology(
   if (frame) sentences.push(frameSentence(doc, frame));
   const summary = `Topology of the Data Guard configuration ${doc.config.name}: `
     + `${doc.members.length} members, ${doc.observers.length} observers, `
-    + `${doc.application ? '1 application, ' : ''}${doc.sites.length} sites.`;
+    + `${applicationCountWords(doc)}${doc.sites.length} sites.`;
   return { summary, sentences, rows: structuralRows(doc, graph) };
 }
+
+/** `1 application, `, `2 applications, `; empty when the document draws none. */
+const applicationCountWords = (doc: TopologyDoc): string => {
+  const n = applicationsOf(doc).length;
+  return n === 0 ? '' : `${n} ${n === 1 ? 'application' : 'applications'}, `;
+};
 
 /** The label a single card carries, host name spelled in full. */
 export function cardLabel(
   doc: TopologyDoc, graph: RedoGraph, node: NodeBox, frame?: Snapshot | null,
 ): string {
   if (node.kind === 'application') {
-    const app = doc.application;
+    const app = findApplication(doc, node.id);
     if (!app) return 'Application';
     const host = hostNameOf(doc, app.host as string);
     const site = siteNameOfHost(doc, app.host as string);
@@ -342,11 +347,13 @@ export function siteLabel(
     (m) => m.instances.some((i) => hosts.has(i.host as string)),
   ).length;
   const observers = doc.observers.filter((o) => hosts.has(o.host as string)).length;
-  const app = doc.application;
+  const apps = applicationsOf(doc).filter((a) => hosts.has(a.host as string));
   const count = [
     `${members} ${members === 1 ? 'member' : 'members'}`,
     `${observers} ${observers === 1 ? 'observer' : 'observers'}`,
-    ...(app && hosts.has(app.host as string) ? ['the application'] : []),
+    ...(apps.length === 0 ? []
+      : applicationsOf(doc).length === 1 ? ['the application']
+        : [`${apps.length === 1 ? 'application' : 'applications'} ${apps.map((a) => a.name).join(', ')}`]),
   ].join(', ');
   const down = siteIsDown(doc, site.id, frame) ? ' It is down.' : '';
   return `Data centre ${site.name}: ${count}.${down}`;
@@ -361,4 +368,23 @@ export function siteLabel(
  */
 export function linkLabel(_doc: TopologyDoc, link: { title: string }): string {
   return link.title;
+}
+
+/**
+ * The label one instance row of a RAC card carries, when the row is a control.
+ *
+ * The state is what the card's own tooltip on that row already says -- down,
+ * the apply instance, running Redo Apply -- so the flags come from the card's
+ * frame and this only words them.
+ */
+export function instanceLabel(
+  node: NodeBox, index: number,
+  now: { down: boolean; coordinator: boolean; apply: boolean } = { down: false, coordinator: false, apply: false },
+): string {
+  const inst = node.instanceHosts?.[index];
+  if (inst === undefined) return node.id;
+  const state = now.down ? ' It is down.'
+    : now.coordinator ? ' It is the apply instance.'
+      : now.apply ? ' It is running Redo Apply.' : '';
+  return `Instance ${inst.name}, ${index + 1} of ${node.instances}, of ${node.id}, on host ${inst.host}${inst.site === '' ? '' : ` in ${inst.site}`}.${state}`;
 }

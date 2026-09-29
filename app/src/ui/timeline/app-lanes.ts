@@ -17,6 +17,7 @@
  * constants and the vantage is the card's place on the drawing (`AppModel.claims`).
  */
 
+import { applicationClient, findApplication } from '@/engine';
 import type { AnyState, AppModel, AppSpan, Seconds, TopologyDoc } from '@/engine';
 import { fmt } from './build';
 import type { InkClass, PhaseClass } from './build';
@@ -75,7 +76,9 @@ function serviceSubs(service: string): string[] {
 }
 
 export function appLanes(ap: AppModel, doc: TopologyDoc, t0: Seconds, t1: Seconds): AppSection {
-  const service = doc.client.serviceName;
+  /* The descriptor this application dials -- its own, else the shared one. */
+  const application = ap.application === null ? undefined : findApplication(doc, ap.application.id);
+  const service = (application === undefined ? doc.client : applicationClient(doc, application)).serviceName;
   const nameOf = (id: string | null): string =>
     (id === null ? '' : doc.members.find((m) => (m.id as string) === id)?.name ?? id);
   const hostName = (id: string): string =>

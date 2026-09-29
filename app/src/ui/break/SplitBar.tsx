@@ -35,9 +35,14 @@ import { revealFindings } from '../IssuePanel';
 import { chipsThatFit } from './readout-fit';
 import { appTimelineOn, TimelineSwitch } from './TimelineView';
 import type { FitItem } from './readout-fit';
+import { ReadoutFold } from './SummaryBand';
 
-/** What inside the bar keeps its own presses; anything else on it drags the split. */
-const KEEPS_PRESS = 'button, input, select, a, label, .sb-pop';
+/**
+ * What inside the bar keeps its own presses; anything else on it drags the
+ * split. `.rs-hit` is the terse line while the summary is folded: a click on
+ * it unfolds the summary (SummaryBand.tsx), so a press on it is not a drag.
+ */
+const KEEPS_PRESS = 'button, input, select, a, label, .sb-pop, .rs-hit';
 
 /** Below this the bar has no room for a row of speeds and the run's minor readings both. */
 export const TIGHT_W = 1100;
@@ -45,10 +50,11 @@ export const TIGHT_W = 1100;
 /**
  * The readings in the order they are given up when the line is short: the
  * first is kept longest. Outcome, Application and Observer are the essentials;
- * Data loss goes first, then New primary open, then the primary's shutdown.
+ * Split brain goes first of all -- the band of cards has it whole -- then Data
+ * loss, then New primary open, then the primary's shutdown.
  * (The steady-state readings, which have no outcome, rank the same way.)
  */
-const KEEP = ['outcome', 'protection', 'app', 'observer', 'fsfo', 'abort', 'open', 'members', 'loss'];
+const KEEP = ['outcome', 'protection', 'app', 'observer', 'fsfo', 'abort', 'open', 'members', 'loss', 'split'];
 const CORE = new Set(['outcome', 'protection', 'app', 'observer']);
 
 /** Shorter eyebrows for when even the essentials do not fit; the values are never shortened. */
@@ -138,8 +144,9 @@ export function TerseReadout({ run }: { run: boolean }) {
   });
   const items: FitItem[] = chips.map((c) => {
     const w = sizes.items[c.id] ?? { long: 0, short: 0 };
-    const rank = KEEP.indexOf(c.id);
-    return { id: c.id, core: CORE.has(c.id), rank: rank < 0 ? KEEP.length : rank, long: w.long, short: w.short };
+    const kind = c.group ?? c.id;
+    const rank = KEEP.indexOf(kind);
+    return { id: c.id, core: CORE.has(kind), rank: rank < 0 ? KEEP.length : rank, long: w.long, short: w.short };
   });
   const fit = chipsThatFit(items, width > 0 ? width - RO_PAD - SLACK : 0, sizes.sep + 2 * RO_GAP);
   const shown = chips.filter((c) => fit.ids.includes(c.id));
@@ -228,12 +235,12 @@ export function KeyMenu({ run }: { run: RunTimeline }) {
       {open ? (
         <div class="sb-pop sb-pop-key legend tl-legend" id="sb-key" role="dialog" aria-label="Colour key and view">
           {run.model.legend.map((l) => <span key={l.swatch}><i class={l.swatch} />{l.label}</span>)}
-          {topology.value.application === undefined ? null : (
+          {(topology.value.applications?.length ?? 0) === 0 ? null : (
             <button
               type="button" class="btn sb-app-btn" aria-pressed={app} title={APP_VIEW_TIP}
               onClick={() => { appLanesShown.value = !app; }}
             >
-              Application&rsquo;s view
+              {(topology.value.applications?.length ?? 0) > 1 ? 'Applications’ views' : 'Application’s view'}
             </button>
           )}
         </div>
@@ -277,7 +284,7 @@ export function SplitBar({ run, sized }: {
           onSpeed={(s) => { speed.value = s; }}
         />
       )}
-      <TerseReadout run={trace.value !== null} />
+      <ReadoutFold><TerseReadout run={trace.value !== null} /></ReadoutFold>
       {sized || run === null ? <TimelineSwitch /> : null}
       {run?.held && sized && !appTl ? (
         <button

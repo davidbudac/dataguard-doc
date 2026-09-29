@@ -145,6 +145,20 @@ export const breakLayout = signal<BreakLayout>('split');
 /** Which timeline Simulate draws (`BreakTimeline`). Configuration to start with; written by `setBreakTimeline`. */
 export const breakTimeline = signal<BreakTimeline>('config');
 /**
+ * Which application the Application timeline draws when the canvas selection
+ * names none: the id the picker chose, else the first application. Not
+ * persisted -- the drawing's applications are the document's.
+ */
+export const breakApp = signal<string | null>(null);
+/**
+ * Whether Break's run summary -- the band of cards under the bar, in Split and
+ * in Lanes -- is unfolded. Folded to start with: the bar's terse line is the
+ * summary a reader already has, and the band is the same readings at reading
+ * size. Only meaningful with a run on screen. Remembered under `dg-summary`
+ * (persist.ts), read once at boot like `hintsOn`.
+ */
+export const summaryOpen = signal<boolean>(false);
+/**
  * Whether the rail beside the canvas is folded to its slim strip.
  *
  * Only where the rail is a column (`wide`, and not in Learn, whose right half

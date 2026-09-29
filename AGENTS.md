@@ -19,7 +19,7 @@ produced, and how to extend it without breaking consistency or accuracy.
 | `diagrams/fsfo-sequence.svg` (+`.png`) | Sequence diagram of the crash case with an elapsed-time gutter |
 | `diagrams/fsfo-net-timeout.svg` (+`.png`) | Two panels separating NET_TIMEOUT (redo transport) from the broker failover clocks |
 | `diagrams/README.md` | Figure embeds, broker-property and redo-transport-property tables with verified defaults, the ping-properties quirk, the verified-facts sections behind the commit/reopen/observer/placement/side-topics views (including the 24-cell observer-placement outcome matrix) and behind the 26ai edition switch (the MaxAvailability lag-limit semantics and Oracle's self-contradiction on them, `PrimaryDatabaseCandidates`, `V$FS_FAILOVER_OBSERVERS`), the drawing idealizations, Oracle doc links. Its *Topology features* section points at `app/design/facts.md` for far sync, cascading, RedoRoutes, multi-target and multi-observer sources |
-| `app/` | The workbench: TypeScript + Vite + Preact + signals. A pure, DOM-free engine in `app/src/engine` (types, citation catalogue, validation rules, redo-graph resolver, epoch-loop simulator, generators, the legacy adapter), the interface in `app/src/ui` (including the on-canvas action bar, the Introduction page and the `Hints` toggle — see `app/design/ui.md` §3c–§3i; §3h is how the drawing is driven: click selects, `⋯` for the bar, drag-to-place, inline rename, marquee, shortcuts; §3i is the lean pass: the toolbar is the one add surface, Remove sits in the rail header; "Simulate's two layouts", at the end, is the Split and Lanes layouts of the Simulate screen and the switch between them), state in `app/src/state`, twelve presets in `app/src/presets`, ten lessons and the reference tables in `app/src/content`, 2594 vitest tests across 99 files in `app/src/**/__tests__` and `app/test`. Built to `_site/` and served at `/dataguard/`. Zero external requests, no inline script and no inline style — the page is meant to run under `script-src 'self'; style-src 'self'` |
+| `app/` | The workbench: TypeScript + Vite + Preact + signals. A pure, DOM-free engine in `app/src/engine` (types, citation catalogue, validation rules, redo-graph resolver, epoch-loop simulator, generators, the legacy adapter), the interface in `app/src/ui` (including the on-canvas action bar, the Introduction page and the `Hints` toggle — see `app/design/ui.md` §3c–§3i; §3h is how the drawing is driven: click selects, `⋯` for the bar, drag-to-place, inline rename, marquee, shortcuts; §3i is the lean pass: the toolbar is the one add surface, Remove sits in the rail header; "Simulate's two layouts", at the end, is the Split and Lanes layouts of the Simulate screen and the switch between them), state in `app/src/state`, twelve presets in `app/src/presets`, ten lessons and the reference tables in `app/src/content`, 2743 vitest tests across 105 files in `app/src/**/__tests__` and `app/test`. Built to `_site/` and served at `/dataguard/`. Zero external requests, no inline script and no inline style — the page is meant to run under `script-src 'self'; style-src 'self'` |
 | `app/public/collectors/` | Read-only SQL collector, optional Bash/SQL*Plus wrapper and run instructions for existing setups. The ⋯ menu's **Import existing setup** sheet previews pasted/file output before drawing it. `engine/collect.ts` maps current routes; imported `routesObserved` prevents invented NULL-default routes. Missing broker settings and placement assumptions remain in document notes. Validated live on a 19c primary + mounted standby (SYSDBA, local OS auth); wallet, least-privilege, RAC and far sync remain unverified. DGMGRL transcripts are not parsed. |
 | `app/design/facts.md` | The verified Oracle fact sheet for the topology features (far sync, cascading, multiple standbys and FSFO targets, multiple observers, RedoRoutes, member types, destination counts), researched 2026-08-16 against docs.oracle.com and re-verified 2026-08-17, marked `[D]` / `[D-later]` / `[UNDOC]` / `[CONFLICT]` per claim. **The only permitted source of a "documented" claim in the application.** Its top-five traps are restated in the accuracy rules below |
 | `app/design/engine.md` | The engine design: `Claim`/`Basis` labelling, the topology data model, the validation catalogue, the redo-graph resolver, the epoch-loop failure engine, the compat adapter and the 24-cell matrix gate, the generators, the module layout — plus §10, *Deviations from the design as built*, which is where the code and the specification differ |
@@ -66,8 +66,8 @@ public URL.
 
 The three gates, and what each one can catch that the others cannot:
 
-1. `npm --prefix app run test` — the application's own suite (**2617 tests
-   across 99 files**): the engine's invariants, the 24-cell matrix through the
+1. `npm --prefix app run test` — the application's own suite (**2743 tests
+   across 105 files**): the engine's invariants, the 24-cell matrix through the
    compat adapter, the validation catalogue, the generator goldens, the canvas
    and timeline geometry, the URL and file round trips.
 2. `node --test site/test.mjs` — the same kind of assertion against the legacy
@@ -420,6 +420,17 @@ agree on:
   not be allowed to open in any event if fast-start failover is enabled."
   (`ORA-16649`). Draw it mounted and needing reinstatement; never draw two
   databases open read-write because a host came back.
+- **"Split brain" is this page's reading, never Oracle's word.** No Oracle page uses
+  the term or gives an interval for it, so the Break readout's *Split brain* chip
+  (`splitBrainOf`, `engine/sim/split-brain.ts`) is `model`, note `SPLIT_BRAIN.READING`, and
+  asks one question of the drawing: were two members `open-rw` at the same moment. A
+  STALLED primary is not counted (Oracle: its redo generation is stalled), and the old
+  primary is drawn open only where nothing can tell it — a manual failover with fast-start
+  failover off, the old primary running where the new one cannot reach it. The chip is
+  asked only where a new primary opens by failover or manual failover. Never write a
+  *no* that says the old primary "cannot" be open: say what the drawing shows (aborted
+  at N s, down, stalled, mounted), and never draw "at most one database ends up open" as
+  unconditional (see the `FastStartFailoverLagLimit` rule above).
 - **One role change per run.** The engine evaluates one failover or switchover
   and says so (`SIM.ONE_ROLE_CHANGE`) when later events would need a second.
   Oracle documents that fast-start failover stays enabled and the reinstated
@@ -453,7 +464,9 @@ agree on:
   deliberately out of scope; at most a footnote.
 - **Where the connect string is dialled from is this page's model, never a
   documented fact.** The published page dials from outside every data centre;
-  the workbench dials from the application's card when the document has one. An
+  the workbench dials from each application's card when the document has any (a
+  configuration holds several, each with the connect string it has: its own, else
+  the shared one). An
   address the application cannot reach gives no answer (a timeout), whatever the
   dead-address switch says. The application decides nothing about a failover —
   no clock or decision reads it — and the three costs below stay nominal drawing
@@ -945,8 +958,9 @@ global appears in it; `app/test/import-boundary.test.ts` keeps the layering
 - **Types** (`types/topology.ts`, `types/events.ts`, `types/trace.ts`,
   `types/claims.ts`). The authored document is `TopologyDoc`: sites, hosts,
   links, members (`DatabaseMember` | `FarSyncMember`), observers, one
-  `Configuration` with its `FsfoConfig`, a `ClientDescriptor`, an optional
-  `Application` (the card the descriptor is dialled from), environment
+  `Configuration` with its `FsfoConfig`, a shared `ClientDescriptor`, any number
+  of `Application`s (a card each, dialled from; optionally with a descriptor of
+  its own, read through `applicationClient`), environment
   params and the event list. Derived output — `RedoEdge`, `ResolvedMember`,
   `RedoGraph`, `Epoch`, `Lane`, `Segment`, `Trace`, `DerivedFacts` — lives in
   `types/trace.ts`, because it is output rather than something anyone authors.
@@ -1005,9 +1019,9 @@ global appears in it; `app/test/import-boundary.test.ts` keeps the layering
   sorted `Finding[]`; the UI's issue list, the generated scripts' notes and the
   inspector's refusals all read that one list, so a rule is worded once.
 - **The other three models** (`models/*`) are the ported legacy views:
-  `computeApp` (the client's retry ladder over N addresses — dialled from the
-  application's host when the document draws one, and from outside every site,
-  as the published page dials it, when it does not), `computeCommit`
+  `computeApp` (the client's retry ladder over N addresses — dialled from an
+  application's host when the document draws one, `computeApps` for every one of
+  them, and from outside every site, as the published page dials it, when it does not), `computeCommit`
   (one commit under SYNC/FASTSYNC/ASYNC, `max(local write, remote ack path)`,
   the far sync hop terminating the commit) and `computeReopen` (the
   `ReopenSecs`/`MaxFailure` aftermath), plus `models/axis.ts`, which is the
@@ -1122,7 +1136,8 @@ modes changes what is around it.
   no data centre is named is `ui/build/placement.ts`. The box is drawn with
   `LAYOUT.colPad` (24) round its cards and may be resized down to
   `LAYOUT.fitPad` (14). **The application** is a card of its own under the
-  member band, in the primary's data centre to start with: one dash-dot
+  member band, in the primary's data centre to start with (several stand side
+  by side): one dash-dot
   `connect` line to every database on its ADDRESS_LIST, coming up onto the
   card's bottom edge, and a lane between the member band and the application
   (`Geometry.midLaneY`) for the redo routes that would otherwise run through
@@ -1132,9 +1147,9 @@ modes changes what is around it.
   `buildTimeline(trace, topology, view) → TimelineModel`; the component maps it
   to VNodes. Lane order is primary, observers (master first, and no master at
   all while FSFO is disabled), far syncs, then standbys in BFS order with
-  cascaded ones indented. Under them, when the document draws an application,
-  its point of view: `Service`, `Sessions` and `New connections`
-  (`timeline/app-lanes.ts`, pure, from `computeApp`), on the same axis — which
+  cascaded ones indented. Under them, when the document draws applications,
+  each one's point of view: `Service`, `Sessions` and `New connections`
+  (`timeline/app-lanes.ts`, pure, from `computeApps`), on the same axis — which
   stretches to the application's reconnect — and labelled as this page's model.
   The playhead is its own component subscribing to `tNow` alone.
 - **Panels** (`ui/panels/`): the generated files, rendered from the engine's
@@ -1182,7 +1197,7 @@ modes changes what is around it.
 
 ### Tests
 
-`npm --prefix app run test` is **2617 tests across 99 files**. What is where:
+`npm --prefix app run test` is **2743 tests across 105 files**. What is where:
 
 - `app/src/engine/__tests__/` — the engine's own unit tests (purity, citations,
   claims, schema, migrate, URL codec, parse, resolve, graph, axis, classic).
@@ -1192,7 +1207,14 @@ modes changes what is around it.
   ported models and the fragment's numbers.
 - `app/test/sim-*.test.ts`, `models-general.test.ts`, `presets.test.ts` —
   scenario, property and invariant tests over the general engine and all twelve
-  presets.
+  presets. `sim-split-brain.test.ts` is the *Split brain* reading off a trace
+  (`splitBrainOf`); `ui/summary-band.test.ts` is its chip and the run-summary band
+  in Break's Split and Lanes layouts.
+- `app/test/app-placement.test.ts`, `applications.test.ts`,
+  `ui/application.test.ts`, `ui/applications-many.test.ts` — the application
+  card: its vantage, several of them each with the connect string they dial, the
+  reader for a document written with one, the share-link round trip, and the
+  edits, lanes and readout per application.
 - `app/test/generate.test.ts` + `app/test/__golden__/` — the generated DGMGRL,
   `LOG_ARCHIVE_DEST_n`, tnsnames/JDBC and SHOW output for five topologies.
 - `app/test/ui/` + `app/test/ui/__golden__/` — canvas layout and routing

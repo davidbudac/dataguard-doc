@@ -581,8 +581,9 @@ it."* Five things landed, and one rule bent:
   drawing; at 1:1 nothing changes and the crispness rule holds. Past 1:1 the
   `.tp-wrap.is-zoomed` becomes the scroll port (not the stage, so the `+`
   toolbar and the zoom strip stay put in both axes), a background drag pans
-  it (lazy pointer capture, same threshold as a card drag), and ctrl/⌘-wheel
-  — a trackpad pinch — steps the ladder; a plain wheel still scrolls. The
+  it (lazy pointer capture, same threshold as a card drag), and the wheel
+  steps the ladder (summed, `WHEEL_NOTCH` per rung, so a trackpad or pinch
+  does not fly through it) keeping the point under the pointer fixed. The
   `−`/`+` buttons go grey at the ends with the reason in their `title`, the
   one grey control that explains itself in a tooltip rather than a `WhyPill`
   beside it: a sentence under a one-glyph button doubled the strip's height
@@ -744,6 +745,24 @@ fewer. One bullet per change.
   property of a card. Identity, role/apply and transport stay open: they are
   what the reader clicked the card for. `RedoRoutes` is still a plain group —
   it is `RedoRoutesEditor`'s own, and this pass did not open that file.
+- **A RAC member's Instances fold opens by itself.** `Fold` takes `defaultOpen`
+  (`MemberForm` passes `instances.length > 1`); a single-instance member stays folded.
+  A reader's own toggle is remembered for the session in the same open set -- and a
+  shut default-open fold in `shutSections`, since "absent from the open set" would
+  otherwise mean "never asked" and "shut" at once.
+- **An instance is selectable on the drawing.** In Build, each instance row of a RAC
+  card is a `role="button"`, `tabindex="0"` control with its own `data-node`, whose
+  selection key is `<member>~<n>` (`state/instanceKey.ts`; `n` is the 1-based place, so a
+  rename keeps the selection). `~` is not in an Oracle name; `resolveSubject` tries every
+  exact id first, so the key can only be a fallback; `?sel=` accepts it (`SEL_RE`). A click
+  on a row selects the row (never additive) and stops there; a press still bubbles to the
+  card, so a drag from a row moves the card. The rail shows `InstanceForm` (name, host,
+  `Remove` grey with `WHY.lastInstance` on the last one, `Select <member>`); the bar and
+  the Delete key offer `Edit` and `Remove` only -- nothing about the whole database.
+  Simulate draws the rows as before, unselectable. A single-instance card has no rows.
+- **The rail's buttons have a box at rest.** `.insp .btn` (not icon, quiet, primary,
+  solid or danger) takes `--ik` text on `--sf3` with a `--ln2` edge, over float.css's
+  ghost; hover darkens the fill and takes the `--ik3` edge.
 - **The scenarios are a shelf.** Two columns of names, and nothing else
   (`.tmpls` grid; `is-open` drops it to one column). Six clipped one-line
   captions under six buttons were twelve rows of text for a shelf a reader
@@ -887,9 +906,9 @@ the gestures were all there and the page was still clumsy to use. Where §3d or 
   said *under the open field* (`renameVerdict`, the rail's sentence), not in a toast
   after it closed. Every addition from the toolbar opens its own name, so add → type →
   `Enter` is one flow. A data centre renames its label; its id stays.
-- **Selections act as one.** A drag over the ground is a selection rectangle in Build
-  (cards only); the pan moved to the middle button and `Space`+drag, and the wheel
-  still scrolls. Dragging a selected card carries the selection, as one edit under the
+- **Selections act as one.** A `Shift`/`Ctrl`/`⌘`-drag over the ground is a selection
+  rectangle in Build (cards only, added to the selection); the plain drag, the middle
+  button and `Space`+drag pan, and the wheel zooms. Dragging a selected card carries the selection, as one edit under the
   pressed card's coalesce key (so `moveToSite` still folds into it). `Alt`+arrow nudges
   8 px (`Shift`: 32) — passed as a *delta*, so two presses inside one render add up.
   `Delete` asks `removeAction` for each selected thing against the document as it then
@@ -1137,24 +1156,34 @@ Assumptions are retained in document notes (the codec's 4000-character limit,
 with explicit truncation notice), and a persistent disclosure above the drawing
 keeps them visible across export, share and reload. DGMGRL text is not accepted.
 
-## The application on the drawing (as built, 2026-09-28)
+## The applications on the drawing (as built, 2026-09-28; several since 2026-09-29)
+
+A configuration holds any number of applications (`TopologyDoc.applications`), each
+its own card on a host of its own and each dialling the connect descriptor it has:
+its own (`Application.client`) or, when it has none, the document's shared
+`doc.client`. Everything below is per application; where a surface is genuinely
+single-application it says which one it shows.
 
 - **A card of its own** (`NodeKind 'application'`, glyph `app`, an `APP` chip): two
   lines, the width of a database card, on a host of its own in the primary's data
   centre to start with. It is dragged into another data centre like any card
   (`moveToSite`), renamed in place, removed from the rail's header, and added from
-  the toolbar — where `+ Application` is offered only while the drawing has none
-  (`AddAction.offered`): there is one, and a button grey for good says nothing. It
-  shares no host (`mergeVerdict`, `WHY_APPLICATION_OWN_HOST` — the page's own rule,
-  not Oracle's, and worded that way).
+  the toolbar — `+ Application` is always on offer (it needs a data centre, like the
+  other additions), names are the next free `app01`, `app02`, … in the one id
+  namespace, and each new card stands on a host of its own. It shares no host
+  (`mergeVerdict`, `WHY_APPLICATION_OWN_HOST` — the page's own rule, not Oracle's,
+  and worded that way). Several in one data centre stand side by side
+  (`LAYOUT.appSideGap`), so a line rising from one never crosses another.
 - **Its band is under the member band** (`LAYOUT.appGap`), the observers' is over
   it, so an observer's line comes down onto a card's top edge and the application's
   comes up onto its bottom one. In its own column the line is a straight hop, left
   of the card's middle; to another column it leaves the card sideways, runs under
   every database and rises beside the data centre's name (`clearOfName`), never
   through it. `LinkKind 'connect'`: dash-dot, colour `--cn`, one line per database
-  on the ADDRESS_LIST, captioned `sessions` to the database publishing the service
-  and `address` (faded) to the others; `cut` and `down` as every line says them.
+  on *that application's* ADDRESS_LIST (`applicationTargets(doc, app)`, id
+  `connect:<app>:<member>`), captioned `sessions` to the database publishing the
+  service and `address` (faded) to the others; `cut` and `down` as every line says
+  them, asked of that application's host.
 - **The lane between the bands** (`Geometry.midLaneY`, `LAYOUT.midLane`): with an
   application under the primary, a redo route that used to leave by the card's
   bottom edge for the lane under everything would run through the application's
@@ -1167,29 +1196,57 @@ keeps them visible across export, share and reload. DGMGRL text is not accepted.
   layout's. The observers' trunk gap grew by the difference, so the top trunk still
   passes under an observer-only data centre's name. All eleven canvas goldens moved;
   they record geometry.
-- **The rail** (`ApplicationForm`): name, data centre, then the connect string as
-  the descriptor spells it — `SERVICE_NAME`, `TRANSPORT_CONNECT_TIMEOUT`,
+- **The rail** (`ApplicationForm`): name, data centre, then *Connect string* — a
+  choice between **Use the shared connect string** and **Own connect string**.
+  Choosing *own* copies the shared descriptor (addresses included) onto the
+  application; choosing *shared* again discards it. Below the choice, the parameters
+  as the descriptor spells them — `SERVICE_NAME`, `TRANSPORT_CONNECT_TIMEOUT`,
   `CONNECT_TIMEOUT` (0 is "not set": no default is documented), `RETRY_COUNT`,
   `RETRY_DELAY`, `FAILOVER`, `LOAD_BALANCE` — the ADDRESS_LIST as a tick per
   database (a far sync instance grey, with its reason), and the dead-address answer
-  under *This page's model*. A line drawn between the application and a database
-  lists that database. A new standby joins the list; a standby moved to another
-  data centre stays on it.
-- **Simulate: the application's view.** Three lanes under the configuration's, on the
-  same axis and under the same playhead (`timeline/app-lanes.ts`, pure): `Service`,
+  under *This page's model*. **Every edit is to the descriptor this application
+  dials.** For an application on the shared one that is the shared descriptor, so the
+  change reaches every application that dials it — the hint under the choice names
+  them, and the undo entry says "the shared ADDRESS_LIST". A line drawn between an
+  application and a database lists that database on *that* application's list; a
+  route's Remove takes it off that list. A new standby joins the **shared** list
+  only: an application with a connect string of its own keeps the list its owner
+  wrote. A standby moved to another data centre stays on every list that names it
+  (shared and own); a host that goes takes its addresses from all of them.
+- **Simulate: each application's view.** Three lanes per application under the
+  configuration's, on the same axis and under the same playhead
+  (`timeline/app-lanes.ts`, pure, one `AppModel` each from `computeApps`): `Service`,
   `Sessions`, `New connections`, headed by one line that says what they add up to
   ("outage 60.3 s — 15.3 s of it inside the connect string") and that it is this
-  page's model. The ladder is drawn address by address; the reconnect and the
-  exhausted string are marks. The axis stretches to the application's own end
-  (`axisSpan(trace, events, doc)`, capped as the Config panel caps it), because
-  the reconnect is usually past the role change. `Application's view` in the legend
-  row folds the lanes away (`appLanesShown`, a moment's view); the pinned export
-  scale never draws them. The readout gains `Application reconnects` / `Application
-  stays down`.
+  page's model. With one application the heading is "The application's view"; with
+  several, "app02's view" for each (`TimelineModel.appSections`, lane keys
+  `application:<app>:<lane>`, marks `app-reconnect:<app>`). The ladder is drawn
+  address by address; the reconnect and the exhausted string are marks. The axis
+  stretches to the *last* application's end (`axisSpan(trace, events, doc)`, capped as
+  the Config panel caps it), because a reconnect is usually past the role change.
+  `Application's view` / `Applications' views` in the legend row folds every
+  application's lanes away together (`appLanesShown`, a moment's view); the pinned
+  export scale never draws them. In the Lanes layout each application is a row with
+  its own host's up and down, and its three lanes sit under their own heading. The
+  events on an application are per application: Crash / Restore act on *its* host.
+- **The readout, one reading per application.** With one application the readings
+  are `Application reconnects` / `Application stays down`; with several, each reads
+  under its own name (`app02 reconnects`, `app02 stays down`) with `group: 'app'` so the
+  bar ranks and keeps them as it kept the one (`ReadoutChip.group`; the first keeps
+  the id `app`, the rest are `app~1`, `app~2`). An application nothing happened to has
+  no reading, as before.
+- **Config.** *Application view* draws one figure per application, each captioned
+  with the application and whether it dials its own connect string or the shared one;
+  with none, the one figure dialled from outside every data centre. *tnsnames / JDBC*
+  shows the shared pair and then a pair of its own for every application that has
+  one (`buildClientFiles`), and says who dials which. The review dialog and the
+  printable report take the same pairs.
 - **What a document without one does.** Nothing new: no card, no lanes, no lane
   between the bands, the published vantage. A link or a file written before the
   card existed, and every published-page link, opens that way; `+ Application` adds
-  it. The presets, the first-visit document and Reset carry it.
+  it. The presets, the first-visit document and Reset carry one. A document written
+  when a configuration held one application (`application: {…}`) is read as a
+  one-element `applications` list.
 - **Found on the way, and fixed:** a published-page link opened the Introduction
   over itself on a first visit (its query keys are not in `ADDRESSED`), so
   `site/smoke.mjs` failed its two legacy-link checks. Boot now counts an upgraded
@@ -1350,7 +1407,8 @@ handle on its top edge). Build's dock, chips and warning card are as they were.
     Why? · New primary open … · Application reconnects … · Observer …`; **a value is never
     clipped**, see *The terse line* below), a **Fit timeline** button while an event drop has held the axis, the findings
     as one chip (`⚠ 2`, the notes count, or ✓) with a dropdown, the colour key and the
-    **Application's view** toggle behind an (i), the pop-out and the full-screen buttons.
+    **Application's view** toggle behind an (i), the pop-out and the full-screen buttons. With
+    a run, a **Summary ▾** button stands beside the line (*The run summary*, below).
     The whole bar is the drag handle (a press must move 4 px before it is a drag, so a
     button's click stays a click; double-click resets), and its top edge carries the
     keyboard separator (`DockGrip`, the window-splitter pattern, arrow keys, Home/End,
@@ -1360,9 +1418,11 @@ handle on its top edge). Build's dock, chips and warning card are as they were.
     fits by leaving **whole readings out**, from the line's own measured width (the
     `.sb-ro` element, `flex: 1 1 0` so the readings do not size it, watched by
     `useWidth`; each reading's width comes from a hidden copy of the line, `.sb-rm`,
-    measured before paint). Give-up order, first to go first: Data loss, New primary open,
-    the primary's shutdown, Fast-start failover and Members (steady readings), then the
-    essentials Observer, Application, and never Outcome (with *Why?*). While anything
+    measured before paint). Give-up order, first to go first: Split brain, Data loss, New
+    primary open, the primary's shutdown, Fast-start failover and Members (steady readings),
+    then the essentials Observer, Application, and never Outcome (with *Why?*). Split brain is
+    last in `KEEP` and outside `CORE`: it is a reading about the run, the band has it whole,
+    and the others keep their order. While anything
     non-essential is on the line the eyebrows stay whole; only when just the essentials are
     left do they shorten (*Application reconnects* to *App reconnects*, *Application* to
     *App*); a value is never shortened. The line's `title` lists every reading whenever one
@@ -1539,11 +1599,71 @@ handle on its top edge). Build's dock, chips and warning card are as they were.
     the plot moves the playhead, nothing plays). With the first event the axis becomes the
     run's own.
   - *The bar* is Split's parts on the view's top edge (`sb-bar ln-bar`): transport (the
-    speeds fold into a select under 1100 px), the terse readout with *Why?*, *Fit
-    timeline* while held, the findings count with the dropdown listing every finding
+    speeds fold into a select under 1100 px), the terse readout with *Why?* and the
+    *Summary* button beside it (unfolded, the band of cards sits between the bar and the
+    rows — *The run summary*), *Fit timeline* while held, the findings count with the dropdown listing every finding
     (`FindingsSheet`), and the key with the Application's view toggle behind an (i).
     Dropdowns open downward. `revealFindings` opens that dropdown in Lanes as in Split
     and leaves the rail as it was.
+- **The run summary** (`ui/break/SummaryBand.tsx`, `styles/summary.css`; both layouts, one
+  preference). The terse line is the summary a reader already has, one line of it with what
+  does not fit left out; the band is the same readings at reading size, one card each, the
+  sentence showing.
+  - *Folded is where a new reader starts*: the bar is exactly what it was, and a **Summary ▾**
+    button (`aria-expanded`, `aria-controls` the band's id, `run-summary`) stands beside the
+    line, which is wrapped in `.rs-hit`. A click anywhere on the line unfolds it too, except
+    on a button inside it (*Why?* keeps its own click). A press on the line must not start
+    Split's resize drag, so `.rs-hit` is in `KEEPS_PRESS` (SplitBar.tsx) with the buttons — the
+    line is no longer a place to grab the bar, which the rest of the bar still is.
+  - *Unfolded*: the line gives way to a spacer (`.rs-fill`, so the findings chip, the key and
+    the buttons keep their places), and the button reads **▴ Summary**. The band sits directly
+    under the bar and above the timeline — in Split between `SplitBar` and `.tl-slot`
+    (`SplitDock`), in Lanes between the bar and `.ln-body` — flush, on `--sf2`, 260 px at
+    most and then its own scroll box, so a tall band cannot take the timeline's room.
+  - *A card* is the eyebrow (`k`), the value in the tone colour with its unit and quieter
+    second value, and the sentence (`sub`) — visible, not a tooltip. A reading that is not
+    documented (`basis` set and not `documented`) wears `Fact`, the marker the rest of the
+    page uses (*this page's model*, *inferred*, …). The outcome card carries **Why?**
+    (`showExplanation`). The cards are `readout` without the findings chip — the very list the
+    terse line draws — and wrap on their own (`auto-fit`, 190 px minimum); no `style`
+    anywhere.
+  - *Only with a run* (`trace.value !== null`). With none there is neither the button nor the
+    band, even if the preference says unfolded: the bar shows the line, as before. The
+    preference comes back when a run does.
+  - *Remembered*: `summaryOpen` (`state/view.ts`), `dg-summary` (`persist.ts`, `'1'` =
+    unfolded, anything else folded), read once at boot (`loadSummaryOpen`, try/catch like the
+    rest), written by `setSummaryOpen`. A reading preference like the layout: not in the address.
+- **Split brain, the reading** (`readoutFor`'s run branch, chip `id: 'split'`, `k: 'Split
+  brain'`; `engine/sim/split-brain.ts`, exported as `splitBrainOf`). *Were two members open
+  read-write as primary at the same moment?* The engine answers it off the trace's lanes: two
+  members in `open-rw` over a stretch that has a length (two states that only touch — the old
+  primary closing as the new one opens — are not one). **Asked only where a new primary
+  opens by failover or manual failover**: nothing moved, a refused failover, an operator left
+  to act and a switchover (whose old primary is converted before the new one opens, by
+  construction) have no chip. The chip sits after the primary's shutdown and before the
+  application's readings.
+  - *Tone and value*: `no` in `tl`, `yes` in `rd`. The sentence branches on what the drawing
+    shows at the instant the new primary opens, never on the event: *prm01 aborts at 30 s,
+    before sby01 opens at 55 s* (the old app's sentence); *prm01 is down when …*; *prm01 is
+    STALLED when … and nothing shuts it down* (or *… it shuts itself down at N s*); *prm01 is
+    mounted, not open, when …* (told, or reachable); and, for a yes, *prm01 and sby01 are both
+    open read-write from 30 s to the end of the run: prm01 is still open when sby01 opens at
+    30 s* — the window, closed at its end where something closes it.
+  - *Basis*: `model`, note `SPLIT_BRAIN.READING`. Oracle does not use the term and gives no
+    interval, so no citation documents the reading; the ones it carries
+    (`FSFO.GUARANTEE_STALL`, `FSFO.PMY_SHUTDOWN`, `FAILOVER.PRIMARY_SHUT_DOWN`) support the
+    pieces, and it renders as this page's model wherever a chip does. **What the reading
+    counts as open** is the engine's own drawing: a STALLED primary is not counted (Oracle:
+    its redo generation is stalled, so it commits nothing the new primary will not have),
+    which is how the old page read it too; and a former primary is drawn open only where
+    nothing can tell it — a manual failover with fast-start failover off, the old primary
+    running where the new one cannot reach it (`FAILOVER.FORMER_PRIMARY_MOUNTED`'s note).
+    **A manual failover with the old primary still running and reachable reads `no`** (it is
+    drawn mounted the instant the new primary opens) while the run also raises
+    `FAILOVER.PRIMARY_STILL_OPEN`; the two are Oracle's instruction and this page's reading of
+    what the broker does, and probe SBR-04 keeps the tension in view.
+  - *The print report* takes the chip with the others (`readoutFor(false)`): a row *Split
+    brain — no*, the model label, the citations numbered into its sources.
 - **The playhead's time badge keeps clear** of every event sentence, icon chip and number
   circle in the model (`badgePlacement`, `markerBoxes` in `Playhead.tsx`): right of the
   line, else left, else the nearest clear place further out, read from the model's own
@@ -1585,7 +1705,14 @@ handle on its top edge). Build's dock, chips and warning card are as they were.
   bar's dropdown in both layouts (Split's and Lanes'); the rows at the foot of Lanes' rail
   stay, and the rail is no longer unfolded for it.
 
-Tests: `test/ui/polish-split.test.ts` (the badge against every label, chip and number; the
+Tests: `test/ui/summary-band.test.ts` (both layouts: folded to start with, the button and a click on
+the line unfold, *Why?* inside the line does not, the spacer, the band directly under the bar and above
+the timeline, the cards against the readout, the model marker, *Why?* on the outcome card, no band and no
+button without a run, the preference and its storage, and the Split brain chip: yes, no, absent),
+`test/sim-split-brain.test.ts` (the reading off the trace: every no, the yes and its window, the
+runs that are not asked, the claim's label), `readout-fit.test.ts` (Split brain is the first reading
+the line gives up), `report.test.ts` (the chip in the print report),
+`test/ui/polish-split.test.ts` (the badge against every label, chip and number; the
 spoken axis; the restore note's title; auto-fit, manual zoom and Fit; the divider's
 press-release, cancel and keyboard), `test/ui/break-layouts.test.ts` (the preference, the switch, Split's bar, the rail
 fold for both layouts, in memory and never `dg-rail`, round trips between them, the snap, the

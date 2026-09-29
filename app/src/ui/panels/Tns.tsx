@@ -7,20 +7,29 @@
  * reason is on the card.
  */
 
-import { buildJdbc, buildTns } from '@/engine';
+import { applicationsOf, buildClientFiles } from '@/engine';
 import { topology } from '@/state/derived';
 import { CodeBlock } from './CodeBlock';
 
 export function Tns() {
   const doc = topology.value;
-  const tns = buildTns(doc);
-  const jdbc = buildJdbc(doc, { lead: true });
+  const files = buildClientFiles(doc, { lead: true });
+  const apps = applicationsOf(doc);
+  const own = apps.filter((a) => a.client !== undefined);
+  const shared = apps.filter((a) => a.client === undefined);
+  const names = (list: readonly { name: string }[]): string => list.map((a) => a.name).join(', ');
 
   return (
     <div class="panel" role="region" aria-label="tnsnames and JDBC">
       <div class="panel-hd">
         <span class="eyebrow">Configuration files</span>
-        <p class="prose">The connect string, on every application host.</p>
+        <p class="prose">
+          {apps.length === 0
+            ? 'The connect string, on every application host.'
+            : own.length === 0
+              ? `The connect string, on every application host (${names(apps)}).`
+              : `The shared connect string${shared.length > 0 ? `, dialled by ${names(shared)}` : ', which no application dials'}; ${names(own)} ${own.length === 1 ? 'has a connect string of its own' : 'have connect strings of their own'}, below it.`}
+        </p>
         <p class="caption">
           One ADDRESS per host that can publish the role-based service, so a client that
           reaches the wrong one is refused instantly with <span class="mono">ORA-12514</span>
@@ -33,8 +42,7 @@ export function Tns() {
         </p>
       </div>
       <div class="panel-body">
-        <CodeBlock file={tns} doc={doc} />
-        <CodeBlock file={jdbc} doc={doc} />
+        {files.map((file) => <CodeBlock key={file.id} file={file} doc={doc} />)}
       </div>
     </div>
   );

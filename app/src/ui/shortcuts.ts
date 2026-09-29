@@ -10,6 +10,7 @@
  * text input is not this page's to take.
  */
 
+import { applicationsOf } from '@/engine';
 import { topology } from '@/state/derived';
 import { redo, undo } from '@/state/history';
 import { toggleRail } from '@/state/persist';
@@ -40,7 +41,7 @@ export function onGlobalKey(ev: KeyboardEvent): void {
     const t = topology.value;
     selection.value = [
       ...t.members.map((m) => m.id as string), ...t.observers.map((o) => o.id as string),
-      ...(t.application ? [t.application.id as string] : []),
+      ...applicationsOf(t).map((a) => a.id as string),
     ];
     return;
   }

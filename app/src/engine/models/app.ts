@@ -21,7 +21,7 @@
  */
 
 import { NOMINAL } from '../defaults';
-import type { HostId, MemberId, Seconds, SiteId } from '../ids';
+import type { ApplicationId, HostId, MemberId, Seconds, SiteId } from '../ids';
 import { buildReachability, hostUp, initialNetState, instanceKey, netFromSummary } from '../net/graph';
 import type { Reachability } from '../net/graph';
 import type { Claim } from '../types/claims';
@@ -30,7 +30,7 @@ import type { AnyState } from '../types/events';
 import type {
   Application, ClientAddress, ClientDescriptor, Host, Site, TopologyDoc,
 } from '../types/topology';
-import { declaredPrimary } from '../types/topology';
+import { applicationClient, applicationsOf, declaredPrimary } from '../types/topology';
 import type { Epoch, Lane, Segment, Trace } from '../types/trace';
 import type { AxisSpec } from './axis';
 import { fixedAxis, secondsAxis } from './axis';
@@ -141,7 +141,9 @@ export interface AppModel {
   horizon: Seconds;
   preRoll: Seconds;
   tickStep: Seconds;
-  /** Where the application stands; null when the document has no application. */
+  /** Which application this is the view of; null for the descriptor dialled from outside every site. */
+  application: { id: ApplicationId; name: string } | null;
+  /** Where the application stands; null when it has no application. */
   placed: { host: HostId; site: SiteId } | null;
   /** When the application's own host first went down; null when it never did. */
   appDownAt: Seconds | null;
@@ -229,11 +231,10 @@ class TraceReader {
   private readonly instanceByHost = new Map<string, string>();
   private readonly laneByMember = new Map<string, Lane>();
   private readonly reach = new Map<string, Reachability>();
-  /** The application's card, when the document has one standing on a host. */
+  /** The application's card, when it stands on a host that is still in the document. */
   readonly app: Application | null;
 
-  constructor(private readonly doc: TopologyDoc, private readonly trace: Trace) {
-    const a = doc.application;
+  constructor(private readonly doc: TopologyDoc, private readonly trace: Trace, a: Application | null) {
     this.app = a && doc.hosts.some((h) => h.id === a.host) ? a : null;
     for (const h of doc.hosts) this.hostById.set(h.id as string, h);
     for (const s of doc.sites) this.siteById.set(s.id as string, s);
@@ -399,6 +400,23 @@ class TraceReader {
 export interface AppOptions {
   /** Addresses to dial; defaults to the descriptor's own list. */
   addresses?: ClientAddress[];
+  /**
+   * The application whose view this is: the descriptor is dialled from the host
+   * it stands on. Absent, the descriptor is dialled from outside every data
+   * centre. There is no default to a document's first application -- a caller
+   * with several asks for each (`computeApps`).
+   */
+  application?: Application | null;
+}
+
+/**
+ * Every application's view of the same run, one model each, in the order the
+ * document lists them; empty when it draws none. Each dials the descriptor it
+ * has (`applicationClient`), from the host it stands on.
+ */
+export function computeApps(trace: Trace, doc: TopologyDoc): AppModel[] {
+  return applicationsOf(doc).map((application) =>
+    computeApp(applicationClient(doc, application), trace, doc, { application }));
 }
 
 export function computeApp(
@@ -408,7 +426,7 @@ export function computeApp(
   const ESTAB = NOMINAL.establishSeconds;
   const RST = NOMINAL.osRefuseSeconds;
 
-  const reader = new TraceReader(doc, trace);
+  const reader = new TraceReader(doc, trace, opts.application ?? null);
   const addresses = opts.addresses ?? client.addresses;
   const rc = Math.max(0, client.retryCount);
   const rd = Math.max(0, client.retryDelaySeconds);
@@ -504,7 +522,10 @@ export function computeApp(
     servingState: reached0 ? 'open-rw' as const : null,
     published: primaryHosts.length > 0 ? primaryId : null,
   };
-  const shape = { placed, appDownAt, spans, steady };
+  const shape = {
+    application: reader.app === null ? null : { id: reader.app.id, name: reader.app.name },
+    placed, appDownAt, spans, steady,
+  };
 
   const noEvent = (kind: NoEventKind): AppModel => {
     const axis = fixedAxis(60);

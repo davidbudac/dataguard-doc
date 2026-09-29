@@ -344,11 +344,18 @@ conditional on the target being the current target, synchronized or inside the l
 the observer reaching it (`manualFailoverFindings`, roles.ts); the loss it books is the redo the
 target never received -- never documented as bounded, zero or lossless, always model
 (`FAILOVER.LOSS_DEPENDS`).
-**A former primary is never drawn open beside the new one.** After a role change it is mounted,
-not open, whether or not fast-start failover armed the failover (`FSFO.FORMER_PRIMARY_NOT_OPEN`
+**A former primary is drawn open beside the new one only where nothing can tell it.** After a
+role change it is mounted, not open, whether or not fast-start failover armed the failover (`FSFO.FORMER_PRIMARY_NOT_OPEN`
 where it did, `FAILOVER.FORMER_PRIMARY_MOUNTED` -- this page's reading -- where it did not,
 since only the fast-start-failover case has ORA-16649 spelling out the mounted state). It stays
-that way until REINSTATE DATABASE or a fresh START/STARTUP the run does not model.
+that way until REINSTATE DATABASE or a fresh START/STARTUP the run does not model. The one
+exception is a manual failover with fast-start failover disabled and the old primary running where
+the new one cannot reach it: nothing tells it, so it stays `open-rw` beside the new primary (and the
+run raises `FAILOVER.PRIMARY_STILL_OPEN`). That is what `splitBrainOf` (`sim/split-brain.ts`) reads
+back: two lanes `open-rw` over a stretch with a length. A `Claim<boolean>`, `model`, note
+`SPLIT_BRAIN.READING` -- Oracle has no term and no interval for it -- asked only of a failover or manual
+failover that moved a primary, with the window when yes and, when no, what the old primary was doing
+the instant the new one opened (down, aborted, stalled, mounted). A STALLED primary is not counted.
 **One role change per run.** A second failover after a role change -- fast-start failover stays
 armed, and "the reinstated database acts as the fast-start failover target for the new primary
 database, making a subsequent fast-start failover possible" -- is not simulated. The run stops
@@ -426,7 +433,7 @@ app/src/engine/
   net/graph.ts
   redo/{parse,resolve}.ts
   validate/{index,rules/*}.ts
-  sim/{kernel,fsfo,protection,roles,simulate}.ts
+  sim/{kernel,fsfo,protection,roles,split-brain,simulate}.ts
   models/{axis,app,commit,reopen}.ts
   compat/classic.ts
   generate/{dgmgrl,initora,tnsnames,jdbc,show,lines}.ts
@@ -554,21 +561,43 @@ edges apply only under the captured primary. The importer returns assumptions
 and any schema repairs beside the document. No live database verification was
 available; the collector and mapping need a real Oracle test-environment drill.
 
-### The application as a card (2026-09-28)
+### The application as a card (2026-09-28), and several of them (2026-09-29)
 
-`TopologyDoc.application?: { id, name, host }` draws the application tier on a host
-of its own; `doc.client` stays the connect descriptor and is what the card's form
-edits. The field is optional schema-2: a document without it parses, exports and
-reloads without it, and `parseApplication` drops (and reports) one whose host is
-gone. `engine/application.ts` (`withApplication`, `primarySite`) is the one place
-that puts it on a document: in the primary's data centre, filling an empty
-ADDRESS_LIST with the primary and then every standby database, never a far sync
-instance.
+`TopologyDoc.applications?: Application[]` draws the application tier, one card per
+entry, each on a host of its own: `Application = { id, name, host, client? }`.
+`doc.client` is the **shared** connect descriptor — what an application without one of
+its own dials, and what a document with no application dials from outside every data
+centre. An application's `client` is a full `ClientDescriptor` of its own; the one
+place that chooses between the two is `applicationClient(doc, app)`
+(`types/topology.ts`, beside `applicationsOf` and `findApplication`), and nothing that
+works on behalf of an application reads `doc.client` directly. The field is optional
+schema-2: a document without it parses, exports and reloads without it, and
+`parseApplications` drops (and reports) an entry whose host is gone, whose id is
+missing or repeats an earlier one, and any address in an own descriptor that is not a
+host. `engine/application.ts` (`withApplication`, `nextApplicationName`, `primarySite`)
+is the one place that puts one on a document: in the primary's data centre unless a
+data centre is named, named `app01`, `app02`, … (the first name the id namespace is
+free of), filling an *empty shared* ADDRESS_LIST with the primary and then every
+standby database, never a far sync instance. Adding a second changes nothing about
+the first.
+
+**Migration, and why the schema number did not move.** A document written when a
+configuration held at most one application carries it as `application: {…}`.
+`parseApplications` reads that as `applications: [that]` (a file carrying both takes
+the list); everything written now says `applications`. `schema` stays `2`: the new
+field is additive and optional exactly as `application` was, the reader is tolerant,
+and a bump would only have made every older link and file "unknown" for no
+information gained. The one cost is one-way: an older build opening a newer document
+ignores `applications` and dials from outside every data centre — the configuration
+itself survives. The share link, the file and localStorage all pass through
+`parseTopologyDoc` (`migrate`), so the chain needs no step of its own.
 
 - **`computeApp` has two vantages, and the document picks.** With no application the
   published reading stands, word for word and number for number (`APP.CLIENT_VANTAGE`:
   outside every site, an address answers when its site still has a way out) — that is
-  what `classicTopology`, a legacy link and `legacy-models.test.ts` run. With one, an
+  what `classicTopology`, a legacy link and `legacy-models.test.ts` run. With one — the
+  application is named by the caller, `computeApp(client, trace, doc, { application })`,
+  and never defaulted to the document's first — an
   address is dialable when its host is up and the application's host reaches it
   (`APP.CLIENT_PLACED`, model), asked of `buildReachability` with the engine's
   no-transit default. A dead host behind a severed link is a `timeout` whatever
@@ -582,7 +611,17 @@ instance.
   service stays in reach nothing happened (the outcome only names the kind of quiet),
   and once it does not there is a ladder, whatever the broker decided — so a stalled
   primary that aborts at the threshold is a ladder from the abort.
-- **New on `AppModel`:** `placed`, `appDownAt`, `spans` (stretches over which the
+- **One view per application.** `computeApps(trace, doc)` is `computeApp` once per
+  entry of `doc.applications`, in the document's order, each with
+  `applicationClient(doc, app)` and its own vantage; the result is an array whose
+  entries name their application (`AppModel.application`, null for the descriptor
+  dialled from outside). The simulation itself (`sim/*`) never sees an application, so
+  two applications in one run share one trace and differ only in where they stand and
+  what they dial: a cut between the two database data centres strands the one behind
+  it and leaves the other alone. The generators take the descriptor as an option
+  (`buildTns(doc, { client, label })`, `buildJdbc`) and `buildClientFiles(doc)` is the
+  shared pair followed by a pair for each application with a descriptor of its own.
+- **New on `AppModel`:** `application`, `placed`, `appDownAt`, `spans` (stretches over which the
   application's picture is constant: `appUp`, `serving`, `servingState`, `published`)
   and `steady` (the same for the configuration as declared — a trace opens on its
   first event, so its first span is already the failure). `NoEventKind` gains

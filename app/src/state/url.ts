@@ -70,6 +70,8 @@ export const URL_DEFAULTS: UrlState = {
 
 /** Ids are ours, so the alphabet is ours: anything else is not an id. */
 const ID_RE = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$/;
+/** A selection key is an id, or an id and an instance place (`sby01~2`, `state/instanceKey.ts`). */
+const SEL_RE = /^[A-Za-z0-9][A-Za-z0-9._:~-]{0,66}$/;
 const SEL_MAX = 20;
 
 /** The axis never runs past 900 s and pre-roll never below -60 s. */
@@ -139,9 +141,9 @@ export const URL_FIELDS: readonly UrlField[] = [
     write: (s) => (s.panel === URL_DEFAULTS.panel ? null : s.panel),
   },
   {
-    k: 'sel', what: 'selected members, comma separated',
+    k: 'sel', what: 'selected objects (members, instances as id~n, ...), comma separated',
     parse: (raw, out) => {
-      const ids = raw.split(',').map((x) => x.trim()).filter((x) => ID_RE.test(x));
+      const ids = raw.split(',').map((x) => x.trim()).filter((x) => SEL_RE.test(x));
       out.sel = ids.slice(0, SEL_MAX);
     },
     write: (s) => (s.sel.length === 0 ? null : s.sel.join(',')),

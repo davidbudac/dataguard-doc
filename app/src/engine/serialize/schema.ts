@@ -239,7 +239,7 @@ export function parseTopologyDoc(raw: unknown): ParseResult {
   const observers = parseObservers(c, raw['observers'], hostIds);
   const config = parseConfiguration(c, raw['config'], edition, memberIds, hostIds);
   const client = parseClient(c, raw['client'], hostIds);
-  const application = parseApplication(c, raw['application'], hostIds);
+  const applications = parseApplications(c, raw, hostIds);
   const environment = parseEnvironment(c, raw['environment']);
   const events = parseEvents(c, raw['events'], { hostIds, siteIds, memberIds, links, observers });
 
@@ -257,7 +257,7 @@ export function parseTopologyDoc(raw: unknown): ParseResult {
     app: 'dg-topology',
     schema: 2,
     sites, hosts, links, members, observers, config, client,
-    ...(application ? { application } : {}),
+    ...(applications.length > 0 ? { applications } : {}),
     environment, events,
   };
   const savedAt = typeof raw['savedAt'] === 'string' ? raw['savedAt'] : undefined;
@@ -770,7 +770,9 @@ function parseConfiguration(
   return out;
 }
 
-function parseClient(c: Ctx, raw: unknown, hostIds: ReadonlySet<string>): ClientDescriptor {
+function parseClient(
+  c: Ctx, raw: unknown, hostIds: ReadonlySet<string>, at = 'client',
+): ClientDescriptor {
   const d = defaultClient();
   if (!isObj(raw)) return d;
   const addresses: ClientDescriptor['addresses'] = [];
@@ -778,52 +780,83 @@ function parseClient(c: Ctx, raw: unknown, hostIds: ReadonlySet<string>): Client
     if (!isObj(v)) return;
     const h = typeof v['host'] === 'string' ? v['host'] : '';
     if (!hostIds.has(h)) {
-      c.repaired(`client.addresses[${i}].host`, `${h || '(none)'} is not a host; dropped`);
+      c.repaired(`${at}.addresses[${i}].host`, `${h || '(none)'} is not a host; dropped`);
       return;
     }
     addresses.push({
       host: hostId(h),
-      port: c.bounded(v['port'], `client.addresses[${i}].port`, 'listenerPort'),
+      port: c.bounded(v['port'], `${at}.addresses[${i}].port`, 'listenerPort'),
     });
   });
   const ctRaw = raw['connectTimeoutSeconds'];
   return {
-    serviceName: c.str(raw['serviceName'], 'client.serviceName', d.serviceName, 128),
+    serviceName: c.str(raw['serviceName'], `${at}.serviceName`, d.serviceName, 128),
     addresses,
     transportConnectTimeoutSeconds: c.bounded(raw['transportConnectTimeoutSeconds'],
-      'client.transportConnectTimeoutSeconds', 'transportConnectTimeoutSeconds'),
+      `${at}.transportConnectTimeoutSeconds`, 'transportConnectTimeoutSeconds'),
     connectTimeoutSeconds: ctRaw === null || ctRaw === undefined
       ? null
-      : c.bounded(ctRaw, 'client.connectTimeoutSeconds', 'connectTimeoutSeconds'),
-    retryCount: c.bounded(raw['retryCount'], 'client.retryCount', 'retryCount'),
-    retryDelaySeconds: c.bounded(raw['retryDelaySeconds'], 'client.retryDelaySeconds', 'retryDelaySeconds'),
-    failover: c.bool(raw['failover'], 'client.failover', d.failover),
-    loadBalance: c.bool(raw['loadBalance'], 'client.loadBalance', d.loadBalance),
-    deadBehaviour: c.oneOf(raw['deadBehaviour'], 'client.deadBehaviour', ['drop', 'rst'] as const, d.deadBehaviour),
+      : c.bounded(ctRaw, `${at}.connectTimeoutSeconds`, 'connectTimeoutSeconds'),
+    retryCount: c.bounded(raw['retryCount'], `${at}.retryCount`, 'retryCount'),
+    retryDelaySeconds: c.bounded(raw['retryDelaySeconds'], `${at}.retryDelaySeconds`, 'retryDelaySeconds'),
+    failover: c.bool(raw['failover'], `${at}.failover`, d.failover),
+    loadBalance: c.bool(raw['loadBalance'], `${at}.loadBalance`, d.loadBalance),
+    deadBehaviour: c.oneOf(raw['deadBehaviour'], `${at}.deadBehaviour`, ['drop', 'rst'] as const, d.deadBehaviour),
   };
 }
 
 /**
- * The application card. Absent stays absent: a document written before the
+ * The application cards. Absent stays absent: a document written before the
  * card existed keeps dialling from outside every data centre, which is what
  * its numbers were computed for.
+ *
+ * A document written when a configuration held at most one application carries
+ * it as `application`, an object. That is read as a one-element list (and an
+ * `applications` list, when both are present, wins) -- so the schema number
+ * did not have to move: the new field is additive, and a reader that does not
+ * know it only loses the cards, never the configuration.
  */
+function parseApplications(
+  c: Ctx, raw: Record<string, unknown>, hostIds: ReadonlySet<string>,
+): Application[] {
+  const list = raw['applications'];
+  const legacy = raw['application'];
+  const sources: { at: string; value: unknown }[] = [];
+  if (list !== undefined && list !== null) {
+    if (!Array.isArray(list)) c.repaired('applications', 'not a list; dropped');
+    else list.forEach((v, i) => sources.push({ at: `applications[${i}]`, value: v }));
+  } else if (legacy !== undefined && legacy !== null) {
+    sources.push({ at: 'application', value: legacy });
+  }
+  const out: Application[] = [];
+  const seen = new Set<string>();
+  for (const { at, value } of sources) {
+    const app = parseApplication(c, value, at, hostIds);
+    if (app === undefined) continue;
+    if (seen.has(app.id as string)) { c.repaired(`${at}.id`, `duplicate ${app.id as string}; dropped`); continue; }
+    seen.add(app.id as string);
+    out.push(app);
+  }
+  return out;
+}
+
 function parseApplication(
-  c: Ctx, raw: unknown, hostIds: ReadonlySet<string>,
+  c: Ctx, raw: unknown, at: string, hostIds: ReadonlySet<string>,
 ): Application | undefined {
-  if (raw === undefined || raw === null) return undefined;
-  if (!isObj(raw)) { c.repaired('application', 'not an object; dropped'); return undefined; }
-  const id = c.str(raw['id'], 'application.id', '', 64);
-  if (!id) { c.repaired('application.id', 'missing; dropped'); return undefined; }
-  const host = c.str(raw['host'], 'application.host', '', 64);
+  if (!isObj(raw)) { c.repaired(at, 'not an object; dropped'); return undefined; }
+  const id = c.str(raw['id'], `${at}.id`, '', 64);
+  if (!id) { c.repaired(`${at}.id`, 'missing; dropped'); return undefined; }
+  const host = c.str(raw['host'], `${at}.host`, '', 64);
   if (!hostIds.has(host)) {
-    c.repaired('application.host', `${host || '(none)'} is not a host; the application was dropped`);
+    c.repaired(`${at}.host`, `${host || '(none)'} is not a host; the application was dropped`);
     return undefined;
   }
+  const own = raw['client'];
   return {
     id: applicationId(id),
-    name: c.str(raw['name'], 'application.name', id, 64),
+    name: c.str(raw['name'], `${at}.name`, id, 64),
     host: hostId(host),
+    ...(isObj(own) ? { client: parseClient(c, own, hostIds, `${at}.client`) } : {}),
   };
 }
 

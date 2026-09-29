@@ -26,9 +26,10 @@ import { frame, geometry, redoGraph, topology, trace } from '@/state/derived';
 import {
   appLanesShown, clearSelection, playing, select, selection, speed, tNow,
 } from '@/state/view';
-import type { Trace, TopologyDoc } from '@/engine';
+import { applicationsOf } from '@/engine';
+import type { Application, Trace, TopologyDoc } from '@/engine';
 import { buildTimeline, fmt, TL_FULL } from '../timeline/build';
-import type { TimelineLane, TimelineMarker, TimelineModel, TimelineSegment } from '../timeline/build';
+import type { AppSectionHead, TimelineLane, TimelineMarker, TimelineModel, TimelineSegment } from '../timeline/build';
 import { Defs, Lane, Marker } from '../timeline/Timeline';
 import { Brace, TopBrace } from '../timeline/Brace';
 import { Playhead } from '../timeline/Playhead';
@@ -47,6 +48,7 @@ import type { CanvasLink } from '../canvas/routing';
 import type { NodeBox } from '../canvas/layout';
 import { approxW, elide, fitLabel } from '../canvas/measure';
 import { FindingsMenu, KeyMenu, TerseReadout, TIGHT_W } from './SplitBar';
+import { ReadoutFold, SummaryBand } from './SummaryBand';
 import { EventStrip, EV, MoreMenu, stripWidth } from './lanes-events';
 import type { MenuTarget } from './lanes-events';
 import { AppTimeline, appTimelineOn, TimelineSwitch } from './TimelineView';
@@ -106,7 +108,7 @@ interface Layout {
   top: number;
   rows: Row[];
   headers: { site: string; name: string; y: number; down: boolean }[];
-  appHead: { y: number } | null;
+  appHeads: { y: number; section: AppSectionHead }[];
   appLanes: { lane: TimelineLane; y: number }[];
   /** The middle of each gap between two rows: where a pill sits. */
   gapY: number[];
@@ -366,7 +368,7 @@ function Links({ placed, pills, rows, gapY, cardX, related, hoverId, openKey, ti
  * gives way first, rather than the two printing over each other.
  */
 function AppHead({ section, x, right, y }: {
-  section: NonNullable<TimelineModel['appSection']>; x: number; right: number; y: number;
+  section: AppSectionHead; x: number; right: number; y: number;
 }) {
   const room = right - x - approxW(section.title, 12) - 16;
   const showModel = room > approxW(section.note, 11) + 110;
@@ -455,7 +457,7 @@ function LanesBar({ run }: { run: RunTimeline | null }) {
           onSpeed={(s) => { speed.value = s; }}
         />
       ) : null}
-      <TerseReadout run={trace.value !== null} />
+      <ReadoutFold><TerseReadout run={trace.value !== null} /></ReadoutFold>
       <TimelineSwitch />
       {run?.held ? (
         <button
@@ -468,7 +470,7 @@ function LanesBar({ run }: { run: RunTimeline | null }) {
       ) : null}
       <FindingsMenu />
       {run === null ? (
-        doc.application === undefined || appTl ? null : (
+        (doc.applications?.length ?? 0) === 0 || appTl ? null : (
           <button
             type="button" class="btn sb-app-btn" aria-pressed={app}
             title="The application's lanes under the members"
@@ -499,13 +501,10 @@ function steadyScale(plotL: number, plotR: number): TimelineModel['scale'] {
   };
 }
 
-/** The application host's own up and down as a lane's bands, in the timeline's own vocabulary. */
+/** One application host's own up and down as a lane's bands, in the timeline's own vocabulary. */
 function hostLaneFor(
-  tr: Trace, doc: TopologyDoc, model: TimelineModel,
-): TimelineLane | null {
-  const a = doc.application;
-  if (!a) return null;
-  const site = doc.hosts.find((h) => (h.id as string) === (a.host as string))?.site as string | undefined;
+  tr: Trace, doc: TopologyDoc, model: TimelineModel, a: Application,
+): TimelineLane {  const site = doc.hosts.find((h) => (h.id as string) === (a.host as string))?.site as string | undefined;
   const sc = model.scale;
   const segments = hostBands(tr.epochs, a.host as string, site, sc.t0, sc.t1).map<TimelineSegment>((b, i) => {
     const labels = b.down === null ? ['Host up', 'Up']
@@ -553,13 +552,18 @@ function Lanes({ run, fr }: { run: RunTimeline | null; fr: Frame }) {
     for (let v = STEADY_T0; v <= STEADY_T1 + 1e-9; v += STEADY_STEP) out.push({ t: v, x: scale.x(v), label: String(v) });
     return out;
   }, [model, scale]);
-  const hostLane = useMemo(() => (model && tr ? hostLaneFor(tr, doc, model) : null), [model, tr, doc]);
+  /* Each application's card shows its own host's up and down: one lane apiece. */
+  const hostLanes = useMemo(() => {
+    const out = new Map<string, TimelineLane>();
+    if (model && tr) for (const a of applicationsOf(doc)) out.set(a.id as string, hostLaneFor(tr, doc, model, a));
+    return out;
+  }, [model, tr, doc]);
 
   /* ---- rows and their heights ---- */
   const layout = useMemo<Layout>(() => {
     const sk = skeleton;
     const top = model ? TOP_RUN : TOP_EMPTY;
-    const empty: Layout = { top, rows: [], headers: [], appHead: null, appLanes: [], gapY: [], bottom: top };
+    const empty: Layout = { top, rows: [], headers: [], appHeads: [], appLanes: [], gapY: [], bottom: top };
     if (!sk) return empty;
 
     /* A marker's sentence sits in the gap above its lane. Between the members
@@ -589,12 +593,13 @@ function Lanes({ run, fr }: { run: RunTimeline | null; fr: Frame }) {
       return r.site === next.site ? (r.y + RH + next.y) / 2 : r.y + RH + DC_GAP / 2;
     });
 
-    let appHead: Layout['appHead'] = null;
+    const appHeads: Layout['appHeads'] = [];
     const appLanes: Layout['appLanes'] = [];
-    const lanes = model?.lanes.filter((l) => l.kind === 'application') ?? [];
-    if (model?.appSection && lanes.length > 0) {
+    for (const section of model?.appSections ?? []) {
+      const lanes = model?.lanes.filter((l) => l.kind === 'application' && l.id === section.id) ?? [];
+      if (lanes.length === 0) continue;
       y += DC_GAP;
-      appHead = { y };
+      appHeads.push({ y, section });
       y += HDR;
       lanes.forEach((lane, i) => {
         y += (i === 0 ? 2 : APP_GAP) + (above.has(lane.key) ? APP_LABEL : 0);
@@ -602,9 +607,9 @@ function Lanes({ run, fr }: { run: RunTimeline | null; fr: Frame }) {
         y += RH;
       });
     }
-    return { top, rows, headers, appHead, appLanes, gapY, bottom: y + 4 };
+    return { top, rows, headers, appHeads, appLanes, gapY, bottom: y + 4 };
   }, [skeleton, doc, model, snap]);
-  const { top, rows, headers, appHead, appLanes, gapY, bottom } = layout;
+  const { top, rows, headers, appHeads, appLanes, gapY, bottom } = layout;
 
   /* ---- what hangs off a row moves with it; what hangs under the axis moves with the axis ---- */
   const axisY = bottom + AXIS_GAP;
@@ -761,7 +766,7 @@ function Lanes({ run, fr }: { run: RunTimeline | null; fr: Frame }) {
   const dim = (id: string): boolean => related !== null && !related.has(id);
   const laneSelected = (id: string): boolean => sel.includes(id);
   const laneOf = (r: Row): TimelineLane | null => {
-    if (r.kind === 'application') return hostLane === null ? null : { ...hostLane, id: r.id };
+    if (r.kind === 'application') return hostLanes.get(r.id) ?? null;
     return r.laneKey === null ? null : model?.lanes.find((l) => l.key === r.laneKey) ?? null;
   };
   const caption = model?.caption;
@@ -770,6 +775,7 @@ function Lanes({ run, fr }: { run: RunTimeline | null; fr: Frame }) {
   return (
     <section class="ln-view float-card" aria-label="Simulate: topology and timeline" ref={section}>
       <LanesBar run={run} />
+      <SummaryBand />
 
       <div
         class="ln-body"
@@ -877,15 +883,17 @@ function Lanes({ run, fr }: { run: RunTimeline | null; fr: Frame }) {
                   );
                 })}
 
-                {appHead && model?.appSection ? (
-                  <g class="ln-apphead">
+                {appHeads.map(({ y, section }) => (
+                  <g class="ln-apphead" key={`apphead:${section.id}`}>
                     <g class="ln-dc">
-                      <rect x={cardX} y={appHead.y} width={CW} height={HDR - 2} rx={4} />
-                      <text x={cardX + 8} y={appHead.y + 13}>Application&rsquo;s view</text>
+                      <rect x={cardX} y={y} width={CW} height={HDR - 2} rx={4} />
+                      <text x={cardX + 8} y={y + 13}>
+                        {appHeads.length > 1 ? elide(section.title, 26) : 'Application’s view'}
+                      </text>
                     </g>
-                    <AppHead section={model.appSection} x={plotL + 6} right={plotR} y={appHead.y + 13} />
+                    <AppHead section={section} x={plotL + 6} right={plotR} y={y + 13} />
                   </g>
-                ) : null}
+                ))}
                 {appLanes.map(({ lane, y }) => (
                   <g key={lane.key} class={`ln-row${dim(lane.id) ? ' is-dim' : ''}`}>
                     <Lane lane={{ ...lane, y }} model={model as TimelineModel} selected={laneSelected(lane.id)} onSelect={selectLane} />

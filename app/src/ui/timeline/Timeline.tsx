@@ -386,28 +386,28 @@ export function TimelineBody(props: TimelineProps & { run: RunTimeline }) {
               onSelect={selectLane}
             />
           ))}
-          {model.appSection ? (
-            /* The line that heads the application's three lanes, and the one
+          {model.appSections.map((sec) => (
+            /* The line that heads one application's three lanes, and the one
                reading they add up to -- this page's model, said in its tip. */
-            <g class="tl-app-head" data-tip={model.appSection.basis}>
+            <g class="tl-app-head" key={sec.id} data-tip={sec.basis}>
               <line
-                class="tl-app-rule" x1={model.scale.plotL} y1={model.appSection.y - 15}
-                x2={model.scale.plotR} y2={model.appSection.y - 15}
+                class="tl-app-rule" x1={model.scale.plotL} y1={sec.y - 15}
+                x2={model.scale.plotR} y2={sec.y - 15}
               />
-              <text class="t-top" x={model.scale.plotL} y={model.appSection.y}>
-                {model.appSection.title}
+              <text class="t-top" x={model.scale.plotL} y={sec.y}>
+                {sec.title}
                 <tspan
-                  class={model.appSection.tone === 'ink' ? 't-app-note' : `t-app-note ${model.appSection.tone}`}
+                  class={sec.tone === 'ink' ? 't-app-note' : `t-app-note ${sec.tone}`}
                   dx="8"
                 >
-                  {model.appSection.note}
+                  {sec.note}
                 </tspan>
               </text>
-              <text class="t-tick" x={model.scale.plotR} y={model.appSection.y} text-anchor="end">
+              <text class="t-tick" x={model.scale.plotR} y={sec.y} text-anchor="end">
                 this page&rsquo;s model
               </text>
             </g>
-          ) : null}
+          ))}
           {model.ticks.map((tk) => (
             <text key={`t${tk.t}`} class="t-tick t-mono" x={tk.x} y={model.axisY + 16} text-anchor="middle">
               {tk.label}
@@ -460,13 +460,13 @@ export function TimelineBody(props: TimelineProps & { run: RunTimeline }) {
       {legend ? (
         <div class="legend tl-legend">
           {run.held && !pinnedScale ? <button type="button" class="btn" onClick={run.fit}>Fit timeline</button> : null}
-          {onAppView && doc.application !== undefined && !pinnedScale ? (
+          {onAppView && (doc.applications?.length ?? 0) > 0 && !pinnedScale ? (
             <button
               type="button" class="btn" aria-pressed={appView}
               title={APP_VIEW_TIP}
               onClick={() => onAppView(!appView)}
             >
-              Application&rsquo;s view
+              {(doc.applications?.length ?? 0) > 1 ? 'Applications’ views' : 'Application’s view'}
             </button>
           ) : null}
           {model.legend.map((l) => (
