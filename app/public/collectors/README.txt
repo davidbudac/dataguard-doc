@@ -52,8 +52,9 @@ Aliases must already work with SQL*Plus wallet authentication and have the
 necessary privileges. Do not pass passwords. The wrapper buffers output and
 returns a failure without releasing partial output if SQL*Plus fails, reports
 a client error, omits completion markers, or a connection takes longer than
-DG_COLLECT_TIMEOUT seconds (default 120; needs the timeout command, and an alias
-that does not resolve can otherwise hang). Diagnostics go to stderr. It does
+DG_COLLECT_TIMEOUT seconds (default 120; the timeout command where there is
+one, a watchdog in the wrapper where there is not, as on macOS). Diagnostics go
+to stderr. It does
 not discover credentials or connect remotely by SSH. Without a wallet, use
 SQL*Plus interactively on each member. The wrapper runs the same SQL; it does
 not enrich it with broker data.
