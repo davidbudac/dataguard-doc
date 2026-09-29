@@ -7,7 +7,10 @@
  * index into a height.
  */
 
+import type { Epoch } from '@/engine';
 import type { CanvasLink } from '../canvas/routing';
+import type { TimelineSegment } from '../timeline/build';
+import { approxW, elide } from '../canvas/measure';
 
 export interface Placed {
   link: CanvasLink;
@@ -134,4 +137,79 @@ export function siteOrder(declared: readonly string[], occupied: ReadonlySet<str
   const named = declared.filter((s) => occupied.has(s));
   const extra = [...occupied].filter((s) => !declared.includes(s)).sort();
   return [...named, ...extra];
+}
+
+/**
+ * The band a moment falls in. A band owns its start and not its end, so at the
+ * instant of an event the band that event begins is the one that speaks -- as
+ * the snapshot the drawing reads at the same `t` does. (A closed interval read
+ * the band that was ending: a card said "Open" at the very tick its host
+ * crashed, and "Down" at the tick it came back.) Before the first band it is
+ * the first; past the last, the last.
+ */
+export function segmentAt(segments: readonly TimelineSegment[], t: number): TimelineSegment | null {
+  let hit: TimelineSegment | null = null;
+  for (const s of segments) if (s.t0 <= t + 1e-9) hit = s;
+  return hit ?? segments[0] ?? null;
+}
+
+/**
+ * The second line of a card: what it is, and what it is doing at the playhead.
+ * The state is what changes and what a reader looks for, so it is never what
+ * gets cut. The role gives way first (the host it runs on, then the words
+ * themselves), and the state falls back to its shorter forms only when even
+ * that is not enough. `states` is longest first, as a timeline band's labels are.
+ */
+export function cardSub(role: string, states: readonly string[], room: number, size = 10): string {
+  if (states.length === 0) return elide(role, Math.max(8, Math.floor(room / (size * 0.53))));
+  const head = role.split(',')[0]?.trim() || role;
+  const roles = head === role ? [role] : [role, head];
+  for (const st of states) {
+    for (const r of roles) {
+      const text = `${r} · ${st}`;
+      if (approxW(text, size) <= room) return text;
+    }
+  }
+  const st = states[states.length - 1] as string;
+  const left = room - approxW(` · ${st}`, size);
+  return `${elide(head, Math.max(3, Math.floor(left / (size * 0.53))))} · ${st}`;
+}
+
+export interface HostBand {
+  t0: number;
+  t1: number;
+  /** Why it is down: the host itself, or the whole data centre it stands in. */
+  down: 'crashed' | 'site' | null;
+}
+
+/**
+ * A host's own up and down over a run, read off the epochs: whichever epochs
+ * list the host (or its data centre) as gone. Nothing here is modelled -- the
+ * epochs' network summary is the injected events applied in order -- so the
+ * band is as honest as the events are; what the host's software does about it
+ * is the application's lanes, and those are this page's model.
+ */
+export function hostBands(
+  epochs: readonly Epoch[], host: string, site: string | undefined, t0: number, t1: number,
+): HostBand[] {
+  const out: HostBand[] = [];
+  const push = (a: number, b: number, down: HostBand['down']): void => {
+    const lo = Math.max(t0, a);
+    const hi = Math.min(t1, b);
+    if (hi - lo <= 1e-9) return;
+    const prev = out[out.length - 1];
+    if (prev && prev.down === down && Math.abs(prev.t1 - lo) < 1e-9) prev.t1 = hi;
+    else out.push({ t0: lo, t1: hi, down });
+  };
+  let at = t0;
+  for (const e of epochs) {
+    if (e.t0 > at) push(at, e.t0, null);
+    const end = e.t1 ?? t1;
+    const down = e.net.downHosts.some((h) => (h as string) === host) ? 'crashed'
+      : site !== undefined && e.net.downSites.some((x) => (x as string) === site) ? 'site' : null;
+    push(Math.max(at, e.t0), end, down);
+    at = Math.max(at, end);
+  }
+  if (at < t1) push(at, t1, null);
+  return out.length > 0 ? out : [{ t0, t1, down: null }];
 }

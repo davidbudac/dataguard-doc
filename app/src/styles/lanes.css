@@ -15,6 +15,11 @@
 .bl-lanes .ln-body{position:relative;flex:1 1 auto;min-height:0;overflow:auto}
 .bl-lanes .ln-plot{overflow:visible}
 .bl-lanes .ln-svg{display:block}
+/* What holds still while the rows scroll: the sentence, then the clock. The
+   sentence is split.css's `.tl-headline`, as Split draws it, inset to the cards. */
+.bl-lanes .ln-head{position:sticky;top:0;z-index:5;background:var(--sf)}
+.bl-lanes .ln-head .tl-headline{padding:5px 12px 3px;position:static}
+.bl-lanes .ln-ticks{overflow:hidden}
 @media screen{
   .bl-lanes .ln-bar.sb-bar{cursor:default;touch-action:auto;user-select:auto;border-top-left-radius:inherit;
     border-top-right-radius:inherit;background:var(--sf)}
@@ -44,6 +49,9 @@
 .bl-lanes .ln-cardwrap.is-dim,.bl-lanes .ln-row.is-dim{opacity:.42}
 .bl-lanes .ln-name{font-size:12.5px;font-weight:600;fill:var(--ik);font-family:var(--mono)}
 .bl-lanes .ln-sub{font-size:10px;fill:var(--ik2)}
+.bl-lanes .ln-node.is-down .ln-sub{fill:var(--rd)}
+/* over the hatch a word needs a ground of its own */
+.bl-lanes .ln-node.is-down .ln-name,.bl-lanes .ln-node.is-down .ln-sub{paint-order:stroke;stroke:var(--sf);stroke-width:3px;stroke-linejoin:round}
 .bl-lanes .ln-bdg{fill:var(--sf3)}
 .bl-lanes .ln-bdg.is-primary{fill:var(--tlf);stroke:var(--tl)}
 .bl-lanes .ln-bdg.is-standby{fill:var(--blf);stroke:var(--bl)}
@@ -54,7 +62,7 @@
 .bl-lanes .ln-chip text{font-size:9px;font-weight:700;letter-spacing:.03em;fill:var(--ik3)}
 .bl-lanes .ln-chip.is-violet text{fill:var(--vi)}
 .bl-lanes .ln-chip.is-slate text{fill:var(--sl)}
-.bl-lanes .ln-x line{stroke:var(--rd);stroke-width:2.5;stroke-linecap:round}
+.bl-lanes .ln-x line{stroke:var(--rd);stroke-width:2.2;stroke-linecap:round}
 
 /* data centre headers: the name, and the same event buttons a card has for the site's own key */
 .bl-lanes .ln-dc rect{fill:var(--sf2)}
@@ -92,28 +100,27 @@
 .bl-lanes .ln-more:hover circle{fill:var(--vi)}
 
 /* the lanes: the model's own bars; its gutter text is replaced by the cards */
+.bl-lanes .ln-svg .t-mark{paint-order:stroke;stroke:var(--sf);stroke-width:3px;stroke-linejoin:round}
 .bl-lanes .ln-row .t-lane,.bl-lanes .ln-row .t-sub{display:none}
 .bl-lanes .ln-row.is-rel .lane-bg{stroke:var(--ik3)}
 .bl-lanes .ln-alab{font-size:12px;font-weight:600;fill:var(--ik)}
 .bl-lanes .ln-asub{font-size:10px;fill:var(--ik3)}
-.bl-lanes .ln-empty-t{font-size:12px;fill:var(--ik3)}
-.bl-lanes .ln-empty-h{font-size:12.5px;font-weight:700;fill:var(--ik)}
 .bl-lanes .ln-track{fill:var(--sf2);opacity:.6}
 
-/* links as connectors + pills */
-.bl-lanes .ln-lk line{stroke:var(--ln2);stroke-width:1;opacity:.8}
-.bl-lanes .ln-lk circle{fill:var(--ln2)}
-.bl-lanes .ln-lk.is-up line{stroke:var(--ik3)}
-.bl-lanes .ln-lk.is-up circle{fill:var(--ik3)}
-.bl-lanes .ln-lk.is-down line{stroke:var(--rd);stroke-dasharray:3 3}
-.bl-lanes .ln-lk.is-down circle{fill:var(--rd)}
+/* links as connectors + pills: the canvas's states -- down or cut is red, standing
+   down is muted, the rest plain. The connector is the quiet half; the pill says it. */
+.bl-lanes .ln-lk line{stroke:var(--ln2);stroke-width:1;opacity:.5}
+.bl-lanes .ln-lk circle{fill:var(--ln2);opacity:.7}
 .bl-lanes .ln-lk.is-off line{stroke-dasharray:2 3}
-.bl-lanes .ln-lk.is-hot line{stroke-width:2}
+.bl-lanes .ln-lk.is-down line{stroke:var(--rd);stroke-dasharray:4 3;opacity:.55}
+.bl-lanes .ln-lk.is-down circle{fill:var(--rd);opacity:.7}
+.bl-lanes .ln-lk.is-hot line{stroke-width:1.75;opacity:.95}
+.bl-lanes .ln-lk.is-hot circle{opacity:1}
 .bl-lanes .ln-lk.is-faint,.bl-lanes .ln-pill.is-faint{opacity:.25}
 .bl-lanes .ln-pill rect{fill:var(--sf);stroke:var(--ln2);stroke-width:1}
-.bl-lanes .ln-pill text{font-size:9px;font-weight:600;fill:var(--ik2)}
-.bl-lanes .ln-pill.is-up text{fill:var(--tl)}
-.bl-lanes .ln-pill.is-up rect{stroke:var(--tl)}
+.bl-lanes .ln-pill text{font-size:10.5px;font-weight:600;fill:var(--ik2)}
+.bl-lanes .ln-pill.is-off rect{fill:var(--sf2);stroke:var(--ln)}
+.bl-lanes .ln-pill.is-off text{fill:var(--ik3)}
 .bl-lanes .ln-pill.is-down rect{fill:var(--rdf);stroke:var(--rd)}
 .bl-lanes .ln-pill.is-down text{fill:var(--rd)}
 .bl-lanes .ln-pill.is-hot rect{stroke-width:1.75}
