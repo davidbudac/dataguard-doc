@@ -22,16 +22,19 @@
  * out of the configuration -- and the surface decides how that looks.
  */
 
-import { BOUNDS, clamp, isDatabase, isRac } from '@/engine';
+import { BOUNDS, clamp, isDatabase, isRac, memberId } from '@/engine';
 import type { TopologyDoc, XptMode } from '@/engine';
 import { inspectorOpen, select, viewport } from '@/state/view';
 import type { WhyState } from '../common/WhyPill';
 import { resolveSubject } from '../inspector/Inspector';
 import {
-  addDatabase, addHost, addInstance, addObserver, patchLink, removeApplication, removeLink,
-  removeMember, removeObserver, removeSite, setLogXptMode, setMasterObserver, setPrimary,
+  addDatabase, addHost, addInstance, addObserver, patchLink, removeApplication, removeFsfoTarget, removeLink,
+  removeMember, removeObserver, removeRedoRoute, removeSite, routesWithout, setAddressListed, setLogXptMode,
+  setMasterObserver, setPrimary,
 } from '../inspector/edits';
 import { off, ON, WHY } from '../inspector/why';
+import { resolveRoute, routesOn } from './routes';
+import type { RouteRef } from './routes';
 
 export interface BuildAction {
   /** Stable across subjects, so a multiple selection can be intersected. */
@@ -70,10 +73,76 @@ const editAction = (key: string): BuildAction => ({
 
 const XPT_MODES: readonly XptMode[] = ['SYNC', 'FASTSYNC', 'ASYNC'];
 
+/**
+ * Taking a derived line away: what that means depends on what draws it.
+ * A redo line is a RedoRoutes entry at its sender, an application line is an
+ * ADDRESS_LIST entry, a readiness check is a FastStartFailoverTarget entry;
+ * an observer's connection to the primary is not configured anywhere, so its
+ * row is grey and says what the line goes with.
+ */
+export function removeRouteAction(doc: TopologyDoc, r: RouteRef, id = 'remove'): BuildAction {
+  const [a, b] = [r.from, r.to];
+  switch (r.kind) {
+    case 'redo':
+      return {
+        id,
+        label: `Remove redo ${a} → ${b}`,
+        plural: 'Remove',
+        enabled: routesWithout(doc, memberId(a), memberId(b)) === null ? off(WHY.onlyRedoDest) : ON,
+        kind: 'remove',
+        run: () => removeRedoRoute(memberId(a), memberId(b)),
+      };
+    case 'connect':
+      return {
+        id,
+        label: `Remove ${b} from the ADDRESS_LIST`,
+        plural: 'Remove',
+        enabled: ON,
+        kind: 'remove',
+        run: () => setAddressListed(memberId(b), false),
+      };
+    case 'check':
+      return {
+        id,
+        label: `Remove ${b} from FastStartFailoverTarget`,
+        plural: 'Remove',
+        enabled: doc.config.fsfo.target.kind === 'list' ? ON : off(WHY.targetIsAny),
+        kind: 'remove',
+        run: () => removeFsfoTarget(memberId(b)),
+      };
+    case 'ping':
+      return {
+        id,
+        label: `Remove ${a}'s connection to ${b}`,
+        plural: 'Remove',
+        enabled: off(WHY.pingFollowsObserver),
+        kind: 'remove',
+        run: () => {},
+      };
+  }
+}
+
+/** A derived line on its own: the rail on the object that configures it, and Remove. */
+function routeActions(doc: TopologyDoc, r: RouteRef): BuildAction[] {
+  /* Where the line is configured: the sender's RedoRoutes, the application's
+     descriptor, the configuration's target list, the observer itself. */
+  const owner = r.kind === 'check' ? null : r.from;
+  const out: BuildAction[] = [];
+  if (owner !== null) {
+    out.push({
+      id: 'edit', label: `Edit ${owner}`, plural: 'Edit', enabled: ON, kind: 'edit',
+      run: () => openInspectorFor(owner),
+    });
+  }
+  out.push(removeRouteAction(doc, r));
+  return out;
+}
+
 /** Every action the one selected object offers. */
 export function buildActionsForKey(doc: TopologyDoc, key: string): BuildAction[] {
   const subject = resolveSubject(doc, key);
   if (subject === null) return [];
+  if (subject.kind === 'route') return routeActions(doc, subject.route);
   const out: BuildAction[] = [editAction(key)];
 
   if (subject.kind === 'member') {
@@ -203,6 +272,11 @@ export function buildActionsForKey(doc: TopologyDoc, key: string): BuildAction[]
         link.id, `${link.up ? 'Cut' : 'Restore'} ${key}`, (l) => ({ ...l, up: !link.up }),
       ),
     });
+    /* A click on a line selects the link it rides, so the lines themselves are
+       offered here too, before the link's own Remove: removing the link only
+       severs them (drawn cut, and a finding), which is not what a reader who
+       pressed Remove on a redo line meant. Removals stay last. */
+    for (const r of routesOn(doc, link.id as string)) out.push(removeRouteAction(doc, r, `route:${r.key}`));
     out.push({
       id: 'remove',
       label: `Remove ${key}`,
@@ -298,5 +372,7 @@ export function buildActionsFor(doc: TopologyDoc, keys: readonly string[]): Buil
  * foot of each form in the rail. `null` where the key names nothing.
  */
 export function removeAction(doc: TopologyDoc, key: string): BuildAction | null {
-  return buildActionsForKey(doc, key).find((a) => a.kind === 'remove') ?? null;
+  /* By id: a link also carries the removals of the lines riding it, and the
+     Delete key on a link means the link. */
+  return buildActionsForKey(doc, key).find((a) => a.id === 'remove') ?? null;
 }

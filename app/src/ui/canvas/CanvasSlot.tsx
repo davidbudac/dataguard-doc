@@ -23,6 +23,7 @@ import {
   toast, viewport,
 } from '@/state/view';
 import { buildActionsFor, openInspectorFor, removeAction } from '../build/actions';
+import { resolveRoute, routeWord } from '../build/routes';
 import {
   addDatabase, addFsfoTarget, addLink, connectVerdict, mergeIntoHost, moveToSite,
   renameApplication, renameMember, renameObserver, renameSite, renameVerdict, setAddressListed,
@@ -172,6 +173,8 @@ function commitRename(key: string, raw: string, where: Document = document): voi
  * `Remove` last -- and it is load-bearing rather than cosmetic: the bar shows
  * the first seven rows and says the rest are in the rail, so what gets dropped
  * has to be the least destructive thing on the list, never the way out.
+ * A link's rows include the removal of each drawn line riding it
+ * (`removeRouteAction`), between its properties and its own Remove.
  */
 function buildBar(d: TopologyDoc, keys: readonly string[]): BarAction[] {
   return buildActionsFor(d, keys).map((a) => ({
@@ -521,15 +524,19 @@ export function CanvasSlot({ interactive = true }: CanvasSlotProps) {
   }, [renameKey, renameLive]);
   useEffect(() => () => setSiteAt(null), []);
 
-  const built = !editable || anchored === null || keys.length === 0
+  /* What the bar would offer for the selection, open or not: the handle is
+     drawn only over a selection that has something to offer, so it is never
+     a button that opens nothing. */
+  const offered = !editable || keys.length === 0
     ? null
     : m === 'break'
       ? breakBar(topology.value, keys, snapT(tNow.value))
       : m === 'build'
         ? { actions: buildBar(topology.value, keys), quiet: null }
         : null;
-  const bar = built === null || anchored === null
-    || (built.actions.length === 0 && built.quiet === null)
+  const offers = offered !== null && (offered.actions.length > 0 || offered.quiet !== null);
+  const built = anchored === null ? null : offered;
+  const bar = built === null || anchored === null || !offers
     ? null
     : {
       key: anchored,
@@ -537,6 +544,13 @@ export function CanvasSlot({ interactive = true }: CanvasSlotProps) {
       quiet: built.quiet,
       focus: barFocus.value,
       moreWhere: railWhere(viewport.value),
+      /* A drawn line's key is plumbing: the header says what the line is. */
+      ...(() => {
+        const r = resolveRoute(topology.value, anchored);
+        return r === null ? {} : { title: `${routeWord(r)} ${r.from} → ${r.to}` };
+      })(),
+      /* Build's table ends in Remove: the cap drops rows before it, never it. */
+      ...(m === 'build' ? { keepLast: true } : {}),
       /* Break's stage is the short one (fit-content, the timeline takes the
          rest), and its rail already carries the whole list at the head. */
       ...(m === 'break' ? { maxRows: MAX_ROWS_BREAK } : {}),
@@ -624,7 +638,7 @@ export function CanvasSlot({ interactive = true }: CanvasSlotProps) {
           else if (barOpen.peek() !== null && barOpen.peek() !== key) closeBar();
         }}
         {...(editable
-          ? { handle: keys.length === 0 ? null : keys[keys.length - 1] as string }
+          ? { handle: !offers ? null : keys[keys.length - 1] as string }
           : {})}
         {...(building
           ? {

@@ -156,6 +156,10 @@ export interface TopoCanvasProps {
     moreWhere?: string;
     /** The cap on rows, when the caller's stage is shorter than Build's. */
     maxRows?: number;
+    /** The header's words for the subject, when not its key. */
+    title?: string;
+    /** Keep the last row (Remove) visible when the cap drops rows. */
+    keepLast?: boolean;
   } | null;
   /**
    * How far below 1:1 the drawing is rendering, measured by the caller.
@@ -1293,7 +1297,7 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
   const bar = interactive ? props.bar ?? null : null;
   const k = Math.min(1, Math.max(0.5, props.scale ?? 1));
   const barAnchor = bar === null ? null : anchorFor(bar.key, geo, routed.links);
-  const barEstimate = bar === null ? null : barFootprint(bar.actions, bar.quiet ?? null, bar.maxRows);
+  const barEstimate = bar === null ? null : barFootprint(bar.actions, bar.quiet ?? null, bar.maxRows, bar.keepLast === true);
   /* The larger of the estimate and what was painted: the estimate is what the
      placement can know before the render, the measurement is what the box
      has to be. Never smaller than the estimate, so a measurement that has not
@@ -1772,6 +1776,8 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
             focusOnOpen={bar.focus === true}
             {...(bar.moreWhere !== undefined ? { moreWhere: bar.moreWhere } : {})}
             {...(bar.maxRows !== undefined ? { maxRows: bar.maxRows } : {})}
+            {...(bar.title !== undefined ? { title: bar.title } : {})}
+            {...(bar.keepLast === true ? { keepLast: true } : {})}
             {...(barSize !== null ? { box: barSize } : {})}
             onMeasure={onBarMeasure}
             onClose={closeBar}

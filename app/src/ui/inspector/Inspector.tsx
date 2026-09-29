@@ -20,6 +20,9 @@ import { canEdit, clearSelection, hintsOn, mode, selection, viewport } from '@/s
 import { Fold, Note } from './controls';
 import { isOff, WhyPill } from '../common/WhyPill';
 import { removeAction } from '../build/actions';
+import { resolveRoute, routesOn, routeWord } from '../build/routes';
+import type { RouteRef } from '../build/routes';
+import { RouteSection } from './RouteSection';
 import { hintsShown, HintsToggle } from '../hints';
 import { revealSections, SUMMARY_ID } from './sections';
 import { ApplicationForm } from './ApplicationForm';
@@ -38,6 +41,7 @@ type Subject =
   | { kind: 'application'; application: Application }
   | { kind: 'link'; link: Link }
   | { kind: 'site'; site: Site }
+  | { kind: 'route'; route: RouteRef }
   | null;
 
 export function resolveSubject(doc: TopologyDoc, key: string | undefined): Subject {
@@ -53,6 +57,9 @@ export function resolveSubject(doc: TopologyDoc, key: string | undefined): Subje
   if (link) return { kind: 'link', link };
   const site = doc.sites.find((s) => (s.id as string) === key);
   if (site) return { kind: 'site', site };
+  /* A derived line, selected by its own key when it rides no link. */
+  const route = resolveRoute(doc, key);
+  if (route) return { kind: 'route', route };
   return null;
 }
 
@@ -66,6 +73,7 @@ function subjectWord(s: Exclude<Subject, null>): string {
     case 'application': return 'Application';
     case 'link': return s.link.scope === 'site' ? 'Site link' : 'Host link';
     case 'site': return 'Data centre';
+    case 'route': return routeWord(s.route);
   }
 }
 
@@ -84,6 +92,7 @@ function subjectName(doc: TopologyDoc, s: Exclude<Subject, null>): string {
     case 'observer': return s.observer.id as string;
     case 'application': return s.application.id as string;
     case 'site': return s.site.name;
+    case 'route': return `${s.route.from} → ${s.route.to}`;
     case 'link': {
       const [a, b] = s.link.ends as [string, string];
       const name = s.link.scope === 'site' ? siteName : hostName;
@@ -262,6 +271,12 @@ export function Inspector() {
         ? <ApplicationForm application={subject.application} doc={doc} />
         : null}
       {subject?.kind === 'link' ? <LinkForm link={subject.link} doc={doc} /> : null}
+      {subject?.kind === 'link' || subject?.kind === 'route'
+        ? <RouteSection doc={doc} routeKeys={subject.kind === 'route'
+          ? [subject.route.key]
+          : routesOn(doc, subject.link.id as string).map((r) => r.key)}
+          offer={subject.kind === 'link'} />
+        : null}
       {subject?.kind === 'site' ? <SiteForm site={subject.site} doc={doc} /> : null}
     </div>
   );

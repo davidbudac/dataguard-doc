@@ -100,6 +100,12 @@ export const WHY = {
     'FAILOVER needs the target standby up: it is down at this point on the clock.',
   notFormerPrimary:
     'REINSTATE DATABASE is for a former primary the run left needing reinstatement; the run does not show this one as that.',
+  onlyRedoDest:
+    'It is the only destination its sender ships to, and an empty RedoRoutes is (LOCAL : ALL), which ships to it again: disable the standby (Enabled, in its properties) or remove it instead.',
+  pingFollowsObserver:
+    'Every running observer connects to the primary: this line goes when the observer does.',
+  targetIsAny:
+    'FastStartFailoverTarget is ANY, so the observer checks every physical and logical standby: name the targets in the configuration to leave one out.',
   /**
    * The two ends of a range this page models, said without the numbers: the
    * range itself lives in the engine's `BOUNDS`, and a sentence here carrying
