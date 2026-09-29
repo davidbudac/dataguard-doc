@@ -63,6 +63,12 @@
 .app-stage > .tp-wrap.is-zoomed { min-height: 0; }
 .tp-wrap.is-zoomed .topo-svg { max-width: none; max-height: none; margin: 0; }
 .app-stage > .tp-wrap.is-zoomed > .topo-svg { flex: 0 0 auto; }
+/* Sized by its room (Break's Split, `zoomAuto` in zoom.ts): the drawing was
+   made to fit the wrap's content box, so the cap comes off but the wrap keeps
+   the drawing centred and never becomes a scroll port. */
+.tp-wrap.is-fitted { overflow: hidden; }
+.tp-wrap.is-fitted .topo-svg { max-width: none; max-height: none; }
+.app-stage > .tp-wrap.is-fitted > .topo-svg { flex: 0 0 auto; }
 /* The ground between the cards is draggable only when there is somewhere to
    drag it to. The cards, links and data centres keep their own `pointer`. */
 .tp-wrap.is-pannable .topo-svg { cursor: grab; }

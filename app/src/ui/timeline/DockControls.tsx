@@ -46,13 +46,17 @@ const DRAG_SLOP = 4;
  * Drag the bar to size the region under the drawing: dragging up makes it
  * taller. Written to `timelineH` as it moves and to storage once, at the end.
  * `ignore` names what inside the bar keeps its own presses (its buttons).
- * Pointer capture is taken only once the press is a drag -- capturing at once
- * would send the `click` of a button in the bar to the bar itself.
+ * A press on a control never starts one (`ignore`), so the pointer can be
+ * captured as soon as a press starts on the bar itself: a release far from
+ * where it began -- a fast flick, or automation that presses, then releases
+ * elsewhere with no move between -- still reaches the bar, and `pointerup`
+ * resizes to where the pointer is if the press had crossed the slop by then.
  */
 export function useDockDrag(ignore: string): {
   onPointerDown: (e: JSX.TargetedPointerEvent<HTMLElement>) => void;
   onPointerMove: (e: JSX.TargetedPointerEvent<HTMLElement>) => void;
   onPointerUp: (e: JSX.TargetedPointerEvent<HTMLElement>) => void;
+  onPointerCancel: (e: JSX.TargetedPointerEvent<HTMLElement>) => void;
   onDblClick: (e: JSX.TargetedMouseEvent<HTMLElement>) => void;
 } {
   const drag = useRef<{ y: number; h: number; id: number; live: boolean; next: number } | null>(null);
@@ -61,6 +65,8 @@ export function useDockDrag(ignore: string): {
     onPointerDown(e) {
       if (e.button !== 0 || (e.target as Element).closest(ignore)) return;
       drag.current = { y: e.clientY, h: paintedH(e.currentTarget), id: e.pointerId, live: false, next: 0 };
+      /* A synthetic pointer has nothing to capture. */
+      try { e.currentTarget.setPointerCapture?.(e.pointerId); } catch { /* not capturable */ }
     },
     onPointerMove(e) {
       const d = drag.current;
@@ -68,8 +74,6 @@ export function useDockDrag(ignore: string): {
       if (!d.live) {
         if (Math.abs(e.clientY - d.y) < DRAG_SLOP) return;
         d.live = true;
-        /* A synthetic pointer has nothing to capture. */
-        try { e.currentTarget.setPointerCapture?.(e.pointerId); } catch { /* not capturable */ }
         e.currentTarget.classList.add('is-dragging');
       }
       e.preventDefault();
@@ -81,10 +85,21 @@ export function useDockDrag(ignore: string): {
       if (d === null || d.id !== e.pointerId) return;
       drag.current = null;
       e.currentTarget.classList.remove('is-dragging');
-      if (!d.live) return;
       try { e.currentTarget.releasePointerCapture?.(e.pointerId); } catch { /* not captured */ }
+      /* No move in between: the release is the whole gesture. */
+      if (!d.live && Math.abs(e.clientY - d.y) >= DRAG_SLOP) {
+        d.next = clampFor(e.currentTarget, d.h + (d.y - e.clientY));
+      } else if (!d.live) return;
       /* Written once, at the end of the gesture. */
       setTimelineH(d.next);
+    },
+    onPointerCancel(e) {
+      const d = drag.current;
+      if (d === null || d.id !== e.pointerId) return;
+      drag.current = null;
+      e.currentTarget.classList.remove('is-dragging');
+      /* What was dragged to stays, and is remembered like a finished drag. */
+      if (d.live) setTimelineH(d.next);
     },
     onDblClick(e) {
       if (!(e.target as Element).closest(ignore)) setTimelineH(null);

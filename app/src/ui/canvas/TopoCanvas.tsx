@@ -202,6 +202,12 @@ export interface TopoCanvasProps {
    * -- a 12-site configuration at 1:1 has cards the size of a caption.
    */
   zoomFactor?: number;
+  /**
+   * `zoomFactor` was chosen by the room (`zoom.ts`, `zoomAuto`), not by the
+   * reader: the wrap stays centred and does not scroll, since the drawing was
+   * made to fit it.
+   */
+  fitted?: boolean;
   /** Ctrl/Cmd + wheel, one rung of the caller's ladder per notch. */
   onZoomStep?: (dir: 1 | -1) => void;
   onCloseBar?: () => void;
@@ -1532,7 +1538,7 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
          room; `is-pannable` is the grab cursor, and only where there is
          something to grab -- below 1:1 the drawing fits and dragging it would
          scroll nothing, so the cursor would be a promise the page cannot keep. */
-      class={`tp-wrap${zoomFactor === 1 ? '' : ' is-zoomed'}${zoomFactor > 1 ? ' is-pannable' : ''}`}
+      class={`tp-wrap${zoomFactor === 1 ? '' : props.fitted === true ? ' is-fitted' : ' is-zoomed'}${zoomFactor > 1 && props.fitted !== true ? ' is-pannable' : ''}`}
       ref={props.wrapRef}
     >
       <svg
