@@ -42,7 +42,7 @@ export const netTimeoutLow: Rule = (ctx): Finding[] => {
     const i = ctx.indexOf(e.from.id);
     out.push(mk('DEST.NETTIMEOUT_LOW', {
       subject: memberSubject(e.from),
-      message: `NetTimeout for the destination ${q(nameOf(ctx, e.to))} on ${q(e.from.name)} is ${e.props.netTimeoutSeconds} s. The minimum is 1 s and a value of 8 to 10 seconds or more is recommended: NET_TIMEOUT bounds how long LGWR waits for the standby's SYNC acknowledgement, and it is never a failover clock.`,
+      message: `NetTimeout on ${q(e.from.name)} for the destination ${q(nameOf(ctx, e.to))} is ${e.props.netTimeoutSeconds} s. 8 to 10 seconds or more is recommended; the minimum is 1 s. NET_TIMEOUT bounds how long LGWR waits for the standby's SYNC acknowledgement. It is not a failover clock.`,
       cite: ['DEST.NET_TIMEOUT'],
       ...(i >= 0 ? {
         fix: {
@@ -62,9 +62,9 @@ export const reopenZero: Rule = (ctx): Finding[] => {
     if (e.props.reopenSeconds !== 0) continue;
     out.push(mk('DEST.REOPEN_ZERO', {
       subject: memberSubject(e.from),
-      message: `ReopenSecs for the destination ${q(nameOf(ctx, e.to))} on ${q(e.from.name)} is 0. REOPEN accepts values of 0 or more and defaults to 300 s, and the interval only gates eligibility: redo transport retries a failed destination at log switch time, once the last error plus REOPEN is earlier than now, for all errors and not only connection failures.`,
+      message: `ReopenSecs on ${q(e.from.name)} for the destination ${q(nameOf(ctx, e.to))} is 0. REOPEN accepts 0 or more and defaults to 300 s. The interval only gates eligibility: redo transport retries a failed destination at log switch time, once the last error plus REOPEN is earlier than now, for every error and not only connection failures.`,
       cite: ['DEST.REOPEN'],
-      note: 'What REOPEN = 0 means -- retry at every log switch, or something else -- is not documented, so this engine refuses to guess and says so rather than modelling a behaviour. The published simulator floors its slider at 30 s for the same reason.',
+      note: 'The documentation does not say what REOPEN = 0 means (a retry at every log switch, or something else), so the workbench models no behaviour for it. The published simulator floors its slider at 30 s for the same reason.',
     }));
   }
   return out;
@@ -77,9 +77,9 @@ export const maxFailureReset: Rule = (ctx): Finding[] => {
     if (e.props.maxFailure <= 0) continue;
     out.push(mk('DEST.MAXFAILURE_RESET_UNDOC', {
       subject: memberSubject(e.from),
-      message: `MaxFailure for the destination ${q(nameOf(ctx, e.to))} on ${q(e.from.name)} is ${e.props.maxFailure}. MAX_FAILURE counts consecutive attempts to reestablish the destination at log switches; at the limit the destination is disabled with no further access until it is manually reenabled, and is then treated as if REOPEN had not been specified. Network healing does not bring it back. From 12.2 a GROUP or PRIORITY destination re-enters service when it is found accessible -- the one documented exception.`,
+      message: `MaxFailure on ${q(e.from.name)} for the destination ${q(nameOf(ctx, e.to))} is ${e.props.maxFailure}. MAX_FAILURE counts consecutive attempts to reestablish the destination at log switches. At the limit the destination is disabled and gets no further access until it is manually reenabled, and is then treated as if REOPEN had not been specified. Network healing does not bring it back. The one documented exception: from 12.2, a GROUP or PRIORITY destination re-enters service when it is found accessible.`,
       cite: [...MAX_FAILURE_CITES, 'DEST.GROUP_PRIORITY_REENTER'],
-      note: 'Whether a successful reopen resets the counter is not documented. "Consecutive" implies it, and this engine goes no further than saying so: the counter is not reset in the model, and that choice is labelled rather than presented as behaviour.',
+      note: 'Whether a successful reopen resets the counter is not documented. "Consecutive" implies it, and the workbench goes no further: it does not reset the counter in its model, and labels that choice rather than presenting it as behaviour.',
     }));
   }
   return out;
@@ -101,7 +101,7 @@ export const deprecatedProperties: Rule = (ctx): Finding[] => {
     if (changed.length === 0) continue;
     out.push(mk('DEST.DEPRECATED_19C', {
       subject: memberSubject(e.from),
-      message: `${changed.join(' and ')} is set for the destination ${q(nameOf(ctx, e.to))} on ${q(e.from.name)}. Both remain documented broker properties in 19c -- neither is on the 19c deprecation list -- and the broker writes them into the REOPEN and MAX_FAILURE attributes of the sending member's LOG_ARCHIVE_DEST_n, whose attribute reference governs the semantics; EDIT DATABASE ${q(e.from.name)} SET PARAMETER reaches the same attributes.`,
+      message: `Non-default ${changed.join(' and ')} on ${q(e.from.name)} for the destination ${q(nameOf(ctx, e.to))}. ReopenSecs and MaxFailure remain documented broker properties in 19c and are not on the 19c deprecation list. The broker writes them into the REOPEN and MAX_FAILURE attributes of the sending member's LOG_ARCHIVE_DEST_n, and that attribute reference governs their semantics. EDIT DATABASE ${q(e.from.name)} SET PARAMETER reaches the same attributes.`,
       cite: ['DEST.DEPRECATED_19C'],
     }));
   }
@@ -116,7 +116,7 @@ export const destinationRange: Rule = (ctx): Finding[] => {
     if (n <= 30) continue;
     out.push(mk('DEST.RANGE', {
       subject: memberSubject(m),
-      message: `RedoRoutes on ${q(m.name)} names ${n} destinations. LOG_ARCHIVE_DEST_n runs from 1 to 31, and this page's generator numbers a member's remote destinations from LOG_ARCHIVE_DEST_2 upward, so ${n} of them do not fit. Destinations 1 to 10 accept LOCATION or SERVICE and 11 to 31 accept SERVICE only, and non-real-time cascading is available on destinations 1 to 10 only.`,
+      message: `RedoRoutes on ${q(m.name)} names ${n} destinations, more than LOG_ARCHIVE_DEST_n (1 to 31) can hold. The generated configuration numbers a member's remote destinations from LOG_ARCHIVE_DEST_2 upward, so ${n} do not fit. Destinations 1 to 10 accept LOCATION or SERVICE, 11 to 31 accept SERVICE only, and non-real-time cascading is available on destinations 1 to 10 only.`,
       cite: ['DEST.RANGE_1_31', 'CASCADE.PHYSICAL_ONLY'],
     }));
   }
@@ -128,7 +128,7 @@ export const fsfoBlocksEdits: Rule = (ctx): Finding[] => {
   if (!ctx.fsfoOn) return [];
   return [mk('EDIT.FSFO_ENABLED_BLOCKS', {
     subject: configSubject(),
-    message: 'Fast-start failover is enabled, so the broker refuses a change to LogXptMode on the primary or the target standby and a change to the protection mode, with ORA-16654 -- and a change to FastStartFailoverTarget unless the new property value still contains the current fast-start failover target. DISABLE FAST_START FAILOVER; first, or DISABLE FAST_START FAILOVER FORCE; where the configuration is unobserved.',
+    message: 'Fast-start failover is enabled. The broker refuses these edits with ORA-16654: a change to LogXptMode on the primary or the target standby, a change to the protection mode, and a change to FastStartFailoverTarget unless the new value still contains the current fast-start failover target. Run DISABLE FAST_START FAILOVER; first, or DISABLE FAST_START FAILOVER FORCE; where the configuration is unobserved.',
     cite: ['ORA.16654'],
     ora: 'ORA-16654',
   })];
@@ -142,7 +142,7 @@ export const removeTargetBlocked: Rule = (ctx): Finding[] => {
     if (!m) continue;
     out.push(mk('EDIT.REMOVE_TARGET', {
       subject: memberSubject(m),
-      message: `${q(m.name)} is named by FastStartFailoverTarget, so REMOVE DATABASE ${q(m.name)}; fails with ORA-16867 until the property no longer names it. The reciprocal value is set on the target automatically, and targets are verified when fast-start failover is enabled.`,
+      message: `${q(m.name)} is named by FastStartFailoverTarget, so REMOVE DATABASE ${q(m.name)}; fails with ORA-16867 until the property no longer names it. The broker sets the reciprocal value on the target automatically and verifies targets when fast-start failover is enabled.`,
       cite: ['ORA.16867', 'FSFO.TARGET_VERIFIED_ON_ENABLE'],
       ora: 'ORA-16867',
     }));

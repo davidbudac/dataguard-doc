@@ -29,7 +29,7 @@ export const directLinkRequired: Rule = (ctx): Finding[] => {
     if (ctx.reachableMembers(primary, m)) continue;
     out.push(mk('NET.DIRECT_LINK_REQUIRED', {
       subject: memberSubject(m),
-      message: `${q(m.name)} receives its redo through a far sync instance and no network path connects it to ${q(primary.name)}. There must still be a direct network connection between the primary database and the remote standby database: it is used to perform health checks and switchover processing tasks.`,
+      message: `${q(m.name)} receives its redo through a far sync instance, but no network path connects it to ${q(primary.name)}. A direct network connection between the primary database and the remote standby database is still required: the broker uses it to perform health checks and switchover processing tasks.`,
       cite: ['FS.DIRECT_LINK_REQUIRED', 'FS.MANAGES_CONTROLFILE'],
     }));
   }

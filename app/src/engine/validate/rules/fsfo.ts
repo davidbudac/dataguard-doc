@@ -51,7 +51,7 @@ export const targetKind: Rule = (ctx): Finding[] => {
     if (!m) {
       out.push(mk('FSFO.TARGET_KIND', {
         subject: configSubject(),
-        message: `FastStartFailoverTarget names ${name}, which is not a member of this configuration. The property can only be set to the name of a physical or logical standby, and targets are verified when fast-start failover is enabled.`,
+        message: `FastStartFailoverTarget names ${name}, which is not a member of this configuration. The property accepts only the name of a physical or logical standby, and the broker verifies targets when fast-start failover is enabled.`,
         cite: ['FSFO.TARGET_KIND', 'FSFO.TARGET_VERIFIED_ON_ENABLE'],
       }));
       continue;
@@ -59,7 +59,7 @@ export const targetKind: Rule = (ctx): Finding[] => {
     if (isFarSync(m)) {
       out.push(mk('FSFO.TARGET_KIND', {
         subject: memberSubject(m),
-        message: `FastStartFailoverTarget names the far sync instance ${name}. The target standby cannot be a far-sync instance, although the target can receive redo from one.`,
+        message: `FastStartFailoverTarget names the far sync instance ${name}. The target standby cannot be a far sync instance, although it can receive redo from one.`,
         cite: ['FSFO.TARGET_KIND', 'FSFO.TARGET_NOT_FARSYNC'],
       }));
       continue;
@@ -67,7 +67,7 @@ export const targetKind: Rule = (ctx): Finding[] => {
     if (isDatabase(m) && m.role !== 'physical' && m.role !== 'logical') {
       out.push(mk('FSFO.TARGET_KIND', {
         subject: memberSubject(m),
-        message: `FastStartFailoverTarget names ${name}, a ${m.role} database. The property can only be set to the name of a physical or logical standby: not a snapshot standby database, not a far sync instance, not a Zero Data Loss Recovery Appliance.`,
+        message: `FastStartFailoverTarget names ${name}, a ${m.role} database. The property accepts only the name of a physical or logical standby, not a snapshot standby database, a far sync instance or a Zero Data Loss Recovery Appliance.`,
         cite: ['FSFO.TARGET_KIND'],
       }));
     }
@@ -96,15 +96,15 @@ export const targetDirectRedo: Rule = (ctx): Finding[] => {
       : `it receives redo through ${rm.feedPath.slice(1, -1).map((x) => q(x as string)).join(', ')}`;
     /* This is a condition of enabling fast-start failover, not of a candidate
        merely being named while it is disabled or observe-only: with it off,
-       the page says only what enabling would require. */
+       the finding says only what enabling would require. */
     out.push(mk('FSFO.TARGET_DIRECT_REDO', {
       subject: memberSubject(id as string),
       ...(ctx.fsfoOn ? {} : { severity: 'info' as const }),
       message: ctx.fsfoOn
-        ? `${name} is a fast-start failover candidate target, but ${how}. The selected standby database that will be the fast-start failover target must receive redo directly from the primary database; receiving it from a far sync instance is the only documented exception.`
-        : `${name} is named as a fast-start failover candidate target while fast-start failover is disabled, but ${how}. Enabling fast-start failover would require it to receive redo directly from the primary database; receiving it from a far sync instance is the only documented exception.`,
+        ? `${name} is a candidate fast-start failover target, but ${how}. The selected standby database that will be the fast-start failover target must receive redo directly from the primary database. Receiving it from a far sync instance is the only documented exception.`
+        : `${name} is named as a candidate fast-start failover target while fast-start failover is disabled, but ${how}. Enabling fast-start failover would require it to receive redo directly from the primary database. Receiving it from a far sync instance is the only documented exception.`,
       cite: ['FSFO.TARGET_DIRECT_REDO', 'CASCADE.TERMINAL_INDIRECT', 'FSFO.TARGET_NOT_FARSYNC'],
-      note: 'Oracle states the direct-redo prerequisite and, separately, that a terminal standby receives primary redo indirectly from a cascading standby. There is no sentence forbidding a cascaded target outright -- this finding is the deduction from those two. A manual FAILOVER to a terminal standby stays documented, with the warning that no attempt is made to transmit any unsent redo from the cascader to the terminal standby.',
+      note: 'Oracle states the direct-redo prerequisite and, separately, that a terminal standby receives primary redo indirectly from a cascading standby. No sentence forbids a cascaded target outright; this finding is the deduction from those two. A manual FAILOVER to a terminal standby stays documented, with the warning that no attempt is made to transmit any unsent redo from the cascader to the terminal standby.',
     }));
   }
   return out;
@@ -123,8 +123,8 @@ export const multiTargetExplicit: Rule = (ctx): Finding[] => {
     subject: configSubject(),
     ...(ctx.fsfoOn ? {} : { severity: 'info' as const }),
     message: ctx.fsfoOn
-      ? `The configuration holds ${ctx.standbys.length} standby databases and FastStartFailoverTarget is not set. With more than one standby database the property must be set explicitly. Multiple candidate targets arrived in 12.2, and the broker selects a target based on the order in which they are specified.`
-      : `The configuration holds ${ctx.standbys.length} standby databases and FastStartFailoverTarget is not set. Fast-start failover is disabled, so this is not refused yet -- but enabling it would require the property to be set explicitly, naming candidates in the order the broker should walk them.`,
+      ? `The configuration holds ${ctx.standbys.length} standby databases and FastStartFailoverTarget is not set. With more than one standby database the property must be set explicitly. Multiple candidate targets are supported from 12.2, and the broker selects a target based on the order in which they are specified.`
+      : `The configuration holds ${ctx.standbys.length} standby databases and FastStartFailoverTarget is not set. Fast-start failover is disabled, so nothing is refused yet, but enabling it would require the property to be set explicitly, naming the candidates in the order the broker should try them.`,
     cite: ['FSFO.TARGET_MUST_BE_EXPLICIT', 'FSFO.TARGET_ORDER', 'FSFO.MULTI_TARGET_12_2'],
   })];
 };
@@ -144,14 +144,14 @@ export const farSyncTransports: Rule = (ctx): Finding[] => {
     if (hop.toFs.xpt !== 'SYNC' && hop.toFs.xpt !== 'FASTSYNC') {
       out.push(mk('FSFO.FARSYNC_XPT', {
         subject: memberSubject(hop.fs),
-        message: `${fsName} feeds the fast-start failover target ${q(id as string)} but receives ${hop.toFs.xpt}. To use a far sync instance with fast-start failover, the far sync instance transport mode must be set to either SYNC or FASTSYNC: EDIT FAR_SYNC ${fsName} SET PROPERTY 'LogXptMode' = 'SYNC';`,
+        message: `${fsName} feeds the fast-start failover target ${q(id as string)} but receives redo over ${hop.toFs.xpt}. To use a far sync instance with fast-start failover, the far sync instance transport mode must be set to either SYNC or FASTSYNC: EDIT FAR_SYNC ${fsName} SET PROPERTY 'LogXptMode' = 'SYNC';`,
         cite: ['FSFO.FARSYNC_XPT', 'FS.SYNC_TO_FARSYNC'],
       }));
     }
     if (hop.onward.xpt !== 'ASYNC') {
       out.push(mk('FSFO.FARSYNC_XPT', {
         subject: memberSubject(id as string),
-        message: `The fast-start failover target ${q(id as string)} receives ${hop.onward.xpt} from ${fsName}. The target standby database transport mode must be set to ASYNC; the far sync instance uses ASYNC transport to ship the incoming redo to terminal standbys.`,
+        message: `The fast-start failover target ${q(id as string)} receives redo over ${hop.onward.xpt} from ${fsName}. The target standby database transport mode must be set to ASYNC, because the far sync instance uses ASYNC transport to ship the incoming redo to terminal standbys.`,
         cite: ['FSFO.FARSYNC_XPT', 'FS.ONWARD_ASYNC'],
       }));
     }
@@ -173,7 +173,7 @@ export const farSyncModeGate: Rule = (ctx): Finding[] => {
   if (!g) return [];
   /* Scoped to a far sync used to send redo to the fast-start failover
      target, never to any far sync merely reachable from the primary --
-     one feeding a bystander does not trip this gate. */
+     one feeding another standby does not trip this gate. */
   const feedingIds = new Set<string>();
   for (const id of ctx.candidates) {
     const hop = farSyncHop(ctx, id);
@@ -188,12 +188,12 @@ export const farSyncModeGate: Rule = (ctx): Finding[] => {
   const names = feeding.map((f) => q(f.name)).join(', ');
   const rule = is26
     ? 'Under 26ai a far-sync instance cannot be used in maximum protection mode.'
-    : 'Under 19c a far-sync instance cannot be used in maximum protection mode or maximum performance mode; 26ai drops the maximum performance exclusion.';
+    : 'Under 19c a far-sync instance cannot be used in maximum protection mode or maximum performance mode (26ai drops the maximum performance exclusion).';
   return [mk('FSFO.FARSYNC_MODE_19C', {
     subject: configSubject(),
-    message: `Fast-start failover is enabled with ${names} in the redo path and the configuration is in ${mode}. ${rule}`,
+    message: `Fast-start failover is enabled with ${names} in the redo path, and the configuration is in ${mode}. ${rule}`,
     cite: ['FSFO.FARSYNC_MODES_19C', 'FSFO.FARSYNC_MODES_26AI', 'FS.MODES_CA_19C'],
-    note: 'Three pages disagree. The 19c broker fast-start failover prerequisites exclude maximum protection and maximum performance; the 26ai chapter states only the maximum protection exclusion; Concepts and Administration says a far sync instance is supported in either maximum performance or maximum availability mode and does not mention maximum protection at all. This engine applies the broker chapter for the edition being drawn. No ORA number is documented for the refusal.',
+    note: 'Three pages disagree. The 19c broker fast-start failover prerequisites exclude maximum protection and maximum performance; the 26ai chapter states only the maximum protection exclusion; Concepts and Administration says a far sync instance is supported in either maximum performance or maximum availability mode and does not mention maximum protection at all. The workbench applies the broker chapter for the selected edition. Oracle documents no ORA number for the refusal.',
   })];
 };
 
@@ -212,8 +212,8 @@ export const logicalMaxProtection: Rule = (ctx): Finding[] => {
       subject: memberSubject(m),
       ...(ctx.fsfoOn ? {} : { severity: 'info' as const }),
       message: ctx.fsfoOn
-        ? `${q(m.name)} is a logical standby named as a fast-start failover candidate target while the configuration is in MAXPROTECTION. Logical standby databases are not supported in maximum protection mode for fast-start failover.`
-        : `${q(m.name)} is a logical standby named as a fast-start failover candidate target while the configuration is in MAXPROTECTION, but fast-start failover is disabled. Enabling it would fail: logical standby databases are not supported in maximum protection mode for fast-start failover.`,
+        ? `${q(m.name)} is a logical standby named as a candidate fast-start failover target while the configuration is in MAXPROTECTION. Fast-start failover does not support logical standby databases in maximum protection mode.`
+        : `${q(m.name)} is a logical standby named as a candidate fast-start failover target while the configuration is in MAXPROTECTION, but fast-start failover is disabled. Enabling it would fail: fast-start failover does not support logical standby databases in maximum protection mode.`,
       cite: ['FSFO.LOGICAL_MAXPROT', 'FSFO.TARGET_KIND'],
     }));
   }
@@ -245,11 +245,11 @@ export const lagLimitVsThreshold: Rule = (ctx): Finding[] => {
   return [mk('FSFO.LAGLIMIT_VS_THRESHOLD', {
     subject: configSubject(),
     ...(is19c ? { basis: 'doc-later' as const } : {}),
-    message: `FastStartFailoverLagLimit is ${limit} s against a FastStartFailoverThreshold of ${f.thresholdSeconds} s. Oracle recommends the lag limit at or below the threshold: past it the old primary can keep committing after fast-start failover has been initiated, briefly risking two open primaries.`,
+    message: `FastStartFailoverLagLimit is ${limit} s, above the FastStartFailoverThreshold of ${f.thresholdSeconds} s. Oracle recommends a lag limit at or below the threshold. Beyond it, the old primary can keep committing after fast-start failover has been initiated, which briefly risks two open primaries.`,
     cite: LAG_RECOMMENDATION_CITES,
-    ...(is19c ? { note: 'The recommendation sentence is on the 26ai FastStartFailoverLagLimit property page only; the 19c property page does not carry it, so this reads doc-later under 19c even though the underlying risk -- two open primaries -- does not depend on the edition.' } : {}),
+    ...(is19c ? { note: 'The recommendation sentence appears only on the 26ai FastStartFailoverLagLimit property page; the 19c property page does not carry it, so the finding reads doc-later under 19c. The underlying risk, two open primaries, does not depend on the edition.' } : {}),
     fix: {
-      label: `Set FastStartFailoverLagLimit to ${f.thresholdSeconds} s`,
+      label: `Lower FastStartFailoverLagLimit to ${f.thresholdSeconds} s (the threshold)`,
       patch: [
         { op: 'replace', path: '/config/fsfo/lagLimitSeconds', value: f.thresholdSeconds },
         { op: 'add', path: '/config/fsfo/lagLimitSet', value: true },
@@ -261,7 +261,7 @@ export const lagLimitVsThreshold: Rule = (ctx): Finding[] => {
 /**
  * FastStartFailoverLagType and FastStartFailoverLagGraceTime stay documented
  * as maximum-performance-mode behaviour whatever the lag limit is doing in
- * maximum availability under 26ai, and both gray out elsewhere.
+ * maximum availability under 26ai, and the UI grays both out elsewhere.
  */
 export const lagTypeMode: Rule = (ctx): Finding[] => {
   const f = ctx.doc.config.fsfo;
@@ -274,8 +274,9 @@ export const lagTypeMode: Rule = (ctx): Finding[] => {
   ].filter((s): s is string => s !== null).join(' and ');
   return [mk('FSFO.LAGTYPE_MODE', {
     subject: configSubject(),
-    message: `${set} is set while the configuration is in ${mode}. Both properties stay documented as maximum performance mode behaviour whatever FastStartFailoverLagLimit is doing here, and both gray out; FastStartFailoverLagGraceTime is defined only while fast-start failover is enabled, and the LAGGING permission it grants comes from the observer or the target standby.`,
+    message: `The configuration is in ${mode} with ${set}. FastStartFailoverLagType and FastStartFailoverLagGraceTime are documented as maximum performance mode behaviour, whatever FastStartFailoverLagLimit is doing in this mode. FastStartFailoverLagGraceTime is defined only while fast-start failover is enabled, and the LAGGING permission it grants comes from the observer or the target standby.`,
     cite: ['FSFO.LAGTYPE', 'FSFO.LAGGRACETIME'],
+    note: 'The workbench grays both properties out outside maximum performance mode.',
   })];
 };
 
@@ -291,9 +292,9 @@ export const pingPropsNotIn19c: Rule = (ctx): Finding[] => {
   if (f.pingIntervalMs === null && f.pingRetry === null) return [];
   return [mk('FSFO.PING_PROPS_NOT_IN_19C', {
     subject: configSubject(),
-    message: 'ObserverPingInterval and/or ObserverPingRetry is set while the edition is 19c. Neither property exists in 19c: both are absent from the 12.2, 18c and 19c property pages, the fast-start failover chapter and the command reference, and from a live 19.27 system (SHOW CONFIGURATION VERBOSE lists neither; `strings` on the dgmgrl and oracle binaries finds neither name). Both are documented from 21c.',
+    message: 'ObserverPingInterval and/or ObserverPingRetry is set while the edition is 19c, but neither property exists in 19c. Both are absent from the 12.2, 18c and 19c property pages, the fast-start failover chapter and the command reference, and from a live 19.27 system (SHOW CONFIGURATION VERBOSE lists neither; `strings` on the dgmgrl and oracle binaries finds neither name). Oracle documents both from 21c.',
     cite: ['FSFO.PING_PROPS_21C'],
-    note: '19c is silent on these two properties; a later edition (21c) is the first to document them, which is what doc-later means here -- carried as an error because a 19c document setting them is not a legal 19c document, not merely an undocumented default.',
+    note: '19c is silent on these two properties and 21c is the first edition to document them, which is what doc-later means here. The finding is still an error, because a 19c document that sets them is not a legal 19c document, not merely one relying on an undocumented default.',
   })];
 };
 
@@ -317,9 +318,9 @@ export const lagType19cDocLater: Rule = (ctx): Finding[] => {
   if (set.length === 0) return [];
   return [mk('FSFO.LAGTYPE_GRACETIME_19C', {
     subject: configSubject(),
-    message: `${set.join(' and ')} is set under 19c. Both properties are documented from 26ai; the 19c and 21c properties references do not mention them. A live 19.27 system carries them regardless (Lag Type: and Lag Grace Time: appear in SHOW FAST_START FAILOVER) -- an observation, never documentation, so this reads doc-later rather than as illegal under 19c.`,
+    message: `${set.join(' and ')} is set under 19c. Oracle documents these properties from 26ai; the 19c and 21c properties references do not mention them. A live 19.27 system does carry them (Lag Type: and Lag Grace Time: appear in SHOW FAST_START FAILOVER).`,
     cite: ['FSFO.LAGTYPE', 'FSFO.LAGGRACETIME'],
-    note: 'Observed present in a live 19.27 system\'s property list, which Oracle\'s 19c documentation does not mention.',
+    note: 'Observed present in a live 19.27 system\'s property list, which Oracle\'s 19c documentation does not mention. An observation is not documentation, so the finding reads doc-later rather than as illegal under 19c.',
   })];
 };
 
@@ -330,9 +331,9 @@ export const primaryCandidates19cDocLater: Rule = (ctx): Finding[] => {
   if (list.length === 0) return [];
   return [mk('CFG.PRIMARY_CANDIDATES_19C', {
     subject: configSubject(),
-    message: `PrimaryDatabaseCandidates is set under 19c. The property is documented from 26ai; the 19c and 21c properties references do not mention it. A live 19.27 system carries it regardless (SHOW CONFIGURATION VERBOSE lists PrimaryDatabaseCandidates = '') -- an observation, never documentation, so this reads doc-later rather than as illegal under 19c.`,
+    message: `PrimaryDatabaseCandidates is set under 19c. Oracle documents the property from 26ai; the 19c and 21c properties references do not mention it. A live 19.27 system does carry it (SHOW CONFIGURATION VERBOSE lists PrimaryDatabaseCandidates = '').`,
     cite: ['FSFO.PRIMARY_DB_CANDIDATES'],
-    note: 'Observed present in a live 19.27 system\'s property list, which Oracle\'s 19c documentation does not mention.',
+    note: 'Observed present in a live 19.27 system\'s property list, which Oracle\'s 19c documentation does not mention. An observation is not documentation, so the finding reads doc-later rather than as illegal under 19c.',
   })];
 };
 
@@ -376,7 +377,7 @@ export const flashbackRequired: Rule = (ctx): Finding[] => {
   const names = missing.map((m) => q(m.name)).join(', ');
   return [mk('FSFO.FLASHBACK_REQUIRED', {
     subject: configSubject(),
-    message: `Fast-start failover is enabled and Flashback Database is off on ${names}. The broker could not reinstate a database that required reinstatement with Flashback Database disabled -- ORA-16827 -- whether or not FastStartFailoverAutoReinstate is set.`,
+    message: `Fast-start failover is enabled and Flashback Database is off on ${names}. The broker could not reinstate a database that required reinstatement with Flashback Database disabled (ORA-16827), whether or not FastStartFailoverAutoReinstate is set.`,
     cite: ['ORA.16827'],
     ora: 'ORA-16827',
   })];
@@ -387,7 +388,7 @@ export const observeOnly: Rule = (ctx): Finding[] => {
   if (ctx.doc.config.fsfo.state !== 'observe-only') return [];
   return [mk('FSFO.OBSERVE_ONLY', {
     subject: configSubject(),
-    message: 'Fast-start failover is enabled in observe-only mode (ENABLE FAST_START FAILOVER OBSERVE ONLY;). The observer reports "Unable to failover since this observer is in observe-only mode" and never fails over: the primary may open without acknowledgement, and switchover or failover to a bystander stays allowed.',
+    message: 'Fast-start failover is enabled in observe-only mode (ENABLE FAST_START FAILOVER OBSERVE ONLY;). The observer reports "Unable to failover since this observer is in observe-only mode" and never fails over. The primary may open without acknowledgement, and a switchover or failover to another standby stays allowed.',
     cite: ['OBS.OBSERVE_ONLY'],
   })];
 };

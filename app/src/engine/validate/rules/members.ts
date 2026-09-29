@@ -32,12 +32,12 @@ export const farSyncNeverPrimary: Rule = (ctx): Finding[] => {
   };
 
   for (const id of ctx.doc.config.primaryDatabaseCandidates ?? []) {
-    flag(id, `PrimaryDatabaseCandidates lists the far sync instance ${q(id as string)}. A far sync instance has no user data files, cannot be opened for access, cannot run redo apply, and can never function in the primary role or be converted to any type of standby database, so the broker can never make it primary.`);
+    flag(id, `PrimaryDatabaseCandidates lists the far sync instance ${q(id as string)}. A far sync instance has no user data files, cannot be opened for access, cannot run redo apply, and can never function in the primary role or be converted to any type of standby database, so the broker can never make it primary. Remove it from the list.`);
   }
   for (const e of ctx.doc.events) {
     if (e.kind !== 'cmd.switchover' && e.kind !== 'cmd.failover') continue;
     const verb = e.kind === 'cmd.switchover' ? 'SWITCHOVER TO' : 'FAILOVER TO';
-    flag(e.to, `${verb} ${q(e.to as string)} names a far sync instance. A far sync instance can never function in the primary role or be converted to any type of standby database.`);
+    flag(e.to, `${verb} ${q(e.to as string)} names a far sync instance, which can never function in the primary role or be converted to any type of standby database.`);
   }
   return out;
 };
@@ -54,7 +54,7 @@ export const memberLimit: Rule = (ctx): Finding[] => {
   const is26 = ctx.doc.config.edition === '26ai';
   return [mk('LIMIT.MEMBERS_253', {
     subject: { kind: 'config' },
-    message: `The configuration has ${n} members. Oracle Data Guard broker enables you to create a broker configuration consisting of up to 253 members, including one primary database and a combination of standby databases, far sync instances, and Zero Data Loss Recovery Appliances.`,
+    message: `The configuration has ${n} members. The broker supports at most 253 members per configuration: one primary database plus any combination of standby databases, far sync instances and Zero Data Loss Recovery Appliances.`,
     cite: [is26 ? 'LIMIT.MEMBERS_253_26AI' : 'LIMIT.MEMBERS_253'],
   })];
 };
@@ -75,7 +75,7 @@ export const preferredApplyInstance: Rule = (ctx): Finding[] => {
     if (!m.instances.some((i) => i.name === name)) {
       out.push(mk('RAC.PREFERRED_APPLY_UNKNOWN', {
         subject: memberSubject(m),
-        message: `PreferredApplyInstance on ${q(m.name)} is ${q(name)}, which is not one of its instances (${m.instances.map((i) => i.name).join(', ')}). The property takes the instance name (SID) or the empty string, where the broker chooses the apply instance.`,
+        message: `PreferredApplyInstance on ${q(m.name)} is ${q(name)}, which is not one of its instances (${m.instances.map((i) => i.name).join(', ')}). The property takes an instance name (SID) or the empty string, which leaves the choice of apply instance to the broker.`,
         cite: ['RAC.PREFERRED_APPLY_INSTANCE'],
       }));
       continue;
@@ -83,7 +83,7 @@ export const preferredApplyInstance: Rule = (ctx): Finding[] => {
     if (!isRac(m) || m.role === 'snapshot') {
       out.push(mk('RAC.PREFERRED_APPLY_UNUSED', {
         subject: memberSubject(m),
-        message: `PreferredApplyInstance is set on ${q(m.name)}, ${m.role === 'snapshot' ? 'a snapshot standby' : 'a single-instance database'}. The property is only used when the database is a standby Oracle RAC database, and apply instance selection does not apply to snapshot standby databases.`,
+        message: `PreferredApplyInstance is set on ${q(m.name)}, ${m.role === 'snapshot' ? 'a snapshot standby' : 'a single-instance database'}. The property is used only when the database is a standby Oracle RAC database, and apply instance selection does not apply to snapshot standby databases.`,
         cite: ['RAC.PREFERRED_APPLY_INSTANCE', 'RAC.APPLY_INSTANCE_SELECTION'],
       }));
     }
@@ -100,7 +100,7 @@ export const applyInstancesUnused: Rule = (ctx): Finding[] => {
     if (physicalRac) continue;
     out.push(mk('RAC.APPLY_INSTANCES_UNUSED', {
       subject: memberSubject(m),
-      message: `ApplyInstances is ${m.applyInstances} on ${q(m.name)}, ${!isRac(m) ? 'a single-instance database' : `a ${m.role} standby`}. The property lets you specify how many physical standby instances run Redo Apply, so it does nothing here.`,
+      message: `ApplyInstances is ${m.applyInstances} on ${q(m.name)}, ${!isRac(m) ? 'a single-instance database' : `a ${m.role} standby`}. The property sets how many physical standby instances run Redo Apply, so it has no effect here.`,
       cite: ['RAC.APPLY_INSTANCES_PROPERTY', 'RAC.MULTI_INSTANCE_APPLY'],
     }));
   }
@@ -120,7 +120,7 @@ export const snapshotNeedsFlashback: Rule = (ctx): Finding[] => {
     if (m.role !== 'snapshot' || m.flashbackOn) continue;
     out.push(mk('MEMBER.SNAPSHOT_NEEDS_FLASHBACK', {
       subject: memberSubject(m),
-      message: `${q(m.name)} is a snapshot standby with Flashback Database off. Converting a physical standby database to a snapshot standby database requires Flashback Database to be enabled; a snapshot standby cannot be the target of a switchover or a fast-start failover operation, though a manual failover to one is allowed.`,
+      message: `${q(m.name)} is a snapshot standby with Flashback Database off. Converting a physical standby database to a snapshot standby database requires Flashback Database to be enabled. A snapshot standby cannot be the target of a switchover or a fast-start failover operation, though a manual failover to one is allowed.`,
       cite: ['MEMBER.SNAPSHOT_CONVERT_NEEDS_FLASHBACK', 'FSFO.SNAPSHOT_NOT_TARGET'],
     }));
   }
@@ -137,9 +137,9 @@ export const instancesShareHost: Rule = (ctx): Finding[] => {
       if (names.length < 2) continue;
       out.push(mk('RAC.INSTANCES_SHARE_HOST', {
         subject: memberSubject(m),
-        message: `${names.join(' and ')} of ${q(m.name)} both run on ${q(host)}. Crash that host and every one of them goes with it, so the cluster is no more available than one instance.`,
+        message: `Instances ${names.join(' and ')} of ${q(m.name)} both run on ${q(host)}. A crash of that host takes every one of them down, so the cluster is no more available than a single instance.`,
         cite: ['RAC.PRIMARY_AVAILABLE'],
-        note: 'RAC.ONE_INSTANCE_PER_NODE: this page draws each instance of a RAC database on a node of its own, which is how a cluster survives a node failure. It is not quoting a documented prohibition.',
+        note: 'RAC.ONE_INSTANCE_PER_NODE: the workbench draws each instance of a RAC database on a node of its own, which is how a cluster survives a node failure. This is a design convention, not a quoted Oracle prohibition.',
       }));
     }
   }

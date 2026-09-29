@@ -48,7 +48,7 @@ export const maxProtectionSnapshotOnly: Rule = (ctx): Finding[] => {
   if (!ctx.standbys.every((m) => m.role === 'snapshot')) return [];
   return [mk('MODE.MAXPROT_SNAPSHOT_ONLY', {
     subject: configSubject(),
-    message: `The only standby database in the configuration is the snapshot standby ${ctx.standbys.map((m) => q(m.name)).join(', ')}. Maximum protection mode cannot be used if the only standby database is a snapshot standby database.`,
+    message: `The only standby database in the configuration is the snapshot standby ${ctx.standbys.map((m) => q(m.name)).join(', ')}. Maximum protection mode cannot be used when the only standby database is a snapshot standby database.`,
     cite: ['MODE.MAXPROT_SNAPSHOT_ONLY', 'MAXPROT.SHUTS_PRIMARY'],
   })];
 };
@@ -59,7 +59,7 @@ export const maxProtectionOneStandby: Rule = (ctx): Finding[] => {
   if (ctx.standbys.length !== 1) return [];
   return [mk('MODE.MAXPROT_ONE_STANDBY', {
     subject: configSubject(),
-    message: `MAXPROTECTION with a single standby database (${q(ctx.standbys[0]?.name ?? '')}). Maximum protection shuts the primary database down rather than allowing it to continue, and Oracle recommends that a minimum of two standby databases be used so that a single standby database failure cannot do that.`,
+    message: `The configuration is in MAXPROTECTION with a single standby database (${q(ctx.standbys[0]?.name ?? '')}). Maximum protection shuts the primary database down rather than allowing it to continue, so one standby failure can stop the primary. Oracle recommends a minimum of two standby databases to prevent that.`,
     cite: ['MAXPROT.TWO_STANDBYS', 'MAXPROT.SHUTS_PRIMARY'],
   })];
 };
@@ -88,7 +88,7 @@ export const atLeastOneSupportsMode: Rule = (ctx): Finding[] => {
   const wants = mode === 'MAXPROTECTION' ? 'SYNC' : is26 ? 'SYNC, FASTSYNC or ASYNC' : 'SYNC or FASTSYNC';
   return [mk('XPT.TABLE_4_2', {
     subject: configSubject(),
-    message: `No destination from the primary receives ${wants} while the configuration is in ${mode}. When the protection mode or a standby's redo transport service changes, the broker verifies that there is at least one standby database in the configuration that can support the desired grade of protection; none does here.`,
+    message: `No destination from the primary receives ${wants} while the configuration is in ${mode}. When the protection mode or a standby's redo transport service changes, the broker verifies that at least one standby database in the configuration can support the desired grade of protection. None does here.`,
     cite: is26 && mode === 'MAXAVAILABILITY'
       ? ['MODE.AT_LEAST_ONE_SUPPORTS', 'XPT.LOGXPTMODE_VALUES', 'MODE.UPGRADE_WITHOUT_SYNC_26AI']
       : ['MODE.AT_LEAST_ONE_SUPPORTS', 'XPT.LOGXPTMODE_VALUES'],
@@ -122,6 +122,8 @@ export const fsfoTargetTransport: Rule = (ctx): Finding[] => {
     const m = ctx.member(id);
     if (!m) continue;
     const name = q(m.name);
+    /* The command is named only where LogXptMode is what sets the transport. */
+    const cmd = (want: string): string => (fixTo(want) ? ` EDIT DATABASE ${name} SET PROPERTY 'LogXptMode' = '${want}';` : '');
     const fixTo = (want: string): Finding['fix'] | undefined => {
       const i = ctx.indexOf(m.id);
       if (i < 0 || e.xptSource !== 'dest-logxptmode') return undefined;
@@ -133,7 +135,7 @@ export const fsfoTargetTransport: Rule = (ctx): Finding[] => {
     if (mode === 'MAXPROTECTION' && e.xpt !== 'SYNC') {
       out.push(mk('XPT.TABLE_4_2', {
         subject: memberSubject(m),
-        message: `${name} is a fast-start failover candidate target and receives ${e.xpt} while the configuration is in MAXPROTECTION. The fast-start failover prerequisites require SYNC for the target standby (and the primary) in maximum protection mode.`,
+        message: `${name} is a candidate fast-start failover target and receives ${e.xpt} while the configuration is in MAXPROTECTION. The fast-start failover prerequisites require SYNC for the target standby (and the primary) in maximum protection mode.${cmd('SYNC')}`,
         cite: [is26 ? 'FSFO.PREREQ_TRANSPORTS_26AI' : 'FSFO.PREREQ_TRANSPORTS_19C'],
         ...(fixTo('SYNC') ? { fix: fixTo('SYNC') } : {}),
       }));
@@ -144,13 +146,13 @@ export const fsfoTargetTransport: Rule = (ctx): Finding[] => {
         out.push(mk('XPT.TABLE_4_2', {
           severity: 'warning',
           subject: memberSubject(m),
-          message: `${name} is a fast-start failover candidate target and receives ASYNC while the configuration is in MAXAVAILABILITY. Under 26ai the fast-start failover prerequisites allow SYNC, FASTSYNC or ASYNC for a maximum availability target -- a conflict with Table 4-2 and the LogXptMode page, which still give SYNC or FASTSYNC and which 26ai does not name -- but zero data loss still wants SYNC or FASTSYNC.`,
+          message: `${name} is a candidate fast-start failover target and receives ASYNC while the configuration is in MAXAVAILABILITY. Under 26ai the fast-start failover prerequisites allow SYNC, FASTSYNC or ASYNC for a maximum availability target. That conflicts with Table 4-2 and the LogXptMode page, which still give SYNC or FASTSYNC; 26ai does not name the conflict. ASYNC is accepted here, but zero data loss still wants SYNC or FASTSYNC.`,
           cite: MAXAVAIL_26AI_CITES,
         }));
       } else if (!syncish(e.xpt)) {
         out.push(mk('XPT.TABLE_4_2', {
           subject: memberSubject(m),
-          message: `${name} is a fast-start failover candidate target and receives ${e.xpt} while the configuration is in MAXAVAILABILITY. The fast-start failover prerequisites require SYNC or FASTSYNC for the target standby (and the primary) in maximum availability mode${is26 ? ' -- 26ai\'s own prerequisites list also allows ASYNC, which this destination does not use either' : ' under 19c'}.`,
+          message: `${name} is a candidate fast-start failover target and receives ${e.xpt} while the configuration is in MAXAVAILABILITY. The fast-start failover prerequisites require SYNC or FASTSYNC for the target standby (and the primary) in maximum availability mode${is26 ? '. The 26ai prerequisites list also allows ASYNC, but this destination does not use ASYNC either' : ' under 19c'}.${cmd('SYNC')}`,
           cite: [is26 ? 'FSFO.PREREQ_TRANSPORTS_26AI' : 'FSFO.PREREQ_TRANSPORTS_19C'],
           ...(fixTo('SYNC') ? { fix: fixTo('SYNC') } : {}),
         }));
@@ -217,7 +219,7 @@ export const primaryTransportAfterRoleChange: Rule = (ctx): Finding[] => {
     const tn = q(t.name);
     const why = !routed
       ? `${pn} is the primary now, but after a role change to ${tn} it is the standby: no RedoRoutes rule would ship to it then, and its own LogXptMode is ${xpt}.`
-      : `${pn} is the primary now, but after a role change to ${tn} it is the standby, and it would receive ${xpt}${viaFarSync ? ` through the far sync instance ${q((hop as Member).name)}` : ''} -- from ${fromOwn ? (viaFarSync ? 'the far sync instance\'s LogXptMode' : 'its own LogXptMode') : `the RedoRoutes rule ${tn} holds for it`}.`;
+      : `${pn} is the primary now, but after a role change to ${tn} it is the standby, and it would receive ${xpt}${viaFarSync ? ` through the far sync instance ${q((hop as Member).name)}` : ''}, as set by ${fromOwn ? (viaFarSync ? 'the far sync instance\'s LogXptMode' : 'its own LogXptMode') : `the RedoRoutes rule ${tn} holds for it`}.`;
     const fix = (): Finding['fix'] | undefined => {
       const i = ctx.indexOf(p.id);
       if (i < 0 || viaFarSync || !fromOwn) return undefined;
@@ -230,7 +232,7 @@ export const primaryTransportAfterRoleChange: Rule = (ctx): Finding[] => {
       out.push(mk('XPT.PRIMARY_LOGXPTMODE', {
         severity: 'warning',
         subject: memberSubject(p),
-        message: `${why} Under 26ai the fast-start failover prerequisites list SYNC, FASTSYNC or ASYNC for maximum availability, and the current primary must have its LogXptMode set accordingly, so ASYNC is allowed -- but once ${pn} is the standby nothing it receives is synchronous, and zero data loss still wants SYNC or FASTSYNC.`,
+        message: `${why} Under 26ai the fast-start failover prerequisites list SYNC, FASTSYNC or ASYNC for maximum availability, and the current primary must have its LogXptMode set accordingly, so ASYNC is allowed. But once ${pn} is the standby, nothing it receives is synchronous, and zero data loss still wants SYNC or FASTSYNC.`,
         cite: PRIMARY_XPT_26AI_ASYNC_CITES,
         ...(fix() ? { fix: fix() } : {}),
       }));
@@ -241,7 +243,7 @@ export const primaryTransportAfterRoleChange: Rule = (ctx): Finding[] => {
       : 'SYNC or FASTSYNC in maximum availability mode';
     out.push(mk('XPT.PRIMARY_LOGXPTMODE', {
       subject: memberSubject(p),
-      message: `${why} The fast-start failover prerequisites set the LogXptMode of both the primary and the target standby -- ${wants} -- or configure the primary's transport with RedoRoutes. Oracle's own VALIDATE DATABASE example of a standby in this position reads "Switchover to this standby is not possible since there are no other standbys that can support the protection mode".`,
+      message: `${why} The fast-start failover prerequisites require the LogXptMode of both the primary and the target standby to be ${wants}, or the primary's transport to be configured with RedoRoutes. Oracle's own VALIDATE DATABASE example of a standby in this position reads "Switchover to this standby is not possible since there are no other standbys that can support the protection mode".${fix() ? ` EDIT DATABASE ${pn} SET PROPERTY 'LogXptMode' = 'SYNC';` : ''}`,
       cite: is26
         ? ['FSFO.PREREQ_PRIMARY_XPT_26AI', 'FSFO.PREREQ_TRANSPORTS_26AI', 'DGMGRL.VALIDATE_NO_SUPPORTING_STANDBY']
         : ['FSFO.TASK3_PRIMARY_XPT_19C', 'FSFO.PREREQ_TRANSPORTS_19C', 'DGMGRL.VALIDATE_NO_SUPPORTING_STANDBY'],
@@ -279,7 +281,7 @@ export const fastSyncMaxAvailOnly: Rule = (ctx): Finding[] => {
     if (!m) continue;
     out.push(mk('XPT.FASTSYNC_MAXAVAIL_ONLY', {
       subject: memberSubject(m),
-      message: `${q(m.name)} receives FASTSYNC while the configuration is in ${ctx.doc.config.protectionMode}. FASTSYNC arrived in 12.1 and is a maximum availability mode transport; it maps to SYNC with NOAFFIRM, which acknowledges received redo before writing it to the standby redo log.`,
+      message: `${q(m.name)} receives FASTSYNC while the configuration is in ${ctx.doc.config.protectionMode}. FASTSYNC arrived in 12.1 and is a maximum availability mode transport. It maps to SYNC with NOAFFIRM, which acknowledges received redo before writing it to the standby redo log.`,
       cite: ['XPT.FASTSYNC_12_1', 'XPT.AFFIRM_SEMANTICS'],
     }));
   }
@@ -302,7 +304,7 @@ export const fastSyncFsfoGap: Rule = (ctx): Finding[] => {
     if (!usesFastSync) continue;
     out.push(mk('XPT.FASTSYNC_FSFO_GAP', {
       subject: memberSubject(id as string),
-      message: `The fast-start failover candidate target ${q(id as string)} is fed over FASTSYNC. Fast-start failover cannot be initiated while FASTSYNC is in use and the standby is missing redo data: FASTSYNC acknowledges the redo before it is written to the standby redo log.`,
+      message: `The candidate fast-start failover target ${q(id as string)} is fed over FASTSYNC. Fast-start failover cannot be initiated while FASTSYNC is in use and the standby is missing redo data, because FASTSYNC acknowledges the redo before it is written to the standby redo log.`,
       cite: ['XPT.FASTSYNC_FSFO_GAP', 'XPT.AFFIRM_SEMANTICS'],
     }));
   }
