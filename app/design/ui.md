@@ -1481,8 +1481,13 @@ handle on its top edge). Build's dock, chips and warning card are as they were.
   - *Link pills* are the pill of the connector: 10.5 px text in a 15 px pill, sitting in the
     gap between two cards (the gaps are one pill tall, and hold a marker's sentence too),
     never over a card's border. Colours are the canvas's link states and no others: **red**
-    for a link that is down or cut, muted for one standing down, plain for the rest (the
-    canvas draws no green or amber link, so neither does Lanes); the connector is the quiet
+    for a link that is down or cut, muted for one standing down, plain for the rest — Lanes
+    mirrors the canvas's link palette for *state* and adds none of its own: the canvas has no
+    degraded or lagging state for a link (`LinkPath` has `is-x` and `is-inactive` and nothing
+    between; lag is a member's band and a pill's *ASYNC* or round-trip text), so Lanes draws no
+    amber or green link, and the canvas's hues by *kind* (blue redo, violet ping, orchid check,
+    green connection) are not reproduced because Lanes' connectors are grey whatever the kind
+    and the pill's text names it; the connector is the quiet
     half — thin, half opacity, dashed red only for a link that is down — and the pill says
     what it is. One with a document link (`CanvasLink.docLink`) is a button that opens the
     same menu for that link (*Cut dc1-dc3*, *Restore*…); the others are still text. **Every
