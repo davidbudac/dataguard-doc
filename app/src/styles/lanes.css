@@ -8,49 +8,21 @@
     top:calc(var(--bar-bottom,80px) + 10px);left:var(--float-m);right:var(--rail-space);
     bottom:var(--float-m);z-index:10;min-height:0;overflow:hidden}
 }
-.bl-lanes .ln-bar{position:relative;display:flex;align-items:center;gap:10px;flex:0 0 auto;
-  padding:6px 10px;border-bottom:1px solid var(--ln);min-height:44px;flex-wrap:wrap}
-.bl-lanes .ln-spacer{flex:1 1 0}
+/* The bar is Split's (`.sb-*`, split.css), on top instead of underneath: the
+   dropdowns open downward, and it is not a drag handle. */
 .bl-lanes .ln-note{font-size:12.5px;color:var(--ik2)}
 .bl-lanes .ln-pad{padding:16px}
 .bl-lanes .ln-body{position:relative;flex:1 1 auto;min-height:0;overflow:auto}
 .bl-lanes .ln-plot{overflow:visible}
 .bl-lanes .ln-svg{display:block}
-
-/* the transport, compacted into the bar */
-.bl-lanes .ln-bar .tl-transport{padding:0;border:0;background:transparent;gap:6px;flex-wrap:nowrap}
-.bl-lanes .ln-bar .tl-tp-btn{padding:3px 8px}
-.bl-lanes .ln-bar .why{display:none}
-.bl-lanes .ln-bar .tl-tp-slot,.bl-lanes .ln-bar .tl-tp-speeds{gap:2px}
-
-/* terse readout */
-.bl-lanes .ln-ro{display:flex;align-items:baseline;gap:6px;font-size:12px;color:var(--ik2);flex-wrap:wrap}
-.bl-lanes .ln-ro-c i{font-style:normal;color:var(--ik3)}
-.bl-lanes .ln-ro-c b{font-weight:600;color:var(--ik)}
-.bl-lanes .ln-ro-c.t-rd b{color:var(--rd)}
-.bl-lanes .ln-ro-c.t-tl b{color:var(--tl)}
-.bl-lanes .ln-ro-c.t-am b{color:var(--am)}
-.bl-lanes .ln-ro-c.t-vi b{color:var(--vi)}
-.bl-lanes .ln-dot{margin-right:6px;color:var(--ik3)}
-
-/* dropdowns: the warnings, the key */
-.bl-lanes .ln-dd{position:relative}
-.bl-lanes .ln-dd-b,.bl-lanes .ln-tog{font:inherit;font-size:12.5px;font-weight:600;color:var(--ik2);background:var(--sf2);
-  border:1px solid var(--ln);border-radius:var(--r-ctl);padding:4px 10px;cursor:pointer}
-.bl-lanes .ln-dd-b:hover,.bl-lanes .ln-tog:hover{color:var(--ik);border-color:var(--ln2)}
-.bl-lanes .ln-dd-b.t-am{color:var(--am);background:var(--amf);border-color:var(--am)}
-.bl-lanes .ln-dd-b.t-rd{color:var(--rd);background:var(--rdf);border-color:var(--rd)}
-.bl-lanes .ln-tog[aria-pressed="true"]{color:var(--ik);background:var(--seg-on)}
-.bl-lanes .ln-dd-pop{position:absolute;right:0;top:calc(100% + 6px);z-index:30;width:min(520px,70vw);
-  max-height:50vh;overflow:auto;padding:10px 12px;background:var(--sf);border:1px solid var(--ln);
-  border-radius:var(--r-card);box-shadow:var(--sh-card);font-size:12.5px}
-.bl-lanes .ln-find{margin:0 0 8px;color:var(--ik)}
-.bl-lanes .ln-find:last-child{margin-bottom:0}
-.bl-lanes .ln-find b{text-transform:capitalize;margin-right:4px}
-.bl-lanes .ln-find.t-am b{color:var(--am)}
-.bl-lanes .ln-find.t-rd b{color:var(--rd)}
-.bl-lanes .ln-find.t-sl{color:var(--ik2)}
-.bl-lanes .ln-key{margin:0 0 5px;display:flex;align-items:center;gap:8px;color:var(--ik)}
+@media screen{
+  .bl-lanes .ln-bar.sb-bar{cursor:default;touch-action:auto;user-select:auto;border-top-left-radius:inherit;
+    border-top-right-radius:inherit;background:var(--sf)}
+  .bl-lanes .ln-bar .sb-pop{bottom:auto;top:calc(100% + 8px)}
+  .bl-lanes .ln-bar .sb-pop-findings{
+    max-height:max(160px,calc(100dvh - var(--bar-bottom,80px) - 120px))}
+  .bl-lanes .ln-bar .sb-app-btn{flex:0 0 auto;padding:2px 8px;font-size:11.5px;white-space:nowrap}
+}
 
 /* ---- the card column (SVG) ---- */
 .bl-lanes .ln-svg text{font-family:var(--sans)}
@@ -69,7 +41,7 @@
 .bl-lanes .ln-hatch{stroke:none}
 .bl-lanes .ln-node{cursor:pointer;outline:none}
 .bl-lanes .ln-node:focus-visible .ln-card{stroke:var(--fc,var(--vi));stroke-width:2}
-.bl-lanes .ln-node.is-dim,.bl-lanes .ln-row.is-dim{opacity:.42}
+.bl-lanes .ln-cardwrap.is-dim,.bl-lanes .ln-row.is-dim{opacity:.42}
 .bl-lanes .ln-name{font-size:12.5px;font-weight:600;fill:var(--ik);font-family:var(--mono)}
 .bl-lanes .ln-sub{font-size:10px;fill:var(--ik2)}
 .bl-lanes .ln-bdg{fill:var(--sf3)}
@@ -84,19 +56,49 @@
 .bl-lanes .ln-chip.is-slate text{fill:var(--sl)}
 .bl-lanes .ln-x line{stroke:var(--rd);stroke-width:2.5;stroke-linecap:round}
 
-/* data centre headers */
+/* data centre headers: the name, and the same event buttons a card has for the site's own key */
 .bl-lanes .ln-dc rect{fill:var(--sf2)}
 .bl-lanes .ln-dc text{font-size:10.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;fill:var(--ik3)}
 .bl-lanes .ln-dc line{stroke:var(--ln);stroke-width:1}
 .bl-lanes .ln-dc.is-down rect{fill:var(--rdf)}
 .bl-lanes .ln-dc.is-down text{fill:var(--rd)}
+.bl-lanes .ln-dc-body{cursor:pointer;outline:none}
+.bl-lanes .ln-dc-body:hover rect{fill:var(--sf3)}
+.bl-lanes .ln-dc.is-sel rect{stroke:var(--fc,var(--vi));stroke-width:1.5}
+.bl-lanes .ln-dc-body:focus-visible rect{stroke:var(--fc,var(--vi));stroke-width:2}
+.bl-lanes .ln-apphead .ln-dc rect{fill:var(--sf2)}
+
+/* what the buttons are aimed at */
+.bl-lanes .ln-when-t{font-size:11.5px;font-weight:700;fill:var(--ik)}
+.bl-lanes .ln-when-s{font-size:10px;fill:var(--ik3)}
+
+/* the event buttons: small icons on the card, always, one slot per pair of opposites */
+.bl-lanes .ln-tool{cursor:pointer;outline:none}
+.bl-lanes .ln-tool-hit{fill:var(--sf);stroke:var(--ln);stroke-width:1}
+.bl-lanes .ln-tool-ico{fill:none;stroke:var(--ik2);stroke-width:2.6;stroke-linecap:round;stroke-linejoin:round}
+.bl-lanes .ln-tool:hover .ln-tool-hit{fill:var(--vif);stroke:var(--vi)}
+.bl-lanes .ln-tool:hover .ln-tool-ico{stroke:var(--vi)}
+.bl-lanes .ln-tool.is-harm:hover .ln-tool-hit{fill:var(--rdf);stroke:var(--rd)}
+.bl-lanes .ln-tool.is-harm:hover .ln-tool-ico{stroke:var(--rd)}
+.bl-lanes .ln-tool.is-mend .ln-tool-hit{fill:var(--tlf);stroke:var(--tl)}
+.bl-lanes .ln-tool.is-mend .ln-tool-ico{stroke:var(--tl)}
+.bl-lanes .ln-tool.is-mend:hover .ln-tool-hit{fill:var(--tlf);stroke:var(--tl);stroke-width:1.75}
+.bl-lanes .ln-tool.is-off{cursor:not-allowed}
+.bl-lanes .ln-tool.is-off .ln-tool-hit{fill:none;stroke:var(--ln);stroke-dasharray:2 2}
+.bl-lanes .ln-tool.is-off .ln-tool-ico{stroke:var(--ik3);opacity:.5}
+.bl-lanes .ln-tool.is-off:hover .ln-tool-hit{fill:none;stroke:var(--ln)}
+.bl-lanes .ln-tool:focus-visible .ln-tool-hit,.bl-lanes .ln-tool.is-open .ln-tool-hit{stroke:var(--fc,var(--vi));stroke-width:2}
+.bl-lanes .ln-more circle{fill:var(--ik2)}
+.bl-lanes .ln-more:hover circle{fill:var(--vi)}
 
 /* the lanes: the model's own bars; its gutter text is replaced by the cards */
 .bl-lanes .ln-row .t-lane,.bl-lanes .ln-row .t-sub{display:none}
 .bl-lanes .ln-row.is-rel .lane-bg{stroke:var(--ik3)}
 .bl-lanes .ln-alab{font-size:12px;font-weight:600;fill:var(--ik)}
 .bl-lanes .ln-asub{font-size:10px;fill:var(--ik3)}
-.bl-lanes .ln-empty-t{font-size:12.5px;fill:var(--ik3)}
+.bl-lanes .ln-empty-t{font-size:12px;fill:var(--ik3)}
+.bl-lanes .ln-empty-h{font-size:12.5px;font-weight:700;fill:var(--ik)}
+.bl-lanes .ln-track{fill:var(--sf2);opacity:.6}
 
 /* links as connectors + pills */
 .bl-lanes .ln-lk line{stroke:var(--ln2);stroke-width:1;opacity:.8}
@@ -115,5 +117,20 @@
 .bl-lanes .ln-pill.is-down rect{fill:var(--rdf);stroke:var(--rd)}
 .bl-lanes .ln-pill.is-down text{fill:var(--rd)}
 .bl-lanes .ln-pill.is-hot rect{stroke-width:1.75}
+.bl-lanes .ln-pill.is-more rect{fill:var(--sf3)}
+.bl-lanes .ln-pill.is-act{cursor:pointer;outline:none}
+.bl-lanes .ln-pill.is-act:hover rect,.bl-lanes .ln-pill.is-open rect{stroke:var(--vi);stroke-width:1.75}
+.bl-lanes .ln-pill.is-act:focus-visible rect{stroke:var(--fc,var(--vi));stroke-width:2}
+.bl-lanes .ln-lk-hit{stroke:transparent;stroke-width:9;opacity:0}
 .bl-lanes .ln-links{pointer-events:none}
 .bl-lanes .ln-lk,.bl-lanes .ln-pill{pointer-events:all}
+
+/* the More popover: the canvas menu's own list, beside the card that opened it */
+.bl-lanes .ln-menu{position:absolute;z-index:40;display:flex;flex-direction:column;
+  top:0;left:0;max-width:calc(100% - 16px);outline:none}
+.bl-lanes .ln-menu .ln-menu-body{min-height:0;overflow-y:auto;overscroll-behavior:contain;
+  scrollbar-width:thin;scrollbar-color:var(--ln2) transparent}
+.bl-lanes .ln-menu .cv-menu-list{overflow:visible}
+.bl-lanes .ln-menu-sub{margin:8px 4px 0;padding-top:6px;border-top:1px solid var(--ln);
+  font-size:11px;color:var(--ik2)}
+.bl-lanes .ln-menu-blk:first-child .ln-menu-sub{margin-top:2px;border-top:0}

@@ -24,7 +24,7 @@
 import type { Finding } from '@/engine';
 import { errors, issues, warnings } from '@/state/derived';
 import {
-  breakLayout, findingsOpen, floating, inspectorOpen, issuesOpen, lessonId, mode, notesOpen, selection,
+  findingsOpen, floating, inspectorOpen, issuesOpen, lessonId, mode, notesOpen, selection,
   toast, viewport,
 } from '@/state/view';
 import { revealRail, setIssuesOpen, toggleIssues } from '@/state/persist';
@@ -73,10 +73,9 @@ export function revealFindings(): void {
     };
   } else if (mode.value === 'configure') mode.value = 'build';
   /* Over a full-bleed canvas the findings are a popover -- the status card's
-     chips open it in Build, the count on Split's bar in Break. Break's Lanes
-     layout has neither: its findings are the foot of the rail, so unfold that. */
+     chips open it in Build, the count on the bar in Break, in Split and in
+     Lanes alike. */
   if (floating(mode.value, viewport.value)) {
-    if (mode.value === 'break' && breakLayout.value === 'lanes') { revealRail(); scrollFindingsIntoView(); return; }
     findingsOpen.value = true;
     return;
   }
