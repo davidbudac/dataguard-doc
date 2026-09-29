@@ -116,15 +116,16 @@ describe('the side rail folds', () => {
 
   it('puts Break\'s event menu on the stage while the rail is folded', async () => {
     mode.value = 'break';
-    /* Lanes leaves the rail as it was; Split folds it on the way in (split-layout.test.ts). */
-    breakLayout.value = 'lanes';
+    /* Split folds the rail on the way in (split-layout.test.ts); the reader unfolds it. */
+    breakLayout.value = 'split';
     const root = mount();
-    await tick();
-    expect(root.querySelector('.app-rail .evmenu')).not.toBeNull();
-    setRailCollapsed(true);
     await tick();
     expect(root.querySelector('.app-rail .evmenu')).toBeNull();
     expect(root.querySelector('.app-stage > .evmenu')).not.toBeNull();
+    setRailCollapsed(false);
+    await tick();
+    expect(root.querySelector('.app-rail .evmenu')).not.toBeNull();
+    expect(root.querySelector('.app-stage > .evmenu')).toBeNull();
   });
 
   it('does not fold Learn\'s workbench', async () => {

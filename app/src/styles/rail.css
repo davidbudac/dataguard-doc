@@ -33,6 +33,9 @@
 @media (prefers-reduced-motion:no-preference){
   .app{transition:--w-inspector .22s cubic-bezier(.2,.7,.2,1)}
   .app.is-float{transition:--w-float-rail .22s cubic-bezier(.2,.7,.2,1)}
+  /* A fold nobody asked for (a layout's own, break/split-rail.ts) does not glide:
+     the strip is there at once, so a gliding width is a wide rail with nothing in it. */
+  .app.rail-snap,.app.is-float.rail-snap{transition:none}
 }
 
 /* ---------------- the open rail ---------------- */

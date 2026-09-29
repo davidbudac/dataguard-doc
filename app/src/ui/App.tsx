@@ -47,7 +47,7 @@ import { RAIL_ID, RailBar, RailStrip } from './RailFrame';
 import { useWidth } from './common/use-width';
 import { LanesView } from './break/LanesView';
 import { SplitDock } from './break/SplitDock';
-import { useFoldRailWhile } from './break/split-rail';
+import { railSnap, useFoldRailWhile } from './break/split-rail';
 
 /** Which modes keep a rail beside the canvas. Learn's right half is the workbench. */
 const HAS_RAIL: Record<Mode, boolean> = {
@@ -304,8 +304,9 @@ function HomeCanvas() {
 
 function Stage({ m, wide, lanes = false }: { m: Mode; wide: boolean; lanes?: boolean }) {
   if (m === 'learn') return <LearnShell />;
-  /* Break's Lanes layout: the drawing and the timeline are one view. */
-  if (lanes) return <><LanesView />{!wide ? <EventMenu /> : null}</>;
+  /* Break's Lanes layout: the drawing and the timeline are one view. Its cards carry the
+     events, so the folded rail's floating menu is only for a viewport with no rail column. */
+  if (lanes) return <><LanesView />{!wide && viewport.value !== 'wide' ? <EventMenu /> : null}</>;
   return (
     <>
       <HomeCanvas />
@@ -404,9 +405,10 @@ export function App() {
      timeline into one view; Split (the default) stacks them. */
   const lanes = float && m === 'break' && breakLayout.value === 'lanes';
   const split = float && m === 'break' && !lanes;
-  /* Split folds the rail to its strip on the way in, so the drawing keeps the
-     width the timeline's bar wants; the reader can open it (break/split-rail.ts). */
-  useFoldRailWhile(split);
+  /* Both layouts fold the rail to its strip on the way in, so the drawing (Split) or
+     the lanes keep the width they want; the reader can open it (break/split-rail.ts).
+     One flag for both: a switch between them never touches the rail. */
+  useFoldRailWhile(split || lanes);
   const barRef = useBarAnchor();
   const dockRef = useDockAnchor();
   const appRef = useChromeInsets();
@@ -427,7 +429,7 @@ export function App() {
   useEffect(() => installShortcuts(), []);
 
   return (
-    <div ref={appRef} class={intro ? 'app m-intro' : `app m-${m}${float ? ' is-float' : ''}${float && !gridOn.value ? ' no-grid' : ''}${full ? ' tl-full' : ''}${float && m === 'break' && !menuInRail ? ' has-evm' : ''}${railShut ? ' rail-shut' : ''}${lanes ? ' bl-lanes' : split ? ' bl-split' : ''}`}>
+    <div ref={appRef} class={intro ? 'app m-intro' : `app m-${m}${float ? ' is-float' : ''}${float && !gridOn.value ? ' no-grid' : ''}${full ? ' tl-full' : ''}${float && m === 'break' && !menuInRail ? ' has-evm' : ''}${railShut ? ' rail-shut' : ''}${railSnap.value ? ' rail-snap' : ''}${lanes ? ' bl-lanes' : split ? ' bl-split' : ''}`}>
       {/* One header, three bands: the modes and the small controls, then the
           quieter document row, then the line that says what to do in the mode
           that is open. It is one element so the toast can be anchored to the
