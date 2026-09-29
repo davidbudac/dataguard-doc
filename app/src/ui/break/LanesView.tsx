@@ -51,6 +51,7 @@ import { FindingsMenu, KeyMenu, TerseReadout, TIGHT_W } from './SplitBar';
 import { ReadoutFold, SummaryBand } from './SummaryBand';
 import { EventStrip, EV, MoreMenu, stripWidth } from './lanes-events';
 import type { MenuTarget } from './lanes-events';
+import { AppTimeline, appTimelineOn, TimelineSwitch } from './TimelineView';
 import { assignLanes, cardSub, hostBands, planPills, segmentAt, siteOrder } from './lanes-layout';
 import type { Placed, PillPlan } from './lanes-layout';
 
@@ -392,7 +393,7 @@ interface Frame {
   plotL: number;
 }
 
-export function LanesView() {
+function LanesMembers() {
   const [measure, measured] = useWidth(900);
   const doc = topology.value;
   const tr = trace.value;
@@ -401,6 +402,28 @@ export function LanesView() {
   const cardX = 10 + railLanes * RAIL_STEP + (railLanes > 0 ? 4 : 0);
   const fr: Frame = { width: Math.max(measured, 720), measure, skeleton, cardX, plotL: cardX + CW + 10 };
   return tr ? <RunLanes tr={tr} fr={fr} /> : <Lanes run={null} fr={fr} />;
+}
+
+/**
+ * The stage while Simulate's Application timeline is selected: the same bar
+ * (readout, findings and the switch), and the application's detail view where
+ * the members' rows were. The rows, and the run they are built from, are not
+ * drawn -- nothing here reads the playhead.
+ */
+function LanesApp() {
+  return (
+    <section class="ln-view float-card" aria-label="Simulate: application timeline">
+      <LanesBar run={null} />
+      <div class="ln-body ln-app">
+        <AppTimeline />
+      </div>
+    </section>
+  );
+}
+
+/** Lanes' stage: the members' rows, or -- when the reader chose it -- the application's timeline. */
+export function LanesView() {
+  return appTimelineOn() ? <LanesApp /> : <LanesMembers />;
 }
 
 /** The held axis lives in the hook, so the bar and the drawing read one model. */
@@ -418,6 +441,7 @@ function LanesBar({ run }: { run: RunTimeline | null }) {
   const tight = width < TIGHT_W;
   const doc = topology.value;
   const app = appLanesShown.value;
+  const appTl = appTimelineOn();
   const t = tNow.value;
   return (
     <header class="sb-bar ln-bar" ref={ref} role="group" aria-label="Timeline controls">
@@ -434,6 +458,7 @@ function LanesBar({ run }: { run: RunTimeline | null }) {
         />
       ) : null}
       <ReadoutFold><TerseReadout run={trace.value !== null} /></ReadoutFold>
+      <TimelineSwitch />
       {run?.held ? (
         <button
           type="button" class="btn sb-fit"
@@ -445,7 +470,7 @@ function LanesBar({ run }: { run: RunTimeline | null }) {
       ) : null}
       <FindingsMenu />
       {run === null ? (
-        (doc.applications?.length ?? 0) === 0 ? null : (
+        (doc.applications?.length ?? 0) === 0 || appTl ? null : (
           <button
             type="button" class="btn sb-app-btn" aria-pressed={app}
             title="The application's lanes under the members"
@@ -748,7 +773,7 @@ function Lanes({ run, fr }: { run: RunTimeline | null; fr: Frame }) {
   const steadyX = scale.x(scale.clampT(t));
 
   return (
-    <section class="ln-view float-card" aria-label="Break: topology and timeline" ref={section}>
+    <section class="ln-view float-card" aria-label="Simulate: topology and timeline" ref={section}>
       <LanesBar run={run} />
       <SummaryBand />
 

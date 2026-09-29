@@ -67,7 +67,7 @@ describe('shell', () => {
     await tick();
     const lines = root.querySelectorAll('.guide-line');
     expect(lines.length).toBe(1);
-    expect(lines[0]?.textContent?.startsWith('Configure · ')).toBe(true);
+    expect(lines[0]?.textContent?.startsWith('Config · ')).toBe(true);
   });
 
   it('changes what surrounds the canvas, not the canvas', async () => {

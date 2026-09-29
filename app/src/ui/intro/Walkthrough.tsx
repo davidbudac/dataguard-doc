@@ -93,7 +93,7 @@ export function ClassicWalkthrough() {
             : phase === 'advance'
               ? 'Advance the timeline to see when the standby opens.'
               : done
-                ? 'Back in Break, the timeline shows how the new threshold moves the failover.'
+                ? 'Back in Simulate, the timeline shows how the new threshold moves the failover.'
                 : 'In Build, change FastStartFailoverThreshold under Fast-start failover.'}
         </span>
       </div>

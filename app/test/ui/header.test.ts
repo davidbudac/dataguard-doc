@@ -114,7 +114,7 @@ describe('the header', () => {
     const build = [...root.querySelectorAll('button')].find((b) => b.textContent === 'Build');
     expect(build?.getAttribute('title')).toBe(MODE_SUB.build);
     const configure = [...root.querySelectorAll('button')]
-      .find((b) => b.textContent === 'Configure');
+      .find((b) => b.textContent === 'Config');
     /* Configure reads as "settings" and is generated output: the tooltip and
        the guidance line both have to say so. */
     expect(configure?.getAttribute('title')).toBe(MODE_SUB.configure);
@@ -199,7 +199,7 @@ describe('the guidance line', () => {
     const line = (): string => root.querySelector('.guide-line')?.textContent ?? '';
     /* One clause by default -- the gesture. The sentence behind it is
        explanation and waits for `Hints`. */
-    expect(line()).toBe(`Configure · ${splitGuide('configure', 'wide').lead}`);
+    expect(line()).toBe(`Config · ${splitGuide('configure', 'wide').lead}`);
     mode.value = 'learn';
     await tick();
     expect(line()).toContain(splitGuide('learn', 'wide').lead);
@@ -262,7 +262,7 @@ describe('the guidance line', () => {
 
     hintsOn.value = true;
     await tick();
-    expect(line()).toBe(`Configure · ${lead} ${rest}`);
+    expect(line()).toBe(`Config · ${lead} ${rest}`);
     /* The second half is the second half of `modeGuide`, promoted to its own
        sentence -- nothing is dropped on the way. */
     expect(modeGuide('configure', 'wide')).toContain('Settings are in the panel on the right');
@@ -270,7 +270,7 @@ describe('the guidance line', () => {
 
     hintsOn.value = false;
     await tick();
-    expect(line()).toBe(`Configure · ${lead}`);
+    expect(line()).toBe(`Config · ${lead}`);
   });
 
   /* The cut is made at a clause boundary, and Configure's first sentence names
@@ -406,7 +406,7 @@ describe('the keyboard map', () => {
     for (const row of root.querySelectorAll('.keys-row')) {
       said.set(row.querySelector('dt')?.textContent ?? '', row.querySelector('dd')?.textContent ?? '');
     }
-    expect(said.get('E')).toContain('(Break)');
+    expect(said.get('E')).toContain('(Simulate)');
     expect(said.get('Delete')).toContain('(Build)');
   });
 

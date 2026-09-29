@@ -92,7 +92,7 @@ the tested configuration, with Undo available. The ⋯ → Report as PDF page
 prints the comparison and an up-to-date scenario run as its own section; the
 branch's standalone HTML review download was not ported (one report system).
 
-In Break, **Why this result?** (a fold on the rail under the events, and the
+In Simulate, **Why this result?** (a fold on the rail under the events, and the
 "Why?" beside the outcome in the readout) lists the run's recorded decisions
 with the basis and sources of each; selecting a step moves the playhead there
 and selects what it is about. The Introduction's **Walk through it step by

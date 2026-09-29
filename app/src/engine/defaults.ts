@@ -73,6 +73,44 @@ export type BoundKey = Extract<keyof typeof BOUNDS, string>;
 export const boundOf = (key: BoundKey): Bound => BOUNDS[key];
 
 /**
+ * The four connect-string timing parameters as one set: what the "Defaults" and
+ * "Tuned" buttons on the application's controls write in a single edit.
+ * `connectTimeoutSeconds` is null for "not set", as on `ClientDescriptor`.
+ */
+export interface ClientTiming {
+  transportConnectTimeoutSeconds: number;
+  connectTimeoutSeconds: number | null;
+  retryCount: number;
+  retryDelaySeconds: number;
+}
+
+/** The parameters' own defaults -- CLIENT.TIMEOUTS, CLIENT.RETRY_AND_FAILOVER in citations.ts. */
+export const CLIENT_TIMING_DEFAULTS: ClientTiming = {
+  transportConnectTimeoutSeconds: BOUNDS.transportConnectTimeoutSeconds.default,
+  connectTimeoutSeconds: null,
+  retryCount: BOUNDS.retryCount.default,
+  retryDelaySeconds: BOUNDS.retryDelaySeconds.default,
+};
+
+/**
+ * A tuned connect string: a short TRANSPORT_CONNECT_TIMEOUT, a generous
+ * CONNECT_TIMEOUT, and short delays times many retries. The shape is the one the
+ * published fragment's "Tuned" button applies (`APP_TUNED`), itself a reading of
+ * the 19c HA overview's example connect string. What is documented is only part
+ * of it: that guide's example uses CONNECT_TIMEOUT=90 and prices a switchover
+ * budget as RETRY_COUNT x RETRY_DELAY (CLIENT.TIMEOUTS,
+ * CLIENT.SWITCHOVER_BUDGET_100X3 in citations.ts). The other numbers here -- 3 s
+ * for the transport timeout, 30 retries at 3 s, a 90 s budget -- are this page's
+ * suggested shape, not figures Oracle prints, and the UI says so.
+ */
+export const CLIENT_TIMING_TUNED: ClientTiming = {
+  transportConnectTimeoutSeconds: 3,
+  connectTimeoutSeconds: 90,
+  retryCount: 30,
+  retryDelaySeconds: 3,
+};
+
+/**
  * Clamp to a bound the way the published simulator's `clampToEl` does: snap to
  * the step grid first, then clamp to the range, and fall back to `dflt` (the
  * bound's own default unless the caller supplies one) on anything unparseable.

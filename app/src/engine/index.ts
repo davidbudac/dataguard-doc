@@ -52,9 +52,9 @@ export type {
 } from './types/trace';
 
 /* bounds and broker defaults */
-export type { Bound, BoundKey, BrokerDefaults } from './defaults';
+export type { Bound, BoundKey, BrokerDefaults, ClientTiming } from './defaults';
 export {
-  BOUNDS, boundOf, BROKER_DEFAULTS, clamp, defaultLagLimit, NOMINAL, pingSet, withinBounds,
+  BOUNDS, boundOf, BROKER_DEFAULTS, clamp, CLIENT_TIMING_DEFAULTS, CLIENT_TIMING_TUNED, defaultLagLimit, NOMINAL, pingSet, withinBounds,
 } from './defaults';
 export { LAG_LIMIT_UNSET_STORED, lagLimitIsSet, lagLimitOf } from './defaults';
 

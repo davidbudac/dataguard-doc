@@ -46,6 +46,7 @@ import { RAIL_ID, RailBar, RailStrip } from './RailFrame';
 import { useWidth } from './common/use-width';
 import { LanesView } from './break/LanesView';
 import { SplitDock } from './break/SplitDock';
+import { AppTimeline, appTimelineOn, TimelineSwitchRow } from './break/TimelineView';
 import { railSnap, useFoldRailWhile } from './break/split-rail';
 
 /** Which modes keep a rail beside the canvas. Learn's right half is the workbench. */
@@ -202,7 +203,8 @@ function TimelineSlot({ popup = false }: { popup?: boolean }) {
   }
   return (
     <div class="tl-slot" ref={ref}>
-      {t === null ? (
+      <TimelineSwitchRow />
+      {appTimelineOn() ? <AppTimeline /> : t === null ? (
         <div class="empty">
           <span class="empty-k">Timeline</span>
           <p>

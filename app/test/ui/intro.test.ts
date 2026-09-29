@@ -166,7 +166,7 @@ describe('the shell with the Introduction open', () => {
   it('is left by any mode button, which records that it has been shown', async () => {
     const root = mount(App);
     await tick();
-    button(root, 'Configure').click();
+    button(root, 'Config').click();
     await tick();
     expect(introPage.value).toBe(false);
     expect(mode.value).toBe('configure');
@@ -344,7 +344,7 @@ describe('the page itself', () => {
     const root = mount(IntroPage);
     await tick();
     const text = root.textContent ?? '';
-    for (const word of ['Build', 'Break', 'Configure', 'Learn']) expect(text).toContain(word);
+    for (const word of ['Build', 'Simulate', 'Config', 'Learn']) expect(text).toContain(word);
     expect(text).toContain('model');
     const legacy = [...root.querySelectorAll('a')]
       .find((a) => (a.getAttribute('href') ?? '').startsWith('legacy/'));

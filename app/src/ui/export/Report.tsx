@@ -431,7 +431,7 @@ export function Report() {
         <section class="rp-sec is-page" aria-labelledby="rp-s-files">
           <h2 id="rp-s-files"><span class="rp-n">{num()}</span> Generated configuration</h2>
           <p class="rp-lead">
-            The same files the Configure mode generates. Grey lines are this page commenting,
+            The same files the Config mode generates. Grey lines are this page commenting,
             not part of the syntax.
           </p>
           {model.files.map((g) => (
@@ -447,7 +447,7 @@ export function Report() {
 
         {model.run === null || tr === null ? null : (
           <section class="rp-sec is-page" aria-labelledby="rp-s-run">
-            <h2 id="rp-s-run"><span class="rp-n">{num()}</span> Break: injected events and outcome</h2>
+            <h2 id="rp-s-run"><span class="rp-n">{num()}</span> Simulate: injected events and outcome</h2>
             <table class="rp-tab rp-events">
               <thead><tr><th>t (s)</th><th>Event</th></tr></thead>
               <tbody>

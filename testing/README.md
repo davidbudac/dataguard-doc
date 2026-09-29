@@ -10,7 +10,7 @@ It assumes a **working** broker configuration — primary, target standby, one o
 fast-start failover already enabled. It uses the same fixture as every other asset in this
 repo: primary `prm01` on host `dc1-prm01`, standby `sby01` on host `dc2-sby01`, role-based
 service `app_svc`. The observer host, which the other assets never need to name, is
-`dc3-obs01` here. Substitute your own names throughout. (The workbench's Build and Configure modes can
+`dc3-obs01` here. Substitute your own names throughout. (The workbench's Build and Config modes can
 carry your real names and parameter values, export them as a `.dgtopo.json` file, and
 share them as a link — handy for keeping a drill's parameter set next to the page that
 explains it. Drills 9–12 need more members than this fixture; each says which.)
@@ -889,7 +889,7 @@ against a mounted 19c database or an installation's privilege configuration.
    the imported standby becomes the primary in a simulation.
 
 Browser automation note (2026-09-28): this environment's headless Chrome falls
-back from loopback HTTP to an inlined `file://` bundle. The legacy-link Break-mode
+back from loopback HTTP to an inlined `file://` bundle. The legacy-link Simulate-mode
 and compressed-permalink smoke assertions fail on both the unchanged baseline
 and the collector build. Interactive HTTP checks of that legacy link succeed.
 Keep this limitation separate from the live Oracle acceptance drill above.

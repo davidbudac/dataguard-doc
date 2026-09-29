@@ -33,6 +33,7 @@ import { showExplanation } from './RunExplanation';
 import { findingCounts, FindingsSheet, onFindingsKey, plural } from '../Findings';
 import { revealFindings } from '../IssuePanel';
 import { chipsThatFit } from './readout-fit';
+import { appTimelineOn, TimelineSwitch } from './TimelineView';
 import type { FitItem } from './readout-fit';
 import { ReadoutFold } from './SummaryBand';
 
@@ -258,6 +259,9 @@ export function SplitBar({ run, sized }: {
   const tight = width < TIGHT_W;
   const drag = useDockDrag(KEEPS_PRESS);
   const full = timelineFull.value;
+  /* The application's timeline has no clock to play: the transport, the fit and
+     the colour key belong to the configuration's. */
+  const appTl = appTimelineOn();
   return (
     <div
       class="sb-bar"
@@ -268,7 +272,7 @@ export function SplitBar({ run, sized }: {
       {...(sized && !full ? drag : {})}
     >
       {sized && !full ? <DockGrip /> : null}
-      {run === null || !sized ? null : (
+      {run === null || !sized || appTl ? null : (
         <Transport
           model={run.model}
           tNow={tNow.value}
@@ -281,7 +285,8 @@ export function SplitBar({ run, sized }: {
         />
       )}
       <ReadoutFold><TerseReadout run={trace.value !== null} /></ReadoutFold>
-      {run?.held && sized ? (
+      {sized || run === null ? <TimelineSwitch /> : null}
+      {run?.held && sized && !appTl ? (
         <button
           type="button" class="btn sb-fit" title="An event was moved and the axis stayed where it was: fit it to the run again"
           onClick={run.fit}
@@ -290,7 +295,7 @@ export function SplitBar({ run, sized }: {
         </button>
       ) : null}
       <FindingsMenu />
-      {run === null || !sized ? null : <KeyMenu run={run} />}
+      {run === null || !sized || appTl ? null : <KeyMenu run={run} />}
       {sized ? <PopoutButton kind="timeline" /> : null}
       {sized ? <FullToggle /> : null}
     </div>

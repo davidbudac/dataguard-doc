@@ -104,7 +104,7 @@ const CALLOUTS: { k: string; t: string; d: JSX.Element }[] = [
   {
     k: '05',
     t: 'The rectangles',
-    d: <>Data centres. In Build you add members to one; in Break you can lose a whole one.</>,
+    d: <>Data centres. In Build you add members to one; in Simulate you can lose a whole one.</>,
   },
 ];
 
@@ -135,7 +135,7 @@ const MODES: ModeCard[] = [
     go: () => jump({ preset: 'classic', mode: 'build' }),
   },
   {
-    name: 'Break',
+    name: 'Simulate',
     glyph: g(<><path d="M11 2.5 5.5 11h4l-1 6.5L15 9h-4z" /></>),
     what: 'See how the configuration responds to a failure.',
     you: 'Crash a host, cut a link or take a site down. Follow the timeline to see what happens.',
@@ -143,7 +143,7 @@ const MODES: ModeCard[] = [
     go: () => jump({ preset: 'far-sync-zero-loss', scenario: 'isolated', mode: 'break' }),
   },
   {
-    name: 'Configure',
+    name: 'Config',
     glyph: g(<><rect x="2.5" y="3.5" width="15" height="13" rx="1.5" /><path d="M5.5 8l2.5 2-2.5 2M10.5 12.5h4" /></>),
     what: 'Generate the configuration from the drawing.',
     you: 'Review the DGMGRL commands, LOG_ARCHIVE_DEST_n, tnsnames and JDBC generated from it.',
@@ -210,7 +210,7 @@ const HOWTO: { k: string; d: JSX.Element }[] = [
     k: 'Break something',
     d: (
       <>
-        In Break, click a host to crash it or a link to cut it. The event starts at the
+        In Simulate, click a host to crash it or a link to cut it. The event starts at the
         playhead. Drag the playhead to inspect another moment.
       </>
     ),
@@ -219,7 +219,7 @@ const HOWTO: { k: string; d: JSX.Element }[] = [
     k: 'Read the configuration',
     d: (
       <>
-        Configure generates each tab from the drawing. Hover a line to highlight its member.
+        Config generates each tab from the drawing. Hover a line to highlight its member.
       </>
     ),
   },
@@ -296,7 +296,7 @@ const WORDS: { k: string; d: JSX.Element }[] = [
       <>
         How redo leaves the primary: waiting for the standby to acknowledge it, or not. On the
         drawing a solid line is <span class="mono">SYNC</span>, a dashed one{' '}
-        <span class="mono">ASYNC</span>, and Break shows what each costs when something fails.
+        <span class="mono">ASYNC</span>, and Simulate shows what each costs when something fails.
       </>
     ),
   },

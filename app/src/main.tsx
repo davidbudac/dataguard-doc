@@ -27,7 +27,7 @@ import { resetHistory } from './state/history';
 import { decodeFragment, fragmentKind } from './state/codec';
 import {
   announceRestore, introDismissed, loadDoc, loadEdition, loadGrid, loadHints, loadIntro, loadIssuesOpen, loadPalette,
-  loadBreakLayout, loadRailCollapsed, loadSummaryOpen, loadTheme,
+  loadBreakLayout, loadBreakTimeline, loadRailCollapsed, loadSummaryOpen, loadTheme,
   loadTimelineH,
   startAutosave,
 } from './state/persist';
@@ -78,6 +78,7 @@ async function boot(): Promise<void> {
   loadTimelineH();
   loadRailCollapsed();
   loadBreakLayout();
+  loadBreakTimeline();
   loadSummaryOpen();
 
   let restoredFromStorage = false;

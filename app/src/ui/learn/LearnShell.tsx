@@ -57,7 +57,7 @@ function Intro() {
         can be demonstrated carries a &ldquo;Show me&rdquo; button: it loads the lesson&rsquo;s
         configuration, applies exactly the properties and events that step is about, and leaves
         everything else at its default &mdash; so a step shows the same thing however you
-        reached it. &ldquo;Open in Break&rdquo; &mdash; under the step, or at the head of
+        reached it. &ldquo;Open in Simulate&rdquo; &mdash; under the step, or at the head of
         the workbench beside it &mdash; takes the same document to the timeline.
       </p>
       <p class="caption">
@@ -127,7 +127,7 @@ export function LearnWorkbenchHeader() {
       </p>
       <span class="lwh-go">
         <button type="button" class="btn" onClick={open('break')}>
-          Open in Break
+          Open in Simulate
         </button>
         {' '}
         <button type="button" class="btn" onClick={open('build')}>

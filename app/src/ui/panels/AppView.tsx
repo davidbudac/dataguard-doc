@@ -573,12 +573,61 @@ function AppFigure({ ap, client, tr, width }: {
   );
 }
 
+/* ---------------- the figure, where it is drawn ---------------- */
+
+/**
+ * The application's detail view, sized to the room it is given: the figure
+ * above, or -- with no run yet -- the steady-state note. Drawn in two places,
+ * one component: the Config panel below and the Simulate timeline's
+ * Application view (`break/TimelineView.tsx`). It derives from the `topology`
+ * and `trace` signals, so an edit to the connect string redraws it at once.
+ * `where` only rewords the empty state; the drawing is the same.
+ */
+export function AppDetail({ where, class: cls = '', appId }: {
+  where: 'config' | 'simulate'; class?: string;
+  /** Draw only this application's figure (the Simulate timeline's picked one); else every application's. */
+  appId?: string;
+}) {
+  const doc = topology.value;
+  const [ref, width] = useFigWidth();
+  const tr = trace.value;
+  const apps = applicationsOf(doc);
+  const many = apps.length > 1 && appId === undefined;
+  return (
+    <div class={cls} ref={ref}>
+      {tr === null ? (
+        <div class="empty">
+          <span class="empty-k">Steady state</span>
+          <p>
+            Nothing has happened yet, so the connect string has nothing to survive: every
+            address answers and the first one connects.{' '}
+            {where === 'simulate'
+              ? "Inject an event -- select a card, or pick a scenario -- and the application's view of it is drawn here."
+              : "Inject an event in Simulate mode -- crash the primary's host, cut a link, issue a switchover -- and the application's view of it is drawn here."}
+          </p>
+        </div>
+      ) : apps.length === 0 ? (
+        <AppFigure ap={computeApp(doc.client, tr, doc)} client={doc.client} tr={tr} width={width} />
+      ) : (
+        appModelsFor(tr, doc).map((ap, i) => {
+          const app = apps[i];
+          if (appId !== undefined && (app?.id as string | undefined) !== appId) return null;
+          return (
+            <section class="app-fig" key={app?.id as string ?? i} aria-label={many ? `${app?.name}'s view` : undefined}>
+              {many ? <h3 class="app-fig-name eyebrow">{app?.name}{app?.client ? ' — its own connect string' : ' — the shared connect string'}</h3> : null}
+              <AppFigure ap={ap} client={app ? applicationClient(doc, app) : doc.client} tr={tr} width={width} />
+            </section>
+          );
+        })
+      )}
+    </div>
+  );
+}
+
 /* ---------------- the panel ---------------- */
 
 export function AppView() {
   const doc = topology.value;
-  const [ref, width] = useFigWidth();
-  const tr = trace.value;
   const apps = applicationsOf(doc);
   const many = apps.length > 1;
 
@@ -608,31 +657,7 @@ export function AppView() {
           )}
         </p>
       </div>
-      <div class="panel-body" ref={ref}>
-        {tr === null ? (
-          <div class="empty">
-            <span class="empty-k">Steady state</span>
-            <p>
-              Nothing has happened yet, so the connect string has nothing to survive: every
-              address answers and the first one connects. Inject an event in Break mode --
-              crash the primary's host, cut a link, issue a switchover -- and the
-              application's view of it is drawn here.
-            </p>
-          </div>
-        ) : apps.length === 0 ? (
-          <AppFigure ap={computeApp(doc.client, tr, doc)} client={doc.client} tr={tr} width={width} />
-        ) : (
-          appModelsFor(tr, doc).map((ap, i) => {
-            const app = apps[i];
-            return (
-              <section class="app-fig" key={app?.id as string ?? i} aria-label={many ? `${app?.name}'s view` : undefined}>
-                {many ? <h3 class="app-fig-name eyebrow">{app?.name}{app?.client ? ' — its own connect string' : ' — the shared connect string'}</h3> : null}
-                <AppFigure ap={ap} client={app ? applicationClient(doc, app) : doc.client} tr={tr} width={width} />
-              </section>
-            );
-          })
-        )}
-      </div>
+      <AppDetail where="config" class="panel-body" />
     </div>
   );
 }

@@ -32,6 +32,27 @@ export type BreakLayout = 'split' | 'lanes';
 
 export const BREAK_LAYOUTS: readonly BreakLayout[] = ['split', 'lanes'];
 
+/**
+ * Which timeline Simulate draws: `config` is the configuration's lanes (the
+ * timeline as it always was), `app` is the application's detail view -- the
+ * connect string's retry ladder, the sessions and the outage, the drawing the
+ * Config panel's Application view also makes. `app` exists only while the
+ * drawing has an application card; without one the configuration timeline is
+ * what shows whatever this says (`appTimelineOn` in ui/break/TimelineView.tsx).
+ * A reading preference, remembered under `dg-break-timeline` (persist.ts) like
+ * the layout, and not in the address.
+ */
+export type BreakTimeline = 'config' | 'app';
+
+export const BREAK_TIMELINES: readonly BreakTimeline[] = ['config', 'app'];
+
+export const BREAK_TIMELINE_LABEL: Record<BreakTimeline, string> = { config: 'Configuration', app: 'Application' };
+
+export const BREAK_TIMELINE_SUB: Record<BreakTimeline, string> = {
+  config: 'Configuration — the members, links and observer on one clock',
+  app: 'Application — what the connect string does while the role moves, and what it costs the application',
+};
+
 export const BREAK_LAYOUT_LABEL: Record<BreakLayout, string> = { split: 'Split', lanes: 'Lanes' };
 
 /** What each layout is for, in one sentence: the `title` of its button. */
@@ -41,7 +62,7 @@ export const BREAK_LAYOUT_SUB: Record<BreakLayout, string> = {
 };
 
 export const MODE_LABEL: Record<Mode, string> = {
-  build: 'Build', break: 'Break', configure: 'Configure', learn: 'Learn',
+  build: 'Build', break: 'Simulate', configure: 'Config', learn: 'Learn',
 };
 
 /**
@@ -61,10 +82,10 @@ export const MODE_LABEL: Record<Mode, string> = {
 export const MODE_SUB: Record<Mode, string> = {
   build: 'Build — draw the configuration: sites, members, redo routes, observers; '
     + 'click to edit, drag to move, + to add',
-  break: 'Break — add failures and follow the simulation timeline; click a card to add an event, '
+  break: 'Simulate — add failures and follow the simulation timeline; click a card to add an event, '
     + 'drag a numbered timeline marker to change its time',
   configure:
-    'Configure — generated from the drawing: DGMGRL, init parameters and connect strings; '
+    'Config — generated from the drawing: DGMGRL, init parameters and connect strings; '
     + 'hover a line to see which member it configures.',
   learn: 'Learn — ten guided lessons and the reference tables behind them',
 };
@@ -121,6 +142,14 @@ export const inspectorOpen = signal<boolean>(false);
  * `setBreakLayout`.
  */
 export const breakLayout = signal<BreakLayout>('split');
+/** Which timeline Simulate draws (`BreakTimeline`). Configuration to start with; written by `setBreakTimeline`. */
+export const breakTimeline = signal<BreakTimeline>('config');
+/**
+ * Which application the Application timeline draws when the canvas selection
+ * names none: the id the picker chose, else the first application. Not
+ * persisted -- the drawing's applications are the document's.
+ */
+export const breakApp = signal<string | null>(null);
 /**
  * Whether Break's run summary -- the band of cards under the bar, in Split and
  * in Lanes -- is unfolded. Folded to start with: the bar's terse line is the

@@ -141,3 +141,6 @@
 .bl-lanes .ln-menu-sub{margin:8px 4px 0;padding-top:6px;border-top:1px solid var(--ln);
   font-size:11px;color:var(--ik2)}
 .bl-lanes .ln-menu-blk:first-child .ln-menu-sub{margin-top:2px;border-top:0}
+
+/* Lanes with the Application timeline selected: the strip and the figure where the rows were. */
+.bl-lanes .ln-app{padding:6px 12px 10px}

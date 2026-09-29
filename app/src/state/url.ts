@@ -84,6 +84,10 @@ export const clampStep = (n: number): number => Math.max(0, Math.min(99, Math.ro
 
 type Mutable = { -readonly [K in keyof UrlState]: UrlState[K] };
 
+/** The mode's word in the address, where it differs from its id. */
+const MODE_TO_URL: Partial<Record<Mode, string>> = { break: 'simulate', configure: 'config' };
+const MODE_FROM_URL: Record<string, Mode | undefined> = { simulate: 'break', config: 'configure' };
+
 export interface UrlField {
   /** The public key. */
   k: string;
@@ -102,9 +106,15 @@ export const URL_FIELDS: readonly UrlField[] = [
     write: (s) => (s.ed === URL_DEFAULTS.ed ? null : s.ed),
   },
   {
-    k: 'mode', what: 'Build / Break / Configure / Learn',
-    parse: (raw, out) => { if ((MODES as readonly string[]).includes(raw)) out.mode = raw as Mode; },
-    write: (s) => (s.mode === URL_DEFAULTS.mode ? null : s.mode),
+    /* The words in the address are the ones on the buttons: `simulate` and
+       `config`. The internal ids stay `break` and `configure`, and an old link
+       spelled with them still opens the right mode. */
+    k: 'mode', what: 'build / simulate / config / learn (break and configure are read as the old spellings)',
+    parse: (raw, out) => {
+      const m = MODE_FROM_URL[raw] ?? ((MODES as readonly string[]).includes(raw) ? (raw as Mode) : null);
+      if (m !== null) out.mode = m;
+    },
+    write: (s) => (s.mode === URL_DEFAULTS.mode ? null : (MODE_TO_URL[s.mode] ?? s.mode)),
   },
   {
     /* A page rather than a mode: the workbench is still behind it, with the
@@ -124,7 +134,7 @@ export const URL_FIELDS: readonly UrlField[] = [
     write: (s) => (s.report ? '1' : null),
   },
   {
-    k: 'panel', what: 'the Configure tab',
+    k: 'panel', what: 'the Config tab',
     parse: (raw, out) => {
       if ((PANEL_TABS as readonly string[]).includes(raw)) out.panel = raw as PanelTab;
     },

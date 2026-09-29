@@ -12,11 +12,11 @@
  */
 
 import {
-  activeRule, applicationClient, applicationId, applicationsOf, declaredPrimary, defaultDestProps, expandAll, hostId, isParenthesised, linkId, memberId, observerId, primarySite,
+  activeRule, applicationClient, applicationId, applicationsOf, CLIENT_TIMING_DEFAULTS, CLIENT_TIMING_TUNED, declaredPrimary, defaultDestProps, expandAll, hostId, isParenthesised, linkId, memberId, observerId, primarySite,
   findApplication, siteId, withApplication,
 } from '@/engine';
 import type {
-  Application, ClientDescriptor, DatabaseMember, DestGroup, DestProps, FarSyncMember, Host, Instance, Link, Member, MemberId,
+  Application, ClientDescriptor, ClientTiming, DatabaseMember, DestGroup, DestProps, FarSyncMember, Host, Instance, Link, Member, MemberId,
   Observer, RedoRouteRule, RouteDest, Site, TimedEvent, TopologyDoc, XptMode,
 } from '@/engine';
 import type { HostId, LinkId, ObserverId, SiteId } from '@/engine';
@@ -135,6 +135,36 @@ export function setOwnClient(appId: string, own: boolean): void {
         return { ...a, client: { ...cur.client, addresses: cur.client.addresses.map((x) => ({ ...x })) } };
       }),
     }),
+  );
+}
+
+/** True when the descriptor already carries exactly this timing. */
+export const clientHasTiming = (c: ClientDescriptor, p: ClientTiming): boolean =>
+  c.transportConnectTimeoutSeconds === p.transportConnectTimeoutSeconds
+  && (c.connectTimeoutSeconds ?? null) === p.connectTimeoutSeconds
+  && c.retryCount === p.retryCount
+  && c.retryDelaySeconds === p.retryDelaySeconds;
+
+/**
+ * Set the four connect-string timing parameters to the defaults or to the tuned
+ * shape, as one undoable edit. FAILOVER, LOAD_BALANCE, the address list and the
+ * dead-host answer are left as they are. Nothing happens when the descriptor
+ * already holds the set, so the click leaves no empty step on the undo stack.
+ * With `appId`, the descriptor that application dials: its own, else the shared
+ * one (which the applications without one of their own all dial).
+ */
+export function applyClientTiming(which: 'defaults' | 'tuned', appId?: string): void {
+  const p = which === 'tuned' ? CLIENT_TIMING_TUNED : CLIENT_TIMING_DEFAULTS;
+  const app = appId === undefined ? undefined : findApplication(doc.value.topology, appId);
+  const own = app?.client !== undefined;
+  const label = which === 'tuned' ? 'Tune the connect string' : 'Set the connect string timing to its defaults';
+  mutate(
+    app === undefined ? label : `${label} of ${app.name}`,
+    (t) => {
+      const cur = own ? applicationClient(t, app as Application) : t.client;
+      return clientHasTiming(cur, p)
+        ? t : withClientPatched(t, own ? appId : undefined, (x) => ({ ...x, ...p }));
+    },
   );
 }
 
