@@ -12,8 +12,9 @@
  * @vitest-environment jsdom
  */
 
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { h, render } from 'preact';
+import { act } from 'preact/test-utils';
 import { classicDoc } from '@/state/doc';
 import { resetHistory } from '@/state/history';
 import { frame, geometry, topology } from '@/state/derived';
@@ -22,6 +23,7 @@ import { breakLayout, findingsOpen, mode, playing, railCollapsed, selection, tNo
 import { App } from '@/ui/App';
 import { applyTemplate, clearEvents, templates } from '@/ui/break/events';
 import { siteOrder } from '@/ui/break/lanes-layout';
+import { besideReadout } from '@/ui/timeline/EventDrag';
 
 const memory = new Map<string, string>();
 const fakeStorage = {
@@ -623,5 +625,59 @@ describe('the data centres', () => {
     expect(app).toBeLessThan(dc2);
     const head = r.querySelector('.ln-apphead .ln-dc rect');
     expect(Number(head?.getAttribute('y'))).toBeGreaterThan(y('.ln-node[data-node="obs01"] rect.ln-card'));
+  });
+});
+
+describe('the time readout while an event pin is dragged', () => {
+  const grab = (r: HTMLElement, x: number): SVGGElement => {
+    const g = r.querySelector('.tl-event-drag') as SVGGElement;
+    g.setPointerCapture = vi.fn();
+    g.hasPointerCapture = () => true;
+    g.releasePointerCapture = vi.fn();
+    /* jsdom has no `onpointerdown`, so preact listens for `PointerDown`; ask the element what it did. */
+    const fire = (kind: string, cx: number): void => {
+      const type = `onpointer${kind}` in g ? `pointer${kind}` : `Pointer${kind[0]!.toUpperCase()}${kind.slice(1)}`;
+      const e = new MouseEvent(type, { bubbles: true, cancelable: true, clientX: cx, button: 0 });
+      Object.defineProperty(e, 'pointerId', { value: 1 });
+      act(() => { g.dispatchEvent(e); });
+    };
+    fire('down', x);
+    fire('move', x + 120);
+    return g;
+  };
+
+  it('in Lanes sits beside the pin, in the plot and clear of the sticky head, not above it', async () => {
+    crashAt(10);
+    const r = mount();
+    await tick();
+    const g = grab(r, 300);
+    await tick();
+    const t = g.querySelector('.tl-event-time') as SVGTextElement;
+    expect(t).not.toBeNull();
+    expect(t.textContent).toMatch(/^\d+(\.\d)? s$/);
+    /* jsdom lays nothing out, so where it sits is read off the attributes: not in the head,
+       inside the plot's svg (whose top edge is the head's bottom), and its top under that edge. */
+    expect(t.closest('.ln-head')).toBeNull();
+    expect(t.closest('.ln-plot')).not.toBeNull();
+    expect(Number(t.getAttribute('y')) - 11).toBeGreaterThanOrEqual(0);
+    expect(['start', 'end']).toContain(t.getAttribute('text-anchor'));
+  });
+
+  it('in Split keeps to the old place: centred over the pin', async () => {
+    breakLayout.value = 'split';
+    crashAt(10);
+    const r = mount();
+    await tick();
+    const g = grab(r, 300);
+    await tick();
+    const t = g.querySelector('.tl-event-time') as SVGTextElement;
+    expect(t.getAttribute('text-anchor')).toBe('middle');
+  });
+
+  it('flips to the pin\'s other side at the right edge and stays inside the plot', () => {
+    expect(besideReadout(100, 6, 1000)).toBe('start');
+    expect(besideReadout(990, 6, 1000)).toBe('end');
+    /* Too narrow for either: the right side, the one that reads left to right. */
+    expect(besideReadout(20, 6, 60)).toBe('start');
   });
 });

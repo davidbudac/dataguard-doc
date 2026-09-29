@@ -913,7 +913,7 @@ function Lanes({ run, fr }: { run: RunTimeline | null; fr: Frame }) {
                     {/* Above the playhead, so grabbing an event cannot seek instead. */}
                     {shifted.filter((m) => m.kind === 'event').map((m) => (
                       <EventDrag
-                        key={m.key} marker={m} model={shiftedModel} doc={doc}
+                        key={m.key} marker={m} model={shiftedModel} doc={doc} readout="beside"
                         onMove={(index, when, expected) => {
                           const result = setEventTime(index, when, expected);
                           run?.dropped(index, when, expected, result);
