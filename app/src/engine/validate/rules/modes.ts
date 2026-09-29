@@ -152,7 +152,7 @@ export const fsfoTargetTransport: Rule = (ctx): Finding[] => {
       } else if (!syncish(e.xpt)) {
         out.push(mk('XPT.TABLE_4_2', {
           subject: memberSubject(m),
-          message: `${name} is a candidate fast-start failover target and receives ${e.xpt} while the configuration is in MAXAVAILABILITY. The fast-start failover prerequisites require SYNC or FASTSYNC for the target standby (and the primary) in maximum availability mode${is26 ? '. The 26ai prerequisites list also allows ASYNC, but this destination does not use ASYNC either' : ' under 19c'}.${cmd('SYNC')}`,
+          message: `${name} is a candidate fast-start failover target and receives ${e.xpt} while the configuration is in MAXAVAILABILITY. The fast-start failover prerequisites require SYNC or FASTSYNC for the target standby (and the primary) in maximum availability mode${is26 ? '. The 26ai prerequisites list also allows ASYNC, but this destination uses none of the three' : ' under 19c'}.${cmd('SYNC')}`,
           cite: [is26 ? 'FSFO.PREREQ_TRANSPORTS_26AI' : 'FSFO.PREREQ_TRANSPORTS_19C'],
           ...(fixTo('SYNC') ? { fix: fixTo('SYNC') } : {}),
         }));

@@ -100,7 +100,7 @@ export const noObserverDeployed: Rule = (ctx): Finding[] => {
   if (ctx.doc.observers.length > 0) return [];
   const claimsEnabled = ctx.doc.config.fsfo.state !== 'disabled';
   const base = 'No observer is deployed. That is not the same as being unobserved. V$DATABASE.FS_FAILOVER_STATUS reads DISABLED, the FastStartFailover* properties can be set but nothing arms them, and a manual FAILOVER TO is the only thing that promotes a standby. Unobserved means fast-start failover is enabled and the master observer is missing: PRIMARY UNOBSERVED on the target standby, ORA-16820 as the standing health condition, and "The master observer is not running" among the documented reasons fast-start failover cannot occur. Corollary: the maximum performance switchover refusal past FastStartFailoverLagLimit is fast-start failover\'s own gate, so it cannot fire with no observer deployed.';
-  const enabled = ` This document also carries fsfo.state = ${ctx.doc.config.fsfo.state}. That is legal: enabling fast-start failover with no observer started is a documented, supported configuration. The broker displays ORA-16819 (fast-start failover observer not started) for the primary and target standby databases, and fast-start failover could not happen in the case of a primary database failure. The configuration is unobserved and no failover can happen until an observer is started.`;
+  const enabled = ` Fast-start failover is ${ctx.doc.config.fsfo.state === 'observe-only' ? 'enabled in observe-only mode' : 'enabled'} here. That is legal: enabling fast-start failover with no observer started is a documented, supported configuration. The broker displays ORA-16819 (fast-start failover observer not started) for the primary and target standby databases, and fast-start failover could not happen in the case of a primary database failure. The configuration is unobserved and no failover can happen until an observer is started.`;
   return [mk('OBS.NONE_DEPLOYED', {
     subject: configSubject(),
     ...(claimsEnabled ? { severity: 'warning' as const } : {}),
@@ -207,7 +207,7 @@ export const observerOverrideAssumption: Rule = (ctx): Finding[] => {
   if (!ctx.fsfoOn) return [];
   return [mk('MODEL.OBSERVER_OVERRIDE', {
     subject: configSubject(),
-    message: 'ObserverOverride is assumed to be FALSE, the broker default. With it, fast-start failover needs both the observer and the target standby to have lost the primary for the threshold.',
+    message: 'ObserverOverride is assumed to be FALSE, the broker default. At FALSE, fast-start failover needs both the observer and the target standby to have lost contact with the primary for FastStartFailoverThreshold seconds.',
     cite: ['FSFO.OBSERVER_OVERRIDE_FALSE', 'FSFO.BOTH_MUST_HAVE_LOST'],
     note: 'The workbench models the default only. With ObserverOverride TRUE an automatic failover may occur when the observer has lost connectivity to the primary "even if the standby has a healthy connection to the primary", and several outcomes shown here as continues would become failovers. The standby\'s veto is never unconditional.',
   })];

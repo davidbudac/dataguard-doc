@@ -274,9 +274,8 @@ export const lagTypeMode: Rule = (ctx): Finding[] => {
   ].filter((s): s is string => s !== null).join(' and ');
   return [mk('FSFO.LAGTYPE_MODE', {
     subject: configSubject(),
-    message: `The configuration is in ${mode} with ${set}. FastStartFailoverLagType and FastStartFailoverLagGraceTime are documented as maximum performance mode behaviour, whatever FastStartFailoverLagLimit is doing in this mode. FastStartFailoverLagGraceTime is defined only while fast-start failover is enabled, and the LAGGING permission it grants comes from the observer or the target standby.`,
+    message: `The configuration is in ${mode} with ${set}. FastStartFailoverLagType and FastStartFailoverLagGraceTime are documented as maximum performance mode behaviour, even where FastStartFailoverLagLimit is in use in this mode. FastStartFailoverLagGraceTime is defined only while fast-start failover is enabled, and the LAGGING permission it grants comes from the observer or the target standby.`,
     cite: ['FSFO.LAGTYPE', 'FSFO.LAGGRACETIME'],
-    note: 'The workbench grays both properties out outside maximum performance mode.',
   })];
 };
 
