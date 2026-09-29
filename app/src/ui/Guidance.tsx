@@ -228,10 +228,11 @@ export function Guidance() {
   const v = viewport.value;
   const full = introOpen.value;
   useDismissOnFirstUse(!introDismissed.value);
-  /* Break has no line: its gestures are in the mode button's title and the
-     stage's description (`modeGuide`, in `App.tsx`), and the band's height is the drawing's.
-     The card the `?` opens still hangs from here. */
-  if (m === 'break') return full ? <div class="guide"><IntroCard /></div> : null;
+  /* Build and Break have no line: their gestures are in the mode button's
+     title (`MODE_SUB`) and the stage's description (`modeGuide`, in
+     `App.tsx`), and the band's height is the drawing's. The card the `?` opens
+     still hangs from here. */
+  if (m === 'break' || m === 'build') return full ? <div class="guide"><IntroCard /></div> : null;
   const { lead, rest } = splitGuide(m, v);
   return (
     <div class="guide">
