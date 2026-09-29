@@ -171,8 +171,8 @@ export function IntroCard() {
           noticed it finds out what it does -- and can press it here. */}
       <p class="intro-foot caption">
         <b>{HINTS_LABEL}</b>
-        {', in the inspector header, shows help under each control and the rest of the '}
-        {'line above. It is off by default, and the setting is remembered.'}
+        {', in the inspector header, shows help under each control and, in Configure, the '}
+        {'rest of the line above. It is off by default, and the setting is remembered.'}
         {' '}
         <HintsToggle />
       </p>
