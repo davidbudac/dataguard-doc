@@ -408,10 +408,31 @@ describe('the Split brain reading', () => {
     expect(chip()?.sub).toMatch(/^prm01 is STALLED when sby01 opens at \d+ s, and nothing shuts it down/);
   });
 
-  it('is a no where the old primary is mounted, because the new one can reach it', () => {
-    load(fsfoOff(), [{ at: 0, kind: 'cmd.failover', to: SBY }]);
+  it('is a no where the old primary was down and restarts mounted', () => {
+    load(fsfoOff(), [
+      { at: 0, kind: 'host.down', host: hostId('dc1-prm01') },
+      { at: 5, kind: 'cmd.failover', to: SBY },
+      { at: 100, kind: 'host.up', host: hostId('dc1-prm01') },
+    ]);
     expect(chip()).toMatchObject({ v: 'no', tone: 'tl' });
-    expect(chip()?.sub).toMatch(/^prm01 is mounted, not open, when sby01 opens at \d+ s/);
+    expect(chip()?.sub).toMatch(/^prm01 is down when sby01 opens at \d+ s/);
+  });
+
+  it('is a yes, naming the window, where the old primary is still open and the new one can reach it', () => {
+    for (const d of [fsfoOff(), CLASSIC]) {
+      load(d, [{ at: 0, kind: 'cmd.failover', to: SBY }]);
+      expect(chip()).toMatchObject({ v: 'yes', tone: 'rd', basis: 'model' });
+      expect(chip()?.sub).toMatch(/^prm01 and sby01 are both open read-write from \d+ s to the end of the run: prm01 is still open when sby01 opens at \d+ s/);
+    }
+  });
+
+  it('closes the window where the old primary is taken down later', () => {
+    load(fsfoOff(), [
+      { at: 0, kind: 'cmd.failover', to: SBY },
+      { at: 60, kind: 'host.down', host: hostId('dc1-prm01') },
+    ]);
+    expect(chip()).toMatchObject({ v: 'yes', tone: 'rd' });
+    expect(chip()?.sub).toMatch(/^prm01 and sby01 are both open read-write from \d+ s to 60 s: prm01 is still open when sby01 opens at \d+ s/);
   });
 
   it('is a yes, in red, naming the window both were open, where nothing can tell the old primary', () => {
@@ -435,6 +456,8 @@ describe('the Split brain reading', () => {
 
   it('is absent from a switchover, from a refused failover and from the steady state', () => {
     load(CLASSIC, [{ at: 0, kind: 'cmd.switchover', to: SBY }]);
+    expect(chip()).toBeUndefined();
+    load(fsfoOff(), [{ at: 0, kind: 'cmd.switchover', to: SBY }]);
     expect(chip()).toBeUndefined();
     load(CLASSIC, [
       { at: 0, kind: 'link.cut', link: CLASSIC_IDS.linkDc1Dc2 },

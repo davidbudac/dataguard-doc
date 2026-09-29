@@ -499,9 +499,16 @@ describe('SIM-07: a manual failover with the primary still open', () => {
       expect(f?.basis, loc).toBe('documented');
       expect(f?.cite, loc).toContain('FAILOVER.PRIMARY_SHUT_DOWN');
       expect(f?.message, loc).toContain('ensure that the primary database is shut down');
-      /* And the two are never both open at the end of the run. */
+      /* Nothing documented closes the old primary, so it stays open beside the
+         new one: the two are both open at the end of the run, and the run says
+         that drawing is its own reading. */
       expect(endState(t, 'sby01'), loc).toBe('open-rw');
-      expect(endState(t, 'prm01'), loc).not.toBe('open-rw');
+      expect(endState(t, 'prm01'), loc).toBe('open-rw');
+      const open = finding(t, 'FAILOVER.FORMER_PRIMARY_OPEN');
+      expect(open?.basis, loc).toBe('model');
+      expect(open?.cite, loc).toEqual(['FAILOVER.PRIMARY_SHUT_DOWN', 'FSFO.MANUAL_FAILOVER_CONDITIONS']);
+      expect(open?.note, loc).toMatch(/^FAILOVER\.FORMER_PRIMARY_OPEN:/);
+      expect(finding(t, 'FAILOVER.FORMER_PRIMARY_MOUNTED'), loc).toBeUndefined();
     }
   });
 

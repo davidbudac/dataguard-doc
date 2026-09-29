@@ -82,6 +82,10 @@ function runs(): Case[] {
   push('sim04:failover-target-down', classic({ observerLoc: 'none' }),
     [down(0, PRM), down(0, SBY), { at: 5, kind: 'cmd.failover', to: CLASSIC_IDS.standby }]);
   push('sim07:manual-failover-primary-open', classic(), [{ at: 5, kind: 'cmd.failover', to: CLASSIC_IDS.standby }]);
+  push('sim07:manual-failover-primary-open-fsfo-off', classic({ observerLoc: 'none' }),
+    [{ at: 5, kind: 'cmd.failover', to: CLASSIC_IDS.standby }]);
+  push('sim07:manual-failover-open-then-restarts', classic({ observerLoc: 'none' }),
+    [{ at: 5, kind: 'cmd.failover', to: CLASSIC_IDS.standby }, down(60, PRM), up(100, PRM)]);
   push('sim07:manual-failover-immediate-with-fsfo', classic(),
     [down(0, PRM), { at: 5, kind: 'cmd.failover', to: CLASSIC_IDS.standby, immediate: true }]);
   push('sim08:multi-target-not-current', multiTargetDoc(),
@@ -124,5 +128,19 @@ describe('every decision and finding a fact-check-shaped run can produce has an 
     }
     const report = [...untitled.entries()].map(([id, labels]) => `${id} (from ${labels.join(', ')})`);
     expect(report, 'ids with no title in explain.ts').toEqual([]);
+  });
+});
+
+describe('a manual failover that leaves the old primary open', () => {
+  const t = simulate(classic({ observerLoc: 'none' }), [{ at: 5, kind: 'cmd.failover', to: CLASSIC_IDS.standby }]);
+  const doc = classic({ observerLoc: 'none' });
+
+  it('is a step of its own, worded as this page\'s reading and citing the operator\'s shutdown', () => {
+    const step = buildExplanation({ ...doc, events: [{ at: 5, kind: 'cmd.failover', to: CLASSIC_IDS.standby }] }, t)
+      .find((s) => s.title === 'Former primary still open');
+    expect(step?.detail).toContain('prm01 was still running and open when the manual failover completed');
+    expect(step?.detail).toContain('Two databases are open as the primary');
+    expect(step?.claim).toMatchObject({ basis: 'model', cite: ['FAILOVER.PRIMARY_SHUT_DOWN', 'FSFO.MANUAL_FAILOVER_CONDITIONS'] });
+    expect(step?.subjects).toEqual(['prm01']);
   });
 });

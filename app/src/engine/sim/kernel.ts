@@ -277,6 +277,14 @@ export interface SimState {
   tOpenAt: Seconds | null;
   newPrimary: MemberId | null;
   formerPrimary: MemberId | null;
+  /**
+   * A manual failover completed while the old primary was still running, and
+   * it has not been down since: it is still open read-write beside the new
+   * primary, because nothing documented closes it (the shutdown is the
+   * operator's, FAILOVER.PRIMARY_SHUT_DOWN). Cleared the moment it goes down
+   * or is aborted; a restart after that is a former primary that restarts.
+   */
+  formerOpen: boolean;
   converting: MemberId | null;
   reinstating: MemberId | null;
   abortedMembers: MemberId[];
