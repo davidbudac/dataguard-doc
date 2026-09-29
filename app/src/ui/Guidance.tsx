@@ -82,6 +82,7 @@ const KEYS: { where: string; rows: [string, string][] }[] = [
       ['Ctrl+Z · ⌘Z', 'undo'],
       ['Ctrl+Shift+Z · Ctrl+Y', 'redo'],
       ['Ctrl+A · ⌘A', 'select every card on the drawing'],
+      [']', 'collapse or expand the side panel (Build, Break, Configure)'],
     ],
   },
   {

@@ -27,7 +27,7 @@ import { resetHistory } from './state/history';
 import { decodeFragment, fragmentKind } from './state/codec';
 import {
   announceRestore, introDismissed, loadDoc, loadEdition, loadGrid, loadHints, loadIntro, loadIssuesOpen, loadPalette,
-  loadTheme,
+  loadRailCollapsed, loadTheme,
   loadTimelineH,
   startAutosave,
 } from './state/persist';
@@ -45,6 +45,7 @@ import './styles/tokens.css';
 import './styles/base.css';
 import './styles/shell.css';
 import './styles/float.css';
+import './styles/rail.css';
 import './styles/popout.css';
 import './styles/print.css';
 
@@ -72,6 +73,7 @@ async function boot(): Promise<void> {
   loadGrid();
   loadIssuesOpen();
   loadTimelineH();
+  loadRailCollapsed();
 
   let restoredFromStorage = false;
   let notice: string | null = null;

@@ -27,7 +27,7 @@ import {
   findingsOpen, floating, inspectorOpen, issuesOpen, lessonId, mode, notesOpen, selection, toast,
   viewport,
 } from '@/state/view';
-import { setIssuesOpen, toggleIssues } from '@/state/persist';
+import { revealRail, setIssuesOpen, toggleIssues } from '@/state/persist';
 import { Fact } from './common/Chip';
 import { revealSections, sectionOfRule } from './inspector/sections';
 import { printing } from './print';
@@ -108,7 +108,7 @@ function Row({ f }: { f: Finding }) {
            fights that effect and is a no-op on an open section. */
         const section = sectionOfRule(f.id as string);
         if (section !== null) revealSections([section]);
-        if (viewport.value !== 'wide') inspectorOpen.value = true;
+        revealRail();
       }}
     >
       <span class={`tag t-${TONE[f.severity]}`}>{f.severity}</span>

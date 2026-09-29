@@ -1,0 +1,107 @@
+/* The side rail's frame (ui/RailFrame.tsx): the title bar with its fold
+   button, the scroll port under it, and the slim strip it folds to.
+
+   Loaded after float.css, so it restyles `.app-rail` by the same selectors
+   rather than louder ones. Colour only from tokens.css. The rail's contents
+   -- the inspector, the Break rail -- keep their own system (inspector.css).
+
+   The fold animates the rail's width, not a transform: the drawing's inset,
+   the dock and the zoom pill all measure from `--w-float-rail` (float.css)
+   and the docked grid's column is `--w-inspector` (shell.css), so animating
+   the two lengths moves everything that clears the rail with it. They are
+   registered so the browser can interpolate them; a browser that cannot
+   simply snaps. */
+
+@property --w-float-rail{syntax:'<length>';inherits:true;initial-value:340px}
+@property --w-inspector{syntax:'<length>';inherits:true;initial-value:360px}
+
+:root{--w-rail-shut:44px}
+/* The open width, fixed: the scroll port keeps it while the column is still
+   growing, so the fields inside are laid out once rather than once a frame. */
+.app{--w-rail-open:360px}
+.app.is-float{--w-rail-open:340px}
+.app.rail-shut{--w-inspector:var(--w-rail-shut)}
+.app.is-float.rail-shut{--w-float-rail:var(--w-rail-shut)}
+
+/* float.css computes the room the rail takes on :root, where the width is
+   the open one; restated on the shell, it follows the folded width too. Only
+   where the rail is a column -- below 1280 float.css gives the edge back. */
+@media screen and (min-width:1280px){
+  .app.is-float{--rail-space:calc(var(--w-float-rail) + 2 * var(--float-m))}
+}
+
+@media (prefers-reduced-motion:no-preference){
+  .app{transition:--w-inspector .22s cubic-bezier(.2,.7,.2,1)}
+  .app.is-float{transition:--w-float-rail .22s cubic-bezier(.2,.7,.2,1)}
+}
+
+/* ---------------- the open rail ---------------- */
+
+/* The aside stops scrolling; the body under the bar does. Anchored to the
+   right edge, so while the column grows the contents slide in from the side
+   they live on instead of being squeezed. */
+.app-rail.has-bar{display:flex;flex-direction:column;align-items:flex-end;overflow:hidden;
+  background-image:none;scrollbar-gutter:auto}
+
+.rail-bar{flex:0 0 auto;align-self:stretch;display:flex;align-items:center;gap:var(--s2);
+  min-height:44px;padding:0 var(--s2) 0 var(--rail-px);background:var(--sf2);
+  border-bottom:1px solid var(--ln)}
+.rail-name{flex:1 1 auto;min-width:0;font-size:12px;font-weight:600;letter-spacing:.01em;
+  color:var(--ik2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rail-tog{flex:0 0 auto}
+.btn.is-icon.rail-tog{width:28px;height:28px;color:var(--ik3)}
+.btn.is-icon.rail-tog:hover:not(:disabled){color:var(--ik);background:var(--sf3)}
+.rail-ico{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.4;
+  stroke-linecap:round;stroke-linejoin:round}
+
+.rail-body{flex:1 1 auto;min-height:0;width:100%;min-width:calc(var(--w-rail-open) - 2px);
+  overflow:auto;overscroll-behavior:contain;scrollbar-width:thin;
+  background-color:var(--sf);
+  /* The scroll shading shell.css gave the aside, on the port that scrolls. */
+  background-image:
+    linear-gradient(to bottom,var(--sf),rgba(0,0,0,0)),
+    linear-gradient(to top,var(--sf),rgba(0,0,0,0)),
+    linear-gradient(to bottom,var(--ln2),rgba(0,0,0,0)),
+    linear-gradient(to top,var(--ln2),rgba(0,0,0,0));
+  background-repeat:no-repeat;
+  background-size:100% 26px,100% 26px,100% 10px,100% 10px;
+  background-position:top,bottom,top,bottom;
+  background-attachment:local,local,scroll,scroll}
+
+/* The bar is the rail's top edge now: the headers under it are square. */
+.app.is-float .app-rail.has-bar .insp-hd,
+.app.is-float .app-rail.has-bar .evmenu{border-radius:0}
+.app.is-float .app-rail.has-bar .rail-bar{border-radius:var(--r-card) var(--r-card) 0 0}
+
+/* ---------------- the folded rail ---------------- */
+
+.app-rail.is-shut{display:flex;overflow:hidden;background-image:none;scrollbar-gutter:auto}
+.rail-strip{flex:1 1 auto;display:flex;flex-direction:column;align-items:center;gap:var(--s3);
+  width:100%;min-width:0;padding:var(--s2) 0 var(--s3);border:0;border-radius:inherit;
+  background:var(--sf);color:var(--ik2);font:inherit;cursor:pointer;text-align:center}
+.rail-strip:hover{background:var(--sf2);color:var(--ik)}
+.rail-strip:focus{outline:none}
+.rail-strip:focus-visible{outline:2px solid var(--fc);outline-offset:-3px}
+.rail-strip-ico{display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto;
+  width:28px;height:28px;border-radius:var(--r-ctl);color:var(--ik3)}
+.rail-strip:hover .rail-strip-ico{background:var(--sf3);color:var(--ik)}
+/* The name and the context, read top to bottom. */
+.rail-strip-t{writing-mode:vertical-rl;display:flex;align-items:center;gap:var(--s2);
+  min-height:0;overflow:hidden;white-space:nowrap;font-size:12.5px;font-weight:600;
+  letter-spacing:.01em;color:var(--ik)}
+.rail-strip-ctx{font-size:11px;font-weight:500;color:var(--ik2);padding:8px 2px;
+  border-radius:999px;background:var(--sf2);max-height:22ch;overflow:hidden;text-overflow:ellipsis}
+.rail-strip:hover .rail-strip-ctx{background:var(--sf3)}
+
+/* Folded in Break, the event menu is on the stage (App.tsx): at the right,
+   clear of the strip, as it is where the rail is a drawer. */
+@media screen{
+  .app.is-float.rail-shut .app-stage>.evmenu{right:var(--rail-space)}
+}
+
+@media print{
+  /* On paper the fold is not a control: the strip prints as nothing. */
+  .rail-strip{display:none}
+  .rail-bar{display:none}
+  .app-rail.has-bar,.rail-body{overflow:visible;min-width:0}
+}

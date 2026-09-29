@@ -24,7 +24,8 @@
 
 import { BOUNDS, clamp, isDatabase, isRac, memberId } from '@/engine';
 import type { TopologyDoc, XptMode } from '@/engine';
-import { inspectorOpen, select, viewport } from '@/state/view';
+import { select } from '@/state/view';
+import { revealRail } from '@/state/persist';
 import type { WhyState } from '../common/WhyPill';
 import { resolveSubject } from '../inspector/Inspector';
 import {
@@ -59,7 +60,7 @@ export interface BuildAction {
  */
 export function openInspectorFor(key: string): void {
   select(key);
-  if (viewport.value !== 'wide') inspectorOpen.value = true;
+  revealRail();
 }
 
 const editAction = (key: string): BuildAction => ({
