@@ -772,7 +772,7 @@ describe('a document that says fast-start failover is enabled with no observer',
     const f = find(baseDoc({ observers: [] }));
     expect(f?.severity).toBe('warning');
     expect(f?.basis).toBe('documented');
-    expect(f?.message).toContain('fsfo.state = enabled');
+    expect(f?.message).toContain('Fast-start failover is enabled here');
     expect(f?.message).toContain('ORA-16819');
     expect(f?.message).toContain('is unobserved and no failover can happen');
     expect(f?.ora).toBe('ORA-16819');
@@ -786,7 +786,7 @@ describe('a document that says fast-start failover is enabled with no observer',
   it('warns for observe-only too, which arms nothing either', () => {
     const f = find(baseDoc({ observers: [], fsfo: 'observe-only' }));
     expect(f?.severity).toBe('warning');
-    expect(f?.message).toContain('fsfo.state = observe-only');
+    expect(f?.message).toContain('enabled in observe-only mode');
   });
 
   it('is only the standing note where the document says disabled', () => {
