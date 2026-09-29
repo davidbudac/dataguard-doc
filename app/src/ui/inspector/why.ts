@@ -83,7 +83,7 @@ export const WHY = {
   siteHasHosts:
     'This site still has hosts in it: move or remove them first.',
   hostInUse:
-    'This host still runs a database instance, an observer or the application.',
+    'This host still runs a database instance, an observer or an application.',
   noObserverDeployed:
     'No observer is deployed, so there is none to lose. Deploying no observer is not the same as being unobserved.',
   nothingDown:

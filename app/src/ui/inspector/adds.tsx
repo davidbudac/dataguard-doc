@@ -50,11 +50,6 @@ export interface AddAction {
   /** True when a drop has to land on a data centre to mean anything. */
   needsWhere: boolean;
   enabled: (doc: TopologyDoc) => WhyState;
-  /**
-   * Whether the addition is on offer at all. The application is one card: once
-   * it is on the drawing the button is absent, rather than grey for good.
-   */
-  offered?: (doc: TopologyDoc) => boolean;
 }
 
 const needsSite = (doc: TopologyDoc): WhyState =>
@@ -97,11 +92,10 @@ export const ADD_ACTIONS: readonly AddAction[] = [
     key: 'application',
     label: '+ Application',
     short: '+ Application',
-    title: 'Add the application on a host of its own, in the primary\'s data centre: where the connect string is dialled from.',
+    title: 'Add an application on a host of its own, in the primary\'s data centre: where its connect string is dialled from. Add as many as you like; each can dial a connect string of its own.',
     run: (where) => addApplication(where),
     needsWhere: true,
     enabled: needsSite,
-    offered: (doc) => doc.application === undefined,
   },
   {
     key: 'site',
@@ -175,8 +169,7 @@ const ICON: Record<string, JSX.Element> = {
 export const WHY_DROP_ON_SITE = 'Drop it on a data centre to put it there.';
 
 export function AddToolbar({ doc }: { doc: TopologyDoc }) {
-  const offered = ADD_ACTIONS.filter((a) => a.offered === undefined || a.offered(doc));
-  const states = offered.map((a) => a.enabled(doc));
+  const states = ADD_ACTIONS.map((a) => a.enabled(doc));
   /* A disabled button cannot be focused, so parking the tab stop on one would
      make the whole strip unreachable by Tab. `+ Data centre` is never off, so
      there is always somewhere to park it. */
@@ -237,7 +230,7 @@ export function AddToolbar({ doc }: { doc: TopologyDoc }) {
       aria-label="Add to the configuration"
       onKeyDown={roving.onKeyDown}
     >
-      {offered.map((a, i) => {
+      {ADD_ACTIONS.map((a, i) => {
         const why = states[i] as WhyState;
         const isOff = why.state === 'off';
         return (

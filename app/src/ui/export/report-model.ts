@@ -13,7 +13,7 @@
  */
 
 import {
-  buildJdbc, buildTns, citation, CITATIONS, declaredPrimary, generateDgmgrl, generateInitOraFiles,
+  buildClientFiles, citation, CITATIONS, declaredPrimary, generateDgmgrl, generateInitOraFiles,
   isDatabase, lagLimitOf,
 } from '@/engine';
 import type {
@@ -358,7 +358,7 @@ export function buildReport(input: ReportInput): ReportModel {
     ...(primary === null ? {} : { primary }),
   });
   const initora = primary === null ? [] : generateInitOraFiles(t, { primary });
-  const clients = [buildTns(t), buildJdbc(t, { lead: true })];
+  const clients = buildClientFiles(t, { lead: true });
   const files: FileGroup[] = [
     {
       id: 'dgmgrl', title: 'Broker configuration (DGMGRL)',
@@ -372,7 +372,7 @@ export function buildReport(input: ReportInput): ReportModel {
     },
     {
       id: 'clients', title: 'Client connect strings (tnsnames.ora and JDBC)',
-      lead: 'The same connect descriptor for Oracle Net and the JDBC thin driver.',
+      lead: 'The connect descriptor for Oracle Net and the JDBC thin driver; an application with a connect string of its own has its own pair.',
       files: clients,
     },
   ];

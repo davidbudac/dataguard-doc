@@ -137,8 +137,9 @@ export function TerseReadout({ run }: { run: boolean }) {
   });
   const items: FitItem[] = chips.map((c) => {
     const w = sizes.items[c.id] ?? { long: 0, short: 0 };
-    const rank = KEEP.indexOf(c.id);
-    return { id: c.id, core: CORE.has(c.id), rank: rank < 0 ? KEEP.length : rank, long: w.long, short: w.short };
+    const kind = c.group ?? c.id;
+    const rank = KEEP.indexOf(kind);
+    return { id: c.id, core: CORE.has(kind), rank: rank < 0 ? KEEP.length : rank, long: w.long, short: w.short };
   });
   const fit = chipsThatFit(items, width > 0 ? width - RO_PAD - SLACK : 0, sizes.sep + 2 * RO_GAP);
   const shown = chips.filter((c) => fit.ids.includes(c.id));
@@ -227,12 +228,12 @@ export function KeyMenu({ run }: { run: RunTimeline }) {
       {open ? (
         <div class="sb-pop sb-pop-key legend tl-legend" id="sb-key" role="dialog" aria-label="Colour key and view">
           {run.model.legend.map((l) => <span key={l.swatch}><i class={l.swatch} />{l.label}</span>)}
-          {topology.value.application === undefined ? null : (
+          {(topology.value.applications?.length ?? 0) === 0 ? null : (
             <button
               type="button" class="btn sb-app-btn" aria-pressed={app} title={APP_VIEW_TIP}
               onClick={() => { appLanesShown.value = !app; }}
             >
-              Application&rsquo;s view
+              {(topology.value.applications?.length ?? 0) > 1 ? 'Applications’ views' : 'Application’s view'}
             </button>
           )}
         </div>

@@ -228,7 +228,7 @@ const HOWTO: { k: string; d: JSX.Element }[] = [
     d: (
       <>
         The <span class="mono">&minus;</span> / <span class="mono">+</span> strip on the drawing,
-        or ctrl/&#8984; with the wheel. Past 1:1, drag the background to move the view.
+        or the mouse wheel. Past 1:1, drag the background to move the view; Shift-drag selects.
       </>
     ),
   },

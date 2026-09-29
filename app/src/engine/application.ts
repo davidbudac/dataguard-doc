@@ -1,16 +1,19 @@
 /**
- * The application's card, as a document starts with it.
+ * An application's card, as a document gets it.
  *
- * Pure, like everything beside it: a document in, a document out. The card
- * stands on a host of its own in the primary's data centre -- which is where
- * it is to start with, and the reader moves it from there -- and an empty
- * ADDRESS_LIST is filled with the primary and every standby database, so the
- * connect string still finds the service once the role has moved.
+ * Pure, like everything beside it: a document in, a document out. A document
+ * holds any number of applications, each on a host of its own in the data
+ * centre it was added to -- the primary's, to start with; the reader moves it
+ * from there -- and an empty shared ADDRESS_LIST is filled with the primary and
+ * every standby database, so the connect string still finds the service once
+ * the role has moved. A new application dials the shared descriptor until it
+ * is given one of its own.
  */
 
 import { applicationId, hostId } from './ids';
 import type { SiteId } from './ids';
 import type { DatabaseMember, Host, TopologyDoc } from './types/topology';
+import { applicationsOf } from './types/topology';
 
 const free = (taken: ReadonlySet<string>, base: string): string => {
   if (!taken.has(base)) return base;
@@ -25,19 +28,30 @@ export function primarySite(doc: TopologyDoc): SiteId | null {
   return host?.site ?? doc.sites[0]?.id ?? null;
 }
 
+/** `app01`, `app02`, ... -- the first two-digit name nothing in `taken` already has. */
+export function nextApplicationName(taken: ReadonlySet<string>): string {
+  for (let i = 1; i < 100; i++) {
+    const name = `app${String(i).padStart(2, '0')}`;
+    if (!taken.has(name)) return name;
+  }
+  return free(taken, 'app');
+}
+
 /**
- * The document with an application on it. Unchanged when it has one already,
- * or when there is no data centre to stand it in.
+ * The document with one more application on it, on a host of its own; the
+ * document is returned unchanged when there is no data centre to stand it in.
+ * Names are unique: without `name` the next free `appNN`, and a `name` that is
+ * taken gets a suffix.
  */
-export function withApplication(doc: TopologyDoc, where?: SiteId, name = 'app01'): TopologyDoc {
-  if (doc.application !== undefined) return doc;
+export function withApplication(doc: TopologyDoc, where?: SiteId, name?: string): TopologyDoc {
   const site = where !== undefined && doc.sites.some((s) => s.id === where) ? where : primarySite(doc);
   if (site === null) return doc;
   const ids = new Set<string>([
     ...doc.sites.map((s) => s.id as string), ...doc.members.map((m) => m.id as string),
     ...doc.observers.map((o) => o.id as string), ...doc.links.map((l) => l.id as string),
+    ...applicationsOf(doc).map((a) => a.id as string),
   ]);
-  const id = free(ids, name);
+  const id = name === undefined ? nextApplicationName(ids) : free(ids, name);
   const hname = free(new Set(doc.hosts.map((h) => h.id as string)), `${site as string}-${id}`);
   const host: Host = {
     id: hostId(hname), name: hname, site,
@@ -55,7 +69,7 @@ export function withApplication(doc: TopologyDoc, where?: SiteId, name = 'app01'
     ...head,
     hosts: [...doc.hosts, host],
     client: { ...doc.client, addresses },
-    application: { id: applicationId(id), name: id, host: host.id },
+    applications: [...applicationsOf(doc), { id: applicationId(id), name: id, host: host.id }],
     environment,
     events,
   };

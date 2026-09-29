@@ -47,11 +47,15 @@ export interface JdbcOptions {
    * another and passes true; chapter 4's card carries its own header.
    */
   lead?: boolean;
+  /** The descriptor to write out; the document's shared one when left out. */
+  client?: ClientDescriptor;
+  /** Whose descriptor it is, when it is one application's own: added to the card's title. */
+  label?: string;
 }
 
 export function buildJdbc(doc: TopologyDoc, opts: JdbcOptions = {}): GeneratedFile {
-  const c: ClientDescriptor = doc.client;
-  const addresses = serviceAddresses(doc);
+  const c: ClientDescriptor = opts.client ?? doc.client;
+  const addresses = serviceAddresses(doc, c);
   const service = c.serviceName;
 
   const v26 = doc.config.edition === '26ai';
@@ -102,6 +106,8 @@ export function buildJdbc(doc: TopologyDoc, opts: JdbcOptions = {}): GeneratedFi
   const claims: Claim<string>[] = [INLINE_DESCRIPTOR, SEC_SUFFIX];
   if (v26 && c.retryDelaySeconds === 0) claims.push(RETRY_DELAY_26AI);
   return {
-    id: 'jdbc', title: 'JDBC thin URL', syntax: 'jdbc', lines, claims,
+    id: opts.label === undefined ? 'jdbc' : `jdbc:${opts.label}`,
+    title: opts.label === undefined ? 'JDBC thin URL' : `JDBC thin URL — ${opts.label}`,
+    syntax: 'jdbc', lines, claims,
   };
 }

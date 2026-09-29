@@ -23,7 +23,9 @@
 
 import type { Geometry } from './layout';
 import { siteLabelRect } from './layout';
+import { CARD, instanceRowY } from './measure';
 import type { Rect } from './measure';
+import { parseInstanceKey } from '@/state/instanceKey';
 import type { RoutedLink } from './routing';
 import { linkKey } from './LinkPath';
 
@@ -34,7 +36,7 @@ export const BAR_GAP = 6;
  * The rectangle the bar hangs off, or `null` when the key names nothing on
  * the drawing.
  *
- * A member or an observer anchors on its card, a data centre on its *name
+ * A member or an observer anchors on its card, an instance on its row, a data centre on its *name
  * band* rather than on the whole panel (a bar under a 118 px tall rectangle
  * reads as belonging to the drawing, not to the site), and a link on the pill
  * that names it -- which is the half of a link that is a control.
@@ -44,6 +46,14 @@ export function anchorFor(
 ): Rect | null {
   const node = geo.byKey[key];
   if (node) return { x: node.x, y: node.y, w: node.w, h: node.h };
+  /* An instance is its row of the RAC card it is drawn on -- the same rectangle
+     `NodeCard` paints, inset 8 -- and it hangs a bar from that row rather than
+     from the whole card. */
+  const inst = parseInstanceKey(key);
+  const owner = inst === null ? undefined : geo.byKey[inst.member];
+  if (inst !== null && owner !== undefined && inst.index < (owner.instanceHosts?.length ?? 0)) {
+    return { x: owner.x + 8, y: instanceRowY(owner, inst.index), w: owner.w - 16, h: CARD.instanceRowH - 6 };
+  }
   const site = geo.sites.find((s) => (s.id as string) === key);
   if (site) return siteLabelRect(site);
   const link = routed.find((l) => linkKey(l) === key);

@@ -579,8 +579,9 @@ it."* Five things landed, and one rule bent:
   drawing; at 1:1 nothing changes and the crispness rule holds. Past 1:1 the
   `.tp-wrap.is-zoomed` becomes the scroll port (not the stage, so the `+`
   toolbar and the zoom strip stay put in both axes), a background drag pans
-  it (lazy pointer capture, same threshold as a card drag), and ctrl/⌘-wheel
-  — a trackpad pinch — steps the ladder; a plain wheel still scrolls. The
+  it (lazy pointer capture, same threshold as a card drag), and the wheel
+  steps the ladder (summed, `WHEEL_NOTCH` per rung, so a trackpad or pinch
+  does not fly through it) keeping the point under the pointer fixed. The
   `−`/`+` buttons go grey at the ends with the reason in their `title`, the
   one grey control that explains itself in a tooltip rather than a `WhyPill`
   beside it: a sentence under a one-glyph button doubled the strip's height
@@ -742,6 +743,24 @@ fewer. One bullet per change.
   property of a card. Identity, role/apply and transport stay open: they are
   what the reader clicked the card for. `RedoRoutes` is still a plain group —
   it is `RedoRoutesEditor`'s own, and this pass did not open that file.
+- **A RAC member's Instances fold opens by itself.** `Fold` takes `defaultOpen`
+  (`MemberForm` passes `instances.length > 1`); a single-instance member stays folded.
+  A reader's own toggle is remembered for the session in the same open set -- and a
+  shut default-open fold in `shutSections`, since "absent from the open set" would
+  otherwise mean "never asked" and "shut" at once.
+- **An instance is selectable on the drawing.** In Build, each instance row of a RAC
+  card is a `role="button"`, `tabindex="0"` control with its own `data-node`, whose
+  selection key is `<member>~<n>` (`state/instanceKey.ts`; `n` is the 1-based place, so a
+  rename keeps the selection). `~` is not in an Oracle name; `resolveSubject` tries every
+  exact id first, so the key can only be a fallback; `?sel=` accepts it (`SEL_RE`). A click
+  on a row selects the row (never additive) and stops there; a press still bubbles to the
+  card, so a drag from a row moves the card. The rail shows `InstanceForm` (name, host,
+  `Remove` grey with `WHY.lastInstance` on the last one, `Select <member>`); the bar and
+  the Delete key offer `Edit` and `Remove` only -- nothing about the whole database.
+  Break draws the rows as before, unselectable. A single-instance card has no rows.
+- **The rail's buttons have a box at rest.** `.insp .btn` (not icon, quiet, primary,
+  solid or danger) takes `--ik` text on `--sf3` with a `--ln2` edge, over float.css's
+  ghost; hover darkens the fill and takes the `--ik3` edge.
 - **The scenarios are a shelf.** Two columns of names, and nothing else
   (`.tmpls` grid; `is-open` drops it to one column). Six clipped one-line
   captions under six buttons were twelve rows of text for a shelf a reader
@@ -885,9 +904,9 @@ the gestures were all there and the page was still clumsy to use. Where §3d or 
   said *under the open field* (`renameVerdict`, the rail's sentence), not in a toast
   after it closed. Every addition from the toolbar opens its own name, so add → type →
   `Enter` is one flow. A data centre renames its label; its id stays.
-- **Selections act as one.** A drag over the ground is a selection rectangle in Build
-  (cards only); the pan moved to the middle button and `Space`+drag, and the wheel
-  still scrolls. Dragging a selected card carries the selection, as one edit under the
+- **Selections act as one.** A `Shift`/`Ctrl`/`⌘`-drag over the ground is a selection
+  rectangle in Build (cards only, added to the selection); the plain drag, the middle
+  button and `Space`+drag pan, and the wheel zooms. Dragging a selected card carries the selection, as one edit under the
   pressed card's coalesce key (so `moveToSite` still folds into it). `Alt`+arrow nudges
   8 px (`Shift`: 32) — passed as a *delta*, so two presses inside one render add up.
   `Delete` asks `removeAction` for each selected thing against the document as it then
@@ -1135,24 +1154,34 @@ Assumptions are retained in document notes (the codec's 4000-character limit,
 with explicit truncation notice), and a persistent disclosure above the drawing
 keeps them visible across export, share and reload. DGMGRL text is not accepted.
 
-## The application on the drawing (as built, 2026-09-28)
+## The applications on the drawing (as built, 2026-09-28; several since 2026-09-29)
+
+A configuration holds any number of applications (`TopologyDoc.applications`), each
+its own card on a host of its own and each dialling the connect descriptor it has:
+its own (`Application.client`) or, when it has none, the document's shared
+`doc.client`. Everything below is per application; where a surface is genuinely
+single-application it says which one it shows.
 
 - **A card of its own** (`NodeKind 'application'`, glyph `app`, an `APP` chip): two
   lines, the width of a database card, on a host of its own in the primary's data
   centre to start with. It is dragged into another data centre like any card
   (`moveToSite`), renamed in place, removed from the rail's header, and added from
-  the toolbar — where `+ Application` is offered only while the drawing has none
-  (`AddAction.offered`): there is one, and a button grey for good says nothing. It
-  shares no host (`mergeVerdict`, `WHY_APPLICATION_OWN_HOST` — the page's own rule,
-  not Oracle's, and worded that way).
+  the toolbar — `+ Application` is always on offer (it needs a data centre, like the
+  other additions), names are the next free `app01`, `app02`, … in the one id
+  namespace, and each new card stands on a host of its own. It shares no host
+  (`mergeVerdict`, `WHY_APPLICATION_OWN_HOST` — the page's own rule, not Oracle's,
+  and worded that way). Several in one data centre stand side by side
+  (`LAYOUT.appSideGap`), so a line rising from one never crosses another.
 - **Its band is under the member band** (`LAYOUT.appGap`), the observers' is over
   it, so an observer's line comes down onto a card's top edge and the application's
   comes up onto its bottom one. In its own column the line is a straight hop, left
   of the card's middle; to another column it leaves the card sideways, runs under
   every database and rises beside the data centre's name (`clearOfName`), never
   through it. `LinkKind 'connect'`: dash-dot, colour `--cn`, one line per database
-  on the ADDRESS_LIST, captioned `sessions` to the database publishing the service
-  and `address` (faded) to the others; `cut` and `down` as every line says them.
+  on *that application's* ADDRESS_LIST (`applicationTargets(doc, app)`, id
+  `connect:<app>:<member>`), captioned `sessions` to the database publishing the
+  service and `address` (faded) to the others; `cut` and `down` as every line says
+  them, asked of that application's host.
 - **The lane between the bands** (`Geometry.midLaneY`, `LAYOUT.midLane`): with an
   application under the primary, a redo route that used to leave by the card's
   bottom edge for the lane under everything would run through the application's
@@ -1165,29 +1194,57 @@ keeps them visible across export, share and reload. DGMGRL text is not accepted.
   layout's. The observers' trunk gap grew by the difference, so the top trunk still
   passes under an observer-only data centre's name. All eleven canvas goldens moved;
   they record geometry.
-- **The rail** (`ApplicationForm`): name, data centre, then the connect string as
-  the descriptor spells it — `SERVICE_NAME`, `TRANSPORT_CONNECT_TIMEOUT`,
+- **The rail** (`ApplicationForm`): name, data centre, then *Connect string* — a
+  choice between **Use the shared connect string** and **Own connect string**.
+  Choosing *own* copies the shared descriptor (addresses included) onto the
+  application; choosing *shared* again discards it. Below the choice, the parameters
+  as the descriptor spells them — `SERVICE_NAME`, `TRANSPORT_CONNECT_TIMEOUT`,
   `CONNECT_TIMEOUT` (0 is "not set": no default is documented), `RETRY_COUNT`,
   `RETRY_DELAY`, `FAILOVER`, `LOAD_BALANCE` — the ADDRESS_LIST as a tick per
   database (a far sync instance grey, with its reason), and the dead-address answer
-  under *This page's model*. A line drawn between the application and a database
-  lists that database. A new standby joins the list; a standby moved to another
-  data centre stays on it.
-- **Break: the application's view.** Three lanes under the configuration's, on the
-  same axis and under the same playhead (`timeline/app-lanes.ts`, pure): `Service`,
+  under *This page's model*. **Every edit is to the descriptor this application
+  dials.** For an application on the shared one that is the shared descriptor, so the
+  change reaches every application that dials it — the hint under the choice names
+  them, and the undo entry says "the shared ADDRESS_LIST". A line drawn between an
+  application and a database lists that database on *that* application's list; a
+  route's Remove takes it off that list. A new standby joins the **shared** list
+  only: an application with a connect string of its own keeps the list its owner
+  wrote. A standby moved to another data centre stays on every list that names it
+  (shared and own); a host that goes takes its addresses from all of them.
+- **Break: each application's view.** Three lanes per application under the
+  configuration's, on the same axis and under the same playhead
+  (`timeline/app-lanes.ts`, pure, one `AppModel` each from `computeApps`): `Service`,
   `Sessions`, `New connections`, headed by one line that says what they add up to
   ("outage 60.3 s — 15.3 s of it inside the connect string") and that it is this
-  page's model. The ladder is drawn address by address; the reconnect and the
-  exhausted string are marks. The axis stretches to the application's own end
-  (`axisSpan(trace, events, doc)`, capped as the Configure panel caps it), because
-  the reconnect is usually past the role change. `Application's view` in the legend
-  row folds the lanes away (`appLanesShown`, a moment's view); the pinned export
-  scale never draws them. The readout gains `Application reconnects` / `Application
-  stays down`.
+  page's model. With one application the heading is "The application's view"; with
+  several, "app02's view" for each (`TimelineModel.appSections`, lane keys
+  `application:<app>:<lane>`, marks `app-reconnect:<app>`). The ladder is drawn
+  address by address; the reconnect and the exhausted string are marks. The axis
+  stretches to the *last* application's end (`axisSpan(trace, events, doc)`, capped as
+  the Configure panel caps it), because a reconnect is usually past the role change.
+  `Application's view` / `Applications' views` in the legend row folds every
+  application's lanes away together (`appLanesShown`, a moment's view); the pinned
+  export scale never draws them. In the Lanes layout each application is a row with
+  its own host's up and down, and its three lanes sit under their own heading. The
+  events on an application are per application: Crash / Restore act on *its* host.
+- **The readout, one reading per application.** With one application the readings
+  are `Application reconnects` / `Application stays down`; with several, each reads
+  under its own name (`app02 reconnects`, `app02 stays down`) with `group: 'app'` so the
+  bar ranks and keeps them as it kept the one (`ReadoutChip.group`; the first keeps
+  the id `app`, the rest are `app~1`, `app~2`). An application nothing happened to has
+  no reading, as before.
+- **Configure.** *Application view* draws one figure per application, each captioned
+  with the application and whether it dials its own connect string or the shared one;
+  with none, the one figure dialled from outside every data centre. *tnsnames / JDBC*
+  shows the shared pair and then a pair of its own for every application that has
+  one (`buildClientFiles`), and says who dials which. The review dialog and the
+  printable report take the same pairs.
 - **What a document without one does.** Nothing new: no card, no lanes, no lane
   between the bands, the published vantage. A link or a file written before the
   card existed, and every published-page link, opens that way; `+ Application` adds
-  it. The presets, the first-visit document and Reset carry it.
+  it. The presets, the first-visit document and Reset carry one. A document written
+  when a configuration held one application (`application: {…}`) is read as a
+  one-element `applications` list.
 - **Found on the way, and fixed:** a published-page link opened the Introduction
   over itself on a first visit (its query keys are not in `ADDRESSED`), so
   `site/smoke.mjs` failed its two legacy-link checks. Boot now counts an upgraded

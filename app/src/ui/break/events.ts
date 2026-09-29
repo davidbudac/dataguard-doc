@@ -17,7 +17,7 @@
 
 import { scenarioEvents, stateAt } from '@/engine';
 import type { ClassicScenario, DatabaseMember, HostId, TimedEvent, TopologyDoc } from '@/engine';
-import { hasApplyInstance, isDatabase } from '@/engine';
+import { findApplication, hasApplyInstance, isDatabase } from '@/engine';
 import { withEvents } from '@/state/doc';
 import { topology, trace } from '@/state/derived';
 import { edit } from '@/state/history';
@@ -180,8 +180,9 @@ export function anythingDownUnder(doc: TopologyDoc, key: string, t: number): boo
   if (doc.observers.some((o) => (o.id as string) === key)) {
     return isDownAt(doc, { kind: 'observer', id: key }, t);
   }
-  if (doc.application !== undefined && (doc.application.id as string) === key) {
-    return isDownAt(doc, { kind: 'host', id: doc.application.host as string }, t);
+  const application = findApplication(doc, key);
+  if (application !== undefined) {
+    return isDownAt(doc, { kind: 'host', id: application.host as string }, t);
   }
   if (doc.links.some((l) => (l.id as string) === key)) {
     return isDownAt(doc, { kind: 'link', id: key }, t);
@@ -439,8 +440,7 @@ export function actionsForKey(doc: TopologyDoc, key: string, at: number): EventA
 
   /* The application is its host: crashing the host is the one thing that
      happens to it, and it decides nothing about what the configuration does. */
-  const app = doc.application !== undefined && (doc.application.id as string) === key
-    ? doc.application : undefined;
+  const app = findApplication(doc, key);
   if (app) {
     const hDown = isDownAt(doc, { kind: 'host', id: app.host as string }, at);
     const hostHeld = heldBySite(doc, app.host, at);
@@ -709,7 +709,7 @@ export function hoverTools(doc: TopologyDoc, key: string, at: number, opts: RunO
   } else if (doc.observers.some((o) => (o.id as string) === key)) {
     out.push(pair('observer.stop', 'stop', 'observer.start', 'start'));
     out.push(pair('host.down', 'crash', 'host.up', 'restore'));
-  } else if ((doc.application?.id as string | undefined) === key) {
+  } else if (findApplication(doc, key) !== undefined) {
     out.push(pair('host.down', 'crash', 'host.up', 'restore'));
   } else if (doc.links.some((l) => (l.id as string) === key)) {
     out.push(pair('link.cut', 'cut', 'link.heal', 'heal'));

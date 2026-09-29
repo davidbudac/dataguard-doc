@@ -383,7 +383,7 @@ describe('a selection is made, moved and removed as one', () => {
     const s = rectOf(root, 'sby01', 'rect.tp-card');
     const a = clientOf(root, Math.min(p.x, s.x) - 6, Math.min(p.y, s.y) - 6);
     const b = clientOf(root, Math.max(p.x, s.x) + 20, Math.max(p.y, s.y) + 20);
-    await dragGround(root, a, b);
+    await dragGround(root, a, b, { shiftKey: true });
     expect(root.querySelector('.tp-band')).not.toBeNull();
     pointer(root.querySelector('.topo-svg')!, 'Up', ...b);
     await tick();
@@ -391,18 +391,22 @@ describe('a selection is made, moved and removed as one', () => {
     expect([...selection.value].sort()).toEqual(['prm01', 'sby01']);
   });
 
-  it('with Space held, or the middle button, the drag is the pan it used to be', async () => {
+  it('a plain drag, the middle button, or Space with a modifier is the pan; only a modifier-drag is the rectangle', async () => {
     const root = await mountApp();
     await painted();
+    const svg = root.querySelector('.topo-svg')!;
+    await dragGround(root, [0, 0], [300, 300]);
+    expect(root.querySelector('.tp-band')).toBeNull();
+    pointer(svg, 'Up', 300, 300);
     await dragGround(root, [0, 0], [300, 300], { button: 1 });
     expect(root.querySelector('.tp-band')).toBeNull();
-    pointer(root.querySelector('.topo-svg')!, 'Up', 300, 300);
+    pointer(svg, 'Up', 300, 300);
     window.dispatchEvent(new KeyboardEvent('keydown', { key: ' ' }));
-    await dragGround(root, [0, 0], [300, 300]);
+    await dragGround(root, [0, 0], [300, 300], { shiftKey: true });
     expect(root.querySelector('.tp-band')).toBeNull();
-    pointer(root.querySelector('.topo-svg')!, 'Up', 300, 300);
+    pointer(svg, 'Up', 300, 300);
     window.dispatchEvent(new KeyboardEvent('keyup', { key: ' ' }));
-    await dragGround(root, [0, 0], [300, 300]);
+    await dragGround(root, [0, 0], [300, 300], { shiftKey: true });
     expect(root.querySelector('.tp-band')).not.toBeNull();
   });
 
@@ -420,7 +424,7 @@ describe('a selection is made, moved and removed as one', () => {
     expect([...selection.value].sort()).toEqual(
       [
         ...memberIds(), ...topo().observers.map((o) => o.id as string),
-        ...(topo().application ? [topo().application!.id as string] : []),
+        ...(topo().applications ?? []).map((a) => a.id as string),
       ].sort(),
     );
     chip(root, '+ Data centre').click();

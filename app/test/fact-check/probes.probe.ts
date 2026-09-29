@@ -25,10 +25,13 @@ import { generateDgmgrl } from '../../src/engine/generate/dgmgrl';
 import { renderPlain } from '../../src/engine/generate/lines';
 import { hostId, linkId, memberId, siteId } from '../../src/engine/ids';
 import { formatRedoRoutes, parseRedoRoutes } from '../../src/engine/redo/parse';
+import { withApplication } from '../../src/engine/application';
+import { computeApps } from '../../src/engine/models/app';
 import { simulate } from '../../src/engine/sim/simulate';
 import type { EngineTrace } from '../../src/engine/sim/simulate';
 import type { TimedEvent } from '../../src/engine/types/events';
 import type { TopologyDoc } from '../../src/engine/types/topology';
+import { applicationsOf } from '../../src/engine/types/topology';
 import { validate } from '../../src/engine/validate';
 import { preset } from '../../src/presets';
 import {
@@ -390,6 +393,31 @@ const TEXT: TextProbe[] = [
       return {
         open: lines.length === 1 && /MAXPROTECTION/i.test(lines[0] ?? ''),
         now: lines.map((l) => l.trim()).join(' / ') || '(none)',
+      };
+    },
+  },
+  {
+    finding: 'APP-01',
+    title: 'Two applications, one run: each dials the descriptor it has, from where it stands',
+    oracle: '"If a connection attempt fails across all ADDRESS_LISTS, then additional attempts to connect beginning with the first ADDRESS_LIST will be made RETRY_COUNT times" (19c HA guide, Oracle Net TNS string parameters) -- per connect string, so a string with RETRY_COUNT 2 has a budget of three traversals and one with none of one',
+    run: () => {
+      /* Both apps stand in DC2, the standby's data centre; the primary's host crashes at 0.
+         app02 has a string of its own with RETRY_COUNT 2; app01 dials the shared one. */
+      const base = withApplication(withApplication(classic(), siteId('dc2')), siteId('dc2'));
+      const doc: TopologyDoc = {
+        ...base,
+        applications: applicationsOf(base).map((a, i) => (i === 1
+          ? { ...a, client: { ...base.client, retryCount: 2, retryDelaySeconds: 5 } }
+          : a)),
+      };
+      const t = simulate(doc, [{ at: 0, kind: 'host.down', host: PRM }]);
+      const [shared, own] = computeApps(t, doc);
+      const traversals = (m: NonNullable<typeof shared>): number => m.attempts.length;
+      return {
+        open: shared !== undefined && own !== undefined
+          && traversals(shared) === 1 && shared.application?.id === 'app01'
+          && own.application?.id === 'app02' && own.worst > shared.worst,
+        now: [shared, own].map((m) => `${m?.application?.id ?? '-'}: attempts=${m ? traversals(m) : '-'} tConn=${m?.tConn ?? '-'} worst=${m?.worst ?? '-'}`).join(' / '),
       };
     },
   },

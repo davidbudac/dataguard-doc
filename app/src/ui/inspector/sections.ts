@@ -56,21 +56,45 @@ export const DEFAULT_OPEN: SectionId = 'Configuration';
 
 export const openSections = signal<ReadonlySet<string>>(new Set<string>([DEFAULT_OPEN]));
 
-export const isSectionOpen = (id: string): boolean => openSections.value.has(id);
+/**
+ * The folds that open by themselves in some state (`Fold`'s `defaultOpen`) and
+ * that the reader has shut. Without it a default-open fold could not be closed:
+ * "not in the open set" would mean "shut" and "never asked" at once. A fold
+ * that never opens by default never appears here.
+ */
+export const shutSections = signal<ReadonlySet<string>>(new Set<string>());
 
-export function toggleSection(id: string): void {
-  const next = new Set(openSections.value);
-  if (next.has(id)) next.delete(id);
-  else next.add(id);
-  openSections.value = next;
+/**
+ * Is this fold open? A fold the reader has toggled answers to the reader; one
+ * they have not answers to its own default (`defaultOpen`, false for most).
+ */
+export const isSectionOpen = (id: string, defaultOpen = false): boolean =>
+  openSections.value.has(id) || (defaultOpen && !shutSections.value.has(id));
+
+/** Flip a fold. `defaultOpen` is the one the fold was drawn with, so the flip is of what is on screen. */
+export function toggleSection(id: string, defaultOpen = false): void {
+  const open = isSectionOpen(id, defaultOpen);
+  const opened = new Set(openSections.value);
+  const shut = new Set(shutSections.value);
+  if (open) { opened.delete(id); if (defaultOpen) shut.add(id); }
+  else { opened.add(id); shut.delete(id); }
+  openSections.value = opened;
+  shutSections.value = shut;
 }
 
 /** Open these without closing anything; a no-op when they are open already. */
-export function revealSections(ids: Iterable<string>): void {
+export function revealSections(wanted: Iterable<string>): void {
+  const ids = [...wanted];
   const cur = openSections.value;
   const next = new Set(cur);
   for (const id of ids) next.add(id);
   if (next.size !== cur.size) openSections.value = next;
+  const shut = shutSections.value;
+  if (ids.some((id) => shut.has(id))) {
+    const left = new Set(shut);
+    for (const id of ids) left.delete(id);
+    shutSections.value = left;
+  }
 }
 
 /**
@@ -95,6 +119,7 @@ export function revealForFlagged(key: string, ids: Iterable<string>): void {
 /** Back to the state a fresh session starts in. Used by the tests. */
 export function resetSections(): void {
   openSections.value = new Set<string>([DEFAULT_OPEN]);
+  shutSections.value = new Set<string>();
   lastFlaggedKey = '';
 }
 

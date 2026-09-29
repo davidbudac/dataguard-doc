@@ -22,7 +22,7 @@
  * out of the configuration -- and the surface decides how that looks.
  */
 
-import { BOUNDS, clamp, isDatabase, isRac, memberId } from '@/engine';
+import { applicationsOf, BOUNDS, clamp, isDatabase, isRac, memberId } from '@/engine';
 import type { TopologyDoc, XptMode } from '@/engine';
 import { select } from '@/state/view';
 import { revealRail } from '@/state/persist';
@@ -30,7 +30,7 @@ import type { WhyState } from '../common/WhyPill';
 import { resolveSubject } from '../inspector/Inspector';
 import {
   addDatabase, addHost, addInstance, addObserver, patchLink, removeApplication, removeFsfoTarget, removeLink,
-  removeMember, removeObserver, removeRedoRoute, removeSite, routesWithout, setAddressListed, setLogXptMode,
+  removeInstance, removeMember, removeObserver, removeRedoRoute, removeSite, routesWithout, setAddressListed, setLogXptMode,
   setMasterObserver, setPrimary,
 } from '../inspector/edits';
 import { off, ON, WHY } from '../inspector/why';
@@ -96,11 +96,13 @@ export function removeRouteAction(doc: TopologyDoc, r: RouteRef, id = 'remove'):
     case 'connect':
       return {
         id,
-        label: `Remove ${b} from the ADDRESS_LIST`,
+        label: applicationsOf(doc).length > 1
+          ? `Remove ${b} from ${a}'s ADDRESS_LIST`
+          : `Remove ${b} from the ADDRESS_LIST`,
         plural: 'Remove',
         enabled: ON,
         kind: 'remove',
-        run: () => setAddressListed(memberId(b), false),
+        run: () => setAddressListed(a, memberId(b), false),
       };
     case 'check':
       return {
@@ -144,6 +146,30 @@ export function buildActionsForKey(doc: TopologyDoc, key: string): BuildAction[]
   const subject = resolveSubject(doc, key);
   if (subject === null) return [];
   if (subject.kind === 'route') return routeActions(doc, subject.route);
+  /* One instance of a RAC database: the rail on it, and its own removal. Not a
+     row of the database's table -- a transport, a role or a removal of the
+     whole member pressed on an instance would be about something else. */
+  if (subject.kind === 'instance') {
+    const { member, index, instance } = subject;
+    return [
+      {
+        id: 'edit', label: `Edit instance ${instance.name}`, plural: 'Edit', enabled: ON, kind: 'edit',
+        run: () => openInspectorFor(key),
+      },
+      {
+        id: 'remove',
+        label: `Remove instance ${instance.name}`,
+        plural: 'Remove',
+        enabled: member.instances.length > 1 ? ON : off(WHY.lastInstance),
+        kind: 'remove',
+        run: () => {
+          removeInstance(member.id, index);
+          /* The place this key named now holds the next instance, or nothing. */
+          select(member.id as string);
+        },
+      },
+    ];
+  }
   const out: BuildAction[] = [editAction(key)];
 
   if (subject.kind === 'member') {
@@ -229,7 +255,7 @@ export function buildActionsForKey(doc: TopologyDoc, key: string): BuildAction[]
       plural: 'Remove',
       enabled: ON,
       kind: 'remove',
-      run: () => removeApplication(),
+      run: () => removeApplication(subject.application.id as string),
     });
   }
 

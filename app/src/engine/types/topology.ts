@@ -263,14 +263,21 @@ export interface ClientDescriptor {
 }
 
 /**
- * The application tier, as one card on a host of its own. Where it stands is
+ * An application tier, as one card on a host of its own. Where it stands is
  * the vantage its connect descriptor is dialled from: an address answers when
- * this host can reach that one. `doc.client` stays the descriptor itself.
+ * this host can reach that one.
+ *
+ * The descriptor it dials is `client` when it has one of its own, else the
+ * shared `doc.client`. Read it through `applicationClient` -- never
+ * `doc.client` directly -- so an application with its own connect string is
+ * never given the shared one by mistake.
  */
 export interface Application {
   id: ApplicationId;
   name: string;
   host: HostId;
+  /** Absent: this application dials the document's shared descriptor. */
+  client?: ClientDescriptor;
 }
 
 export interface EnvironmentParams {
@@ -293,18 +300,41 @@ export interface TopologyDoc {
   members: Member[];
   observers: Observer[];
   config: Configuration;
+  /**
+   * The shared connect descriptor: what every application without a
+   * descriptor of its own dials, and what a document with no application
+   * dials from outside every data centre.
+   */
   client: ClientDescriptor;
   /**
-   * Absent in a document written before the application was a card, and in
-   * the published 1+1+1 deployment: the descriptor is then dialled from
-   * outside every data centre, as the published page dials it.
+   * The application tier, one card each. Absent in a document written before
+   * the application was a card, and in the published 1+1+1 deployment: the
+   * shared descriptor is then dialled from outside every data centre, as the
+   * published page dials it. A document written when there could be only one
+   * carried it as `application`; the reader turns that into a one-element list.
    */
-  application?: Application;
+  applications?: Application[];
   environment: EnvironmentParams;
   events: TimedEvent[];
 }
 
 /* ---------------- lookups ---------------- */
+
+/** Every application the document draws, in the order they were added; empty when it draws none. */
+export const applicationsOf = (doc: TopologyDoc): readonly Application[] => doc.applications ?? [];
+
+export const findApplication = (doc: TopologyDoc, id: ApplicationId | string): Application | undefined =>
+  (doc.applications ?? []).find((a) => (a.id as string) === (id as string));
+
+/**
+ * The connect descriptor this application dials: its own when it has one,
+ * else the document's shared one. The one place that choice is made.
+ */
+export const applicationClient = (doc: TopologyDoc, app: Application): ClientDescriptor =>
+  app.client ?? doc.client;
+
+/** Does this application dial a descriptor of its own, rather than the shared one? */
+export const hasOwnClient = (app: Application): boolean => app.client !== undefined;
 
 export const findMember = (doc: TopologyDoc, id: MemberId): Member | undefined =>
   doc.members.find((m) => m.id === id);
