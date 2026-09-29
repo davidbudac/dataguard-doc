@@ -23,7 +23,6 @@
  * See `isPristinePreset` below.
  */
 
-import { withProtoVariant } from '@/ui/common/proto-variant';
 import { effect, signal } from '@preact/signals';
 import type { Edition } from '@/engine';
 import { findPreset } from '@/presets';
@@ -393,7 +392,7 @@ async function flush(): Promise<void> {
   /* The permalink is published even when the address bar needs no rewrite --
      it is a reading of the state, not a record of the last write. */
   shareHref.value = tail === '' ? '.' : tail;
-  const next = location.pathname + withProtoVariant(tail); // PROTOTYPE: keep ?variant=
+  const next = location.pathname + tail;
   if (next === location.pathname + location.search + location.hash) return;
   history.replaceState(null, '', next);
 }

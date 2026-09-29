@@ -1,7 +1,5 @@
-/* PROTOTYPE — Break layout variant A (throwaway, see branch prototype/break-layout-a) */
-
 /**
- * Variant A: the topology canvas and the timeline are one view.
+ * The Lanes layout: the topology canvas and the timeline are one view.
  *
  * A column of compact node cards on the left, grouped under their data centre;
  * each card's row continues to the right as that member's timeline lane. The
@@ -20,7 +18,7 @@ import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import type { JSX } from 'preact';
 import { errors, frame, geometry, issues, readout, redoGraph, topology, trace, warnings } from '@/state/derived';
 import { appLanesShown, clearSelection, playing, select, selection, speed, tNow } from '@/state/view';
-import { buildTimeline, fmt, setTimelineDensity, TL } from '../timeline/build';
+import { buildTimeline, fmt, TL_FULL } from '../timeline/build';
 import type { TimelineLane, TimelineMarker, TimelineModel } from '../timeline/build';
 import { Defs, Lane, Marker } from '../timeline/Timeline';
 import { Playhead } from '../timeline/Playhead';
@@ -35,12 +33,11 @@ import { buildLinks, cardFrameFor, cardRoleFor, chipsFor, NEUTRAL_FRAME, siteIsD
 import type { CanvasLink } from '../canvas/routing';
 import type { NodeBox } from '../canvas/layout';
 import { approxW, elide } from '../canvas/measure';
-import '@/styles/proto-a.css';
 
 /* ---------------- geometry ---------------- */
 
 const CW = 186; // a card's width
-const RH = TL.laneH; // a row's height, so the model's marker offsets still hold
+const RH = TL_FULL.laneH; // a row's height, so the model's marker offsets still hold
 const GAP = 12; // between two rows of one data centre: room for a link pill
 const HDR = 18; // a data centre's header band
 const TOP = 88; // where the first header starts: ticks and the event chips are above
@@ -103,14 +100,14 @@ function Dropdown({ label, tone, title, children }: {
     };
   }, [open]);
   return (
-    <div class="pa-dd" ref={host}>
+    <div class="ln-dd" ref={host}>
       <button
-        type="button" class={`pa-dd-b${tone ? ` t-${tone}` : ''}`} aria-expanded={open} title={title}
+        type="button" class={`ln-dd-b${tone ? ` t-${tone}` : ''}`} aria-expanded={open} title={title}
         onClick={() => setOpen(!open)}
       >
         {label}
       </button>
-      {open ? <div class="pa-dd-pop">{children}</div> : null}
+      {open ? <div class="ln-dd-pop">{children}</div> : null}
     </div>
   );
 }
@@ -154,14 +151,14 @@ function Card({ x, y, row, t, selected, dim, hot, onPick, onHover }: {
   const state = seg?.labels[seg.labels.length - 1] ?? '';
   const sub = elide(state === '' ? roleText : `${roleText} · ${state}`, chip ? 22 : 27);
   const h = RH;
-  const cls = ['pa-card', fr.down ? 'is-down' : PHASE_CLASS[fr.phase] ?? '',
+  const cls = ['ln-card', fr.down ? 'is-down' : PHASE_CLASS[fr.phase] ?? '',
     fr.stalled && !fr.down ? 'is-stalled' : '', fr.unreachable ? 'is-unreached' : '',
     fr.degraded ? 'is-degraded' : '', selected ? 'is-sel' : '', hot ? 'is-hot' : ''].filter(Boolean).join(' ');
-  const bdg = `pa-bdg${role ? ` is-${role}` : ''}${row.kind === 'observer' ? ' is-obs' : ''}${fr.down ? ' is-down' : ''}`;
+  const bdg = `ln-bdg${role ? ` is-${role}` : ''}${row.kind === 'observer' ? ' is-obs' : ''}${fr.down ? ' is-down' : ''}`;
   const name = node?.lines.name ?? row.id;
   return (
     <g
-      class={`pa-node${dim ? ' is-dim' : ''}`}
+      class={`ln-node${dim ? ' is-dim' : ''}`}
       data-node={row.id}
       role="button"
       tabindex={0}
@@ -177,20 +174,20 @@ function Card({ x, y, row, t, selected, dim, hot, onPick, onHover }: {
       onBlur={() => onHover(null)}
     >
       <title>{node?.hostFull ? `${name} — ${node.hostFull}` : name}</title>
-      {fr.down ? <rect class="pa-hatch" x={x} y={y} width={CW} height={h} rx={5} fill="url(#tlHatch)" /> : null}
+      {fr.down ? <rect class="ln-hatch" x={x} y={y} width={CW} height={h} rx={5} fill="url(#tlHatch)" /> : null}
       <rect class={cls} x={x} y={y} width={CW} height={h} rx={5} />
       <rect class={bdg} x={x + 8} y={y + (h - 22) / 2} width={22} height={22} rx={6} />
-      <text class="pa-bdg-t" x={x + 19} y={y + h / 2 + 4} text-anchor="middle">{letterFor(node, role)}</text>
-      <text class="pa-name" x={x + 38} y={y + 16}>{elide(name, 14)}</text>
-      <text class="pa-sub" x={x + 38} y={y + 29}>{sub}</text>
+      <text class="ln-bdg-t" x={x + 19} y={y + h / 2 + 4} text-anchor="middle">{letterFor(node, role)}</text>
+      <text class="ln-name" x={x + 38} y={y + 16}>{elide(name, 14)}</text>
+      <text class="ln-sub" x={x + 38} y={y + 29}>{sub}</text>
       {chip ? (
-        <g class={`pa-chip is-${chip.tone}`}>
+        <g class={`ln-chip is-${chip.tone}`}>
           <title>{chip.title}</title>
           <text x={x + CW - 8 - (fr.crashed ? 18 : 0)} y={y + 15} text-anchor="end">{chip.text}</text>
         </g>
       ) : null}
       {fr.crashed ? (
-        <g class="pa-x" aria-hidden="true">
+        <g class="ln-x" aria-hidden="true">
           <line x1={x + CW - 22} y1={y + 6} x2={x + CW - 10} y2={y + 18} />
           <line x1={x + CW - 10} y1={y + 6} x2={x + CW - 22} y2={y + 18} />
         </g>
@@ -252,14 +249,14 @@ function Links({ placed, rows, cardX, related, hoverId }: {
     return { p, text, w, x: right - w, y: gy, show: right - w > cardX + 34 };
   });
   return (
-    <g class="pa-links">
+    <g class="ln-links">
       {placed.map((p) => {
         const x = 8 + p.lane * RAIL_STEP;
         const involved = hoverId !== null && (p.link.from === hoverId || p.link.to === hoverId);
         const faint = related !== null && !involved;
         const st = p.link.cut || p.link.down ? 'is-down' : p.link.active && p.link.up ? 'is-up' : 'is-off';
         return (
-          <g key={p.link.id} class={`pa-lk ${st}${involved ? ' is-hot' : ''}${faint ? ' is-faint' : ''}`} data-tip={p.link.title}>
+          <g key={p.link.id} class={`ln-lk ${st}${involved ? ' is-hot' : ''}${faint ? ' is-faint' : ''}`} data-tip={p.link.title}>
             <line x1={x} y1={cy(p.ra)} x2={x} y2={cy(p.rb)} />
             <line x1={x} y1={cy(p.ra)} x2={cardX} y2={cy(p.ra)} />
             <line x1={x} y1={cy(p.rb)} x2={cardX} y2={cy(p.rb)} />
@@ -273,7 +270,7 @@ function Links({ placed, rows, cardX, related, hoverId }: {
         const faint = related !== null && !involved;
         const st = p.link.cut || p.link.down ? 'is-down' : p.link.active && p.link.up ? 'is-up' : 'is-off';
         return (
-          <g key={p.link.id} class={`pa-pill ${st}${involved ? ' is-hot' : ''}${faint ? ' is-faint' : ''}`} data-tip={p.link.title}>
+          <g key={p.link.id} class={`ln-pill ${st}${involved ? ' is-hot' : ''}${faint ? ' is-faint' : ''}`} data-tip={p.link.title}>
             <rect x={x} y={y - 6} width={w} height={12} rx={6} />
             <text x={x + w / 2} y={y + 3} text-anchor="middle">{text}</text>
           </g>
@@ -287,9 +284,7 @@ function Links({ placed, rows, cardX, related, hoverId }: {
 
 const REL_TONE: Record<string, string> = { error: 'rd', warning: 'am' };
 
-export function ProtoFusedView() {
-  /* B's compact lanes may have been the last to set the live layout. */
-  setTimelineDensity(false);
+export function LanesView() {
   const [ref, measured] = useMeasure();
   const width = Math.max(measured, 720);
   const doc = topology.value;
@@ -494,13 +489,13 @@ export function ProtoFusedView() {
   const loud = [...errors.value, ...warnings.value];
   const notes = issues.value.length - loud.length;
 
-  const plotR = model?.scale.plotR ?? width - TL.padR;
+  const plotR = model?.scale.plotR ?? width - TL_FULL.padR;
   const dim = (id: string): boolean => related !== null && !related.has(id);
   const laneSelected = (id: string): boolean => sel.includes(id);
 
   return (
-    <section class="pa-view float-card" aria-label="Break: topology and timeline">
-      <header class="pa-bar">
+    <section class="ln-view float-card" aria-label="Break: topology and timeline">
+      <header class="ln-bar">
         {shiftedModel && !shiftedModel.empty ? (
           <Transport
             model={shiftedModel}
@@ -512,14 +507,14 @@ export function ProtoFusedView() {
             onSpeed={(s) => { speed.value = s; }}
           />
         ) : (
-          <span class="pa-note">No events yet. Pick a scenario in the rail, or select a card and inject an event.</span>
+          <span class="ln-note">No events yet. Pick a scenario in the rail, or select a card and inject an event.</span>
         )}
-        <span class="pa-spacer" />
+        <span class="ln-spacer" />
         {tr ? (
-          <div class="pa-ro" role="group" aria-label="Run">
+          <div class="ln-ro" role="group" aria-label="Run">
             {chips.map((c, i) => (
-              <span key={c.id} class={`pa-ro-c t-${c.tone}`} title={c.sub}>
-                {i > 0 ? <span class="pa-dot" aria-hidden="true">·</span> : null}
+              <span key={c.id} class={`ln-ro-c t-${c.tone}`} title={c.sub}>
+                {i > 0 ? <span class="ln-dot" aria-hidden="true">·</span> : null}
                 <i>{c.k}</i> <b>{c.v}{c.unit ? ` ${c.unit}` : ''}</b>
               </span>
             ))}
@@ -533,22 +528,22 @@ export function ProtoFusedView() {
           >
             {[
               ...loud.map((f) => (
-                <p key={`${f.id}:${f.subject.id ?? ''}`} class={`pa-find t-${REL_TONE[f.severity] ?? 'sl'}`}>
+                <p key={`${f.id}:${f.subject.id ?? ''}`} class={`ln-find t-${REL_TONE[f.severity] ?? 'sl'}`}>
                   <b>{f.severity}</b> {f.message}
                 </p>
               )),
-              ...(notes > 0 ? [<p key="notes" class="pa-find t-sl">{notes} more note{notes === 1 ? '' : 's'}</p>] : []),
+              ...(notes > 0 ? [<p key="notes" class="ln-find t-sl">{notes} more note{notes === 1 ? '' : 's'}</p>] : []),
             ]}
           </Dropdown>
         ) : null}
         {model ? (
           <Dropdown label="Key" title="What the colours mean">
-            {model.legend.map((l) => <p key={l.swatch} class="pa-key"><i class={l.swatch} />{l.label}</p>)}
+            {model.legend.map((l) => <p key={l.swatch} class="ln-key"><i class={l.swatch} />{l.label}</p>)}
           </Dropdown>
         ) : null}
         {doc.application !== undefined ? (
           <button
-            type="button" class="pa-tog" aria-pressed={app}
+            type="button" class="ln-tog" aria-pressed={app}
             title="The application's lanes under the members"
             onClick={() => { appLanesShown.value = !app; }}
           >
@@ -557,13 +552,13 @@ export function ProtoFusedView() {
         ) : null}
       </header>
 
-      <div class="pa-body" ref={ref}>
+      <div class="ln-body" ref={ref}>
         {geo === null ? (
-          <p class="pa-note pa-pad">Nothing to draw: the configuration has no valid redo graph.</p>
+          <p class="ln-note ln-pad">Nothing to draw: the configuration has no valid redo graph.</p>
         ) : (
-          <div class="tl-plot pa-plot" onPointerMove={onPlotMove} onPointerLeave={() => setTip(null)}>
+          <div class="tl-plot ln-plot" onPointerMove={onPlotMove} onPointerLeave={() => setTip(null)}>
             <svg
-              class={`tl-svg pa-svg${model ? ' is-seekable' : ''}`}
+              class={`tl-svg ln-svg${model ? ' is-seekable' : ''}`}
               width={width}
               height={bottom}
               viewBox={`0 0 ${width} ${bottom}`}
@@ -593,13 +588,13 @@ export function ProtoFusedView() {
                   ) : null}
                 </>
               ) : (
-                <text class="pa-empty-t" x={plotL + 24} y={TOP + 40}>
+                <text class="ln-empty-t" x={plotL + 24} y={TOP + 40}>
                   Steady state. Nothing has been injected, so there are no lanes yet.
                 </text>
               )}
 
               {headers.map((h) => (
-                <g key={h.site} class={`pa-dc${h.down ? ' is-down' : ''}`}>
+                <g key={h.site} class={`ln-dc${h.down ? ' is-down' : ''}`}>
                   <rect x={cardX} y={h.y} width={CW} height={HDR - 2} rx={4} />
                   <text x={cardX + 8} y={h.y + 11}>{h.name}{h.down ? ' — down' : ''}</text>
                   <line x1={cardX + CW + 6} y1={h.y + 8} x2={plotR} y2={h.y + 8} />
@@ -607,7 +602,7 @@ export function ProtoFusedView() {
               ))}
 
               {rows.map((r) => (
-                <g key={r.key} class={`pa-row${dim(r.id) ? ' is-dim' : ''}${related?.has(r.id) && r.id !== hoverId ? ' is-rel' : ''}`}>
+                <g key={r.key} class={`ln-row${dim(r.id) ? ' is-dim' : ''}${related?.has(r.id) && r.id !== hoverId ? ' is-rel' : ''}`}>
                   {r.lane ? (
                     <Lane
                       lane={{ ...r.lane, y: r.y }}
@@ -620,7 +615,7 @@ export function ProtoFusedView() {
               ))}
 
               {appRow ? (
-                <g class={`pa-row pa-approw${dim(appRow.id) ? ' is-dim' : ''}`}>
+                <g class={`ln-row ln-approw${dim(appRow.id) ? ' is-dim' : ''}`}>
                   {model?.appSection ? (
                     <g class="tl-app-head" data-tip={model.appSection.basis}>
                       <text class="t-top" x={plotL + 6} y={appRow.y + 23}>
@@ -638,10 +633,10 @@ export function ProtoFusedView() {
                 </g>
               ) : null}
               {appLanes.map(({ lane, y }) => (
-                <g key={lane.key} class={`pa-row${dim(lane.id) ? ' is-dim' : ''}`}>
+                <g key={lane.key} class={`ln-row${dim(lane.id) ? ' is-dim' : ''}`}>
                   <Lane lane={{ ...lane, y }} model={model as TimelineModel} selected={laneSelected(lane.id)} onSelect={selectLane} />
-                  <text class="pa-alab" x={cardX + CW - 8} y={y + 17} text-anchor="end">{lane.name}</text>
-                  <text class="pa-asub" x={cardX + CW - 8} y={y + 30} text-anchor="end">{elide(lane.sub, 30)}</text>
+                  <text class="ln-alab" x={cardX + CW - 8} y={y + 17} text-anchor="end">{lane.name}</text>
+                  <text class="ln-asub" x={cardX + CW - 8} y={y + 30} text-anchor="end">{elide(lane.sub, 30)}</text>
                 </g>
               ))}
 
@@ -661,7 +656,7 @@ export function ProtoFusedView() {
 
               {shiftedModel ? (
                 <>
-                  {shifted.filter((m) => m.kind !== 'event').map((m) => <Marker key={m.key} marker={m} />)}
+                  {shifted.filter((m) => m.kind !== 'event').map((m) => <Marker key={m.key} marker={m} layout={TL_FULL} />)}
                   <Playhead
                     model={shiftedModel}
                     tNow={t}
@@ -675,7 +670,7 @@ export function ProtoFusedView() {
                       key={m.key} marker={m} model={shiftedModel} doc={doc} onMove={setEventTime}
                       onStart={() => { setTip(null); if (isPlaying) playing.value = false; }}
                     >
-                      <Marker marker={m} />
+                      <Marker marker={m} layout={TL_FULL} />
                     </EventDrag>
                   ))}
                 </>

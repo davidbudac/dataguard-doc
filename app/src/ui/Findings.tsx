@@ -19,7 +19,7 @@ import { errors, issues, warnings } from '@/state/derived';
 import { findingsOpen, findingWaved, notesOpen } from '@/state/view';
 import { IssuePanel, revealFindings } from './IssuePanel';
 
-const plural = (n: number, word: string): string => `${n} ${word}${n === 1 ? '' : 's'}`;
+export const plural = (n: number, word: string): string => `${n} ${word}${n === 1 ? '' : 's'}`;
 
 const keyOf = (f: Finding): string => `${f.id}:${f.subject.kind}:${f.subject.id ?? ''}`;
 
@@ -85,25 +85,29 @@ export function onFindingsKey(e: KeyboardEvent): void {
   e.stopImmediatePropagation();
 }
 
-/** The rows, over the canvas, until the reader closes them. */
-export function FindingsPopover() {
-  const open = findingsOpen.value;
-  useEffect(() => {
-    if (!open) return undefined;
-    window.addEventListener('keydown', onFindingsKey, true);
-    return () => window.removeEventListener('keydown', onFindingsKey, true);
-  }, [open]);
-  if (!open) return null;
+/** How many of each severity there are, and the same as a phrase: "1 warning · 3 notes". */
+export function findingCounts(): { errs: number; warns: number; notes: number; text: string } {
   const errs = errors.value.length;
   const warns = warnings.value.length;
   const notes = issues.value.length - errs - warns;
-  const counts = [
+  const text = [
     errs === 0 ? null : plural(errs, 'error'),
     warns === 0 ? null : plural(warns, 'warning'),
     notes === 0 ? null : plural(notes, 'note'),
   ].filter((x) => x !== null).join(' · ');
+  return { errs, warns, notes, text };
+}
+
+/**
+ * The head and the rows of the findings popover: the counts, a close button,
+ * and `IssuePanel`'s own rows. The popover over the canvas (`FindingsPopover`)
+ * and the dropdown on Break's Split bar (`break/SplitBar.tsx`) both wrap it, so
+ * the two read and behave as one.
+ */
+export function FindingsSheet() {
+  const { text: counts } = findingCounts();
   return (
-    <section class="fnd-pop float-card" id="fnd-pop" aria-label="Validation findings">
+    <>
       <header class="fnd-pop-hd">
         <span class="fnd-pop-t">Validation</span>
         <span class="fnd-pop-n">{counts === '' ? 'No issues' : counts}</span>
@@ -118,6 +122,22 @@ export function FindingsPopover() {
       <div class="fnd-pop-body">
         <IssuePanel bare />
       </div>
+    </>
+  );
+}
+
+/** The rows, over the canvas, until the reader closes them. */
+export function FindingsPopover() {
+  const open = findingsOpen.value;
+  useEffect(() => {
+    if (!open) return undefined;
+    window.addEventListener('keydown', onFindingsKey, true);
+    return () => window.removeEventListener('keydown', onFindingsKey, true);
+  }, [open]);
+  if (!open) return null;
+  return (
+    <section class="fnd-pop float-card" id="fnd-pop" aria-label="Validation findings">
+      <FindingsSheet />
     </section>
   );
 }

@@ -21,6 +21,25 @@ export const PANEL_TABS: readonly PanelTab[] = [
   'dgmgrl', 'dests', 'tns', 'show', 'app', 'commit', 'reopen',
 ];
 
+/**
+ * Which of Break's two layouts is on screen: `split` puts the drawing above the
+ * timeline, `lanes` joins them, each member's card continuing as its lane.
+ * A reading preference like `hintsOn` -- it changes how the same run is laid
+ * out, never what it says -- so it is remembered under `dg-break-layout`
+ * (persist.ts) and is not in the address.
+ */
+export type BreakLayout = 'split' | 'lanes';
+
+export const BREAK_LAYOUTS: readonly BreakLayout[] = ['split', 'lanes'];
+
+export const BREAK_LAYOUT_LABEL: Record<BreakLayout, string> = { split: 'Split', lanes: 'Lanes' };
+
+/** What each layout is for, in one sentence: the `title` of its button. */
+export const BREAK_LAYOUT_SUB: Record<BreakLayout, string> = {
+  split: 'Split — see the diagram and the timeline together, one above the other',
+  lanes: 'Lanes — read each member’s story row by row: its card, then its timeline',
+};
+
 export const MODE_LABEL: Record<Mode, string> = {
   build: 'Build', break: 'Break', configure: 'Configure', learn: 'Learn',
 };
@@ -95,6 +114,12 @@ export const palette = signal<PalettePref>('standard');
 export const edition = signal<Edition>('19c');
 export const inspectorOpen = signal<boolean>(false);
 /**
+ * Break's layout (`BreakLayout`). Split to start with, and whenever storage
+ * says something else; read once at boot like `hintsOn`, written by
+ * `setBreakLayout`.
+ */
+export const breakLayout = signal<BreakLayout>('split');
+/**
  * Whether the rail beside the canvas is folded to its slim strip.
  *
  * Only where the rail is a column (`wide`, and not in Learn, whose right half
@@ -155,12 +180,13 @@ export const hintsOn = signal<boolean>(false);
  */
 export const gridOn = signal<boolean>(true);
 /**
- * The height of Break's floating timeline panel, in CSS pixels, as the reader
- * dragged it by its top edge -- or null for the default (`timelineDefaultH`).
- * Remembered under `dg-tl-h` (persist.ts), read once at boot like `hintsOn`.
- * It is a wish, not a measurement: the panel is clamped to the window it is
- * shown in (`clampTimelineH`), so a height chosen on a tall screen does not
- * push the top bar off a short one.
+ * The height of Break's lower region in the Split layout -- the bar and the
+ * timeline under it -- in CSS pixels, as the reader dragged it by the bar, or
+ * null for the default (`timelineDefaultH`). Remembered under `dg-tl-h`
+ * (persist.ts), read once at boot like `hintsOn`. It is a wish, not a
+ * measurement: the region is clamped to the window it is shown in
+ * (`clampTimelineH`), so a height chosen on a tall screen does not push the
+ * drawing off a short one.
  */
 export const timelineH = signal<number | null>(null);
 /**
@@ -174,28 +200,27 @@ export const timelineFull = signal<boolean>(false);
  */
 export const appLanesShown = signal<boolean>(true);
 
-/** The panel never gets shorter than its header row (readings and chips). */
-export const TL_MIN_H = 64;
+/** The region never gets shorter than its bar and a few lanes. */
+export const TL_MIN_H = 120;
 /** One arrow-key step on the resize handle; `Shift` takes four. */
 export const TL_STEP = 16;
-/* The gaps the floating layout keeps: the card margin at the window's foot
-   and the room under the header. Same numbers as float.css's `--float-m` and
-   the `+ 12px` under `--bar-bottom`. */
-const TL_FOOT = 14;
-const TL_HEAD_GAP = 12;
+/** What the drawing above the timeline keeps, however tall the timeline is dragged. */
+export const CANVAS_MIN_H = 140;
+/** The share of the room under the header that the region takes by default. */
+const SPLIT_SHARE = 0.6;
 
 /**
- * The panel's height before the reader has touched it: a bit over a third of
- * the window, so the drawing keeps the larger share. Mirrored in float.css as
- * `clamp(220px, 36dvh, 400px)`.
+ * The tallest the region grows by itself, before the reader has touched it:
+ * three fifths of the room under the header, and only as much of that as the
+ * run needs. Mirrored in split.css as `--tl-default`.
  */
-export function timelineDefaultH(viewH: number): number {
-  return Math.round(Math.min(400, Math.max(220, viewH * 0.36)));
+export function timelineDefaultH(viewH: number, headBottom = 80): number {
+  return Math.round(Math.min(720, Math.max(220, (viewH - headBottom) * SPLIT_SHARE)));
 }
 
-/** The tallest the panel may be: it stops short of the header's foot. */
+/** The tallest the region may be: the drawing keeps `CANVAS_MIN_H` above it. */
 export function timelineMaxH(viewH: number, headBottom: number): number {
-  return Math.max(TL_MIN_H, Math.round(viewH - TL_FOOT - headBottom - TL_HEAD_GAP));
+  return Math.max(TL_MIN_H, Math.round(viewH - headBottom - CANVAS_MIN_H));
 }
 
 export function clampTimelineH(h: number, viewH: number, headBottom: number): number {

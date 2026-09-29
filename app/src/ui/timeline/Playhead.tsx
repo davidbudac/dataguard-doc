@@ -10,7 +10,7 @@
 
 import type { JSX } from 'preact';
 import { useRef } from 'preact/hooks';
-import { fmt, TL } from './build';
+import { fmt } from './build';
 import type { TimelineModel } from './build';
 
 export interface PlayheadProps {
@@ -140,4 +140,4 @@ export function Playhead({ model, tNow, playing = false, onSeek, onTogglePlay }:
 
 /** The lane-block height a playhead spans, exported for the shell's budget. */
 export const playheadSpan = (model: TimelineModel): number =>
-  model.axisY - (model.laneTop - 12) + TL.laneGap;
+  model.axisY - (model.laneTop - 12) + model.layout.laneGap;

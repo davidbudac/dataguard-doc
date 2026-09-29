@@ -13,7 +13,7 @@ import { hostId, memberId } from '../../src/engine/ids';
 import { multiTargetDoc } from '../topologies';
 import {
   approxW, axisSpan, buildTimeline, clampToAxis, describeEvent, fitLabel, packBraces,
-  PINNED, snapNice, TL,
+  PINNED, snapNice, TL_FULL,
 } from '@/ui/timeline/build';
 import type { BraceInput, TimelineModel } from '@/ui/timeline/build';
 
@@ -56,10 +56,10 @@ describe('buildTimeline: the classic crash', () => {
     /* Nothing is initiated, opened or aborted in this cell, so no lane gap
        has to hold a marker label and the ladder is the plain one. */
     const m = build('observer-lost');
-    expect(m.scale.plotL).toBe(TL.gutter);
-    expect(m.lanes.map((l) => l.y)).toEqual([TL.laneTop, TL.laneTop + 48, TL.laneTop + 96]);
+    expect(m.scale.plotL).toBe(TL_FULL.gutter);
+    expect(m.lanes.map((l) => l.y)).toEqual([TL_FULL.laneTop, TL_FULL.laneTop + 48, TL_FULL.laneTop + 96]);
     expect(m.lanes.every((l) => l.height === 38)).toBe(true);
-    expect(m.lanesBottom).toBe(TL.laneTop + 3 * 48 - 10);
+    expect(m.lanesBottom).toBe(TL_FULL.laneTop + 3 * 48 - 10);
     expect(m.axisY).toBe(m.lanesBottom + 24);
   });
 
@@ -67,8 +67,8 @@ describe('buildTimeline: the classic crash', () => {
     /* The observer lane carries "Initiates failover at t = 30 s" above it and
        the standby's carries "Opens read-write"; the primary's does not. */
     const m = build();
-    expect(m.lanes.map((l) => l.y)).toEqual([TL.laneTop, TL.laneTop + 48 + TL.markRow, TL.laneTop + 96 + 2 * TL.markRow]);
-    expect(m.lanesBottom).toBe(TL.laneTop + 3 * 48 - 10 + 2 * TL.markRow);
+    expect(m.lanes.map((l) => l.y)).toEqual([TL_FULL.laneTop, TL_FULL.laneTop + 48 + TL_FULL.markRow, TL_FULL.laneTop + 96 + 2 * TL_FULL.markRow]);
+    expect(m.lanesBottom).toBe(TL_FULL.laneTop + 3 * 48 - 10 + 2 * TL_FULL.markRow);
   });
 
   it('keeps every marker label out of the lanes it sits between', () => {
@@ -374,7 +374,7 @@ describe('brace packing', () => {
     const { braces } = packBraces(inputs, scale, 980, 300);
     expect(braces[0]?.row).toBe(0);
     expect(braces[1]?.row).toBe(1);
-    expect(braces[1]!.y - braces[0]!.y).toBe(TL.braceRow);
+    expect(braces[1]!.y - braces[0]!.y).toBe(TL_FULL.braceRow);
   });
 });
 

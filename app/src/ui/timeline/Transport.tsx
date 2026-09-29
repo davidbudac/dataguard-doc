@@ -34,6 +34,11 @@ export interface TransportProps {
   onSeek: (t: number) => void;
   onPlayToggle: () => void;
   onSpeed: (speed: number) => void;
+  /**
+   * The five speeds as a row of buttons, or as one select where the row does
+   * not fit (Split's bar under ~960 px, `SplitBar`). The same values either way.
+   */
+  speedControl?: 'buttons' | 'select';
 }
 
 interface StepProps {
@@ -63,7 +68,7 @@ function TransportButton({ label, glyph, why, onClick }: StepProps) {
 }
 
 export function Transport({
-  model, tNow, playing, speed, onSeek, onPlayToggle, onSpeed,
+  model, tNow, playing, speed, onSeek, onPlayToggle, onSpeed, speedControl = 'buttons',
 }: TransportProps) {
   const { scale } = model;
   const t = scale.clampT(tNow);
@@ -134,21 +139,35 @@ export function Transport({
         <span class="tl-tp-u">s</span>
       </label>
 
-      <span class="tl-tp-speeds" role="group" aria-label="Playback speed">
-        {SPEEDS.map((s) => (
-          <button
-            key={s}
-            type="button"
-            class={s === speed ? 'tl-tp-speed is-on' : 'tl-tp-speed'}
-            aria-pressed={s === speed}
+      {speedControl === 'select' ? (
+        <label class="tl-tp-time">
+          <span class="sr">Playback speed</span>
+          <select
+            class="tl-tp-sel"
             disabled={model.empty}
-            onClick={() => onSpeed(s)}
+            value={String(speed)}
+            onChange={(e) => onSpeed(Number(e.currentTarget.value))}
           >
-            {`${fmt(s)}×`}
-          </button>
-        ))}
-        <WhyPill why={emptyWhy} />
-      </span>
+            {SPEEDS.map((s) => <option key={s} value={String(s)}>{`${fmt(s)}×`}</option>)}
+          </select>
+        </label>
+      ) : (
+        <span class="tl-tp-speeds" role="group" aria-label="Playback speed">
+          {SPEEDS.map((s) => (
+            <button
+              key={s}
+              type="button"
+              class={s === speed ? 'tl-tp-speed is-on' : 'tl-tp-speed'}
+              aria-pressed={s === speed}
+              disabled={model.empty}
+              onClick={() => onSpeed(s)}
+            >
+              {`${fmt(s)}×`}
+            </button>
+          ))}
+          <WhyPill why={emptyWhy} />
+        </span>
+      )}
     </div>
   );
 }

@@ -1,0 +1,119 @@
+/* Break's Lanes layout: the cards and the timeline's lanes on the same rows.
+   Everything is scoped under `.bl-lanes`, the class App.tsx puts on the shell
+   for that layout. Colour from tokens only. */
+
+.bl-lanes .ln-view{display:none}
+@media screen{
+  .app.bl-lanes.is-float .ln-view{position:absolute;display:flex;flex-direction:column;
+    top:calc(var(--bar-bottom,80px) + 10px);left:var(--float-m);right:var(--rail-space);
+    bottom:var(--float-m);z-index:10;min-height:0;overflow:hidden}
+}
+.bl-lanes .ln-bar{position:relative;display:flex;align-items:center;gap:10px;flex:0 0 auto;
+  padding:6px 10px;border-bottom:1px solid var(--ln);min-height:44px;flex-wrap:wrap}
+.bl-lanes .ln-spacer{flex:1 1 0}
+.bl-lanes .ln-note{font-size:12.5px;color:var(--ik2)}
+.bl-lanes .ln-pad{padding:16px}
+.bl-lanes .ln-body{position:relative;flex:1 1 auto;min-height:0;overflow:auto}
+.bl-lanes .ln-plot{overflow:visible}
+.bl-lanes .ln-svg{display:block}
+
+/* the transport, compacted into the bar */
+.bl-lanes .ln-bar .tl-transport{padding:0;border:0;background:transparent;gap:6px;flex-wrap:nowrap}
+.bl-lanes .ln-bar .tl-tp-btn{padding:3px 8px}
+.bl-lanes .ln-bar .why{display:none}
+.bl-lanes .ln-bar .tl-tp-slot,.bl-lanes .ln-bar .tl-tp-speeds{gap:2px}
+
+/* terse readout */
+.bl-lanes .ln-ro{display:flex;align-items:baseline;gap:6px;font-size:12px;color:var(--ik2);flex-wrap:wrap}
+.bl-lanes .ln-ro-c i{font-style:normal;color:var(--ik3)}
+.bl-lanes .ln-ro-c b{font-weight:600;color:var(--ik)}
+.bl-lanes .ln-ro-c.t-rd b{color:var(--rd)}
+.bl-lanes .ln-ro-c.t-tl b{color:var(--tl)}
+.bl-lanes .ln-ro-c.t-am b{color:var(--am)}
+.bl-lanes .ln-ro-c.t-vi b{color:var(--vi)}
+.bl-lanes .ln-dot{margin-right:6px;color:var(--ik3)}
+
+/* dropdowns: the warnings, the key */
+.bl-lanes .ln-dd{position:relative}
+.bl-lanes .ln-dd-b,.bl-lanes .ln-tog{font:inherit;font-size:12.5px;font-weight:600;color:var(--ik2);background:var(--sf2);
+  border:1px solid var(--ln);border-radius:var(--r-ctl);padding:4px 10px;cursor:pointer}
+.bl-lanes .ln-dd-b:hover,.bl-lanes .ln-tog:hover{color:var(--ik);border-color:var(--ln2)}
+.bl-lanes .ln-dd-b.t-am{color:var(--am);background:var(--amf);border-color:var(--am)}
+.bl-lanes .ln-dd-b.t-rd{color:var(--rd);background:var(--rdf);border-color:var(--rd)}
+.bl-lanes .ln-tog[aria-pressed="true"]{color:var(--ik);background:var(--seg-on)}
+.bl-lanes .ln-dd-pop{position:absolute;right:0;top:calc(100% + 6px);z-index:30;width:min(520px,70vw);
+  max-height:50vh;overflow:auto;padding:10px 12px;background:var(--sf);border:1px solid var(--ln);
+  border-radius:var(--r-card);box-shadow:var(--sh-card);font-size:12.5px}
+.bl-lanes .ln-find{margin:0 0 8px;color:var(--ik)}
+.bl-lanes .ln-find:last-child{margin-bottom:0}
+.bl-lanes .ln-find b{text-transform:capitalize;margin-right:4px}
+.bl-lanes .ln-find.t-am b{color:var(--am)}
+.bl-lanes .ln-find.t-rd b{color:var(--rd)}
+.bl-lanes .ln-find.t-sl{color:var(--ik2)}
+.bl-lanes .ln-key{margin:0 0 5px;display:flex;align-items:center;gap:8px;color:var(--ik)}
+
+/* ---- the card column (SVG) ---- */
+.bl-lanes .ln-svg text{font-family:var(--sans)}
+.bl-lanes .ln-card{fill:var(--sf);stroke:var(--ln);stroke-width:1}
+.bl-lanes .ln-card.is-tl{fill:var(--tlf);stroke:var(--tl)}
+.bl-lanes .ln-card.is-bl{fill:var(--blf);stroke:var(--bl)}
+.bl-lanes .ln-card.is-am{fill:var(--amf);stroke:var(--am)}
+.bl-lanes .ln-card.is-vi{fill:var(--vif);stroke:var(--vi)}
+.bl-lanes .ln-card.is-sl{fill:var(--sf2);stroke:var(--ln2)}
+.bl-lanes .ln-card.is-down{fill:none;stroke:var(--rd);stroke-width:1.25}
+.bl-lanes .ln-card.is-stalled{stroke:var(--rd);stroke-width:1.5}
+.bl-lanes .ln-card.is-unreached{stroke-dasharray:4 3}
+.bl-lanes .ln-card.is-degraded{stroke:var(--am);stroke-width:1.25}
+.bl-lanes .ln-card.is-hot{stroke:var(--ik3)}
+.bl-lanes .ln-card.is-sel{stroke:var(--fc,var(--vi));stroke-width:2}
+.bl-lanes .ln-hatch{stroke:none}
+.bl-lanes .ln-node{cursor:pointer;outline:none}
+.bl-lanes .ln-node:focus-visible .ln-card{stroke:var(--fc,var(--vi));stroke-width:2}
+.bl-lanes .ln-node.is-dim,.bl-lanes .ln-row.is-dim{opacity:.42}
+.bl-lanes .ln-name{font-size:12.5px;font-weight:600;fill:var(--ik);font-family:var(--mono)}
+.bl-lanes .ln-sub{font-size:10px;fill:var(--ik2)}
+.bl-lanes .ln-bdg{fill:var(--sf3)}
+.bl-lanes .ln-bdg.is-primary{fill:var(--tlf);stroke:var(--tl)}
+.bl-lanes .ln-bdg.is-standby{fill:var(--blf);stroke:var(--bl)}
+.bl-lanes .ln-bdg.is-former-primary{fill:var(--sf3);stroke:var(--sl)}
+.bl-lanes .ln-bdg.is-obs{fill:var(--vif);stroke:var(--vi)}
+.bl-lanes .ln-bdg.is-down{fill:var(--rdf);stroke:var(--rd)}
+.bl-lanes .ln-bdg-t{font-size:11px;font-weight:700;fill:var(--ik2);pointer-events:none}
+.bl-lanes .ln-chip text{font-size:9px;font-weight:700;letter-spacing:.03em;fill:var(--ik3)}
+.bl-lanes .ln-chip.is-violet text{fill:var(--vi)}
+.bl-lanes .ln-chip.is-slate text{fill:var(--sl)}
+.bl-lanes .ln-x line{stroke:var(--rd);stroke-width:2.5;stroke-linecap:round}
+
+/* data centre headers */
+.bl-lanes .ln-dc rect{fill:var(--sf2)}
+.bl-lanes .ln-dc text{font-size:10.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;fill:var(--ik3)}
+.bl-lanes .ln-dc line{stroke:var(--ln);stroke-width:1}
+.bl-lanes .ln-dc.is-down rect{fill:var(--rdf)}
+.bl-lanes .ln-dc.is-down text{fill:var(--rd)}
+
+/* the lanes: the model's own bars; its gutter text is replaced by the cards */
+.bl-lanes .ln-row .t-lane,.bl-lanes .ln-row .t-sub{display:none}
+.bl-lanes .ln-row.is-rel .lane-bg{stroke:var(--ik3)}
+.bl-lanes .ln-alab{font-size:12px;font-weight:600;fill:var(--ik)}
+.bl-lanes .ln-asub{font-size:10px;fill:var(--ik3)}
+.bl-lanes .ln-empty-t{font-size:12.5px;fill:var(--ik3)}
+
+/* links as connectors + pills */
+.bl-lanes .ln-lk line{stroke:var(--ln2);stroke-width:1;opacity:.8}
+.bl-lanes .ln-lk circle{fill:var(--ln2)}
+.bl-lanes .ln-lk.is-up line{stroke:var(--ik3)}
+.bl-lanes .ln-lk.is-up circle{fill:var(--ik3)}
+.bl-lanes .ln-lk.is-down line{stroke:var(--rd);stroke-dasharray:3 3}
+.bl-lanes .ln-lk.is-down circle{fill:var(--rd)}
+.bl-lanes .ln-lk.is-off line{stroke-dasharray:2 3}
+.bl-lanes .ln-lk.is-hot line{stroke-width:2}
+.bl-lanes .ln-lk.is-faint,.bl-lanes .ln-pill.is-faint{opacity:.25}
+.bl-lanes .ln-pill rect{fill:var(--sf);stroke:var(--ln2);stroke-width:1}
+.bl-lanes .ln-pill text{font-size:9px;font-weight:600;fill:var(--ik2)}
+.bl-lanes .ln-pill.is-up text{fill:var(--tl)}
+.bl-lanes .ln-pill.is-up rect{stroke:var(--tl)}
+.bl-lanes .ln-pill.is-down rect{fill:var(--rdf);stroke:var(--rd)}
+.bl-lanes .ln-pill.is-down text{fill:var(--rd)}
+.bl-lanes .ln-pill.is-hot rect{stroke-width:1.75}
+.bl-lanes .ln-links{pointer-events:none}
+.bl-lanes .ln-lk,.bl-lanes .ln-pill{pointer-events:all}

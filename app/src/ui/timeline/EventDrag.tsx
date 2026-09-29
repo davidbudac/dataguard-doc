@@ -4,7 +4,7 @@ import type { ComponentChildren, JSX } from 'preact';
 import type { TimedEvent, TopologyDoc } from '@/engine';
 import { eventTimeBounds, snapEventTime } from '../break/event-order';
 import type { TimelineMarker, TimelineModel } from './build';
-import { fmt, TL } from './build';
+import { fmt } from './build';
 
 export interface EventDragProps {
   marker: TimelineMarker;
@@ -43,6 +43,7 @@ export function EventDrag({ marker, model, doc, onMove, onStart, children }: Eve
     }
   };
   const at = preview ?? event.at;
+  const TL = model.layout;
   const delta = model.scale.x(at) - model.scale.x(event.at);
   return (
     <g

@@ -39,9 +39,10 @@ import { effect } from '@preact/signals';
 import { useEffect } from 'preact/hooks';
 import { doc } from '@/state/doc';
 import { dismissIntro, introDismissed } from '@/state/persist';
-import { introOpen, mode, MODE_LABEL, splitGuide, viewport } from '@/state/view';
+import { floating, introOpen, mode, MODE_LABEL, splitGuide, viewport } from '@/state/view';
 import { HINTS_LABEL, HintsToggle, hintsShown } from './hints';
 import { INTRO_HREF, openIntro } from './intro/route';
+import { LayoutSwitch } from './break/LayoutSwitch';
 
 /** The three working modes, one clause each; Learn is the link at the foot. */
 const BULLETS: [string, string][] = [
@@ -229,8 +230,11 @@ export function Guidance() {
   const full = introOpen.value;
   useDismissOnFirstUse(!introDismissed.value);
   const { lead, rest } = splitGuide(m, v);
+  /* Break's layout, where Break has more than one: the docked fallback below
+     1024 px is a single layout. */
+  const layouts = m === 'break' && floating(m, v);
   return (
-    <div class="guide">
+    <div class={layouts ? 'guide has-sw' : 'guide'}>
       <p class="guide-line">
         <b class="guide-mode">{MODE_LABEL[m]}</b>
         {' · '}
@@ -240,6 +244,7 @@ export function Guidance() {
             not a second mechanism for this line. */}
         {rest === '' || !hintsShown() ? null : ` ${rest}`}
       </p>
+      {layouts ? <LayoutSwitch /> : null}
       {full ? <IntroCard /> : null}
     </div>
   );
