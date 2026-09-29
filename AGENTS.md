@@ -19,7 +19,7 @@ produced, and how to extend it without breaking consistency or accuracy.
 | `diagrams/fsfo-sequence.svg` (+`.png`) | Sequence diagram of the crash case with an elapsed-time gutter |
 | `diagrams/fsfo-net-timeout.svg` (+`.png`) | Two panels separating NET_TIMEOUT (redo transport) from the broker failover clocks |
 | `diagrams/README.md` | Figure embeds, broker-property and redo-transport-property tables with verified defaults, the ping-properties quirk, the verified-facts sections behind the commit/reopen/observer/placement/side-topics views (including the 24-cell observer-placement outcome matrix) and behind the 26ai edition switch (the MaxAvailability lag-limit semantics and Oracle's self-contradiction on them, `PrimaryDatabaseCandidates`, `V$FS_FAILOVER_OBSERVERS`), the drawing idealizations, Oracle doc links. Its *Topology features* section points at `app/design/facts.md` for far sync, cascading, RedoRoutes, multi-target and multi-observer sources |
-| `app/` | The workbench: TypeScript + Vite + Preact + signals. A pure, DOM-free engine in `app/src/engine` (types, citation catalogue, validation rules, redo-graph resolver, epoch-loop simulator, generators, the legacy adapter), the interface in `app/src/ui` (including the on-canvas action bar, the Introduction page and the `Hints` toggle — see `app/design/ui.md` §3c–§3i; §3h is how the drawing is driven: click selects, `⋯` for the bar, drag-to-place, inline rename, marquee, shortcuts; §3i is the lean pass: the toolbar is the one add surface, Remove sits in the rail header; "Simulate's two layouts", at the end, is the Split and Lanes layouts of the Simulate screen and the switch between them), state in `app/src/state`, twelve presets in `app/src/presets`, ten lessons and the reference tables in `app/src/content`, 2743 vitest tests across 105 files in `app/src/**/__tests__` and `app/test`. Built to `_site/` and served at `/dataguard/`. Zero external requests, no inline script and no inline style — the page is meant to run under `script-src 'self'; style-src 'self'` |
+| `app/` | The workbench: TypeScript + Vite + Preact + signals. A pure, DOM-free engine in `app/src/engine` (types, citation catalogue, validation rules, redo-graph resolver, epoch-loop simulator, generators, the legacy adapter), the interface in `app/src/ui` (including the on-canvas action bar, the Introduction page and the `Hints` toggle — see `app/design/ui.md` §3c–§3i; §3h is how the drawing is driven: click selects, `⋯` for the bar, drag-to-place, inline rename, marquee, shortcuts; §3i is the lean pass: the toolbar is the one add surface, Remove sits in the rail header; "Simulate's two layouts", at the end, is the Split and Lanes layouts of the Simulate screen and the switch between them), state in `app/src/state`, twelve presets in `app/src/presets`, ten lessons and the reference tables in `app/src/content`, 2766 vitest tests across 106 files in `app/src/**/__tests__` and `app/test`. Built to `_site/` and served at `/dataguard/`. Zero external requests, no inline script and no inline style — the page is meant to run under `script-src 'self'; style-src 'self'` |
 | `app/public/collectors/` | Read-only SQL collector, optional Bash/SQL*Plus wrapper and run instructions for existing setups. The ⋯ menu's **Import existing setup** sheet previews pasted/file output before drawing it. `engine/collect.ts` maps current routes; imported `routesObserved` prevents invented NULL-default routes. Missing broker settings and placement assumptions remain in document notes. Validated live on a 19c primary + mounted standby (SYSDBA, local OS auth); wallet, least-privilege, RAC and far sync remain unverified. DGMGRL transcripts are not parsed. |
 | `app/design/facts.md` | The verified Oracle fact sheet for the topology features (far sync, cascading, multiple standbys and FSFO targets, multiple observers, RedoRoutes, member types, destination counts), researched 2026-08-16 against docs.oracle.com and re-verified 2026-08-17, marked `[D]` / `[D-later]` / `[UNDOC]` / `[CONFLICT]` per claim. **The only permitted source of a "documented" claim in the application.** Its top-five traps are restated in the accuracy rules below |
 | `app/design/engine.md` | The engine design: `Claim`/`Basis` labelling, the topology data model, the validation catalogue, the redo-graph resolver, the epoch-loop failure engine, the compat adapter and the 24-cell matrix gate, the generators, the module layout — plus §10, *Deviations from the design as built*, which is where the code and the specification differ |
@@ -66,8 +66,8 @@ public URL.
 
 The three gates, and what each one can catch that the others cannot:
 
-1. `npm --prefix app run test` — the application's own suite (**2743 tests
-   across 105 files**): the engine's invariants, the 24-cell matrix through the
+1. `npm --prefix app run test` — the application's own suite (**2766 tests
+   across 106 files**): the engine's invariants, the 24-cell matrix through the
    compat adapter, the validation catalogue, the generator goldens, the canvas
    and timeline geometry, the URL and file round trips.
 2. `node --test site/test.mjs` — the same kind of assertion against the legacy
@@ -414,20 +414,42 @@ agree on:
   has elapsed if redo generation has been stalled…"); the HA guide says the same
   thing as "causing it to abort". Both are Oracle's; what the reader sees uses
   the broker guide's, and never "aborts itself" as if the broker pages said it.
-- **A former primary never opens after a role change while fast-start failover
-  is enabled.** "To allow the master observer to automatically reinstate the
+- **A former primary that restarts never opens after a role change while fast-start
+  failover is enabled.** "To allow the master observer to automatically reinstate the
   former primary database, the database must be started and mounted. It will
   not be allowed to open in any event if fast-start failover is enabled."
-  (`ORA-16649`). Draw it mounted and needing reinstatement; never draw two
-  databases open read-write because a host came back.
+  (`ORA-16649`). That sentence is about a former primary that *restarts*: draw it
+  mounted and needing reinstatement; never draw two databases open read-write
+  because a host came back. With fast-start failover disabled no page spells out
+  what state a restarted former primary is left in, so mounted is this page's
+  reading (`FAILOVER.FORMER_PRIMARY_MOUNTED`, `model`) — and it is drawn open where it
+  cannot reach the new primary, because nothing tells it.
+- **A manual failover does not close a primary that is still open.** Oracle puts
+  the shutdown on the operator ("ensure that the primary database is shut down",
+  `FAILOVER.PRIMARY_SHUT_DOWN`; "shut down prior to performing a manual failover",
+  `FSFO.MANUAL_FAILOVER_CONDITIONS`), and the engine raises
+  `FAILOVER.PRIMARY_STILL_OPEN` (documented) at the command when it is still running. No page says the broker closes or mounts an old primary that
+  is still open when a manual failover completes, and ORA-16649 is not about one that
+  stayed open. So the old primary is drawn **open read-write, as primary, beside the new
+  one** — whether or not the new primary can reach it, and with fast-start failover
+  enabled or disabled alike — until something takes it down: a crash, a shutdown or
+  abort event, a fast-start failover stall and abort that already applies, or the end of
+  the run. That is this page's reading of an undocumented gap
+  (`FAILOVER.FORMER_PRIMARY_OPEN`, `model`, citing the two sentences as the reason);
+  never write it as "the broker leaves it open", and never word the *former primary that
+  restarts* above as this case. A fast-start-failover-initiated failover and a
+  switchover are untouched: their old primary is the documented stall / abort /
+  `FastStartFailoverPmyShutdown` path, and the converted one.
 - **"Split brain" is this page's reading, never Oracle's word.** No Oracle page uses
   the term or gives an interval for it, so the Break readout's *Split brain* chip
   (`splitBrainOf`, `engine/sim/split-brain.ts`) is `model`, note `SPLIT_BRAIN.READING`, and
   asks one question of the drawing: were two members `open-rw` at the same moment. A
   STALLED primary is not counted (Oracle: its redo generation is stalled), and the old
-  primary is drawn open only where nothing can tell it — a manual failover with fast-start
-  failover off, the old primary running where the new one cannot reach it. The chip is
-  asked only where a new primary opens by failover or manual failover. Never write a
+  primary is drawn open where a manual failover found it still open (the rule above:
+  reachable or not, fast-start failover on or off), so that reads *yes* with the window
+  named, closed where the old primary crashes or shuts down. The chip is
+  asked only where a new primary opens by failover or manual failover, so a switchover
+  has none. Never write a
   *no* that says the old primary "cannot" be open: say what the drawing shows (aborted
   at N s, down, stalled, mounted), and never draw "at most one database ends up open" as
   unconditional (see the `FastStartFailoverLagLimit` rule above).
@@ -1197,7 +1219,7 @@ modes changes what is around it.
 
 ### Tests
 
-`npm --prefix app run test` is **2743 tests across 105 files**. What is where:
+`npm --prefix app run test` is **2766 tests across 106 files**. What is where:
 
 - `app/src/engine/__tests__/` — the engine's own unit tests (purity, citations,
   claims, schema, migrate, URL codec, parse, resolve, graph, axis, classic).
@@ -1208,8 +1230,10 @@ modes changes what is around it.
 - `app/test/sim-*.test.ts`, `models-general.test.ts`, `presets.test.ts` —
   scenario, property and invariant tests over the general engine and all twelve
   presets. `sim-split-brain.test.ts` is the *Split brain* reading off a trace
-  (`splitBrainOf`); `ui/summary-band.test.ts` is its chip and the run-summary band
-  in Break's Split and Lanes layouts.
+  (`splitBrainOf`) and the old primary a manual failover leaves open, with the
+  application's view of it; `ui/summary-band.test.ts` is its chip and the run-summary band
+  in Break's Split and Lanes layouts; `ui/show-open-former.test.ts` is the SHOW
+  CONFIGURATION note for it.
 - `app/test/app-placement.test.ts`, `applications.test.ts`,
   `ui/application.test.ts`, `ui/applications-many.test.ts` — the application
   card: its vantage, several of them each with the connect string they dial, the

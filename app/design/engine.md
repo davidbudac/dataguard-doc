@@ -344,18 +344,30 @@ conditional on the target being the current target, synchronized or inside the l
 the observer reaching it (`manualFailoverFindings`, roles.ts); the loss it books is the redo the
 target never received -- never documented as bounded, zero or lossless, always model
 (`FAILOVER.LOSS_DEPENDS`).
-**A former primary is drawn open beside the new one only where nothing can tell it.** After a
-role change it is mounted, not open, whether or not fast-start failover armed the failover (`FSFO.FORMER_PRIMARY_NOT_OPEN`
-where it did, `FAILOVER.FORMER_PRIMARY_MOUNTED` -- this page's reading -- where it did not,
-since only the fast-start-failover case has ORA-16649 spelling out the mounted state). It stays
-that way until REINSTATE DATABASE or a fresh START/STARTUP the run does not model. The one
-exception is a manual failover with fast-start failover disabled and the old primary running where
-the new one cannot reach it: nothing tells it, so it stays `open-rw` beside the new primary (and the
-run raises `FAILOVER.PRIMARY_STILL_OPEN`). That is what `splitBrainOf` (`sim/split-brain.ts`) reads
-back: two lanes `open-rw` over a stretch with a length. A `Claim<boolean>`, `model`, note
+**A manual failover does not close a primary that is still open.** Oracle puts the shutdown on the
+operator (`FAILOVER.PRIMARY_SHUT_DOWN`, `FSFO.MANUAL_FAILOVER_CONDITIONS`) and no page says the broker
+closes or mounts an old primary that is still open when the failover completes; ORA-16649
+(`FSFO.FORMER_PRIMARY_NOT_OPEN`) is about a former primary that *restarts* and is not allowed to open,
+not one that stayed open. So when a manual failover completes with the old primary alive and not
+aborted (`completeFailover` sets `SimState.formerOpen`), it is drawn `open-rw` beside the new primary --
+reachable or not, fast-start failover enabled or disabled -- until it is taken down: `simulate` clears
+`formerOpen` at the first epoch in which it is down or aborted, and a fast-start failover stall and abort
+that already applies (`stalled`, then `aborted`) comes first in `memberStateOf`. The run says so as a Finding,
+`FAILOVER.FORMER_PRIMARY_OPEN`, `model`, note citing those two sentences, beside the documented
+`FAILOVER.PRIMARY_STILL_OPEN` error raised at the command. **A former primary that restarts** (it was
+down when the failover completed, or went down since) is the case that keeps its old reading:
+mounted, `FSFO.FORMER_PRIMARY_NOT_OPEN` (documented, ORA-16649) with fast-start failover enabled,
+`FAILOVER.FORMER_PRIMARY_MOUNTED` (this page's reading; not spelled out where fast-start failover is
+disabled) without -- and drawn open where it cannot reach the new primary, since nothing tells it. It
+stays mounted until REINSTATE DATABASE or a fresh START/STARTUP the run does not model. A fast-start-failover
+failover and a switchover are unchanged: the first's old primary is the documented stall / abort /
+`FastStartFailoverPmyShutdown` path, the second's is converted. `splitBrainOf` (`sim/split-brain.ts`) reads
+the result back: two lanes `open-rw` over a stretch with a length. A `Claim<boolean>`, `model`, note
 `SPLIT_BRAIN.READING` -- Oracle has no term and no interval for it -- asked only of a failover or manual
-failover that moved a primary, with the window when yes and, when no, what the old primary was doing
-the instant the new one opened (down, aborted, stalled, mounted). A STALLED primary is not counted.
+failover that moved a primary, with the window when yes (a manual failover with the old primary still
+open reads yes, from the new primary's open to where the old one goes down, or to the end of the run)
+and, when no, what the old primary was doing the instant the new one opened (down, aborted, stalled,
+mounted). A STALLED primary is not counted.
 **One role change per run.** A second failover after a role change -- fast-start failover stays
 armed, and "the reinstated database acts as the fast-start failover target for the new primary
 database, making a subsequent fast-start failover possible" -- is not simulated. The run stops
@@ -414,7 +426,7 @@ Pure `(doc) => GeneratedFile[]` with structured `Line`s (`cmd`/`note`/`comment`/
 - DGMGRL script order: CREATE CONFIGURATION; ADD DATABASE ×N; ADD FAR_SYNC ×N; LogXptMode; RedoRoutes per member (both directions pre-declared, comment says nothing rewrites on role change); NetTimeout; ENABLE FAR_SYNC; ENABLE CONFIGURATION; protection mode; FastStartFailover* properties; FastStartFailoverTarget = 'a,b'; ENABLE FAST_START FAILOVER [OBSERVE ONLY]; `START OBSERVER name FILE IS … LOGFILE IS … CONNECT IDENTIFIER IS … IN BACKGROUND` ×N; SET MASTEROBSERVER TO. Traps pinned by tests: `FILE IS` never `FILE=`; `GROUP` never in RedoRoutes; validation notes come from `validate` (one source of truth).
 - LOG_ARCHIVE_DEST_n: one block per primary destination from 2 upward, ranges 1–10 / 11–31; NET_TIMEOUT omitted under ASYNC; ALTERNATE=/GROUP=/PRIORITY= only here.
 - tnsnames/JDBC: ADDRESS_LIST over all service-publishing hosts, FAILOVER=on spelled, LOAD_BALANCE omitted unless on; ConfigurationWideServiceName alternative labelled doc-later.
-- SHOW mocks (CONFIGURATION [VERBOSE] [WHEN PRIMARY IS x], FAST_START FAILOVER, OBSERVER): indentation for cascade, `(receiving current redo)`, `(alternate of X)`, Active/Potential targets with valid flag, observer Master/Backup with Host Name and Last Ping lines. UNDOC spellings (far-sync line → `(far sync instance)` with no state column; observe-only spelling; valid column header) carry model markers; every mock block carries a generated header saying it is rendered from the model.
+- SHOW mocks (CONFIGURATION [VERBOSE] [WHEN PRIMARY IS x], FAST_START FAILOVER, OBSERVER): indentation for cascade, `(receiving current redo)`, `(alternate of X)`, Active/Potential targets with valid flag, observer Master/Backup with Host Name and Last Ping lines. At a frame where a manual failover left the old primary open (`openAsPrimary`, read by the Show panel off the frame's `open-rw` members that are not the resolved primary), SHOW CONFIGURATION keeps its own line for that member and adds a `(model)` note that the run draws it still open (`FAILOVER.FORMER_PRIMARY_OPEN`). UNDOC spellings (far-sync line → `(far sync instance)` with no state column; observe-only spelling; valid column header) carry model markers; every mock block carries a generated header saying it is rendered from the model.
 
 ## 8. Testing
 1. Ported matrix gate (`legacy-matrix.test.ts` = site/test.mjs against the adapter, verbatim names/comments).
