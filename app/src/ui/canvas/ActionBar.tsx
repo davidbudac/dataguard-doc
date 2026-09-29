@@ -235,7 +235,7 @@ function Row({ action }: { action: BarAction }): JSX.Element {
  * refusal on the page is, restyled flat by `.cv-menu` so a column of them
  * reads as a list rather than as a row of pills.
  */
-function MenuRow({ action }: { action: BarAction }): JSX.Element {
+export function MenuRow({ action }: { action: BarAction }): JSX.Element {
   const off = action.enabled.state === 'off';
   return (
     <div class={`cv-bar-row cv-mi${off ? ' is-off' : ''}`}>
@@ -263,6 +263,46 @@ function MenuRow({ action }: { action: BarAction }): JSX.Element {
 /** The menu's enabled items, in the order they are drawn: what the arrows walk. */
 const menuItems = (root: HTMLElement): HTMLElement[] =>
   [...root.querySelectorAll('.cv-mi-btn:not(:disabled)')].filter(isHTMLElement);
+
+/**
+ * The groups of a menu, as the list under its header: a small label over each
+ * group's rows, and the restore sentence closing the group it stands in for.
+ * The canvas's bar and Lanes' popover draw the same list.
+ */
+export function MenuList({ sections }: { sections: readonly BarSection[] }): JSX.Element {
+  return (
+    <div class="cv-menu-list">
+      {sections.map((s) => (
+        <section class="cv-menu-sec" key={s.id} aria-label={s.label}>
+          <p class="cv-menu-lbl">{s.label}</p>
+          {s.actions.map((a) => <MenuRow key={a.id} action={a} />)}
+          {s.quiet === undefined || s.quiet === null ? null : <p class="cv-bar-quiet">{s.quiet}</p>}
+        </section>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * Walk a menu with the arrows, the way every menu is: Up and Down step through
+ * the rows that can be pressed (a refused row cannot take the focus, and its
+ * reason is on screen under it), Home and End jump. True when the key was one
+ * of those and has been handled.
+ */
+export function walkMenu(root: HTMLElement, ev: { key: string; preventDefault(): void; stopPropagation(): void }): boolean {
+  if (ev.key !== 'ArrowDown' && ev.key !== 'ArrowUp' && ev.key !== 'Home' && ev.key !== 'End') return false;
+  const items = menuItems(root);
+  if (items.length === 0) return false;
+  ev.preventDefault();
+  ev.stopPropagation();
+  const at = items.findIndex((b) => b === root.ownerDocument.activeElement);
+  const next = ev.key === 'Home' ? 0
+    : ev.key === 'End' ? items.length - 1
+      : at === -1 ? (ev.key === 'ArrowDown' ? 0 : items.length - 1)
+        : (at + (ev.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length;
+  items[next]?.focus();
+  return true;
+}
 
 export function ActionBar(props: ActionBarProps): JSX.Element {
   const sections = props.sections ?? null;
@@ -324,25 +364,8 @@ export function ActionBar(props: ActionBarProps): JSX.Element {
   }, [props.subject, props.focusOnOpen]);
 
   const onKeyDown = (ev: JSX.TargetedKeyboardEvent<HTMLDivElement>): void => {
-    /* A menu is walked with the arrows, the way every menu is: Up and Down
-       step through the rows that can be pressed (a refused row cannot take
-       the focus, and its reason is on screen under it), Home and End jump.
-       Stopped here, because the same keys on the drawing walk the cards. */
-    if (menu && (ev.key === 'ArrowDown' || ev.key === 'ArrowUp' || ev.key === 'Home' || ev.key === 'End')) {
-      const el = box.current;
-      if (!el) return;
-      const items = menuItems(el);
-      if (items.length === 0) return;
-      ev.preventDefault();
-      ev.stopPropagation();
-      const at = items.findIndex((b) => b === el.ownerDocument.activeElement);
-      const next = ev.key === 'Home' ? 0
-        : ev.key === 'End' ? items.length - 1
-          : at === -1 ? (ev.key === 'ArrowDown' ? 0 : items.length - 1)
-            : (at + (ev.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length;
-      items[next]?.focus();
-      return;
-    }
+    /* Stopped in `walkMenu`, because the same keys on the drawing walk the cards. */
+    if (menu && box.current && walkMenu(box.current, ev)) return;
     if (ev.key !== 'Escape') return;
     /* Stopped here on purpose: the same key on the drawing clears the
        selection, and closing a menu and forgetting what it was about are two
@@ -380,15 +403,7 @@ export function ActionBar(props: ActionBarProps): JSX.Element {
               </button>
             </div>
             {sections !== null ? (
-              <div class="cv-menu-list">
-                {sections.map((s) => (
-                  <section class="cv-menu-sec" key={s.id} aria-label={s.label}>
-                    <p class="cv-menu-lbl">{s.label}</p>
-                    {s.actions.map((a) => <MenuRow key={a.id} action={a} />)}
-                    {s.quiet === undefined || s.quiet === null ? null : <p class="cv-bar-quiet">{s.quiet}</p>}
-                  </section>
-                ))}
-              </div>
+              <MenuList sections={sections} />
             ) : (
               <>
                 {shown.map((a) => (

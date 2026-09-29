@@ -662,11 +662,11 @@ type ToolIcon = ToolIconName;
  * slot: the way down while the thing is up, the way back once it is down --
  * grey with its reason as its title when that way back is refused.
  */
-export function hoverTools(doc: TopologyDoc, key: string, at: number): CanvasTool[] {
+export function hoverTools(doc: TopologyDoc, key: string, at: number, opts: RunOptions = {}): CanvasTool[] {
   const all = actionsForKey(doc, key, at);
   const find = (id: string): EventAction | undefined => all.find((a) => a.id === id);
   const tool = (a: EventAction, icon: ToolIcon): HoverTool => ({
-    id: a.id, icon, label: a.label, enabled: a.enabled, run: () => runAction(a),
+    id: a.id, icon, label: a.label, enabled: a.enabled, run: () => runAction(a, opts),
   });
   const pair = (downId: string, downIcon: ToolIcon, upId: string, upIcon: ToolIcon): HoverTool | null => {
     const d = find(downId);
@@ -888,8 +888,18 @@ export function restPlayhead(): void {
   tNow.value = Math.max(0, Math.round(end * 10) / 10);
 }
 
+export interface RunOptions {
+  /**
+   * Leave the playhead where the reader put it. The default moves it to the
+   * end of the run so the drawing shows the result; Lanes shows the whole run
+   * at once and aims its buttons at the playhead, so it must not move under a
+   * reader who is composing at t = 10 s.
+   */
+  keepPlayhead?: boolean;
+}
+
 /** Inject an action's events under one undo entry. */
-export function runAction(action: EventAction): void {
+export function runAction(action: EventAction, opts: RunOptions = {}): void {
   if (action.enabled.state === 'off') return;
   /* A property holds from the first frame, so there is no new moment to move
      the playhead to. */
@@ -898,7 +908,7 @@ export function runAction(action: EventAction): void {
      list rather than adding to it, and leaves the playhead where it is. */
   if (action.events.length === 0) { action.run?.(); return; }
   edit(action.label, (d) => withEvents(d, [...d.topology.events, ...action.events]));
-  restPlayhead();
+  if (opts.keepPlayhead !== true) restPlayhead();
 }
 
 /* ---------------- the six templates ---------------- */

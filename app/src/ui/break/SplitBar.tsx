@@ -36,13 +36,13 @@ import { revealFindings } from '../IssuePanel';
 const KEEPS_PRESS = 'button, input, select, a, label, .sb-pop';
 
 /** Below this the bar has no room for a row of speeds and the run's minor readings both. */
-const TIGHT_W = 1100;
+export const TIGHT_W = 1100;
 
 /** The readings that make up the terse line even when the bar is tight. */
 const CORE = new Set(['outcome', 'app', 'observer']);
 
 /** Close a popover on a press outside it, and on Escape. */
-function useDismiss(open: boolean, host: RefObject<HTMLElement>, close: () => void, escape = true): void {
+export function useDismiss(open: boolean, host: RefObject<HTMLElement>, close: () => void, escape = true): void {
   useEffect(() => {
     if (!open) return undefined;
     const away = (e: PointerEvent): void => {
@@ -59,7 +59,7 @@ function useDismiss(open: boolean, host: RefObject<HTMLElement>, close: () => vo
 }
 
 /** The run's readings as one line: `Outcome blocked · Application stays down · ...`. */
-function TerseReadout({ run, tight }: { run: boolean; tight: boolean }) {
+export function TerseReadout({ run, tight }: { run: boolean; tight: boolean }) {
   const chips = readout.value.filter((c) => c.id !== 'findings' && (!tight || CORE.has(c.id)));
   return (
     <div class="sb-ro" role="group" aria-label="Readout">
@@ -83,7 +83,7 @@ function TerseReadout({ run, tight }: { run: boolean; tight: boolean }) {
 }
 
 /** The count chip, and the dropdown that carries what used to float over the canvas. */
-function FindingsMenu() {
+export function FindingsMenu() {
   const { errs, warns, notes, text } = findingCounts();
   const open = findingsOpen.value;
   const host = useRef<HTMLDivElement>(null);
@@ -123,7 +123,7 @@ function FindingsMenu() {
 }
 
 /** The colour key and the Application's view, behind an (i): read once, then out of the way. */
-function KeyMenu({ run }: { run: RunTimeline }) {
+export function KeyMenu({ run }: { run: RunTimeline }) {
   const host = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
   useDismiss(open, host, () => setOpen(false));

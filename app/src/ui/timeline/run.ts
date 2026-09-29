@@ -16,7 +16,7 @@ import { useMemo, useState } from 'preact/hooks';
 import type { TimedEvent, TopologyDoc, Trace } from '@/engine';
 import { sortEvents } from '@/engine';
 import { buildTimeline } from './build';
-import type { Density, TimelineModel } from './build';
+import type { Density, TimelineModel, TimelineView } from './build';
 
 export interface RunTimelineInput {
   trace: Trace;
@@ -29,6 +29,10 @@ export interface RunTimelineInput {
   /** Whether the application's lanes are drawn; they are unless this is false. */
   appView?: boolean;
   density?: Density;
+  /** Where the plot starts, for a layout that draws its own column left of it (Lanes). */
+  gutter?: number;
+  /** Which network links get a lane; `auto` unless a layout draws them itself. */
+  links?: TimelineView['links'];
 }
 
 export interface RunTimeline {
@@ -44,7 +48,9 @@ export interface RunTimeline {
 }
 
 export function useRunTimeline(input: RunTimelineInput): RunTimeline {
-  const { trace, doc, width, pinnedScale = false, selection = null, appView = true, density = 'full' } = input;
+  const {
+    trace, doc, width, pinnedScale = false, selection = null, appView = true, density = 'full', gutter, links,
+  } = input;
   const scenario = useMemo(() => JSON.stringify(doc), [doc]);
   const [heldAxis, setHeldAxis] = useState<{
     scenario: string; t0: number; t1: number;
@@ -53,8 +59,9 @@ export function useRunTimeline(input: RunTimelineInput): RunTimeline {
   const model = useMemo(
     () => buildTimeline(trace, doc, {
       width, pinnedScale, selection, app: appView, density, ...(axis ? { axis } : {}),
+      ...(gutter === undefined ? {} : { gutter }), ...(links === undefined ? {} : { links }),
     }),
-    [trace, doc, width, pinnedScale, selection, axis, appView, density],
+    [trace, doc, width, pinnedScale, selection, axis, appView, density, gutter, links],
   );
   return {
     model,
