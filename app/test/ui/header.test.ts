@@ -194,16 +194,46 @@ describe('the header', () => {
 
 describe('the guidance line', () => {
   it('is one line: the mode word, then what to do first', async () => {
+    mode.value = 'configure';
     const root = mount(Guidance);
     const line = (): string => root.querySelector('.guide-line')?.textContent ?? '';
     /* One clause by default -- the gesture. The sentence behind it is
        explanation and waits for `Hints`. */
-    expect(line()).toBe(`Build · ${splitGuide('build', 'wide').lead}`);
-    for (const m of ['configure', 'learn'] as const) {
-      mode.value = m;
-      await tick();
-      expect(line()).toContain(splitGuide(m, 'wide').lead);
-    }
+    expect(line()).toBe(`Configure · ${splitGuide('configure', 'wide').lead}`);
+    mode.value = 'learn';
+    await tick();
+    expect(line()).toContain(splitGuide('learn', 'wide').lead);
+  });
+
+  /* Build went the way Break did: the line is not drawn, its clause is the mode
+     button's title and the stage's description, and the band's height is the
+     drawing's. */
+  it('is absent in Build, and its text is kept where a reader can still get it', async () => {
+    mode.value = 'build';
+    const root = mount(Guidance);
+    await tick();
+    expect(root.querySelector('.guide-line')).toBeNull();
+    expect(root.querySelector('.guide')).toBeNull();
+    expect(MODE_SUB.build).toContain('click to edit, drag to move, + to add');
+    introOpen.value = true;
+    await tick();
+    expect(root.querySelector('.guide .intro')).not.toBeNull();
+    introOpen.value = false;
+  });
+
+  it('describes the stage in Build and Break, and in no other mode', async () => {
+    const shell = mount(App);
+    const stage = (): string | null => shell.querySelector('main.app-stage')?.getAttribute('aria-description') ?? null;
+    expect(shell.querySelector('.guide-line')).toBeNull();
+    expect(stage()).toBe(modeGuide('build', 'wide'));
+    expect(stage()).toContain('Click to edit');
+    mode.value = 'break';
+    await tick();
+    expect(stage()).toBe(modeGuide('break', 'wide'));
+    mode.value = 'configure';
+    await tick();
+    expect(stage()).toBeNull();
+    expect(shell.querySelector('.guide-line')).not.toBeNull();
   });
 
   /* Break's gestures moved to the mode button's title and the stage's
@@ -223,24 +253,24 @@ describe('the guidance line', () => {
   });
 
   it('gives the whole sentence back with hints on, and takes it away again', async () => {
-    mode.value = 'build';
+    mode.value = 'configure';
     const root = mount(Guidance);
     const line = (): string => root.querySelector('.guide-line')?.textContent ?? '';
-    const { lead, rest } = splitGuide('build', 'wide');
+    const { lead, rest } = splitGuide('configure', 'wide');
     expect(rest).not.toBe('');
     expect(line()).not.toContain(rest);
 
     hintsOn.value = true;
     await tick();
-    expect(line()).toBe(`Build · ${lead} ${rest}`);
+    expect(line()).toBe(`Configure · ${lead} ${rest}`);
     /* The second half is the second half of `modeGuide`, promoted to its own
        sentence -- nothing is dropped on the way. */
-    expect(modeGuide('build', 'wide')).toContain('Drag a + button onto a data centre to add');
-    expect(line()).toContain('the full properties are in');
+    expect(modeGuide('configure', 'wide')).toContain('Settings are in the panel on the right');
+    expect(line()).toContain('Settings are in');
 
     hintsOn.value = false;
     await tick();
-    expect(line()).toBe(`Build · ${lead}`);
+    expect(line()).toBe(`Configure · ${lead}`);
   });
 
   /* The cut is made at a clause boundary, and Configure's first sentence names

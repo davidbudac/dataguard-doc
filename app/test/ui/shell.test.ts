@@ -58,12 +58,16 @@ describe('shell', () => {
   /* The chrome above the drawing was a top bar, a mode subtitle, a status
      bar, a guidance line and a five-row card -- ~250 px, over a 260 px stage.
      One line under the bars now carries the mode word and the guidance both. */
-  it('says what the mode is for once, on one line', () => {
+  it('says what the mode is for once, on one line', async () => {
     const root = mount();
     expect(root.querySelector('.topbar-sub')).toBeNull();
+    /* Build has no line (its text is the mode button's title); Configure does. */
+    expect(root.querySelectorAll('.guide-line').length).toBe(0);
+    mode.value = 'configure';
+    await tick();
     const lines = root.querySelectorAll('.guide-line');
     expect(lines.length).toBe(1);
-    expect(lines[0]?.textContent?.startsWith('Build · ')).toBe(true);
+    expect(lines[0]?.textContent?.startsWith('Configure · ')).toBe(true);
   });
 
   it('changes what surrounds the canvas, not the canvas', async () => {

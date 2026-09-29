@@ -59,7 +59,8 @@ export const MODE_LABEL: Record<Mode, string> = {
  * belongs to `modeGuide`, which knows.
  */
 export const MODE_SUB: Record<Mode, string> = {
-  build: 'Build — draw the configuration: sites, members, redo routes, observers',
+  build: 'Build — draw the configuration: sites, members, redo routes, observers; '
+    + 'click to edit, drag to move, + to add',
   break: 'Break — add failures and follow the simulation timeline; click a card to add an event, '
     + 'drag a numbered timeline marker to change its time',
   configure:

@@ -125,10 +125,13 @@ use it"* — and every item below is one reading of it:
   depend on `navigator.clipboard`. The canonical address rides on the button as
   `data-permalink` at all times, which is what `site/smoke.mjs` follows and what a
   machine can read without pressing anything.
-- **The page says what to do, on one line.** The guidance line under the header
-  leads with the mode word and then says the first gesture: "Build · Click a card,
-  a data centre or a link to edit it …" (`MODE_GUIDE` in `state/view.ts`, rendered
-  by `Guidance.tsx`). Configure's line says what the mode *is* before it says what
+- **The page says what to do, on one line — in Configure and Learn.** The guidance
+  line under the header leads with the mode word and then says the first gesture
+  (`modeGuide` in `state/view.ts`, rendered by `Guidance.tsx`). **Build and Break
+  draw no line** (2026-09-29): their gestures are the mode button's `title`
+  (`MODE_SUB`) and the stage's `aria-description`, and the band's height is the
+  drawing's (the header is measured into `--bar-bottom`, so the toast and the
+  floating chrome follow). Configure's line says what the mode *is* before it says what
   to do in it — the word reads as "settings" and the panels are generated output,
   so the line names the settings' actual home, the inspector. The first visit gets
   a one-row **strip** of the same three clauses with a link to Learn and "Got it";
@@ -1028,9 +1031,9 @@ creates a separate host in the same site in the same undoable edit.
 ## Small declutter pass (2026-09-26)
 
 The header uses one native Theme picker (System / Light / Dark) and compact
-Undo/Redo arrows with accessible names and action tooltips. Build guidance leads
-with “Click to edit · drag to move · + to add”; connection and renaming instructions
-remain available with Hints. Canvas tools keep their existing actions, with flat
+Undo/Redo arrows with accessible names and action tooltips. Build guidance led
+with “Click to edit · drag to move · + to add” (since moved to the Build button's
+title and the stage's `aria-description`; no line is drawn in Build). Canvas tools keep their existing actions, with flat
 zoom controls and no extra bordered, shadowed containers around each group.
 
 Validation counts remain in the header and validation panel; the readout no longer

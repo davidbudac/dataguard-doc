@@ -246,15 +246,16 @@ describe('what is not a hint', () => {
 
 describe('the guidance line', () => {
   it('shows the gesture by default and the whole sentence with hints on', async () => {
+    mode.value = 'configure';
     const root = mount(Guidance);
     const line = (): string => root.querySelector('.guide-line')?.textContent ?? '';
-    const { lead, rest } = splitGuide('build', 'wide');
-    expect(line()).toBe(`Build · ${lead}`);
+    const { lead, rest } = splitGuide('configure', 'wide');
+    expect(line()).toBe(`Configure · ${lead}`);
     expect(line()).not.toContain(rest);
 
     setHints(true);
     await tick();
-    expect(line()).toBe(`Build · ${lead} ${rest}`);
+    expect(line()).toBe(`Configure · ${lead} ${rest}`);
   });
 });
 
@@ -266,9 +267,10 @@ describe('on paper', () => {
     await tick();
     expect(hintsOn.value).toBe(false);
     expect(root.textContent).toContain(RENAME_HINT);
+    mode.value = 'configure';
     const guide = mount(Guidance);
     await tick();
     expect(guide.querySelector('.guide-line')?.textContent)
-      .toContain(splitGuide('build', 'wide').rest);
+      .toContain(splitGuide('configure', 'wide').rest);
   });
 });
