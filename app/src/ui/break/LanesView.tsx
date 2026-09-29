@@ -798,7 +798,7 @@ function Lanes({ run, fr }: { run: RunTimeline | null; fr: Frame }) {
                   <line key={`g${tk.t}`} class="gridline" x1={tk.x} y1={top} x2={tk.x} y2={axisY} />
                 ))}
                 {model?.preZone.label ? (
-                  <text class="t-tick" x={model.scale.plotL + 6} y={top + 12}>{model.preZone.label}</text>
+                  <text class="t-tick" x={model.scale.plotL + 6} y={top + 19}>{model.preZone.label}</text>
                 ) : null}
                 {model ? null : (
                   <g class="ln-empty">
