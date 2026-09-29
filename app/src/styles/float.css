@@ -201,13 +201,6 @@ button.issue{border-bottom:1px solid var(--ln)}
   .app.is-float .guide-line{text-align:center;max-width:100ch;margin:0 auto;
     padding:6px 12px;text-shadow:0 0 6px var(--bg),0 0 2px var(--bg)}
   .app.is-float .guide-line a,.app.is-float .intro{pointer-events:auto}
-  /* Break's layout switch, at the far end of the guidance line: the line keeps
-     the middle, the switch takes the pointer the band otherwise gives away. */
-  .app.is-float .guide.has-sw{flex-direction:row;padding:0 var(--float-m)}
-  .app.is-float .guide.has-sw .guide-line{flex:0 1 auto;min-width:0}
-  .layout-sw{display:flex;align-items:center;gap:8px;flex:0 0 auto;pointer-events:auto}
-  .layout-sw-k{font-size:11px;color:var(--ik3)}
-  .layout-sw .seg button{padding:3px 12px;font-size:12px}
   /* The explanation the ? opens is a card over the canvas: it must not push
      the drawing down by the height of a page of keyboard shortcuts. */
   .app.is-float .intro{position:absolute;top:100%;left:50%;transform:translateX(-50%);

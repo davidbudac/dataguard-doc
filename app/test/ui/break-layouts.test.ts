@@ -59,7 +59,7 @@ const crash = (): void => {
 
 const app = (r: HTMLElement): Element => r.querySelector('.app') as Element;
 const switchButtons = (r: HTMLElement): HTMLButtonElement[] =>
-  [...r.querySelectorAll<HTMLButtonElement>('.layout-sw [aria-label="Break layout"] button')];
+  [...r.querySelectorAll<HTMLButtonElement>('.topbar-group [aria-label="Layout"] button')];
 const pick = (r: HTMLElement, word: string): void => {
   const b = switchButtons(r).find((x) => x.textContent === word);
   if (!b) throw new Error(`no ${word} button`);
@@ -136,18 +136,23 @@ describe('the preference', () => {
 });
 
 describe('the switch', () => {
-  it('is on the guidance line in Break, in both layouts, and nowhere else', async () => {
+  it('is in the top bar in Break, left of the release switch, in both layouts, and nowhere else', async () => {
     const r = mount();
     await tick();
     expect(switchButtons(r).map((b) => b.textContent)).toEqual(['Split', 'Lanes']);
-    expect(r.querySelector('.guide .layout-sw')).not.toBeNull();
+    const group = r.querySelector('.topbar-group') as Element;
+    const segs = [...group.querySelectorAll(':scope > .seg')];
+    expect(segs.map((x) => x.getAttribute('aria-label'))).toEqual(['Layout', 'Oracle release']);
+    expect(r.querySelector('.guide')).toBeNull();
     setBreakLayout('lanes');
     await tick();
     expect(switchButtons(r).map((b) => b.textContent)).toEqual(['Split', 'Lanes']);
     for (const m of ['build', 'configure', 'learn'] as const) {
       mode.value = m;
       await tick();
-      expect(r.querySelector('.layout-sw'), m).toBeNull();
+      expect(r.querySelector('[aria-label="Layout"]'), m).toBeNull();
+      expect([...r.querySelectorAll('.topbar-group > .seg')].map((x) => x.getAttribute('aria-label')), m)
+        .toEqual(['Oracle release']);
     }
   });
 
@@ -156,7 +161,7 @@ describe('the switch', () => {
     const r = mount();
     await tick();
     expect(app(r).classList.contains('is-float')).toBe(false);
-    expect(r.querySelector('.layout-sw')).toBeNull();
+    expect(r.querySelector('[aria-label="Layout"]')).toBeNull();
   });
 
   it('says what each layout is for, and which one is on', async () => {
@@ -169,7 +174,7 @@ describe('the switch', () => {
     expect(lanes.title).toMatch(/row by row/);
     expect(split.getAttribute('aria-pressed')).toBe('true');
     expect(lanes.getAttribute('aria-pressed')).toBe('false');
-    expect(r.querySelector('.layout-sw [role="group"]')?.getAttribute('aria-label')).toBe('Break layout');
+    expect(r.querySelector('.topbar-group [role="group"][aria-label="Layout"]')).not.toBeNull();
   });
 
   it('round-trips Split and Lanes live, in the same page, and remembers the last', async () => {
@@ -526,7 +531,7 @@ describe('Build and Configure', () => {
       expect(r.querySelector('.app-dock .fnd-chips'), layout).not.toBeNull();
       expect(r.querySelector('.fnd-toast'), layout).not.toBeNull();
       expect(r.querySelector('.sb-bar'), layout).toBeNull();
-      expect(r.querySelector('.layout-sw'), layout).toBeNull();
+      expect(r.querySelector('[aria-label="Layout"]'), layout).toBeNull();
       expect(r.querySelector('.dock-grip'), layout).toBeNull();
       render(null, r);
       document.body.innerHTML = '';
