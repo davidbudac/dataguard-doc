@@ -570,7 +570,8 @@ it."* Five things landed, and one rule bent:
   drag threshold (`onPointerMove`), which is the only moment the pointer can
   leave the drawing mid-gesture. If a drag ever feels lost on a fast flick,
   this is the line to look at.
-- **The drawing zooms and pans.** `canvas/zoom.ts` holds a six-rung ladder
+- **The drawing zooms and pans.** (Break's Split sizes the drawing by its region until the
+  reader zooms: `zoomAuto`, `autoFactor`, see "Break's two layouts".) `canvas/zoom.ts` holds a six-rung ladder
   (50–140 %) as view state — not in the Document, the undo stack or the URL.
   Zoom multiplies the svg's `width`/`height` *attributes* and leaves the
   viewBox alone, so routing, goldens and the bar's arithmetic see the same
@@ -1319,11 +1320,18 @@ is Split or Lanes. This section supersedes the Break parts of §3b/§3f that des
 dock (its head row of readings and finding chips, the floating warning card, the grab
 handle on its top edge). Build's dock, chips and warning card are as they were.
 
-- **The switch** (`ui/break/LayoutSwitch.tsx`): a two-option segmented control, *Layout ·
-  Split | Lanes*, at the far end of the guidance line under the top bar — the one place
-  both layouts leave alone, so it is in the same spot whichever is on screen. Only where
-  Break floats (≥ 1024 px); the docked fallback below it is a single layout and has no
-  switch. `aria-pressed` buttons (the shared `Segmented`), so it is reachable and pressed
+- **The switch** (`ui/break/LayoutSwitch.tsx`): a two-option segmented control, *Split |
+  Lanes* (group label *Layout*, spoken, not drawn), in the top bar immediately left of the
+  `19c | 26ai` switch and built the same way (a bare `Segmented` in `.topbar-group`, so it
+  is styled by the same rule) — the one place both layouts leave alone, so it is in the
+  same spot whichever is on screen. Only in Break and only where Break floats (≥ 1024 px);
+  elsewhere `TopBar` does not render it and the release switch does not move (the group is
+  right-aligned). The docked fallback below 1024 px is a single layout and has no
+  switch. **Break has no guidance line** (`Guidance.tsx` renders nothing for it, apart
+  from the card the `?` opens): the band's height is the drawing's, and what it said —
+  click a card to add an event, drag a numbered marker to change its time — is the Break
+  mode button's `title` (`MODE_SUB`) and the stage's `aria-description` (`modeGuide`).
+  `aria-pressed` buttons (the shared `Segmented`), so it is reachable and pressed
   by keyboard; the titles say what each is for: *Split — see the diagram and the timeline
   together*, *Lanes — read each member's story row by row*. Switching is live (one
   signal), keeps the run, the playhead and the selection, and needs no reload.
@@ -1363,9 +1371,26 @@ handle on its top edge). Build's dock, chips and warning card are as they were.
     `split.css`); once the reader drags it (`is-set`) it is that height (`timelineH`,
     `dg-tl-h`, written as `--tl-h`), never taller than leaves the drawing 140 px
     (`CANVAS_MIN_H`) and never shorter than the bar and a few lanes (`TL_MIN_H`, 120).
-    At 1440×900 the default region holds the classic crash's whole timeline to within a
-    row of braces; at 1280×800 the axis is one short scroll away, inside the timeline
-    region only (the bar and the headline stay).
+    With the guidance line gone the default region at 1440×900 holds the classic crash's
+    whole timeline (both braces, to within a few pixels); at 1280×800 every lane, the axis
+    and the first brace are on screen and the second brace is one short scroll away, inside
+    the timeline region only (the bar and the headline stay).
+  - *The drawing fills its region until the reader zooms.* Split's `CanvasSlot` sets
+    `fit` on `useCanvasScale`: the factor `autoFactor` gives (the wrap's content box over
+    the viewBox, never below 1:1, never above the top rung, 140 %) is written to `zoom`
+    on entering Split, whenever the wrap's content box changes (window resize; the divider,
+    which moves the wrap's bottom padding through `--dock-h`) and whenever the drawing
+    changes size. The first `+`, `−` or ctrl-wheel step clears `zoomAuto` and the room
+    stops deciding; `Fit` (and re-entering Split) sets it again. While the room decides the
+    wrap is `.is-fitted` (centred, no scroll port); a room smaller than the drawing is
+    still the CSS cap's job. Leaving Split with `zoomAuto` still true puts the drawing back
+    at 1:1.
+  - *The bar is grabbed anywhere that is not a control*, with the `ns-resize` cursor. The
+    pointer is captured at the press (a control never starts a drag), so a release far
+    from the press with no move between — a fast flick, or automation — still resizes to
+    where it came up if the press had crossed the 4 px slop; a cancel keeps what was
+    dragged to. The separator answers ↑/↓ (16 px, ×4 with Shift), Page keys, Home, End
+    and Enter.
   - *The rail folds to its strip on the way in* (`split-rail.ts`, `useFoldRailWhile`), so
     the drawing keeps its width and the event menu sits on the stage, as with any folded
     rail. It is a plain signal write: `dg-rail` is not touched by a layout. If the reader
@@ -1460,6 +1485,17 @@ handle on its top edge). Build's dock, chips and warning card are as they were.
     (`FindingsSheet`), and the key with the Application's view toggle behind an (i).
     Dropdowns open downward. `revealFindings` opens that dropdown in Lanes as in Split
     and leaves the rail as it was.
+- **The playhead's time badge keeps clear** of every event sentence, icon chip and number
+  circle in the model (`badgePlacement`, `markerBoxes` in `Playhead.tsx`): right of the
+  line, else left, else the nearest clear place further out, read from the model's own
+  markers so Lanes' shifted ones are avoided where they are. `spoken()` (build.ts)
+  rounds the axis ends for `aria-valuemin/max/now` and the timeline's description, so the
+  far end of the axis is read as 69.34 and not 69.34499999999998.
+- **The restore note** (*Restored your last configuration · Start fresh*) is a flex pair:
+  the text ellipsises (whole sentence as its title) and the button stays. The brand and
+  the count keep their size, the picker shrinks to 7 ch, the right-hand group is never
+  narrower than its content (`min-width: max-content`), and below 1440 px the note drops
+  under the bar as a small card for the eight seconds it is up instead of squeezing in.
 - **Density belongs to the model.** The prototype switched a module-level `TL` while
   rendering; it is now `TimelineView.density` → `TimelineModel.layout`, and `Lane`,
   `Marker`, `EventDrag` and `playheadSpan` read it from the model (`Marker` takes a
@@ -1475,7 +1511,9 @@ handle on its top edge). Build's dock, chips and warning card are as they were.
   bar's dropdown in both layouts (Split's and Lanes'); the rows at the foot of Lanes' rail
   stay, and the rail is no longer unfolded for it.
 
-Tests: `test/ui/break-layouts.test.ts` (the preference, the switch, Split's bar, the rail
+Tests: `test/ui/polish-split.test.ts` (the badge against every label, chip and number; the
+spoken axis; the restore note's title; auto-fit, manual zoom and Fit; the divider's
+press-release, cancel and keyboard), `test/ui/break-layouts.test.ts` (the preference, the switch, Split's bar, the rail
 fold, the density, Build and Configure unchanged), `lanes-events.test.ts` (the buttons per
 card and header, changing with the playhead, refusals with their reason, a press landing at
 the playhead, the ⋯ menu and Esc, the link pills, the empty run, the held axis, the braces,
