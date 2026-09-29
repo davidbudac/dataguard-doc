@@ -45,6 +45,8 @@ import { ClassicWalkthrough } from './intro/Walkthrough';
 import { ReviewDialog } from './review/ReviewPanel';
 import { Popout, PopoutButton, PoppedAway, popped } from './common/popout';
 import { RAIL_ID, RailBar, RailStrip } from './RailFrame';
+import { variantB } from './proto/ProtoVariantB';
+import { ProtoSplitBar } from './proto/ProtoSplitBar';
 
 /** Which modes keep a rail beside the canvas. Learn's right half is the workbench. */
 const HAS_RAIL: Record<Mode, boolean> = {
@@ -255,7 +257,7 @@ function useChromeInsets(): (el: HTMLElement | null) => void {
 
 const MIN_TIMELINE_W = 640;
 
-function TimelineSlot({ popup = false }: { popup?: boolean }) {
+function TimelineSlot({ popup = false, packed = false }: { popup?: boolean; packed?: boolean }) {
   const [ref, width] = useWidth();
   const t = trace.value;
   const learn = mode.value === 'learn';
@@ -291,7 +293,8 @@ function TimelineSlot({ popup = false }: { popup?: boolean }) {
           onSpeed={(s) => { speed.value = s; }}
           selection={selection.value[0] ?? null}
           onSelect={(id) => { selection.value = id === null ? [] : [id]; }}
-          showTransport
+          showTransport={!packed}
+          compact={packed}
           appView={appLanesShown.value}
           onAppView={(shown) => { appLanesShown.value = shown; }}
         />
@@ -372,7 +375,9 @@ function useTimelineHeight(): void {
    whole of it in Build, the head of the timeline panel in Break. With a run
    on it, the panel has a grab handle on its top edge and a full-screen button
    at the end of that row (timeline/DockControls.tsx). */
-function FloatDock({ m, sized }: { m: Mode; sized: boolean }) {
+function FloatDock({ m, sized, vB = false }: { m: Mode; sized: boolean; vB?: boolean }) {
+  /* PROTOTYPE B: the bar is the drag handle and the whole of the chrome. */
+  if (vB) return <><ProtoSplitBar sized={sized} /><TimelineSlot packed /></>;
   return (
     <>
       <div class="dock-status">
@@ -425,6 +430,9 @@ function Dock({ m, railInDock }: { m: Mode; railInDock: boolean }) {
   );
 }
 
+/** PROTOTYPE B: the folded-rail default is applied once per page load. */
+let bRailDone = false;
+
 export function App() {
   const m = mode.value;
   /* The Introduction takes the stage, the rail and the dock; the header stays,
@@ -442,6 +450,12 @@ export function App() {
   /* Build and Break draw the canvas full-bleed with everything else floating
      over it; Configure and Learn keep the docked grid (state/view.ts). */
   const float = !intro && floating(m, viewport.value);
+  /* PROTOTYPE B (?variant=B): Break's drawing and timeline as two stacked regions. */
+  const vB = variantB && float && m === 'break';
+  /* B starts with the rail folded to its strip -- once, so the reader can open it. */
+  useLayoutEffect(() => {
+    if (variantB && !bRailDone) { bRailDone = true; railCollapsed.value = true; }
+  }, []);
   const t = toast.value;
   const barRef = useBarAnchor();
   const dockRef = useDockAnchor();
@@ -463,7 +477,7 @@ export function App() {
   useEffect(() => installShortcuts(), []);
 
   return (
-    <div ref={appRef} class={intro ? 'app m-intro' : `app m-${m}${float ? ' is-float' : ''}${float && !gridOn.value ? ' no-grid' : ''}${full ? ' tl-full' : ''}${float && m === 'break' && !menuInRail ? ' has-evm' : ''}${railShut ? ' rail-shut' : ''}`}>
+    <div ref={appRef} class={intro ? 'app m-intro' : `app m-${m}${float ? ' is-float' : ''}${float && !gridOn.value ? ' no-grid' : ''}${full ? ' tl-full' : ''}${float && m === 'break' && !menuInRail ? ' has-evm' : ''}${railShut ? ' rail-shut' : ''}${vB ? ' v-B' : ''}`}>
       {/* One header, three bands: the modes and the small controls, then the
           quieter document row, then the line that says what to do in the mode
           that is open. It is one element so the toast can be anchored to the
@@ -549,10 +563,10 @@ export function App() {
 
           {float ? (
             <>
-              <FindingToast />
-              <FindingsPopover />
+              {vB ? null : <FindingToast />}
+              {vB ? null : <FindingsPopover />}
               <div class={sized ? 'app-dock float-card has-tl' : 'app-dock float-card'} ref={dockRef}>
-                <FloatDock m={m} sized={sized} />
+                <FloatDock m={m} sized={sized} vB={vB} />
               </div>
             </>
           ) : null}

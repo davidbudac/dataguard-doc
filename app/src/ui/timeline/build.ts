@@ -33,7 +33,7 @@ import type { EventIconName } from '../common/eventIcons';
  * the fragment's `G`, which the shell's `lanes * 48 + 120` height budget is
  * derived from.
  */
-export const TL = {
+export const TL_FULL = {
   gutter: 132,
   padR: 30,
   /** The caption baseline above the drawing. */
@@ -76,7 +76,53 @@ export const TL = {
   indent: 10,
   /** The room over the application's three lanes, for the line that heads them. */
   appHead: 34,
+
+  /* PROTOTYPE B: the lane's own text and bar offsets, formerly literals in Timeline.tsx. */
+  nameDy: 17,
+  subDy: 30,
+  barDy: 5,
+  barPad: 10,
+  barTextDy: 24,
+  abortLabelDy: 16,
 } as const;
+
+/** PROTOTYPE -- Break layout variant B (throwaway): the same drawing, packed. */
+export const TL_COMPACT: Layout = {
+  ...TL_FULL,
+  gutter: 128,
+  gutterPad: 8,
+  topY: 12,
+  braceY: 26,
+  markY: 72,
+  laneTop: 78,
+  badgeDy: 17,
+  iconDy: 36,
+  laneH: 22,
+  laneGap: 4,
+  markRow: 14,
+  axisGap: 16,
+  braceGap: 24,
+  braceRow: 46,
+  appHead: 26,
+  nameDy: 15,
+  subDy: 0,
+  barDy: 2,
+  barPad: 4,
+  barTextDy: 15,
+  abortLabelDy: 9,
+};
+
+export type Layout = { -readonly [K in keyof typeof TL_FULL]: number };
+
+/**
+ * The layout the drawing is built and painted with. A live binding: Timeline
+ * sets it (`setTimelineDensity`) at the top of its render, before anything
+ * reads it, so the model, the lanes, the markers and the drag hit-boxes agree.
+ */
+export let TL: Layout = TL_FULL;
+export function setTimelineDensity(compact: boolean): void {
+  TL = compact ? TL_COMPACT : TL_FULL;
+}
 
 /** The static figures' scale: `x(t) = 280 + 10 * t`, domain -14 s .. +80 s. */
 export const PINNED = {
@@ -1272,7 +1318,7 @@ export function buildTimeline(trace: Trace, doc: TopologyDoc, view: TimelineView
       label,
       labelAnchor: fits ? 'start' : 'end',
       labelX: r1(fits ? x + 8 : x - 8),
-      labelY: y + TL.laneH + 16,
+      labelY: y + TL.laneH + TL.abortLabelDy,
       showLabel: true,
       nx: r1(x),
       icon: null,

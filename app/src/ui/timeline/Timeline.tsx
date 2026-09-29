@@ -12,7 +12,7 @@ import { GLYPH } from '../common/eventIcons';
 import type { JSX } from 'preact';
 import type { TimedEvent, TopologyDoc, Trace } from '@/engine';
 import { sortEvents } from '@/engine';
-import { buildTimeline, TL } from './build';
+import { buildTimeline, setTimelineDensity, TL } from './build';
 import type { TimelineLane, TimelineMarker, TimelineModel } from './build';
 import { Brace, TopBrace } from './Brace';
 import { EventDrag } from './EventDrag';
@@ -46,6 +46,8 @@ export interface TimelineProps {
   appView?: boolean;
   /** Present where the reader may fold the application's lanes away. */
   onAppView?: (shown: boolean) => void;
+  /** PROTOTYPE B: pack the lanes (see TL_COMPACT in build.ts). */
+  compact?: boolean;
 }
 
 /* ---------------- pieces ---------------- */
@@ -94,34 +96,36 @@ function Lane({ lane, model, selected, onSelect }: {
       <text
         class="t-lane t-mono"
         x={scale.plotL - TL.gutterPad - lane.indent}
-        y={lane.y + 17}
+        y={lane.y + TL.nameDy}
         text-anchor="end"
       >
         {lane.name}
       </text>
-      <text
-        class="t-sub"
-        x={scale.plotL - TL.gutterPad - lane.indent}
-        y={lane.y + 30}
-        text-anchor="end"
-      >
-        {lane.sub}
-      </text>
+      {TL.subDy > 0 ? (
+        <text
+          class="t-sub"
+          x={scale.plotL - TL.gutterPad - lane.indent}
+          y={lane.y + TL.subDy}
+          text-anchor="end"
+        >
+          {lane.sub}
+        </text>
+      ) : <title>{`${lane.name} — ${lane.sub}`}</title>}
       {lane.segments.map((sg) => (
         sg.w <= 0.5 ? null : (
           <g key={sg.key} class="tl-seg" data-tip={sg.title}>
             <rect
               class={`bar ${sg.phase}${sg.open ? ' is-open' : ''}`}
               x={sg.x}
-              y={lane.y + 5}
+              y={lane.y + TL.barDy}
               width={sg.w}
-              height={lane.height - 10}
+              height={lane.height - TL.barPad}
             />
             {sg.label === null ? null : (
               <text
                 class={`t-bar ${sg.ink}`}
                 x={sg.x + sg.w / 2}
-                y={lane.y + 24}
+                y={lane.y + TL.barTextDy}
                 text-anchor="middle"
               >
                 {sg.label}
@@ -151,7 +155,7 @@ function Marker({ marker }: { marker: TimelineMarker }) {
       {m.glyph === 'diamond' ? (
         <g>
           <line class={m.stroke} x1={m.x} y1={m.y0} x2={m.x} y2={m.y1} stroke-width="2" />
-          <path class={m.tone} d={`M${m.x},${m.y0 + 27} l6,6 l-6,6 l-6,-6 z`} />
+          <path class={m.tone} d={`M${m.x},${m.y0 + TL.laneH / 2 + 8} l6,6 l-6,6 l-6,-6 z`} />
         </g>
       ) : null}
       {m.glyph === 'dot' ? (
@@ -204,8 +208,10 @@ export function Timeline(props: TimelineProps) {
   const {
     trace, doc, width, tNow, playing = false, speed = 1,
     onSeek, onMoveEvent, onPlayToggle, onSpeed, selection = null, onSelect,
-    pinnedScale = false, showTransport = true, appView = true, onAppView,
+    pinnedScale = false, showTransport = true, appView = true, onAppView, compact = false,
   } = props;
+  /* Before anything below reads TL (PROTOTYPE B). */
+  setTimelineDensity(compact && !pinnedScale);
 
   // Hold the viewport only for the exact document produced by our drop.
   // Undo, rail edits and scenario/configuration changes fit automatically.
@@ -216,7 +222,7 @@ export function Timeline(props: TimelineProps) {
   const axis = heldAxis?.scenario === scenario ? heldAxis : undefined;
   const model = useMemo(
     () => buildTimeline(trace, doc, { width, pinnedScale, selection, app: appView, ...(axis ? { axis } : {}) }),
-    [trace, doc, width, pinnedScale, selection, axis, appView],
+    [trace, doc, width, pinnedScale, selection, axis, appView, compact],
   );
   const moveEvent = (index: number, at: number, expected: TimedEvent) => {
     const result = onMoveEvent?.(index, at, expected);
