@@ -35,7 +35,7 @@ import { signal } from '@preact/signals';
 import { events, topology, trace } from '@/state/derived';
 import { canEdit, tNow, viewport } from '@/state/view';
 import { IssuePanel } from '../IssuePanel';
-import { Action, Fold, Group, Note } from '../inspector/controls';
+import { Action, Caret, Fold, Group, Note } from '../inspector/controls';
 import { isSectionOpen, SCENARIOS_ID, toggleSection } from '../inspector/sections';
 import { hintsShown, HintsToggle } from '../hints';
 import { printing } from '../print';
@@ -79,7 +79,7 @@ export function ScenarioPalette() {
         aria-expanded={open}
         onClick={() => toggleSection(SCENARIOS_ID)}
       >
-        <span class="grp-caret" aria-hidden="true">{open ? '▾' : '▸'}</span>
+        <Caret open={open} />
         Scenarios
       </button>
       {open ? (

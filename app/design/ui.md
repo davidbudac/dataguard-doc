@@ -1264,3 +1264,47 @@ inside it*, *Break draws the bar as a grouped menu*, the
 whole Break table on the bar, the header's clock, the quick icons stepping aside),
 `canvas-presets.test.ts` (*the Break menu stays inside a room the rail has cut short*,
 every preset, every scale).
+
+## The side rail folds (as built, 2026-09-29)
+
+The owner's ask: *"make the right-hand side panel collapsible and redesign it to be
+much more user-friendly and nicer"*.
+
+- **A frame around the rail** (`ui/RailFrame.tsx`, `styles/rail.css`): a 44 px title
+  bar naming the rail (`Inspector` / `Events`) with the fold button, and a scroll port
+  under it (`.rail-body`) that carries the scroll shading the aside used to. The
+  contents keep their own headers; the bar is the shell's, so folding works the same
+  in Build, Break and Configure. Learn has no bar: its right half is the workbench.
+- **Folded, the rail is a 44 px strip** that is one button, its full height: the panel
+  glyph, the rail's name and what is behind it (the selection, or Break's event count)
+  set vertically. Nothing of the contents is rendered. Both buttons carry
+  `aria-expanded` and `aria-controls="app-rail"` (the aside, present in both states).
+  `]` toggles from anywhere outside a text field (AltGr let through, for layouts where
+  `]` is a chord); below 1280 the same key opens or shuts the drawer. Remembered under
+  `dg-rail`, read once at boot.
+- **Everything that clears the rail follows it**: `--w-float-rail` and `--w-inspector`
+  are registered with `@property` and transitioned (0.22 s, off under
+  `prefers-reduced-motion`), so the drawing's inset, the dock, the zoom pill and the
+  docked grid's column move with the width. `--rail-space` is restated on `.app`
+  (≥1280) because the `:root` declaration resolved against the open width. The port
+  keeps the open width while the column grows, so the fields lay out once.
+- **Break with the rail folded** puts the event menu on the stage, where the drawer
+  layout already puts it — a menu inside a folded rail is a menu nobody finds.
+- **"Show me this in the inspector" unfolds it**: Edit (`openInspectorFor`), a
+  finding's row, the walkthrough's threshold step and the run explanation's settings
+  links call `revealRail()` (persist.ts), which unfolds the column on a wide screen
+  and opens the drawer below it.
+- **The header names its subject with the card's own glyph and tone** (a tile: teal
+  primary, blue standby, violet observer, the link colour for far sync, links and
+  routes, the connection colour for the application, slate for data centres and the
+  configuration), the kind word in plain words (`Physical standby`, `Master
+  observer`), and `Remove` / `Clear` as icon buttons whose words ride in `.sr` and
+  `title`, so the header's three buttons fit beside the name on a 340 px card. Remove
+  goes red on hover.
+- Folds turn an SVG chevron (the shared `Caret`), an open section's heading is ink and
+  a shut one steps back, the summary's rows are ruled, and an empty state (Break's *No
+  events yet*, the event menu's *Select a card…*) is a dashed box rather than a stray
+  sentence.
+
+Tests: `test/ui/rail-collapse.test.ts`.
+

@@ -94,6 +94,16 @@ export const theme = signal<ThemePref>('auto');
 export const palette = signal<PalettePref>('standard');
 export const edition = signal<Edition>('19c');
 export const inspectorOpen = signal<boolean>(false);
+/**
+ * Whether the rail beside the canvas is folded to its slim strip.
+ *
+ * Only where the rail is a column (`wide`, and not in Learn, whose right half
+ * is the workbench itself): below 1280 the rail is a drawer, which is already
+ * shut until asked for. Folded, the rail's contents are not rendered -- the
+ * strip that stays is the way back, and says what is behind it. Remembered
+ * under `dg-rail` (persist.ts) and read once at boot, like `hintsOn`.
+ */
+export const railCollapsed = signal<boolean>(false);
 /** The "How this page works" card, opened again from the header's ? button. */
 export const introOpen = signal<boolean>(false);
 /**

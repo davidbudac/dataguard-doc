@@ -28,6 +28,19 @@ import { ON } from './why';
 
 /* ---------------- structure ---------------- */
 
+/**
+ * The fold's chevron: points right while shut, turns down when open (the turn
+ * is CSS, and still under `prefers-reduced-motion`). Decorative -- the button
+ * it sits in carries `aria-expanded`.
+ */
+export function Caret({ open }: { open: boolean }) {
+  return (
+    <span class={`grp-caret${open ? ' is-open' : ''}`} aria-hidden="true">
+      <svg viewBox="0 0 10 10" focusable="false"><polyline points="3.5,1.75 6.75,5 3.5,8.25" /></svg>
+    </span>
+  );
+}
+
 export function Group(
   { title, children, action, id }:
   { title: string; children: ComponentChildren; action?: ComponentChildren; id?: string },
@@ -77,7 +90,7 @@ export function Fold(
           aria-expanded={open}
           onClick={() => toggleSection(id)}
         >
-          <span class="grp-caret" aria-hidden="true">{open ? '▾' : '▸'}</span>
+          <Caret open={open} />
           <span class="eyebrow">{title}</span>
           {hint === undefined || open ? null : <span class="grp-sum mono">{hint}</span>}
         </button>

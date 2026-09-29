@@ -63,13 +63,15 @@ export function resolveSubject(doc: TopologyDoc, key: string | undefined): Subje
   return null;
 }
 
+const cap = (w: string): string => w.charAt(0).toUpperCase() + w.slice(1);
+
 /** What the header calls the selected object, in the words the drawing uses. */
 function subjectWord(s: Exclude<Subject, null>): string {
   switch (s.kind) {
     case 'member':
       if (s.member.kind === 'farsync') return 'Far sync instance';
-      return s.member.role === 'primary' ? 'Primary database' : `Standby database (${s.member.role})`;
-    case 'observer': return `Observer (${s.observer.role})`;
+      return s.member.role === 'primary' ? 'Primary database' : `${cap(s.member.role)} standby`;
+    case 'observer': return `${cap(s.observer.role)} observer`;
     case 'application': return 'Application';
     case 'link': return s.link.scope === 'site' ? 'Site link' : 'Host link';
     case 'site': return 'Data centre';
@@ -99,6 +101,91 @@ function subjectName(doc: TopologyDoc, s: Exclude<Subject, null>): string {
       return `${name(a)} – ${name(b)}`;
     }
   }
+}
+
+/** The subject's tone: the drawing's colour for that kind of object. */
+type Tone = 'tl' | 'bl' | 'lk' | 'vi' | 'cn' | 'sl';
+type Glyph = 'db' | 'farsync' | 'observer' | 'app' | 'link' | 'dc' | 'config';
+
+function subjectLook(s: Subject): { tone: Tone; glyph: Glyph } {
+  if (s === null) return { tone: 'sl', glyph: 'config' };
+  switch (s.kind) {
+    case 'member':
+      if (s.member.kind === 'farsync') return { tone: 'lk', glyph: 'farsync' };
+      return { tone: s.member.role === 'primary' ? 'tl' : 'bl', glyph: 'db' };
+    case 'observer': return { tone: 'vi', glyph: 'observer' };
+    case 'application': return { tone: 'cn', glyph: 'app' };
+    case 'link': return { tone: 'lk', glyph: 'link' };
+    case 'route': return { tone: 'lk', glyph: 'link' };
+    case 'site': return { tone: 'sl', glyph: 'dc' };
+  }
+}
+
+/**
+ * The tile at the head of the rail: the same glyph the card on the drawing
+ * carries (TopoCanvas's `<defs>`), in the same tone, so the rail and the card
+ * read as one object. Decorative -- the kind word beside it says it in words.
+ */
+function KindTile({ tone, glyph }: { tone: Tone; glyph: Glyph }) {
+  return (
+    <span class={`insp-tile t-${tone}`} aria-hidden="true">
+      <svg viewBox="0 0 24 24" focusable="false">
+        {glyph === 'db' ? (
+          <>
+            <ellipse cx="12" cy="6" rx="8" ry="3.2" />
+            <path d="M4,6 V18 c0,1.77 3.58,3.2 8,3.2 s8,-1.43 8,-3.2 V6" />
+            <path d="M4,12 c0,1.77 3.58,3.2 8,3.2 s8,-1.43 8,-3.2" />
+          </>
+        ) : null}
+        {glyph === 'farsync' ? (
+          <>
+            <ellipse cx="10" cy="6" rx="7" ry="2.8" />
+            <path d="M3,6 V15 M17,6 V15 M14,11 L19,15.5 L14,20" />
+          </>
+        ) : null}
+        {glyph === 'observer' ? (
+          <>
+            <path d="M2.5,12 C5.5,6.8 8.6,4.6 12,4.6 s6.5,2.2 9.5,7.4 C18.5,17.2 15.4,19.4 12,19.4 s-6.5,-2.2 -9.5,-7.4 Z" />
+            <circle cx="12" cy="12" r="3.1" />
+          </>
+        ) : null}
+        {glyph === 'app' ? (
+          <>
+            <rect x="3" y="4.5" width="18" height="15" rx="2" />
+            <path d="M3,9 H21 M9.5,12.5 L7,14.75 L9.5,17 M14.5,12.5 L17,14.75 L14.5,17" />
+          </>
+        ) : null}
+        {glyph === 'link' ? (
+          <>
+            <circle cx="5" cy="17" r="2.4" />
+            <circle cx="19" cy="7" r="2.4" />
+            <path d="M7,15.6 L17,8.4" />
+          </>
+        ) : null}
+        {glyph === 'dc' ? (
+          <path d="M2,21 H22 M4,21 V4.5 L13,2 V21 M13,8 H20 V21 M7,8 H10 M7,12 H10 M7,16 H10 M16,12 H17 M16,16 H17" />
+        ) : null}
+        {glyph === 'config' ? (
+          <path d="M4,7 H20 M4,12 H20 M4,17 H20 M8,5 V9 M15,10 V14 M10,15 V19" />
+        ) : null}
+      </svg>
+    </span>
+  );
+}
+
+/** The header's subject: the tile, the kind word over the name. */
+function SubjectHead({ look, kind, name }: { look: { tone: Tone; glyph: Glyph }; kind: string; name: string }) {
+  return (
+    <span class="insp-subj">
+      <KindTile tone={look.tone} glyph={look.glyph} />
+      <span class="insp-subj-t">
+        <span class="insp-kind">{kind}</span>
+        {/* Ellipsed rather than wrapped mid-word (inspector.css), so the
+            whole name rides in the tooltip. */}
+        <span class="title mono" title={name}>{name}</span>
+      </span>
+    </span>
+  );
 }
 
 /* ---------------- the sections ---------------- */
@@ -180,10 +267,7 @@ export function Inspector() {
     return (
       <div class="insp" ref={railRef}>
         <header class="insp-hd">
-          <span class="insp-subj">
-            <span class="insp-kind">Configuration</span>
-            <span class="title mono" title={doc.config.name}>{doc.config.name}</span>
-          </span>
+          <SubjectHead look={subjectLook(null)} kind="Configuration" name={doc.config.name} />
           <span class="rr-spacer" />
           <span class="insp-acts"><HintsToggle /></span>
         </header>
@@ -210,12 +294,11 @@ export function Inspector() {
         {/* What the rail is about, always: the selected object, or the
             configuration itself when nothing is selected. The kind word is
             not an `.eyebrow` -- the eyebrows are the section headings below. */}
-        <span class="insp-subj">
-          <span class="insp-kind">{subject === null ? 'Configuration' : subjectWord(subject)}</span>
-          {/* Ellipsed rather than wrapped mid-word (inspector.css), so the
-              whole name rides in the tooltip. */}
-          <span class="title mono" title={title}>{title}</span>
-        </span>
+        <SubjectHead
+          look={subjectLook(subject)}
+          kind={subject === null ? 'Configuration' : subjectWord(subject)}
+          name={title}
+        />
         <span class="rr-spacer" />
         <span class="insp-acts">
         <HintsToggle />
@@ -224,15 +307,30 @@ export function Inspector() {
             {remove === null ? null : (
               <button
                 type="button"
-                class={`btn${isOff(remove.enabled) ? ' is-faded' : ''}`}
+                class={`btn is-icon insp-remove${isOff(remove.enabled) ? ' is-faded' : ''}`}
                 disabled={isOff(remove.enabled)}
                 title={remove.label}
                 onClick={remove.run}
               >
-                Remove
+                <svg class="insp-ico" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+                  <path d="M2.75,4.25 H13.25 M6.25,4.25 V2.75 H9.75 V4.25 M4,4.25 L4.75,13.25 H11.25 L12,4.25 M6.75,7 V10.75 M9.25,7 V10.75" />
+                </svg>
+                <span class="sr">Remove</span>
               </button>
             )}
-            <button type="button" class="btn" onClick={() => clearSelection()}>Clear</button>
+            {/* Icon buttons with their word for a screen reader; the title
+                is the word for a pointer. */}
+            <button
+              type="button"
+              class="btn is-icon insp-clear"
+              title="Clear the selection (show the configuration)"
+              onClick={() => clearSelection()}
+            >
+              <svg class="insp-ico" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+                <path d="M4.25,4.25 L11.75,11.75 M11.75,4.25 L4.25,11.75" />
+              </svg>
+              <span class="sr">Clear</span>
+            </button>
           </>
         )}
         </span>

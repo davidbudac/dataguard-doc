@@ -15,6 +15,7 @@
  *   `dg-hints`       whether the sentence under each control is shown
  *   `dg-issues`      whether Build's validation panel is unfolded ('0' = folded)
  *   `dg-tl-h`        the height (px) Break's timeline panel was dragged to
+ *   `dg-rail`        whether the side rail is folded to its strip ('1' = folded)
  *   `dg-fsfo-cfg-v1` the published page's stored configuration. Read once when
  *                    there is nothing newer, and never deleted: the old page
  *                    is still serving from /legacy/ and still owns that key.
@@ -33,7 +34,9 @@ import type { Doc } from './doc';
 import { classicDoc, doc, exportFileName } from './doc';
 import { fromWire, parseJsonText, toJsonText } from './codec';
 import type { DecodeResult } from './codec';
-import { gridOn, hintsOn, issuesOpen, timelineH, TL_MIN_H } from './view';
+import {
+  gridOn, hintsOn, inspectorOpen, issuesOpen, railCollapsed, timelineH, TL_MIN_H, viewport,
+} from './view';
 import type { PalettePref, ThemePref } from './view';
 
 export const DOC_KEY = 'dg-doc-v1';
@@ -46,6 +49,7 @@ export const HINTS_KEY = 'dg-hints';
 export const GRID_KEY = 'dg-grid';
 export const ISSUES_KEY = 'dg-issues';
 export const TIMELINE_H_KEY = 'dg-tl-h';
+export const RAIL_KEY = 'dg-rail';
 
 export const AUTOSAVE_MS = 500;
 export const RESTORE_NOTICE_MS = 8000;
@@ -191,6 +195,38 @@ export function setIssuesOpen(on: boolean): void {
 }
 
 export const toggleIssues = (): void => setIssuesOpen(!issuesOpen.value);
+
+/* ---------------- the side rail ---------------- */
+
+/** Folded or not -- `railCollapsed` in `view.ts`, remembered here; unset means open. */
+export function loadRailCollapsed(): void {
+  railCollapsed.value = read(RAIL_KEY) === '1';
+}
+
+export function setRailCollapsed(shut: boolean): void {
+  railCollapsed.value = shut;
+  write(RAIL_KEY, shut ? '1' : '0');
+}
+
+/**
+ * The one `]` does, and the rail's own toggle: fold or unfold the column
+ * where the rail is one, open or shut the drawer where it is a drawer.
+ */
+export function toggleRail(): void {
+  if (viewport.value === 'wide') setRailCollapsed(!railCollapsed.value);
+  else inspectorOpen.value = !inspectorOpen.value;
+}
+
+/**
+ * Put the rail in front of the reader, wherever it is: unfold the column on a
+ * wide screen, open the drawer below 1280. For the gestures that mean "show me
+ * this in the inspector" (Edit, a finding's row, a step of the walkthrough) --
+ * a button that selects something behind a folded rail appears to do nothing.
+ */
+export function revealRail(): void {
+  if (viewport.value !== 'wide') { inspectorOpen.value = true; return; }
+  if (railCollapsed.value) setRailCollapsed(false);
+}
 
 /* ---------------- the Document ---------------- */
 

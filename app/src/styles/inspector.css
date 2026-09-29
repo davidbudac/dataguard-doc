@@ -32,16 +32,37 @@
 .insp-hd{display:flex;align-items:center;flex-wrap:wrap;gap:var(--s1) var(--s2);
   min-height:60px;padding:var(--s3) calc(var(--px) - var(--s1)) var(--s3) var(--px);
   background:var(--sf);border-bottom:1px solid var(--ln);position:sticky;top:0;z-index:2}
-.insp-subj{display:flex;flex-direction:column;align-items:flex-start;gap:2px;
+/* The subject: a tile with the card's own glyph in the card's own tone, then
+   the kind word over the name. */
+.insp-subj{display:flex;flex-direction:row;align-items:center;gap:var(--s3);
   flex:1 1 auto;min-width:0}
-.insp-kind{font-size:12px;line-height:16px;color:var(--ik3);white-space:nowrap;
+.insp-subj-t{display:flex;flex-direction:column;align-items:flex-start;gap:1px;min-width:0;
+  flex:1 1 auto}
+.insp-kind{font-size:11.5px;line-height:16px;font-weight:500;color:var(--ik3);white-space:nowrap;
   overflow:hidden;text-overflow:ellipsis;max-width:100%}
+.insp-tile{flex:0 0 auto;display:inline-flex;align-items:center;justify-content:center;
+  width:36px;height:36px;border-radius:10px;color:var(--ik2);background:var(--sf2)}
+.insp-tile svg{width:19px;height:19px;fill:none;stroke:currentColor;stroke-width:1.8;
+  stroke-linecap:round;stroke-linejoin:round}
+.insp-tile.t-tl{color:var(--tl);background:var(--tlf)}
+.insp-tile.t-bl{color:var(--bl);background:var(--blf)}
+.insp-tile.t-vi{color:var(--vi);background:var(--vif)}
+.insp-tile.t-lk{color:var(--lk);background:color-mix(in srgb,var(--lk) 16%,var(--sf))}
+.insp-tile.t-cn{color:var(--cn);background:color-mix(in srgb,var(--cn) 16%,var(--sf))}
+.insp-tile.t-sl{color:var(--ik2);background:var(--sf2)}
 /* The subject's name, on one line: it shrinks and ellipses rather than
    breaking mid-word, and the whole name is its `title`. */
-.insp-hd .title{font-size:15px;line-height:20px;font-weight:600;max-width:100%;min-width:0;
+.insp-hd .title{font-size:15px;line-height:20px;font-weight:650;max-width:100%;min-width:0;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .insp-hd .rr-spacer{flex:0 0 0}
 .insp-acts{display:flex;align-items:center;gap:2px;flex:0 0 auto;margin-left:auto}
+/* The header's icon buttons (Remove, Clear): square, the glyph centred. */
+.insp .btn.is-icon{width:28px;height:28px;min-height:28px;padding:0;display:inline-flex;
+  align-items:center;justify-content:center}
+.insp-ico{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:1.4;
+  stroke-linecap:round;stroke-linejoin:round}
+/* Remove is the one destructive button on the rail: it says so on hover. */
+.insp .btn.insp-remove:hover:not(:disabled){color:var(--rd);background:var(--rdf)}
 /* A refused Remove says why on the row under the header. */
 .insp-why{margin:0;padding:var(--s2) var(--px);border-bottom:1px solid var(--ln)}
 
@@ -91,8 +112,17 @@
 .grp-fold>.grp-hd>.grp-act{flex:0 0 auto;padding:var(--s1) var(--px) 0 0}
 .grp-tog:hover{background:var(--sf2)}
 .grp-tog:hover .eyebrow{color:var(--ik)}
-.grp-caret{font-family:var(--mono);font-size:10px;line-height:16px;color:var(--ik3);
-  width:10px;flex:0 0 auto}
+.grp-tog:focus-visible{outline:2px solid var(--fc);outline-offset:-2px}
+/* An open section's heading is ink; a shut one steps back. */
+.insp .grp-fold.is-open>.grp-hd .eyebrow{color:var(--ik)}
+.insp .grp-fold:not(.is-open)>.grp-hd .eyebrow{font-weight:500}
+.grp-caret{display:inline-flex;align-items:center;justify-content:center;width:12px;height:16px;
+  flex:0 0 auto;color:var(--ik3)}
+.grp-caret svg{width:10px;height:10px;fill:none;stroke:currentColor;stroke-width:1.6;
+  stroke-linecap:round;stroke-linejoin:round}
+.grp-caret.is-open svg{transform:rotate(90deg)}
+@media (prefers-reduced-motion:no-preference){
+  .grp-caret svg{transition:transform .16s ease}}
 .grp-sum{margin-left:auto;font-family:var(--mono);font-size:11.5px;color:var(--ik3);
   min-width:0;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 @media (prefers-reduced-motion:no-preference){
@@ -103,7 +133,10 @@
   color:var(--ik3);border:0;max-width:80ch}
 .grp-note.is-warn{color:var(--am)}
 .grp-note .mono{font-size:11px;color:var(--ik2)}
-.insp .grp .empty{gap:2px;padding:0 var(--px) var(--s2);font-size:12.5px;line-height:1.5}
+/* An empty state is a quiet box of its own, not a stray sentence. */
+.insp .grp .empty{gap:2px;margin:var(--s1) var(--px) var(--s2);padding:var(--s3);
+  font-size:12.5px;line-height:1.5;border:1px dashed var(--ln2);border-radius:10px;
+  background:var(--sf2);color:var(--ik3)}
 .insp .empty .empty-k{font-family:var(--sans);font-size:12.5px;font-weight:600;
   letter-spacing:0;text-transform:none;color:var(--ik2)}
 .insp .empty p{margin:0}
@@ -240,7 +273,8 @@
 /* Label left, value right, like every other row of the rail. */
 .sum{display:flex;flex-direction:column;margin:0;padding:0 var(--px) var(--s1)}
 .sum-row{display:flex;justify-content:space-between;align-items:baseline;gap:var(--s3);
-  min-height:28px;padding:4px 0;border:0}
+  min-height:30px;padding:5px 0;border:0}
+.sum-row+.sum-row{border-top:1px solid var(--ln)}
 .insp .sum dt{flex:0 0 auto;font-family:var(--sans);font-size:12.5px;letter-spacing:0;
   text-transform:none;color:var(--ik2)}
 .sum dd{margin:0;min-width:0;font-size:12px;line-height:1.5;color:var(--ik);text-align:right;
@@ -356,6 +390,8 @@
 .app-rail .evmenu-empty,.app-rail .evmenu-note,.app-rail .evmenu-hint,.app-rail .evmenu-quiet{
   margin:0;padding:var(--s1) var(--rail-px) var(--s2);font-size:12px;line-height:1.5;
   color:var(--ik3)}
+.app-rail .evmenu-empty{margin:var(--s1) var(--rail-px) var(--s2);padding:var(--s3);
+  border:1px dashed var(--ln2);border-radius:10px;background:var(--sf2)}
 @media (max-width:767px){
   .evmenu{width:auto;max-height:none;margin:12px}
 }

@@ -12,7 +12,8 @@
 
 import { topology } from '@/state/derived';
 import { redo, undo } from '@/state/history';
-import { canEdit, clearSelection, mode, selection, viewport } from '@/state/view';
+import { toggleRail } from '@/state/persist';
+import { canEdit, clearSelection, introPage, mode, selection, viewport } from '@/state/view';
 import { isHTMLElement } from './common/dom';
 
 const typing = (t: EventTarget | null): boolean =>
@@ -41,6 +42,15 @@ export function onGlobalKey(ev: KeyboardEvent): void {
       ...t.members.map((m) => m.id as string), ...t.observers.map((o) => o.id as string),
       ...(t.application ? [t.application.id as string] : []),
     ];
+    return;
+  }
+  /* `]` folds or unfolds the side rail (a drawer below 1280). Checked on the
+     character, not the key position, and AltGr (Ctrl+Alt on Windows) is let
+     through: on a Czech or German layout `]` is an AltGr chord. Not in
+     Learn, whose right half is the workbench rather than a rail. */
+  if (ev.key === ']' && !ev.metaKey && (!ev.ctrlKey || ev.altKey) && mode.value !== 'learn' && !introPage.value) {
+    ev.preventDefault();
+    toggleRail();
     return;
   }
   /* `Escape` with the focus nowhere: the cards handle their own, this is the

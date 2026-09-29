@@ -16,8 +16,8 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { topology, trace } from '@/state/derived';
 import {
-  appLanesShown, canEdit, floating, gridOn, inspectorOpen, introOpen, introPage, mode, playing, selection, speed,
-  timelineFull, timelineH, tNow, toast, viewport,
+  appLanesShown, canEdit, floating, gridOn, inspectorOpen, introOpen, introPage, mode, playing, railCollapsed,
+  selection, speed, timelineFull, timelineH, tNow, toast, viewport,
 } from '@/state/view';
 import type { Mode } from '@/state/view';
 import { CollectDialog, CollectionNotice } from './import/CollectDialog';
@@ -44,6 +44,7 @@ import { WorkspacesDialog } from './workspaces/Workspaces';
 import { ClassicWalkthrough } from './intro/Walkthrough';
 import { ReviewDialog } from './review/ReviewPanel';
 import { Popout, PopoutButton, PoppedAway, popped } from './common/popout';
+import { RAIL_ID, RailBar, RailStrip } from './RailFrame';
 
 /** Which modes keep a rail beside the canvas. Learn's right half is the workbench. */
 const HAS_RAIL: Record<Mode, boolean> = {
@@ -316,8 +317,9 @@ function Workbench() {
 
 /* The event menu has one home per layout: at the head of the Break rail when
    the rail is beside the canvas (the drawing keeps its whole stage), under the
-   drawing when the rail has become a drawer (a menu inside a closed drawer is
-   a menu nobody finds). It is never both. */
+   drawing when the rail has become a drawer or is folded to its strip (a menu
+   inside a closed drawer is a menu nobody finds). It is never both. `wide`
+   here means "the rail is an open column". */
 function Rail({ m, wide, float = false }: { m: Mode; wide: boolean; float?: boolean }) {
   switch (m) {
     case 'build': return <Inspector />;
@@ -431,6 +433,12 @@ export function App() {
   const intro = introPage.value;
   const wide = viewport.value === 'wide';
   const railInGrid = wide && HAS_RAIL[m];
+  /* Folded to its strip: a column that is there, in every mode but Learn,
+     whose right half is the workbench rather than a rail. */
+  const railShut = railInGrid && m !== 'learn' && railCollapsed.value;
+  /* Where Break's event menu goes: the rail's head while the rail is an open
+     column, the stage otherwise. */
+  const menuInRail = wide && !railShut;
   /* Build and Break draw the canvas full-bleed with everything else floating
      over it; Configure and Learn keep the docked grid (state/view.ts). */
   const float = !intro && floating(m, viewport.value);
@@ -455,7 +463,7 @@ export function App() {
   useEffect(() => installShortcuts(), []);
 
   return (
-    <div ref={appRef} class={intro ? 'app m-intro' : `app m-${m}${float ? ' is-float' : ''}${float && !gridOn.value ? ' no-grid' : ''}${full ? ' tl-full' : ''}${float && m === 'break' && !wide ? ' has-evm' : ''}`}>
+    <div ref={appRef} class={intro ? 'app m-intro' : `app m-${m}${float ? ' is-float' : ''}${float && !gridOn.value ? ' no-grid' : ''}${full ? ' tl-full' : ''}${float && m === 'break' && !menuInRail ? ' has-evm' : ''}${railShut ? ' rail-shut' : ''}`}>
       {/* One header, three bands: the modes and the small controls, then the
           quieter document row, then the line that says what to do in the mode
           that is open. It is one element so the toast can be anchored to the
@@ -513,15 +521,28 @@ export function App() {
                 </p>
               </div>
             )}
-            <Stage m={m} wide={wide} />
+            <Stage m={m} wide={menuInRail} />
           </main>
 
           {float && m === 'break' && canEdit(viewport.value) ? <ScenarioPalette /> : null}
 
           {railInGrid
             ? (
-              <aside class={float ? 'app-rail float-card' : 'app-rail'} aria-label={RAIL_TITLE[m]}>
-                <Rail m={m} wide float={float} />
+              <aside
+                id={RAIL_ID}
+                class={`app-rail${float ? ' float-card' : ''}${railShut ? ' is-shut' : ''}${m === 'learn' ? '' : ' has-bar'}`}
+                aria-label={RAIL_TITLE[m]}
+              >
+                {m === 'learn' ? <Rail m={m} wide float={float} /> : railShut ? <RailStrip title={RAIL_TITLE[m]} /> : (
+                  <>
+                    <RailBar title={RAIL_TITLE[m]} />
+                    {/* The rail's own scroll port, under the bar that stays
+                        put: the contents' sticky headers stick to its top. */}
+                    <div class="rail-body">
+                      <Rail m={m} wide float={float} />
+                    </div>
+                  </>
+                )}
               </aside>
             )
             : null}

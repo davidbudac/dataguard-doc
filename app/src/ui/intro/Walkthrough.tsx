@@ -16,7 +16,8 @@ import type { TopologyDoc } from '@/engine';
 import { topology } from '@/state/derived';
 import { activeWorkspaceId } from '@/state/workspace-id';
 import { presetId } from '@/state/url';
-import { canEdit, inspectorOpen, mode, selection, tNow, viewport } from '@/state/view';
+import { canEdit, mode, selection, tNow, viewport } from '@/state/view';
+import { revealRail } from '@/state/persist';
 import { applyTemplate, clearEvents, restPlayhead, templates } from '@/ui/break/events';
 import { revealSections } from '@/ui/inspector/sections';
 import { jump } from './route';
@@ -139,7 +140,7 @@ export function ClassicWalkthrough() {
               if (done) { restPlayhead(); return; }
               selection.value = [];
               revealSections(['Fast-start failover']);
-              if (viewport.value !== 'wide') inspectorOpen.value = true;
+              revealRail();
               showThreshold();
             }}
           >
