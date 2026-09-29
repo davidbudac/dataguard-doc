@@ -28,7 +28,7 @@ import {
 } from '@/state/view';
 import type { Trace, TopologyDoc } from '@/engine';
 import { buildTimeline, fmt, TL_FULL } from '../timeline/build';
-import type { TimelineLane, TimelineMarker, TimelineModel } from '../timeline/build';
+import type { TimelineLane, TimelineMarker, TimelineModel, TimelineSegment } from '../timeline/build';
 import { Defs, Lane, Marker } from '../timeline/Timeline';
 import { Brace, TopBrace } from '../timeline/Brace';
 import { Playhead } from '../timeline/Playhead';
@@ -45,29 +45,40 @@ import { hoverTools, setEventTime } from './events';
 import { buildLinks, cardFrameFor, cardRoleFor, chipsFor, NEUTRAL_FRAME, siteIsDown } from '../canvas/routing';
 import type { CanvasLink } from '../canvas/routing';
 import type { NodeBox } from '../canvas/layout';
-import { approxW, elide } from '../canvas/measure';
+import { approxW, elide, fitLabel } from '../canvas/measure';
 import { snapT } from '../canvas/EventMenu';
 import { FindingsMenu, KeyMenu, TerseReadout, TIGHT_W } from './SplitBar';
 import { EventStrip, EV, MoreMenu, stripWidth } from './lanes-events';
 import type { MenuTarget } from './lanes-events';
-import { assignLanes, planPills, siteOrder } from './lanes-layout';
+import { assignLanes, cardSub, hostBands, planPills, segmentAt, siteOrder } from './lanes-layout';
 import type { Placed, PillPlan } from './lanes-layout';
 
 /* ---------------- geometry ---------------- */
 
 const CW = 232; // a card's width: room for the name, the state and the event buttons
 const RH = TL_FULL.laneH; // a row's height, so the model's marker offsets still hold
-const GAP = 14; // between two rows of one data centre: room for a row of link pills
-const HDR = 22; // a data centre's header band
-const DC_GAP = 16; // between one data centre's last row and the next header: a pill row too
-const TOP_RUN = 118; // where the first header starts under a run: caption, brace, chips, sentences above
-const TOP_EMPTY = 66; // and with no run: only the "events at t" caption above
-const LABEL_EXTRA = 16; // room above a row for a marker's sentence
-const AXIS_GAP = 24; // from the last lane to the axis the braces hang under
+const GAP = 20; // between two rows of one data centre: a row of link pills, and a marker's sentence
+const HDR = 20; // a data centre's header band
+const DC_GAP = 20; // between one data centre's last row and the next header: a pill row too
+const APP_GAP = 6; // between the application's own lanes: no pills there
+const APP_LABEL = 14; // extra room above an application lane whose marker carries a sentence
+const HEAD_H = 26; // the sticky strip's clock: the tick labels, the outage brace, the caption over the cards
+const PIN_L = 54; // the event pins' sentence baseline; the pin stacks above it, the playhead grip under it
+const PIN_ICON_DY = 35; // the icon chip's centre, above PIN_L
+const PIN_BADGE_DY = 17; // the number badge's centre, above PIN_L
+const TOP_RUN = PIN_L + 12; // where the first header starts under a run
+const TOP_EMPTY = 26; // and with no run: room for the playhead's flag
+const AXIS_GAP = 20; // from the last lane to the axis the braces hang under
 const RAIL_STEP = 9;
 const MAX_RAIL = 5;
 const PILL_PAD = 6; // from the card's left edge to the first pill
-const PILL_H = 12;
+const PILL_H = 15;
+const PILL_FS = 10.5;
+/** The axis of a run that does not exist yet: where the playhead is, and a scale to read it on. */
+const STEADY_T0 = 0;
+const STEADY_T1 = 60;
+const STEADY_STEP = 10;
+const STEADY_SENTENCE = 'Steady state. Nothing has been injected yet. Pick an event on a card to start.';
 
 interface Row {
   key: string; // the model lane key, or `node:<id>` where there is no lane
@@ -169,6 +180,14 @@ function letterFor(node: NodeBox | null, role: string | null): string {
   return node?.glyph === 'farsync' ? 'FS' : '·';
 }
 
+/**
+ * One card: the badge, the name and the event buttons on the first line, what
+ * it is and what it is doing at the playhead on the second, across the card's
+ * whole width. Everything that says how it is at `t` -- the words, the frame's
+ * colour and hatch, the cross, the accessible name -- is read at the same `t`:
+ * the frame from the snapshot the drawing reads, the state from the band that
+ * begins at it (`segmentAt`), so they cannot disagree at an event's own tick.
+ */
 function Card({ x, y, row, lane, t, selected, dim, hot, tools, moreOpen, onPick, onHover, onMore }: {
   x: number; y: number; row: Row; lane: TimelineLane | null; t: number; selected: boolean; dim: boolean; hot: boolean;
   tools: readonly CanvasTool[]; moreOpen: boolean;
@@ -182,25 +201,28 @@ function Card({ x, y, row, lane, t, selected, dim, hot, tools, moreOpen, onPick,
   const fr = node ? cardFrameFor(doc, node, snap) : NEUTRAL_FRAME;
   const role = node ? cardRoleFor(doc, node, snap) : null;
   const chip = node ? chipsFor(doc, node)[0] : undefined;
-  const seg = lane
-    ? lane.segments.find((s) => t >= s.t0 - 1e-9 && t <= s.t1 + 1e-9) ?? null
-    : null;
+  const seg = lane ? segmentAt(lane.segments, t) : null;
   let roleText = node?.lines.sub ?? node?.lines.host ?? '';
   if (role === 'primary') roleText = 'Primary';
   else if (role === 'former-primary') roleText = 'Former primary';
   else if (role === 'standby' && roleText === 'Primary') roleText = 'Standby';
+  /* The application's second line is the frame's own reading; its lane is the host's up and down. */
   if (row.kind === 'application') {
-    roleText = fr.down ? 'down' : fr.stalled ? 'no service reachable' : fr.phase === 'serving' ? 'service reachable' : 'Application';
+    roleText = fr.down ? 'Host down' : fr.stalled ? 'No service reachable' : fr.phase === 'serving' ? 'Service reachable' : 'Application';
   }
-  const state = seg?.labels[seg.labels.length - 1] ?? '';
-  const stripW = stripWidth(tools.length) + 8;
-  const sub = elide(state === '' ? roleText : `${roleText} · ${state}`, Math.max(14, Math.floor((CW - 46 - stripW) / 5.1)));
+  const states = row.kind === 'application' || !seg ? [] : seg.labels;
+  const state = states[states.length - 1] ?? '';
+  const sub = cardSub(roleText, states, CW - 38 - 8);
   const h = RH;
   const cls = ['ln-card', fr.down ? 'is-down' : PHASE_CLASS[fr.phase] ?? '',
     fr.stalled && !fr.down ? 'is-stalled' : '', fr.unreachable ? 'is-unreached' : '',
     fr.degraded ? 'is-degraded' : '', selected ? 'is-sel' : '', hot ? 'is-hot' : ''].filter(Boolean).join(' ');
   const bdg = `ln-bdg${role ? ` is-${role}` : ''}${row.kind === 'observer' ? ' is-obs' : ''}${fr.down ? ' is-down' : ''}`;
-  const name = node?.lines.name ?? row.id;
+  const name = elide(node?.lines.name ?? row.id, 16);
+  /* The chip rides after the name when the name leaves room for it before the buttons. */
+  const stripL = x + CW - 5 - stripWidth(tools.length);
+  const chipX = x + 38 + approxW(name, 12.5, true) + 8;
+  const showChip = chip !== undefined && chipX + approxW(chip.text, 9) + chip.text.length * 0.3 <= stripL - 4;
   return (
     <g
       class={`ln-cardwrap${dim ? ' is-dim' : ''}`}
@@ -210,39 +232,41 @@ function Card({ x, y, row, lane, t, selected, dim, hot, tools, moreOpen, onPick,
       onFocusOut={() => onHover(null)}
     >
       <g
-        class="ln-node"
+        class={fr.down ? 'ln-node is-down' : 'ln-node'}
         data-node={row.id}
         role="button"
         tabindex={0}
         aria-pressed={selected}
-        aria-label={`${name}, ${roleText}${state ? `, ${state}` : ''}`}
+        aria-label={`${node?.lines.name ?? row.id}, ${roleText}${state ? `, ${state}` : ''}`}
         onClick={(e) => onPick(row.id, e.shiftKey || e.metaKey || e.ctrlKey)}
         onKeyDown={(e) => {
           if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onPick(row.id, e.shiftKey); }
         }}
       >
-        <title>{node?.hostFull ? `${name} — ${node.hostFull}` : name}</title>
+        <title>{node?.hostFull ? `${node.lines.name} — ${node.hostFull}` : node?.lines.name ?? row.id}</title>
         {fr.down ? <rect class="ln-hatch" x={x} y={y} width={CW} height={h} rx={5} fill="url(#tlHatch)" /> : null}
         <rect class={cls} x={x} y={y} width={CW} height={h} rx={5} />
         <rect class={bdg} x={x + 8} y={y + (h - 22) / 2} width={22} height={22} rx={6} />
-        <text class="ln-bdg-t" x={x + 19} y={y + h / 2 + 4} text-anchor="middle">{letterFor(node, role)}</text>
-        <text class="ln-name" x={x + 38} y={y + 16}>{elide(name, 16)}</text>
-        <text class="ln-sub" x={x + 38} y={y + 30}>{sub}</text>
-        {chip ? (
+        {fr.crashed ? (
+          /* A crashed host is a cross in the badge, where the role's letter was. */
+          <g class="ln-x" aria-hidden="true">
+            <line x1={x + 14.5} y1={y + h / 2 - 4.5} x2={x + 23.5} y2={y + h / 2 + 4.5} />
+            <line x1={x + 23.5} y1={y + h / 2 - 4.5} x2={x + 14.5} y2={y + h / 2 + 4.5} />
+          </g>
+        ) : (
+          <text class="ln-bdg-t" x={x + 19} y={y + h / 2 + 4} text-anchor="middle">{letterFor(node, role)}</text>
+        )}
+        <text class="ln-name" x={x + 38} y={y + 16}>{name}</text>
+        <text class="ln-sub" x={x + 38} y={y + 31}>{sub}</text>
+        {showChip && chip ? (
           <g class={`ln-chip is-${chip.tone}`}>
             <title>{chip.title}</title>
-            <text x={x + CW - 8 - (fr.crashed ? 18 : 0)} y={y + 15} text-anchor="end">{chip.text}</text>
-          </g>
-        ) : null}
-        {fr.crashed ? (
-          <g class="ln-x" aria-hidden="true">
-            <line x1={x + CW - 22} y1={y + 6} x2={x + CW - 10} y2={y + 18} />
-            <line x1={x + CW - 10} y1={y + 6} x2={x + CW - 22} y2={y + 18} />
+            <text x={chipX} y={y + 15}>{chip.text}</text>
           </g>
         ) : null}
       </g>
       <EventStrip
-        right={x + CW - 5} y={y + h - EV - 3} name={name} tools={tools} moreOpen={moreOpen} onMore={onMore}
+        right={x + CW - 5} y={y + 3} name={node?.lines.name ?? row.id} tools={tools} moreOpen={moreOpen} onMore={onMore}
       />
     </g>
   );
@@ -256,12 +280,30 @@ function pillText(l: CanvasLink): string {
   return `${word}${mark}`;
 }
 
-const pillWidth = (text: string): number => Math.round(approxW(text, 9) + 10);
-const linkState = (l: CanvasLink): string => (l.cut || l.down ? 'is-down' : l.active && l.up ? 'is-up' : 'is-off');
+const pillWidth = (text: string): number => Math.round(approxW(text, PILL_FS) + 12);
 
-function Links({ placed, pills, rows, gapY, cardX, related, hoverId, openKey, onOpen }: {
+/** The canvas's link states, and no others: down or cut is red, standing down is muted, the rest is plain. */
+const linkState = (l: CanvasLink): string => (l.cut || l.down ? 'is-down' : !l.active ? 'is-off' : 'is-up');
+
+const KIND_WORD: Record<CanvasLink['kind'], string> = {
+  redo: 'redo', ping: 'ping', check: 'readiness check', connect: 'connection',
+};
+
+/** What a link is called: "redo prm01 → sby01, SYNC". The menu's header and the tooltips start from it. */
+function linkName(l: CanvasLink, nameOf: (key: string) => string): string {
+  return `${KIND_WORD[l.kind]} ${nameOf(l.from)} → ${nameOf(l.to)}${l.kind === 'redo' && l.xpt ? `, ${l.xpt}` : ''}`;
+}
+
+/** ... and what it is doing at the playhead: "redo prm01 → sby01, SYNC, down at t = 20 s". */
+function linkSaid(l: CanvasLink, t: number, nameOf: (key: string) => string): string {
+  const st = l.cut ? 'cut' : l.down ? 'down' : !l.active ? 'standing down' : 'up';
+  return `${linkName(l, nameOf)}, ${st} at t = ${fmt(t)} s`;
+}
+
+function Links({ placed, pills, rows, gapY, cardX, related, hoverId, openKey, tipOf, nameOf, onOpen }: {
   placed: Placed[]; pills: PillPlan[]; rows: Row[]; gapY: number[]; cardX: number;
   related: Set<string> | null; hoverId: string | null; openKey: string | null;
+  tipOf: (l: CanvasLink) => string; nameOf: (key: string) => string;
   onOpen: (plan: PillPlan, trigger: SVGGElement) => void;
 }) {
   const cy = (i: number): number => (rows[i]?.y ?? 0) + RH / 2;
@@ -272,7 +314,7 @@ function Links({ placed, pills, rows, gapY, cardX, related, hoverId, openKey, on
         const involved = hoverId !== null && (p.link.from === hoverId || p.link.to === hoverId);
         const faint = related !== null && !involved;
         return (
-          <g key={p.link.id} class={`ln-lk ${linkState(p.link)}${involved ? ' is-hot' : ''}${faint ? ' is-faint' : ''}`} data-tip={p.link.title}>
+          <g key={p.link.id} class={`ln-lk ${linkState(p.link)}${involved ? ' is-hot' : ''}${faint ? ' is-faint' : ''}`} data-tip={tipOf(p.link)}>
             <line class="ln-lk-hit" x1={x} y1={cy(p.ra)} x2={x} y2={cy(p.rb)} />
             <line x1={x} y1={cy(p.ra)} x2={x} y2={cy(p.rb)} />
             <line x1={x} y1={cy(p.ra)} x2={cardX} y2={cy(p.ra)} />
@@ -288,7 +330,7 @@ function Links({ placed, pills, rows, gapY, cardX, related, hoverId, openKey, on
         const first = plan.links[0];
         const acts = plan.links.some((l) => l.docLink !== undefined);
         const st = plan.more ? 'is-more' : first ? linkState(first) : 'is-off';
-        const tip = plan.links.map((l) => l.title).join(' · ');
+        const tip = plan.links.map(tipOf).join(' · ');
         const x = cardX + PILL_PAD + plan.x;
         const y = gapY[plan.gap] ?? 0;
         return (
@@ -298,7 +340,7 @@ function Links({ placed, pills, rows, gapY, cardX, related, hoverId, openKey, on
             data-tip={tip}
             role={acts ? 'button' : undefined}
             tabindex={acts ? 0 : undefined}
-            aria-label={acts ? `${plan.more ? `${plan.links.length} more links` : tip}, events` : undefined}
+            aria-label={acts ? `${plan.more ? `${plan.links.length} more links: ${plan.links.map((l) => linkName(l, nameOf)).join(', ')}` : tip}, events` : undefined}
             aria-haspopup={acts ? 'menu' : undefined}
             aria-expanded={acts ? openKey === plan.key : undefined}
             onClick={acts ? (e) => onOpen(plan, e.currentTarget) : undefined}
@@ -307,7 +349,7 @@ function Links({ placed, pills, rows, gapY, cardX, related, hoverId, openKey, on
             } : undefined}
           >
             <rect x={x} y={y - PILL_H / 2} width={plan.w} height={PILL_H} rx={PILL_H / 2} />
-            <text x={x + plan.w / 2} y={y + 3} text-anchor="middle">{plan.text}</text>
+            <text x={x + plan.w / 2} y={y + 3.7} text-anchor="middle">{plan.text}</text>
           </g>
         );
       })}
@@ -416,17 +458,61 @@ function LanesBar({ run }: { run: RunTimeline | null }) {
   );
 }
 
+/**
+ * The scale of a run that does not exist yet: nothing to fit an axis to, so the
+ * first minute, which is where a first event is usually put. It exists so the
+ * playhead has somewhere to be, and the buttons somewhere to be aimed.
+ */
+function steadyScale(plotL: number, plotR: number): TimelineModel['scale'] {
+  const plotW = Math.max(1, plotR - plotL);
+  const pxPerSecond = plotW / (STEADY_T1 - STEADY_T0);
+  const x0 = plotL - STEADY_T0 * pxPerSecond;
+  return {
+    t0: STEADY_T0, t1: STEADY_T1, plotL, plotR, plotW, pxPerSecond,
+    x: (v) => x0 + pxPerSecond * v,
+    tAt: (px) => (px - x0) / pxPerSecond,
+    clampT: (v) => Math.max(STEADY_T0, Math.min(STEADY_T1, v)),
+  };
+}
+
+/** The application host's own up and down as a lane's bands, in the timeline's own vocabulary. */
+function hostLaneFor(
+  tr: Trace, doc: TopologyDoc, model: TimelineModel,
+): TimelineLane | null {
+  const a = doc.application;
+  if (!a) return null;
+  const site = doc.hosts.find((h) => (h.id as string) === (a.host as string))?.site as string | undefined;
+  const sc = model.scale;
+  const segments = hostBands(tr.epochs, a.host as string, site, sc.t0, sc.t1).map<TimelineSegment>((b, i) => {
+    const labels = b.down === null ? ['Host up', 'Up']
+      : b.down === 'crashed' ? ['Down — host has crashed', 'Down']
+        : ['Down — the whole data centre is down', 'Down'];
+    const x = Math.max(sc.plotL, sc.x(b.t0));
+    const w = Math.min(sc.plotR, sc.x(b.t1)) - x;
+    return {
+      key: `apphost:${i}`, t0: b.t0, t1: b.t1, x: Math.round(x * 10) / 10, w: Math.round(Math.max(0, w) * 10) / 10,
+      state: b.down === null ? 'up' : 'down',
+      phase: b.down === null ? 'b-sl' : 'b-hatch', ink: b.down === null ? 'f-sl' : 'f-rd',
+      labels, label: fitLabel(labels, w), title: `${a.name}'s host — ${labels[0]}`, open: false,
+    };
+  });
+  return {
+    key: `application-host:${a.id as string}`, kind: 'application', id: a.id as string, group: 'app',
+    name: a.name, sub: 'the host\'s own up and down, from the events', indent: 0, y: 0, height: TL_FULL.laneH, segments,
+  };
+}
+
 function Lanes({ run, fr }: { run: RunTimeline | null; fr: Frame }) {
   const { width, cardX, plotL, skeleton } = fr;
   const model = run?.model ?? null;
   const doc = topology.value;
   const geo = geometry.value;
   const snap = frame.value;
+  const tr = trace.value;
   const t = tNow.value;
   const at = snapT(t);
   const sel = selection.value;
   const isPlaying = playing.value;
-  const app = appLanesShown.value;
   const view = useHostWindow();
   const [hoverId, setHoverId] = useState<string | null>(null);
   const [tip, setTip] = useState<TooltipState | null>(null);
@@ -435,6 +521,16 @@ function Lanes({ run, fr }: { run: RunTimeline | null; fr: Frame }) {
   const section = useRef<HTMLElement | null>(null);
   const body = useRef<HTMLElement | null>(null);
 
+  const plotR = model?.scale.plotR ?? width - TL_FULL.padR;
+  const scale = useMemo(() => model?.scale ?? steadyScale(plotL, plotR), [model, plotL, plotR]);
+  const ticks = useMemo(() => {
+    if (model) return model.ticks;
+    const out: { t: number; x: number; label: string }[] = [];
+    for (let v = STEADY_T0; v <= STEADY_T1 + 1e-9; v += STEADY_STEP) out.push({ t: v, x: scale.x(v), label: String(v) });
+    return out;
+  }, [model, scale]);
+  const hostLane = useMemo(() => (model && tr ? hostLaneFor(tr, doc, model) : null), [model, tr, doc]);
+
   /* ---- rows and their heights ---- */
   const layout = useMemo<Layout>(() => {
     const sk = skeleton;
@@ -442,15 +538,13 @@ function Lanes({ run, fr }: { run: RunTimeline | null; fr: Frame }) {
     const empty: Layout = { top, rows: [], headers: [], appHead: null, appLanes: [], gapY: [], bottom: top };
     if (!sk) return empty;
 
-    /* A marker's sentence sits in the gap above its lane (below, for the abort). */
+    /* A marker's sentence sits in the gap above its lane. Between the members
+       the gap is already tall enough for one (and for a pill); the application's
+       own lanes have no pills, so they are packed and open up only for a sentence. */
     const above = new Set<string>();
     for (const m of model?.markers ?? []) {
-      if (m.kind === 'event' || m.laneKey === null) continue;
-      if (m.kind === 'abort') {
-        const i = sk.flat.findIndex((r) => r.key === m.laneKey);
-        const next = sk.flat[i + 1];
-        if (i >= 0 && next) above.add(next.key);
-      } else above.add(m.laneKey);
+      if (m.kind === 'event' || m.kind === 'abort' || m.laneKey === null) continue;
+      above.add(m.laneKey);
     }
 
     let y = top;
@@ -461,7 +555,7 @@ function Lanes({ run, fr }: { run: RunTimeline | null; fr: Frame }) {
       headers.push({ site: g.site, name: g.name, y, down: siteIsDown(doc, g.site, snap) });
       y += HDR;
       g.rows.forEach((r, i) => {
-        y += i === 0 ? 3 : GAP + (above.has(r.key) ? LABEL_EXTRA : 0);
+        y += i === 0 ? 2 : GAP;
         rows.push({ ...r, y });
         y += RH;
       });
@@ -479,12 +573,12 @@ function Lanes({ run, fr }: { run: RunTimeline | null; fr: Frame }) {
       appHead = { y };
       y += HDR;
       lanes.forEach((lane, i) => {
-        y += i === 0 ? 3 : GAP + (above.has(lane.key) ? LABEL_EXTRA : 0);
+        y += (i === 0 ? 2 : APP_GAP) + (above.has(lane.key) ? APP_LABEL : 0);
         appLanes.push({ lane, y });
         y += RH;
       });
     }
-    return { top, rows, headers, appHead, appLanes, gapY, bottom: y + 8 };
+    return { top, rows, headers, appHead, appLanes, gapY, bottom: y + 4 };
   }, [skeleton, doc, model, snap]);
   const { top, rows, headers, appHead, appLanes, gapY, bottom } = layout;
 
@@ -501,7 +595,7 @@ function Lanes({ run, fr }: { run: RunTimeline | null; fr: Frame }) {
     return model.markers.map((m) => {
       if (m.kind === 'event') {
         const partition = m.glyph === 'partition';
-        return { ...m, y0: partition ? top : py - 4, y1: partition ? bottom : py + RH + 4 };
+        return { ...m, labelY: PIN_L, y0: partition ? top : py - 4, y1: partition ? bottom : py + RH + 4 };
       }
       const mine = m.laneKey === null ? undefined : yOf.get(m.laneKey);
       const theirs = m.laneKey === null ? undefined : laneY.get(m.laneKey);
@@ -511,10 +605,16 @@ function Lanes({ run, fr }: { run: RunTimeline | null; fr: Frame }) {
     });
   }, [model, rows, appLanes, bottom, top]);
   const braceDy = model ? axisY - model.axisY : 0;
-  const height = model ? axisY + (model.height - model.axisY) : bottom;
+  /* The model leaves ten pixels under its last brace row for its own frame; the view has none. */
+  const height = axisY + (model ? model.height - model.axisY - 10 : 40);
 
+  /* The pins stack tighter than the timeline's own (icon over number over the
+     playhead's grip), because here they are a band over the rows, not a row of
+     their own; the markers and the event drag read the density from the model. */
   const shiftedModel = useMemo<TimelineModel | null>(
-    () => (model ? { ...model, markers: shifted, laneTop: top - 2, lanesBottom: bottom, axisY } : null),
+    () => (model
+      ? { ...model, markers: shifted, laneTop: top + 4, lanesBottom: bottom, axisY, layout: { ...model.layout, iconDy: PIN_ICON_DY, badgeDy: PIN_BADGE_DY } }
+      : null),
     [model, shifted, bottom, axisY, top],
   );
 
@@ -529,12 +629,11 @@ function Lanes({ run, fr }: { run: RunTimeline | null; fr: Frame }) {
   const seek = useRef<{ pointer: number } | null>(null);
   const seeked = useRef(false);
   const tAt = (e: JSX.TargetedPointerEvent<SVGSVGElement>, strict: boolean): number | null => {
-    if (!model) return null;
     const box = e.currentTarget.getBoundingClientRect();
     if (box.width <= 0) return null;
-    const x = (e.clientX - box.left) * (model.width / box.width);
-    if (strict && (x < model.scale.plotL - 4 || x > model.scale.plotR + 4)) return null;
-    return Math.round(model.scale.clampT(model.scale.tAt(x)) * 10) / 10;
+    const x = (e.clientX - box.left) * (width / box.width);
+    if (strict && (x < scale.plotL - 4 || x > scale.plotR + 4)) return null;
+    return Math.round(scale.clampT(scale.tAt(x)) * 10) / 10;
   };
   const onDown = (e: JSX.TargetedPointerEvent<SVGSVGElement>): void => {
     seeked.current = false;
@@ -597,6 +696,8 @@ function Lanes({ run, fr }: { run: RunTimeline | null; fr: Frame }) {
     return () => el.removeEventListener('scroll', away);
   }, [menu]);
   const nameOfRow = (r: Row): string => r.node?.lines.name ?? r.id;
+  const byId = useMemo(() => new Map(rows.map((r) => [r.id, r])), [rows]);
+  const nameOf = (key: string): string => { const r = byId.get(key); return r ? nameOfRow(r) : key; };
 
   /* ---- the links at this instant ---- */
   const links = useMemo(() => {
@@ -604,8 +705,8 @@ function Lanes({ run, fr }: { run: RunTimeline | null; fr: Frame }) {
     return geo && graph ? buildLinks(doc, graph, geo, snap) : [];
   }, [doc, geo, snap]);
   const placed = useMemo<Placed[]>(() => {
-    const byId = new Map(links.map((l) => [l.id, l]));
-    return (skeleton?.placed ?? []).map((p) => ({ ...p, link: byId.get(p.link.id) ?? p.link }));
+    const byLink = new Map(links.map((l) => [l.id, l]));
+    return (skeleton?.placed ?? []).map((p) => ({ ...p, link: byLink.get(p.link.id) ?? p.link }));
   }, [skeleton, links]);
   const pills = useMemo(
     () => planPills(placed, CW - PILL_PAD * 2, pillText, pillWidth),
@@ -620,8 +721,9 @@ function Lanes({ run, fr }: { run: RunTimeline | null; fr: Frame }) {
     }
     return s;
   }, [hoverId, links]);
+  const tipOf = (l: CanvasLink): string => `${linkSaid(l, at, nameOf)}. ${l.title}`;
   const onPill = (plan: PillPlan, trigger: SVGGElement): void => {
-    const subjects = plan.links.flatMap((l) => (l.docLink === undefined ? [] : [{ key: l.docLink, title: pillText(l) }]));
+    const subjects = plan.links.flatMap((l) => (l.docLink === undefined ? [] : [{ key: l.docLink, title: linkName(l, nameOf) }]));
     if (subjects.length > 0) openMenu(plan.key, subjects, trigger);
   };
 
@@ -632,12 +734,14 @@ function Lanes({ run, fr }: { run: RunTimeline | null; fr: Frame }) {
     setTip({ text, x: e.clientX - box.left, y: e.clientY - box.top });
   };
 
-  const plotR = model?.scale.plotR ?? width - TL_FULL.padR;
   const dim = (id: string): boolean => related !== null && !related.has(id);
   const laneSelected = (id: string): boolean => sel.includes(id);
-  const laneOf = (r: Row): TimelineLane | null =>
-    r.laneKey === null ? null : model?.lanes.find((l) => l.key === r.laneKey) ?? null;
+  const laneOf = (r: Row): TimelineLane | null => {
+    if (r.kind === 'application') return hostLane === null ? null : { ...hostLane, id: r.id };
+    return r.laneKey === null ? null : model?.lanes.find((l) => l.key === r.laneKey) ?? null;
+  };
   const caption = model?.caption;
+  const steadyX = scale.x(scale.clampT(t));
 
   return (
     <section class="ln-view float-card" aria-label="Break: topology and timeline" ref={section}>
@@ -650,188 +754,190 @@ function Lanes({ run, fr }: { run: RunTimeline | null; fr: Frame }) {
         {geo === null ? (
           <p class="ln-note ln-pad">Nothing to draw: the configuration has no valid redo graph.</p>
         ) : (
-          <div class="tl-plot ln-plot" onPointerMove={onPlotMove} onPointerLeave={() => setTip(null)}>
-            <svg
-              class={`tl-svg ln-svg${model ? ' is-seekable' : ''}`}
-              width={width}
-              height={height}
-              viewBox={`0 0 ${width} ${height}`}
-              role="group"
-              aria-label="Members and their timelines"
-              onPointerDown={model ? onDown : undefined}
-              onPointerMove={model ? onMove : undefined}
-              onPointerUp={model ? onUp : undefined}
-              onPointerCancel={model ? onUp : undefined}
-            >
-              <Defs />
-
-              {model ? (
-                <>
-                  {model.preZone.w > 0 ? (
-                    <rect class="prezone" x={model.preZone.x} y={top} width={model.preZone.w} height={bottom - top} />
-                  ) : null}
-                  {model.ticks.map((tk) => (
-                    <line key={`g${tk.t}`} class="gridline" x1={tk.x} y1={20} x2={tk.x} y2={axisY} />
-                  ))}
-                  {model.ticks.map((tk) => (
-                    <text key={`t${tk.t}`} class="t-tick t-mono" x={tk.x} y={13} text-anchor="middle">{tk.label}</text>
-                  ))}
-                  <text class="t-tick" x={cardX} y={13}>seconds</text>
-                  {model.preZone.label ? (
-                    <text class="t-tick" x={model.scale.plotL + 6} y={top + 12}>{model.preZone.label}</text>
-                  ) : null}
-                  {caption ? (
-                    <text
-                      class={caption.tone === 'ink' ? 't-top' : `t-top ${caption.tone}`}
-                      x={caption.x ?? model.scale.plotL} y={30}
-                      text-anchor={caption.anchor === 'middle' ? 'middle' : undefined}
-                    >
-                      {caption.text}
-                    </text>
-                  ) : null}
-                  {model.topBrace ? <TopBrace {...model.topBrace} /> : null}
-                </>
-              ) : (
-                <g class="ln-empty">
-                  {rows.map((r) => (
-                    <rect key={`e${r.key}`} class="ln-track" x={plotL} y={r.y} width={Math.max(0, plotR - plotL)} height={RH} rx={3} />
-                  ))}
-                  <text class="ln-empty-t" x={plotL + 4} y={top - 24}>Steady state. Nothing has been injected yet.</text>
-                  <text class="ln-empty-h" x={plotL + 4} y={top - 8}>Pick an event on a card to start.</text>
+          <>
+            {/* What holds still while the rows scroll: the run in a sentence, then the
+                clock -- its ticks, the outage over them and what the buttons are aimed at. */}
+            <div class="ln-head">
+              <p
+                class={`tl-headline${caption && caption.tone !== 'ink' ? ` ${caption.tone}` : ''}`}
+                title={caption?.text ?? STEADY_SENTENCE}
+              >
+                {caption?.text ?? STEADY_SENTENCE}
+              </p>
+              <svg class="tl-svg ln-svg ln-ticks" width={width} height={HEAD_H} viewBox={`0 0 ${width} ${HEAD_H}`} role="group" aria-label="The clock">
+                <g class="ln-when">
+                  <title>The event buttons act at the playhead. Move the playhead to add an event later.</title>
+                  <text class="ln-when-t" x={cardX} y={11}>Events at t = {fmt(at)} s</text>
+                  <text class="ln-when-s" x={cardX} y={22}>the buttons act at the playhead</text>
                 </g>
-              )}
+                {ticks.map((tk) => (
+                  <text key={`t${tk.t}`} class="t-tick t-mono" x={tk.x} y={10} text-anchor="middle">{tk.label}</text>
+                ))}
+                {model?.topBrace ? <TopBrace {...model.topBrace} y={HEAD_H - 2} /> : null}
+              </svg>
+            </div>
+            <div class="tl-plot ln-plot" onPointerMove={onPlotMove} onPointerLeave={() => setTip(null)}>
+              <svg
+                class="tl-svg ln-svg is-seekable"
+                width={width}
+                height={height}
+                viewBox={`0 0 ${width} ${height}`}
+                role="group"
+                aria-label="Members and their timelines"
+                onPointerDown={onDown}
+                onPointerMove={onMove}
+                onPointerUp={onUp}
+                onPointerCancel={onUp}
+              >
+                <Defs />
 
-              {/* what the buttons are aimed at */}
-              <g class="ln-when" data-tip="The event buttons act at the playhead. Move the playhead to add an event later.">
-                <text class="ln-when-t" x={cardX} y={top - 22}>Events at t = {fmt(at)} s</text>
-                <text class="ln-when-s" x={cardX} y={top - 9}>the buttons act at the playhead</text>
-              </g>
-
-              {headers.map((h) => {
-                const stripR = cardX + CW - 4;
-                const dcTools = toolsOf(h.site);
-                return (
-                  <g key={h.site} class={`ln-dc${h.down ? ' is-down' : ''}${sel.includes(h.site) ? ' is-sel' : ''}`} data-site={h.site}>
-                    <g
-                      class="ln-dc-body"
-                      role="button"
-                      tabindex={0}
-                      aria-pressed={sel.includes(h.site)}
-                      aria-label={`${h.name}${h.down ? ', down' : ''}`}
-                      onClick={(e) => onPick(h.site, e.shiftKey || e.metaKey || e.ctrlKey)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onPick(h.site, e.shiftKey); }
-                      }}
-                    >
-                      <rect x={cardX} y={h.y} width={CW} height={HDR - 2} rx={4} />
-                      <text x={cardX + 8} y={h.y + 14}>{h.name}{h.down ? ' — down' : ''}</text>
-                    </g>
-                    <line x1={cardX + CW + 6} y1={h.y + 9} x2={plotR} y2={h.y + 9} />
-                    <EventStrip
-                      right={stripR} y={h.y + (HDR - 2 - EV) / 2} name={h.name} tools={dcTools}
-                      moreOpen={menuKey === `site:${h.site}`}
-                      onMore={(el) => openMenu(`site:${h.site}`, [{ key: h.site, title: h.name }], el)}
-                    />
+                {model && model.preZone.w > 0 ? (
+                  <rect class="prezone" x={model.preZone.x} y={top} width={model.preZone.w} height={bottom - top} />
+                ) : null}
+                {ticks.map((tk) => (
+                  <line key={`g${tk.t}`} class="gridline" x1={tk.x} y1={top} x2={tk.x} y2={axisY} />
+                ))}
+                {model?.preZone.label ? (
+                  <text class="t-tick" x={model.scale.plotL + 6} y={top + 19}>{model.preZone.label}</text>
+                ) : null}
+                {model ? null : (
+                  <g class="ln-empty">
+                    {rows.map((r) => (
+                      <rect key={`e${r.key}`} class="ln-track" x={plotL} y={r.y} width={Math.max(0, plotR - plotL)} height={RH} rx={3} />
+                    ))}
                   </g>
-                );
-              })}
+                )}
 
-              {rows.map((r) => {
-                const lane = laneOf(r);
-                return (
-                  <g key={r.key} class={`ln-row${dim(r.id) ? ' is-dim' : ''}${related?.has(r.id) && r.id !== hoverId ? ' is-rel' : ''}`}>
-                    {lane ? (
-                      <Lane
-                        lane={{ ...lane, y: r.y }}
-                        model={model as TimelineModel}
-                        selected={laneSelected(r.id)}
-                        onSelect={selectLane}
+                {headers.map((h) => {
+                  const stripR = cardX + CW - 4;
+                  const dcTools = toolsOf(h.site);
+                  return (
+                    <g key={h.site} class={`ln-dc${h.down ? ' is-down' : ''}${sel.includes(h.site) ? ' is-sel' : ''}`} data-site={h.site}>
+                      <g
+                        class="ln-dc-body"
+                        role="button"
+                        tabindex={0}
+                        aria-pressed={sel.includes(h.site)}
+                        aria-label={`${h.name}${h.down ? ', down' : ''}`}
+                        onClick={(e) => onPick(h.site, e.shiftKey || e.metaKey || e.ctrlKey)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onPick(h.site, e.shiftKey); }
+                        }}
+                      >
+                        <rect x={cardX} y={h.y} width={CW} height={HDR - 2} rx={4} />
+                        <text x={cardX + 8} y={h.y + 13}>{h.name}{h.down ? ' — down' : ''}</text>
+                      </g>
+                      <line x1={cardX + CW + 6} y1={h.y + 8} x2={plotR} y2={h.y + 8} />
+                      <EventStrip
+                        right={stripR} y={h.y + (HDR - 2 - EV) / 2} name={h.name} tools={dcTools}
+                        moreOpen={menuKey === `site:${h.site}`}
+                        onMore={(el) => openMenu(`site:${h.site}`, [{ key: h.site, title: h.name }], el)}
                       />
-                    ) : null}
+                    </g>
+                  );
+                })}
+
+                {rows.map((r) => {
+                  const lane = laneOf(r);
+                  return (
+                    <g key={r.key} class={`ln-row${dim(r.id) ? ' is-dim' : ''}${related?.has(r.id) && r.id !== hoverId ? ' is-rel' : ''}`}>
+                      {lane && model ? (
+                        <Lane
+                          lane={{ ...lane, y: r.y }}
+                          model={model}
+                          selected={laneSelected(r.id)}
+                          onSelect={selectLane}
+                        />
+                      ) : null}
+                    </g>
+                  );
+                })}
+
+                {appHead && model?.appSection ? (
+                  <g class="ln-apphead">
+                    <g class="ln-dc">
+                      <rect x={cardX} y={appHead.y} width={CW} height={HDR - 2} rx={4} />
+                      <text x={cardX + 8} y={appHead.y + 13}>Application&rsquo;s view</text>
+                    </g>
+                    <AppHead section={model.appSection} x={plotL + 6} right={plotR} y={appHead.y + 13} />
                   </g>
-                );
-              })}
-
-              {appHead && model?.appSection ? (
-                <g class="ln-apphead">
-                  <g class="ln-dc">
-                    <rect x={cardX} y={appHead.y} width={CW} height={HDR - 2} rx={4} />
-                    <text x={cardX + 8} y={appHead.y + 14}>Application&rsquo;s view</text>
+                ) : null}
+                {appLanes.map(({ lane, y }) => (
+                  <g key={lane.key} class={`ln-row${dim(lane.id) ? ' is-dim' : ''}`}>
+                    <Lane lane={{ ...lane, y }} model={model as TimelineModel} selected={laneSelected(lane.id)} onSelect={selectLane} />
+                    <text class="ln-alab" x={cardX + CW - 8} y={y + 17} text-anchor="end">{lane.name}</text>
+                    <text class="ln-asub" x={cardX + CW - 8} y={y + 30} text-anchor="end">{elide(lane.sub, 34)}</text>
                   </g>
-                  <AppHead section={model.appSection} x={plotL + 6} right={plotR} y={appHead.y + 14} />
-                </g>
-              ) : null}
-              {appLanes.map(({ lane, y }) => (
-                <g key={lane.key} class={`ln-row${dim(lane.id) ? ' is-dim' : ''}`}>
-                  <Lane lane={{ ...lane, y }} model={model as TimelineModel} selected={laneSelected(lane.id)} onSelect={selectLane} />
-                  <text class="ln-alab" x={cardX + CW - 8} y={y + 17} text-anchor="end">{lane.name}</text>
-                  <text class="ln-asub" x={cardX + CW - 8} y={y + 30} text-anchor="end">{elide(lane.sub, 34)}</text>
-                </g>
-              ))}
+                ))}
 
-              {model ? (
-                <>
-                  {model.ticks.map((tk) => (
-                    <text key={`b${tk.t}`} class="t-tick t-mono" x={tk.x} y={axisY + 16} text-anchor="middle">{tk.label}</text>
-                  ))}
-                  <line class="ax" x1={model.scale.plotL} y1={axisY} x2={model.scale.plotR} y2={axisY} />
-                  <text class="t-tick t-mono" x={model.scale.plotR} y={axisY + 30} text-anchor="end">{model.axisLabel}</text>
-                  {model.zeroNote ? (
-                    <text class="t-tick" x={model.scale.plotL} y={axisY + 30}>{model.zeroNote}</text>
-                  ) : null}
-                  {model.braces.map((b) => <Brace key={b.key} brace={{ ...b, y: b.y + braceDy }} />)}
-                </>
-              ) : null}
+                {ticks.map((tk) => (
+                  <text key={`b${tk.t}`} class="t-tick t-mono" x={tk.x} y={axisY + 15} text-anchor="middle">{tk.label}</text>
+                ))}
+                <line class="ax" x1={scale.plotL} y1={axisY} x2={scale.plotR} y2={axisY} />
+                <text class="t-tick t-mono" x={scale.plotR} y={axisY + 28} text-anchor="end">{model ? model.axisLabel : 'seconds'}</text>
+                {model?.zeroNote ? (
+                  <text class="t-tick" x={model.scale.plotL} y={axisY + 28}>{model.zeroNote}</text>
+                ) : null}
+                {model ? model.braces.map((b) => <Brace key={b.key} brace={{ ...b, y: b.y + braceDy }} />) : null}
 
-              <Links
-                placed={placed} pills={pills} rows={rows} gapY={gapY} cardX={cardX}
-                related={related} hoverId={hoverId} openKey={menuKey} onOpen={onPill}
-              />
-
-              {rows.map((r) => (
-                <Card
-                  key={`c${r.key}`}
-                  x={cardX} y={r.y} row={r} lane={laneOf(r)} t={t}
-                  selected={sel.includes(r.id)}
-                  dim={dim(r.id)}
-                  hot={related?.has(r.id) === true}
-                  tools={toolsOf(r.id)}
-                  moreOpen={menuKey === r.id}
-                  onPick={onPick}
-                  onHover={setHoverId}
-                  onMore={(el) => openMenu(r.id, [{ key: r.id, title: nameOfRow(r) }], el)}
+                <Links
+                  placed={placed} pills={pills} rows={rows} gapY={gapY} cardX={cardX}
+                  related={related} hoverId={hoverId} openKey={menuKey} tipOf={tipOf} nameOf={nameOf} onOpen={onPill}
                 />
-              ))}
 
-              {shiftedModel ? (
-                <>
-                  {shifted.filter((m) => m.kind !== 'event').map((m) => <Marker key={m.key} marker={m} layout={shiftedModel.layout} />)}
-                  <Playhead
-                    model={shiftedModel}
-                    tNow={t}
-                    playing={isPlaying}
-                    onSeek={(v) => { tNow.value = v; }}
-                    onTogglePlay={() => { playing.value = !playing.value; }}
+                {rows.map((r) => (
+                  <Card
+                    key={`c${r.key}`}
+                    x={cardX} y={r.y} row={r} lane={laneOf(r)} t={t}
+                    selected={sel.includes(r.id)}
+                    dim={dim(r.id)}
+                    hot={related?.has(r.id) === true}
+                    tools={toolsOf(r.id)}
+                    moreOpen={menuKey === r.id}
+                    onPick={onPick}
+                    onHover={setHoverId}
+                    onMore={(el) => openMenu(r.id, [{ key: r.id, title: nameOfRow(r) }], el)}
                   />
-                  {/* Above the playhead, so grabbing an event cannot seek instead. */}
-                  {shifted.filter((m) => m.kind === 'event').map((m) => (
-                    <EventDrag
-                      key={m.key} marker={m} model={shiftedModel} doc={doc}
-                      onMove={(index, when, expected) => {
-                        const result = setEventTime(index, when, expected);
-                        run?.dropped(index, when, expected, result);
-                        return result;
-                      }}
-                      onStart={() => { setTip(null); if (isPlaying) playing.value = false; }}
-                    >
-                      <Marker marker={m} layout={shiftedModel.layout} />
-                    </EventDrag>
-                  ))}
-                </>
-              ) : null}
-            </svg>
-            <Tooltip tip={tip} />
-          </div>
+                ))}
+
+                {shiftedModel ? (
+                  <>
+                    {shifted.filter((m) => m.kind !== 'event').map((m) => <Marker key={m.key} marker={m} layout={shiftedModel.layout} />)}
+                    <Playhead
+                      model={shiftedModel}
+                      tNow={t}
+                      playing={isPlaying}
+                      onSeek={(v) => { tNow.value = v; }}
+                      onTogglePlay={() => { playing.value = !playing.value; }}
+                    />
+                    {/* Above the playhead, so grabbing an event cannot seek instead. */}
+                    {shifted.filter((m) => m.kind === 'event').map((m) => (
+                      <EventDrag
+                        key={m.key} marker={m} model={shiftedModel} doc={doc}
+                        onMove={(index, when, expected) => {
+                          const result = setEventTime(index, when, expected);
+                          run?.dropped(index, when, expected, result);
+                          return result;
+                        }}
+                        onStart={() => { setTip(null); if (isPlaying) playing.value = false; }}
+                      >
+                        <Marker marker={m} layout={shiftedModel.layout} />
+                      </EventDrag>
+                    ))}
+                  </>
+                ) : (
+                  /* No run: the playhead is a rule at the clock's reading, seeked by pressing the plot. */
+                  <g class="tl-playhead ln-steady-ph" transform={`translate(${steadyX},0)`}>
+                    <line class="tl-playhead-ln" x1={0} y1={top - 10} x2={0} y2={axisY} />
+                    <path class="tl-playhead-grip" d="M-6,-11 L6,-11 L6,-2 L0,4 L-6,-2 z" transform={`translate(0,${top - 10})`} />
+                    <rect class="tl-playhead-badge" x={6} y={top - 22} width={54} height={16} rx={2} />
+                    <text class="tl-playhead-t t-mono" x={10} y={top - 10}>{`t = ${fmt(scale.clampT(t))}`}</text>
+                  </g>
+                )}
+              </svg>
+              <Tooltip tip={tip} />
+            </div>
+          </>
         )}
       </div>
       {menu === null ? null : (

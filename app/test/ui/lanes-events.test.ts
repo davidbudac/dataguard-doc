@@ -16,7 +16,8 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { h, render } from 'preact';
 import { classicDoc } from '@/state/doc';
 import { resetHistory } from '@/state/history';
-import { geometry, topology } from '@/state/derived';
+import { frame, geometry, topology } from '@/state/derived';
+import { setRailCollapsed } from '@/state/persist';
 import { breakLayout, findingsOpen, mode, playing, railCollapsed, selection, tNow, viewport } from '@/state/view';
 import { App } from '@/ui/App';
 import { applyTemplate, clearEvents, templates } from '@/ui/break/events';
@@ -59,6 +60,7 @@ const key = (el: Element | Window, k: string): void => {
 };
 
 const strip = (r: HTMLElement, name: string): Element | null => r.querySelector(`.ln-cardwrap [data-ev-for="${name}"]`);
+const strip_ = strip;
 const tools = (r: HTMLElement, name: string): Element[] => [...(strip(r, name)?.querySelectorAll('.ln-tool:not(.ln-more)') ?? [])];
 const toolIds = (r: HTMLElement, name: string): string[] => tools(r, name).map((g) => g.getAttribute('data-tool') as string);
 const tool = (r: HTMLElement, name: string, id: string): Element | null =>
@@ -200,7 +202,7 @@ describe('the buttons on the cards', () => {
     await tick();
     tNow.value = 12.34;
     await tick();
-    expect(r.querySelector('.ln-empty-h')).not.toBeNull();
+    expect(r.querySelector('.ln-head .tl-headline')?.textContent).toMatch(/^Steady state\./);
     click(tool(r, 'prm01', 'host.down'));
     await tick();
     const events = topology.value.events;
@@ -208,10 +210,12 @@ describe('the buttons on the cards', () => {
     expect(events[0]).toMatchObject({ kind: 'host.down', at: 12.3 });
     expect(tNow.value).toBe(12.34);
     /* The run exists now: lanes, a marker for the event, and no hint. */
-    expect(r.querySelector('.ln-empty-h')).toBeNull();
+    expect(r.querySelector('.ln-head .tl-headline')?.textContent).not.toMatch(/^Steady state\./);
     expect(r.querySelectorAll('.ln-svg .tl-event-drag')).toHaveLength(1);
     expect(r.querySelectorAll('.ln-svg .tl-lane').length).toBeGreaterThan(0);
-    /* The rail's clock reads the same number the buttons are aimed at. */
+    /* The rail's clock (it folds away in Lanes; the reader opens it) reads the same number the buttons are aimed at. */
+    setRailCollapsed(false);
+    await tick();
     expect((r.querySelector('.evmenu-at') as HTMLInputElement).value).toBe('12.3');
     /* And the slot that was the way down is now the way back. */
     expect(toolIds(r, 'prm01')).toEqual(['member.up', 'host.up']);
@@ -366,12 +370,155 @@ describe('the links', () => {
   });
 });
 
+const node = (r: HTMLElement, name: string): Element => {
+  const n = [...r.querySelectorAll('.ln-node')].find((x) => (x.getAttribute('aria-label') ?? '').startsWith(`${name},`));
+  if (!n) throw new Error(`no card ${name}`);
+  return n;
+};
+const subOf = (r: HTMLElement, name: string): string => node(r, name).querySelector('.ln-sub')?.textContent ?? '';
+
+describe('the state on a card is the state at the playhead, at an event\'s own tick', () => {
+  const primary = (): string => topology.value.members.find((m) => m.name === 'dc1-prm01' || m.name === 'prm01')!.id as string;
+
+  it('says Down at the tick a crash lands on, and Open at the tick the restore lands on', async () => {
+    crashAt(0);
+    const r = mount();
+    await tick();
+    /* t = 0: the crash is at 0. The lane, the cross and the frame say down, and so does the card. */
+    tNow.value = 0;
+    await tick();
+    expect(frame.value?.members[primary() as never]).toBe('down');
+    expect(node(r, 'prm01').getAttribute('aria-label')).toBe('prm01, Primary, Down');
+    expect(subOf(r, 'prm01')).toMatch(/Primary · Down/);
+    expect(node(r, 'prm01').classList.contains('is-down')).toBe(true);
+    expect(node(r, 'prm01').querySelector('.ln-hatch')).not.toBeNull();
+    expect(node(r, 'prm01').querySelector('.ln-x')).not.toBeNull();
+    /* A restore at 20, and the playhead left where it was aimed. */
+    tNow.value = 20;
+    await tick();
+    click(tool(r, 'prm01', 'host.up'));
+    await tick();
+    expect(tNow.value).toBe(20);
+    expect(topology.value.events.map((e) => [e.kind, e.at])).toEqual([['host.down', 0], ['host.up', 20]]);
+    /* Just before it, still down; at it, open. */
+    tNow.value = 19.9;
+    await tick();
+    expect(node(r, 'prm01').getAttribute('aria-label')).toBe('prm01, Primary, Down');
+    tNow.value = 20;
+    await tick();
+    expect(frame.value?.members[primary() as never]).toBe('open-rw');
+    expect(node(r, 'prm01').getAttribute('aria-label')).toBe('prm01, Primary, Open');
+    expect(subOf(r, 'prm01')).toMatch(/^Primary · (Open|Shipping)/);
+    expect(node(r, 'prm01').classList.contains('is-down')).toBe(false);
+    expect(node(r, 'prm01').querySelector('.ln-hatch')).toBeNull();
+    expect(node(r, 'prm01').querySelector('.ln-x')).toBeNull();
+  });
+});
+
+describe('a card reads in two lines and never loses its state word', () => {
+  it('has the buttons on the name\'s line and the whole width for role and state', async () => {
+    crashAt(0);
+    const r = mount();
+    await tick();
+    tNow.value = 12;
+    await tick();
+    for (const name of ['prm01', 'app01', 'sby01', 'obs01']) {
+      const g = node(r, name);
+      const strip = strip_(r, name);
+      const sub = g.querySelector('.ln-sub') as SVGTextElement;
+      expect(sub.textContent ?? '', name).not.toMatch(/…/);
+      /* the buttons sit level with the name, not with the second line */
+      const y = Number(strip?.querySelector('.ln-tool')?.getAttribute('transform')?.match(/,([\d.]+)\)/)?.[1]);
+      expect(y, name).toBeLessThan(Number(sub.getAttribute('y')) - 10);
+    }
+    /* Members and the observer carry the state at t in the text and in the accessible name. */
+    expect(subOf(r, 'sby01')).toMatch(/^Physical standby · /);
+    expect(subOf(r, 'obs01')).toMatch(/^Observer.* · /);
+    expect(node(r, 'sby01').getAttribute('aria-label')).toMatch(/^sby01, Physical standby, \S/);
+    expect(node(r, 'obs01').getAttribute('aria-label')).toMatch(/, Reconnect|, Pinging/);
+  });
+
+  it('shows the crash as a cross in the badge, in place of the role\'s letter', async () => {
+    crashAt(0);
+    const r = mount();
+    await tick();
+    tNow.value = 0;
+    await tick();
+    const g = node(r, 'prm01');
+    expect(g.querySelector('.ln-bdg-t')).toBeNull();
+    expect(g.querySelectorAll('.ln-x line')).toHaveLength(2);
+    expect(node(r, 'sby01').querySelector('.ln-bdg-t')?.textContent).toBe('S');
+  });
+});
+
+describe('the application host has a lane of its own', () => {
+  it('is a band of the host\'s up and down, from the events, and says what it is', async () => {
+    crashAt(0);
+    const r = mount();
+    await tick();
+    const id = node(r, 'app01').getAttribute('data-node');
+    const lane = (): Element | null => r.querySelector(`.ln-row .tl-lane[data-lane="${id}"]`);
+    expect(lane()).not.toBeNull();
+    /* One band, up, through a run that never touches the application's host. */
+    expect([...(lane()?.querySelectorAll('.tl-seg') ?? [])].map((x) => x.getAttribute('data-tip'))).toEqual(["app01's host — Host up"]);
+    /* Crash that host at 10 s: up, then down from there. */
+    tNow.value = 10;
+    await tick();
+    click(tool(r, 'app01', 'host.down'));
+    await tick();
+    const tips = [...(lane()?.querySelectorAll('.tl-seg') ?? [])].map((x) => x.getAttribute('data-tip'));
+    expect(tips).toEqual(["app01's host — Host up", "app01's host — Down — host has crashed"]);
+    expect(lane()?.querySelectorAll('.bar.b-hatch')).toHaveLength(1);
+    /* The card reads it too. */
+    tNow.value = 30;
+    await tick();
+    expect(subOf(r, 'app01')).toBe('Host down');
+    expect(node(r, 'app01').querySelector('.ln-x')).not.toBeNull();
+  });
+});
+
+describe('the links are named', () => {
+  it('give the pill, the connector and the menu one name for the link, with its state at the playhead', async () => {
+    crashAt(0);
+    const r = mount();
+    await tick();
+    tNow.value = 20;
+    await tick();
+    const pills = [...r.querySelectorAll('.ln-pill')];
+    const sync = pills.find((p) => (p.textContent ?? '').startsWith('SYNC'));
+    expect(sync).toBeDefined();
+    expect(sync?.getAttribute('data-tip')).toMatch(/^redo prm01 → sby01, SYNC, down at t = 20 s\./);
+    /* The connector says the same. */
+    const lk = [...r.querySelectorAll('.ln-lk')].map((l) => l.getAttribute('data-tip'));
+    expect(lk.some((t) => /^redo prm01 → sby01, SYNC, down at t = 20 s\./.test(t ?? ''))).toBe(true);
+    expect(lk.every((t) => /^(redo|ping|readiness check|connection) \S+ → \S+.*, (up|down|cut|standing down) at t = 20 s\./.test(t ?? ''))).toBe(true);
+    /* The pill's menu is headed by the link's name, not by the pill's text. */
+    click(sync ?? null);
+    await tick();
+    expect(r.querySelector('.ln-menu .cv-bar-subj .mono')?.textContent).toBe('redo prm01 → sby01, SYNC');
+    expect(r.querySelector('.ln-menu .cv-bar-when')?.textContent).toMatch(/at t = 20 s/);
+  });
+
+  it('colour the pill as the canvas does: red for down, plain for the rest', async () => {
+    crashAt(0);
+    const r = mount();
+    await tick();
+    tNow.value = 5;
+    await tick();
+    const classes = [...r.querySelectorAll('.ln-pill')].map((p) => p.getAttribute('class') ?? '');
+    expect(classes.some((c) => c.includes('is-down'))).toBe(true);
+    /* The canvas has no green link: an active, up link is plain. */
+    expect(classes.filter((c) => c.includes('is-down')).length).toBeLessThan(classes.length);
+  });
+});
+
 describe('an empty run', () => {
   it('shows the cards with their buttons, the tracks and the one-line hint', async () => {
     clearEvents();
     const r = mount();
     await tick();
-    expect(r.querySelector('.ln-empty-h')?.textContent).toBe('Pick an event on a card to start.');
+    expect(r.querySelector('.ln-head .tl-headline')?.textContent)
+      .toBe('Steady state. Nothing has been injected yet. Pick an event on a card to start.');
     expect(r.querySelectorAll('.ln-cardwrap')).toHaveLength(4);
     expect(r.querySelectorAll('.ln-cardwrap .ln-tool:not(.ln-more)').length).toBeGreaterThanOrEqual(7);
     expect(r.querySelectorAll('.ln-track')).toHaveLength(4);
@@ -379,6 +526,25 @@ describe('an empty run', () => {
     /* Nothing to seek or play, but the bar still carries the findings. */
     expect(r.querySelector('.ln-bar .tl-transport')).toBeNull();
     expect(r.querySelector('.ln-bar .sb-chip')).not.toBeNull();
+  });
+
+  it('still has an axis, a default minute, and a playhead on it', async () => {
+    clearEvents();
+    const r = mount();
+    await tick();
+    const labels = (sel: string): string[] => [...r.querySelectorAll(sel)].map((x) => x.textContent ?? '');
+    expect(labels('.ln-ticks text.t-tick')).toEqual(['0', '10', '20', '30', '40', '50', '60']);
+    expect(labels('.ln-svg.is-seekable text.t-tick.t-mono').slice(-8, -1)).toEqual(['0', '10', '20', '30', '40', '50', '60']);
+    expect(r.querySelector('.ln-svg.is-seekable line.ax')).not.toBeNull();
+    const before = r.querySelector('.ln-steady-ph')?.getAttribute('transform');
+    expect(before).toMatch(/^translate\(/);
+    expect(r.querySelector('.ln-steady-ph .tl-playhead-t')?.textContent).toBe('t = 0');
+    /* Moving the playhead moves it, and the buttons' caption with it. */
+    tNow.value = 30;
+    await tick();
+    expect(r.querySelector('.ln-steady-ph')?.getAttribute('transform')).not.toBe(before);
+    expect(r.querySelector('.ln-steady-ph .tl-playhead-t')?.textContent).toBe('t = 30');
+    expect(r.querySelector('.ln-when-t')?.textContent).toBe('Events at t = 30 s');
   });
 });
 
@@ -409,7 +575,7 @@ describe('the braces', () => {
     crashAt(0);
     const r = mount();
     await tick();
-    const svg = r.querySelector('.ln-svg') as SVGElement;
+    const svg = r.querySelector('.ln-svg.is-seekable') as SVGElement;
     const height = Number(svg.getAttribute('height'));
     const axis = r.querySelector('.ln-svg line.ax') as SVGLineElement;
     const axisY = Number(axis.getAttribute('y1'));
@@ -421,8 +587,9 @@ describe('the braces', () => {
       expect(y).toBeGreaterThan(axisY);
       expect(y).toBeLessThan(height);
     }
-    expect(r.querySelector('.ln-svg .t-top')?.textContent).toMatch(/\S/);
-    expect(r.querySelector('.ln-svg path.brace.br-sl')).not.toBeNull();
+    /* The caption is the sticky headline; the outage brace is on the sticky clock. */
+    expect(r.querySelector('.ln-head .tl-headline')?.textContent).toMatch(/\S/);
+    expect(r.querySelector('.ln-head .ln-ticks path.brace.br-sl')).not.toBeNull();
   });
 });
 

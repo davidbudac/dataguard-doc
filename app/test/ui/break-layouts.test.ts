@@ -2,7 +2,7 @@
  * Break's two layouts -- Split (the drawing above the timeline, one bar between
  * them) and Lanes (each member's card continuing as its lane) -- and the switch
  * between them: the preference behind it, the switch itself, what Split's bar
- * carries, the rail folding on the way into Split, the density of the lanes
+ * carries, the rail folding on the way into either, the density of the lanes
  * staying with the layout that asked for it, and Build and Configure staying as
  * they were.
  *
@@ -26,6 +26,7 @@ import {
 import { App } from '@/ui/App';
 import { revealFindings } from '@/ui/IssuePanel';
 import { applyTemplate, templates } from '@/ui/break/events';
+import { railSnap } from '@/ui/break/split-rail';
 import { buildTimeline, TL_COMPACT, TL_FULL } from '@/ui/timeline/build';
 import { trace } from '@/state/derived';
 
@@ -440,18 +441,63 @@ describe('the rail, on the way into Split', () => {
     expect(memory.has(RAIL_KEY)).toBe(false);
   });
 
-  it('leaves Lanes\' rail alone, and hands it back when Lanes gives way to Split and Split to Lanes', async () => {
+  it('folds for Lanes too, and a switch between Lanes and Split never touches it', async () => {
     breakLayout.value = 'lanes';
     const r = mount();
     await tick();
-    expect(railCollapsed.value).toBe(false);
-    pick(r, 'Split');
-    await tick();
     expect(railCollapsed.value).toBe(true);
-    pick(r, 'Lanes');
+    expect(app(r).classList.contains('rail-shut')).toBe(true);
+    /* Round trips: one flag for both layouts, so the rail is never unfolded in between. */
+    const seen: boolean[] = [];
+    const stop = railCollapsed.subscribe((v) => seen.push(v));
+    for (const word of ['Split', 'Lanes', 'Split', 'Lanes']) {
+      pick(r, word);
+      await tick();
+      expect(railCollapsed.value, word).toBe(true);
+      expect(app(r).classList.contains('rail-shut'), word).toBe(true);
+    }
+    stop();
+    expect(seen.every((v) => v)).toBe(true);
+    expect(memory.has(RAIL_KEY)).toBe(false);
+    /* Leaving Break hands the rail back as it was. */
+    mode.value = 'build';
     await tick();
     expect(railCollapsed.value).toBe(false);
     expect(memory.has(RAIL_KEY)).toBe(false);
+  });
+
+  it('lets the width snap for a fold nobody asked for, and glide for the reader\'s own', async () => {
+    mode.value = 'build';
+    railSnap.value = false; // a fold in an earlier test may still be letting go
+    const r = mount();
+    await tick();
+    expect(app(r).classList.contains('rail-snap')).toBe(false);
+    mode.value = 'break';
+    breakLayout.value = 'lanes';
+    await tick();
+    expect(railCollapsed.value).toBe(true);
+    expect(app(r).classList.contains('rail-snap')).toBe(true);
+    /* It lets go again shortly after, so the reader's own fold animates. */
+    await new Promise((res) => setTimeout(res, 400));
+    expect(app(r).classList.contains('rail-snap')).toBe(false);
+    setRailCollapsed(false);
+    await tick();
+    expect(app(r).classList.contains('rail-snap')).toBe(false);
+  });
+
+  it('is the reader\'s once they open it inside Lanes: it stays open across a switch, stored as usual', async () => {
+    breakLayout.value = 'lanes';
+    const r = mount();
+    await tick();
+    setRailCollapsed(false);
+    await tick();
+    expect(memory.get(RAIL_KEY)).toBe('0');
+    pick(r, 'Split');
+    await tick();
+    expect(railCollapsed.value).toBe(false);
+    mode.value = 'build';
+    await tick();
+    expect(railCollapsed.value).toBe(false);
   });
 
   it('is the reader\'s once they open it inside Split: it stays open, and is stored as usual', async () => {
