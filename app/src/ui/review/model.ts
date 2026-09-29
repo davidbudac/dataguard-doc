@@ -14,7 +14,7 @@
  */
 
 import {
-  buildJdbc, buildTns, computeCommit, declaredPrimary, generateDgmgrl,
+  buildClientFiles, computeCommit, declaredPrimary, generateDgmgrl,
   generateInitOraFiles, lineText, resolveRedoGraph, simulate, sortFindings, validate,
 } from '@/engine';
 import type { ClassicScenario, EngineTrace, GeneratedFile, TopologyDoc } from '@/engine';
@@ -110,7 +110,7 @@ export function configurationFindings(t: TopologyDoc) {
 export function generatedFiles(s: ReviewSnapshot): GeneratedFile[] {
   const t = topologyFor(s);
   return [generateDgmgrl(t, { findings: configurationFindings(t) }),
-    ...generateInitOraFiles(t), buildTns(t), buildJdbc(t)];
+    ...generateInitOraFiles(t), ...buildClientFiles(t)];
 }
 
 export interface SettingChange { path: string; before: string; after: string }

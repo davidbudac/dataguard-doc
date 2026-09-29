@@ -13,7 +13,7 @@
 import type { JSX } from 'preact';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import type { TopologyDoc } from '@/engine';
-import { hostId, siteId } from '@/engine';
+import { findApplication, hostId, siteId } from '@/engine';
 import { frame, geometry, redoGraph, topology } from '@/state/derived';
 import { doc, withLayout, withSiteOrder } from '@/state/doc';
 import { breakCoalescing, edit, undo, undoLabel } from '@/state/history';
@@ -23,6 +23,7 @@ import {
   toast, viewport,
 } from '@/state/view';
 import { buildActionsFor, openInspectorFor, removeAction } from '../build/actions';
+import { resolveSubject } from '../inspector/Inspector';
 import { resolveRoute, routeWord } from '../build/routes';
 import {
   addDatabase, addFsfoTarget, addLink, connectVerdict, mergeIntoHost, moveToSite,
@@ -81,10 +82,12 @@ export function connectFromCanvas(from: string, to: string): void {
   if (isSite(from) && isSite(to)) { addLink(siteId(from), siteId(to)); return; }
   const a = member(from); const b = member(to);
   /* The application and a database: the database joins its ADDRESS_LIST. */
-  const app = t.application?.id as string | undefined;
-  if (app !== undefined && (from === app || to === app)) {
-    const m = from === app ? b : a;
-    if (m) setAddressListed(m.id, true);
+  const fromApp = findApplication(t, from);
+  const toApp = findApplication(t, to);
+  const app = fromApp ?? toApp;
+  if (app !== undefined) {
+    const m = fromApp !== undefined ? b : a;
+    if (m) setAddressListed(app.id, m.id, true);
     return;
   }
   if (a && b) { shipRedo(a.id, b.id); return; }
@@ -139,7 +142,7 @@ function nameOf(t: TopologyDoc, key: string): string {
 const canRename = (t: TopologyDoc, key: string): boolean =>
   t.members.some((m) => (m.id as string) === key)
   || t.observers.some((o) => (o.id as string) === key)
-  || (t.application?.id as string | undefined) === key
+  || findApplication(t, key) !== undefined
   || t.sites.some((x) => (x.id as string) === key);
 
 function commitRename(key: string, raw: string, where: Document = document): void {
@@ -147,10 +150,10 @@ function commitRename(key: string, raw: string, where: Document = document): voi
   const m = t.members.find((x) => (x.id as string) === key);
   const o = t.observers.find((x) => (x.id as string) === key);
   renaming.value = null;
-  const isApp = (t.application?.id as string | undefined) === key;
+  const isApp = findApplication(t, key) !== undefined;
   if (m) renameMember(m.id, raw);
   else if (o) renameObserver(o.id, raw);
-  else if (isApp) renameApplication(raw);
+  else if (isApp) renameApplication(key, raw);
   else renameSite(siteId(key), raw);
   /* The field took the focus and is gone: hand it to the thing it named, under
      the name it now has, once that has been drawn. */
@@ -624,7 +627,12 @@ export function CanvasSlot({ interactive = true }: CanvasSlotProps) {
       /* A drawn line's key is plumbing: the header says what the line is. */
       ...(() => {
         const r = resolveRoute(topology.value, anchored);
-        return r === null ? {} : { title: `${routeWord(r)} ${r.from} → ${r.to}` };
+        if (r !== null) return { title: `${routeWord(r)} ${r.from} → ${r.to}` };
+        /* An instance's key is `sby01~2`: the header says whose it is. */
+        const subject = resolveSubject(topology.value, anchored);
+        return subject?.kind === 'instance'
+          ? { title: `Instance ${subject.instance.name} of ${subject.member.id as string}` }
+          : {};
       })(),
       /* Build's table ends in Remove: the cap drops rows before it, never it. */
       ...(m === 'build' ? { keepLast: true } : {}),

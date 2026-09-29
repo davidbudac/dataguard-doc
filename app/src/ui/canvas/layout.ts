@@ -14,7 +14,7 @@
 import type {
   Application, Member, Observer, RedoGraph, SiteId, TopologyDoc,
 } from '@/engine';
-import { isDatabase, isFarSync } from '@/engine';
+import { applicationsOf, isDatabase, isFarSync } from '@/engine';
 import type { CardLines, Rect } from './measure';
 import { approxW, CARD, elide, fitLabel, measureCardWidth, MINI_ICON, snap8 } from './measure';
 
@@ -39,6 +39,8 @@ export const LAYOUT = {
       hop up to the primary with its caption, and for the lanes a redo route
       takes between the two (`midLane`). */
   appGap: 92,
+  /** Between two application cards standing in one data centre. */
+  appSideGap: 16,
   /** The first lane between the member band and the application, this far
       under the member band: just clear of the data centres' own boxes. */
   midLane: 50,
@@ -418,15 +420,19 @@ export function layoutTopology(
     observersBySite.set(s, list);
   }
 
-  /* The application stands where its host does; a document without one, or
+  /* An application stands where its host does; a document without one, or
      one naming a host that is gone, draws no card for it. */
-  const app = doc.application;
-  const appSite = app === undefined ? undefined : siteOfHost.get(app.host as string);
+  const appsBySite = new Map<string, Application[]>();
+  for (const a of applicationsOf(doc)) {
+    const s = siteOfHost.get(a.host as string);
+    if (s === undefined) continue;
+    appsBySite.set(s, [...(appsBySite.get(s) ?? []), a]);
+  }
 
   /* ---- 2. column order: sites by the shallowest rank they hold ---- */
   const occupied = (s: string): boolean =>
     (membersBySite.get(s)?.length ?? 0) + (observersBySite.get(s)?.length ?? 0)
-      + (appSite === s ? 1 : 0) > 0;
+      + (appsBySite.get(s)?.length ?? 0) > 0;
   const siteIds = doc.sites.map((s) => s.id as string).filter(occupied);
   /* A data centre with nothing in it yet is still drawn -- as an empty panel
      past the last occupied column, so "Add a data centre" puts something on
@@ -469,7 +475,7 @@ export function layoutTopology(
       if (ka !== kb) return ka - kb;
       return a.name < b.name ? -1 : a.name > b.name ? 1 : 0;
     });
-    return { site: s as SiteId, col, obs, mems, app: appSite === s ? app : undefined };
+    return { site: s as SiteId, col, obs, mems, apps: appsBySite.get(s) ?? [] };
   });
 
   /* ---- 3b. chassis stacks: 2+ occupants sharing a host snap into one ----
@@ -592,16 +598,22 @@ export function layoutTopology(
     ? CARD.obsH
     : LAYOUT.stackHeaderH + row.observers.length * CARD.obsH);
 
-  const appCard = app === undefined || appSite === undefined ? null : (() => {
-    const lines = applicationLines(doc, app);
-    return { lines, w: measureCardWidth(lines, true), hostFull: hostName(doc, app.host as string) };
-  })();
+  /* Every application's card, and each column's row of them: side by side
+     under the databases, so a line rising from one never crosses another. */
+  const appCards = new Map<string, { lines: CardLines; w: number; hostFull: string }>();
+  for (const a of applicationsOf(doc)) {
+    if (!siteOfHost.has(a.host as string)) continue;
+    const lines = applicationLines(doc, a);
+    appCards.set(a.id as string, { lines, w: measureCardWidth(lines, true), hostFull: hostName(doc, a.host as string) });
+  }
+  const appRowW = (apps: readonly Application[]): number => apps.reduce(
+    (acc, a, i) => acc + (appCards.get(a.id as string)?.w ?? 0) + (i === 0 ? 0 : LAYOUT.appSideGap), 0);
 
   const colW = columns.map((c, ci) => {
     const widths = [
       ...(memRowsByCol[ci] ?? []).map(memRowWidth),
       ...(obsRowsByCol[ci] ?? []).map(obsRowWidth),
-      ...(c.app !== undefined && appCard !== null ? [appCard.w] : []),
+      ...(c.apps.length > 0 ? [appRowW(c.apps)] : []),
     ];
     const indent = c.mems.some((m) => sameSiteCascade(doc, graph, m, memberSite))
       ? LAYOUT.cascadeIndent : 0;
@@ -614,7 +626,7 @@ export function layoutTopology(
     colX.push(cursor);
     const after = columns[i + 1];
     const nextEmpty = after !== undefined
-      && after.mems.length + after.obs.length + (after.app === undefined ? 0 : 1) === 0;
+      && after.mems.length + after.obs.length + after.apps.length === 0;
     cursor += (colW[i] ?? 0) + (nextEmpty ? LAYOUT.emptyGap : LAYOUT.corridor);
   }
 
@@ -853,28 +865,34 @@ export function layoutTopology(
       my += memRowHeight(row) + (memGaps[ci]?.[rowIdx] ?? LAYOUT.rowGap);
     });
 
-    if (c.app !== undefined && appCard !== null) {
-      placed.push({
-        indent: 0,
-        node: {
-          key: nodeKey('application', c.app.id as string),
-          id: c.app.id as string,
-          kind: 'application',
-          glyph: 'app',
-          site: c.site,
-          col: ci,
-          row: (memRowsByCol[ci] ?? []).length,
-          rank: -1,
-          unreachable: false,
-          instances: 1,
-          x: Math.round(cx + (cw - appCard.w) / 2),
-          y: Math.round(appBandTop),
-          w: appCard.w,
-          h: CARD.obsH,
-          lines: appCard.lines,
-          hostFull: appCard.hostFull,
-          moved: false,
-        },
+    if (c.apps.length > 0) {
+      let ax = cx + (cw - appRowW(c.apps)) / 2;
+      c.apps.forEach((app, k) => {
+        const card = appCards.get(app.id as string);
+        if (card === undefined) return;
+        placed.push({
+          indent: 0,
+          node: {
+            key: nodeKey('application', app.id as string),
+            id: app.id as string,
+            kind: 'application',
+            glyph: 'app',
+            site: c.site,
+            col: ci,
+            row: (memRowsByCol[ci] ?? []).length + k,
+            rank: -1,
+            unreachable: false,
+            instances: 1,
+            x: Math.round(ax),
+            y: Math.round(appBandTop),
+            w: card.w,
+            h: CARD.obsH,
+            lines: card.lines,
+            hostFull: card.hostFull,
+            moved: false,
+          },
+        });
+        ax += card.w + LAYOUT.appSideGap;
       });
     }
   });
@@ -1081,7 +1099,7 @@ export function layoutTopology(
     overLaneY: vy0 - LAYOUT.padTop + 2,
     bandLaneY: bandH === 0 ? vy0 - LAYOUT.padTop + 2 : memberBandTop - 10,
     underLaneY: vy1 + 4,
-    midLaneY: appCard === null || memberBandH === 0
+    midLaneY: appCards.size === 0 || memberBandH === 0
       ? null : memberBandTop + memberBandH + LAYOUT.midLane,
     trunks,
     maxRank,

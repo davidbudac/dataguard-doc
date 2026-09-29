@@ -453,16 +453,15 @@ describe('adding happens in one place', () => {
   it('offers the five additions on the drawing, each saying what it does', async () => {
     const stage = mountWith(AddToolbar, { doc: doc.value.topology });
     await tick();
-    /* The application is one card: with it on the drawing there is none to
-       add, and the button is absent rather than grey for good. */
-    expect(doc.value.topology.application).toBeDefined();
-    expect(buttonLabels(stage, '.cv-add .btn'))
-      .toEqual(ADD_ACTIONS.filter((a) => a.key !== 'application').map((a) => a.short));
+    /* There can be any number of applications: with one on the drawing the
+       button is still there, and never grey for that reason. */
+    expect(doc.value.topology.applications).toHaveLength(1);
+    expect(buttonLabels(stage, '.cv-add .btn')).toEqual(ADD_ACTIONS.map((a) => a.short));
     for (const b of stage.querySelectorAll<HTMLButtonElement>('.cv-add .btn')) {
       expect(b.getAttribute('title')).toBeTruthy();
       expect(b.disabled).toBe(false);
     }
-    const { application: _none, ...bare } = doc.value.topology;
+    const { applications: _none, ...bare } = doc.value.topology;
     const without = mountWith(AddToolbar, { doc: bare });
     await tick();
     expect(buttonLabels(without, '.cv-add .btn')).toEqual(ADD_ACTIONS.map((a) => a.short));
@@ -478,7 +477,7 @@ describe('adding happens in one place', () => {
     await tick();
     const offOnStage = [...stage.querySelectorAll<HTMLButtonElement>('.cv-add .btn')]
       .filter((b) => b.disabled);
-    expect(offOnStage).toHaveLength(3);
+    expect(offOnStage).toHaveLength(4);
     for (const b of offOnStage) {
       expect(b.parentElement?.querySelector('.why')?.textContent).toBe(WHY_NO_SITE);
     }
@@ -529,7 +528,7 @@ describe('adding happens in one place', () => {
   });
 
   it('is one tab stop with arrow keys, which is what `role="toolbar"` promises', async () => {
-    const { application: _none, ...bare } = doc.value.topology;
+    const { applications: _none, ...bare } = doc.value.topology;
     const stage = mountWith(AddToolbar, { doc: bare });
     await tick();
     const btns = [...stage.querySelectorAll<HTMLButtonElement>('.cv-add .btn')];
@@ -561,9 +560,9 @@ describe('adding happens in one place', () => {
     const stage = mountWith(AddToolbar, { doc: bare });
     await tick();
     const btns = [...stage.querySelectorAll<HTMLButtonElement>('.cv-add .btn')];
-    /* The three that need a data centre are off; `+ Data centre` never is, so
+    /* The four that need a data centre are off; `+ Data centre` never is, so
        the strip is always reachable by Tab. */
-    expect(btns.map((b) => b.getAttribute('tabindex'))).toEqual(['-1', '-1', '-1', '0']);
+    expect(btns.map((b) => b.getAttribute('tabindex'))).toEqual(['-1', '-1', '-1', '-1', '0']);
     expect(btns.find((b) => b.getAttribute('tabindex') === '0')?.disabled).toBe(false);
   });
 

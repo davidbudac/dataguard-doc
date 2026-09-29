@@ -314,31 +314,41 @@ describe('the zoom strip drives the drawing', () => {
 
 /* ---------------- the wheel ---------------- */
 
-describe('the wheel zooms only with the browser\'s own modifier', () => {
+describe('the wheel zooms', () => {
   const doc = classic('dc3');
 
-  it('ctrl (or cmd) and the wheel steps the ladder', () => {
+  it('a notch steps the ladder, with or without the browser\'s zoom modifier', () => {
     const onZoomStep = vi.fn();
     const svg = svgOf(mountCanvas(doc, { onZoomStep }).root);
-    const up = wheel(svg, -120, { ctrlKey: true });
+    const up = wheel(svg, -120);
     expect(onZoomStep).toHaveBeenCalledWith(1);
     expect(up.defaultPrevented).toBe(true);
-    wheel(svg, 120, { metaKey: true });
+    wheel(svg, 120, { ctrlKey: true });
     expect(onZoomStep).toHaveBeenLastCalledWith(-1);
+    wheel(svg, -120, { metaKey: true });
+    expect(onZoomStep).toHaveBeenLastCalledWith(1);
   });
 
-  it('leaves a plain wheel to the stage, which is how the rest is reached', () => {
+  it('sums a trackpad\'s small deltas into one rung rather than one per event', () => {
     const onZoomStep = vi.fn();
     const svg = svgOf(mountCanvas(doc, { onZoomStep }).root);
-    const ev = wheel(svg, -120);
+    for (let i = 0; i < 4; i += 1) wheel(svg, -10);
     expect(onZoomStep).not.toHaveBeenCalled();
-    expect(ev.defaultPrevented).toBe(false);
+    wheel(svg, -10);
+    expect(onZoomStep).toHaveBeenCalledTimes(1);
+    wheel(svg, -10);
+    expect(onZoomStep).toHaveBeenCalledTimes(1);
+  });
+
+  it('is left to the stage where the caller has no ladder', () => {
+    const svg = svgOf(mountCanvas(doc).root);
+    expect(wheel(svg, -120).defaultPrevented).toBe(false);
   });
 
   it('is wired to the ladder by the slot', async () => {
     const root = mountApp();
     await painted();
-    wheel(svgOf(root), -120, { ctrlKey: true });
+    wheel(svgOf(root), -120);
     await tick();
     expect(zoom.value).toBe(1.2);
   });

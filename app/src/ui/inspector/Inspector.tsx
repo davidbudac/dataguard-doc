@@ -14,8 +14,10 @@
  */
 
 import { useLayoutEffect } from 'preact/hooks';
-import type { Application, Link, Member, Observer, Site, TopologyDoc } from '@/engine';
+import { applicationsOf, findApplication } from '@/engine';
+import type { Application, Instance, Link, Member, Observer, Site, TopologyDoc } from '@/engine';
 import { errors, issues, redoGraph, topology, warnings } from '@/state/derived';
+import { parseInstanceKey } from '@/state/instanceKey';
 import { canEdit, clearSelection, hintsOn, mode, selection, viewport } from '@/state/view';
 import { Fold, Note } from './controls';
 import { isOff, WhyPill } from '../common/WhyPill';
@@ -27,6 +29,7 @@ import { hintsShown, HintsToggle } from '../hints';
 import { revealSections, SUMMARY_ID } from './sections';
 import { ApplicationForm } from './ApplicationForm';
 import { ConfigForm } from './ConfigForm';
+import { InstanceForm } from './InstanceForm';
 import { LinkForm } from './LinkForm';
 import { MemberForm } from './MemberForm';
 import { ObserverForm } from './ObserverForm';
@@ -37,6 +40,7 @@ import '@/styles/inspector.css';
 
 type Subject =
   | { kind: 'member'; member: Member }
+  | { kind: 'instance'; member: Member; index: number; instance: Instance }
   | { kind: 'observer'; observer: Observer }
   | { kind: 'application'; application: Application }
   | { kind: 'link'; link: Link }
@@ -50,9 +54,8 @@ export function resolveSubject(doc: TopologyDoc, key: string | undefined): Subje
   if (member) return { kind: 'member', member };
   const observer = doc.observers.find((o) => (o.id as string) === key);
   if (observer) return { kind: 'observer', observer };
-  if (doc.application !== undefined && (doc.application.id as string) === key) {
-    return { kind: 'application', application: doc.application };
-  }
+  const application = findApplication(doc, key);
+  if (application !== undefined) return { kind: 'application', application };
   const link = doc.links.find((l) => (l.id as string) === key);
   if (link) return { kind: 'link', link };
   const site = doc.sites.find((s) => (s.id as string) === key);
@@ -60,6 +63,14 @@ export function resolveSubject(doc: TopologyDoc, key: string | undefined): Subje
   /* A derived line, selected by its own key when it rides no link. */
   const route = resolveRoute(doc, key);
   if (route) return { kind: 'route', route };
+  /* An instance of a RAC database (`sby01~2`): last, so a name typed into the
+     document can never be shadowed by it -- every exact id above wins. */
+  const at = parseInstanceKey(key);
+  const owner = at === null ? undefined : doc.members.find((m) => (m.id as string) === at.member);
+  const instance = at === null ? undefined : owner?.instances[at.index];
+  if (at !== null && owner !== undefined && instance !== undefined) {
+    return { kind: 'instance', member: owner, index: at.index, instance };
+  }
   return null;
 }
 
@@ -71,6 +82,7 @@ function subjectWord(s: Exclude<Subject, null>): string {
     case 'member':
       if (s.member.kind === 'farsync') return 'Far sync instance';
       return s.member.role === 'primary' ? 'Primary database' : `${cap(s.member.role)} standby`;
+    case 'instance': return `RAC instance of ${s.member.id as string}`;
     case 'observer': return `${cap(s.observer.role)} observer`;
     case 'application': return 'Application';
     case 'link': return s.link.scope === 'site' ? 'Site link' : 'Host link';
@@ -91,6 +103,7 @@ function subjectName(doc: TopologyDoc, s: Exclude<Subject, null>): string {
     doc.hosts.find((x) => (x.id as string) === id)?.name ?? id;
   switch (s.kind) {
     case 'member': return s.member.id as string;
+    case 'instance': return s.instance.name;
     case 'observer': return s.observer.id as string;
     case 'application': return s.application.id as string;
     case 'site': return s.site.name;
@@ -113,6 +126,7 @@ function subjectLook(s: Subject): { tone: Tone; glyph: Glyph } {
     case 'member':
       if (s.member.kind === 'farsync') return { tone: 'lk', glyph: 'farsync' };
       return { tone: s.member.role === 'primary' ? 'tl' : 'bl', glyph: 'db' };
+    case 'instance': return subjectLook({ kind: 'member', member: s.member });
     case 'observer': return { tone: 'vi', glyph: 'observer' };
     case 'application': return { tone: 'cn', glyph: 'app' };
     case 'link': return { tone: 'lk', glyph: 'link' };
@@ -205,7 +219,10 @@ function Summary({ doc }: { doc: TopologyDoc }) {
     ['Far sync', farsyncs.length === 0 ? 'none' : farsyncs.map((m) => m.id as string).join(', ')],
     ['Fast-start failover', doc.config.fsfo.state],
     ['Target', target.kind === 'ANY' ? 'ANY' : (target.members.join(', ') || 'not set')],
-    ['Application', doc.application ? (doc.application.id as string) : 'not drawn'],
+    [
+      applicationsOf(doc).length > 1 ? 'Applications' : 'Application',
+      applicationsOf(doc).length === 0 ? 'not drawn' : applicationsOf(doc).map((a) => a.id as string).join(', '),
+    ],
     [
       'Observers',
       doc.observers.length === 0
@@ -361,6 +378,9 @@ export function Inspector() {
 
       {subject?.kind === 'member'
         ? <MemberForm member={subject.member} doc={doc} graph={graph} />
+        : null}
+      {subject?.kind === 'instance'
+        ? <InstanceForm member={subject.member} index={subject.index} doc={doc} />
         : null}
       {subject?.kind === 'observer'
         ? <ObserverForm observer={subject.observer} doc={doc} />

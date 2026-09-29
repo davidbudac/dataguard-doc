@@ -13,10 +13,11 @@
  * outcome of the run, never on the name of the event that caused it.
  */
 
-import type { AppModel, EngineTrace, TopologyDoc } from '@/engine';
-import { computeApp } from '@/engine';
+import type { AppModel, ClientDescriptor, EngineTrace } from '@/engine';
+import { applicationClient, applicationsOf, computeApp } from '@/engine';
 import type { BraceInput, TimelineScale } from '@/ui/timeline/build';
 import { topology, trace } from '@/state/derived';
+import { appModelsFor } from '@/ui/timeline/build';
 import {
   Braces, braceRows, Figure, Frame, G3, Lanes, approxW, figHeight, fmt, makeScale, markLabel,
   useFigWidth,
@@ -414,19 +415,19 @@ function Reconnect({ ap, scale, g, y }: {
 
 /* ---------------- the figure ---------------- */
 
-function AppFigure({ ap, tr, doc, width }: {
-  ap: AppModel; tr: EngineTrace; doc: TopologyDoc; width: number;
+function AppFigure({ ap, client, tr, width }: {
+  ap: AppModel; client: ClientDescriptor; tr: EngineTrace; width: number;
 }) {
   const g = G3;
   const t0 = -ap.preRoll;
   const t1 = ap.horizon;
   const scale = makeScale(t0, t1, g, width);
-  const service = doc.client.serviceName;
+  const service = client.serviceName;
   const facts = tr.facts;
   const stalled = facts.conditions.stalled;
   const tOpen = ap.tService ?? facts.tOpen;
-  const rd = doc.client.retryDelaySeconds;
-  const rc = doc.client.retryCount;
+  const rd = client.retryDelaySeconds;
+  const rc = client.retryCount;
 
   const kind: 'none' | 'failure' | 'switchover' = ap.noEvent
     ? 'none' : ap.switchover ? 'switchover' : 'failure';
@@ -578,12 +579,13 @@ export function AppView() {
   const doc = topology.value;
   const [ref, width] = useFigWidth();
   const tr = trace.value;
-  const client = doc.client;
+  const apps = applicationsOf(doc);
+  const many = apps.length > 1;
 
   return (
     <div class="panel" role="region" aria-label="Application view">
       <div class="panel-hd">
-        <span class="eyebrow">The application's view</span>
+        <span class="eyebrow">{many ? "The applications' views" : "The application's view"}</span>
         <p class="caption">
           What the connect string does while the role moves, and what it costs the
           application. Every address is classified from the run at the moment the client
@@ -594,11 +596,14 @@ export function AppView() {
           are nominal drawing constants, not documented figures, and the role-based service
           is assumed published the instant the new primary opens. These parameters affect
           only new connections -- no established session is touched by anything drawn here.
-          {doc.application === undefined ? null : (
+          {apps.length === 0 ? null : (
             <>
-              {' '}The string is dialled from where the application stands on the drawing
-              (<span class="mono">{doc.application.name}</span>): an address it cannot reach
-              gives no answer. That placement is this page&rsquo;s model.
+              {' '}The string is dialled from where each application stands on the drawing
+              ({apps.map((a, i) => (
+                <>{i === 0 ? '' : ', '}<span class="mono">{a.name}</span></>
+              ))}): an address it cannot reach
+              gives no answer. {many ? 'One figure per application, each with the connect string that application dials. ' : ''}That
+              placement is this page&rsquo;s model.
             </>
           )}
         </p>
@@ -614,8 +619,18 @@ export function AppView() {
               application's view of it is drawn here.
             </p>
           </div>
+        ) : apps.length === 0 ? (
+          <AppFigure ap={computeApp(doc.client, tr, doc)} client={doc.client} tr={tr} width={width} />
         ) : (
-          <AppFigure ap={computeApp(client, tr, doc)} tr={tr} doc={doc} width={width} />
+          appModelsFor(tr, doc).map((ap, i) => {
+            const app = apps[i];
+            return (
+              <section class="app-fig" key={app?.id as string ?? i} aria-label={many ? `${app?.name}'s view` : undefined}>
+                {many ? <h3 class="app-fig-name eyebrow">{app?.name}{app?.client ? ' — its own connect string' : ' — the shared connect string'}</h3> : null}
+                <AppFigure ap={ap} client={app ? applicationClient(doc, app) : doc.client} tr={tr} width={width} />
+              </section>
+            );
+          })
         )}
       </div>
     </div>

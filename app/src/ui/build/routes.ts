@@ -15,7 +15,7 @@
  * the drawing's is outside a run.
  */
 
-import { declaredPrimary, resolveRedoGraph } from '@/engine';
+import { applicationsOf, declaredPrimary, resolveRedoGraph } from '@/engine';
 import type { TopologyDoc } from '@/engine';
 import { readinessTargets } from '../canvas/layout';
 import { applicationTargets, docLinkBetween } from '../canvas/routing';
@@ -70,9 +70,8 @@ export function allRoutes(doc: TopologyDoc): RouteRef[] {
       push('check', oid, t, o.host as string, hostOf(t));
     }
   }
-  const app = doc.application;
-  if (app !== undefined) {
-    for (const m of applicationTargets(doc)) {
+  for (const app of applicationsOf(doc)) {
+    for (const m of applicationTargets(doc, app)) {
       push('connect', app.id as string, m.id as string, app.host as string, m.instances[0]?.host as string | undefined);
     }
   }

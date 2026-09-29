@@ -275,6 +275,16 @@
 }
 .topo-svg .tp-node:focus-visible { outline: 2px solid var(--fc); outline-offset: 3px; }
 
+/* A RAC card's instance rows in Build are controls of their own (NodeCard).
+   The row selects; a press on it still starts the card's drag, so the pointer
+   says "click" here and "grab" on the rest of the card. */
+.topo-svg .tp-instance.is-live { cursor: pointer; }
+.topo-svg .tp-instance.is-live > rect.tp-card { pointer-events: all; }
+.topo-svg .tp-instance.is-live:hover > rect.tp-card:not(.is-sel):not(.is-down) { stroke: var(--ik3); }
+.topo-svg .tp-instance:focus { outline: none; }
+.topo-svg .tp-instance:focus-visible > rect.tp-card { stroke: var(--fc); stroke-width: 2; }
+.topo-svg .tp-instance:focus-visible { outline: 2px solid var(--fc); outline-offset: 2px; }
+
 /* ---- chips ---- */
 .topo-svg .tp-chip-bg { fill: var(--sf3); stroke: none; }
 .topo-svg .tp-chip-tx {

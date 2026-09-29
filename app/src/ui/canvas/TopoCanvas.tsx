@@ -17,6 +17,7 @@ import type { JSX } from 'preact';
 import {
   useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState,
 } from 'preact/hooks';
+import { findApplication } from '@/engine';
 import type { RedoGraph, Snapshot, TopologyDoc } from '@/engine';
 import type { Geometry, LayoutOffset, NodeBox, SiteBox, ViewBox } from './layout';
 import { layoutTopology, SITE_MIN } from './layout';
@@ -32,6 +33,7 @@ import type { BarAction, BarSection } from './ActionBar';
 import type { WhyState } from '../common/WhyPill';
 import { approxW, CARD } from './measure';
 import type { Rect } from './measure';
+import { parseInstanceKey } from '@/state/instanceKey';
 import { NodeCard } from './NodeCard';
 import { StackChassis } from './StackChassis';
 import { LinkPath, linkKey } from './LinkPath';
@@ -113,9 +115,9 @@ export interface TopoCanvasProps {
    */
   onNudge?: (keys: readonly string[], dx: number, dy: number) => void;
   /**
-   * A rectangle dragged over the ground. Passing it makes a press on the
-   * ground start a selection rather than a pan; the pan moves to the middle
-   * button and to a drag with `Space` held.
+   * A rectangle dragged over the ground. Passing it makes a drag on the ground
+   * with Shift (or Ctrl / Cmd) held a selection, added to what is selected; a
+   * plain drag, the middle button and `Space` are the pan.
    */
   onSelectMany?: (keys: readonly string[], additive: boolean) => void;
   /**
@@ -210,7 +212,7 @@ export interface TopoCanvasProps {
    * made to fit it.
    */
   fitted?: boolean;
-  /** Ctrl/Cmd + wheel, one rung of the caller's ladder per notch. */
+  /** The wheel, one rung of the caller's ladder per notch (`WHEEL_NOTCH`). */
   onZoomStep?: (dir: 1 | -1) => void;
   onCloseBar?: () => void;
   /** `Shift+F10`, the context-menu key, or the right button on an entity. */
@@ -386,6 +388,11 @@ const scrollerFor = (svg: SVGSVGElement): Element | null => {
   return svg.closest('.app-stage');
 };
 
+/** Wheel units that make one rung: a mouse notch is 100-120, a pinch step a few. */
+const WHEEL_NOTCH = 50;
+/** A pause this long ends a wheel gesture. */
+const WHEEL_IDLE_MS = 250;
+
 /** Grab thickness of a handle, and the size of the square drawn on it. */
 const HANDLE_HIT = 12;
 const HANDLE_DOT = 7;
@@ -486,10 +493,13 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
   const [barMeasured, setBarMeasured] = useState<{ key: string; w: number; h: number } | null>(null);
   /* The selection rectangle while it is being dragged, in the drawing's units. */
   const [band, setBand] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
-  /* `Space` held: the next drag on the ground is a pan, the way it is in every
-     drawing tool that gives the plain drag to selection. A ref, because it is
-     read at the press and never painted. */
+  /* `Space` held: the next drag on the ground is a pan even where a modifier
+     would have started a selection. A ref, because it is read at the press and
+     never painted. */
   const spaceHeld = useRef(false);
+  /* The wheel's leftovers, and the spot a zoom must keep under the pointer. */
+  const wheelAcc = useRef({ sum: 0, at: 0 });
+  const zoomAnchor = useRef<{ fx: number; fy: number; x: number; y: number } | null>(null);
   /* The window the drawing is in, which may be a popup (common/popout.tsx). */
   const host = useHostWindow();
   useEffect(() => {
@@ -541,8 +551,7 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
     if (member) return member.instances.length === 1 ? (member.instances[0]?.host as string | undefined) : undefined;
     const observer = doc.observers.find((o) => (o.id as string) === key);
     if (observer) return observer.host as string;
-    return doc.application !== undefined && (doc.application.id as string) === key
-      ? (doc.application.host as string) : undefined;
+    return findApplication(doc, key)?.host as string | undefined;
   };
   /**
    * Where a single-card drag on `own` would merge it: a chassis stack whose
@@ -600,6 +609,14 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
   }, []);
 
   const isSelected = (key: string): boolean => selection.includes(key);
+  /** Which instance row of this RAC card is selected (`sby01~2`), if one is. */
+  const selectedInstanceOf = (key: string): number | null => {
+    for (const k of selection) {
+      const at = parseInstanceKey(k);
+      if (at !== null && at.member === key) return at.index;
+    }
+    return null;
+  };
   const linkAt = (key: string): number => routed.links.findIndex((l) => linkKey(l) === key);
 
   /* The tab stop follows the focus, per kind: a card is its site's stop, a
@@ -725,7 +742,8 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
 
   const onCardKey = (key: string, ev: JSX.TargetedKeyboardEvent<SVGGElement>): void => {
     const node = geo.byKey[key];
-    if (!node) return;
+    /* Not a card: an instance row's key, which answers what every entity does. */
+    if (!node) { onEntityKey(key, ev); return; }
     const list = siblings(node);
     const at = list.findIndex((n) => n.key === key);
     /* `Alt` and an arrow moves the card rather than the focus: one 8 px step,
@@ -926,9 +944,10 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
     if ((ev.button !== 0 && ev.button !== 1) || drag.current !== null) return;
     if (keyAt(ev.target) !== null || insideBar(ev.target)) return;
     const svg = svgRef.current;
-    /* Where the caller takes a rectangle, the plain drag is the rectangle and
-       the pan is the middle button or `Space`. */
-    if (props.onSelectMany && ev.button === 0 && !spaceHeld.current && svg !== null) {
+    /* Where the caller takes a rectangle, it is a modifier-drag: the plain drag
+       is the pan, the way it is on a map. */
+    if (props.onSelectMany && ev.button === 0 && !spaceHeld.current && svg !== null
+      && (ev.shiftKey || ev.metaKey || ev.ctrlKey)) {
       const rect = svg.getBoundingClientRect();
       drag.current = {
         kind: 'marquee',
@@ -936,7 +955,7 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
         startY: ev.clientY,
         scale: rect.width > 0 ? view.w / rect.width : 1,
         moved: false,
-        additive: ev.shiftKey || ev.metaKey || ev.ctrlKey,
+        additive: true,
       };
       return;
     }
@@ -1220,16 +1239,48 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
   };
 
   /**
-   * Ctrl (or Cmd) and the wheel: the browser's own zoom gesture, and what a
-   * trackpad pinch sends. A plain wheel is left alone -- it scrolls the stage,
-   * which is how a reader reaches the rest of a drawing bigger than its room.
+   * The wheel zooms, one rung of the ladder per notch.
+   *
+   * A mouse notch is 100-120 units and steps at once; a trackpad sends a run
+   * of small ones (and a pinch, flagged with Ctrl, smaller still), so the run
+   * is summed and a rung is taken each time it crosses `WHEEL_NOTCH`. The sum
+   * is dropped after a pause or a change of direction, so momentum does not
+   * carry the next gesture over a rung. The point under the pointer is
+   * remembered for the layout effect below, which scrolls it back under the
+   * pointer once the drawing has its new size.
    */
   const onSvgWheel = (ev: JSX.TargetedWheelEvent<SVGSVGElement>): void => {
-    if (!ev.ctrlKey && !ev.metaKey) return;
     if (!props.onZoomStep) return;
     ev.preventDefault();
-    props.onZoomStep(ev.deltaY < 0 ? 1 : -1);
+    const acc = wheelAcc.current;
+    const now = ev.timeStamp;
+    const dy = ev.deltaMode === 1 ? ev.deltaY * 33 : ev.deltaMode === 2 ? ev.deltaY * 400 : ev.deltaY;
+    if (now - acc.at > WHEEL_IDLE_MS || Math.sign(dy) !== Math.sign(acc.sum)) acc.sum = 0;
+    acc.at = now;
+    acc.sum += dy;
+    if (Math.abs(acc.sum) < WHEEL_NOTCH) return;
+    const dir = acc.sum < 0 ? 1 : -1;
+    acc.sum = 0;
+    const svg = svgRef.current;
+    const box = svg?.getBoundingClientRect();
+    zoomAnchor.current = box !== undefined && box.width > 0 && box.height > 0
+      ? { fx: (ev.clientX - box.left) / box.width, fy: (ev.clientY - box.top) / box.height, x: ev.clientX, y: ev.clientY }
+      : null;
+    props.onZoomStep(dir);
   };
+
+  /* After a zoom, put the remembered spot back under the pointer. */
+  useLayoutEffect(() => {
+    const a = zoomAnchor.current;
+    zoomAnchor.current = null;
+    const svg = svgRef.current;
+    if (a === null || svg === null) return;
+    const stage = scrollerFor(svg);
+    if (stage === null) return;
+    const box = svg.getBoundingClientRect();
+    stage.scrollLeft += box.left + a.fx * box.width - a.x;
+    stage.scrollTop += box.top + a.fy * box.height - a.y;
+  }, [zoomFactor]);
 
   /**
    * A pointer-up that landed on nothing.
@@ -1494,6 +1545,8 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
         chips={chipsFor(doc, n)}
         label={cardLabel(doc, graph, n, frame)}
         selected={isSelected(n.key)}
+        instancesLive={props.onDelete !== undefined}
+        selectedInstance={selectedInstanceOf(n.key)}
         hovered={hovered === n.key}
         dragging={drag.current?.kind === 'card' && drag.current.moved && n.key in drag.current.bases}
         target={rubber !== null && rubber.over === n.key

@@ -72,15 +72,17 @@ export function Group(
  * (ui.md SS3, "on paper the panels stack").
  */
 export function Fold(
-  { id, title, hint, action, children }:
+  { id, title, hint, action, children, defaultOpen = false }:
   {
     id: string; title: string; hint?: string;
+    /** Open until the reader shuts it (a RAC member's instances); shut otherwise. */
+    defaultOpen?: boolean;
     /** Controls for the open group, beside the toggle; absent while it is folded. */
     action?: ComponentChildren;
     children: ComponentChildren;
   },
 ) {
-  const open = isSectionOpen(id) || printing.value;
+  const open = isSectionOpen(id, defaultOpen) || printing.value;
   return (
     <section class={`grp grp-fold${open ? ' is-open' : ''}`}>
       <header class="grp-hd">
@@ -88,7 +90,7 @@ export function Fold(
           type="button"
           class="grp-tog"
           aria-expanded={open}
-          onClick={() => toggleSection(id)}
+          onClick={() => toggleSection(id, defaultOpen)}
         >
           <Caret open={open} />
           <span class="eyebrow">{title}</span>

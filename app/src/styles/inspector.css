@@ -77,6 +77,16 @@
    `Remove`. Ghost until the pointer is on one (float.css). */
 .insp .btn{font-size:12.5px;padding:4px 8px;min-height:28px}
 .insp .btn.is-faded{opacity:.46}
+/* At rest the rail's own buttons (Remove, + Instance, + Rule, + Group, ...) have
+   a box: a ghost with no border read as loose text beside the fields that sit
+   in boxes. Text stays --ik (well past 4.5:1 in both schemes); the edge is
+   --ln2 and the fill --sf3, so the button is findable without competing with
+   the field beside it. The header's icon buttons, the Hints switch and the
+   primary / danger variants keep their own looks. */
+.insp .btn:not(.is-icon):not(.is-quiet):not(.is-primary):not(.is-solid):not(.is-danger){
+  color:var(--ik);background:var(--sf3);border-color:var(--ln2)}
+.insp .btn:not(.is-icon):not(.is-quiet):not(.is-primary):not(.is-solid):not(.is-danger):hover:not(:disabled){
+  background:var(--sf2);border-color:var(--ik3)}
 /* A refusal is a sentence under the control it explains, full width, never
    squeezed beside a button. */
 .insp .why{display:block;border-radius:8px;padding:4px 10px;border:0;

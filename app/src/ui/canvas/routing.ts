@@ -10,9 +10,9 @@
  * that depends on iteration order.
  */
 
-import type { Member, RedoGraph, Snapshot, TopologyDoc, XptMode } from '@/engine';
+import type { Application, Member, RedoGraph, Snapshot, TopologyDoc, XptMode } from '@/engine';
 import {
-  applyParticipants, buildReachability, hasApplyInstance, initialApplyInstance, initialNetState,
+  applicationClient, applicationsOf, applyParticipants, findApplication, buildReachability, hasApplyInstance, initialApplyInstance, initialNetState,
   instanceKey, isDatabase, isRac, linkRttMs, netFromSummary,
 } from '@/engine';
 import type { Geometry, NodeBox } from './layout';
@@ -112,12 +112,13 @@ const publishes = (doc: TopologyDoc, graph: RedoGraph, frame: Snapshot | null | 
 };
 
 /**
- * The members the application's connect descriptor names, in the order it
+ * The members this application's connect descriptor names, in the order it
  * lists them: one per member, however many of its instances are addresses.
+ * The descriptor is the application's own when it has one, else the shared one.
  */
-export function applicationTargets(doc: TopologyDoc): Member[] {
+export function applicationTargets(doc: TopologyDoc, app: Application): Member[] {
   const out: Member[] = [];
-  for (const a of doc.client.addresses) {
+  for (const a of applicationClient(doc, app).addresses) {
     const m = doc.members.find((x) => x.instances.some((i) => i.host === a.host));
     if (m && !out.includes(m)) out.push(m);
   }
@@ -126,65 +127,64 @@ export function applicationTargets(doc: TopologyDoc): Member[] {
 
 /** What the application's host reaches at this instant, host by host. */
 function applicationReach(
-  doc: TopologyDoc, frame: Snapshot | null | undefined,
+  doc: TopologyDoc, frame: Snapshot | null | undefined, app: Application,
 ): (host: string) => boolean {
-  const app = doc.application;
-  if (!app) return () => false;
   const net = frame ? netFromSummary(frame.epoch.net) : initialNetState(doc);
   const reach = buildReachability(doc, net);
   return (host) => reach.reachable(app.host, host as typeof app.host);
 }
 
 /**
- * The application's lines: one to every member its ADDRESS_LIST names. The
- * line to the member publishing the service is the one carrying sessions; the
- * others are addresses that would refuse until the role moves there.
+ * Every application's lines: for each, one to every member its ADDRESS_LIST
+ * names. The line to the member publishing the service is the one carrying
+ * sessions; the others are addresses that would refuse until the role moves
+ * there.
  */
 function connectLinks(
   doc: TopologyDoc, graph: RedoGraph, geo: Geometry, frame: Snapshot | null | undefined,
 ): CanvasLink[] {
-  const app = doc.application;
-  if (!app) return [];
-  const akey = nodeKey('application', app.id as string);
-  if (geo.byKey[akey] === undefined) return [];
-  const appDown = hostSiteDown(frame, doc, app.host as string);
-  const reaches = applicationReach(doc, frame);
-  const service = doc.client.serviceName;
   const out: CanvasLink[] = [];
-  for (const m of applicationTargets(doc)) {
-    const mkey = nodeKey('member', m.id as string);
-    if (geo.byKey[mkey] === undefined) continue;
-    const hosts = m.instances.map((i) => i.host as string);
-    const mDown = memberDown(doc, frame, m);
-    const down = appDown || mDown;
-    const cut = !down && !hosts.some((h) => !hostSiteDown(frame, doc, h) && reaches(h));
-    const serving = !down && !cut && publishes(doc, graph, frame, m);
-    const rtt = linkRttMs(doc, app.host, m.instances[0]?.host ?? app.host);
-    const dl = docLinkBetween(doc, app.host as string, hosts[0]);
-    out.push({
-      id: `connect:${app.id as string}:${m.id as string}`,
-      ...(dl === undefined ? {} : { docLink: dl }),
-      kind: 'connect',
-      from: akey,
-      to: mkey,
-      active: serving,
-      up: !down && !cut,
-      cut,
-      down,
-      caption: serving ? 'sessions' : 'address',
-      value: down ? 'down' : cut ? 'cut' : `${rtt} ms`,
-      model: false,
-      arrow: false,
-      title: appDown
-        ? `${app.name} is down, so nothing dials ${m.name}.`
-        : mDown
-          ? `${app.name} lists ${m.name} in its ADDRESS_LIST, but ${m.name} is down.`
-          : cut
-            ? `${app.name} lists ${m.name} in its ADDRESS_LIST, but cannot reach it: the network between them is severed.`
-            : serving
-              ? `${app.name} connects to ${service} on ${m.name}; round trip ${rtt} ms.`
-              : `${app.name} lists ${m.name} in its ADDRESS_LIST; ${service} is not published there, so a connection is refused with ORA-12514. Round trip ${rtt} ms.`,
-    });
+  for (const app of applicationsOf(doc)) {
+    const akey = nodeKey('application', app.id as string);
+    if (geo.byKey[akey] === undefined) continue;
+    const appDown = hostSiteDown(frame, doc, app.host as string);
+    const reaches = applicationReach(doc, frame, app);
+    const service = applicationClient(doc, app).serviceName;
+    for (const m of applicationTargets(doc, app)) {
+      const mkey = nodeKey('member', m.id as string);
+      if (geo.byKey[mkey] === undefined) continue;
+      const hosts = m.instances.map((i) => i.host as string);
+      const mDown = memberDown(doc, frame, m);
+      const down = appDown || mDown;
+      const cut = !down && !hosts.some((h) => !hostSiteDown(frame, doc, h) && reaches(h));
+      const serving = !down && !cut && publishes(doc, graph, frame, m);
+      const rtt = linkRttMs(doc, app.host, m.instances[0]?.host ?? app.host);
+      const dl = docLinkBetween(doc, app.host as string, hosts[0]);
+      out.push({
+        id: `connect:${app.id as string}:${m.id as string}`,
+        ...(dl === undefined ? {} : { docLink: dl }),
+        kind: 'connect',
+        from: akey,
+        to: mkey,
+        active: serving,
+        up: !down && !cut,
+        cut,
+        down,
+        caption: serving ? 'sessions' : 'address',
+        value: down ? 'down' : cut ? 'cut' : `${rtt} ms`,
+        model: false,
+        arrow: false,
+        title: appDown
+          ? `${app.name} is down, so nothing dials ${m.name}.`
+          : mDown
+            ? `${app.name} lists ${m.name} in its ADDRESS_LIST, but ${m.name} is down.`
+            : cut
+              ? `${app.name} lists ${m.name} in its ADDRESS_LIST, but cannot reach it: the network between them is severed.`
+              : serving
+                ? `${app.name} connects to ${service} on ${m.name}; round trip ${rtt} ms.`
+                : `${app.name} lists ${m.name} in its ADDRESS_LIST; ${service} is not published there, so a connection is refused with ORA-12514. Round trip ${rtt} ms.`,
+      });
+    }
   }
   return out;
 }
@@ -1290,14 +1290,14 @@ export function cardFrameFor(
   doc: TopologyDoc, node: NodeBox, frame?: Snapshot | null,
 ): CardFrame {
   if (node.kind === 'application') {
-    const app = doc.application;
+    const app = findApplication(doc, node.id);
     if (!app) return NEUTRAL_FRAME;
     const hostDown = hostSiteDown(frame, doc, app.host as string);
     if (!frame || hostDown) return { ...NEUTRAL_FRAME, down: hostDown, crashed: hostDown };
     /* Serving while the service is published somewhere it reaches; waiting
        while it is not -- the card is up, and it is not getting anywhere. */
-    const reaches = applicationReach(doc, frame);
-    const served = applicationTargets(doc).some((m) => PUBLISHING.has(frame.members[m.id] ?? '')
+    const reaches = applicationReach(doc, frame, app);
+    const served = applicationTargets(doc, app).some((m) => PUBLISHING.has(frame.members[m.id] ?? '')
       && m.instances.some((i) => !hostSiteDown(frame, doc, i.host as string) && reaches(i.host as string)));
     return { ...NEUTRAL_FRAME, phase: served ? 'serving' : 'waiting', stalled: !served };
   }
@@ -1384,7 +1384,7 @@ export function chipsFor(doc: TopologyDoc, node: NodeBox): CardChip[] {
     chips.push({
       text: 'APP',
       tone: 'ink',
-      title: 'The application: where the connect string is dialled from.',
+      title: 'An application: where its connect string is dialled from.',
     });
     return chips;
   }

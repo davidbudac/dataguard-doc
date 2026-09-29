@@ -15,7 +15,7 @@
  */
 
 import {
-  computeApp, findHost, findLink, findMember, findObserver, findSite, hasApplyInstance,
+  applicationsOf, computeApps, findApplication, findHost, findLink, findMember, findObserver, findSite, hasApplyInstance,
   initialApplyInstance, isDatabase, isFarSync, pickTickStep, pingSet, resolveRedoGraph, sortEvents,
 } from '@/engine';
 import type {
@@ -24,6 +24,7 @@ import type {
 } from '@/engine';
 import { eventIcon } from '../common/eventIcons';
 import { appLanes } from './app-lanes';
+import type { AppSection } from './app-lanes';
 import type { EventIconName } from '../common/eventIcons';
 
 /* ---------------- geometry ---------------- */
@@ -343,18 +344,22 @@ export interface TimelineModel {
   quietLinks: number;
   pinned: boolean;
   /**
-   * The line that heads the application's lanes: what they are, and the one
-   * reading the three of them add up to. Null when the document draws no
-   * application, or the view left its lanes out.
+   * The line that heads each application's lanes: whose they are, and the one
+   * reading the three of them add up to. One per application, in the order the
+   * document lists them; empty when it draws none, or the view left the lanes out.
    */
-  appSection: {
-    y: number;
-    title: string;
-    note: string;
-    tone: 'ink' | InkClass;
-    /** What the numbers rest on: this page's model, said in the tooltip. */
-    basis: string;
-  } | null;
+  appSections: AppSectionHead[];
+}
+
+export interface AppSectionHead {
+  /** The application whose three lanes this heads. */
+  id: string;
+  y: number;
+  title: string;
+  note: string;
+  tone: 'ink' | InkClass;
+  /** What the numbers rest on: this page's model, said in the tooltip. */
+  basis: string;
 }
 
 export interface TimelineView {
@@ -422,15 +427,16 @@ function makeScale(t0: Seconds, t1: Seconds, plotL: number, plotR: number): Time
  * The application's model for a run, computed once per trace: the axis, the
  * readout and the lanes all ask for it, and a scrub asks on every frame.
  */
-const appModels = new WeakMap<Trace, { doc: TopologyDoc; model: AppModel }>();
+const appModels = new WeakMap<Trace, { doc: TopologyDoc; models: AppModel[] }>();
 
-export function appModelFor(trace: Trace, doc: TopologyDoc): AppModel | null {
-  if (doc.application === undefined) return null;
+/** Every application's view of the run, in the document's order; empty when it draws none. */
+export function appModelsFor(trace: Trace, doc: TopologyDoc): AppModel[] {
+  if (applicationsOf(doc).length === 0) return [];
   const hit = appModels.get(trace);
-  if (hit && hit.doc === doc) return hit.model;
-  const model = computeApp(doc.client, trace, doc);
-  appModels.set(trace, { doc, model });
-  return model;
+  if (hit && hit.doc === doc) return hit.models;
+  const models = computeApps(trace, doc);
+  appModels.set(trace, { doc, models });
+  return models;
 }
 
 /**
@@ -439,11 +445,17 @@ export function appModelFor(trace: Trace, doc: TopologyDoc): AppModel | null {
  * does not flatten the failover into the first pixel of the axis.
  */
 function appEnd(trace: Trace, doc: TopologyDoc | undefined): Seconds | null {
-  const ap = doc === undefined ? null : appModelFor(trace, doc);
-  if (ap === null || ap.noEvent) return null;
-  const end = ap.tConn ?? ap.gaveUp;
-  if (end === null) return null;
-  return Math.min(end, Math.max(160, (ap.tService ?? 0) + 100));
+  if (doc === undefined) return null;
+  /* The axis has to hold every application's story, so it runs to the last. */
+  let last: Seconds | null = null;
+  for (const ap of appModelsFor(trace, doc)) {
+    if (ap.noEvent) continue;
+    const end = ap.tConn ?? ap.gaveUp;
+    if (end === null) continue;
+    const capped = Math.min(end, Math.max(160, (ap.tService ?? 0) + 100));
+    last = last === null ? capped : Math.max(last, capped);
+  }
+  return last;
 }
 
 export function lastInterestingT(
@@ -1183,29 +1195,36 @@ export function buildTimeline(trace: Trace, doc: TopologyDoc, view: TimelineView
     };
   });
 
-  /* ---- the application's lanes, under the configuration's ---- */
+  /* ---- the applications' lanes, under the configuration's ---- */
   const membersBottom = lanes.length > 0
     ? (laneTops[laneTops.length - 1] ?? TL.laneTop) + TL.laneH
     : TL.laneTop + TL.laneH;
-  const ap = pinned || view.app === false ? null : appModelFor(trace, doc);
-  const section = ap === null || doc.application === undefined ? null : appLanes(ap, doc, t0, t1);
-  let appSection: TimelineModel['appSection'] = null;
-  /* The lane the reconnect is marked on, and the row its label is given. */
-  let connectKey: string | null = null;
-  if (section !== null && doc.application !== undefined) {
-    const appId = doc.application.id as string;
-    appSection = {
-      y: membersBottom + TL.appHead - 12,
-      title: "The application's view",
+  const aps = pinned || view.app === false ? [] : appModelsFor(trace, doc);
+  const many = aps.length > 1;
+  const appSections: AppSectionHead[] = [];
+  /* Per application: its section, the lane its reconnect is marked on. */
+  const appMarks: { id: string; section: AppSection; connectKey: string | null; row: string }[] = [];
+  let appTop = membersBottom;
+  for (const ap of aps) {
+    const application = ap.application === null ? undefined : findApplication(doc, ap.application.id);
+    if (application === undefined) continue;
+    const section = appLanes(ap, doc, t0, t1);
+    const appId = application.id as string;
+    const prefix = `application:${appId}:`;
+    appSections.push({
+      id: appId,
+      y: appTop + TL.appHead - 12,
+      title: many ? `${application.name}'s view` : "The application's view",
       note: section.note,
       tone: section.tone,
       basis: section.basis,
-    };
-    let y = membersBottom + TL.appHead;
+    });
+    let connectKey: string | null = null;
+    let y = appTop + TL.appHead;
     for (const al of section.lanes) {
       /* The mark's sentence sits over the lane it belongs to. */
       if (al.key === 'connect' && section.marks.some((mk) => mk.t >= t0 && mk.t <= t1)) y += TL.markRow;
-      const key = `application:${al.key}`;
+      const key = `${prefix}${al.key}`;
       if (al.key === 'connect') connectKey = key;
       lanes.push({
         key,
@@ -1233,6 +1252,9 @@ export function buildTimeline(trace: Trace, doc: TopologyDoc, view: TimelineView
       });
       y += TL.laneH + TL.laneGap;
     }
+    appMarks.push({ id: appId, section, connectKey, row: `gap:app:${appId}` });
+    /* The next application's heading starts under this one's last lane. */
+    appTop = y - TL.laneGap;
   }
 
   const lastLane = lanes[lanes.length - 1];
@@ -1385,16 +1407,18 @@ export function buildTimeline(trace: Trace, doc: TopologyDoc, view: TimelineView
     markerRow.set('open', newPrimaryRow >= 0 ? `gap:${newPrimaryRow}` : 'top');
   }
 
-  /* The application's two marks: the reconnect, and the string giving up. */
-  if (section !== null && connectKey !== null) {
+  /* Each application's two marks: the reconnect, and the string giving up. */
+  for (const { id: appId, section, connectKey, row } of appMarks) {
+    if (connectKey === null) continue;
     const y = laneY.get(connectKey) ?? lanesBottom - TL.laneH;
     for (const mk of section.marks) {
       if (mk.t < t0 || mk.t > t1) continue;
       const x = scale.x(mk.t);
       const fits = x + 9 + approxW(mk.label, 11.5) <= scale.plotR;
       const good = mk.key === 'reconnect';
+      const mkey = `app-${mk.key}:${appId}`;
       markers.push({
-        key: `app-${mk.key}`,
+        key: mkey,
         kind: 'app',
         glyph: good ? 'diamond' : 'cross',
         t: mk.t,
@@ -1413,7 +1437,7 @@ export function buildTimeline(trace: Trace, doc: TopologyDoc, view: TimelineView
         y1: good ? y + TL.laneH + 4 : y + TL.laneH - 2,
         laneKey: connectKey,
       });
-      markerRow.set(`app-${mk.key}`, 'gap:app');
+      markerRow.set(mkey, row);
     }
   }
 
@@ -1546,6 +1570,6 @@ export function buildTimeline(trace: Trace, doc: TopologyDoc, view: TimelineView
     empty,
     quietLinks,
     pinned,
-    appSection,
+    appSections,
   };
 }

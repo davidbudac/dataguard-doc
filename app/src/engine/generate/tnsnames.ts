@@ -26,8 +26,8 @@ import { blank, cmd, comment, hl, note, span, svc } from './lines';
  * the primary role. Far sync instances can never be opened, and a snapshot
  * standby cannot be a failover target, so neither ever appears.
  */
-export function serviceAddresses(doc: TopologyDoc): ClientAddress[] {
-  if (doc.client.addresses.length > 0) return doc.client.addresses;
+export function serviceAddresses(doc: TopologyDoc, client: ClientDescriptor = doc.client): ClientAddress[] {
+  if (client.addresses.length > 0) return client.addresses;
   const out: ClientAddress[] = [];
   for (const m of doc.members) {
     if (!isDatabase(m) || !m.enabled) continue;
@@ -82,9 +82,16 @@ const SCAN_NAME_MODEL = model<string>(
 const tnsToken = (name: string, value: string | number): Span[] =>
   [hl(`(${name} = ${value})`)];
 
-export function buildTns(doc: TopologyDoc): GeneratedFile {
-  const c: ClientDescriptor = doc.client;
-  const addresses = serviceAddresses(doc);
+export interface TnsOptions {
+  /** The descriptor to write out; the document's shared one when left out. */
+  client?: ClientDescriptor;
+  /** Whose descriptor it is, when it is one application's own: added to the card's title. */
+  label?: string;
+}
+
+export function buildTns(doc: TopologyDoc, opts: TnsOptions = {}): GeneratedFile {
+  const c: ClientDescriptor = opts.client ?? doc.client;
+  const addresses = serviceAddresses(doc, c);
   const service = c.serviceName;
 
   const set: Span[][] = [];
@@ -180,7 +187,7 @@ export function buildTns(doc: TopologyDoc): GeneratedFile {
     });
     lines.push(comment(`    (CONNECT_DATA = (SERVICE_NAME = ${service})))`));
     lines.push(note('<cluster>-scan is a placeholder for the cluster\'s SCAN name', SCAN_NAME_MODEL));
-    if (doc.client.addresses.length > 0) {
+    if (c.addresses.length > 0) {
       lines.push(comment('the address list above is the one set on the client; the SCAN form is drawn from the members'));
     }
     claims.push(SCAN_ALIASES, SCAN_NAME_MODEL);
@@ -195,7 +202,9 @@ export function buildTns(doc: TopologyDoc): GeneratedFile {
   }
 
   return {
-    id: 'tnsnames', title: 'tnsnames.ora', filename: 'tnsnames.ora',
+    id: opts.label === undefined ? 'tnsnames' : `tnsnames:${opts.label}`,
+    title: opts.label === undefined ? 'tnsnames.ora' : `tnsnames.ora — ${opts.label}`,
+    filename: 'tnsnames.ora',
     syntax: 'tnsnames', lines, claims,
   };
 }

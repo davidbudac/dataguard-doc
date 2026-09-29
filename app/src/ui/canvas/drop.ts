@@ -18,6 +18,7 @@
  * Nothing here reads a signal or the DOM.
  */
 
+import { applicationsOf, findApplication } from '@/engine';
 import type { HostId, RedoGraph, TopologyDoc } from '@/engine';
 import type { WhyState } from '../common/WhyPill';
 import type { Geometry, LayoutOffset, SiteBox } from './layout';
@@ -34,7 +35,8 @@ function hostsOf(t: TopologyDoc, key: string): HostId[] {
   if (m) return [...new Set(m.instances.map((i) => i.host))];
   const o = t.observers.find((x) => (x.id as string) === key);
   if (o) return [o.host];
-  return t.application !== undefined && (t.application.id as string) === key ? [t.application.host] : [];
+  const app = findApplication(t, key);
+  return app !== undefined ? [app.host] : [];
 }
 
 const hasDatabase = (t: TopologyDoc, host: string): boolean =>
@@ -42,13 +44,12 @@ const hasDatabase = (t: TopologyDoc, host: string): boolean =>
 const hasObserver = (t: TopologyDoc, host: string): boolean =>
   t.observers.some((o) => (o.host as string) === host);
 
-/** This page's own rule, not Oracle's: the application is drawn on a host of its own. */
-export const WHY_APPLICATION_OWN_HOST = 'This page draws the application on a host of its own.';
+/** This page's own rule, not Oracle's: each application is drawn on a host of its own. */
+export const WHY_APPLICATION_OWN_HOST = 'This page draws each application on a host of its own.';
 
 /** May the card `key` be dropped onto `host`'s card or stack, to share it? */
 export function mergeVerdict(t: TopologyDoc, key: string, host: string): WhyState {
-  const app = t.application;
-  if (app !== undefined && ((app.id as string) === key || (app.host as string) === host)) {
+  if (findApplication(t, key) !== undefined || applicationsOf(t).some((a) => (a.host as string) === host)) {
     return { state: 'off', why: WHY_APPLICATION_OWN_HOST };
   }
   const isObserver = t.observers.some((o) => (o.id as string) === key);

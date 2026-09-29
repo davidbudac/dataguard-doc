@@ -14,7 +14,7 @@
 import { computed } from '@preact/signals';
 import { layoutTopology } from '@/ui/canvas/layout';
 import { inFlight, inFlightFrom } from '@/ui/canvas/place';
-import { appModelFor } from '@/ui/timeline/build';
+import { appModelsFor } from '@/ui/timeline/build';
 import type { Geometry } from '@/ui/canvas/layout';
 import {
   declaredPrimary, honestLevel, resolveRedoGraph, simulate, sortFindings, stateAt, validate,
@@ -127,7 +127,13 @@ export const protectionLevel = computed<Claim<ProtectionLevel> | null>(
 export type Tone = 'ik' | 'tl' | 'bl' | 'am' | 'rd' | 'vi' | 'sl';
 
 export interface ReadoutChip {
+  /** Unique on the line. */
   id: string;
+  /**
+   * The kind of reading, when several chips are of one kind (one per
+   * application): what the bar ranks and keeps by. Absent, the id is the kind.
+   */
+  group?: string;
   tone: Tone;
   /** The eyebrow. */
   k: string;
@@ -343,26 +349,36 @@ export function readoutFor(steady: boolean): ReadoutChip[] {
         : {}),
     });
   }
-  /* What the run cost the application: when its connect string got through,
-     or that it never did. This page's model, from where the card stands. */
-  const ap = appModelFor(t, topo);
-  if (ap !== null && (!ap.noEvent || ap.noEventKind === 'app-down')) {
-    const name = topo.application?.name ?? 'the application';
+  /* What the run cost each application: when its connect string got through,
+     or that it never did. This page's model, from where each card stands. One
+     reading per application, each naming its own; with a single application
+     the reading keeps the plain "Application" eyebrow. */
+  const models = appModelsFor(t, topo);
+  const many = models.length > 1;
+  models.forEach((ap, i) => {
+    if (ap.noEvent && ap.noEventKind !== 'app-down') return;
+    const name = ap.application?.name ?? 'the application';
+    const eyebrow = many ? name : 'Application';
+    const base = {
+      /* The first keeps the plain id; the rest are told apart by their place. */
+      id: i === 0 ? 'app' : `app~${i}`,
+      group: 'app',
+    };
     chips.push(ap.tConn !== null
       ? {
-        id: 'app', tone: 'tl', k: 'Application reconnects', v: fmt(ap.tConn), unit: 's',
+        ...base, tone: 'tl', k: many ? `${name} reconnects` : 'Application reconnects', v: fmt(ap.tConn), unit: 's',
         sub: `${name} gets a new connection at this instant: the connect string's own waits, on top of the role change.`,
         basis: 'model',
       }
       : {
-        id: 'app', tone: 'rd', k: 'Application',
+        ...base, tone: 'rd', k: eyebrow,
         v: ap.noEventKind === 'app-down' ? 'down' : 'stays down',
         sub: ap.noEventKind === 'app-down'
           ? `${name} is down with its host, so nothing is dialled.`
           : `${name} exhausts its connect string${ap.gaveUp === null ? '' : ` at t = ${fmt(ap.gaveUp)} s`} without reaching the service.`,
         basis: 'model',
       });
-  }
+  });
   const observerStates = Object.values(f.observers).map((o) => o.endState);
   if (observerStates.length > 0) {
     /* The master's, where there is one: every other running observer ends
