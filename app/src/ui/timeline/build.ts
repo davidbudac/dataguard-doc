@@ -311,6 +311,8 @@ export interface TimelineView {
   links?: 'auto' | 'always' | 'never';
   /** The application's lanes under the configuration's; drawn unless false. */
   app?: boolean;
+  /** PROTOTYPE: the left edge of the plot, where a layout draws its own gutter. */
+  gutter?: number;
 }
 
 /* ---------------- scale ---------------- */
@@ -959,7 +961,7 @@ export function buildTimeline(trace: Trace, doc: TopologyDoc, view: TimelineView
   const pinned = view.pinnedScale === true;
 
   const width = pinned ? PINNED.width : Math.max(360, Math.round(view.width));
-  const plotL = pinned ? PINNED.plotL : TL.gutter;
+  const plotL = pinned ? PINNED.plotL : view.gutter ?? TL.gutter;
   const plotR = pinned ? PINNED.plotR : Math.max(plotL + 40, width - TL.padR);
 
   let t0: Seconds;

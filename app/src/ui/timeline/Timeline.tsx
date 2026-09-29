@@ -50,7 +50,7 @@ export interface TimelineProps {
 
 /* ---------------- pieces ---------------- */
 
-function Defs() {
+export function Defs() {
   return (
     <defs>
       <pattern
@@ -70,7 +70,7 @@ function Defs() {
   );
 }
 
-function Lane({ lane, model, selected, onSelect }: {
+export function Lane({ lane, model, selected, onSelect }: {
   lane: TimelineLane;
   model: TimelineModel;
   selected: boolean;
@@ -134,7 +134,7 @@ function Lane({ lane, model, selected, onSelect }: {
   );
 }
 
-function Marker({ marker }: { marker: TimelineMarker }) {
+export function Marker({ marker }: { marker: TimelineMarker }) {
   const m = marker;
   const cy = (m.y0 + m.y1) / 2;
   return (
