@@ -44,10 +44,11 @@ export const TIGHT_W = 1100;
 /**
  * The readings in the order they are given up when the line is short: the
  * first is kept longest. Outcome, Application and Observer are the essentials;
- * Data loss goes first, then New primary open, then the primary's shutdown.
+ * Split brain goes first of all -- the band of cards has it whole -- then Data
+ * loss, then New primary open, then the primary's shutdown.
  * (The steady-state readings, which have no outcome, rank the same way.)
  */
-const KEEP = ['outcome', 'protection', 'app', 'observer', 'fsfo', 'abort', 'open', 'members', 'loss'];
+const KEEP = ['outcome', 'protection', 'app', 'observer', 'fsfo', 'abort', 'open', 'members', 'loss', 'split'];
 const CORE = new Set(['outcome', 'protection', 'app', 'observer']);
 
 /** Shorter eyebrows for when even the essentials do not fit; the values are never shortened. */
