@@ -78,6 +78,7 @@ straight into `../_site/`) · `npm test` (vitest) · `npm run typecheck`. The wh
 site is `node site/build.mjs`; publishing is `./site/publish.sh`, and **only when
 the user asks**.
 
+- **Desktop shell.** `desktop/` is a Tauri v2 wrapper (macOS, Windows); everything the page does differently inside it (saving files, printing, the Share origin) lives in `app/src/ui/common/desktop.ts` and nowhere else. See AGENTS.md, *The desktop app*.
 - **The engine is pure.** Nothing under `app/src/engine` may touch the DOM, do I/O,
   read a clock or call `Math.random`; the UI imports from `engine/index.ts` and never
   from a module deeper in. Two tests enforce both halves, so a stray import fails the

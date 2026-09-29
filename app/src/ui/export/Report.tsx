@@ -29,6 +29,7 @@ import { Timeline } from '../timeline/Timeline';
 import { comparisonSection } from '../review/model';
 import { buildReport, diagramLandscape } from './report-model';
 import type { ComparisonSection, FindingRow, ReportModel } from './report-model';
+import { isDesktop, printNative } from '../common/desktop';
 import '@/styles/report.css';
 
 /* ---------------- opening and closing ---------------- */
@@ -39,9 +40,16 @@ const nextFrame = (): Promise<void> =>
     else setTimeout(r, 0);
   });
 
-/** Ask the browser to print -- its dialog is where "Save as PDF" lives. */
+/**
+ * Ask the browser to print -- its dialog is where "Save as PDF" lives. macOS's
+ * webview ignores `window.print()`, so the desktop shell prints natively.
+ */
 export function printReport(): void {
-  if (typeof window !== 'undefined' && typeof window.print === 'function') window.print();
+  const fallback = (): void => {
+    if (typeof window !== 'undefined' && typeof window.print === 'function') window.print();
+  };
+  if (!isDesktop()) { fallback(); return; }
+  printNative().then((done) => { if (!done) fallback(); }, fallback);
 }
 
 /** ⋯ → Report as PDF: show the report, let it lay out, then print it. */

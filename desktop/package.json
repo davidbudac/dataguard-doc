@@ -1,0 +1,14 @@
+{
+  "name": "dataguard-desktop",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Tauri v2 shell around the Data Guard workbench in ../app. The shipped version is app/package.json's.",
+  "scripts": {
+    "dev": "tauri dev",
+    "build": "tauri build",
+    "icon": "tauri icon app-icon.png"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "2.12.0"
+  }
+}

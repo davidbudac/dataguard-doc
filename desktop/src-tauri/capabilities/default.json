@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "The workbench's main window: the two commands it calls and nothing else. Pop-out windows (dg-pop-*) are blank same-origin documents rendered into by the main page and get no IPC at all.",
+  "windows": ["main"],
+  "permissions": ["allow-save-file", "allow-print-page"]
+}

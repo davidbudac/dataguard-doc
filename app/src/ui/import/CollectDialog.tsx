@@ -6,6 +6,7 @@ import { doc, makeDoc } from '@/state/doc';
 import { edition, mode, toast } from '@/state/view';
 import { replaceWorkingDocument } from '@/state/workspaces';
 import { Sheet } from '../common/Sheet';
+import { desktopDownload } from '../common/desktop';
 import '@/styles/collect.css';
 
 export const collectOpen = signal(false);
@@ -26,9 +27,9 @@ function Body({ close }: { close: () => void }) {
   };
   return <div class="collect-body">
     <p>Run the read-only SQL collector on each database and far sync member, from CDB$ROOT or a non-CDB. Paste the complete output blocks together, or choose their combined text file.</p>
-    <p><a href={collectorUrl('dataguard-topology.sql')} download>Download SQL collector</a>{' · '}
-      <a href={collectorUrl('collect-dataguard.sh')} download>Optional shell wrapper</a>{' · '}
-      <a href={collectorUrl('README.txt')} download>Instructions and limits</a></p>
+    <p><a href={collectorUrl('dataguard-topology.sql')} download onClick={desktopDownload('dataguard-topology.sql')}>Download SQL collector</a>{' · '}
+      <a href={collectorUrl('collect-dataguard.sh')} download onClick={desktopDownload('collect-dataguard.sh')}>Optional shell wrapper</a>{' · '}
+      <a href={collectorUrl('README.txt')} download onClick={desktopDownload('README.txt')}>Instructions and limits</a></p>
     <p>In SQL*Plus / SQLcl, connect with access to the listed dynamic views, then run:</p>
     <pre>spool member.txt{'\n'}@dataguard-topology.sql{'\n'}spool off</pre>
     <p>Collection does not change Data Guard. Processing stays in this browser. The output includes database and host names.</p>

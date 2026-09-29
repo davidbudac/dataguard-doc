@@ -26,6 +26,7 @@
 import { effect, signal } from '@preact/signals';
 import type { Edition } from '@/engine';
 import { findPreset } from '@/presets';
+import { shareBase } from '@/ui/common/desktop';
 import { doc, makeDoc } from './doc';
 import type { Doc } from './doc';
 import { encodeDoc, toWire } from './codec';
@@ -378,7 +379,10 @@ async function canonicalTail(): Promise<{ tail: string; tooLarge: boolean }> {
 /** Build the canonical URL for the state as it stands. */
 export async function buildShareUrl(): Promise<{ url: string; tooLarge: boolean }> {
   const { tail, tooLarge } = await canonicalTail();
-  const base = typeof location === 'undefined' ? '' : location.origin + location.pathname;
+  /* On the desktop shell the page's own address is tauri://localhost, which
+     opens nowhere for the person the link is sent to (common/desktop.ts). */
+  const here = typeof location === 'undefined' ? '' : location.origin + location.pathname;
+  const base = shareBase(here);
   return { url: `${base}${tail}`, tooLarge };
 }
 
