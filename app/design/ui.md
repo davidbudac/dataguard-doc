@@ -1562,8 +1562,13 @@ handle on its top edge). Build's dock, chips and warning card are as they were.
   — a CSS artefact, not a stuck state (Lanes → Split → Lanes now never changes the width).
   Lanes never floats the stage event menu, at any width: the cards, data-centre headers and
   link pills carry the events, and below 1280 the top bar's *Events* button opens the drawer
-  with the menu (its *Inject at t =* field) at its head, closable like any drawer. Split keeps
-  its floating menu where there is no rail column.
+  with the menu (its *Inject at t =* field) at its head, closable like any drawer: the *Close*
+  button, Esc and a press on the scrim, the Lanes bar untouched behind it and reachable at once
+  when it is shut. The menu keeps its own height cap (360 px, scrolling in its own box) so the
+  events list with its *Remove* buttons stays one short scroll below it; the title's clock
+  reading and its unit are one unbreakable piece (`.evmenu-inject`), so at the drawer's width
+  the line breaks before *Inject* rather than stranding the *s*. Split keeps its floating menu
+  where there is no rail column.
 - **Density belongs to the model.** The prototype switched a module-level `TL` while
   rendering; it is now `TimelineView.density` → `TimelineModel.layout`, and `Lane`,
   `Marker`, `EventDrag` and `playheadSpan` read it from the model (`Marker` takes a
