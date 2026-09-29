@@ -112,8 +112,13 @@ button.issue{border-bottom:1px solid var(--ln)}
 .topbar-brand .brand{font-size:14px;font-weight:650;letter-spacing:-.01em;color:var(--ik);
   border-bottom:0;white-space:nowrap}
 .topbar-brand .brand:hover{color:var(--vi)}
+/* The left cluster gives way before it can reach the centred modes: the
+   brand and the tally keep their size, the picker and the restore note
+   ellipsise (their full text is a title). */
+.topbar-brand>.brand,.topbar-brand>.count{flex:0 0 auto}
+.topbar-brand>.doc-picker{flex:0 1 auto;min-width:7ch}
 .topbar-modes{flex:0 0 auto}
-.topbar-group{flex:1 1 0;justify-content:flex-end;flex-wrap:nowrap;gap:4px;min-width:0}
+.topbar-group{flex:1 1 0;justify-content:flex-end;flex-wrap:nowrap;gap:4px;min-width:max-content}
 .topbar-group .btn{font-size:12.5px;color:var(--ik2)}
 .topbar-group .btn.is-icon{font-size:16px;border-color:transparent}
 .topbar-group .btn.is-icon:hover:not(:disabled){border-color:transparent}
@@ -131,7 +136,10 @@ button.issue{border-bottom:1px solid var(--ln)}
   min-width:0;overflow:hidden;text-overflow:ellipsis;padding:4px 6px;cursor:pointer}
 .doc-picker:hover:not(:disabled){color:var(--ik)}
 .doc-picker option,.doc-picker optgroup{font-family:var(--sans);color:var(--ik);background:var(--sf)}
-.doc-restored{font-size:12px;color:var(--ik3);white-space:nowrap}
+.doc-restored{display:flex;align-items:center;gap:6px;flex:0 100 auto;min-width:0;
+  font-size:12px;color:var(--ik3);white-space:nowrap}
+.doc-restored-t{min-width:0;overflow:hidden;text-overflow:ellipsis}
+.doc-restored .btn{flex:0 0 auto}
 .topbar .count{font-family:var(--sans);font-size:12px;font-weight:500;background:transparent;
   border:0;border-bottom:1px solid transparent;padding:2px 0;cursor:pointer;white-space:nowrap}
 .topbar .count:hover{border-bottom-color:currentColor}
@@ -201,13 +209,6 @@ button.issue{border-bottom:1px solid var(--ln)}
   .app.is-float .guide-line{text-align:center;max-width:100ch;margin:0 auto;
     padding:6px 12px;text-shadow:0 0 6px var(--bg),0 0 2px var(--bg)}
   .app.is-float .guide-line a,.app.is-float .intro{pointer-events:auto}
-  /* Break's layout switch, at the far end of the guidance line: the line keeps
-     the middle, the switch takes the pointer the band otherwise gives away. */
-  .app.is-float .guide.has-sw{flex-direction:row;padding:0 var(--float-m)}
-  .app.is-float .guide.has-sw .guide-line{flex:0 1 auto;min-width:0}
-  .layout-sw{display:flex;align-items:center;gap:8px;flex:0 0 auto;pointer-events:auto}
-  .layout-sw-k{font-size:11px;color:var(--ik3)}
-  .layout-sw .seg button{padding:3px 12px;font-size:12px}
   /* The explanation the ? opens is a card over the canvas: it must not push
      the drawing down by the height of a page of keyboard shortcuts. */
   .app.is-float .intro{position:absolute;top:100%;left:50%;transform:translateX(-50%);
@@ -419,6 +420,16 @@ button.issue{border-bottom:1px solid var(--ln)}
   .topbar-group{flex:0 0 auto}
   .topbar-group>.seg{margin-right:2px}
   .topbar-acts{margin-left:2px;gap:4px}
+}
+/* Below 1440 there is no room beside the brand for the restore note (the
+   modes and the right-hand group take what is left): it drops under the bar,
+   at the left, for the eight seconds it is up. Above, it ellipsises inline. */
+@media (max-width:1439px){
+  .topbar{position:relative}
+  .doc-restored{position:absolute;left:14px;top:calc(100% + 6px);z-index:35;flex:none;
+    padding:6px 8px 6px 12px;background:var(--sf);border:1px solid var(--ln);
+    border-radius:var(--r-card);box-shadow:var(--sh-card)}
+  .doc-restored-t{overflow:visible}
 }
 /* Narrow top bar: the modes wrap under the brand rather than crushing it. */
 @media (max-width:1023px){

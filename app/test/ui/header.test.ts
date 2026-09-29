@@ -199,11 +199,27 @@ describe('the guidance line', () => {
     /* One clause by default -- the gesture. The sentence behind it is
        explanation and waits for `Hints`. */
     expect(line()).toBe(`Build · ${splitGuide('build', 'wide').lead}`);
-    for (const m of ['break', 'configure', 'learn'] as const) {
+    for (const m of ['configure', 'learn'] as const) {
       mode.value = m;
       await tick();
       expect(line()).toContain(splitGuide(m, 'wide').lead);
     }
+  });
+
+  /* Break's gestures moved to the mode button's title and the stage's
+     description; the band's height went to the drawing. */
+  it('is absent in Break, and its text is kept where a reader can still get it', async () => {
+    mode.value = 'break';
+    const root = mount(Guidance);
+    await tick();
+    expect(root.querySelector('.guide-line')).toBeNull();
+    expect(root.querySelector('.guide')).toBeNull();
+    expect(MODE_SUB.break).toContain('click a card to add an event');
+    expect(MODE_SUB.break).toContain('drag a numbered timeline marker');
+    introOpen.value = true;
+    await tick();
+    expect(root.querySelector('.guide .intro')).not.toBeNull();
+    introOpen.value = false;
   });
 
   it('gives the whole sentence back with hints on, and takes it away again', async () => {

@@ -2,12 +2,14 @@
  * The switch between Break's two layouts: Split (the drawing above the
  * timeline) and Lanes (each member's card continuing as its lane).
  *
- * It lives at the end of the guidance line under the top bar (Guidance.tsx),
- * which is the one place both layouts leave alone -- the bars, the bar between
- * the regions and the fused view all sit under it -- so it is in the same spot
- * whichever is on screen. The layout is a reading preference, remembered under
- * `dg-break-layout` (state/persist.ts); the run, the playhead and the selection
- * are not touched by switching.
+ * It sits in the top bar, immediately left of the `19c | 26ai` switch and
+ * built the same way (a bare `Segmented`, so `.topbar-group > .seg` styles it):
+ * the header is the one place both layouts leave alone, so it is in the same
+ * spot whichever is on screen. The layout is a reading preference, remembered
+ * under `dg-break-layout` (state/persist.ts); the run, the playhead and the
+ * selection are not touched by switching. Where it does not apply (any mode
+ * but Break, and the docked fallback below 1024 px) `TopBar` does not render
+ * it, and the slot is empty.
  */
 
 import { setBreakLayout } from '@/state/persist';
@@ -17,14 +19,11 @@ import { Segmented } from '../common/Segmented';
 
 export function LayoutSwitch() {
   return (
-    <div class="layout-sw">
-      <span class="layout-sw-k" aria-hidden="true">Layout</span>
-      <Segmented<BreakLayout>
-        label="Break layout"
-        value={breakLayout.value}
-        options={BREAK_LAYOUTS.map((v) => ({ value: v, label: BREAK_LAYOUT_LABEL[v], title: BREAK_LAYOUT_SUB[v] }))}
-        onChange={setBreakLayout}
-      />
-    </div>
+    <Segmented<BreakLayout>
+      label="Layout"
+      value={breakLayout.value}
+      options={BREAK_LAYOUTS.map((v) => ({ value: v, label: BREAK_LAYOUT_LABEL[v], title: BREAK_LAYOUT_SUB[v] }))}
+      onChange={setBreakLayout}
+    />
   );
 }

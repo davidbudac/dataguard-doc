@@ -16,7 +16,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef } from 'preact/hooks';
 import { trace } from '@/state/derived';
 import {
-  breakLayout, canEdit, floating, gridOn, inspectorOpen, introOpen, introPage, mode, railCollapsed,
+  breakLayout, canEdit, floating, gridOn, inspectorOpen, introOpen, introPage, mode, modeGuide, railCollapsed,
   timelineFull, timelineH, toast, viewport,
 } from '@/state/view';
 import type { Mode } from '@/state/view';
@@ -472,7 +472,9 @@ export function App() {
 
       {intro ? null : (
         <>
-          <main class="app-stage">
+          {/* Break has no guidance line under the bar (Guidance.tsx), so how to
+              add and move an event is the stage's description instead. */}
+          <main class="app-stage" aria-description={m === 'break' ? modeGuide('break', viewport.value) : undefined}>
             {/* Said once, here, and nowhere else: the rail, the drawing and
                 the event menu below all report that they are read-only
                 without repeating the reason (ui.md SS3). */}

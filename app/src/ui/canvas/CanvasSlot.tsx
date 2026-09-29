@@ -19,7 +19,7 @@ import { doc, withLayout, withSiteOrder } from '@/state/doc';
 import { breakCoalescing, edit, undo, undoLabel } from '@/state/history';
 import { toggleGrid } from '@/state/persist';
 import {
-  canEdit, clearSelection, floating, focusField, gridOn, hovered, mode, railWhere, select, selection, tNow,
+  breakLayout, canEdit, clearSelection, floating, focusField, gridOn, hovered, mode, railWhere, select, selection, tNow,
   toast, viewport,
 } from '@/state/view';
 import { buildActionsFor, openInspectorFor, removeAction } from '../build/actions';
@@ -45,7 +45,7 @@ import type { Rect } from './measure';
 import { resizedBox, TopoCanvas } from './TopoCanvas';
 import { isElement, PopIcon, popIn, popOut, popped, useHostWindow } from '../common/popout';
 import {
-  canZoom, fitZoom, WHY_MAX, WHY_MIN, zoom, zoomBy, zoomLabel,
+  autoFactor, canZoom, FIT_ZOOM, fitZoom, WHY_MAX, WHY_MIN, zoom, zoomAuto, zoomBy, zoomLabel,
 } from './zoom';
 
 /**
@@ -253,10 +253,36 @@ function freeGround(wrap: HTMLElement): Rect {
   return unobscured(win, chrome);
 }
 
+/**
+ * The room the drawing has, as the wrap's content box: the wrap is the whole
+ * window in the floating layout and its padding is what keeps the drawing
+ * clear of the chrome over it, so the padding is not room. Zero where nothing
+ * is laid out (jsdom), which `autoFactor` reads as "no room to fit".
+ */
+function wrapRoom(wrap: HTMLElement): { w: number; h: number } {
+  const cs = wrap.ownerDocument.defaultView?.getComputedStyle(wrap);
+  const px = (v: string | undefined): number => Number.parseFloat(v ?? '') || 0;
+  return {
+    w: wrap.clientWidth - px(cs?.paddingLeft) - px(cs?.paddingRight),
+    h: wrap.clientHeight - px(cs?.paddingTop) - px(cs?.paddingBottom),
+  };
+}
+
+/**
+ * `fit` is true where the layout sizes the drawing by its region (Break's
+ * Split): the factor the room allows is written to `zoom` on entering, on every
+ * resize of the room -- the window's, and the divider's, which moves the wrap's
+ * bottom padding -- and whenever the drawing itself changes size, until the
+ * reader zooms (`zoomAuto`). Leaving the layout with the room still in charge
+ * gives the drawing back at its own size.
+ */
 function useCanvasScale(
   zoomFactor: number,
+  fit: boolean,
 ): [(el: HTMLElement | null) => void, number, Margin] {
   const [scale, setScale] = useState(1);
+  const fitting = useRef(fit);
+  fitting.current = fit;
   /* The free ground around the drawing, in user units: where the bar may hang
      (anchor.ts `barRoom`). Negative where the visible ground stops inside the
      drawing -- a zoomed drawing scrolled under the chrome. */
@@ -273,10 +299,16 @@ function useCanvasScale(
     const box = svg.getAttribute('viewBox')?.trim().split(/[\s,]+/);
     const declared = Number(box?.[2] ?? svg.getAttribute('width'));
     const painted = svg.getBoundingClientRect().width;
+    const wrap = host.current as HTMLElement;
+    /* The room decides the size while the reader has not: the natural size is
+       the viewBox, whatever it is drawn at now. */
+    if (fitting.current && zoomAuto.peek() && declared > 0 && wrap.clientWidth > 0) {
+      const f = autoFactor({ w: declared, h: Number(box?.[3]) }, wrapRoom(wrap));
+      if (zoom.peek() !== f) zoom.value = f;
+    }
     if (!(declared > 0) || !(painted > 0)) return;
     const k = Math.min(1, Math.max(0.5, Math.round((painted / declared) * 100) / 100));
     setScale((prev) => (prev === k ? prev : k));
-    const wrap = host.current as HTMLElement;
     /* User units per CSS pixel, unclamped: this converts, it does not compensate. */
     const u = declared / painted;
     const next = marginAround(rectOf(svg.getBoundingClientRect()), freeGround(wrap), u);
@@ -290,6 +322,16 @@ function useCanvasScale(
      never fires on one and the measurement would be a rung out of date. This
      is that missing edge. */
   useEffect(() => { read(); }, [zoomFactor, read]);
+  /* Entering a layout that sizes the drawing by its room hands the size back
+     to the room, whatever the reader did before; leaving it returns the
+     drawing to its own size if the room was still deciding. */
+  const wasFit = useRef(false);
+  useLayoutEffect(() => {
+    if (fit && !wasFit.current) zoomAuto.value = true;
+    if (!fit && wasFit.current && zoomAuto.peek() && zoom.peek() !== FIT_ZOOM) zoom.value = FIT_ZOOM;
+    wasFit.current = fit;
+    read();
+  }, [fit, read]);
   /* Nor does an edit: a new data centre widens the drawing inside a wrap of
      the same size, and the ground around it shrinks. Every render, then --
      both setters bail out when nothing moved. */
@@ -374,7 +416,7 @@ function ZoomStrip({ tidy, grid = false, pop = false }: { tidy: boolean; grid?: 
     {
       label: 'Fit',
       name: 'Fit to page',
-      title: 'Back to the drawing at its own size.',
+      title: 'Back to the drawing at its own size, or at the size its room allows.',
       run: () => fitZoom(),
     },
     ...(tidy
@@ -498,7 +540,9 @@ export function CanvasSlot({ interactive = true }: CanvasSlotProps) {
      still looking. */
   const zooming = interactive && (m === 'build' || m === 'break');
   const zoomFactor = zooming ? zoom.value : 1;
-  const [wrapRef, scale, barMargin] = useCanvasScale(zoomFactor);
+  /* Break's Split draws the drawing in a region of its own, and fills it. */
+  const fits = zooming && m === 'break' && floating(m, viewport.value) && breakLayout.value === 'split';
+  const [wrapRef, scale, barMargin] = useCanvasScale(zoomFactor, fits);
   const host = useHostWindow();
   const anchored = barOpen.value;
 
@@ -654,6 +698,7 @@ export function CanvasSlot({ interactive = true }: CanvasSlotProps) {
         scale={scale}
         barMargin={barMargin}
         zoomFactor={zoomFactor}
+        fitted={fits && zoomAuto.value}
         {...(zooming ? { onZoomStep: (dir: 1 | -1): void => zoomBy(dir) } : {})}
         {...(bar === null ? {} : { bar })}
         onSelect={(key: string, additive: boolean) => {

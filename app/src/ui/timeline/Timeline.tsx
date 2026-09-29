@@ -11,6 +11,7 @@ import { useRef, useState } from 'preact/hooks';
 import { GLYPH } from '../common/eventIcons';
 import type { JSX } from 'preact';
 import type { TimedEvent, TopologyDoc, Trace } from '@/engine';
+import { fmt } from './build';
 import type { Density, Layout, TimelineLane, TimelineMarker, TimelineModel } from './build';
 import { useRunTimeline } from './run';
 import type { RunTimeline } from './run';
@@ -318,7 +319,7 @@ export function TimelineBody(props: TimelineProps & { run: RunTimeline }) {
   const summaryId = 'tl-summary';
   const summary = model.empty
     ? 'Timeline in steady state: no events have been injected, so every lane holds the state the configuration starts in.'
-    : `Timeline with ${model.lanes.length} lanes on a seconds axis, from ${model.scale.t0} to ${model.scale.t1} seconds. ${model.caption.text}.`;
+    : `Timeline with ${model.lanes.length} lanes on a seconds axis, from ${fmt(model.scale.t0)} to ${fmt(model.scale.t1)} seconds. ${model.caption.text}.`;
 
   return (
     <section class={model.empty ? 'tl is-empty' : 'tl'} aria-label="Timeline">

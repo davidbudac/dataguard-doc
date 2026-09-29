@@ -188,8 +188,11 @@ export function DocPicker() {
 
       {restored.value ? (
         <span class="doc-restored">
-          Restored your last configuration
-          {' '}
+          {/* The text is what gives way when the bar is short: it ellipsises
+              (the whole sentence is its title) and the way out stays. */}
+          <span class="doc-restored-t" title="Restored your last configuration">
+            Restored your last configuration
+          </span>
           <button
             type="button"
             class="btn is-quiet"

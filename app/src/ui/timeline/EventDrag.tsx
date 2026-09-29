@@ -4,7 +4,7 @@ import type { ComponentChildren, JSX } from 'preact';
 import type { TimedEvent, TopologyDoc } from '@/engine';
 import { eventTimeBounds, snapEventTime } from '../break/event-order';
 import type { TimelineMarker, TimelineModel } from './build';
-import { fmt } from './build';
+import { fmt, spoken } from './build';
 
 export interface EventDragProps {
   marker: TimelineMarker;
@@ -52,9 +52,9 @@ export function EventDrag({ marker, model, doc, onMove, onStart, children }: Eve
       role="slider"
       tabindex={0}
       aria-label={`Event ${index + 1}: ${marker.label}`}
-      aria-valuemin={bounds.min}
-      aria-valuemax={bounds.max}
-      aria-valuenow={at}
+      aria-valuemin={spoken(bounds.min)}
+      aria-valuemax={spoken(bounds.max)}
+      aria-valuenow={spoken(at)}
       aria-valuetext={`${fmt(at)} seconds`}
       transform={`translate(${delta},0)`}
       onPointerDown={(e) => {

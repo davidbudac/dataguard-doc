@@ -60,7 +60,8 @@ export const MODE_LABEL: Record<Mode, string> = {
  */
 export const MODE_SUB: Record<Mode, string> = {
   build: 'Build — draw the configuration: sites, members, redo routes, observers',
-  break: 'Break — add failures and follow the simulation timeline',
+  break: 'Break — add failures and follow the simulation timeline; click a card to add an event, '
+    + 'drag a numbered timeline marker to change its time',
   configure:
     'Configure — generated from the drawing: DGMGRL, init parameters and connect strings; '
     + 'hover a line to see which member it configures.',

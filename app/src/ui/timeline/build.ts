@@ -178,6 +178,13 @@ export function fmt(n: number): string {
   return Math.round(n * 10) / 10 === r ? r.toFixed(1) : r.toFixed(2);
 }
 
+/**
+ * A reading rounded for a machine that speaks it (`aria-valuemin`, a summary),
+ * to what `fmt` would print: the axis's far end is 1.15 x the last moment and
+ * carries its float noise, which a screen reader reads out digit by digit.
+ */
+export const spoken = (n: number): number => Math.round(n * 100) / 100;
+
 /** A real minus sign, so the negative ticks line up with the positive ones. */
 export const signed = (n: number): string => fmt(n).replace(/^-/, '−');
 
