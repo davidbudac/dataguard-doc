@@ -122,6 +122,14 @@ export const inspectorOpen = signal<boolean>(false);
  */
 export const breakLayout = signal<BreakLayout>('split');
 /**
+ * Whether Break's run summary -- the band of cards under the bar, in Split and
+ * in Lanes -- is unfolded. Folded to start with: the bar's terse line is the
+ * summary a reader already has, and the band is the same readings at reading
+ * size. Only meaningful with a run on screen. Remembered under `dg-summary`
+ * (persist.ts), read once at boot like `hintsOn`.
+ */
+export const summaryOpen = signal<boolean>(false);
+/**
  * Whether the rail beside the canvas is folded to its slim strip.
  *
  * Only where the rail is a column (`wide`, and not in Learn, whose right half

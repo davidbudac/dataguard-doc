@@ -34,9 +34,14 @@ import { findingCounts, FindingsSheet, onFindingsKey, plural } from '../Findings
 import { revealFindings } from '../IssuePanel';
 import { chipsThatFit } from './readout-fit';
 import type { FitItem } from './readout-fit';
+import { ReadoutFold } from './SummaryBand';
 
-/** What inside the bar keeps its own presses; anything else on it drags the split. */
-const KEEPS_PRESS = 'button, input, select, a, label, .sb-pop';
+/**
+ * What inside the bar keeps its own presses; anything else on it drags the
+ * split. `.rs-hit` is the terse line while the summary is folded: a click on
+ * it unfolds the summary (SummaryBand.tsx), so a press on it is not a drag.
+ */
+const KEEPS_PRESS = 'button, input, select, a, label, .sb-pop, .rs-hit';
 
 /** Below this the bar has no room for a row of speeds and the run's minor readings both. */
 export const TIGHT_W = 1100;
@@ -275,7 +280,7 @@ export function SplitBar({ run, sized }: {
           onSpeed={(s) => { speed.value = s; }}
         />
       )}
-      <TerseReadout run={trace.value !== null} />
+      <ReadoutFold><TerseReadout run={trace.value !== null} /></ReadoutFold>
       {run?.held && sized ? (
         <button
           type="button" class="btn sb-fit" title="An event was moved and the axis stayed where it was: fit it to the run again"
