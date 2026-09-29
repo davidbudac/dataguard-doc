@@ -304,9 +304,10 @@ function HomeCanvas() {
 
 function Stage({ m, wide, lanes = false }: { m: Mode; wide: boolean; lanes?: boolean }) {
   if (m === 'learn') return <LearnShell />;
-  /* Break's Lanes layout: the drawing and the timeline are one view. Its cards carry the
-     events, so the folded rail's floating menu is only for a viewport with no rail column. */
-  if (lanes) return <><LanesView />{!wide && viewport.value !== 'wide' ? <EventMenu /> : null}</>;
+  /* Break's Lanes layout: the drawing and the timeline are one view. Its cards, data-centre
+     headers and link pills carry the events, so no menu floats over it at any width: below
+     the rail column the drawer opens with the menu at its head (Rail, below). */
+  if (lanes) return <LanesView />;
   return (
     <>
       <HomeCanvas />
@@ -429,7 +430,7 @@ export function App() {
   useEffect(() => installShortcuts(), []);
 
   return (
-    <div ref={appRef} class={intro ? 'app m-intro' : `app m-${m}${float ? ' is-float' : ''}${float && !gridOn.value ? ' no-grid' : ''}${full ? ' tl-full' : ''}${float && m === 'break' && !menuInRail ? ' has-evm' : ''}${railShut ? ' rail-shut' : ''}${railSnap.value ? ' rail-snap' : ''}${lanes ? ' bl-lanes' : split ? ' bl-split' : ''}`}>
+    <div ref={appRef} class={intro ? 'app m-intro' : `app m-${m}${float ? ' is-float' : ''}${float && !gridOn.value ? ' no-grid' : ''}${full ? ' tl-full' : ''}${float && m === 'break' && !lanes && !menuInRail ? ' has-evm' : ''}${railShut ? ' rail-shut' : ''}${railSnap.value ? ' rail-snap' : ''}${lanes ? ' bl-lanes' : split ? ' bl-split' : ''}`}>
       {/* One header, three bands: the modes and the small controls, then the
           quieter document row, then the line that says what to do in the mode
           that is open. It is one element so the toast can be anchored to the
@@ -540,7 +541,8 @@ export function App() {
           position={viewport.value === 'compact' || viewport.value === 'narrow' ? 'bottom' : 'right'}
           onClose={() => { inspectorOpen.value = false; }}
         >
-          <Rail m={m} wide={false} float={float && !lanes} />
+          {/* The drawer is the one place Lanes' event menu lives below the rail column. */}
+          <Rail m={m} wide={lanes} float={float && !lanes} />
         </Sheet>
       ) : null}
 

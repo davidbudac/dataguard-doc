@@ -1557,8 +1557,10 @@ handle on its top edge). Build's dock, chips and warning card are as they were.
   width transition meanwhile (`.rail-snap`, rail.css): the rail's contents swap to the strip
   at once while its width took .22 s to follow, which was one frame of a wide, empty rail
   — a CSS artefact, not a stuck state (Lanes → Split → Lanes now never changes the width).
-  The folded rail's floating event menu is not drawn over Lanes on a viewport that has the
-  rail column.
+  Lanes never floats the stage event menu, at any width: the cards, data-centre headers and
+  link pills carry the events, and below 1280 the top bar's *Events* button opens the drawer
+  with the menu (its *Inject at t =* field) at its head, closable like any drawer. Split keeps
+  its floating menu where there is no rail column.
 - **Density belongs to the model.** The prototype switched a module-level `TL` while
   rendering; it is now `TimelineView.density` → `TimelineModel.layout`, and `Lane`,
   `Marker`, `EventDrag` and `playheadSpan` read it from the model (`Marker` takes a

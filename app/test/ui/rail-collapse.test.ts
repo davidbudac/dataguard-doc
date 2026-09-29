@@ -128,6 +128,41 @@ describe('the side rail folds', () => {
     expect(root.querySelector('.app-stage > .evmenu')).toBeNull();
   });
 
+  it('floats no event menu over Lanes at a width with no rail column, and opens it in the drawer', async () => {
+    mode.value = 'break';
+    breakLayout.value = 'lanes';
+    viewport.value = 'medium';
+    const root = mount();
+    await tick();
+    expect(root.querySelector('.ln-cardwrap')).not.toBeNull();
+    expect(root.querySelector('.evmenu')).toBeNull();
+    expect(root.querySelector('.app')?.className).not.toContain('has-evm');
+    selection.value = ['sby01'];
+    await tick();
+    expect(root.querySelector('.evmenu')).toBeNull();
+    /* The top bar's Events button is the way to it: a drawer the reader can close. */
+    inspectorOpen.value = true;
+    await tick();
+    expect(root.querySelector('.app-stage > .evmenu')).toBeNull();
+    expect(document.querySelector('.evmenu')).not.toBeNull();
+    inspectorOpen.value = false;
+    await tick();
+    expect(document.querySelector('.evmenu')).toBeNull();
+  });
+
+  it('keeps Split\'s floating event menu where there is no rail column', async () => {
+    mode.value = 'break';
+    breakLayout.value = 'split';
+    viewport.value = 'medium';
+    const root = mount();
+    await tick();
+    expect(root.querySelector('.app-stage > .evmenu')).not.toBeNull();
+    selection.value = ['sby01'];
+    await tick();
+    expect(root.querySelector('.app-stage > .evmenu')).not.toBeNull();
+    expect(root.querySelector('.app')?.className).toContain('has-evm');
+  });
+
   it('does not fold Learn\'s workbench', async () => {
     mode.value = 'learn';
     setRailCollapsed(true);
