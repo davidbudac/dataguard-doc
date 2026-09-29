@@ -344,11 +344,18 @@ conditional on the target being the current target, synchronized or inside the l
 the observer reaching it (`manualFailoverFindings`, roles.ts); the loss it books is the redo the
 target never received -- never documented as bounded, zero or lossless, always model
 (`FAILOVER.LOSS_DEPENDS`).
-**A former primary is never drawn open beside the new one.** After a role change it is mounted,
-not open, whether or not fast-start failover armed the failover (`FSFO.FORMER_PRIMARY_NOT_OPEN`
+**A former primary is drawn open beside the new one only where nothing can tell it.** After a
+role change it is mounted, not open, whether or not fast-start failover armed the failover (`FSFO.FORMER_PRIMARY_NOT_OPEN`
 where it did, `FAILOVER.FORMER_PRIMARY_MOUNTED` -- this page's reading -- where it did not,
 since only the fast-start-failover case has ORA-16649 spelling out the mounted state). It stays
-that way until REINSTATE DATABASE or a fresh START/STARTUP the run does not model.
+that way until REINSTATE DATABASE or a fresh START/STARTUP the run does not model. The one
+exception is a manual failover with fast-start failover disabled and the old primary running where
+the new one cannot reach it: nothing tells it, so it stays `open-rw` beside the new primary (and the
+run raises `FAILOVER.PRIMARY_STILL_OPEN`). That is what `splitBrainOf` (`sim/split-brain.ts`) reads
+back: two lanes `open-rw` over a stretch with a length. A `Claim<boolean>`, `model`, note
+`SPLIT_BRAIN.READING` -- Oracle has no term and no interval for it -- asked only of a failover or manual
+failover that moved a primary, with the window when yes and, when no, what the old primary was doing
+the instant the new one opened (down, aborted, stalled, mounted). A STALLED primary is not counted.
 **One role change per run.** A second failover after a role change -- fast-start failover stays
 armed, and "the reinstated database acts as the fast-start failover target for the new primary
 database, making a subsequent fast-start failover possible" -- is not simulated. The run stops
@@ -426,7 +433,7 @@ app/src/engine/
   net/graph.ts
   redo/{parse,resolve}.ts
   validate/{index,rules/*}.ts
-  sim/{kernel,fsfo,protection,roles,simulate}.ts
+  sim/{kernel,fsfo,protection,roles,split-brain,simulate}.ts
   models/{axis,app,commit,reopen}.ts
   compat/classic.ts
   generate/{dgmgrl,initora,tnsnames,jdbc,show,lines}.ts

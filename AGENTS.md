@@ -420,6 +420,17 @@ agree on:
   not be allowed to open in any event if fast-start failover is enabled."
   (`ORA-16649`). Draw it mounted and needing reinstatement; never draw two
   databases open read-write because a host came back.
+- **"Split brain" is this page's reading, never Oracle's word.** No Oracle page uses
+  the term or gives an interval for it, so the Break readout's *Split brain* chip
+  (`splitBrainOf`, `engine/sim/split-brain.ts`) is `model`, note `SPLIT_BRAIN.READING`, and
+  asks one question of the drawing: were two members `open-rw` at the same moment. A
+  STALLED primary is not counted (Oracle: its redo generation is stalled), and the old
+  primary is drawn open only where nothing can tell it — a manual failover with fast-start
+  failover off, the old primary running where the new one cannot reach it. The chip is
+  asked only where a new primary opens by failover or manual failover. Never write a
+  *no* that says the old primary "cannot" be open: say what the drawing shows (aborted
+  at N s, down, stalled, mounted), and never draw "at most one database ends up open" as
+  unconditional (see the `FastStartFailoverLagLimit` rule above).
 - **One role change per run.** The engine evaluates one failover or switchover
   and says so (`SIM.ONE_ROLE_CHANGE`) when later events would need a second.
   Oracle documents that fast-start failover stays enabled and the reinstated
