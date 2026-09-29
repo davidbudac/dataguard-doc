@@ -84,13 +84,20 @@
   .sb-bar .tl-tp-slot { gap: 3px; }
   .sb-bar .tl-transport .why { display: none; }
 
-  /* the readings, one line; the last ones give way first */
+  /* the readings, one line. Its width is the room (flex-basis 0, so the readings
+     do not size it), and TerseReadout draws only the readings that fit whole:
+     a value is never clipped. The gap and the padding are mirrored in SplitBar.tsx
+     (RO_GAP, RO_PAD). */
   .sb-ro {
-    flex: 1 1 auto; min-width: 0; display: flex; align-items: baseline; gap: 6px;
+    position: relative; flex: 1 1 0; min-width: 0; display: flex; align-items: baseline; gap: 6px;
     overflow: hidden; white-space: nowrap; font-size: 12.5px;
     border-left: 1px solid var(--ln); margin-left: 2px; padding-left: 12px;
   }
-  .sb-ro-i { min-width: 0; overflow: hidden; text-overflow: ellipsis; flex: 0 1 auto; }
+  .sb-ro-i { flex: 0 0 auto; }
+  /* the hidden copy the widths are read from */
+  .sb-rm { position: absolute; left: 0; top: 0; width: max-content; height: 0; overflow: hidden; visibility: hidden; pointer-events: none; display: flex; gap: 6px; }
+  .sb-rm-w { display: flex; align-items: baseline; gap: 6px; flex: 0 0 auto; }
+  .sb-rm-i { flex: 0 0 auto; }
   .sb-ro-k { color: var(--ik3); font-size: 11px; }
   .sb-ro-v { font-weight: 600; color: var(--ik); }
   .sb-ro-v2 { color: var(--ik3); font-size: 11.5px; }

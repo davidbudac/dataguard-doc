@@ -1346,8 +1346,8 @@ handle on its top edge). Build's dock, chips and warning card are as they were.
   `bl-split`): the drawing fills the window above; the dock becomes a full-width lower
   region, flush with the window's foot, made of **the bar** and **the timeline**.
   - *The bar* is 40 px: the transport, the run's readings on one line (`Outcome failover ·
-    Why? · New primary open … · Application reconnects … · Observer …`, ellipsis at the
-    end), a **Fit timeline** button while an event drop has held the axis, the findings
+    Why? · New primary open … · Application reconnects … · Observer …`; **a value is never
+    clipped**, see *The terse line* below), a **Fit timeline** button while an event drop has held the axis, the findings
     as one chip (`⚠ 2`, the notes count, or ✓) with a dropdown, the colour key and the
     **Application's view** toggle behind an (i), the pop-out and the full-screen buttons.
     The whole bar is the drag handle (a press must move 4 px before it is a drag, so a
@@ -1355,6 +1355,18 @@ handle on its top edge). Build's dock, chips and warning card are as they were.
     keyboard separator (`DockGrip`, the window-splitter pattern, arrow keys, Home/End,
     Enter to reset). Dropdowns open upward over the drawing, where the warning card used
     to float, and share `FindingsSheet` with Build's popover.
+  - *The terse line* (`TerseReadout`, shared with Lanes, deciding in `readout-fit.ts`)
+    fits by leaving **whole readings out**, from the line's own measured width (the
+    `.sb-ro` element, `flex: 1 1 0` so the readings do not size it, watched by
+    `useWidth`; each reading's width comes from a hidden copy of the line, `.sb-rm`,
+    measured before paint). Give-up order, first to go first: Data loss, New primary open,
+    the primary's shutdown, Fast-start failover and Members (steady readings), then the
+    essentials Observer, Application, and never Outcome (with *Why?*). While anything
+    non-essential is on the line the eyebrows stay whole; only when just the essentials are
+    left do they shorten (*Application reconnects* to *App reconnects*, *Application* to
+    *App*); a value is never shortened. The line's `title` lists every reading whenever one
+    was left out, and each reading keeps its own sentence as a title. It no longer depends on
+    the 1100 px `TIGHT_W`, which now only folds the transport's speeds into a select.
   - *The bar reads the drawing's model.* `SplitDock` calls `useRunTimeline` once
     (`timeline/run.ts`: the model, and the held axis that used to be `Timeline`'s own
     state) and hands the result to the bar and to `TimelineBody`. The transport's steps

@@ -432,7 +432,7 @@ function LanesBar({ run }: { run: RunTimeline | null }) {
           onSpeed={(s) => { speed.value = s; }}
         />
       ) : null}
-      <TerseReadout run={trace.value !== null} tight={tight} />
+      <TerseReadout run={trace.value !== null} />
       {run?.held ? (
         <button
           type="button" class="btn sb-fit"
