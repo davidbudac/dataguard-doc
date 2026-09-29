@@ -216,15 +216,12 @@ the height by default -- pick a sensible default now that it is resizable.
 ### 6.2 Shell leftovers
 Status: done (on main via merge)
 Note: Findings' Escape is capture-phase and stops there. `useChromeInsets` (App.tsx) measures
-the palette (`--pal-r`) and, 1024-1279, the event menu -- the drawing goes under or beside it,
-whichever fits larger (`--evm-t`/`--evm-r`). One-row top bar down to 1024; tabs, lesson list,
+the palette (`--pal-r`). One-row top bar down to 1024; tabs, lesson list,
 step anchor and Explain are sans sentence case.
 - Escape with the findings popover open also clears the canvas selection.
 - Modes wrap to a second row of the top bar below ~1100 px.
 - The canvas insets use fixed palette widths (104 px Build, 236 px Break)
   instead of measuring the palette.
-- Between 1024 and 1279 px the Break event menu floats over the canvas and the
-  drawing's fit doesn't leave room for it.
 - Configure's tab strip and Learn's lesson list still use uppercase mono labels.
 
 ### 6.3 Right panel in wider rails
@@ -273,7 +270,7 @@ new Break rail / timeline panel.
 
 ### 7.3 Plainer wording
 Status: done (on main)
-Note: re-applied where the text still exists (App empty states, Guidance, BreakRail, Readout, EventMenu,
+Note: re-applied where the text still exists (App empty states, Guidance, BreakRail, Readout,
 CanvasSlot, view.ts guides, IntroPage, derived.ts chips). Kept main's where the plain one lost a fact:
 hero note, "Primary and standby", the footer's "everything here is a model". Outcome now says "manual
 action needed" when nobody was promoted; the FSFO chip states the ObserverOverride FALSE assumption.

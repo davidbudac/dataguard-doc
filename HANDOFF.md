@@ -50,7 +50,7 @@ every link the handover documents handed out still lands. Deploying is
 ```
 app/design/facts.md    verified Oracle fact sheet — the ONLY source of "documented" claims
 app/design/engine.md   engine spec + §10 "Deviations from the design as built"
-app/design/ui.md       app spec + as-built notes (header, readout, event menu, drawer, print)
+app/design/ui.md       app spec + as-built notes (header, readout, drawer, print)
 app/README.md          commands, structure, tests, deploy pointer
 app/src/engine/        pure, DOM-free (a purity test enforces it)
   types/               TopologyDoc, events, Trace, Claim/Finding (basis + citation ids)
@@ -111,14 +111,14 @@ what landed in this commit:
 | 3 | Guidance line under the header per mode; one-time dismissible "How this page works" card (`dg-intro-v1`) + "?" to reopen; "Start here" list in the empty Build inspector | landed (`ui/Guidance.tsx`, `state/view.ts` MODE_GUIDE/introOpen, `persist.ts` dg-intro-v1) |
 | 4 | Replace the four huge stat tiles with one compact chip strip (Build: protection level · members · FSFO · findings; Break: outcome · new primary open · data loss · observer · findings) | landed (`state/derived.ts`, `ui/common/Chip.tsx`; chip sentences moved into `title`) |
 | 5 | Validation noise: errors/warnings expanded, INFO collapsed behind "n notes ▸"; header says "0 issues · 6 notes"; INFO never in warning colours | landed (`ui/IssuePanel.tsx`; unfolded on paper by `ui/print.ts`) |
-| 6 | Break rail wording: "Inject at t = 40 s"; "One-click scenarios" | landed |
+| 6 | Break rail wording: "One-click scenarios" | landed |
 | 7 | Quieter eyebrows (10.5 px / .08em / `--ik3`), only as section labels; canvas site labels 11 px; stage fits content (min 260 px) | landed |
 | 8 | Both themes × four modes × classic / far-sync-zero-loss / multi-target-three-observers × 900 px, before/after screenshots | done once by the polish agent (screenshots lived in its scratchpad, not kept); redo before publishing |
 
 ## 3b. The second usability pass (2026-08-17)
 
 Verdict this time: *"quite confusing to use, not very intuitive."* Read as a newcomer
-at 1280×720 and 1440×900, fifteen findings, all landed; the as-built record is
+at 1280×720 and 1440×900, fourteen findings, all landed; the as-built record is
 `app/design/ui.md` §3b (one bullet per item — read that, not this table, for the
 mechanism). In one line each:
 
@@ -129,25 +129,23 @@ mechanism). In one line each:
 | 3 | selecting a card hid every way to add | `Add ▾` disclosure in the rail header, same `ADD_ACTIONS` table for all three surfaces |
 | 4 | the injected-events list was under six scenario blurbs | Break rail: Events → one-line scenarios (`Show descriptions`) → validation |
 | 5 | drawing at *t* and run-as-a-whole readout with no label | `Drawing at t = n s` chip + `Run` group; playhead rests at the end after an injection (`restPlayhead`) |
-| 6 | "Inject at t = 0 s" was a trap | the reading is an editable field; hint under it |
-| 7 | ~250 px of chrome before the drawing | one guidance line (mode word leads it), compact intro strip auto-dismissed on first real interaction, `?` toggles the full card |
-| 8 | "Configure" read as settings | guidance says generated output, and where the settings are (viewport-aware `railWhere`) |
-| 9 | picker said "Current configuration" for a pristine preset; eleven long sentences | preset name / `(edited)`; optgroups; `Preset.short` titles |
-| 10 | three shouted `NOTHING HAS TAKEN IT DOWN…` pills | restore rows only when something is down; containment-aware `isDownAt`; one quiet three-way sentence that cannot contradict the drawing |
-| 11 | `#t=` written for an untouched preset | `isPristinePreset`: `?preset=` alone until the first edit (undo/Reset provenance rides in history) |
-| 12 | findings count was text | a button that reveals the validation panel (Learn hands over with a toast) |
-| 13 | seven flat tabs | *Files* / *Behaviour* group labels in one tablist |
-| 14 | no "Open in Break" above the fold in Learn | workbench header with Open in Break / Open in Build |
-| 15 | shortcuts undiscoverable | `?` card lists the real keyboard map |
+| 6 | ~250 px of chrome before the drawing | one guidance line (mode word leads it), compact intro strip auto-dismissed on first real interaction, `?` toggles the full card |
+| 7 | "Configure" read as settings | guidance says generated output, and where the settings are (viewport-aware `railWhere`) |
+| 8 | picker said "Current configuration" for a pristine preset; eleven long sentences | preset name / `(edited)`; optgroups; `Preset.short` titles |
+| 9 | three shouted `NOTHING HAS TAKEN IT DOWN…` pills | restore rows only when something is down; containment-aware `isDownAt`; one quiet three-way sentence that cannot contradict the drawing |
+| 10 | `#t=` written for an untouched preset | `isPristinePreset`: `?preset=` alone until the first edit (undo/Reset provenance rides in history) |
+| 11 | findings count was text | a button that reveals the validation panel (Learn hands over with a toast) |
+| 12 | seven flat tabs | *Files* / *Behaviour* group labels in one tablist |
+| 13 | no "Open in Break" above the fold in Learn | workbench header with Open in Break / Open in Build |
+| 14 | shortcuts undiscoverable | `?` card lists the real keyboard map |
 
 Found by the review of that batch and fixed with it: **▶ Play had never advanced the
 playhead** (`ui/timeline/playback.ts` — a UI-layer rAF loop with a timer fallback;
 stops on the axis end, ▶ at the end rewinds); Learn at 1024–1279 px laid the grid out
 at zero width; `+ Data centre` minted a duplicate id and a self-link; `+ Link` could
 write to a nonexistent site; a hidden 1084 px a11y `<table>` gave the dock a
-horizontal scrollbar. Two minor leftovers, deliberately not done: `ui/panels/Show.tsx`
-prints `tNow` unclamped (the readout's fix, `clampToAxis`, is the one to reuse), and
-the event menu names a site by id in the member branch and by name in the site branch.
+horizontal scrollbar. One minor leftover, deliberately not done: `ui/panels/Show.tsx`
+prints `tNow` unclamped (the readout's fix, `clampToAxis`, is the one to reuse).
 
 **How to look at the page from an agent sandbox.** Headless Chrome on the dev box
 cannot fetch from a loopback HTTP server (it opens the socket and never sends the
@@ -185,9 +183,7 @@ looks cramped, still a lot of text"*. The as-built record is `app/design/ui.md`
 | Renames refuse out loud | `edits.ts` `renameMember`/`renameObserver` | `WHY.nameTaken` / `WHY.observerNameTaken` in a toast; double-click a card → rail + name field focused (`focusField`) |
 
 Judgement calls worth knowing: the rail stays the home of the full forms, the bar
-is the shortcut (a 25-field MemberForm does not fit a popover); the event menu keeps
-its fixed home in the Break rail (ui.md §3's "never a popup" rule bent only for an
-anchor drawn inside the drawing — see §3d); Break's stage is still `fit-content(46vh)`,
+is the shortcut (a 25-field MemberForm does not fit a popover); Break's stage is still `fit-content(46vh)`,
 so on dense presets the drawing (and the bar's text, ~9 px) is small there — raising the
 Break stage or auto-fitting the zoom (`zoom.ts` B1b) is the obvious next step.
 

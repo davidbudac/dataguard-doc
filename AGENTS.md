@@ -1160,7 +1160,7 @@ modes changes what is around it.
   because both bars wrap on a narrow window and a toast pinned to their nominal
   height paints over them. `site/build.mjs` fails the build on an inline
   `<script>`, an `on*=` handler or a `style=` attribute in the built page.
-- **Break has no event menu.** Events are added where the reader is looking: a
+- **Break's events are added where the reader is looking**: a
   click on a card, data centre or link opens the action bar's grouped list under
   a header that says *at t = [n] s*, a card's hover icons are the short list, and
   Lanes' cards and pills carry their own buttons. The rail is the reader's events

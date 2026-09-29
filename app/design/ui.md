@@ -76,10 +76,8 @@ Four modes, one persistent canvas (the canvas never blinks):
 
 As built, three things in that table are worth spelling out:
 
-- **Break has no event menu.** There used to be a panel (*Inject at t = [n] s · Hide*,
-  collapsing to an *Actions* button) at the head of the rail, on the stage or in the
-  drawer. It was a third copy of the list the action bar prints, and the rail is now
-  the reader's events and nothing else. What can be added to a selection is the action
+- **Where Break's events come from.** The rail is the reader's events and nothing
+  else. What can be added to a selection is the action
   bar a click opens (§3d), the quick icons on a card, and in Lanes the card, data-centre
   and link buttons with their ⋯ menus. Every one of them says when the event lands:
   the bar's header (*sby01 · at t = 12 s*), each icon's title, Lanes' *Events at t = …*
@@ -311,9 +309,7 @@ just did, and the control that does it must sit where they are looking.*
    (timed events only — a property holds from the first frame), `applyTemplate` and
    `clearEvents` (which sends it back to 0). Injecting a crash and being left
    staring at the pre-crash frame was the single most common way to misread the page.
-6. **One clock for where an event lands.** The event menu's own *Inject at t = [n] s*
-   field was removed with the menu (*Break has no event menu*, above); the transport's
-   *t* field is the playhead, the bar and the icons aim at its snapped value
+6. **One clock for where an event lands.** The transport's *t* field is the playhead, the bar and the icons aim at its snapped value
    (`snapT`, `break/events.ts`) and say so: the bar's header reads
    `<selection> · at t = [n] s` and each quick icon's title ends `· at t = [n] s`.
 7. **Less chrome over the stage.** The mode subtitle band is gone — `MODE_SUB` is
@@ -477,8 +473,7 @@ just did, and the control that does it must sit where they are looking.*
 
 A new stylesheet came out of this, on purpose: `styles/readout.css` (imported by
 `Readout.tsx`). It contains only new class names and overrides nothing in `shell.css`
-or `inspector.css`, so cascade order against it does not matter. (A second,
-`styles/evmenu.css`, went with the event menu itself.)
+or `inspector.css`, so cascade order against it does not matter.
 
 One new module came out of it too, and it is the only one that is not chrome:
 `timeline/playback.ts` (item 1). It is a hook, not an engine addition — the
@@ -1599,7 +1594,7 @@ and open at the restore — the two-line card and its state word, the applicatio
 the link names on pill, connector and menu, the empty run and its axis, the held axis, the
 braces, the data centres' order, the application in its data centre), `lanes-layout.test.ts`
 (rail lanes, pill planning and folding, `segmentAt`, `cardSub`, `hostBands`), `timeline-dock.test.ts` (the height and its clamp, the
-separator, full screen, `--tl-h`), `rail-collapse.test.ts` (with the Lanes Events drawer at 1024: open, no event menu in it, Remove, close by button, Esc and scrim; and no `.evmenu` anywhere in Break, Split or Lanes, folded or open), `contrast.test.ts` (every band label token over its fill, four palettes, >= 4.5:1), and in `lanes-events.test.ts` the drag readout beside the pin. Browser pass (Lanes polish, 2026-09-29: dark, light, the colour-blind palette, 1440×900 and
+separator, full screen, `--tl-h`), `rail-collapse.test.ts` (with the Lanes Events drawer at 1024: open, Remove, close by button, Esc and scrim), `contrast.test.ts` (every band label token over its fill, four palettes, >= 4.5:1), and in `lanes-events.test.ts` the drag readout beside the pin. Browser pass (Lanes polish, 2026-09-29: dark, light, the colour-blind palette, 1440×900 and
 1280×800, a restore at 20 s with the playhead at 20 s, the empty run, Lanes↔Split↔Lanes and
 Build↔Break rail widths sampled frame by frame): Split and Lanes at
 1440×900 and 1280×800, Split at 1024×768, the findings dropdown, the key popover and full
