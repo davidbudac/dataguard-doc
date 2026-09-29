@@ -15,7 +15,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'preac
 import type { TopologyDoc } from '@/engine';
 import { hostId, siteId } from '@/engine';
 import { frame, geometry, redoGraph, topology } from '@/state/derived';
-import { doc, withLayout } from '@/state/doc';
+import { doc, withLayout, withSiteOrder } from '@/state/doc';
 import { breakCoalescing, edit, undo, undoLabel } from '@/state/history';
 import { toggleGrid } from '@/state/persist';
 import {
@@ -831,6 +831,20 @@ export function CanvasSlot({ interactive = true }: CanvasSlotProps) {
           edit(
             undoLabel.peek() ?? `Move the ${key} card`,
             (d) => Object.entries(boxes).reduce((acc, [id, box]) => withLayout(acc, id, box), d),
+            `drag:${key}`,
+          );
+        }}
+        /* A data centre dragged past a neighbour: the new column order and the
+           carried cards settled into it, in the drag's own edit. */
+        onReorderSites={(
+          key: string, order: readonly string[],
+          offsets: Readonly<Record<string, { dx: number; dy: number; w?: number; h?: number }>>,
+        ) => {
+          edit(
+            undoLabel.peek() ?? `Move the ${key} data centre`,
+            (d) => withSiteOrder(
+              Object.entries(offsets).reduce((acc, [k, o]) => withLayout(acc, k, o), d), order,
+            ),
             `drag:${key}`,
           );
         }}

@@ -37,6 +37,15 @@ export interface LayoutOverride {
   dy: number;
   w?: number;
   h?: number;
+  /**
+   * Under a data centre's key only: its place in the left-to-right order of
+   * the columns, once the reader has dragged one data centre past another.
+   * Written for every data centre drawn at the time (`withSiteOrder`), so the
+   * columns that carry one are drawn in this order and a data centre added
+   * later takes the place the layout gives it. Absent, the layout's own order
+   * (by redo rank) stands.
+   */
+  order?: number;
 }
 
 /** True when the override gives a data centre a box of its own. */
@@ -112,12 +121,27 @@ export function withoutEventAt(d: Doc, index: number): Doc {
 
 export function withLayout(d: Doc, id: string, over: LayoutOverride | null): Doc {
   const layout = { ...d.layout };
-  if (over === null) delete layout[id];
-  else if (isSized(over)) {
+  if (over === null) { delete layout[id]; return { ...d, layout }; }
+  /* A data centre's place in the column order outlives a move or a resize
+     that does not name one. */
+  const order = over.order ?? d.layout[id]?.order;
+  const kept = order === undefined ? {} : { order };
+  if (isSized(over)) {
     layout[id] = {
-      dx: Math.round(over.dx), dy: Math.round(over.dy), w: Math.round(over.w), h: Math.round(over.h),
+      dx: Math.round(over.dx), dy: Math.round(over.dy), w: Math.round(over.w), h: Math.round(over.h), ...kept,
     };
-  } else layout[id] = { dx: snapToGrid(over.dx), dy: snapToGrid(over.dy) };
+  } else layout[id] = { dx: snapToGrid(over.dx), dy: snapToGrid(over.dy), ...kept };
+  return { ...d, layout };
+}
+
+/**
+ * The data centres' left-to-right column order, as the reader left it by
+ * dragging one past another: every id named gets its index as its `order`,
+ * keeping whatever offset or size it already had.
+ */
+export function withSiteOrder(d: Doc, ids: readonly string[]): Doc {
+  const layout = { ...d.layout };
+  ids.forEach((id, i) => { layout[id] = { ...(layout[id] ?? { dx: 0, dy: 0 }), order: i }; });
   return { ...d, layout };
 }
 

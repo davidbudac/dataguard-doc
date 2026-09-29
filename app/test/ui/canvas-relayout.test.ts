@@ -13,7 +13,8 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { declaredPrimary, resolveRedoGraph } from '@/engine';
 import type { TopologyDoc } from '@/engine';
 import { PRESETS } from '@/presets';
-import { doc as docSignal, makeDoc, withLayout } from '@/state/doc';
+import { doc as docSignal, makeDoc, withLayout, withSiteOrder } from '@/state/doc';
+import { fromWire, toWire } from '@/state/codec';
 import { resetHistory } from '@/state/history';
 import { layoutTopology } from '@/ui/canvas/layout';
 import type { Geometry, LayoutOffset, NodeBox } from '@/ui/canvas/layout';
@@ -370,4 +371,34 @@ describe('a data centre grown by hand pushes the columns beside it (5.1)', () =>
       expect(linesThroughCards(grown.geo, grown.links)).toEqual([]);
     });
   }
+});
+
+/* ---- a data centre dragged past another: the column order the reader set ---- */
+
+describe('a column order set by hand', () => {
+  const order = (geo: Geometry): string[] => [...geo.sites].sort((a, b) => a.col - b.col).map((s) => s.id as string);
+
+  it('draws the columns in that order, left to right, with no box over another', () => {
+    const d = withSiteOrder(docSignal.value, ['dc1', 'dc2', 'dc3']);
+    const { geo, links } = draw(topo(), d.layout);
+    expect(order(geo)).toEqual(['dc1', 'dc2', 'dc3']);
+    const xs = [...geo.sites].sort((a, b) => a.col - b.col).map((s) => s.x);
+    expect([...xs].sort((a, b) => a - b)).toEqual(xs);
+    expect(siteClashes(geo)).toEqual([]);
+    expect(linesThroughCards(geo, links)).toEqual([]);
+  });
+
+  it('leaves a data centre added since in the slot the layout gives it', () => {
+    const d = withSiteOrder(docSignal.value, ['dc1', 'dc2', 'dc3']);
+    const added = addSite() as unknown as string;
+    expect(order(draw(topo(), d.layout).geo)).toEqual(['dc1', 'dc2', 'dc3', added]);
+  });
+
+  it('survives a later move or resize of that data centre, and a round trip through a file', () => {
+    let d = withSiteOrder(docSignal.value, ['dc1', 'dc2', 'dc3']);
+    d = withLayout(d, 'dc2', { dx: 0, dy: 0, w: 400, h: 200 });
+    expect(d.layout['dc2']!.order).toBe(1);
+    const back = fromWire(JSON.parse(JSON.stringify(toWire(d)))).doc!;
+    expect(back.layout).toEqual(d.layout);
+  });
 });

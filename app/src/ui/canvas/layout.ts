@@ -227,7 +227,11 @@ export interface Geometry {
  * A hand-made offset. Under a data centre's key it may also carry `w`/`h`,
  * the size the reader gave the box (doc.ts `LayoutOverride`).
  */
-export interface LayoutOffset { dx: number; dy: number; w?: number; h?: number }
+export interface LayoutOffset {
+  dx: number; dy: number; w?: number; h?: number;
+  /** Under a data centre's key: its place in the column order (doc.ts `LayoutOverride.order`). */
+  order?: number;
+}
 
 export interface LayoutOptions {
   /** Drag overrides, keyed by node key, snapped to 8 px. */
@@ -443,6 +447,17 @@ export function layoutTopology(
     }),
     ...emptySites,
   ];
+  /* A column order the reader set by dragging one data centre past another
+     (`LayoutOverride.order`): the columns that carry one take the slots those
+     columns hold between them, in that order; any other -- a data centre added
+     since -- keeps the slot the rank gives it. */
+  const orderOf = (s: string): number | undefined => opts.overrides?.[s]?.order;
+  const slots = ordered.map((s, i) => (orderOf(s) === undefined ? -1 : i)).filter((i) => i >= 0);
+  if (slots.length > 1) {
+    const byHand = slots.map((i) => ordered[i] as string)
+      .sort((a, b) => (orderOf(a) as number) - (orderOf(b) as number));
+    slots.forEach((slot, j) => { ordered[slot] = byHand[j] as string; });
+  }
 
   /* ---- 3. rows inside a column ---- */
   const columns = ordered.map((s, col) => {

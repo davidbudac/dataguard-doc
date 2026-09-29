@@ -84,6 +84,16 @@ export interface TopoCanvasProps {
    */
   onHoldSites?: (key: string, boxes: Readonly<Record<string, LayoutOffset>>) => void;
   /**
+   * A whole data centre let go past a neighbour's middle: the columns take the
+   * new left-to-right `order` (every data centre's id), and `offsets` are the
+   * carried cards' overrides with the drag's sideways part taken back out, so
+   * the data centre settles into its new slot and its neighbours make room.
+   * Called before `onDragEnd` (with those offsets), so the caller can write it
+   * into the drag's own edit. Without it, a data centre can only be pushed
+   * about within the order the layout gives the columns.
+   */
+  onReorderSites?: (key: string, order: readonly string[], offsets: Readonly<Record<string, LayoutOffset>>) => void;
+  /**
    * A data centre resized from one of its handles (or `Alt`+arrow on it): its
    * new box as a sized override. Passing it draws the handles on a selected
    * data centre. Every call of one gesture is the same edit.
@@ -1125,6 +1135,20 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
         }
       }
     }
+    /* A whole data centre let go past the middle of a neighbour: that is a new
+       column order, not a push. Left to the push (step 7c), its neighbours
+       would slide out ahead of it and keep the old order, and the refitted
+       view would put it straight back where it started. */
+    if (!dropped && props.onReorderSites && geo.sites.some((st) => (st.id as string) === d.key)) {
+      const order = reorderedSites(d, all);
+      if (order !== null) {
+        const settled: Record<string, LayoutOffset> = {};
+        for (const [k, off] of Object.entries(all)) settled[k] = { ...off, dx: d.bases[k]?.dx ?? 0 };
+        props.onReorderSites(d.key, order, settled);
+        props.onDragEnd?.(d.key, settled[d.key] as LayoutOffset, settled);
+        return;
+      }
+    }
     /* Let go inside the data centre it came from: a box that would now shrink
        round what is left in it keeps the size it had when the drag began, and
        only grows -- to take a card let go past its edge (task 1.2). */
@@ -1133,6 +1157,22 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
       if (Object.keys(held).length > 0) props.onHoldSites(d.key, held);
     }
     props.onDragEnd?.(d.key, all[d.key] as LayoutOffset, all);
+  };
+
+  /**
+   * The data centres left to right by the middle of each box as the drag
+   * leaves them -- the carried one where it was let go, the others where they
+   * stood -- or null when that is the order they are already drawn in.
+   */
+  const reorderedSites = (d: CardDrag, all: Readonly<Record<string, LayoutOffset>>): string[] | null => {
+    const after = layoutTopology(doc, graph, {
+      overrides: { ...overrides, ...all }, transient: Object.keys(d.bases), transientFrom: d.bases,
+    });
+    const byCol = [...after.sites].sort((a, b) => a.col - b.col).map((st) => st.id as string);
+    const byX = [...after.sites]
+      .sort((a, b) => (a.x + a.w / 2) - (b.x + b.w / 2) || a.col - b.col)
+      .map((st) => st.id as string);
+    return byX.every((id, i) => id === byCol[i]) ? null : byX;
   };
 
   /** The data centres a card drag would shrink, with the box each should keep. */

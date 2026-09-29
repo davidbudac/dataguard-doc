@@ -15,7 +15,7 @@ import { h, render } from 'preact';
 import type { TopologyDoc } from '@/engine';
 import { App } from '@/ui/App';
 import { classicDoc, doc as docSignal } from '@/state/doc';
-import { redoStack, resetHistory, undoLabel, undoStack } from '@/state/history';
+import { redoStack, resetHistory, undo, undoLabel, undoStack } from '@/state/history';
 import { menuOpen } from '@/ui/canvas/EventMenu';
 import { closeBar } from '@/ui/canvas/bar';
 import { placeOver, placing, renaming } from '@/ui/canvas/place';
@@ -290,6 +290,74 @@ describe('a data centre is dragged as a group', () => {
     pointer(svg, 'Up', start[0] + 8, start[1] + 24);
     await painted();
     expect(docSignal.value.layout[added]).toEqual({ dx: 8, dy: 24 });
+  });
+
+  /** The data centres left to right, as drawn. */
+  const columnOrder = (root: HTMLElement): string[] => [...root.querySelectorAll('.tp-sitewrap[data-node]')]
+    .map((el) => ({ id: el.getAttribute('data-node')!, x: Number(el.querySelector('rect.tp-site')!.getAttribute('x')) }))
+    .sort((a, b) => a.x - b.x)
+    .map((s) => s.id);
+  /** Drag a data centre by its panel so its middle lands on `x`. */
+  const dragSiteTo = async (root: HTMLElement, id: string, x: number): Promise<void> => {
+    const panel = rectOf(root, id, 'rect.tp-site');
+    const start = clientOf(root, panel.x + panel.w / 2, panel.y + 10);
+    const end: [number, number] = [start[0] + (x - (panel.x + panel.w / 2)), start[1]];
+    const svg = root.querySelector('.topo-svg')!;
+    pointer(siteEl(root, id), 'Down', ...start);
+    pointer(svg, 'Move', ...end);
+    await tick();
+    pointer(svg, 'Up', ...end);
+    await painted();
+  };
+  const middleOf = (root: HTMLElement, a: string, b: string): number => {
+    const ra = rectOf(root, a, 'rect.tp-site'); const rb = rectOf(root, b, 'rect.tp-site');
+    return Math.round((ra.x + ra.w + rb.x) / 2);
+  };
+
+  it('a new data centre, added on the right, dragged between two others stays there -- the columns reorder', async () => {
+    const root = await mountApp();
+    chip(root, '+ Data centre').click();
+    await painted();
+    const added = topo().sites.map((s) => s.id as string).find((id) => !['dc1', 'dc2', 'dc3'].includes(id))!;
+    /* Classic draws dc1, dc3 (the observer), dc2; the new panel goes last. */
+    expect(columnOrder(root)).toEqual(['dc1', 'dc3', 'dc2', added]);
+    const n = undoStack.value.length;
+    await dragSiteTo(root, added, middleOf(root, 'dc1', 'dc3'));
+    expect(columnOrder(root)).toEqual(['dc1', added, 'dc3', 'dc2']);
+    /* Settled into its slot, not left hanging where the pointer let go. */
+    expect(docSignal.value.layout[added]).toEqual({ dx: 0, dy: 0, order: 1 });
+    expect(undoStack.value.length).toBe(n + 1);
+    /* It stays there after a card lands in it, and one undo puts it back. */
+    addDatabase(siteId(added));
+    await painted();
+    expect(columnOrder(root)).toEqual(['dc1', added, 'dc3', 'dc2']);
+    undo();
+    undo();
+    await painted();
+    expect(columnOrder(root)).toEqual(['dc1', 'dc3', 'dc2', added]);
+  });
+
+  it('the right-most occupied data centre dragged into the middle carries its cards there, and its neighbour makes room', async () => {
+    const root = await mountApp();
+    const sby = rectOf(root, 'sby01', 'rect.tp-card');
+    const obs = topo().observers[0]!.id as string;
+    await dragSiteTo(root, 'dc2', middleOf(root, 'dc1', 'dc3'));
+    expect(columnOrder(root)).toEqual(['dc1', 'dc2', 'dc3']);
+    const sbyAfter = rectOf(root, 'sby01', 'rect.tp-card');
+    const obsAfter = rectOf(root, obs, 'rect.tp-card');
+    expect(sbyAfter.x).toBeLessThan(obsAfter.x);
+    expect(sbyAfter.y).toBe(sby.y);
+    expect(siteOf('sby01')).toBe('dc2');
+    expect(docSignal.value.layout['sby01']).toEqual({ dx: 0, dy: 0 });
+    expect(undoLabel.value).toBe('Move the DC 2 data centre');
+  });
+
+  it('a data centre dragged only part way towards a neighbour keeps the order', async () => {
+    const root = await mountApp();
+    const dc2 = rectOf(root, 'dc2', 'rect.tp-site');
+    await dragSiteTo(root, 'dc2', dc2.x + dc2.w / 2 - 48);
+    expect(columnOrder(root)).toEqual(['dc1', 'dc3', 'dc2']);
+    expect(Object.values(docSignal.value.layout).some((o) => o.order !== undefined)).toBe(false);
   });
 
   it('still selects with a click, and still opens the rename field on a double click', async () => {
