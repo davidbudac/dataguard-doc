@@ -17,6 +17,7 @@ import { TimelineBody } from '../timeline/Timeline';
 import { useRunTimeline } from '../timeline/run';
 import { shellTimelineProps } from '../timeline/shell-props';
 import { SplitBar } from './SplitBar';
+import { SummaryBand } from './SummaryBand';
 
 function SplitRun({ t }: { t: Trace }) {
   const [ref, measured] = useWidth();
@@ -29,6 +30,7 @@ function SplitRun({ t }: { t: Trace }) {
   return (
     <>
       <SplitBar run={run} sized={!away} />
+      <SummaryBand />
       {away ? (
         <div class="tl-slot"><PoppedAway kind="timeline" label="Timeline" /></div>
       ) : (

@@ -17,10 +17,11 @@ import { inFlight, inFlightFrom } from '@/ui/canvas/place';
 import { appModelsFor } from '@/ui/timeline/build';
 import type { Geometry } from '@/ui/canvas/layout';
 import {
-  declaredPrimary, honestLevel, resolveRedoGraph, simulate, sortFindings, stateAt, validate,
+  declaredPrimary, honestLevel, resolveRedoGraph, simulate, sortFindings, splitBrainOf, stateAt, validate,
 } from '@/engine';
 import type {
-  CitationId, Claim, EngineTrace, Finding, Outcome, ProtectionLevel, Snapshot, TopologyDoc,
+  CitationId, Claim, EngineTrace, Finding, MemberId, Outcome, ProtectionLevel, SplitBrain, Snapshot,
+  TopologyDoc,
 } from '@/engine';
 import { doc } from './doc';
 import { edition, mode, tNow } from './view';
@@ -200,6 +201,41 @@ export const readout = computed<ReadoutChip[]>(
 );
 
 /**
+ * The Split brain chip's sentence. It branches on what the drawing shows --
+ * who is open, stalled, aborted or down at the instant the new primary opens --
+ * and never on the name of the event that led there.
+ */
+function splitBrainSentence(sb: SplitBrain, topo: TopologyDoc): string {
+  const name = (id: MemberId): string => topo.members.find((m) => m.id === id)?.name ?? (id as string);
+  const oldP = name(sb.former);
+  const newP = name(sb.newPrimary);
+  const open = `${newP} opens at ${fmt(sb.openAt)} s`;
+  const first = sb.windows[0];
+  if (first !== undefined) {
+    const more = sb.windows.length > 1
+      ? ` (and ${sb.windows.length - 1} more stretch${sb.windows.length === 2 ? '' : 'es'})` : '';
+    return first.to === null
+      ? `${oldP} and ${newP} are both open read-write from ${fmt(first.from)} s to the end of the run: ${oldP} is still open when ${open}, and nothing in this run closes it${more}.`
+      : `${oldP} and ${newP} are both open read-write from ${fmt(first.from)} s to ${fmt(first.to)} s: ${oldP} is still open when ${open}${more}.`;
+  }
+  const at = sb.formerAtOpen;
+  switch (at?.kind) {
+    case 'aborted':
+      return `${oldP} aborts at ${fmt(at.at)} s, before ${open}.`;
+    case 'stalled':
+      return at.abortsAt === null
+        ? `${oldP} is STALLED when ${open}, and nothing shuts it down; a stalled primary commits nothing.`
+        : `${oldP} is STALLED when ${open} and cannot commit; it shuts itself down at ${fmt(at.abortsAt)} s.`;
+    case 'closed':
+      return at.state.startsWith('mounted')
+        ? `${oldP} is mounted, not open, when ${open}: it needs reinstating before it can be a standby.`
+        : `${oldP} is not open read-write when ${open}.`;
+    default:
+      return `${oldP} is down when ${open}, so only one database is ever open read-write.`;
+  }
+}
+
+/**
  * The chips for one of the two readings, whichever mode is open: `steady`
  * asks for the configuration at rest, otherwise the run's outcome (which
  * falls back to the steady reading when there is no run). The printable
@@ -347,6 +383,19 @@ export function readoutFor(steady: boolean): ReadoutChip[] {
           cite: ['MAXPROT.SHUTS_PRIMARY', 'MAXPROT.TWO_STANDBYS', 'DEST.NET_TIMEOUT'] as CitationId[],
         }
         : {}),
+    });
+  }
+  /* Whether two members were ever open read-write together. Asked only where
+     a new primary opens by failover, and this page's model: Oracle has no
+     interval for it, so the answer is read off the drawing (splitBrainOf). */
+  const sb = splitBrainOf(t);
+  if (sb !== null) {
+    chips.push({
+      id: 'split', tone: sb.split.value ? 'rd' : 'tl', k: 'Split brain',
+      v: sb.split.value ? 'yes' : 'no',
+      sub: splitBrainSentence(sb, topo),
+      basis: sb.split.basis,
+      cite: [...sb.split.cite],
     });
   }
   /* What the run cost each application: when its connect string got through,

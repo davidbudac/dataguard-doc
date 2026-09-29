@@ -196,6 +196,30 @@ describe('the terse line, rendered', () => {
         expect(title).toContain('Outcome:');
       });
 
+      it('gives up Split brain before anything else, and never lets it stand in for an essential', async () => {
+        crash();
+        const keysAt = async (w: number): Promise<string[]> => {
+          stub(w);
+          const r = await mount();
+          const keys = shown(r);
+          render(null, r);
+          root = null;
+          document.body.innerHTML = '';
+          return keys;
+        };
+        const all = await keysAt(1400);
+        expect(all).toContain('Split brain');
+        /* The widest line that leaves something out, found by halving: the first reading to go is Split brain, and only it. */
+        let lo = 300;
+        let hi = 1400;
+        while (hi - lo > 12) {
+          const mid = Math.floor((lo + hi) / 2);
+          if ((await keysAt(mid)).length < all.length) lo = mid; else hi = mid;
+        }
+        expect(await keysAt(hi)).toEqual(all);
+        expect(await keysAt(lo)).toEqual(all.filter((k) => k !== 'Split brain'));
+      }, 20000);
+
       it('shortens labels, never values, when only the essentials are left', async () => {
         crash();
         stub(1400);

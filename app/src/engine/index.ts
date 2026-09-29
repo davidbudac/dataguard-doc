@@ -146,6 +146,8 @@ export type {
   Conditions, DataLossKind, EngineFacts, EngineTrace, LagStall,
 } from './sim/simulate';
 export { simulate, stateAt } from './sim/simulate';
+export type { FormerAtOpen, SplitBrain, SplitBrainWindow } from './sim/split-brain';
+export { splitBrainOf } from './sim/split-brain';
 export type { DeadlineAction, Pending, Phase, Sample, SimState, SwitchoverFacts } from './sim/kernel';
 export { buildLanes, epochAt, EPS, Queue, segmentAt, snapshotFrom } from './sim/kernel';
 export type { Readiness, TargetChoice } from './sim/fsfo';

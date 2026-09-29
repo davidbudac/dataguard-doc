@@ -17,6 +17,7 @@
  *   `dg-tl-h`        the height (px) Break's timeline panel was dragged to
  *   `dg-rail`        whether the side rail is folded to its strip ('1' = folded)
  *   `dg-break-layout` Break's layout, `split` or `lanes` -- anything else reads as split
+ *   `dg-summary`     whether Break's run summary band is unfolded ('1' = unfolded)
  *   `dg-fsfo-cfg-v1` the published page's stored configuration. Read once when
  *                    there is nothing newer, and never deleted: the old page
  *                    is still serving from /legacy/ and still owns that key.
@@ -37,8 +38,8 @@ import { fromWire, parseJsonText, toJsonText } from './codec';
 import { isDesktop, saveFile } from '@/ui/common/desktop';
 import type { DecodeResult } from './codec';
 import {
-  BREAK_LAYOUTS, breakLayout, gridOn, hintsOn, inspectorOpen, issuesOpen, railCollapsed, timelineH,
-  TL_MIN_H, viewport,
+  BREAK_LAYOUTS, breakLayout, gridOn, hintsOn, inspectorOpen, issuesOpen, railCollapsed, summaryOpen,
+  timelineH, TL_MIN_H, viewport,
 } from './view';
 import type { BreakLayout, PalettePref, ThemePref } from './view';
 
@@ -54,6 +55,7 @@ export const ISSUES_KEY = 'dg-issues';
 export const TIMELINE_H_KEY = 'dg-tl-h';
 export const RAIL_KEY = 'dg-rail';
 export const BREAK_LAYOUT_KEY = 'dg-break-layout';
+export const SUMMARY_KEY = 'dg-summary';
 
 export const AUTOSAVE_MS = 500;
 export const RESTORE_NOTICE_MS = 8000;
@@ -170,6 +172,20 @@ export function setBreakLayout(v: BreakLayout): void {
   breakLayout.value = v;
   write(BREAK_LAYOUT_KEY, v);
 }
+
+/* ---------------- Break's run summary ---------------- */
+
+/** Unfolded or not -- `summaryOpen` in `view.ts`; unset, or anything but '1', means folded. */
+export function loadSummaryOpen(): void {
+  summaryOpen.value = read(SUMMARY_KEY) === '1';
+}
+
+export function setSummaryOpen(on: boolean): void {
+  summaryOpen.value = on;
+  write(SUMMARY_KEY, on ? '1' : '0');
+}
+
+export const toggleSummary = (): void => setSummaryOpen(!summaryOpen.value);
 
 /* ---------------- Break's timeline region ---------------- */
 

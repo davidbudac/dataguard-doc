@@ -48,6 +48,7 @@ import type { CanvasLink } from '../canvas/routing';
 import type { NodeBox } from '../canvas/layout';
 import { approxW, elide, fitLabel } from '../canvas/measure';
 import { FindingsMenu, KeyMenu, TerseReadout, TIGHT_W } from './SplitBar';
+import { ReadoutFold, SummaryBand } from './SummaryBand';
 import { EventStrip, EV, MoreMenu, stripWidth } from './lanes-events';
 import type { MenuTarget } from './lanes-events';
 import { assignLanes, cardSub, hostBands, planPills, segmentAt, siteOrder } from './lanes-layout';
@@ -432,7 +433,7 @@ function LanesBar({ run }: { run: RunTimeline | null }) {
           onSpeed={(s) => { speed.value = s; }}
         />
       ) : null}
-      <TerseReadout run={trace.value !== null} />
+      <ReadoutFold><TerseReadout run={trace.value !== null} /></ReadoutFold>
       {run?.held ? (
         <button
           type="button" class="btn sb-fit"
@@ -749,6 +750,7 @@ function Lanes({ run, fr }: { run: RunTimeline | null; fr: Frame }) {
   return (
     <section class="ln-view float-card" aria-label="Break: topology and timeline" ref={section}>
       <LanesBar run={run} />
+      <SummaryBand />
 
       <div
         class="ln-body"
