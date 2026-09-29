@@ -32,6 +32,27 @@ export type BreakLayout = 'split' | 'lanes';
 
 export const BREAK_LAYOUTS: readonly BreakLayout[] = ['split', 'lanes'];
 
+/**
+ * Which timeline Simulate draws: `config` is the configuration's lanes (the
+ * timeline as it always was), `app` is the application's detail view -- the
+ * connect string's retry ladder, the sessions and the outage, the drawing the
+ * Config panel's Application view also makes. `app` exists only while the
+ * drawing has an application card; without one the configuration timeline is
+ * what shows whatever this says (`appTimelineOn` in ui/break/TimelineView.tsx).
+ * A reading preference, remembered under `dg-break-timeline` (persist.ts) like
+ * the layout, and not in the address.
+ */
+export type BreakTimeline = 'config' | 'app';
+
+export const BREAK_TIMELINES: readonly BreakTimeline[] = ['config', 'app'];
+
+export const BREAK_TIMELINE_LABEL: Record<BreakTimeline, string> = { config: 'Configuration', app: 'Application' };
+
+export const BREAK_TIMELINE_SUB: Record<BreakTimeline, string> = {
+  config: 'Configuration — the members, links and observer on one clock',
+  app: 'Application — what the connect string does while the role moves, and what it costs the application',
+};
+
 export const BREAK_LAYOUT_LABEL: Record<BreakLayout, string> = { split: 'Split', lanes: 'Lanes' };
 
 /** What each layout is for, in one sentence: the `title` of its button. */
@@ -121,6 +142,8 @@ export const inspectorOpen = signal<boolean>(false);
  * `setBreakLayout`.
  */
 export const breakLayout = signal<BreakLayout>('split');
+/** Which timeline Simulate draws (`BreakTimeline`). Configuration to start with; written by `setBreakTimeline`. */
+export const breakTimeline = signal<BreakTimeline>('config');
 /**
  * Whether the rail beside the canvas is folded to its slim strip.
  *

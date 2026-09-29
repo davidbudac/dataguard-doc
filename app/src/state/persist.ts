@@ -17,6 +17,7 @@
  *   `dg-tl-h`        the height (px) Break's timeline panel was dragged to
  *   `dg-rail`        whether the side rail is folded to its strip ('1' = folded)
  *   `dg-break-layout` Break's layout, `split` or `lanes` -- anything else reads as split
+ *   `dg-break-timeline` Simulate's timeline, `config` or `app` -- anything else reads as config
  *   `dg-fsfo-cfg-v1` the published page's stored configuration. Read once when
  *                    there is nothing newer, and never deleted: the old page
  *                    is still serving from /legacy/ and still owns that key.
@@ -37,10 +38,10 @@ import { fromWire, parseJsonText, toJsonText } from './codec';
 import { isDesktop, saveFile } from '@/ui/common/desktop';
 import type { DecodeResult } from './codec';
 import {
-  BREAK_LAYOUTS, breakLayout, gridOn, hintsOn, inspectorOpen, issuesOpen, railCollapsed, timelineH,
+  BREAK_LAYOUTS, BREAK_TIMELINES, breakLayout, breakTimeline, gridOn, hintsOn, inspectorOpen, issuesOpen, railCollapsed, timelineH,
   TL_MIN_H, viewport,
 } from './view';
-import type { BreakLayout, PalettePref, ThemePref } from './view';
+import type { BreakLayout, BreakTimeline, PalettePref, ThemePref } from './view';
 
 export const DOC_KEY = 'dg-doc-v1';
 export const THEME_KEY = 'dg-theme';
@@ -54,6 +55,7 @@ export const ISSUES_KEY = 'dg-issues';
 export const TIMELINE_H_KEY = 'dg-tl-h';
 export const RAIL_KEY = 'dg-rail';
 export const BREAK_LAYOUT_KEY = 'dg-break-layout';
+export const BREAK_TIMELINE_KEY = 'dg-break-timeline';
 
 export const AUTOSAVE_MS = 500;
 export const RESTORE_NOTICE_MS = 8000;
@@ -169,6 +171,19 @@ export function loadBreakLayout(): void {
 export function setBreakLayout(v: BreakLayout): void {
   breakLayout.value = v;
   write(BREAK_LAYOUT_KEY, v);
+}
+
+/* ---------------- Simulate's timeline: configuration or application ---------------- */
+
+/** `breakTimeline` in `view.ts`; unset, or anything else, means the configuration's. */
+export function loadBreakTimeline(): void {
+  const v = read(BREAK_TIMELINE_KEY);
+  breakTimeline.value = (BREAK_TIMELINES as readonly (string | null)[]).includes(v) ? (v as BreakTimeline) : 'config';
+}
+
+export function setBreakTimeline(v: BreakTimeline): void {
+  breakTimeline.value = v;
+  write(BREAK_TIMELINE_KEY, v);
 }
 
 /* ---------------- Break's timeline region ---------------- */

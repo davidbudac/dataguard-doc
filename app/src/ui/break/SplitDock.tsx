@@ -17,6 +17,7 @@ import { TimelineBody } from '../timeline/Timeline';
 import { useRunTimeline } from '../timeline/run';
 import { shellTimelineProps } from '../timeline/shell-props';
 import { SplitBar } from './SplitBar';
+import { AppTimeline, appTimelineOn } from './TimelineView';
 
 function SplitRun({ t }: { t: Trace }) {
   const [ref, measured] = useWidth();
@@ -33,7 +34,9 @@ function SplitRun({ t }: { t: Trace }) {
         <div class="tl-slot"><PoppedAway kind="timeline" label="Timeline" /></div>
       ) : (
         <div class="tl-slot" ref={ref}>
-          <TimelineBody {...props} density="compact" headline legend={false} showTransport={false} run={run} />
+          {appTimelineOn() ? <AppTimeline /> : (
+            <TimelineBody {...props} density="compact" headline legend={false} showTransport={false} run={run} />
+          )}
         </div>
       )}
     </>
@@ -46,10 +49,12 @@ export function SplitDock() {
     <>
       <SplitBar run={null} sized={false} />
       <div class="tl-slot">
-        <div class="empty">
-          <span class="empty-k">Timeline</span>
-          <p>No events yet. Select a card to add an event, or pick a scenario.</p>
-        </div>
+        {appTimelineOn() ? <AppTimeline /> : (
+          <div class="empty">
+            <span class="empty-k">Timeline</span>
+            <p>No events yet. Select a card to add an event, or pick a scenario.</p>
+          </div>
+        )}
       </div>
     </>
   ) : <SplitRun t={t} />;

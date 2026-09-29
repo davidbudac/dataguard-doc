@@ -12,11 +12,11 @@
  */
 
 import {
-  activeRule, applicationId, declaredPrimary, defaultDestProps, expandAll, hostId, isParenthesised, linkId, memberId, observerId, primarySite,
+  activeRule, CLIENT_TIMING_DEFAULTS, CLIENT_TIMING_TUNED, applicationId, declaredPrimary, defaultDestProps, expandAll, hostId, isParenthesised, linkId, memberId, observerId, primarySite,
   siteId, withApplication,
 } from '@/engine';
 import type {
-  ClientDescriptor, DatabaseMember, DestGroup, DestProps, FarSyncMember, Host, Instance, Link, Member, MemberId,
+  ClientDescriptor, ClientTiming, DatabaseMember, DestGroup, DestProps, FarSyncMember, Host, Instance, Link, Member, MemberId,
   Observer, RedoRouteRule, RouteDest, Site, TimedEvent, TopologyDoc, XptMode,
 } from '@/engine';
 import type { HostId, LinkId, ObserverId, SiteId } from '@/engine';
@@ -92,6 +92,27 @@ export function patchClient(
   label: string, fn: (c: ClientDescriptor) => ClientDescriptor, key?: string,
 ): void {
   mutate(label, (t) => ({ ...t, client: fn(t.client) }), key);
+}
+
+/** True when the descriptor already carries exactly this timing. */
+export const clientHasTiming = (c: ClientDescriptor, p: ClientTiming): boolean =>
+  c.transportConnectTimeoutSeconds === p.transportConnectTimeoutSeconds
+  && (c.connectTimeoutSeconds ?? null) === p.connectTimeoutSeconds
+  && c.retryCount === p.retryCount
+  && c.retryDelaySeconds === p.retryDelaySeconds;
+
+/**
+ * Set the four connect-string timing parameters to the defaults or to the tuned
+ * shape, as one undoable edit. FAILOVER, LOAD_BALANCE, the address list and the
+ * dead-host answer are left as they are. Nothing happens when the descriptor
+ * already holds the set, so the click leaves no empty step on the undo stack.
+ */
+export function applyClientTiming(which: 'defaults' | 'tuned'): void {
+  const p = which === 'tuned' ? CLIENT_TIMING_TUNED : CLIENT_TIMING_DEFAULTS;
+  mutate(
+    which === 'tuned' ? 'Tune the connect string' : 'Set the connect string timing to its defaults',
+    (t) => (clientHasTiming(t.client, p) ? t : { ...t, client: { ...t.client, ...p } }),
+  );
 }
 
 export function patchEnvironment(

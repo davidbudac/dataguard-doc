@@ -572,13 +572,44 @@ function AppFigure({ ap, tr, doc, width }: {
   );
 }
 
+/* ---------------- the figure, where it is drawn ---------------- */
+
+/**
+ * The application's detail view, sized to the room it is given: the figure
+ * above, or -- with no run yet -- the steady-state note. Drawn in two places,
+ * one component: the Config panel below and the Simulate timeline's
+ * Application view (`break/TimelineView.tsx`). It derives from the `topology`
+ * and `trace` signals, so an edit to the connect string redraws it at once.
+ * `where` only rewords the empty state; the drawing is the same.
+ */
+export function AppDetail({ where, class: cls = '' }: { where: 'config' | 'simulate'; class?: string }) {
+  const doc = topology.value;
+  const [ref, width] = useFigWidth();
+  const tr = trace.value;
+  return (
+    <div class={cls} ref={ref}>
+      {tr === null ? (
+        <div class="empty">
+          <span class="empty-k">Steady state</span>
+          <p>
+            Nothing has happened yet, so the connect string has nothing to survive: every
+            address answers and the first one connects.{' '}
+            {where === 'simulate'
+              ? "Inject an event -- select a card, or pick a scenario -- and the application's view of it is drawn here."
+              : "Inject an event in Simulate mode -- crash the primary's host, cut a link, issue a switchover -- and the application's view of it is drawn here."}
+          </p>
+        </div>
+      ) : (
+        <AppFigure ap={computeApp(doc.client, tr, doc)} tr={tr} doc={doc} width={width} />
+      )}
+    </div>
+  );
+}
+
 /* ---------------- the panel ---------------- */
 
 export function AppView() {
   const doc = topology.value;
-  const [ref, width] = useFigWidth();
-  const tr = trace.value;
-  const client = doc.client;
 
   return (
     <div class="panel" role="region" aria-label="Application view">
@@ -603,21 +634,7 @@ export function AppView() {
           )}
         </p>
       </div>
-      <div class="panel-body" ref={ref}>
-        {tr === null ? (
-          <div class="empty">
-            <span class="empty-k">Steady state</span>
-            <p>
-              Nothing has happened yet, so the connect string has nothing to survive: every
-              address answers and the first one connects. Inject an event in Simulate mode --
-              crash the primary's host, cut a link, issue a switchover -- and the
-              application's view of it is drawn here.
-            </p>
-          </div>
-        ) : (
-          <AppFigure ap={computeApp(client, tr, doc)} tr={tr} doc={doc} width={width} />
-        )}
-      </div>
+      <AppDetail where="config" class="panel-body" />
     </div>
   );
 }

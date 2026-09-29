@@ -1602,3 +1602,47 @@ Build↔Simulate rail widths sampled frame by frame): Split and Lanes at
 1440×900 and 1280×800, Split at 1024×768, the findings dropdown, the key popover and full
 screen, Build unchanged; Lanes empty, with a crash at 10 s at the playhead at 5 s and at 40 s,
 the ⋯ menu and a link pill's menu.
+
+## Simulate's two timelines: Configuration and Application (as built, 2026-09-30)
+
+Simulate draws one of two timelines, chosen with a switch. **Configuration** is the timeline as
+it always was (lanes for the members, links and observer, with the optional stacked
+*Application's view* lanes under them — that toggle is unchanged). **Application** is the
+detail view of the application: the connect string's retry ladder, *Service / Existing
+sessions / New connections*, the braces and the outage label — the drawing the Config panel's
+*Application view* makes, from the same component (`AppDetail` in `panels/AppView.tsx`; the
+panel keeps its caption and wraps it, nothing is drawn twice). Above the figure is a strip of
+the connect-string parameters.
+
+- **The switch** (`ui/break/TimelineView.tsx`, `TimelineSwitch`): a `Segmented` (aria-pressed
+  buttons, group label *Timeline*), *Configuration | Application*. It exists only in Simulate and
+  only while the drawing has an application card (`doc.application`); with none it is not drawn
+  and the configuration timeline shows whatever is stored (`appTimelineOn()`). Switching keeps the
+  run, the playhead and the selection.
+- **Where it sits.** Where the timeline region has a bar, on the bar: **Split**, in `SplitBar`
+  right after the terse readout, before the *Fit timeline* button, the findings menu and the key;
+  **Lanes**, in `LanesBar` in the same place. Where there is no bar — the docked timeline
+  (`TimelineSlot` in `App.tsx`: the docked layout below 1024 px, and the popped-out window) —
+  on a slim row of its own at the top of the slot (`.tl-view-row`). With *Application*
+  selected, the bar drops what belongs to the configuration's clock (the transport, *Fit
+  timeline*, the colour key, the *Application's view* toggle); Split and the docked slot swap the
+  timeline for `AppTimeline`, and Lanes swaps its rows for it in the stage (`LanesApp`).
+- **The preference** is `breakTimeline` (`state/view.ts`), kept like `breakLayout`:
+  localStorage under `dg-break-timeline` (`loadBreakTimeline` at boot, anything but `app` reads
+  as Configuration), and not in the address.
+- **The strip** (`AppTimeline`): *Defaults* and *Tuned*, then TRANSPORT_CONNECT_TIMEOUT,
+  CONNECT_TIMEOUT, RETRY_COUNT and RETRY_DELAY. They are the rail's own controls
+  (`ClientTimingControls`, `ClientPresets` in `inspector/ApplicationForm.tsx`, which also puts
+  the two buttons at the head of its *Connect string* group), writing `doc.client` through
+  `patchClient`, so every edit is undoable and redraws the figure through the `topology`/`trace`
+  signals. Greyed out where `canEdit` is false.
+- **Defaults / Tuned** write the four parameters as **one** undoable edit (`applyClientTiming`
+  in `inspector/edits.ts`); a click that would change nothing leaves no undo step. The sets are
+  engine data next to the bounds (`CLIENT_TIMING_DEFAULTS`, `CLIENT_TIMING_TUNED` in
+  `engine/defaults.ts`). Defaults are the parameters' own (60 s, unset, 0, 0 s). Tuned — 3 s,
+  90 s, 30 retries, 3 s — is **this page's suggested shape**, carried over from the published
+  fragment's `APP_TUNED`: only CONNECT_TIMEOUT=90 in the HA overview's example connect string is
+  documented (`CLIENT.TIMEOUTS`), and the retry budget as RETRY_COUNT × RETRY_DELAY is priced
+  there as 100 × 3 s (`CLIENT.SWITCHOVER_BUDGET_100X3`). The tooltip says so; the buttons are
+  pressed while the descriptor holds exactly that set.
+- **Tests**: `test/ui/timeline-switch.test.ts`.
