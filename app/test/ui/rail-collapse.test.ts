@@ -16,7 +16,9 @@ import { resetHistory } from '@/state/history';
 import {
   loadRailCollapsed, RAIL_KEY, revealRail, setRailCollapsed, toggleRail,
 } from '@/state/persist';
-import { breakLayout, inspectorOpen, mode, railCollapsed, selection, viewport } from '@/state/view';
+import { breakLayout, inspectorOpen, mode, railCollapsed, selection, tNow, viewport } from '@/state/view';
+import { topology } from '@/state/derived';
+import { applyTemplate, templates } from '@/ui/break/events';
 
 /* jsdom hands back a bare object with no methods here (hints.test.ts). */
 const memory = new Map<string, string>();
@@ -148,6 +150,64 @@ describe('the side rail folds', () => {
     inspectorOpen.value = false;
     await tick();
     expect(document.querySelector('.evmenu')).toBeNull();
+  });
+
+  it('carries the whole event menu in its drawer at 1024, and closes by button, Esc and outside press', async () => {
+    mode.value = 'break';
+    breakLayout.value = 'lanes';
+    viewport.value = 'medium';
+    const crash = templates(topology.value, 0).find((x) => x.id === 'crash');
+    applyTemplate(crash!);
+    const root = mount();
+    await tick();
+    const events = (): HTMLButtonElement =>
+      [...document.querySelectorAll<HTMLButtonElement>('.topbar button')].find((b) => b.textContent?.trim() === 'Events')!;
+    const settle = async (): Promise<void> => {
+      await new Promise<void>((r) => { requestAnimationFrame(() => r()); });
+      await tick();
+      await tick();
+    };
+    /* Closed, the Lanes bar is the reader's whole top edge: no sheet, no scrim. */
+    expect(document.querySelector('.sheet')).toBeNull();
+    expect(root.querySelector('.ln-bar')).not.toBeNull();
+    expect(events().getAttribute('aria-expanded')).not.toBe('true');
+
+    events().click();
+    await settle();
+    const sheet = document.querySelector('.sheet') as HTMLElement;
+    expect(sheet.getAttribute('role')).toBe('dialog');
+    /* The Inject field is the menu's head, and it is the playhead's own field. */
+    const inject = sheet.querySelector('.evmenu input.evmenu-at') as HTMLInputElement;
+    expect(inject).not.toBeNull();
+    expect(inject.getAttribute('aria-label')).toBe('Injection time in seconds');
+    tNow.value = 12;
+    await tick();
+    expect((sheet.querySelector('.evmenu input.evmenu-at') as HTMLInputElement).value).toBe('12');
+    /* The event list is under it, and Remove there removes. */
+    expect(sheet.textContent).toContain('Events (1)');
+    const remove = [...sheet.querySelectorAll('button')].find((b) => b.textContent?.trim() === 'Remove')!;
+    remove.click();
+    await tick();
+    expect(topology.value.events).toHaveLength(0);
+    expect(sheet.textContent).toContain('No events yet');
+
+    /* Three ways out, each leaving the bar reachable. */
+    const close = [...sheet.querySelectorAll('button')].find((b) => b.textContent?.trim() === 'Close')!;
+    close.click();
+    await settle();
+    expect(document.querySelector('.sheet')).toBeNull();
+    events().click();
+    await settle();
+    expect(document.querySelector('.sheet')).not.toBeNull();
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+    await settle();
+    expect(document.querySelector('.sheet')).toBeNull();
+    events().click();
+    await settle();
+    (document.querySelector('.scrim') as HTMLElement).click();
+    await settle();
+    expect(document.querySelector('.sheet')).toBeNull();
+    expect(root.querySelector('.ln-bar')).not.toBeNull();
   });
 
   it('keeps Split\'s floating event menu where there is no rail column', async () => {

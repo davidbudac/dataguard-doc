@@ -7,7 +7,7 @@ runtime. Light/dark theming and the 19c/26ai edition toggle carry over.
 ## 0. Premises carried over from the legacy simulator (load-bearing)
 
 1. **Token-based theming.** The `:root` palette (`--bg/--sf/--sf2/--sf3/--ln/--ln2/--ik/--ik2/--ik3/--tl/--bl/--am/--rd/--vi/--sl/--fc/--gd/--sh` and the `*f` fills), redefined under `@media (prefers-color-scheme: dark)` AND `:root[data-theme="dark"|"light"]`. Copy the blocks from `simulator/fsfo-simulator.html` lines 11–38 into `app/src/styles/tokens.css`.
-2. **Shared visual language.** teal = serving/open, blue = applying, amber = waiting/countdown, red = down (hatch fill, never flat), violet = observer decisions, slate = neutral/monitoring. Oracle vocabulary always mono.
+2. **Shared visual language.** teal = serving/open, blue = applying, amber = waiting/countdown, red = down (hatch fill, never flat), violet = observer decisions, slate = neutral/monitoring. Oracle vocabulary always mono. A band's *label* is set in the hue's `*-ink` token (`--tl-ink` … `--vi-ink`, `tokens.css`), not in the hue: in the light palettes (standard and colour-blind) the ink is the hue darkened to at least 4.5:1 on the band's own fill, in the dark ones it is the hue itself; strokes, dots and braces keep the plain hue so the bands stay pale. A red label sits on a ground of its own fill so the hatch never crosses it. `test/ui/contrast.test.ts` reads `tokens.css` and pins every tone in all four palettes.
 3. **The page explains itself.** Every gray control carries a pill saying why (one `WHY` table); captions branch on the *outcome*, never on the event name; nothing is hidden by CSS alone.
 4. **URL state is a public contract**: short keys, clamped on read, written behind a one-frame timer + 300 ms debounce (as built: a timer, not rAF — rAF never fires in a headless dump) (WebKit caps `replaceState` ~100/30 s).
 5. **Undocumented is labelled in place** — `[UNDOC]`/`[CONFLICT]` claims render as "this page's model" next to the number.
@@ -1481,8 +1481,13 @@ handle on its top edge). Build's dock, chips and warning card are as they were.
   - *Link pills* are the pill of the connector: 10.5 px text in a 15 px pill, sitting in the
     gap between two cards (the gaps are one pill tall, and hold a marker's sentence too),
     never over a card's border. Colours are the canvas's link states and no others: **red**
-    for a link that is down or cut, muted for one standing down, plain for the rest (the
-    canvas draws no green or amber link, so neither does Lanes); the connector is the quiet
+    for a link that is down or cut, muted for one standing down, plain for the rest — Lanes
+    mirrors the canvas's link palette for *state* and adds none of its own: the canvas has no
+    degraded or lagging state for a link (`LinkPath` has `is-x` and `is-inactive` and nothing
+    between; lag is a member's band and a pill's *ASYNC* or round-trip text), so Lanes draws no
+    amber or green link, and the canvas's hues by *kind* (blue redo, violet ping, orchid check,
+    green connection) are not reproduced because Lanes' connectors are grey whatever the kind
+    and the pill's text names it; the connector is the quiet
     half — thin, half opacity, dashed red only for a link that is down — and the pill says
     what it is. One with a document link (`CanvasLink.docLink`) is a button that opens the
     same menu for that link (*Cut dc1-dc3*, *Restore*…); the others are still text. **Every
@@ -1519,7 +1524,10 @@ handle on its top edge). Build's dock, chips and warning card are as they were.
     number, the playhead's grip under them, the sentence beside) in a band as thin as the
     stack allows (`PIN_L`, the markers and the drag read the tighter `iconDy`/`badgeDy` off
     the model's layout). The headline and the clock are one sticky block (`.ln-head`) that
-    holds still while the rows scroll. The bottom axis, its labels, `t = 0 is the first
+    holds still while the rows scroll. The time readout of a pin being dragged
+    (`EventDrag`, `readout="beside"` here) goes right of the icon chip, or left of it near the
+    plot's right edge (`besideReadout`), because the place Split uses — centred over the pin —
+    is the top edge of the plot, under that block; Split and the Timeline keep it above. The bottom axis, its labels, `t = 0 is the first
     injected event` and the parameter braces are as before, mapped by however far the axis
     moved. At 1440×900 the classic crash run shows every row, the axis and the
     FastStartFailoverThreshold brace with no scrolling; at 1280×800, every row and the
@@ -1559,8 +1567,13 @@ handle on its top edge). Build's dock, chips and warning card are as they were.
   — a CSS artefact, not a stuck state (Lanes → Split → Lanes now never changes the width).
   Lanes never floats the stage event menu, at any width: the cards, data-centre headers and
   link pills carry the events, and below 1280 the top bar's *Events* button opens the drawer
-  with the menu (its *Inject at t =* field) at its head, closable like any drawer. Split keeps
-  its floating menu where there is no rail column.
+  with the menu (its *Inject at t =* field) at its head, closable like any drawer: the *Close*
+  button, Esc and a press on the scrim, the Lanes bar untouched behind it and reachable at once
+  when it is shut. The menu keeps its own height cap (360 px, scrolling in its own box) so the
+  events list with its *Remove* buttons stays one short scroll below it; the title's clock
+  reading and its unit are one unbreakable piece (`.evmenu-inject`), so at the drawer's width
+  the line breaks before *Inject* rather than stranding the *s*. Split keeps its floating menu
+  where there is no rail column.
 - **Density belongs to the model.** The prototype switched a module-level `TL` while
   rendering; it is now `TimelineView.density` → `TimelineModel.layout`, and `Lane`,
   `Marker`, `EventDrag` and `playheadSpan` read it from the model (`Marker` takes a
@@ -1587,7 +1600,7 @@ and open at the restore — the two-line card and its state word, the applicatio
 the link names on pill, connector and menu, the empty run and its axis, the held axis, the
 braces, the data centres' order, the application in its data centre), `lanes-layout.test.ts`
 (rail lanes, pill planning and folding, `segmentAt`, `cardSub`, `hostBands`), `timeline-dock.test.ts` (the height and its clamp, the
-separator, full screen, `--tl-h`), `rail-collapse.test.ts`. Browser pass (Lanes polish, 2026-09-29: dark, light, the colour-blind palette, 1440×900 and
+separator, full screen, `--tl-h`), `rail-collapse.test.ts` (with the Lanes Events drawer at 1024: open, Inject field, Remove, close by button, Esc and scrim), `contrast.test.ts` (every band label token over its fill, four palettes, >= 4.5:1), and in `lanes-events.test.ts` the drag readout beside the pin. Browser pass (Lanes polish, 2026-09-29: dark, light, the colour-blind palette, 1440×900 and
 1280×800, a restore at 20 s with the playhead at 20 s, the empty run, Lanes↔Split↔Lanes and
 Build↔Break rail widths sampled frame by frame): Split and Lanes at
 1440×900 and 1280×800, Split at 1024×768, the findings dropdown, the key popover and full

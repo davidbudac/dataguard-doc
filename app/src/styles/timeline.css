@@ -74,6 +74,19 @@
 .tl-svg .f-rd { fill: var(--rd); }
 .tl-svg .f-vi { fill: var(--vi); }
 .tl-svg .f-sl { fill: var(--ik2); }
+/* A band's label is set on the band's own tint, so it takes the *-ink token: the
+   hue darkened until it reads at 4.5:1 or better on its fill in the light
+   palettes (tokens.css; test/ui/contrast.test.ts pins every pair). The plain
+   token stays for strokes, dots and braces, which is what keeps the bands pale.
+   The hatch is busy under a label, so a red one gets a ground of its own fill. */
+.tl-svg .t-bar.f-tl { fill: var(--tl-ink); }
+.tl-svg .t-bar.f-bl { fill: var(--bl-ink); }
+.tl-svg .t-bar.f-am { fill: var(--am-ink); }
+.tl-svg .t-bar.f-vi { fill: var(--vi-ink); }
+.tl-svg .t-bar.f-rd {
+  fill: var(--rd-ink);
+  paint-order: stroke; stroke: var(--rdf); stroke-width: 3px; stroke-linejoin: round;
+}
 
 .tl-svg .m-rd { stroke: var(--rd); }
 .tl-svg .m-vi { stroke: var(--vi); }
@@ -108,8 +121,8 @@
 /* The application's lanes: a hairline and one line of text over the three. */
 .tl-svg .tl-app-rule { stroke: var(--ln2); stroke-width: 1; stroke-dasharray: 2 3; }
 .tl-svg .t-app-note { font-weight: 400; fill: var(--ik2); }
-.tl-svg .t-app-note.f-am { fill: var(--am); }
-.tl-svg .t-app-note.f-rd { fill: var(--rd); }
+.tl-svg .t-app-note.f-am { fill: var(--am-ink); }
+.tl-svg .t-app-note.f-rd { fill: var(--rd-ink); }
 /* A press anywhere on the plot seeks there (Timeline.tsx). */
 .tl-svg.is-seekable, .tl-svg.is-seekable .tl-lane, .tl-svg.is-seekable .tl-seg { cursor: pointer; }
 

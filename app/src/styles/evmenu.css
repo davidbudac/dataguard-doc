@@ -25,6 +25,10 @@
 .evmenu-at:hover { border-color: var(--ik3); }
 .evmenu-at:focus-visible { outline: 2px solid var(--fc); outline-offset: 1px; }
 
+/* The clock reading and its unit move as one, so a narrow menu breaks before
+   "Inject" and never strands the "s" on a line of its own. */
+.evmenu-inject { white-space: nowrap; }
+
 /* The sentence the title could not carry: quieter than the title, louder than
    a tooltip, and in the document rather than behind a hover. */
 .evmenu-hint {

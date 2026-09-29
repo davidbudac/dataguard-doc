@@ -166,9 +166,9 @@
   min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   background: var(--sf); font-size: 12px; font-weight: 560; color: var(--ik);
 }
-.tl-headline.f-tl { color: var(--tl); }
-.tl-headline.f-bl { color: var(--bl); }
-.tl-headline.f-am { color: var(--am); }
+.tl-headline.f-tl { color: var(--tl-ink); }
+.tl-headline.f-bl { color: var(--bl-ink); }
+.tl-headline.f-am { color: var(--am-ink); }
 .tl-headline.f-sl { color: var(--ik2); }
-.tl-headline.f-vi { color: var(--vi); }
-.tl-headline.f-rd { color: var(--rd); }
+.tl-headline.f-vi { color: var(--vi-ink); }
+.tl-headline.f-rd { color: var(--rd-ink); }

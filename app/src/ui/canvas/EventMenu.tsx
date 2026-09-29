@@ -93,25 +93,27 @@ export function EventMenu() {
             all-caps mono form turned "Inject at t = 40 s" into a shout. */}
         <span class="evmenu-title mono">
           {keys.length === 0 ? '' : <>{keys.join(', ')} &middot; </>}
-          Inject at t ={' '}
-          {/* The reading is the control. A second field beside a fixed title
-              would put two numbers for one moment on one line, which is the
-              habit the readout strip above has just been cured of. Read-only
-              keeps the number and drops the control: a disabled box with no
-              reason on it is exactly what the WhyPill contract forbids. */}
-          {editable ? (
-            <input
-              class="evmenu-at"
-              type="number"
-              min={0}
-              step={0.1}
-              inputMode="decimal"
-              value={String(at)}
-              aria-label="Injection time in seconds"
-              onChange={onAt}
-            />
-          ) : at}
-          {' '}s
+          <span class="evmenu-inject">
+            Inject at t ={' '}
+            {/* The reading is the control. A second field beside a fixed title
+                would put two numbers for one moment on one line, which is the
+                habit the readout strip above has just been cured of. Read-only
+                keeps the number and drops the control: a disabled box with no
+                reason on it is exactly what the WhyPill contract forbids. */}
+            {editable ? (
+              <input
+                class="evmenu-at"
+                type="number"
+                min={0}
+                step={0.1}
+                inputMode="decimal"
+                value={String(at)}
+                aria-label="Injection time in seconds"
+                onChange={onAt}
+              />
+            ) : at}
+            {' '}s
+          </span>
         </span>
         <span class="rr-spacer" />
         <button type="button" class="btn" onClick={() => { menuOpen.value = false; }}>
