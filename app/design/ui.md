@@ -1600,7 +1600,7 @@ and open at the restore — the two-line card and its state word, the applicatio
 the link names on pill, connector and menu, the empty run and its axis, the held axis, the
 braces, the data centres' order, the application in its data centre), `lanes-layout.test.ts`
 (rail lanes, pill planning and folding, `segmentAt`, `cardSub`, `hostBands`), `timeline-dock.test.ts` (the height and its clamp, the
-separator, full screen, `--tl-h`), `rail-collapse.test.ts`. Browser pass (Lanes polish, 2026-09-29: dark, light, the colour-blind palette, 1440×900 and
+separator, full screen, `--tl-h`), `rail-collapse.test.ts` (with the Lanes Events drawer at 1024: open, Inject field, Remove, close by button, Esc and scrim), `contrast.test.ts` (every band label token over its fill, four palettes, >= 4.5:1), and in `lanes-events.test.ts` the drag readout beside the pin. Browser pass (Lanes polish, 2026-09-29: dark, light, the colour-blind palette, 1440×900 and
 1280×800, a restore at 20 s with the playhead at 20 s, the empty run, Lanes↔Split↔Lanes and
 Build↔Break rail widths sampled frame by frame): Split and Lanes at
 1440×900 and 1280×800, Split at 1024×768, the findings dropdown, the key popover and full
