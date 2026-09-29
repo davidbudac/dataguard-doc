@@ -48,10 +48,8 @@
    the 64vh cap below is for docks that share the height with the canvas. */
 .app.m-configure .app-dock{max-height:none}
 /* The stage hands its height to the drawing: the canvas scales to fit the
-   room the dock (and, in Break, the event menu under it) leaves, instead of
-   running off the bottom edge; it stays centred when there is more room than
-   drawing. A column flexbox, so the event menu takes its own room below the
-   drawing rather than floating over the card it was opened for. */
+   room the dock leaves, instead of running off the bottom edge; it stays
+   centred when there is more room than drawing. */
 .app.m-build .app-stage,.app.m-break .app-stage,.app.m-configure .app-stage{
   display:flex;flex-direction:column}
 .app-stage>.tp-wrap{flex:1 1 0;min-height:200px}

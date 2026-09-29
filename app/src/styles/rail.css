@@ -72,8 +72,7 @@
   background-attachment:local,local,scroll,scroll}
 
 /* The bar is the rail's top edge now: the headers under it are square. */
-.app.is-float .app-rail.has-bar .insp-hd,
-.app.is-float .app-rail.has-bar .evmenu{border-radius:0}
+.app.is-float .app-rail.has-bar .insp-hd{border-radius:0}
 .app.is-float .app-rail.has-bar .rail-bar{border-radius:var(--r-card) var(--r-card) 0 0}
 
 /* ---------------- the folded rail ---------------- */
@@ -95,12 +94,6 @@
 .rail-strip-ctx{font-size:11px;font-weight:500;color:var(--ik2);padding:8px 2px;
   border-radius:999px;background:var(--sf2);max-height:22ch;overflow:hidden;text-overflow:ellipsis}
 .rail-strip:hover .rail-strip-ctx{background:var(--sf3)}
-
-/* Folded in Break, the event menu is on the stage (App.tsx): at the right,
-   clear of the strip, as it is where the rail is a drawer. */
-@media screen{
-  .app.is-float.rail-shut .app-stage>.evmenu{right:var(--rail-space)}
-}
 
 @media print{
   /* On paper the fold is not a control: the strip prints as nothing. */

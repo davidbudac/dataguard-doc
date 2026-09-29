@@ -30,7 +30,6 @@ import { App } from '@/ui/App';
 import { classicDoc, doc as docSignal } from '@/state/doc';
 import { resetHistory } from '@/state/history';
 import { mode, selection, toast, viewport } from '@/state/view';
-import { menuOpen } from '@/ui/canvas/EventMenu';
 import { closeBar } from '@/ui/canvas/bar';
 import {
   canZoom, fitZoom, WHY_MAX, WHY_MIN, ZOOM_STEPS, zoom, zoomBy, zoomIndex, zoomLabel,
@@ -127,7 +126,6 @@ beforeEach(() => {
   unmountAll();
   selection.value = [];
   toast.value = null;
-  menuOpen.value = false;
   mode.value = 'build';
   viewport.value = 'wide';
   closeBar();

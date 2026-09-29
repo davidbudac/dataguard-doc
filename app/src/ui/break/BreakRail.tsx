@@ -3,7 +3,7 @@
  * six scenarios as one-click templates.
  *
  * **The reader's own work comes first.** The event list is the head of the
- * rail, under the event menu, because injecting an event and then finding no
+ * rail, because injecting an event and then finding no
  * record of it on screen -- six scenario blurbs pushed the list a thousand
  * pixels down -- reads as "nothing happened". The scenarios are the shelf you
  * take something off once; the list is where the thing you took stays.

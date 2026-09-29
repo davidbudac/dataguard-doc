@@ -23,7 +23,7 @@ produced, and how to extend it without breaking consistency or accuracy.
 | `app/public/collectors/` | Read-only SQL collector, optional Bash/SQL*Plus wrapper and run instructions for existing setups. The ⋯ menu's **Import existing setup** sheet previews pasted/file output before drawing it. `engine/collect.ts` maps current routes; imported `routesObserved` prevents invented NULL-default routes. Missing broker settings and placement assumptions remain in document notes. Validated live on a 19c primary + mounted standby (SYSDBA, local OS auth); wallet, least-privilege, RAC and far sync remain unverified. DGMGRL transcripts are not parsed. |
 | `app/design/facts.md` | The verified Oracle fact sheet for the topology features (far sync, cascading, multiple standbys and FSFO targets, multiple observers, RedoRoutes, member types, destination counts), researched 2026-08-16 against docs.oracle.com and re-verified 2026-08-17, marked `[D]` / `[D-later]` / `[UNDOC]` / `[CONFLICT]` per claim. **The only permitted source of a "documented" claim in the application.** Its top-five traps are restated in the accuracy rules below |
 | `app/design/engine.md` | The engine design: `Claim`/`Basis` labelling, the topology data model, the validation catalogue, the redo-graph resolver, the epoch-loop failure engine, the compat adapter and the 24-cell matrix gate, the generators, the module layout — plus §10, *Deviations from the design as built*, which is where the code and the specification differ |
-| `app/design/ui.md` | The application architecture: premises carried over from the legacy page, project structure and the CSP goal, Document-vs-View state, the four modes, canvas layout/routing, timeline, the migration table from the six legacy chapters, and the taste notes. Its as-built notes (event-menu placement, the mode-aware readout, the drawer's focus contract, the print pass) are the record of what the code does where it went past the design |
+| `app/design/ui.md` | The application architecture: premises carried over from the legacy page, project structure and the CSP goal, Document-vs-View state, the four modes, canvas layout/routing, timeline, the migration table from the six legacy chapters, and the taste notes. Its as-built notes (the mode-aware readout, the drawer's focus contract, the print pass) are the record of what the code does where it went past the design |
 | `HANDOFF.md` | Situation report + work order for the next agent (state of the app, the in-flight UI polish brief, how to screenshot from a sandbox, known gaps, next steps). A snapshot — this file wins where they disagree |
 | `app/README.md` | The short version of the three above: what it is, dev commands, structure, testing, deploy pointer |
 | `simulator/fsfo-simulator.html` | **Frozen.** Source fragment of the page that used to be published at `/dataguard/`; now served at `/dataguard/legacy/`. English only, pure ASCII (see [CLAUDE.md](CLAUDE.md)). Bug-fix territory only — new work goes into `app/` |
@@ -164,7 +164,7 @@ the top bar, and both are reading preferences that survive a reload:
 
 - **All four modes on the classic preset.** Build: select a member, edit a
   property, undo it, watch the issue list and the steady-state readout follow.
-  Break: inject a crash from the event menu, scrub the timeline, read the
+  Break: click a card and inject a crash from the bar it opens, scrub the timeline, read the
   outcome chip. Configure: all seven tabs render, Copy works, hovering a
   generated line highlights the member it belongs to. Learn: the lesson list,
   a "Show me" step, and the workbench beside the prose reacting to it.
@@ -1089,7 +1089,7 @@ component computes domain state locally.**
 ### The interface (`app/src/ui`)
 
 Four modes over one persistent canvas — **Build** (inspector, validation issues,
-steady-state readout), **Break** (event menu and event list, timeline,
+steady-state readout), **Break** (the event list, timeline,
 transport, outcome readout), **Configure** (seven generated panels: DGMGRL ·
 `LOG_ARCHIVE_DEST_n` · tnsnames/JDBC · SHOW · Application view · Commit ·
 Reopen) and **Learn** (ten lessons: the six ported chapters plus Far sync,
@@ -1160,12 +1160,11 @@ modes changes what is around it.
   because both bars wrap on a narrow window and a toast pinned to their nominal
   height paints over them. `site/build.mjs` fails the build on an inline
   `<script>`, an `on*=` handler or a `style=` attribute in the built page.
-- **The event menu has one home per layout, never two.** On a wide screen it is
-  the first group at the head of the Break rail; once the rail has become a
-  drawer it moves under the drawing, because a menu inside a closed drawer is a
-  menu nobody finds. It is a panel with a fixed place, not a popup at the
-  pointer — `style-src 'self'` forbids positioning anything from script, and a
-  panel that stays put is one the reader can find again.
+- **Break has no event menu.** Events are added where the reader is looking: a
+  click on a card, data centre or link opens the action bar's grouped list under
+  a header that says *at t = [n] s*, a card's hover icons are the short list, and
+  Lanes' cards and pills carry their own buttons. The rail is the reader's events
+  and nothing else. The playhead is the one clock (the transport's *t* field).
 - **The readout is mode-aware**: Build and Configure read the steady state even
   when the Document carries events; Break and Learn read the outcome at `tNow`.
   Those two lead the strip with a `Drawing at t = <n> s` chip and file the rest
@@ -1176,7 +1175,7 @@ modes changes what is around it.
   sentence set and a visually hidden structural table; one card per site is the
   tab stop (a roving `tabindex`, spelled lower case — the camel-cased JSX
   spelling lands on an SVG `<g>` as an attribute SVG has never heard of, and the
-  card silently takes no focus). `E` opens the event menu in Break, `Delete`
+  card silently takes no focus). `E` opens the action bar in Break, `Delete`
   removes in Build with the same refusals the inspector's button gives. The
   drawer and the sheet are modal dialogs and keep a dialog's promises: `Escape`
   closes, opening moves focus in, closing hands it back.

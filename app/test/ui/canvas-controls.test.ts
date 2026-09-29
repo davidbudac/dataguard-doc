@@ -16,7 +16,6 @@ import type { TopologyDoc } from '@/engine';
 import { App } from '@/ui/App';
 import { classicDoc, doc as docSignal } from '@/state/doc';
 import { redoStack, resetHistory, undo, undoLabel, undoStack } from '@/state/history';
-import { menuOpen } from '@/ui/canvas/EventMenu';
 import { closeBar } from '@/ui/canvas/bar';
 import { placeOver, placing, renaming } from '@/ui/canvas/place';
 import { fitZoom } from '@/ui/canvas/zoom';
@@ -55,7 +54,6 @@ beforeEach(() => {
   unmountAll();
   selection.value = [];
   toast.value = null;
-  menuOpen.value = false;
   mode.value = 'build';
   viewport.value = 'wide';
   renaming.value = null;

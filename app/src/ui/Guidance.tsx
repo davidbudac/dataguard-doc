@@ -68,10 +68,10 @@ const KEYS: { where: string; rows: [string, string][] }[] = [
       ['F2', 'rename it where it is drawn — a double click does too (Build)'],
       ['Alt+↑ ↓ ← →', 'move the card 8 px, or the whole selection — with Shift, 32 px (Build)'],
       ['Shift+F10 · ☰', 'open its actions and move the focus into them — the right button does too'],
-      /* `onEventMenu` is spread onto the canvas only in Break
+      /* `onEvents` is spread onto the canvas only in Break
          (`canvas/CanvasSlot.tsx`), exactly as `onDelete` is only in Build:
          a key that is bound in one mode says which one. */
-      ['E', 'open the event menu for it (Break)'],
+      ['E', 'open the events it offers, at the playhead, and move the focus into them (Break)'],
       ['Delete', 'remove it, or everything selected (Build)'],
       ['Esc', 'close the actions first, then clear the selection'],
     ],

@@ -18,7 +18,6 @@ import { act } from 'preact/test-utils';
 import { classicDoc } from '@/state/doc';
 import { resetHistory } from '@/state/history';
 import { frame, geometry, topology } from '@/state/derived';
-import { setRailCollapsed } from '@/state/persist';
 import { breakLayout, findingsOpen, mode, playing, railCollapsed, selection, tNow, viewport } from '@/state/view';
 import { App } from '@/ui/App';
 import { applyTemplate, clearEvents, templates } from '@/ui/break/events';
@@ -215,10 +214,10 @@ describe('the buttons on the cards', () => {
     expect(r.querySelector('.ln-head .tl-headline')?.textContent).not.toMatch(/^Steady state\./);
     expect(r.querySelectorAll('.ln-svg .tl-event-drag')).toHaveLength(1);
     expect(r.querySelectorAll('.ln-svg .tl-lane').length).toBeGreaterThan(0);
-    /* The rail's clock (it folds away in Lanes; the reader opens it) reads the same number the buttons are aimed at. */
-    setRailCollapsed(false);
-    await tick();
-    expect((r.querySelector('.evmenu-at') as HTMLInputElement).value).toBe('12.3');
+    /* No second clock: the transport's own time field is the one the buttons are aimed at. */
+    expect(r.querySelector('.evmenu')).toBeNull();
+    expect((r.querySelector('.tl-transport input[aria-label="Time in seconds"]') as HTMLInputElement).value)
+      .toMatch(/^12\.[03]/);
     /* And the slot that was the way down is now the way back. */
     expect(toolIds(r, 'prm01')).toEqual(['member.up', 'host.up']);
   });

@@ -64,11 +64,11 @@ export interface TopoCanvasProps {
   onSelect?: (key: string, additive: boolean) => void;
   onHover?: (key: string | null) => void;
   /**
-   * The event menu. Passing it turns a click on a card into "select it and
-   * offer what can be done to it"; `E` opens it from the keyboard. Callers
-   * that have no menu (Build mode) leave it out and a click only selects.
+   * `E` on a focused card, data centre or line: ask for the events on offer for
+   * it. Only Break passes it (Build has none to offer); the caller decides where
+   * they appear, which is the action bar.
    */
-  onEventMenu?: (key: string, at: { x: number; y: number }) => void;
+  onEvents?: (key: string) => void;
   /**
    * A card being dragged. `all` is every card the drag carries -- the whole
    * selection when the pressed card is part of one -- so the caller can write
@@ -192,6 +192,8 @@ export interface TopoCanvasProps {
    * means none: Build leaves it out, Break passes its short list.
    */
   tools?: (key: string) => readonly CanvasTool[];
+  /** When the icons act ("at t = 20 s"): the playhead, said on each one's title. */
+  toolsWhen?: string;
   /**
    * How large the drawing is asked to be drawn, 1 being its own size.
    *
@@ -607,20 +609,11 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
     else if (linkAt(key) >= 0) setVisitedLink(key);
   };
 
-  const askEventMenu = (key: string): void => {
-    const box = cards.current.get(key)?.getBoundingClientRect();
-    props.onEventMenu?.(key, box
-      ? { x: box.left + box.width / 2, y: box.top + box.height }
-      : { x: 0, y: 0 });
-  };
-
-  /* A click always selects. Where the caller has an event menu, the same click
-     offers it, anchored under the card it belongs to. */
+  /* A click selects; what the click offers, if anything, is the caller's --
+     `onSelect` opens the action bar in Break. */
   const onCardSelect = (key: string, additive: boolean): void => {
     remember(key);
     props.onSelect?.(key, additive);
-    if (!props.onEventMenu || additive) return;
-    askEventMenu(key);
   };
 
   /* ---- keyboard: arrows walk one site, Tab steps between them ---- */
@@ -692,7 +685,7 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
       case 'e':
       case 'E': {
         ev.preventDefault();
-        askEventMenu(key);
+        props.onEvents?.(key);
         return;
       }
       case 'Delete':
@@ -1745,7 +1738,10 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
         </g>
 
         {toolsAt === null || toolKey === null ? null : (
-          <HoverTools x={toolsAt.x} y={toolsAt.y} scale={k} subject={toolKey} tools={tools} />
+          <HoverTools
+            x={toolsAt.x} y={toolsAt.y} scale={k} subject={toolKey} tools={tools}
+            {...(props.toolsWhen === undefined ? {} : { when: props.toolsWhen })}
+          />
         )}
 
         {/* What is in the air, over every caption: a card carried across a

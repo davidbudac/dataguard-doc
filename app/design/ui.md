@@ -22,7 +22,7 @@ app/
     engine/                  # pure, DOM-free (owned by the engine work)
     state/  doc.ts view.ts history.ts url.ts legacy-url.ts persist.ts derived.ts codec.ts
     ui/     App.tsx TopBar.tsx StatusBar.tsx IssuePanel.tsx Readout.tsx
-            canvas/ TopoCanvas.tsx layout.ts routing.ts NodeCard.tsx LinkPath.tsx SiteRect.tsx EventMenu.tsx aria.ts measure.ts
+            canvas/ TopoCanvas.tsx layout.ts routing.ts NodeCard.tsx LinkPath.tsx SiteRect.tsx aria.ts measure.ts
             inspector/ Inspector.tsx MemberForm.tsx RedoRoutesEditor.tsx ObserverForm.tsx LinkForm.tsx ConfigForm.tsx
             timeline/ Timeline.tsx build.ts Brace.tsx Playhead.tsx Transport.tsx Tooltip.tsx
             panels/ Dgmgrl.tsx Dests.tsx Tns.tsx Show.tsx AppView.tsx Commit.tsx Reopen.tsx CodeBlock.tsx
@@ -70,18 +70,21 @@ Four modes, one persistent canvas (the canvas never blinks):
 | Mode | Right rail | Bottom row | Canvas |
 |---|---|---|---|
 | Build | Inspector: `Add` group, then the summary and the config form (folded sections) | Validation issues + steady-state readout | select, drag, `Add` toolbar in the corner |
-| Break | Event menu, then the event list, then the scenarios (six legacy ones as one-click templates), then validation | Timeline + sticky transport + readout | click or `E` → event menu; cards tinted by `frame` |
+| Break | The event list, then the scenarios (six legacy ones as one-click templates), then validation | Timeline + sticky transport + readout | click or `E` → the action bar's grouped events; cards tinted by `frame` |
 | Configure | Inspector narrowed | Tabs under two headings — **Files**: DGMGRL · LOG_ARCHIVE_DEST_n · tnsnames/JDBC · SHOW; **Behaviour**: Application view · Commit · Reopen | 180 px live strip |
 | Learn | — | — | prose-left (60ch) / live workbench-right (step header + drawing + readout + timeline) |
 
 As built, three things in that table are worth spelling out:
 
-- **The event menu has one home per layout, never two.** On a wide screen it is the
-  first group at the head of the Break rail, so the drawing keeps its whole stage;
-  once the rail has become a drawer it moves under the drawing, because a menu inside
-  a closed drawer is a menu nobody finds. It is a panel with a fixed place, not a
-  popup at the pointer — `style-src 'self'` forbids positioning anything from script,
-  and a panel that stays put is one the reader can find again.
+- **Break has no event menu.** There used to be a panel (*Inject at t = [n] s · Hide*,
+  collapsing to an *Actions* button) at the head of the rail, on the stage or in the
+  drawer. It was a third copy of the list the action bar prints, and the rail is now
+  the reader's events and nothing else. What can be added to a selection is the action
+  bar a click opens (§3d), the quick icons on a card, and in Lanes the card, data-centre
+  and link buttons with their ⋯ menus. Every one of them says when the event lands:
+  the bar's header (*sby01 · at t = 12 s*), each icon's title, Lanes' *Events at t = …*
+  line. The moment is the playhead and there is one clock for it: the transport's *t*
+  field, in both layouts.
 - **Learn's workbench is the drawing, the readout *and* the timeline**, so a step whose
   "Show me" breaks something draws its clocks beside the prose that explains them.
 - **The readout is mode-aware.** Build and Configure are about the configuration, so
@@ -173,7 +176,7 @@ Learn: lesson list + prose column, steps drive the workbench beside it (descenda
 Degradation: 1024–1279 inspector as overlay drawer; 768–1023 single column with bottom-sheet inspector; <768 read-only viewer with an explicit "Editing needs a wider screen" card (nothing silently missing); print expands everything (`print.css` first-class).
 
 - **The drawer and the sheet are modal dialogs and keep a dialog's keyboard promises**: `Escape` closes from anywhere (the listener is on the document, not on the panel), opening moves focus into the panel, closing returns it to the control that opened it. The effect hangs on `open` alone — the `onClose` callback is a new arrow on every render of the shell, and an effect that depended on it would hand the focus back while the reader was still typing.
-- **The reason is said once.** On a phone the stage card spells it out ("Editing needs a wider screen…"); the drawing, the inspector, the event menu and the Break rail's grey controls say only that they are read-only. Three copies of one sentence on one screen is noise, not honesty.
+- **The reason is said once.** On a phone the stage card spells it out ("Editing needs a wider screen…"); the drawing, the inspector, the action bar and the Break rail's grey controls say only that they are read-only. Three copies of one sentence on one screen is noise, not honesty.
 - **Every rail is its own scroll region, and it says so.** Two shading bands, `local`-attached so each is present only while content is hidden behind it and gone at the end of the scroll, plus `scrollbar-gutter: stable`. Configure gives the rail a 180–260 px strip, which is where a row cut by the bottom edge with nothing to mark it reads as a drawing error rather than as "there is more".
 - **The toast is anchored to the measured bottom of the status bar**, through a `--bar-bottom` custom property written by a `ResizeObserver` in `App.tsx` (`el.style.setProperty` through a ref — the one escape hatch the policy leaves), with `calc(var(--h-top) + var(--h-status))` as the fallback. Both bars wrap on a narrow window, so their nominal heights are a guess and a toast pinned to that guess paints over the bar.
 - **On paper the panels stack.** `Panels` listens for `beforeprint` and for a `matchMedia('print')` change and renders all seven tabs while either is on; no CSS rule can do it, because the tab that is not open is not in the document. Two print traps are pinned by that verification: the citation chips' `white-space: nowrap` row plus the appended `a[href]::after` URL push the page ~90 px sideways unless the row is allowed to wrap on paper, and headless `--print-to-pdf` fires neither event, so print has to be checked with the media emulated (`Emulation.setEmulatedMedia`), not with a PDF.
@@ -308,15 +311,11 @@ just did, and the control that does it must sit where they are looking.*
    (timed events only — a property holds from the first frame), `applyTemplate` and
    `clearEvents` (which sends it back to 0). Injecting a crash and being left
    staring at the pre-crash frame was the single most common way to misread the page.
-6. **The event menu's clock reading *is* the control.** `EventMenu.tsx`'s title
-   still reads `<selection> · Inject at t = [n] s`, but `[n]` is a
-   `type="number"` input that snaps to a tenth, floors at 0 and writes `tNow`, so
-   the drawing and the number can never disagree; read-only renders the number as
-   plain text and drops the input (a disabled box with no reason on it is what the
-   WhyPill contract forbids). Under it, one hint: "New events use the playhead
-   time. Move it to add an event later." *Deviation from the brief, deliberate:* the
-   spec asked for a fixed title **and** a separate `at [ n ] s` field; two
-   always-equal numbers for one moment on one line is the disease item 5 cures.
+6. **One clock for where an event lands.** The event menu's own *Inject at t = [n] s*
+   field was removed with the menu (*Break has no event menu*, above); the transport's
+   *t* field is the playhead, the bar and the icons aim at its snapped value
+   (`snapT`, `break/events.ts`) and say so: the bar's header reads
+   `<selection> · at t = [n] s` and each quick icon's title ends `· at t = [n] s`.
 7. **Less chrome over the stage.** The mode subtitle band is gone — `MODE_SUB` is
    the mode button's `title` now, because printed under the buttons it said what
    the guidance line one band lower already said. `Guidance.tsx` renders one line,
@@ -361,10 +360,10 @@ just did, and the control that does it must sit where they are looking.*
    `classic` preset carries a crash at t = 0, so claiming the id made the picker say
    "edited" about a document nobody had edited.
 10. **A refusal that would be said three times is said once, quietly.** With
-    nothing down, every restore in the event menu refuses for the same reason and
+    nothing down, every restore refuses for the same reason and
     three copies of the shout were the loudest thing on the drawing. `isRestore()`
     (`break/events.ts`) and a filter on `WHY.nothingDown` drop those *entries* and
-    put one `.evmenu-quiet` line in their place — the reason stated, not hidden.
+    put one `.cv-bar-quiet` line (the action bar's, `breakBar`) in their place — the reason stated, not hidden.
     The action table is unchanged, so `actionsFor` still reports them.
     **The sentence is read off the subjects, never off the list it stands in for**,
     because the list is an intersection that keeps the first *blocked* subject's
@@ -452,7 +451,7 @@ just did, and the control that does it must sit where they are looking.*
     on the narrow read-only viewer with `WHY.readOnlyHere` while `LessonStep`'s did
     not, so on a phone one was grey and one was live; **the gate is gone, and the
     ungated pair is the one that was right.** `canEdit` is about the controls that
-    *change* a configuration — the inspector, the canvas, the event menu — which a
+    *change* a configuration — the inspector, the canvas, the action bar — which a
     phone has no room for. Following a lesson step is not one of them: the step's
     own "Show me" and "Open in Break" in the prose column are ungated at every
     width, and so is arriving on `#/learn/<lesson>/<step>` from a link, so greying
@@ -471,14 +470,15 @@ just did, and the control that does it must sit where they are looking.*
     ←/→ with the Shift 0.1 s step, Home/End, `.` and `,`) and `Sheet`'s document
     Escape. Nothing is listed that is not bound, and no handler was changed to
     match the list. A key bound in one mode says which one: `E` reads "open the
-    event menu for it (Break)", the way the `Delete` row beside it already named
-    Build, because `onEventMenu` reaches the canvas in Break alone
-    (`canvas/CanvasSlot.tsx`).
+    events it offers, at the playhead, and move the focus into them (Break)", the way
+    the `Delete` row beside it already named Build, because `onEvents` reaches the
+    canvas in Break alone (`canvas/CanvasSlot.tsx`); it opens the same bar `Shift+F10`
+    does.
 
-Two new stylesheets came out of this, on purpose: `styles/readout.css` (imported
-by `Readout.tsx`) and `styles/evmenu.css` (imported by `EventMenu.tsx`). Each
-contains only new class names and overrides nothing in `shell.css` or
-`inspector.css`, so cascade order against them does not matter.
+A new stylesheet came out of this, on purpose: `styles/readout.css` (imported by
+`Readout.tsx`). It contains only new class names and overrides nothing in `shell.css`
+or `inspector.css`, so cascade order against it does not matter. (A second,
+`styles/evmenu.css`, went with the event menu itself.)
 
 One new module came out of it too, and it is the only one that is not chrome:
 `timeline/playback.ts` (item 1). It is a hook, not an engine addition — the
@@ -518,9 +518,11 @@ it."* Five things landed, and one rule bent:
   centre's name band or a link's caption selects it *and* opens a small menu
   anchored to it — Build offers the Build table's entries (Edit · the
   transport as three pressed/unpressed chips · Make it the primary · the RTT
-  nudges · Remove, each with its `WhyPill` refusal), Break offers exactly the
-  event menu's list for that subject, quiet restore line included
-  (`restoreQuietLine`, one function feeding both surfaces). `Edit` puts the
+  nudges · Remove, each with its `WhyPill` refusal), Break offers the
+  grouped list of events for that subject, quiet restore line included
+  (`breakBar` over `actionsFor` and `restoreQuietLine`; Lanes' ⋯ menu calls the same
+  function), under a header that says *at t = [n] s*. In Break a plain click opens it;
+  in Build a click only selects. `Edit` puts the
   rail on the subject — and below 1280 it also opens the drawer
   (`openInspectorFor`), which a bare selection deliberately does not.
   The bar caps at seven rows (six until `+ Instance` joined a database card) and hands the rest to the panel; it closes on
@@ -537,10 +539,11 @@ it."* Five things landed, and one rule bent:
   silently), wrapped in a `scale(1/k)` group so its text stays ~12 px however
   far the drawing is scaled down (`fittedScale` caps the magnification at
   what still fits the view; `k` is measured by a `ResizeObserver` in
-  `CanvasSlot`, 1 in jsdom). The fixed homes survive: the event menu keeps
-  its place in the rail, the inspector keeps the full forms — the bar is a
-  second surface over the same tables (`build/actions.ts`, `break/events.ts`),
-  never the only place an action lives.
+  `CanvasSlot`, 1 in jsdom). The inspector keeps the full forms
+  and Lanes keeps its own buttons — the bar is a second surface over the same
+  tables (`build/actions.ts`, `break/events.ts`), and in Build never the only place
+  an action lives. (Break's rail no longer lists events to add, so there the bar and
+  the quick icons are how a selection is asked for its events.)
 - **One Build action table.** `ui/build/actions.ts` is the sibling of
   `break/events.ts`: label, refusal and act written once, consumed by the
   rail's Remove buttons, the bar, the context menu and the Delete key
@@ -977,12 +980,12 @@ Routing runs in two phases for that reason: every route first, so channels are s
 
 **Event affordances**: click node → menu (Crash the host · SHUTDOWN ABORT the instance (RAC: pick) · Stop redo apply · Take the whole site down · Restore); click link → Cut · Add latency… · Restore; multi-select shows the intersection of valid actions. Each action = `edit('Crash dc1-prm01', …addEvent at tNow)`; events ride the share link, appear as numbered markers on the axis and in the Break rail (editable `at`, remove).
 
-**Keyboard/aria**: svg `role="group" aria-describedby` with generated sentence set + a visually hidden structural table (site/member/role/host/receives from/transport/RTT); every card is `role="button"`, and **one card per site is the tab stop** (a roving `tabindex` that follows the arrows, so tabbing away from a site and back returns to the card the reader left) — arrows within a site, Tab between them, Enter or Space selects (Shift adds), `E` opens the event menu, `Delete`/`Backspace` removes in Build, `Esc` clears. Sentences composed per function (testable), collapse to counts above 8 members.
+**Keyboard/aria**: svg `role="group" aria-describedby` with generated sentence set + a visually hidden structural table (site/member/role/host/receives from/transport/RTT); every card is `role="button"`, and **one card per site is the tab stop** (a roving `tabindex` that follows the arrows, so tabbing away from a site and back returns to the card the reader left) — arrows within a site, Tab between them, Enter or Space selects (Shift adds), `E` opens the action bar in Break, `Delete`/`Backspace` removes in Build, `Esc` clears. Sentences composed per function (testable), collapse to counts above 8 members.
 
 Two things that spelling depends on:
 
 - **`tabindex`, lower case.** Attribute names are folded to lower case only for HTML elements, so the camel-cased JSX spelling lands on an SVG `<g>` as a literal `tabIndex` attribute that SVG2 has never heard of: the cards render, look focusable and take no focus at all. Same for the timeline's `<g role="slider">`. `test/ui/canvas-keyboard.test.ts` pins it.
-- **The shell has to pass the handlers.** `E` and `Delete` are the canvas's to detect and the shell's to mean: `CanvasSlot` wires `onEventMenu` only in Break (it opens the menu; it does not position it) and `onDelete` only in Build, where it removes exactly what the inspector's Remove button removes, refusals included — a shortcut that could delete the primary while the button beside it says why it cannot is two answers to one question, and the refusal is said out loud.
+- **The shell has to pass the handlers.** `E` and `Delete` are the canvas's to detect and the shell's to mean: `CanvasSlot` wires `onEvents` only in Break (it opens the action bar, with the focus in it) and `onDelete` only in Build, where it removes exactly what the inspector's Remove button removes, refusals included — a shortcut that could delete the primary while the button beside it says why it cannot is two answers to one question, and the refusal is said out loud.
 
 ## 5. Timeline
 
@@ -1019,7 +1022,7 @@ Lessons: 1 Failover clocks · 2 The transport layer · 3 The application's view 
 M1 shell + canvas drawing the classic 1+1+1 from the engine · M2 Build mode (inspector, validation, undo, persistence, share) · M3 Break mode (events, timeline, scrubber, readout; six templates reproduce the six legacy outcomes) · M4 Configure (generators, panels, cross-highlight, goldens) · M5 Learn (nine lessons, reference, legacy URLs, print; deploy flip; drop 'unsafe-inline') · M6 polish/a11y/perf.
 
 ## 8. Taste notes
-Two faces only: system sans for prose, mono for everything Oracle/terminal (property names, modes, statuses, ORA numbers, DGMGRL, names, hosts, numerals with units). Prose 15/1.55, captions 11.5, eyebrows 11 mono uppercase .16em, chips 10.5 mono uppercase .12em, readout numbers 26/620 tabular. **As built the eyebrow is quieter and rarer** — 10.5 mono uppercase .08em, and only for a *section* label. It is not a chip label (the readout's are sans, sentence case), and it is not a title that reads as a sentence: the event menu says `Inject at t = 40 s` in mono sentence case, because AT T = 40 S was a shout. Readout values are 14/620 tabular mono, and the site label under a data centre rectangle is 11 px, not 10 — it names a column of the drawing, not a footnote to it. Canvas airy, rails dense; elevation only on rail/sheet/drawer. Colour semantic never decorative; cards monochrome in Build, tinted only in Break at a t; red = down only; violet = app's voice + observer semantics. Empty states say something true (inspector → configuration summary; Break → "No events yet…"; timeline → "No events yet. Select a card…"; validation → "No issues … as modelled here"). Five invariants: WhyPill on every disabled control (`{state:'on'} | {state:'off', why}` prop); captions branch on outcome; nothing hidden by CSS alone; every demonstrable claim has "Show me"; undocumented labelled in place (`<Fact id>` chip). New principle: the drawing and the text are the same object seen twice (hover a generated line → highlight the member; select a member → scroll to its lines).
+Two faces only: system sans for prose, mono for everything Oracle/terminal (property names, modes, statuses, ORA numbers, DGMGRL, names, hosts, numerals with units). Prose 15/1.55, captions 11.5, eyebrows 11 mono uppercase .16em, chips 10.5 mono uppercase .12em, readout numbers 26/620 tabular. **As built the eyebrow is quieter and rarer** — 10.5 mono uppercase .08em, and only for a *section* label. It is not a chip label (the readout's are sans, sentence case), and it is not a title that reads as a sentence: the action bar's header says `at t = 40 s` in mono sentence case, because AT T = 40 S was a shout. Readout values are 14/620 tabular mono, and the site label under a data centre rectangle is 11 px, not 10 — it names a column of the drawing, not a footnote to it. Canvas airy, rails dense; elevation only on rail/sheet/drawer. Colour semantic never decorative; cards monochrome in Build, tinted only in Break at a t; red = down only; violet = app's voice + observer semantics. Empty states say something true (inspector → configuration summary; Break → "No events yet…"; timeline → "No events yet. Select a card…"; validation → "No issues … as modelled here"). Five invariants: WhyPill on every disabled control (`{state:'on'} | {state:'off', why}` prop); captions branch on outcome; nothing hidden by CSS alone; every demonstrable claim has "Show me"; undocumented labelled in place (`<Fact id>` chip). New principle: the drawing and the text are the same object seen twice (hover a generated line → highlight the member; select a member → scroll to its lines).
 
 
 RAC cards now retain one database identity and one set of redo links, with a
@@ -1292,8 +1295,6 @@ much more user-friendly and nicer"*.
   docked grid's column move with the width. `--rail-space` is restated on `.app`
   (≥1280) because the `:root` declaration resolved against the open width. The port
   keeps the open width while the column grows, so the fields lay out once.
-- **Break with the rail folded** puts the event menu on the stage, where the drawer
-  layout already puts it — a menu inside a folded rail is a menu nobody finds.
 - **"Show me this in the inspector" unfolds it**: Edit (`openInspectorFor`), a
   finding's row, the walkthrough's threshold step and the run explanation's settings
   links call `revealRail()` (persist.ts), which unfolds the column on a wide screen
@@ -1307,7 +1308,7 @@ much more user-friendly and nicer"*.
   goes red on hover.
 - Folds turn an SVG chevron (the shared `Caret`), an open section's heading is ink and
   a shut one steps back, the summary's rows are ruled, and an empty state (Break's *No
-  events yet*, the event menu's *Select a card…*) is a dashed box rather than a stray
+  events yet*) is a dashed box rather than a stray
   sentence.
 
 Tests: `test/ui/rail-collapse.test.ts`.
@@ -1407,8 +1408,7 @@ handle on its top edge). Build's dock, chips and warning card are as they were.
     dragged to. The separator answers ↑/↓ (16 px, ×4 with Shift), Page keys, Home, End
     and Enter.
   - *The rail folds to its strip on the way in* (`split-rail.ts`, `useFoldRailWhile`), so
-    the drawing keeps its width and the event menu sits on the stage, as with any folded
-    rail. It is a plain signal write: `dg-rail` is not touched by a layout. If the reader
+    the drawing keeps its width. It is a plain signal write: `dg-rail` is not touched by a layout. If the reader
     unfolds or folds the rail themselves inside Split that is their choice, stored as
     usual, and is left alone on the way out; otherwise leaving Break (to Build, say) puts
     the rail back as it was. Lanes folds it the same way, and a switch between the two
@@ -1456,7 +1456,7 @@ handle on its top edge). Build's dock, chips and warning card are as they were.
     *Open*. A crashed host is a red **cross in the badge**, in place of the role's letter;
     over the hatch, name and role get a ground of the card's colour so they stay legible.
   - *They are aimed at the playhead.* The buttons are computed at `snapT(tNow)` — the
-    same tenth of a second the rail's *Inject at t =* field shows, and that field *is*
+    same tenth of a second the transport's *t* field shows, and that field *is*
     `tNow`, so the two cannot disagree — so they change as the reader scrubs or plays:
     with a crash at 10 s the host's slot is *Crash* at 5 s and *Restore* at 40 s,
     SWITCHOVER is refused at 40 s "at this point on the clock", a data centre that is
@@ -1560,23 +1560,19 @@ handle on its top edge). Build's dock, chips and warning card are as they were.
   under the bar as a small card for the eight seconds it is up instead of squeezing in.
 - **The rail folds in both layouts.** `useFoldRailWhile` (`split-rail.ts`) is called with
   *either layout on screen*, so a switch between Split and Lanes never touches the rail;
-  the cards carry the events, and the rail (scenarios, validation, the *Inject at t =*
-  field) is one press on its strip away. Same rules as before: a plain signal write, never
+  the cards carry the events, and the rail (the events, the scenarios, validation)
+  is one press on its strip away. Same rules as before: a plain signal write, never
   the shared `dg-rail` key; the reader's own fold or unfold inside a layout is theirs, stored
   as usual and left alone on the way out; leaving Break gives the rail back as it was.
   The automatic fold and its undo raise `railSnap` for ~300 ms and the shell drops the
   width transition meanwhile (`.rail-snap`, rail.css): the rail's contents swap to the strip
   at once while its width took .22 s to follow, which was one frame of a wide, empty rail
   — a CSS artefact, not a stuck state (Lanes → Split → Lanes now never changes the width).
-  Lanes never floats the stage event menu, at any width: the cards, data-centre headers and
-  link pills carry the events, and below 1280 the top bar's *Events* button opens the drawer
-  with the menu (its *Inject at t =* field) at its head, closable like any drawer: the *Close*
-  button, Esc and a press on the scrim, the Lanes bar untouched behind it and reachable at once
-  when it is shut. The menu keeps its own height cap (360 px, scrolling in its own box) so the
-  events list with its *Remove* buttons stays one short scroll below it; the title's clock
-  reading and its unit are one unbreakable piece (`.evmenu-inject`), so at the drawer's width
-  the line breaks before *Inject* rather than stranding the *s*. Split keeps its floating menu
-  where there is no rail column.
+  Below 1280 the top bar's *Events* button opens the drawer with the rail's contents,
+  closable like any drawer: the *Close* button, Esc and a press on the scrim, the Lanes bar
+  untouched behind it and reachable at once when it is shut. It opens on the events list
+  with its *Remove* buttons; there is no menu of events to add at its head — the cards,
+  data-centre headers and link pills carry those.
 - **Density belongs to the model.** The prototype switched a module-level `TL` while
   rendering; it is now `TimelineView.density` → `TimelineModel.layout`, and `Lane`,
   `Marker`, `EventDrag` and `playheadSpan` read it from the model (`Marker` takes a
@@ -1603,7 +1599,7 @@ and open at the restore — the two-line card and its state word, the applicatio
 the link names on pill, connector and menu, the empty run and its axis, the held axis, the
 braces, the data centres' order, the application in its data centre), `lanes-layout.test.ts`
 (rail lanes, pill planning and folding, `segmentAt`, `cardSub`, `hostBands`), `timeline-dock.test.ts` (the height and its clamp, the
-separator, full screen, `--tl-h`), `rail-collapse.test.ts` (with the Lanes Events drawer at 1024: open, Inject field, Remove, close by button, Esc and scrim), `contrast.test.ts` (every band label token over its fill, four palettes, >= 4.5:1), and in `lanes-events.test.ts` the drag readout beside the pin. Browser pass (Lanes polish, 2026-09-29: dark, light, the colour-blind palette, 1440×900 and
+separator, full screen, `--tl-h`), `rail-collapse.test.ts` (with the Lanes Events drawer at 1024: open, no event menu in it, Remove, close by button, Esc and scrim; and no `.evmenu` anywhere in Break, Split or Lanes, folded or open), `contrast.test.ts` (every band label token over its fill, four palettes, >= 4.5:1), and in `lanes-events.test.ts` the drag readout beside the pin. Browser pass (Lanes polish, 2026-09-29: dark, light, the colour-blind palette, 1440×900 and
 1280×800, a restore at 20 s with the playhead at 20 s, the empty run, Lanes↔Split↔Lanes and
 Build↔Break rail widths sampled frame by frame): Split and Lanes at
 1440×900 and 1280×800, Split at 1024×768, the findings dropdown, the key popover and full

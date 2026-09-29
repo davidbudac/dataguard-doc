@@ -22,7 +22,6 @@ import { clearSelection, inspectorOpen, mode, selection, toast, tNow, viewport }
 import { App } from '@/ui/App';
 import { barOpen, closeBar } from '@/ui/canvas/bar';
 import { MAX_ROWS, shownRows } from '@/ui/canvas/ActionBar';
-import { menuOpen } from '@/ui/canvas/EventMenu';
 import { Inspector } from '@/ui/inspector/Inspector';
 import { addDatabase, removeLink, routesWithout } from '@/ui/inspector/edits';
 import { WHY } from '@/ui/inspector/why';
@@ -166,7 +165,6 @@ describe('a line selected by its own key', () => {
 describe('the handle', () => {
   beforeEach(() => {
     tNow.value = 0;
-    menuOpen.value = true;
     mode.value = 'build';
     closeBar();
   });

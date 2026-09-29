@@ -12,7 +12,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { h, render } from 'preact';
-import { App, evmenuInsets } from '@/ui/App';
+import { App } from '@/ui/App';
 import { classicDoc } from '@/state/doc';
 import { resetHistory } from '@/state/history';
 import { findingsOpen, mode, selection, viewport } from '@/state/view';
@@ -49,24 +49,6 @@ describe('Escape, one thing at a time', () => {
     document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
     expect(selection.value).toEqual([]);
     render(null, root);
-  });
-});
-
-describe('the drawing clears the event menu (1024-1279)', () => {
-  const wrap = { left: 0, top: 0, right: 1100, bottom: 768 };
-  const menu = { left: 786, top: 108, right: 1086, bottom: 240 };
-  const pad = { l: 236, b: 330 };
-
-  it('goes under the menu when the drawing is a wide row', () => {
-    const at = evmenuInsets(wrap, menu, pad, { w: 1066, h: 224 });
-    expect(at.t).toBe(252);
-    expect(at.r).toBe(32);
-  });
-
-  it('stops left of it when the drawing is tall', () => {
-    const at = evmenuInsets(wrap, menu, pad, { w: 400, h: 600 });
-    expect(at.t).toBe(114);
-    expect(at.r).toBe(322);
   });
 });
 

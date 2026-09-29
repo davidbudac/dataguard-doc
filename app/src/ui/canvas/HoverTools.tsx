@@ -49,6 +49,8 @@ export interface HoverToolsProps {
   scale: number;
   subject: string;
   tools: readonly CanvasTool[];
+  /** When an icon acts ("at t = 20 s"), said once on the strip and on each icon. */
+  when?: string;
 }
 
 export function HoverTools(props: HoverToolsProps): JSX.Element {
@@ -59,7 +61,7 @@ export function HoverTools(props: HoverToolsProps): JSX.Element {
       data-node={props.subject}
       data-tools={props.subject}
       role="toolbar"
-      aria-label={`Quick events for ${props.subject}`}
+      aria-label={`Quick events for ${props.subject}${props.when === undefined ? '' : ` ${props.when}`}`}
       transform={`translate(${props.x},${props.y}) scale(${1 / props.scale})`}
       onPointerDown={(ev) => ev.stopPropagation()}
       onDblClick={(ev) => ev.stopPropagation()}
@@ -67,7 +69,9 @@ export function HoverTools(props: HoverToolsProps): JSX.Element {
       <rect class="tp-tools-bg" width={size.w} height={size.h} rx={size.h / 2} />
       {props.tools.map((t, i) => {
         const off = t.enabled.state === 'off';
-        const title = t.enabled.state === 'off' ? `${t.label} — ${t.enabled.why}` : t.label;
+        const title = t.enabled.state === 'off'
+          ? `${t.label} — ${t.enabled.why}`
+          : props.when === undefined ? t.label : `${t.label} · ${props.when}`;
         return (
           <g
             key={t.id}

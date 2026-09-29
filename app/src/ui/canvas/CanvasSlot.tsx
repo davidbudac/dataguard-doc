@@ -31,7 +31,7 @@ import {
 } from '../inspector/edits';
 import { inFlight, inFlightFrom, placeOver, renaming, setSiteAt } from './place';
 import { mergeVerdict } from './drop';
-import { hoverTools } from '../break/events';
+import { hoverTools, snapT } from '../break/events';
 import { breakBar } from '../break/menu';
 import { AddToolbar } from '../inspector/adds';
 import type { WhyState } from '../common/WhyPill';
@@ -39,7 +39,6 @@ import { useRovingToolbar } from '../common/useRovingToolbar';
 import { ON } from '../inspector/why';
 import type { BarAction, BarSection } from './ActionBar';
 import { barFocus, barOpen, closeBar, openBar } from './bar';
-import { menuOpen, snapT } from './EventMenu';
 import { marginAround, unobscured } from './anchor';
 import type { Rect } from './measure';
 import { resizedBox, TopoCanvas } from './TopoCanvas';
@@ -206,11 +205,11 @@ const rectOf = (r: DOMRect): Rect => ({ x: r.left, y: r.top, w: r.width, h: r.he
 
 /**
  * What floats over the stage: the top bar, the palette, the rail, the zoom
- * pill, the timeline dock and Break's event menu when it is a card of its
- * own. In the docked layout they sit beside the drawing rather than over it
- * and none of them overlaps the wrap, so asking costs nothing there.
+ * pill and the timeline dock. In the docked layout they sit beside the
+ * drawing rather than over it and none of them overlaps the wrap, so asking
+ * costs nothing there.
  */
-const CHROME = '.app-head, .app-rail, .app-dock, .palette, .zoom-pill, .app-stage > .evmenu';
+const CHROME = '.app-head, .app-rail, .app-dock, .palette, .zoom-pill';
 
 /**
  * The ground the action bar may use, in CSS pixels: the wrap's *content*
@@ -218,7 +217,7 @@ const CHROME = '.app-head, .app-rail, .app-dock, .palette, .zoom-pill, .app-stag
  *
  * Not the wrap's border box. In the floating layout the wrap is the whole
  * window and its padding is exactly what keeps the drawing clear of the
- * chrome over it (float.css, `--pal-r`, `--evm-t`/`--evm-r`, `--dock-h`);
+ * chrome over it (float.css, `--pal-r`, `--dock-h`);
  * measuring from the border box handed the bar the ground *under* the rail,
  * and a bar placed beside a standby at the right edge was painted beneath it.
  * `clientWidth`/`clientHeight` leave a zoomed wrap's scrollbars out.
@@ -749,7 +748,10 @@ export function CanvasSlot({ interactive = true }: CanvasSlotProps) {
           : {})}
         onHover={(key: string | null) => { hovered.value = key; }}
         {...(editable && m === 'break'
-          ? { tools: (key: string) => hoverTools(topology.value, key, snapT(tNow.value)) }
+          ? {
+            tools: (key: string) => hoverTools(topology.value, key, snapT(tNow.value)),
+            toolsWhen: `at t = ${at} s`,
+          }
           : {})}
         onClear={() => { closeBar(); clearSelection(); }}
         onCloseBar={() => closeBar()}
@@ -773,13 +775,11 @@ export function CanvasSlot({ interactive = true }: CanvasSlotProps) {
             },
           }
           : {})}
-        /* Break: a click on a card, and `E` on a focused one, open the menu of
-           what can be done to it. The menu has a fixed home (rail head on a wide
-           screen, under the drawing otherwise), so this opens it rather than
-           positioning it -- `style-src 'self'` forbids positioning anything from
-           script anyway. */
+        /* Break: `E` on a focused card opens the bar of what can be done to it,
+           and takes the focus into it -- the same bar `Shift+F10` opens, and the
+           one a click already opened (`onSelect`, above). */
         {...(editable && mode.value === 'break'
-          ? { onEventMenu: (): void => { menuOpen.value = true; } }
+          ? { onEvents: (key: string): void => { select(key); openBar(key, true); } }
           : {})}
         {...(editable && mode.value === 'build'
           ? {

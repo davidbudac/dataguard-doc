@@ -1,4 +1,4 @@
-/* The rails: the inspector, the Break rail and the event menu at their head.
+/* The rails: the inspector and the Break rail.
 
    One system for all of them (docs/tasks/ui-followups.md 3.2), built out of
    the 4 px ladder in tokens.css:
@@ -75,11 +75,11 @@
 
 /* One button size on every rail: the header's, a group's `+ Rule`, a row's
    `Remove`. Ghost until the pointer is on one (float.css). */
-.insp .btn,.app-rail .evmenu .btn{font-size:12.5px;padding:4px 8px;min-height:28px}
+.insp .btn{font-size:12.5px;padding:4px 8px;min-height:28px}
 .insp .btn.is-faded{opacity:.46}
 /* A refusal is a sentence under the control it explains, full width, never
    squeezed beside a button. */
-.insp .why,.app-rail .evmenu .why{display:block;border-radius:8px;padding:4px 10px;border:0;
+.insp .why{display:block;border-radius:8px;padding:4px 10px;border:0;
   background:color-mix(in srgb,var(--ik3) 12%,var(--sf));
   font-size:12px;line-height:1.45}
 .insp .tag{font-family:var(--sans);font-size:11.5px;font-weight:500;text-transform:none;
@@ -348,52 +348,6 @@
   /* On paper every scenario carries its sentence (the rail renders them all
      while `printing` is on). */
   .tmpls{grid-template-columns:1fr;gap:var(--s3)}
-}
-
-/* ---------------- the event menu ---------------- */
-
-/* In the stage's flow, under the drawing (shell.css makes the stage a
-   column): a menu floating over the canvas covered the very card it was
-   opened for. */
-.evmenu{flex:0 0 auto;align-self:flex-start;margin:0 14px 12px;
-  width:min(320px,calc(100% - 28px));
-  display:flex;flex-direction:column;gap:2px;padding-bottom:8px;
-  background:var(--sf);border:1px solid var(--ln2);border-radius:3px;box-shadow:var(--sh);
-  max-height:min(50%,360px);overflow:auto}
-.evmenu.is-shut{width:auto;padding:6px;border-radius:3px}
-.evmenu-hd{display:flex;align-items:center;gap:8px;padding:8px 10px;
-  border-bottom:1px solid var(--ln);background:var(--sf2);position:sticky;top:0}
-.evmenu-title{font-size:11.5px;letter-spacing:.02em;color:var(--ik2);min-width:0;
-  overflow-wrap:anywhere}
-.evmenu-row{padding:4px 10px}
-.evmenu-row .btn{width:100%;justify-content:flex-start;text-align:left}
-.evmenu-row .ctl-off{display:flex;flex-direction:column;align-items:stretch;gap:4px}
-.evmenu-empty{padding:10px;font-size:12px;line-height:1.45;color:var(--ik3)}
-.evmenu-note{padding:8px 10px 2px;font-size:11px;line-height:1.4;color:var(--ik3)}
-
-/* At the head of the Break rail it is the rail's header and first group, in
-   the rail's own voice: the same 60 px header, the same inset, the same
-   buttons and refusals as the inspector. */
-.app-rail .evmenu{align-self:stretch;margin:0;width:auto;max-height:none;overflow:visible;
-  gap:0;padding-bottom:var(--s2);border:0;border-bottom:1px solid var(--ln);border-radius:0;
-  box-shadow:none}
-.app-rail .evmenu.is-shut{flex-direction:row;padding:var(--s3) var(--rail-px)}
-.app-rail .evmenu-hd{min-height:60px;padding:var(--s3) calc(var(--rail-px) - var(--s1))
-  var(--s3) var(--rail-px);background:var(--sf);margin-bottom:var(--s1);z-index:3}
-.app-rail .evmenu-title{font-family:var(--sans);font-size:13px;font-weight:600;
-  letter-spacing:0;color:var(--ik)}
-.app-rail .evmenu-at{height:26px;padding:0 6px;border-color:var(--ln2);
-  border-radius:var(--r-ctl);font-size:12px}
-.app-rail .evmenu-row{padding:0 calc(var(--rail-px) - var(--s1)) 0 calc(var(--rail-px) - 8px)}
-.app-rail .evmenu-row .btn{min-height:32px}
-.app-rail .evmenu-row .why{margin:0 0 var(--s1) 8px}
-.app-rail .evmenu-empty,.app-rail .evmenu-note,.app-rail .evmenu-hint,.app-rail .evmenu-quiet{
-  margin:0;padding:var(--s1) var(--rail-px) var(--s2);font-size:12px;line-height:1.5;
-  color:var(--ik3)}
-.app-rail .evmenu-empty{margin:var(--s1) var(--rail-px) var(--s2);padding:var(--s3);
-  border:1px dashed var(--ln2);border-radius:10px;background:var(--sf2)}
-@media (max-width:767px){
-  .evmenu{width:auto;max-height:none;margin:12px}
 }
 
 /* ---------------- validation rows as buttons ---------------- */

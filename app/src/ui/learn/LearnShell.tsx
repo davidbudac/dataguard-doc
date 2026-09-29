@@ -87,7 +87,7 @@ function Intro() {
  *
  * Neither button is gray on the narrow viewer, and that is deliberate. The
  * read-only gate (`canEdit`) is about the controls that *change* a
- * configuration -- the inspector, the canvas, the event menu -- which a phone
+ * configuration -- the inspector, the canvas, the action bar -- which a phone
  * has no room for. Following a lesson step is not one of them: the step's own
  * "Show me" and "Open in Break" in the prose column are ungated at every
  * width, and so is arriving on `#/learn/<lesson>/<step>` from a link. Graying
