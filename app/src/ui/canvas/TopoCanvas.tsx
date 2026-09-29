@@ -1374,10 +1374,7 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
     if (bar) cards.current.get(bar.key)?.focus();
   };
 
-  const legend = legendLines(
-    doc, routed.links.some((l) => !l.active && l.kind !== 'connect'),
-    routed.links.some((l) => !l.active && l.kind === 'connect'),
-  );
+  const legend: string[] = [];
   if (!interactive) {
     legend.unshift(props.readOnlyWhy
       ?? 'This drawing is read-only here: nothing on it can be selected or moved.');
@@ -1837,24 +1834,4 @@ function PointerTip({ x, y, text, refused }: { x: number; y: number; text: strin
       <text class="tp-rubber-tip-tx" x={x + 19} y={y - 9}>{shown}</text>
     </g>
   );
-}
-
-/** Said once, under the drawing: what an absent chip and a faded line mean. */
-export function legendLines(
-  doc: TopologyDoc, anyInactive: boolean, fadedAddress = false,
-): string[] {
-  const out: string[] = [];
-  if (doc.members.some((m) => m.instances.length > 1)) {
-    out.push('A card with no RAC chip is a single-instance database.');
-  }
-  if (doc.observers.length > 0 && doc.config.fsfo.state === 'disabled') {
-    out.push('Fast-start failover is disabled, so no observer is called the master observer; all observers have the same functionality.');
-  }
-  if (anyInactive) {
-    out.push('A faded line is a destination this configuration declares but is not shipping to now.');
-  }
-  if (fadedAddress) {
-    out.push('A faded dash-dot line is an address on the application\'s connect string where the service is not published now.');
-  }
-  return out;
 }
