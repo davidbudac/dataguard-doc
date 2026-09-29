@@ -19,7 +19,7 @@ import { App } from '@/ui/App';
 import { classicDoc, doc as docSignal } from '@/state/doc';
 import { resetHistory } from '@/state/history';
 import { mode, selection, toast, viewport } from '@/state/view';
-import { menuOpen } from '@/ui/canvas/EventMenu';
+import { barFocus, barOpen, closeBar } from '@/ui/canvas/bar';
 import { classic, graphOf, threeObserverFixture } from './canvas-fixtures';
 import type { TopologyDoc } from '@/engine';
 
@@ -27,7 +27,7 @@ const tick = (): Promise<void> => new Promise((r) => setTimeout(r, 0));
 
 interface Handlers {
   onSelect?: (key: string, additive: boolean) => void;
-  onEventMenu?: (key: string, at: { x: number; y: number }) => void;
+  onEvents?: (key: string) => void;
   onDelete?: (key: string) => void;
   onClear?: () => void;
 }
@@ -70,9 +70,9 @@ const focusedKey = (): string | null =>
 
 beforeEach(() => {
   document.body.innerHTML = '';
+  closeBar();
   selection.value = [];
   toast.value = null;
-  menuOpen.value = true;
   mode.value = 'build';
   viewport.value = 'wide';
   resetHistory(classicDoc());
@@ -177,12 +177,12 @@ describe('the canvas is reachable by keyboard', () => {
     expect(onSelect).toHaveBeenLastCalledWith('sby01', true);
   });
 
-  it('asks for the event menu with E, in either case', () => {
-    const onEventMenu = vi.fn();
-    const root = mountCanvas(classic('dc3'), { onEventMenu });
+  it('asks for the events on offer with E, in either case', () => {
+    const onEvents = vi.fn();
+    const root = mountCanvas(classic('dc3'), { onEvents });
     press(card(root, 'prm01'), 'e');
     press(card(root, 'sby01'), 'E');
-    expect(onEventMenu.mock.calls.map((c) => c[0])).toEqual(['prm01', 'sby01']);
+    expect(onEvents.mock.calls.map((c) => c[0])).toEqual(['prm01', 'sby01']);
   });
 
   it('removes with Delete and with Backspace, and clears with Escape', () => {
@@ -252,14 +252,29 @@ describe('the shell wires those keys to real edits', () => {
     expect(docSignal.value.topology.members.map((m) => m.id as string)).toContain('sby01');
   });
 
-  it('E opens the event menu in Break mode', async () => {
+  it('E opens the action bar for the card in Break mode, and not in Build', async () => {
+    const built = mountApp();
+    await tick();
+    press(card(built, 'prm01'), 'E');
+    await tick();
+    expect(barOpen.value).toBeNull();
+    render(null, built);
+    built.remove();
+
     mode.value = 'break';
-    menuOpen.value = false;
     const root = mountApp();
+    /* Effects run after the paint: let the change of mode (and the drawings
+       earlier tests left mounted, which see it too) settle before the key, or
+       one of them closes the bar the key has just opened. */
+    await new Promise<void>((r) => { requestAnimationFrame(() => r()); });
     await tick();
     press(card(root, 'prm01'), 'E');
+    await new Promise<void>((r) => { requestAnimationFrame(() => r()); });
     await tick();
-    expect(menuOpen.value).toBe(true);
+    expect(selection.value).toEqual(['prm01']);
+    expect(barOpen.value).toBe('prm01');
+    /* A key is a keyboard-shaped request: the focus goes into the bar. */
+    expect(barFocus.value).toBe(true);
   });
 
   /* Pressed on the focused rectangle, not called: a data centre takes focus

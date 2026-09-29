@@ -274,7 +274,6 @@ button.issue{border-bottom:1px solid var(--ln)}
     z-index:20;overflow:auto;border-left:1px solid var(--ln);border-radius:var(--r-card);
     box-shadow:var(--sh-card);scrollbar-width:thin}
   .app.is-float .app-rail .insp-hd{border-radius:var(--r-card) var(--r-card) 0 0}
-  .app.is-float .app-rail .evmenu{border-radius:var(--r-card) var(--r-card) 0 0}
 
   /* The dock at the bottom: Build's readings, Break's timeline panel. */
   .app.is-float .app-dock{position:absolute;left:var(--float-m);
@@ -382,20 +381,6 @@ button.issue{border-bottom:1px solid var(--ln)}
   .fnd-pop-body{min-height:0;overflow:auto;border-radius:0 0 var(--r-card) var(--r-card)}
   .fnd-pop .issues{overflow:visible}
   .issues-none{padding:14px 16px;font-size:13px;color:var(--ik3)}
-
-  /* The event menu, when there is no rail to head (1024-1279): a card at the
-     right edge, above the zoom pill, and the drawing's fit starts under it or
-     stops left of it, whichever draws larger (`--evm-t`/`--evm-r`, measured
-     by App.tsx) -- shut to its one button, it gives the room back. It scrolls
-     rather than run under the pill or the dock. */
-  .app.is-float .app-stage>.evmenu{position:absolute;right:var(--float-m);
-    top:calc(var(--bar-bottom,80px) + 12px);margin:0;z-index:22;border-radius:var(--r-card);
-    border-color:var(--ln);width:min(300px,30vw);box-sizing:border-box;overflow:auto;
-    max-height:calc(100dvh - var(--bar-bottom,80px) - var(--dock-h,72px) - 2 * var(--float-m) - 76px)}
-  .app.is-float .app-stage>.evmenu.is-shut{width:auto}
-  .app.is-float.has-evm .app-stage>.tp-wrap{
-    padding-top:var(--evm-t,calc(var(--bar-bottom,80px) + 18px));
-    padding-right:var(--evm-r,calc(var(--rail-space) + 18px))}
 
   /* 1024-1279: the inspector is a drawer, so the dock and the pill take the
      right edge back. */

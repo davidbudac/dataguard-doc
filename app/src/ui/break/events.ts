@@ -867,6 +867,9 @@ export function actionsFor(doc: TopologyDoc, keys: readonly string[], at: number
   return out;
 }
 
+/** Events land on a tenth of a second: the axis is read to that, not finer. */
+export const snapT = (t: number): number => Math.round(t * 10) / 10;
+
 /**
  * Move the playhead to the end of what there is to see.
  *
@@ -884,8 +887,7 @@ export function restPlayhead(): void {
   const t = trace.value;
   if (t === null) { tNow.value = 0; return; }
   const end = lastInterestingT(t, topology.value.events, appLanesShown.value ? topology.value : undefined);
-  /* A tenth of a second, the way the axis is read (EventMenu's `snapT`). */
-  tNow.value = Math.max(0, Math.round(end * 10) / 10);
+  tNow.value = Math.max(0, snapT(end));
 }
 
 export interface RunOptions {

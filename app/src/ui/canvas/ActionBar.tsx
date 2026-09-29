@@ -1,9 +1,9 @@
 /**
  * What can be done to the thing on the drawing, on the drawing.
  *
- * The rail on the right and the event menu below both answer "what can I do to
- * this?", and both answer it somewhere the reader is not looking: they had
- * clicked a card. This is the same answer at the card -- the same `BuildAction`
+ * The rail on the right answers "what can I do to this?" somewhere the reader
+ * is not looking: they had clicked a card. (Break's rail no longer answers it
+ * at all; this is its only list.) This is the answer at the card -- the same `BuildAction`
  * and `EventAction` tables, mapped into one neutral `BarAction` shape, so a
  * label or a *refusal* is the table's and cannot drift from the surface beside
  * it.

@@ -33,7 +33,6 @@ import { linkKey } from '@/ui/canvas/LinkPath';
 import { App } from '@/ui/App';
 import { classicDoc, doc as docSignal } from '@/state/doc';
 import { resetHistory } from '@/state/history';
-import { menuOpen } from '@/ui/canvas/EventMenu';
 import { mode, selection, tNow, toast, viewport } from '@/state/view';
 import {
   ACTION_GROUP_LABEL, actionGroup, actionsFor, nothingToRestore, restoreQuietLine,
@@ -652,7 +651,6 @@ describe('the handle on the selected thing offers what can be done to it', () =>
     selection.value = [];
     toast.value = null;
     tNow.value = 0;
-    menuOpen.value = true;
     mode.value = 'build';
     viewport.value = 'wide';
     closeBar();
@@ -740,7 +738,7 @@ describe('the handle on the selected thing offers what can be done to it', () =>
     expect((document.activeElement as HTMLElement | null)?.textContent).toBe('Edit sby01');
   });
 
-  it('offers the whole Break table, entry for entry, beside the event menu', async () => {
+  it('offers the whole Break table, entry for entry', async () => {
     mode.value = 'break';
     const root = await mountApp();
     await clickCard(root, 'prm01');
@@ -784,8 +782,6 @@ describe('the handle on the selected thing offers what can be done to it', () =>
     const quietEl = [...root.querySelectorAll('.cv-bar-quiet')].find((p) => p.textContent === quiet);
     expect(quietEl?.closest('.cv-menu-sec')?.querySelector('.cv-menu-lbl')?.textContent)
       .toBe(ACTION_GROUP_LABEL.restore);
-    expect([...root.querySelectorAll('.evmenu-quiet')].map((p) => p.textContent))
-      .toContain(quiet);
   });
 
   it('says in its header when the events land, off the playhead the rail reads', async () => {
@@ -828,6 +824,63 @@ describe('the handle on the selected thing offers what can be done to it', () =>
     crash.click();
     await tick();
     expect(docSignal.value.topology.events.map((e) => e.kind)).toContain('host.down');
+  });
+
+  /* The event menu that used to answer "what can I do to this?" is gone from
+     Break: the click on the drawing is the answer, and it is the bar. */
+  it('draws no event menu in Break, and a click on a card is what lists the events', async () => {
+    mode.value = 'break';
+    tNow.value = 12;
+    const root = await mountApp();
+    expect(root.querySelector('.evmenu')).toBeNull();
+    expect(barOpen.value).toBeNull();
+    await clickCard(root, 'prm01');
+    expect(root.querySelector('.evmenu')).toBeNull();
+    /* The click selected it and opened the grouped list, with no second gesture. */
+    expect(selection.value).toEqual(['prm01']);
+    expect(barOpen.value).toBe('prm01');
+    expect(root.querySelector('.cv-menu-lbl')).not.toBeNull();
+    expect(root.querySelector('.cv-bar-when')?.textContent).toBe(' · at t = 12 s');
+    const crash = [...root.querySelectorAll('.cv-bar-row button')]
+      .find((b) => (b.textContent ?? '').startsWith('Crash')) as HTMLButtonElement;
+    crash.click();
+    await tick();
+    /* It landed on the playhead the transport shows, not on a time of its own. */
+    expect(docSignal.value.topology.events).toEqual([{ at: 12, kind: 'host.down', host: 'dc1-prm01' }]);
+  });
+
+  it('closes the Break list on Escape and on a press outside, keeping the selection on Escape', async () => {
+    mode.value = 'break';
+    const root = await mountApp();
+    await clickCard(root, 'sby01');
+    expect(barOpen.value).toBe('sby01');
+    card(root, 'sby01').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+    await tick();
+    expect(barOpen.value).toBeNull();
+    expect(selection.value).toEqual(['sby01']);
+    await clickCard(root, 'sby01');
+    expect(barOpen.value).toBe('sby01');
+    /* The outside-press listener is an effect: preact flushes it after the paint. */
+    await new Promise<void>((r) => { requestAnimationFrame(() => r()); });
+    await tick();
+    document.body.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, cancelable: true }));
+    await tick();
+    expect(barOpen.value).toBeNull();
+  });
+
+  it('says on each quick icon when it acts', async () => {
+    mode.value = 'break';
+    tNow.value = 20;
+    const root = await mountApp();
+    const name = (el: Element): string => ('onpointerover' in el ? 'pointerover' : 'PointerOver');
+    const card0 = card(root, 'prm01');
+    card0.dispatchEvent(new MouseEvent(name(card0), { bubbles: true, cancelable: true }));
+    await tick();
+    const strip = root.querySelector('[data-tools="prm01"]');
+    expect(strip?.getAttribute('aria-label')).toBe('Quick events for prm01 at t = 20 s');
+    const titles = [...(strip?.querySelectorAll('title') ?? [])].map((t) => t.textContent ?? '');
+    expect(titles.length).toBeGreaterThan(0);
+    for (const t of titles) expect(t).toContain('at t = 20 s');
   });
 
   it('offers nothing on a drawing nobody may edit', async () => {

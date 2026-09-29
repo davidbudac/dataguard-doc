@@ -16,7 +16,7 @@ import { resetHistory } from '@/state/history';
 import {
   loadRailCollapsed, RAIL_KEY, revealRail, setRailCollapsed, toggleRail,
 } from '@/state/persist';
-import { breakLayout, inspectorOpen, mode, railCollapsed, selection, tNow, viewport } from '@/state/view';
+import { breakLayout, inspectorOpen, mode, railCollapsed, selection, viewport } from '@/state/view';
 import { topology } from '@/state/derived';
 import { applyTemplate, templates } from '@/ui/break/events';
 
@@ -116,21 +116,36 @@ describe('the side rail folds', () => {
     expect(railCollapsed.value).toBe(false);
   });
 
-  it('puts Break\'s event menu on the stage while the rail is folded', async () => {
+  it('draws no event menu in Break, in the rail column or on the stage, folded or open', async () => {
     mode.value = 'break';
-    /* Split folds the rail on the way in (split-layout.test.ts); the reader unfolds it. */
     breakLayout.value = 'split';
+    selection.value = ['sby01'];
     const root = mount();
     await tick();
-    expect(root.querySelector('.app-rail .evmenu')).toBeNull();
-    expect(root.querySelector('.app-stage > .evmenu')).not.toBeNull();
+    expect(root.querySelector('.app-rail')?.className).toContain('is-shut');
+    expect(root.querySelector('.evmenu')).toBeNull();
     setRailCollapsed(false);
     await tick();
-    expect(root.querySelector('.app-rail .evmenu')).not.toBeNull();
-    expect(root.querySelector('.app-stage > .evmenu')).toBeNull();
+    expect(root.querySelector('.app-rail .rail-body')).not.toBeNull();
+    expect(root.querySelector('.evmenu')).toBeNull();
+    expect(root.querySelector('.app')?.className).not.toContain('has-evm');
   });
 
-  it('floats no event menu over Lanes at a width with no rail column, and opens it in the drawer', async () => {
+  it('draws no event menu over Lanes at 1440 either, with a selection and the rail open', async () => {
+    mode.value = 'break';
+    breakLayout.value = 'lanes';
+    selection.value = ['sby01'];
+    const root = mount();
+    await tick();
+    setRailCollapsed(false);
+    await tick();
+    expect(root.querySelector('.ln-cardwrap')).not.toBeNull();
+    expect(root.querySelector('.app-rail .rail-body')).not.toBeNull();
+    expect(root.querySelector('.evmenu')).toBeNull();
+    expect(root.textContent).not.toContain('Inject at');
+  });
+
+  it('floats nothing over Lanes at a width with no rail column, and its drawer holds the event list alone', async () => {
     mode.value = 'break';
     breakLayout.value = 'lanes';
     viewport.value = 'medium';
@@ -138,21 +153,20 @@ describe('the side rail folds', () => {
     await tick();
     expect(root.querySelector('.ln-cardwrap')).not.toBeNull();
     expect(root.querySelector('.evmenu')).toBeNull();
-    expect(root.querySelector('.app')?.className).not.toContain('has-evm');
     selection.value = ['sby01'];
     await tick();
     expect(root.querySelector('.evmenu')).toBeNull();
-    /* The top bar's Events button is the way to it: a drawer the reader can close. */
+    /* The top bar's Events button is the way to the list: a drawer the reader can close. */
     inspectorOpen.value = true;
     await tick();
-    expect(root.querySelector('.app-stage > .evmenu')).toBeNull();
-    expect(document.querySelector('.evmenu')).not.toBeNull();
+    expect(document.querySelector('.evmenu')).toBeNull();
+    expect(document.querySelector('.sheet')?.textContent).toContain('Events');
     inspectorOpen.value = false;
     await tick();
-    expect(document.querySelector('.evmenu')).toBeNull();
+    expect(document.querySelector('.sheet')).toBeNull();
   });
 
-  it('carries the whole event menu in its drawer at 1024, and closes by button, Esc and outside press', async () => {
+  it('carries the event list in its drawer at 1024, and closes by button, Esc and outside press', async () => {
     mode.value = 'break';
     breakLayout.value = 'lanes';
     viewport.value = 'medium';
@@ -176,14 +190,9 @@ describe('the side rail folds', () => {
     await settle();
     const sheet = document.querySelector('.sheet') as HTMLElement;
     expect(sheet.getAttribute('role')).toBe('dialog');
-    /* The Inject field is the menu's head, and it is the playhead's own field. */
-    const inject = sheet.querySelector('.evmenu input.evmenu-at') as HTMLInputElement;
-    expect(inject).not.toBeNull();
-    expect(inject.getAttribute('aria-label')).toBe('Injection time in seconds');
-    tNow.value = 12;
-    await tick();
-    expect((sheet.querySelector('.evmenu input.evmenu-at') as HTMLInputElement).value).toBe('12');
-    /* The event list is under it, and Remove there removes. */
+    /* No menu of events to add here: the drawer opens on the list, and Remove there removes. */
+    expect(sheet.querySelector('.evmenu')).toBeNull();
+    expect(sheet.textContent).not.toContain('Inject at');
     expect(sheet.textContent).toContain('Events (1)');
     const remove = [...sheet.querySelectorAll('button')].find((b) => b.textContent?.trim() === 'Remove')!;
     remove.click();
@@ -210,17 +219,17 @@ describe('the side rail folds', () => {
     expect(root.querySelector('.ln-bar')).not.toBeNull();
   });
 
-  it('keeps Split\'s floating event menu where there is no rail column', async () => {
+  it('floats no event menu over Split where there is no rail column either', async () => {
     mode.value = 'break';
     breakLayout.value = 'split';
     viewport.value = 'medium';
     const root = mount();
     await tick();
-    expect(root.querySelector('.app-stage > .evmenu')).not.toBeNull();
+    expect(root.querySelector('.evmenu')).toBeNull();
     selection.value = ['sby01'];
     await tick();
-    expect(root.querySelector('.app-stage > .evmenu')).not.toBeNull();
-    expect(root.querySelector('.app')?.className).toContain('has-evm');
+    expect(root.querySelector('.evmenu')).toBeNull();
+    expect(root.querySelector('.app')?.className).not.toContain('has-evm');
   });
 
   it('does not fold Learn\'s workbench', async () => {

@@ -396,7 +396,7 @@ describe('the keyboard map', () => {
   });
 
   /* A key bound in one mode says which one, or the reader presses it in the
-     mode the page opens in and nothing happens. `onEventMenu` is spread onto
+     mode the page opens in and nothing happens. `onEvents` is spread onto
      the canvas only in Break, exactly as `onDelete` is only in Build. */
   it('says which mode a mode-gated key belongs to', async () => {
     introOpen.value = true;

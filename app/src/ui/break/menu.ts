@@ -17,11 +17,10 @@ import type { EventAction, RunOptions } from './events';
 /**
  * Break's table as the canvas's context menu, dropped restores and all.
  *
- * The same three calls `EventMenu` makes for the same selection at the same
- * moment -- `actionsFor`, `nothingToRestore`, `restoreQuietLine` -- so every
- * label, every refusal and the one sentence standing in for the dropped
- * restores are the table's and cannot drift from the rail beside it. What
- * this adds is order only:
+ * Three calls on the table -- `actionsFor`, `nothingToRestore`,
+ * `restoreQuietLine` -- so every label, every refusal and the one sentence
+ * standing in for the dropped restores are the table's and cannot drift from
+ * Lanes' More menu. What this adds is order only:
  *
  *  - grouped by the kind of event each row injects (`actionGroup`), under the
  *    group's small label, each row led by its glyph (`actionIcon`);
@@ -30,7 +29,7 @@ import type { EventAction, RunOptions } from './events';
  *    nothing, so what can be done now is at the top of the menu;
  *  - the restore sentence closes the Restore group, where the rows it stands
  *    for would have been; and a property rides last in a group of its own,
- *    labelled as a setting for the whole run, as the rail labels it.
+ *    labelled as a setting for the whole run.
  */
 export function breakBar(
   d: TopologyDoc, keys: readonly string[], at: number, opts: RunOptions = {},

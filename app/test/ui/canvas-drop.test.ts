@@ -15,7 +15,6 @@ import { App } from '@/ui/App';
 import { classicDoc, doc as docSignal } from '@/state/doc';
 import { resetHistory } from '@/state/history';
 import { mode, selection, toast, viewport } from '@/state/view';
-import { menuOpen } from '@/ui/canvas/EventMenu';
 import { closeBar } from '@/ui/canvas/bar';
 import { fitZoom } from '@/ui/canvas/zoom';
 import { addSite } from '@/ui/inspector/edits';
@@ -35,7 +34,6 @@ beforeEach(() => {
   document.body.innerHTML = '';
   selection.value = [];
   toast.value = null;
-  menuOpen.value = false;
   mode.value = 'build';
   viewport.value = 'wide';
   closeBar();

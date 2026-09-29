@@ -57,9 +57,6 @@
   .app.is-float.bl-split .palette {
     max-height: calc(100dvh - var(--bar-bottom, 80px) - var(--dock-h, 72px) - 2 * var(--float-m) - 12px);
   }
-  .app.is-float.bl-split .app-stage > .evmenu {
-    max-height: calc(100dvh - var(--bar-bottom, 80px) - var(--dock-h, 72px) - var(--float-m) - 24px);
-  }
 
   /* ---- the bar ---- */
   .sb-bar {

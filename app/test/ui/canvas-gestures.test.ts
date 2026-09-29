@@ -22,7 +22,6 @@ import { classicDoc, doc as docSignal, makeDoc } from '@/state/doc';
 import { PRESETS } from '@/presets';
 import { connectFromCanvas } from '@/ui/canvas/CanvasSlot';
 import { edit, resetHistory, undo, undoLabel, undoStack } from '@/state/history';
-import { menuOpen } from '@/ui/canvas/EventMenu';
 import { barOpen, closeBar } from '@/ui/canvas/bar';
 import { fitZoom } from '@/ui/canvas/zoom';
 import { mode, selection, toast, viewport } from '@/state/view';
@@ -52,7 +51,6 @@ beforeEach(() => {
   unmountAll();
   selection.value = [];
   toast.value = null;
-  menuOpen.value = false;
   mode.value = 'build';
   viewport.value = 'wide';
   closeBar();

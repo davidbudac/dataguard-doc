@@ -428,7 +428,7 @@
    bar out to the width of the reason. */
 .cv-bar .ctl-off { flex-direction: column; align-items: flex-start; gap: 4px; }
 .cv-bar .why { max-width: 100%; }
-/* The event menu's own quiet line, to the pixel: it stands in for the same
+/* The quiet line that stood in the rail's event menu, to the pixel: it stands in for the same
    dropped restores and may not read as a different kind of remark. */
 .cv-bar-quiet {
   margin: 0;
