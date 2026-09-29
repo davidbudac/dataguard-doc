@@ -32,8 +32,8 @@ import type { RoutedLink } from '@/ui/canvas/routing';
 import { overlaps } from '@/ui/canvas/measure';
 import type { Rect } from '@/ui/canvas/measure';
 import { unionViewBox } from '@/ui/canvas/routing';
-import { anchorFor, fittedScale, placeBar } from '@/ui/canvas/anchor';
-import { barFootprint } from '@/ui/canvas/ActionBar';
+import { anchorFor, barRoom, fittedScale, menuCap, placeBar } from '@/ui/canvas/anchor';
+import { barFootprint, MENU_W } from '@/ui/canvas/ActionBar';
 import { linkKey } from '@/ui/canvas/LinkPath';
 import { WHY } from '@/ui/inspector/why';
 
@@ -396,4 +396,47 @@ describe('RAC instance hosts', () => {
     const later = cardFrameFor(d.doc, node, stateAt(simulate(d.doc, preset.events()), 1));
     expect(later.applyParticipants).toEqual(['sby012']);
   });
+});
+
+/**
+ * Break's context menu shows every row, so on a card with many it is taller
+ * than the ground it is given -- and in the floating layout the right-hand
+ * part of the window is under the rail. With the room cut short on the right
+ * (the rail) and a list far taller than any stage, the menu is cut to a scroll
+ * (`menuCap`) and placed inside that room, on every preset, at every scale:
+ * never under the rail, never off the stage.
+ */
+describe('the Break menu stays inside a room the rail has cut short', () => {
+  const SCALES = [1, 0.8, 0.61, 0.5];
+  const natural = 1400;
+
+  for (const preset of PRESETS) {
+    it(`${preset.id} keeps a scrolling menu out from under a right-hand rail`, () => {
+      const doc = preset.doc();
+      const d = draw(doc);
+      const view = unionViewBox(d.geo.viewBox, routeTopology(d.doc, d.graph, d.geo, null).bounds);
+      /* The ground stops a fifth of the drawing short of its right edge, and
+         there is a little above and below it. */
+      const room = barRoom(view, { t: 40, r: -Math.round(view.w / 5), b: 60, l: 0 });
+      const keys = [
+        ...d.geo.nodes.map((n) => n.key),
+        ...d.geo.sites.map((st) => st.id as string),
+        ...d.links.map((l) => linkKey(l)),
+      ];
+      for (const key of keys) {
+        const anchor = anchorFor(key, d.geo, d.links) as Rect;
+        for (const k of SCALES) {
+          const cap = menuCap(anchor, room, k, natural);
+          const css = { w: MENU_W, h: cap === null ? natural : Math.min(natural, cap) };
+          const scale = fittedScale(css, room, k);
+          const size = { w: css.w / scale, h: css.h / scale };
+          const at = placeBar(anchor, size, room);
+          const inside = at.x >= room.x - 1e-6 && at.y >= room.y - 1e-6
+            && at.x + size.w <= room.x + room.w + 1e-6
+            && at.y + size.h <= room.y + room.h + 1e-6;
+          expect(inside, `${preset.id}: ${key} at ${k} -> ${at.x},${at.y} ${size.w}x${size.h} outside ${JSON.stringify(room)}`).toBe(true);
+        }
+      }
+    });
+  }
 });

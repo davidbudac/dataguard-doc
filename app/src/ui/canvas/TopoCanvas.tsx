@@ -22,13 +22,13 @@ import type { Geometry, LayoutOffset, NodeBox, SiteBox, ViewBox } from './layout
 import { layoutTopology, SITE_MIN } from './layout';
 import { cardFrameFor, cardRoleFor, carryEnds, chipsFor, routeTopology, siteIsDown, unionViewBox } from './routing';
 import { describeTopology, cardLabel, linkLabel, siteLabel } from './aria';
-import { anchorFor, barRoom, fittedScale, placeBar } from './anchor';
+import { anchorFor, barRoom, fittedScale, menuCap, placeBar } from './anchor';
 import { InlineName } from './InlineName';
 import { siteLabelRect } from './layout';
-import { ActionBar, barFootprint } from './ActionBar';
+import { ActionBar, barFootprint, menuFootprint } from './ActionBar';
 import { HoverTools, toolsSize } from './HoverTools';
 import type { CanvasTool } from './HoverTools';
-import type { BarAction } from './ActionBar';
+import type { BarAction, BarSection } from './ActionBar';
 import type { WhyState } from '../common/WhyPill';
 import { approxW, CARD } from './measure';
 import type { Rect } from './measure';
@@ -156,6 +156,10 @@ export interface TopoCanvasProps {
     moreWhere?: string;
     /** The cap on rows, when the caller's stage is shorter than Build's. */
     maxRows?: number;
+    /** Break: draw it as the grouped context menu, every row, no cap. */
+    sections?: readonly BarSection[];
+    /** Break: when its events land, for the menu's header. */
+    when?: string;
   } | null;
   /**
    * How far below 1:1 the drawing is rendering, measured by the caller.
@@ -1293,12 +1297,14 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
   const bar = interactive ? props.bar ?? null : null;
   const k = Math.min(1, Math.max(0.5, props.scale ?? 1));
   const barAnchor = bar === null ? null : anchorFor(bar.key, geo, routed.links);
-  const barEstimate = bar === null ? null : barFootprint(bar.actions, bar.quiet ?? null, bar.maxRows);
+  const barEstimate = bar === null ? null
+    : bar.sections !== undefined ? menuFootprint(bar.sections)
+      : barFootprint(bar.actions, bar.quiet ?? null, bar.maxRows);
   /* The larger of the estimate and what was painted: the estimate is what the
      placement can know before the render, the measurement is what the box
      has to be. Never smaller than the estimate, so a measurement that has not
      happened yet (jsdom, the first frame) declares the generous box. */
-  const barSize = barEstimate === null || bar === null ? null : {
+  const barNatural = barEstimate === null || bar === null ? null : {
     w: barMeasured?.key === bar.key ? Math.max(barEstimate.w, barMeasured.w) : barEstimate.w,
     h: barMeasured?.key === bar.key ? Math.max(barEstimate.h, barMeasured.h) : barEstimate.h,
   };
@@ -1313,6 +1319,13 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
      the bar undoes the drawing's scale, so its footprint on the drawing grows
      as that scale falls. Placing against the CSS size put it off the stage. */
   const room = barRoom(view, props.barMargin ?? { t: 0, r: 0, b: 0, l: 0 });
+  /* Break's menu shows every row, so it may be taller than the ground it
+     has: then it is cut to that ground and scrolls, rather than shrinking its
+     text (`fittedScale`) or running under the chrome. */
+  const barCap = bar?.sections === undefined || barAnchor === null || barNatural === null
+    ? null : menuCap(barAnchor, room, k, barNatural.h);
+  const barSize = barNatural === null ? null
+    : barCap === null ? barNatural : { w: barNatural.w, h: Math.min(barNatural.h, barCap) };
   const barScale = barSize === null ? k : fittedScale(barSize, room, k);
   /* What the bar should not sit on: every other card and every caption. */
   const barObstacles = bar === null ? [] : [
@@ -1335,7 +1348,11 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
 
   /* The hover icons: over the top edge of a card, in the top right corner of a
      data centre, over the caption of a line. */
+  /* Not on the thing the bar is open for: the bar is the longer answer to the
+     same question, and the strip drawn over the card's top edge sat on the
+     bar's header whenever the bar went above or beside it. */
   const tools = !interactive || toolKey === null || moving !== null || !props.tools
+    || (bar !== null && bar.key === toolKey)
     ? [] : props.tools(toolKey);
   const toolsAt = ((): { x: number; y: number } | null => {
     if (toolKey === null || tools.length === 0) return null;
@@ -1772,6 +1789,9 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
             focusOnOpen={bar.focus === true}
             {...(bar.moreWhere !== undefined ? { moreWhere: bar.moreWhere } : {})}
             {...(bar.maxRows !== undefined ? { maxRows: bar.maxRows } : {})}
+            {...(bar.sections !== undefined ? { sections: bar.sections } : {})}
+            {...(bar.when !== undefined ? { when: bar.when } : {})}
+            {...(barCap !== null ? { maxHeight: barCap } : {})}
             {...(barSize !== null ? { box: barSize } : {})}
             onMeasure={onBarMeasure}
             onClose={closeBar}

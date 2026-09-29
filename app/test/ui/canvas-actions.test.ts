@@ -21,9 +21,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { h, render } from 'preact';
 import type { TopologyDoc } from '@/engine';
-import { ActionBar, barFootprint, MAX_ROWS, MAX_ROWS_BREAK } from '@/ui/canvas/ActionBar';
-import type { BarAction } from '@/ui/canvas/ActionBar';
-import { anchorFor, barRoom, placeBar } from '@/ui/canvas/anchor';
+import { ActionBar, barFootprint, MAX_ROWS, menuFootprint } from '@/ui/canvas/ActionBar';
+import type { BarAction, BarSection } from '@/ui/canvas/ActionBar';
+import {
+  anchorFor, barRoom, marginAround, MENU_MIN_H, menuCap, placeBar, unobscured,
+} from '@/ui/canvas/anchor';
 import { barOpen, closeBar } from '@/ui/canvas/bar';
 import { layoutTopology, siteLabelRect } from '@/ui/canvas/layout';
 import { routeTopology, unionViewBox } from '@/ui/canvas/routing';
@@ -33,7 +35,9 @@ import { classicDoc, doc as docSignal } from '@/state/doc';
 import { resetHistory } from '@/state/history';
 import { menuOpen } from '@/ui/canvas/EventMenu';
 import { mode, selection, tNow, toast, viewport } from '@/state/view';
-import { actionsFor, nothingToRestore, restoreQuietLine } from '@/ui/break/events';
+import {
+  ACTION_GROUP_LABEL, actionGroup, actionsFor, nothingToRestore, restoreQuietLine,
+} from '@/ui/break/events';
 import { WHY } from '@/ui/inspector/why';
 import { classic, graphOf } from './canvas-fixtures';
 
@@ -114,6 +118,112 @@ describe('the bar keeps off the rest of the drawing', () => {
     const view = { x: -10, y: 5, w: 100, h: 50 };
     expect(barRoom(view, { t: 0, r: 0, b: 0, l: 0 })).toEqual(view);
     expect(barRoom(view, { t: 1, r: 2, b: 3, l: 4 })).toEqual({ x: -14, y: 4, w: 106, h: 54 });
+  });
+});
+
+describe('the bar keeps out from under the floating chrome', () => {
+  /* The report: 1440 x 900, Break, the standby at the right-hand edge. The
+     wrap is the whole window and the event rail floats over its right-hand
+     side from x = 1087; the wrap's padding is what keeps the drawing clear
+     of it. Measured from the wrap's border box, the free ground ran on under
+     the rail, and the bar placed beside the card was painted beneath it. */
+  const wrapBorder = { x: 0, y: 0, w: 1440, h: 900 };
+  /* The content box: the top bar, the palette, the rail, the dock taken off. */
+  const content = { x: 120, y: 98, w: 1440 - 120 - 371, h: 900 - 98 - 150 };
+  const rail = { x: 1087, y: 80, w: 341, h: 640 };
+  const pill = { x: 860, y: 740, w: 220, h: 34 };
+  const dock = { x: 12, y: 776, w: 1416, h: 112 };
+
+  it('carves every piece of chrome out of the ground, keeping the larger side', () => {
+    const free = unobscured(wrapBorder, [rail, dock]);
+    expect(free.x + free.w).toBeLessThanOrEqual(rail.x);
+    expect(free.y + free.h).toBeLessThanOrEqual(dock.y);
+    /* The content box already clears the rail; the pill still reaches into
+       its bottom edge, and a thin strip is cheaper than a wide one. */
+    const clear = unobscured(content, [rail, pill, dock]);
+    expect(clear).toEqual({ ...content, h: pill.y - content.y });
+  });
+
+  it('leaves the ground alone where nothing floats over it', () => {
+    expect(unobscured(content, [{ x: 0, y: 0, w: 50, h: 50 }])).toEqual(content);
+  });
+
+  it('never places the bar under a right-hand rail, even beside a card at the edge', () => {
+    /* The drawing at 1:1, centred in the content box; the standby's card
+       at its right-hand end. */
+    const svg = { x: 200, y: 330, w: 800, h: 224 };
+    const view = { x: 0, y: 0, w: 800, h: 224 };
+    const u = 1;
+    const anchor = { x: 610, y: 100, w: 184, h: 72 };
+    /* Tall enough that neither under nor over the card fits: it goes beside. */
+    const size = { w: 243, h: 420 };
+    const free = unobscured(content, [rail, pill, dock]);
+    const room = barRoom(view, marginAround(svg, free, u));
+    const at = placeBar(anchor, size, room);
+    /* Back into page pixels: the bar's right edge is left of the rail. */
+    const right = svg.x + (at.x + size.w) / u;
+    expect(at.beside).toBe(true);
+    expect(right).toBeLessThanOrEqual(rail.x);
+    /* And measured the old way, from the border box, the same bar went
+       beside the card and ran under the rail -- the bug as reported. */
+    const old = barRoom(view, marginAround(svg, wrapBorder, u));
+    const was = placeBar(anchor, size, old);
+    expect(svg.x + (was.x + size.w) / u).toBeGreaterThan(rail.x);
+  });
+
+  it('shrinks the room inside the drawing where the visible ground stops short of it', () => {
+    /* Zoomed: the drawing is larger than the ground and scrolled under the
+       rail; the room is the part of the viewBox that can be seen. */
+    const svg = { x: 0, y: 0, w: 2000, h: 1000 };
+    const free = { x: 120, y: 98, w: 900, h: 600 };
+    const m = marginAround(svg, free, 0.5);
+    expect(m).toEqual({ t: -49, r: -490, b: -151, l: -60 });
+    const room = barRoom({ x: 0, y: 0, w: 1000, h: 500 }, m);
+    expect(room).toEqual({ x: 60, y: 49, w: 450, h: 300 });
+  });
+
+  it('keeps the bar inside the room for a card the rail half covers', () => {
+    const room = { x: 0, y: 0, w: 900, h: 240 };
+    const anchor = { x: 820, y: 84, w: 184, h: 72 };
+    const size = { w: 264, h: 230 };
+    const at = placeBar(anchor, size, room);
+    expect(at.x).toBeGreaterThanOrEqual(room.x);
+    expect(at.x + size.w).toBeLessThanOrEqual(room.x + room.w);
+    expect(at.y).toBeGreaterThanOrEqual(room.y);
+    expect(at.y + size.h).toBeLessThanOrEqual(room.y + room.h);
+  });
+
+  it('falls back to the viewBox when no ground is left at all', () => {
+    const view = { x: 0, y: 0, w: 100, h: 100 };
+    expect(barRoom(view, { t: -60, r: 0, b: -60, l: 0 })).toEqual(view);
+  });
+});
+
+describe('a menu taller than its room scrolls rather than running under the chrome', () => {
+  const room = { x: 0, y: 0, w: 1000, h: 500 };
+  const anchor = { x: 400, y: 60, w: 184, h: 72 };
+
+  it('is not cut when it fits under the card', () => {
+    expect(menuCap(anchor, room, 1, 200)).toBeNull();
+  });
+
+  it('is cut to the ground under the card, where that leaves a usable list', () => {
+    const cap = menuCap(anchor, room, 1, 900);
+    expect(cap).toBe(500 - (60 + 72 + 6));
+    expect(placeBar(anchor, { w: 264, h: cap as number }, room).flipped).toBe(false);
+  });
+
+  it('is cut in CSS pixels, so it still fits at the drawing\'s scale', () => {
+    const cap = menuCap(anchor, room, 0.6, 900) as number;
+    expect(cap / 0.6).toBeLessThanOrEqual(500 - (60 + 72 + 6));
+  });
+
+  it('goes beside the card, cut to the whole room, when neither side is enough', () => {
+    const short = { x: 0, y: 0, w: 1000, h: 240 };
+    const mid = { x: 100, y: 84, w: 184, h: 72 };
+    const cap = menuCap(mid, short, 1, 900);
+    expect(cap).toBe(240);
+    expect(MENU_MIN_H).toBeGreaterThan(84);
   });
 });
 
@@ -304,6 +414,107 @@ describe('the bar renders what the table gave it', () => {
   });
 });
 
+describe('Break draws the bar as a grouped menu', () => {
+  beforeEach(unmountAll);
+
+  const sections: BarSection[] = [
+    {
+      id: 'fail', label: 'Fail', actions: [
+        act('host.down', 'Crash sby01-host', { icon: 'crash' }),
+        act('member.down', 'SHUTDOWN ABORT sby01', { icon: 'shutdown' }),
+      ],
+    },
+    {
+      id: 'role', label: 'Role change', actions: [
+        act('cmd.switchover', 'SWITCHOVER TO sby01', { icon: 'switchover' }),
+        act('cmd.reinstate', 'REINSTATE DATABASE sby01', {
+          icon: 'reinstate', enabled: off(WHY.notFormerPrimary),
+        }),
+      ],
+    },
+    { id: 'restore', label: 'Restore', actions: [], quiet: 'Nothing to restore — nothing here is down.' },
+  ];
+  const all = sections.flatMap((sec) => sec.actions);
+
+  it('shows every row, grouped, each led by its glyph', () => {
+    const many = Array.from({ length: 12 }, (_, i) => act(`a${i}`, `Action ${i}`, { icon: 'crash' }));
+    const root = mountBar({ actions: many, sections: [{ id: 'fail', label: 'Fail', actions: many }] });
+    expect(root.querySelectorAll('.cv-mi')).toHaveLength(12);
+    expect(root.querySelectorAll('.cv-mi svg.cv-mi-ico')).toHaveLength(12);
+    expect(root.textContent).not.toContain('More in');
+    expect(root.querySelector('.cv-menu-lbl')?.textContent).toBe('Fail');
+  });
+
+  it('keeps a refusal as visible text under its dimmed row', () => {
+    const root = mountBar({ actions: all, sections });
+    const row = [...root.querySelectorAll('.cv-mi')].find((r) => r.classList.contains('is-off'));
+    expect(row?.querySelector('button')?.hasAttribute('disabled')).toBe(true);
+    expect(row?.querySelector('.why')?.textContent).toBe(WHY.notFormerPrimary);
+    expect([...root.querySelectorAll('.cv-bar-quiet')].map((p) => p.textContent))
+      .toEqual(['Nothing to restore — nothing here is down.']);
+  });
+
+  it('names its subject and the moment in the header', () => {
+    const root = mountBar({ subject: 'sby01', actions: all, sections, when: 'at t = 12.3 s' });
+    expect(root.querySelector('.cv-bar-hd')?.textContent).toContain('sby01 · at t = 12.3 s');
+  });
+
+  it('declares its whole natural height, or the cap it scrolls inside', () => {
+    const natural = menuFootprint(sections);
+    const free = mountBar({ actions: all, sections }).querySelector('foreignObject');
+    expect(Number(free?.getAttribute('height'))).toBe(natural.h);
+    unmountAll();
+    const root = mountBar({ actions: all, sections, maxHeight: 90 });
+    expect(Number(root.querySelector('foreignObject')?.getAttribute('height'))).toBe(90);
+    const el = root.querySelector('.cv-bar') as HTMLElement;
+    expect(el.style.getPropertyValue('max-height')).toBe('88px');
+    expect(el.getAttribute('style')).not.toBeNull();
+  });
+
+  it('counts a refusal in the height, so Firefox does not clip it', () => {
+    const plain = menuFootprint([{ id: 'x', label: 'X', actions: [act('a', 'A')] }]);
+    const refused = menuFootprint([{ id: 'x', label: 'X', actions: [act('a', 'A', { enabled: off(WHY.primaryMember) })] }]);
+    expect(refused.h).toBeGreaterThan(plain.h + 14);
+  });
+
+  it('walks its rows with the arrows, skipping the refused ones', () => {
+    const outer = vi.fn();
+    const root = mountBar({ actions: all, sections });
+    root.addEventListener('keydown', outer);
+    const buttons = [...root.querySelectorAll('.cv-mi-btn')] as HTMLButtonElement[];
+    const live = buttons.filter((b) => !b.disabled);
+    const key = (k: string): void => {
+      (document.activeElement ?? root.querySelector('.cv-bar'))!
+        .dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true, cancelable: true }));
+    };
+    live[0]!.focus();
+    key('ArrowDown');
+    expect(document.activeElement).toBe(live[1]);
+    key('ArrowDown');
+    expect(document.activeElement).toBe(live[2]);
+    /* The refused REINSTATE is skipped: round to the top. */
+    key('ArrowDown');
+    expect(document.activeElement).toBe(live[0]);
+    key('ArrowUp');
+    expect(document.activeElement).toBe(live.at(-1));
+    key('Home');
+    expect(document.activeElement).toBe(live[0]);
+    key('End');
+    expect(document.activeElement).toBe(live.at(-1));
+    /* The drawing's own arrows never saw them. */
+    expect(outer).not.toHaveBeenCalled();
+  });
+
+  it('still closes on Escape and still takes the focus when asked', async () => {
+    const onClose = vi.fn();
+    mountBar({ actions: all, sections, onClose, focusOnOpen: true });
+    await painted();
+    expect((document.activeElement as HTMLElement | null)?.textContent).toBe('Crash sby01-host');
+    document.activeElement!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+});
+
 /* ---------------- the shell wires it to the tables ---------------- */
 
 const mountApp = async (): Promise<HTMLElement> => {
@@ -448,28 +659,82 @@ describe('the handle on the selected thing offers what can be done to it', () =>
     expect((document.activeElement as HTMLElement | null)?.textContent).toBe('Edit sby01');
   });
 
-  it('offers the Break table, entry for entry, beside the event menu', async () => {
+  it('offers the whole Break table, entry for entry, beside the event menu', async () => {
     mode.value = 'break';
     const root = await mountApp();
     await clickCard(root, 'prm01');
     const doc: TopologyDoc = docSignal.value.topology;
     const all = actionsFor(doc, ['prm01'], 0);
     const events = all.filter((a) => a.property !== true);
-    const expected = [
+    const offered = [
       ...events.filter((a) => !nothingToRestore(a)),
       ...all.filter((a) => a.property === true),
-    ].map((a) => a.label);
-    /* Break's stage is the short one, so its bar shows the first four rows
-       and hands the rest to the rail -- in the table's order, nothing skipped. */
-    expect(barRows(root)).toEqual(expected.slice(0, MAX_ROWS_BREAK));
-    expect(expected.length).toBeGreaterThan(MAX_ROWS_BREAK);
-    /* And the same sentence in place of the restores that were dropped. */
+    ];
+    /* Every row, nothing capped and nothing handed to the rail. */
+    expect([...barRows(root)].sort()).toEqual(offered.map((a) => a.label).sort());
+    expect(root.querySelector('.cv-bar')?.textContent).not.toContain('More in');
+    /* Each row under its group's label, and each refused row keeps its
+       reason as visible text under it, in the table's own words. */
+    for (const a of offered) {
+      const row = [...root.querySelectorAll('.cv-mi')]
+        .find((r) => r.querySelector('button')?.textContent === a.label);
+      expect(row, a.label).toBeDefined();
+      const sec = row?.closest('.cv-menu-sec');
+      expect(sec?.querySelector('.cv-menu-lbl')?.textContent).toBe(ACTION_GROUP_LABEL[actionGroup(a)]);
+      if (a.enabled.state === 'off') {
+        expect(row?.querySelector('button')?.hasAttribute('disabled')).toBe(true);
+        expect(row?.querySelector('.why')?.textContent).toBe(a.enabled.why);
+      }
+      /* The event's glyph leads the row. */
+      expect(row?.querySelector('svg.cv-mi-ico')).not.toBeNull();
+    }
+    /* Inside a group, what can be pressed comes before what cannot. */
+    for (const sec of root.querySelectorAll('.cv-menu-sec')) {
+      const off = [...sec.querySelectorAll('.cv-mi')].map((r) => r.classList.contains('is-off'));
+      expect(off).toEqual([...off].sort((a, b) => Number(a) - Number(b)));
+    }
+    /* The setting rides last, in a group of its own. */
+    const labels = [...root.querySelectorAll('.cv-menu-lbl')].map((p) => p.textContent);
+    if (offered.some((a) => a.property === true)) expect(labels.at(-1)).toBe(ACTION_GROUP_LABEL.setting);
+    /* And the same sentence in place of the restores that were dropped, in
+       the Restore group where they would have been. */
     const quiet = restoreQuietLine(doc, ['prm01'], 0, events);
     expect(quiet).not.toBeNull();
-    expect([...root.querySelectorAll('.cv-bar-quiet')].map((p) => p.textContent))
-      .toContain(quiet);
+    const quietEl = [...root.querySelectorAll('.cv-bar-quiet')].find((p) => p.textContent === quiet);
+    expect(quietEl?.closest('.cv-menu-sec')?.querySelector('.cv-menu-lbl')?.textContent)
+      .toBe(ACTION_GROUP_LABEL.restore);
     expect([...root.querySelectorAll('.evmenu-quiet')].map((p) => p.textContent))
       .toContain(quiet);
+  });
+
+  it('says in its header when the events land, off the playhead the rail reads', async () => {
+    mode.value = 'break';
+    tNow.value = 12.34;
+    const root = await mountApp();
+    await clickCard(root, 'sby01');
+    expect(root.querySelector('.cv-bar-hd .mono')?.textContent).toBe('sby01');
+    expect(root.querySelector('.cv-bar-when')?.textContent).toBe(' · at t = 12.3 s');
+  });
+
+  it('takes the quick icons off the card whose menu is open', async () => {
+    mode.value = 'break';
+    const root = await mountApp();
+    const over = (el: Element): void => {
+      const name = 'onpointerover' in el ? 'pointerover' : 'PointerOver';
+      el.dispatchEvent(new MouseEvent(name, { bubbles: true, cancelable: true }));
+    };
+    over(card(root, 'sby01'));
+    await tick();
+    expect(root.querySelector('[data-tools="sby01"]')).not.toBeNull();
+    await clickCard(root, 'sby01');
+    over(card(root, 'sby01'));
+    await tick();
+    expect(barOpen.value).toBe('sby01');
+    expect(root.querySelector('[data-tools="sby01"]')).toBeNull();
+    /* Another card still offers its own. */
+    over(card(root, 'prm01'));
+    await tick();
+    expect(root.querySelector('[data-tools="prm01"]')).not.toBeNull();
   });
 
   it('injects the event the row names, at the playhead', async () => {

@@ -1177,3 +1177,59 @@ keeps them visible across export, share and reload. DGMGRL text is not accepted.
   `site/smoke.mjs` failed its two legacy-link checks. Boot now counts an upgraded
   link as a document.
 
+
+## Break's context menu on the drawing (as built, 2026-09-29)
+
+The report: *"on the break screen, the context menu of the items is not rendering
+properly — not usable at all."* At 1440×900, a click on the right-hand standby put the
+bar beside the card at x ≈ 1031–1274 while the event rail floats over the window from
+x = 1087: most of the bar was painted under the rail, its buttons cut to "Crash /
+SHUTD / Take th". Two fixes and a redesign.
+
+- **The bar's room is the ground nothing floats over.** In the floating layout the
+  wrap is the whole window and the top bar, palette, rail, zoom pill and dock float
+  over it; its padding is what keeps the drawing clear of them. `useCanvasScale`
+  measured the free ground from the wrap's *border* box, so `barRoom` handed
+  `placeBar` ground under the rail. It now starts from the wrap's content box
+  (`freeGround` in `CanvasSlot`: border box less computed padding, `clientWidth`/
+  `clientHeight` so a zoomed wrap's scrollbars are out), carves out any chrome that
+  still reaches into it (`anchor.ts` `unobscured`, the side that keeps the most area —
+  the zoom pill's few pixels), clips to the window, and converts per side to user
+  units (`marginAround`, 8 px inset on positive ground). A side may now be
+  **negative**: zoomed, the visible ground stops inside the drawing and the room
+  shrinks to what can be seen (re-read on the wrap's scroll while a bar is open);
+  no ground at all falls back to the viewBox. The docked layout has no chrome over
+  the wrap and measures as it did. `placeBar` slides each candidate back inside the
+  room for an anchor partly outside it.
+- **The quick icons step aside.** `HoverTools` are not drawn on the key whose bar is
+  open: they sat over the card's top edge, on the bar's header.
+- **Break's bar is a context menu** (`ActionBar` with `sections`; Build's bar is
+  unchanged). Header: the subject and the moment it lands, `sby01 · at t = 12.3 s`
+  (the snapped playhead the rail reads), and ×. Every offered row — no row cap, no
+  "More in the panel" — grouped under small mono labels read off the kind of event
+  each row injects (`break/events.ts` `actionGroup`: Fail · Restore · Role change ·
+  Broker · Setting · the whole run), each a full-width left-aligned item led by the
+  timeline's glyph for the same event (`actionIcon` → `eventIcon`, or the action's
+  own `icon` where the kind does not picture it: isolate, reconnect, the
+  properties). Inside a group the rows that can be pressed come first; groups with
+  something to press come before those with nothing; the setting group is always
+  last. A refused row is dimmed, with its reason as visible text under it — the
+  `WhyPill` element, flattened by `.cv-menu .why`. `restoreQuietLine`'s sentence
+  closes the Restore group, where the dropped rows would have been. Labels,
+  refusals and the drop are still `actionsFor` / `nothingToRestore` /
+  `restoreQuietLine` / `runAction`, so the rail and the menu cannot drift.
+- **Taller than its room, it scrolls.** `anchor.ts` `menuCap` cuts it to the taller
+  of the ground under and over the card when that leaves at least `MENU_MIN_H`
+  (150 px), else to the room's whole height (it then goes beside). The cap is set
+  as `max-height` through a ref (the CSP's one escape hatch), the list scrolls
+  under a fixed header, and the `foreignObject` declares the capped box — Firefox
+  clips to the declaration. `menuFootprint` estimates the natural height;
+  `onMeasure` corrects it after the paint, as for Build's bar. Arrow keys walk the
+  pressable rows (Home/End jump, refused rows are skipped — their reasons stay on
+  screen), Escape closes, focus-on-open lands on the first pressable row.
+
+Tests: `canvas-actions.test.ts` (*the bar keeps out from under the floating chrome*,
+*a menu taller than its room scrolls*, *Break draws the bar as a grouped menu*, the
+whole Break table on the bar, the header's clock, the quick icons stepping aside),
+`canvas-presets.test.ts` (*the Break menu stays inside a room the rail has cut short*,
+every preset, every scale).

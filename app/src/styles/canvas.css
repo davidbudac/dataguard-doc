@@ -432,6 +432,93 @@
   color: var(--ik3);
 }
 
+/* ---- Break's context menu: the same bar, as a list ---- */
+/* Every row the table offers, grouped under small labels, each a full-width
+   left-aligned item led by its event glyph -- a menu, not a row of pills. A
+   list taller than the room it is given scrolls inside `.cv-menu-list`, under
+   a header that stays put; the cap is set through a ref (`ActionBar.tsx`,
+   the CSP's one escape hatch), and border-box so the cap is the whole box.
+   `ActionBar.menuFootprint` estimates the height from these numbers. */
+.cv-bar.cv-menu {
+  box-sizing: border-box;
+  width: 264px;
+  max-width: none;
+  gap: 0;
+  padding: 6px 4px 6px 6px;
+  overflow: hidden;
+}
+.cv-menu .cv-bar-hd { padding: 0 2px 4px 4px; border-bottom: 1px solid var(--ln); flex: 0 0 auto; }
+.cv-bar-subj { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cv-bar-subj .mono { color: var(--ik); }
+.cv-bar-when { color: var(--ik3); }
+.cv-menu-list {
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 2px;
+}
+.cv-menu-sec { display: flex; flex-direction: column; }
+.cv-menu-lbl {
+  margin: 6px 0 1px;
+  padding: 0 4px;
+  font-family: var(--mono);
+  font-size: 10px;
+  line-height: 13px;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--ik3);
+}
+.cv-mi { display: flex; flex-direction: column; }
+.cv-mi-btn {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  width: 100%;
+  margin: 0;
+  padding: 3px 4px;
+  border: 0;
+  border-radius: 3px;
+  background: none;
+  color: var(--ik);
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.3;
+  text-align: left;
+  cursor: pointer;
+}
+.cv-mi-btn:hover:not(:disabled) { background: var(--vif); }
+.cv-mi-btn:focus-visible { outline: 2px solid var(--fc); outline-offset: -2px; }
+.cv-mi-btn:disabled { cursor: not-allowed; color: var(--ik3); }
+.cv-mi-ico {
+  flex: 0 0 14px;
+  width: 14px;
+  height: 14px;
+  margin-top: 1px;
+  fill: none;
+  stroke: var(--ik2);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.cv-mi-btn:hover:not(:disabled) .cv-mi-ico { stroke: var(--vi); }
+.cv-mi.is-off .cv-mi-ico { stroke: var(--ik3); opacity: .5; }
+.cv-mi-lbl { min-width: 0; overflow-wrap: anywhere; }
+/* The refusal, flat: the WhyPill's own element, as a quiet line indented
+   under the label it explains -- visible text, never a hover. */
+.cv-menu .why {
+  align-self: stretch;
+  margin: 0 0 2px;
+  padding: 0 4px 0 25px;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  font-size: 11px;
+  line-height: 1.35;
+  color: var(--ik3);
+}
+.cv-menu .cv-bar-quiet { padding: 2px 4px 0; font-size: 11px; }
+
 /* ---- legend ---- */
 .tp-legend {
   display: flex;

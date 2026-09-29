@@ -25,6 +25,7 @@ import { appLanesShown, playing, tNow, toast } from '@/state/view';
 import { lastInterestingT } from '@/ui/timeline/build';
 import type { WhyState } from '../common/WhyPill';
 import type { CanvasTool, ToolIconName } from '../canvas/HoverTools';
+import { eventIcon } from '../common/eventIcons';
 import { off, ON, WHY } from '../inspector/why';
 
 import { eventTimeRefusal, reorderRefusal, snapEventTime } from './event-order';
@@ -201,6 +202,11 @@ export interface EventAction {
   /** True for a property change: it takes effect everywhere, not at `at`. */
   property?: boolean;
   run?: () => void;
+  /**
+   * The glyph, when the event kind does not picture it: isolating a data
+   * centre is `link.cut` events and a property has none (`actionIcon`).
+   */
+  icon?: ToolIconName;
 }
 
 /**
@@ -414,6 +420,7 @@ export function actionsForKey(doc: TopologyDoc, key: string, at: number): EventA
         enabled: member.role === 'primary' ? off(WHY.primaryNoApply) : ON,
         events: [],
         property: true,
+        icon: running ? 'stop' : 'start',
         run: () => edit(
           `${running ? 'Stop' : 'Start'} redo apply on ${key}`,
           (d) => ({
@@ -482,6 +489,7 @@ export function actionsForKey(doc: TopologyDoc, key: string, at: number): EventA
         enabled: ON,
         events: [],
         property: true,
+        icon: 'start',
         run: () => edit(`Mark ${key} running`, (d) => ({
           ...d,
           topology: {
@@ -584,6 +592,7 @@ export function actionsForKey(doc: TopologyDoc, key: string, at: number): EventA
         enabled: ON,
         events: [],
         property: true,
+        icon: 'heal',
         run: () => edit(`Mark ${key} up`, (d) => ({
           ...d,
           topology: {
@@ -625,6 +634,7 @@ export function actionsForKey(doc: TopologyDoc, key: string, at: number): EventA
         ? off('No link leaves this data centre, so there is nothing to cut.')
         : open.length === 0 ? off(WHY.alreadyDown) : ON,
       events: open.map((l) => ({ at, kind: 'link.cut', link: l.id }) as TimedEvent),
+      icon: 'isolate',
     });
     out.push({
       id: 'site.reconnect',
@@ -632,6 +642,7 @@ export function actionsForKey(doc: TopologyDoc, key: string, at: number): EventA
       plural: 'Reconnect the sites',
       enabled: shut.length === 0 ? off(WHY.nothingDown) : ON,
       events: shut.map((l) => ({ at, kind: 'link.heal', link: l.id }) as TimedEvent),
+      icon: 'reconnect',
     });
   }
 
@@ -766,6 +777,67 @@ export function restoreQuietLine(
     : 'This one is up — what is down sits inside it and carries its own restore. Select it on the drawing.';
 }
 
+/* ---------------- the groups a menu sorts them into ---------------- */
+
+/**
+ * The event kind an action injects, or the one it stands for when it injects
+ * none: taking a cut back or healing at the very instant of the cut edits the
+ * list rather than adding to it, and isolating a data centre whose links are
+ * all down already has nothing left to cut. `null` for a property.
+ */
+const ID_KIND: Readonly<Record<string, TimedEvent['kind']>> = {
+  'link.heal': 'link.heal',
+  'link.uncut': 'link.heal',
+  'site.isolate': 'link.cut',
+  'site.reconnect': 'link.heal',
+};
+
+export function actionKind(a: EventAction): TimedEvent['kind'] | null {
+  if (a.property === true) return null;
+  return a.events[0]?.kind ?? ID_KIND[a.id.split(':')[0] as string] ?? null;
+}
+
+/** The groups the canvas's context menu sorts the table into, in order. */
+export type ActionGroup = 'fail' | 'restore' | 'role' | 'broker' | 'setting';
+
+export const ACTION_GROUPS: readonly ActionGroup[] = ['fail', 'restore', 'role', 'broker', 'setting'];
+
+export const ACTION_GROUP_LABEL: Readonly<Record<ActionGroup, string>> = {
+  fail: 'Fail',
+  restore: 'Restore',
+  role: 'Role change',
+  broker: 'Broker',
+  setting: 'Setting · the whole run',
+};
+
+/**
+ * Which group an action falls in, read off the kind of event it injects --
+ * never off its label, so a new entry in the table lands in the right group
+ * by injecting the right thing.
+ */
+export function actionGroup(a: EventAction): ActionGroup {
+  if (a.property === true) return 'setting';
+  if (isRestore(a)) return 'restore';
+  switch (actionKind(a)) {
+    case 'host.up': case 'site.up': case 'member.up': case 'instance.up':
+    case 'link.heal': case 'observer.start':
+      return 'restore';
+    case 'cmd.switchover': case 'cmd.failover': case 'cmd.reinstate':
+      return 'role';
+    case 'cmd.setMasterObserver': case 'cmd.setApplyInstance': case 'cmd.disableFsfo':
+      return 'broker';
+    default:
+      return 'fail';
+  }
+}
+
+/** The glyph a menu row carries: the timeline's icon for the same event. */
+export function actionIcon(a: EventAction): ToolIconName {
+  if (a.icon !== undefined) return a.icon;
+  const kind = actionKind(a);
+  return kind === null ? 'lag' : eventIcon(kind);
+}
+
 /**
  * The actions a whole selection offers: the intersection by id, with the
  * events of every subject folded into one entry, so one click is one undo.
@@ -789,6 +861,7 @@ export function actionsFor(doc: TopologyDoc, keys: readonly string[], at: number
       enabled: blocked ? blocked.enabled : ON,
       events: all.flatMap((x) => x.events),
       ...(a.property ? { property: true } : {}),
+      ...(a.icon ? { icon: a.icon } : {}),
     });
   }
   return out;

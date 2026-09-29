@@ -31,16 +31,19 @@ import {
 import { inFlight, inFlightFrom, placeOver, renaming, setSiteAt } from './place';
 import { mergeVerdict } from './drop';
 import {
-  actionsFor, hoverTools, nothingToRestore, restoreQuietLine, runAction,
+  ACTION_GROUP_LABEL, ACTION_GROUPS, actionGroup, actionIcon, actionsFor, hoverTools, nothingToRestore,
+  restoreQuietLine, runAction,
 } from '../break/events';
+import type { EventAction } from '../break/events';
 import { AddToolbar } from '../inspector/adds';
 import type { WhyState } from '../common/WhyPill';
 import { useRovingToolbar } from '../common/useRovingToolbar';
 import { ON } from '../inspector/why';
-import type { BarAction } from './ActionBar';
-import { MAX_ROWS_BREAK } from './ActionBar';
+import type { BarAction, BarSection } from './ActionBar';
 import { barFocus, barOpen, closeBar, openBar } from './bar';
 import { menuOpen, snapT } from './EventMenu';
+import { marginAround, unobscured } from './anchor';
+import type { Rect } from './measure';
 import { resizedBox, TopoCanvas } from './TopoCanvas';
 import { isElement, PopIcon, popIn, popOut, popped, useHostWindow } from '../common/popout';
 import {
@@ -184,27 +187,52 @@ function buildBar(d: TopologyDoc, keys: readonly string[]): BarAction[] {
 }
 
 /**
- * Break's table as bar rows, dropped restores and all.
+ * Break's table as the canvas's context menu, dropped restores and all.
  *
- * Exactly what `EventMenu` renders for the same selection at the same moment,
- * because it is the same three calls in the same order: the restores with
- * nothing to restore come out, the one sentence that stands in for them is
- * `restoreQuietLine`'s rather than this surface's, and a property rides at the
- * end where the menu puts it.
+ * The same three calls `EventMenu` makes for the same selection at the same
+ * moment -- `actionsFor`, `nothingToRestore`, `restoreQuietLine` -- so every
+ * label, every refusal and the one sentence standing in for the dropped
+ * restores are the table's and cannot drift from the rail beside it. What
+ * this adds is order only:
+ *
+ *  - grouped by the kind of event each row injects (`actionGroup`), under the
+ *    group's small label, each row led by its glyph (`actionIcon`);
+ *  - inside a group the rows that can be pressed first, the refused ones
+ *    after; and the groups with something to press before the groups with
+ *    nothing, so what can be done now is at the top of the menu;
+ *  - the restore sentence closes the Restore group, where the rows it stands
+ *    for would have been; and a property rides last in a group of its own,
+ *    labelled as a setting for the whole run, as the rail labels it.
  */
 function breakBar(
   d: TopologyDoc, keys: readonly string[], at: number,
-): { actions: BarAction[]; quiet: string | null } {
+): { actions: BarAction[]; quiet: string | null; sections: BarSection[] } {
   const all = actionsFor(d, keys, at);
   const events = all.filter((a) => a.property !== true);
   const properties = all.filter((a) => a.property === true);
-  const offered = events.filter((a) => !nothingToRestore(a));
-  return {
-    actions: [...offered, ...properties].map((a) => ({
-      id: a.id, label: a.label, enabled: a.enabled, run: () => runAction(a),
-    })),
-    quiet: restoreQuietLine(d, keys, at, events),
-  };
+  const offered = [...events.filter((a) => !nothingToRestore(a)), ...properties];
+  const quiet = restoreQuietLine(d, keys, at, events);
+  const isOn = (a: EventAction): boolean => a.enabled.state === 'on';
+  const row = (a: EventAction): BarAction => ({
+    id: a.id, label: a.label, enabled: a.enabled, icon: actionIcon(a), run: () => runAction(a),
+  });
+  const groups: BarSection[] = ACTION_GROUPS.map((g) => {
+    const rows = offered.filter((a) => actionGroup(a) === g);
+    return {
+      id: g,
+      label: ACTION_GROUP_LABEL[g],
+      actions: [...rows.filter(isOn), ...rows.filter((a) => !isOn(a))].map(row),
+      quiet: g === 'restore' ? quiet : null,
+    };
+  }).filter((sec) => sec.actions.length > 0 || (sec.quiet ?? null) !== null);
+  const live = (sec: BarSection): boolean => sec.actions.some((a) => a.enabled.state === 'on');
+  const eventGroups = groups.filter((sec) => sec.id !== 'setting');
+  const sections = [
+    ...eventGroups.filter(live),
+    ...eventGroups.filter((sec) => !live(sec)),
+    ...groups.filter((sec) => sec.id === 'setting'),
+  ];
+  return { actions: sections.flatMap((sec) => sec.actions), quiet, sections };
 }
 
 /**
@@ -223,12 +251,64 @@ function breakBar(
 type Margin = { t: number; r: number; b: number; l: number };
 const NO_MARGIN: Margin = { t: 0, r: 0, b: 0, l: 0 };
 
+const rectOf = (r: DOMRect): Rect => ({ x: r.left, y: r.top, w: r.width, h: r.height });
+
+/**
+ * What floats over the stage: the top bar, the palette, the rail, the zoom
+ * pill, the timeline dock and Break's event menu when it is a card of its
+ * own. In the docked layout they sit beside the drawing rather than over it
+ * and none of them overlaps the wrap, so asking costs nothing there.
+ */
+const CHROME = '.app-head, .app-rail, .app-dock, .palette, .zoom-pill, .app-stage > .evmenu';
+
+/**
+ * The ground the action bar may use, in CSS pixels: the wrap's *content*
+ * box, less whatever chrome still reaches into it, inside the window.
+ *
+ * Not the wrap's border box. In the floating layout the wrap is the whole
+ * window and its padding is exactly what keeps the drawing clear of the
+ * chrome over it (float.css, `--pal-r`, `--evm-t`/`--evm-r`, `--dock-h`);
+ * measuring from the border box handed the bar the ground *under* the rail,
+ * and a bar placed beside a standby at the right edge was painted beneath it.
+ * `clientWidth`/`clientHeight` leave a zoomed wrap's scrollbars out.
+ */
+function freeGround(wrap: HTMLElement): Rect {
+  const view = wrap.ownerDocument.defaultView;
+  const cs = view?.getComputedStyle(wrap);
+  const px = (v: string | undefined): number => Number.parseFloat(v ?? '') || 0;
+  const outer = wrap.getBoundingClientRect();
+  const x = outer.left + wrap.clientLeft + px(cs?.paddingLeft);
+  const y = outer.top + wrap.clientTop + px(cs?.paddingTop);
+  /* jsdom lays nothing out: no client box, so the border box stands in. */
+  const cw = wrap.clientWidth > 0 ? wrap.clientWidth : outer.width;
+  const ch = wrap.clientHeight > 0 ? wrap.clientHeight : outer.height;
+  const content: Rect = {
+    x, y,
+    w: Math.max(0, cw - px(cs?.paddingLeft) - px(cs?.paddingRight)),
+    h: Math.max(0, ch - px(cs?.paddingTop) - px(cs?.paddingBottom)),
+  };
+  const win = view === null || view === undefined ? content : unobscured(content, [
+    /* The window's own edges, as four slabs: nothing outside it is seen. */
+    { x: -1e5, y: -1e5, w: 2e5, h: 1e5 },
+    { x: -1e5, y: view.innerHeight, w: 2e5, h: 1e5 },
+    { x: -1e5, y: -1e5, w: 1e5, h: 2e5 },
+    { x: view.innerWidth, y: -1e5, w: 1e5, h: 2e5 },
+  ]);
+  const app = wrap.closest('.app') ?? wrap.ownerDocument;
+  const chrome = [...app.querySelectorAll(CHROME)]
+    .filter((el) => !el.contains(wrap) && view?.getComputedStyle(el).visibility !== 'hidden')
+    .map((el) => rectOf(el.getBoundingClientRect()))
+    .filter((r) => r.w > 0 && r.h > 0);
+  return unobscured(win, chrome);
+}
+
 function useCanvasScale(
   zoomFactor: number,
 ): [(el: HTMLElement | null) => void, number, Margin] {
   const [scale, setScale] = useState(1);
   /* The free ground around the drawing, in user units: where the bar may hang
-     (anchor.ts `barRoom`). None while zoomed -- the wrap is a scroll port then. */
+     (anchor.ts `barRoom`). Negative where the visible ground stops inside the
+     drawing -- a zoomed drawing scrolled under the chrome. */
   const [margin, setMargin] = useState<Margin>(NO_MARGIN);
   const observer = useRef<ResizeObserver | null>(null);
   const host = useRef<HTMLElement | null>(null);
@@ -246,22 +326,14 @@ function useCanvasScale(
     const k = Math.min(1, Math.max(0.5, Math.round((painted / declared) * 100) / 100));
     setScale((prev) => (prev === k ? prev : k));
     const wrap = host.current as HTMLElement;
-    const inner = svg.getBoundingClientRect();
-    const outer = wrap.getBoundingClientRect();
     /* User units per CSS pixel, unclamped: this converts, it does not compensate. */
     const u = declared / painted;
-    const inset = 8;
-    const side = (px: number): number => Math.max(0, Math.round((px - inset) * u));
-    const next = wrap.classList.contains('is-zoomed') ? NO_MARGIN : {
-      t: side(inner.top - outer.top),
-      r: side(outer.right - inner.right),
-      b: side(outer.bottom - inner.bottom),
-      l: side(inner.left - outer.left),
-    };
+    const next = marginAround(rectOf(svg.getBoundingClientRect()), freeGround(wrap), u);
     setMargin((prev) => (prev.t === next.t && prev.r === next.r && prev.b === next.b && prev.l === next.l
       ? prev : next));
   }, []);
-  useEffect(() => () => observer.current?.disconnect(), []);
+  const unlisten = useRef<(() => void) | null>(null);
+  useEffect(() => () => { observer.current?.disconnect(); unlisten.current?.(); }, []);
   /* A zoom does not resize the wrap -- the wrap is the scroll port and keeps
      the room the stage gave it, the drawing inside it grows -- so the observer
      never fires on one and the measurement would be a rung out of date. This
@@ -274,9 +346,18 @@ function useCanvasScale(
   const ref = useCallback((el: HTMLElement | null): void => {
     observer.current?.disconnect();
     observer.current = null;
+    unlisten.current?.();
+    unlisten.current = null;
     host.current = el;
     if (!el) return;
     read();
+    /* A zoomed drawing scrolls inside the wrap, and what of it is visible --
+       the ground the bar may use -- moves with it. Read only while a bar is
+       open: nothing else uses the margin, and a re-render per scrolled pixel
+       for nobody is waste. */
+    const onScroll = (): void => { if (barOpen.peek() !== null) read(); };
+    el.addEventListener('scroll', onScroll, { passive: true });
+    unlisten.current = () => el.removeEventListener('scroll', onScroll);
     /* The observer of the window the drawing is in: it may be a popup
        (common/popout.tsx). */
     const RO = el.ownerDocument.defaultView?.ResizeObserver
@@ -521,13 +602,15 @@ export function CanvasSlot({ interactive = true }: CanvasSlotProps) {
   }, [renameKey, renameLive]);
   useEffect(() => () => setSiteAt(null), []);
 
-  const built = !editable || anchored === null || keys.length === 0
-    ? null
-    : m === 'break'
-      ? breakBar(topology.value, keys, snapT(tNow.value))
-      : m === 'build'
-        ? { actions: buildBar(topology.value, keys), quiet: null }
-        : null;
+  const at = snapT(tNow.value);
+  const built: { actions: BarAction[]; quiet: string | null; sections?: BarSection[] } | null
+    = !editable || anchored === null || keys.length === 0
+      ? null
+      : m === 'break'
+        ? breakBar(topology.value, keys, at)
+        : m === 'build'
+          ? { actions: buildBar(topology.value, keys), quiet: null }
+          : null;
   const bar = built === null || anchored === null
     || (built.actions.length === 0 && built.quiet === null)
     ? null
@@ -537,9 +620,9 @@ export function CanvasSlot({ interactive = true }: CanvasSlotProps) {
       quiet: built.quiet,
       focus: barFocus.value,
       moreWhere: railWhere(viewport.value),
-      /* Break's stage is the short one (fit-content, the timeline takes the
-         rest), and its rail already carries the whole list at the head. */
-      ...(m === 'break' ? { maxRows: MAX_ROWS_BREAK } : {}),
+      /* Break: the whole list, grouped, under a header that says when it
+         lands -- the same snapped playhead the rail's clock reading shows. */
+      ...(built.sections === undefined ? {} : { sections: built.sections, when: `at t = ${at} s` }),
     };
   /* Build's additions, in the corner of the stage: the reader looking at the
      drawing should not have to find the rail -- or clear a selection -- to add
