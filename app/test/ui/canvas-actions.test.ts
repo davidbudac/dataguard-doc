@@ -24,7 +24,7 @@ import type { TopologyDoc } from '@/engine';
 import { ActionBar, barFootprint, MAX_ROWS, menuFootprint } from '@/ui/canvas/ActionBar';
 import type { BarAction, BarSection } from '@/ui/canvas/ActionBar';
 import {
-  anchorFor, barRoom, marginAround, MENU_MIN_H, menuCap, placeBar, unobscured,
+  anchorFor, barRoom, bodyFor, marginAround, MENU_MIN_H, menuCap, placeBar, unobscured,
 } from '@/ui/canvas/anchor';
 import { barOpen, closeBar } from '@/ui/canvas/bar';
 import { layoutTopology, siteLabelRect } from '@/ui/canvas/layout';
@@ -218,12 +218,93 @@ describe('a menu taller than its room scrolls rather than running under the chro
     expect(cap / 0.6).toBeLessThanOrEqual(500 - (60 + 72 + 6));
   });
 
+  it('goes beside, whole, rather than scroll under the card when the ground beside holds it', () => {
+    /* sby01 at the right of the drawing: 300 px under it, 600 px of empty
+       ground to its left. Cut to a 300 px scroll under the card was the old
+       answer; the whole list beside it is the better one. */
+    const wide = { x: 0, y: 0, w: 1000, h: 520 };
+    const sby = { x: 800, y: 140, w: 184, h: 72 };
+    const natural = 450;
+    expect(menuCap(sby, wide, 1, natural)).toBe(520 - (140 + 72 + 6));
+    const cap = menuCap(sby, wide, 1, natural, { width: 264 });
+    expect(cap).toBeNull();
+    const at = placeBar(sby, { w: 264, h: natural }, wide);
+    expect(at.beside).toBe(true);
+    expect(at.x + 264).toBeLessThanOrEqual(sby.x);
+    expect(at.y + natural).toBeLessThanOrEqual(wide.y + wide.h);
+  });
+
+  it('when no side holds it whole, scrolls on the side with the most room', () => {
+    const wide = { x: 0, y: 0, w: 1000, h: 520 };
+    const sby = { x: 800, y: 140, w: 184, h: 72 };
+    /* Taller than the whole room: cut to the room's height, beside. */
+    const cap = menuCap(sby, wide, 1, 900, { width: 264 });
+    expect(cap).toBe(520);
+    const at = placeBar(sby, { w: 264, h: cap as number }, wide);
+    expect(at.beside).toBe(true);
+    /* No ground beside it wide enough: cut to the ground under the card. */
+    const narrow = { x: 700, y: 0, w: 300, h: 520 };
+    expect(menuCap(sby, narrow, 1, 450, { width: 264 })).toBe(520 - (140 + 72 + 6));
+  });
+
   it('goes beside the card, cut to the whole room, when neither side is enough', () => {
     const short = { x: 0, y: 0, w: 1000, h: 240 };
     const mid = { x: 100, y: 84, w: 184, h: 72 };
     const cap = menuCap(mid, short, 1, 900);
     expect(cap).toBe(240);
     expect(MENU_MIN_H).toBeGreaterThan(84);
+  });
+});
+
+describe('a data centre\'s menu keeps off the cards inside it', () => {
+  it('stands beside the box, not beside its name band over its own cards', () => {
+    /* DC 1 with two cards in it, free ground to its right. The name band is
+       the anchor; beside the band is still inside the box. */
+    const box = { x: 0, y: 0, w: 420, h: 300 };
+    const band = { x: 150, y: 6, w: 120, h: 20 };
+    const cards = [{ x: 20, y: 60, w: 184, h: 72 }, { x: 220, y: 60, w: 184, h: 72 }];
+    const room = { x: 0, y: 0, w: 900, h: 320 };
+    const size = { w: 264, h: 280 };
+    const old = placeBar(band, size, room, cards);
+    const covered = (p: { x: number; y: number }): boolean => cards.some((c) =>
+      p.x < c.x + c.w && p.x + size.w > c.x && p.y < c.y + c.h && p.y + size.h > c.y);
+    expect(covered(old)).toBe(true);
+    const at = placeBar(band, size, room, cards, box);
+    expect(at.beside).toBe(true);
+    expect(at.x).toBe(box.x + box.w + 6);
+    expect(covered(at)).toBe(false);
+  });
+
+  it('counts every card in the data centre as an obstacle on the real drawing', () => {
+    const doc = classic('dc3');
+    const geo = layoutTopology(doc, graphOf(doc));
+    const links = routeTopology(doc, graphOf(doc), geo, null).links;
+    const view = unionViewBox(geo.viewBox, routeTopology(doc, graphOf(doc), geo, null).bounds);
+    const site = geo.sites[0]!;
+    const key = site.id as string;
+    const anchor = anchorFor(key, geo, links)!;
+    const body = bodyFor(key, geo)!;
+    expect(body).toEqual({ x: site.x, y: site.y, w: site.w, h: site.h });
+    expect(bodyFor('prm01', geo)).toBeNull();
+    /* The obstacle list TopoCanvas builds for a site key: every card and
+       every caption, the site's own cards included. */
+    const obstacles = [
+      ...Object.entries(geo.byKey).filter(([k]) => k !== key).map(([, n]) => n),
+      ...links.map((l) => l.pill),
+    ];
+    const own = geo.nodes.filter((n) => (n.site as string) === key);
+    expect(own.length).toBeGreaterThan(0);
+    for (const n of own) expect(obstacles).toContain(geo.byKey[n.key]);
+    /* A short room (the dock open) with free ground to the left of the
+       drawing: the menu goes there, over nothing. */
+    const room = barRoom(view, { t: 0, r: 0, b: 0, l: 400 });
+    const size = { w: 264, h: Math.min(view.h, 200) };
+    const at = placeBar(anchor, size, room, obstacles, body);
+    const box = { x: at.x, y: at.y, w: size.w, h: size.h };
+    for (const o of obstacles) {
+      const hit = box.x < o.x + o.w && box.x + box.w > o.x && box.y < o.y + o.h && box.y + box.h > o.y;
+      expect(hit, `covers ${JSON.stringify(o)}`).toBe(false);
+    }
   });
 });
 

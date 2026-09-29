@@ -457,7 +457,14 @@
   overflow-y: auto;
   overscroll-behavior: contain;
   padding-right: 2px;
+  /* A thin, quiet scrollbar: the native one was the heaviest thing in it. */
+  scrollbar-width: thin;
+  scrollbar-color: var(--ln2) transparent;
 }
+.cv-menu-list::-webkit-scrollbar { width: 6px; }
+.cv-menu-list::-webkit-scrollbar-track { background: transparent; }
+.cv-menu-list::-webkit-scrollbar-thumb { background: var(--ln2); border-radius: 3px; }
+.cv-menu-list::-webkit-scrollbar-thumb:hover { background: var(--ik3); }
 .cv-menu-sec { display: flex; flex-direction: column; }
 .cv-menu-lbl {
   margin: 6px 0 1px;

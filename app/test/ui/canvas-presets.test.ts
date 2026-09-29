@@ -32,7 +32,7 @@ import type { RoutedLink } from '@/ui/canvas/routing';
 import { overlaps } from '@/ui/canvas/measure';
 import type { Rect } from '@/ui/canvas/measure';
 import { unionViewBox } from '@/ui/canvas/routing';
-import { anchorFor, barRoom, fittedScale, menuCap, placeBar } from '@/ui/canvas/anchor';
+import { anchorFor, barRoom, bodyFor, fittedScale, menuCap, placeBar } from '@/ui/canvas/anchor';
 import { barFootprint, MENU_W } from '@/ui/canvas/ActionBar';
 import { linkKey } from '@/ui/canvas/LinkPath';
 import { WHY } from '@/ui/inspector/why';
@@ -426,11 +426,12 @@ describe('the Break menu stays inside a room the rail has cut short', () => {
       for (const key of keys) {
         const anchor = anchorFor(key, d.geo, d.links) as Rect;
         for (const k of SCALES) {
-          const cap = menuCap(anchor, room, k, natural);
+          const body = bodyFor(key, d.geo) ?? anchor;
+          const cap = menuCap(anchor, room, k, natural, { width: MENU_W, body });
           const css = { w: MENU_W, h: cap === null ? natural : Math.min(natural, cap) };
           const scale = fittedScale(css, room, k);
           const size = { w: css.w / scale, h: css.h / scale };
-          const at = placeBar(anchor, size, room);
+          const at = placeBar(anchor, size, room, [], body);
           const inside = at.x >= room.x - 1e-6 && at.y >= room.y - 1e-6
             && at.x + size.w <= room.x + room.w + 1e-6
             && at.y + size.h <= room.y + room.h + 1e-6;

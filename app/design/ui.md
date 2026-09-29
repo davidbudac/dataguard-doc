@@ -1227,9 +1227,26 @@ SHUTD / Take th". Two fixes and a redesign.
   `onMeasure` corrects it after the paint, as for Build's bar. Arrow keys walk the
   pressable rows (Home/End jump, refused rows are skipped — their reasons stay on
   screen), Escape closes, focus-on-open lands on the first pressable row.
+- **Whole beside beats scrolled below** (browser pass, same day). `menuCap` is also
+  told the menu's width and the subject's body: when neither under nor over the
+  card holds the whole list but the ground left or right of it does, it is not cut
+  and `placeBar` puts it beside (sby01 on the default configuration: 600 px of
+  empty ground to its left, where it had opened as a 300 px scroll under the card).
+  Only when no side holds it whole does it scroll, on the side with the most room —
+  beside at the room's full height if the ground beside is wide enough, else the
+  taller of under and over. The list's scrollbar is thin (`scrollbar-width: thin`,
+  `--ln2` thumb).
+- **A data centre's menu stands beside the box, not the band.** A data centre
+  anchors on its name band, and "beside the band" was still inside the box, over
+  its own cards (dc1 after *Take DC 1 down*, with the dock open, landed on
+  prm01/app01). `placeBar` takes the subject's body (`bodyFor`: the site's box, else
+  the anchor) for its beside candidates; every card and caption, the site's own
+  included, stays an obstacle, and the first zero-overlap candidate wins. This holds
+  for Build's bar too.
 
 Tests: `canvas-actions.test.ts` (*the bar keeps out from under the floating chrome*,
-*a menu taller than its room scrolls*, *Break draws the bar as a grouped menu*, the
+*a menu taller than its room scrolls*, *a data centre's menu keeps off the cards
+inside it*, *Break draws the bar as a grouped menu*, the
 whole Break table on the bar, the header's clock, the quick icons stepping aside),
 `canvas-presets.test.ts` (*the Break menu stays inside a room the rail has cut short*,
 every preset, every scale).

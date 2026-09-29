@@ -22,7 +22,7 @@ import type { Geometry, LayoutOffset, NodeBox, SiteBox, ViewBox } from './layout
 import { layoutTopology, SITE_MIN } from './layout';
 import { cardFrameFor, cardRoleFor, carryEnds, chipsFor, routeTopology, siteIsDown, unionViewBox } from './routing';
 import { describeTopology, cardLabel, linkLabel, siteLabel } from './aria';
-import { anchorFor, barRoom, fittedScale, menuCap, placeBar } from './anchor';
+import { anchorFor, barRoom, bodyFor, fittedScale, menuCap, placeBar } from './anchor';
 import { InlineName } from './InlineName';
 import { siteLabelRect } from './layout';
 import { ActionBar, barFootprint, menuFootprint } from './ActionBar';
@@ -1322,19 +1322,30 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
   /* Break's menu shows every row, so it may be taller than the ground it
      has: then it is cut to that ground and scrolls, rather than shrinking its
      text (`fittedScale`) or running under the chrome. */
+  /* A data centre's whole box: the bar stands beside it, not beside its name
+     band inside it, over its own cards. */
+  const barBody = bar === null || barAnchor === null ? null : bodyFor(bar.key, geo) ?? barAnchor;
   const barCap = bar?.sections === undefined || barAnchor === null || barNatural === null
-    ? null : menuCap(barAnchor, room, k, barNatural.h);
+    ? null
+    : menuCap(barAnchor, room, k, barNatural.h, {
+      width: barNatural.w, ...(barBody === null ? {} : { body: barBody }),
+    });
   const barSize = barNatural === null ? null
     : barCap === null ? barNatural : { w: barNatural.w, h: Math.min(barNatural.h, barCap) };
   const barScale = barSize === null ? k : fittedScale(barSize, room, k);
-  /* What the bar should not sit on: every other card and every caption. */
+  /* What the bar should not sit on: every other card and every caption --
+     for a data centre, that is its own cards too: the bar is about the box,
+     and covering what is in it hides what the menu is about. */
   const barObstacles = bar === null ? [] : [
     ...Object.entries(geo.byKey).filter(([key]) => key !== bar.key).map(([, n]) => n),
     ...routed.links.filter((l) => linkKey(l) !== bar.key).map((l) => l.pill),
   ];
   const barPlace = bar === null || barAnchor === null || barSize === null
     ? null
-    : placeBar(barAnchor, { w: barSize.w / barScale, h: barSize.h / barScale }, room, barObstacles);
+    : placeBar(
+      barAnchor, { w: barSize.w / barScale, h: barSize.h / barScale }, room, barObstacles,
+      barBody ?? barAnchor,
+    );
 
   /* The handle: the top right corner of the subject's anchor. */
   const handleKey = interactive ? props.handle ?? null : null;

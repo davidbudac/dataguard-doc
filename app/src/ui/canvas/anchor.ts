@@ -188,6 +188,7 @@ export function placeBar(
   size: { w: number; h: number },
   view: { x: number; y: number; w: number; h: number },
   obstacles: readonly Rect[] = [],
+  body: Rect = anchor,
 ): BarPlacement {
   const bottom = view.y + view.h;
   const clampX = (x: number): number => Math.max(view.x, Math.min(x, view.x + view.w - size.w));
@@ -196,8 +197,11 @@ export function placeBar(
      it (a zoomed drawing): the bar stays on the ground that can be seen. */
   const below = Math.max(anchor.y + anchor.h + BAR_GAP, view.y);
   const above = Math.min(anchor.y - BAR_GAP - size.h, bottom - size.h);
-  const right = anchor.x + anchor.w + BAR_GAP;
-  const left = anchor.x - BAR_GAP - size.w;
+  /* Beside the subject's *body*, not its anchor: a data centre anchors on
+     its name band, and "beside the band" is still inside the box, over its
+     own cards. Beside the box is the free ground next to it. */
+  const right = body.x + body.w + BAR_GAP;
+  const left = body.x - BAR_GAP - size.w;
   const alignL = clampX(anchor.x);
   const alignR = clampX(anchor.x + anchor.w - size.w);
   const candidates: BarPlacement[] = [];
@@ -219,6 +223,9 @@ export function placeBar(
     candidates.push({ x: leftIn, y: clampY(anchor.y), flipped: false, beside: true });
   }
   if (candidates.length === 0) return { x: clampX(anchor.x), y: clampY(above), flipped: true };
+  /* First zero-overlap candidate in the order above wins; otherwise the one
+     that covers least -- so a clear spot beside always beats a spot below
+     that sits on a card. */
   const cost = (c: BarPlacement): number => {
     const box = { x: c.x, y: c.y, w: size.w, h: size.h };
     return obstacles.reduce((sum, o) => sum + overlap(box, o), 0);
@@ -256,13 +263,34 @@ export function menuCap(
   room: { x: number; y: number; w: number; h: number },
   k: number,
   natural: number,
-  min = MENU_MIN_H,
+  opts: { width?: number; body?: Rect; min?: number } = {},
 ): number | null {
+  const min = opts.min ?? MENU_MIN_H;
+  const body = opts.body ?? anchor;
   const below = room.y + room.h - (anchor.y + anchor.h + BAR_GAP);
   const above = anchor.y - BAR_GAP - room.y;
   const vertical = Math.floor(Math.max(below, above, 0) * k);
-  if (natural <= vertical) return null;
-  if (vertical >= min) return vertical;
   const whole = Math.floor(room.h * k);
+  if (natural <= vertical) return null;
+  /* Beside the subject holds the whole list when the ground to its left or
+     right is as wide as the menu: a menu shown whole beside the card beats
+     one cut to a scroll under it. When no side holds it whole, beside is
+     still the side with the most room -- the room's full height. */
+  const w = opts.width === undefined ? null : opts.width / k;
+  const besideFits = w !== null && (
+    room.x + room.w - (body.x + body.w + BAR_GAP) >= w || body.x - BAR_GAP - room.x >= w);
+  if (besideFits) return natural <= whole ? null : whole;
+  if (vertical >= min) return vertical;
   return natural <= whole ? null : whole;
+}
+
+/**
+ * The whole of what the bar is about, when that is more than its anchor: a
+ * data centre anchors on its name band, but its box -- with its own cards in
+ * it -- is the thing the bar should stand beside. `null` for everything else,
+ * whose anchor is its body.
+ */
+export function bodyFor(key: string, geo: Geometry): Rect | null {
+  const site = geo.sites.find((s) => (s.id as string) === key);
+  return site ? { x: site.x, y: site.y, w: site.w, h: site.h } : null;
 }
