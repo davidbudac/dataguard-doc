@@ -46,6 +46,7 @@ import './styles/base.css';
 import './styles/shell.css';
 import './styles/float.css';
 import './styles/rail.css';
+import './styles/proto-b.css';
 import './styles/popout.css';
 import './styles/print.css';
 

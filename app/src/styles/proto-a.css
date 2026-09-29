@@ -1,0 +1,118 @@
+/* PROTOTYPE — Break layout variant A (throwaway, see branch prototype/break-layout-a)
+   Everything is scoped under `.v-A` (the root class App.tsx sets). Colour from tokens only. */
+
+.v-A .pa-view{display:none}
+@media screen{
+  .app.v-A.is-float .pa-view{position:absolute;display:flex;flex-direction:column;
+    top:calc(var(--bar-bottom,80px) + 10px);left:var(--float-m);right:var(--rail-space);
+    bottom:var(--float-m);z-index:10;min-height:0;overflow:hidden}
+}
+.v-A .pa-bar{position:relative;display:flex;align-items:center;gap:10px;flex:0 0 auto;
+  padding:6px 10px;border-bottom:1px solid var(--ln);min-height:44px;flex-wrap:wrap}
+.v-A .pa-spacer{flex:1 1 0}
+.v-A .pa-note{font-size:12.5px;color:var(--ik2)}
+.v-A .pa-pad{padding:16px}
+.v-A .pa-body{position:relative;flex:1 1 auto;min-height:0;overflow:auto}
+.v-A .pa-plot{overflow:visible}
+.v-A .pa-svg{display:block}
+
+/* the transport, compacted into the bar */
+.v-A .pa-bar .tl-transport{padding:0;border:0;background:transparent;gap:6px;flex-wrap:nowrap}
+.v-A .pa-bar .tl-tp-btn{padding:3px 8px}
+.v-A .pa-bar .why{display:none}
+.v-A .pa-bar .tl-tp-slot,.v-A .pa-bar .tl-tp-speeds{gap:2px}
+
+/* terse readout */
+.v-A .pa-ro{display:flex;align-items:baseline;gap:6px;font-size:12px;color:var(--ik2);flex-wrap:wrap}
+.v-A .pa-ro-c i{font-style:normal;color:var(--ik3)}
+.v-A .pa-ro-c b{font-weight:600;color:var(--ik)}
+.v-A .pa-ro-c.t-rd b{color:var(--rd)}
+.v-A .pa-ro-c.t-tl b{color:var(--tl)}
+.v-A .pa-ro-c.t-am b{color:var(--am)}
+.v-A .pa-ro-c.t-vi b{color:var(--vi)}
+.v-A .pa-dot{margin-right:6px;color:var(--ik3)}
+
+/* dropdowns: the warnings, the key */
+.v-A .pa-dd{position:relative}
+.v-A .pa-dd-b,.v-A .pa-tog{font:inherit;font-size:12.5px;font-weight:600;color:var(--ik2);background:var(--sf2);
+  border:1px solid var(--ln);border-radius:var(--r-ctl);padding:4px 10px;cursor:pointer}
+.v-A .pa-dd-b:hover,.v-A .pa-tog:hover{color:var(--ik);border-color:var(--ln2)}
+.v-A .pa-dd-b.t-am{color:var(--am);background:var(--amf);border-color:var(--am)}
+.v-A .pa-dd-b.t-rd{color:var(--rd);background:var(--rdf);border-color:var(--rd)}
+.v-A .pa-tog[aria-pressed="true"]{color:var(--ik);background:var(--seg-on)}
+.v-A .pa-dd-pop{position:absolute;right:0;top:calc(100% + 6px);z-index:30;width:min(520px,70vw);
+  max-height:50vh;overflow:auto;padding:10px 12px;background:var(--sf);border:1px solid var(--ln);
+  border-radius:var(--r-card);box-shadow:var(--sh-card);font-size:12.5px}
+.v-A .pa-find{margin:0 0 8px;color:var(--ik)}
+.v-A .pa-find:last-child{margin-bottom:0}
+.v-A .pa-find b{text-transform:capitalize;margin-right:4px}
+.v-A .pa-find.t-am b{color:var(--am)}
+.v-A .pa-find.t-rd b{color:var(--rd)}
+.v-A .pa-find.t-sl{color:var(--ik2)}
+.v-A .pa-key{margin:0 0 5px;display:flex;align-items:center;gap:8px;color:var(--ik)}
+
+/* ---- the card column (SVG) ---- */
+.v-A .pa-svg text{font-family:var(--sans)}
+.v-A .pa-card{fill:var(--sf);stroke:var(--ln);stroke-width:1}
+.v-A .pa-card.is-tl{fill:var(--tlf);stroke:var(--tl)}
+.v-A .pa-card.is-bl{fill:var(--blf);stroke:var(--bl)}
+.v-A .pa-card.is-am{fill:var(--amf);stroke:var(--am)}
+.v-A .pa-card.is-vi{fill:var(--vif);stroke:var(--vi)}
+.v-A .pa-card.is-sl{fill:var(--sf2);stroke:var(--ln2)}
+.v-A .pa-card.is-down{fill:none;stroke:var(--rd);stroke-width:1.25}
+.v-A .pa-card.is-stalled{stroke:var(--rd);stroke-width:1.5}
+.v-A .pa-card.is-unreached{stroke-dasharray:4 3}
+.v-A .pa-card.is-degraded{stroke:var(--am);stroke-width:1.25}
+.v-A .pa-card.is-hot{stroke:var(--ik3)}
+.v-A .pa-card.is-sel{stroke:var(--fc,var(--vi));stroke-width:2}
+.v-A .pa-hatch{stroke:none}
+.v-A .pa-node{cursor:pointer;outline:none}
+.v-A .pa-node:focus-visible .pa-card{stroke:var(--fc,var(--vi));stroke-width:2}
+.v-A .pa-node.is-dim,.v-A .pa-row.is-dim{opacity:.42}
+.v-A .pa-name{font-size:12.5px;font-weight:600;fill:var(--ik);font-family:var(--mono)}
+.v-A .pa-sub{font-size:10px;fill:var(--ik2)}
+.v-A .pa-bdg{fill:var(--sf3)}
+.v-A .pa-bdg.is-primary{fill:var(--tlf);stroke:var(--tl)}
+.v-A .pa-bdg.is-standby{fill:var(--blf);stroke:var(--bl)}
+.v-A .pa-bdg.is-former-primary{fill:var(--sf3);stroke:var(--sl)}
+.v-A .pa-bdg.is-obs{fill:var(--vif);stroke:var(--vi)}
+.v-A .pa-bdg.is-down{fill:var(--rdf);stroke:var(--rd)}
+.v-A .pa-bdg-t{font-size:11px;font-weight:700;fill:var(--ik2);pointer-events:none}
+.v-A .pa-chip text{font-size:9px;font-weight:700;letter-spacing:.03em;fill:var(--ik3)}
+.v-A .pa-chip.is-violet text{fill:var(--vi)}
+.v-A .pa-chip.is-slate text{fill:var(--sl)}
+.v-A .pa-x line{stroke:var(--rd);stroke-width:2.5;stroke-linecap:round}
+
+/* data centre headers */
+.v-A .pa-dc rect{fill:var(--sf2)}
+.v-A .pa-dc text{font-size:10.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;fill:var(--ik3)}
+.v-A .pa-dc line{stroke:var(--ln);stroke-width:1}
+.v-A .pa-dc.is-down rect{fill:var(--rdf)}
+.v-A .pa-dc.is-down text{fill:var(--rd)}
+
+/* the lanes: the model's own bars; its gutter text is replaced by the cards */
+.v-A .pa-row .t-lane,.v-A .pa-row .t-sub{display:none}
+.v-A .pa-row.is-rel .lane-bg{stroke:var(--ik3)}
+.v-A .pa-alab{font-size:12px;font-weight:600;fill:var(--ik)}
+.v-A .pa-asub{font-size:10px;fill:var(--ik3)}
+.v-A .pa-empty-t{font-size:12.5px;fill:var(--ik3)}
+
+/* links as connectors + pills */
+.v-A .pa-lk line{stroke:var(--ln2);stroke-width:1;opacity:.8}
+.v-A .pa-lk circle{fill:var(--ln2)}
+.v-A .pa-lk.is-up line{stroke:var(--ik3)}
+.v-A .pa-lk.is-up circle{fill:var(--ik3)}
+.v-A .pa-lk.is-down line{stroke:var(--rd);stroke-dasharray:3 3}
+.v-A .pa-lk.is-down circle{fill:var(--rd)}
+.v-A .pa-lk.is-off line{stroke-dasharray:2 3}
+.v-A .pa-lk.is-hot line{stroke-width:2}
+.v-A .pa-lk.is-faint,.v-A .pa-pill.is-faint{opacity:.25}
+.v-A .pa-pill rect{fill:var(--sf);stroke:var(--ln2);stroke-width:1}
+.v-A .pa-pill text{font-size:9px;font-weight:600;fill:var(--ik2)}
+.v-A .pa-pill.is-up text{fill:var(--tl)}
+.v-A .pa-pill.is-up rect{stroke:var(--tl)}
+.v-A .pa-pill.is-down rect{fill:var(--rdf);stroke:var(--rd)}
+.v-A .pa-pill.is-down text{fill:var(--rd)}
+.v-A .pa-pill.is-hot rect{stroke-width:1.75}
+.v-A .pa-links{pointer-events:none}
+.v-A .pa-lk,.v-A .pa-pill{pointer-events:all}

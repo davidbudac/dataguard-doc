@@ -45,6 +45,11 @@ import { ClassicWalkthrough } from './intro/Walkthrough';
 import { ReviewDialog } from './review/ReviewPanel';
 import { Popout, PopoutButton, PoppedAway, popped } from './common/popout';
 import { RAIL_ID, RailBar, RailStrip } from './RailFrame';
+/* PROTOTYPE: Break layout variants (throwaway; see the prototype branches). */
+import { protoVariant } from './common/proto-variant';
+import { ProtoSwitcher } from './common/ProtoSwitcher';
+import { ProtoFusedView } from './break/ProtoFusedView';
+import { ProtoSplitBar } from './proto/ProtoSplitBar';
 
 /** Which modes keep a rail beside the canvas. Learn's right half is the workbench. */
 const HAS_RAIL: Record<Mode, boolean> = {
@@ -255,7 +260,7 @@ function useChromeInsets(): (el: HTMLElement | null) => void {
 
 const MIN_TIMELINE_W = 640;
 
-function TimelineSlot({ popup = false }: { popup?: boolean }) {
+function TimelineSlot({ popup = false, packed = false }: { popup?: boolean; packed?: boolean }) {
   const [ref, width] = useWidth();
   const t = trace.value;
   const learn = mode.value === 'learn';
@@ -291,7 +296,8 @@ function TimelineSlot({ popup = false }: { popup?: boolean }) {
           onSpeed={(s) => { speed.value = s; }}
           selection={selection.value[0] ?? null}
           onSelect={(id) => { selection.value = id === null ? [] : [id]; }}
-          showTransport
+          showTransport={!packed}
+          compact={packed}
           appView={appLanesShown.value}
           onAppView={(shown) => { appLanesShown.value = shown; }}
         />
@@ -341,8 +347,10 @@ function HomeCanvas() {
   return popped.value.canvas === undefined ? <CanvasSlot /> : <PoppedAway kind="canvas" label="Drawing" />;
 }
 
-function Stage({ m, wide }: { m: Mode; wide: boolean }) {
+function Stage({ m, wide, fused = false }: { m: Mode; wide: boolean; fused?: boolean }) {
   if (m === 'learn') return <LearnShell />;
+  /* PROTOTYPE variant A: the drawing and the timeline are one view. */
+  if (fused) return <><ProtoFusedView />{!wide ? <EventMenu /> : null}</>;
   return (
     <>
       <HomeCanvas />
@@ -372,7 +380,9 @@ function useTimelineHeight(): void {
    whole of it in Build, the head of the timeline panel in Break. With a run
    on it, the panel has a grab handle on its top edge and a full-screen button
    at the end of that row (timeline/DockControls.tsx). */
-function FloatDock({ m, sized }: { m: Mode; sized: boolean }) {
+function FloatDock({ m, sized, vB = false }: { m: Mode; sized: boolean; vB?: boolean }) {
+  /* PROTOTYPE B: the bar is the drag handle and the whole of the chrome. */
+  if (vB) return <><ProtoSplitBar sized={sized} /><TimelineSlot packed /></>;
   return (
     <>
       <div class="dock-status">
@@ -443,6 +453,21 @@ export function App() {
      over it; Configure and Learn keep the docked grid (state/view.ts). */
   const float = !intro && floating(m, viewport.value);
   const t = toast.value;
+  /* PROTOTYPE: which Break layout is on screen (dev builds only). */
+  const variant = import.meta.env.DEV && m === 'break' && !intro ? protoVariant.value : 'current';
+  const fused = variant === 'A' && float;
+  /* PROTOTYPE B: Break's drawing and timeline as two stacked regions. */
+  const vB = variant === 'B' && float;
+  /* B folds the rail to its strip on the way in, so the reader can open it. In
+     memory only (a plain signal write, not setRailCollapsed, so the shared
+     localStorage key is untouched); on the way out, put it back unless the
+     reader has since opened it themselves. */
+  useLayoutEffect(() => {
+    if (!vB) return undefined;
+    const before = railCollapsed.peek();
+    railCollapsed.value = true;
+    return () => { if (railCollapsed.peek()) railCollapsed.value = before; };
+  }, [vB]);
   const barRef = useBarAnchor();
   const dockRef = useDockAnchor();
   const appRef = useChromeInsets();
@@ -450,7 +475,7 @@ export function App() {
   /* Break's timeline panel is sized by the reader once there is a run to
      show; the steady state's one sentence keeps its own height, and so
      does the note left behind when the timeline is popped out. */
-  const sized = float && m === 'break' && trace.value !== null && popped.value.timeline === undefined;
+  const sized = !fused && float && m === 'break' && trace.value !== null && popped.value.timeline === undefined;
   const full = sized && timelineFull.value;
   /* Full screen belongs to the run on screen: leaving Break, or clearing the
      events, puts the drawing back. */
@@ -463,7 +488,7 @@ export function App() {
   useEffect(() => installShortcuts(), []);
 
   return (
-    <div ref={appRef} class={intro ? 'app m-intro' : `app m-${m}${float ? ' is-float' : ''}${float && !gridOn.value ? ' no-grid' : ''}${full ? ' tl-full' : ''}${float && m === 'break' && !menuInRail ? ' has-evm' : ''}${railShut ? ' rail-shut' : ''}`}>
+    <div ref={appRef} class={intro ? 'app m-intro' : `app m-${m}${float ? ' is-float' : ''}${float && !gridOn.value ? ' no-grid' : ''}${full ? ' tl-full' : ''}${float && m === 'break' && !menuInRail ? ' has-evm' : ''}${railShut ? ' rail-shut' : ''}${variant === 'current' ? '' : ` v-${variant}`}`}>
       {/* One header, three bands: the modes and the small controls, then the
           quieter document row, then the line that says what to do in the mode
           that is open. It is one element so the toast can be anchored to the
@@ -521,10 +546,10 @@ export function App() {
                 </p>
               </div>
             )}
-            <Stage m={m} wide={menuInRail} />
+            <Stage m={m} wide={menuInRail} fused={fused} />
           </main>
 
-          {float && m === 'break' && canEdit(viewport.value) ? <ScenarioPalette /> : null}
+          {float && !fused && m === 'break' && canEdit(viewport.value) ? <ScenarioPalette /> : null}
 
           {railInGrid
             ? (
@@ -533,13 +558,13 @@ export function App() {
                 class={`app-rail${float ? ' float-card' : ''}${railShut ? ' is-shut' : ''}${m === 'learn' ? '' : ' has-bar'}`}
                 aria-label={RAIL_TITLE[m]}
               >
-                {m === 'learn' ? <Rail m={m} wide float={float} /> : railShut ? <RailStrip title={RAIL_TITLE[m]} /> : (
+                {m === 'learn' ? <Rail m={m} wide float={float && !fused} /> : railShut ? <RailStrip title={RAIL_TITLE[m]} /> : (
                   <>
                     <RailBar title={RAIL_TITLE[m]} />
                     {/* The rail's own scroll port, under the bar that stays
                         put: the contents' sticky headers stick to its top. */}
                     <div class="rail-body">
-                      <Rail m={m} wide float={float} />
+                      <Rail m={m} wide float={float && !fused} />
                     </div>
                   </>
                 )}
@@ -547,12 +572,12 @@ export function App() {
             )
             : null}
 
-          {float ? (
+          {float && !fused ? (
             <>
-              <FindingToast />
-              <FindingsPopover />
+              {vB ? null : <FindingToast />}
+              {vB ? null : <FindingsPopover />}
               <div class={sized ? 'app-dock float-card has-tl' : 'app-dock float-card'} ref={dockRef}>
-                <FloatDock m={m} sized={sized} />
+                <FloatDock m={m} sized={sized} vB={vB} />
               </div>
             </>
           ) : null}
@@ -570,7 +595,7 @@ export function App() {
           position={viewport.value === 'compact' || viewport.value === 'narrow' ? 'bottom' : 'right'}
           onClose={() => { inspectorOpen.value = false; }}
         >
-          <Rail m={m} wide={false} float={float} />
+          <Rail m={m} wide={false} float={float && !fused} />
         </Sheet>
       ) : null}
 
@@ -579,6 +604,8 @@ export function App() {
       {intro ? null : <WorkspacesDialog />}
       {intro ? null : <ReviewDialog />}
       {intro ? null : <CollectDialog />}
+
+      {m === 'break' && !intro && import.meta.env.DEV ? <ProtoSwitcher /> : null}
 
       <Popout kind="timeline"><TimelinePop /></Popout>
       <Popout kind="canvas"><CanvasPop /></Popout>
