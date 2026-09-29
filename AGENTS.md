@@ -1183,7 +1183,7 @@ modes changes what is around it.
 
 ### Tests
 
-`npm --prefix app run test` is **2578 tests across 98 files**. What is where:
+`npm --prefix app run test` is **2592 tests across 98 files**. What is where:
 
 - `app/src/engine/__tests__/` — the engine's own unit tests (purity, citations,
   claims, schema, migrate, URL codec, parse, resolve, graph, axis, classic).
