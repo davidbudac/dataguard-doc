@@ -1380,12 +1380,86 @@ handle on its top edge). Build's dock, chips and warning card are as they were.
     under the header, over the drawing and the rail; the popped-out window is the
     ordinary timeline with its own transport, and while it is out the bar keeps the
     readout and the findings and the region says where the timeline went.
-- **Lanes** (`ui/break/LanesView.tsx`, `styles/lanes.css`, root class `bl-lanes`) is the
-  prototype's fused view, ported and renamed only (`ProtoFusedView` → `LanesView`, `pa-` →
-  `ln-`): a column of cards grouped by data centre, each row continuing as that member's
-  lane, the application's rows under them, its own bar, and the rail as before with the
-  scenarios and validation in it. It always draws at full density
-  (`TL_FULL.laneH` rows). The feature work on it is separate.
+- **Lanes** (`ui/break/LanesView.tsx`, `lanes-events.tsx`, `lanes-layout.ts`,
+  `styles/lanes.css`, root class `bl-lanes`) is the prototype's fused view: a column of
+  cards grouped by data centre, each row continuing as that member's lane, the
+  application's rows under them, and the rail as before with the scenarios and validation
+  in it. It always draws at full density (`TL_FULL.laneH` rows). It is also **where a run
+  is started**: the buttons a reader needs to add an event are on the things they act on.
+  - *Event buttons on the cards.* Every card, every data centre header and every link
+    pill carries its events, drawn all the time and not only under the pointer. A card
+    shows the canvas's hover icons (`hoverTools`, one slot per pair of opposites) as 18 px
+    buttons at the foot of the card, right-aligned, plus a **⋯** for the rest: a database
+    is *Shut down / Start* and *Crash host / Restore host*, an observer *Stop / Start* and
+    *Crash*, the application *Crash*, a data centre's header *Crash / Restore* and
+    *Isolate / Reconnect*. The name of each is its label (`aria-label` and `<title>`), and
+    a refused one is dashed and grey with the reason after a dash in its title, exactly as
+    on the canvas. The way back (`restore`, `startup`, `heal`, `reconnect`, `start`) is
+    drawn in the healthy colour whenever it is on offer, so the slot that has just turned
+    from "Crash" into "Restore" is the one that catches the eye; the way down goes red on
+    hover only. Icons past three would overflow into the ⋯ menu (`MAX_TOOLS`); the table
+    offers two today, so the strip is at most two icons and the ⋯.
+  - *They are aimed at the playhead.* The buttons are computed at `snapT(tNow)` — the
+    same tenth of a second the rail's *Inject at t =* field shows, and that field *is*
+    `tNow`, so the two cannot disagree — so they change as the reader scrubs or plays:
+    with a crash at 10 s the host's slot is *Crash* at 5 s and *Restore* at 40 s,
+    SWITCHOVER is refused at 40 s "at this point on the clock", a data centre that is
+    down at t offers its way back. A caption at the top of the card column says which
+    moment they act at (*Events at t = 40 s · the buttons act at the playhead*). The
+    strips are keyed by slot, not by action, so the element a keyboard reader pressed is
+    the one that is now the way back, with the focus still on it.
+  - *A press injects at the playhead and leaves it there* (`runAction(…, { keepPlayhead })`).
+    Every other surface moves the playhead to the end of the run so the drawing shows the
+    result; Lanes shows the whole run at once, so the playhead is the reader's composing
+    cursor and must not jump from 10 s to 70 s under them. The event is a marker in the
+    lanes at once (the trace is recomputed on the document).
+  - *The ⋯ menu* is `breakBar`'s list — the canvas's context menu, moved to
+    `break/menu.ts` so both call one function: Fail, Restore, Role change, Broker, and the
+    settings last, each row led by its glyph, the refused ones with their reason under
+    them, the dropped restores as one quiet line — as an HTML popover beside the card that
+    opened it (`MoreMenu`; a `foreignObject` would have been clipped by the scrolling
+    drawing). It takes the focus on a row that can be pressed, walks with the arrows
+    (`walkMenu`), closes on **Esc** (the focus returns to its ⋯; the key is stopped, so
+    the selection is not cleared), on a press outside, on a second press on its opener,
+    on scrolling the rows away from it and on a row being pressed. Its header reads
+    *sby01 · at t = 7 s*. It is kept inside the view and scrolls in its own box when the
+    list is taller than the room.
+  - *Link pills* are the pill of the connector. One with a document link
+    (`CanvasLink.docLink`) is a button that opens the same menu for that link (*Cut
+    dc1-dc3*, *Restore*…); the others are still text with the full sentence as their
+    tooltip. The connector line carries the tooltip too (a wide invisible hit line).
+  - *Pills do not crowd* (`planPills`, pure and tested). A pill goes to the emptiest gap
+    its connector spans, so links between the same two cards fan out over the gaps
+    between them; a gap that is full folds what does not fit into one **+N** at its end,
+    whose tooltip and menu carry all of them. Between two data centres the gap is a
+    pill row of its own above the header. The rail reserves only the connector lanes the
+    links need (`assignLanes` on the rows, capped at five), not half the link count.
+  - *The rows.* Data centres are in **declared order** (`doc.sites`, the order Build's
+    rail and the configuration read in), not the drawing's column order, which follows
+    redo depth and puts an observer-only data centre between the two it connects — right
+    for a picture of who ships to whom, wrong for a list a finger runs down. Members and
+    observers inside one are in the timeline's lane order. The application's card is the
+    last row of the data centre its host is in, as on the canvas; *Application's view*
+    is its own band under them all, with the three application lanes. A hand-set column
+    order on the canvas (Build's drag) is not followed. The order is read off a throwaway
+    model so the rail's width is known before the plot's; a model's lane order does not
+    depend on its width.
+  - *Timing and the axis* are the Timeline's own. `useRunTimeline` owns the model, so an
+    event drag holds the axis (*Fit timeline* in the bar lets go), and the braces and the
+    outage caption are the model's: the caption and the outage brace above the lanes (the
+    event chips and their sentences below them, `laneTop` at the model's own 116), an
+    axis under the last lane with its ticks, `t = 0 is the first injected event`, and the
+    parameter braces hanging under it, mapped by however far the axis moved. The ticks
+    are also on the top edge, above the first row; they scroll with the rows.
+  - *The empty run* is the cards with their buttons, a faint track per row, *Steady state.
+    Nothing has been injected yet.* and *Pick an event on a card to start.* — the buttons
+    are exactly how you start now. There is no axis to draw until there is a run.
+  - *The bar* is Split's parts on the view's top edge (`sb-bar ln-bar`): transport (the
+    speeds fold into a select under 1100 px), the terse readout with *Why?*, *Fit
+    timeline* while held, the findings count with the dropdown listing every finding
+    (`FindingsSheet`), and the key with the Application's view toggle behind an (i).
+    Dropdowns open downward. `revealFindings` opens that dropdown in Lanes as in Split
+    and leaves the rail as it was.
 - **Density belongs to the model.** The prototype switched a module-level `TL` while
   rendering; it is now `TimelineView.density` → `TimelineModel.layout`, and `Lane`,
   `Marker`, `EventDrag` and `playheadSpan` read it from the model (`Marker` takes a
@@ -1398,10 +1472,16 @@ handle on its top edge). Build's dock, chips and warning card are as they were.
   prototype's pill, `?variant=`, `import.meta.env.DEV` gating and `state/url.ts`'s
   carrying of the key.
 - **Findings when there is nowhere floating to put them**: `revealFindings` opens the
-  bar's dropdown in Split and unfolds the rail in Lanes, where the rows are its foot.
+  bar's dropdown in both layouts (Split's and Lanes'); the rows at the foot of Lanes' rail
+  stay, and the rail is no longer unfolded for it.
 
 Tests: `test/ui/break-layouts.test.ts` (the preference, the switch, Split's bar, the rail
-fold, the density, Build and Configure unchanged), `timeline-dock.test.ts` (the height
-and its clamp, the separator, full screen, `--tl-h`), `rail-collapse.test.ts`. Browser
-pass: Split and Lanes at 1440×900 and 1280×800, Split at 1024×768, the findings dropdown,
-the key popover and full screen, Build unchanged.
+fold, the density, Build and Configure unchanged), `lanes-events.test.ts` (the buttons per
+card and header, changing with the playhead, refusals with their reason, a press landing at
+the playhead, the ⋯ menu and Esc, the link pills, the empty run, the held axis, the braces,
+the data centres' order, the application in its data centre), `lanes-layout.test.ts` (rail
+lanes, pill planning and folding), `timeline-dock.test.ts` (the height and its clamp, the
+separator, full screen, `--tl-h`), `rail-collapse.test.ts`. Browser pass: Split and Lanes at
+1440×900 and 1280×800, Split at 1024×768, the findings dropdown, the key popover and full
+screen, Build unchanged; Lanes empty, with a crash at 10 s at the playhead at 5 s and at 40 s,
+the ⋯ menu and a link pill's menu.
