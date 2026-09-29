@@ -24,7 +24,7 @@
 import type { JSX } from 'preact';
 import { useEffect, useLayoutEffect, useRef } from 'preact/hooks';
 import type { TopologyDoc } from '@/engine';
-import { GLYPH } from '../common/eventIcons';
+import { GLYPH, GLYPH_SMALL } from '../common/eventIcons';
 import type { CanvasTool } from '../canvas/HoverTools';
 import { MenuList, walkMenu } from '../canvas/ActionBar';
 import { isHTMLElement } from '../common/dom';
@@ -98,7 +98,7 @@ export function EventStrip({ right, y, name, tools, moreOpen, onMore }: StripPro
             <title>{title}</title>
             <rect class="ln-tool-hit" width={EV} height={EV} rx={5} />
             <g class="ln-tool-ico" transform={`translate(${(EV - 12) / 2},${(EV - 12) / 2}) scale(${12 / 24})`}>
-              {GLYPH[t.icon]}
+              {GLYPH_SMALL[t.icon] ?? GLYPH[t.icon]}
             </g>
           </g>
         );
