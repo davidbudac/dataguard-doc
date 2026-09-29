@@ -1,6 +1,6 @@
 /**
- * Break's floating timeline panel: a grab handle on its top edge that the
- * reader drags or steps with the arrow keys, a height remembered across
+ * Break's Split layout, the lower region: a bar that the reader drags, and a
+ * handle on its top edge that the arrow keys step, a height remembered across
  * reloads, and a full-screen toggle that Escape leaves.
  *
  * jsdom lays nothing out, so the drag itself is pinned in the browser pass
@@ -78,19 +78,23 @@ afterEach(() => {
 });
 
 describe('the height, as a number', () => {
-  it('defaults to a bit over a third of the window, within 220-400 px', () => {
-    expect(timelineDefaultH(900)).toBe(324);
-    expect(timelineDefaultH(500)).toBe(220);
-    expect(timelineDefaultH(1600)).toBe(400);
+  it('caps the region at three fifths of the room under the header, within 220-720 px', () => {
+    /* 900 tall, header foot at 96: (900 - 96) * .6. */
+    expect(timelineDefaultH(900, 96)).toBe(482);
+    expect(timelineDefaultH(500, 96)).toBe(242);
+    expect(timelineDefaultH(300, 96)).toBe(220);
+    expect(timelineDefaultH(2400, 96)).toBe(720);
+    /* Without a measured header, the 80 px the shell assumes. */
+    expect(timelineDefaultH(900)).toBe(492);
   });
 
-  it('never grows past the header, never shrinks past the header row', () => {
-    /* 900 tall, header foot at 96: 900 - 14 (foot margin) - 96 - 12 (gap). */
-    expect(timelineMaxH(900, 96)).toBe(778);
-    expect(clampTimelineH(5000, 900, 96)).toBe(778);
+  it('never leaves the drawing under its minimum, never shrinks past the bar and a few lanes', () => {
+    /* 900 tall, header foot at 96: 900 - 96 - 140 (what the drawing keeps). */
+    expect(timelineMaxH(900, 96)).toBe(664);
+    expect(clampTimelineH(5000, 900, 96)).toBe(664);
     expect(clampTimelineH(3, 900, 96)).toBe(TL_MIN_H);
     expect(clampTimelineH(300.4, 900, 96)).toBe(300);
-    /* A window too short for anything keeps the header row anyway. */
+    /* A window too short for anything keeps the bar and a few lanes anyway. */
     expect(timelineMaxH(100, 96)).toBe(TL_MIN_H);
   });
 });

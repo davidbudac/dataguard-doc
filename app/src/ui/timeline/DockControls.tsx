@@ -1,16 +1,19 @@
 /**
- * The two controls that size Break's floating timeline panel: the grab handle
- * on its top edge and the full-screen button in its header row.
+ * The controls that size Break's Split layout: the drag on the bar between the
+ * drawing and the timeline (`useDockDrag`), the keyboard handle that sits at
+ * the top edge of that bar (`DockGrip`), and the full-screen button.
  *
  * The handle is a `role="separator"` with a value, so it is one tab stop that
- * the arrow keys move -- the WAI-ARIA window-splitter pattern -- as well as a
- * thing to drag. The height lives in `timelineH` (view.ts), remembered under
+ * the arrow keys move -- the WAI-ARIA window-splitter pattern. Its pointer
+ * half is the whole bar's: the bar is the thing to drag, so the drag is the
+ * bar's own (`SplitBar`), and the handle is what a keyboard or a screen reader
+ * finds. The height lives in `timelineH` (view.ts), remembered under
  * `dg-tl-h`; the shell writes it into `--tl-h` through `style.setProperty`, so
  * nothing here carries a style attribute (`style-src 'self'`).
  *
  * The bounds are measured, not assumed: the header's foot is wherever the top
- * bar and the guidance line put it at this width, and the panel stops short of
- * it (`timelineMaxH`).
+ * bar and the guidance line put it at this width, and the region stops short
+ * of it, leaving the drawing its minimum (`timelineMaxH`).
  */
 
 import { useEffect, useRef } from 'preact/hooks';
@@ -29,46 +32,74 @@ const headBottom = (from: Element | null): number => {
   return b > 0 ? b : 80;
 };
 
-/** The height the panel is painted at now: measured, since CSS clamps the wish. */
+/** The height the region is painted at now: measured, since CSS clamps the wish. */
 const paintedH = (el: Element): number => {
   const dock = el.closest('.app-dock');
   const h = dock?.getBoundingClientRect().height ?? 0;
-  return h > 0 ? Math.round(h) : (timelineH.value ?? timelineDefaultH(viewH()));
+  return h > 0 ? Math.round(h) : (timelineH.value ?? timelineDefaultH(viewH(), headBottom(el)));
 };
 
-export const GRIP_TITLE = 'Drag to resize the timeline, or use the arrow keys; double-click or Enter resets it';
+/** Press further than this before a press on the bar becomes a drag, so a click stays a click. */
+const DRAG_SLOP = 4;
+
+/**
+ * Drag the bar to size the region under the drawing: dragging up makes it
+ * taller. Written to `timelineH` as it moves and to storage once, at the end.
+ * `ignore` names what inside the bar keeps its own presses (its buttons).
+ * Pointer capture is taken only once the press is a drag -- capturing at once
+ * would send the `click` of a button in the bar to the bar itself.
+ */
+export function useDockDrag(ignore: string): {
+  onPointerDown: (e: JSX.TargetedPointerEvent<HTMLElement>) => void;
+  onPointerMove: (e: JSX.TargetedPointerEvent<HTMLElement>) => void;
+  onPointerUp: (e: JSX.TargetedPointerEvent<HTMLElement>) => void;
+  onDblClick: (e: JSX.TargetedMouseEvent<HTMLElement>) => void;
+} {
+  const drag = useRef<{ y: number; h: number; id: number; live: boolean; next: number } | null>(null);
+  const clampFor = (el: Element, h: number): number => clampTimelineH(h, viewH(), headBottom(el));
+  return {
+    onPointerDown(e) {
+      if (e.button !== 0 || (e.target as Element).closest(ignore)) return;
+      drag.current = { y: e.clientY, h: paintedH(e.currentTarget), id: e.pointerId, live: false, next: 0 };
+    },
+    onPointerMove(e) {
+      const d = drag.current;
+      if (d === null || d.id !== e.pointerId) return;
+      if (!d.live) {
+        if (Math.abs(e.clientY - d.y) < DRAG_SLOP) return;
+        d.live = true;
+        /* A synthetic pointer has nothing to capture. */
+        try { e.currentTarget.setPointerCapture?.(e.pointerId); } catch { /* not capturable */ }
+        e.currentTarget.classList.add('is-dragging');
+      }
+      e.preventDefault();
+      d.next = clampFor(e.currentTarget, d.h + (d.y - e.clientY));
+      setTimelineH(d.next, false);
+    },
+    onPointerUp(e) {
+      const d = drag.current;
+      if (d === null || d.id !== e.pointerId) return;
+      drag.current = null;
+      e.currentTarget.classList.remove('is-dragging');
+      if (!d.live) return;
+      try { e.currentTarget.releasePointerCapture?.(e.pointerId); } catch { /* not captured */ }
+      /* Written once, at the end of the gesture. */
+      setTimelineH(d.next);
+    },
+    onDblClick(e) {
+      if (!(e.target as Element).closest(ignore)) setTimelineH(null);
+    },
+  };
+}
+
+export const GRIP_TITLE = 'Drag the bar to resize the timeline, or use the arrow keys on the handle; double-click or Enter resets it';
 
 export function DockGrip() {
-  const drag = useRef<{ y: number; h: number; id: number } | null>(null);
   const vh = viewH();
-  const now = timelineH.value ?? timelineDefaultH(vh);
+  const now = timelineH.value ?? timelineDefaultH(vh, typeof document === 'undefined' ? 80 : headBottom(document.body));
 
   const move = (el: Element, h: number, remember: boolean): void => {
     setTimelineH(clampTimelineH(h, viewH(), headBottom(el)), remember);
-  };
-
-  const onPointerDown = (e: JSX.TargetedPointerEvent<HTMLDivElement>): void => {
-    if (e.button !== 0) return;
-    e.preventDefault();
-    const el = e.currentTarget;
-    drag.current = { y: e.clientY, h: paintedH(el), id: e.pointerId };
-    el.setPointerCapture?.(e.pointerId);
-    el.classList.add('is-dragging');
-  };
-  const onPointerMove = (e: JSX.TargetedPointerEvent<HTMLDivElement>): void => {
-    const d = drag.current;
-    if (d === null || d.id !== e.pointerId) return;
-    move(e.currentTarget, d.h + (d.y - e.clientY), false);
-  };
-  const end = (e: JSX.TargetedPointerEvent<HTMLDivElement>): void => {
-    const d = drag.current;
-    if (d === null || d.id !== e.pointerId) return;
-    drag.current = null;
-    e.currentTarget.classList.remove('is-dragging');
-    e.currentTarget.releasePointerCapture?.(e.pointerId);
-    /* Written once, at the end of the gesture; a press that never moved
-       leaves the stored value (and the default) alone. */
-    if (e.clientY !== d.y) move(e.currentTarget, d.h + (d.y - e.clientY), true);
   };
 
   const onKeyDown = (e: JSX.TargetedKeyboardEvent<HTMLDivElement>): void => {
@@ -100,11 +131,6 @@ export function DockGrip() {
       aria-valuetext={`${Math.round(now)} pixels${timelineH.value === null ? ' (default)' : ''}`}
       tabIndex={0}
       title={GRIP_TITLE}
-      onPointerDown={onPointerDown}
-      onPointerMove={onPointerMove}
-      onPointerUp={end}
-      onPointerCancel={end}
-      onDblClick={() => setTimelineH(null)}
       onKeyDown={onKeyDown}
     >
       <span class="dock-grip-bar" aria-hidden="true" />

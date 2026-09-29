@@ -16,7 +16,7 @@ import { resetHistory } from '@/state/history';
 import {
   loadRailCollapsed, RAIL_KEY, revealRail, setRailCollapsed, toggleRail,
 } from '@/state/persist';
-import { inspectorOpen, mode, railCollapsed, selection, viewport } from '@/state/view';
+import { breakLayout, inspectorOpen, mode, railCollapsed, selection, viewport } from '@/state/view';
 
 /* jsdom hands back a bare object with no methods here (hints.test.ts). */
 const memory = new Map<string, string>();
@@ -56,6 +56,7 @@ beforeEach(() => {
   selection.value = [];
   inspectorOpen.value = false;
   railCollapsed.value = false;
+  breakLayout.value = 'split';
 });
 
 afterEach(() => {
@@ -115,6 +116,8 @@ describe('the side rail folds', () => {
 
   it('puts Break\'s event menu on the stage while the rail is folded', async () => {
     mode.value = 'break';
+    /* Lanes leaves the rail as it was; Split folds it on the way in (split-layout.test.ts). */
+    breakLayout.value = 'lanes';
     const root = mount();
     await tick();
     expect(root.querySelector('.app-rail .evmenu')).not.toBeNull();

@@ -22,15 +22,18 @@
 import type { JSX } from 'preact';
 import { useRef, useState } from 'preact/hooks';
 
+/** A control the strip can hold: an HTML button, or an SVG group standing in for one. */
+type Control = HTMLElement | SVGElement;
+
 export interface RovingToolbar {
   /** `0` for the strip's single tab stop, `-1` for everything else. */
   tabIndex: (i: number) => 0 | -1;
   /** Ref for control `i`, so the arrows have something to focus. */
-  itemRef: (i: number) => (el: HTMLElement | null) => void;
+  itemRef: (i: number) => (el: Control | null) => void;
   /** The focus moving by any other route -- a click, Tab -- moves the stop. */
   onFocus: (i: number) => void;
   /** Put this on the element carrying `role="toolbar"`. */
-  onKeyDown: (ev: JSX.TargetedKeyboardEvent<HTMLElement>) => void;
+  onKeyDown: (ev: JSX.TargetedKeyboardEvent<Control>) => void;
 }
 
 /**
@@ -41,7 +44,7 @@ export function useRovingToolbar(live: readonly boolean[]): RovingToolbar {
   const usable = live.map((ok, i) => (ok ? i : -1)).filter((i) => i >= 0);
   const [want, setWant] = useState(0);
   const stop = usable.includes(want) ? want : (usable[0] ?? -1);
-  const refs = useRef<(HTMLElement | null)[]>([]);
+  const refs = useRef<(Control | null)[]>([]);
 
   const moveTo = (i: number | undefined): void => {
     if (i === undefined) return;
@@ -51,9 +54,9 @@ export function useRovingToolbar(live: readonly boolean[]): RovingToolbar {
 
   return {
     tabIndex: (i: number) => (i === stop ? 0 : -1),
-    itemRef: (i: number) => (el: HTMLElement | null): void => { refs.current[i] = el; },
+    itemRef: (i: number) => (el: Control | null): void => { refs.current[i] = el; },
     onFocus: (i: number) => setWant(i),
-    onKeyDown: (ev: JSX.TargetedKeyboardEvent<HTMLElement>): void => {
+    onKeyDown: (ev: JSX.TargetedKeyboardEvent<Control>): void => {
       if (usable.length === 0) return;
       const at = usable.indexOf(stop);
       switch (ev.key) {

@@ -201,6 +201,13 @@ button.issue{border-bottom:1px solid var(--ln)}
   .app.is-float .guide-line{text-align:center;max-width:100ch;margin:0 auto;
     padding:6px 12px;text-shadow:0 0 6px var(--bg),0 0 2px var(--bg)}
   .app.is-float .guide-line a,.app.is-float .intro{pointer-events:auto}
+  /* Break's layout switch, at the far end of the guidance line: the line keeps
+     the middle, the switch takes the pointer the band otherwise gives away. */
+  .app.is-float .guide.has-sw{flex-direction:row;padding:0 var(--float-m)}
+  .app.is-float .guide.has-sw .guide-line{flex:0 1 auto;min-width:0}
+  .layout-sw{display:flex;align-items:center;gap:8px;flex:0 0 auto;pointer-events:auto}
+  .layout-sw-k{font-size:11px;color:var(--ik3)}
+  .layout-sw .seg button{padding:3px 12px;font-size:12px}
   /* The explanation the ? opens is a card over the canvas: it must not push
      the drawing down by the height of a page of keyboard shortcuts. */
   .app.is-float .intro{position:absolute;top:100%;left:50%;transform:translateX(-50%);
@@ -273,21 +280,14 @@ button.issue{border-bottom:1px solid var(--ln)}
     right:calc(var(--rail-space));bottom:var(--float-m);z-index:20;display:flex;
     flex-direction:column;border-top:1px solid var(--ln);overflow:auto;max-height:46vh;
     border-radius:var(--r-card)}
-  .app.is-float.m-break .app-dock{max-height:min(46vh,420px)}
-  /* With a run on it, Break's panel is the height the reader dragged it to
-     (`--tl-h`, written by App.tsx) or a bit over a third of the window --
-     `timelineDefaultH` in view.ts says the same -- and never so tall that it
-     reaches the header. */
-  .app.is-float.m-break .app-dock.has-tl{height:var(--tl-h,clamp(220px,36dvh,400px));
-    min-height:64px;max-height:calc(100dvh - var(--bar-bottom,80px) - 12px - var(--float-m))}
-  /* Full screen: the panel takes the window under the header, over the
-     palette, the drawing and the rail. */
-  .app.is-float.m-break.tl-full .app-dock{top:calc(var(--bar-bottom,80px) + 12px);
-    right:var(--float-m);height:auto;max-height:none;z-index:25}
+  /* Break's dock is split.css's lower region (the Split layout) and its
+     height is `--tl-h` or that file's default; the popped-out timeline window
+     is the whole window (popout.css). Full screen hides what would float over
+     the region: the zoom pill and the finding card. */
   .app.is-float.tl-full .zoom-pill,.app.is-float.tl-full .fnd-toast{visibility:hidden}
 
-  /* The grab handle: the top edge of the panel's header row. A short bar says
-     it is there; the whole edge takes the press. */
+  /* The keyboard handle on the Split bar's top edge: a short bar says it is
+     there (the bar itself takes the pointer, `.sb-bar .dock-grip`). */
   .dock-grip{position:absolute;top:0;left:0;right:0;height:9px;z-index:5;cursor:ns-resize;
     touch-action:none;display:flex;justify-content:center;align-items:flex-start;
     border-radius:var(--r-card) var(--r-card) 0 0}
@@ -297,7 +297,6 @@ button.issue{border-bottom:1px solid var(--ln)}
   .dock-grip:focus{outline:none}
   .dock-grip:focus-visible .dock-grip-bar{background:var(--vi);width:56px}
   .dock-grip:focus-visible{box-shadow:inset 0 2px 0 var(--vi)}
-  .app.is-float.m-break .dock-status .tl-full-btn{flex:0 0 auto;margin-left:-4px}
   .tl-full-btn svg{fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;
     stroke-linejoin:round}
   .tl-full-btn[aria-pressed="true"]{color:var(--vi)}
@@ -328,8 +327,9 @@ button.issue{border-bottom:1px solid var(--ln)}
   button.fnd-chip:hover{box-shadow:inset 0 0 0 1px currentColor}
   button.fnd-chip[aria-expanded="true"]{box-shadow:inset 0 0 0 1px currentColor}
 
-  /* Break's timeline, as the body of the dock: the transport and the legend
-     share one compact row at the head, the lanes run under it. */
+  /* The timeline as the body of a dock (the popped-out window's): the
+     transport and the legend share one compact row at the head, the lanes run
+     under it. */
   .app.is-float .tl-slot{margin:0 16px 8px;min-width:0}
   .app.is-float .tl-slot>.empty{padding:10px 0 6px;max-width:none}
   .app.is-float .app-dock .tl{display:grid;grid-template-columns:auto minmax(0,1fr);

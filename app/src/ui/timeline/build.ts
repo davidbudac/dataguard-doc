@@ -33,7 +33,7 @@ import type { EventIconName } from '../common/eventIcons';
  * the fragment's `G`, which the shell's `lanes * 48 + 120` height budget is
  * derived from.
  */
-export const TL = {
+export const TL_FULL = {
   gutter: 132,
   padR: 30,
   /** The caption baseline above the drawing. */
@@ -76,7 +76,63 @@ export const TL = {
   indent: 10,
   /** The room over the application's three lanes, for the line that heads them. */
   appHead: 34,
+
+  /** The lane's own text and bar offsets, below the lane's top edge. */
+  nameDy: 17,
+  subDy: 30,
+  barDy: 5,
+  barPad: 10,
+  barTextDy: 24,
+  abortLabelDy: 16,
 } as const;
+
+/** The ladder's numbers, mutable-typed so `TL_COMPACT` can restate them. */
+export type Layout = { -readonly [K in keyof typeof TL_FULL]: number };
+
+/**
+ * The same drawing, packed: what Break's Split layout draws its lanes with.
+ * Lanes 22 px tall with the name on the bar's own line (`subDy: 0` drops the
+ * second line, and the lane's `<title>` carries it instead), a shorter gutter,
+ * and every gap and row of the ladder above trimmed to match. It is drawn with
+ * the headline outside the drawing (`Timeline`'s `headline`), so the rows start
+ * where the caption's row was.
+ */
+export const TL_COMPACT: Layout = {
+  ...TL_FULL,
+  gutter: 128,
+  gutterPad: 8,
+  topY: 12,
+  braceY: 14,
+  markY: 60,
+  laneTop: 66,
+  badgeDy: 17,
+  iconDy: 36,
+  laneH: 22,
+  laneGap: 4,
+  markRow: 14,
+  axisGap: 16,
+  braceGap: 24,
+  braceRow: 46,
+  appHead: 26,
+  nameDy: 15,
+  subDy: 0,
+  barDy: 2,
+  barPad: 4,
+  barTextDy: 15,
+  abortLabelDy: 9,
+};
+
+/** How tightly a timeline is drawn. The static figures are always `full`. */
+export type Density = 'full' | 'compact';
+
+/**
+ * The ladder for a density. The model carries the one it was built with
+ * (`TimelineModel.layout`) and everything that paints from the model reads it
+ * there: there is no shared "current layout" for two timelines to disagree
+ * about, so Split's packed lanes and the Lanes view's roomy ones (and the
+ * popped-out window's) can be on screen at once.
+ */
+export const layoutFor = (density: Density): Layout => (density === 'compact' ? TL_COMPACT : TL_FULL);
 
 /** The static figures' scale: `x(t) = 280 + 10 * t`, domain -14 s .. +80 s. */
 export const PINNED = {
@@ -251,6 +307,8 @@ export interface TimelineCaption {
 }
 
 export interface TimelineModel {
+  /** The ladder this model was built with; what paints from it reads it here. */
+  layout: Layout;
   width: number;
   height: number;
   scale: TimelineScale;
@@ -311,6 +369,10 @@ export interface TimelineView {
   links?: 'auto' | 'always' | 'never';
   /** The application's lanes under the configuration's; drawn unless false. */
   app?: boolean;
+  /** `full` unless asked; never `compact` at the pinned scale. */
+  density?: Density;
+  /** The left edge of the plot, where a layout draws its own gutter. */
+  gutter?: number;
 }
 
 /* ---------------- scale ---------------- */
@@ -477,7 +539,7 @@ function initialObserverState(doc: TopologyDoc, id: ObserverId): AnyState {
  * resolved redo graph, cascaded ones indented.
  */
 function orderLanes(
-  trace: Trace, doc: TopologyDoc, links: 'auto' | 'always' | 'never',
+  trace: Trace, doc: TopologyDoc, links: 'auto' | 'always' | 'never', TL: Layout,
 ): { seeds: LaneSeed[]; quietLinks: number } {
   const byKey = new Map<string, EngineLane>();
   for (const l of trace.lanes) byKey.set(`${l.subject.kind}:${l.subject.id}`, l);
@@ -686,6 +748,7 @@ export function describeEvent(doc: TopologyDoc, e: TimedEvent): string {
  */
 export function packBraces(
   braces: readonly BraceInput[], scale: TimelineScale, width: number, braceTop: number,
+  braceRow: number = TL_FULL.braceRow,
 ): { braces: TimelineBrace[]; rowCount: number } {
   const rows: { L: number; R: number }[][] = [];
   let rowCount = 0;
@@ -709,7 +772,7 @@ export function packBraces(
     if (!row) { row = []; rows[i] = row; }
     row.push({ L, R });
     if (i + 1 > rowCount) rowCount = i + 1;
-    out.push({ ...br, x0, x1, row: i, lx: (L + R) / 2, y: braceTop + i * TL.braceRow });
+    out.push({ ...br, x0, x1, row: i, lx: (L + R) / 2, y: braceTop + i * braceRow });
   }
   return { braces: out, rowCount };
 }
@@ -957,9 +1020,12 @@ export function buildTimeline(trace: Trace, doc: TopologyDoc, view: TimelineView
   const f = trace.facts as Facts;
   const events = sortEvents(doc.events ?? []);
   const pinned = view.pinnedScale === true;
+  /* The layout is this model's own: the shared `TL_FULL` name is shadowed so
+     every offset below reads the density that was asked for. */
+  const TL = layoutFor(pinned ? 'full' : view.density ?? 'full');
 
   const width = pinned ? PINNED.width : Math.max(360, Math.round(view.width));
-  const plotL = pinned ? PINNED.plotL : TL.gutter;
+  const plotL = pinned ? PINNED.plotL : view.gutter ?? TL.gutter;
   const plotR = pinned ? PINNED.plotR : Math.max(plotL + 40, width - TL.padR);
 
   let t0: Seconds;
@@ -985,7 +1051,7 @@ export function buildTimeline(trace: Trace, doc: TopologyDoc, view: TimelineView
   const ping = f.pingSet ?? pingSet(doc.config.fsfo.pingIntervalMs, doc.config.fsfo.pingRetry);
 
   /* lanes */
-  const { seeds, quietLinks } = orderLanes(trace, doc, view.links ?? 'auto');
+  const { seeds, quietLinks } = orderLanes(trace, doc, view.links ?? 'auto', TL);
 
   /* Which lane gaps have to hold a marker label, decided before the lanes are
      laid out because it is what moves them. A label sits above the lane it
@@ -1272,7 +1338,7 @@ export function buildTimeline(trace: Trace, doc: TopologyDoc, view: TimelineView
       label,
       labelAnchor: fits ? 'start' : 'end',
       labelX: r1(fits ? x + 8 : x - 8),
-      labelY: y + TL.laneH + 16,
+      labelY: y + TL.laneH + TL.abortLabelDy,
       showLabel: true,
       nx: r1(x),
       icon: null,
@@ -1400,7 +1466,7 @@ export function buildTimeline(trace: Trace, doc: TopologyDoc, view: TimelineView
   }
 
   /* braces */
-  const packed = packBraces(buildBraces(doc, f), scale, width, braceTop);
+  const packed = packBraces(buildBraces(doc, f), scale, width, braceTop, TL.braceRow);
   const height = packed.braces.length > 0
     ? braceTop + Math.max(1, packed.rowCount) * TL.braceRow + 6
     : axisY + 44;
@@ -1449,6 +1515,7 @@ export function buildTimeline(trace: Trace, doc: TopologyDoc, view: TimelineView
   }
 
   return {
+    layout: TL,
     width,
     height,
     scale,

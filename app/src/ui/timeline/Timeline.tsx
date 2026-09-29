@@ -7,13 +7,13 @@
  * `style-src 'self'` and carries no inline style anywhere (ui.md SS1).
  */
 
-import { useMemo, useRef, useState } from 'preact/hooks';
+import { useRef, useState } from 'preact/hooks';
 import { GLYPH } from '../common/eventIcons';
 import type { JSX } from 'preact';
 import type { TimedEvent, TopologyDoc, Trace } from '@/engine';
-import { sortEvents } from '@/engine';
-import { buildTimeline, TL } from './build';
-import type { TimelineLane, TimelineMarker, TimelineModel } from './build';
+import type { Density, Layout, TimelineLane, TimelineMarker, TimelineModel } from './build';
+import { useRunTimeline } from './run';
+import type { RunTimeline } from './run';
 import { Brace, TopBrace } from './Brace';
 import { EventDrag } from './EventDrag';
 import { Playhead } from './Playhead';
@@ -46,11 +46,24 @@ export interface TimelineProps {
   appView?: boolean;
   /** Present where the reader may fold the application's lanes away. */
   onAppView?: (shown: boolean) => void;
+  /** How tightly the lanes are packed (`TL_COMPACT` in build.ts); `full` unless asked. */
+  density?: Density;
+  /**
+   * Draw the run's headline sentence as a line of its own above the plot,
+   * truncated with the whole of it as the tooltip, instead of as the drawing's
+   * first text row. Split says it there and gives the drawing the row back.
+   */
+  headline?: boolean;
+  /** The colour key and its buttons under the plot; on unless a bar carries them. */
+  legend?: boolean;
 }
+
+/** What the Application's view button does, said once for every place that offers it. */
+export const APP_VIEW_TIP = 'The same run as the application sees it: where the service is, what the sessions see, and the connect string at work.';
 
 /* ---------------- pieces ---------------- */
 
-function Defs() {
+export function Defs() {
   return (
     <defs>
       <pattern
@@ -70,13 +83,14 @@ function Defs() {
   );
 }
 
-function Lane({ lane, model, selected, onSelect }: {
+export function Lane({ lane, model, selected, onSelect }: {
   lane: TimelineLane;
   model: TimelineModel;
   selected: boolean;
   onSelect?: ((id: string | null) => void) | undefined;
 }) {
   const { scale } = model;
+  const TL = model.layout;
   return (
     <g
       class={selected ? 'tl-lane is-selected' : 'tl-lane'}
@@ -94,34 +108,36 @@ function Lane({ lane, model, selected, onSelect }: {
       <text
         class="t-lane t-mono"
         x={scale.plotL - TL.gutterPad - lane.indent}
-        y={lane.y + 17}
+        y={lane.y + TL.nameDy}
         text-anchor="end"
       >
         {lane.name}
       </text>
-      <text
-        class="t-sub"
-        x={scale.plotL - TL.gutterPad - lane.indent}
-        y={lane.y + 30}
-        text-anchor="end"
-      >
-        {lane.sub}
-      </text>
+      {TL.subDy > 0 ? (
+        <text
+          class="t-sub"
+          x={scale.plotL - TL.gutterPad - lane.indent}
+          y={lane.y + TL.subDy}
+          text-anchor="end"
+        >
+          {lane.sub}
+        </text>
+      ) : <title>{`${lane.name} — ${lane.sub}`}</title>}
       {lane.segments.map((sg) => (
         sg.w <= 0.5 ? null : (
           <g key={sg.key} class="tl-seg" data-tip={sg.title}>
             <rect
               class={`bar ${sg.phase}${sg.open ? ' is-open' : ''}`}
               x={sg.x}
-              y={lane.y + 5}
+              y={lane.y + TL.barDy}
               width={sg.w}
-              height={lane.height - 10}
+              height={lane.height - TL.barPad}
             />
             {sg.label === null ? null : (
               <text
                 class={`t-bar ${sg.ink}`}
                 x={sg.x + sg.w / 2}
-                y={lane.y + 24}
+                y={lane.y + TL.barTextDy}
                 text-anchor="middle"
               >
                 {sg.label}
@@ -134,7 +150,7 @@ function Lane({ lane, model, selected, onSelect }: {
   );
 }
 
-function Marker({ marker }: { marker: TimelineMarker }) {
+export function Marker({ marker, layout: TL }: { marker: TimelineMarker; layout: Layout }) {
   const m = marker;
   const cy = (m.y0 + m.y1) / 2;
   return (
@@ -151,7 +167,7 @@ function Marker({ marker }: { marker: TimelineMarker }) {
       {m.glyph === 'diamond' ? (
         <g>
           <line class={m.stroke} x1={m.x} y1={m.y0} x2={m.x} y2={m.y1} stroke-width="2" />
-          <path class={m.tone} d={`M${m.x},${m.y0 + 27} l6,6 l-6,6 l-6,-6 z`} />
+          <path class={m.tone} d={`M${m.x},${m.y0 + TL.laneH / 2 + 8} l6,6 l-6,6 l-6,-6 z`} />
         </g>
       ) : null}
       {m.glyph === 'dot' ? (
@@ -200,33 +216,33 @@ function Marker({ marker }: { marker: TimelineMarker }) {
 
 /* ---------------- the component ---------------- */
 
+/**
+ * The timeline with its own model. Break's Split layout owns the model itself
+ * (`useRunTimeline`), because its bar reads it too, and draws `TimelineBody`.
+ */
 export function Timeline(props: TimelineProps) {
+  const run = useRunTimeline({
+    trace: props.trace, doc: props.doc, width: props.width,
+    ...(props.pinnedScale === undefined ? {} : { pinnedScale: props.pinnedScale }),
+    ...(props.selection === undefined ? {} : { selection: props.selection }),
+    ...(props.appView === undefined ? {} : { appView: props.appView }),
+    ...(props.density === undefined ? {} : { density: props.density }),
+  });
+  return <TimelineBody {...props} run={run} />;
+}
+
+export function TimelineBody(props: TimelineProps & { run: RunTimeline }) {
   const {
-    trace, doc, width, tNow, playing = false, speed = 1,
+    doc, tNow, playing = false, speed = 1, run,
     onSeek, onMoveEvent, onPlayToggle, onSpeed, selection = null, onSelect,
     pinnedScale = false, showTransport = true, appView = true, onAppView,
+    headline = false, legend = true,
   } = props;
-
-  // Hold the viewport only for the exact document produced by our drop.
-  // Undo, rail edits and scenario/configuration changes fit automatically.
-  const scenario = useMemo(() => JSON.stringify(doc), [doc]);
-  const [heldAxis, setHeldAxis] = useState<{
-    scenario: string; t0: number; t1: number;
-  } | null>(null);
-  const axis = heldAxis?.scenario === scenario ? heldAxis : undefined;
-  const model = useMemo(
-    () => buildTimeline(trace, doc, { width, pinnedScale, selection, app: appView, ...(axis ? { axis } : {}) }),
-    [trace, doc, width, pinnedScale, selection, axis, appView],
-  );
+  const { model } = run;
+  const TL = model.layout;
   const moveEvent = (index: number, at: number, expected: TimedEvent) => {
     const result = onMoveEvent?.(index, at, expected);
-    if (typeof result === 'number' && result >= 0 && at !== expected.at) {
-      const next = { ...doc, events: sortEvents(doc.events.map((event, i) =>
-        i === index ? { ...event, at } : event)) };
-      setHeldAxis(at >= model.scale.t0 && at <= model.scale.t1
-        ? { scenario: JSON.stringify(next), t0: model.scale.t0, t1: model.scale.t1 }
-        : null);
-    }
+    run.dropped(index, at, expected, result);
     return result;
   };
   const [tip, setTip] = useState<TooltipState | null>(null);
@@ -306,6 +322,11 @@ export function Timeline(props: TimelineProps) {
 
   return (
     <section class={model.empty ? 'tl is-empty' : 'tl'} aria-label="Timeline">
+      {headline ? (
+        <p class={`tl-headline${model.caption.tone === 'ink' ? '' : ` ${model.caption.tone}`}`} title={model.caption.text}>
+          {model.caption.text}
+        </p>
+      ) : null}
       <div class="tl-plot" onPointerMove={onPointerMove} onPointerLeave={() => setTip(null)}>
         <svg
           class={canSeek ? 'tl-svg is-seekable' : 'tl-svg'}
@@ -323,14 +344,16 @@ export function Timeline(props: TimelineProps) {
           <Defs />
 
           {/* the caption, above everything, branching on the outcome */}
-          <text
-            class={model.caption.tone === 'ink' ? 't-top' : `t-top ${model.caption.tone}`}
-            x={model.caption.x ?? model.scale.plotL}
-            y={TL.topY}
-            text-anchor={model.caption.anchor === 'middle' ? 'middle' : undefined}
-          >
-            {model.caption.text}
-          </text>
+          {headline ? null : (
+            <text
+              class={model.caption.tone === 'ink' ? 't-top' : `t-top ${model.caption.tone}`}
+              x={model.caption.x ?? model.scale.plotL}
+              y={TL.topY}
+              text-anchor={model.caption.anchor === 'middle' ? 'middle' : undefined}
+            >
+              {model.caption.text}
+            </text>
+          )}
           {model.topBrace ? <TopBrace {...model.topBrace} /> : null}
 
           {/* the pre-failure band */}
@@ -398,7 +421,7 @@ export function Timeline(props: TimelineProps) {
           ) : null}
 
           {model.markers.filter((m) => !onMoveEvent || pinnedScale || m.kind !== 'event')
-            .map((m) => <Marker key={m.key} marker={m} />)}
+            .map((m) => <Marker key={m.key} marker={m} layout={TL} />)}
           {model.braces.map((b) => <Brace key={b.key} brace={b} />)}
 
           {pinnedScale ? null : (
@@ -414,7 +437,7 @@ export function Timeline(props: TimelineProps) {
           {!onMoveEvent || pinnedScale ? null : model.markers.filter((m) => m.kind === 'event').map((m) => (
             <EventDrag key={m.key} marker={m} model={model} doc={doc} onMove={moveEvent}
               onStart={() => { setTip(null); if (playing) onPlayToggle?.(); }}>
-              <Marker marker={m} />
+              <Marker marker={m} layout={TL} />
             </EventDrag>
           ))}
         </svg>
@@ -433,21 +456,23 @@ export function Timeline(props: TimelineProps) {
           drawing it explains. Pinning it cost a second row of the sticky band
           -- 32 px of a 226 px dock at 1280x720, every scroll position -- and
           the transport is what has to stay reachable. */}
-      <div class="legend tl-legend">
-        {axis && !pinnedScale ? <button type="button" class="btn" onClick={() => setHeldAxis(null)}>Fit timeline</button> : null}
-        {onAppView && doc.application !== undefined && !pinnedScale ? (
-          <button
-            type="button" class="btn" aria-pressed={appView}
-            title="The same run as the application sees it: where the service is, what the sessions see, and the connect string at work."
-            onClick={() => onAppView(!appView)}
-          >
-            Application&rsquo;s view
-          </button>
-        ) : null}
-        {model.legend.map((l) => (
-          <span key={l.swatch}><i class={l.swatch} />{l.label}</span>
-        ))}
-      </div>
+      {legend ? (
+        <div class="legend tl-legend">
+          {run.held && !pinnedScale ? <button type="button" class="btn" onClick={run.fit}>Fit timeline</button> : null}
+          {onAppView && doc.application !== undefined && !pinnedScale ? (
+            <button
+              type="button" class="btn" aria-pressed={appView}
+              title={APP_VIEW_TIP}
+              onClick={() => onAppView(!appView)}
+            >
+              Application&rsquo;s view
+            </button>
+          ) : null}
+          {model.legend.map((l) => (
+            <span key={l.swatch}><i class={l.swatch} />{l.label}</span>
+          ))}
+        </div>
+      ) : null}
 
       {/* The foot of the drawing: the controls, and nothing else. It is the
           timeline's last flow child, so `position: sticky` inside `.tl` pins it

@@ -271,6 +271,18 @@
 
 .tl-tp-in:focus-visible { outline: 2px solid var(--fc); outline-offset: 1px; }
 
+/* The five speeds as one control, where the bar has no room for the row. */
+.tl-tp-sel {
+  padding: 3px 5px;
+  border: 1px solid var(--ln);
+  border-radius: var(--r-ctl);
+  background: var(--sf);
+  color: var(--ik);
+  font: inherit;
+  font-size: 11.5px;
+}
+.tl-tp-sel:focus-visible { outline: 2px solid var(--fc); outline-offset: 1px; }
+
 .tl-tp-speeds { display: inline-flex; align-items: center; gap: 6px; }
 
 .tl-tp-speed {

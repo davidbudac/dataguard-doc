@@ -24,8 +24,8 @@
 import type { Finding } from '@/engine';
 import { errors, issues, warnings } from '@/state/derived';
 import {
-  findingsOpen, floating, inspectorOpen, issuesOpen, lessonId, mode, notesOpen, selection, toast,
-  viewport,
+  findingsOpen, floating, inspectorOpen, issuesOpen, lessonId, mode, notesOpen, selection,
+  toast, viewport,
 } from '@/state/view';
 import { revealRail, setIssuesOpen, toggleIssues } from '@/state/persist';
 import { Fact } from './common/Chip';
@@ -72,9 +72,13 @@ export function revealFindings(): void {
       ...(open ? { action: { label: 'Back to the lesson', run: () => { mode.value = 'learn'; } } } : {}),
     };
   } else if (mode.value === 'configure') mode.value = 'build';
-  /* Over a full-bleed canvas the findings are a popover the status card's
-     chips open, in Build and Break alike; the rows are not docked anywhere. */
-  if (floating(mode.value, viewport.value)) { findingsOpen.value = true; return; }
+  /* Over a full-bleed canvas the findings are a popover -- the status card's
+     chips open it in Build, the count on the bar in Break, in Split and in
+     Lanes alike. */
+  if (floating(mode.value, viewport.value)) {
+    findingsOpen.value = true;
+    return;
+  }
   if (mode.value === 'break' && viewport.value !== 'wide') inspectorOpen.value = true;
   scrollFindingsIntoView();
 }

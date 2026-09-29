@@ -16,6 +16,7 @@
  *   `dg-issues`      whether Build's validation panel is unfolded ('0' = folded)
  *   `dg-tl-h`        the height (px) Break's timeline panel was dragged to
  *   `dg-rail`        whether the side rail is folded to its strip ('1' = folded)
+ *   `dg-break-layout` Break's layout, `split` or `lanes` -- anything else reads as split
  *   `dg-fsfo-cfg-v1` the published page's stored configuration. Read once when
  *                    there is nothing newer, and never deleted: the old page
  *                    is still serving from /legacy/ and still owns that key.
@@ -35,9 +36,10 @@ import { classicDoc, doc, exportFileName } from './doc';
 import { fromWire, parseJsonText, toJsonText } from './codec';
 import type { DecodeResult } from './codec';
 import {
-  gridOn, hintsOn, inspectorOpen, issuesOpen, railCollapsed, timelineH, TL_MIN_H, viewport,
+  BREAK_LAYOUTS, breakLayout, gridOn, hintsOn, inspectorOpen, issuesOpen, railCollapsed, timelineH,
+  TL_MIN_H, viewport,
 } from './view';
-import type { PalettePref, ThemePref } from './view';
+import type { BreakLayout, PalettePref, ThemePref } from './view';
 
 export const DOC_KEY = 'dg-doc-v1';
 export const THEME_KEY = 'dg-theme';
@@ -50,6 +52,7 @@ export const GRID_KEY = 'dg-grid';
 export const ISSUES_KEY = 'dg-issues';
 export const TIMELINE_H_KEY = 'dg-tl-h';
 export const RAIL_KEY = 'dg-rail';
+export const BREAK_LAYOUT_KEY = 'dg-break-layout';
 
 export const AUTOSAVE_MS = 500;
 export const RESTORE_NOTICE_MS = 8000;
@@ -154,10 +157,23 @@ export function toggleGrid(): void {
   write(GRID_KEY, gridOn.value ? '1' : '0');
 }
 
-/* ---------------- Break's timeline panel ---------------- */
+/* ---------------- Break's layout ---------------- */
+
+/** Split or Lanes -- `breakLayout` in `view.ts`; unset, or anything else, means Split. */
+export function loadBreakLayout(): void {
+  const v = read(BREAK_LAYOUT_KEY);
+  breakLayout.value = (BREAK_LAYOUTS as readonly (string | null)[]).includes(v) ? (v as BreakLayout) : 'split';
+}
+
+export function setBreakLayout(v: BreakLayout): void {
+  breakLayout.value = v;
+  write(BREAK_LAYOUT_KEY, v);
+}
+
+/* ---------------- Break's timeline region ---------------- */
 
 /**
- * The height the reader dragged the timeline panel to -- `timelineH` in
+ * The height the reader dragged the split to -- `timelineH` in
  * `view.ts`. Read once at boot; anything that is not a whole number of pixels
  * at least `TL_MIN_H` tall reads as "never set".
  */

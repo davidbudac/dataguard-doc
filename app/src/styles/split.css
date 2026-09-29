@@ -1,0 +1,167 @@
+/* Break's Split layout: the drawing on top, the timeline under it, two regions
+   that do not overlap, and one bar between them that is both the split's drag
+   handle and the timeline's chrome (break/SplitBar.tsx).
+
+   Everything is scoped under `.bl-split`, which App.tsx puts on the shell for
+   that layout, and loaded after float.css and rail.css so the rules restyle the
+   floating dock by the same selectors. `--tl-h` (the height the reader dragged
+   the region to) is written by App.tsx through `style.setProperty`; until then
+   the region is as tall as its run, up to `--tl-default`, which
+   `timelineDefaultH` in state/view.ts mirrors. Colour from tokens only. */
+
+@media screen {
+  .app.is-float.bl-split {
+    --tl-default: clamp(220px, calc((100dvh - var(--bar-bottom, 80px)) * .6), 720px);
+    /* What the drawing keeps above the region; CANVAS_MIN_H in state/view.ts. */
+    --canvas-min: 140px;
+  }
+
+  /* ---- the dock becomes the lower region: full width, flush, not a card ---- */
+  .app.is-float.bl-split .app-dock {
+    left: 0; right: 0; bottom: 0;
+    border: 0; border-top: 1px solid var(--ln2); border-radius: 0;
+    box-shadow: 0 -8px 20px rgba(16, 25, 34, .10);
+    overflow: visible;
+    z-index: 26;
+    max-height: none;
+    background: var(--sf);
+  }
+  /* With a run on it the region is as tall as the run, up to the default;
+     once the reader has dragged it (`is-set`) it is the height they chose, up
+     to what leaves the drawing its minimum. */
+  .app.is-float.bl-split .app-dock.has-tl {
+    height: auto;
+    min-height: 120px;
+    max-height: min(var(--tl-default), calc(100dvh - var(--bar-bottom, 80px) - var(--canvas-min)));
+  }
+  .app.is-float.bl-split .app-dock.has-tl.is-set {
+    height: var(--tl-h);
+    max-height: calc(100dvh - var(--bar-bottom, 80px) - var(--canvas-min));
+  }
+  /* Full screen: the region takes the window under the header, over the
+     palette, the drawing and the rail. */
+  .app.is-float.bl-split.tl-full .app-dock.has-tl {
+    top: calc(var(--bar-bottom, 80px) + 8px); height: auto; max-height: none;
+  }
+  .app.is-float.bl-split .app-dock > .tl-slot {
+    flex: 1 1 auto; min-height: 0; overflow: auto; margin: 0 12px; scrollbar-width: thin;
+  }
+  .app.is-float.bl-split .app-dock > .tl-slot > .empty { padding: 12px 4px; }
+
+  /* ---- the drawing fits what the region leaves; the rail and pills clear it ---- */
+  .app.is-float.bl-split .app-stage > .tp-wrap {
+    padding-bottom: calc(var(--dock-h, 72px) + 10px);
+  }
+  .app.is-float.bl-split .zoom-pill { bottom: calc(var(--dock-h, 72px) + 10px); }
+  .app.is-float.bl-split .app-rail { bottom: calc(var(--dock-h, 72px) + 10px); }
+  .app.is-float.bl-split .palette {
+    max-height: calc(100dvh - var(--bar-bottom, 80px) - var(--dock-h, 72px) - 2 * var(--float-m) - 12px);
+  }
+  .app.is-float.bl-split .app-stage > .evmenu {
+    max-height: calc(100dvh - var(--bar-bottom, 80px) - var(--dock-h, 72px) - var(--float-m) - 24px);
+  }
+
+  /* ---- the bar ---- */
+  .sb-bar {
+    position: relative; flex: 0 0 auto; display: flex; align-items: center; gap: 10px;
+    height: 40px; padding: 0 10px 0 12px; box-sizing: border-box; min-width: 0;
+    background: var(--sf2); border-bottom: 1px solid var(--ln);
+    cursor: ns-resize; touch-action: none; user-select: none;
+  }
+  .sb-bar.is-dragging { background: var(--sf3); }
+  .sb-bar button, .sb-bar input, .sb-bar select, .sb-bar label, .sb-bar a { cursor: pointer; }
+  .sb-bar input { cursor: text; }
+  /* The keyboard handle is the pill at the bar's top edge; the presses are the bar's. */
+  .sb-bar .dock-grip { height: 8px; pointer-events: none; }
+  .sb-bar:hover .dock-grip-bar, .sb-bar.is-dragging .dock-grip-bar { background: var(--ik3); width: 56px; }
+
+  /* the transport, packed onto the bar */
+  .sb-bar .tl-transport { flex: 0 0 auto; flex-wrap: nowrap; gap: 6px; }
+  .sb-bar .tl-tp-btn { min-width: 26px; padding: 4px 7px; font-size: 11px; }
+  .sb-bar .tl-tp-in { padding: 3px 5px; font-size: 11.5px; width: 5.5ch; }
+  .sb-bar .tl-tp-speeds { gap: 1px; padding-left: 2px; }
+  .sb-bar .tl-tp-speed { padding: 3px 5px; font-size: 10.5px; letter-spacing: 0; border-radius: 5px; }
+  .sb-bar .tl-tp-slot { gap: 3px; }
+  .sb-bar .tl-transport .why { display: none; }
+
+  /* the readings, one line; the last ones give way first */
+  .sb-ro {
+    flex: 1 1 auto; min-width: 0; display: flex; align-items: baseline; gap: 6px;
+    overflow: hidden; white-space: nowrap; font-size: 12.5px;
+    border-left: 1px solid var(--ln); margin-left: 2px; padding-left: 12px;
+  }
+  .sb-ro-i { min-width: 0; overflow: hidden; text-overflow: ellipsis; flex: 0 1 auto; }
+  .sb-ro-k { color: var(--ik3); font-size: 11px; }
+  .sb-ro-v { font-weight: 600; color: var(--ik); }
+  .sb-ro-v2 { color: var(--ik3); font-size: 11.5px; }
+  .sb-ro-i.t-tl .sb-ro-v { color: var(--tl); }
+  .sb-ro-i.t-am .sb-ro-v { color: var(--am); }
+  .sb-ro-i.t-rd .sb-ro-v { color: var(--rd); }
+  .sb-ro-i.t-vi .sb-ro-v { color: var(--vi); }
+  .sb-ro-i.t-bl .sb-ro-v { color: var(--bl); }
+  .sb-sep { color: var(--ln2); flex: 0 0 auto; }
+  .sb-why {
+    flex: 0 0 auto; border: 0; background: transparent; color: var(--vi); font: inherit;
+    font-size: 11.5px; padding: 0 2px; border-radius: 4px;
+  }
+  .sb-why:hover { background: var(--vif); }
+
+  /* the count chip, the Fit button and the icons */
+  .sb-anchor { position: relative; flex: 0 0 auto; display: flex; align-items: center; }
+  .sb-chip {
+    display: inline-flex; align-items: center; gap: 4px; padding: 3px 9px; border: 0;
+    border-radius: 999px; font: 600 12px/1.4 var(--sans); background: var(--sf3); color: var(--ik2);
+  }
+  .sb-chip.t-am { background: var(--amf); color: var(--am); }
+  .sb-chip.t-rd { background: var(--rdf); color: var(--rd); }
+  .sb-chip.t-tl { background: var(--tlf); color: var(--tl); }
+  .sb-chip:hover, .sb-chip[aria-expanded="true"] { box-shadow: inset 0 0 0 1px currentColor; }
+  .sb-caret { font-size: 9px; opacity: .7; }
+  .sb-fit { flex: 0 0 auto; padding: 2px 8px; font-size: 11.5px; white-space: nowrap; }
+  .sb-ico {
+    display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px;
+    padding: 0; border: 0; border-radius: var(--r-ctl); background: transparent; color: var(--ik3);
+  }
+  .sb-ico:hover, .sb-ico[aria-expanded="true"] { background: var(--sf3); color: var(--ik); }
+  .sb-ico svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.4; stroke-linecap: round; }
+  .sb-bar .btn.is-icon { width: 26px; height: 26px; padding: 0; flex: 0 0 auto; }
+  .sb-bar .tl-full-btn { margin-left: 0; }
+  .sb-bar .po-btn { margin-right: 0; }
+
+  /* the dropdowns open upward, over the drawing, where the warning banner floated */
+  .sb-pop {
+    position: absolute; right: 0; bottom: calc(100% + 8px); z-index: 40;
+    background: var(--sf); border: 1px solid var(--ln); border-radius: var(--r-card);
+    box-shadow: var(--sh-card); cursor: default; user-select: text;
+  }
+  .sb-pop-findings {
+    display: flex; flex-direction: column; width: min(600px, calc(100vw - 40px));
+    max-height: max(160px, min(420px, calc(100dvh - var(--dock-h, 400px) - var(--bar-bottom, 80px) - 28px)));
+    overflow: hidden;
+  }
+  .sb-pop .issues { overflow: visible; }
+  .sb-pop-key {
+    display: flex; flex-direction: column; align-items: flex-start; gap: 8px; padding: 12px 14px;
+    width: max-content; max-width: 260px; font-size: 12px;
+  }
+  .sb-pop-key .sb-app-btn { margin-top: 2px; }
+
+  /* ---- the timeline under it: no transport, no key row; its headline is a line of its own ---- */
+  .app.is-float.bl-split .app-dock .tl { display: block; position: relative; }
+  .app.is-float.bl-split .tl-note { margin: 0; font-size: 11px; }
+}
+
+/* The headline: the run's one sentence, over the lanes and not in the drawing,
+   so a long one is cut with an ellipsis and read whole in the tooltip. It stays
+   put while the lanes scroll under it. */
+.tl-headline {
+  position: sticky; top: 0; z-index: 2; margin: 0; padding: 6px 2px 4px;
+  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  background: var(--sf); font-size: 12px; font-weight: 560; color: var(--ik);
+}
+.tl-headline.f-tl { color: var(--tl); }
+.tl-headline.f-bl { color: var(--bl); }
+.tl-headline.f-am { color: var(--am); }
+.tl-headline.f-sl { color: var(--ik2); }
+.tl-headline.f-vi { color: var(--vi); }
+.tl-headline.f-rd { color: var(--rd); }
