@@ -20,7 +20,7 @@ import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import type { JSX } from 'preact';
 import { errors, frame, geometry, issues, readout, redoGraph, topology, trace, warnings } from '@/state/derived';
 import { appLanesShown, clearSelection, playing, select, selection, speed, tNow } from '@/state/view';
-import { buildTimeline, fmt, TL } from '../timeline/build';
+import { buildTimeline, fmt, setTimelineDensity, TL } from '../timeline/build';
 import type { TimelineLane, TimelineMarker, TimelineModel } from '../timeline/build';
 import { Defs, Lane, Marker } from '../timeline/Timeline';
 import { Playhead } from '../timeline/Playhead';
@@ -288,6 +288,8 @@ function Links({ placed, rows, cardX, related, hoverId }: {
 const REL_TONE: Record<string, string> = { error: 'rd', warning: 'am' };
 
 export function ProtoFusedView() {
+  /* B's compact lanes may have been the last to set the live layout. */
+  setTimelineDensity(false);
   const [ref, measured] = useMeasure();
   const width = Math.max(measured, 720);
   const doc = topology.value;
