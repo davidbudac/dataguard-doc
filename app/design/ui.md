@@ -1646,22 +1646,31 @@ handle on its top edge). Build's dock, chips and warning card are as they were.
     shows at the instant the new primary opens, never on the event: *prm01 aborts at 30 s,
     before sby01 opens at 55 s* (the old app's sentence); *prm01 is down when …*; *prm01 is
     STALLED when … and nothing shuts it down* (or *… it shuts itself down at N s*); *prm01 is
-    mounted, not open, when …* (told, or reachable); and, for a yes, *prm01 and sby01 are both
-    open read-write from 30 s to the end of the run: prm01 is still open when sby01 opens at
-    30 s* — the window, closed at its end where something closes it.
+    mounted, not open, when …* (a fast-start failover's old primary that is back and told);
+    and, for a yes, *prm01 and sby01 are both open read-write from 30 s to the end of the run:
+    prm01 is still open when sby01 opens at 30 s* — the window, closed at its end where
+    something closes it (*… from 25 s to 60 s: …* where the old primary crashes at 60 s).
   - *Basis*: `model`, note `SPLIT_BRAIN.READING`. Oracle does not use the term and gives no
     interval, so no citation documents the reading; the ones it carries
-    (`FSFO.GUARANTEE_STALL`, `FSFO.PMY_SHUTDOWN`, `FAILOVER.PRIMARY_SHUT_DOWN`) support the
+    (`FSFO.GUARANTEE_STALL`, `FSFO.PMY_SHUTDOWN`, `FAILOVER.PRIMARY_SHUT_DOWN`,
+    `FSFO.MANUAL_FAILOVER_CONDITIONS`) support the
     pieces, and it renders as this page's model wherever a chip does. **What the reading
     counts as open** is the engine's own drawing: a STALLED primary is not counted (Oracle:
     its redo generation is stalled, so it commits nothing the new primary will not have),
-    which is how the old page read it too; and a former primary is drawn open only where
-    nothing can tell it — a manual failover with fast-start failover off, the old primary
-    running where the new one cannot reach it (`FAILOVER.FORMER_PRIMARY_MOUNTED`'s note).
-    **A manual failover with the old primary still running and reachable reads `no`** (it is
-    drawn mounted the instant the new primary opens) while the run also raises
-    `FAILOVER.PRIMARY_STILL_OPEN`; the two are Oracle's instruction and this page's reading of
-    what the broker does, and probe SBR-04 keeps the tension in view.
+    which is how the old page read it too; and a former primary is drawn open where a manual
+    failover found it still running and open — Oracle puts its shutdown on the operator
+    (`FAILOVER.PRIMARY_SHUT_DOWN`, `FSFO.MANUAL_FAILOVER_CONDITIONS`) and no page says the
+    broker closes or mounts it — whether or not the new primary can reach it and whether
+    fast-start failover is enabled or disabled (`FAILOVER.FORMER_PRIMARY_OPEN`'s note). **A
+    manual failover with the old primary still running reads `yes`** from the instant the new
+    primary opens, and the run also raises `FAILOVER.PRIMARY_STILL_OPEN` (Oracle's
+    instruction, at the command) beside it; probe SBR-04 (and SBR-06, -07, -08) hold the
+    reading in view. A former primary that went down and restarts is not that one: it is
+    mounted, so a run that crashes the old primary before the failover reads `no`. A
+    switchover, whose old primary is converted before the new one opens, has no chip at all.
+    Where the run also draws the application, the service stays published on the old primary
+    while it is open (the lanes' `open-rw` publishes), so the application timeline follows
+    the old primary until it goes down and only then the new one.
   - *The print report* takes the chip with the others (`readoutFor(false)`): a row *Split
     brain — no*, the model label, the citations numbered into its sources.
 - **The playhead's time badge keeps clear** of every event sentence, icon chip and number
@@ -1709,8 +1718,11 @@ Tests: `test/ui/summary-band.test.ts` (both layouts: folded to start with, the b
 the line unfold, *Why?* inside the line does not, the spacer, the band directly under the bar and above
 the timeline, the cards against the readout, the model marker, *Why?* on the outcome card, no band and no
 button without a run, the preference and its storage, and the Split brain chip: yes, no, absent),
-`test/sim-split-brain.test.ts` (the reading off the trace: every no, the yes and its window, the
-runs that are not asked, the claim's label), `readout-fit.test.ts` (Split brain is the first reading
+`test/sim-split-brain.test.ts` (the reading off the trace: every no, the yes and its window — a manual
+failover with the old primary still open, fast-start failover on or off, closed where it crashes or is shut
+down, a restarted former primary still mounted, a switchover not asked — the application's view of it, the
+runs that are not asked, the claim's label), `test/ui/show-open-former.test.ts` (the SHOW CONFIGURATION note
+at a frame where the old primary is open), `readout-fit.test.ts` (Split brain is the first reading
 the line gives up), `report.test.ts` (the chip in the print report),
 `test/ui/polish-split.test.ts` (the badge against every label, chip and number; the
 spoken axis; the restore note's title; auto-fit, manual zoom and Fit; the divider's

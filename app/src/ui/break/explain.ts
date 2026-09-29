@@ -81,6 +81,7 @@ const FINDING_TITLE: Record<string, string> = {
   'DEST.MAXFAILURE_RESET_UNDOC': 'Failure count reset',
   'DEST.REOPEN_SCHEDULE_MODEL': 'Destination reopen schedule',
   'FAILOVER.FORMER_PRIMARY_MOUNTED': 'Former primary mounted',
+  'FAILOVER.FORMER_PRIMARY_OPEN': 'Former primary still open',
   'FAILOVER.PRIMARY_STILL_OPEN': 'Primary still open',
   'FSFO.FORMER_PRIMARY_NOT_OPEN': 'Former primary not open',
   'FSFO.PING_NOT_IN_19C': 'Ping properties not in 19c',

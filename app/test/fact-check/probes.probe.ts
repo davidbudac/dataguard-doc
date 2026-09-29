@@ -363,14 +363,15 @@ const SIM: SimProbe[] = [
   },
   {
     finding: 'SBR-04',
-    title: 'Fast-start failover off, primary still running and reachable, manual failover at 0: split brain no, though the run also says the primary is still open',
+    title: 'Fast-start failover off, primary still running and reachable, manual failover at 0: split brain yes, the old primary stays open (owner decision, 2026-09-29)',
     doc: () => {
       const d = classic();
       return { ...d, config: { ...d.config, fsfo: { ...d.config.fsfo, state: 'disabled' } } };
     },
     events: () => [{ at: 0, kind: 'cmd.failover', to: CLASSIC_IDS.standby }],
-    oracle: 'the same sentence as SBR-03. The old primary is drawn mounted the instant the new one opens (FAILOVER.FORMER_PRIMARY_MOUNTED, this page\'s reading), which the finding FAILOVER.PRIMARY_STILL_OPEN -- "Until it is, two databases are open as the primary" -- pulls the other way',
-    open: (t) => splitBrainOf(t)?.split.value === false && hasFinding(t, 'FAILOVER.PRIMARY_STILL_OPEN'),
+    oracle: 'the same sentence as SBR-03, and FAILOVER.PRIMARY_STILL_OPEN\'s "Until it is, two databases are open as the primary". Nothing documented has the broker close or mount a primary that is still open when a manual failover completes (ORA-16649 is about a former primary that restarts), so the old primary is drawn open, whether or not the new primary can reach it -- FAILOVER.FORMER_PRIMARY_OPEN, this page\'s reading, model. Until 2026-09-29 it was drawn mounted (FAILOVER.FORMER_PRIMARY_MOUNTED) and the two contradicted each other',
+    open: (t) => splitBrainOf(t)?.split.value === true && hasFinding(t, 'FAILOVER.PRIMARY_STILL_OPEN')
+      && hasFinding(t, 'FAILOVER.FORMER_PRIMARY_OPEN') && !hasFinding(t, 'FAILOVER.FORMER_PRIMARY_MOUNTED'),
     lanes: ['prm01', 'sby01'],
   },
   {
@@ -384,6 +385,44 @@ const SIM: SimProbe[] = [
     oracle: 'as SBR-01 -- the abort is one threshold after the stall began in both editions',
     open: (t) => promoted(t) && splitBrainOf(t)?.split.value === false
       && splitBrainOf(t)?.formerAtOpen?.kind === 'aborted',
+  },
+  {
+    finding: 'SBR-06',
+    title: 'SBR-04 with fast-start failover ENABLED, observer on the target: manual failover at 0, split brain yes',
+    doc: () => classic(),
+    events: () => [{ at: 0, kind: 'cmd.failover', to: CLASSIC_IDS.standby }],
+    oracle: '"You must ensure that the primary database is shut down prior to performing a manual failover." (FSFO.MANUAL_FAILOVER_CONDITIONS) -- the shutdown is the operator\'s, and nothing documented closes the old primary otherwise, so it is drawn open with fast-start failover enabled too (owner decision, 2026-09-29)',
+    open: (t) => splitBrainOf(t)?.split.value === true && endState(t, 'prm01') === 'open-rw',
+    lanes: ['prm01', 'sby01'],
+  },
+  {
+    finding: 'SBR-07',
+    title: 'SBR-04, then the old primary crashes at 60: the window closes there',
+    doc: () => {
+      const d = classic();
+      return { ...d, config: { ...d.config, fsfo: { ...d.config.fsfo, state: 'disabled' } } };
+    },
+    events: () => [
+      { at: 0, kind: 'cmd.failover', to: CLASSIC_IDS.standby },
+      { at: 60, kind: 'host.down', host: PRM },
+    ],
+    oracle: 'the old primary stays open "until something takes it down" is this page\'s reading (FAILOVER.FORMER_PRIMARY_OPEN); a crash is Oracle-neutral and ends it',
+    open: (t) => splitBrainOf(t)?.windows[0]?.to === 60 && endState(t, 'prm01') === 'down',
+    lanes: ['prm01', 'sby01'],
+  },
+  {
+    finding: 'SBR-08',
+    title: 'A former primary that goes down and restarts: mounted with fast-start failover off (model), ORA-16649 with it on',
+    doc: () => classic(),
+    events: () => [
+      { at: 0, kind: 'host.down', host: PRM },
+      { at: 5, kind: 'cmd.failover', to: CLASSIC_IDS.standby },
+      { at: 100, kind: 'host.up', host: PRM },
+    ],
+    oracle: '"It will not be allowed to open in any event if fast-start failover is enabled." (ORA-16649) -- about a former primary that restarts; with fast-start failover disabled what state it is left in is not spelled out, and mounted is this page\'s reading (FAILOVER.FORMER_PRIMARY_MOUNTED)',
+    open: (t) => endState(t, 'prm01') === 'mounted-noapply' && hasFinding(t, 'FSFO.FORMER_PRIMARY_NOT_OPEN')
+      && splitBrainOf(t)?.split.value === false,
+    lanes: ['prm01', 'sby01'],
   },
   {
     finding: 'ED-01',

@@ -566,6 +566,23 @@ describe('the SHOW mocks', () => {
     expect(text).toContain('prm01 - Physical standby database');
   });
 
+  it('say where the drawing differs for an old primary a manual failover left open', () => {
+    const doc = farSync52();
+    const opts = { whenPrimaryIs: memberId('sby01') as MemberId };
+    const file = showConfiguration(doc, { ...opts, openAsPrimary: ['prm01'] });
+    const text = renderPlain(file);
+    expect(text).toContain('prm01 is still open read-write as a primary in this run');
+    /* The configuration's own view of it is not rewritten. */
+    expect(text).toContain('prm01 - Physical standby database');
+    const line = file.lines.find((l) => lineText(l).includes('prm01 is still open'));
+    expect(line?.basis).toBe('model');
+    expect(line?.cite).toEqual(['FAILOVER.PRIMARY_SHUT_DOWN', 'FSFO.MANUAL_FAILOVER_CONDITIONS']);
+    expect(line?.note).toContain('FAILOVER.FORMER_PRIMARY_OPEN');
+    /* Nothing else changes, and the new primary is never marked. */
+    expect(renderPlain(showConfiguration(doc, opts))).not.toContain('still open read-write');
+    expect(renderPlain(showConfiguration(doc, { ...opts, openAsPrimary: ['sby01'] }))).not.toContain('still open read-write');
+  });
+
   it('list Active Target, Potential Targets and a per-target valid flag', () => {
     const text = renderPlain(generateShowMocks(multiTargetThreeObservers())[1] as GeneratedFile);
     expect(text).toContain('Active Target:        sby01');

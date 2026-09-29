@@ -324,6 +324,16 @@ export function simulate(
       ei++;
     }
 
+    /* The old primary a manual failover left open stays open only until it is
+       taken down: a crash or a shutdown ends it, and a restart afterwards is a
+       former primary that restarts, not one that stayed. */
+    if (state.formerOpen) {
+      const fp = doc.members.find((m) => m.id === state.formerPrimary);
+      if (!fp || !memberAlive(doc, state.net, fp) || state.abortedMembers.includes(fp.id)) {
+        state.formerOpen = false;
+      }
+    }
+
     /* 2. the epoch's facts, computed once. */
     let view = computeView(doc, state, viewOpts);
 
@@ -644,6 +654,15 @@ export function simulate(
     if (target === null) return;
     const manual = state.manualFailoverAt !== null;
     state.formerPrimary = state.primary;
+    /* A manual failover does not close a primary that is still running: the
+       shutdown is the operator's (FAILOVER.PRIMARY_SHUT_DOWN), and no page
+       says the broker takes it down or mounts it. So it stays open beside the
+       new primary until something takes it down -- this page's reading of a
+       gap, drawn as such (`formerPrimaryFinding`). A fast-start failover has
+       its own documented path for the old primary (the stall, the abort). */
+    const fp = doc.members.find((m) => m.id === state.formerPrimary);
+    state.formerOpen = manual && !!fp && memberAlive(doc, state.net, fp)
+      && !state.abortedMembers.includes(fp.id);
     state.newPrimary = target;
     state.primary = target;
     state.converting = null;
@@ -1539,12 +1558,17 @@ export function simulate(
     lastNoStall = running;
 
     /* SIM-03: a former primary that is up after a failover is mounted and
-       needs reinstating; it is never open beside the new primary. */
+       needs reinstating; it is never open beside the new primary -- except a
+       manual failover's old primary that was still open and has not been down
+       since, which stays open (formerPrimaryFinding). */
     if (state.phase === 'failed-over' && state.formerPrimary !== null) {
       const fp = doc.members.find((m) => m.id === state.formerPrimary);
       const up = !!fp && memberAlive(doc, state.net, fp)
         && !state.abortedMembers.includes(fp.id) && !(view.actors[fp.id as string]?.stalled ?? false);
-      if (fp && up && state.reinstating !== fp.id) addFinding(formerPrimaryFinding(view, fp));
+      if (fp && up && state.reinstating !== fp.id) {
+        addFinding(formerPrimaryFinding(view, fp, state.formerOpen,
+          memberStateOf(doc, state, view, fp, at) === 'open-rw', state.primary));
+      }
     }
 
     /* SIM-10: what would need a second role change is where the run ends. */
@@ -1766,13 +1790,33 @@ export function simulate(
 }
 
 /**
- * The former primary is running after a failover. With fast-start failover
- * enabled the documentation is explicit; with it disabled the broker still
- * leaves the database needing reinstatement, and drawing it mounted rather
- * than open is this page's reading.
+ * The former primary is running after a failover.
+ *
+ * `stayed`: a manual failover found it open and nothing has taken it down
+ * since, so it is still open beside the new primary. Oracle puts the shutdown
+ * on the operator (FAILOVER.PRIMARY_SHUT_DOWN, FSFO.MANUAL_FAILOVER_CONDITIONS)
+ * and no page says the broker closes or mounts a primary that stayed open, so
+ * drawing it open is this page's reading of a gap.
+ *
+ * Otherwise it restarted, or a fast-start failover left it behind. With
+ * fast-start failover enabled the documentation is explicit (ORA-16649); with
+ * it disabled the broker still leaves the database needing reinstatement, and
+ * drawing it mounted rather than open is this page's reading -- unless it
+ * cannot reach the new primary, where nothing tells it and it comes back open
+ * (`drawnOpen`).
  */
-function formerPrimaryFinding(view: View, fp: Member): Finding {
+function formerPrimaryFinding(
+  view: View, fp: Member, stayed: boolean, drawnOpen: boolean, newPrimary: MemberId,
+): Finding {
   const subject = { kind: 'member' as const, id: fp.id as string };
+  if (stayed) {
+    return {
+      id: 'FAILOVER.FORMER_PRIMARY_OPEN', severity: 'warning', basis: 'model',
+      cite: ['FAILOVER.PRIMARY_SHUT_DOWN', 'FSFO.MANUAL_FAILOVER_CONDITIONS'], subject,
+      message: `${fp.name} was still running and open when the manual failover completed, and it is drawn still open read-write as a primary beside ${newPrimary as string}. Two databases are open as the primary until ${fp.name} is taken down.`,
+      note: 'FAILOVER.FORMER_PRIMARY_OPEN: Oracle puts the shutdown of the old primary on the operator -- "ensure that the primary database is shut down" before a failover, "shut down prior to performing a manual failover" with fast-start failover enabled -- and no page says the broker closes or mounts a primary that is still open when a manual failover completes. ORA-16649 is about a former primary that restarts and is not allowed to open, not one that stayed open. So this page draws it open, whether or not the new primary can reach it and whether or not fast-start failover is enabled, until a crash, a shutdown, a fast-start failover stall and abort that applies, or the end of the run takes it down. That is this page\'s reading of an undocumented case.',
+    };
+  }
   if (view.fsfoEnabled) {
     return {
       id: 'FSFO.FORMER_PRIMARY_NOT_OPEN', severity: 'warning', basis: 'documented',
@@ -1784,8 +1828,10 @@ function formerPrimaryFinding(view: View, fp: Member): Finding {
   return {
     id: 'FAILOVER.FORMER_PRIMARY_MOUNTED', severity: 'warning', basis: 'model',
     cite: ['REINSTATE.NEEDS_FLASHBACK', 'ORA.16661'], subject,
-    message: `${fp.name} is the former primary and it is running again. After a failover it has to be reinstated or re-created before it can serve as a standby, so it is drawn mounted, not open.`,
-    note: 'FAILOVER.FORMER_PRIMARY_MOUNTED: that the former primary needs reinstating after a failover is documented. What state the broker leaves it in with fast-start failover disabled is not spelled out the way ORA-16649 spells it out for fast-start failover, so drawing it mounted is this page\'s reading. Where the new primary cannot reach it, nothing tells it a failover happened and it is drawn open -- two primaries.',
+    message: drawnOpen
+      ? `${fp.name} is the former primary and it is running again where the new primary cannot reach it, so nothing tells it a failover happened and it is drawn open, not mounted.`
+      : `${fp.name} is the former primary and it is running again. After a failover it has to be reinstated or re-created before it can serve as a standby, so it is drawn mounted, not open.`,
+    note: 'FAILOVER.FORMER_PRIMARY_MOUNTED: that the former primary needs reinstating after a failover is documented. What state the broker leaves one that restarts in, with fast-start failover disabled, is not spelled out the way ORA-16649 spells it out for fast-start failover, so drawing it mounted is this page\'s reading. It applies to a former primary that went down and came back, never to one a manual failover found still open (FAILOVER.FORMER_PRIMARY_OPEN). Where the new primary cannot reach it, nothing tells it a failover happened and it is drawn open.',
   };
 }
 
@@ -2202,13 +2248,21 @@ function memberStateOf(
     if (state.phase === 'switched') return 'mounted-noapply';
     /* Never aborted and nobody reaches it: still stalled, counting down. */
     if (view.actors[m.id as string]?.stalled) return 'stalled';
-    /* After a failover the former primary is never open read-write beside the
-       new one. With fast-start failover enabled "it will not be allowed to
-       open in any event" (ORA-16649): started and mounted, requiring
-       reinstatement. The one exception is an operator's manual failover with
-       fast-start failover disabled and the old primary still running where
-       the new one cannot reach it -- nothing tells it, so it stays open, and
-       that is the two-primaries error the run reports. */
+    /* A manual failover with the old primary still running leaves it open
+       read-write beside the new one until it is taken down. The shutdown is the
+       operator's ("ensure that the primary database is shut down",
+       FAILOVER.PRIMARY_SHUT_DOWN) and no page says the broker closes or mounts
+       a primary that stayed open, so this is the page's reading of a gap. It is
+       true whether or not the new primary can reach it and whether or not
+       fast-start failover is enabled (a stall and its abort still come first,
+       above). */
+    if (state.formerOpen) return 'open-rw';
+    /* Every other former primary is not open beside the new one. With
+       fast-start failover enabled "it will not be allowed to open in any
+       event" (ORA-16649): started and mounted, requiring reinstatement. With it
+       disabled, one that restarts is drawn mounted too -- this page's reading
+       -- except where it cannot reach the new primary: nothing tells it, so it
+       comes back open. */
     const newPrimary = doc.members.find((x) => x.id === state.primary);
     const told = view.fsfoEnabled || (!!newPrimary
       && membersReachable(doc, state.net, m, newPrimary, view.reach));
@@ -2590,6 +2644,7 @@ function initialState(doc: TopologyDoc): SimState {
     tOpenAt: null,
     newPrimary: null,
     formerPrimary: null,
+    formerOpen: false,
     converting: null,
     reinstating: null,
     abortedMembers: [],

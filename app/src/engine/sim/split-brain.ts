@@ -19,9 +19,12 @@
  *    old primary is not told anything.
  *
  * The lanes' `open-rw` for a former primary is itself this page's reading
- * (`FAILOVER.FORMER_PRIMARY_MOUNTED` in simulate.ts): one that fast-start
- * failover armed, or that the new primary can reach, is drawn mounted, and one
- * that nothing can tell is drawn open. That is why the claim is a `model`.
+ * (`FAILOVER.FORMER_PRIMARY_OPEN` in simulate.ts): a manual failover that
+ * finds the old primary still running and open does not close it -- Oracle puts
+ * the shutdown on the operator -- so it is drawn open beside the new primary
+ * until a crash, a shutdown or an abort takes it down, whether or not the new
+ * primary can reach it and whether or not fast-start failover is enabled.
+ * That is why the claim is a `model`.
  */
 
 import type { MemberId, Seconds } from '../ids';
@@ -69,7 +72,7 @@ export interface SplitBrain {
 }
 
 const NOTE =
-  'SPLIT_BRAIN.READING: Oracle does not use the term and gives no interval for it, so this is read off the drawing: two databases open read-write at the same moment. A former primary that is running and that the new primary cannot reach is drawn open (FAILOVER.FORMER_PRIMARY_MOUNTED is this page\'s reading of what such a database is told); one that fast-start failover armed, or that the new primary can reach, is drawn mounted. A STALLED primary is not counted as open: Oracle says its redo generation is stalled. The abort one FastStartFailoverThreshold after a stall began is documented; when a manual failover opens the new primary is this page\'s model.';
+  'SPLIT_BRAIN.READING: Oracle does not use the term and gives no interval for it, so this is read off the drawing: two databases open read-write at the same moment. A manual failover that finds the old primary still running and open does not close it -- Oracle puts the shutdown on the operator ("ensure that the primary database is shut down", FAILOVER.PRIMARY_SHUT_DOWN and FSFO.MANUAL_FAILOVER_CONDITIONS) and no page says the broker closes or mounts it -- so it is drawn open beside the new primary, whether or not the new primary can reach it and whether or not fast-start failover is enabled, until a crash, a shutdown or an abort takes it down (FAILOVER.FORMER_PRIMARY_OPEN is this page\'s reading of that gap). A former primary that went down and restarts is drawn mounted where fast-start failover armed it (ORA-16649) or the new primary can reach it. A STALLED primary is not counted as open: Oracle says its redo generation is stalled. The abort one FastStartFailoverThreshold after a stall began is documented; when a manual failover opens the new primary is this page\'s model.';
 
 const segmentsOf = (lanes: readonly Lane[], id: MemberId): Lane['segments'] =>
   lanes.find((l) => l.subject.kind === 'member' && l.subject.id === id)?.segments ?? [];
@@ -117,7 +120,7 @@ export function splitBrainOf(trace: Trace): SplitBrain | null {
   windows.sort((x, y) => x.from - y.from);
 
   const split = model(windows.length > 0, NOTE,
-    ['FSFO.GUARANTEE_STALL', 'FSFO.PMY_SHUTDOWN', 'FAILOVER.PRIMARY_SHUT_DOWN']);
+    ['FSFO.GUARANTEE_STALL', 'FSFO.PMY_SHUTDOWN', 'FAILOVER.PRIMARY_SHUT_DOWN', 'FSFO.MANUAL_FAILOVER_CONDITIONS']);
   if (windows.length > 0) {
     return { split, newPrimary, openAt: f.tOpen, former, windows, formerAtOpen: null };
   }

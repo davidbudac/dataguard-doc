@@ -4,15 +4,17 @@
  *
  * The reading is this page's model -- Oracle does not use the term -- so what
  * is pinned here is the question it puts to the drawing: two lanes in
- * `open-rw` over a stretch with a length. A stalled primary is not one, a
- * former primary the new one can reach is mounted, and one nothing can tell
- * (a manual failover with fast-start failover off, the old primary running
- * where the new one cannot reach it) is open beside it.
+ * `open-rw` over a stretch with a length. A stalled primary is not one, and a
+ * manual failover that finds the old primary still running and open does not
+ * close it (Oracle puts the shutdown on the operator): it is open beside the
+ * new primary, reachable or not and with fast-start failover on or off, until
+ * something takes it down. A former primary that goes down and restarts is not
+ * that one: it is mounted (ORA-16649 where fast-start failover armed it).
  */
 
 import { describe, expect, it } from 'vitest';
 import {
-  CLASSIC_IDS, citation, claimWellFormed, classicTopology, hostId, simulate, splitBrainOf,
+  CLASSIC_IDS, citation, claimWellFormed, classicTopology, computeApp, hostId, simulate, splitBrainOf,
 } from '../src/engine';
 import type { EngineTrace, TimedEvent, TopologyDoc } from '../src/engine';
 
@@ -30,6 +32,10 @@ const fsfoOff = (): TopologyDoc => {
 };
 
 const run = (doc: TopologyDoc, events: TimedEvent[]): EngineTrace => simulate(doc, events);
+
+const lane = (t: EngineTrace, id: string): string[] =>
+  (t.lanes.find((l) => l.subject.kind === 'member' && l.subject.id === id)?.segments ?? []).map((x) => x.state as string);
+const finding = (t: EngineTrace, id: string) => t.findings.find((f) => f.id === id);
 
 /** A copy of a trace whose former primary's lane is replaced, to reach states the classic runs do not. */
 const withLane = (t: EngineTrace, segments: { t0: number; t1: number | null; state: string }[]): EngineTrace => ({
@@ -89,11 +95,18 @@ describe('where the answer is no', () => {
     expect(sb?.formerAtOpen).toEqual({ kind: 'stalled', abortsAt: open + 5 });
   });
 
-  it('a former primary the new one can reach is mounted, not open', () => {
-    const t = run(fsfoOff(), [{ at: 0, kind: 'cmd.failover', to: SBY }]);
-    const sb = splitBrainOf(t);
-    expect(sb?.split.value).toBe(false);
-    expect(sb?.formerAtOpen).toEqual({ kind: 'closed', state: 'mounted-noapply' });
+  it('a former primary that was down when the new one opened, and restarts, is mounted, not open', () => {
+    for (const doc of [fsfoOff(), classicTopology({ observerLoc: 'dc3' })]) {
+      const t = run(doc, [
+        { at: 0, kind: 'host.down', host: hostId('dc1-prm01') },
+        { at: 5, kind: 'cmd.failover', to: SBY },
+        { at: 100, kind: 'host.up', host: hostId('dc1-prm01') },
+      ]);
+      expect(lane(t, PRM)).toEqual(['down', 'mounted-noapply']);
+      const sb = splitBrainOf(t);
+      expect(sb?.split.value).toBe(false);
+      expect(sb?.formerAtOpen).toEqual({ kind: 'down' });
+    }
   });
 
   it('a manual failover with fast-start failover armed aborts the isolated primary first', () => {
@@ -153,11 +166,157 @@ describe('where the answer is yes', () => {
   });
 });
 
+describe('a manual failover with the old primary still running and reachable', () => {
+  const manual = [{ at: 0, kind: 'cmd.failover', to: SBY } as TimedEvent];
+  const enabled = (): TopologyDoc => classicTopology({ observerLoc: 'dc3' });
+
+  for (const [label, doc] of [['fast-start failover disabled', fsfoOff], ['fast-start failover enabled', enabled]] as const) {
+    it(`draws the old primary open beside the new one, and reads yes, ${label}`, () => {
+      const t = run(doc(), manual);
+      expect(t.facts.outcome).toBe('manual');
+      expect(lane(t, PRM)).toEqual(['open-rw']);
+      expect(lane(t, SBY)).toEqual(['converting', 'open-rw']);
+      const sb = splitBrainOf(t);
+      expect(sb?.split.value).toBe(true);
+      expect(sb?.windows).toEqual([{ from: t.facts.tOpen, to: null, members: [SBY, PRM] }]);
+      expect(sb?.formerAtOpen).toBeNull();
+    });
+
+    it(`says so as this page's reading, citing the operator's shutdown, ${label}`, () => {
+      const t = run(doc(), manual);
+      const f = finding(t, 'FAILOVER.FORMER_PRIMARY_OPEN');
+      expect(f?.basis).toBe('model');
+      expect(f?.cite).toEqual(['FAILOVER.PRIMARY_SHUT_DOWN', 'FSFO.MANUAL_FAILOVER_CONDITIONS']);
+      expect(f?.note).toMatch(/^FAILOVER\.FORMER_PRIMARY_OPEN:/);
+      expect(f?.note).toContain('ORA-16649');
+      /* Neither of the two mounted readings applies to a primary that stayed open. */
+      expect(finding(t, 'FAILOVER.FORMER_PRIMARY_MOUNTED')).toBeUndefined();
+      expect(finding(t, 'FSFO.FORMER_PRIMARY_NOT_OPEN')).toBeUndefined();
+      /* And the documented error is still raised beside it. */
+      expect(finding(t, 'FAILOVER.PRIMARY_STILL_OPEN')?.basis).toBe('documented');
+    });
+  }
+
+  it('is the same wherever the new primary can reach it or not', () => {
+    const reachable = run(fsfoOff(), manual);
+    const cutOff = run(fsfoOff(), [...isolate, { at: 5, kind: 'cmd.failover', to: SBY }]);
+    expect(lane(reachable, PRM).at(-1)).toBe('open-rw');
+    expect(lane(cutOff, PRM).at(-1)).toBe('open-rw');
+    expect(splitBrainOf(reachable)?.split.value).toBe(true);
+    expect(splitBrainOf(cutOff)?.split.value).toBe(true);
+  });
+
+  it('draws the old primary\'s redo no more: it is not fed by the new primary, and it acknowledges nothing', () => {
+    const t = run(fsfoOff(), manual);
+    const last = t.epochs.at(-1)!;
+    expect(last.primary).toBe(SBY);
+    expect(last.redo.edges.filter((e) => e.to === PRM && e.active)).toEqual([]);
+  });
+
+  describe('closes the window where something takes the old primary down', () => {
+    const prm = hostId('dc1-prm01');
+
+    it('a crash', () => {
+      for (const doc of [fsfoOff(), enabled()]) {
+        const t = run(doc, [...manual, { at: 60, kind: 'host.down', host: prm }]);
+        const sb = splitBrainOf(t);
+        expect(sb?.split.value).toBe(true);
+        expect(sb?.windows).toEqual([{ from: t.facts.tOpen, to: 60, members: [SBY, PRM] }]);
+        expect(lane(t, PRM)).toEqual(['open-rw', 'down']);
+      }
+    });
+
+    it('a shutdown of the member', () => {
+      const t = run(fsfoOff(), [...manual, { at: 45, kind: 'member.down', member: PRM }]);
+      expect(splitBrainOf(t)?.windows).toEqual([{ from: t.facts.tOpen, to: 45, members: [SBY, PRM] }]);
+      expect(lane(t, PRM)).toEqual(['open-rw', 'down']);
+    });
+
+    it('a stall that fast-start failover aborts, when the old primary is cut off', () => {
+      const t = run(enabled(), [...isolate, { at: 5, kind: 'cmd.failover', to: SBY }]);
+      expect(t.facts.abortAt).toBe(30);
+      expect(lane(t, PRM)).toEqual(['stalled', 'aborted']);
+      const sb = splitBrainOf(t);
+      expect(sb?.split.value).toBe(false);
+      expect(sb?.formerAtOpen).toEqual({ kind: 'aborted', at: 30 });
+    });
+  });
+
+  describe('a former primary that restarts after going down is not the one that stayed', () => {
+    const prm = hostId('dc1-prm01');
+    const crashThenRestart = [...manual, { at: 60, kind: 'host.down', host: prm } as TimedEvent,
+      { at: 100, kind: 'host.up', host: prm } as TimedEvent];
+
+    it('with fast-start failover disabled it comes back mounted, as this page\'s reading', () => {
+      const t = run(fsfoOff(), crashThenRestart);
+      expect(lane(t, PRM)).toEqual(['open-rw', 'down', 'mounted-noapply']);
+      const mounted = finding(t, 'FAILOVER.FORMER_PRIMARY_MOUNTED');
+      expect(mounted?.basis).toBe('model');
+      expect(mounted?.note).toContain('never to one a manual failover found still open');
+      expect(mounted?.message).toContain('drawn mounted, not open');
+      /* The window it was open still stands, and ends at the crash. */
+      expect(splitBrainOf(t)?.windows).toEqual([{ from: t.facts.tOpen, to: 60, members: [SBY, PRM] }]);
+    });
+
+    it('with fast-start failover enabled it is not allowed to open: ORA-16649, documented', () => {
+      const t = run(enabled(), crashThenRestart);
+      expect(lane(t, PRM)).toEqual(['open-rw', 'down', 'mounted-noapply']);
+      const f = finding(t, 'FSFO.FORMER_PRIMARY_NOT_OPEN');
+      expect(f?.basis).toBe('documented');
+      expect(f?.ora).toBe('ORA-16649');
+    });
+
+    it('one that was already down when the failover ran is mounted when it returns, and split brain reads no', () => {
+      for (const [doc, id] of [[fsfoOff(), 'FAILOVER.FORMER_PRIMARY_MOUNTED'], [enabled(), 'FSFO.FORMER_PRIMARY_NOT_OPEN']] as const) {
+        const t = run(doc, [
+          { at: 0, kind: 'host.down', host: prm }, { at: 5, kind: 'cmd.failover', to: SBY },
+          { at: 100, kind: 'host.up', host: prm },
+        ]);
+        expect(lane(t, PRM)).toEqual(['down', 'mounted-noapply']);
+        expect(finding(t, id)).toBeDefined();
+        expect(finding(t, 'FAILOVER.FORMER_PRIMARY_OPEN')).toBeUndefined();
+        expect(splitBrainOf(t)?.split.value).toBe(false);
+      }
+    });
+  });
+});
+
+describe('the application\'s view of an old primary that stayed open', () => {
+  /* The role-based service is published by a database open read-write, so the
+     old primary keeps publishing it for as long as it is open, and the
+     application that dials it first is never sent anywhere else. */
+  const doc = fsfoOff();
+  const manual: TimedEvent = { at: 0, kind: 'cmd.failover', to: SBY };
+
+  it('keeps the service published on the old primary while it is open', () => {
+    const app = computeApp(doc.client, run(doc, [manual]), doc);
+    expect(app.noEvent).toBe(true);
+    expect(app.spans).toEqual([
+      { t0: 0, t1: null, appUp: true, serving: PRM, servingState: 'open-rw', published: PRM },
+    ]);
+  });
+
+  it('moves it to the new primary when the old one goes down', () => {
+    const app = computeApp(doc.client, run(doc, [manual, { at: 60, kind: 'host.down', host: hostId('dc1-prm01') }]), doc);
+    expect(app.spans.map((x) => [x.t0, x.serving])).toEqual([[0, PRM], [60, SBY]]);
+    expect(app.spans.at(-1)?.servingState).toBe('open-rw');
+  });
+});
+
 describe('where the question does not arise', () => {
   it('a switchover, however clean, is not asked', () => {
     const t = run(classicTopology({ observerLoc: 'dc3' }), [{ at: 0, kind: 'cmd.switchover', to: SBY }]);
     expect(t.facts.outcome).toBe('switchover');
     expect(splitBrainOf(t)).toBeNull();
+  });
+
+  it('a switchover never leaves the old primary open, with fast-start failover on or off', () => {
+    for (const doc of [fsfoOff(), classicTopology({ observerLoc: 'dc3' })]) {
+      const t = run(doc, [{ at: 0, kind: 'cmd.switchover', to: SBY }]);
+      expect(splitBrainOf(t)).toBeNull();
+      expect(lane(t, PRM)).toEqual(['open-rw', 'converting', 'mounted-noapply']);
+      expect(finding(t, 'FAILOVER.FORMER_PRIMARY_OPEN')).toBeUndefined();
+    }
   });
 
   it('a run in which nothing moves is not asked', () => {
@@ -186,6 +345,8 @@ describe('the claim', () => {
   const claims = [
     splitBrainOf(run(classicTopology({ observerLoc: 'dc3' }), isolate)),
     splitBrainOf(run(fsfoOff(), [...isolate, { at: 5, kind: 'cmd.failover', to: SBY }])),
+    splitBrainOf(run(fsfoOff(), [{ at: 0, kind: 'cmd.failover', to: SBY }])),
+    splitBrainOf(run(classicTopology({ observerLoc: 'dc3' }), [{ at: 0, kind: 'cmd.failover', to: SBY }])),
   ];
 
   it('is this page\'s model, with the note that says so, whichever way it reads', () => {
@@ -193,6 +354,15 @@ describe('the claim', () => {
       expect(sb?.split.basis).toBe('model');
       expect(sb?.split.note).toMatch(/^SPLIT_BRAIN\.READING:/);
       expect(claimWellFormed(sb!.split)).toBe(true);
+    }
+  });
+
+  it('says the old primary is left open because the shutdown is the operator\'s, and that this is its reading', () => {
+    for (const sb of claims) {
+      expect(sb!.split.note).toContain('FAILOVER.FORMER_PRIMARY_OPEN');
+      expect(sb!.split.note).toContain('FAILOVER.PRIMARY_SHUT_DOWN');
+      expect(sb!.split.note).not.toContain('FAILOVER.FORMER_PRIMARY_MOUNTED');
+      expect(sb!.split.cite).toContain('FSFO.MANUAL_FAILOVER_CONDITIONS');
     }
   });
 
