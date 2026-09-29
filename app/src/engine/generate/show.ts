@@ -107,6 +107,12 @@ export interface ShowConfigurationOptions {
   applyInstances?: Readonly<Record<string, string>>;
   /** SHOW DATABASE, read at a frame: stopped instances as `member/instance`. */
   downInstances?: readonly string[];
+  /**
+   * SHOW CONFIGURATION, read at a frame: members the run draws open
+   * read-write as a primary although `whenPrimaryIs` is another -- the old
+   * primary a manual failover found still open.
+   */
+  openAsPrimary?: readonly string[];
 }
 
 function roleWord(m: Member, primary: MemberId): string {
@@ -245,6 +251,13 @@ export function showConfiguration(
         ? ['CASCADE.EXAMPLE_4_2', 'ROUTES.CASCADE_ASYNC_EXPLICIT']
         : markers.length > 0 ? ['DGMGRL.VERBOSE_ALTERNATE', 'ROUTES.PRIORITY_19C_EX_4_3'] : ['DGMGRL.BROKER_COMMANDS'];
       lines.push(cmd(text, { indent: 2 + depth * 2, basis: 'documented', cite }));
+    }
+    if (opts.openAsPrimary?.includes(m.id as string) === true && m.id !== primary) {
+      lines.push(nModel(
+        `${m.name} is still open read-write as a primary in this run, so the line above is the configuration's view, not what the run draws`,
+        'FAILOVER.FORMER_PRIMARY_OPEN: a manual failover found this database still open, Oracle puts its shutdown on the operator, and no page says the broker closes or mounts it, so this page draws it open beside the new primary. What SHOW CONFIGURATION prints for a primary in that state is not documented, so the line above is drawn from the configuration and this one says where the drawing differs.',
+        ['FAILOVER.PRIMARY_SHUT_DOWN', 'FSFO.MANUAL_FAILOVER_CONDITIONS'],
+      ));
     }
     if (marked) {
       lines.push(cmd('(*) Fast-Start Failover target', {

@@ -47,6 +47,10 @@ export function Show() {
     ...(moved ? { whenPrimaryIs: at } : {}),
     applyInstances: f === null ? steadyApply : f.applyInstances ?? {},
     downInstances: f === null ? [] : stoppedInstances(doc, f.epoch.net),
+    /* The old primary a manual failover found still open, drawn open beside
+       the new one: the configuration's line for it says the drawing differs. */
+    openAsPrimary: f === null || at === null ? []
+      : Object.entries(f.members).filter(([id, state]) => state === 'open-rw' && id !== at).map(([id]) => id),
   });
 
   const nameOf = (id: string): string => doc.members.find((m) => m.id === id)?.name ?? id;
