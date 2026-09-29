@@ -12,7 +12,7 @@
  */
 
 import {
-  activeRule, applicationId, defaultDestProps, hostId, isParenthesised, linkId, memberId, observerId, primarySite,
+  activeRule, applicationId, declaredPrimary, defaultDestProps, expandAll, hostId, isParenthesised, linkId, memberId, observerId, primarySite,
   siteId, withApplication,
 } from '@/engine';
 import type {
@@ -984,6 +984,100 @@ export function shipRedo(from: MemberId, to: MemberId): void {
     ...m,
     redoRoutes: routes,
     dests: to in m.dests ? m.dests : { ...m.dests, [to]: defaultDestProps() },
+  }));
+}
+
+/**
+ * `from`'s RedoRoutes with `to` taken out of what it ships to now, or `null`
+ * when that cannot be written.
+ *
+ * The mirror of `routesWith`. The rule active for the declared primary loses
+ * every mention of `to`: a named destination, an alternate standing behind
+ * one, and `ALL`, which is expanded into the members it names today minus
+ * `to` (keeping the attributes written on it). A group left empty goes, and a
+ * rule left without groups goes -- after which the next rule active for the
+ * primary is asked the same question, since it may name `to` as well. A NULL
+ * property is `(LOCAL : ALL)` at a database and is expanded the same way; if
+ * nothing would be left, the answer is `null`: an empty RedoRoutes is that
+ * default again, which ships to `to`. Pure over the document.
+ */
+export function routesWithout(t: TopologyDoc, from: MemberId, to: MemberId): RedoRouteRule[] | null {
+  const sender = t.members.find((m) => m.id === from);
+  const primary = declaredPrimary(t);
+  if (!sender || primary === null) return null;
+  const everyone = expandAll(t, from, primary);
+  const names = (r: RedoRouteRule): boolean => r.groups.some((g) => g.dests.some((d) =>
+    d.target === to || d.alt?.target === to || (d.target === 'ALL' && everyone.includes(to))));
+  const strip = (r: RedoRouteRule): RedoRouteRule | null => {
+    const groups = r.groups
+      .map((g) => {
+        const dests: RouteDest[] = [];
+        const add = (d: RouteDest): void => {
+          if (!dests.some((x) => x.target === d.target)) dests.push(d);
+        };
+        for (const d of g.dests) {
+          if (d.target === to) continue;
+          if (d.target === 'ALL') {
+            if (!everyone.includes(to)) { add(d); continue; }
+            const { alt: _alt, ...attrs } = d;
+            for (const id of everyone) if (id !== to) add({ ...attrs, target: id });
+            continue;
+          }
+          if (d.alt?.target === to) {
+            const { alt: _gone, ...rest } = d;
+            add(rest);
+            continue;
+          }
+          add(d);
+        }
+        return { ...g, dests };
+      })
+      .filter((g) => g.dests.length > 0);
+    return groups.length === 0 ? null : { ...r, groups };
+  };
+  let m: Member = sender;
+  /* Each round removes one rule's worth; a rule can only be removed once. */
+  for (let round = 0; round <= sender.redoRoutes.length + 1; round++) {
+    const act = activeRule(m, primary);
+    if (!act || !names(act.rule)) return round === 0 ? null : m.redoRoutes;
+    const onDefault = m.redoRoutes.length === 0 && !m.routesObserved;
+    const rules = onDefault ? [act.rule] : m.redoRoutes;
+    const kept = strip(act.rule);
+    if (kept === null && onDefault) return null;
+    m = { ...m, redoRoutes: rules.flatMap((r, i) => (i !== act.index ? [r] : kept === null ? [] : [kept])) };
+    /* Emptied by this round: NULL again, which at a primary database ships to `to`. */
+    if (m.redoRoutes.length === 0 && m.kind === 'database' && !m.routesObserved) {
+      const back = activeRule(m, primary);
+      if (back && names(back.rule)) return null;
+    }
+  }
+  return m.redoRoutes;
+}
+
+/**
+ * Stop shipping redo from one member to another -- Remove on a redo line.
+ * One undo; the destination's own properties go with it, the way `shipRedo`
+ * mints them.
+ */
+export function removeRedoRoute(from: MemberId, to: MemberId): void {
+  const routes = routesWithout(doc.value.topology, from, to);
+  if (routes === null) {
+    toast.value = { kind: 'warn', text: `${from as string} keeps shipping to ${to as string}: ${WHY.onlyRedoDest}` };
+    return;
+  }
+  patchMember(from, `Stop shipping redo from ${from as string} to ${to as string}`, (m) => {
+    const dests = { ...m.dests };
+    delete dests[to];
+    return { ...m, redoRoutes: routes, dests };
+  });
+}
+
+/** Take a member out of an explicit FastStartFailoverTarget list. */
+export function removeFsfoTarget(id: MemberId): void {
+  const target = doc.value.topology.config.fsfo.target;
+  if (target.kind !== 'list' || !target.members.includes(id)) return;
+  patchFsfo(`Remove ${id as string} from FastStartFailoverTarget`, (f) => ({
+    ...f, target: { kind: 'list', members: target.members.filter((m) => m !== id) },
   }));
 }
 

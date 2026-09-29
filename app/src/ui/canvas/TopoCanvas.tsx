@@ -160,6 +160,10 @@ export interface TopoCanvasProps {
     sections?: readonly BarSection[];
     /** Break: when its events land, for the menu's header. */
     when?: string;
+    /** The header's words for the subject, when not its key. */
+    title?: string;
+    /** Keep the last row (Remove) visible when the cap drops rows. */
+    keepLast?: boolean;
   } | null;
   /**
    * How far below 1:1 the drawing is rendering, measured by the caller.
@@ -1299,7 +1303,7 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
   const barAnchor = bar === null ? null : anchorFor(bar.key, geo, routed.links);
   const barEstimate = bar === null ? null
     : bar.sections !== undefined ? menuFootprint(bar.sections)
-      : barFootprint(bar.actions, bar.quiet ?? null, bar.maxRows);
+      : barFootprint(bar.actions, bar.quiet ?? null, bar.maxRows, bar.keepLast === true);
   /* The larger of the estimate and what was painted: the estimate is what the
      placement can know before the render, the measurement is what the box
      has to be. Never smaller than the estimate, so a measurement that has not
@@ -1803,6 +1807,8 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
             {...(bar.sections !== undefined ? { sections: bar.sections } : {})}
             {...(bar.when !== undefined ? { when: bar.when } : {})}
             {...(barCap !== null ? { maxHeight: barCap } : {})}
+            {...(bar.title !== undefined ? { title: bar.title } : {})}
+            {...(bar.keepLast === true ? { keepLast: true } : {})}
             {...(barSize !== null ? { box: barSize } : {})}
             onMeasure={onBarMeasure}
             onClose={closeBar}

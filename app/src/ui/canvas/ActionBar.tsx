@@ -133,10 +133,22 @@ export function menuFootprint(sections: readonly BarSection[]): { w: number; h: 
  * this by the drawing's scale to get the user-unit footprint `placeBar` keeps
  * inside the view.
  */
+/**
+ * The rows the bar shows under its cap. With `keepLast` the last row is always
+ * among them -- Build's table ends in Remove, the way out, and what the cap
+ * drops is then the rows before it rather than Remove itself.
+ */
+export function shownRows<T>(actions: readonly T[], maxRows: number, keepLast = false): T[] {
+  if (actions.length <= maxRows) return [...actions];
+  if (!keepLast || maxRows < 1) return actions.slice(0, maxRows);
+  return [...actions.slice(0, maxRows - 1), actions[actions.length - 1] as T];
+}
+
 export function barFootprint(
   actions: readonly BarAction[], quiet: string | null = null, maxRows: number = MAX_ROWS,
+  keepLast = false,
 ): { w: number; h: number } {
-  const shown = actions.slice(0, maxRows);
+  const shown = shownRows(actions, maxRows, keepLast);
   let h = PAD + HEAD;
   for (const a of shown) {
     h += ROW;
@@ -153,8 +165,12 @@ export interface ActionBarProps {
   y: number;
   /** The drawing's own scale, so the bar can undo it. */
   scale: number;
-  /** The key the bar is about; the header prints it. */
+  /** The key the bar is about. */
   subject: string;
+  /** What the header and the aria-label call it, when not the key itself. */
+  title?: string;
+  /** Keep the last row (Remove) when the cap drops rows. */
+  keepLast?: boolean;
   actions: readonly BarAction[];
   /** The one line that stands in for the restores that were dropped. */
   quiet?: string | null;
@@ -253,14 +269,17 @@ export function ActionBar(props: ActionBarProps): JSX.Element {
   const menu = sections !== null;
   const quiet = props.quiet ?? null;
   const maxRows = props.maxRows ?? MAX_ROWS;
-  const shown = props.actions.slice(0, maxRows);
+  const shown = shownRows(props.actions, maxRows, props.keepLast === true);
   const more = props.actions.length > maxRows;
   const cap = menu && props.maxHeight !== undefined ? Math.max(0, props.maxHeight) : null;
-  const natural = sections !== null ? menuFootprint(sections) : barFootprint(props.actions, quiet, maxRows);
+  const natural = sections !== null
+    ? menuFootprint(sections)
+    : barFootprint(props.actions, quiet, maxRows, props.keepLast === true);
   /* A menu that scrolls declares the box it scrolls in, never the list's
      natural height: Firefox clips to the declaration, and a box taller than
      the room is exactly the menu under the chrome this cap exists to stop. */
   const estimate = cap === null ? natural : { w: natural.w, h: Math.min(natural.h, cap) };
+  const title = props.title ?? props.subject;
   const size = props.box === undefined
     ? estimate
     : { w: Math.max(estimate.w, props.box.w), h: Math.max(estimate.h, props.box.h) };
@@ -340,21 +359,21 @@ export function ActionBar(props: ActionBarProps): JSX.Element {
           <div
             class={menu ? 'cv-bar cv-menu' : 'cv-bar'}
             role="group"
-            aria-label={`Actions for ${props.subject}`}
+            aria-label={`Actions for ${title}`}
             ref={box}
             onKeyDown={onKeyDown}
           >
             <div class="cv-bar-hd">
               {menu && props.when !== undefined ? (
                 <span class="cv-bar-subj">
-                  <span class="mono">{props.subject}</span>
+                  <span class="mono">{title}</span>
                   <span class="cv-bar-when"> · {props.when}</span>
                 </span>
-              ) : <span class="mono">{props.subject}</span>}
+              ) : <span class="mono">{title}</span>}
               <button
                 type="button"
                 class="cv-bar-x"
-                aria-label={`Close the actions for ${props.subject}`}
+                aria-label={`Close the actions for ${title}`}
                 onClick={props.onClose}
               >
                 &times;

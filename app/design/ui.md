@@ -543,6 +543,20 @@ it."* Five things landed, and one rule bent:
   rail's Remove buttons, the bar, the context menu and the Delete key
   (`deleteFromCanvas` shrank to a lookup — and gained sites and links, which
   used to swallow Delete silently).
+- **Drawn lines are removable.** A click on a line selects the link it rides,
+  and removing that link only severs the line (drawn cut, plus a finding). So
+  the link's rows also carry one removal per line riding it (`build/routes.ts`
+  enumerates them), after its properties and before its own `Remove`, which
+  stays last and stays what Delete and the rail header mean (`removeAction`
+  looks up the id `remove`). A line with no link under it is selected by its
+  own key (`redo:A:B`, `connect:APP:M`, `ping:O:P`, `check:O:T`) and gets a
+  rail and a bar of its own. Remove on redo edits the sender's RedoRoutes
+  (`routesWithout`, the mirror of `shipRedo`; refused when it is the sender's
+  only destination, since NULL is `(LOCAL : ALL)` again); on an address it
+  takes the member off the ADDRESS_LIST; on a readiness check it takes the
+  member out of an explicit FastStartFailoverTarget (grey under ANY); the
+  observer's ping is grey — it goes with the observer. The `…` handle is drawn
+  only over a selection whose bar would offer something.
 - **Sites and links are controls now.** The site rect and the link's caption
   pill carry `role="button"`, a lower-case `tabindex`, an `aria-label`
   (`siteLabel`/`linkLabel` in `canvas/aria.ts`), hover/focus styles and the
