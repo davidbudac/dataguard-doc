@@ -374,12 +374,12 @@ describe('the Config panel', () => {
     expect(panel.querySelector('.app-tl-strip')).toBeNull();
   });
 
-  it('says to inject an event in Simulate mode while there is no run', async () => {
+  it('says to inject an event in Topology or the detailed timeline while there is no run', async () => {
     mode.value = 'configure';
     panelTab.value = 'app';
     const r = mount();
     await tick();
-    expect(r.querySelector('[aria-label="Application view"] .empty')?.textContent).toMatch(/Inject an event in Simulate mode/);
+    expect(r.querySelector('[aria-label="Application view"] .empty')?.textContent).toMatch(/Inject an event in Topology or the detailed timeline/);
   });
 });
 

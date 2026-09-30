@@ -38,11 +38,15 @@ describe('url table', () => {
       .toBe('ed=26ai&mode=config');
   });
 
-  it('writes the words on the buttons and reads both spellings', () => {
-    expect(serializeUrlQuery({ ...URL_DEFAULTS, mode: 'break' })).toBe('mode=simulate');
+  it('writes the words on the buttons and reads every older spelling', () => {
+    expect(serializeUrlQuery({ ...URL_DEFAULTS, mode: 'break' })).toBe('mode=timeline');
     expect(serializeUrlQuery({ ...URL_DEFAULTS, mode: 'configure' })).toBe('mode=config');
+    /* Topology is the page's default mode, so its word is never needed. */
+    expect(serializeUrlQuery({ ...URL_DEFAULTS, mode: 'build' })).toBe('');
     for (const [raw, id] of [
-      ['simulate', 'break'], ['break', 'break'], ['config', 'configure'], ['configure', 'configure'],
+      ['topology', 'build'], ['build', 'build'],
+      ['timeline', 'break'], ['simulate', 'break'], ['break', 'break'],
+      ['config', 'configure'], ['configure', 'configure'], ['learn', 'learn'],
     ] as const) {
       expect(parseUrlQuery(`?mode=${raw}`).state.mode).toBe(id);
     }
@@ -67,7 +71,7 @@ describe('url table', () => {
   it('reports keys it does not know, and drops them from the link', () => {
     const { state, unknown } = parseUrlQuery('?mode=break&utm_source=wiki&zoom=3');
     expect(unknown).toEqual(['utm_source', 'zoom']);
-    expect(serializeUrlQuery(state)).toBe('mode=simulate');
+    expect(serializeUrlQuery(state)).toBe('mode=timeline');
   });
 
   it('clamps the playhead and the lesson step', () => {

@@ -61,8 +61,14 @@ export const BREAK_LAYOUT_SUB: Record<BreakLayout, string> = {
   lanes: 'Lanes — read each member’s story row by row: its card, then its timeline',
 };
 
+/**
+ * The words on the mode buttons. The ids stay what they were -- `build` is
+ * Topology and `break` is the Detailed timeline, as `configure` kept its id
+ * when it became Config -- so a class, a test or an old link that says
+ * `m-break` or `?mode=build` still means the same mode.
+ */
 export const MODE_LABEL: Record<Mode, string> = {
-  build: 'Build', break: 'Simulate', configure: 'Config', learn: 'Learn',
+  build: 'Topology', break: 'Detailed timeline', configure: 'Config', learn: 'Learn',
 };
 
 /**
@@ -80,10 +86,12 @@ export const MODE_LABEL: Record<Mode, string> = {
  * belongs to `modeGuide`, which knows.
  */
 export const MODE_SUB: Record<Mode, string> = {
-  build: 'Build — draw the configuration: sites, members, redo routes, observers; '
-    + 'click to edit, drag to move, + to add',
-  break: 'Simulate — add failures and follow the simulation timeline; click a card to add an event, '
-    + 'drag a numbered timeline marker to change its time',
+  build: 'Topology — draw the configuration, then break it: sites, members, redo routes, observers; '
+    + 'click to edit, drag to move, + to add; a scenario or the icons on a card add a failure, '
+    + 'and the timeline under the drawing follows it',
+  break: 'Detailed timeline — the run in full: follow a failure through detection, threshold, '
+    + 'role change and open, tune its settings, add an event from a lane, '
+    + 'drag a numbered marker to change its time',
   configure:
     'Config — generated from the drawing: DGMGRL, init parameters and connect strings; '
     + 'hover a line to see which member it configures.',
@@ -455,10 +463,11 @@ export function modeGuide(m: Mode, v: Viewport = viewport.value): string {
     case 'build':
       return 'Click to edit · drag to move · + to add; '
         + 'Drag a + button onto a data centre to add, or a card’s ⊕ onto another to connect. '
-        + `Double-click to rename; ⋯ opens actions, and the full properties are in ${railWhere(v)}.`;
+        + `Double-click to rename; ⋯ opens actions, and the full properties are in ${railWhere(v)}. `
+        + 'To break it, use a scenario or the icons on a card; right-click a card, or press E, for every event it offers.';
     case 'break':
-      return 'Click a card to add an event, drag a numbered timeline marker to change its time; '
-        + 'Earlier / Later in Events swaps adjacent times, or pick a scenario.';
+      return 'Follow the run in full: add an event from a lane, drag a numbered marker to change its time; '
+        + 'Earlier / Later in Events swaps adjacent times.';
     case 'configure':
       return 'Generated from the drawing — DGMGRL, init parameters, connect strings. '
         + `Settings are in ${railWhere(v)}.`;

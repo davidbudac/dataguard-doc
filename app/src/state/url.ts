@@ -85,8 +85,10 @@ export const clampStep = (n: number): number => Math.max(0, Math.min(99, Math.ro
 type Mutable = { -readonly [K in keyof UrlState]: UrlState[K] };
 
 /** The mode's word in the address, where it differs from its id. */
-const MODE_TO_URL: Partial<Record<Mode, string>> = { break: 'simulate', configure: 'config' };
-const MODE_FROM_URL: Record<string, Mode | undefined> = { simulate: 'break', config: 'configure' };
+const MODE_TO_URL: Partial<Record<Mode, string>> = { build: 'topology', break: 'timeline', configure: 'config' };
+const MODE_FROM_URL: Record<string, Mode | undefined> = {
+  topology: 'build', timeline: 'break', simulate: 'break', config: 'configure',
+};
 
 export interface UrlField {
   /** The public key. */
@@ -106,10 +108,11 @@ export const URL_FIELDS: readonly UrlField[] = [
     write: (s) => (s.ed === URL_DEFAULTS.ed ? null : s.ed),
   },
   {
-    /* The words in the address are the ones on the buttons: `simulate` and
-       `config`. The internal ids stay `break` and `configure`, and an old link
-       spelled with them still opens the right mode. */
-    k: 'mode', what: 'build / simulate / config / learn (break and configure are read as the old spellings)',
+    /* The words in the address are the ones on the buttons: `topology`,
+       `timeline` and `config`. The internal ids stay `build`, `break` and
+       `configure`, and an old link spelled with them -- or with `simulate`,
+       the word `break` used to wear -- still opens the right mode. */
+    k: 'mode', what: 'topology / timeline / config / learn (build, simulate, break and configure are read as the old spellings)',
     parse: (raw, out) => {
       const m = MODE_FROM_URL[raw] ?? ((MODES as readonly string[]).includes(raw) ? (raw as Mode) : null);
       if (m !== null) out.mode = m;

@@ -651,7 +651,7 @@ export function AppDetail({ where, class: cls = '', appId }: {
             address answers and the first one connects.{' '}
             {where === 'simulate'
               ? "Inject an event -- select a card, or pick a scenario -- and the application's view of it is drawn here."
-              : "Inject an event in Simulate mode -- crash the primary's host, cut a link, issue a switchover -- and the application's view of it is drawn here."}
+              : "Inject an event in Topology or the detailed timeline -- crash the primary's host, cut a link, issue a switchover -- and the application's view of it is drawn here."}
           </p>
         </div>
       ) : apps.length === 0 ? (

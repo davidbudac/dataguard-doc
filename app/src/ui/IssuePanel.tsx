@@ -67,13 +67,13 @@ export function revealFindings(): void {
     toast.value = {
       kind: 'info',
       text: open
-        ? 'The findings are in Build. Your lesson is where you left it.'
-        : 'The findings are in Build.',
+        ? 'The findings are in Topology. Your lesson is where you left it.'
+        : 'The findings are in Topology.',
       ...(open ? { action: { label: 'Back to the lesson', run: () => { mode.value = 'learn'; } } } : {}),
     };
   } else if (mode.value === 'configure') mode.value = 'build';
   /* Over a full-bleed canvas the findings are a popover -- the status card's
-     chips open it in Build, the count on the bar in Break, in Split and in
+     chips open it in Topology, the count on the bar in the Detailed timeline, in Split and in
      Lanes alike. */
   if (floating(mode.value, viewport.value)) {
     findingsOpen.value = true;

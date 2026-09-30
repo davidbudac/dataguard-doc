@@ -225,7 +225,7 @@ export function DocCount() {
       class={`count ${tone}`}
       title={mode.value === 'build' || mode.value === 'break'
         ? 'Show the validation findings'
-        : 'Show the validation findings, in Build'}
+        : 'Show the validation findings, in Topology'}
       onClick={() => { revealFindings(); }}
     >
       {findingCount(errs, warns, notes)}

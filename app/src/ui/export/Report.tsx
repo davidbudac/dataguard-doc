@@ -447,7 +447,7 @@ export function Report() {
 
         {model.run === null || tr === null ? null : (
           <section class="rp-sec is-page" aria-labelledby="rp-s-run">
-            <h2 id="rp-s-run"><span class="rp-n">{num()}</span> Simulate: injected events and outcome</h2>
+            <h2 id="rp-s-run"><span class="rp-n">{num()}</span> Run: injected events and outcome</h2>
             <table class="rp-tab rp-events">
               <thead><tr><th>t (s)</th><th>Event</th></tr></thead>
               <tbody>

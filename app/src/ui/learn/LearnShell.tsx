@@ -57,8 +57,9 @@ function Intro() {
         can be demonstrated carries a &ldquo;Show me&rdquo; button: it loads the lesson&rsquo;s
         configuration, applies exactly the properties and events that step is about, and leaves
         everything else at its default &mdash; so a step shows the same thing however you
-        reached it. &ldquo;Open in Simulate&rdquo; &mdash; under the step, or at the head of
-        the workbench beside it &mdash; takes the same document to the timeline.
+        reached it. &ldquo;Open in the detailed timeline&rdquo; and &ldquo;Open in Topology&rdquo; &mdash; under the
+        step, or at the head of the workbench beside it &mdash; take the same document to the
+        run in full, or to the drawing you can change.
       </p>
       <p class="caption">
         The first six lessons are the chapters of the published document, carried over
@@ -75,9 +76,9 @@ function Intro() {
  *
  * Two things were only findable by reading: which step the drawing under it is
  * set up for, and the way out of Learn with that document. The step's own
- * "Open in Break" sits in the prose column, several screens down in a long
+ * "Open in the detailed timeline" sits in the prose column, several screens down in a long
  * lesson, so the reader looking at the drawing had no way out of it in sight.
- * This row puts both above the fold, and adds Build, because "now let me
+ * This row puts both above the fold, and adds Topology, because "now let me
  * change it" is the other thing a reader wants from a drawing.
  *
  * It is the same function the prose button calls (`openStepInMode`), not a
@@ -89,7 +90,7 @@ function Intro() {
  * read-only gate (`canEdit`) is about the controls that *change* a
  * configuration -- the inspector, the canvas, the action bar -- which a phone
  * has no room for. Following a lesson step is not one of them: the step's own
- * "Show me" and "Open in Break" in the prose column are ungated at every
+ * "Show me" and "Open in the detailed timeline" in the prose column are ungated at every
  * width, and so is arriving on `#/learn/<lesson>/<step>` from a link. Graying
  * these two would refuse the reader an address they can reach by scrolling
  * down the same page, which is a refusal that restricts nothing.
@@ -127,11 +128,11 @@ export function LearnWorkbenchHeader() {
       </p>
       <span class="lwh-go">
         <button type="button" class="btn" onClick={open('break')}>
-          Open in Simulate
+          Open in the detailed timeline
         </button>
         {' '}
         <button type="button" class="btn" onClick={open('build')}>
-          Open in Build
+          Open in Topology
         </button>
       </span>
     </header>

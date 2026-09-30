@@ -82,7 +82,7 @@ export function Show() {
             ? ' The role has moved at this point in the run, so the configuration below is'
               + ` resolved with ${nameOf(at)} as primary -- the question DGMGRL's`
               + ' WHEN PRIMARY IS form asks.'
-            : ' Scrub the timeline in Simulate mode and this walks with it.'}
+            : ' Scrub the timeline in Topology or the detailed timeline and this walks with it.'}
         </p>
         {f === null ? null : (
           <p class="row">
