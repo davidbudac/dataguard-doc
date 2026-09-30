@@ -19,7 +19,7 @@ produced, and how to extend it without breaking consistency or accuracy.
 | `diagrams/fsfo-sequence.svg` (+`.png`) | Sequence diagram of the crash case with an elapsed-time gutter |
 | `diagrams/fsfo-net-timeout.svg` (+`.png`) | Two panels separating NET_TIMEOUT (redo transport) from the broker failover clocks |
 | `diagrams/README.md` | Figure embeds, broker-property and redo-transport-property tables with verified defaults, the ping-properties quirk, the verified-facts sections behind the commit/reopen/observer/placement/side-topics views (including the 24-cell observer-placement outcome matrix) and behind the 26ai edition switch (the MaxAvailability lag-limit semantics and Oracle's self-contradiction on them, `PrimaryDatabaseCandidates`, `V$FS_FAILOVER_OBSERVERS`), the drawing idealizations, Oracle doc links. Its *Topology features* section points at `app/design/facts.md` for far sync, cascading, RedoRoutes, multi-target and multi-observer sources |
-| `app/` | The workbench: TypeScript + Vite + Preact + signals. A pure, DOM-free engine in `app/src/engine` (types, citation catalogue, validation rules, redo-graph resolver, epoch-loop simulator, generators, the legacy adapter), the interface in `app/src/ui` (including the on-canvas action bar, the Introduction page and the `Hints` toggle — see `app/design/ui.md` §3c–§3i; §3h is how the drawing is driven: click selects, `⋯` for the bar, drag-to-place, inline rename, marquee, shortcuts; §3i is the lean pass: the toolbar is the one add surface, Remove sits in the rail header; "Simulate's two layouts", at the end, is the Split and Lanes layouts of the Simulate screen and the switch between them), state in `app/src/state`, twelve presets in `app/src/presets`, ten lessons and the reference tables in `app/src/content`, 2905 vitest tests across 112 files in `app/src/**/__tests__` and `app/test`. Built to `_site/` and served at `/dataguard/`. Zero external requests, no inline script and no inline style — the page is meant to run under `script-src 'self'; style-src 'self'` |
+| `app/` | The workbench: TypeScript + Vite + Preact + signals. A pure, DOM-free engine in `app/src/engine` (types, citation catalogue, validation rules, redo-graph resolver, epoch-loop simulator, generators, the legacy adapter), the interface in `app/src/ui` (including the on-canvas action bar, the Introduction page and the `Hints` toggle — see `app/design/ui.md` §3c–§3i; §3h is how the drawing is driven: click selects, `⋯` for the bar, drag-to-place, inline rename, marquee, shortcuts; §3i is the lean pass: the toolbar is the one add surface, Remove sits in the rail header; "Simulate's two layouts", at the end, is the Split and Lanes layouts of the Simulate screen and the switch between them), state in `app/src/state`, twelve presets in `app/src/presets`, ten lessons and the reference tables in `app/src/content`, 2893 vitest tests across 112 files in `app/src/**/__tests__` and `app/test`. Built to `_site/` and served at `/dataguard/`. Zero external requests, no inline script and no inline style — the page is meant to run under `script-src 'self'; style-src 'self'` |
 | `app/public/collectors/` | Read-only SQL collector, optional Bash/SQL*Plus wrapper and run instructions for existing setups. The ⋯ menu's **Import existing setup** sheet previews pasted/file output before drawing it. `engine/collect.ts` maps current routes; imported `routesObserved` prevents invented NULL-default routes. Missing broker settings and placement assumptions remain in document notes. Validated live on a 19c primary + mounted standby (SYSDBA, local OS auth); wallet, least-privilege, RAC and far sync remain unverified. DGMGRL transcripts are not parsed. |
 | `app/design/facts.md` | The verified Oracle fact sheet for the topology features (far sync, cascading, multiple standbys and FSFO targets, multiple observers, RedoRoutes, member types, destination counts), researched 2026-08-16 against docs.oracle.com and re-verified 2026-08-17, marked `[D]` / `[D-later]` / `[UNDOC]` / `[CONFLICT]` per claim. **The only permitted source of a "documented" claim in the application.** Its top-five traps are restated in the accuracy rules below |
 | `app/design/engine.md` | The engine design: `Claim`/`Basis` labelling, the topology data model, the validation catalogue, the redo-graph resolver, the epoch-loop failure engine, the compat adapter and the 24-cell matrix gate, the generators, the module layout — plus §10, *Deviations from the design as built*, which is where the code and the specification differ |
@@ -66,7 +66,7 @@ public URL.
 
 The three gates, and what each one can catch that the others cannot:
 
-1. `npm --prefix app run test` — the application's own suite (**2905 tests
+1. `npm --prefix app run test` — the application's own suite (**2893 tests
    across 112 files**): the engine's invariants, the 24-cell matrix through the
    compat adapter, the validation catalogue, the generator goldens, the canvas
    and timeline geometry, the URL and file round trips.
@@ -162,10 +162,11 @@ none of the three gates can see a drawing that is wrong. Walk it in **both
 themes** and **both editions** — the theme toggle and the 19c/26ai toggle are in
 the top bar, and both are reading preferences that survive a reload:
 
-- **All four modes on the classic preset.** Build: select a member, edit a
-  property, undo it, watch the issue list and the steady-state readout follow.
-  Simulate: click a card and inject a crash from the bar it opens, scrub the timeline, read the
-  outcome chip. Config: all seven tabs render, Copy works, hovering a
+- **All four modes on the classic preset.** Topology: select a member, edit a
+  property, undo it, watch the issue list and the steady-state readout follow;
+  then press a scenario in the dock, watch the cards take their state, scrub the
+  small timeline and press *Detailed timeline*. Detailed timeline: the lanes, the
+  settings column, a grip dragged, the outcome on the bar. Config: all seven tabs render, Copy works, hovering a
   generated line highlights the member it belongs to. Learn: the lesson list,
   a "Show me" step, and the workbench beside the prose reacting to it.
 - **Every preset opens.** Twelve of them (`classic`, `observe-only`,
@@ -1114,7 +1115,7 @@ component computes domain state locally.**
   `lat`, `xpt`, `rs`, `mf`, `tct`, `ct`, `rc`, `rd`, …, plus `ver` for the
   edition) become a topology
   through `migrateLegacyQuery`, and the six chapter anchors become a mode and a
-  panel — `ch-clocks` → Simulate, `ch-transport` → Config/Commit, `ch-app` →
+  panel — `ch-clocks` → Detailed timeline, `ch-transport` → Config/Commit, `ch-app` →
   Config/Application view, `ch-config` → Config/DGMGRL, `ch-side` →
   Learn/SYNC transport, `ch-reference` → Learn/Reference. `#cfg=` payloads go
   through `migrateV1`. The canonical URL is then written with `replaceState`.
@@ -1124,13 +1125,22 @@ component computes domain state locally.**
 
 ### The interface (`app/src/ui`)
 
-Four modes over one persistent canvas — **Build** (inspector, validation issues,
-steady-state readout), **Simulate** (the event list, timeline,
-transport, outcome readout), **Config** (seven generated panels: DGMGRL ·
+Four modes — **Topology** (internal id `build`: the editable drawing with its
+inspector, validation issues and steady-state readout, and, once something is
+injected, the run on it: scenarios in the dock, break icons on the cards, the
+cards tinted at the playhead and a small timeline underneath), **Detailed
+timeline** (internal id `break`: no drawing, the lanes with a card at the head
+of each, the settings column, the event list, the transport and the outcome),
+**Config** (seven generated panels: DGMGRL ·
 `LOG_ARCHIVE_DEST_n` · tnsnames/JDBC · SHOW · Application view · Commit ·
 Reopen) and **Learn** (ten lessons: the six ported chapters plus Far sync,
-Cascading, Multiple observers and targets, and RAC primary and standby). The canvas never blinks: switching
-modes changes what is around it.
+Cascading, Multiple observers and targets, and RAC primary and standby). The ids
+`build` and `break` are internal and stay (as do `BreakRail`, `ui/break/`, the
+`m-build` / `m-break` classes); the address writes `mode=timeline`, leaves
+Topology as the absence of the key, and reads `topology`, `build`, `timeline`,
+`simulate` and `break`. `app/design/ui.md`, "Topology and the Detailed
+timeline", is the as-built record of the re-cut, and says which earlier
+sections it supersedes.
 
 - **Canvas** (`ui/canvas/`): `layout.ts` ranks members by BFS over the resolved
   redo graph, columns them by site, packs rows and draws the site rectangles —
@@ -1197,28 +1207,39 @@ modes changes what is around it.
   because both bars wrap on a narrow window and a toast pinned to their nominal
   height paints over them. `site/build.mjs` fails the build on an inline
   `<script>`, an `on*=` handler or a `style=` attribute in the built page.
-- **Simulate's events are added where the reader is looking**: a
-  click on a card, data centre or link opens the action bar's grouped list under
-  a header that says *at t = [n] s*, a card's hover icons are the short list, and
-  Lanes' cards and pills carry their own buttons. The rail is the reader's events
-  and nothing else. The playhead is the one clock (the transport's *t* field).
-- **Simulate's settings are tuned where the run is drawn** (`app/design/ui.md`,
-  "Tuning a run in Simulate"). A row of settings above the Configuration
-  timeline in both layouts (`break/TuneStrip.tsx`, the `Settings` toggle,
-  `dg-tune`); the headline as an equation whose terms are number boxes
+- **Events are added where the reader is looking.** In Topology a click selects
+  (the inspector), a card's hover icons are the short list, the dock's scenario
+  row is the shelf (`break/ScenarioRow.tsx`), and right-click, `Shift+F10` or `E`
+  open the grouped list under a header that says *at t = [n] s*; the `⋯` handle
+  and `A` open Build's own action table. In the Detailed timeline the cards and
+  pills at the head of the lanes carry their own buttons. `runShown()`
+  (`state/derived.ts`) is the one predicate for "the drawing and the readout
+  show a run": a trace exists and the mode is not Config. The playhead is the
+  one clock (the transport's *t* field), and the small timeline
+  (`timeline/MiniTimeline.tsx`) is one thin bar per database, far sync and
+  observer, a playhead to scrub, the transport, *Clear*, *Detailed timeline* and
+  the pop-out of the full timeline into a window of its own.
+- **Settings are tuned where the run is drawn** (`app/design/ui.md`,
+  "Tuning a run in Simulate"). A column of settings beside the Detailed
+  timeline's lanes, a row above them under 1180 px (`break/TuneStrip.tsx`, the
+  `Settings` toggle, `dg-tune`), with the application's connect string in it
+  (`inspector/client-timing.ts`); the headline as an equation whose terms are number boxes
   (`timeline/equation.ts`, `RunHeadline.tsx`); a grip on the end of every clock
   that *is* one setting, on its brace and on the lane band that is the clock
   (`timeline/tune.ts`, `tune-handles.ts`, `TuneDrag.tsx`); and a `+` beside the
-  playhead on each lane of the Split timeline, which opens the grouped event
+  playhead on each lane of the full timeline drawing (`TimelineBody`: the
+  popped-out window, the docked narrow layout), which opens the grouped event
   menu there (`timeline/LaneAdd.tsx`). Every edit goes through the inspector's
   named setters in `inspector/edits.ts` -- one undo sentence, one coalesce key,
   one set of refusals -- and is marked as tuned, so the axis holds while the
   run still fits it and the bar that changed is seen changing (`timeline/run.ts`).
   Nothing here adds a claim: the strip's tooltips are the inspector's own notes
   (`inspector/notes.ts`) and the equation's terms are the braces' lengths.
-- **The readout is mode-aware**: Build and Config read the steady state even
-  when the Document carries events; Simulate and Learn read the outcome at `tNow`.
-  Those two lead the strip with a `Drawing at t = <n> s` chip and file the rest
+- **The readout follows the run**: Config reads the steady state even when the
+  Document carries events, and so does Topology while nothing is injected; with
+  a run (`runShown()`) Topology, the Detailed timeline and Learn read the
+  outcome at `tNow` -- Topology's floating dock as the one terse line the
+  Detailed timeline's bar carries (`break/RunBar.tsx`). The card strip leads with a `Drawing at t = <n> s` chip and file the rest
   behind a `Run` label, because there are **two clocks on the strip** — the
   moment the drawing is frozen at, and the run as a whole — and unlabelled they
   read as one reading taken at one instant.
@@ -1226,14 +1247,14 @@ modes changes what is around it.
   sentence set and a visually hidden structural table; one card per site is the
   tab stop (a roving `tabindex`, spelled lower case — the camel-cased JSX
   spelling lands on an SVG `<g>` as an attribute SVG has never heard of, and the
-  card silently takes no focus). `E` opens the action bar in Simulate, `Delete`
-  removes in Build with the same refusals the inspector's button gives. The
+  card silently takes no focus). `E` opens the grouped events and `A` Build's action table in
+  Topology, `Delete` removes there with the same refusals the inspector's button gives. The
   drawer and the sheet are modal dialogs and keep a dialog's promises: `Escape`
   closes, opening moves focus in, closing hands it back.
 
 ### Tests
 
-`npm --prefix app run test` is **2905 tests across 112 files**. What is where:
+`npm --prefix app run test` is **2893 tests across 112 files**. What is where:
 
 - `app/src/engine/__tests__/` — the engine's own unit tests (purity, citations,
   claims, schema, migrate, URL codec, parse, resolve, graph, axis, classic).
@@ -1263,7 +1284,8 @@ modes changes what is around it.
   goldens for all twelve presets, keyboard and aria, the timeline model, the
   panels, the inspector, the shell, history, the share-link round trip, Simulate's
   Configuration | Application timeline switch (`timeline-switch.test.ts`), tuning in
-  Simulate (`tune.test.ts`, `tune-drag.test.ts`, `lane-add.test.ts`), the
+  the Detailed timeline (`tune.test.ts`, `tune-drag.test.ts`, `lane-add.test.ts`,
+  `detailed-timeline.test.ts`), Topology with a run (`topology-mode.test.ts`), the
   legacy-URL upgrade.
 - `app/test/content/` — every lesson and reference table renders.
 - `site/smoke.mjs` — the built bundle in a browser (see Publishing).
