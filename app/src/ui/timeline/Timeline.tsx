@@ -10,6 +10,7 @@
 import { useRef, useState } from 'preact/hooks';
 import { GLYPH } from '../common/eventIcons';
 import { GlyphDefs } from '../common/glyphs';
+import { Fragment } from 'preact';
 import type { JSX } from 'preact';
 import type { TimedEvent, TopologyDoc, Trace } from '@/engine';
 import { approxW, elideTo, fmt, gridSpans } from './build';
@@ -21,6 +22,8 @@ import { equationOf } from './equation';
 import { RunHeadline } from './RunHeadline';
 import type { Tune } from './tune';
 import { EventDrag } from './EventDrag';
+import { TuneDrag } from './TuneDrag';
+import { useTuneHandles } from './tune-handles';
 import { LaneAddButtons, LaneAddMenu, useLaneAdd } from './LaneAdd';
 import { Playhead } from './Playhead';
 import { usePlayback } from './playback';
@@ -366,6 +369,8 @@ export function TimelineBody(props: TimelineProps & { run: RunTimeline }) {
   };
   const [tip, setTip] = useState<TooltipState | null>(null);
   const laneAdd = useLaneAdd({ enabled: laneEvents && !pinnedScale, model, doc, tNow });
+  /* The ends of the clocks that are one setting each: grips where the reader may tune. */
+  const handles = useTuneHandles(onTune !== undefined && !pinnedScale && !model.empty, doc, props.trace, model);
 
   /* ▶ moves the playhead. The loop lives in the UI layer -- the engine has no
      clock (CLAUDE.md) -- and leaves through the same `onSeek` a drag uses, so
@@ -559,6 +564,20 @@ export function TimelineBody(props: TimelineProps & { run: RunTimeline }) {
               <Marker marker={m} layout={TL} spans={gridSpans(model, model.laneTop - 4)} />
             </EventDrag>
           ))}
+          {onTune ? handles.map((hd) => {
+            const lane = hd.laneKey === null ? undefined : model.lanes.find((l) => l.key === hd.laneKey);
+            const start = () => { setTip(null); if (playing) onPlayToggle?.(); };
+            return (
+              <Fragment key={hd.key}>
+                <TuneDrag key={`${hd.key}:brace`} handle={hd} where="brace" x={hd.x} y={hd.braceY - 6} h={14}
+                  model={model} onTune={onTune} onStart={start} />
+                {lane === undefined ? null : (
+                  <TuneDrag key={`${hd.key}:lane`} handle={hd} where="lane" x={hd.x} y={lane.y + TL.barDy}
+                    h={lane.height - TL.barPad} model={model} onTune={onTune} onStart={start} />
+                )}
+              </Fragment>
+            );
+          }) : null}
           <LaneAddButtons add={laneAdd} />
         </svg>
         <Tooltip tip={tip} />

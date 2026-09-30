@@ -20,6 +20,7 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
+import { Fragment } from 'preact';
 import type { JSX } from 'preact';
 import type { CanvasTool } from '../canvas/HoverTools';
 import { frame, geometry, redoGraph, topology, trace } from '@/state/derived';
@@ -39,6 +40,8 @@ import { RunHeadline } from '../timeline/RunHeadline';
 import { applyTune } from '../timeline/tune';
 import { Playhead } from '../timeline/Playhead';
 import { EventDrag } from '../timeline/EventDrag';
+import { TuneDrag } from '../timeline/TuneDrag';
+import { useTuneHandles } from '../timeline/tune-handles';
 import { Transport } from '../timeline/Transport';
 import { usePlayback } from '../timeline/playback';
 import { useRunTimeline } from '../timeline/run';
@@ -781,6 +784,8 @@ function Lanes({ run, fr }: { run: RunTimeline | null; fr: Frame }) {
   /* The same gate as the event drag's on the shell (shell-props.ts): tuning is Simulate's, on a screen that edits. */
   const tunable = mode.value === 'break' && canEdit(viewport.value);
   const steadyX = scale.x(scale.clampT(t));
+  /* The ends of the clocks that are one setting each: a grip on the brace and, where a lane's band is that clock, on the lane. */
+  const handles = useTuneHandles(tunable && tr !== null && model !== null, doc, tr as Trace, model as TimelineModel);
 
   return (
     <section class="ln-view float-card" aria-label="Simulate: topology and timeline" ref={section}>
@@ -966,6 +971,22 @@ function Lanes({ run, fr }: { run: RunTimeline | null; fr: Frame }) {
                         <Marker marker={m} layout={shiftedModel.layout} />
                       </EventDrag>
                     ))}
+                    {handles.map((hd) => {
+                      const row = hd.laneKey === null ? undefined : rows.find((r) => r.laneKey === hd.laneKey);
+                      const own = row === undefined ? undefined : shiftedModel.lanes.find((l) => l.key === hd.laneKey);
+                      const start = () => { setTip(null); if (isPlaying) playing.value = false; };
+                      return (
+                        <Fragment key={hd.key}>
+                          <TuneDrag key={`${hd.key}:brace`} handle={hd} where="brace" x={hd.x} y={hd.braceY + braceDy - 6} h={14}
+                            model={shiftedModel} onTune={applyTune} onStart={start} />
+                          {row === undefined || own === undefined ? null : (
+                            <TuneDrag key={`${hd.key}:lane`} handle={hd} where="lane" x={hd.x}
+                              y={row.y + shiftedModel.layout.barDy} h={own.height - shiftedModel.layout.barPad}
+                              model={shiftedModel} onTune={applyTune} onStart={start} />
+                          )}
+                        </Fragment>
+                      );
+                    })}
                   </>
                 ) : (
                   /* No run: the playhead is a rule at the clock's reading, seeked by pressing the plot. */
