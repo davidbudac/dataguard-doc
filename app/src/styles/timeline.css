@@ -42,21 +42,34 @@
 
 .tl-svg text { font-family: var(--sans); fill: var(--ik2); }
 .tl-svg .t-mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
-.tl-svg .t-lane { fill: var(--ik); font-size: 12.5px; font-weight: 600; }
+/* A lane's name is an Oracle identifier, so it stays mono, but it labels the
+   row rather than headlining it: secondary ink at a medium weight, so the bars
+   and their state carry the eye. */
+.tl-svg .t-lane { fill: var(--ik2); font-size: 12px; font-weight: 500; }
 .tl-svg .t-sub { fill: var(--ik3); font-size: 10px; }
 .tl-svg .t-bar { font-size: 11px; }
 .tl-svg .t-tick { fill: var(--ik3); font-size: 10.5px; }
-.tl-svg .t-mark { font-size: 11.5px; font-weight: 560; }
+.tl-svg .t-mark {
+  font-size: 11.5px; font-weight: 560;
+  /* A gridline passes through the gap a milestone sentence stands in. */
+  paint-order: stroke; stroke: var(--sf); stroke-width: 4px; stroke-linejoin: round;
+}
 .tl-svg .t-brace-n { font-size: 11.5px; fill: var(--ik); }
 .tl-svg .t-brace-v { font-size: 11px; fill: var(--ik2); }
 .tl-svg .t-top { font-size: 12px; font-weight: 560; fill: var(--ik); }
 
 .tl-svg .ax { stroke: var(--ln2); stroke-width: 1; }
-.tl-svg .gridline { stroke: var(--gd); stroke-width: 1; }
+/* The ticks read through the gaps and margins between the bars, so a position
+   on the axis can be followed up to the bar it belongs to. Quiet on purpose:
+   the lane grounds carry a stroke of the same weight. */
+.tl-svg .gridline { stroke: var(--ln); stroke-width: 1; stroke-dasharray: 1 3; }
 .tl-svg .prezone { fill: var(--sf2); }
-.tl-svg .lane-bg { fill: var(--sf2); stroke: var(--ln); stroke-width: 1; }
+.tl-svg .lane-bg { fill: var(--sf2); stroke: none; }
 
-.tl-svg .bar { stroke-width: 1.25; rx: 2; }
+/* A bar is its fill and its words; the outline only has to say where it ends.
+   The stroke keeps the state's own hue, at a lower opacity, so a run of
+   adjacent bars does not draw a heavy line at every seam. */
+.tl-svg .bar { stroke-width: 1; stroke-opacity: .6; rx: 2; }
 .tl-svg .b-tl { fill: var(--tlf); stroke: var(--tl); }
 .tl-svg .b-bl { fill: var(--blf); stroke: var(--bl); }
 .tl-svg .b-am { fill: var(--amf); stroke: var(--am); }
@@ -66,7 +79,7 @@
 /* An open band has no documented end: it fades out rather than squaring off. */
 .tl-svg .bar.is-open { stroke-dasharray: 4 3; }
 .tl-svg .hatch-bg { fill: var(--rdf); }
-.tl-svg .hatch-ln { stroke: var(--rd); stroke-width: 2; opacity: .5; }
+.tl-svg .hatch-ln { stroke: var(--rd); stroke-width: 1.5; opacity: .38; }
 
 .tl-svg .f-tl { fill: var(--tl); }
 .tl-svg .f-bl { fill: var(--bl); }
@@ -118,9 +131,13 @@
 .tl-svg .tl-lane.is-selected .lane-bg { stroke: var(--ik3); stroke-width: 1.5; }
 .tl-svg .tl-lane.is-selected .t-lane { fill: var(--vi); }
 .tl-svg .tl-seg { cursor: default; }
-/* The application's lanes: a hairline and one line of text over the three. */
-.tl-svg .tl-app-rule { stroke: var(--ln2); stroke-width: 1; stroke-dasharray: 2 3; }
-.tl-svg .t-app-note { font-weight: 400; fill: var(--ik2); }
+/* The application's lanes: a hairline and one line of text over the three. The
+   line is a divider between two sections of the drawing, so it is a plain
+   hairline across the plot, and the words over it are a heading's, not a
+   headline's: secondary ink, the title semibold and the reading regular. */
+.tl-svg .tl-app-rule { stroke: var(--ln); stroke-width: 1; }
+.tl-svg .t-app-title { font-size: 12px; font-weight: 600; fill: var(--ik2); }
+.tl-svg .t-app-note { font-weight: 400; fill: var(--ik3); }
 .tl-svg .t-app-note.f-am { fill: var(--am-ink); }
 .tl-svg .t-app-note.f-rd { fill: var(--rd-ink); }
 /* A press anywhere on the plot seeks there (Timeline.tsx). */

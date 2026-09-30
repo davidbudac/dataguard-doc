@@ -11,7 +11,7 @@ import { useRef, useState } from 'preact/hooks';
 import { GLYPH } from '../common/eventIcons';
 import type { JSX } from 'preact';
 import type { TimedEvent, TopologyDoc, Trace } from '@/engine';
-import { fmt } from './build';
+import { fmt, gridSpans } from './build';
 import type { Density, Layout, TimelineLane, TimelineMarker, TimelineModel } from './build';
 import { useRunTimeline } from './run';
 import type { RunTimeline } from './run';
@@ -84,28 +84,51 @@ export function Defs() {
   );
 }
 
-export function Lane({ lane, model, selected, onSelect }: {
+/**
+ * One lane. `both` (the default) draws the ground, the bars and the name in
+ * one group. The timeline draws it in two passes instead: `bg` puts every
+ * lane's ground down before the gridlines, so the ticks read through the gaps
+ * and margins of the lanes rather than being painted over by them, and `fg`
+ * draws the bars and the name above them. Each pass carries the lane's click,
+ * so a press on either selects it.
+ */
+export function Lane({ lane, model, selected, onSelect, layer = 'both' }: {
   lane: TimelineLane;
   model: TimelineModel;
   selected: boolean;
   onSelect?: ((id: string | null) => void) | undefined;
+  layer?: 'bg' | 'fg' | 'both';
 }) {
   const { scale } = model;
   const TL = model.layout;
+  const bgRect = (
+    <rect
+      class="lane-bg"
+      x={scale.plotL}
+      y={lane.y}
+      width={Math.max(0, scale.plotW)}
+      height={lane.height}
+      rx={2}
+    />
+  );
+  if (layer === 'bg') {
+    return (
+      <g
+        class={selected ? 'tl-lane is-selected' : 'tl-lane'}
+        data-lane={lane.id}
+        onClick={onSelect ? () => onSelect(selected ? null : lane.id) : undefined}
+      >
+        {bgRect}
+      </g>
+    );
+  }
   return (
     <g
       class={selected ? 'tl-lane is-selected' : 'tl-lane'}
       data-lane={lane.id}
       onClick={onSelect ? () => onSelect(selected ? null : lane.id) : undefined}
     >
-      <rect
-        class="lane-bg"
-        x={scale.plotL}
-        y={lane.y}
-        width={Math.max(0, scale.plotW)}
-        height={lane.height}
-        rx={2}
-      />
+      {layer === 'both' ? bgRect : null}
       <text
         class="t-lane t-mono"
         x={scale.plotL - TL.gutterPad - lane.indent}
@@ -137,7 +160,7 @@ export function Lane({ lane, model, selected, onSelect }: {
             {sg.label === null ? null : (
               <text
                 class={`t-bar ${sg.ink}`}
-                x={sg.x + sg.w / 2}
+                x={sg.lx}
                 y={lane.y + TL.barTextDy}
                 text-anchor="middle"
               >
@@ -151,13 +174,23 @@ export function Lane({ lane, model, selected, onSelect }: {
   );
 }
 
-export function Marker({ marker, layout: TL }: { marker: TimelineMarker; layout: Layout }) {
+export function Marker({ marker, layout: TL, spans }: {
+  marker: TimelineMarker;
+  layout: Layout;
+  /** Where a line that crosses every lane may be drawn (`gridSpans`); one run if absent. */
+  spans?: [number, number][];
+}) {
   const m = marker;
   const cy = (m.y0 + m.y1) / 2;
   return (
     <g class={`tl-marker tl-marker-${m.kind}`} data-tip={m.label}>
       {m.glyph === 'partition' ? (
-        <line class="partition" x1={m.x} y1={m.y0} x2={m.x} y2={m.y1} />
+        <g>
+          {(spans ?? [[m.y0, m.y1]]).map(([a, b]) => [Math.max(a, m.y0), Math.min(b, m.y1)] as const)
+            .filter(([a, b]) => b > a).map(([a, b]) => (
+              <line key={a} class="partition" x1={m.x} y1={a} x2={m.x} y2={b} />
+            ))}
+        </g>
       ) : null}
       {m.glyph === 'cross' ? (
         <g class={m.stroke}>
@@ -168,7 +201,7 @@ export function Marker({ marker, layout: TL }: { marker: TimelineMarker; layout:
       {m.glyph === 'diamond' ? (
         <g>
           <line class={m.stroke} x1={m.x} y1={m.y0} x2={m.x} y2={m.y1} stroke-width="2" />
-          <path class={m.tone} d={`M${m.x},${m.y0 + TL.laneH / 2 + 8} l6,6 l-6,6 l-6,-6 z`} />
+          <path class={m.tone} d={`M${m.x},${m.y0 + TL.laneH / 2 + (TL.inlineNum === 1 ? 4 : 8)} l6,6 l-6,6 l-6,-6 z`} />
         </g>
       ) : null}
       {m.glyph === 'dot' ? (
@@ -180,7 +213,7 @@ export function Marker({ marker, layout: TL }: { marker: TimelineMarker; layout:
       {m.glyph === 'line' ? (
         <line class={m.stroke} x1={m.x} y1={m.y0} x2={m.x} y2={m.y1} stroke-width="2" />
       ) : null}
-      {m.index === null || m.icon === null ? null : (
+      {m.index === null || m.icon === null || TL.chip === 0 ? null : (
         /* What the event did, as the icon the canvas offered for it: one
            chip over the number, joined to it by a short stem. */
         <g class="tl-marker-ico" aria-hidden="true">
@@ -368,18 +401,29 @@ export function TimelineBody(props: TimelineProps & { run: RunTimeline }) {
             />
           ) : null}
           {model.preZone.label ? (
-            <text class="t-tick" x={model.scale.plotL + 6} y={TL.markY}>
+            <text class="t-tick" x={model.scale.plotL + 6} y={TL.preY}>
               {model.preZone.label}
             </text>
           ) : null}
 
           {/* grid and axis */}
-          {model.ticks.map((tk) => (
-            <line key={`g${tk.t}`} class="gridline" x1={tk.x} y1={model.laneTop} x2={tk.x} y2={model.axisY} />
+          {model.lanes.map((lane) => (
+            <Lane
+              key={`bg-${lane.key}`}
+              layer="bg"
+              lane={lane}
+              model={model}
+              selected={selection !== null && selection === lane.id}
+              onSelect={selectLane}
+            />
           ))}
+          {model.ticks.flatMap((tk) => gridSpans(model).map(([y0, y1]) => (
+            <line key={`g${tk.t}-${y0}`} class="gridline" x1={tk.x} y1={y0} x2={tk.x} y2={y1} />
+          )))}
           {model.lanes.map((lane) => (
             <Lane
               key={lane.key}
+              layer="fg"
               lane={lane}
               model={model}
               selected={selection !== null && selection === lane.id}
@@ -391,10 +435,10 @@ export function TimelineBody(props: TimelineProps & { run: RunTimeline }) {
                reading they add up to -- this page's model, said in its tip. */
             <g class="tl-app-head" key={sec.id} data-tip={sec.basis}>
               <line
-                class="tl-app-rule" x1={model.scale.plotL} y1={sec.y - 15}
-                x2={model.scale.plotR} y2={sec.y - 15}
+                class="tl-app-rule" x1={model.scale.plotL} y1={sec.y - TL.appRuleDy}
+                x2={model.scale.plotR} y2={sec.y - TL.appRuleDy}
               />
-              <text class="t-top" x={model.scale.plotL} y={sec.y}>
+              <text class="t-top t-app-title" x={model.scale.plotL} y={sec.y}>
                 {sec.title}
                 <tspan
                   class={sec.tone === 'ink' ? 't-app-note' : `t-app-note ${sec.tone}`}
@@ -422,7 +466,7 @@ export function TimelineBody(props: TimelineProps & { run: RunTimeline }) {
           ) : null}
 
           {model.markers.filter((m) => !onMoveEvent || pinnedScale || m.kind !== 'event')
-            .map((m) => <Marker key={m.key} marker={m} layout={TL} />)}
+            .map((m) => <Marker key={m.key} marker={m} layout={TL} spans={gridSpans(model, model.laneTop - 4)} />)}
           {model.braces.map((b) => <Brace key={b.key} brace={b} />)}
 
           {pinnedScale ? null : (
@@ -430,6 +474,7 @@ export function TimelineBody(props: TimelineProps & { run: RunTimeline }) {
               model={model}
               tNow={tNow}
               playing={playing}
+              clearHeads
               {...(onSeek ? { onSeek } : {})}
               {...(onPlayToggle ? { onTogglePlay: onPlayToggle } : {})}
             />
@@ -438,7 +483,7 @@ export function TimelineBody(props: TimelineProps & { run: RunTimeline }) {
           {!onMoveEvent || pinnedScale ? null : model.markers.filter((m) => m.kind === 'event').map((m) => (
             <EventDrag key={m.key} marker={m} model={model} doc={doc} onMove={moveEvent}
               onStart={() => { setTip(null); if (playing) onPlayToggle?.(); }}>
-              <Marker marker={m} layout={TL} />
+              <Marker marker={m} layout={TL} spans={gridSpans(model, model.laneTop - 4)} />
             </EventDrag>
           ))}
         </svg>

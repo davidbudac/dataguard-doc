@@ -92,7 +92,7 @@ describe('the pills', () => {
 
 describe('the band at a tick', () => {
   const seg = (t0: number, t1: number, label: string): TimelineSegment => ({
-    key: label, t0, t1, x: 0, w: 0, state: 'up', phase: 'b-sl', ink: 'f-sl', labels: [label], label, title: label, open: false,
+    key: label, t0, t1, x: 0, w: 0, state: 'up', phase: 'b-sl', ink: 'f-sl', labels: [label], label, lx: 0, title: label, open: false,
   });
   const bands = [seg(-10, 0, 'before'), seg(0, 20, 'down'), seg(20, 70, 'open')];
 

@@ -10,7 +10,7 @@
 
 import type { JSX } from 'preact';
 import { useRef } from 'preact/hooks';
-import { approxW, fmt, spoken } from './build';
+import { approxW, fmt, gridSpans, spoken } from './build';
 import type { TimelineModel } from './build';
 
 export interface PlayheadProps {
@@ -19,6 +19,12 @@ export interface PlayheadProps {
   playing?: boolean;
   onSeek?: (t: number) => void;
   onTogglePlay?: () => void;
+  /**
+   * Break the line where an application's heading stands, so it does not run
+   * through the words. Only the timeline's own drawing, whose model holds the
+   * headings where they are drawn; the Lanes view moves them.
+   */
+  clearHeads?: boolean;
 }
 
 /** The next state change strictly after `t`, or null at the end. */
@@ -59,16 +65,25 @@ export function markerBoxes(model: TimelineModel): Box[] {
       out.push({ x0, x1: x0 + w, y0: m.labelY - 11, y1: m.labelY + 3 });
     }
     if (m.index !== null) {
-      out.push({ x0: m.nx - 9, x1: m.nx + 9, y0: m.labelY - layout.iconDy - 9, y1: m.labelY - layout.iconDy + 9 });
+      if (layout.chip === 1) {
+        out.push({ x0: m.nx - 9, x1: m.nx + 9, y0: m.labelY - layout.iconDy - 9, y1: m.labelY - layout.iconDy + 9 });
+      }
       out.push({ x0: m.nx - 7, x1: m.nx + 7, y0: m.labelY - layout.badgeDy - 7, y1: m.labelY - layout.badgeDy + 7 });
     }
+  }
+  /* "Steady state" is set on the badge's row in a packed timeline. */
+  if (model.preZone.label !== null) {
+    out.push({
+      x0: model.preZone.x + 6, x1: model.preZone.x + 6 + approxW(model.preZone.label, 10.5),
+      y0: layout.preY - 11, y1: layout.preY + 3,
+    });
   }
   return out;
 }
 
 /** The badge's left edge relative to the line: `BADGE_GAP` to its right, unless something is there. */
 export function badgePlacement(model: TimelineModel, x: number): number {
-  const y0 = model.laneTop - 12 - 12;
+  const y0 = model.laneTop - model.layout.playRise - 12;
   const boxes = markerBoxes(model);
   const free = (dx: number): boolean => {
     const x0 = x + dx;
@@ -87,11 +102,11 @@ export function badgePlacement(model: TimelineModel, x: number): number {
   return BADGE_GAP;
 }
 
-export function Playhead({ model, tNow, playing = false, onSeek, onTogglePlay }: PlayheadProps) {
+export function Playhead({ model, tNow, playing = false, onSeek, onTogglePlay, clearHeads = false }: PlayheadProps) {
   const { scale } = model;
   const t = scale.clampT(tNow);
   const x = Math.round(scale.x(t) * 10) / 10;
-  const top = model.laneTop - 12;
+  const top = model.laneTop - model.layout.playRise;
   const bottom = model.axisY;
   const badgeDx = badgePlacement(model, x);
 
@@ -175,7 +190,9 @@ export function Playhead({ model, tNow, playing = false, onSeek, onTogglePlay }:
       >
         <title>Drag the time marker to scrub. Arrow keys move by 1 s; Shift by 0.1 s.</title>
         <rect class="tl-playhead-hit" x={-8} y={top - 12} width={16} height={Math.max(0, bottom - top + 12)} />
-        <line class="tl-playhead-ln" x1={0} y1={top} x2={0} y2={bottom} />
+        {(clearHeads ? gridSpans(model, top) : [[top, bottom] as [number, number]]).map(([y0, y1]) => (
+          <line key={y0} class="tl-playhead-ln" x1={0} y1={y0} x2={0} y2={y1} />
+        ))}
         <path class="tl-playhead-grip" d="M-6,-11 L6,-11 L6,-2 L0,4 L-6,-2 z" transform={`translate(0,${top})`} />
         <rect class="tl-playhead-badge" x={badgeDx} y={top - 12} width={BADGE_W} height={BADGE_H} rx={2} />
         <text class="tl-playhead-t t-mono" x={badgeDx + 4} y={top} >{`t = ${fmt(t)}`}</text>
@@ -186,4 +203,4 @@ export function Playhead({ model, tNow, playing = false, onSeek, onTogglePlay }:
 
 /** The lane-block height a playhead spans, exported for the shell's budget. */
 export const playheadSpan = (model: TimelineModel): number =>
-  model.axisY - (model.laneTop - 12) + model.layout.laneGap;
+  model.axisY - (model.laneTop - model.layout.playRise) + model.layout.laneGap;
