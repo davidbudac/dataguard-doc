@@ -19,7 +19,7 @@ import { classic } from '@/presets';
 import { classicDoc, makeDoc } from '@/state/doc';
 import { resetHistory, undo, undoLabel, undoStack } from '@/state/history';
 import { topology } from '@/state/derived';
-import { breakLayout, breakTimeline, appLanesShown, mode, railCollapsed, selection, timelineFull, timelineH, tNow, tuneOn, viewport } from '@/state/view';
+import { breakTimeline, appLanesShown, mode, railCollapsed, selection, tNow, tuneOn, viewport } from '@/state/view';
 import { App } from '@/ui/App';
 import { applyTemplate, templates } from '@/ui/break/events';
 import { resetSections } from '@/ui/inspector/sections';
@@ -82,11 +82,8 @@ beforeEach(() => {
   resetSections();
   viewport.value = 'wide';
   mode.value = 'break';
-  breakLayout.value = 'split';
   breakTimeline.value = 'config';
   railCollapsed.value = false;
-  timelineH.value = null;
-  timelineFull.value = false;
   selection.value = [];
   tuneOn.value = true;
   tunedScenario.value = null;
@@ -187,9 +184,12 @@ describe('tuneHandles', () => {
   });
 });
 
-/* ---------------- in Simulate, Split ---------------- */
+/* ---------------- in the full timeline: docked below 1024 px, or popped out ---------------- */
 
-describe('the grips in Split', () => {
+describe('the grips in the full timeline', () => {
+  /* The docked layout draws the full timeline (`TimelineBody`) with its grips. */
+  beforeEach(() => { viewport.value = 'compact'; });
+
   it('are sliders named for the setting, on the brace and on the lane, with the bound and the value', async () => {
     load();
     const r = mount();
@@ -407,7 +407,7 @@ describe('no grips', () => {
     expect(grips(draw({ onTune: onTune(), pinnedScale: true }))).toHaveLength(0);
   });
 
-  it('are not drawn in a read-only Simulate', async () => {
+  it('are not drawn in a read-only viewer', async () => {
     crash();
     viewport.value = 'narrow';
     const r = mount();
@@ -424,11 +424,10 @@ describe('no grips', () => {
   });
 });
 
-/* ---------------- in Lanes ---------------- */
+/* ---------------- in the Detailed timeline's lanes ---------------- */
 
-describe('the grips in Lanes', () => {
+describe('the grips in the lanes', () => {
   it('are on the braces and on the standby\'s row, and drag the same setting', async () => {
-    breakLayout.value = 'lanes';
     load();
     const r = mount();
     await tick();
@@ -451,7 +450,6 @@ describe('the grips in Lanes', () => {
   });
 
   it('are not there in a read-only view', async () => {
-    breakLayout.value = 'lanes';
     load();
     viewport.value = 'narrow';
     const r = mount();

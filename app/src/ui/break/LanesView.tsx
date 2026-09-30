@@ -49,18 +49,19 @@ import type { RunTimeline } from '../timeline/run';
 import { Tooltip, tipFromEvent } from '../timeline/Tooltip';
 import type { TooltipState } from '../timeline/Tooltip';
 import { useHostWindow } from '../common/dom';
+import { popped } from '../common/popout';
 import { useWidth } from '../common/use-width';
 import { hoverTools, setEventTime, snapT } from './events';
 import { buildLinks, cardFrameFor, cardRoleFor, chipsFor, NEUTRAL_FRAME, siteIsDown } from '../canvas/routing';
 import type { CanvasLink } from '../canvas/routing';
 import type { NodeBox } from '../canvas/layout';
 import { approxW, elide, fitLabel } from '../canvas/measure';
-import { FindingsMenu, KeyMenu, TerseReadout, TIGHT_W } from './SplitBar';
+import { FindingsMenu, KeyMenu, TerseReadout, TIGHT_W } from './RunBar';
 import { ReadoutFold, SummaryBand } from './SummaryBand';
 import { EventStrip, EV, MoreMenu, stripWidth } from './lanes-events';
 import type { MenuTarget } from './lanes-events';
 import { AppTimeline, appTimelineOn, TimelineSwitch } from './TimelineView';
-import { TuneStrip, TuneToggle } from './TuneStrip';
+import { SETTINGS_COLUMN_MIN_W, TuneStrip, TuneToggle, tuneLayoutFor } from './TuneStrip';
 import { assignLanes, cardSub, hostBands, planPills, segmentAt, siteOrder } from './lanes-layout';
 import type { Placed, PillPlan } from './lanes-layout';
 
@@ -422,7 +423,7 @@ function LanesMembers() {
  */
 function LanesApp() {
   return (
-    <section class="ln-view float-card" aria-label="Simulate: application timeline">
+    <section class="ln-view float-card" aria-label="Detailed timeline: application">
       <LanesBar run={null} />
       <div class="ln-body ln-app">
         <AppTimeline />
@@ -554,6 +555,11 @@ function Lanes({ run, fr }: { run: RunTimeline | null; fr: Frame }) {
   const [menuKey, setMenuKey] = useState<string | null>(null);
   const section = useRef<HTMLElement | null>(null);
   const body = useRef<HTMLElement | null>(null);
+  /* The settings are a column beside the lanes when the section has the room, else a row above
+     them. Decided by the section's width, never the body's: the column takes width from the body,
+     so a decision made on the body would flip itself. Until it is measured the column is assumed. */
+  const [measureSection, sectionW] = useWidth(SETTINGS_COLUMN_MIN_W);
+  const settings = tuneLayoutFor(sectionW);
 
   const plotR = model?.scale.plotR ?? width - TL_FULL.padR;
   const scale = useMemo(() => model?.scale ?? steadyScale(plotL, plotR), [model, plotL, plotR]);
@@ -662,7 +668,9 @@ function Lanes({ run, fr }: { run: RunTimeline | null; fr: Frame }) {
   usePlayback({
     view, playing: isPlaying, speed: speed.value, tNow: t,
     t0: model?.scale.t0 ?? 0, t1: model?.scale.t1 ?? 0,
-    enabled: model !== null && !model.empty,
+    /* Not while the timeline is popped out into a window of its own: that
+       window drives the playhead (one loop, or the end would toggle twice). */
+    enabled: model !== null && !model.empty && popped.value.timeline === undefined,
     onSeek: (v) => { tNow.value = v; },
     onEnd: () => { playing.value = !playing.value; },
   });
@@ -781,18 +789,20 @@ function Lanes({ run, fr }: { run: RunTimeline | null; fr: Frame }) {
     return r.laneKey === null ? null : model?.lanes.find((l) => l.key === r.laneKey) ?? null;
   };
   const caption = model?.caption;
-  /* The same gate as the event drag's on the shell (shell-props.ts): tuning is Simulate's, on a screen that edits. */
+  /* The same gate as the event drag's on the shell (shell-props.ts): tuning is Topology's and the Detailed timeline's, on a screen that edits. */
   const tunable = mode.value === 'break' && canEdit(viewport.value);
   const steadyX = scale.x(scale.clampT(t));
   /* The ends of the clocks that are one setting each: a grip on the brace and, where a lane's band is that clock, on the lane. */
   const handles = useTuneHandles(tunable && tr !== null && model !== null, doc, tr as Trace, model as TimelineModel);
 
   return (
-    <section class="ln-view float-card" aria-label="Simulate: topology and timeline" ref={section}>
+    <section class="ln-view float-card" aria-label="Detailed timeline: members and their timelines" ref={(el) => { section.current = el; measureSection(el); }}>
       <LanesBar run={run} />
       <SummaryBand />
-      <TuneStrip />
+      {settings === 'row' ? <TuneStrip /> : null}
 
+      <div class="ln-main">
+        {settings === 'column' ? <TuneStrip layout="column" /> : null}
       <div
         class="ln-body"
         ref={(el) => { body.current = el; fr.measure(el); }}
@@ -1002,6 +1012,7 @@ function Lanes({ run, fr }: { run: RunTimeline | null; fr: Frame }) {
             </div>
           </>
         )}
+      </div>
       </div>
       {menu === null ? null : (
         <MoreMenu key={menuKey ?? ''} target={menu} doc={doc} t={t} view={section.current} onClose={closeMenu} />

@@ -1,6 +1,6 @@
-/* Break's Lanes layout: the cards and the timeline's lanes on the same rows.
+/* The Detailed timeline's lanes: the cards and the timeline's lanes on the same rows.
    Everything is scoped under `.bl-lanes`, the class App.tsx puts on the shell
-   for that layout. Colour from tokens only. */
+   for that mode. Colour from tokens only. */
 
 .bl-lanes .ln-view{display:none}
 @media screen{
@@ -8,21 +8,23 @@
     top:calc(var(--bar-bottom,80px) + 10px);left:var(--float-m);right:var(--rail-space);
     bottom:var(--float-m);z-index:10;min-height:0;overflow:hidden}
 }
-/* The bar is Split's (`.sb-*`, split.css), on top instead of underneath: the
-   dropdowns open downward, and it is not a drag handle. */
+/* The bar is timeline-bar.css's (`.sb-*`), on top of the lanes: its dropdowns open downward. */
 .bl-lanes .ln-note{font-size:12.5px;color:var(--ik2)}
 .bl-lanes .ln-pad{padding:16px}
 .bl-lanes .ln-body{position:relative;flex:1 1 auto;min-height:0;overflow:auto}
+/* The settings column and the lanes side by side. The body takes what the column leaves, and
+   its width is measured on the body, so the plot follows. */
+.bl-lanes .ln-main{display:flex;flex:1 1 auto;min-height:0;min-width:0}
+.bl-lanes .ln-main>.ln-body{flex:1 1 0;min-width:0}
 .bl-lanes .ln-plot{overflow:visible}
 .bl-lanes .ln-svg{display:block}
 /* What holds still while the rows scroll: the sentence, then the clock. The
-   sentence is split.css's `.tl-headline`, as Split draws it, inset to the cards. */
+   sentence is timeline-bar.css's `.tl-headline`, inset to the cards. */
 .bl-lanes .ln-head{position:sticky;top:0;z-index:5;background:var(--sf)}
 .bl-lanes .ln-head .tl-headline{padding:5px 12px 3px;position:static}
 .bl-lanes .ln-ticks{overflow:hidden}
 @media screen{
-  .bl-lanes .ln-bar.sb-bar{cursor:default;touch-action:auto;user-select:auto;border-top-left-radius:inherit;
-    border-top-right-radius:inherit;background:var(--sf)}
+  .bl-lanes .ln-bar.sb-bar{border-top-left-radius:inherit;border-top-right-radius:inherit;background:var(--sf)}
   .bl-lanes .ln-bar .sb-pop{bottom:auto;top:calc(100% + 8px)}
   .bl-lanes .ln-bar .sb-pop-findings{
     max-height:max(160px,calc(100dvh - var(--bar-bottom,80px) - 120px))}

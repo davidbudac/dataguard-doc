@@ -164,7 +164,7 @@ describe('report page', () => {
     const heads = [...root.querySelectorAll('.rp h2')].map((e) => e.textContent?.replace(/^\d+\s*/, ''));
     expect(heads).toEqual([
       'Summary', 'Diagram', 'Members and observers', 'Validation findings',
-      'Generated configuration', 'Simulate: injected events and outcome', 'Sources',
+      'Generated configuration', 'Run: injected events and outcome', 'Sources',
     ]);
     expect(root.querySelector('.rp .topo-svg')).not.toBeNull();
     /* A model claim wears its label on paper too. */

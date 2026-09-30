@@ -86,7 +86,7 @@ select.btn{padding-right:8px}
    inspector.css: header, group headings, label-left/value-right rows, list
    rows and sub-blocks. Nothing here restyles them. */
 
-/* The scenario buttons, on the rail's shelf and on the palette. */
+/* The scenario buttons, on the rail's shelf (the docked Detailed timeline). */
 .tmpl .btn{border:1px solid var(--ln);border-radius:var(--r-ctl)}
 .tmpl .btn:hover:not(:disabled){border-color:var(--ln2)}
 
@@ -249,18 +249,6 @@ button.issue{border-bottom:1px solid var(--ln)}
   .pal-add .why{max-width:22ch;font-size:11px}
   .pal-tidy{border-top:1px solid var(--ln);margin-top:4px;padding-top:4px}
 
-  /* Break's palette: the six scenarios, one click each. */
-  .pal-scn{width:206px;gap:6px;padding:10px}
-  .pal-k{font-size:12px;font-weight:600;color:var(--ik2);padding:0 4px}
-  .pal-scn:not(.is-open){width:auto}
-  .pal-tog{display:flex;align-items:center;gap:6px;background:transparent;border:0;
-    border-radius:6px;cursor:pointer;font-family:inherit;text-align:left;padding:4px}
-  .pal-tog:hover{background:var(--sf2);color:var(--ik)}
-  .pal-scn-list{display:flex;flex-direction:column;gap:4px}
-  .pal-scn .tmpl .btn{border:0;padding:6px 8px;font-size:12.5px;white-space:normal;
-    text-align:left;justify-content:flex-start;width:100%}
-  .pal-scn .tmpl .btn:hover:not(:disabled){background:var(--sf2)}
-
   /* The inspector card on the right. */
   .app.is-float .app-rail{position:absolute;right:var(--float-m);
     top:calc(var(--bar-bottom,80px) + 12px);bottom:var(--float-m);width:var(--w-float-rail);
@@ -268,35 +256,20 @@ button.issue{border-bottom:1px solid var(--ln)}
     box-shadow:var(--sh-card);scrollbar-width:thin}
   .app.is-float .app-rail .insp-hd{border-radius:var(--r-card) var(--r-card) 0 0}
 
-  /* The dock at the bottom: Build's readings, Break's timeline panel. */
+  /* Topology's dock at the bottom: the readings, the scenarios, the small timeline. The
+     popped-out timeline window is the whole window (popout.css). */
   .app.is-float .app-dock{position:absolute;left:var(--float-m);
     right:calc(var(--rail-space));bottom:var(--float-m);z-index:20;display:flex;
     flex-direction:column;border-top:1px solid var(--ln);overflow:auto;max-height:46vh;
     border-radius:var(--r-card)}
-  /* Break's dock is split.css's lower region (the Split layout) and its
-     height is `--tl-h` or that file's default; the popped-out timeline window
-     is the whole window (popout.css). Full screen hides what would float over
-     the region: the zoom pill and the finding card. */
-  .app.is-float.tl-full .zoom-pill,.app.is-float.tl-full .fnd-toast{visibility:hidden}
-
-  /* The keyboard handle on the Split bar's top edge: a short bar says it is
-     there (the bar itself takes the pointer, `.sb-bar .dock-grip`). */
-  .dock-grip{position:absolute;top:0;left:0;right:0;height:9px;z-index:5;cursor:ns-resize;
-    touch-action:none;display:flex;justify-content:center;align-items:flex-start;
-    border-radius:var(--r-card) var(--r-card) 0 0}
-  .dock-grip-bar{width:40px;height:4px;margin-top:3px;border-radius:2px;background:var(--ln2);
-    transition:background .12s ease-out,width .12s ease-out}
-  .dock-grip:hover .dock-grip-bar,.dock-grip.is-dragging .dock-grip-bar{background:var(--ik3);width:56px}
-  .dock-grip:focus{outline:none}
-  .dock-grip:focus-visible .dock-grip-bar{background:var(--vi);width:56px}
-  .dock-grip:focus-visible{box-shadow:inset 0 2px 0 var(--vi)}
-  .tl-full-btn svg{fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;
-    stroke-linejoin:round}
-  .tl-full-btn[aria-pressed="true"]{color:var(--vi)}
   .dock-status{display:flex;align-items:center;gap:12px;padding:0 14px 0 0;min-width:0;
     flex:0 0 auto}
+  /* Topology with a run: the readings as one terse line (App.tsx, FloatDock). */
+  .dock-status.is-run{padding:7px 14px 7px 4px}
+  .dock-status.is-run>.sb-ro{border-left:0;margin-left:0}
   .dock-status>.readout{flex:1 1 auto;min-width:0;min-height:0;border-bottom:0;
     background:transparent}
+
   .app.is-float.m-break .dock-status{border-bottom:1px solid var(--ln);position:sticky;top:0;
     z-index:4;background:var(--sf)}
   .app.is-float .chips{padding:10px 16px;row-gap:8px}
@@ -307,6 +280,19 @@ button.issue{border-bottom:1px solid var(--ln)}
   .app.is-float .chip-v{font-size:13.5px}
   .app.is-float .chip-s{font-size:11px}
   .app.is-float .ro-run-k{font-size:11px;align-self:center}
+
+  /* Topology's scenarios: one wrapping row between the readings and the small
+     timeline, on the same 16 px sides and a hairline above it (the timeline
+     brings its own). Docked, the readout above already has its bottom rule. */
+  .dock-scn{display:flex;flex-wrap:wrap;align-items:center;gap:4px 4px;padding:6px 16px;
+    border-top:1px solid var(--ln)}
+  .app-dock>.readout+.dock-scn{border-top:0}
+  .dock-scn-k{font-size:11.5px;line-height:1.4;color:var(--ik3);margin-right:4px;white-space:nowrap}
+  .dock-scn .btn{padding:2px 7px;font-size:11.5px;white-space:nowrap}
+  .dock-scn .btn[aria-pressed="true"]{color:var(--ik);background:var(--sf3);border-color:var(--ln2);
+    font-weight:600}
+  .dock-scn .ctl-off{gap:6px}
+  .dock-scn .why{font-size:11px;white-space:nowrap;align-self:center}
 
   .fnd-chips{display:flex;align-items:center;gap:6px;flex:0 0 auto;margin-left:auto}
   .fnd-chip{display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border:0;
@@ -388,13 +374,14 @@ button.issue{border-bottom:1px solid var(--ln)}
    is wider than half of what is left -- so the modes sit centred in the gap
    between the two ends instead, the pills and gaps tighten, and the
    configuration name gives up width (it ellipsises) before anything wraps.
-   One row down to 1024. */
+   One row down to 1024. ("Detailed timeline" is the longest mode word; the
+   buttons' side padding is 8 px here so it still fits beside the rest.) */
 @media (max-width:1279px){
   .topbar{gap:10px 10px;padding-left:14px}
   .topbar-brand{flex:0 1 auto}
   .topbar-brand .doc-picker{flex:0 1 auto;min-width:7ch}
   .topbar-modes{margin-inline:auto}
-  .topbar-modes .seg button{padding:12px 10px}
+  .topbar-modes .seg button{padding:12px 8px;white-space:nowrap}
   .topbar-group{flex:0 0 auto}
   .topbar-group>.seg{margin-right:2px}
   .topbar-acts{margin-left:2px;gap:4px}

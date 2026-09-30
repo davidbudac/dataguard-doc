@@ -18,9 +18,9 @@
  * of this strip also avoids confusing configuration findings with run outcomes.
  */
 
-import { readout, topology, trace } from '@/state/derived';
+import { readout, runShown, topology, trace } from '@/state/derived';
 import type { ReadoutChip } from '@/state/derived';
-import { appLanesShown, mode, tNow } from '@/state/view';
+import { appLanesShown, tNow } from '@/state/view';
 /* The same formatter *and the same horizon* the playhead badge and the
    transport's time field use, so the three places that print the playhead can
    never print it differently. Sharing only the formatter was not enough:
@@ -34,13 +34,14 @@ import '@/styles/readout.css';
 
 export function Readout() {
   const chips = readout.value.filter((c) => c.id !== 'findings');
-  /* A run exists when events have been injected, and it is drawn in the two
-     modes that read the outcome at `tNow` (ui.md SS3). Build and Configure
-     read the steady state, which has no playhead to speak of. */
+  /* A run exists when events have been injected (or the healthy run was
+     asked for), and it is read wherever the outcome is read at `tNow`
+     (`runShown`, ui.md SS3): Topology while there is one, the Detailed
+     timeline and Learn. Configure, and Topology with no run, read the steady
+     state, which has no playhead to speak of. */
   const t = trace.value;
-  const run = t !== null && (mode.value === 'break' || mode.value === 'learn');
 
-  if (!run) {
+  if (t === null || !runShown()) {
     return (
       <section class="readout" aria-label="Readout">
         <div class="chips">

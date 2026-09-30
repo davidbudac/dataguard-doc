@@ -22,25 +22,14 @@ export const PANEL_TABS: readonly PanelTab[] = [
 ];
 
 /**
- * Which of Break's two layouts is on screen: `split` puts the drawing above the
- * timeline, `lanes` joins them, each member's card continuing as its lane.
- * A reading preference like `hintsOn` -- it changes how the same run is laid
- * out, never what it says -- so it is remembered under `dg-break-layout`
- * (persist.ts) and is not in the address.
- */
-export type BreakLayout = 'split' | 'lanes';
-
-export const BREAK_LAYOUTS: readonly BreakLayout[] = ['split', 'lanes'];
-
-/**
- * Which timeline Simulate draws: `config` is the configuration's lanes (the
+ * Which timeline the Detailed timeline draws: `config` is the configuration's lanes (the
  * timeline as it always was), `app` is the application's detail view -- the
  * connect string's retry ladder, the sessions and the outage, the drawing the
  * Config panel's Application view also makes. `app` exists only while the
  * drawing has an application card; without one the configuration timeline is
  * what shows whatever this says (`appTimelineOn` in ui/break/TimelineView.tsx).
- * A reading preference, remembered under `dg-break-timeline` (persist.ts) like
- * the layout, and not in the address.
+ * A reading preference, remembered under `dg-break-timeline` (persist.ts), and
+ * not in the address.
  */
 export type BreakTimeline = 'config' | 'app';
 
@@ -53,16 +42,14 @@ export const BREAK_TIMELINE_SUB: Record<BreakTimeline, string> = {
   app: 'Application — what the connect string does while the role moves, and what it costs the application',
 };
 
-export const BREAK_LAYOUT_LABEL: Record<BreakLayout, string> = { split: 'Split', lanes: 'Lanes' };
-
-/** What each layout is for, in one sentence: the `title` of its button. */
-export const BREAK_LAYOUT_SUB: Record<BreakLayout, string> = {
-  split: 'Split — see the diagram and the timeline together, one above the other',
-  lanes: 'Lanes — read each member’s story row by row: its card, then its timeline',
-};
-
+/**
+ * The words on the mode buttons. The ids stay what they were -- `build` is
+ * Topology and `break` is the Detailed timeline, as `configure` kept its id
+ * when it became Config -- so a class, a test or an old link that says
+ * `m-break` or `?mode=build` still means the same mode.
+ */
 export const MODE_LABEL: Record<Mode, string> = {
-  build: 'Build', break: 'Simulate', configure: 'Config', learn: 'Learn',
+  build: 'Topology', break: 'Detailed timeline', configure: 'Config', learn: 'Learn',
 };
 
 /**
@@ -80,10 +67,12 @@ export const MODE_LABEL: Record<Mode, string> = {
  * belongs to `modeGuide`, which knows.
  */
 export const MODE_SUB: Record<Mode, string> = {
-  build: 'Build — draw the configuration: sites, members, redo routes, observers; '
-    + 'click to edit, drag to move, + to add',
-  break: 'Simulate — add failures and follow the simulation timeline; click a card to add an event, '
-    + 'drag a numbered timeline marker to change its time',
+  build: 'Topology — draw the configuration, then break it: sites, members, redo routes, observers; '
+    + 'click to edit, drag to move, + to add; a scenario or the icons on a card add a failure, '
+    + 'and the timeline under the drawing follows it',
+  break: 'Detailed timeline — the run in full: follow a failure through detection, threshold, '
+    + 'role change and open, tune its settings, add an event from a lane, '
+    + 'drag a numbered marker to change its time',
   configure:
     'Config — generated from the drawing: DGMGRL, init parameters and connect strings; '
     + 'hover a line to see which member it configures.',
@@ -136,13 +125,7 @@ export const theme = signal<ThemePref>('auto');
 export const palette = signal<PalettePref>('standard');
 export const edition = signal<Edition>('19c');
 export const inspectorOpen = signal<boolean>(false);
-/**
- * Break's layout (`BreakLayout`). Split to start with, and whenever storage
- * says something else; read once at boot like `hintsOn`, written by
- * `setBreakLayout`.
- */
-export const breakLayout = signal<BreakLayout>('split');
-/** Which timeline Simulate draws (`BreakTimeline`). Configuration to start with; written by `setBreakTimeline`. */
+/** Which timeline the Detailed timeline draws (`BreakTimeline`). Configuration to start with; written by `setBreakTimeline`. */
 export const breakTimeline = signal<BreakTimeline>('config');
 /**
  * Which application the Application timeline draws when the canvas selection
@@ -151,17 +134,17 @@ export const breakTimeline = signal<BreakTimeline>('config');
  */
 export const breakApp = signal<string | null>(null);
 /**
- * Whether Break's run summary -- the band of cards under the bar, in Split and
- * in Lanes -- is unfolded. Folded to start with: the bar's terse line is the
+ * Whether the Detailed timeline's run summary -- the band of cards under the
+ * bar -- is unfolded. Folded to start with: the bar's terse line is the
  * summary a reader already has, and the band is the same readings at reading
  * size. Only meaningful with a run on screen. Remembered under `dg-summary`
  * (persist.ts), read once at boot like `hintsOn`.
  */
 export const summaryOpen = signal<boolean>(false);
 /**
- * Whether Simulate's tune strip -- the row of settings above the Configuration
- * timeline (break/TuneStrip.tsx) -- is drawn. On to start; remembered under
- * `dg-tune` (persist.ts), read once at boot like `hintsOn`. The strip is
+ * Whether the Detailed timeline's settings -- the column beside the lanes, or the
+ * row above them where the window is narrow (break/TuneStrip.tsx) -- are drawn. On to start; remembered under
+ * `dg-tune` (persist.ts), read once at boot like `hintsOn`. They are
  * absent, not hidden, while this is off.
  */
 export const tuneOn = signal<boolean>(true);
@@ -226,22 +209,7 @@ export const hintsOn = signal<boolean>(false);
  */
 export const gridOn = signal<boolean>(true);
 /**
- * The height of Break's lower region in the Split layout -- the bar and the
- * timeline under it -- in CSS pixels, as the reader dragged it by the bar, or
- * null for the default (`timelineDefaultH`). Remembered under `dg-tl-h`
- * (persist.ts), read once at boot like `hintsOn`. It is a wish, not a
- * measurement: the region is clamped to the window it is shown in
- * (`clampTimelineH`), so a height chosen on a tall screen does not push the
- * drawing off a short one.
- */
-export const timelineH = signal<number | null>(null);
-/**
- * Whether Break's timeline fills the window below the top bar. A moment's
- * view, not a preference: not remembered, and Escape leaves it.
- */
-export const timelineFull = signal<boolean>(false);
-/**
- * Whether Break's timeline draws the application's three lanes under the
+ * Whether the timeline draws the application's three lanes under the
  * configuration's. On to start with; a moment's view, not remembered.
  */
 export const appLanesShown = signal<boolean>(true);
@@ -260,59 +228,6 @@ export const appLanesShown = signal<boolean>(true);
  */
 export const healthyRun = signal<boolean>(false);
 
-/** The region never gets shorter than its bar and a few lanes. */
-export const TL_MIN_H = 120;
-/** One arrow-key step on the resize handle; `Shift` takes four. */
-export const TL_STEP = 16;
-/** What the drawing above the timeline keeps, however tall the timeline is dragged. */
-export const CANVAS_MIN_H = 140;
-/**
- * The share of the room under the header the region takes by default when the
- * drawing's height is not known (nothing drawn yet). Where it is known the
- * default is derived from it instead -- see `timelineDefaultH`.
- */
-const SPLIT_SHARE = 0.62;
-
-/**
- * The air the drawing keeps around it in Split: the wrap's padding above (18 px
- * under the header) and below (the card's 14 px margin and 10 px over it,
- * float.css / split.css), and a little more so a card's edge is never on the
- * region's.
- */
-/** The gap between the region's card and the window's edge (`--float-m`). */
-export const DOCK_MARGIN = 14;
-export const DRAWING_AIR = 18 + DOCK_MARGIN + 10 + 8;
-
-/**
- * The tallest the region grows by itself, before the reader has touched it.
- *
- * Given the drawing's height at 1:1 (`drawingH`, the viewBox's), it is what
- * leaves the whole drawing on show at a true 100% between the header and the
- * region: everything under the header that the drawing and its air do not
- * need. That is what the topology wants -- a fixed share was either too little
- * for a tall window's drawing or, in a short one, took the drawing's room and
- * shrank it to a thumbnail. The timeline scrolls in the region for whatever
- * does not fit, and the divider is the reader's. Never under 220 px, never over
- * 720 or three quarters of the room, whatever the drawing asks. Without a
- * drawing it is `SPLIT_SHARE` of the room. Mirrored in split.css as
- * `--tl-fit`'s fallback, and written to `--tl-fit` by App.tsx.
- */
-export function timelineDefaultH(viewH: number, headBottom = 80, drawingH?: number): number {
-  const room = viewH - headBottom;
-  const wanted = drawingH !== undefined && drawingH > 0
-    ? room - drawingH - DRAWING_AIR
-    : room * SPLIT_SHARE;
-  return Math.round(Math.max(220, Math.min(720, room * 0.75, wanted)));
-}
-
-/** The tallest the region may be: the drawing keeps `CANVAS_MIN_H` above it, and the card its margin below. */
-export function timelineMaxH(viewH: number, headBottom: number): number {
-  return Math.max(TL_MIN_H, Math.round(viewH - headBottom - CANVAS_MIN_H - DOCK_MARGIN));
-}
-
-export function clampTimelineH(h: number, viewH: number, headBottom: number): number {
-  return Math.min(timelineMaxH(viewH, headBottom), Math.max(TL_MIN_H, Math.round(h)));
-}
 /**
  * A field the rail should focus on its next render, then forget.
  *
@@ -455,10 +370,11 @@ export function modeGuide(m: Mode, v: Viewport = viewport.value): string {
     case 'build':
       return 'Click to edit · drag to move · + to add; '
         + 'Drag a + button onto a data centre to add, or a card’s ⊕ onto another to connect. '
-        + `Double-click to rename; ⋯ opens actions, and the full properties are in ${railWhere(v)}.`;
+        + `Double-click to rename; ⋯ (or A on a focused card) opens actions, and the full properties are in ${railWhere(v)}. `
+        + 'To break it, use a scenario or the icons on a card; right-click a card, or press E, for every event it offers.';
     case 'break':
-      return 'Click a card to add an event, drag a numbered timeline marker to change its time; '
-        + 'Earlier / Later in Events swaps adjacent times, or pick a scenario.';
+      return 'Follow the run in full: add an event from a lane, drag a numbered marker to change its time; '
+        + 'Earlier / Later in Events swaps adjacent times.';
     case 'configure':
       return 'Generated from the drawing — DGMGRL, init parameters, connect strings. '
         + `Settings are in ${railWhere(v)}.`;

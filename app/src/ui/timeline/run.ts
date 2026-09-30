@@ -1,9 +1,9 @@
 /**
  * The timeline model for one run on screen, and the held axis that goes with it.
  *
- * `Timeline` used to own both. Break's Split layout draws the timeline in one
- * place and its transport, its Fit button and its colour key in the bar above
- * it, and the bar must read the model the drawing was built from -- a second
+ * `Timeline` used to own both. The Detailed timeline's lanes and Topology's small
+ * timeline draw in one place and their transport, Fit button and colour key
+ * elsewhere (a bar), and the bar must read the model the drawing was built from -- a second
  * `buildTimeline` in the bar would disagree the moment the axis was held (the
  * reader dropped an event and the viewport stayed where it was) or the width
  * changed. So the owner of both calls this once and hands the result to each.

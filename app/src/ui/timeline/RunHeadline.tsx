@@ -12,7 +12,7 @@
  * Where nothing can be edited -- Learn, a printed page, the narrow read-only
  * viewer -- there is no `onTune`, and the sentence is drawn exactly as before.
  * The headline is one sticky line whose height is budgeted, so the boxes are
- * sized to sit inside it without changing it (split.css, `.tl-eq`).
+ * sized to sit inside it without changing it (timeline-bar.css, `.tl-eq`).
  */
 
 import { Fragment } from 'preact';

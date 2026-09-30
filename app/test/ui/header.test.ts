@@ -111,7 +111,7 @@ describe('the header', () => {
      mode button says when the pointer rests on it. */
   it('says what each mode is for on the button itself, not on a line of its own', () => {
     const root = mount(TopBar);
-    const build = [...root.querySelectorAll('button')].find((b) => b.textContent === 'Build');
+    const build = [...root.querySelectorAll('button')].find((b) => b.textContent === 'Topology');
     expect(build?.getAttribute('title')).toBe(MODE_SUB.build);
     const configure = [...root.querySelectorAll('button')]
       .find((b) => b.textContent === 'Config');
@@ -128,6 +128,9 @@ describe('the header', () => {
     /* And the second line is gone: no band under the modes. */
     expect(root.querySelector('.topbar-sub')).toBeNull();
     expect(root.textContent).not.toContain('draw the configuration');
+    /* The two re-cut modes wear their new words; the ids are what they were. */
+    const words = [...root.querySelectorAll('.topbar-modes button')].map((b) => b.textContent);
+    expect(words).toEqual(['Topology', 'Detailed timeline', 'Config', 'Learn']);
   });
 
   it('carries a ? that reopens the whole explanation once it has been dismissed', async () => {
@@ -244,8 +247,8 @@ describe('the guidance line', () => {
     await tick();
     expect(root.querySelector('.guide-line')).toBeNull();
     expect(root.querySelector('.guide')).toBeNull();
-    expect(MODE_SUB.break).toContain('click a card to add an event');
-    expect(MODE_SUB.break).toContain('drag a numbered timeline marker');
+    expect(MODE_SUB.break).toContain('the run in full');
+    expect(MODE_SUB.break).toContain('drag a numbered marker');
     introOpen.value = true;
     await tick();
     expect(root.querySelector('.guide .intro')).not.toBeNull();
@@ -385,7 +388,7 @@ describe('the keyboard map', () => {
     const keys = root.querySelector('.intro-keys');
     expect(keys).not.toBeNull();
     const text = keys?.textContent ?? '';
-    for (const k of ['E', 'Delete', 'Esc', 'Space', 'Home', '↑ ↓ ← →']) {
+    for (const k of ['E', 'A', 'Delete', 'Esc', 'Space', 'Home', '↑ ↓ ← →']) {
       expect(text).toContain(k);
     }
     /* Two columns, and the key half is mono: it is something typed. */
@@ -397,7 +400,8 @@ describe('the keyboard map', () => {
 
   /* A key bound in one mode says which one, or the reader presses it in the
      mode the page opens in and nothing happens. `onEvents` is spread onto
-     the canvas only in Break, exactly as `onDelete` is only in Build. */
+     the canvas only in Topology and the Detailed timeline, exactly as
+     `onDelete` is only in Topology. */
   it('says which mode a mode-gated key belongs to', async () => {
     introOpen.value = true;
     const root = mount(Guidance);
@@ -406,8 +410,9 @@ describe('the keyboard map', () => {
     for (const row of root.querySelectorAll('.keys-row')) {
       said.set(row.querySelector('dt')?.textContent ?? '', row.querySelector('dd')?.textContent ?? '');
     }
-    expect(said.get('E')).toContain('(Simulate)');
-    expect(said.get('Delete')).toContain('(Build)');
+    expect(said.get('E')).toContain('(Topology)');
+    expect(said.get('A')).toContain('(Topology)');
+    expect(said.get('Delete')).toContain('(Topology)');
   });
 
   it('is behind the ?, not printed under the header', () => {

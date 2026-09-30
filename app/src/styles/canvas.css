@@ -63,19 +63,6 @@
 .app-stage > .tp-wrap.is-zoomed { min-height: 0; }
 .tp-wrap.is-zoomed .topo-svg { max-width: none; max-height: none; margin: 0; }
 .app-stage > .tp-wrap.is-zoomed > .topo-svg { flex: 0 0 auto; }
-/* At its true size in a region of its own (Break's Split, `trueSize`): the same
-   scroll port, but the drawing is centred where it is smaller than the region,
-   and where it is larger the auto margins fall away and it starts at the
-   top left -- the canvas then scrolls it to its middle (CanvasSlot.tsx), so
-   the part on show is the centre of the drawing, not its corner. */
-.tp-wrap.is-zoomed.is-true { justify-content: flex-start; }
-.tp-wrap.is-zoomed.is-true .topo-svg { margin: auto; }
-/* Sized by its room (Break's Split, `zoomAuto` in zoom.ts): the drawing was
-   made to fit the wrap's content box, so the cap comes off but the wrap keeps
-   the drawing centred and never becomes a scroll port. */
-.tp-wrap.is-fitted { overflow: hidden; }
-.tp-wrap.is-fitted .topo-svg { max-width: none; max-height: none; }
-.app-stage > .tp-wrap.is-fitted > .topo-svg { flex: 0 0 auto; }
 /* The ground between the cards is draggable only when there is somewhere to
    drag it to. The cards, links and data centres keep their own `pointer`. */
 .tp-wrap.is-pannable .topo-svg { cursor: grab; }

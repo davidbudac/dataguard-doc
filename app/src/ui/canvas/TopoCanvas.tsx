@@ -207,20 +207,6 @@ export interface TopoCanvasProps {
    * -- a 12-site configuration at 1:1 has cards the size of a caption.
    */
   zoomFactor?: number;
-  /**
-   * `zoomFactor` was chosen by the room (`zoom.ts`, `zoomAuto`), not by the
-   * reader: the wrap stays centred and does not scroll, since the drawing was
-   * made to fit it.
-   */
-  fitted?: boolean;
-  /**
-   * The drawing is at its true size in a region of its own (Break's Split
-   * before `Fit`): the wrap is the scroll port and centres what is smaller
-   * than it, so nothing is capped and 100% means 1:1 on screen.
-   */
-  trueSize?: boolean;
-  /** Whether there is more drawing than region, so a grab has something to move. */
-  pannable?: boolean;
   /** The wheel, one rung of the caller's ladder per notch (`WHEEL_NOTCH`). */
   onZoomStep?: (dir: 1 | -1) => void;
   onCloseBar?: () => void;
@@ -230,9 +216,22 @@ export interface TopoCanvasProps {
   onOpen?: (key: string) => void;
   /**
    * The key that carries the `...` handle -- the pointer's way to the action
-   * bar now that a click only selects. Pressing it is `onContextMenu`.
+   * bar now that a click only selects. Pressing it is `onActions`, or
+   * `onContextMenu` where the caller has no list of its own for the handle.
    */
   handle?: string | null;
+  /**
+   * What the `...` handle opens, where that is not what the right button opens:
+   * Topology's own table. `A` on a focused card, data centre or line asks for
+   * it too, and the caller moves the focus into it.
+   */
+  onActions?: (key: string) => void;
+  /**
+   * Whether the bar that is open is the one the handle opens, when the caller
+   * has two; a press on it then shuts the bar, and a press while the other is
+   * up opens this one. Absent, any open bar counts.
+   */
+  handleOpen?: boolean;
   /** The name being edited in place, over the card or the data centre it names. */
   rename?: {
     key: string;
@@ -712,6 +711,16 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
       case 'E': {
         ev.preventDefault();
         props.onEvents?.(key);
+        return;
+      }
+      case 'a':
+      case 'A': {
+        /* Topology's own table -- edit, the properties, remove -- the keyboard's
+           way to what the `...` handle opens. `Ctrl+A` and `Cmd+A` are
+           select-all (ui/shortcuts.ts) and pass through untouched. */
+        if (!props.onActions || ev.ctrlKey || ev.metaKey || ev.altKey) return;
+        ev.preventDefault();
+        props.onActions(key);
         return;
       }
       case 'Delete':
@@ -1451,6 +1460,7 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
     );
 
   /* The handle: the top right corner of the subject's anchor. */
+  const handleShut = bar !== null && (props.handleOpen ?? true);
   const handleKey = interactive ? props.handle ?? null : null;
   const handleRect = handleKey === null || props.rename ? null : anchorFor(handleKey, geo, routed.links);
   const handleAt = handleKey === null || handleRect === null
@@ -1593,10 +1603,7 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
          room; `is-pannable` is the grab cursor, and only where there is
          something to grab -- below 1:1 the drawing fits and dragging it would
          scroll nothing, so the cursor would be a promise the page cannot keep. */
-      class={`tp-wrap${props.trueSize === true ? ' is-zoomed is-true'
-        : zoomFactor === 1 && props.fitted !== true ? '' : props.fitted === true ? ' is-fitted' : ' is-zoomed'}${
-        props.trueSize === true ? (props.pannable === true ? ' is-pannable' : '')
-          : zoomFactor > 1 && props.fitted !== true ? ' is-pannable' : ''}`}
+      class={`tp-wrap${zoomFactor === 1 ? '' : ' is-zoomed'}${zoomFactor > 1 ? ' is-pannable' : ''}`}
       ref={props.wrapRef}
     >
       <svg
@@ -1825,23 +1832,23 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
             close it before this click could. */}
         {/* Not while something is being dragged: it hangs off the live
             geometry, which a drag holds still only in what it draws. */}
-        {handleAt === null || !props.onContextMenu || moving !== null ? null : (
+        {handleAt === null || !(props.onActions ?? props.onContextMenu) || moving !== null ? null : (
           <g
-            class={`tp-more${bar !== null ? ' is-open' : ''}`}
+            class={`tp-more${handleShut ? ' is-open' : ''}`}
             role="button"
             aria-label={`Actions for ${handleAt.key}`}
-            aria-expanded={bar !== null}
+            aria-expanded={handleShut}
             data-node={handleAt.key}
             data-more={handleAt.key}
             onPointerDown={(ev) => ev.stopPropagation()}
             onDblClick={(ev) => ev.stopPropagation()}
             onClick={(ev) => {
               ev.stopPropagation();
-              if (bar !== null) props.onCloseBar?.();
-              else props.onContextMenu?.(handleAt.key);
+              if (handleShut) props.onCloseBar?.();
+              else (props.onActions ?? props.onContextMenu)?.(handleAt.key);
             }}
           >
-            <title>Actions (also: right-click, Shift+F10)</title>
+            <title>{props.onActions ? 'Actions (also: press A). Right-click, Shift+F10 or E list the events it can take' : 'Actions (also: right-click, Shift+F10)'}</title>
             <circle class="tp-more-hit" cx={handleAt.x} cy={handleAt.y} r={12} />
             <circle class="tp-more-dot" cx={handleAt.x} cy={handleAt.y} r={8} />
             <circle class="tp-more-pip" cx={handleAt.x - 3.5} cy={handleAt.y} r={1.1} />

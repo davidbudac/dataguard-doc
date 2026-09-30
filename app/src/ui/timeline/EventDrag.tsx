@@ -13,7 +13,7 @@ export interface EventDragProps {
   onMove: (index: number, at: number, expected: TimedEvent) => number | null | void;
   onStart?: () => void;
   /**
-   * Where the time readout sits while dragging. `above` (Split, Timeline) is over the pin,
+   * Where the time readout sits while dragging. `above` (the Timeline) is over the pin,
    * centred. Lanes' pins start at the top of a plot that a sticky strip covers, so there the
    * readout goes `beside` the icon, on whichever side has room inside the plot.
    */

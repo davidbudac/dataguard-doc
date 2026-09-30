@@ -61,7 +61,7 @@ function ClassicDrawing(): JSX.Element | null {
       prefix="ip"
       interactive={false}
       readOnlyWhy={
-        'Read-only preview. Open Build to select, move or edit the drawing.'
+        'Read-only preview. Open Topology to select, move or edit the drawing.'
       }
     />
   );
@@ -104,7 +104,7 @@ const CALLOUTS: { k: string; t: string; d: JSX.Element }[] = [
   {
     k: '05',
     t: 'The rectangles',
-    d: <>Data centres. In Build you add members to one; in Simulate you can lose a whole one.</>,
+    d: <>Data centres. In Topology you add members to one, and can lose a whole one.</>,
   },
 ];
 
@@ -127,18 +127,18 @@ const g = (d: JSX.Element): JSX.Element => (
 
 const MODES: ModeCard[] = [
   {
-    name: 'Build',
+    name: 'Topology',
     glyph: g(<><rect x="2.5" y="4.5" width="7" height="5" rx="1" /><rect x="10.5" y="10.5" width="7" height="5" rx="1" /><path d="M6 9.5v3.5h4.5" /></>),
-    what: 'Draw a Data Guard configuration.',
-    you: 'Add data centres, databases, far syncs and observers. Connect members to route redo.',
+    what: 'Draw a Data Guard configuration, then break it.',
+    you: 'Add data centres, databases, far syncs and observers. Connect members to route redo. Pick a scenario, or crash a host or cut a link from its icon, and watch the timeline under the drawing.',
     cta: 'Draw the classic 1+1+1',
     go: () => jump({ preset: 'classic', mode: 'build' }),
   },
   {
-    name: 'Simulate',
+    name: 'Detailed timeline',
     glyph: g(<><path d="M11 2.5 5.5 11h4l-1 6.5L15 9h-4z" /></>),
     what: 'See how the configuration responds to a failure.',
-    you: 'Crash a host, cut a link or take a site down. Follow the timeline to see what happens.',
+    you: 'Follow the run lane by lane through detection, threshold, role change and open. Tune its settings and move its events.',
     cta: 'Isolate a far sync site',
     go: () => jump({ preset: 'far-sync-zero-loss', scenario: 'isolated', mode: 'break' }),
   },
@@ -210,8 +210,9 @@ const HOWTO: { k: string; d: JSX.Element }[] = [
     k: 'Break something',
     d: (
       <>
-        In Simulate, click a host to crash it or a link to cut it. The event starts at the
-        playhead. Drag the playhead to inspect another moment.
+        In Topology, point at a host and press its crash icon, or at a link and press its cut
+        icon; right-click a card for every event it offers. The event starts at the playhead.
+        Drag the playhead on the timeline to inspect another moment.
       </>
     ),
   },
@@ -296,7 +297,7 @@ const WORDS: { k: string; d: JSX.Element }[] = [
       <>
         How redo leaves the primary: waiting for the standby to acknowledge it, or not. On the
         drawing a solid line is <span class="mono">SYNC</span>, a dashed one{' '}
-        <span class="mono">ASYNC</span>, and Simulate shows what each costs when something fails.
+        <span class="mono">ASYNC</span>, and the timeline shows what each costs when something fails.
       </>
     ),
   },
@@ -352,7 +353,7 @@ export function IntroPage(): JSX.Element {
           <button
             type="button"
             class="btn"
-            onClick={() => jump({ preset: 'classic', scenario: 'crash', mode: 'break' })}
+            onClick={() => jump({ preset: 'classic', scenario: 'crash', mode: 'build' })}
           >
             Watch a failover
           </button>

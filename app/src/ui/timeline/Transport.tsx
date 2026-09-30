@@ -36,7 +36,7 @@ export interface TransportProps {
   onSpeed: (speed: number) => void;
   /**
    * The five speeds as a row of buttons, or as one select where the row does
-   * not fit (Split's bar under ~960 px, `SplitBar`). The same values either way.
+   * not fit (the Detailed timeline's bar under 1100 px, `TIGHT_W`). The same values either way.
    */
   speedControl?: 'buttons' | 'select';
 }

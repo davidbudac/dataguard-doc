@@ -333,18 +333,34 @@ application and one database (today a site link or the data centre is what fails
 Details: `app/design/ui.md`, "Tuning a run in Simulate".
 
 ### 9.1 A row of settings above the timeline
-Status: done (branch `tunable-simulate`)
+Status: done (on main)
 
 ### 9.2 The headline as an equation with editable terms
-Status: done (branch `tunable-simulate`)
+Status: done (on main)
 
 ### 9.3 Drag the end of a clock to change its setting
-Status: done (branch `tunable-simulate`)
+Status: done (on main)
 
 ### 9.4 A ghost of the previous run, with the delta
 Status: todo
 Note: left out on request. The held axis (`timeline/run.ts`) is the half of it that exists.
 
 ### 9.5 Add an event from a timeline lane
-Status: done (branch `tunable-simulate`)
+Status: done (on main)
+
+## Track 10 — Topology and the Detailed timeline (2026-09-30)
+
+Details: `app/design/ui.md`, "Topology and the Detailed timeline".
+
+### 10.1 Build becomes Topology: scenarios, break icons, a small timeline under the drawing
+Status: done (on main via merge)
+
+### 10.2 Simulate becomes the Detailed timeline: the lanes alone, settings as a column
+Status: done (on main via merge)
+Note: the Split layout, its switch, the resizable dock and its full screen are gone with it.
+
+### 10.3 Leftovers
+Status: todo
+Note: the popped-out timeline window and the `A` key were not exercised in a browser; the
+Events rail still folds on the way into the Detailed timeline (the sketch drew it open).
 

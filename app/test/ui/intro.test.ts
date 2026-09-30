@@ -138,7 +138,7 @@ describe('the shell with the Introduction open', () => {
     expect(root.querySelector('.app-dock')).toBeNull();
     /* The header stays, and the modes with it. */
     expect(root.querySelector('.topbar')).not.toBeNull();
-    expect(button(root, 'Build')).toBeDefined();
+    expect(button(root, 'Topology')).toBeDefined();
   });
 
   it('carries no inline style, anywhere -- style-src is \'self\'', async () => {
@@ -207,7 +207,7 @@ describe('the shell with the Introduction open', () => {
 /* ---------------- the buttons ---------------- */
 
 describe('the two hero buttons', () => {
-  it('starts the reader on the classic configuration, in Build', async () => {
+  it('starts the reader on the classic configuration, in Topology', async () => {
     const root = mount(IntroPage);
     await tick();
     button(root, 'Start with the classic 1+1+1').click();
@@ -224,7 +224,8 @@ describe('the two hero buttons', () => {
     button(root, 'Watch a failover').click();
     await tick();
     expect(presetId.value).toBe('classic');
-    expect(mode.value).toBe('break');
+    /* Topology: the drawing and the small timeline under it. */
+    expect(mode.value).toBe('build');
     const events = doc.value.topology.events;
     expect(events.length).toBeGreaterThan(0);
     expect(events.some((e) => e.kind === 'host.down')).toBe(true);
@@ -235,7 +236,7 @@ describe('the two hero buttons', () => {
 });
 
 describe('the four "Try it" buttons', () => {
-  it('draws the classic in Build', async () => {
+  it('draws the classic in Topology', async () => {
     const root = mount(IntroPage);
     button(root, 'Draw the classic 1+1+1').click();
     await tick();
@@ -243,7 +244,7 @@ describe('the four "Try it" buttons', () => {
     expect(presetId.value).toBe('classic');
   });
 
-  it('breaks a far sync configuration in Break, with the scenario applied', async () => {
+  it('breaks a far sync configuration in the Detailed timeline, with the scenario applied', async () => {
     const root = mount(IntroPage);
     button(root, 'Isolate a far sync site').click();
     await tick();
@@ -270,13 +271,15 @@ describe('the four "Try it" buttons', () => {
 });
 
 describe('the classic walkthrough', () => {
-  it('starts from the hero on the classic configuration, in Break, with a clean timeline', async () => {
+  it('starts from the hero on the classic configuration, in Topology, with no run yet', async () => {
     const root = mount(IntroPage);
     await tick();
     button(root, 'Walk through it step by step').click();
     await tick();
     expect(presetId.value).toBe('classic');
-    expect(mode.value).toBe('break');
+    /* The whole walkthrough stays in Topology: the drawing, the small timeline
+       and the inspector's threshold are all there. */
+    expect(mode.value).toBe('build');
     expect(doc.value.topology.events).toHaveLength(0);
     expect(walkthroughPhase.value).toBe('crash');
     expect(introPage.value).toBe(false);
@@ -307,7 +310,7 @@ describe('the classic walkthrough', () => {
     expect(doc.value.topology.config.fsfo.thresholdSeconds).toBe(20);
     button(guide, 'See the changed result').click();
     await tick();
-    expect(mode.value).toBe('break');
+    expect(mode.value).toBe('build');
   });
 
   it('offers a prepared example on the read-only narrow layout', async () => {
@@ -344,7 +347,7 @@ describe('the page itself', () => {
     const root = mount(IntroPage);
     await tick();
     const text = root.textContent ?? '';
-    for (const word of ['Build', 'Simulate', 'Config', 'Learn']) expect(text).toContain(word);
+    for (const word of ['Topology', 'Detailed timeline', 'Config', 'Learn']) expect(text).toContain(word);
     expect(text).toContain('model');
     const legacy = [...root.querySelectorAll('a')]
       .find((a) => (a.getAttribute('href') ?? '').startsWith('legacy/'));

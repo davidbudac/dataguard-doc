@@ -14,7 +14,7 @@ import { h, render } from 'preact';
 import { classicDoc } from '@/state/doc';
 import { resetHistory } from '@/state/history';
 import { readout, topology } from '@/state/derived';
-import { breakLayout, mode, timelineFull, timelineH, viewport } from '@/state/view';
+import { mode, viewport } from '@/state/view';
 import { App } from '@/ui/App';
 import { applyTemplate, templates } from '@/ui/break/events';
 import { chipsThatFit } from '@/ui/break/readout-fit';
@@ -130,8 +130,6 @@ describe('the terse line, rendered', () => {
     resetHistory(classicDoc());
     viewport.value = 'wide';
     mode.value = 'break';
-    timelineH.value = null;
-    timelineFull.value = false;
   });
   afterEach(() => {
     if (root) render(null, root);
@@ -152,89 +150,83 @@ describe('the terse line, rendered', () => {
   const values = (r: HTMLElement): string[] =>
     [...r.querySelectorAll<HTMLElement>('.sb-ro .sb-ro-i .sb-ro-v')].map((el) => el.textContent ?? '');
 
-  for (const layout of ['split', 'lanes'] as const) {
-    describe(layout, () => {
-      beforeEach(() => { breakLayout.value = layout; });
+  it('shows every reading on a wide line', async () => {
+    crash();
+    stub(1400);
+    const r = await mount();
+    const all = readout.value.filter((c) => c.id !== 'findings');
+    expect(all.length).toBeGreaterThan(3);
+    expect(shown(r)).toEqual(all.map((c) => c.k));
+    expect(r.querySelector('.sb-ro')?.getAttribute('title')).toBeNull();
+  });
 
-      it('shows every reading on a wide line', async () => {
-        crash();
-        stub(1400);
-        const r = await mount();
-        const all = readout.value.filter((c) => c.id !== 'findings');
-        expect(all.length).toBeGreaterThan(3);
-        expect(shown(r)).toEqual(all.map((c) => c.k));
-        expect(r.querySelector('.sb-ro')?.getAttribute('title')).toBeNull();
-      });
+  it('leaves low-priority readings out whole on a narrow line, and clips no value', async () => {
+    crash();
+    stub(1400);
+    const wide = await mount();
+    const allKeys = shown(wide);
+    const allValues = values(wide);
+    render(null, wide);
+    root = null;
+    document.body.innerHTML = '';
 
-      it('leaves low-priority readings out whole on a narrow line, and clips no value', async () => {
-        crash();
-        stub(1400);
-        const wide = await mount();
-        const allKeys = shown(wide);
-        const allValues = values(wide);
-        render(null, wide);
-        root = null;
-        document.body.innerHTML = '';
+    stub(430);
+    const r = await mount();
+    const keys = shown(r);
+    expect(keys).toContain('Outcome');
+    expect(keys).not.toContain('Data loss');
+    expect(keys).not.toContain('New primary open');
+    expect(keys.length).toBeLessThan(allKeys.length);
+    /* Every value drawn is a whole one: it is exactly a full reading's value. */
+    for (const v of values(r)) expect(allValues).toContain(v);
+    /* Nothing is left to the browser to cut. */
+    for (const el of r.querySelectorAll('.sb-ro .sb-ro-i')) {
+      expect(el.getAttribute('style')).toBeNull();
+    }
+    /* The readings left out are a hover away. */
+    const title = r.querySelector('.sb-ro')?.getAttribute('title') ?? '';
+    expect(title).toContain('Data loss:');
+    expect(title).toContain('New primary open:');
+    expect(title).toContain('Outcome:');
+  });
 
-        stub(430);
-        const r = await mount();
-        const keys = shown(r);
-        expect(keys).toContain('Outcome');
-        expect(keys).not.toContain('Data loss');
-        expect(keys).not.toContain('New primary open');
-        expect(keys.length).toBeLessThan(allKeys.length);
-        /* Every value drawn is a whole one: it is exactly a full reading's value. */
-        for (const v of values(r)) expect(allValues).toContain(v);
-        /* Nothing is left to the browser to cut. */
-        for (const el of r.querySelectorAll('.sb-ro .sb-ro-i')) {
-          expect(el.getAttribute('style')).toBeNull();
-        }
-        /* The readings left out are a hover away. */
-        const title = r.querySelector('.sb-ro')?.getAttribute('title') ?? '';
-        expect(title).toContain('Data loss:');
-        expect(title).toContain('New primary open:');
-        expect(title).toContain('Outcome:');
-      });
+  it('gives up Split brain before anything else, and never lets it stand in for an essential', async () => {
+    crash();
+    const keysAt = async (w: number): Promise<string[]> => {
+      stub(w);
+      const r = await mount();
+      const keys = shown(r);
+      render(null, r);
+      root = null;
+      document.body.innerHTML = '';
+      return keys;
+    };
+    const all = await keysAt(1400);
+    expect(all).toContain('Split brain');
+    /* The widest line that leaves something out, found by halving: the first reading to go is Split brain, and only it. */
+    let lo = 300;
+    let hi = 1400;
+    while (hi - lo > 12) {
+      const mid = Math.floor((lo + hi) / 2);
+      if ((await keysAt(mid)).length < all.length) lo = mid; else hi = mid;
+    }
+    expect(await keysAt(hi)).toEqual(all);
+    expect(await keysAt(lo)).toEqual(all.filter((k) => k !== 'Split brain'));
+  }, 20000);
 
-      it('gives up Split brain before anything else, and never lets it stand in for an essential', async () => {
-        crash();
-        const keysAt = async (w: number): Promise<string[]> => {
-          stub(w);
-          const r = await mount();
-          const keys = shown(r);
-          render(null, r);
-          root = null;
-          document.body.innerHTML = '';
-          return keys;
-        };
-        const all = await keysAt(1400);
-        expect(all).toContain('Split brain');
-        /* The widest line that leaves something out, found by halving: the first reading to go is Split brain, and only it. */
-        let lo = 300;
-        let hi = 1400;
-        while (hi - lo > 12) {
-          const mid = Math.floor((lo + hi) / 2);
-          if ((await keysAt(mid)).length < all.length) lo = mid; else hi = mid;
-        }
-        expect(await keysAt(hi)).toEqual(all);
-        expect(await keysAt(lo)).toEqual(all.filter((k) => k !== 'Split brain'));
-      }, 20000);
+  it('shortens labels, never values, when only the essentials are left', async () => {
+    crash();
+    stub(1400);
+    const wide = await mount();
+    const allValues = values(wide);
+    render(null, wide);
+    root = null;
+    document.body.innerHTML = '';
 
-      it('shortens labels, never values, when only the essentials are left', async () => {
-        crash();
-        stub(1400);
-        const wide = await mount();
-        const allValues = values(wide);
-        render(null, wide);
-        root = null;
-        document.body.innerHTML = '';
-
-        stub(470);
-        const r = await mount();
-        for (const v of values(r)) expect(allValues).toContain(v);
-        /* The three essentials, the application's label short, and every value whole. */
-        expect(shown(r)).toEqual(['Outcome', 'App reconnects', 'Observer']);
-      });
-    });
-  }
+    stub(470);
+    const r = await mount();
+    for (const v of values(r)) expect(allValues).toContain(v);
+    /* The three essentials, the application's label short, and every value whole. */
+    expect(shown(r)).toEqual(['Outcome', 'App reconnects', 'Observer']);
+  });
 });

@@ -45,8 +45,8 @@ import { INTRO_HREF, openIntro } from './intro/route';
 
 /** The three working modes, one clause each; Learn is the link at the foot. */
 const BULLETS: [string, string][] = [
-  ['Build', 'draw a configuration: data centres, databases, far syncs, observers and the redo between them.'],
-  ['Simulate', 'add a failure and follow the timeline through detection, threshold, role change and open.'],
+  ['Topology', 'draw a configuration: data centres, databases, far syncs, observers and the redo between them; then break it with a scenario or a card’s icons and read the small timeline under it.'],
+  ['Detailed timeline', 'the run in full: follow a failure through detection, threshold, role change and open, and tune its settings.'],
   ['Config', 'generate DGMGRL commands, init parameters and connect strings from the drawing.'],
 ];
 
@@ -65,14 +65,15 @@ const KEYS: { where: string; rows: [string, string][] }[] = [
     rows: [
       ['↑ ↓ ← →', 'move to the next card in the same data centre — on a link caption, the next link'],
       ['Enter · Space', 'select it — with Shift, add it to the selection'],
-      ['F2', 'rename it where it is drawn — a double click does too (Build)'],
-      ['Alt+↑ ↓ ← →', 'move the card 8 px, or the whole selection — with Shift, 32 px (Build)'],
-      ['Shift+F10 · ☰', 'open its actions and move the focus into them — the right button does too'],
-      /* `onEvents` is spread onto the canvas only in Break
-         (`canvas/CanvasSlot.tsx`), exactly as `onDelete` is only in Build:
-         a key that is bound in one mode says which one. */
-      ['E', 'open the events it offers, at the playhead, and move the focus into them (Simulate)'],
-      ['Delete', 'remove it, or everything selected (Build)'],
+      ['F2', 'rename it where it is drawn — a double click does too (Topology)'],
+      ['Alt+↑ ↓ ← →', 'move the card 8 px, or the whole selection — with Shift, 32 px (Topology)'],
+      ['Shift+F10 · ☰', 'open the events it offers, at the playhead, and move the focus into them — the right button does too'],
+      /* `onEvents` is spread onto the canvas only in Topology and the Detailed
+         timeline (`canvas/CanvasSlot.tsx`), exactly as `onDelete` is only in
+         Topology: a key that is bound in one mode says which one. */
+      ['E', 'the same list of events (Topology)'],
+      ['A', 'open the ⋯ actions — edit, properties, remove — and move the focus into them (Topology)'],
+      ['Delete', 'remove it, or everything selected (Topology)'],
       ['Esc', 'close the actions first, then clear the selection'],
     ],
   },
@@ -82,7 +83,7 @@ const KEYS: { where: string; rows: [string, string][] }[] = [
       ['Ctrl+Z · ⌘Z', 'undo'],
       ['Ctrl+Shift+Z · Ctrl+Y', 'redo'],
       ['Ctrl+A · ⌘A', 'select every card on the drawing'],
-      [']', 'collapse or expand the side panel (Build, Simulate, Config)'],
+      [']', 'collapse or expand the side panel (Topology, Detailed timeline, Config)'],
     ],
   },
   {

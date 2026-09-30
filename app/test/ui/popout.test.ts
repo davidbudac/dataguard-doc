@@ -15,10 +15,10 @@ import { h, render } from 'preact';
 import { classicDoc } from '@/state/doc';
 import { resetHistory } from '@/state/history';
 import { topology } from '@/state/derived';
-import { mode, timelineFull, viewport } from '@/state/view';
+import { mode, viewport } from '@/state/view';
 import { App } from '@/ui/App';
 import { applyTemplate, templates } from '@/ui/break/events';
-import { popIn, popped } from '@/ui/common/popout';
+import { popIn, popOut, popped } from '@/ui/common/popout';
 
 const tick = (): Promise<void> => new Promise((r) => setTimeout(r, 60));
 
@@ -73,8 +73,7 @@ beforeEach(() => {
   document.body.innerHTML = '';
   resetHistory(classicDoc());
   viewport.value = 'wide';
-  mode.value = 'break';
-  timelineFull.value = false;
+  mode.value = 'build';
   popup = fakePopup();
   vi.spyOn(window, 'open').mockImplementation(() => popup.win);
   vi.spyOn(window, 'focus').mockImplementation(() => undefined);
@@ -88,23 +87,44 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe('the timeline, popped out', () => {
-  it('sits beside the full-screen button, and moves the timeline into the new window', async () => {
+describe('the timeline, popped out of Topology', () => {
+  it('is offered in the small timeline\'s head row, and moves the full timeline into the new window', async () => {
     crash();
     const r = mount();
     await tick();
     const btn = popBtn(r, /timeline/);
     expect(btn).toBeDefined();
-    expect(btn?.nextElementSibling?.classList.contains('tl-full-btn')).toBe(true);
+    expect(btn?.closest('.mtl-acts')).not.toBeNull();
+    expect(btn?.getAttribute('aria-pressed')).toBe('false');
 
     btn?.click();
     await tick();
     expect(popped.value.timeline).toBe(popup.win);
     expect(popup.doc.querySelector('.po-tl .tl')).not.toBeNull();
+    /* The drawing and the glance stay where they were; the button says it is out. */
+    expect(r.querySelector('.topo-svg')).not.toBeNull();
+    expect(r.querySelector('.mtl')).not.toBeNull();
+    expect(popBtn(r, /timeline/)?.getAttribute('aria-pressed')).toBe('true');
     expect(r.querySelector('.tl')).toBeNull();
-    expect(r.querySelector('.po-away')?.textContent).toContain('open in its own window');
-    /* The panel no longer asks for its dragged height in the main window. */
+    /* Nor does the main window ask for a dragged height any more. */
     expect(r.querySelector('.app-dock.has-tl')).toBeNull();
+  });
+
+  it('offers what Topology edits in the window too: events on the lanes, the drag of a marker and the grips', async () => {
+    crash();
+    const r = mount();
+    await tick();
+    popBtn(r, /timeline/)?.click();
+    await tick();
+    expect(popup.doc.querySelector('.tl-lane-add')).not.toBeNull();
+    expect(popup.doc.querySelector('.tl-event-drag')).not.toBeNull();
+    expect(popup.doc.querySelector('.tl-tune')).not.toBeNull();
+    /* Not in Config, whose timeline is not the reader's to edit. */
+    mode.value = 'configure';
+    await tick();
+    expect(popup.doc.querySelector('.tl-lane-add')).toBeNull();
+    expect(popup.doc.querySelector('.tl-event-drag')).toBeNull();
+    expect(popup.doc.querySelector('.tl-tune')).toBeNull();
   });
 
   it('carries the stylesheets and the theme across', async () => {
@@ -135,23 +155,20 @@ describe('the timeline, popped out', () => {
     popup.hide();
     await tick();
     expect(popped.value.timeline).toBeUndefined();
-    expect(r.querySelector('.tl')).not.toBeNull();
-    expect(r.querySelector('.po-away')).toBeNull();
+    expect(popBtn(r, /timeline/)?.getAttribute('aria-pressed')).toBe('false');
   });
 
-  it('comes back from the note left behind, and the window closes', async () => {
+  it('comes back from the button in the window, and the window closes', async () => {
     crash();
     const r = mount();
     await tick();
     popBtn(r, /timeline/)?.click();
     await tick();
-    const back = [...r.querySelectorAll<HTMLButtonElement>('.po-away button')]
-      .find((b) => b.textContent === 'Bring it back');
-    back?.click();
+    popBtn(popup.doc, /timeline/)?.click();
     await tick();
     expect(popup.win.closed).toBe(true);
-    expect(r.querySelector('.tl')).not.toBeNull();
-    expect(popup.doc.querySelector('.tl')).toBeNull();
+    expect(popped.value.timeline).toBeUndefined();
+    expect(popBtn(r, /timeline/)?.getAttribute('aria-pressed')).toBe('false');
   });
 
   it('says so when the browser blocks the window', async () => {
@@ -163,6 +180,39 @@ describe('the timeline, popped out', () => {
     await tick();
     expect(popped.value.timeline).toBeUndefined();
     expect(r.querySelector('.toast')?.textContent).toContain('blocked');
+  });
+
+  it('is not offered without a run to glance at, and not in the Detailed timeline', async () => {
+    const r = mount();
+    await tick();
+    expect(popBtn(r, /timeline/)).toBeUndefined();
+    crash();
+    mode.value = 'break';
+    await tick();
+    expect(popBtn(r, /timeline/)).toBeUndefined();
+  });
+});
+
+describe('the timeline, popped out of the docked Detailed timeline', () => {
+  it('leaves the note behind, and comes back from it', async () => {
+    viewport.value = 'compact';
+    mode.value = 'break';
+    crash();
+    const r = mount();
+    await tick();
+    /* The docked timeline has no pop-out button of its own: pop it as Topology's button would. */
+    popOut('timeline');
+    await tick();
+    expect(popup.doc.querySelector('.po-tl .tl')).not.toBeNull();
+    expect(r.querySelector('.tl')).toBeNull();
+    expect(r.querySelector('.po-away')?.textContent).toContain('open in its own window');
+    const back = [...r.querySelectorAll<HTMLButtonElement>('.po-away button')]
+      .find((b) => b.textContent === 'Bring it back');
+    back?.click();
+    await tick();
+    expect(popup.win.closed).toBe(true);
+    expect(r.querySelector('.tl')).not.toBeNull();
+    expect(popup.doc.querySelector('.tl')).toBeNull();
   });
 });
 

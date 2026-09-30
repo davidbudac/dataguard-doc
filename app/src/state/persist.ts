@@ -14,12 +14,10 @@
  *                    the strip is gone and the page replaced it.
  *   `dg-hints`       whether the sentence under each control is shown
  *   `dg-issues`      whether Build's validation panel is unfolded ('0' = folded)
- *   `dg-tl-h`        the height (px) Break's timeline panel was dragged to
  *   `dg-rail`        whether the side rail is folded to its strip ('1' = folded)
- *   `dg-break-layout` Break's layout, `split` or `lanes` -- anything else reads as split
- *   `dg-break-timeline` Simulate's timeline, `config` or `app` -- anything else reads as config
- *   `dg-summary`     whether Break's run summary band is unfolded ('1' = unfolded)
- *   `dg-tune`        whether Simulate's tune strip is drawn ('0' = away; unset reads as drawn)
+ *   `dg-break-timeline` the Detailed timeline's timeline, `config` or `app` -- anything else reads as config
+ *   `dg-summary`     whether the Detailed timeline's run summary band is unfolded ('1' = unfolded)
+ *   `dg-tune`        whether the Detailed timeline's settings are drawn ('0' = away; unset reads as drawn)
  *   `dg-fsfo-cfg-v1` the published page's stored configuration. Read once when
  *                    there is nothing newer, and never deleted: the old page
  *                    is still serving from /legacy/ and still owns that key.
@@ -40,10 +38,10 @@ import { fromWire, parseJsonText, toJsonText } from './codec';
 import { isDesktop, saveFile } from '@/ui/common/desktop';
 import type { DecodeResult } from './codec';
 import {
-  BREAK_LAYOUTS, BREAK_TIMELINES, breakLayout, breakTimeline, gridOn, hintsOn, inspectorOpen, issuesOpen, railCollapsed,
-  summaryOpen, timelineH, TL_MIN_H, tuneOn, viewport,
+  BREAK_TIMELINES, breakTimeline, gridOn, hintsOn, inspectorOpen, issuesOpen, railCollapsed,
+  summaryOpen, tuneOn, viewport,
 } from './view';
-import type { BreakLayout, BreakTimeline, PalettePref, ThemePref } from './view';
+import type { BreakTimeline, PalettePref, ThemePref } from './view';
 
 export const DOC_KEY = 'dg-doc-v1';
 export const THEME_KEY = 'dg-theme';
@@ -54,9 +52,7 @@ export const INTRO_KEY = 'dg-intro-v1';
 export const HINTS_KEY = 'dg-hints';
 export const GRID_KEY = 'dg-grid';
 export const ISSUES_KEY = 'dg-issues';
-export const TIMELINE_H_KEY = 'dg-tl-h';
 export const RAIL_KEY = 'dg-rail';
-export const BREAK_LAYOUT_KEY = 'dg-break-layout';
 export const BREAK_TIMELINE_KEY = 'dg-break-timeline';
 export const SUMMARY_KEY = 'dg-summary';
 export const TUNE_KEY = 'dg-tune';
@@ -164,19 +160,6 @@ export function toggleGrid(): void {
   write(GRID_KEY, gridOn.value ? '1' : '0');
 }
 
-/* ---------------- Break's layout ---------------- */
-
-/** Split or Lanes -- `breakLayout` in `view.ts`; unset, or anything else, means Split. */
-export function loadBreakLayout(): void {
-  const v = read(BREAK_LAYOUT_KEY);
-  breakLayout.value = (BREAK_LAYOUTS as readonly (string | null)[]).includes(v) ? (v as BreakLayout) : 'split';
-}
-
-export function setBreakLayout(v: BreakLayout): void {
-  breakLayout.value = v;
-  write(BREAK_LAYOUT_KEY, v);
-}
-
 /* ---------------- Simulate's timeline: configuration or application ---------------- */
 
 /** `breakTimeline` in `view.ts`; unset, or anything else, means the configuration's. */
@@ -217,34 +200,6 @@ export function setTune(on: boolean): void {
 }
 
 export const toggleTune = (): void => setTune(!tuneOn.value);
-
-/* ---------------- Break's timeline region ---------------- */
-
-/**
- * The height the reader dragged the split to -- `timelineH` in
- * `view.ts`. Read once at boot; anything that is not a whole number of pixels
- * at least `TL_MIN_H` tall reads as "never set".
- */
-export function loadTimelineH(): void {
-  const raw = read(TIMELINE_H_KEY);
-  const n = raw === null ? NaN : Number(raw);
-  timelineH.value = Number.isFinite(n) && n >= TL_MIN_H ? Math.round(n) : null;
-}
-
-/**
- * Set the height; `remember` is false while a drag is still moving, so a
- * gesture writes storage once, at its end. `null` goes back to the default
- * and forgets the stored value.
- */
-export function setTimelineH(h: number | null, remember = true): void {
-  timelineH.value = h === null ? null : Math.round(h);
-  if (!remember) return;
-  if (h === null) {
-    try { store()?.removeItem(TIMELINE_H_KEY); } catch { /* private mode */ }
-  } else {
-    write(TIMELINE_H_KEY, String(Math.round(h)));
-  }
-}
 
 /* ---------------- the validation panel ---------------- */
 

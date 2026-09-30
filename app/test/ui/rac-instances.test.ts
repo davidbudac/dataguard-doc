@@ -178,6 +178,8 @@ describe('an instance on the drawing', () => {
 
     unmountAll();
     mode.value = 'break';
+    /* The drawing is on screen in the Detailed timeline only in the docked layout. */
+    viewport.value = 'compact';
     root = await mountApp();
     expect(root.querySelectorAll('.tp-instance')).toHaveLength(2);
     expect(root.querySelector('.tp-instance.is-live')).toBeNull();

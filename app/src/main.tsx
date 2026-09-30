@@ -27,8 +27,7 @@ import { resetHistory } from './state/history';
 import { decodeFragment, fragmentKind } from './state/codec';
 import {
   announceRestore, introDismissed, loadDoc, loadEdition, loadGrid, loadHints, loadIntro, loadIssuesOpen, loadPalette,
-  loadBreakLayout, loadBreakTimeline, loadRailCollapsed, loadSummaryOpen, loadTheme, loadTune,
-  loadTimelineH,
+  loadBreakTimeline, loadRailCollapsed, loadSummaryOpen, loadTheme, loadTune,
   startAutosave,
 } from './state/persist';
 import { upgradeLegacyUrl } from './state/legacy-url';
@@ -46,7 +45,7 @@ import './styles/base.css';
 import './styles/shell.css';
 import './styles/float.css';
 import './styles/rail.css';
-import './styles/split.css';
+import './styles/timeline-bar.css';
 import './styles/lanes.css';
 import './styles/summary.css';
 import './styles/popout.css';
@@ -75,9 +74,7 @@ async function boot(): Promise<void> {
   loadHints();
   loadGrid();
   loadIssuesOpen();
-  loadTimelineH();
   loadRailCollapsed();
-  loadBreakLayout();
   loadBreakTimeline();
   loadSummaryOpen();
   loadTune();

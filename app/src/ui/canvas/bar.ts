@@ -24,9 +24,20 @@ export const barOpen = signal<string | null>(null);
 /** True when the bar was opened by a gesture that asks for the focus. */
 export const barFocus = signal<boolean>(false);
 
-export function openBar(key: string, focus = false): void {
+/**
+ * What the open bar lists. Topology has two: Build's own table -- edit, the
+ * properties, remove -- which the `...` handle opens, and the events the
+ * subject can take at the playhead, which the right button, `Shift+F10` and
+ * `E` open. The Detailed timeline has only the second. Only meaningful while a
+ * bar is open, and reset by every `openBar` that does not say otherwise.
+ */
+export type BarKind = 'actions' | 'events';
+export const barKind = signal<BarKind>('actions');
+
+export function openBar(key: string, focus = false, kind: BarKind = 'actions'): void {
   barOpen.value = key;
   barFocus.value = focus;
+  if (barKind.peek() !== kind) barKind.value = kind;
 }
 
 export function closeBar(): void {

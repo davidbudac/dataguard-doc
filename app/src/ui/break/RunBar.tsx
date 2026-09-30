@@ -1,16 +1,10 @@
 /**
- * The bar between Break's drawing and its timeline in the Split layout: the
- * drag handle of the split and the whole of the chrome the timeline needs --
- * the transport, the run's readings as one terse line, the findings as a count
- * with a dropdown, the colour key and the Application's view behind an (i), and
- * the pop-out and full-screen buttons.
+ * The parts of the Detailed timeline's bar that are their own components: the
+ * run's readings as one terse line, the findings as a count with a dropdown,
+ * and the colour key and the Application's view behind an (i). `LanesBar`
+ * (LanesView.tsx) puts them on its one line with the transport.
  *
- * It is what the floating dock's head row was (readout, finding chips, grab
- * handle, two buttons), packed onto one 40 px line so the timeline under it
- * has the rest of the region. The floating warning banner is gone with the
- * dock: the findings are the count on this bar, and the rows open from it.
- *
- * The transport and the key read `run.model`, the model the timeline below is
+ * The transport and the key read `run.model`, the model the lanes below are
  * drawn from, so a held axis or a new width can never leave the bar and the
  * drawing on different scales.
  */
@@ -18,32 +12,17 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import type { RefObject } from 'preact';
 import { Fragment } from 'preact';
-import { readout, topology, trace } from '@/state/derived';
+import { readout, topology } from '@/state/derived';
 import type { ReadoutChip } from '@/state/derived';
-import {
-  appLanesShown, findingsOpen, playing, speed, timelineFull, tNow,
-} from '@/state/view';
-import { Transport } from '../timeline/Transport';
-import { DockGrip, FullToggle, useDockDrag } from '../timeline/DockControls';
+import { appLanesShown, findingsOpen } from '@/state/view';
 import { APP_VIEW_TIP } from '../timeline/Timeline';
 import type { RunTimeline } from '../timeline/run';
-import { PopoutButton } from '../common/popout';
 import { useWidth } from '../common/use-width';
 import { showExplanation } from './RunExplanation';
 import { findingCounts, FindingsSheet, onFindingsKey, plural } from '../Findings';
 import { revealFindings } from '../IssuePanel';
 import { chipsThatFit } from './readout-fit';
-import { appTimelineOn, TimelineSwitch } from './TimelineView';
 import type { FitItem } from './readout-fit';
-import { ReadoutFold } from './SummaryBand';
-import { TuneToggle } from './TuneStrip';
-
-/**
- * What inside the bar keeps its own presses; anything else on it drags the
- * split. `.rs-hit` is the terse line while the summary is folded: a click on
- * it unfolds the summary (SummaryBand.tsx), so a press on it is not a drag.
- */
-const KEEPS_PRESS = 'button, input, select, a, label, .sb-pop, .rs-hit';
 
 /** Below this the bar has no room for a row of speeds and the run's minor readings both. */
 export const TIGHT_W = 1100;
@@ -70,7 +49,7 @@ const SHORT_K: Record<string, string> = {
   'Data loss': 'Loss',
 };
 
-/** The gap between the line's parts (split.css `.sb-ro`), and its left padding. */
+/** The gap between the line's parts (timeline-bar.css `.sb-ro`), and its left padding. */
 const RO_GAP = 6;
 const RO_PAD = 12;
 /** Rounding slack: widths are read as whole pixels. */
@@ -246,60 +225,6 @@ export function KeyMenu({ run }: { run: RunTimeline }) {
           )}
         </div>
       ) : null}
-    </div>
-  );
-}
-
-export function SplitBar({ run, sized }: {
-  /** The timeline's model and axis; null while there is no run to draw. */
-  run: RunTimeline | null;
-  /** The timeline is here and can be resized, popped out and filled to the window. */
-  sized: boolean;
-}) {
-  const [ref, width] = useWidth(1200);
-  const tight = width < TIGHT_W;
-  const drag = useDockDrag(KEEPS_PRESS);
-  const full = timelineFull.value;
-  /* The application's timeline has no clock to play: the transport, the fit and
-     the colour key belong to the configuration's. */
-  const appTl = appTimelineOn();
-  return (
-    <div
-      class="sb-bar"
-      ref={ref}
-      role="group"
-      aria-label="Timeline controls"
-      title={sized && !full ? 'Drag the bar to resize the timeline' : undefined}
-      {...(sized && !full ? drag : {})}
-    >
-      {sized && !full ? <DockGrip /> : null}
-      {run === null || !sized || appTl ? null : (
-        <Transport
-          model={run.model}
-          tNow={tNow.value}
-          playing={playing.value}
-          speed={speed.value}
-          speedControl={tight ? 'select' : 'buttons'}
-          onSeek={(v) => { tNow.value = v; }}
-          onPlayToggle={() => { playing.value = !playing.value; }}
-          onSpeed={(s) => { speed.value = s; }}
-        />
-      )}
-      <ReadoutFold><TerseReadout run={trace.value !== null} /></ReadoutFold>
-      {sized || run === null ? <TimelineSwitch /> : null}
-      {sized || run === null ? <TuneToggle /> : null}
-      {run?.held && sized && !appTl ? (
-        <button
-          type="button" class="btn sb-fit" title="An event was moved and the axis stayed where it was: fit it to the run again"
-          onClick={run.fit}
-        >
-          Fit timeline
-        </button>
-      ) : null}
-      <FindingsMenu />
-      {run === null || !sized || appTl ? null : <KeyMenu run={run} />}
-      {sized ? <PopoutButton kind="timeline" /> : null}
-      {sized ? <FullToggle /> : null}
     </div>
   );
 }

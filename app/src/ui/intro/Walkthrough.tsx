@@ -43,7 +43,7 @@ function shapeOf(doc: TopologyDoc): string {
 export function startClassicWalkthrough(): void {
   const edit = canEdit(viewport.value);
   /* On a screen that cannot edit, the crash comes ready-made. */
-  jump({ preset: 'classic', ...(edit ? {} : { scenario: 'crash' as const }), mode: 'break' });
+  jump({ preset: 'classic', ...(edit ? {} : { scenario: 'crash' as const }), mode: 'build' });
   if (edit) clearEvents();
   else tNow.value = 0;
   startingShape = shapeOf(topology.value);
@@ -93,8 +93,8 @@ export function ClassicWalkthrough() {
             : phase === 'advance'
               ? 'Advance the timeline to see when the standby opens.'
               : done
-                ? 'Back in Simulate, the timeline shows how the new threshold moves the failover.'
-                : 'In Build, change FastStartFailoverThreshold under Fast-start failover.'}
+                ? 'The timeline under the drawing shows how the new threshold moves the failover.'
+                : 'Change FastStartFailoverThreshold under Fast-start failover in the inspector.'}
         </span>
       </div>
       <div class="walk-acts">
@@ -106,7 +106,7 @@ export function ClassicWalkthrough() {
             onClick={() => {
               const crash = templates(topology.value).find((t) => t.id === 'crash');
               if (!crash) return;
-              mode.value = 'break';
+              mode.value = 'build';
               applyTemplate(crash);
               tNow.value = 0;
               walkthroughPhase.value = 'advance';
@@ -121,7 +121,7 @@ export function ClassicWalkthrough() {
             type="button"
             class="btn is-solid"
             onClick={() => {
-              mode.value = 'break';
+              mode.value = 'build';
               restPlayhead();
               walkthroughPhase.value = 'threshold';
             }}
@@ -136,7 +136,7 @@ export function ClassicWalkthrough() {
             class="btn is-solid"
             disabled={!done && !editable}
             onClick={() => {
-              mode.value = done ? 'break' : 'build';
+              mode.value = 'build';
               if (done) { restPlayhead(); return; }
               selection.value = [];
               revealSections(['Fast-start failover']);

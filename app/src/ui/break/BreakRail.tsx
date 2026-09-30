@@ -1,6 +1,6 @@
 /**
- * The Break rail: what is actually injected into this configuration, and the
- * six scenarios as one-click templates.
+ * The Detailed timeline's rail: what is actually injected into this
+ * configuration, and the six scenarios as one-click templates.
  *
  * **The reader's own work comes first.** The event list is the head of the
  * rail, because injecting an event and then finding no
@@ -35,8 +35,8 @@ import { signal } from '@preact/signals';
 import { events, topology, trace } from '@/state/derived';
 import { canEdit, healthyRun, tNow, viewport } from '@/state/view';
 import { IssuePanel } from '../IssuePanel';
-import { Action, Caret, Fold, Group, Note } from '../inspector/controls';
-import { isSectionOpen, SCENARIOS_ID, toggleSection } from '../inspector/sections';
+import { Action, Fold, Group, Note } from '../inspector/controls';
+import { SCENARIOS_ID } from '../inspector/sections';
 import { hintsShown, HintsToggle } from '../hints';
 import { printing } from '../print';
 import { WHY } from '../inspector/why';
@@ -51,56 +51,7 @@ import '@/styles/inspector.css';
 /** Open the six scenario descriptions. View state, so it is not undoable. */
 export const scenarioNotesOpen = signal(false);
 
-export interface BreakRailProps {
-  children?: unknown;
-  /**
-   * Whether the scenarios ride on the rail. The floating layout puts them on
-   * the palette at the left edge of the canvas instead (`ScenarioPalette`).
-   */
-  scenarios?: boolean;
-  /** Whether the validation panel closes the rail. The floating layout has
-      the status chips and their popover for that (Findings.tsx). */
-  validation?: boolean;
-}
-
-/**
- * The scenarios as the floating palette carries them: the same six
- * templates, the same refusals, the sentence as each button's title.
- */
-export function ScenarioPalette() {
-  const doc = topology.value;
-  const editable = canEdit(viewport.value);
-  const open = isSectionOpen(SCENARIOS_ID);
-  return (
-    <nav class={`palette pal-scn float-card${open ? ' is-open' : ''}`} aria-label="One-click scenarios">
-      <button
-        type="button"
-        class="pal-k pal-tog"
-        aria-expanded={open}
-        onClick={() => toggleSection(SCENARIOS_ID)}
-      >
-        <Caret open={open} />
-        Scenarios
-      </button>
-      {open ? (
-      <div class="pal-scn-list">
-        {shelf(doc, 0).map((t) => (
-          <div class="tmpl" key={t.id}>
-            <Action
-              label={t.label}
-              title={t.caption}
-              enabled={editable ? t.enabled : { state: 'off', why: WHY.readOnlyHere }}
-              onClick={() => applyTemplate(t)}
-            />
-          </div>
-        ))}
-      </div>
-      ) : null}
-    </nav>
-  );
-}
-
-export function BreakRail({ scenarios = true, validation = true }: BreakRailProps = {}) {
+export function BreakRail() {
   const railRef = useRailRow();
   const doc = topology.value;
   const list = events.value;
@@ -127,9 +78,7 @@ export function BreakRail({ scenarios = true, validation = true }: BreakRailProp
           <div class="empty">
             <span class="empty-k">{healthyRun.value ? 'No events — everything is working' : 'No events yet'}</span>
             <p>
-              {scenarios
-                ? 'Pick a scenario below, or select a card to add an event.'
-                : 'Pick a scenario on the left, or select a card to add an event.'}
+              Pick a scenario below, or add an event from a card.
             </p>
           </div>
         ) : null}
@@ -198,7 +147,6 @@ export function BreakRail({ scenarios = true, validation = true }: BreakRailProp
       {/* What the run decided, and why: under the events that caused it. */}
       {trace.value ? <RunExplanation doc={doc} trace={trace.value} /> : null}
 
-      {scenarios ? (
       <Fold
         id={SCENARIOS_ID}
         title="One-click scenarios"
@@ -239,12 +187,11 @@ export function BreakRail({ scenarios = true, validation = true }: BreakRailProp
           ))}
         </div>
       </Fold>
-      ) : null}
 
       {/* The same validation the Build dock shows, worded and folded the same
           way: what is wrong with a configuration does not stop being true
           because the reader switched to breaking it. */}
-      {validation ? <IssuePanel /> : null}
+      <IssuePanel />
     </div>
   );
 }

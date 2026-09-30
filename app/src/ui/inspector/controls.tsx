@@ -398,13 +398,15 @@ export interface ActionProps {
   enabled?: WhyState;
   primary?: boolean;
   title?: string;
+  /** A toggle-like action that is "on" now: `aria-pressed`. Absent, the button is a plain press. */
+  pressed?: boolean;
 }
 
 /**
  * A button that can be off. The reason rides beside it, never in a tooltip:
  * a tooltip is not readable on a touch screen and does not print.
  */
-export function Action({ label, onClick, enabled = ON, primary = false, title }: ActionProps) {
+export function Action({ label, onClick, enabled = ON, primary = false, title, pressed }: ActionProps) {
   const off = enabled.state === 'off';
   return (
     <span class="ctl-off">
@@ -413,6 +415,7 @@ export function Action({ label, onClick, enabled = ON, primary = false, title }:
         class={`btn${primary ? ' is-primary' : ''}${off ? ' is-faded' : ''}`}
         disabled={off}
         title={title}
+        aria-pressed={pressed}
         onClick={onClick}
       >
         {label}

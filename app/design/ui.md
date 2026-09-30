@@ -1911,3 +1911,77 @@ report, the pinned-scale figures and the narrow read-only viewer draw exactly wh
   drag and a brace-grip drag, the lane menu and Escape.
 - **Not built**: a ghost of the previous run with the delta beside it.
 
+## Topology and the Detailed timeline (as built, 2026-09-30)
+
+Two of the four modes were re-cut. The ids did not move (`build`, `break`); what a reader
+calls them and what each holds did. **This section supersedes, for these two modes**: §3's
+table rows for Build and Simulate, "Simulate's two layouts" (there is one now; everything
+it says about Lanes still holds, everything about Split, the layout switch, the resizable
+dock, its full screen and the drawing's auto-fit is gone), "Where Simulate's events come
+from" (a click no longer opens the list), and the places in "Tuning a run in Simulate" that
+say *Split* or *in both layouts*.
+
+- **Names and addresses.** `MODE_LABEL`: Topology, Detailed timeline, Config, Learn. The
+  address writes `mode=timeline` and nothing for Topology, and reads `topology`, `build`,
+  `timeline`, `simulate` and `break`. Every sentence a reader sees follows; a test scans the
+  shell's text, titles and aria labels for the old names.
+- **Topology is Build plus the run.** With nothing injected it is Build as it was:
+  monochrome cards, the steady-state readout, the add palette at the left, the inspector at
+  the right. `runShown()` (`state/derived.ts`: a trace exists and the mode is not Config) is
+  the one switch for the rest: the cards and links take their state at the playhead, the
+  readout reads the run, and the dock grows the small timeline. Editing stays possible
+  throughout; the run recomputes.
+- **What a card does in Topology.** Click selects and nothing else. The `⋯` handle, and `A`
+  on a focused card, line or data centre, open Build's action table. Right-click,
+  `Shift+F10` and `E` open the grouped events at the playhead (`barKind` in `canvas/bar.ts`
+  says which table the bar is showing). The hover icons are the break icons, aimed at the
+  playhead; a press on one does not start a drag. After a scenario or an event the playhead
+  rests at the end of the run, as it did in Simulate.
+- **The dock** (`FloatDock` in `App.tsx`; the docked narrow layout stacks the same parts):
+  the status row, the scenario row (`break/ScenarioRow.tsx`: the shelf as one wrapping row of
+  buttons, the one whose events are the current list pressed, hidden for read-only viewers),
+  then the small timeline while a run exists. With a run the status row is the terse
+  one-line readout of the Detailed timeline's bar (`TerseReadout`, `break/RunBar.tsx`) and
+  not the cards: three rows of cards over the scenarios and the timeline left the drawing a
+  strip at 1024×768. The scenarios were on the left under the add palette in the first cut;
+  with a run on screen the two did not fit a 900 px window and the column scrolled in the
+  middle of the canvas, so they are in the dock, above the timeline they cause.
+- **The small timeline** (`timeline/MiniTimeline.tsx`, `styles/mini-timeline.css`): the
+  transport, the run's headline as its plain sentence, *Clear*, *Detailed timeline* (the mode,
+  playhead kept) and the pop-out; under them one 8 px bar per database, far sync and observer
+  lane (no links, no application, no braces, no sentences), the injected events as numbered
+  marks on the axis, and a playhead that a press, a drag or the arrow keys move. It is drawn
+  from `useRunTimeline`'s model, with the application's lanes counted for the axis (so the
+  playhead's resting place is on it) and not drawn.
+- **The Detailed timeline is the lanes.** `LanesView` is the mode wherever it floats
+  (>= 1024 px); the drawing is not there, and the cards at the head of the lanes are the
+  picture of the topology. Its settings are a 284 px column at the left (`TuneStrip
+  layout="column"`: Protection, Fast-start failover, Standby, Environment, Application with
+  the four connect-string timings and *Defaults* / *Tuned*; a greyed control's reason in
+  full under it), and the row above the lanes when the section is under 1180 px
+  (`tuneLayoutFor`). The rail (Events, *Why this result?*, the scenarios, validation) folds
+  on the way in, as it did. Below 1024 px the mode is the read-only viewer it was: the
+  drawing and the full timeline.
+- **What went with Split**: `LayoutSwitch`, `SplitDock`, `DockControls` (the dock's grip and
+  full screen), `breakLayout`, `dg-break-layout`, `dg-tl-h`, `timelineH` / `timelineFull`,
+  the drawing's auto-fit (`zoomAuto`, `autoFactor`; *Fit* is 1:1 again) and
+  `ScenarioPalette`. Renamed: `SplitBar.tsx` → `RunBar.tsx` (`TerseReadout`,
+  `FindingsMenu`, `KeyMenu`), `split-rail.ts` → `rail-fold.ts`, `split.css` →
+  `timeline-bar.css`.
+- **What still draws the full timeline** (`TimelineBody`, with the lane `+`, the grips and
+  the marker drag): the window the small timeline's pop-out opens, the docked narrow layout,
+  and Learn (read-only). `shellTimelineProps` offers the editing in `build` and `break`
+  alike. One playback loop runs at a time: with the timeline popped out the popup drives,
+  and the small timeline and the lanes stand down.
+- **Introduction, walkthrough, Learn.** *Watch a failover* lands in Topology with the crash
+  applied; the walkthrough stays in Topology for all three steps (the threshold step opens
+  the inspector's field, and the small timeline follows); Learn's buttons read *Open in
+  Topology* and *Open in the detailed timeline*.
+- **Tests**: `test/ui/topology-mode.test.ts`, `detailed-timeline.test.ts` (was
+  `break-layouts`), `polish-timeline.test.ts` (was `polish-split`), `popout.test.ts`,
+  `tune.test.ts` (the column). Browser pass 2026-09-30: Topology at 1440×900 dark and
+  1024×768 light, with no run, the healthy run, a crash and an isolation; hover icons,
+  right-click, a seek on the small timeline, *Clear*, *Detailed timeline*; the Detailed
+  timeline at 1440×900 and 1100×760. Not exercised in a browser: the popped-out timeline
+  window, and the `A` key.
+

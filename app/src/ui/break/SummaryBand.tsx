@@ -1,7 +1,6 @@
 /**
- * The run's summary, at reading size: a band of cards under Break's bar, in
- * Split (between the bar and the timeline) and in Lanes (between the bar and
- * the rows).
+ * The run's summary, at reading size: a band of cards under the Detailed
+ * timeline's bar, between the bar and the rows.
  *
  * The bar's terse line (`TerseReadout`) is the summary a reader already has,
  * one line of it, with whatever does not fit left out. The band is the same
@@ -28,7 +27,7 @@ import { summaryOpen } from '@/state/view';
 import { Fact } from '../common/Chip';
 import { showExplanation } from './RunExplanation';
 
-/** The band's id: what the button's `aria-controls` names. Split and Lanes are never both on screen. */
+/** The band's id: what the button's `aria-controls` names. */
 export const SUMMARY_ID = 'run-summary';
 
 /** What TerseReadout shows: the readout without the findings chip. */
@@ -88,7 +87,7 @@ export function SummaryBand() {
 }
 
 /**
- * Stands where the terse line stands in Split's bar and in Lanes'. Given the
+ * Stands where the terse line stands in the Detailed timeline's bar. Given the
  * line, it decides what the bar shows: with no run, the line as it was;
  * folded, the line -- a click on it unfolds the band -- and the button;
  * unfolded, a spacer and the button.
@@ -112,8 +111,8 @@ export function ReadoutFold({ children }: { children: ComponentChildren }) {
   }
   return (
     <div class="rs-host">
-      {/* A press on the line is a click on the line, not a drag of the split
-          (SplitBar's KEEPS_PRESS); a button inside it, like "Why?", keeps its own click. */}
+      {/* A press on the line is a click on the line; a button inside it, like
+          "Why?", keeps its own click. */}
       <div
         class="rs-hit" title="Show the summary cards"
         onClick={(e) => {
