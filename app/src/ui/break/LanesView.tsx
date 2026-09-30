@@ -60,7 +60,7 @@ import { ReadoutFold, SummaryBand } from './SummaryBand';
 import { EventStrip, EV, MoreMenu, stripWidth } from './lanes-events';
 import type { MenuTarget } from './lanes-events';
 import { AppTimeline, appTimelineOn, TimelineSwitch } from './TimelineView';
-import { TuneStrip, TuneToggle } from './TuneStrip';
+import { SETTINGS_COLUMN_MIN_W, TuneStrip, TuneToggle, tuneLayoutFor } from './TuneStrip';
 import { assignLanes, cardSub, hostBands, planPills, segmentAt, siteOrder } from './lanes-layout';
 import type { Placed, PillPlan } from './lanes-layout';
 
@@ -554,6 +554,11 @@ function Lanes({ run, fr }: { run: RunTimeline | null; fr: Frame }) {
   const [menuKey, setMenuKey] = useState<string | null>(null);
   const section = useRef<HTMLElement | null>(null);
   const body = useRef<HTMLElement | null>(null);
+  /* The settings are a column beside the lanes when the section has the room, else a row above
+     them. Decided by the section's width, never the body's: the column takes width from the body,
+     so a decision made on the body would flip itself. Until it is measured the column is assumed. */
+  const [measureSection, sectionW] = useWidth(SETTINGS_COLUMN_MIN_W);
+  const settings = tuneLayoutFor(sectionW);
 
   const plotR = model?.scale.plotR ?? width - TL_FULL.padR;
   const scale = useMemo(() => model?.scale ?? steadyScale(plotL, plotR), [model, plotL, plotR]);
@@ -788,11 +793,13 @@ function Lanes({ run, fr }: { run: RunTimeline | null; fr: Frame }) {
   const handles = useTuneHandles(tunable && tr !== null && model !== null, doc, tr as Trace, model as TimelineModel);
 
   return (
-    <section class="ln-view float-card" aria-label="Simulate: topology and timeline" ref={section}>
+    <section class="ln-view float-card" aria-label="Simulate: topology and timeline" ref={(el) => { section.current = el; measureSection(el); }}>
       <LanesBar run={run} />
       <SummaryBand />
-      <TuneStrip />
+      {settings === 'row' ? <TuneStrip /> : null}
 
+      <div class="ln-main">
+        {settings === 'column' ? <TuneStrip layout="column" /> : null}
       <div
         class="ln-body"
         ref={(el) => { body.current = el; fr.measure(el); }}
@@ -1002,6 +1009,7 @@ function Lanes({ run, fr }: { run: RunTimeline | null; fr: Frame }) {
             </div>
           </>
         )}
+      </div>
       </div>
       {menu === null ? null : (
         <MoreMenu key={menuKey ?? ''} target={menu} doc={doc} t={t} view={section.current} onClose={closeMenu} />

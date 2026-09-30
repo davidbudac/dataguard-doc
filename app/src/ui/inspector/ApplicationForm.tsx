@@ -18,6 +18,7 @@ import {
   applicationClient, applicationsOf, CLIENT_TIMING_DEFAULTS, CLIENT_TIMING_TUNED, siteId,
 } from '@/engine';
 import { canEdit, viewport } from '@/state/view';
+import { CLIENT_TIMING_FIELDS, editClientTiming } from './client-timing';
 import { Check, Choice, Group, Note, Num, Pick, Text } from './controls';
 import {
   applyClientTiming, clientHasTiming, moveToSite, patchClient as patchClientEdit, renameApplication, setAddressListed, setOwnClient,
@@ -38,57 +39,22 @@ export interface ApplicationFormProps {
  */
 export function ClientTimingControls({ client: c, appId }: { client: ClientDescriptor; appId?: string }) {
   const enabled = canEdit(viewport.value) ? ON : off(WHY.readOnlyView);
-  const patchClient = (label: string, fn: Parameters<typeof patchClientEdit>[1], key?: string): void =>
-    patchClientEdit(label, fn, key, appId);
   return (
     <>
-      <Num
-        enabled={enabled}
-        name="TRANSPORT_CONNECT_TIMEOUT"
-        bound="transportConnectTimeoutSeconds"
-        value={c.transportConnectTimeoutSeconds}
-        coalesce="client:tct"
-        onChange={(v) => patchClient(
-          `Set TRANSPORT_CONNECT_TIMEOUT to ${v} s`,
-          (x) => ({ ...x, transportConnectTimeoutSeconds: v }), 'client:tct',
-        )}
-        note="Default 60 s, for each ADDRESS and each IP address a host name is mapped to. This page draws one IP address per host. The JDBC thin driver does not inherit this default, so the generated URL always spells the value out."
-      />
-      <Num
-        enabled={enabled}
-        name="CONNECT_TIMEOUT"
-        bound="connectTimeoutSeconds"
-        value={c.connectTimeoutSeconds ?? 0}
-        unit={c.connectTimeoutSeconds === null || c.connectTimeoutSeconds === 0 ? 's — not set' : 's'}
-        coalesce="client:ct"
-        onChange={(v) => patchClient(
-          v > 0 ? `Set CONNECT_TIMEOUT to ${v} s` : 'Leave CONNECT_TIMEOUT unset',
-          (x) => ({ ...x, connectTimeoutSeconds: v > 0 ? v : null }), 'client:ct',
-        )}
-        note="Per ADDRESS, and no default is documented: at 0 it is left out of the string. Set, the wait on one address is the smaller of the two timeouts."
-      />
-      <Num
-        enabled={enabled}
-        name="RETRY_COUNT"
-        bound="retryCount"
-        kind="number"
-        value={c.retryCount}
-        onChange={(v) => patchClient(
-          `Set RETRY_COUNT to ${v}`, (x) => ({ ...x, retryCount: v }), 'client:rc',
-        )}
-        note="Extra traversals of the whole address list after the first one fails across all of it. The reference prints no default; one traversal when unset is this page's reading."
-      />
-      <Num
-        enabled={enabled}
-        name="RETRY_DELAY"
-        bound="retryDelaySeconds"
-        value={c.retryDelaySeconds}
-        coalesce="client:rd"
-        onChange={(v) => patchClient(
-          `Set RETRY_DELAY to ${v} s`, (x) => ({ ...x, retryDelaySeconds: v }), 'client:rd',
-        )}
-        note="Seconds between traversals. No default is documented; at 0 the next traversal starts at once."
-      />
+      {CLIENT_TIMING_FIELDS.map((f) => (
+        <Num
+          key={f.name}
+          enabled={enabled}
+          name={f.name}
+          bound={f.bound}
+          kind={f.kind}
+          value={f.value(c)}
+          {...(f.unit === undefined ? {} : { unit: f.unit(c) })}
+          coalesce={f.coalesce}
+          onChange={(v) => editClientTiming(f, v, appId)}
+          note={f.note}
+        />
+      ))}
     </>
   );
 }
@@ -100,7 +66,12 @@ export function ClientTimingControls({ client: c, appId }: { client: ClientDescr
  * generous CONNECT_TIMEOUT, short delays times many retries), not figures
  * Oracle documents as a recommendation -- the tooltip says so.
  */
-export function ClientPresets({ client: c, appId }: { client: ClientDescriptor; appId?: string }) {
+export function ClientPresets({ client: c, appId, wrap }: {
+  client: ClientDescriptor; appId?: string;
+  /** How an edit is made: Simulate's column wraps it as a tuning edit (`tuned`), so the axis holds. */
+  wrap?: (edit: () => void) => void;
+}) {
+  const run = (edit: () => void): void => (wrap === undefined ? edit() : wrap(edit));
   const editable = canEdit(viewport.value);
   const T = CLIENT_TIMING_TUNED;
   return (
@@ -109,7 +80,7 @@ export function ClientPresets({ client: c, appId }: { client: ClientDescriptor; 
         type="button" class="btn" disabled={!editable}
         aria-pressed={clientHasTiming(c, CLIENT_TIMING_DEFAULTS)}
         title="TRANSPORT_CONNECT_TIMEOUT 60 s, CONNECT_TIMEOUT not set, RETRY_COUNT 0, RETRY_DELAY 0 s: the parameters' own defaults"
-        onClick={() => applyClientTiming('defaults', appId)}
+        onClick={() => run(() => applyClientTiming('defaults', appId))}
       >
         Defaults
       </button>
@@ -117,7 +88,7 @@ export function ClientPresets({ client: c, appId }: { client: ClientDescriptor; 
         type="button" class="btn" disabled={!editable}
         aria-pressed={clientHasTiming(c, T)}
         title={`TRANSPORT_CONNECT_TIMEOUT ${T.transportConnectTimeoutSeconds} s, CONNECT_TIMEOUT ${T.connectTimeoutSeconds} s, RETRY_COUNT ${T.retryCount}, RETRY_DELAY ${T.retryDelaySeconds} s: this page's suggested shape -- a short transport timeout, a generous CONNECT_TIMEOUT, short delays times many retries. The HA guide's example uses CONNECT_TIMEOUT=90; the rest are not Oracle figures.`}
-        onClick={() => applyClientTiming('tuned', appId)}
+        onClick={() => run(() => applyClientTiming('tuned', appId))}
       >
         Tuned
       </button>

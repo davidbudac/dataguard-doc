@@ -14,7 +14,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { h, render } from 'preact';
 import { act } from 'preact/test-utils';
-import { BOUNDS, hostId, simulate, sortEvents } from '@/engine';
+import {
+  applicationClient, applicationsOf, BOUNDS, CLIENT_TIMING_TUNED, hostId, simulate, sortEvents,
+} from '@/engine';
 import type { TimedEvent, TopologyDoc } from '@/engine';
 import { classic } from '@/presets';
 import { classicDoc, makeDoc } from '@/state/doc';
@@ -26,8 +28,9 @@ import {
 } from '@/state/view';
 import { App } from '@/ui/App';
 import { applyTemplate, templates } from '@/ui/break/events';
-import { TuneStrip } from '@/ui/break/TuneStrip';
-import { patchFsfo, setRoleTransition } from '@/ui/inspector/edits';
+import { SETTINGS_COLUMN_MIN_W, TuneStrip, tuneLayoutFor } from '@/ui/break/TuneStrip';
+import { addApplication, patchFsfo, setOwnClient, setRoleTransition } from '@/ui/inspector/edits';
+import { WHY } from '@/ui/inspector/why';
 import { isSectionOpen, resetSections } from '@/ui/inspector/sections';
 import { buildTimeline } from '@/ui/timeline/build';
 import { equationOf } from '@/ui/timeline/equation';
@@ -609,13 +612,15 @@ describe('the tune strip', () => {
     expect(r.querySelector('.tl-headline')!.textContent).toContain('t = 50 s');
   });
 
-  it('is drawn in Lanes between the bar and the rows', async () => {
+  it('is drawn in Lanes as a column beside the rows, and its role transition box edits the document', async () => {
     breakLayout.value = 'lanes';
     crash();
     const r = mount();
     await tick();
     const s = strip(r)!;
+    expect(s.classList.contains('tune-col')).toBe(true);
     expect(s.nextElementSibling?.classList.contains('ln-body')).toBe(true);
+    expect(s.parentElement?.classList.contains('ln-main')).toBe(true);
     typeInto(num(r, 'Role transition'), '20');
     await tick();
     expect(topology.value.environment.roleTransitionSeconds).toBe(20);
@@ -782,7 +787,7 @@ describe('the tune strip', () => {
     root = document.createElement('div');
     document.body.appendChild(root);
     viewport.value = 'narrow';
-    act(() => render(h(TuneStrip, {}), root!));
+    act(() => render(h(TuneStrip, { layout: 'row' }), root!));
     const controls = [...root.querySelectorAll<HTMLInputElement | HTMLSelectElement>('.tune-strip input, .tune-strip select')];
     expect(controls.length).toBeGreaterThanOrEqual(6);
     expect(controls.every((c) => c.disabled)).toBe(true);
@@ -794,9 +799,231 @@ describe('the tune strip', () => {
     resetHistory(makeDoc({ ...d, members: d.members.filter((m) => m.id === 'prm01') }));
     root = document.createElement('div');
     document.body.appendChild(root);
-    act(() => render(h(TuneStrip, {}), root!));
+    act(() => render(h(TuneStrip, { layout: 'row' }), root!));
     const names = [...root.querySelectorAll('.tune-k')].map((k) => k.textContent);
     expect(names.some((n) => n?.startsWith('LogXptMode') || n?.startsWith('Apply lag'))).toBe(false);
     expect(names).toContain('Role transition');
+  });
+});
+
+/* ---------------- the column ---------------- */
+
+/** The settings column of Lanes (break/TuneStrip.tsx, `layout="column"`). */
+describe('the settings column', () => {
+  const col = (r: ParentNode): HTMLElement | null => r.querySelector('.tune-col');
+  const cnum = (r: ParentNode, label: string): HTMLInputElement =>
+    r.querySelector(`.tune-col input[aria-label="${label}"]`) as HTMLInputElement;
+  const heads = (r: ParentNode): (string | null)[] =>
+    [...col(r)!.querySelectorAll('.grp-hd .eyebrow')].map((e) => e.textContent);
+  const lanes = async (): Promise<HTMLElement> => {
+    breakLayout.value = 'lanes';
+    crash();
+    const r = mount();
+    await tick();
+    return r;
+  };
+  const app = () => applicationsOf(topology.value)[0]!;
+  const client = () => applicationClient(topology.value, app());
+
+  it('is the settings at a wide section, under the rail\'s headings, one control to a line', async () => {
+    const r = await lanes();
+    expect(col(r)).not.toBeNull();
+    expect(r.querySelector('.ln-view > .tune-strip')).toBeNull();
+    expect(heads(r)).toEqual(['Protection', 'Fast-start failover', 'Standby sby01', 'Environment', 'Application app01']);
+    const names = [...col(r)!.querySelectorAll('.tune-k')].map((k) => k.textContent);
+    expect(names).toEqual([
+      'Protection mode', 'FAST_START FAILOVER', 'FastStartFailoverThreshold', 'FastStartFailoverLagLimit',
+      'LogXptMode', 'Apply lag', 'Role transition',
+      'TRANSPORT_CONNECT_TIMEOUT', 'CONNECT_TIMEOUT', 'RETRY_COUNT', 'RETRY_DELAY',
+    ]);
+    /* The accessible names are the row's, so the two cannot be told apart by a screen reader. */
+    expect(cnum(r, 'Apply lag · sby01')).not.toBeNull();
+    expect(col(r)!.querySelector('.tune-all')!.textContent).toBe('All settings');
+    expect(col(r)!.lastElementChild).toBe(col(r)!.querySelector('.tune-all'));
+  });
+
+  it('has the Application group\'s four timings and presets, and only when the document has an application', async () => {
+    const r = await lanes();
+    const group = [...col(r)!.querySelectorAll('.grp')].at(-1) as HTMLElement;
+    expect(group.querySelector('.eyebrow')!.textContent).toBe('Application app01');
+    expect([...group.querySelectorAll('.tune-k')].map((k) => k.textContent)).toEqual([
+      'TRANSPORT_CONNECT_TIMEOUT', 'CONNECT_TIMEOUT', 'RETRY_COUNT', 'RETRY_DELAY',
+    ]);
+    expect([...group.querySelectorAll('.client-presets .btn')].map((b) => b.textContent)).toEqual(['Defaults', 'Tuned']);
+    expect(group.querySelector('.tune-f')!.getAttribute('title')).toMatch(/^Default 60 s, for each ADDRESS/);
+    /* The application is the one `timelineApplication()` names: a new one is selected, and the column follows it. */
+    addApplication();
+    await tick();
+    expect(heads(r).at(-1)).toBe('Application app02');
+    /* No application, no group. */
+    render(null, r);
+    const d = classic.doc();
+    resetHistory(makeDoc({ ...d, applications: [] }));
+    root = document.createElement('div');
+    document.body.appendChild(root);
+    act(() => render(h(TuneStrip, { layout: 'column' }), root!));
+    expect([...root.querySelectorAll('.grp-hd .eyebrow')].map((e) => e.textContent)).toEqual([
+      'Protection', 'Fast-start failover', 'Standby sby01', 'Environment',
+    ]);
+    expect(root.querySelector('input[aria-label="RETRY_COUNT"]')).toBeNull();
+  });
+
+  it('has no Standby group when there is no standby, and none of its controls', () => {
+    const d = classic.doc();
+    resetHistory(makeDoc({ ...d, members: d.members.filter((m) => m.id === 'prm01') }));
+    root = document.createElement('div');
+    document.body.appendChild(root);
+    act(() => render(h(TuneStrip, { layout: 'column' }), root!));
+    expect([...root.querySelectorAll('.grp-hd .eyebrow')].map((e) => e.textContent)).toEqual([
+      'Protection', 'Fast-start failover', 'Environment', 'Application app01',
+    ]);
+    expect(root.querySelector('input[aria-label^="Apply lag"]')).toBeNull();
+  });
+
+  it('edits the application\'s connect string with the inspector\'s label, in one undo entry, and marks the run tuned', async () => {
+    const r = await lanes();
+    setOwnClient('app01', true);
+    await tick();
+    const before = undoStack.value.length;
+    tunedScenario.value = null;
+    typeInto(cnum(r, 'TRANSPORT_CONNECT_TIMEOUT'), '20');
+    typeInto(cnum(r, 'TRANSPORT_CONNECT_TIMEOUT'), '25');
+    await tick();
+    expect(app().client?.transportConnectTimeoutSeconds).toBe(25);
+    expect(topology.value.client.transportConnectTimeoutSeconds).not.toBe(25);
+    expect(undoLabel.value).toBe('Set TRANSPORT_CONNECT_TIMEOUT to 25 s');
+    expect(undoStack.value).toHaveLength(before + 1);
+    expect(tunedScenario.value).toBe(JSON.stringify(topology.value));
+    expect(cnum(r, 'TRANSPORT_CONNECT_TIMEOUT').value).toBe('25');
+    undo();
+    expect(app().client?.transportConnectTimeoutSeconds).not.toBe(25);
+  });
+
+  it('writes the others as the inspector does: an unset CONNECT_TIMEOUT is 0, and 0 puts it back', async () => {
+    const r = await lanes();
+    /* No connect string of its own: the edit is to the shared one, which the application dials. */
+    expect(cnum(r, 'CONNECT_TIMEOUT').value).toBe('0');
+    expect(col(r)!.textContent).toContain('s — not set');
+    typeInto(cnum(r, 'CONNECT_TIMEOUT'), '45');
+    await tick();
+    expect(topology.value.client.connectTimeoutSeconds).toBe(45);
+    expect(undoLabel.value).toBe('Set CONNECT_TIMEOUT to 45 s');
+    typeInto(cnum(r, 'CONNECT_TIMEOUT'), '0');
+    await tick();
+    expect(topology.value.client.connectTimeoutSeconds).toBeNull();
+    expect(undoLabel.value).toBe('Leave CONNECT_TIMEOUT unset');
+    typeInto(cnum(r, 'RETRY_COUNT'), '7');
+    await tick();
+    expect(client().retryCount).toBe(7);
+    expect(undoLabel.value).toBe('Set RETRY_COUNT to 7');
+    typeInto(cnum(r, 'RETRY_DELAY'), '4');
+    await tick();
+    expect(client().retryDelaySeconds).toBe(4);
+    expect(undoLabel.value).toBe('Set RETRY_DELAY to 4 s');
+  });
+
+  it('applies a preset in one undo entry and marks the run tuned', async () => {
+    const r = await lanes();
+    const before = undoStack.value.length;
+    tunedScenario.value = null;
+    const tunedBtn = [...col(r)!.querySelectorAll<HTMLButtonElement>('.client-presets .btn')].find((b) => b.textContent === 'Tuned')!;
+    tunedBtn.click();
+    await tick();
+    expect(client().retryCount).toBe(CLIENT_TIMING_TUNED.retryCount);
+    expect(undoStack.value).toHaveLength(before + 1);
+    expect(tunedScenario.value).toBe(JSON.stringify(topology.value));
+  });
+
+  it('draws a greyed control\'s reason in full under it, with the tooltip as before', async () => {
+    const r = await lanes();
+    expect(topology.value.config.edition).toBe('19c');
+    expect(topology.value.config.protectionMode).toBe('MAXAVAILABILITY');
+    const box = cnum(r, 'FastStartFailoverLagLimit');
+    expect(box.disabled).toBe(true);
+    const g = box.closest('.tune-g')!;
+    const why = g.querySelector('.tune-why')!;
+    expect(why.textContent).toBe(WHY.lagLimitMaxAvail19c);
+    expect(why.getAttribute('title')).toBe(WHY.lagLimitMaxAvail19c);
+    /* Under the control, in the same group, not beside it. */
+    expect(g.firstElementChild?.classList.contains('tune-f')).toBe(true);
+    expect(why.previousElementSibling).toBe(g.firstElementChild);
+  });
+
+  it('is gone with the Settings toggle, and the lanes stay', async () => {
+    const r = await lanes();
+    expect(col(r)).not.toBeNull();
+    toggle(r).click();
+    await tick();
+    expect(col(r)).toBeNull();
+    expect(strip(r)).toBeNull();
+    expect(r.querySelector('.ln-main > .ln-body')).not.toBeNull();
+    toggle(r).click();
+    await tick();
+    expect(col(r)).not.toBeNull();
+  });
+
+  it('is not there while the Application timeline is', async () => {
+    const r = await lanes();
+    breakTimeline.value = 'app';
+    await tick();
+    expect(col(r)).toBeNull();
+    expect(r.querySelector('.ln-main')).toBeNull();
+  });
+
+  it('is disabled with the reason in full where the view is read-only', () => {
+    root = document.createElement('div');
+    document.body.appendChild(root);
+    viewport.value = 'narrow';
+    act(() => render(h(TuneStrip, { layout: 'column' }), root!));
+    const controls = [...root.querySelectorAll<HTMLInputElement | HTMLSelectElement>('.tune-col input, .tune-col select')];
+    expect(controls.length).toBeGreaterThanOrEqual(6);
+    expect(controls.every((c) => c.disabled)).toBe(true);
+    expect(root.querySelector('.tune-col > .tune-why')?.textContent).toBe('This is a read-only view here.');
+  });
+
+  it('leaves the row in Split, above the timeline', async () => {
+    crash();
+    const r = mount();
+    await tick();
+    expect(strip(r)!.classList.contains('tune-col')).toBe(false);
+    expect(col(r)).toBeNull();
+    expect(r.querySelector('.ln-main')).toBeNull();
+  });
+
+  it('decides column or row from the section\'s width: the column from 1180 px', () => {
+    expect(SETTINGS_COLUMN_MIN_W).toBe(1180);
+    expect(tuneLayoutFor(1180)).toBe('column');
+    expect(tuneLayoutFor(1600)).toBe('column');
+    expect(tuneLayoutFor(1179)).toBe('row');
+    expect(tuneLayoutFor(1024)).toBe('row');
+    expect(tuneLayoutFor(0)).toBe('row');
+  });
+
+  it('falls back to the row above the lanes when the measured section is narrow', async () => {
+    class FakeRO {
+      constructor(private cb: () => void) {}
+      observe(): void { this.cb(); }
+      disconnect(): void {}
+      unobserve(): void {}
+    }
+    const RO = Object.getOwnPropertyDescriptor(window, 'ResizeObserver');
+    const CW = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'clientWidth');
+    Object.defineProperty(window, 'ResizeObserver', { configurable: true, value: FakeRO });
+    Object.defineProperty(HTMLElement.prototype, 'clientWidth', {
+      configurable: true,
+      get(this: HTMLElement) { return this.classList.contains('ln-view') ? 1100 : 900; },
+    });
+    try {
+      const r = await lanes();
+      expect(col(r)).toBeNull();
+      const s = strip(r)!;
+      expect(s.parentElement?.classList.contains('ln-view')).toBe(true);
+      expect(s.nextElementSibling?.classList.contains('ln-main')).toBe(true);
+      expect(r.querySelector('.ln-main > .ln-body')).not.toBeNull();
+    } finally {
+      if (RO) Object.defineProperty(window, 'ResizeObserver', RO); else delete (window as unknown as Record<string, unknown>).ResizeObserver;
+      if (CW) Object.defineProperty(HTMLElement.prototype, 'clientWidth', CW);
+      else delete (HTMLElement.prototype as unknown as Record<string, unknown>).clientWidth;
+    }
   });
 });

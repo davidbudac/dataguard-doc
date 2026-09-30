@@ -243,6 +243,33 @@
 .tune-spacer { flex: 1 1 0; min-width: 0; }
 .tune-all { flex: 0 0 auto; padding: 2px 8px; font-size: 11.5px; white-space: nowrap; border-color: var(--ln); }
 
+/* The same settings as a column beside Lanes' lanes (`layout="column"`): the rail's
+   headings (`.grp`, `.eyebrow`), a control to a line with its name at the left and
+   the control at the right, and a greyed control's reason in full, wrapped, under
+   it. A long Oracle name lets its control drop to the line below rather than be cut.
+   The column scrolls by itself when it is taller than the view. */
+.tune-col {
+  --px: 12px;
+  flex: 0 0 244px; width: 244px; min-height: 0; padding: 0 0 12px;
+  flex-direction: column; flex-wrap: nowrap; align-items: stretch; gap: 0;
+  overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain;
+  scrollbar-width: thin; scrollbar-color: var(--ln2) transparent;
+  border-bottom: 0; border-right: 1px solid var(--ln);
+}
+.tune-col .grp { padding-bottom: 6px; }
+.tune-col .grp-hd { min-height: 26px; padding: 10px var(--px) 2px; }
+.tune-col .tune-g, .tune-col .tune-g.has-why {
+  flex: none; display: flex; flex-direction: column; align-items: stretch; gap: 2px; padding: 3px var(--px);
+}
+.tune-col .tune-f { flex-direction: row; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 2px 8px; }
+.tune-col .tune-k { font-size: 11px; color: var(--ik2); white-space: normal; overflow-wrap: anywhere; }
+.tune-col .tune-c { margin-left: auto; }
+.tune-col .tune-sel { max-width: 100%; }
+.tune-col .tune-why { flex: none; width: auto; min-width: 0; max-width: none; overflow: visible; text-overflow: clip; white-space: normal; padding: 0; }
+.tune-col .tune-why .why { display: block; white-space: normal; font-size: 10.5px; line-height: 1.4; }
+.tune-col > .tune-why { padding: 8px var(--px) 0; }
+.tune-col .tune-all { align-self: flex-start; margin: 10px var(--px) 0; }
+
 /* The bar's `Settings` button: pressed while the row is drawn. */
 .sb-tune { flex: 0 0 auto; padding: 2px 8px; font-size: 11.5px; white-space: nowrap; border-color: var(--ln); }
 .sb-tune[aria-pressed="true"] { color: var(--ik); background: var(--sf3); border-color: var(--ln2); font-weight: 600; }
