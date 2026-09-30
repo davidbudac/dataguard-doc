@@ -14,8 +14,8 @@ export interface EventDragProps {
   onStart?: () => void;
   /**
    * Where the time readout sits while dragging. `above` (the Timeline) is over the pin,
-   * centred. Lanes' pins start at the top of a plot that a sticky strip covers, so there the
-   * readout goes `beside` the icon, on whichever side has room inside the plot.
+   * centred. Lanes' pins start at the very top of the plot, with no room over them, so there
+   * the readout goes `beside` the icon, on whichever side has room inside the plot.
    */
   readout?: 'above' | 'beside';
   children: ComponentChildren;

@@ -12,7 +12,7 @@
  * rail edits and scenario or configuration changes fit automatically.
  *
  * The same rule holds it for a setting tuned from Simulate's own chrome (the
- * tune strip, the headline's terms): the axis auto-fits to the run, so without
+ * tune strip, the grips): the axis auto-fits to the run, so without
  * a hold every bar would be redrawn at nearly the same width and only the tick
  * labels would move -- the reader could not see a 30 s threshold become 25 s.
  * A tuning edit marks the document it produced (`markTuned`); that document is

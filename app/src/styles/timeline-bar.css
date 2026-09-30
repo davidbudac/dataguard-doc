@@ -3,9 +3,8 @@
    The bar is the one line over the lanes (break/LanesView.tsx `LanesBar`): the
    transport, the run's readings as one terse line (break/RunBar.tsx), the
    findings as a count with a dropdown, and the colour key behind an (i). The
-   rest of the file is what the timelines share: the headline sentence and its
-   equation, the application's timeline, and the settings -- as a row or as a
-   column (break/TuneStrip.tsx). Colour from tokens only. */
+   rest of the file is what the timelines share: the application's timeline, and
+   the settings -- as a row or as a column (break/TuneStrip.tsx). Colour from tokens only. */
 
 @media screen {
   /* ---- the bar ---- */
@@ -94,21 +93,6 @@
   }
   .sb-pop-key .sb-app-btn { margin-top: 2px; }
 }
-
-/* The headline: the run's one sentence, over the lanes and not in the drawing,
-   so a long one is cut with an ellipsis and read whole in the tooltip. It stays
-   put while the lanes scroll under it. */
-.tl-headline {
-  position: sticky; top: 0; z-index: 2; margin: 0; padding: 6px 2px 4px;
-  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  background: var(--sf); font-size: 13.5px; font-weight: 560; color: var(--ik);
-}
-.tl-headline.f-tl { color: var(--tl-ink); }
-.tl-headline.f-bl { color: var(--bl-ink); }
-.tl-headline.f-am { color: var(--am-ink); }
-.tl-headline.f-sl { color: var(--ik2); }
-.tl-headline.f-vi { color: var(--vi-ink); }
-.tl-headline.f-rd { color: var(--rd-ink); }
 
 /* ---- the second timeline: the application's detail view ----
    The switch (`Configuration | Application`, break/TimelineView.tsx) sits on the
@@ -205,22 +189,3 @@
 /* The bar's `Settings` button: pressed while the row is drawn. */
 .sb-tune { flex: 0 0 auto; padding: 2px 8px; font-size: 11.5px; white-space: nowrap; border-color: var(--ln); }
 .sb-tune[aria-pressed="true"] { color: var(--ik); background: var(--sf3); border-color: var(--ln2); font-weight: 600; }
-
-/* ---- the headline as an equation ----
-   The same one sticky line as the sentence (`.tl-headline`): its boxes are sized
-   to sit inside the line without making it taller, and a term's label is the grip
-   that scrubs its value. */
-.tl-eq { font-variant-numeric: tabular-nums; }
-.tl-eq-op { color: var(--ik3); font-weight: 400; }
-.tl-eq-t { white-space: nowrap; }
-.tl-eq-l.mono { font-size: 12.5px; }
-.tl-eq-l.is-scrub { cursor: ew-resize; touch-action: none; user-select: none; border-bottom: 1px dotted var(--ik3); }
-.tl-eq-l.is-scrub:hover { border-bottom-color: var(--ik); }
-.tl-eq-in {
-  width: 46px; height: 18px; margin: -3px 0; padding: 0 3px; box-sizing: border-box;
-  font: 600 12px/1 var(--mono); font-variant-numeric: tabular-nums; text-align: right;
-  color: inherit; background: var(--sf2); border: 1px solid var(--ln); border-radius: var(--r-ctl, 3px);
-  vertical-align: middle; -moz-appearance: textfield; appearance: textfield;
-}
-.tl-eq-in::-webkit-inner-spin-button, .tl-eq-in::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
-.tl-eq-in:hover { border-color: var(--ln2); }

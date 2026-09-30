@@ -1984,4 +1984,12 @@ say *Split* or *in both layouts*.
   right-click, a seek on the small timeline, *Clear*, *Detailed timeline*; the Detailed
   timeline at 1440×900 and 1100×760. Not exercised in a browser: the popped-out timeline
   window, and the `A` key.
+- **Nothing above the lanes** (same day, on request): the sticky strip over the lanes --
+  the headline (the sentence, or the equation with editable terms), the *Events at t = N s*
+  note, the second row of tick labels and the outage brace -- is gone, and the plot starts
+  under the bar. The equation had no other home, so `timeline/equation.ts`,
+  `RunHeadline.tsx`, `TimelineBody`'s `headline` prop and the `.tl-headline` / `.tl-eq` rules
+  went with it; "The headline is an equation" in "Tuning a run in Simulate" is history. The
+  threshold, the role transition and the apply lag are edited in the settings column and by
+  the grips on the clocks; the outcome and the time the new primary opens are on the bar.
 

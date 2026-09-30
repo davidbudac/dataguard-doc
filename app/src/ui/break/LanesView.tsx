@@ -31,12 +31,10 @@ import { applicationsOf } from '@/engine';
 import type { Application, Trace, TopologyDoc } from '@/engine';
 import { buildTimeline, fmt, TL_FULL } from '../timeline/build';
 import type {
-  AppSectionHead, TimelineCaption, TimelineLane, TimelineMarker, TimelineModel, TimelineSegment,
+  AppSectionHead, TimelineLane, TimelineMarker, TimelineModel, TimelineSegment,
 } from '../timeline/build';
 import { Defs, Lane, Marker } from '../timeline/Timeline';
-import { Brace, TopBrace } from '../timeline/Brace';
-import { equationOf } from '../timeline/equation';
-import { RunHeadline } from '../timeline/RunHeadline';
+import { Brace } from '../timeline/Brace';
 import { applyTune } from '../timeline/tune';
 import { Playhead } from '../timeline/Playhead';
 import { EventDrag } from '../timeline/EventDrag';
@@ -74,7 +72,6 @@ const HDR = 20; // a data centre's header band
 const DC_GAP = 20; // between one data centre's last row and the next header: a pill row too
 const APP_GAP = 6; // between the application's own lanes: no pills there
 const APP_LABEL = 14; // extra room above an application lane whose marker carries a sentence
-const HEAD_H = 26; // the sticky strip's clock: the tick labels, the outage brace, the caption over the cards
 const PIN_L = 54; // the event pins' sentence baseline; the pin stacks above it, the playhead grip under it
 const PIN_ICON_DY = 35; // the icon chip's centre, above PIN_L
 const PIN_BADGE_DY = 17; // the number badge's centre, above PIN_L
@@ -90,8 +87,6 @@ const PILL_FS = 10.5;
 const STEADY_T0 = 0;
 const STEADY_T1 = 60;
 const STEADY_STEP = 10;
-const STEADY_SENTENCE = 'Steady state. Nothing has been injected yet. Pick an event on a card to start.';
-const STEADY_CAPTION: TimelineCaption = { text: STEADY_SENTENCE, tone: 'ink', x: null, anchor: 'start' };
 
 interface Row {
   key: string; // the model lane key, or `node:<id>` where there is no lane
@@ -788,7 +783,6 @@ function Lanes({ run, fr }: { run: RunTimeline | null; fr: Frame }) {
     if (r.kind === 'application') return hostLanes.get(r.id) ?? null;
     return r.laneKey === null ? null : model?.lanes.find((l) => l.key === r.laneKey) ?? null;
   };
-  const caption = model?.caption;
   /* The same gate as the event drag's on the shell (shell-props.ts): tuning is Topology's and the Detailed timeline's, on a screen that edits. */
   const tunable = mode.value === 'break' && canEdit(viewport.value);
   const steadyX = scale.x(scale.clampT(t));
@@ -811,26 +805,6 @@ function Lanes({ run, fr }: { run: RunTimeline | null; fr: Frame }) {
           <p class="ln-note ln-pad">Nothing to draw: the configuration has no valid redo graph.</p>
         ) : (
           <>
-            {/* What holds still while the rows scroll: the run in a sentence, then the
-                clock -- its ticks, the outage over them and what the buttons are aimed at. */}
-            <div class="ln-head">
-              <RunHeadline
-                caption={caption ?? STEADY_CAPTION}
-                equation={tunable && tr && model ? equationOf(doc, tr, model.braces) : null}
-                {...(tunable ? { onTune: applyTune } : {})}
-              />
-              <svg class="tl-svg ln-svg ln-ticks" width={width} height={HEAD_H} viewBox={`0 0 ${width} ${HEAD_H}`} role="group" aria-label="The clock">
-                <g class="ln-when">
-                  <title>The event buttons act at the playhead. Move the playhead to add an event later.</title>
-                  <text class="ln-when-t" x={cardX} y={11}>Events at t = {fmt(at)} s</text>
-                  <text class="ln-when-s" x={cardX} y={22}>the buttons act at the playhead</text>
-                </g>
-                {ticks.map((tk) => (
-                  <text key={`t${tk.t}`} class="t-tick t-mono" x={tk.x} y={10} text-anchor="middle">{tk.label}</text>
-                ))}
-                {model?.topBrace ? <TopBrace {...model.topBrace} y={HEAD_H - 2} /> : null}
-              </svg>
-            </div>
             <div class="tl-plot ln-plot" onPointerMove={onPlotMove} onPointerLeave={() => setTip(null)}>
               <svg
                 class="tl-svg ln-svg is-seekable"

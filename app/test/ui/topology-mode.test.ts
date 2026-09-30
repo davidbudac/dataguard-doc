@@ -227,10 +227,9 @@ describe('a scenario from the dock makes the run', () => {
     expect(r.querySelector('.dock-status.is-run .readout')).toBeNull();
     const readout = r.querySelector('.dock-status.is-run .sb-ro')?.textContent ?? '';
     expect(readout).toContain('Outcome');
-    /* The headline is the plain sentence, not the editable equation. */
+    /* The caption is the plain sentence. */
     expect(r.querySelector('.mtl-cap')?.textContent).toBeTruthy();
     expect(r.querySelector('.mtl input.tl-tp-in')).not.toBeNull();
-    expect(r.querySelector('.mtl .tl-eq')).toBeNull();
   });
 
   it('leaves the playhead at the end of the run', async () => {

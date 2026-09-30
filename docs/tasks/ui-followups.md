@@ -336,7 +336,7 @@ Details: `app/design/ui.md`, "Tuning a run in Simulate".
 Status: done (on main)
 
 ### 9.2 The headline as an equation with editable terms
-Status: done (on main)
+Status: removed (2026-09-30, with the strip above the lanes, on request)
 
 ### 9.3 Drag the end of a clock to change its setting
 Status: done (on main)

@@ -3,7 +3,7 @@
  * lane, one bar over them -- and nothing else: no drawing of the topology, no
  * layout switch in the top bar, no preference behind one. What is pinned here
  * is what that view carries (the bar, the findings, the colour key, the
- * headline, the axis fit), the rail folding on the way in, the density of the
+ * axis fit, and what it does not: a headline above the lanes), the rail folding on the way in, the density of the
  * lanes staying with the model that asked for it, the docked fallback below
  * 1024 px, and Topology and Config staying as they were.
  *
@@ -219,17 +219,30 @@ describe('where it floats', () => {
     expect(key?.querySelector('.sb-app-btn')?.getAttribute('aria-pressed')).toBe('true');
   });
 
-  it('says the run\'s headline as a line of its own, not in the lanes', async () => {
+  const nothingAboveTheLanes = async (): Promise<void> => {
+    const r = mount();
+    await tick();
+    expect(r.querySelector('.ln-head')).toBeNull();
+    expect(r.querySelector('.ln-ticks')).toBeNull();
+    expect(r.querySelector('.tl-headline')).toBeNull();
+    expect(r.querySelector('.tl-eq')).toBeNull();
+    expect(r.querySelector('.ln-body')?.firstElementChild?.classList.contains('ln-plot')).toBe(true);
+  };
+
+  it('draws no headline and no clock above the lanes: the plot is the first thing in the body', nothingAboveTheLanes);
+
+  it('draws none above the lanes of a run either, and the axis labels are the plot\'s own', async () => {
+    crash();
+    await nothingAboveTheLanes();
+    const body = root!.querySelector('.ln-body')!;
+    expect(body.querySelectorAll('.t-tick').length).toBeGreaterThan(0);
+    expect(body.querySelectorAll(':scope > :not(.ln-plot) .t-tick')).toHaveLength(0);
+  });
+
+  it('draws the lanes at the full scale, and the sentence is not a row of the drawing', async () => {
     crash();
     const r = mount();
     await tick();
-    const line = r.querySelector('.tl-headline');
-    expect(line).not.toBeNull();
-    /* A failover's headline is the equation (timeline/RunHeadline.tsx): the sentence is its
-       tooltip, and the equation opens with the same lead. */
-    const sentence = line?.getAttribute('title') ?? '';
-    expect(line?.textContent?.startsWith(sentence.split(' — ')[0]!)).toBe(true);
-    expect([...r.querySelectorAll('.tl-svg .t-top')].some((t) => t.textContent === sentence)).toBe(false);
     /* The lanes are drawn at the full scale. */
     const bg = r.querySelector('.ln-svg .lane-bg');
     expect(Number(bg?.getAttribute('height'))).toBe(TL_FULL.laneH);
