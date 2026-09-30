@@ -32,7 +32,7 @@ export function shellTimelineProps(trace: Trace, measured: number): TimelineProp
     playing: playing.value,
     speed: speed.value,
     onSeek: (t2) => { tNow.value = t2; },
-    ...(mode.value === 'break' && canEdit(viewport.value) ? { onMoveEvent: setEventTime } : {}),
+    ...(mode.value === 'break' && canEdit(viewport.value) ? { onMoveEvent: setEventTime, laneEvents: true } : {}),
     onPlayToggle: () => { playing.value = !playing.value; },
     onSpeed: (s) => { speed.value = s; },
     selection: selection.value[0] ?? null,

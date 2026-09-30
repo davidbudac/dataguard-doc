@@ -383,3 +383,38 @@
 .tl-event-drag.is-dragging .tl-marker{opacity:.65}
 .tl-svg .tl-event-time{fill:var(--ik);font-size:var(--fs-ph);paint-order:stroke;stroke:var(--sf);stroke-width:4px;stroke-linejoin:round}
 @media print{.tl-event-hit{display:none}}
+
+/* ---------------- adding an event from a lane (LaneAdd.tsx) ---------------- */
+
+/* Quiet until wanted: shown for the lane under the pointer, while it has the
+   keyboard focus and while its menu is open. Hidden, it stays focusable (Tab
+   reaches it) but takes no pointer, so a press beside the playhead still seeks. */
+.tl-svg .tl-lane-add { opacity: 0; pointer-events: none; cursor: pointer; outline: none; touch-action: none; transition: opacity .12s ease-out; }
+.tl-svg .tl-lane-add.is-shown,
+.tl-svg .tl-lane-add:focus-visible { opacity: 1; pointer-events: all; }
+.tl-svg .tl-lane-add-bg { fill: var(--sf); stroke: var(--ln2); stroke-width: 1; }
+.tl-svg .tl-lane-add-ico { fill: none; stroke: var(--ik2); stroke-width: 1.6; stroke-linecap: round; }
+.tl-svg .tl-lane-add:hover .tl-lane-add-bg,
+.tl-svg .tl-lane-add.is-open .tl-lane-add-bg { stroke: var(--vi); fill: var(--vif); }
+.tl-svg .tl-lane-add:hover .tl-lane-add-ico,
+.tl-svg .tl-lane-add.is-open .tl-lane-add-ico { stroke: var(--vi); }
+.tl-svg .tl-lane-add:focus-visible .tl-lane-add-bg { stroke: var(--fc, var(--vi)); stroke-width: 2; }
+@media print { .tl-svg .tl-lane-add { display: none; } }
+
+/* The event menu opened from a lane: Lanes' popover (`.bl-lanes .ln-menu`,
+   lanes.css) with the same list, but hung off the window rather than off a
+   card, in a node of its own in the body so the dock -- short, scrolling and a
+   stacking context -- cannot clip it or sit over it. Above the floating cards
+   (20-40) and the overflow menu (45); under the sheet and its scrim (59-60). */
+.cv-bar.cv-menu.ln-menu.is-fixed {
+  position: fixed; z-index: 58; display: flex; flex-direction: column;
+  top: 0; left: 0; max-width: calc(100vw - 16px); outline: none;
+}
+.ln-menu.is-fixed .ln-menu-body {
+  min-height: 0; overflow-y: auto; overscroll-behavior: contain;
+  scrollbar-width: thin; scrollbar-color: var(--ln2) transparent;
+}
+.ln-menu.is-fixed .cv-menu-list { overflow: visible; }
+.ln-menu.is-fixed .ln-menu-sub { margin: 8px 4px 0; padding-top: 6px; border-top: 1px solid var(--ln); font-size: 11px; color: var(--ik2); }
+.ln-menu.is-fixed .ln-menu-blk:first-child .ln-menu-sub { margin-top: 2px; border-top: 0; }
+@media print { .ln-menu.is-fixed { display: none; } }
