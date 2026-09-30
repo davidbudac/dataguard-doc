@@ -14,7 +14,7 @@ import type { JSX } from 'preact';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import type { TopologyDoc } from '@/engine';
 import { findApplication, hostId, siteId } from '@/engine';
-import { frame, geometry, redoGraph, topology } from '@/state/derived';
+import { frame, geometry, redoGraph, runShown, topology } from '@/state/derived';
 import { doc, withLayout, withSiteOrder } from '@/state/doc';
 import { breakCoalescing, edit, undo, undoLabel } from '@/state/history';
 import { toggleGrid } from '@/state/persist';
@@ -34,12 +34,13 @@ import { inFlight, inFlightFrom, placeOver, renaming, setSiteAt } from './place'
 import { mergeVerdict } from './drop';
 import { hoverTools, snapT } from '../break/events';
 import { breakBar } from '../break/menu';
+import { ScenarioPalette } from '../break/BreakRail';
 import { AddToolbar } from '../inspector/adds';
 import type { WhyState } from '../common/WhyPill';
 import { useRovingToolbar } from '../common/useRovingToolbar';
 import { ON } from '../inspector/why';
 import type { BarAction, BarSection } from './ActionBar';
-import { barFocus, barOpen, closeBar, openBar } from './bar';
+import { barFocus, barKind, barOpen, closeBar, openBar } from './bar';
 import { marginAround, unobscured } from './anchor';
 import type { Rect } from './measure';
 import { resizedBox, TopoCanvas } from './TopoCanvas';
@@ -648,18 +649,28 @@ export function CanvasSlot({ interactive = true }: CanvasSlotProps) {
   useEffect(() => () => setSiteAt(null), []);
 
   const at = snapT(tNow.value);
-  /* What the bar would offer for the selection, open or not: the handle is
-     drawn only over a selection that has something to offer, so it is never
-     a button that opens nothing. */
+  /* Two lists hang under a card. Build's own table (edit, the properties,
+     remove) is what the `...` handle opens; the events the card can take at
+     the playhead are what the right button, `Shift+F10` and `E` open --
+     and, in the Detailed timeline, what a click opens too. In Topology the
+     bar says which of the two is up (`barKind`). */
+  const eventsBar = m === 'break' || (m === 'build' && barKind.value === 'events');
+  /* What each would offer for the selection, open or not: the handle is drawn
+     only over a selection that has something to offer, so it is never a
+     button that opens nothing. */
   const offered: { actions: BarAction[]; quiet: string | null; sections?: BarSection[] } | null
     = !editable || keys.length === 0
       ? null
-      : m === 'break'
-        ? breakBar(topology.value, keys, at)
-        : m === 'build'
-          ? { actions: buildBar(topology.value, keys), quiet: null }
-          : null;
+      : m === 'break' || m === 'build'
+        ? (eventsBar
+          ? breakBar(topology.value, keys, at)
+          : { actions: buildBar(topology.value, keys), quiet: null })
+        : null;
   const offers = offered !== null && (offered.actions.length > 0 || offered.quiet !== null);
+  /* The handle is Build's: it offers Build's table whichever bar is up. */
+  const handleOffers = m === 'build' && eventsBar
+    ? editable && keys.length > 0 && buildActionsFor(topology.value, keys).length > 0
+    : offers;
   const built = anchored === null ? null : offered;
   const bar = built === null || anchored === null || !offers
     ? null
@@ -669,7 +680,7 @@ export function CanvasSlot({ interactive = true }: CanvasSlotProps) {
       quiet: built.quiet,
       focus: barFocus.value,
       moreWhere: railWhere(viewport.value),
-      /* Break: the whole list, grouped, under a header that says when it
+      /* The events: the whole list, grouped, under a header that says when it
          lands -- the same snapped playhead the rail's clock reading shows. */
       ...(built.sections === undefined ? {} : { sections: built.sections, when: `at t = ${at} s` }),
       /* A drawn line's key is plumbing: the header says what the line is. */
@@ -683,7 +694,7 @@ export function CanvasSlot({ interactive = true }: CanvasSlotProps) {
           : {};
       })(),
       /* Build's table ends in Remove: the cap drops rows before it, never it. */
-      ...(m === 'build' ? { keepLast: true } : {}),
+      ...(m === 'build' && !eventsBar ? { keepLast: true } : {}),
     };
   /* Build's additions, in the corner of the stage: the reader looking at the
      drawing should not have to find the rail -- or clear a selection -- to add
@@ -700,14 +711,21 @@ export function CanvasSlot({ interactive = true }: CanvasSlotProps) {
      right; both float over the drawing rather than taking a row above it.
      Docked, the zoom ladder rides in the same row as Build's additions. */
   const float = interactive && floating(m, viewport.value);
+  const inPopup = host !== null && typeof window !== 'undefined' && host !== window;
   const toolbar = float
     ? (
       <>
         {adds === null ? null : (
-          <nav class="palette pal-add float-card" aria-label="Tools">
-            {adds}
-            <TidyButton />
-          </nav>
+          <div class="pal-stack">
+            <nav class="palette pal-add float-card" aria-label="Tools">
+              {adds}
+              <TidyButton />
+            </nav>
+            {/* Topology is where a reader breaks what they drew: the
+                scenarios ride with the tools, under them, in this window
+                only (a popped-out drawing has no timeline to show the result). */}
+            {inPopup ? null : <ScenarioPalette />}
+          </div>
         )}
         {zooming ? <div class="zoom-pill float-card"><ZoomStrip tidy={false} grid pop /></div> : null}
       </>
@@ -739,7 +757,7 @@ export function CanvasSlot({ interactive = true }: CanvasSlotProps) {
         doc={topology.value}
         graph={graph}
         {...(geo ? { geometry: geo } : {})}
-        frame={mode.value === 'break' ? frame.value : null}
+        frame={runShown() ? frame.value : null}
         overrides={doc.value.layout}
         selection={selection.value}
         hovered={hovered.value}
@@ -761,9 +779,10 @@ export function CanvasSlot({ interactive = true }: CanvasSlotProps) {
         onSelect={(key: string, additive: boolean) => {
           select(key, additive);
           /* Build: a click selects and nothing else -- the rail shows the form,
-             and the bar is asked for (the handle, the right button, Shift+F10).
-             A menu that opens under every click is in the way of the drag and
-             the line that usually follow one. Break still offers on the click:
+             and the bar is asked for (the handle for Build's table; the right
+             button, Shift+F10 and `E` for the events). A menu that opens under
+             every click is in the way of the drag and the line that usually
+             follow one. The Detailed timeline still offers on the click:
              there the list of events *is* what the click is for. */
           if (editable && !additive && m === 'break') openBar(key);
           /* A bar about something else closes now, not when an effect gets
@@ -771,7 +790,13 @@ export function CanvasSlot({ interactive = true }: CanvasSlotProps) {
           else if (barOpen.peek() !== null && barOpen.peek() !== key) closeBar();
         }}
         {...(editable
-          ? { handle: !offers ? null : keys[keys.length - 1] as string }
+          ? {
+            handle: !handleOffers ? null : keys[keys.length - 1] as string,
+            /* Whether the bar that is up is the one the handle opens: a
+               press on it while the events are listed switches to Build's
+               table instead of shutting the events. */
+            handleOpen: anchored !== null && !eventsBar,
+          }
           : {})}
         {...(building
           ? {
@@ -805,7 +830,7 @@ export function CanvasSlot({ interactive = true }: CanvasSlotProps) {
           }
           : {})}
         onHover={(key: string | null) => { hovered.value = key; }}
-        {...(editable && m === 'break'
+        {...(editable && (m === 'break' || m === 'build')
           ? {
             tools: (key: string) => hoverTools(topology.value, key, snapT(tNow.value)),
             toolsWhen: `at t = ${at} s`,
@@ -817,7 +842,17 @@ export function CanvasSlot({ interactive = true }: CanvasSlotProps) {
            literally one -- so this one does move the focus into the bar. */
         {...(editable
           ? {
-            onContextMenu: (key: string): void => { select(key); openBar(key, true); },
+            onContextMenu: (key: string): void => {
+              select(key);
+              /* Topology's right button lists the events; Build's own table is
+                 the handle's. */
+              openBar(key, true, 'events');
+            },
+            ...(m === 'build'
+              ? {
+                onActions: (key: string): void => { select(key); openBar(key, true, 'actions'); },
+              }
+              : {}),
           }
           : {})}
         {...(editable && mode.value === 'build'
@@ -833,11 +868,12 @@ export function CanvasSlot({ interactive = true }: CanvasSlotProps) {
             },
           }
           : {})}
-        /* Break: `E` on a focused card opens the bar of what can be done to it,
-           and takes the focus into it -- the same bar `Shift+F10` opens, and the
-           one a click already opened (`onSelect`, above). */
-        {...(editable && mode.value === 'break'
-          ? { onEvents: (key: string): void => { select(key); openBar(key, true); } }
+        /* `E` on a focused card opens the bar of the events it can take, and
+           takes the focus into it -- the same bar `Shift+F10` and the right
+           button open, and (in the Detailed timeline) the one a click already
+           opened (`onSelect`, above). */
+        {...(editable && (mode.value === 'break' || mode.value === 'build')
+          ? { onEvents: (key: string): void => { select(key); openBar(key, true, 'events'); } }
           : {})}
         {...(editable && mode.value === 'build'
           ? {

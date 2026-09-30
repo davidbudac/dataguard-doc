@@ -230,9 +230,18 @@ export interface TopoCanvasProps {
   onOpen?: (key: string) => void;
   /**
    * The key that carries the `...` handle -- the pointer's way to the action
-   * bar now that a click only selects. Pressing it is `onContextMenu`.
+   * bar now that a click only selects. Pressing it is `onActions`, or
+   * `onContextMenu` where the caller has no list of its own for the handle.
    */
   handle?: string | null;
+  /** What the `...` handle opens, where that is not what the right button opens. */
+  onActions?: (key: string) => void;
+  /**
+   * Whether the bar that is open is the one the handle opens, when the caller
+   * has two; a press on it then shuts the bar, and a press while the other is
+   * up opens this one. Absent, any open bar counts.
+   */
+  handleOpen?: boolean;
   /** The name being edited in place, over the card or the data centre it names. */
   rename?: {
     key: string;
@@ -1451,6 +1460,7 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
     );
 
   /* The handle: the top right corner of the subject's anchor. */
+  const handleShut = bar !== null && (props.handleOpen ?? true);
   const handleKey = interactive ? props.handle ?? null : null;
   const handleRect = handleKey === null || props.rename ? null : anchorFor(handleKey, geo, routed.links);
   const handleAt = handleKey === null || handleRect === null
@@ -1825,23 +1835,23 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
             close it before this click could. */}
         {/* Not while something is being dragged: it hangs off the live
             geometry, which a drag holds still only in what it draws. */}
-        {handleAt === null || !props.onContextMenu || moving !== null ? null : (
+        {handleAt === null || !(props.onActions ?? props.onContextMenu) || moving !== null ? null : (
           <g
-            class={`tp-more${bar !== null ? ' is-open' : ''}`}
+            class={`tp-more${handleShut ? ' is-open' : ''}`}
             role="button"
             aria-label={`Actions for ${handleAt.key}`}
-            aria-expanded={bar !== null}
+            aria-expanded={handleShut}
             data-node={handleAt.key}
             data-more={handleAt.key}
             onPointerDown={(ev) => ev.stopPropagation()}
             onDblClick={(ev) => ev.stopPropagation()}
             onClick={(ev) => {
               ev.stopPropagation();
-              if (bar !== null) props.onCloseBar?.();
-              else props.onContextMenu?.(handleAt.key);
+              if (handleShut) props.onCloseBar?.();
+              else (props.onActions ?? props.onContextMenu)?.(handleAt.key);
             }}
           >
-            <title>Actions (also: right-click, Shift+F10)</title>
+            <title>{props.onActions ? 'Actions (right-click or Shift+F10: the events it can take)' : 'Actions (also: right-click, Shift+F10)'}</title>
             <circle class="tp-more-hit" cx={handleAt.x} cy={handleAt.y} r={12} />
             <circle class="tp-more-dot" cx={handleAt.x} cy={handleAt.y} r={8} />
             <circle class="tp-more-pip" cx={handleAt.x - 3.5} cy={handleAt.y} r={1.1} />

@@ -249,6 +249,18 @@ button.issue{border-bottom:1px solid var(--ln)}
   .pal-add .why{max-width:22ch;font-size:11px}
   .pal-tidy{border-top:1px solid var(--ln);margin-top:4px;padding-top:4px}
 
+  /* Topology's left edge: the tools and, under them, the scenarios. One
+     column, so the two cannot overlap however tall either is, and one
+     scroller for both where the window is short. The column itself takes no
+     press (its padding keeps the cards' shadows unclipped); the cards do. */
+  .app.is-float .pal-stack{position:absolute;left:var(--float-m);
+    top:calc(var(--bar-bottom,80px) + 12px);z-index:20;display:flex;flex-direction:column;
+    align-items:flex-start;gap:8px;padding:0 20px 20px 0;pointer-events:none;
+    max-height:calc(100dvh - var(--bar-bottom,80px) - var(--dock-h,72px) - 3 * var(--float-m) - 12px);
+    overflow:auto;scrollbar-width:thin}
+  .app.is-float .pal-stack>.palette{position:static;max-height:none;overflow:visible;
+    pointer-events:auto;flex:0 0 auto}
+
   /* Break's palette: the six scenarios, one click each. */
   .pal-scn{width:206px;gap:6px;padding:10px}
   .pal-k{font-size:12px;font-weight:600;color:var(--ik2);padding:0 4px}
@@ -388,13 +400,14 @@ button.issue{border-bottom:1px solid var(--ln)}
    is wider than half of what is left -- so the modes sit centred in the gap
    between the two ends instead, the pills and gaps tighten, and the
    configuration name gives up width (it ellipsises) before anything wraps.
-   One row down to 1024. */
+   One row down to 1024. ("Detailed timeline" is the longest mode word; the
+   buttons' side padding is 8 px here so it still fits beside the rest.) */
 @media (max-width:1279px){
   .topbar{gap:10px 10px;padding-left:14px}
   .topbar-brand{flex:0 1 auto}
   .topbar-brand .doc-picker{flex:0 1 auto;min-width:7ch}
   .topbar-modes{margin-inline:auto}
-  .topbar-modes .seg button{padding:12px 10px}
+  .topbar-modes .seg button{padding:12px 8px;white-space:nowrap}
   .topbar-group{flex:0 0 auto}
   .topbar-group>.seg{margin-right:2px}
   .topbar-acts{margin-left:2px;gap:4px}

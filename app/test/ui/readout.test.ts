@@ -155,10 +155,24 @@ describe('the readout in Break', () => {
     expect(span.t0).toBeLessThan(0);
   });
 
-  it('keeps the steady-state reading unlabelled in Build', async () => {
+  /* Topology reads the run while there is one (`runShown`); with none it is
+     Build as it always was. Configure never reads the run. */
+  it('keeps the steady-state reading unlabelled in Topology while there is no run', async () => {
+    mode.value = 'build';
+    const root = mount();
+    await tick();
+    expect(root.textContent).not.toContain('Drawing at');
+    expect(root.textContent).toContain('Protection level');
+  });
+
+  it('reads the run in Topology once there is one, and never in Configure', async () => {
     crash();
     mode.value = 'build';
     const root = mount();
+    await tick();
+    expect(root.textContent).toContain('Drawing at');
+    expect(root.textContent).toContain('Outcome');
+    mode.value = 'configure';
     await tick();
     expect(root.textContent).not.toContain('Drawing at');
     expect(root.textContent).toContain('Protection level');

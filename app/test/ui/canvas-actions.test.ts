@@ -728,14 +728,20 @@ describe('the handle on the selected thing offers what can be done to it', () =>
     expect(selection.value).toEqual([]);
   });
 
-  it('opens with the focus in it when the gesture was the context menu', async () => {
+  /* In Topology the right button lists the events the card can take at the
+     playhead (the Detailed timeline's menu); Build's own table is the
+     handle's. */
+  it('opens the events, with the focus in them, when the gesture was the context menu', async () => {
     const root = await mountApp();
     card(root, 'sby01').dispatchEvent(
       new MouseEvent('contextmenu', { bubbles: true, cancelable: true }),
     );
     await painted();
     expect(barOpen.value).toBe('sby01');
-    expect((document.activeElement as HTMLElement | null)?.textContent).toBe('Edit sby01');
+    expect(root.querySelector('.cv-bar-hd')?.textContent).toContain('at t = 0 s');
+    const focused = document.activeElement as HTMLElement | null;
+    expect(root.querySelector('.cv-bar')?.contains(focused ?? null)).toBe(true);
+    expect(barRows(root)).not.toContain('Edit sby01');
   });
 
   it('offers the whole Break table, entry for entry', async () => {

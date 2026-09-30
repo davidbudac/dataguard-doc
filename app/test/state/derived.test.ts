@@ -17,7 +17,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
   errors, events, frame, issues, outcome, primaryId, protectionLevel, readout, redoGraph,
-  runFindings, topology, trace,
+  runFindings, runShown, topology, trace,
 } from '@/state/derived';
 import { classicDoc, doc, makeDoc, withEvents, withParams } from '@/state/doc';
 import { edition, mode, tNow } from '@/state/view';
@@ -94,15 +94,18 @@ describe('the steady state, with nothing injected', () => {
 describe('with a failure injected, the engine runs', () => {
   beforeEach(() => {
     doc.value = withEvents(doc.value, crash);
-    /* The outcome chips belong to the modes that draw the run; Build and
-       Configure keep the steady-state readout whatever the Document carries. */
+    /* The outcome chips belong to the modes that draw the run -- Topology
+       (`build`) while there is one, the Detailed timeline (`break`), Learn;
+       Configure keeps the steady-state readout whatever the Document carries. */
     mode.value = 'break';
   });
 
-  it('keeps the steady-state readout in Build mode even with events in the Document', () => {
+  it('reads the run in Topology while events are in the Document, and in Learn; Configure keeps the steady state', () => {
     mode.value = 'build';
-    expect(readout.value.map((c) => c.id)).toEqual(['protection', 'members', 'fsfo', 'findings']);
+    expect(readout.value.map((c) => c.id)).toContain('outcome');
+    expect(runShown()).toBe(true);
     mode.value = 'configure';
+    expect(runShown()).toBe(false);
     expect(readout.value.map((c) => c.id)).toEqual(['protection', 'members', 'fsfo', 'findings']);
     mode.value = 'learn';
     expect(readout.value.map((c) => c.id)).toContain('outcome');

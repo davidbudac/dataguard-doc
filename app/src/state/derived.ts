@@ -25,6 +25,7 @@ import type {
 } from '@/engine';
 import { doc } from './doc';
 import { edition, healthyRun, mode, tNow } from './view';
+import type { Mode } from './view';
 
 /**
  * The document the engine sees. The edition is a reading preference rather
@@ -106,6 +107,24 @@ export const frame = computed<Snapshot | null>(
 export const runFindings = computed<Finding[]>(
   () => (trace.value ? sortFindings([...trace.value.findings]) : []),
 );
+
+/**
+ * Whether the drawing, the readout and the aria sentences are reading the run.
+ *
+ * One answer, asked by everyone. A run exists while `trace` is not null --
+ * events are injected, or the healthy "Everything is working" run was asked
+ * for -- and it is shown in every mode that draws it: Topology (`build`) and
+ * the Detailed timeline (`break`), and Learn's workbench. Configure is about
+ * the configuration, so it reads the steady state even when the Document
+ * carries events (ui.md SS3). Topology without a run is Build as it always
+ * was: monochrome cards, the steady-state readings.
+ *
+ * Reads signals, so a component that calls it re-renders when the run appears
+ * or goes; pass a mode to ask about one the reader is not in.
+ */
+export function runShown(m: Mode = mode.value): boolean {
+  return trace.value !== null && m !== 'configure';
+}
 
 export const outcome = computed(() => trace.value?.facts.outcome ?? null);
 
@@ -194,10 +213,10 @@ function findingsChip(): ReadoutChip {
  * outcome rather than on the name of the event that caused it.
  */
 export const readout = computed<ReadoutChip[]>(
-  /* Build and Configure are about the configuration, so their readout is the
-     steady state even when the Document carries events (ui.md SS3): the
-     outcome belongs to the modes that draw the run. */
-  () => readoutFor(mode.value === 'build' || mode.value === 'configure'),
+  /* Configure is about the configuration, so its readout is the steady state
+     even when the Document carries events (ui.md SS3); Topology reads the
+     steady state until there is a run, then the run (`runShown`). */
+  () => readoutFor(!runShown()),
 );
 
 /**

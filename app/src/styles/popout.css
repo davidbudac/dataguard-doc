@@ -39,3 +39,6 @@
 .app.is-float.po .app-stage>.empty{top:18px;left:18px;right:18px}
 .app.is-float.po .palette{top:var(--float-m);max-height:calc(100dvh - 2 * var(--float-m))}
 .app.is-float.po .zoom-pill{right:var(--float-m);bottom:var(--float-m)}
+
+/* Topology's tools alone -- the scenarios stay in the main window. */
+.app.is-float.po .pal-stack{top:var(--float-m);max-height:calc(100dvh - 2 * var(--float-m))}
