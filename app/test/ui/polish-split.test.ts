@@ -20,14 +20,14 @@ import type { TimedEvent, TopologyDoc } from '@/engine';
 import { hostDown, hostUp } from '@/presets/build';
 import { classicDoc } from '@/state/doc';
 import { resetHistory } from '@/state/history';
-import { topology } from '@/state/derived';
+import { geometry, topology } from '@/state/derived';
 import { restored } from '@/state/persist';
 import { breakLayout, mode, timelineDefaultH, timelineFull, timelineH, tNow, viewport } from '@/state/view';
 import { App } from '@/ui/App';
 import { TopBar } from '@/ui/TopBar';
 import { DocPicker } from '@/ui/StatusBar';
 import { applyTemplate, templates } from '@/ui/break/events';
-import { autoFactor, AUTO_MAX, fitZoom, FIT_ZOOM, zoom, zoomAuto, zoomBy } from '@/ui/canvas/zoom';
+import { AUTO_MAX, AUTO_MIN, autoFactor, fitZoom, FIT_ZOOM, zoom, zoomAuto, zoomBy } from '@/ui/canvas/zoom';
 import { Timeline } from '@/ui/timeline/Timeline';
 import { buildTimeline, spoken } from '@/ui/timeline/build';
 import type { TimelineModel } from '@/ui/timeline/build';
@@ -74,7 +74,7 @@ beforeEach(() => {
   timelineFull.value = false;
   tNow.value = 0;
   zoom.value = FIT_ZOOM;
-  zoomAuto.value = true;
+  zoomAuto.value = false;
 });
 
 afterEach(() => {
@@ -91,8 +91,6 @@ function crashThenRestore(density: 'full' | 'compact', width: number, at = 20): 
   return buildTimeline(simulate(doc, events), doc, { width, density });
 }
 
-const BADGE_W = 54;
-const BADGE_H = 16;
 
 describe('the playhead badge', () => {
   it('never lands on an event sentence, chip or number, wherever the playhead is', () => {
@@ -101,7 +99,10 @@ describe('the playhead badge', () => {
         const m = crashThenRestore(density, width);
         const boxes = markerBoxes(m);
         expect(boxes.length).toBeGreaterThan(2);
-        const top = m.laneTop - m.layout.playRise - 12;
+        /* the badge's own size is the layout's: the packed timeline draws it larger */
+        const BADGE_W = m.layout.badgeW;
+        const BADGE_H = m.layout.badgeH;
+        const top = m.laneTop - m.layout.playRise - BADGE_H + 4;
         for (let t = m.scale.t0; t <= m.scale.t1; t += 0.5) {
           const x = m.scale.x(t);
           const dx = badgePlacement(m, x);
@@ -193,12 +194,15 @@ describe('the restore note', () => {
 
 /* ---------------- 5. the drawing fits its room ---------------- */
 
-describe('auto-fit', () => {
-  it('scales up to the room, never below 1:1 and never past the top rung', () => {
+describe('the drawing in Split', () => {
+  it('Fit scales the whole drawing into the room: up to the top rung, and below 1:1 when it must', () => {
     const view = { w: 800, h: 300 };
     expect(autoFactor(view, { w: 1000, h: 330 })).toBe(1.1);
-    expect(autoFactor(view, { w: 1200, h: 1000 })).toBe(1.4 === AUTO_MAX ? 1.4 : AUTO_MAX);
-    expect(autoFactor(view, { w: 100, h: 100 })).toBe(FIT_ZOOM);
+    expect(autoFactor(view, { w: 1200, h: 1000 })).toBe(AUTO_MAX);
+    /* a room smaller than the drawing: the real factor, not 1 */
+    expect(autoFactor(view, { w: 400, h: 300 })).toBe(0.5);
+    expect(autoFactor(view, { w: 100, h: 100 })).toBe(AUTO_MIN);
+    /* nothing to measure: the true size */
     expect(autoFactor(view, { w: 0, h: 0 })).toBe(FIT_ZOOM);
     /* floored, so the rounded size cannot poke a pixel out of the room */
     expect(autoFactor({ w: 999, h: 100 }, { w: 1200, h: 1000 })).toBe(1.2);
@@ -217,18 +221,68 @@ describe('auto-fit', () => {
     if (!t) throw new Error('no crash template');
     applyTemplate(t);
   };
+  const wrapClasses = (): DOMTokenList => (document.querySelector('.tp-wrap') as HTMLElement).classList;
 
-  it('fits Split, leaves a reader who zoomed alone, and Fit hands the size back to the room', async () => {
+  it('opens at a true 1:1, whatever the room, and never caps the drawing to it', async () => {
     crash();
     mountApp();
     await tick();
     expect(zoom.value).toBe(FIT_ZOOM);
+    expect(zoomAuto.value).toBe(false);
+    for (const [w, hh] of [[2400, 1400], [900, 200]] as const) {
+      await room(w, hh);
+      /* a small region does not shrink it, and a large one does not grow it */
+      expect(zoom.value).toBe(FIT_ZOOM);
+      /* the wrap is the scroll port that centres it -- the CSS cap that scaled it
+         down behind a "100%" is off */
+      expect(wrapClasses().contains('is-zoomed')).toBe(true);
+      expect(wrapClasses().contains('is-true')).toBe(true);
+      expect(wrapClasses().contains('is-fitted')).toBe(false);
+      expect(document.querySelector('.cv-zoom-pct')?.textContent).toBe('100%');
+    }
+  });
+
+  it('is a drawing to pan only where there is more of it than room', async () => {
+    crash();
+    mountApp();
+    await tick();
+    const svg = document.querySelector('.topo-svg') as SVGSVGElement;
+    const box = (svg.getAttribute('viewBox') ?? '').split(/\s+/).map(Number);
+    svg.getBoundingClientRect = () => ({ width: box[2], height: box[3], x: 0, y: 0, top: 0, left: 0, right: box[2], bottom: box[3], toJSON: () => ({}) }) as DOMRect;
+    await room((box[2] as number) * 2, (box[3] as number) * 2);
+    expect(wrapClasses().contains('is-pannable')).toBe(false);
+    await room((box[2] as number) / 2, (box[3] as number) / 2);
+    expect(wrapClasses().contains('is-pannable')).toBe(true);
+    /* and it starts on the middle of the drawing, not its top-left corner */
+    const wrap = document.querySelector('.tp-wrap') as HTMLElement;
+    expect(wrap.scrollLeft).toBe(Math.round((box[2] as number) / 4));
+    expect(wrap.scrollTop).toBe(Math.round((box[3] as number) / 4));
+  });
+
+  it('Fit hands the size to the room -- below 1:1 if that is what it takes, and it says so', async () => {
+    crash();
+    mountApp();
+    await tick();
+    const box = (document.querySelector('.topo-svg')?.getAttribute('viewBox') ?? '').split(/\s+/).map(Number);
+    await room(Math.round((box[2] as number) * 0.6), Math.round((box[3] as number) * 2));
+    expect(zoom.value).toBe(FIT_ZOOM);
+    fitZoom();
+    await room(Math.round((box[2] as number) * 0.6), Math.round((box[3] as number) * 2));
+    expect(zoomAuto.value).toBe(true);
+    expect(zoom.value).toBeLessThan(FIT_ZOOM);
+    expect(zoom.value).toBeGreaterThanOrEqual(0.59);
+    expect(wrapClasses().contains('is-fitted')).toBe(true);
+    expect(document.querySelector('.cv-zoom-pct')?.textContent).toBe(`${Math.round(zoom.value * 100)}%`);
+  });
+
+  it('Fit scales up to the top rung in a large room; a zoom takes the size back from the room', async () => {
+    crash();
+    mountApp();
+    await tick();
+    fitZoom();
     await room(2400, 1400);
     expect(zoom.value).toBe(AUTO_MAX);
-    expect(document.querySelector('.tp-wrap')?.classList.contains('is-fitted')).toBe(true);
-    expect(document.querySelector('.tp-wrap')?.classList.contains('is-zoomed')).toBe(false);
     expect(document.querySelector('.cv-zoom-pct')?.textContent).toBe('140%');
-
     /* the reader zooms out: a rung, and the room stops deciding */
     zoomBy(-1);
     await tick();
@@ -237,42 +291,45 @@ describe('auto-fit', () => {
     expect(chosen).toBeLessThan(AUTO_MAX);
     await room(2600, 1500);
     expect(zoom.value).toBe(chosen);
-    expect(document.querySelector('.tp-wrap')?.classList.contains('is-zoomed')).toBe(true);
-
-    /* Fit: the room decides again */
-    fitZoom();
-    await room(2400, 1400);
-    expect(zoomAuto.value).toBe(true);
-    expect(zoom.value).toBe(AUTO_MAX);
+    expect(wrapClasses().contains('is-zoomed')).toBe(true);
   });
 
-  it('follows the room when the window or the divider changes it', async () => {
+  it('follows the room after Fit, when the window or the divider changes it', async () => {
     crash();
     mountApp();
     await tick();
-    /* a room a little larger than the drawing: a factor between 1 and the top rung */
+    fitZoom();
     const box = (document.querySelector('.topo-svg')?.getAttribute('viewBox') ?? '').split(/\s+/).map(Number);
     await room(Math.round((box[2] as number) * 1.2), Math.round((box[3] as number) * 1.2));
-    const first = zoom.value;
-    expect(first).toBeGreaterThan(FIT_ZOOM);
+    expect(zoom.value).toBeGreaterThan(FIT_ZOOM);
     await room(1000, 200);
-    expect(zoom.value).toBe(FIT_ZOOM);
+    expect(zoom.value).toBeLessThan(FIT_ZOOM);
   });
 
-  it('is Split only: Lanes and Build draw the drawing at its own size', async () => {
+  it('is Split only: Build draws the drawing at its own size', async () => {
     crash();
     mode.value = 'build';
     mountApp();
     await tick();
     await room(2400, 1400);
     expect(zoom.value).toBe(FIT_ZOOM);
-    expect(document.querySelector('.tp-wrap')?.classList.contains('is-fitted')).toBe(false);
+    expect(wrapClasses().contains('is-fitted')).toBe(false);
+    expect(wrapClasses().contains('is-true')).toBe(false);
   });
 
-  it('gives the drawing back at its own size when Split is left with the room in charge', async () => {
+  it('starts over at 1:1 every time Split is entered, and gives Fit back at its own size when it is left', async () => {
     crash();
+    mode.value = 'build';
     mountApp();
     await tick();
+    zoomBy(1);
+    await tick();
+    expect(zoom.value).toBeGreaterThan(FIT_ZOOM);
+    mode.value = 'break';
+    await tick();
+    expect(zoom.value).toBe(FIT_ZOOM);
+    expect(zoomAuto.value).toBe(false);
+    fitZoom();
     await room(2400, 1400);
     expect(zoom.value).toBe(AUTO_MAX);
     mode.value = 'build';
@@ -301,7 +358,7 @@ describe('the divider', () => {
     const r = mountApp();
     await tick();
     const bar = r.querySelector('.sb-bar') as HTMLElement;
-    const start = timelineDefaultH(window.innerHeight);
+    const start = timelineDefaultH(window.innerHeight, 80, geometry.value?.viewBox.h);
     bar.dispatchEvent(pointer('pointerdown', 500));
     bar.dispatchEvent(pointer('pointerup', 400));
     expect(timelineH.value).not.toBeNull();
@@ -334,12 +391,14 @@ describe('the divider', () => {
     await tick();
     const bar = r.querySelector('.sb-bar') as HTMLElement;
     bar.dispatchEvent(pointer('pointerdown', 500));
-    bar.dispatchEvent(pointer('pointermove', 460));
+    /* Down first, so the height is short of the window's ceiling (the default region is tall
+       enough now that a drag up from it reaches the ceiling at once), then up again. */
+    bar.dispatchEvent(pointer('pointermove', 540));
     const mid = timelineH.value;
     expect(mid).not.toBeNull();
-    bar.dispatchEvent(pointer('pointermove', 420));
+    bar.dispatchEvent(pointer('pointermove', 520));
     expect(timelineH.value as number).toBeGreaterThan(mid as number);
-    bar.dispatchEvent(pointer('pointercancel', 420));
+    bar.dispatchEvent(pointer('pointercancel', 520));
     expect(bar.classList.contains('is-dragging')).toBe(false);
     expect(memory.get('dg-tl-h')).toBe(String(timelineH.value));
   });
@@ -351,7 +410,7 @@ describe('the divider', () => {
     const grip = r.querySelector('.sb-bar .dock-grip') as HTMLElement;
     expect(grip.getAttribute('role')).toBe('separator');
     const key = (k: string): void => { grip.dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true, cancelable: true })); };
-    const start = timelineDefaultH(window.innerHeight);
+    const start = timelineDefaultH(window.innerHeight, 80, geometry.value?.viewBox.h);
     key('ArrowUp');
     expect(timelineH.value as number).toBeGreaterThan(start);
     const up = timelineH.value as number;

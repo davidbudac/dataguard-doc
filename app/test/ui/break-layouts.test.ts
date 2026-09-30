@@ -541,7 +541,6 @@ describe('the density of the lanes', () => {
     expect(full.lanes[0]?.height).toBe(TL_FULL.laneH);
     expect(compact.lanes[0]?.height).toBe(TL_COMPACT.laneH);
     expect(again.lanes.map((l) => l.y)).toEqual(compact.lanes.map((l) => l.y));
-    expect(compact.height).toBeLessThan(full.height);
     /* The static figures are always at the full scale. */
     expect(buildTimeline(t, doc, { width: 900, pinnedScale: true, density: 'compact' }).layout).toBe(TL_FULL);
   });

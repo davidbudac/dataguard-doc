@@ -211,7 +211,7 @@ export function buildExplanation(doc: TopologyDoc, trace: EngineTrace): Explanat
     });
   }
 
-  if (trace.facts.outcome === 'continues' && doc.config.fsfo.state === 'enabled'
+  if (doc.events.length > 0 && trace.facts.outcome === 'continues' && doc.config.fsfo.state === 'enabled'
     && !trace.decisions.some((d) => d.id === 'FSFO.BOTH_MUST_HAVE_LOST')) {
     steps.push({
       key: 'no-initiation',
@@ -259,6 +259,8 @@ export function buildExplanation(doc: TopologyDoc, trace: EngineTrace): Explanat
   steps.push({
     key: 'result', at: resultAt, title: trace.facts.blocked ? 'Transition blocked' : 'Run result',
     detail: trace.facts.blocked ? 'The role transition was refused; no member changed role.'
+      : doc.events.length === 0
+        ? 'Nothing was injected, so nothing failed: the primary kept serving, no standby was promoted and no failover was initiated.'
       : trace.facts.outcome === 'manual' && trace.facts.newPrimary
         ? 'The manual failover changed the primary.' : OUTCOME[trace.facts.outcome],
     subjects: trace.facts.newPrimary ? [trace.facts.newPrimary] : [],

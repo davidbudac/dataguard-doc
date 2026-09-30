@@ -45,7 +45,7 @@ import type { Rect } from './measure';
 import { resizedBox, TopoCanvas } from './TopoCanvas';
 import { isElement, PopIcon, popIn, popOut, popped, useHostWindow } from '../common/popout';
 import {
-  autoFactor, canZoom, FIT_ZOOM, fitZoom, WHY_MAX, WHY_MIN, zoom, zoomAuto, zoomBy, zoomLabel,
+  AUTO_MIN, autoFactor, canZoom, FIT_ZOOM, fitZoom, WHY_MAX, WHY_MIN, zoom, zoomAuto, zoomBy, zoomLabel,
 } from './zoom';
 
 /**
@@ -271,18 +271,32 @@ function wrapRoom(wrap: HTMLElement): { w: number; h: number } {
 }
 
 /**
- * `fit` is true where the layout sizes the drawing by its region (Break's
- * Split): the factor the room allows is written to `zoom` on entering, on every
- * resize of the room -- the window's, and the divider's, which moves the wrap's
- * bottom padding -- and whenever the drawing itself changes size, until the
- * reader zooms (`zoomAuto`). Leaving the layout with the room still in charge
- * gives the drawing back at its own size.
+ * `fit` is true where the layout gives the drawing a region of its own (Break's
+ * Split). Entering it puts the drawing at its true size -- 1:1, `zoom` 1, the
+ * strip reading 100% and meaning it -- and centres it in the region; where
+ * there is more drawing than region it is clipped and pannable, and the
+ * centring is redone on a resize until the reader scrolls it off centre.
+ * `Fit` is the reader's to press: it sets `zoomAuto`, and from then on the
+ * factor the room allows (below 1 if that is what the whole drawing needs) is
+ * written to `zoom` on every resize of the room -- the window's, and the
+ * divider's, which moves the wrap's bottom padding -- and whenever the drawing
+ * itself changes size, until the reader zooms. Leaving the layout with the room
+ * still in charge gives the drawing back at its own size.
+ *
+ * The fourth value is whether the drawing, at its true size, is larger than the
+ * region -- what makes it worth a grab cursor.
  */
 function useCanvasScale(
   zoomFactor: number,
   fit: boolean,
-): [(el: HTMLElement | null) => void, number, Margin] {
+): [(el: HTMLElement | null) => void, number, Margin, boolean] {
   const [scale, setScale] = useState(1);
+  /* Whether the drawing, at its true size, is larger than its region. */
+  const [spills, setSpills] = useState(false);
+  /* Where the drawing was last centred, and whether the reader has scrolled it
+     off that since: their pan is theirs, a resize does not undo it. */
+  const still = useRef<{ left: number; top: number } | null>(null);
+  const moved = useRef(false);
   const fitting = useRef(fit);
   fitting.current = fit;
   /* The free ground around the drawing, in user units: where the bar may hang
@@ -309,7 +323,26 @@ function useCanvasScale(
       if (zoom.peek() !== f) zoom.value = f;
     }
     if (!(declared > 0) || !(painted > 0)) return;
-    const k = Math.min(1, Math.max(0.5, Math.round((painted / declared) * 100) / 100));
+    /* At its true size in a region of its own: is there more drawing than
+       region? That is what makes it pannable, and what centring is for. */
+    if (fitting.current && !zoomAuto.peek() && wrap.clientWidth > 0) {
+      const room = wrapRoom(wrap);
+      const spills = painted > room.w + 1 || svg.getBoundingClientRect().height > room.h + 1;
+      setSpills((prev) => (prev === spills ? prev : spills));
+      if (!moved.current) {
+        const svgBox = svg.getBoundingClientRect();
+        const left = Math.max(0, Math.round((svgBox.width - room.w) / 2));
+        const top = Math.max(0, Math.round((svgBox.height - room.h) / 2));
+        if (wrap.scrollLeft !== left || wrap.scrollTop !== top) {
+          still.current = { left, top };
+          wrap.scrollLeft = left;
+          wrap.scrollTop = top;
+        }
+      }
+    } else {
+      setSpills((prev) => (prev ? false : prev));
+    }
+    const k = Math.min(1, Math.max(AUTO_MIN, Math.round((painted / declared) * 100) / 100));
     setScale((prev) => (prev === k ? prev : k));
     /* User units per CSS pixel, unclamped: this converts, it does not compensate. */
     const u = declared / painted;
@@ -329,11 +362,20 @@ function useCanvasScale(
      drawing to its own size if the room was still deciding. */
   const wasFit = useRef(false);
   useLayoutEffect(() => {
-    if (fit && !wasFit.current) zoomAuto.value = true;
+    if (fit && !wasFit.current) {
+      /* Entering the layout: the drawing at its true size, centred, whatever
+         the reader did before. */
+      zoomAuto.value = false;
+      if (zoom.peek() !== FIT_ZOOM) zoom.value = FIT_ZOOM;
+      moved.current = false;
+    }
     if (!fit && wasFit.current && zoomAuto.peek() && zoom.peek() !== FIT_ZOOM) zoom.value = FIT_ZOOM;
     wasFit.current = fit;
     read();
   }, [fit, read]);
+  /* A rung, or `Fit`, is the reader choosing where to look: centre again only
+     from the true size after that, and never over a scroll they made. */
+  useLayoutEffect(() => { moved.current = zoomFactor !== FIT_ZOOM; }, [zoomFactor]);
   /* Nor does an edit: a new data centre widens the drawing inside a wrap of
      the same size, and the ground around it shrinks. Every render, then --
      both setters bail out when nothing moved. */
@@ -350,7 +392,13 @@ function useCanvasScale(
        the ground the bar may use -- moves with it. Read only while a bar is
        open: nothing else uses the margin, and a re-render per scrolled pixel
        for nobody is waste. */
-    const onScroll = (): void => { if (barOpen.peek() !== null) read(); };
+    const onScroll = (): void => {
+      const at = still.current;
+      if (at !== null && (Math.abs(el.scrollLeft - at.left) > 2 || Math.abs(el.scrollTop - at.top) > 2)) {
+        moved.current = true;
+      }
+      if (barOpen.peek() !== null) read();
+    };
     el.addEventListener('scroll', onScroll, { passive: true });
     unlisten.current = () => el.removeEventListener('scroll', onScroll);
     /* The observer of the window the drawing is in: it may be a popup
@@ -362,7 +410,7 @@ function useCanvasScale(
     ro.observe(el);
     observer.current = ro;
   }, [read]);
-  return [ref, scale, margin];
+  return [ref, scale, margin, spills];
 }
 
 /**
@@ -418,7 +466,7 @@ function ZoomStrip({ tidy, grid = false, pop = false }: { tidy: boolean; grid?: 
     {
       label: 'Fit',
       name: 'Fit to page',
-      title: 'Back to the drawing at its own size, or at the size its room allows.',
+      title: 'Fit the whole drawing into its room; the percentage shows the size that takes.',
       run: () => fitZoom(),
     },
     ...(tidy
@@ -544,7 +592,7 @@ export function CanvasSlot({ interactive = true }: CanvasSlotProps) {
   const zoomFactor = zooming ? zoom.value : 1;
   /* Break's Split draws the drawing in a region of its own, and fills it. */
   const fits = zooming && m === 'break' && floating(m, viewport.value) && breakLayout.value === 'split';
-  const [wrapRef, scale, barMargin] = useCanvasScale(zoomFactor, fits);
+  const [wrapRef, scale, barMargin, spills] = useCanvasScale(zoomFactor, fits);
   const host = useHostWindow();
   const anchored = barOpen.value;
 
@@ -706,6 +754,8 @@ export function CanvasSlot({ interactive = true }: CanvasSlotProps) {
         barMargin={barMargin}
         zoomFactor={zoomFactor}
         fitted={fits && zoomAuto.value}
+        trueSize={fits && !zoomAuto.value}
+        pannable={spills}
         {...(zooming ? { onZoomStep: (dir: 1 | -1): void => zoomBy(dir) } : {})}
         {...(bar === null ? {} : { bar })}
         onSelect={(key: string, additive: boolean) => {

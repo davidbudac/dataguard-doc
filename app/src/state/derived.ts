@@ -24,7 +24,7 @@ import type {
   TopologyDoc,
 } from '@/engine';
 import { doc } from './doc';
-import { edition, mode, tNow } from './view';
+import { edition, healthyRun, mode, tNow } from './view';
 
 /**
  * The document the engine sees. The edition is a reading preference rather
@@ -84,7 +84,7 @@ export const warnings = computed(() => issues.value.filter((f) => f.severity ===
  */
 export const trace = computed<EngineTrace | null>(() => {
   const evts = events.value;
-  if (evts.length === 0) return null;
+  if (evts.length === 0 && !healthyRun.value) return null;
   return simulate(topology.value, evts, doc.value.params);
 });
 
@@ -236,6 +236,64 @@ function splitBrainSentence(sb: SplitBrain, topo: TopologyDoc): string {
 }
 
 /**
+ * The chips of a run in which nothing is injected -- "Everything is working".
+ *
+ * Every chip says what the run says and no more: the engine's outcome for an
+ * empty event list is `continues`, its data-loss kind `none`, and no member is
+ * ever promoted, so there is no split brain to speak of. None of it is an
+ * Oracle statement -- it is what this page's model does with a configuration
+ * that nothing disturbs -- so each carries the `model` basis, and the strip
+ * says "nothing fails" rather than reproducing the words of a failover
+ * outcome ("nothing moved") that belong to runs where something did.
+ */
+function healthyChips(t: EngineTrace, topo: TopologyDoc): ReadoutChip[] {
+  const primary = topo.members.find((m) => m.id === t.epochs[0]?.primary);
+  const primaryName = primary?.name ?? 'The primary';
+  const chips: ReadoutChip[] = [
+    {
+      id: 'outcome', tone: 'tl', k: 'Outcome', v: 'no failure',
+      sub: 'Nothing is injected, so nothing fails: no failover is needed and none is initiated. The run is this page\'s model of the configuration, not a measurement.',
+      basis: 'model',
+    },
+    {
+      id: 'loss', tone: 'tl', k: 'Data loss', v: 'none',
+      sub: `No role change happens in this run, so nothing ${primaryName} acknowledged is at risk.`,
+      basis: 'model',
+    },
+    {
+      id: 'split', tone: 'tl', k: 'Split brain', v: 'no',
+      sub: `${primaryName} is the only member ever open read-write: no standby is promoted in this run.`,
+      basis: 'model',
+    },
+  ];
+  const models = appModelsFor(t, topo);
+  const many = models.length > 1;
+  models.forEach((ap, i) => {
+    /* Said only of an application that is up and can reach a publisher of its
+       service for the whole run; one that cannot gets no reassurance here. */
+    if (!ap.spans.every((sp) => sp.appUp && sp.serving !== null)) return;
+    const name = ap.application?.name ?? 'the application';
+    chips.push({
+      id: i === 0 ? 'app' : `app~${i}`, group: 'app', tone: 'tl',
+      k: many ? name : 'Application', v: 'served',
+      sub: `${name} is served throughout: its service is published, its sessions work and a new connection connects at once, as this page models it.`,
+      basis: 'model',
+    });
+  });
+  const observerStates = Object.values(t.facts.observers).map((o) => o.endState);
+  const master = observerStates.find((st) => st !== 'backup' && st !== 'stopped');
+  if (observerStates.length > 0) {
+    chips.push({
+      id: 'observer', tone: 'vi', k: 'Observer', v: master ?? (observerStates[0] as string),
+      sub: observerStates.length === 1 ? 'The state the observer ends in.'
+        : `${observerStates.length} observers deployed; ${master === undefined ? 'none is the master' : "the master's state is shown"}.`,
+    });
+  }
+  chips.push(findingsChip());
+  return chips;
+}
+
+/**
  * The chips for one of the two readings, whichever mode is open: `steady`
  * asks for the configuration at rest, otherwise the run's outcome (which
  * falls back to the steady reading when there is no run). The printable
@@ -303,6 +361,7 @@ export function readoutFor(steady: boolean): ReadoutChip[] {
   }
 
   const f = t.facts;
+  if (topo.events.length === 0) return healthyChips(t, topo);
   /* A transition can be ordered and then forbidden -- the readiness check
      stands between the two, and the engine reports the instant the new primary
      WOULD have opened either way. The readout must not read that instant back

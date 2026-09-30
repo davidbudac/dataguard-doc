@@ -53,13 +53,36 @@ describe.each(['compact', 'full'] as const)('the gutter (%s)', (density) => {
     expect(mark('obs01')).toBe('M');
   });
 
-  it("sets the application's three lanes as sub-rows: no icon, sans, a step in", () => {
+  it("gives each of the application's three lanes the application's icon, in the icon column", () => {
     const { el } = draw(density);
-    const names = [...el.querySelectorAll<SVGTextElement>('.t-lane-app')];
-    expect(names.map((n) => n.textContent)).toEqual(['Service', 'Sessions', 'New connections']);
+    const rows = [...el.querySelectorAll<SVGGElement>('[data-lane="app01"]')]
+      .filter((g) => g.querySelector('.t-lane-app') !== null);
+    expect(rows.map((g) => g.querySelector('.t-lane-app')?.textContent)).toEqual(['Service', 'Sessions', 'New connections']);
+    const column = (g: Element | null): string | null => g?.getAttribute('transform')?.match(/translate\(([\d.]+),/)?.[1] ?? null;
+    const dbIcon = iconOf(el, 'prm01');
+    for (const g of rows) {
+      const use = g.querySelector('.tl-lane-ico use');
+      /* the same glyph and tint as the application's heading and card */
+      expect(use?.getAttribute('href')).toBe('#tl-ico-app');
+      expect(use?.getAttribute('class')).toContain('is-app');
+      /* the same column as the databases' icons, and the name beside it in sans */
+      expect(column(use ?? null)).toBe(column(dbIcon));
+    }
     const dbName = el.querySelector<SVGTextElement>('[data-lane="prm01"] .t-lane');
-    expect(Number(names[0]?.getAttribute('x'))).toBeGreaterThan(Number(dbName?.getAttribute('x')));
-    for (const n of names) expect(n.parentElement?.querySelector('.tl-lane-ico')).toBeNull();
+    for (const g of rows) {
+      expect(g.querySelector('.t-lane-app')?.getAttribute('class')).not.toContain('t-mono');
+      expect(g.querySelector('.t-lane-app')?.getAttribute('x')).toBe(dbName?.getAttribute('x'));
+    }
+    /* the heading keeps its own */
+    expect(el.querySelector('.tl-app-head use')?.getAttribute('href')).toBe('#tl-ico-app');
+  });
+
+  it("names the application in each of its lanes' tooltips", () => {
+    const { el } = draw(density);
+    const titles = [...el.querySelectorAll('[data-lane="app01"] .t-lane-app')]
+      .map((t) => t.parentElement?.querySelector('title')?.textContent ?? '');
+    expect(titles).toHaveLength(3);
+    for (const title of titles) expect(title).toContain(' of app01 — ');
   });
 
   it('keeps every lane a tooltip with the whole description', () => {

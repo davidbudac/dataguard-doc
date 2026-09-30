@@ -164,20 +164,23 @@ export function Lane({ lane, model, selected, onSelect, layer = 'both' }: {
  * kind of thing, then the name. The icons are one column (a cascaded standby's
  * row steps right by its indent) and the names another, both left-aligned, so
  * the eye can run down the icons to see what kind each lane is. The
- * application's three lanes have no icon of their own -- they are aspects of
- * the application, whose icon heads its section -- and are set in sans, a
- * step in and in the quiet ink, so they do not read as peers of the databases.
+ * application's three lanes wear the application's own icon, the one on its
+ * card and on its heading, and are set in sans and the quiet ink -- their
+ * names are this page's words, not Oracle identifiers. The lane's `<title>`
+ * carries the whole description, and which application, where there is one.
  */
 export function LaneName({ lane, model }: { lane: TimelineLane; model: TimelineModel }) {
   const TL = model.layout;
   const isApp = lane.kind === 'application';
   const x = TL.nameX + lane.indent + (isApp ? TL.appIndent : 0);
   const room = model.scale.plotL - TL.gutterPad - x;
-  const size = isApp ? 11.5 : 12;
+  const size = isApp ? TL.fsApp : TL.fsName;
   const ix = TL.iconX + lane.indent;
-  const iy = lane.y + TL.nameDy - 11;
+  const iy = lane.y + TL.iconY;
   const tone = lane.mark === 'P' ? ' is-primary' : lane.mark === 'S' ? ' is-standby'
-    : lane.glyph === 'observer' ? ' is-observer' : '';
+    : lane.glyph === 'observer' ? ' is-observer' : lane.glyph === 'app' ? ' is-app' : '';
+  /* The role letter's box is a third of the icon, or a little over. */
+  const mk = Math.round(TL.iconSize * 0.62);
   return (
     <>
       {lane.glyph === null ? null : (
@@ -188,8 +191,8 @@ export function LaneName({ lane, model }: { lane: TimelineLane; model: TimelineM
           />
           {lane.mark === null ? null : (
             <g class={`tl-ico-mark${tone}`}>
-              <rect x={ix + TL.iconSize - 6} y={iy + TL.iconSize - 6} width={9} height={9} rx={2.5} />
-              <text x={ix + TL.iconSize - 1.5} y={iy + TL.iconSize + 1} text-anchor="middle">{lane.mark}</text>
+              <rect x={ix + TL.iconSize - mk * 0.65} y={iy + TL.iconSize - mk * 0.65} width={mk} height={mk} rx={mk * 0.28} />
+              <text x={ix + TL.iconSize - mk * 0.65 + mk / 2} y={iy + TL.iconSize - mk * 0.65 + mk * 0.78} text-anchor="middle">{lane.mark}</text>
             </g>
           )}
         </g>
@@ -204,7 +207,7 @@ export function LaneName({ lane, model }: { lane: TimelineLane; model: TimelineM
       {TL.subDy > 0 ? (
         <text class="t-sub" x={x} y={lane.y + TL.subDy}>{lane.sub}</text>
       ) : null}
-      <title>{`${lane.name} — ${lane.sub}`}</title>
+      <title>{`${lane.name}${lane.owner === null ? '' : ` of ${lane.owner}`} — ${lane.sub}`}</title>
     </>
   );
 }
@@ -216,6 +219,7 @@ export function Marker({ marker, layout: TL, spans }: {
   spans?: [number, number][];
 }) {
   const m = marker;
+  const k = TL.msc;
   const cy = (m.y0 + m.y1) / 2;
   return (
     <g class={`tl-marker tl-marker-${m.kind}`} data-tip={m.label}>
@@ -229,20 +233,20 @@ export function Marker({ marker, layout: TL, spans }: {
       ) : null}
       {m.glyph === 'cross' ? (
         <g class={m.stroke}>
-          <line class={m.stroke} x1={m.x - 7} y1={cy - 7} x2={m.x + 7} y2={cy + 7} stroke-width="2.5" />
-          <line class={m.stroke} x1={m.x + 7} y1={cy - 7} x2={m.x - 7} y2={cy + 7} stroke-width="2.5" />
+          <line class={m.stroke} x1={m.x - 7 * k} y1={cy - 7 * k} x2={m.x + 7 * k} y2={cy + 7 * k} stroke-width="2.5" />
+          <line class={m.stroke} x1={m.x + 7 * k} y1={cy - 7 * k} x2={m.x - 7 * k} y2={cy + 7 * k} stroke-width="2.5" />
         </g>
       ) : null}
       {m.glyph === 'diamond' ? (
         <g>
           <line class={m.stroke} x1={m.x} y1={m.y0} x2={m.x} y2={m.y1} stroke-width="2" />
-          <path class={m.tone} d={`M${m.x},${m.y0 + TL.laneH / 2 + (TL.inlineNum === 1 ? 4 : 8)} l6,6 l-6,6 l-6,-6 z`} />
+          <path class={m.tone} d={`M${m.x},${m.y0 + TL.laneH / 2 + (TL.inlineNum === 1 ? 10 - 6 * k : 8)} l${6 * k},${6 * k} l${-6 * k},${6 * k} l${-6 * k},${-6 * k} z`} />
         </g>
       ) : null}
       {m.glyph === 'dot' ? (
         <g>
           <line class={m.stroke} x1={m.x} y1={m.y0} x2={m.x} y2={m.y1} stroke-width="2" />
-          <circle class={m.tone} cx={m.x} cy={cy} r={4} />
+          <circle class={m.tone} cx={m.x} cy={cy} r={4 * k} />
         </g>
       ) : null}
       {m.glyph === 'line' ? (
@@ -261,8 +265,8 @@ export function Marker({ marker, layout: TL, spans }: {
       )}
       {m.index === null ? null : (
         <g class="tl-marker-n">
-          <circle class="tl-marker-nb" cx={m.nx} cy={m.labelY - TL.badgeDy} r={7} />
-          <text class="tl-marker-nt t-mono" x={m.nx} y={m.labelY - TL.badgeDy + 3} text-anchor="middle">
+          <circle class="tl-marker-nb" cx={m.nx} cy={m.labelY - TL.badgeDy} r={7 * k} />
+          <text class="tl-marker-nt t-mono" x={m.nx} y={m.labelY - TL.badgeDy + 3 * k} text-anchor="middle">
             {m.index}
           </text>
         </g>
@@ -293,17 +297,18 @@ export function Marker({ marker, layout: TL, spans }: {
 function AppHead({ sec, model }: { sec: AppSectionHead; model: TimelineModel }) {
   const TL = model.layout;
   const { plotL, plotR } = model.scale;
-  const x = plotL + TL.iconSize + 6;
-  const room = plotR - x - approxW(sec.title, 12) - 16;
-  const showModel = room > approxW(sec.note, 11) + 110;
-  const budget = Math.max(0, room - (showModel ? 110 : 0));
-  const note = approxW(sec.note, 11) <= budget ? sec.note : elideTo(sec.note, budget, 11, false);
+  const x = plotL + TL.iconSize + 7;
+  const room = plotR - x - approxW(sec.title, TL.fsTop) - 16;
+  const modelW = approxW('this page\u2019s model', TL.fsTick) + 20;
+  const showModel = room > approxW(sec.note, TL.fsNote) + modelW;
+  const budget = Math.max(0, room - (showModel ? modelW : 0));
+  const note = approxW(sec.note, TL.fsNote) <= budget ? sec.note : elideTo(sec.note, budget, TL.fsNote, false);
   return (
     <g class="tl-app-head" data-tip={sec.basis}>
       <line class="tl-app-rule" x1={plotL} y1={sec.y - TL.appRuleDy} x2={plotR} y2={sec.y - TL.appRuleDy} />
       <use
         href="#tl-ico-app" class="tl-ico is-app" aria-hidden="true"
-        transform={`translate(${plotL},${sec.y - 11}) scale(${TL.iconSize / 24})`}
+        transform={`translate(${plotL},${sec.y - TL.appIconDy}) scale(${TL.iconSize / 24})`}
       />
       <text class="t-top t-app-title" x={x} y={sec.y}>
         {sec.title}
@@ -431,7 +436,7 @@ export function TimelineBody(props: TimelineProps & { run: RunTimeline }) {
       ) : null}
       <div class="tl-plot" onPointerMove={onPointerMove} onPointerLeave={() => setTip(null)}>
         <svg
-          class={canSeek ? 'tl-svg is-seekable' : 'tl-svg'}
+          class={`tl-svg${canSeek ? ' is-seekable' : ''}${TL.big === 1 ? ' is-big' : ''}`}
           width={model.width}
           height={model.height}
           viewBox={`0 0 ${model.width} ${model.height}`}
@@ -502,21 +507,21 @@ export function TimelineBody(props: TimelineProps & { run: RunTimeline }) {
             <AppHead key={sec.id} sec={sec} model={model} />
           ))}
           {model.ticks.map((tk) => (
-            <text key={`t${tk.t}`} class="t-tick t-mono" x={tk.x} y={model.axisY + 16} text-anchor="middle">
+            <text key={`t${tk.t}`} class="t-tick t-mono" x={tk.x} y={model.axisY + TL.tickDy} text-anchor="middle">
               {tk.label}
             </text>
           ))}
           <line class="ax" x1={model.scale.plotL} y1={model.axisY} x2={model.scale.plotR} y2={model.axisY} />
-          <text class="t-tick t-mono" x={model.scale.plotR} y={model.axisY + 30} text-anchor="end">
+          <text class="t-tick t-mono" x={model.scale.plotR} y={model.axisY + TL.axisNoteDy} text-anchor="end">
             {model.axisLabel}
           </text>
           {model.zeroNote ? (
-            <text class="t-tick" x={model.scale.plotL} y={model.axisY + 30}>{model.zeroNote}</text>
+            <text class="t-tick" x={model.scale.plotL} y={model.axisY + TL.axisNoteDy}>{model.zeroNote}</text>
           ) : null}
 
           {model.markers.filter((m) => !onMoveEvent || pinnedScale || m.kind !== 'event')
             .map((m) => <Marker key={m.key} marker={m} layout={TL} spans={gridSpans(model, model.laneTop - 4)} />)}
-          {model.braces.map((b) => <Brace key={b.key} brace={b} />)}
+          {model.braces.map((b) => <Brace key={b.key} brace={b} dy1={TL.braceLbl1} dy2={TL.braceLbl2} />)}
 
           {pinnedScale ? null : (
             <Playhead

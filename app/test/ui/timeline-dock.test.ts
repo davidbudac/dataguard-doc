@@ -18,7 +18,7 @@ import { resetHistory } from '@/state/history';
 import { topology } from '@/state/derived';
 import { loadTimelineH, setTimelineH, TIMELINE_H_KEY } from '@/state/persist';
 import {
-  clampTimelineH, findingsOpen, mode, timelineDefaultH, timelineFull, timelineH, timelineMaxH,
+  clampTimelineH, DRAWING_AIR, findingsOpen, mode, timelineDefaultH, timelineFull, timelineH, timelineMaxH,
   TL_MIN_H, TL_STEP, viewport,
 } from '@/state/view';
 import { App } from '@/ui/App';
@@ -78,20 +78,34 @@ afterEach(() => {
 });
 
 describe('the height, as a number', () => {
-  it('caps the region at 66 % of the room under the header, within 220-720 px', () => {
-    /* 900 tall, header foot at 96: (900 - 96) * .66. */
-    expect(timelineDefaultH(900, 96)).toBe(531);
-    expect(timelineDefaultH(500, 96)).toBe(267);
+  it('with no drawing to leave room for, takes 62 % of the room under the header, within 220-720 px', () => {
+    /* 900 tall, header foot at 96: (900 - 96) * .62. */
+    expect(timelineDefaultH(900, 96)).toBe(498);
+    expect(timelineDefaultH(500, 96)).toBe(250);
     expect(timelineDefaultH(300, 96)).toBe(220);
     expect(timelineDefaultH(2400, 96)).toBe(720);
     /* Without a measured header, the 80 px the shell assumes. */
-    expect(timelineDefaultH(900)).toBe(541);
+    expect(timelineDefaultH(900)).toBe(508);
+  });
+
+  it('given the drawing, leaves the whole of it on show at 1:1 above the region', () => {
+    /* room under the header, less the drawing and its air (DRAWING_AIR) */
+    const air = DRAWING_AIR;
+    expect(timelineDefaultH(900, 68, 330)).toBe(900 - 68 - 330 - air);
+    expect(timelineDefaultH(800, 68, 330)).toBe(800 - 68 - 330 - air);
+    /* a taller drawing asks for less region, down to the floor */
+    expect(timelineDefaultH(800, 68, 900)).toBe(220);
+    /* a tall window: never more than 720, or three quarters of the room */
+    expect(timelineDefaultH(2400, 68, 330)).toBe(720);
+    expect(timelineDefaultH(500, 68, 10)).toBe(Math.round((500 - 68) * 0.75));
+    /* an unmeasured drawing is no drawing */
+    expect(timelineDefaultH(900, 68, 0)).toBe(timelineDefaultH(900, 68));
   });
 
   it('never leaves the drawing under its minimum, never shrinks past the bar and a few lanes', () => {
-    /* 900 tall, header foot at 96: 900 - 96 - 140 (what the drawing keeps). */
-    expect(timelineMaxH(900, 96)).toBe(664);
-    expect(clampTimelineH(5000, 900, 96)).toBe(664);
+    /* 900 tall, header foot at 96: 900 - 96 - 140 (what the drawing keeps) - 14 (the card's margin). */
+    expect(timelineMaxH(900, 96)).toBe(650);
+    expect(clampTimelineH(5000, 900, 96)).toBe(650);
     expect(clampTimelineH(3, 900, 96)).toBe(TL_MIN_H);
     expect(clampTimelineH(300.4, 900, 96)).toBe(300);
     /* A window too short for anything keeps the bar and a few lanes anyway. */
@@ -158,9 +172,12 @@ describe('the panel in Break', () => {
     const r = mount();
     await tick();
     const g = grip(r) as HTMLElement;
-    /* jsdom paints nothing, so the step starts from the default for its
-       window (768 tall). */
-    const start = timelineDefaultH(window.innerHeight);
+    /* jsdom paints nothing. The step starts from a height chosen well short of
+       the window's ceiling (the default region is tall enough now that one
+       step up from it would be clamped there). */
+    const start = 300;
+    setTimelineH(start);
+    await tick();
     key(g, 'ArrowUp');
     expect(timelineH.value).toBe(start + TL_STEP);
     expect(memory.get(TIMELINE_H_KEY)).toBe(String(start + TL_STEP));

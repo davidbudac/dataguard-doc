@@ -1,6 +1,6 @@
-/* Break's Split layout: the drawing on top, the timeline under it, two regions
-   that do not overlap, and one bar between them that is both the split's drag
-   handle and the timeline's chrome (break/SplitBar.tsx).
+/* Break's Split layout: the drawing on top, the timeline under it in a card of
+   its own, two regions that do not overlap, and one bar at the card's head that
+   is both the split's drag handle and the timeline's chrome (break/SplitBar.tsx).
 
    Everything is scoped under `.bl-split`, which App.tsx puts on the shell for
    that layout, and loaded after float.css and rail.css so the rules restyle the
@@ -11,16 +11,23 @@
 
 @media screen {
   .app.is-float.bl-split {
-    --tl-default: clamp(220px, calc((100dvh - var(--bar-bottom, 80px)) * .66), 720px);
+    /* App.tsx writes `--tl-fit` from the drawing's height (`timelineDefaultH`); until it
+       does, a share of the room. */
+    --tl-default: var(--tl-fit, clamp(220px, calc((100dvh - var(--bar-bottom, 80px)) * .62), 720px));
     /* What the drawing keeps above the region; CANVAS_MIN_H in state/view.ts. */
     --canvas-min: 140px;
   }
 
-  /* ---- the dock becomes the lower region: full width, flush, not a card ---- */
+  /* ---- the dock is a floating card, like the header and the rail ---- */
+  /* Inset by `--float-m` on the left, right and bottom, so its outer edges are the
+     header card's and the rail's; the same corner, hairline and shadow. The card
+     does not clip (`overflow: visible`): the bar's dropdowns open upward out of
+     it. Its head, the bar, takes the top corners; the timeline scrolls in its own
+     slot, inset from the edges. The rail ends above it, as it did. */
   .app.is-float.bl-split .app-dock {
-    left: 0; right: 0; bottom: 0;
-    border: 0; border-top: 1px solid var(--ln2); border-radius: 0;
-    box-shadow: 0 -8px 20px rgba(16, 25, 34, .10);
+    left: var(--float-m); right: var(--float-m); bottom: var(--float-m);
+    border: 1px solid var(--ln); border-radius: var(--r-card);
+    box-shadow: var(--sh-card);
     overflow: visible;
     z-index: 26;
     max-height: none;
@@ -32,14 +39,14 @@
   .app.is-float.bl-split .app-dock.has-tl {
     height: auto;
     min-height: 120px;
-    max-height: min(var(--tl-default), calc(100dvh - var(--bar-bottom, 80px) - var(--canvas-min)));
+    max-height: min(var(--tl-default), calc(100dvh - var(--bar-bottom, 80px) - var(--canvas-min) - var(--float-m)));
   }
   .app.is-float.bl-split .app-dock.has-tl.is-set {
     height: var(--tl-h);
-    max-height: calc(100dvh - var(--bar-bottom, 80px) - var(--canvas-min));
+    max-height: calc(100dvh - var(--bar-bottom, 80px) - var(--canvas-min) - var(--float-m));
   }
-  /* Full screen: the region takes the window under the header, over the
-     palette, the drawing and the rail. */
+  /* Full screen: the card takes the window under the header, over the palette,
+     the drawing and the rail -- still inset, still a card. */
   .app.is-float.bl-split.tl-full .app-dock.has-tl {
     top: calc(var(--bar-bottom, 80px) + 8px); height: auto; max-height: none;
   }
@@ -50,10 +57,10 @@
 
   /* ---- the drawing fits what the region leaves; the rail and pills clear it ---- */
   .app.is-float.bl-split .app-stage > .tp-wrap {
-    padding-bottom: calc(var(--dock-h, 72px) + 10px);
+    padding-bottom: calc(var(--dock-h, 72px) + var(--float-m) + 10px);
   }
-  .app.is-float.bl-split .zoom-pill { bottom: calc(var(--dock-h, 72px) + 10px); }
-  .app.is-float.bl-split .app-rail { bottom: calc(var(--dock-h, 72px) + 10px); }
+  .app.is-float.bl-split .zoom-pill { bottom: calc(var(--dock-h, 72px) + var(--float-m) + 10px); }
+  .app.is-float.bl-split .app-rail { bottom: calc(var(--dock-h, 72px) + var(--float-m) + 10px); }
   .app.is-float.bl-split .palette {
     max-height: calc(100dvh - var(--bar-bottom, 80px) - var(--dock-h, 72px) - 2 * var(--float-m) - 12px);
   }
@@ -61,8 +68,9 @@
   /* ---- the bar ---- */
   .sb-bar {
     position: relative; flex: 0 0 auto; display: flex; align-items: center; gap: 10px;
-    height: 40px; padding: 0 10px 0 12px; box-sizing: border-box; min-width: 0;
+    height: 40px; padding: 0 12px 0 16px; box-sizing: border-box; min-width: 0;
     background: var(--sf2); border-bottom: 1px solid var(--ln);
+    border-radius: var(--r-card) var(--r-card) 0 0;
     cursor: ns-resize; touch-action: none; user-select: none;
   }
   .sb-bar.is-dragging { background: var(--sf3); }
@@ -161,7 +169,7 @@
 .tl-headline {
   position: sticky; top: 0; z-index: 2; margin: 0; padding: 6px 2px 4px;
   min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  background: var(--sf); font-size: 12px; font-weight: 560; color: var(--ik);
+  background: var(--sf); font-size: 13.5px; font-weight: 560; color: var(--ik);
 }
 .tl-headline.f-tl { color: var(--tl-ink); }
 .tl-headline.f-bl { color: var(--bl-ink); }

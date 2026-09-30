@@ -238,6 +238,20 @@ export const timelineFull = signal<boolean>(false);
  * configuration's. On to start with; a moment's view, not remembered.
  */
 export const appLanesShown = signal<boolean>(true);
+/**
+ * Whether the run is the healthy one: the configuration as it stands, with
+ * nothing injected, run rather than left as the steady-state reading.
+ *
+ * Without an event the engine has nothing to say about time, so `trace` is
+ * null and every surface reads "steady state" -- no clock, no timeline. The
+ * "Everything is working" scenario is a reader asking to see that steady state
+ * as a run: the same simulation, over an empty event list, so the timeline,
+ * the readout and the explanation all draw from the engine's own answer
+ * (outcome `continues`, no data loss) rather than from a copy of it here.
+ * A moment's view, not remembered and not in the Document: an event of any
+ * kind, a new document, or Clear puts it away.
+ */
+export const healthyRun = signal<boolean>(false);
 
 /** The region never gets shorter than its bar and a few lanes. */
 export const TL_MIN_H = 120;
@@ -246,26 +260,47 @@ export const TL_STEP = 16;
 /** What the drawing above the timeline keeps, however tall the timeline is dragged. */
 export const CANVAS_MIN_H = 140;
 /**
- * The share of the room under the header that the region takes by default. It
- * was .6 while the packed lanes were 22 px with 4 px gaps; the lanes now have
- * room to breathe (build.ts, `TL_COMPACT`), a run is ~90 px taller, and .66
- * is what keeps a three-member run's lanes, axis and tick labels in view at
- * 1280 x 800 without taking the drawing below ~245 px.
+ * The share of the room under the header the region takes by default when the
+ * drawing's height is not known (nothing drawn yet). Where it is known the
+ * default is derived from it instead -- see `timelineDefaultH`.
  */
-const SPLIT_SHARE = 0.66;
+const SPLIT_SHARE = 0.62;
 
 /**
- * The tallest the region grows by itself, before the reader has touched it:
- * 66 % of the room under the header, and only as much of that as the
- * run needs. Mirrored in split.css as `--tl-default`.
+ * The air the drawing keeps around it in Split: the wrap's padding above (18 px
+ * under the header) and below (the card's 14 px margin and 10 px over it,
+ * float.css / split.css), and a little more so a card's edge is never on the
+ * region's.
  */
-export function timelineDefaultH(viewH: number, headBottom = 80): number {
-  return Math.round(Math.min(720, Math.max(220, (viewH - headBottom) * SPLIT_SHARE)));
+/** The gap between the region's card and the window's edge (`--float-m`). */
+export const DOCK_MARGIN = 14;
+export const DRAWING_AIR = 18 + DOCK_MARGIN + 10 + 8;
+
+/**
+ * The tallest the region grows by itself, before the reader has touched it.
+ *
+ * Given the drawing's height at 1:1 (`drawingH`, the viewBox's), it is what
+ * leaves the whole drawing on show at a true 100% between the header and the
+ * region: everything under the header that the drawing and its air do not
+ * need. That is what the topology wants -- a fixed share was either too little
+ * for a tall window's drawing or, in a short one, took the drawing's room and
+ * shrank it to a thumbnail. The timeline scrolls in the region for whatever
+ * does not fit, and the divider is the reader's. Never under 220 px, never over
+ * 720 or three quarters of the room, whatever the drawing asks. Without a
+ * drawing it is `SPLIT_SHARE` of the room. Mirrored in split.css as
+ * `--tl-fit`'s fallback, and written to `--tl-fit` by App.tsx.
+ */
+export function timelineDefaultH(viewH: number, headBottom = 80, drawingH?: number): number {
+  const room = viewH - headBottom;
+  const wanted = drawingH !== undefined && drawingH > 0
+    ? room - drawingH - DRAWING_AIR
+    : room * SPLIT_SHARE;
+  return Math.round(Math.max(220, Math.min(720, room * 0.75, wanted)));
 }
 
-/** The tallest the region may be: the drawing keeps `CANVAS_MIN_H` above it. */
+/** The tallest the region may be: the drawing keeps `CANVAS_MIN_H` above it, and the card its margin below. */
 export function timelineMaxH(viewH: number, headBottom: number): number {
-  return Math.max(TL_MIN_H, Math.round(viewH - headBottom - CANVAS_MIN_H));
+  return Math.max(TL_MIN_H, Math.round(viewH - headBottom - CANVAS_MIN_H - DOCK_MARGIN));
 }
 
 export function clampTimelineH(h: number, viewH: number, headBottom: number): number {

@@ -42,9 +42,7 @@ export function prevChange(changes: readonly number[], t: number): number | null
   return null;
 }
 
-/** The time badge's size, and the gap it keeps from the line and from anything else. */
-const BADGE_W = 54;
-const BADGE_H = 16;
+/** The gap the time badge keeps from the line and from anything else (its size is the layout's). */
 const BADGE_GAP = 6;
 const CLEAR = 3;
 
@@ -60,22 +58,23 @@ export function markerBoxes(model: TimelineModel): Box[] {
   const out: Box[] = [];
   for (const m of model.markers) {
     if (m.showLabel) {
-      const w = approxW(m.label, 11.5) * 1.08;
+      const w = approxW(m.label, layout.fsMark) * 1.08;
       const x0 = m.labelAnchor === 'start' ? m.labelX : m.labelX - w;
-      out.push({ x0, x1: x0 + w, y0: m.labelY - 11, y1: m.labelY + 3 });
+      out.push({ x0, x1: x0 + w, y0: m.labelY - layout.fsMark, y1: m.labelY + 3 });
     }
     if (m.index !== null) {
       if (layout.chip === 1) {
         out.push({ x0: m.nx - 9, x1: m.nx + 9, y0: m.labelY - layout.iconDy - 9, y1: m.labelY - layout.iconDy + 9 });
       }
-      out.push({ x0: m.nx - 7, x1: m.nx + 7, y0: m.labelY - layout.badgeDy - 7, y1: m.labelY - layout.badgeDy + 7 });
+      const r = 7 * layout.msc;
+      out.push({ x0: m.nx - r, x1: m.nx + r, y0: m.labelY - layout.badgeDy - r, y1: m.labelY - layout.badgeDy + r });
     }
   }
   /* "Steady state" is set on the badge's row in a packed timeline. */
   if (model.preZone.label !== null) {
     out.push({
-      x0: model.preZone.x + 6, x1: model.preZone.x + 6 + approxW(model.preZone.label, 10.5),
-      y0: layout.preY - 11, y1: layout.preY + 3,
+      x0: model.preZone.x + 6, x1: model.preZone.x + 6 + approxW(model.preZone.label, layout.fsTick),
+      y0: layout.preY - layout.fsTick, y1: layout.preY + 3,
     });
   }
   return out;
@@ -83,7 +82,8 @@ export function markerBoxes(model: TimelineModel): Box[] {
 
 /** The badge's left edge relative to the line: `BADGE_GAP` to its right, unless something is there. */
 export function badgePlacement(model: TimelineModel, x: number): number {
-  const y0 = model.laneTop - model.layout.playRise - 12;
+  const { badgeW: BADGE_W, badgeH: BADGE_H } = model.layout;
+  const y0 = model.laneTop - model.layout.playRise - BADGE_H + 4;
   const boxes = markerBoxes(model);
   const free = (dx: number): boolean => {
     const x0 = x + dx;
@@ -109,6 +109,9 @@ export function Playhead({ model, tNow, playing = false, onSeek, onTogglePlay, c
   const top = model.laneTop - model.layout.playRise;
   const bottom = model.axisY;
   const badgeDx = badgePlacement(model, x);
+  const { badgeW: BADGE_W, badgeH: BADGE_H } = model.layout;
+  /* The badge's top: the grip's, less its own height, plus the 4 px it overlaps the grip by. */
+  const badgeY = top - BADGE_H + 4;
 
   /* Reaching for the playhead means "let me look at this moment", so it stops
      the run: playback owns the playhead while it is running (see playback.ts)
@@ -189,13 +192,13 @@ export function Playhead({ model, tNow, playing = false, onSeek, onTogglePlay, c
         onLostPointerCapture={release}
       >
         <title>Drag the time marker to scrub. Arrow keys move by 1 s; Shift by 0.1 s.</title>
-        <rect class="tl-playhead-hit" x={-8} y={top - 12} width={16} height={Math.max(0, bottom - top + 12)} />
+        <rect class="tl-playhead-hit" x={-8} y={badgeY} width={16} height={Math.max(0, bottom - badgeY)} />
         {(clearHeads ? gridSpans(model, top) : [[top, bottom] as [number, number]]).map(([y0, y1]) => (
           <line key={y0} class="tl-playhead-ln" x1={0} y1={y0} x2={0} y2={y1} />
         ))}
         <path class="tl-playhead-grip" d="M-6,-11 L6,-11 L6,-2 L0,4 L-6,-2 z" transform={`translate(0,${top})`} />
-        <rect class="tl-playhead-badge" x={badgeDx} y={top - 12} width={BADGE_W} height={BADGE_H} rx={2} />
-        <text class="tl-playhead-t t-mono" x={badgeDx + 4} y={top} >{`t = ${fmt(t)}`}</text>
+        <rect class="tl-playhead-badge" x={badgeDx} y={badgeY} width={BADGE_W} height={BADGE_H} rx={2} />
+        <text class="tl-playhead-t t-mono" x={badgeDx + 5} y={badgeY + BADGE_H / 2}>{`t = ${fmt(t)}`}</text>
       </g>
     </g>
   );

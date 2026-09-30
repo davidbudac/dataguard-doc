@@ -14,10 +14,10 @@
  */
 
 import { useCallback, useEffect, useLayoutEffect, useRef } from 'preact/hooks';
-import { trace } from '@/state/derived';
+import { geometry, trace } from '@/state/derived';
 import {
   breakLayout, canEdit, floating, gridOn, inspectorOpen, introOpen, introPage, mode, modeGuide, railCollapsed,
-  timelineFull, timelineH, toast, viewport,
+  timelineDefaultH, timelineFull, timelineH, toast, viewport,
 } from '@/state/view';
 import type { Mode } from '@/state/view';
 import { CollectDialog, CollectionNotice } from './import/CollectDialog';
@@ -270,12 +270,30 @@ function Stage({ m, lanes = false }: { m: Mode; lanes?: boolean }) {
  */
 function useTimelineHeight(): void {
   const h = timelineH.value;
+  const drawing = geometry.value?.viewBox.h;
   useLayoutEffect(() => {
     if (typeof document === 'undefined') return;
     const root = document.documentElement;
     if (h === null) root.style.removeProperty('--tl-h');
     else root.style.setProperty('--tl-h', `${h}px`);
   }, [h]);
+  /* The region's default height, `--tl-fit`: what leaves the whole drawing on
+     show at 1:1 (`timelineDefaultH`). It depends on the window and on where
+     the header's bottom is, so it is measured now and again on every resize;
+     split.css's `--tl-default` reads it. */
+  useLayoutEffect(() => {
+    if (typeof document === 'undefined' || typeof window === 'undefined') return undefined;
+    const root = document.documentElement;
+    const write = (): void => {
+      const bottom = document.querySelector('.app-head')?.getBoundingClientRect().bottom ?? 0;
+      root.style.setProperty(
+        '--tl-fit', `${timelineDefaultH(window.innerHeight, bottom > 0 ? bottom : 80, drawing)}px`,
+      );
+    };
+    write();
+    window.addEventListener('resize', write);
+    return () => { window.removeEventListener('resize', write); root.style.removeProperty('--tl-fit'); };
+  }, [drawing]);
 }
 
 /* The floating dock. Build's is the readings and the finding chips on one row.
