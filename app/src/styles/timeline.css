@@ -47,6 +47,29 @@
    and their state carry the eye. */
 .tl-svg .t-lane { fill: var(--ik2); font-size: 12px; font-weight: 500; }
 .tl-svg .t-sub { fill: var(--ik3); font-size: 10px; }
+/* The application's three lanes are aspects of the application, not peers of
+   the databases: this page's own words, in sans, and the quietest ink. */
+.tl-svg .t-lane-app { font-size: 11.5px; font-weight: 400; fill: var(--ik3); }
+
+/* The type icon in a lane's gutter: the canvas card's glyph (common/glyphs.tsx)
+   drawn at 14 px, tinted as the card tints it -- a primary teal, a standby blue,
+   everything else the secondary ink -- and the observer in the violet its card
+   takes while it decides, but with no badge fill behind it: a fill per lane
+   would read as one more bar. The letter is the
+   card's role mark (P, S, and M for the master observer) at the same tokens. */
+.tl-svg .tl-ico { stroke: var(--ik2); fill: none; pointer-events: none; }
+.tl-svg .tl-ico.is-primary { stroke: var(--tl); }
+.tl-svg .tl-ico.is-standby { stroke: var(--bl); }
+.tl-svg .tl-ico.is-observer { stroke: var(--vi); }
+.tl-svg .tl-ico.is-app { stroke: var(--ik2); }
+.tl-svg .tl-ico-mark rect { fill: var(--sf); stroke: var(--ik3); stroke-width: 1; }
+.tl-svg .tl-ico-mark text { fill: var(--ik2); font: 700 6.5px var(--sans); }
+.tl-svg .tl-ico-mark.is-primary rect { fill: var(--tlf); stroke: var(--tl); }
+.tl-svg .tl-ico-mark.is-primary text { fill: var(--tl-ink); }
+.tl-svg .tl-ico-mark.is-standby rect { fill: var(--blf); stroke: var(--bl); }
+.tl-svg .tl-ico-mark.is-standby text { fill: var(--bl-ink); }
+.tl-svg .tl-ico-mark.is-observer rect { fill: var(--vif); stroke: var(--vi); }
+.tl-svg .tl-ico-mark.is-observer text { fill: var(--vi-ink); }
 .tl-svg .t-bar { font-size: 11px; }
 .tl-svg .t-tick { fill: var(--ik3); font-size: 10.5px; }
 .tl-svg .t-mark {

@@ -1468,7 +1468,10 @@ handle on its top edge). Build's dock, chips and warning card are as they were.
     sentence on one line with no icon chip, the scrubber's time badge and "Steady state" sit
     on a row above the events, the application's heading has a hairline and 48 px, the total-outage
     brace is left to the headline, and a bar's sentence moves off any marker line that crosses
-    its bar), `headline` (the run's sentence as a line of its own
+    its bar; the gutter is two left-aligned columns, the canvas card's own icon glyph
+    (`common/glyphs.tsx`, tinted as the card tints it, with its P / S / M letter) and then the
+    name, and the application's three lanes are indented sans sub-rows under its heading, which
+    carries the application's icon), `headline` (the run's sentence as a line of its own
     above the lanes, truncated with the whole text as its title, sticky while the lanes
     scroll, not the drawing's first text row) and no legend row (`legend={false}`; the bar
     carries the key and the buttons). The region under the bar is the one scroll box.

@@ -23,6 +23,7 @@ import type {
   MemberId, Member, ObserverId, Seconds, SiteId, TimedEvent, TopologyDoc, Trace,
 } from '@/engine';
 import { eventIcon } from '../common/eventIcons';
+import type { GlyphName } from '../common/glyphs';
 import { appLanes } from './app-lanes';
 import type { AppSection } from './app-lanes';
 import type { EventIconName } from '../common/eventIcons';
@@ -35,7 +36,11 @@ import type { EventIconName } from '../common/eventIcons';
  * derived from.
  */
 export const TL_FULL = {
-  gutter: 132,
+  /**
+   * Wide enough for a type icon, a database name in mono and, under it, the
+   * role in words (it was 132 before the icon column took 30 px of it).
+   */
+  gutter: 154,
   padR: 30,
   /** The caption baseline above the drawing. */
   topY: 16,
@@ -68,8 +73,20 @@ export const TL_FULL = {
    * on the page.
    */
   markRow: 16,
-  /** Gutter text is right-aligned this far in from the plot edge. */
+  /** The gutter's text stops this far short of the plot edge. */
   gutterPad: 14,
+  /**
+   * The gutter's columns, from its left edge: the type icon's left (`iconX`,
+   * `iconSize` square) and where a name starts (`nameX`). A cascaded standby's
+   * whole row moves right by its indent, so the icons still line up in a
+   * column per depth. Names are set left-aligned after the icon, so the icons
+   * and the names each form one column.
+   */
+  iconX: 6,
+  iconSize: 14,
+  nameX: 30,
+  /** The application's three lanes are set this far in from the names above them. */
+  appIndent: 8,
   axisGap: 24,
   braceGap: 34,
   braceRow: 50,
@@ -138,8 +155,8 @@ export type Layout = { -readonly [K in keyof typeof TL_FULL]: number };
  */
 export const TL_COMPACT: Layout = {
   ...TL_FULL,
-  gutter: 128,
-  gutterPad: 10,
+  gutter: 144,
+  gutterPad: 8,
   topY: 12,
   braceY: 14,
   markY: 52,
@@ -217,6 +234,17 @@ export function gridSpans(model: TimelineModel, from: number = model.laneTop): [
 /** Fragment line 3359, unchanged: no `getComputedTextLength` anywhere. */
 export function approxW(s: string, size: number, mono = false): number {
   return String(s).length * size * (mono ? 0.6 : 0.53);
+}
+
+/**
+ * A name cut to `room` px at `size` px with an ellipsis, on the same estimate
+ * the labels are fitted with. The lane's title carries the whole of it.
+ */
+export function elideTo(s: string, room: number, size: number, mono: boolean): string {
+  if (approxW(s, size, mono) <= room) return s;
+  const per = size * (mono ? 0.6 : 0.53);
+  const keep = Math.max(1, Math.floor(room / per) - 1);
+  return `${s.slice(0, keep)}\u2026`;
 }
 
 /** Fragment lines 3362-3365: first candidate that fits, else null. */
@@ -307,6 +335,20 @@ export interface TimelineLane {
   group: LaneGroup;
   /** db_unique_name, observer name, link name -- always rendered mono. */
   name: string;
+  /**
+   * The card's icon for this kind of lane, drawn in the gutter: a database, a
+   * far sync instance, a snapshot standby, an observer. Null for the
+   * application's three lanes (they are sub-rows of the application, whose
+   * icon is on its heading) and for a network link, which has no card.
+   */
+  glyph: GlyphName | null;
+  /**
+   * The letter the card wears on its icon: P a primary, S a standby, M the
+   * master observer (only while fast-start failover is enabled, as on the
+   * card's MASTER chip). Read at the run's start -- a standby that becomes the
+   * primary keeps its S, and its bars say what it turned into.
+   */
+  mark: 'P' | 'S' | 'M' | null;
   /** The gutter subtitle, already fitted to the gutter. */
   sub: string;
   indent: number;
@@ -578,6 +620,8 @@ export const clampToAxis = (
 type Facts = DerivedFacts & Partial<Omit<EngineFacts, keyof DerivedFacts>>;
 
 interface LaneSeed {
+  glyph: GlyphName | null;
+  mark: 'P' | 'S' | 'M' | null;
   engine: EngineLane | null;
   kind: 'member' | 'observer' | 'link';
   id: string;
@@ -586,6 +630,12 @@ interface LaneSeed {
   subs: string[];
   indent: number;
   initial: AnyState;
+}
+
+/** The card's icon for a member: a snapshot standby has its own, a far sync too. */
+function memberGlyph(m: Member): GlyphName {
+  if (isFarSync(m)) return 'farsync';
+  return m.role === 'snapshot' ? 'snapshot' : 'db';
 }
 
 function memberSub(doc: TopologyDoc, m: Member, isPrimary: boolean): string[] {
@@ -646,8 +696,11 @@ function orderLanes(
   const push = (
     kind: 'member' | 'observer' | 'link', id: string, group: LaneGroup,
     name: string, subs: string[], indent: number, initial: AnyState,
+    glyph: GlyphName | null, mark: 'P' | 'S' | 'M' | null,
   ): void => {
-    seeds.push({ engine: byKey.get(`${kind}:${id}`) ?? null, kind, id, group, name, subs, indent, initial });
+    seeds.push({
+      engine: byKey.get(`${kind}:${id}`) ?? null, kind, id, group, name, subs, indent, initial, glyph, mark,
+    });
     byKey.delete(`${kind}:${id}`);
   };
 
@@ -655,11 +708,12 @@ function orderLanes(
   const primary = primaryId ? findMember(doc, primaryId) : undefined;
   if (primary) {
     push('member', primary.id as string, 'primary', primary.name,
-      memberSub(doc, primary, true), 0, initialMemberState(primary, true));
+      memberSub(doc, primary, true), 0, initialMemberState(primary, true), memberGlyph(primary), 'P');
   }
 
   /* 2. observers -- master first, unless nothing makes one the master */
   const fsfoOn = doc.config.fsfo.state !== 'disabled';
+  const fsfoState = doc.config.fsfo.state;
   const observers = [...doc.observers].sort((a, b) => {
     if (fsfoOn) {
       const am = a.role === 'master' ? 0 : 1;
@@ -670,7 +724,8 @@ function orderLanes(
   });
   for (const o of observers) {
     push('observer', o.id as string, 'observer', o.name,
-      observerSub(doc, o.host), 0, initialObserverState(doc, o.id));
+      observerSub(doc, o.host), 0, initialObserverState(doc, o.id), 'observer',
+      fsfoState === 'enabled' && o.role === 'master' ? 'M' : null);
   }
 
   /* 3. far syncs, then 4. standbys in BFS order */
@@ -678,13 +733,14 @@ function orderLanes(
   const cmp = (a: Member, b: Member): number =>
     depthOf(a.id) - depthOf(b.id) || a.name.localeCompare(b.name, 'en');
   for (const m of rest.filter(isFarSync).sort(cmp)) {
-    push('member', m.id as string, 'farsync', m.name, memberSub(doc, m, false), 0, 'receiving');
+    push('member', m.id as string, 'farsync', m.name, memberSub(doc, m, false), 0, 'receiving',
+      'farsync', null);
   }
   for (const m of rest.filter((x) => !isFarSync(x)).sort(cmp)) {
     const d = depthOf(m.id);
     const indent = isFinite(d) ? Math.max(0, d - 1) * TL.indent : 0;
     push('member', m.id as string, 'standby', m.name,
-      memberSub(doc, m, false), indent, initialMemberState(m, false));
+      memberSub(doc, m, false), indent, initialMemberState(m, false), memberGlyph(m), 'S');
   }
 
   /* 5. whatever the trace drew that the document does not place: links */
@@ -698,6 +754,7 @@ function orderLanes(
     seeds.push({
       engine: l, kind: l.subject.kind, id, group: 'link',
       name: String(id), subs: [ends, 'network link', 'link'], indent: 0, initial: 'up',
+      glyph: null, mark: null,
     });
   }
   return { seeds, quietLinks };
@@ -1259,7 +1316,9 @@ export function buildTimeline(trace: Trace, doc: TopologyDoc, view: TimelineView
       id: seed.id,
       group: seed.group,
       name: seed.name,
-      sub: fitSub(seed.subs, TL.gutter - TL.gutterPad) ?? seed.subs[seed.subs.length - 1] ?? '',
+      glyph: seed.glyph,
+      mark: seed.mark,
+      sub: fitSub(seed.subs, plotL - TL.gutterPad - TL.nameX - seed.indent) ?? seed.subs[seed.subs.length - 1] ?? '',
       indent: seed.indent,
       y,
       height: TL.laneH,
@@ -1304,7 +1363,9 @@ export function buildTimeline(trace: Trace, doc: TopologyDoc, view: TimelineView
         id: appId,
         group: 'app',
         name: al.name,
-        sub: fitSub(al.subs, TL.gutter - TL.gutterPad) ?? al.subs[al.subs.length - 1] ?? '',
+        glyph: null,
+        mark: null,
+        sub: fitSub(al.subs, plotL - TL.gutterPad - TL.nameX - TL.appIndent) ?? al.subs[al.subs.length - 1] ?? '',
         indent: 0,
         y,
         height: TL.laneH,

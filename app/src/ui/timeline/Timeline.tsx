@@ -9,10 +9,11 @@
 
 import { useRef, useState } from 'preact/hooks';
 import { GLYPH } from '../common/eventIcons';
+import { GlyphDefs } from '../common/glyphs';
 import type { JSX } from 'preact';
 import type { TimedEvent, TopologyDoc, Trace } from '@/engine';
-import { fmt, gridSpans } from './build';
-import type { Density, Layout, TimelineLane, TimelineMarker, TimelineModel } from './build';
+import { approxW, elideTo, fmt, gridSpans } from './build';
+import type { AppSectionHead, Density, Layout, TimelineLane, TimelineMarker, TimelineModel } from './build';
 import { useRunTimeline } from './run';
 import type { RunTimeline } from './run';
 import { Brace, TopBrace } from './Brace';
@@ -67,6 +68,7 @@ export const APP_VIEW_TIP = 'The same run as the application sees it: where the 
 export function Defs() {
   return (
     <defs>
+      <GlyphDefs prefix="tl" />
       <pattern
         id="tlHatch" width="8" height="8"
         patternUnits="userSpaceOnUse" patternTransform="rotate(45)"
@@ -129,24 +131,7 @@ export function Lane({ lane, model, selected, onSelect, layer = 'both' }: {
       onClick={onSelect ? () => onSelect(selected ? null : lane.id) : undefined}
     >
       {layer === 'both' ? bgRect : null}
-      <text
-        class="t-lane t-mono"
-        x={scale.plotL - TL.gutterPad - lane.indent}
-        y={lane.y + TL.nameDy}
-        text-anchor="end"
-      >
-        {lane.name}
-      </text>
-      {TL.subDy > 0 ? (
-        <text
-          class="t-sub"
-          x={scale.plotL - TL.gutterPad - lane.indent}
-          y={lane.y + TL.subDy}
-          text-anchor="end"
-        >
-          {lane.sub}
-        </text>
-      ) : <title>{`${lane.name} — ${lane.sub}`}</title>}
+      <LaneName lane={lane} model={model} />
       {lane.segments.map((sg) => (
         sg.w <= 0.5 ? null : (
           <g key={sg.key} class="tl-seg" data-tip={sg.title}>
@@ -171,6 +156,56 @@ export function Lane({ lane, model, selected, onSelect, layer = 'both' }: {
         )
       ))}
     </g>
+  );
+}
+
+/**
+ * A lane's label in the gutter: the type icon the canvas card wears for this
+ * kind of thing, then the name. The icons are one column (a cascaded standby's
+ * row steps right by its indent) and the names another, both left-aligned, so
+ * the eye can run down the icons to see what kind each lane is. The
+ * application's three lanes have no icon of their own -- they are aspects of
+ * the application, whose icon heads its section -- and are set in sans, a
+ * step in and in the quiet ink, so they do not read as peers of the databases.
+ */
+export function LaneName({ lane, model }: { lane: TimelineLane; model: TimelineModel }) {
+  const TL = model.layout;
+  const isApp = lane.kind === 'application';
+  const x = TL.nameX + lane.indent + (isApp ? TL.appIndent : 0);
+  const room = model.scale.plotL - TL.gutterPad - x;
+  const size = isApp ? 11.5 : 12;
+  const ix = TL.iconX + lane.indent;
+  const iy = lane.y + TL.nameDy - 11;
+  const tone = lane.mark === 'P' ? ' is-primary' : lane.mark === 'S' ? ' is-standby'
+    : lane.glyph === 'observer' ? ' is-observer' : '';
+  return (
+    <>
+      {lane.glyph === null ? null : (
+        <g class="tl-lane-ico" aria-hidden="true">
+          <use
+            href={`#tl-ico-${lane.glyph}`} class={`tl-ico${tone}`}
+            transform={`translate(${ix},${iy}) scale(${TL.iconSize / 24})`}
+          />
+          {lane.mark === null ? null : (
+            <g class={`tl-ico-mark${tone}`}>
+              <rect x={ix + TL.iconSize - 6} y={iy + TL.iconSize - 6} width={9} height={9} rx={2.5} />
+              <text x={ix + TL.iconSize - 1.5} y={iy + TL.iconSize + 1} text-anchor="middle">{lane.mark}</text>
+            </g>
+          )}
+        </g>
+      )}
+      <text
+        class={isApp ? 't-lane t-lane-app' : 't-lane t-mono'}
+        x={x}
+        y={lane.y + TL.nameDy}
+      >
+        {elideTo(lane.name, room, size, !isApp)}
+      </text>
+      {TL.subDy > 0 ? (
+        <text class="t-sub" x={x} y={lane.y + TL.subDy}>{lane.sub}</text>
+      ) : null}
+      <title>{`${lane.name} — ${lane.sub}`}</title>
+    </>
   );
 }
 
@@ -244,6 +279,39 @@ export function Marker({ marker, layout: TL, spans }: {
       ) : (
         <title>{m.label}</title>
       )}
+    </g>
+  );
+}
+
+/**
+ * The line that heads one application's three lanes: its icon, what they are,
+ * the one reading they add up to -- this page's model, said in its tip -- and
+ * "this page's model" at the far end. On a narrow plot the reading is cut to
+ * what fits (the tip has all of it) and the far label gives way first, rather
+ * than the two printing over each other.
+ */
+function AppHead({ sec, model }: { sec: AppSectionHead; model: TimelineModel }) {
+  const TL = model.layout;
+  const { plotL, plotR } = model.scale;
+  const x = plotL + TL.iconSize + 6;
+  const room = plotR - x - approxW(sec.title, 12) - 16;
+  const showModel = room > approxW(sec.note, 11) + 110;
+  const budget = Math.max(0, room - (showModel ? 110 : 0));
+  const note = approxW(sec.note, 11) <= budget ? sec.note : elideTo(sec.note, budget, 11, false);
+  return (
+    <g class="tl-app-head" data-tip={sec.basis}>
+      <line class="tl-app-rule" x1={plotL} y1={sec.y - TL.appRuleDy} x2={plotR} y2={sec.y - TL.appRuleDy} />
+      <use
+        href="#tl-ico-app" class="tl-ico is-app" aria-hidden="true"
+        transform={`translate(${plotL},${sec.y - 11}) scale(${TL.iconSize / 24})`}
+      />
+      <text class="t-top t-app-title" x={x} y={sec.y}>
+        {sec.title}
+        <tspan class={sec.tone === 'ink' ? 't-app-note' : `t-app-note ${sec.tone}`} dx="8">{note}</tspan>
+      </text>
+      {showModel ? (
+        <text class="t-tick" x={plotR} y={sec.y} text-anchor="end">this page&rsquo;s model</text>
+      ) : null}
     </g>
   );
 }
@@ -431,26 +499,7 @@ export function TimelineBody(props: TimelineProps & { run: RunTimeline }) {
             />
           ))}
           {model.appSections.map((sec) => (
-            /* The line that heads one application's three lanes, and the one
-               reading they add up to -- this page's model, said in its tip. */
-            <g class="tl-app-head" key={sec.id} data-tip={sec.basis}>
-              <line
-                class="tl-app-rule" x1={model.scale.plotL} y1={sec.y - TL.appRuleDy}
-                x2={model.scale.plotR} y2={sec.y - TL.appRuleDy}
-              />
-              <text class="t-top t-app-title" x={model.scale.plotL} y={sec.y}>
-                {sec.title}
-                <tspan
-                  class={sec.tone === 'ink' ? 't-app-note' : `t-app-note ${sec.tone}`}
-                  dx="8"
-                >
-                  {sec.note}
-                </tspan>
-              </text>
-              <text class="t-tick" x={model.scale.plotR} y={sec.y} text-anchor="end">
-                this page&rsquo;s model
-              </text>
-            </g>
+            <AppHead key={sec.id} sec={sec} model={model} />
           ))}
           {model.ticks.map((tk) => (
             <text key={`t${tk.t}`} class="t-tick t-mono" x={tk.x} y={model.axisY + 16} text-anchor="middle">

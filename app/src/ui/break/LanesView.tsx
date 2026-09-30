@@ -521,7 +521,7 @@ function hostLaneFor(
   });
   return {
     key: `application-host:${a.id as string}`, kind: 'application', id: a.id as string, group: 'app',
-    name: a.name, sub: 'the host\'s own up and down, from the events', indent: 0, y: 0, height: TL_FULL.laneH, segments,
+    name: a.name, sub: 'the host\'s own up and down, from the events', indent: 0, y: 0, height: TL_FULL.laneH, glyph: null, mark: null, segments,
   };
 }
 
