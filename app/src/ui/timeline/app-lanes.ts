@@ -18,7 +18,7 @@
  */
 
 import { applicationClient, findApplication } from '@/engine';
-import type { AnyState, AppModel, AppSpan, Seconds, TopologyDoc } from '@/engine';
+import type { AnyState, AppModel, AppPublisher, AppSpan, Seconds, TopologyDoc } from '@/engine';
 import { fmt } from './build';
 import type { InkClass, PhaseClass } from './build';
 
@@ -69,6 +69,14 @@ const SLATE = { phase: 'b-sl', ink: 'f-sl', state: 'up' } as const;
 
 const APP_DOWN = ['The application is down with its host', 'Application down', 'Down'];
 
+/** "A", "A and B", "A, B and C". */
+const joined = (names: string[]): string =>
+  names.length < 2 ? names.join('') : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
+
+/** The publishers the application reaches: with two or more, two databases serve at once. */
+const reachedOf = (sp: { publishers: readonly AppPublisher[] }): AppPublisher[] =>
+  sp.publishers.filter((p) => p.reached);
+
 /** The gutter subtitle of the service lane; a long name is shortened to fit. */
 function serviceSubs(service: string): string[] {
   const s = service.length > 12 ? `${service.slice(0, 10)}...` : service;
@@ -78,7 +86,8 @@ function serviceSubs(service: string): string[] {
 export function appLanes(ap: AppModel, doc: TopologyDoc, t0: Seconds, t1: Seconds): AppSection {
   /* The descriptor this application dials -- its own, else the shared one. */
   const application = ap.application === null ? undefined : findApplication(doc, ap.application.id);
-  const service = (application === undefined ? doc.client : applicationClient(doc, application)).serviceName;
+  const client = application === undefined ? doc.client : applicationClient(doc, application);
+  const service = client.serviceName;
   const nameOf = (id: string | null): string =>
     (id === null ? '' : doc.members.find((m) => (m.id as string) === id)?.name ?? id);
   const hostName = (id: string): string =>
@@ -87,8 +96,9 @@ export function appLanes(ap: AppModel, doc: TopologyDoc, t0: Seconds, t1: Second
   /* The spans, clipped to the axis, behind the steady state the pre-roll
      shows: a trace opens on its first event, so nothing in it is "before". */
   const opens = ap.spans[0]?.t0 ?? t1;
+  const steadySpan = { ...ap.steady, t0, t1: opens, a: t0, b: Math.min(t1, opens) };
   const spans: (AppSpan & { a: Seconds; b: Seconds })[] = [
-    { ...ap.steady, t0, t1: opens, a: t0, b: Math.min(t1, opens) },
+    steadySpan,
     ...ap.spans.map((s) => ({ ...s, a: Math.max(t0, s.t0), b: Math.min(t1, s.t1 ?? t1) })),
   ].filter((s) => s.b > s.a);
 
@@ -114,13 +124,24 @@ export function appLanes(ap: AppModel, doc: TopologyDoc, t0: Seconds, t1: Second
   /* ---- lane 1: where the service is published ---- */
   const first = spans.find((s) => s.serving !== null)?.serving ?? null;
   for (const s of spans) {
-    if (s.serving !== null) {
+    const reached = reachedOf(s);
+    if (reached.length >= 2) {
+      /* Two databases publish it at once: one band, both named. */
+      const names = reached.map((p) => nameOf(p.member as string));
+      const said = reached.map((p, i) => (HANGING.has(p.state ?? '') ? `a STALLED ${names[i]}` : names[i] as string));
+      push(svc, s.a, s.b, TEAL, [
+        `Published by ${joined(said)} at once`, `On ${joined(names)}`, names.join(' + '),
+      ]);
+    } else if (s.serving !== null) {
       const n = nameOf(s.serving as string);
+      /* Another database publishes it too, where the application cannot reach it. */
+      const beyond = s.publishers.filter((p) => !p.reached).map((p) => nameOf(p.member as string));
+      const aside = beyond.length === 0 ? '' : ` — ${joined(beyond)} ${beyond.length === 1 ? 'publishes' : 'publish'} too, out of reach`;
       push(svc, s.a, s.b, TEAL, HANGING.has(s.servingState ?? '')
-        ? [`Still published — on a STALLED ${n}`, 'Still published', 'Published']
+        ? [`Still published — on a STALLED ${n}${aside}`, 'Still published', 'Published']
         : s.serving === first
-          ? [`Published by ${n}'s listener`, `On ${n}`, n]
-          : [`Published by ${n} — started at role change`, `On ${n}`, n]);
+          ? [`Published by ${n}'s listener${aside}`, `On ${n}`, n]
+          : [`Published by ${n} — started at role change${aside}`, `On ${n}`, n]);
     } else if (s.published !== null && s.appUp) {
       const n = nameOf(s.published as string);
       push(svc, s.a, s.b, AMBER,
@@ -135,11 +156,18 @@ export function appLanes(ap: AppModel, doc: TopologyDoc, t0: Seconds, t1: Second
 
   /* ---- what the run is, from the application's side ---- */
   const quiet = ap.noEvent && ap.noEventKind !== 'app-down';
-  const lost: Seconds | null = quiet ? null : (spans.find((s) => s.serving === null)?.a ?? ap.startAt);
+  /* The instant the sessions lose their database, which is the model's: with
+     two databases publishing it is not the first stretch with no service. A
+     steady state that already has none is lost from the start of the axis. */
+  const lost: Seconds | null = quiet ? null
+    : (spans[0] === steadySpan && steadySpan.serving === null ? steadySpan.a : (ap.lostAt ?? ap.startAt));
   const end: Seconds | null = ap.tConn;
-  /* A cut returns no errors: the database is still there, the packets are not. */
+  /* A cut returns no errors: the sessions' own database is still there and
+     publishing, and it is the packets that do not arrive. */
   const atLoss = lost === null ? undefined : spans.find((s) => s.a <= lost + 1e-9 && s.b > lost + 1e-9);
-  const severed = atLoss !== undefined && atLoss.appUp && atLoss.published !== null;
+  const severed = atLoss !== undefined && atLoss.appUp && (ap.sessionsOn === null
+    ? atLoss.published !== null
+    : atLoss.publishers.some((p) => p.member === ap.sessionsOn && !p.reached));
 
   /* ---- lane 2: sessions that were already connected ---- */
   for (const s of spans) {
@@ -147,10 +175,13 @@ export function appLanes(ap: AppModel, doc: TopologyDoc, t0: Seconds, t1: Second
     const after = end !== null && s.a >= end - 1e-9;
     if (!s.appUp) { push(pool, s.a, s.b, HATCH, APP_DOWN); continue; }
     if (before) {
+      const on = ap.sessionsOn ?? s.serving;
       push(pool, s.a, s.b, HANGING.has(s.servingState ?? '') ? AMBER : TEAL,
         HANGING.has(s.servingState ?? '')
           ? ['Commits hang — the primary cannot write redo anywhere', 'Commits hang', 'Hanging']
-          : ['Pooled sessions working', 'Working', 'OK']);
+          : reachedOf(s).length >= 2 && on !== null
+            ? [`Pooled sessions working on ${nameOf(on as string)}`, 'Working', 'OK']
+            : ['Pooled sessions working', 'Working', 'OK']);
       continue;
     }
     if (after) {
@@ -208,6 +239,13 @@ export function appLanes(ap: AppModel, doc: TopologyDoc, t0: Seconds, t1: Second
           'Connected — still paying the timeout', 'Connected',
         ]
         : ['Connected — the refused address costs almost nothing', 'Connected', 'OK']];
+    }
+    const both = reachedOf(sp);
+    if (both.length >= 2) {
+      const first = nameOf(both[0]?.member as string);
+      return [TEAL, client.loadBalance
+        ? ['New connections land on either — LOAD_BALANCE picks the order', 'Land on either', 'OK']
+        : [`New connections land on ${first} — the first address that publishes`, `Land on ${first}`, 'OK']];
     }
     if (quiet) {
       return [TEAL, HANGING.has(sp.servingState ?? '')
@@ -285,6 +323,14 @@ export function appLanes(ap: AppModel, doc: TopologyDoc, t0: Seconds, t1: Second
         ? 'the broker refused the switchover, so the service never left the primary'
         : 'the service never leaves its reach, so there is nothing for the connect string to survive';
     if (ap.noEventKind === 'stalled') tone = 'f-am';
+    /* Two databases publish it and the sessions' own stays up: nothing is lost. */
+    const two = ap.noEventKind === 'continues'
+      ? ap.spans.map(reachedOf).find((r) => r.length >= 2) : undefined;
+    if (two !== undefined) {
+      const names = two.map((p) => nameOf(p.member as string));
+      note = `${joined(names)} ${names.length === 2 ? 'both' : 'all'} publish the service — the sessions stay on ${nameOf(ap.sessionsOn as string)}`;
+      tone = 'f-am';
+    }
   } else if (ap.tConn !== null) {
     const out = ap.tConn - (lost ?? ap.startAt);
     const inside = ap.tService === null ? 0 : ap.tConn - ap.tService;
@@ -310,6 +356,7 @@ export function appLanes(ap: AppModel, doc: TopologyDoc, t0: Seconds, t1: Second
 
   return {
     lanes, note, tone, marks,
-    basis: `This page's model. ${ap.claims.vantage.value}; ${ap.claims.nominal.value}. ${ap.claims.nominal.note ?? ''}`.trim(),
+    basis: `This page's model. ${ap.claims.vantage.value}; ${ap.claims.nominal.value}. ${ap.claims.nominal.note ?? ''}${
+      ap.claims.overlap === undefined ? '' : ` ${ap.claims.overlap.value}. ${ap.claims.overlap.note ?? ''}`}`.trim(),
   };
 }
