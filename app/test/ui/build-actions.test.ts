@@ -19,7 +19,7 @@ import { classicDoc, doc } from '@/state/doc';
 import { resetHistory, undo } from '@/state/history';
 import { clearSelection, inspectorOpen, selection, viewport } from '@/state/view';
 import { Inspector } from '@/ui/inspector/Inspector';
-import { addSite } from '@/ui/inspector/edits';
+import { addHost, addSite } from '@/ui/inspector/edits';
 import { WHY } from '@/ui/inspector/why';
 import {
   buildActionsFor, buildActionsForKey, openInspectorFor, removeAction,
@@ -90,6 +90,24 @@ describe('the rail and the table state one removal', () => {
     const root = mount(Inspector);
     await tick();
     expect(byLabel(root, `Remove ${id}`)?.disabled).toBe(false);
+  });
+
+  it('offers Remove for a site holding only a bare host, and removes the site with the host', () => {
+    const site = addSite()!;
+    const host = addHost(site)!;
+    expect(topo().hosts.some((x) => x.id === host)).toBe(true);
+    const action = removeAction(topo(), site as unknown as string);
+    expect(action?.enabled).toEqual({ state: 'on' });
+    action!.run();
+    expect(topo().sites.some((s) => s.id === site)).toBe(false);
+    expect(topo().hosts.some((x) => x.id === host)).toBe(false);
+    undo();
+    expect(topo().sites.some((s) => s.id === site)).toBe(true);
+    expect(topo().hosts.some((x) => x.id === host)).toBe(true);
+  });
+
+  it('refuses Remove for a site a database still stands in', () => {
+    expect(removeAction(topo(), 'dc1')?.enabled).toEqual({ state: 'off', why: WHY.siteInUse });
   });
 
   it('refuses the last database with the last-database reason, not the primary one', () => {

@@ -30,7 +30,7 @@ import type { WhyState } from '../common/WhyPill';
 import { resolveSubject } from '../inspector/Inspector';
 import {
   addDatabase, addHost, addInstance, addObserver, patchLink, removeApplication, removeFsfoTarget, removeLink,
-  removeInstance, removeMember, removeObserver, removeRedoRoute, removeSite, routesWithout, setAddressListed, setLogXptMode,
+  removeInstance, removeMember, removeObserver, removeRedoRoute, removeSite, routesWithout, siteInUse, setAddressListed, setLogXptMode,
   setMasterObserver, setPrimary,
 } from '../inspector/edits';
 import { off, ON, WHY } from '../inspector/why';
@@ -316,7 +316,6 @@ export function buildActionsForKey(doc: TopologyDoc, key: string): BuildAction[]
 
   if (subject.kind === 'site') {
     const { site } = subject;
-    const hosts = doc.hosts.filter((h) => h.site === site.id);
     out.push({
       id: 'add:standby',
       label: 'Add a standby here',
@@ -345,7 +344,7 @@ export function buildActionsForKey(doc: TopologyDoc, key: string): BuildAction[]
       id: 'remove',
       label: `Remove ${key}`,
       plural: 'Remove',
-      enabled: hosts.length > 0 ? off(WHY.siteHasHosts) : ON,
+      enabled: siteInUse(doc, site.id) ? off(WHY.siteInUse) : ON,
       kind: 'remove',
       run: () => removeSite(site.id),
     });

@@ -7,10 +7,9 @@
  * every other subject's (`Inspector.tsx`).
  */
 
-import { applicationsOf } from '@/engine';
 import type { Site, TopologyDoc } from '@/engine';
 import { Action, Group, Note, Text } from './controls';
-import { addHost, addLink, mutate, removeHost } from './edits';
+import { addHost, addLink, hostsInUse, mutate, removeHost } from './edits';
 import { WHY_ONE_SITE } from './adds';
 import { off, ON, WHY } from './why';
 
@@ -21,10 +20,7 @@ export interface SiteFormProps {
 
 export function SiteForm({ site, doc }: SiteFormProps) {
   const hosts = doc.hosts.filter((h) => h.site === site.id);
-  const used = new Set<string>();
-  for (const m of doc.members) for (const i of m.instances) used.add(i.host as string);
-  for (const o of doc.observers) used.add(o.host as string);
-  for (const a of applicationsOf(doc)) used.add(a.host as string);
+  const used = hostsInUse(doc);
   const others = doc.sites.filter((s) => s.id !== site.id);
   const linked = (o: Site): boolean => doc.links.some((l) => l.scope === 'site'
     && (l.ends as [string, string]).includes(site.id as string)
