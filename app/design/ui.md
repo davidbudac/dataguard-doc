@@ -1229,15 +1229,43 @@ single-application it says which one it shows.
   export scale never draws them. In the Lanes layout each application is a row with
   its own host's up and down, and its three lanes sit under their own heading. The
   events on an application are per application: Crash / Restore act on *its* host.
+  **Two databases publishing at once** (a manual failover's old primary left open,
+  `FAILOVER.FORMER_PRIMARY_OPEN`; `AppSpan.publishers`, `AppModel.claims.overlap`): the
+  Service lane draws one teal band over the overlap, `Published by prm01 and sby01 at
+  once` / `On prm01 and sby01` / `prm01 + sby01` (a publisher that is STALLED is named
+  `a STALLED prm01`), and a publisher the application cannot reach is added to the
+  normal label as ` — sby01 publishes too, out of reach`. The Sessions lane reads
+  `Pooled sessions working on prm01` — they stay on the database they are on — and the
+  New connections lane `New connections land on prm01 — the first address that
+  publishes`, or `… land on either — LOAD_BALANCE picks the order` when the descriptor
+  has `LOAD_BALANCE` on. With the old primary open to the end nothing is lost, and the
+  heading says so in amber: *prm01 and sby01 both publish the service — the sessions stay
+  on prm01*. When the old primary then goes down the loss is the model's `lostAt`, not the
+  first stretch with no service: the sessions read *In-flight calls error — ORA-3113*
+  (never *hang*: hanging is for a sessions' database that is up and publishing but out of
+  reach), the ladder starts at the crash, dials address 1 (the dead old primary) and
+  connects to the new primary, and the reconnect mark and `outage 60.3 s` heading are
+  drawn as for any other loss. The heading's tooltip carries `APP.TWO_PUBLISHERS`.
 - **The readout, one reading per application.** With one application the readings
   are `Application reconnects` / `Application stays down`; with several, each reads
   under its own name (`app02 reconnects`, `app02 stays down`) with `group: 'app'` so the
   bar ranks and keeps them as it kept the one (`ReadoutChip.group`; the first keeps
   the id `app`, the rest are `app~1`, `app~2`). An application nothing happened to has
-  no reading, as before.
+  no reading, as before. Where the sessions' database went down while another was
+  already publishing the service (`AppModel.servedAtLoss`), the reading's line says so:
+  *app01 gets a new connection at this instant: prm01 went down with its sessions while
+  sby01 was already publishing the service, so the outage is the connect string's own.*
 - **Config.** *Application view* draws one figure per application, each captioned
   with the application and whether it dials its own connect string or the shared one;
-  with none, the one figure dialled from outside every data centre. *tnsnames / JDBC*
+  with none, the one figure dialled from outside every data centre. The figure assumes
+  the loss is the failure event at t = 0; for the one case where it is not — a
+  manual failover's old primary went down later with the new one already publishing —
+  it puts the loss at `lostAt` (the service lane reads old primary, then *Published by
+  both primaries at once*, then the new primary; the pool works *on the old primary* until the crash; the
+  outage, the *Client-side overhead* brace and the summary count from it, and the eyebrow and
+  axis say t = 0 is *the first event of the run*, not a failure), and every other figure
+  is drawn as before.
+  *tnsnames / JDBC*
   shows the shared pair and then a pair of its own for every application that has
   one (`buildClientFiles`), and says who dials which. The review dialog and the
   printable report take the same pairs.
@@ -1668,9 +1696,11 @@ handle on its top edge). Build's dock, chips and warning card are as they were.
     reading in view. A former primary that went down and restarts is not that one: it is
     mounted, so a run that crashes the old primary before the failover reads `no`. A
     switchover, whose old primary is converted before the new one opens, has no chip at all.
-    Where the run also draws the application, the service stays published on the old primary
-    while it is open (the lanes' `open-rw` publishes), so the application timeline follows
-    the old primary until it goes down and only then the new one.
+    Where the run also draws the application, the old primary keeps publishing the service
+    while it is open, and the new primary publishes it too from the instant it opens: the
+    application's lanes draw the two at once (*Simulate: each application's view*), and when
+    the old primary goes down the sessions on it are lost while the new one is already
+    publishing.
   - *The print report* takes the chip with the others (`readoutFor(false)`): a row *Split
     brain — no*, the model label, the citations numbered into its sources.
 - **The playhead's time badge keeps clear** of every event sentence, icon chip and number

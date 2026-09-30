@@ -111,50 +111,81 @@ interface Ladder {
   aggregate: boolean;
 }
 
+/**
+ * The one case where the loss is not at t = 0: a manual failover's old primary
+ * stayed open beside the new one, and went down later. The service was never
+ * gone; it is the sessions' database that was lost, at `down`.
+ */
+interface Overlap {
+  /** When the new primary opened, and both were publishing. */
+  opened: number;
+  /** When the old primary, and the sessions on it, went down. */
+  down: number;
+}
+
 function failureLanes(
   ap: AppModel, service: string, stalled: boolean, blocked: boolean, tOpen: number | null,
-  rd: number, t0: number, t1: number, pps: number,
+  rd: number, t0: number, t1: number, pps: number, overlap: Overlap | null,
 ): Ladder {
   const lanes = LANES(service);
+  const down = overlap?.down ?? 0;
   const att = ap.attempts;
   const last = att[att.length - 1];
   const aggregate = att.length > 1 && ((ap.passCost + rd) * pps < 22 || att.length > 48);
   const ticks: number[] = [];
 
   /* lane 0 -- where the service is published */
-  lanes[0]?.segs.push({
-    a: t0, b: 0, cls: 'b-tl', ink: 'f-tl',
-    labs: ["Published by the old primary's listener", 'On the old primary', 'Old primary'],
-  });
-  const svcBack = blocked || tOpen === null ? t1 : tOpen;
-  lanes[0]?.segs.push({
-    a: 0, b: svcBack, cls: 'b-hatch', ink: 'f-rd',
-    labs: stalled
-      ? ['Old primary stalled -- unreachable, service unpublished', 'Unreachable -- unpublished', 'Unpublished']
-      : [`Nowhere -- nothing publishes ${service}`, 'Nowhere', '--'],
-  });
-  if (!blocked && tOpen !== null) {
+  if (overlap !== null) {
+    lanes[0]?.segs.push(
+      {
+        a: t0, b: overlap.opened, cls: 'b-tl', ink: 'f-tl',
+        labs: ["Published by the old primary's listener", 'On the old primary', 'Old primary'],
+      },
+      {
+        a: overlap.opened, b: down, cls: 'b-tl', ink: 'f-tl',
+        labs: ['Published by both primaries at once', 'On both primaries', 'Both'],
+      },
+      {
+        a: down, b: t1, cls: 'b-tl', ink: 'f-tl',
+        labs: ['Published by the new primary -- started at role change', 'On the new primary', 'New primary'],
+      },
+    );
+  } else {
     lanes[0]?.segs.push({
-      a: tOpen, b: t1, cls: 'b-tl', ink: 'f-tl',
-      labs: ['Published by the new primary -- started at role change', 'On the new primary', 'New primary'],
+      a: t0, b: 0, cls: 'b-tl', ink: 'f-tl',
+      labs: ["Published by the old primary's listener", 'On the old primary', 'Old primary'],
     });
+    const svcBack = blocked || tOpen === null ? t1 : tOpen;
+    lanes[0]?.segs.push({
+      a: 0, b: svcBack, cls: 'b-hatch', ink: 'f-rd',
+      labs: stalled
+        ? ['Old primary stalled -- unreachable, service unpublished', 'Unreachable -- unpublished', 'Unpublished']
+        : [`Nowhere -- nothing publishes ${service}`, 'Nowhere', '--'],
+    });
+    if (!blocked && tOpen !== null) {
+      lanes[0]?.segs.push({
+        a: tOpen, b: t1, cls: 'b-tl', ink: 'f-tl',
+        labs: ['Published by the new primary -- started at role change', 'On the new primary', 'New primary'],
+      });
+    }
   }
 
   /* lane 1 -- sessions that were already connected */
   lanes[1]?.segs.push({
-    a: t0, b: 0, cls: 'b-tl', ink: 'f-tl',
-    labs: ['Pooled sessions working on the primary', 'Working', 'OK'],
+    a: t0, b: down, cls: 'b-tl', ink: 'f-tl',
+    /* With two primaries open, the sessions are on the old one. */
+    labs: [overlap !== null ? 'Pooled sessions working on the old primary' : 'Pooled sessions working on the primary', 'Working', 'OK'],
   });
   const poolEnd = ap.tConn !== null ? ap.tConn : t1;
   if (stalled) {
     lanes[1]?.segs.push({
-      a: 0, b: poolEnd, cls: 'b-am', ink: 'f-am',
+      a: down, b: poolEnd, cls: 'b-am', ink: 'f-am',
       labs: ['In-flight calls hang -- a partition returns no errors', 'Calls hang -- pool unusable', 'Hanging'],
     });
   } else {
-    const bk = Math.min(1.5, poolEnd);
+    const bk = Math.min(down + 1.5, poolEnd);
     lanes[1]?.segs.push(
-      { a: 0, b: bk, cls: 'b-hatch', ink: 'f-rd', labs: ['In-flight calls error -- ORA-3113', 'Errors'] },
+      { a: down, b: bk, cls: 'b-hatch', ink: 'f-rd', labs: ['In-flight calls error -- ORA-3113', 'Errors'] },
       {
         a: bk, b: poolEnd, cls: 'b-am', ink: 'f-am',
         labs: ['Pool empty -- requests wait or fail', 'Pool empty', 'Empty'],
@@ -170,17 +201,17 @@ function failureLanes(
 
   /* lane 2 -- the retry ladder */
   lanes[2]?.segs.push({
-    a: t0, b: 0, cls: 'b-sl', ink: 'f-sl',
+    a: t0, b: down, cls: 'b-sl', ink: 'f-sl',
     labs: ['Any request connects at once', 'Connects at once', '--'],
   });
   if (aggregate) {
     const failN = ap.tConn !== null ? att.length - 1 : att.length;
     const failEnd = ap.tConn !== null
-      ? (last?.start ?? 0)
+      ? (last?.start ?? down)
       : Math.min(ap.gaveUp ?? t1, t1);
     if (failN > 0) {
       lanes[2]?.segs.push({
-        a: 0, b: failEnd, cls: 'b-am', ink: 'f-am',
+        a: down, b: failEnd, cls: 'b-am', ink: 'f-am',
         labs: [
           `${failN} failed ${failN === 1 ? 'traversal' : 'traversals'} -- the dead address waits, the rest refuse (ORA-12514)`,
           `${failN} failed ${failN === 1 ? 'traversal' : 'traversals'}`,
@@ -334,7 +365,7 @@ function ladderBraces(
   } else if (first) {
     braces.push(ap.drop
       ? {
-        key: 'pass', a: 0, b: first.a1End, tone: 'br-am', mono: true,
+        key: 'pass', a: ap.servedAtLoss !== null ? from : 0, b: first.a1End, tone: 'br-am', mono: true,
         name: 'min(TRANSPORT_CONNECT_TIMEOUT, CONNECT_TIMEOUT)',
         val: `${fmt(ap.d1)} s on the dead address, every traversal`,
       }
@@ -348,7 +379,9 @@ function ladderBraces(
     braces.push({
       key: 'client', a: tOpen, b: ap.tConn, tone: 'br-sl', mono: false,
       name: 'Client-side overhead',
-      val: `${fmt(ap.tConn - tOpen)} s after the database is back`,
+      val: ap.servedAtLoss !== null
+        ? `${fmt(ap.tConn - tOpen)} s after the sessions' database went down`
+        : `${fmt(ap.tConn - tOpen)} s after the database is back`,
     });
   }
   if (ap.gaveUp !== null && !ap.clipped) {
@@ -432,15 +465,26 @@ function AppFigure({ ap, client, tr, width }: {
   const kind: 'none' | 'failure' | 'switchover' = ap.noEvent
     ? 'none' : ap.switchover ? 'switchover' : 'failure';
 
+  /* The figure assumes the loss is the failure event, at t = 0. Not so when a
+     manual failover left the old primary open beside the new one and it went
+     down later: the service was never gone, the sessions' database was lost at
+     `down`, and the new primary had opened before that. Only this case moves. */
+  const overlap: Overlap | null = kind === 'failure' && ap.servedAtLoss !== null
+    ? { down: ap.lostAt ?? 0, opened: facts.tOpen ?? ap.lostAt ?? 0 } : null;
+  const down = overlap?.down ?? 0;
+  /* When the new primary opened, for the marker on it: the failure figure's own
+     answer is the service's return, which here is the same instant as the loss. */
+  const opened = overlap?.opened ?? tOpen;
+
   const ladder: Ladder = kind === 'none'
     ? { lanes: noEventLanes(ap, service, t0, t1), ticks: [], aggregate: false }
     : kind === 'switchover'
       ? switchoverLanes(ap, service, tOpen, rd, t0, t1, scale.pxPerSecond)
-      : failureLanes(ap, service, stalled, facts.blocked, tOpen, rd, t0, t1, scale.pxPerSecond);
+      : failureLanes(ap, service, stalled, facts.blocked, tOpen, rd, t0, t1, scale.pxPerSecond, overlap);
 
   const braces = kind === 'none'
     ? []
-    : ladderBraces(ap, ladder.aggregate, kind === 'switchover' ? ap.startAt : 0, tOpen, rc, rd);
+    : ladderBraces(ap, ladder.aggregate, kind === 'switchover' ? ap.startAt : down, tOpen, rc, rd);
   const height = figHeight(g, braceRows(braces, scale, width, g));
 
   const unit = kind === 'switchover'
@@ -449,15 +493,17 @@ function AppFigure({ ap, client, tr, width }: {
       ? 'seconds from the SWITCHOVER command'
       : ap.noEventKind === 'observer-lost'
         ? 'seconds from the observer host failure'
-        : 'seconds from the failure event';
+        : overlap !== null
+          ? 'seconds from the first event of the run'
+          : 'seconds from the failure event';
 
-  const xz = scale.x(0);
+  const xz = scale.x(down);
   const gapA = (g.lane[0] ?? 0) + g.laneH;
   const gapB = (g.lane[1] ?? 0) + g.laneH;
 
   /* the top annotation, which branches on the outcome and never on the event */
   const outageLab = ap.tConn !== null && tOpen !== null
-    ? `Application outage = ${fmt(ap.tConn - (kind === 'switchover' ? ap.startAt : 0))} s -- ${fmt(ap.tConn - tOpen)} s of it client-side`
+    ? `Application outage = ${fmt(ap.tConn - (kind === 'switchover' ? ap.startAt : down))} s -- ${fmt(ap.tConn - tOpen)} s of it client-side`
     : null;
   const outageW = outageLab === null ? 0 : approxW(outageLab, 12);
 
@@ -474,26 +520,28 @@ function AppFigure({ ap, client, tr, width }: {
   const summary = kind === 'none'
     ? `The application's view: ${noEventTop}`
     : ap.tConn !== null
-      ? `The application's view: the service was gone from t = ${fmt(kind === 'switchover' ? ap.startAt : 0)} s and a new connection succeeded at ${fmt(ap.tConn)} s, ${fmt(ap.tConn - (tOpen ?? 0))} seconds of that spent inside the connect string.`
+      ? overlap !== null
+        ? `The application's view: its sessions were lost at t = ${fmt(down)} s with the old primary, the new primary already publishing the service, and a new connection succeeded at ${fmt(ap.tConn)} s, ${fmt(ap.tConn - (tOpen ?? 0))} seconds of that spent inside the connect string.`
+        : `The application's view: the service was gone from t = ${fmt(kind === 'switchover' ? ap.startAt : 0)} s and a new connection succeeded at ${fmt(ap.tConn)} s, ${fmt(ap.tConn - (tOpen ?? 0))} seconds of that spent inside the connect string.`
       : `The application's view: the connect string exhausted its retry budget${ap.gaveUp === null ? '' : ` at ${fmt(ap.gaveUp)} s`} and the application stayed down.`;
 
   const serviceBack = tOpen !== null && !facts.blocked;
   const openCands = [
-    `New primary opens -- ${service} published at t = ${fmt(tOpen ?? 0)} s`,
-    `${service} published at t = ${fmt(tOpen ?? 0)} s`,
+    `New primary opens -- ${service} published at t = ${fmt(opened ?? 0)} s`,
+    `${service} published at t = ${fmt(opened ?? 0)} s`,
     'service back',
   ];
   const openLab = openCands.find(
-    (c) => scale.x(tOpen ?? 0) + 8 + approxW(c, 11.5) <= scale.plotR,
+    (c) => scale.x(opened ?? 0) + 8 + approxW(c, 11.5) <= scale.plotR,
   ) ?? openCands[2] ?? 'service back';
-  const openPos = markLabel(scale.x(tOpen ?? 0), scale, openLab);
+  const openPos = markLabel(scale.x(opened ?? 0), scale, openLab);
 
   return (
     <Figure
       width={width} height={height}
       eyebrow={kind === 'none'
         ? 'Nothing the connect string can see'
-        : `t = 0 is ${kind === 'switchover' ? 'the SWITCHOVER command' : 'the failure event'} · horizon ${fmt(ap.horizon)} s`}
+        : `t = 0 is ${kind === 'switchover' ? 'the SWITCHOVER command' : overlap !== null ? 'the first event of the run' : 'the failure event'} · horizon ${fmt(ap.horizon)} s`}
       summaryId="ap-summary" summary={summary}
     >
       <Frame g={g} scale={scale} step={ap.tickStep} unit={unit} preLabel="Steady state" />
@@ -534,11 +582,11 @@ function AppFigure({ ap, client, tr, width }: {
         </>
       ) : null}
 
-      {kind !== 'none' && serviceBack && tOpen !== null ? (
+      {kind !== 'none' && serviceBack && opened !== null ? (
         <>
           <line
-            class="m-tl" x1={r1(scale.x(tOpen))} y1={(g.lane[0] ?? 0) - 6}
-            x2={r1(scale.x(tOpen))} y2={g.lanesBottom + 4}
+            class="m-tl" x1={r1(scale.x(opened))} y1={(g.lane[0] ?? 0) - 6}
+            x2={r1(scale.x(opened))} y2={g.lanesBottom + 4}
             stroke-width="1.5" stroke-dasharray="5 4"
           />
           <text
@@ -555,7 +603,7 @@ function AppFigure({ ap, client, tr, width }: {
       {kind === 'none' ? null : outageLab !== null ? (
         <text
           class="t-top"
-          x={r1(Math.min(Math.max((scale.x(kind === 'switchover' ? ap.startAt : 0) + scale.x(ap.tConn ?? 0)) / 2, outageW / 2 + 6), width - outageW / 2 - 6))}
+          x={r1(Math.min(Math.max((scale.x(kind === 'switchover' ? ap.startAt : down) + scale.x(ap.tConn ?? 0)) / 2, outageW / 2 + 6), width - outageW / 2 - 6))}
           y={g.topY} text-anchor="middle"
         >
           {outageLab}

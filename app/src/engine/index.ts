@@ -108,7 +108,7 @@ export {
 
 /* the other three models: the application's view, one commit, the reopen ladder */
 export type {
-  AddressPlan, AppAttempt, AppClaims, AppModel, AppOptions, AppSpan, Dial, DialKind, NoEventKind,
+  AddressPlan, AppAttempt, AppClaims, AppModel, AppOptions, AppPublisher, AppSpan, Dial, DialKind, NoEventKind,
 } from './models/app';
 export { computeApp, computeApps } from './models/app';
 export type {

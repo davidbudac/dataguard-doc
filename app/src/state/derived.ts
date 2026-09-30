@@ -404,6 +404,8 @@ export function readoutFor(steady: boolean): ReadoutChip[] {
      the reading keeps the plain "Application" eyebrow. */
   const models = appModelsFor(t, topo);
   const many = models.length > 1;
+  const memberName = (id: string | null): string =>
+    topo.members.find((m) => (m.id as string) === id)?.name ?? (id ?? '');
   models.forEach((ap, i) => {
     if (ap.noEvent && ap.noEventKind !== 'app-down') return;
     const name = ap.application?.name ?? 'the application';
@@ -416,7 +418,9 @@ export function readoutFor(steady: boolean): ReadoutChip[] {
     chips.push(ap.tConn !== null
       ? {
         ...base, tone: 'tl', k: many ? `${name} reconnects` : 'Application reconnects', v: fmt(ap.tConn), unit: 's',
-        sub: `${name} gets a new connection at this instant: the connect string's own waits, on top of the role change.`,
+        sub: ap.servedAtLoss !== null
+          ? `${name} gets a new connection at this instant: ${memberName(ap.sessionsOn)} went down with its sessions while ${memberName(ap.servedAtLoss)} was already publishing the service, so the outage is the connect string's own.`
+          : `${name} gets a new connection at this instant: the connect string's own waits, on top of the role change.`,
         basis: 'model',
       }
       : {

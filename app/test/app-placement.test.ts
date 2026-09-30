@@ -197,6 +197,7 @@ describe('computeApp: dialled from where the application stands', () => {
     const { app } = run('dc1', 'crash');
     expect(app.steady).toEqual({
       appUp: true, serving: 'prm01', servingState: 'open-rw', published: 'prm01',
+      publishers: [{ member: 'prm01', state: 'open-rw', reached: true }],
     });
   });
 
