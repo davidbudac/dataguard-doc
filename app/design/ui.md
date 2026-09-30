@@ -1479,14 +1479,27 @@ handle on its top edge). Build's dock, chips and warning card are as they were.
     above the lanes, truncated with the whole text as its title, sticky while the lanes
     scroll, not the drawing's first text row) and no legend row (`legend={false}`; the bar
     carries the key and the buttons). The region under the bar is the one scroll box.
-  - *Height*: with a run on it the region is as tall as its content, up to 78 %
-    of the room under the header (`timelineDefaultH`, mirrored as `--tl-default` in
-    `split.css`); once the reader drags it (`is-set`) it is that height (`timelineH`,
-    `dg-tl-h`, written as `--tl-h`), never taller than leaves the drawing 140 px
-    (`CANVAS_MIN_H`) and never shorter than the bar and a few lanes (`TL_MIN_H`, 120).
-    At 1440×900 the default region holds every lane, the axis, its tick labels and the top of the
-    first brace of the classic crash; at 1280×800 every lane and the axis with its tick labels,
-    with the braces one scroll away, inside the timeline region only (the bar and the headline stay).
+  - *A floating card, like the header and the rail.* The region is inset by `--float-m`
+    (14 px) on the left, right and bottom, so its outer edges are the header card's and the
+    rail's; `--r-card` corners, a `--ln` hairline and `--sh-card`. It does not clip (the bar's
+    dropdowns open upward out of it): the bar at its head takes the top corners and carries
+    the grip on the card's top edge, and the timeline scrolls in its own slot inside the card.
+    The rail ends above it with a 10 px gap, as before, so the two right edges line up. The
+    drawing measures the slot, so its width is the card's inner width. Full screen is the same
+    card taken to the window under the header; the pop-out is its own window and stays flush.
+  - *Height*: derived from the drawing, not a share. `timelineDefaultH(viewH, headBottom,
+    drawingH)` is what leaves the whole drawing on show at a true 100% between the header and
+    the card -- the room under the header, less the drawing's viewBox height and its air
+    (`DRAWING_AIR`: 18 px under the header, the card's 14 px margin, 10 px over it, 8 spare) --
+    never under 220 px, and never over 720 or three quarters of the room. App.tsx measures it
+    (window, header bottom, the drawing) and writes `--tl-fit`, which split.css's
+    `--tl-default` reads; without a drawing it falls back to 62 % of the room. The timeline
+    scrolls inside the card for whatever does not fit (at 1440×900 the classic crash's dock is
+    about 390 px: the transport bar, the headline and the first three lanes and the application's
+    heading on show, the rest one scroll away), at its full lane height. Once the reader drags
+    it (`is-set`) it is that height (`timelineH`, `dg-tl-h`, written as `--tl-h`), never taller
+    than leaves the drawing 140 px and the card its margin (`CANVAS_MIN_H`, `DOCK_MARGIN`) and
+    never shorter than the bar and a few lanes (`TL_MIN_H`, 120).
   - *"Everything is working"* is the first scenario on the shelf and the only one that injects
     nothing. With no event the engine has no clock, so `trace` is null and every surface reads
     "steady state"; the scenario sets `healthyRun` (view state, not in the Document) and `trace`

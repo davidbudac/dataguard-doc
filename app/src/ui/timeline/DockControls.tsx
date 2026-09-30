@@ -18,6 +18,7 @@
 
 import { useEffect, useRef } from 'preact/hooks';
 import type { JSX } from 'preact';
+import { geometry } from '@/state/derived';
 import { setTimelineH } from '@/state/persist';
 import {
   clampTimelineH, findingsOpen, timelineDefaultH, timelineFull, timelineH, timelineMaxH, TL_MIN_H,
@@ -25,6 +26,9 @@ import {
 } from '@/state/view';
 
 const viewH = (): number => (typeof window === 'undefined' ? 900 : window.innerHeight);
+
+/** The drawing's height at 1:1, which the region's default leaves room for. */
+const drawingH = (): number | undefined => geometry.peek()?.viewBox.h;
 
 const headBottom = (from: Element | null): number => {
   const head = from?.ownerDocument.querySelector('.app-head') ?? null;
@@ -36,7 +40,7 @@ const headBottom = (from: Element | null): number => {
 const paintedH = (el: Element): number => {
   const dock = el.closest('.app-dock');
   const h = dock?.getBoundingClientRect().height ?? 0;
-  return h > 0 ? Math.round(h) : (timelineH.value ?? timelineDefaultH(viewH(), headBottom(el)));
+  return h > 0 ? Math.round(h) : (timelineH.value ?? timelineDefaultH(viewH(), headBottom(el), drawingH()));
 };
 
 /** Press further than this before a press on the bar becomes a drag, so a click stays a click. */
@@ -111,7 +115,7 @@ export const GRIP_TITLE = 'Drag the bar to resize the timeline, or use the arrow
 
 export function DockGrip() {
   const vh = viewH();
-  const now = timelineH.value ?? timelineDefaultH(vh, typeof document === 'undefined' ? 80 : headBottom(document.body));
+  const now = timelineH.value ?? timelineDefaultH(vh, typeof document === 'undefined' ? 80 : headBottom(document.body), drawingH());
 
   const move = (el: Element, h: number, remember: boolean): void => {
     setTimelineH(clampTimelineH(h, viewH(), headBottom(el)), remember);

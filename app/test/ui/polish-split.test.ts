@@ -20,7 +20,7 @@ import type { TimedEvent, TopologyDoc } from '@/engine';
 import { hostDown, hostUp } from '@/presets/build';
 import { classicDoc } from '@/state/doc';
 import { resetHistory } from '@/state/history';
-import { topology } from '@/state/derived';
+import { geometry, topology } from '@/state/derived';
 import { restored } from '@/state/persist';
 import { breakLayout, mode, timelineDefaultH, timelineFull, timelineH, tNow, viewport } from '@/state/view';
 import { App } from '@/ui/App';
@@ -358,7 +358,7 @@ describe('the divider', () => {
     const r = mountApp();
     await tick();
     const bar = r.querySelector('.sb-bar') as HTMLElement;
-    const start = timelineDefaultH(window.innerHeight);
+    const start = timelineDefaultH(window.innerHeight, 80, geometry.value?.viewBox.h);
     bar.dispatchEvent(pointer('pointerdown', 500));
     bar.dispatchEvent(pointer('pointerup', 400));
     expect(timelineH.value).not.toBeNull();
@@ -410,7 +410,7 @@ describe('the divider', () => {
     const grip = r.querySelector('.sb-bar .dock-grip') as HTMLElement;
     expect(grip.getAttribute('role')).toBe('separator');
     const key = (k: string): void => { grip.dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true, cancelable: true })); };
-    const start = timelineDefaultH(window.innerHeight);
+    const start = timelineDefaultH(window.innerHeight, 80, geometry.value?.viewBox.h);
     key('ArrowUp');
     expect(timelineH.value as number).toBeGreaterThan(start);
     const up = timelineH.value as number;

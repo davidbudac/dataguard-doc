@@ -260,28 +260,47 @@ export const TL_STEP = 16;
 /** What the drawing above the timeline keeps, however tall the timeline is dragged. */
 export const CANVAS_MIN_H = 140;
 /**
- * The share of the room under the header that the region takes by default. It
- * was .6 while the packed lanes were 22 px with 4 px gaps and 11 px text; with
- * lanes 36 px tall and 13 px text (build.ts, `TL_COMPACT`) a three-member run
- * with the application's lanes is ~575 px, which is what .78 leaves it at
- * 1440 x 900 and taller. The region is only as tall as its run, so a large
- * window takes what it needs, not the share; a short one gives the drawing
- * above it up to the `CANVAS_MIN_H` floor and the timeline scrolls for the rest.
+ * The share of the room under the header the region takes by default when the
+ * drawing's height is not known (nothing drawn yet). Where it is known the
+ * default is derived from it instead -- see `timelineDefaultH`.
  */
-const SPLIT_SHARE = 0.78;
+const SPLIT_SHARE = 0.62;
 
 /**
- * The tallest the region grows by itself, before the reader has touched it:
- * 78 % of the room under the header, and only as much of that as the
- * run needs. Mirrored in split.css as `--tl-default`.
+ * The air the drawing keeps around it in Split: the wrap's padding above (18 px
+ * under the header) and below (the card's 14 px margin and 10 px over it,
+ * float.css / split.css), and a little more so a card's edge is never on the
+ * region's.
  */
-export function timelineDefaultH(viewH: number, headBottom = 80): number {
-  return Math.round(Math.min(720, Math.max(220, (viewH - headBottom) * SPLIT_SHARE)));
+/** The gap between the region's card and the window's edge (`--float-m`). */
+export const DOCK_MARGIN = 14;
+export const DRAWING_AIR = 18 + DOCK_MARGIN + 10 + 8;
+
+/**
+ * The tallest the region grows by itself, before the reader has touched it.
+ *
+ * Given the drawing's height at 1:1 (`drawingH`, the viewBox's), it is what
+ * leaves the whole drawing on show at a true 100% between the header and the
+ * region: everything under the header that the drawing and its air do not
+ * need. That is what the topology wants -- a fixed share was either too little
+ * for a tall window's drawing or, in a short one, took the drawing's room and
+ * shrank it to a thumbnail. The timeline scrolls in the region for whatever
+ * does not fit, and the divider is the reader's. Never under 220 px, never over
+ * 720 or three quarters of the room, whatever the drawing asks. Without a
+ * drawing it is `SPLIT_SHARE` of the room. Mirrored in split.css as
+ * `--tl-fit`'s fallback, and written to `--tl-fit` by App.tsx.
+ */
+export function timelineDefaultH(viewH: number, headBottom = 80, drawingH?: number): number {
+  const room = viewH - headBottom;
+  const wanted = drawingH !== undefined && drawingH > 0
+    ? room - drawingH - DRAWING_AIR
+    : room * SPLIT_SHARE;
+  return Math.round(Math.max(220, Math.min(720, room * 0.75, wanted)));
 }
 
-/** The tallest the region may be: the drawing keeps `CANVAS_MIN_H` above it. */
+/** The tallest the region may be: the drawing keeps `CANVAS_MIN_H` above it, and the card its margin below. */
 export function timelineMaxH(viewH: number, headBottom: number): number {
-  return Math.max(TL_MIN_H, Math.round(viewH - headBottom - CANVAS_MIN_H));
+  return Math.max(TL_MIN_H, Math.round(viewH - headBottom - CANVAS_MIN_H - DOCK_MARGIN));
 }
 
 export function clampTimelineH(h: number, viewH: number, headBottom: number): number {
