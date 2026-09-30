@@ -23,6 +23,7 @@ import type {
   MemberId, Member, ObserverId, Seconds, SiteId, TimedEvent, TopologyDoc, Trace,
 } from '@/engine';
 import { eventIcon } from '../common/eventIcons';
+import type { GlyphName } from '../common/glyphs';
 import { appLanes } from './app-lanes';
 import type { AppSection } from './app-lanes';
 import type { EventIconName } from '../common/eventIcons';
@@ -35,7 +36,11 @@ import type { EventIconName } from '../common/eventIcons';
  * derived from.
  */
 export const TL_FULL = {
-  gutter: 132,
+  /**
+   * Wide enough for a type icon, a database name in mono and, under it, the
+   * role in words (it was 132 before the icon column took 30 px of it).
+   */
+  gutter: 154,
   padR: 30,
   /** The caption baseline above the drawing. */
   topY: 16,
@@ -68,8 +73,20 @@ export const TL_FULL = {
    * on the page.
    */
   markRow: 16,
-  /** Gutter text is right-aligned this far in from the plot edge. */
+  /** The gutter's text stops this far short of the plot edge. */
   gutterPad: 14,
+  /**
+   * The gutter's columns, from its left edge: the type icon's left (`iconX`,
+   * `iconSize` square) and where a name starts (`nameX`). A cascaded standby's
+   * whole row moves right by its indent, so the icons still line up in a
+   * column per depth. Names are set left-aligned after the icon, so the icons
+   * and the names each form one column.
+   */
+  iconX: 6,
+  iconSize: 14,
+  nameX: 30,
+  /** The application's three lanes are set this far in from the names above them. */
+  appIndent: 8,
   axisGap: 24,
   braceGap: 34,
   braceRow: 50,
@@ -77,6 +94,33 @@ export const TL_FULL = {
   indent: 10,
   /** The room over the application's three lanes, for the line that heads them. */
   appHead: 34,
+  /** That line's baseline sits this far above the application's first lane... */
+  appHeadDy: 12,
+  /** ...and the hairline over it this far above the baseline. */
+  appRuleDy: 15,
+  /**
+   * How far above the lanes the scrubber's grip and time badge sit (the badge
+   * is a 16 px box over the grip). Full density keeps them just over the lanes,
+   * beside the event labels; a packed timeline gives them a row of their own.
+   */
+  playRise: 12,
+  /** The baseline of "Steady state", the label on the pre-failure band. */
+  preY: 108,
+  /**
+   * How far above a lane's top the line's baseline sits, for the milestone
+   * sentence that belongs to it ("Initiates failover at ..."); the sentences
+   * that hang off a mark on the lane itself sit 2 px lower.
+   */
+  markDy: 8,
+  /** 1 draws the icon chip over the number badge; 0 leaves the badge alone. */
+  chip: 1,
+  /**
+   * 1 puts the number badge on the label's own line, just before its first
+   * word, and starts the sentence after it; 0 stacks the badge above the label.
+   */
+  inlineNum: 0,
+  /** 1 draws the total-outage brace over the lanes; 0 leaves it to the headline. */
+  topBrace: 1,
 
   /** The lane's own text and bar offsets, below the lane's top edge. */
   nameDy: 17,
@@ -91,36 +135,55 @@ export const TL_FULL = {
 export type Layout = { -readonly [K in keyof typeof TL_FULL]: number };
 
 /**
- * The same drawing, packed: what Break's Split layout draws its lanes with.
- * Lanes 22 px tall with the name on the bar's own line (`subDy: 0` drops the
- * second line, and the lane's `<title>` carries it instead), a shorter gutter,
- * and every gap and row of the ladder above trimmed to match. It is drawn with
- * the headline outside the drawing (`Timeline`'s `headline`), so the rows start
- * where the caption's row was.
+ * The same drawing, packed -- what Break's Split layout draws its lanes with --
+ * but with room to read it: lanes 26 px tall with a 10 px gap, the name on the
+ * bar's own line (`subDy: 0` drops the second line, and the lane's `<title>`
+ * carries it instead), and a shorter gutter. It was 22 px lanes with 4 px gaps,
+ * which put every bar against the next and every sentence against a bar; the
+ * dock scrolls and is resizable, so the drawing is allowed to be taller.
+ *
+ * It is drawn with the headline outside the drawing (`Timeline`'s `headline`),
+ * so the rows start where the caption's row was and the outage brace, whose
+ * label the headline is, is not drawn over the lanes at all (`topBrace: 0`).
+ *
+ * Above the lanes, top to bottom, are three rows that do not share a line:
+ * the scrubber's time badge (and "Steady state") at `playRise` / `preY`, then
+ * the event row, where each injected event is its number badge and its
+ * sentence on one line (`inlineNum`, no icon chip: the sentence already says
+ * what happened). A milestone sentence gets a row of its own in the gap it
+ * belongs to (`markRow`), centred in it (`markDy`).
  */
 export const TL_COMPACT: Layout = {
   ...TL_FULL,
-  gutter: 128,
+  gutter: 144,
   gutterPad: 8,
   topY: 12,
   braceY: 14,
-  markY: 60,
-  laneTop: 66,
-  badgeDy: 17,
-  iconDy: 36,
-  laneH: 22,
-  laneGap: 4,
-  markRow: 14,
-  axisGap: 16,
-  braceGap: 24,
+  markY: 52,
+  laneTop: 62,
+  badgeDy: 4,
+  iconDy: 4,
+  laneH: 26,
+  laneGap: 10,
+  markRow: 20,
+  axisGap: 20,
+  braceGap: 28,
   braceRow: 46,
-  appHead: 26,
-  nameDy: 15,
+  appHead: 48,
+  appHeadDy: 14,
+  appRuleDy: 18,
+  playRise: 40,
+  preY: 22,
+  markDy: 11,
+  chip: 0,
+  inlineNum: 1,
+  topBrace: 0,
+  nameDy: 17,
   subDy: 0,
-  barDy: 2,
-  barPad: 4,
-  barTextDy: 15,
-  abortLabelDy: 9,
+  barDy: 3,
+  barPad: 6,
+  barTextDy: 17,
+  abortLabelDy: 20,
 };
 
 /** How tightly a timeline is drawn. The static figures are always `full`. */
@@ -147,11 +210,41 @@ export const PINNED = {
   tickStep: 10,
 } as const;
 
+/**
+ * The vertical runs a line that crosses the whole drawing (a gridline, the
+ * scrubber) is drawn in, from `from` down to the axis: less the room each
+ * application's heading takes, where a line through the words would be the
+ * loudest thing on the row.
+ */
+export function gridSpans(model: TimelineModel, from: number = model.laneTop): [number, number][] {
+  const TL = model.layout;
+  const out: [number, number][] = [];
+  let y = from;
+  for (const sec of model.appSections) {
+    const top = sec.y - TL.appRuleDy;
+    if (top > y) out.push([y, top]);
+    y = Math.max(y, sec.y + TL.appHeadDy - 2);
+  }
+  out.push([y, model.axisY]);
+  return out;
+}
+
 /* ---------------- label fitting (ported) ---------------- */
 
 /** Fragment line 3359, unchanged: no `getComputedTextLength` anywhere. */
 export function approxW(s: string, size: number, mono = false): number {
   return String(s).length * size * (mono ? 0.6 : 0.53);
+}
+
+/**
+ * A name cut to `room` px at `size` px with an ellipsis, on the same estimate
+ * the labels are fitted with. The lane's title carries the whole of it.
+ */
+export function elideTo(s: string, room: number, size: number, mono: boolean): string {
+  if (approxW(s, size, mono) <= room) return s;
+  const per = size * (mono ? 0.6 : 0.53);
+  const keep = Math.max(1, Math.floor(room / per) - 1);
+  return `${s.slice(0, keep)}\u2026`;
 }
 
 /** Fragment lines 3362-3365: first candidate that fits, else null. */
@@ -224,6 +317,12 @@ export interface TimelineSegment {
   /** Longest form first; `label` is the one that fits, `title` the tooltip. */
   labels: string[];
   label: string | null;
+  /**
+   * Where the label is centred. The middle of the band, unless a marker's line
+   * crosses the band under it, when it is the middle of the wider side of the
+   * line -- so a line never prints through a word.
+   */
+  lx: number;
   title: string;
   /** An engine band with no documented end (environment-dependent). */
   open: boolean;
@@ -236,6 +335,20 @@ export interface TimelineLane {
   group: LaneGroup;
   /** db_unique_name, observer name, link name -- always rendered mono. */
   name: string;
+  /**
+   * The card's icon for this kind of lane, drawn in the gutter: a database, a
+   * far sync instance, a snapshot standby, an observer. Null for the
+   * application's three lanes (they are sub-rows of the application, whose
+   * icon is on its heading) and for a network link, which has no card.
+   */
+  glyph: GlyphName | null;
+  /**
+   * The letter the card wears on its icon: P a primary, S a standby, M the
+   * master observer (only while fast-start failover is enabled, as on the
+   * card's MASTER chip). Read at the run's start -- a standby that becomes the
+   * primary keeps its S, and its bars say what it turned into.
+   */
+  mark: 'P' | 'S' | 'M' | null;
   /** The gutter subtitle, already fitted to the gutter. */
   sub: string;
   indent: number;
@@ -507,6 +620,8 @@ export const clampToAxis = (
 type Facts = DerivedFacts & Partial<Omit<EngineFacts, keyof DerivedFacts>>;
 
 interface LaneSeed {
+  glyph: GlyphName | null;
+  mark: 'P' | 'S' | 'M' | null;
   engine: EngineLane | null;
   kind: 'member' | 'observer' | 'link';
   id: string;
@@ -515,6 +630,12 @@ interface LaneSeed {
   subs: string[];
   indent: number;
   initial: AnyState;
+}
+
+/** The card's icon for a member: a snapshot standby has its own, a far sync too. */
+function memberGlyph(m: Member): GlyphName {
+  if (isFarSync(m)) return 'farsync';
+  return m.role === 'snapshot' ? 'snapshot' : 'db';
 }
 
 function memberSub(doc: TopologyDoc, m: Member, isPrimary: boolean): string[] {
@@ -575,8 +696,11 @@ function orderLanes(
   const push = (
     kind: 'member' | 'observer' | 'link', id: string, group: LaneGroup,
     name: string, subs: string[], indent: number, initial: AnyState,
+    glyph: GlyphName | null, mark: 'P' | 'S' | 'M' | null,
   ): void => {
-    seeds.push({ engine: byKey.get(`${kind}:${id}`) ?? null, kind, id, group, name, subs, indent, initial });
+    seeds.push({
+      engine: byKey.get(`${kind}:${id}`) ?? null, kind, id, group, name, subs, indent, initial, glyph, mark,
+    });
     byKey.delete(`${kind}:${id}`);
   };
 
@@ -584,11 +708,12 @@ function orderLanes(
   const primary = primaryId ? findMember(doc, primaryId) : undefined;
   if (primary) {
     push('member', primary.id as string, 'primary', primary.name,
-      memberSub(doc, primary, true), 0, initialMemberState(primary, true));
+      memberSub(doc, primary, true), 0, initialMemberState(primary, true), memberGlyph(primary), 'P');
   }
 
   /* 2. observers -- master first, unless nothing makes one the master */
   const fsfoOn = doc.config.fsfo.state !== 'disabled';
+  const fsfoState = doc.config.fsfo.state;
   const observers = [...doc.observers].sort((a, b) => {
     if (fsfoOn) {
       const am = a.role === 'master' ? 0 : 1;
@@ -599,7 +724,8 @@ function orderLanes(
   });
   for (const o of observers) {
     push('observer', o.id as string, 'observer', o.name,
-      observerSub(doc, o.host), 0, initialObserverState(doc, o.id));
+      observerSub(doc, o.host), 0, initialObserverState(doc, o.id), 'observer',
+      fsfoState === 'enabled' && o.role === 'master' ? 'M' : null);
   }
 
   /* 3. far syncs, then 4. standbys in BFS order */
@@ -607,13 +733,14 @@ function orderLanes(
   const cmp = (a: Member, b: Member): number =>
     depthOf(a.id) - depthOf(b.id) || a.name.localeCompare(b.name, 'en');
   for (const m of rest.filter(isFarSync).sort(cmp)) {
-    push('member', m.id as string, 'farsync', m.name, memberSub(doc, m, false), 0, 'receiving');
+    push('member', m.id as string, 'farsync', m.name, memberSub(doc, m, false), 0, 'receiving',
+      'farsync', null);
   }
   for (const m of rest.filter((x) => !isFarSync(x)).sort(cmp)) {
     const d = depthOf(m.id);
     const indent = isFinite(d) ? Math.max(0, d - 1) * TL.indent : 0;
     push('member', m.id as string, 'standby', m.name,
-      memberSub(doc, m, false), indent, initialMemberState(m, false));
+      memberSub(doc, m, false), indent, initialMemberState(m, false), memberGlyph(m), 'S');
   }
 
   /* 5. whatever the trace drew that the document does not place: links */
@@ -627,6 +754,7 @@ function orderLanes(
     seeds.push({
       engine: l, kind: l.subject.kind, id, group: 'link',
       name: String(id), subs: [ends, 'network link', 'link'], indent: 0, initial: 'up',
+      glyph: null, mark: null,
     });
   }
   return { seeds, quietLinks };
@@ -1176,6 +1304,7 @@ export function buildTimeline(trace: Trace, doc: TopologyDoc, view: TimelineView
         state: b.state, phase: lk.phase, ink: lk.ink,
         labels,
         label: fitLabel(labels, w),
+        lx: r1(x + w / 2),
         title: labels[0] ?? String(b.state),
         open: b.open,
       });
@@ -1187,7 +1316,9 @@ export function buildTimeline(trace: Trace, doc: TopologyDoc, view: TimelineView
       id: seed.id,
       group: seed.group,
       name: seed.name,
-      sub: fitSub(seed.subs, TL.gutter - TL.gutterPad) ?? seed.subs[seed.subs.length - 1] ?? '',
+      glyph: seed.glyph,
+      mark: seed.mark,
+      sub: fitSub(seed.subs, plotL - TL.gutterPad - TL.nameX - seed.indent) ?? seed.subs[seed.subs.length - 1] ?? '',
       indent: seed.indent,
       y,
       height: TL.laneH,
@@ -1213,7 +1344,7 @@ export function buildTimeline(trace: Trace, doc: TopologyDoc, view: TimelineView
     const prefix = `application:${appId}:`;
     appSections.push({
       id: appId,
-      y: appTop + TL.appHead - 12,
+      y: appTop + TL.appHead - TL.appHeadDy,
       title: many ? `${application.name}'s view` : "The application's view",
       note: section.note,
       tone: section.tone,
@@ -1232,7 +1363,9 @@ export function buildTimeline(trace: Trace, doc: TopologyDoc, view: TimelineView
         id: appId,
         group: 'app',
         name: al.name,
-        sub: fitSub(al.subs, TL.gutter - TL.gutterPad) ?? al.subs[al.subs.length - 1] ?? '',
+        glyph: null,
+        mark: null,
+        sub: fitSub(al.subs, plotL - TL.gutterPad - TL.nameX - TL.appIndent) ?? al.subs[al.subs.length - 1] ?? '',
         indent: 0,
         y,
         height: TL.laneH,
@@ -1245,6 +1378,7 @@ export function buildTimeline(trace: Trace, doc: TopologyDoc, view: TimelineView
             state: bd.state, phase: bd.phase, ink: bd.ink,
             labels: bd.labels,
             label: fitLabel(bd.labels, w),
+            lx: r1(x + w / 2),
             title: bd.labels[0] ?? al.name,
             open: false,
           };
@@ -1287,7 +1421,9 @@ export function buildTimeline(trace: Trace, doc: TopologyDoc, view: TimelineView
     const x = scale.x(e.at);
     const label = describeEvent(doc, e);
     const partition = e.kind === 'link.cut' || e.kind === 'partition';
-    const fits = x + 8 + approxW(label, 11.5) <= scale.plotR;
+    /* With the number on the label's line, the sentence starts past it. */
+    const pad = TL.inlineNum === 1 ? 14 : 8;
+    const fits = x + pad + approxW(label, 11.5) <= scale.plotR;
     markers.push({
       key: `ev-${i}`,
       kind: 'event',
@@ -1299,7 +1435,7 @@ export function buildTimeline(trace: Trace, doc: TopologyDoc, view: TimelineView
       stroke: partition ? 'partition' : 'm-rd',
       label,
       labelAnchor: fits ? 'start' : 'end',
-      labelX: r1(fits ? x + 8 : x - 8),
+      labelX: r1(fits ? x + pad : x - pad),
       labelY: TL.markY,
       showLabel: true,
       nx: r1(x),
@@ -1331,7 +1467,7 @@ export function buildTimeline(trace: Trace, doc: TopologyDoc, view: TimelineView
       label,
       labelAnchor: fits ? 'start' : 'end',
       labelX: r1(fits ? x + 9 : x - 9),
-      labelY: y - 8,
+      labelY: y - TL.markDy,
       showLabel: true,
       nx: r1(x),
       icon: null,
@@ -1396,7 +1532,7 @@ export function buildTimeline(trace: Trace, doc: TopologyDoc, view: TimelineView
       label: `Opens read-write at t = ${fmt(openAt)} s`,
       labelAnchor: 'end',
       labelX: r1(x - 8),
-      labelY: y - 6,
+      labelY: y - TL.markDy + 2,
       showLabel: true,
       nx: r1(x),
       icon: null,
@@ -1429,7 +1565,7 @@ export function buildTimeline(trace: Trace, doc: TopologyDoc, view: TimelineView
         label: mk.label,
         labelAnchor: fits ? 'start' : 'end',
         labelX: r1(fits ? x + 9 : x - 9),
-        labelY: y - 6,
+        labelY: y - TL.markDy + 2,
         showLabel: true,
         nx: r1(x),
         icon: null,
@@ -1456,9 +1592,11 @@ export function buildTimeline(trace: Trace, doc: TopologyDoc, view: TimelineView
   {
     const rows = new Map<string, { x0: number; x1: number }[]>();
     /* The "Steady state" caption owns the left end of the event row. */
-    rows.set('top', [
-      { x0: scale.plotL, x1: scale.plotL + approxW('Steady state', 10.5) + 12 },
-    ]);
+    if (TL.preY === TL.markY) {
+      rows.set('top', [
+        { x0: scale.plotL, x1: scale.plotL + approxW('Steady state', 10.5) + 12 },
+      ]);
+    }
     const badges: number[] = [];
     /* Rightmost badge edge per instant, in plot coordinates. */
     const badgeRight = new Map<number, number>();
@@ -1468,7 +1606,7 @@ export function buildTimeline(trace: Trace, doc: TopologyDoc, view: TimelineView
       while (badges.some((b) => Math.abs(b - nx) < 15)) nx += 16;
       m.nx = r1(nx);
       badges.push(nx);
-      badgeRight.set(m.x, Math.max(badgeRight.get(m.x) ?? -Infinity, nx + 9));
+      badgeRight.set(m.x, Math.max(badgeRight.get(m.x) ?? -Infinity, nx + (TL.inlineNum === 1 ? 13 : 9)));
     }
 
     for (const m of markers) {
@@ -1496,6 +1634,45 @@ export function buildTimeline(trace: Trace, doc: TopologyDoc, view: TimelineView
     }
   }
 
+  /* ---- bar text and marker lines ----
+
+     A marker's line runs the height of the lane it belongs to, and a bar's
+     sentence is centred on its bar, so a milestone inside a long bar (the
+     decision, halfway through "threshold clock running") drew its line and its
+     diamond through the words. The sentence moves to the wider side of the
+     line, shortened to the form that fits there; where neither side holds any
+     form it is dropped and the bar's tooltip and the table carry it. */
+  {
+    const lineXs = new Map<string, number[]>();
+    /* A cut link's line runs the height of every lane. */
+    const throughAll: number[] = [];
+    for (const m of markers) {
+      if (m.glyph === 'partition') { throughAll.push(m.x); continue; }
+      if (m.laneKey === null) continue;
+      lineXs.set(m.laneKey, [...(lineXs.get(m.laneKey) ?? []), m.x]);
+    }
+    for (const lane of lanes) {
+      const xs = [...(lineXs.get(lane.key) ?? []), ...throughAll].sort((a, b) => a - b);
+      if (xs.length === 0) continue;
+      for (const sg of lane.segments) {
+        if (sg.label === null) continue;
+        let a = sg.x; let b = sg.x + sg.w;
+        let label: string | null = sg.label;
+        for (const x of xs) {
+          if (label === null || x <= a + 2 || x >= b - 2) continue;
+          const half = approxW(label, 11) / 2 + 6;
+          if (Math.abs(x - (a + b) / 2) >= half + 6) continue;
+          const left = x - 10 - a;
+          const right = b - (x + 10);
+          if (left >= right) b = x - 10; else a = x + 10;
+          label = fitLabel(sg.labels, b - a);
+        }
+        sg.label = label;
+        sg.lx = r1((a + b) / 2);
+      }
+    }
+  }
+
   /* braces */
   const packed = packBraces(buildBraces(doc, f), scale, width, braceTop, TL.braceRow);
   const height = packed.braces.length > 0
@@ -1504,7 +1681,9 @@ export function buildTimeline(trace: Trace, doc: TopologyDoc, view: TimelineView
 
   /* the outage brace above the lanes */
   let topBrace: TimelineModel['topBrace'] = null;
-  if (f.outcome === 'failover' && !f.blocked && f.tOpen !== null) {
+  if (TL.topBrace === 0) {
+    /* packed: the headline says what the brace would */
+  } else if (f.outcome === 'failover' && !f.blocked && f.tOpen !== null) {
     topBrace = { x0: r1(scale.x(0)), x1: r1(scale.x(f.tOpen)), y: TL.braceY, tone: 'br-sl' };
   } else if (f.outcome === 'switchover' && f.switchover && !f.switchover.blocked &&
     f.switchover.tDown !== null && f.switchover.tOpen !== null) {

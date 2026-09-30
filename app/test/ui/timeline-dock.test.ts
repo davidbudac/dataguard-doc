@@ -78,14 +78,14 @@ afterEach(() => {
 });
 
 describe('the height, as a number', () => {
-  it('caps the region at three fifths of the room under the header, within 220-720 px', () => {
-    /* 900 tall, header foot at 96: (900 - 96) * .6. */
-    expect(timelineDefaultH(900, 96)).toBe(482);
-    expect(timelineDefaultH(500, 96)).toBe(242);
+  it('caps the region at 66 % of the room under the header, within 220-720 px', () => {
+    /* 900 tall, header foot at 96: (900 - 96) * .66. */
+    expect(timelineDefaultH(900, 96)).toBe(531);
+    expect(timelineDefaultH(500, 96)).toBe(267);
     expect(timelineDefaultH(300, 96)).toBe(220);
     expect(timelineDefaultH(2400, 96)).toBe(720);
     /* Without a measured header, the 80 px the shell assumes. */
-    expect(timelineDefaultH(900)).toBe(492);
+    expect(timelineDefaultH(900)).toBe(541);
   });
 
   it('never leaves the drawing under its minimum, never shrinks past the bar and a few lanes', () => {

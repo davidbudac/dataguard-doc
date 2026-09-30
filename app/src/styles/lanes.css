@@ -101,7 +101,7 @@
 
 /* the lanes: the model's own bars; its gutter text is replaced by the cards */
 .bl-lanes .ln-svg .t-mark{paint-order:stroke;stroke:var(--sf);stroke-width:3px;stroke-linejoin:round}
-.bl-lanes .ln-row .t-lane,.bl-lanes .ln-row .t-sub{display:none}
+.bl-lanes .ln-row .t-lane,.bl-lanes .ln-row .t-sub,.bl-lanes .ln-row .tl-lane-ico{display:none}
 .bl-lanes .ln-row.is-rel .lane-bg{stroke:var(--ik3)}
 .bl-lanes .ln-alab{font-size:12px;font-weight:600;fill:var(--ik)}
 .bl-lanes .ln-asub{font-size:10px;fill:var(--ik3)}

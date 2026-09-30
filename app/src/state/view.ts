@@ -245,12 +245,18 @@ export const TL_MIN_H = 120;
 export const TL_STEP = 16;
 /** What the drawing above the timeline keeps, however tall the timeline is dragged. */
 export const CANVAS_MIN_H = 140;
-/** The share of the room under the header that the region takes by default. */
-const SPLIT_SHARE = 0.6;
+/**
+ * The share of the room under the header that the region takes by default. It
+ * was .6 while the packed lanes were 22 px with 4 px gaps; the lanes now have
+ * room to breathe (build.ts, `TL_COMPACT`), a run is ~90 px taller, and .66
+ * is what keeps a three-member run's lanes, axis and tick labels in view at
+ * 1280 x 800 without taking the drawing below ~245 px.
+ */
+const SPLIT_SHARE = 0.66;
 
 /**
  * The tallest the region grows by itself, before the reader has touched it:
- * three fifths of the room under the header, and only as much of that as the
+ * 66 % of the room under the header, and only as much of that as the
  * run needs. Mirrored in split.css as `--tl-default`.
  */
 export function timelineDefaultH(viewH: number, headBottom = 80): number {

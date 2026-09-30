@@ -101,7 +101,7 @@ describe('the playhead badge', () => {
         const m = crashThenRestore(density, width);
         const boxes = markerBoxes(m);
         expect(boxes.length).toBeGreaterThan(2);
-        const top = m.laneTop - 12 - 12;
+        const top = m.laneTop - m.layout.playRise - 12;
         for (let t = m.scale.t0; t <= m.scale.t1; t += 0.5) {
           const x = m.scale.x(t);
           const dx = badgePlacement(m, x);
@@ -119,10 +119,18 @@ describe('the playhead badge', () => {
   });
 
   it('stays right of its line when nothing is there, and flips left of an event sentence', () => {
-    const m = crashThenRestore('compact', 1100);
+    const m = crashThenRestore('full', 1100);
     expect(badgePlacement(m, m.scale.x(10))).toBe(6);
     /* at the restore, its sentence starts just right of the line */
     expect(badgePlacement(m, m.scale.x(20))).toBeLessThan(0);
+  });
+
+  it('has a row of its own in the packed drawing, so it stays right of its line at an event', () => {
+    /* The compact timeline sets the badge over the event row, not on it. */
+    const m = crashThenRestore('compact', 1100);
+    expect(m.layout.playRise).toBeGreaterThan(m.layout.laneTop - m.layout.markY);
+    expect(badgePlacement(m, m.scale.x(10))).toBe(6);
+    expect(badgePlacement(m, m.scale.x(20))).toBe(6);
   });
 
   it('is drawn where the model puts it', async () => {

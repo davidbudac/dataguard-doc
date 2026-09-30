@@ -13,7 +13,7 @@ import { hostId, memberId } from '../../src/engine/ids';
 import { multiTargetDoc } from '../topologies';
 import {
   approxW, axisSpan, buildTimeline, clampToAxis, describeEvent, fitLabel, packBraces,
-  PINNED, snapNice, TL_FULL,
+  PINNED, snapNice, TL_COMPACT, TL_FULL,
 } from '@/ui/timeline/build';
 import type { BraceInput, TimelineModel } from '@/ui/timeline/build';
 
@@ -539,6 +539,53 @@ describe('buildTimeline: two injected events at one instant', () => {
         expect(mk.labelX, `${mk.key} over badge ${String(other.index)}`)
           .toBeGreaterThanOrEqual(other.nx + 7);
       }
+    }
+  });
+});
+
+describe('buildTimeline: the packed drawing keeps its words clear of its lines', () => {
+  const packed = (): TimelineModel => {
+    const { doc, trace } = classic('crash');
+    return buildTimeline(trace, doc, { width: 1100, density: 'compact' });
+  };
+
+  it('moves a bar sentence off a milestone line that crosses the bar', () => {
+    const m = packed();
+    const decision = m.markers.find((mk) => mk.kind === 'decision');
+    expect(decision).toBeDefined();
+    const lane = m.lanes.find((l) => l.key === decision?.laneKey);
+    const crossed = lane?.segments.filter((sg) => decision && decision.x > sg.x + 2 && decision.x < sg.x + sg.w - 2) ?? [];
+    expect(crossed.length).toBeGreaterThan(0);
+    for (const sg of crossed) {
+      if (sg.label === null || !decision) continue;
+      const half = approxW(sg.label, 11) / 2;
+      /* the sentence's whole span is on one side of the line */
+      expect(sg.lx + half <= decision.x || sg.lx - half >= decision.x).toBe(true);
+    }
+  });
+
+  it('centres every other sentence on its bar', () => {
+    const m = packed();
+    const crossed = new Set(m.markers.filter((mk) => mk.laneKey !== null).map((mk) => mk.laneKey));
+    for (const lane of m.lanes) {
+      if (crossed.has(lane.key)) continue;
+      for (const sg of lane.segments) expect(sg.lx).toBeCloseTo(sg.x + sg.w / 2, 0);
+    }
+  });
+
+  it('draws no outage brace over the lanes: the headline says what it would', () => {
+    expect(packed().topBrace).toBeNull();
+    const { doc, trace } = classic('crash');
+    expect(buildTimeline(trace, doc, { width: 1100 }).topBrace).not.toBeNull();
+  });
+
+  it('gives the lanes air: no gap under 10 px, and a milestone row of its own', () => {
+    expect(TL_COMPACT.laneGap).toBeGreaterThanOrEqual(10);
+    expect(TL_COMPACT.markRow).toBeGreaterThanOrEqual(18);
+    const m = packed();
+    const ys = m.lanes.map((l) => l.y);
+    for (let i = 1; i < ys.length; i++) {
+      expect((ys[i] as number) - (ys[i - 1] as number) - TL_COMPACT.laneH).toBeGreaterThanOrEqual(TL_COMPACT.laneGap);
     }
   });
 });

@@ -11,7 +11,7 @@
 
 @media screen {
   .app.is-float.bl-split {
-    --tl-default: clamp(220px, calc((100dvh - var(--bar-bottom, 80px)) * .6), 720px);
+    --tl-default: clamp(220px, calc((100dvh - var(--bar-bottom, 80px)) * .66), 720px);
     /* What the drawing keeps above the region; CANVAS_MIN_H in state/view.ts. */
     --canvas-min: 140px;
   }

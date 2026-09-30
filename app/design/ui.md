@@ -1462,20 +1462,27 @@ handle on its top edge). Build's dock, chips and warning card are as they were.
     and time field and the key come from the model the lanes are drawn from, so a held
     axis or a new width cannot leave them on different scales. `Timeline` itself is the
     same hook plus the body, for the docked Simulate, Learn and the popped-out window.
-  - *The timeline under it* is drawn with `density="compact"` (22 px lanes, the name on
-    the bar's own line, `TL_COMPACT`), `headline` (the run's sentence as a line of its own
+  - *The timeline under it* is drawn with `density="compact"` (26 px lanes with 10 px
+    gaps, the name on the bar's own line, `TL_COMPACT`; calmer than the 22 px / 4 px it was:
+    a milestone sentence has a 20 px row of its own, an event is its number badge and its
+    sentence on one line with no icon chip, the scrubber's time badge and "Steady state" sit
+    on a row above the events, the application's heading has a hairline and 48 px, the total-outage
+    brace is left to the headline, and a bar's sentence moves off any marker line that crosses
+    its bar; the gutter is two left-aligned columns, the canvas card's own icon glyph
+    (`common/glyphs.tsx`, tinted as the card tints it, with its P / S / M letter) and then the
+    name, and the application's three lanes are indented sans sub-rows under its heading, which
+    carries the application's icon), `headline` (the run's sentence as a line of its own
     above the lanes, truncated with the whole text as its title, sticky while the lanes
     scroll, not the drawing's first text row) and no legend row (`legend={false}`; the bar
     carries the key and the buttons). The region under the bar is the one scroll box.
-  - *Height*: with a run on it the region is as tall as its content, up to three fifths
-    of the room under the header (`timelineDefaultH`, mirrored as `--tl-default` in
+  - *Height*: with a run on it the region is as tall as its content, up to 66 %
+    of the room under the header (three fifths until the lanes were given room) (`timelineDefaultH`, mirrored as `--tl-default` in
     `split.css`); once the reader drags it (`is-set`) it is that height (`timelineH`,
     `dg-tl-h`, written as `--tl-h`), never taller than leaves the drawing 140 px
     (`CANVAS_MIN_H`) and never shorter than the bar and a few lanes (`TL_MIN_H`, 120).
-    With the guidance line gone the default region at 1440×900 holds the classic crash's
-    whole timeline (both braces, to within a few pixels); at 1280×800 every lane, the axis
-    and the first brace are on screen and the second brace is one short scroll away, inside
-    the timeline region only (the bar and the headline stay).
+    At 1440×900 the default region holds every lane, the axis and the first brace of the
+    classic crash; at 1280×800 every lane, the axis and its tick labels, with the braces one
+    scroll away, inside the timeline region only (the bar and the headline stay).
   - *The drawing fills its region until the reader zooms.* Split's `CanvasSlot` sets
     `fit` on `useCanvasScale`: the factor `autoFactor` gives (the wrap's content box over
     the viewBox, never below 1:1, never above the top rung, 140 %) is written to `zoom`

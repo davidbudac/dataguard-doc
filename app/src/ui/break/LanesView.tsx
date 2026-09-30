@@ -376,7 +376,7 @@ function AppHead({ section, x, right, y }: {
   const note = approxW(section.note, 11) <= budget ? section.note : elide(section.note, Math.max(4, Math.floor(budget / 5.4)));
   return (
     <g class="tl-app-head" data-tip={note === section.note ? section.basis : `${section.note} — ${section.basis}`}>
-      <text class="t-top" x={x} y={y}>
+      <text class="t-top t-app-title" x={x} y={y}>
         {section.title}
         <tspan class={section.tone === 'ink' ? 't-app-note' : `t-app-note ${section.tone}`} dx="8">{note}</tspan>
       </text>
@@ -516,12 +516,12 @@ function hostLaneFor(
       key: `apphost:${i}`, t0: b.t0, t1: b.t1, x: Math.round(x * 10) / 10, w: Math.round(Math.max(0, w) * 10) / 10,
       state: b.down === null ? 'up' : 'down',
       phase: b.down === null ? 'b-sl' : 'b-hatch', ink: b.down === null ? 'f-sl' : 'f-rd',
-      labels, label: fitLabel(labels, w), title: `${a.name}'s host — ${labels[0]}`, open: false,
+      labels, label: fitLabel(labels, w), lx: Math.round((x + w / 2) * 10) / 10, title: `${a.name}'s host — ${labels[0]}`, open: false,
     };
   });
   return {
     key: `application-host:${a.id as string}`, kind: 'application', id: a.id as string, group: 'app',
-    name: a.name, sub: 'the host\'s own up and down, from the events', indent: 0, y: 0, height: TL_FULL.laneH, segments,
+    name: a.name, sub: 'the host\'s own up and down, from the events', indent: 0, y: 0, height: TL_FULL.laneH, glyph: null, mark: null, segments,
   };
 }
 
