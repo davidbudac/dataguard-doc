@@ -36,7 +36,7 @@ import { batch, computed, signal } from '@preact/signals';
 import type { Doc } from './doc';
 import { doc } from './doc';
 import { presetId } from './url';
-import { edition } from './view';
+import { edition, healthyRun } from './view';
 import type { Edition } from '@/engine';
 import { activeWorkspaceId } from './workspace-id';
 
@@ -201,6 +201,7 @@ export function resetHistory(next?: Doc): void {
   batch(() => {
     undoStack.value = [];
     redoStack.value = [];
+    healthyRun.value = false;
     if (next) {
       doc.value = next;
       activeWorkspaceId.value = null;

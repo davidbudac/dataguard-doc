@@ -148,7 +148,7 @@ describe('buildTimeline: the classic crash', () => {
     const trace = simulate(doc, []);
     const m = buildTimeline(trace, { ...doc, events: [] }, { width: 980 });
     expect(m.empty).toBe(true);
-    expect(m.caption.text).toBe('Steady state — no events injected');
+    expect(m.caption.text).toBe('Everything is working — nothing is injected, so nothing fails');
     expect(m.zeroNote).toBeNull();
     /* the lanes are still drawn: nothing is hidden, the state is just flat */
     expect(m.lanes).toHaveLength(3);

@@ -111,7 +111,10 @@ export function EventDrag({ marker, model, doc, onMove, onStart, readout = 'abov
     >
       <title>{`Drag to change time. Arrow keys: 1 s; Shift: 0.1 s. Allowed: ${bounds.min}–${bounds.max} s; related events stay in order.`}</title>
       {/* Tall enough to take the icon over the badge too: either one grabs the event. */}
-      <rect class="tl-event-hit" x={marker.nx - 11} y={marker.labelY - TL.iconDy - 11} width={22} height={TL.iconDy - TL.badgeDy + 20} rx={5} />
+      <rect
+        class="tl-event-hit" x={marker.nx - (7 * TL.msc + 4)} y={marker.labelY - TL.iconDy - (7 * TL.msc + 4)}
+        width={2 * (7 * TL.msc + 4)} height={TL.iconDy - TL.badgeDy + 2 * (7 * TL.msc + 4) - 2} rx={5}
+      />
       {children}
       {preview === null ? null : readout === 'above' ? (
         <text class="tl-event-time t-mono" x={marker.nx} y={marker.labelY - TL.iconDy - 14} text-anchor="middle">

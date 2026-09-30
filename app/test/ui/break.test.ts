@@ -15,15 +15,16 @@ import { h, render } from 'preact';
 import { classicTopology, scenarioEvents, stateAt } from '@/engine';
 import type { TimedEvent, TopologyDoc } from '@/engine';
 import { classicDoc, doc, withEvents } from '@/state/doc';
-import { trace } from '@/state/derived';
+import { readoutFor, trace } from '@/state/derived';
 import { edit, resetHistory, undo } from '@/state/history';
-import { clearSelection, hintsOn, mode, tNow, viewport } from '@/state/view';
+import { clearSelection, healthyRun, hintsOn, mode, tNow, viewport } from '@/state/view';
 import { BreakRail, scenarioNotesOpen } from '@/ui/break/BreakRail';
 import { breakBar } from '@/ui/break/menu';
 import {
-  actionsFor, anythingDownUnder, applyTemplate, clearEvents, describeEvent, hoverTools, isDownAt, NO_RESTART_AFTER_ABORT,
-  removeEventAt, restoreQuietLine, runAction, setEventTime, snapT, templates,
+  actionsFor, anythingDownUnder, applyTemplate, clearEvents, describeEvent, healthyScenario, hoverTools, isDownAt, NO_RESTART_AFTER_ABORT,
+  removeEventAt, restoreQuietLine, runAction, setEventTime, shelf, snapT, templates,
 } from '@/ui/break/events';
+import { buildExplanation } from '@/ui/break/explain';
 import { WHY } from '@/ui/inspector/why';
 import { DEFAULT_OPEN, openSections, SCENARIOS_ID } from '@/ui/inspector/sections';
 import { printing } from '@/ui/print';
@@ -155,6 +156,95 @@ describe('the six templates', () => {
   });
 });
 
+describe('"Everything is working"', () => {
+  const t0 = (): TopologyDoc => doc.value.topology;
+
+  it('is first on the shelf, is not one of the six failures, and injects nothing', () => {
+    const list = shelf(t0(), 0);
+    expect(list.map((x) => x.id)).toEqual(['healthy', 'crash', 'isolated', 'partition', 'dc2down', 'observer-lost', 'switchover']);
+    expect(list[0]?.label).toBe('Everything is working');
+    expect(list[0]?.events).toEqual([]);
+    expect(list[0]?.enabled.state).not.toBe('off');
+    expect(templates(t0(), 0).some((x) => (x.id as string) === 'healthy')).toBe(false);
+  });
+
+  it('is greyed, with its reason, when no member holds the primary role', () => {
+    const none: TopologyDoc = { ...t0(), members: t0().members.map((m) => ({ ...m, role: 'physical' as never })) };
+    expect(healthyScenario(none).enabled).toEqual({ state: 'off', why: 'No member holds the primary role.' });
+  });
+
+  it('runs the configuration with no event at all: no trace before, the engine\'s own after', () => {
+    expect(trace.value).toBeNull();
+    applyTemplate(healthyScenario(t0()));
+    expect(t0().events).toEqual([]);
+    expect(healthyRun.value).toBe(true);
+    const run = trace.value;
+    expect(run).not.toBeNull();
+    expect(run?.facts.outcome).toBe('continues');
+    expect(run?.facts.dataLossKind).toBe('none');
+    expect(run?.facts.newPrimary).toBeNull();
+    expect(run?.facts.abortAt).toBeNull();
+    expect(run?.facts.blocked).toBe(false);
+    /* every member holds its steady state from the first instant to the last */
+    const end = run?.facts.perMember as unknown as Record<string, { endState: string }>;
+    expect(end['prm01']?.endState).toBe('open-rw');
+    expect(end['sby01']?.endState).toBe('mounted-apply');
+    expect(run?.findings.filter((f) => f.severity === 'error')).toEqual([]);
+  });
+
+  it('says plainly that nothing failed, and labels each statement as this page\'s model', () => {
+    applyTemplate(healthyScenario(t0()));
+    const chips = readoutFor(false);
+    const by = (id: string) => chips.find((c) => c.id === id);
+    expect(by('outcome')).toMatchObject({ v: 'no failure', basis: 'model' });
+    expect(by('loss')).toMatchObject({ v: 'none', basis: 'model' });
+    expect(by('split')).toMatchObject({ v: 'no', basis: 'model' });
+    expect(chips.map((c) => c.v)).not.toContain('nothing moved');
+    expect(by('open')).toBeUndefined();
+  });
+
+  it('explains itself without inventing a failover prerequisite', () => {
+    applyTemplate(healthyScenario(t0()));
+    const steps = buildExplanation(t0(), trace.value!);
+    expect(steps.map((x) => x.key)).not.toContain('no-initiation');
+    const result = steps.find((x) => x.key === 'result');
+    expect(result?.detail).toContain('Nothing was injected, so nothing failed');
+    expect(result?.claim?.basis).toBe('model');
+  });
+
+  it('clears the events a crash left, and a failure scenario after it takes the run back', () => {
+    applyTemplate(byId(t0(), 'crash')!);
+    expect(kinds(t0().events)).toEqual(['host.down']);
+    applyTemplate(healthyScenario(t0()));
+    expect(t0().events).toEqual([]);
+    expect(trace.value?.facts.outcome).toBe('continues');
+    applyTemplate(byId(t0(), 'switchover')!);
+    expect(healthyRun.value).toBe(false);
+    expect(trace.value?.facts.outcome).toBe('switchover');
+    /* and undoing back to the healthy run is the healthy run, not a crash */
+    undo();
+    expect(t0().events).toEqual([]);
+  });
+
+  it('is put away by Clear, by removing the last event, and by a new document', () => {
+    applyTemplate(healthyScenario(t0()));
+    clearEvents();
+    expect(healthyRun.value).toBe(false);
+    expect(trace.value).toBeNull();
+    applyTemplate(healthyScenario(t0()));
+    resetHistory(classicDoc());
+    expect(healthyRun.value).toBe(false);
+    expect(trace.value).toBeNull();
+  });
+
+  it('shows on the rail as an empty list that says everything is working', async () => {
+    applyTemplate(healthyScenario(t0()));
+    const root = mount(BreakRail);
+    await tick();
+    expect(root.textContent).toContain('No events — everything is working');
+  });
+});
+
 describe('the event list', () => {
   it('is empty, and says something true, until something is injected', async () => {
     const root = mount(BreakRail);
@@ -242,7 +332,7 @@ describe('the scenario fold', () => {
     expect(tog.getAttribute('aria-expanded')).toBe('false');
     tog.click();
     await tick();
-    expect(root.querySelectorAll('.tmpl')).toHaveLength(templates(doc.value.topology, 0).length);
+    expect(root.querySelectorAll('.tmpl')).toHaveLength(shelf(doc.value.topology, 0).length);
   });
 });
 
@@ -253,9 +343,9 @@ describe('the scenario descriptions', () => {
     const root = mount(BreakRail);
     await tick();
     const rows = [...root.querySelectorAll('.tmpl')];
-    expect(rows).toHaveLength(templates(doc.value.topology, 0).length);
+    expect(rows).toHaveLength(shelf(doc.value.topology, 0).length);
     for (const [i, row] of rows.entries()) {
-      const caption = templates(doc.value.topology, 0)[i]!.caption;
+      const caption = shelf(doc.value.topology, 0)[i]!.caption;
       /* Closed, the description is genuinely absent rather than clipped by a
          CSS rule -- and the sentence still rides on the button it belongs to,
          so a reader who hovers one row does not have to open all six. */
@@ -266,7 +356,7 @@ describe('the scenario descriptions', () => {
     root.querySelector<HTMLButtonElement>('button.tmpl-tog')!.click();
     await tick();
     for (const [i, row] of [...root.querySelectorAll('.tmpl')].entries()) {
-      const caption = templates(doc.value.topology, 0)[i]!.caption;
+      const caption = shelf(doc.value.topology, 0)[i]!.caption;
       const txt = row.querySelector('.tmpl-cap');
       expect(txt?.textContent).toBe(caption);
       expect(txt?.getAttribute('title')).toBe(caption);
@@ -279,7 +369,7 @@ describe('the scenario descriptions', () => {
       const root = mount(BreakRail);
       await tick();
       const caps = [...root.querySelectorAll('.tmpl-cap')].map((el) => el.textContent);
-      expect(caps).toEqual(templates(doc.value.topology, 0).map((t) => t.caption));
+      expect(caps).toEqual(shelf(doc.value.topology, 0).map((t) => t.caption));
     } finally {
       printing.value = false;
     }

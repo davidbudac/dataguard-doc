@@ -91,8 +91,6 @@ function crashThenRestore(density: 'full' | 'compact', width: number, at = 20): 
   return buildTimeline(simulate(doc, events), doc, { width, density });
 }
 
-const BADGE_W = 54;
-const BADGE_H = 16;
 
 describe('the playhead badge', () => {
   it('never lands on an event sentence, chip or number, wherever the playhead is', () => {
@@ -101,7 +99,10 @@ describe('the playhead badge', () => {
         const m = crashThenRestore(density, width);
         const boxes = markerBoxes(m);
         expect(boxes.length).toBeGreaterThan(2);
-        const top = m.laneTop - m.layout.playRise - 12;
+        /* the badge's own size is the layout's: the packed timeline draws it larger */
+        const BADGE_W = m.layout.badgeW;
+        const BADGE_H = m.layout.badgeH;
+        const top = m.laneTop - m.layout.playRise - BADGE_H + 4;
         for (let t = m.scale.t0; t <= m.scale.t1; t += 0.5) {
           const x = m.scale.x(t);
           const dx = badgePlacement(m, x);
@@ -334,12 +335,14 @@ describe('the divider', () => {
     await tick();
     const bar = r.querySelector('.sb-bar') as HTMLElement;
     bar.dispatchEvent(pointer('pointerdown', 500));
-    bar.dispatchEvent(pointer('pointermove', 460));
+    /* Down first, so the height is short of the window's ceiling (the default region is tall
+       enough now that a drag up from it reaches the ceiling at once), then up again. */
+    bar.dispatchEvent(pointer('pointermove', 540));
     const mid = timelineH.value;
     expect(mid).not.toBeNull();
-    bar.dispatchEvent(pointer('pointermove', 420));
+    bar.dispatchEvent(pointer('pointermove', 520));
     expect(timelineH.value as number).toBeGreaterThan(mid as number);
-    bar.dispatchEvent(pointer('pointercancel', 420));
+    bar.dispatchEvent(pointer('pointercancel', 520));
     expect(bar.classList.contains('is-dragging')).toBe(false);
     expect(memory.get('dg-tl-h')).toBe(String(timelineH.value));
   });

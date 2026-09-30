@@ -85,8 +85,11 @@ export const TL_FULL = {
   iconX: 6,
   iconSize: 14,
   nameX: 30,
-  /** The application's three lanes are set this far in from the names above them. */
-  appIndent: 8,
+  /**
+   * How far in from the names above them the application's three lanes are set.
+   * They wear the application's icon in the same column now, so none.
+   */
+  appIndent: 0,
   axisGap: 24,
   braceGap: 34,
   braceRow: 50,
@@ -121,6 +124,38 @@ export const TL_FULL = {
   inlineNum: 0,
   /** 1 draws the total-outage brace over the lanes; 0 leaves it to the headline. */
   topBrace: 1,
+  /** 1 sets the type at the packed timeline's larger sizes (`.is-big` in timeline.css). */
+  big: 0,
+
+  /**
+   * Type sizes, in px, that the drawing measures its text with. They mirror
+   * the `--fs-*` custom properties in timeline.css (`.tl-svg` for full,
+   * `.tl-svg.is-compact` for compact; test/ui/timeline-type.test.ts holds the
+   * two together): the CSS sets what is painted, these decide what fits.
+   */
+  fsBar: 11,
+  fsMark: 11.5,
+  fsSub: 10,
+  fsName: 12,
+  fsApp: 11.5,
+  fsTick: 10.5,
+  fsTop: 12,
+  fsNote: 12,
+  /** The scrubber's time badge. */
+  badgeW: 54,
+  badgeH: 16,
+  /** How much larger than the fragment's the milestone glyphs and number badges are drawn. */
+  msc: 1,
+  /** A lane's type icon sits this far below the lane's top edge. */
+  iconY: 6,
+  /** Axis tick labels, and the line under them, this far below the axis. */
+  tickDy: 16,
+  axisNoteDy: 30,
+  /** The two lines under a brace: its name and what it measures, below the brace's tip. */
+  braceLbl1: 26,
+  braceLbl2: 41,
+  /** The application heading's icon top sits this far above the heading's baseline. */
+  appIconDy: 11,
 
   /** The lane's own text and bar offsets, below the lane's top edge. */
   nameDy: 17,
@@ -136,11 +171,12 @@ export type Layout = { -readonly [K in keyof typeof TL_FULL]: number };
 
 /**
  * The same drawing, packed -- what Break's Split layout draws its lanes with --
- * but with room to read it: lanes 26 px tall with a 10 px gap, the name on the
- * bar's own line (`subDy: 0` drops the second line, and the lane's `<title>`
- * carries it instead), and a shorter gutter. It was 22 px lanes with 4 px gaps,
- * which put every bar against the next and every sentence against a bar; the
- * dock scrolls and is resizable, so the drawing is allowed to be taller.
+ * but with room to read it: lanes 36 px tall with a 10 px gap, 13 px text on
+ * the bars and the sentences, an 18 px type icon, the name on the bar's own
+ * line (`subDy: 0` drops the second line, and the lane's `<title>` carries it
+ * instead). It was 22 px lanes with 4 px gaps, then 26 px with 10 and 11 px
+ * text, which read as calm and as too small; the dock scrolls and is
+ * resizable, so the drawing is allowed to be tall.
  *
  * It is drawn with the headline outside the drawing (`Timeline`'s `headline`),
  * so the rows start where the caption's row was and the outage brace, whose
@@ -155,35 +191,55 @@ export type Layout = { -readonly [K in keyof typeof TL_FULL]: number };
  */
 export const TL_COMPACT: Layout = {
   ...TL_FULL,
-  gutter: 144,
+  gutter: 168,
   gutterPad: 8,
-  topY: 12,
-  braceY: 14,
-  markY: 52,
-  laneTop: 62,
-  badgeDy: 4,
-  iconDy: 4,
-  laneH: 26,
+  topY: 14,
+  braceY: 16,
+  markY: 54,
+  laneTop: 66,
+  badgeDy: 5,
+  iconDy: 5,
+  laneH: 36,
   laneGap: 10,
-  markRow: 20,
+  markRow: 26,
   axisGap: 20,
-  braceGap: 28,
-  braceRow: 46,
-  appHead: 48,
-  appHeadDy: 14,
-  appRuleDy: 18,
-  playRise: 40,
+  braceGap: 30,
+  braceRow: 56,
+  iconX: 6,
+  iconSize: 18,
+  nameX: 34,
+  appHead: 56,
+  appHeadDy: 16,
+  appRuleDy: 21,
+  playRise: 42,
   preY: 22,
-  markDy: 11,
+  markDy: 13,
   chip: 0,
   inlineNum: 1,
   topBrace: 0,
-  nameDy: 17,
+  big: 1,
+  fsBar: 13,
+  fsMark: 13,
+  fsName: 13.5,
+  fsApp: 13,
+  fsTick: 12,
+  fsTop: 13,
+  fsNote: 13,
+  badgeW: 70,
+  badgeH: 22,
+  msc: 1.3,
+  iconY: 9,
+  tickDy: 18,
+  axisNoteDy: 36,
+  braceLbl1: 32,
+  braceLbl2: 49,
+  appIconDy: 14,
+  nameDy: 23,
   subDy: 0,
-  barDy: 3,
-  barPad: 6,
-  barTextDy: 17,
-  abortLabelDy: 20,
+  barDy: 4,
+  barPad: 8,
+  barTextDy: 23,
+  abortLabelDy: 24,
 };
 
 /** How tightly a timeline is drawn. The static figures are always `full`. */
@@ -248,8 +304,8 @@ export function elideTo(s: string, room: number, size: number, mono: boolean): s
 }
 
 /** Fragment lines 3362-3365: first candidate that fits, else null. */
-export function fitLabel(cands: readonly string[], w: number): string | null {
-  for (const c of cands) if (approxW(c, 11) + 14 <= w) return c;
+export function fitLabel(cands: readonly string[], w: number, size = 11): string | null {
+  for (const c of cands) if (approxW(c, size) + 14 <= w) return c;
   return null;
 }
 
@@ -259,8 +315,8 @@ export function fitLabel(cands: readonly string[], w: number): string | null {
  * fixed gutter needs -- measuring it at the bar label's 11 px would throw away
  * forms that fit perfectly well.
  */
-export function fitSub(cands: readonly string[], w: number): string | null {
-  for (const c of cands) if (approxW(c, 10) + 4 <= w) return c;
+export function fitSub(cands: readonly string[], w: number, size = 10): string | null {
+  for (const c of cands) if (approxW(c, size) + 4 <= w) return c;
   return null;
 }
 
@@ -337,11 +393,12 @@ export interface TimelineLane {
   name: string;
   /**
    * The card's icon for this kind of lane, drawn in the gutter: a database, a
-   * far sync instance, a snapshot standby, an observer. Null for the
-   * application's three lanes (they are sub-rows of the application, whose
-   * icon is on its heading) and for a network link, which has no card.
+   * far sync instance, a snapshot standby, an observer, and the application's
+   * own for each of its three lanes. Null for a network link, which has no card.
    */
   glyph: GlyphName | null;
+  /** The application an application lane belongs to, by name; null for every other lane. */
+  owner: string | null;
   /**
    * The letter the card wears on its icon: P a primary, S a standby, M the
    * master observer (only while fast-start failover is enabled, as on the
@@ -603,6 +660,11 @@ export function lastInterestingT(
 export function axisSpan(
   trace: Trace, events: readonly TimedEvent[], doc?: TopologyDoc,
 ): { t0: Seconds; t1: Seconds } {
+  /* Nothing injected: the healthy run has no first event to measure from and
+     no "before" -- the whole drawing is the steady state -- so the axis starts
+     at 0 and runs the model's 30 s minimum, rather than borrowing the room a
+     failure needs on its left. */
+  if (events.length === 0) return { t0: 0, t1: 30 };
   const t1 = clampNum(1.15 * lastInterestingT(trace, events, doc), 30, 900);
   return { t0: -snapNice(0.15 * t1), t1 };
 }
@@ -896,6 +958,8 @@ export function describeEvent(doc: TopologyDoc, e: TimedEvent): string {
 export function packBraces(
   braces: readonly BraceInput[], scale: TimelineScale, width: number, braceTop: number,
   braceRow: number = TL_FULL.braceRow,
+  /** The brace labels' sizes, for measuring them: the name and the value line. */
+  fs: { name: number; val: number } = { name: 11.5, val: 11 },
 ): { braces: TimelineBrace[]; rowCount: number } {
   const rows: { L: number; R: number }[][] = [];
   let rowCount = 0;
@@ -904,7 +968,7 @@ export function packBraces(
     const x0 = scale.x(br.a);
     const x1 = scale.x(br.b);
     const mid = (x0 + x1) / 2;
-    const w = Math.max(approxW(br.name, 11.5, br.mono), approxW(br.val, 11, true), x1 - x0) + 18;
+    const w = Math.max(approxW(br.name, fs.name, br.mono), approxW(br.val, fs.val, true), x1 - x0) + 18;
     let L = mid - w / 2;
     let R = mid + w / 2;
     if (L < 6) { const d = 6 - L; L += d; R += d; }
@@ -1076,7 +1140,12 @@ function buildCaption(
   doc: TopologyDoc, f: Facts, empty: boolean, findings: readonly Finding[] = [],
 ): TimelineCaption {
   if (empty) {
-    return { text: 'Steady state — no events injected', tone: 'f-sl', x: null, anchor: 'start' };
+    /* A run with no event is the healthy one (`healthyRun`): nothing is
+       injected, so nothing fails, and the headline says that plainly. */
+    return {
+      text: 'Everything is working — nothing is injected, so nothing fails',
+      tone: 'f-tl', x: null, anchor: 'start',
+    };
   }
   const ping = f.pingSet ?? pingSet(doc.config.fsfo.pingIntervalMs, doc.config.fsfo.pingRetry);
   switch (f.outcome) {
@@ -1303,7 +1372,7 @@ export function buildTimeline(trace: Trace, doc: TopologyDoc, view: TimelineView
         t0: b.t0, t1: b.t1, x: r1(x), w: r1(Math.max(0, w)),
         state: b.state, phase: lk.phase, ink: lk.ink,
         labels,
-        label: fitLabel(labels, w),
+        label: fitLabel(labels, w, TL.fsBar),
         lx: r1(x + w / 2),
         title: labels[0] ?? String(b.state),
         open: b.open,
@@ -1317,8 +1386,9 @@ export function buildTimeline(trace: Trace, doc: TopologyDoc, view: TimelineView
       group: seed.group,
       name: seed.name,
       glyph: seed.glyph,
+      owner: null,
       mark: seed.mark,
-      sub: fitSub(seed.subs, plotL - TL.gutterPad - TL.nameX - seed.indent) ?? seed.subs[seed.subs.length - 1] ?? '',
+      sub: fitSub(seed.subs, plotL - TL.gutterPad - TL.nameX - seed.indent, TL.fsSub) ?? seed.subs[seed.subs.length - 1] ?? '',
       indent: seed.indent,
       y,
       height: TL.laneH,
@@ -1363,9 +1433,10 @@ export function buildTimeline(trace: Trace, doc: TopologyDoc, view: TimelineView
         id: appId,
         group: 'app',
         name: al.name,
-        glyph: null,
+        glyph: 'app',
+        owner: application.name,
         mark: null,
-        sub: fitSub(al.subs, plotL - TL.gutterPad - TL.nameX - TL.appIndent) ?? al.subs[al.subs.length - 1] ?? '',
+        sub: fitSub(al.subs, plotL - TL.gutterPad - TL.nameX - TL.appIndent, TL.fsSub) ?? al.subs[al.subs.length - 1] ?? '',
         indent: 0,
         y,
         height: TL.laneH,
@@ -1377,7 +1448,7 @@ export function buildTimeline(trace: Trace, doc: TopologyDoc, view: TimelineView
             t0: bd.a, t1: bd.b, x: r1(x), w: r1(Math.max(0, w)),
             state: bd.state, phase: bd.phase, ink: bd.ink,
             labels: bd.labels,
-            label: fitLabel(bd.labels, w),
+            label: fitLabel(bd.labels, w, TL.fsBar),
             lx: r1(x + w / 2),
             title: bd.labels[0] ?? al.name,
             open: false,
@@ -1422,8 +1493,8 @@ export function buildTimeline(trace: Trace, doc: TopologyDoc, view: TimelineView
     const label = describeEvent(doc, e);
     const partition = e.kind === 'link.cut' || e.kind === 'partition';
     /* With the number on the label's line, the sentence starts past it. */
-    const pad = TL.inlineNum === 1 ? 14 : 8;
-    const fits = x + pad + approxW(label, 11.5) <= scale.plotR;
+    const pad = TL.inlineNum === 1 ? Math.round(7 * TL.msc) + 7 : 8;
+    const fits = x + pad + approxW(label, TL.fsMark) <= scale.plotR;
     markers.push({
       key: `ev-${i}`,
       kind: 'event',
@@ -1453,7 +1524,8 @@ export function buildTimeline(trace: Trace, doc: TopologyDoc, view: TimelineView
         ? `Detection ends — failover refused at t = ${fmt(f.initiateAt)} s`
         : `Threshold expires — failover refused at t = ${fmt(f.initiateAt)} s`)
       : `Initiates failover at t = ${fmt(f.initiateAt)} s`;
-    const fits = x + 9 + approxW(label, 11.5) <= scale.plotR;
+    const gap = Math.round(6 * TL.msc) + 3;
+    const fits = x + gap + approxW(label, TL.fsMark) <= scale.plotR;
     const y = observerKey ? laneY.get(observerKey) ?? TL.laneTop : TL.laneTop;
     markers.push({
       key: 'decision',
@@ -1466,7 +1538,7 @@ export function buildTimeline(trace: Trace, doc: TopologyDoc, view: TimelineView
       stroke: f.blocked ? 'm-rd' : 'm-vi',
       label,
       labelAnchor: fits ? 'start' : 'end',
-      labelX: r1(fits ? x + 9 : x - 9),
+      labelX: r1(fits ? x + gap : x - gap),
       labelY: y - TL.markDy,
       showLabel: true,
       nx: r1(x),
@@ -1485,10 +1557,11 @@ export function buildTimeline(trace: Trace, doc: TopologyDoc, view: TimelineView
       `Shuts down at t = ${fmt(f.abortAt)} s`,
       'Shuts down',
     ];
+    const gap = Math.round(5 * TL.msc) + 3;
     let label = cands[cands.length - 1] as string;
     let fits = false;
     for (const c of cands) {
-      if (x + 8 + approxW(c, 11.5) <= scale.plotR) { label = c; fits = true; break; }
+      if (x + gap + approxW(c, TL.fsMark) <= scale.plotR) { label = c; fits = true; break; }
     }
     const y = primaryKey ? laneY.get(primaryKey) ?? TL.laneTop : TL.laneTop;
     markers.push({
@@ -1502,7 +1575,7 @@ export function buildTimeline(trace: Trace, doc: TopologyDoc, view: TimelineView
       stroke: 'm-rd',
       label,
       labelAnchor: fits ? 'start' : 'end',
-      labelX: r1(fits ? x + 8 : x - 8),
+      labelX: r1(fits ? x + gap : x - gap),
       labelY: y + TL.laneH + TL.abortLabelDy,
       showLabel: true,
       nx: r1(x),
@@ -1531,7 +1604,7 @@ export function buildTimeline(trace: Trace, doc: TopologyDoc, view: TimelineView
       stroke: 'm-tl',
       label: `Opens read-write at t = ${fmt(openAt)} s`,
       labelAnchor: 'end',
-      labelX: r1(x - 8),
+      labelX: r1(x - Math.round(5 * TL.msc) - 3),
       labelY: y - TL.markDy + 2,
       showLabel: true,
       nx: r1(x),
@@ -1550,7 +1623,8 @@ export function buildTimeline(trace: Trace, doc: TopologyDoc, view: TimelineView
     for (const mk of section.marks) {
       if (mk.t < t0 || mk.t > t1) continue;
       const x = scale.x(mk.t);
-      const fits = x + 9 + approxW(mk.label, 11.5) <= scale.plotR;
+      const gap = Math.round(6 * TL.msc) + 3;
+      const fits = x + gap + approxW(mk.label, TL.fsMark) <= scale.plotR;
       const good = mk.key === 'reconnect';
       const mkey = `app-${mk.key}:${appId}`;
       markers.push({
@@ -1564,7 +1638,7 @@ export function buildTimeline(trace: Trace, doc: TopologyDoc, view: TimelineView
         stroke: good ? 'm-vi' : 'm-rd',
         label: mk.label,
         labelAnchor: fits ? 'start' : 'end',
-        labelX: r1(fits ? x + 9 : x - 9),
+        labelX: r1(fits ? x + gap : x - gap),
         labelY: y - TL.markDy + 2,
         showLabel: true,
         nx: r1(x),
@@ -1594,7 +1668,7 @@ export function buildTimeline(trace: Trace, doc: TopologyDoc, view: TimelineView
     /* The "Steady state" caption owns the left end of the event row. */
     if (TL.preY === TL.markY) {
       rows.set('top', [
-        { x0: scale.plotL, x1: scale.plotL + approxW('Steady state', 10.5) + 12 },
+        { x0: scale.plotL, x1: scale.plotL + approxW('Steady state', TL.fsTick) + 12 },
       ]);
     }
     const badges: number[] = [];
@@ -1606,7 +1680,7 @@ export function buildTimeline(trace: Trace, doc: TopologyDoc, view: TimelineView
       while (badges.some((b) => Math.abs(b - nx) < 15)) nx += 16;
       m.nx = r1(nx);
       badges.push(nx);
-      badgeRight.set(m.x, Math.max(badgeRight.get(m.x) ?? -Infinity, nx + (TL.inlineNum === 1 ? 13 : 9)));
+      badgeRight.set(m.x, Math.max(badgeRight.get(m.x) ?? -Infinity, nx + (TL.inlineNum === 1 ? Math.round(7 * TL.msc) + 6 : 9)));
     }
 
     for (const m of markers) {
@@ -1615,7 +1689,7 @@ export function buildTimeline(trace: Trace, doc: TopologyDoc, view: TimelineView
       const clash = (x0: number, x1: number): boolean =>
         taken.some((r) => x0 < r.x1 + 8 && x1 > r.x0 - 8);
       /* the labels are semi-bold; the ladder's estimate is for regular text */
-      const w = approxW(m.label, 11.5) * 1.08;
+      const w = approxW(m.label, TL.fsMark) * 1.08;
       const off = Math.max(8, Math.abs(m.labelX - m.x));
       const start = Math.max(m.x + off, badgeRight.get(m.x) ?? -Infinity);
       let x0 = m.labelAnchor === 'start' ? start : m.labelX - w;
@@ -1660,12 +1734,12 @@ export function buildTimeline(trace: Trace, doc: TopologyDoc, view: TimelineView
         let label: string | null = sg.label;
         for (const x of xs) {
           if (label === null || x <= a + 2 || x >= b - 2) continue;
-          const half = approxW(label, 11) / 2 + 6;
+          const half = approxW(label, TL.fsBar) / 2 + 6;
           if (Math.abs(x - (a + b) / 2) >= half + 6) continue;
           const left = x - 10 - a;
           const right = b - (x + 10);
           if (left >= right) b = x - 10; else a = x + 10;
-          label = fitLabel(sg.labels, b - a);
+          label = fitLabel(sg.labels, b - a, TL.fsBar);
         }
         sg.label = label;
         sg.lx = r1((a + b) / 2);
@@ -1674,10 +1748,12 @@ export function buildTimeline(trace: Trace, doc: TopologyDoc, view: TimelineView
   }
 
   /* braces */
-  const packed = packBraces(buildBraces(doc, f), scale, width, braceTop, TL.braceRow);
+  const packed = packBraces(
+    buildBraces(doc, f), scale, width, braceTop, TL.braceRow, { name: TL.fsMark, val: TL.fsMark - 0.5 },
+  );
   const height = packed.braces.length > 0
     ? braceTop + Math.max(1, packed.rowCount) * TL.braceRow + 6
-    : axisY + 44;
+    : axisY + TL.axisNoteDy + 14;
 
   /* the outage brace above the lanes */
   let topBrace: TimelineModel['topBrace'] = null;
@@ -1700,7 +1776,7 @@ export function buildTimeline(trace: Trace, doc: TopologyDoc, view: TimelineView
   const preZone = {
     x: r1(scale.plotL),
     w: r1(preW),
-    label: preW >= approxW(ssLab, 10.5) + 12 ? ssLab : null,
+    label: preW >= approxW(ssLab, TL.fsTick) + 12 ? ssLab : null,
   };
 
   /* every distinct state change, for the transport's step buttons */
@@ -1714,7 +1790,7 @@ export function buildTimeline(trace: Trace, doc: TopologyDoc, view: TimelineView
   const empty = events.length === 0;
   const caption = buildCaption(doc, f, empty, trace.findings);
   if (caption.anchor === 'middle') {
-    const w = approxW(caption.text, 12);
+    const w = approxW(caption.text, TL.fsTop);
     const a = f.outcome === 'switchover' && f.switchover?.tDown !== null && f.switchover?.tDown !== undefined
       ? scale.x(f.switchover.tDown)
       : zeroX;

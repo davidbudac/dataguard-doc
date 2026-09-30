@@ -21,7 +21,7 @@ import { findApplication, hasApplyInstance, isDatabase } from '@/engine';
 import { withEvents } from '@/state/doc';
 import { topology, trace } from '@/state/derived';
 import { edit } from '@/state/history';
-import { appLanesShown, playing, tNow, toast } from '@/state/view';
+import { appLanesShown, healthyRun, playing, tNow, toast } from '@/state/view';
 import { lastInterestingT } from '@/ui/timeline/build';
 import type { WhyState } from '../common/WhyPill';
 import type { CanvasTool, ToolIconName } from '../canvas/HoverTools';
@@ -909,14 +909,18 @@ export function runAction(action: EventAction, opts: RunOptions = {}): void {
   /* An action on the event list itself -- taking a cut back -- edits the
      list rather than adding to it, and leaves the playhead where it is. */
   if (action.events.length === 0) { action.run?.(); return; }
+  healthyRun.value = false;
   edit(action.label, (d) => withEvents(d, [...d.topology.events, ...action.events]));
   if (opts.keepPlayhead !== true) restPlayhead();
 }
 
 /* ---------------- the six templates ---------------- */
 
+/** One of the six that inject a failure, so `id` is one of the engine's own scenarios. */
+export type FailureTemplate = Template & { id: ClassicScenario };
+
 export interface Template {
-  id: ClassicScenario;
+  id: ClassicScenario | 'healthy';
   label: string;
   caption: string;
   enabled: WhyState;
@@ -931,7 +935,7 @@ export interface Template {
  * outcome the published page draws for the same deployment, rather than an
  * approximation of it.
  */
-export function templates(doc: TopologyDoc, at = 0): Template[] {
+export function templates(doc: TopologyDoc, at = 0): FailureTemplate[] {
   const primary = doc.members.find((m) => isDatabase(m) && m.role === 'primary');
   const target = doc.config.fsfo.target;
   const targetId = target.kind === 'list' ? target.members[0] : undefined;
@@ -1009,11 +1013,36 @@ export function templates(doc: TopologyDoc, at = 0): Template[] {
 /** A template replaces the event list: a scenario is reproducible or it is nothing. */
 export function applyTemplate(t: Template): void {
   if (t.enabled.state === 'off') return;
+  /* The healthy scenario is the one whose event list is empty: it clears
+     whatever was injected and asks for the run of what is left. Every other
+     template puts that request away, because its events make the run. */
+  healthyRun.value = t.id === 'healthy';
   edit(`Apply the scenario: ${t.label}`, (d) => withEvents(d, t.events));
   restPlayhead();
 }
 
+/**
+ * The scenario in which nothing fails. It is not one of the failure templates
+ * (`templates`): there is no event to inject, the review suite has nothing to
+ * compare it against, and the walkthrough never asks for it. The shelf puts it
+ * first, and the run it asks for is the engine's own, over no events.
+ */
+export function healthyScenario(doc: TopologyDoc): Template {
+  const primary = doc.members.find((m) => isDatabase(m) && m.role === 'primary');
+  return {
+    id: 'healthy',
+    label: 'Everything is working',
+    caption: 'Nothing fails. The configuration runs as drawn: the primary is open read-write and shipping redo, the standbys apply it, the observer pings, and the application is served.',
+    enabled: primary ? ON : off('No member holds the primary role.'),
+    events: [],
+  };
+}
+
+/** What the scenario shelf offers, in order: the healthy run first, then the six failures. */
+export const shelf = (doc: TopologyDoc, at = 0): Template[] => [healthyScenario(doc), ...templates(doc, at)];
+
 export function clearEvents(): void {
+  healthyRun.value = false;
   edit('Clear the injected events', (d) => withEvents(d, []));
   /* Nothing is left to be at the end of: the playhead goes back to the start
      rather than resting on a clock reading that no longer means anything. */
@@ -1021,6 +1050,7 @@ export function clearEvents(): void {
 }
 
 export function removeEventAt(index: number): void {
+  healthyRun.value = false;
   edit('Remove an injected event', (d) => withEvents(
     d, d.topology.events.filter((_, i) => i !== index),
   ));

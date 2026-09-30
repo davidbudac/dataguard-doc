@@ -425,6 +425,17 @@ const SIM: SimProbe[] = [
     lanes: ['prm01', 'sby01'],
   },
   {
+    finding: 'HEALTHY-01',
+    title: '"Everything is working": the classic configuration with no event injected',
+    doc: () => classic(),
+    events: () => [],
+    oracle: 'no page describes a failover without a failure: an automatic failover needs a loss to start it (the rule this page models as FSFO.BOTH_MUST_HAVE_LOST, held to the FSFO chapter), so with nothing injected none starts. The healthy run is this page\'s model of a configuration nothing disturbs -- outcome `continues`, no promotion, no data at risk, no split brain -- and every chip it draws is labelled `model`',
+    open: (t) => t.facts.outcome === 'continues' && !promoted(t) && t.facts.abortAt === null
+      && endState(t, 'prm01') === 'open-rw' && endState(t, 'sby01') === 'mounted-apply'
+      && splitBrainOf(t) === null && t.facts.dataLossKind === 'none',
+    lanes: ['prm01', 'sby01'],
+  },
+  {
     finding: 'ED-01',
     title: '19c with both ObserverPing properties set: crash',
     doc: () => classic({ version: '19c', pingSet: true }),

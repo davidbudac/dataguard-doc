@@ -11,7 +11,7 @@
 
 @media screen {
   .app.is-float.bl-split {
-    --tl-default: clamp(220px, calc((100dvh - var(--bar-bottom, 80px)) * .66), 720px);
+    --tl-default: clamp(220px, calc((100dvh - var(--bar-bottom, 80px)) * .78), 720px);
     /* What the drawing keeps above the region; CANVAS_MIN_H in state/view.ts. */
     --canvas-min: 140px;
   }
@@ -161,7 +161,7 @@
 .tl-headline {
   position: sticky; top: 0; z-index: 2; margin: 0; padding: 6px 2px 4px;
   min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  background: var(--sf); font-size: 12px; font-weight: 560; color: var(--ik);
+  background: var(--sf); font-size: 13.5px; font-weight: 560; color: var(--ik);
 }
 .tl-headline.f-tl { color: var(--tl-ink); }
 .tl-headline.f-bl { color: var(--bl-ink); }

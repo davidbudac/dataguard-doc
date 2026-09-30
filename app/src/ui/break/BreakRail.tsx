@@ -33,7 +33,7 @@
 
 import { signal } from '@preact/signals';
 import { events, topology, trace } from '@/state/derived';
-import { canEdit, tNow, viewport } from '@/state/view';
+import { canEdit, healthyRun, tNow, viewport } from '@/state/view';
 import { IssuePanel } from '../IssuePanel';
 import { Action, Caret, Fold, Group, Note } from '../inspector/controls';
 import { isSectionOpen, SCENARIOS_ID, toggleSection } from '../inspector/sections';
@@ -42,7 +42,7 @@ import { printing } from '../print';
 import { WHY } from '../inspector/why';
 import { useRailRow } from '../common/Field';
 import {
-  applyTemplate, clearEvents, describeEvent, removeEventAt, reorderEvent, setEventTime, templates,
+  applyTemplate, clearEvents, describeEvent, removeEventAt, reorderEvent, setEventTime, shelf,
 } from './events';
 import { eventTimeBounds, reorderRefusal } from './event-order';
 import { RunExplanation } from './RunExplanation';
@@ -84,7 +84,7 @@ export function ScenarioPalette() {
       </button>
       {open ? (
       <div class="pal-scn-list">
-        {templates(doc, 0).map((t) => (
+        {shelf(doc, 0).map((t) => (
           <div class="tmpl" key={t.id}>
             <Action
               label={t.label}
@@ -125,7 +125,7 @@ export function BreakRail({ scenarios = true, validation = true }: BreakRailProp
       >
         {list.length === 0 ? (
           <div class="empty">
-            <span class="empty-k">No events yet</span>
+            <span class="empty-k">{healthyRun.value ? 'No events — everything is working' : 'No events yet'}</span>
             <p>
               {scenarios
                 ? 'Pick a scenario below, or select a card to add an event.'
@@ -202,7 +202,7 @@ export function BreakRail({ scenarios = true, validation = true }: BreakRailProp
       <Fold
         id={SCENARIOS_ID}
         title="One-click scenarios"
-        hint={`${templates(doc, 0).length} templates`}
+        hint={`${shelf(doc, 0).length} scenarios`}
         action={(
           <button
             type="button"
@@ -226,7 +226,7 @@ export function BreakRail({ scenarios = true, validation = true }: BreakRailProp
         ) : null}
 
         <div class={shown ? 'tmpls is-open' : 'tmpls'}>
-          {templates(doc, 0).map((t) => (
+          {shelf(doc, 0).map((t) => (
             <div class="tmpl" key={t.id}>
               <Action
                 label={t.label}

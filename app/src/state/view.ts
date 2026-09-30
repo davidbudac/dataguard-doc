@@ -238,6 +238,20 @@ export const timelineFull = signal<boolean>(false);
  * configuration's. On to start with; a moment's view, not remembered.
  */
 export const appLanesShown = signal<boolean>(true);
+/**
+ * Whether the run is the healthy one: the configuration as it stands, with
+ * nothing injected, run rather than left as the steady-state reading.
+ *
+ * Without an event the engine has nothing to say about time, so `trace` is
+ * null and every surface reads "steady state" -- no clock, no timeline. The
+ * "Everything is working" scenario is a reader asking to see that steady state
+ * as a run: the same simulation, over an empty event list, so the timeline,
+ * the readout and the explanation all draw from the engine's own answer
+ * (outcome `continues`, no data loss) rather than from a copy of it here.
+ * A moment's view, not remembered and not in the Document: an event of any
+ * kind, a new document, or Clear puts it away.
+ */
+export const healthyRun = signal<boolean>(false);
 
 /** The region never gets shorter than its bar and a few lanes. */
 export const TL_MIN_H = 120;
@@ -247,16 +261,18 @@ export const TL_STEP = 16;
 export const CANVAS_MIN_H = 140;
 /**
  * The share of the room under the header that the region takes by default. It
- * was .6 while the packed lanes were 22 px with 4 px gaps; the lanes now have
- * room to breathe (build.ts, `TL_COMPACT`), a run is ~90 px taller, and .66
- * is what keeps a three-member run's lanes, axis and tick labels in view at
- * 1280 x 800 without taking the drawing below ~245 px.
+ * was .6 while the packed lanes were 22 px with 4 px gaps and 11 px text; with
+ * lanes 36 px tall and 13 px text (build.ts, `TL_COMPACT`) a three-member run
+ * with the application's lanes is ~575 px, which is what .78 leaves it at
+ * 1440 x 900 and taller. The region is only as tall as its run, so a large
+ * window takes what it needs, not the share; a short one gives the drawing
+ * above it up to the `CANVAS_MIN_H` floor and the timeline scrolls for the rest.
  */
-const SPLIT_SHARE = 0.66;
+const SPLIT_SHARE = 0.78;
 
 /**
  * The tallest the region grows by itself, before the reader has touched it:
- * 66 % of the room under the header, and only as much of that as the
+ * 78 % of the room under the header, and only as much of that as the
  * run needs. Mirrored in split.css as `--tl-default`.
  */
 export function timelineDefaultH(viewH: number, headBottom = 80): number {

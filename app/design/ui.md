@@ -1462,27 +1462,40 @@ handle on its top edge). Build's dock, chips and warning card are as they were.
     and time field and the key come from the model the lanes are drawn from, so a held
     axis or a new width cannot leave them on different scales. `Timeline` itself is the
     same hook plus the body, for the docked Simulate, Learn and the popped-out window.
-  - *The timeline under it* is drawn with `density="compact"` (26 px lanes with 10 px
-    gaps, the name on the bar's own line, `TL_COMPACT`; calmer than the 22 px / 4 px it was:
-    a milestone sentence has a 20 px row of its own, an event is its number badge and its
+  - *The timeline under it* is drawn with `density="compact"` (36 px lanes with 10 px
+    gaps, 13 px text on the bars and sentences, 13.5 px mono lane names and an 18 px type
+    icon, the name on the bar's own line, `TL_COMPACT`; it was 22 px / 4 px, then 26 px / 10
+    px at 11 px text, which read as calm and as too small. The type sizes are the `--fs-*`
+    properties of `.tl-svg.is-big` in `timeline.css`, and `TL_COMPACT.fs*` are what the
+    drawing measures its labels with (`timeline-type.test.ts` holds the two together): a
+    milestone sentence has a 26 px row of its own, an event is its number badge and its
     sentence on one line with no icon chip, the scrubber's time badge and "Steady state" sit
-    on a row above the events, the application's heading has a hairline and 48 px, the total-outage
+    on a row above the events, the application's heading has a hairline and 56 px, the total-outage
     brace is left to the headline, and a bar's sentence moves off any marker line that crosses
     its bar; the gutter is two left-aligned columns, the canvas card's own icon glyph
     (`common/glyphs.tsx`, tinted as the card tints it, with its P / S / M letter) and then the
-    name, and the application's three lanes are indented sans sub-rows under its heading, which
-    carries the application's icon), `headline` (the run's sentence as a line of its own
+    name, and the application's three lanes are sans rows that wear the application's own icon
+    in the same column (their tooltips name the application), under a heading that carries it too), `headline` (the run's sentence as a line of its own
     above the lanes, truncated with the whole text as its title, sticky while the lanes
     scroll, not the drawing's first text row) and no legend row (`legend={false}`; the bar
     carries the key and the buttons). The region under the bar is the one scroll box.
-  - *Height*: with a run on it the region is as tall as its content, up to 66 %
-    of the room under the header (three fifths until the lanes were given room) (`timelineDefaultH`, mirrored as `--tl-default` in
+  - *Height*: with a run on it the region is as tall as its content, up to 78 %
+    of the room under the header (`timelineDefaultH`, mirrored as `--tl-default` in
     `split.css`); once the reader drags it (`is-set`) it is that height (`timelineH`,
     `dg-tl-h`, written as `--tl-h`), never taller than leaves the drawing 140 px
     (`CANVAS_MIN_H`) and never shorter than the bar and a few lanes (`TL_MIN_H`, 120).
-    At 1440×900 the default region holds every lane, the axis and the first brace of the
-    classic crash; at 1280×800 every lane, the axis and its tick labels, with the braces one
-    scroll away, inside the timeline region only (the bar and the headline stay).
+    At 1440×900 the default region holds every lane, the axis, its tick labels and the top of the
+    first brace of the classic crash; at 1280×800 every lane and the axis with its tick labels,
+    with the braces one scroll away, inside the timeline region only (the bar and the headline stay).
+  - *"Everything is working"* is the first scenario on the shelf and the only one that injects
+    nothing. With no event the engine has no clock, so `trace` is null and every surface reads
+    "steady state"; the scenario sets `healthyRun` (view state, not in the Document) and `trace`
+    then runs `simulate` over the empty list -- outcome `continues`, `dataLossKind: none`, no
+    promotion -- so the timeline (axis 0-30 s, no "before"), the readout (`healthyChips`: Outcome
+    no failure, Data loss none, Split brain no, Application served, each `model`) and "Why?" all
+    read the engine's own answer. It lives beside the six failure templates (`shelf` =
+    `healthyScenario` + `templates`), not among them, so the review suite and the walkthrough
+    never see it. Any event, Clear, or a new document puts it away.
   - *The drawing fills its region until the reader zooms.* Split's `CanvasSlot` sets
     `fit` on `useCanvasScale`: the factor `autoFactor` gives (the wrap's content box over
     the viewBox, never below 1:1, never above the top rung, 140 %) is written to `zoom`

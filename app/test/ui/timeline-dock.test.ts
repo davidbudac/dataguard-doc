@@ -78,14 +78,14 @@ afterEach(() => {
 });
 
 describe('the height, as a number', () => {
-  it('caps the region at 66 % of the room under the header, within 220-720 px', () => {
-    /* 900 tall, header foot at 96: (900 - 96) * .66. */
-    expect(timelineDefaultH(900, 96)).toBe(531);
-    expect(timelineDefaultH(500, 96)).toBe(267);
+  it('caps the region at 78 % of the room under the header, within 220-720 px', () => {
+    /* 900 tall, header foot at 96: (900 - 96) * .78. */
+    expect(timelineDefaultH(900, 96)).toBe(627);
+    expect(timelineDefaultH(500, 96)).toBe(315);
     expect(timelineDefaultH(300, 96)).toBe(220);
     expect(timelineDefaultH(2400, 96)).toBe(720);
     /* Without a measured header, the 80 px the shell assumes. */
-    expect(timelineDefaultH(900)).toBe(541);
+    expect(timelineDefaultH(900)).toBe(640);
   });
 
   it('never leaves the drawing under its minimum, never shrinks past the bar and a few lanes', () => {
@@ -158,9 +158,12 @@ describe('the panel in Break', () => {
     const r = mount();
     await tick();
     const g = grip(r) as HTMLElement;
-    /* jsdom paints nothing, so the step starts from the default for its
-       window (768 tall). */
-    const start = timelineDefaultH(window.innerHeight);
+    /* jsdom paints nothing. The step starts from a height chosen well short of
+       the window's ceiling (the default region is tall enough now that one
+       step up from it would be clamped there). */
+    const start = 300;
+    setTimelineH(start);
+    await tick();
     key(g, 'ArrowUp');
     expect(timelineH.value).toBe(start + TL_STEP);
     expect(memory.get(TIMELINE_H_KEY)).toBe(String(start + TL_STEP));
