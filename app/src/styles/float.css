@@ -249,18 +249,6 @@ button.issue{border-bottom:1px solid var(--ln)}
   .pal-add .why{max-width:22ch;font-size:11px}
   .pal-tidy{border-top:1px solid var(--ln);margin-top:4px;padding-top:4px}
 
-  /* Topology's left edge: the tools and, under them, the scenarios. One
-     column, so the two cannot overlap however tall either is, and one
-     scroller for both where the window is short. The column itself takes no
-     press (its padding keeps the cards' shadows unclipped); the cards do. */
-  .app.is-float .pal-stack{position:absolute;left:var(--float-m);
-    top:calc(var(--bar-bottom,80px) + 12px);z-index:20;display:flex;flex-direction:column;
-    align-items:flex-start;gap:8px;padding:0 20px 20px 0;pointer-events:none;
-    max-height:calc(100dvh - var(--bar-bottom,80px) - var(--dock-h,72px) - 3 * var(--float-m) - 12px);
-    overflow:auto;scrollbar-width:thin}
-  .app.is-float .pal-stack>.palette{position:static;max-height:none;overflow:visible;
-    pointer-events:auto;flex:0 0 auto}
-
   /* Break's palette: the six scenarios, one click each. */
   .pal-scn{width:206px;gap:6px;padding:10px}
   .pal-k{font-size:12px;font-weight:600;color:var(--ik2);padding:0 4px}
@@ -309,6 +297,19 @@ button.issue{border-bottom:1px solid var(--ln)}
     flex:0 0 auto}
   .dock-status>.readout{flex:1 1 auto;min-width:0;min-height:0;border-bottom:0;
     background:transparent}
+
+  /* Topology's scenarios: one wrapping row between the readings and the small
+     timeline, on the same 16 px sides and a hairline above it (the timeline
+     brings its own). Docked, the readout above already has its bottom rule. */
+  .dock-scn{display:flex;flex-wrap:wrap;align-items:center;gap:6px 6px;padding:8px 16px;
+    border-top:1px solid var(--ln)}
+  .app-dock>.readout+.dock-scn{border-top:0}
+  .dock-scn-k{font-size:11.5px;line-height:1.4;color:var(--ik3);margin-right:4px;white-space:nowrap}
+  .dock-scn .btn{padding:3px 10px;font-size:12px;white-space:nowrap}
+  .dock-scn .btn[aria-pressed="true"]{color:var(--ik);background:var(--sf3);border-color:var(--ln2);
+    font-weight:600}
+  .dock-scn .ctl-off{gap:6px}
+  .dock-scn .why{font-size:11px;white-space:nowrap;align-self:center}
   .app.is-float.m-break .dock-status{border-bottom:1px solid var(--ln);position:sticky;top:0;
     z-index:4;background:var(--sf)}
   .app.is-float .chips{padding:10px 16px;row-gap:8px}

@@ -33,6 +33,7 @@ import { Sheet } from './common/Sheet';
 import { CanvasSlot } from './canvas/CanvasSlot';
 import { Inspector } from './inspector/Inspector';
 import { BreakRail, ScenarioPalette } from './break/BreakRail';
+import { ScenarioRow } from './break/ScenarioRow';
 import { Panels } from './panels/Panels';
 import { LearnShell, LearnWorkbenchHeader } from './learn/LearnShell';
 import { IntroPage } from './intro/IntroPage';
@@ -127,9 +128,8 @@ function useDockAnchor(): (el: HTMLElement | null) => void {
  * float.css, so the drawing's fit leaves room for what is actually there
  * rather than for a width somebody once read off a screenshot:
  *
- *   `--pal-r`  the right edge of the palettes at the left (Topology's tools
- *              and scenarios, the Detailed timeline's scenarios), from the
- *              window's left edge -- the widest of them
+ *   `--pal-r`  the right edge of the palette at the left (Topology's tools),
+ *              from the window's left edge
  *
  * Unset when there is no palette, and float.css falls back. The elements
  * belong to other components, so they are found after each render of the
@@ -153,8 +153,7 @@ function useChromeInsets(): (el: HTMLElement | null) => void {
     else root.removeProperty('--pal-r');
   }, []);
   /* Re-find the palettes and re-observe them when they have been swapped for
-     others (Topology's tools and scenarios and the Detailed timeline's
-     scenarios are different elements). */
+     others (Topology's tools, and the Split layout's scenarios). */
   const rescan = useCallback((): void => {
     const app = host.current;
     if (!app) return;
@@ -189,12 +188,10 @@ function useChromeInsets(): (el: HTMLElement | null) => void {
     let queued = false;
     const mo = new MutationObserver((records) => {
       if (queued) return;
-      /* Only a child of the shell, of the stage or of the palettes' stack
-         coming or going: the drawing's own churn (playback repaints it every
-         frame) is not it. */
+      /* Only a child of the shell or of the stage coming or going: the
+         drawing's own churn (playback repaints it every frame) is not it. */
       const near = records.some((r) => r.target === el
-        || (r.target instanceof Element
-          && (r.target.classList.contains('app-stage') || r.target.classList.contains('pal-stack'))));
+        || (r.target instanceof Element && r.target.classList.contains('app-stage')));
       if (!near) return;
       queued = true;
       requestAnimationFrame(() => { queued = false; rescan(); });
@@ -309,7 +306,8 @@ function useTimelineHeight(): void {
 }
 
 /* The floating dock. Topology's is the readings and the finding chips on one
-   row, and, while there is a run to glance at, the small timeline under them.
+   row, the scenarios in a row of their own, and, while there is a run to glance
+   at, the small timeline under them.
    Break's Split layout is the bar and the timeline under it
    (break/SplitDock.tsx), which carry the same things and the transport. */
 function FloatDock({ m }: { m: Mode }) {
@@ -320,6 +318,7 @@ function FloatDock({ m }: { m: Mode }) {
         <Readout />
         <FindingsChips />
       </div>
+      {m === 'build' ? <ScenarioRow /> : null}
       {m === 'build' ? <MiniTimeline /> : null}
     </>
   );
@@ -356,6 +355,7 @@ function Dock({ m, railInDock }: { m: Mode; railInDock: boolean }) {
   return (
     <>
       {m === 'configure' ? null : <Readout />}
+      {m === 'build' ? <ScenarioRow /> : null}
       {m === 'build' ? <MiniTimeline /> : null}
       {m === 'build' ? <IssuePanel /> : null}
       {m === 'break' ? <TimelineSlot /> : null}

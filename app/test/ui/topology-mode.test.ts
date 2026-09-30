@@ -70,13 +70,9 @@ const scenario = (id: string) => {
   if (!t) throw new Error(`no scenario ${id}`);
   return t;
 };
-/** Press a scenario on the palette, opening the shelf first if it is folded. */
+/** Press a scenario in the dock's row. */
 const pressScenario = async (r: HTMLElement, id: string): Promise<void> => {
-  if (r.querySelector('.pal-scn .pal-scn-list') === null) {
-    click(r.querySelector('.pal-scn .pal-tog'));
-    await tick();
-  }
-  click(button(r.querySelector('.pal-scn')!, scenario(id).label));
+  click(button(r.querySelector('.dock-scn')!, scenario(id).label));
   await tick();
 };
 const mini = (r: ParentNode): Element | null => r.querySelector('.mtl');
@@ -144,25 +140,66 @@ describe('Topology with no run is Build as it always was', () => {
     expect(readout).not.toContain('Outcome');
   });
 
-  it('carries the scenarios on the left with the tools, in one column', async () => {
+  it('carries the tools alone at the left, and the scenarios in the dock', async () => {
     const r = await mount();
-    const stack = r.querySelector('.pal-stack');
-    expect(stack).not.toBeNull();
-    expect(stack?.querySelector('nav.pal-add')).not.toBeNull();
-    expect(stack?.querySelector('nav.pal-scn')).not.toBeNull();
-    /* One scenarios palette, not a second one from the shell. */
-    expect(r.querySelectorAll('.pal-scn')).toHaveLength(1);
+    expect(r.querySelector('.pal-stack')).toBeNull();
+    expect(r.querySelectorAll('.palette')).toHaveLength(1);
+    expect(r.querySelector('nav.pal-add')).not.toBeNull();
+    const row = r.querySelector('.app-dock .dock-scn');
+    expect(row).not.toBeNull();
+    expect(row?.querySelector('.dock-scn-k')?.textContent).toBe('Scenarios');
+    expect([...row!.querySelectorAll('button')].map((b) => b.textContent))
+      .toEqual(shelf(topology.value, 0).map((t) => t.label));
+    /* One row, from the dock and from nowhere else. */
+    expect(r.querySelectorAll('.dock-scn')).toHaveLength(1);
+    /* Under the readings, and (with a run) above the small timeline. */
+    const dock = r.querySelector('.app-dock')!;
+    expect([...dock.children].map((c) => c.className.split(' ')[0])).toEqual(['dock-status', 'dock-scn']);
+  });
+
+  it('titles each scenario with its sentence and refuses in place', async () => {
+    const r = await mount();
+    const b = button(r.querySelector('.dock-scn')!, scenario('crash').label);
+    expect(b?.getAttribute('title')).toBe(scenario('crash').caption);
+    /* A drawing without a primary: every scenario says why it is off. */
+    doc.value = { ...doc.value, topology: { ...doc.value.topology, members: doc.value.topology.members.map((m) => ({ ...m, role: 'physical' as const })) } };
+    await tick();
+    const off = button(r.querySelector('.dock-scn')!, scenario('crash').label);
+    expect(off?.disabled).toBe(true);
+    expect(r.querySelector('.dock-scn .why')?.textContent).toContain('primary');
   });
 
   it('offers no scenarios to a viewer who cannot edit', async () => {
     viewport.value = 'narrow';
     const r = await mount();
-    expect(r.querySelector('.pal-scn')).toBeNull();
-    expect(r.querySelector('.pal-stack')).toBeNull();
+    expect(r.querySelector('.dock-scn')).toBeNull();
+  });
+
+  it('is in the docked layout too, under the readout', async () => {
+    viewport.value = 'compact';
+    const r = await mount();
+    const row = r.querySelector('.app-dock > .dock-scn');
+    expect(row).not.toBeNull();
+    expect(row?.previousElementSibling?.classList.contains('readout')).toBe(true);
+  });
+
+  it('shows the scenario that is on as pressed, until the events are changed', async () => {
+    const r = await mount();
+    const pressed = (): string[] => [...r.querySelectorAll('.dock-scn button[aria-pressed="true"]')]
+      .map((b) => b.textContent ?? '');
+    expect(pressed()).toEqual([]);
+    await pressScenario(r, 'crash');
+    expect(pressed()).toEqual([scenario('crash').label]);
+    await pressScenario(r, 'healthy');
+    expect(pressed()).toEqual([scenario('healthy').label]);
+    await pressScenario(r, 'crash');
+    click(button(r.querySelector('.mtl')!, 'Clear'));
+    await tick();
+    expect(pressed()).toEqual([]);
   });
 });
 
-describe('a scenario from the palette makes the run', () => {
+describe('a scenario from the dock makes the run', () => {
   it('shows the small timeline, tints the cards and reads the run', async () => {
     const r = await mount();
     await pressScenario(r, 'crash');

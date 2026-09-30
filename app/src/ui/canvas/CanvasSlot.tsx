@@ -34,7 +34,6 @@ import { inFlight, inFlightFrom, placeOver, renaming, setSiteAt } from './place'
 import { mergeVerdict } from './drop';
 import { hoverTools, snapT } from '../break/events';
 import { breakBar } from '../break/menu';
-import { ScenarioPalette } from '../break/BreakRail';
 import { AddToolbar } from '../inspector/adds';
 import type { WhyState } from '../common/WhyPill';
 import { useRovingToolbar } from '../common/useRovingToolbar';
@@ -711,21 +710,14 @@ export function CanvasSlot({ interactive = true }: CanvasSlotProps) {
      right; both float over the drawing rather than taking a row above it.
      Docked, the zoom ladder rides in the same row as Build's additions. */
   const float = interactive && floating(m, viewport.value);
-  const inPopup = host !== null && typeof window !== 'undefined' && host !== window;
   const toolbar = float
     ? (
       <>
         {adds === null ? null : (
-          <div class="pal-stack">
-            <nav class="palette pal-add float-card" aria-label="Tools">
-              {adds}
-              <TidyButton />
-            </nav>
-            {/* Topology is where a reader breaks what they drew: the
-                scenarios ride with the tools, under them, in this window
-                only (a popped-out drawing has no timeline to show the result). */}
-            {inPopup ? null : <ScenarioPalette />}
-          </div>
+          <nav class="palette pal-add float-card" aria-label="Tools">
+            {adds}
+            <TidyButton />
+          </nav>
         )}
         {zooming ? <div class="zoom-pill float-card"><ZoomStrip tidy={false} grid pop /></div> : null}
       </>
