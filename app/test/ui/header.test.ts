@@ -388,7 +388,7 @@ describe('the keyboard map', () => {
     const keys = root.querySelector('.intro-keys');
     expect(keys).not.toBeNull();
     const text = keys?.textContent ?? '';
-    for (const k of ['E', 'Delete', 'Esc', 'Space', 'Home', '↑ ↓ ← →']) {
+    for (const k of ['E', 'A', 'Delete', 'Esc', 'Space', 'Home', '↑ ↓ ← →']) {
       expect(text).toContain(k);
     }
     /* Two columns, and the key half is mono: it is something typed. */
@@ -411,6 +411,7 @@ describe('the keyboard map', () => {
       said.set(row.querySelector('dt')?.textContent ?? '', row.querySelector('dd')?.textContent ?? '');
     }
     expect(said.get('E')).toContain('(Topology)');
+    expect(said.get('A')).toContain('(Topology)');
     expect(said.get('Delete')).toContain('(Topology)');
   });
 

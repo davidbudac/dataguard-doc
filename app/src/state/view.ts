@@ -370,7 +370,7 @@ export function modeGuide(m: Mode, v: Viewport = viewport.value): string {
     case 'build':
       return 'Click to edit · drag to move · + to add; '
         + 'Drag a + button onto a data centre to add, or a card’s ⊕ onto another to connect. '
-        + `Double-click to rename; ⋯ opens actions, and the full properties are in ${railWhere(v)}. `
+        + `Double-click to rename; ⋯ (or A on a focused card) opens actions, and the full properties are in ${railWhere(v)}. `
         + 'To break it, use a scenario or the icons on a card; right-click a card, or press E, for every event it offers.';
     case 'break':
       return 'Follow the run in full: add an event from a lane, drag a numbered marker to change its time; '

@@ -237,17 +237,13 @@ function Workbench() {
   );
 }
 
-/* The Detailed timeline's rail is its own events and nothing else: the list of
-   what has been added, and (docked) the scenarios and the findings. What can be
-   added lives on the drawing -- the bar a click opens, the icons on a card --
-   and on the lanes' own buttons, never here. */
-function Rail({ m, float = false }: { m: Mode; float?: boolean }) {
+/* The Detailed timeline's rail is its own events, the scenarios and the
+   findings. What can be added lives on the drawing -- the bar a click opens,
+   the icons on a card -- and on the lanes' own buttons, never here. */
+function Rail({ m }: { m: Mode }) {
   switch (m) {
     case 'build': return <Inspector />;
-    /* Floating, the scenarios are Topology's dock row and the findings are
-       behind the lanes' bar, so the rail is the reader's own events and
-       nothing else. */
-    case 'break': return <BreakRail scenarios={!float} validation={!float} />;
+    case 'break': return <BreakRail />;
     case 'configure': return <Inspector />;
     case 'learn': return <Workbench />;
   }
@@ -429,13 +425,13 @@ export function App() {
                 class={`app-rail${float ? ' float-card' : ''}${railShut ? ' is-shut' : ''}${m === 'learn' ? '' : ' has-bar'}`}
                 aria-label={RAIL_TITLE[m]}
               >
-                {m === 'learn' ? <Rail m={m} float={float && !lanes} /> : railShut ? <RailStrip title={RAIL_TITLE[m]} /> : (
+                {m === 'learn' ? <Rail m={m} /> : railShut ? <RailStrip title={RAIL_TITLE[m]} /> : (
                   <>
                     <RailBar title={RAIL_TITLE[m]} />
                     {/* The rail's own scroll port, under the bar that stays
                         put: the contents' sticky headers stick to its top. */}
                     <div class="rail-body">
-                      <Rail m={m} float={float && !lanes} />
+                      <Rail m={m} />
                     </div>
                   </>
                 )}
@@ -468,7 +464,7 @@ export function App() {
           position={viewport.value === 'compact' || viewport.value === 'narrow' ? 'bottom' : 'right'}
           onClose={() => { inspectorOpen.value = false; }}
         >
-          <Rail m={m} float={float && !lanes} />
+          <Rail m={m} />
         </Sheet>
       ) : null}
 

@@ -18,8 +18,8 @@ import { TopoCanvas } from '@/ui/canvas/TopoCanvas';
 import { App } from '@/ui/App';
 import { classicDoc, doc as docSignal } from '@/state/doc';
 import { resetHistory } from '@/state/history';
-import { mode, selection, toast, viewport } from '@/state/view';
-import { barFocus, barOpen, closeBar } from '@/ui/canvas/bar';
+import { mode, modeGuide, selection, toast, viewport } from '@/state/view';
+import { barFocus, barKind, barOpen, closeBar } from '@/ui/canvas/bar';
 import { classic, graphOf, threeObserverFixture } from './canvas-fixtures';
 import type { TopologyDoc } from '@/engine';
 
@@ -28,6 +28,7 @@ const tick = (): Promise<void> => new Promise((r) => setTimeout(r, 0));
 interface Handlers {
   onSelect?: (key: string, additive: boolean) => void;
   onEvents?: (key: string) => void;
+  onActions?: (key: string) => void;
   onDelete?: (key: string) => void;
   onClear?: () => void;
 }
@@ -185,6 +186,34 @@ describe('the canvas is reachable by keyboard', () => {
     expect(onEvents.mock.calls.map((c) => c[0])).toEqual(['prm01', 'sby01']);
   });
 
+  it('asks for Topology\'s action table with A, in either case, on a card, a data centre and a link', () => {
+    const onActions = vi.fn();
+    const root = mountCanvas(classic('dc3'), { onActions });
+    press(card(root, 'prm01'), 'a');
+    press(card(root, 'sby01'), 'A');
+    press(control(root, 'dc1'), 'a');
+    press(control(root, 'dc1-dc2'), 'a');
+    expect(onActions.mock.calls.map((c) => c[0])).toEqual(['prm01', 'sby01', 'dc1', 'dc1-dc2']);
+  });
+
+  it('leaves Ctrl+A, Cmd+A and Alt+A to their own owners, and does nothing without a table to open', () => {
+    const onActions = vi.fn();
+    const root = mountCanvas(classic('dc3'), { onActions });
+    for (const init of [{ ctrlKey: true }, { metaKey: true }, { altKey: true }]) {
+      const ev = new KeyboardEvent('keydown', { key: 'a', bubbles: true, cancelable: true, ...init });
+      (card(root, 'prm01') as unknown as HTMLElement).focus();
+      card(root, 'prm01').dispatchEvent(ev);
+      /* Select-all (shortcuts.ts) checks `defaultPrevented`: this must not have claimed it. */
+      expect(ev.defaultPrevented, JSON.stringify(init)).toBe(false);
+    }
+    expect(onActions).not.toHaveBeenCalled();
+    /* The Detailed timeline's drawing passes no table: the key is not bound there. */
+    const bare = mountCanvas(classic('dc3'), {});
+    const ev = new KeyboardEvent('keydown', { key: 'a', bubbles: true, cancelable: true });
+    card(bare, 'prm01').dispatchEvent(ev);
+    expect(ev.defaultPrevented).toBe(false);
+  });
+
   it('removes with Delete and with Backspace, and clears with Escape', () => {
     const onDelete = vi.fn();
     const onClear = vi.fn();
@@ -279,6 +308,50 @@ describe('the shell wires those keys to real edits', () => {
     expect(barOpen.value).toBe('prm01');
     /* A key is a keyboard-shaped request: the focus goes into the bar. */
     expect(barFocus.value).toBe(true);
+  });
+
+  it('A opens Topology\'s table with the focus in it -- edit, properties, remove -- and E the events', async () => {
+    const root = mountApp();
+    await new Promise<void>((r) => { requestAnimationFrame(() => r()); });
+    await tick();
+    press(card(root, 'sby01'), 'A');
+    await new Promise<void>((r) => { requestAnimationFrame(() => r()); });
+    await tick();
+    expect(selection.value).toEqual(['sby01']);
+    expect(barOpen.value).toBe('sby01');
+    expect(barKind.value).toBe('actions');
+    expect(barFocus.value).toBe(true);
+    const rows = [...root.querySelectorAll('.cv-bar-row button')].map((b) => b.textContent ?? '');
+    expect(rows.some((r) => r.startsWith('Edit'))).toBe(true);
+    expect(rows.some((r) => r.startsWith('Remove'))).toBe(true);
+    expect(root.querySelector('.cv-bar-hd')?.textContent ?? '').not.toContain('at t =');
+    /* Escape closes it, the same press that closes the events. */
+    press(card(root, 'sby01'), 'Escape');
+    await tick();
+    expect(barOpen.value).toBeNull();
+    /* And E on the same card is the other list. */
+    press(card(root, 'sby01'), 'E');
+    await new Promise<void>((r) => { requestAnimationFrame(() => r()); });
+    await tick();
+    expect(barKind.value).toBe('events');
+    expect(root.querySelector('.cv-bar-hd')?.textContent ?? '').toContain('at t =');
+  });
+
+  it('A is bound in Topology only: not in the docked Detailed timeline', async () => {
+    mode.value = 'break';
+    viewport.value = 'compact';
+    const root = mountApp();
+    await new Promise<void>((r) => { requestAnimationFrame(() => r()); });
+    await tick();
+    press(card(root, 'sby01'), 'A');
+    await tick();
+    expect(barOpen.value).toBeNull();
+    expect(root.querySelector('.cv-bar')).toBeNull();
+  });
+
+  it('is in the stage\'s description of Topology, next to the handle it stands in for', () => {
+    expect(modeGuide('build', 'wide')).toContain('⋯ (or A on a focused card) opens actions');
+    expect(modeGuide('break', 'wide')).not.toContain('A on a focused card');
   });
 
   /* Pressed on the focused rectangle, not called: a data centre takes focus

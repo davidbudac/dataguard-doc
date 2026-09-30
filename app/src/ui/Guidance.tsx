@@ -72,6 +72,7 @@ const KEYS: { where: string; rows: [string, string][] }[] = [
          timeline (`canvas/CanvasSlot.tsx`), exactly as `onDelete` is only in
          Topology: a key that is bound in one mode says which one. */
       ['E', 'the same list of events (Topology)'],
+      ['A', 'open the ⋯ actions — edit, properties, remove — and move the focus into them (Topology)'],
       ['Delete', 'remove it, or everything selected (Topology)'],
       ['Esc', 'close the actions first, then clear the selection'],
     ],

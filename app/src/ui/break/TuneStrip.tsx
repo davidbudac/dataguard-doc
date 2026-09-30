@@ -259,7 +259,7 @@ export function TuneStrip({ layout = 'row' }: { layout?: TuneLayout }) {
       <Why why={readOnly} />
       <button
         type="button" class="btn tune-all"
-        title="Every setting, in Build's inspector"
+        title="Every setting, in Topology's inspector"
         onClick={allSettings}
       >
         All settings

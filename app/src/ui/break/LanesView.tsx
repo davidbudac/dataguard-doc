@@ -423,7 +423,7 @@ function LanesMembers() {
  */
 function LanesApp() {
   return (
-    <section class="ln-view float-card" aria-label="Simulate: application timeline">
+    <section class="ln-view float-card" aria-label="Detailed timeline: application">
       <LanesBar run={null} />
       <div class="ln-body ln-app">
         <AppTimeline />
@@ -789,14 +789,14 @@ function Lanes({ run, fr }: { run: RunTimeline | null; fr: Frame }) {
     return r.laneKey === null ? null : model?.lanes.find((l) => l.key === r.laneKey) ?? null;
   };
   const caption = model?.caption;
-  /* The same gate as the event drag's on the shell (shell-props.ts): tuning is Simulate's, on a screen that edits. */
+  /* The same gate as the event drag's on the shell (shell-props.ts): tuning is Topology's and the Detailed timeline's, on a screen that edits. */
   const tunable = mode.value === 'break' && canEdit(viewport.value);
   const steadyX = scale.x(scale.clampT(t));
   /* The ends of the clocks that are one setting each: a grip on the brace and, where a lane's band is that clock, on the lane. */
   const handles = useTuneHandles(tunable && tr !== null && model !== null, doc, tr as Trace, model as TimelineModel);
 
   return (
-    <section class="ln-view float-card" aria-label="Simulate: topology and timeline" ref={(el) => { section.current = el; measureSection(el); }}>
+    <section class="ln-view float-card" aria-label="Detailed timeline: members and their timelines" ref={(el) => { section.current = el; measureSection(el); }}>
       <LanesBar run={run} />
       <SummaryBand />
       {settings === 'row' ? <TuneStrip /> : null}

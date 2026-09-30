@@ -21,7 +21,7 @@ import { resetHistory } from '@/state/history';
 import { topology } from '@/state/derived';
 import { RAIL_KEY, setRailCollapsed } from '@/state/persist';
 import { URL_FIELDS } from '@/state/url';
-import { findingsOpen, mode, railCollapsed, viewport } from '@/state/view';
+import { breakTimeline, findingsOpen, mode, railCollapsed, viewport } from '@/state/view';
 import { App } from '@/ui/App';
 import { revealFindings } from '@/ui/IssuePanel';
 import { applyTemplate, templates } from '@/ui/break/events';
@@ -68,6 +68,7 @@ beforeEach(() => {
   mode.value = 'break';
   railCollapsed.value = false;
   findingsOpen.value = false;
+  breakTimeline.value = 'config';
 });
 
 afterEach(() => {
@@ -86,7 +87,7 @@ describe('the top bar', () => {
       expect([...r.querySelectorAll('.topbar-group > .seg')].map((x) => x.getAttribute('aria-label')), m)
         .toEqual(['Oracle release']);
     }
-    expect(r.textContent).not.toMatch(/\bSplit\b/);
+    expect(r.querySelector('.topbar')?.textContent ?? '').not.toMatch(/\bSplit\b/);
   });
 
   it('does not read or write a layout preference, and no URL key carries one', async () => {
@@ -103,6 +104,53 @@ describe('the top bar', () => {
     const keys = URL_FIELDS.map((f) => f.k);
     expect(keys).not.toContain('layout');
     expect(keys).not.toContain('variant');
+  });
+});
+
+describe('the words', () => {
+  /** Every sentence a reader can be shown or told by a screen reader: text, titles, labels, descriptions. */
+  const said = (r: HTMLElement): string[] => [
+    r.textContent ?? '',
+    ...[...r.querySelectorAll('[aria-label], [title], [aria-description]')].flatMap((el) => [
+      el.getAttribute('aria-label') ?? '', el.getAttribute('title') ?? '', el.getAttribute('aria-description') ?? '',
+    ]),
+    ...[...r.querySelectorAll('title')].map((el) => el.textContent ?? ''),
+  ];
+
+  it('never call the modes by their old names, in either of them, with a run on screen', async () => {
+    crash();
+    const r = mount();
+    for (const m of ['break', 'build'] as const) {
+      mode.value = m;
+      await tick();
+      for (const line of said(r)) {
+        expect(line, m).not.toMatch(/\bSimulate\b/);
+        expect(line, m).not.toMatch(/\bBuild(?:'s)? (?:inspector|mode|dock)\b/);
+      }
+    }
+  });
+
+  it('name the Detailed timeline on its sections, and say where an event is added from', async () => {
+    const r = mount();
+    await tick();
+    expect(r.querySelector('.ln-view')?.getAttribute('aria-label')).toBe('Detailed timeline: members and their timelines');
+    /* Its rail: the events, and where a first one comes from. */
+    setRailCollapsed(false);
+    await tick();
+    expect(r.querySelector('.app-rail .empty p')?.textContent).toBe('Pick a scenario below, or add an event from a card.');
+    expect(r.querySelector('.tune-all')?.getAttribute('title')).toBe("Every setting, in Topology's inspector");
+    /* Its Application timeline. */
+    const b = [...r.querySelectorAll<HTMLButtonElement>('.seg[aria-label="Timeline"] button')].find((x) => x.textContent === 'Application');
+    b?.click();
+    await tick();
+    expect(r.querySelector('.ln-view')?.getAttribute('aria-label')).toBe('Detailed timeline: application');
+  });
+
+  it('docked, the rail and the timeline slot say what the drawing beside them offers', async () => {
+    viewport.value = 'compact';
+    const r = mount();
+    await tick();
+    expect(r.querySelector('.tl-slot .empty p')?.textContent).toBe('No events yet. Pick a scenario, or add an event from a card on the drawing.');
   });
 });
 

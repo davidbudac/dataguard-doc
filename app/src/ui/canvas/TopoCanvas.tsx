@@ -220,7 +220,11 @@ export interface TopoCanvasProps {
    * `onContextMenu` where the caller has no list of its own for the handle.
    */
   handle?: string | null;
-  /** What the `...` handle opens, where that is not what the right button opens. */
+  /**
+   * What the `...` handle opens, where that is not what the right button opens:
+   * Topology's own table. `A` on a focused card, data centre or line asks for
+   * it too, and the caller moves the focus into it.
+   */
   onActions?: (key: string) => void;
   /**
    * Whether the bar that is open is the one the handle opens, when the caller
@@ -707,6 +711,16 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
       case 'E': {
         ev.preventDefault();
         props.onEvents?.(key);
+        return;
+      }
+      case 'a':
+      case 'A': {
+        /* Topology's own table -- edit, the properties, remove -- the keyboard's
+           way to what the `...` handle opens. `Ctrl+A` and `Cmd+A` are
+           select-all (ui/shortcuts.ts) and pass through untouched. */
+        if (!props.onActions || ev.ctrlKey || ev.metaKey || ev.altKey) return;
+        ev.preventDefault();
+        props.onActions(key);
         return;
       }
       case 'Delete':
@@ -1834,7 +1848,7 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
               else (props.onActions ?? props.onContextMenu)?.(handleAt.key);
             }}
           >
-            <title>{props.onActions ? 'Actions (right-click or Shift+F10: the events it can take)' : 'Actions (also: right-click, Shift+F10)'}</title>
+            <title>{props.onActions ? 'Actions (also: press A). Right-click, Shift+F10 or E list the events it can take' : 'Actions (also: right-click, Shift+F10)'}</title>
             <circle class="tp-more-hit" cx={handleAt.x} cy={handleAt.y} r={12} />
             <circle class="tp-more-dot" cx={handleAt.x} cy={handleAt.y} r={8} />
             <circle class="tp-more-pip" cx={handleAt.x - 3.5} cy={handleAt.y} r={1.1} />

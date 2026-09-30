@@ -86,7 +86,7 @@ select.btn{padding-right:8px}
    inspector.css: header, group headings, label-left/value-right rows, list
    rows and sub-blocks. Nothing here restyles them. */
 
-/* The scenario buttons, on the rail's shelf and on the palette. */
+/* The scenario buttons, on the rail's shelf (the docked Detailed timeline). */
 .tmpl .btn{border:1px solid var(--ln);border-radius:var(--r-ctl)}
 .tmpl .btn:hover:not(:disabled){border-color:var(--ln2)}
 

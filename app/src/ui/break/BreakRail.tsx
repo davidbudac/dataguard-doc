@@ -1,6 +1,6 @@
 /**
  * The Detailed timeline's rail: what is actually injected into this
- * configuration, and (docked) the six scenarios as one-click templates.
+ * configuration, and the six scenarios as one-click templates.
  *
  * **The reader's own work comes first.** The event list is the head of the
  * rail, because injecting an event and then finding no
@@ -51,19 +51,7 @@ import '@/styles/inspector.css';
 /** Open the six scenario descriptions. View state, so it is not undoable. */
 export const scenarioNotesOpen = signal(false);
 
-export interface BreakRailProps {
-  children?: unknown;
-  /**
-   * Whether the scenarios ride on the rail. Where the Detailed timeline
-   * floats they are Topology's dock row instead (`ScenarioRow`).
-   */
-  scenarios?: boolean;
-  /** Whether the validation panel closes the rail. The floating layout has
-      the status chips and their popover for that (Findings.tsx). */
-  validation?: boolean;
-}
-
-export function BreakRail({ scenarios = true, validation = true }: BreakRailProps = {}) {
+export function BreakRail() {
   const railRef = useRailRow();
   const doc = topology.value;
   const list = events.value;
@@ -90,9 +78,7 @@ export function BreakRail({ scenarios = true, validation = true }: BreakRailProp
           <div class="empty">
             <span class="empty-k">{healthyRun.value ? 'No events — everything is working' : 'No events yet'}</span>
             <p>
-              {scenarios
-                ? 'Pick a scenario below, or select a card to add an event.'
-                : 'Add an event from a card or a lane, or pick a scenario in Topology.'}
+              Pick a scenario below, or add an event from a card.
             </p>
           </div>
         ) : null}
@@ -161,7 +147,6 @@ export function BreakRail({ scenarios = true, validation = true }: BreakRailProp
       {/* What the run decided, and why: under the events that caused it. */}
       {trace.value ? <RunExplanation doc={doc} trace={trace.value} /> : null}
 
-      {scenarios ? (
       <Fold
         id={SCENARIOS_ID}
         title="One-click scenarios"
@@ -202,12 +187,11 @@ export function BreakRail({ scenarios = true, validation = true }: BreakRailProp
           ))}
         </div>
       </Fold>
-      ) : null}
 
       {/* The same validation the Build dock shows, worded and folded the same
           way: what is wrong with a configuration does not stop being true
           because the reader switched to breaking it. */}
-      {validation ? <IssuePanel /> : null}
+      <IssuePanel />
     </div>
   );
 }

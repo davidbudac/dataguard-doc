@@ -49,7 +49,7 @@ const SHORT_K: Record<string, string> = {
   'Data loss': 'Loss',
 };
 
-/** The gap between the line's parts (split.css `.sb-ro`), and its left padding. */
+/** The gap between the line's parts (timeline-bar.css `.sb-ro`), and its left padding. */
 const RO_GAP = 6;
 const RO_PAD = 12;
 /** Rounding slack: widths are read as whole pixels. */
