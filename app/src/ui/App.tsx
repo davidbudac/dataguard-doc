@@ -37,6 +37,7 @@ import { Panels } from './panels/Panels';
 import { LearnShell, LearnWorkbenchHeader } from './learn/LearnShell';
 import { IntroPage } from './intro/IntroPage';
 import { Timeline } from './timeline/Timeline';
+import { MiniTimeline } from './timeline/MiniTimeline';
 import { shellTimelineProps } from './timeline/shell-props';
 import { WorkspacesDialog } from './workspaces/Workspaces';
 import { ClassicWalkthrough } from './intro/Walkthrough';
@@ -54,6 +55,8 @@ const HAS_RAIL: Record<Mode, boolean> = {
   build: true, break: true, configure: true, learn: true,
 };
 
+/* The rail's own name, which is not always the mode's: Topology's is the
+   inspector and the Detailed timeline's is its events. */
 const RAIL_TITLE: Record<Mode, string> = {
   build: 'Inspector', break: 'Events', configure: 'Inspector', learn: 'Workbench',
 };
@@ -124,46 +127,53 @@ function useDockAnchor(): (el: HTMLElement | null) => void {
  * float.css, so the drawing's fit leaves room for what is actually there
  * rather than for a width somebody once read off a screenshot:
  *
- *   `--pal-r`  the right edge of the palette at the left (Build's tools,
- *              Break's scenarios), from the window's left edge
+ *   `--pal-r`  the right edge of the palettes at the left (Topology's tools
+ *              and scenarios, the Detailed timeline's scenarios), from the
+ *              window's left edge -- the widest of them
  *
- * Unset when the palette is absent, and float.css falls back. The element
- * belongs to another component, so it is found after each render of the shell
- * and observed while it lives; same `style.setProperty` escape hatch as
- * `--bar-bottom`, on the root.
+ * Unset when there is no palette, and float.css falls back. The elements
+ * belong to other components, so they are found after each render of the
+ * shell and observed while they live; same `style.setProperty` escape hatch
+ * as `--bar-bottom`, on the root.
  */
 function useChromeInsets(): (el: HTMLElement | null) => void {
   const host = useRef<HTMLElement | null>(null);
   const observer = useRef<ResizeObserver | null>(null);
-  const seen = useRef<Element | null>(null);
+  const seen = useRef<readonly Element[]>([]);
   const write = useCallback((): void => {
     const app = host.current;
     if (!app) return;
     const root = app.ownerDocument.documentElement.style;
-    const p = app.querySelector('.palette')?.getBoundingClientRect();
-    if (p && p.width > 0) root.setProperty('--pal-r', `${Math.round(p.right)}px`);
+    let right = 0;
+    for (const el of app.querySelectorAll('.palette')) {
+      const r = el.getBoundingClientRect();
+      if (r.width > 0) right = Math.max(right, r.right);
+    }
+    if (right > 0) root.setProperty('--pal-r', `${Math.round(right)}px`);
     else root.removeProperty('--pal-r');
   }, []);
-  /* Re-find the palette and re-observe it when it has been swapped for another
-     element (Build's tools and Break's scenarios are two palettes). */
+  /* Re-find the palettes and re-observe them when they have been swapped for
+     others (Topology's tools and scenarios and the Detailed timeline's
+     scenarios are different elements). */
   const rescan = useCallback((): void => {
     const app = host.current;
     if (!app) return;
-    const now = app.querySelector('.palette');
-    if (now !== seen.current) {
+    const now = [...app.querySelectorAll('.palette')];
+    const same = now.length === seen.current.length && now.every((el, i) => el === seen.current[i]);
+    if (!same) {
       seen.current = now;
       observer.current?.disconnect();
       observer.current = null;
-      if (now && typeof ResizeObserver !== 'undefined') {
+      if (now.length > 0 && typeof ResizeObserver !== 'undefined') {
         const ro = new ResizeObserver(write);
-        ro.observe(now);
+        for (const el of now) ro.observe(el);
         observer.current = ro;
       }
     }
     write();
   }, [write]);
-  /* After every render of the shell -- and, since the palette re-renders on
-     its own signals without the shell, whenever the stage's children or
+  /* After every render of the shell -- and, since the palettes re-render on
+     their own signals without the shell, whenever the stage's children or
      the shell's change (a frame later, once per frame). */
   useLayoutEffect(rescan);
   const mutations = useRef<MutationObserver | null>(null);
@@ -179,10 +189,12 @@ function useChromeInsets(): (el: HTMLElement | null) => void {
     let queued = false;
     const mo = new MutationObserver((records) => {
       if (queued) return;
-      /* Only a child of the shell or of the stage coming or going: the
-         drawing's own churn (playback repaints it every frame) is not it. */
+      /* Only a child of the shell, of the stage or of the palettes' stack
+         coming or going: the drawing's own churn (playback repaints it every
+         frame) is not it. */
       const near = records.some((r) => r.target === el
-        || (r.target instanceof Element && r.target.classList.contains('app-stage')));
+        || (r.target instanceof Element
+          && (r.target.classList.contains('app-stage') || r.target.classList.contains('pal-stack'))));
       if (!near) return;
       queued = true;
       requestAnimationFrame(() => { queued = false; rescan(); });
@@ -296,16 +308,20 @@ function useTimelineHeight(): void {
   }, [drawing]);
 }
 
-/* The floating dock. Build's is the readings and the finding chips on one row.
+/* The floating dock. Topology's is the readings and the finding chips on one
+   row, and, while there is a run to glance at, the small timeline under them.
    Break's Split layout is the bar and the timeline under it
    (break/SplitDock.tsx), which carry the same things and the transport. */
 function FloatDock({ m }: { m: Mode }) {
   if (m === 'break') return <SplitDock />;
   return (
-    <div class="dock-status">
-      <Readout />
-      <FindingsChips />
-    </div>
+    <>
+      <div class="dock-status">
+        <Readout />
+        <FindingsChips />
+      </div>
+      {m === 'build' ? <MiniTimeline /> : null}
+    </>
   );
 }
 
@@ -340,6 +356,7 @@ function Dock({ m, railInDock }: { m: Mode; railInDock: boolean }) {
   return (
     <>
       {m === 'configure' ? null : <Readout />}
+      {m === 'build' ? <MiniTimeline /> : null}
       {m === 'build' ? <IssuePanel /> : null}
       {m === 'break' ? <TimelineSlot /> : null}
       {m === 'configure' ? <Panels /> : null}
