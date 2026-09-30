@@ -634,11 +634,39 @@ itself survives. The share link, the file and localStorage all pass through
   (`buildTns(doc, { client, label })`, `buildJdbc`) and `buildClientFiles(doc)` is the
   shared pair followed by a pair for each application with a descriptor of its own.
 - **New on `AppModel`:** `application`, `placed`, `appDownAt`, `spans` (stretches over which the
-  application's picture is constant: `appUp`, `serving`, `servingState`, `published`)
-  and `steady` (the same for the configuration as declared — a trace opens on its
+  application's picture is constant: `appUp`, `serving`, `servingState`, `published`,
+  `publishers`) and `steady` (the same for the configuration as declared — a trace opens on its
   first event, so its first span is already the failure). `NoEventKind` gains
   `app-down`: the application's host went down and never came back, so nothing is
   dialled; when it does come back the ladder starts there.
+- **Two publishers, and the loss being the sessions' database.** A manual failover
+  leaves the old primary open beside the new one (`FAILOVER.FORMER_PRIMARY_OPEN`), and
+  the role-based service is taken as published wherever a database is open read-write,
+  so for that stretch two members publish it. `AppSpan.publishers` lists every member
+  publishing at a listed address whose host is up — once each, in the ADDRESS_LIST order
+  of its first such address — with its state and whether the application reaches it;
+  `serving` (the first reached address's member) and `published` (the first address's
+  member) are unchanged, and two spans merge only when their publishers agree too.
+  That made "the loss" a different question. It is no longer the first instant nothing
+  publishes the service but the instant **the established sessions lose their
+  database**: the model tracks the member they are on (`sessionsOn`, the steady state's
+  serving member, or the first reached publisher when there was none) and the loss
+  (`lostAt`, the old `lost`) is when that member stops serving — application down, no
+  address of it dialable, or no longer publishing — or, with no member to be on,
+  when nothing serves. `servedAtLoss` names another member already publishing within
+  the application's reach at that instant, and is null in every run where the loss is
+  the service going away. Everything downstream (`startAt`, `tService`, the ladder,
+  the `noEvent` branches) reads the new `lostAt`: with the overlap, `tService` equals
+  `startAt`, and the ladder dials address 1 (the dead old primary — rst or timeout per
+  `deadBehaviour`, or an ORA-12514 refusal when only its process went down) and then
+  establishes on the new primary. Where no second member publishes the definition gives
+  the old instant (a RAC member with one instance down and another serving is still the
+  same member), and a run in which the old primary stays open to the end is
+  `noEvent('continues')` with `lostAt` null. `AppClaims.overlap` (`APP.TWO_PUBLISHERS`,
+  `model`, no citation) is present only when some span has two publishers: established
+  sessions stay on the database they are on; a new connection lands on the first address
+  that publishes (a random order with `LOAD_BALANCE`), which may be either; Oracle
+  documents none of it for two open primaries.
 - **The application decides nothing.** No rule, clock or decision in `sim/*` reads it;
   `test/app-placement.test.ts` pins that the run's facts are the same with and
   without it, beside the placement outcomes on the classic 1 + 1 + 1.
