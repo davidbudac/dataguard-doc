@@ -532,6 +532,26 @@ const TEXT: TextProbe[] = [
     },
   },
   {
+    finding: 'APP-02',
+    title: 'SBR-07 from the application\'s side: the old primary the sessions are on crashes at 60 while the new primary is already publishing',
+    oracle: 'nothing documented has two open primaries both publish a role-based service, so the overlap, the sessions staying on the database they are on and the new connection landing on the first address that publishes are this page\'s model (APP.TWO_PUBLISHERS, on FAILOVER.FORMER_PRIMARY_OPEN). The part that is documented is that the string moves on at all: FAILOVER is "Default on for the DESCRIPTION_LIST, DESCRIPTION, and ADDRESS_LIST parameters" (19c Net Services Reference, CLIENT.RETRY_AND_FAILOVER), which is how one traversal gets past the dead address 1 to the new primary at address 2',
+    run: () => {
+      const base = withApplication(classic(), siteId('dc1'));
+      const doc: TopologyDoc = { ...base, config: { ...base.config, fsfo: { ...base.config.fsfo, state: 'disabled' } } };
+      const t = simulate(doc, [
+        { at: 0, kind: 'cmd.failover', to: CLASSIC_IDS.standby },
+        { at: 60, kind: 'host.down', host: PRM },
+      ]);
+      const [ap] = computeApps(t, doc);
+      const spans = (ap?.spans ?? []).map((x) => `[${x.t0}..${x.t1 ?? 'end'}) ${x.publishers.map((q) => `${q.member}${q.reached ? '' : '(unreached)'}`).join('+') || 'none'}`);
+      return {
+        open: ap !== undefined && ap.lostAt === 60 && ap.sessionsOn === 'prm01' && ap.servedAtLoss === 'sby01'
+          && ap.tService === 60 && ap.tConn !== null && ap.claims.overlap?.basis === 'model',
+        now: `lostAt=${ap?.lostAt ?? '-'} sessionsOn=${ap?.sessionsOn ?? '-'} servedAtLoss=${ap?.servedAtLoss ?? '-'} tService=${ap?.tService ?? '-'} tConn=${ap?.tConn ?? '-'} publishers: ${spans.join(' ')}`,
+      };
+    },
+  },
+  {
     finding: 'ED-01b',
     title: 'ObserverPingInterval in a 19c script',
     oracle: 'the property is first documented in 21c',

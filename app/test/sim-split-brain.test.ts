@@ -283,23 +283,108 @@ describe('a manual failover with the old primary still running and reachable', (
 
 describe('the application\'s view of an old primary that stayed open', () => {
   /* The role-based service is published by a database open read-write, so the
-     old primary keeps publishing it for as long as it is open, and the
-     application that dials it first is never sent anywhere else. */
+     old primary keeps publishing it for as long as it is open, beside the new
+     primary once that opens. The sessions stay where they are; a new
+     connection lands on the first address that publishes. */
   const doc = fsfoOff();
   const manual: TimedEvent = { at: 0, kind: 'cmd.failover', to: SBY };
+  const crash = (at: number): TimedEvent => ({ at, kind: 'host.down', host: hostId('dc1-prm01') });
+  const dead = (d: TopologyDoc, deadBehaviour: 'drop' | 'rst'): TopologyDoc =>
+    ({ ...d, client: { ...d.client, deadBehaviour } });
 
-  it('keeps the service published on the old primary while it is open', () => {
-    const app = computeApp(doc.client, run(doc, [manual]), doc);
+  it('lists both publishers, in the order of the address list, once the new primary opens', () => {
+    const t = run(doc, [manual]);
+    const app = computeApp(doc.client, t, doc);
+    expect(doc.client.addresses.map((a) => a.host)).toEqual([hostId('dc1-prm01'), hostId('dc2-sby01')]);
     expect(app.noEvent).toBe(true);
-    expect(app.spans).toEqual([
-      { t0: 0, t1: null, appUp: true, serving: PRM, servingState: 'open-rw', published: PRM },
+    expect(app.noEventKind).toBe('continues');
+    expect(app.spans.map((x) => [x.t0, x.serving, x.published, x.publishers.map((p) => [p.member, p.state, p.reached])])).toEqual([
+      [0, PRM, PRM, [[PRM, 'open-rw', true]]],
+      [t.facts.tOpen, PRM, PRM, [[PRM, 'open-rw', true], [SBY, 'open-rw', true]]],
     ]);
+    expect(app.steady.publishers).toEqual([{ member: PRM, state: 'open-rw', reached: true }]);
+    expect(app.sessionsOn).toBe(PRM);
+    expect(app.lostAt).toBeNull();
+    expect(app.servedAtLoss).toBeNull();
   });
 
-  it('moves it to the new primary when the old one goes down', () => {
-    const app = computeApp(doc.client, run(doc, [manual, { at: 60, kind: 'host.down', host: hostId('dc1-prm01') }]), doc);
-    expect(app.spans.map((x) => [x.t0, x.serving])).toEqual([[0, PRM], [60, SBY]]);
+  it('says so in a model claim that cites nothing, only while two publish', () => {
+    const both = computeApp(doc.client, run(doc, [manual]), doc);
+    const c = both.claims.overlap;
+    expect(c?.basis).toBe('model');
+    expect(c?.cite).toEqual([]);
+    expect(c?.note).toMatch(/^APP\.TWO_PUBLISHERS:/);
+    expect(c?.note).toContain('FAILOVER.FORMER_PRIMARY_OPEN');
+    expect(claimWellFormed(c!)).toBe(true);
+    const plain = computeApp(doc.client, run(doc, [crash(60)]), doc);
+    expect(plain.claims.overlap).toBeUndefined();
+  });
+
+  it('moves the service to the new primary when the old one goes down', () => {
+    const app = computeApp(doc.client, run(doc, [manual, crash(60)]), doc);
+    expect(app.spans.map((x) => [x.t0, x.serving])).toEqual([[0, PRM], [25, PRM], [60, SBY]]);
     expect(app.spans.at(-1)?.servingState).toBe('open-rw');
+    expect(app.spans.at(-1)?.publishers.map((p) => p.member)).toEqual([SBY]);
+  });
+
+  it('loses the sessions when the old primary goes down during the overlap, though the service stays published', () => {
+    const app = computeApp(doc.client, run(doc, [manual, crash(60)]), doc);
+    expect(app.noEvent).toBe(false);
+    expect(app.lostAt).toBe(60);
+    expect(app.sessionsOn).toBe(PRM);
+    expect(app.servedAtLoss).toBe(SBY);
+    expect(app.startAt).toBe(60);
+    expect(app.tService).toBe(60);
+    /* One attempt: address 1 is the dead old primary, the default drops the
+       packets, and address 2 is the new primary, already publishing. */
+    expect(app.attempts).toHaveLength(1);
+    const dials = app.attempts[0]!.dials;
+    const cost = Math.min(doc.client.transportConnectTimeoutSeconds, doc.client.connectTimeoutSeconds ?? Infinity);
+    expect(doc.client.deadBehaviour).toBe('drop');
+    expect(dials[0]).toMatchObject({ index: 0, host: hostId('dc1-prm01'), kind: 'timeout', at: 60, cost });
+    expect(dials.at(-1)).toMatchObject({ host: hostId('dc2-sby01'), kind: 'establish' });
+    expect(app.tConn).toBeCloseTo(60 + cost + app.estab, 9);
+    expect(app.claims.overlap).toBeDefined();
+  });
+
+  it('an OS that refuses the dead address costs 0.15 s, not a timeout', () => {
+    const d = dead(doc, 'rst');
+    const app = computeApp(d.client, run(d, [manual, crash(60)]), d);
+    expect(app.attempts[0]!.dials[0]).toMatchObject({ kind: 'rst', cost: app.rst });
+    expect(app.tConn).toBeCloseTo(60 + app.rst + app.estab, 9);
+  });
+
+  it('a member.down of the old primary is the same loss, with its host still answering', () => {
+    const app = computeApp(doc.client, run(doc, [manual, { at: 45, kind: 'member.down', member: PRM }]), doc);
+    expect(app.lostAt).toBe(45);
+    expect(app.sessionsOn).toBe(PRM);
+    expect(app.servedAtLoss).toBe(SBY);
+    expect(app.startAt).toBe(45);
+    expect(app.tService).toBe(45);
+    /* The host is up and its listener has no such service: ORA-12514, then the new primary. */
+    expect(app.attempts[0]!.dials[0]).toMatchObject({ index: 0, kind: 'refuse', cost: app.refuse });
+    expect(app.attempts[0]!.dials.at(-1)).toMatchObject({ host: hostId('dc2-sby01'), kind: 'establish' });
+    expect(app.tConn).toBeCloseTo(45 + app.refuse + app.estab, 9);
+  });
+
+  it('a plain primary crash, with no manual failover, is still the service going away', () => {
+    const en = classicTopology({ observerLoc: 'dc3' });
+    const app = computeApp(en.client, run(en, [crash(60)]), en);
+    expect(app.lostAt).toBe(60);
+    expect(app.sessionsOn).toBe(PRM);
+    expect(app.servedAtLoss).toBeNull();
+    expect(app.startAt).toBe(60);
+    /* Unchanged by the redefinition: pinned from the model before it. */
+    expect(app.tService).toBe(115);
+    expect(app.tConn).toBeCloseTo(120.3, 9);
+    expect(app.claims.overlap).toBeUndefined();
+  });
+
+  it('a run in which nothing goes wrong has sessions on the primary and no loss', () => {
+    const app = computeApp(doc.client, run(doc, [{ at: 0, kind: 'observer.stop', observer: CLASSIC_IDS.observer }]), doc);
+    expect(app.lostAt).toBeNull();
+    expect(app.sessionsOn).toBe(PRM);
+    expect(app.servedAtLoss).toBeNull();
   });
 });
 
