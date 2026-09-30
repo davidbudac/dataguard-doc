@@ -213,6 +213,14 @@ export interface TopoCanvasProps {
    * made to fit it.
    */
   fitted?: boolean;
+  /**
+   * The drawing is at its true size in a region of its own (Break's Split
+   * before `Fit`): the wrap is the scroll port and centres what is smaller
+   * than it, so nothing is capped and 100% means 1:1 on screen.
+   */
+  trueSize?: boolean;
+  /** Whether there is more drawing than region, so a grab has something to move. */
+  pannable?: boolean;
   /** The wheel, one rung of the caller's ladder per notch (`WHEEL_NOTCH`). */
   onZoomStep?: (dir: 1 | -1) => void;
   onCloseBar?: () => void;
@@ -1585,7 +1593,10 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
          room; `is-pannable` is the grab cursor, and only where there is
          something to grab -- below 1:1 the drawing fits and dragging it would
          scroll nothing, so the cursor would be a promise the page cannot keep. */
-      class={`tp-wrap${zoomFactor === 1 ? '' : props.fitted === true ? ' is-fitted' : ' is-zoomed'}${zoomFactor > 1 && props.fitted !== true ? ' is-pannable' : ''}`}
+      class={`tp-wrap${props.trueSize === true ? ' is-zoomed is-true'
+        : zoomFactor === 1 && props.fitted !== true ? '' : props.fitted === true ? ' is-fitted' : ' is-zoomed'}${
+        props.trueSize === true ? (props.pannable === true ? ' is-pannable' : '')
+          : zoomFactor > 1 && props.fitted !== true ? ' is-pannable' : ''}`}
       ref={props.wrapRef}
     >
       <svg
