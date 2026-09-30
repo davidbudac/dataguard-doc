@@ -14,7 +14,7 @@
  */
 
 import { useCallback, useEffect, useLayoutEffect, useRef } from 'preact/hooks';
-import { trace } from '@/state/derived';
+import { trace , runShown } from '@/state/derived';
 import {
   canEdit, floating, gridOn, inspectorOpen, introOpen, introPage, mode, modeGuide, railCollapsed, toast, viewport,
 } from '@/state/view';
@@ -27,6 +27,7 @@ import { Guidance, IntroCard } from './Guidance';
 import { usePrintExpand } from './print';
 import { installShortcuts } from './shortcuts';
 import { Readout } from './Readout';
+import { TerseReadout } from './break/RunBar';
 import { IssuePanel } from './IssuePanel';
 import { Sheet } from './common/Sheet';
 import { CanvasSlot } from './canvas/CanvasSlot';
@@ -267,10 +268,14 @@ function Stage({ m, lanes = false }: { m: Mode; lanes?: boolean }) {
    small timeline under them. The Detailed timeline has no dock: its lanes are
    the whole stage (break/LanesView.tsx). */
 function FloatDock() {
+  /* With a run the readings are the one terse line the Detailed timeline's bar
+     carries (break/RunBar.tsx): the dock holds the scenarios and the small
+     timeline too, and three rows of cards over them left the drawing a strip. */
+  const run = runShown();
   return (
     <>
-      <div class="dock-status">
-        <Readout />
+      <div class={run ? 'dock-status is-run' : 'dock-status'}>
+        {run ? <TerseReadout run /> : <Readout />}
         <FindingsChips />
       </div>
       <ScenarioRow />

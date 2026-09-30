@@ -264,6 +264,9 @@ button.issue{border-bottom:1px solid var(--ln)}
     border-radius:var(--r-card)}
   .dock-status{display:flex;align-items:center;gap:12px;padding:0 14px 0 0;min-width:0;
     flex:0 0 auto}
+  /* Topology with a run: the readings as one terse line (App.tsx, FloatDock). */
+  .dock-status.is-run{padding:7px 14px 7px 4px}
+  .dock-status.is-run>.sb-ro{border-left:0;margin-left:0}
   .dock-status>.readout{flex:1 1 auto;min-width:0;min-height:0;border-bottom:0;
     background:transparent}
 
@@ -281,11 +284,11 @@ button.issue{border-bottom:1px solid var(--ln)}
   /* Topology's scenarios: one wrapping row between the readings and the small
      timeline, on the same 16 px sides and a hairline above it (the timeline
      brings its own). Docked, the readout above already has its bottom rule. */
-  .dock-scn{display:flex;flex-wrap:wrap;align-items:center;gap:6px 6px;padding:8px 16px;
+  .dock-scn{display:flex;flex-wrap:wrap;align-items:center;gap:4px 4px;padding:6px 16px;
     border-top:1px solid var(--ln)}
   .app-dock>.readout+.dock-scn{border-top:0}
   .dock-scn-k{font-size:11.5px;line-height:1.4;color:var(--ik3);margin-right:4px;white-space:nowrap}
-  .dock-scn .btn{padding:3px 10px;font-size:12px;white-space:nowrap}
+  .dock-scn .btn{padding:2px 7px;font-size:11.5px;white-space:nowrap}
   .dock-scn .btn[aria-pressed="true"]{color:var(--ik);background:var(--sf3);border-color:var(--ln2);
     font-weight:600}
   .dock-scn .ctl-off{gap:6px}

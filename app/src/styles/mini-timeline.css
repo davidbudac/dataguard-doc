@@ -38,3 +38,6 @@
 .tl-svg .mtl-playhead:focus-visible .mtl-playhead-grip { fill: var(--vi); }
 .tl-svg .mtl-playhead:focus-visible .mtl-playhead-ln { stroke: var(--vi); stroke-dasharray: none; }
 .tl-svg .mtl-playhead.is-playing .mtl-playhead-ln { stroke-dasharray: none; }
+
+/* As on the Detailed timeline bar: a grey step button says why in its title. */
+.mtl .tl-transport .why { display: none; }

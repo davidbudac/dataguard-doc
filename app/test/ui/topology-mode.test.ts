@@ -223,8 +223,9 @@ describe('a scenario from the dock makes the run', () => {
     expect(r.querySelector('.mtl .mtl-mark text')?.textContent).toBe('1');
     /* The drawing is tinted by its state at the playhead, the readout reads the run. */
     expect(tinted(r)).toBeGreaterThan(0);
-    const readout = r.querySelector('.readout')?.textContent ?? '';
-    expect(readout).toContain('Drawing at');
+    /* ...as the one terse line the Detailed timeline's bar carries, not the cards. */
+    expect(r.querySelector('.dock-status.is-run .readout')).toBeNull();
+    const readout = r.querySelector('.dock-status.is-run .sb-ro')?.textContent ?? '';
     expect(readout).toContain('Outcome');
     /* The headline is the plain sentence, not the editable equation. */
     expect(r.querySelector('.mtl-cap')?.textContent).toBeTruthy();
