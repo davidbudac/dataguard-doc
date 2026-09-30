@@ -79,19 +79,19 @@
 .insp .btn.is-faded{opacity:.46}
 /* At rest the rail's own buttons (Remove, + Instance, + Rule, + Group, ...) have
    a box: a ghost with no border read as loose text beside the fields that sit
-   in boxes. Text stays --ik (well past 4.5:1 in both schemes); the edge is
-   --ln2 and the fill --sf3, so the button is findable without competing with
-   the field beside it. The header's icon buttons, the Hints switch and the
-   primary / danger variants keep their own looks. */
+   in boxes. The box is the published page's small rail button (`.rail-hd
+   button`): transparent, a strong hairline, a 2 px corner, secondary ink that
+   goes to full ink and a darker edge on hover. A filled box was one more grey
+   slab per row. The header's icon buttons, the Hints switch and the primary /
+   danger variants keep their own looks. */
 .insp .btn:not(.is-icon):not(.is-quiet):not(.is-primary):not(.is-solid):not(.is-danger){
-  color:var(--ik);background:var(--sf3);border-color:var(--ln2)}
+  color:var(--ik2);background:transparent;border-color:var(--ln2);border-radius:2px}
 .insp .btn:not(.is-icon):not(.is-quiet):not(.is-primary):not(.is-solid):not(.is-danger):hover:not(:disabled){
-  background:var(--sf2);border-color:var(--ik3)}
+  color:var(--ik);background:transparent;border-color:var(--ik3)}
 /* A refusal is a sentence under the control it explains, full width, never
    squeezed beside a button. */
-.insp .why{display:block;border-radius:8px;padding:4px 10px;border:0;
-  background:color-mix(in srgb,var(--ik3) 12%,var(--sf));
-  font-size:12px;line-height:1.45}
+.insp .why{display:block;padding:0;border:0;border-radius:0;background:none;
+  font-size:12px;line-height:1.45;color:var(--ik3)}
 .insp .tag{font-family:var(--sans);font-size:11.5px;font-weight:500;text-transform:none;
   letter-spacing:0;padding:1px 8px;border-radius:999px}
 .insp .tag.mono{font-family:var(--mono);font-size:11px}
@@ -190,22 +190,23 @@
 
 /* ---------------- controls ---------------- */
 
-.insp .field-in{height:30px;padding:0 8px;font-size:12px;color:var(--ik);background:var(--sf);
-  border:1px solid var(--ln2);border-radius:var(--r-ctl);width:100%;min-width:0}
+.insp .field-in{height:30px;padding:0 8px;font-size:12px;color:var(--ik);background:var(--sf2);
+  border:1px solid var(--ln2);border-radius:2px;width:100%;min-width:0}
 .insp .field-in:hover:not(:disabled){border-color:var(--ik3)}
 .insp .field-in:focus{border-color:var(--vi)}
 .insp select.field-in{cursor:pointer;padding-right:4px}
-.insp input[type="range"].field-in{height:18px;padding:0;background:transparent;border:0;
-  accent-color:var(--vi)}
+.insp input[type="range"].field-in{height:18px;padding:0;background:transparent;border:0}
 .insp input[type="range"].field-in:focus{outline:none}
 .insp input[type="range"].field-in:focus-visible{outline:2px solid var(--fc);outline-offset:3px}
 
-/* A segmented control of Oracle values: mono, on a sunken track. Full width
-   in a stack, each option an equal share; its natural width in a row. */
-.insp .field .seg{display:flex;flex-wrap:nowrap;max-width:100%;padding:2px;gap:2px;
-  border-radius:8px;background:var(--sf2)}
+/* A segmented control of Oracle values: mono, in the published page's bordered
+   box (shell.css). Full width in a stack, each option an equal share; its
+   natural width in a row. The hairlines between options are 1 px gaps over a
+   hairline-coloured track rather than a border per button, so they stay even
+   when a narrow rail wraps the options onto a second line. */
+.insp .field .seg{display:flex;flex-wrap:nowrap;max-width:100%;gap:1px;background:var(--ln)}
 .insp .field .seg button{font-family:var(--mono);font-size:11px;letter-spacing:0;
-  padding:4px 8px;min-height:24px;border-radius:6px;white-space:nowrap}
+  padding:4px 8px;min-height:24px;border-right:0;white-space:nowrap}
 /* Three long Oracle values (MAXPROTECTION | MAXAVAILABILITY | MAXPERFORMANCE)
    fit a 290 px row at 10.5 px; on a narrower rail the options wrap as whole
    words onto a second line rather than being clipped. */
@@ -214,7 +215,8 @@
 
 .opt{display:inline-flex;align-items:center;gap:var(--s2);font-size:12.5px;color:var(--ik2);
   cursor:pointer}
-.opt input{accent-color:var(--vi);margin:0;width:15px;height:15px;cursor:pointer}
+/* The flag's switch is drawn in shell.css; the label only spaces it. */
+.opt input{margin:0;cursor:pointer}
 .opt .mono{font-size:12px;color:var(--ik)}
 .opt.is-flag .field-val{line-height:16px}
 .opt input:disabled{cursor:not-allowed}

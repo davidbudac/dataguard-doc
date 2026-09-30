@@ -11,7 +11,10 @@
 
 :root{
   --r-card:12px;
-  --r-ctl:7px;
+  /* The corner of every button and input: 3 px, next to the 2 px of the
+     bordered controls, so the two read as one family with the published page
+     rather than as soft pills beside its hairline boxes. */
+  --r-ctl:3px;
   --float-m:14px;
   --w-float-rail:340px;
   /* The room the floating inspector takes from the right edge: its width and
@@ -22,13 +25,6 @@
 @media (prefers-color-scheme:dark){:root{--sh-card:0 1px 2px rgba(0,0,0,.5),0 10px 28px rgba(0,0,0,.45)}}
 :root[data-theme="dark"]{--sh-card:0 1px 2px rgba(0,0,0,.5),0 10px 28px rgba(0,0,0,.45)}
 :root[data-theme="light"]{--sh-card:0 1px 2px rgba(16,25,34,.05),0 8px 24px rgba(16,25,34,.08)}
-/* The lifted option of a segmented control. In light it is the card surface
-   on a sunken track; in dark the surface and the track are two shades apart,
-   so the lift is the hairline token instead. */
-:root{--seg-on:var(--sf)}
-@media (prefers-color-scheme:dark){:root{--seg-on:var(--ln2)}}
-:root[data-theme="dark"]{--seg-on:var(--ln2)}
-:root[data-theme="light"]{--seg-on:var(--sf)}
 
 /* ================= the shared controls, quieter ================= */
 
@@ -63,29 +59,26 @@
 .btn.is-icon svg .fill{fill:currentColor;stroke:none}
 select.btn{padding-right:8px}
 
-/* Segmented controls as soft pills: a sunken track, the pressed option lifted
-   out of it. No underline, no hairline between options. */
-.seg{border:0;border-radius:9px;padding:3px;gap:2px;background:var(--sf2);overflow:visible}
+/* Segmented controls keep the published page's bordered look (shell.css: a
+   hairline box, hairlines between the options, the pressed one on the violet
+   fill with a 2 px underline) so they match the page they replaced. All that
+   changes here is the face: sans for this page's own words, where the
+   fragment's mono uppercase shouted every label. Oracle values are set mono
+   again in the inspector. */
 .seg button{font-family:var(--sans);font-size:12.5px;font-weight:500;letter-spacing:0;
-  color:var(--ik2);background:transparent;border:0;border-radius:6px;padding:4px 11px}
-.seg button:hover:not(:disabled){color:var(--ik);background:transparent}
-.seg button[aria-pressed="true"]{color:var(--ik);background:var(--seg-on);font-weight:600;
-  box-shadow:0 1px 2px rgba(16,25,34,.14)}
-.seg button:focus-visible{outline-offset:0;border-radius:6px}
+  color:var(--ik2);padding:4px 11px}
 
-/* The top bar's two segmented controls: the modes are the page's own
-   navigation, so they are the one full-size pill; the release is small. */
-.topbar-modes .seg button{font-size:13px;letter-spacing:0;padding:5px 14px}
-.topbar-modes .seg button[aria-pressed="true"],
-.topbar-modes .seg button[aria-pressed="true"]:hover{color:var(--ik);background:var(--seg-on);
-  box-shadow:0 1px 2px rgba(16,25,34,.14)}
+/* The top bar's two segmented controls. The modes are navigation and are set
+   as tabs in shell.css; they only get the roomier size here, tall enough that the underline sits
+   on the bar's lower edge rather than under the words. The release is
+   small and mono, in the ordinary bordered look. */
+.topbar-modes .seg button{font-size:13px;letter-spacing:0;line-height:16px;padding:12px 14px}
 .topbar-group .seg button{font-family:var(--mono);font-size:11.5px;letter-spacing:0;padding:3px 8px}
 
-/* Inputs: rounded, hairline, the value in mono. */
-.field-in{border-radius:var(--r-ctl);border-color:var(--ln);background:var(--sf);color:var(--ik)}
-.field-in:focus{border-color:var(--vi)}
-
-.why{border-color:transparent}
+/* Inputs keep the published page's typein look (shell.css: a 2 px corner, a
+   strong hairline, the sunken fill, a violet edge on focus); only the value's
+   ink is the reading ink here, not the accent. */
+.field-in{color:var(--ik)}
 
 /* ================= the rails ================= */
 
@@ -401,7 +394,7 @@ button.issue{border-bottom:1px solid var(--ln)}
   .topbar-brand{flex:0 1 auto}
   .topbar-brand .doc-picker{flex:0 1 auto;min-width:7ch}
   .topbar-modes{margin-inline:auto}
-  .topbar-modes .seg button{padding:5px 10px}
+  .topbar-modes .seg button{padding:12px 10px}
   .topbar-group{flex:0 0 auto}
   .topbar-group>.seg{margin-right:2px}
   .topbar-acts{margin-left:2px;gap:4px}

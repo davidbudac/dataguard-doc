@@ -313,8 +313,8 @@
 .tl-tp-speed.is-on { color: var(--ik); border-color: var(--vi); background: var(--vif); }
 .tl-tp-speed:disabled { color: var(--ik3); border-color: var(--ln); cursor: default; }
 
-/* Every gray control says why it is gray, in place -- `.why` is the one pill,
-   styled in shell.css. Beside a transport button it stays on one line. */
+/* Every gray control says why it is gray, in place -- `.why` is the one plain-text
+   note, styled in shell.css. Beside a transport button it stays on one line. */
 .tl-transport .why { white-space: nowrap; }
 
 /* The screen-reader table uses base.css's `.sr`; nothing extra is needed. */

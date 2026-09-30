@@ -116,16 +116,21 @@
   justify-content:flex-end}
 
 /* Hierarchy in the bar (ui.md SS3f). The modes are what the page is *for*, so
-   they are the largest control on it and the one that is on carries a solid
-   fill rather than a tint with an underline. Everything on the right -- the
+   they are the largest control on it -- and, being navigation rather than a
+   setting, they are set as the published page sets its chapter tabs: no box,
+   no track, no hairline between them, plain secondary ink, and the one that is
+   on takes full ink, weight 600 and a 2 px violet underline. The underline is
+   an inset shadow so it moves nothing. Everything on the right -- the
    release, the theme, undo/redo, the ? -- answers a question the reader asks
-   once a session, so it is a size smaller and an ink quieter. --sf as the
-   pressed foreground rather than a white: the surface token inverts with the
-   theme exactly as --vi does, so the pair stays legible in both. */
-.topbar-modes .seg button{font-size:12.5px;letter-spacing:.06em;padding:8px 16px}
-.topbar-modes .seg button[aria-pressed="true"]{background:var(--vi);color:var(--sf);
-  box-shadow:none}
-.topbar-modes .seg button[aria-pressed="true"]:hover{background:var(--vi);color:var(--sf)}
+   once a session, so it is a size smaller, an ink quieter, and keeps the
+   ordinary hairline-bordered segmented look. */
+.topbar-modes .seg{border:0;border-radius:0;overflow:visible;background:transparent}
+.topbar-modes .seg button{font-size:12.5px;letter-spacing:.06em;padding:8px 16px;
+  color:var(--ik2);background:transparent;border-right:0}
+.topbar-modes .seg button:hover:not(:disabled){color:var(--ik);background:transparent}
+.topbar-modes .seg button[aria-pressed="true"],
+.topbar-modes .seg button[aria-pressed="true"]:hover:not(:disabled){
+  background:transparent;color:var(--ik);font-weight:600;box-shadow:inset 0 -2px 0 var(--vi)}
 .topbar-group .seg button{font-size:10.5px;padding:4px 9px;letter-spacing:.08em}
 .topbar-group .btn{font-size:10.5px;padding:5px 10px;color:var(--ik3)}
 .topbar-group .btn:hover:not(:disabled){color:var(--ik)}
@@ -225,14 +230,15 @@
 .ctl-off{display:inline-flex;align-items:center;gap:8px}
 .ctl-off>.is-faded{opacity:.46}
 
-/* The refusal is a sentence, so it is set as one (ui.md SS3f). It used to be
-   mono uppercase, which put A PRIMARY APPLIES NO REDO OF ITS OWN. three times
-   down one rail in the loudest voice on the page -- for a remark that is only
-   ever read once. Same pill, same place, same words: a quieter face. */
-.why{align-self:flex-start;font-size:11.5px;letter-spacing:0;
-  color:var(--ik3);background:var(--sf2);
-  border:1px solid var(--ln);border-radius:999px;padding:3px 10px;line-height:1.45;
-  white-space:normal}
+/* The refusal is a sentence, so it is set as one (ui.md SS3f): plain small
+   text in the quiet ink, with no fill and no outline, the way the published
+   page sets a control's note (`.ctl-note`). It used to be mono uppercase, then
+   a grey pill; a pill per refusal, three down one rail, made the page look
+   busier than the refusals are important. The outlined capsule the published
+   page keeps (`.ctl-pill`) is for a label of a word or two, which is not what
+   this carries. */
+.why{align-self:flex-start;font-size:11.5px;letter-spacing:0;color:var(--ik3);
+  background:none;border:0;padding:0;line-height:1.45;white-space:normal}
 
 /* ---------------- segmented control ---------------- */
 
@@ -273,6 +279,48 @@
 .field-in:focus-visible{outline:2px solid var(--fc);outline-offset:1px}
 .field-in:disabled{opacity:.45;cursor:not-allowed}
 .field.is-off>*:not(.why){opacity:.46}
+
+/* A slider, drawn as the published page draws it: a 3 px track on the sunken
+   token and a round violet thumb ringed in the surface colour, so the thumb
+   stays readable over the track and over the card behind it. The native
+   accent-color paint is not used -- it is a different blue-and-grey in every
+   browser and takes no token. A disabled slider greys its thumb. */
+input[type="range"]{-webkit-appearance:none;appearance:none;width:100%;height:20px;
+  margin:0;background:transparent;cursor:pointer}
+input[type="range"]::-webkit-slider-runnable-track{height:3px;background:var(--sf3);
+  border-radius:2px;border:0}
+input[type="range"]::-moz-range-track{height:3px;background:var(--sf3);border-radius:2px;border:0}
+input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;
+  width:14px;height:14px;margin-top:-5.5px;border-radius:50%;background:var(--vi);
+  border:2px solid var(--sf);box-shadow:0 0 0 1px var(--vi)}
+input[type="range"]::-moz-range-thumb{width:12px;height:12px;border-radius:50%;
+  background:var(--vi);border:2px solid var(--sf);box-shadow:0 0 0 1px var(--vi)}
+input[type="range"]:disabled{cursor:not-allowed}
+input[type="range"]:disabled::-webkit-slider-thumb{background:var(--ik3);box-shadow:0 0 0 1px var(--ik3)}
+input[type="range"]:disabled::-moz-range-thumb{background:var(--ik3);box-shadow:0 0 0 1px var(--ik3)}
+
+/* A flag is a switch, as it is on the published page (`.sw-track`): a small
+   track with a knob that sits left when off and slides right, in the accent,
+   when on. It is the checkbox itself with its native paint switched off --
+   the knob is a radial gradient on the input's own background, so no markup
+   changes and the element stays a real, focusable, keyboard-operable checkbox.
+   The knob is a 14 px tile holding a 10 px disc, so it sits 2 px in from the
+   track's border at either end. */
+input[type="checkbox"]{-webkit-appearance:none;appearance:none;flex:0 0 auto;
+  width:30px;height:16px;margin:0;border-radius:8px;cursor:pointer;
+  border:1px solid var(--ln2);
+  background-color:var(--sf3);
+  background-image:radial-gradient(circle,var(--ik3) 0 5px,transparent 5.5px);
+  background-repeat:no-repeat;background-size:14px 14px;background-position:0 50%}
+input[type="checkbox"]:checked{border-color:var(--vi);background-color:var(--vif);
+  background-image:radial-gradient(circle,var(--vi) 0 5px,transparent 5.5px);
+  background-position:100% 50%}
+input[type="checkbox"]:focus-visible{outline:2px solid var(--fc);outline-offset:2px;
+  border-radius:8px}
+input[type="checkbox"]:disabled{opacity:.5;cursor:not-allowed}
+@media (prefers-reduced-motion:no-preference){
+  input[type="checkbox"]{transition:background-position .16s ease,background-color .16s ease,
+    border-color .16s ease}}
 
 /* ---------------- readout chips ---------------- */
 

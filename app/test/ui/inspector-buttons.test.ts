@@ -2,9 +2,11 @@
  * The rail's own buttons (Remove, + Instance, + Rule, ...) have a box at rest.
  *
  * They used to be ghosts -- no border until the pointer was on them -- and read
- * as loose text beside the boxed fields. The rule is in `inspector.css`; this
- * pins it and the contrast of its text, from the same token file the browser
- * reads, in both schemes.
+ * as loose text beside the boxed fields; then filled grey slabs. They are now the
+ * published page's small rail button: transparent, a strong hairline, secondary
+ * ink. The rule is in `inspector.css`; this pins it and the contrast of its
+ * text on the rail's surface, from the same token file the browser reads, in
+ * both schemes.
  */
 
 import { readFileSync } from 'node:fs';
@@ -32,14 +34,14 @@ describe('the rail buttons', () => {
     return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05);
   };
 
-  it('have a box at rest: an edge and a fill, on the buttons that are plain', () => {
-    expect(css).toMatch(/\.insp \.btn:not\(\.is-icon\)[^{]*\{\s*color:var\(--ik\);background:var\(--sf3\);border-color:var\(--ln2\)/);
+  it('have a box at rest: an edge and no fill, on the buttons that are plain', () => {
+    expect(css).toMatch(/\.insp \.btn:not\(\.is-icon\)[^{]*\{\s*color:var\(--ik2\);background:transparent;border-color:var\(--ln2\)/);
   });
 
   it('read at 4.5:1 or better in both schemes', () => {
     for (const head of [':root[data-theme="light"]', ':root[data-theme="dark"]']) {
       const t = scheme(head);
-      expect(ratio(t['ik']!, t['sf3']!), head).toBeGreaterThanOrEqual(4.5);
+      expect(ratio(t['ik2']!, t['sf']!), head).toBeGreaterThanOrEqual(4.5);
     }
   });
 });
