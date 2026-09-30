@@ -364,3 +364,41 @@ Status: todo
 Note: the popped-out timeline window and the `A` key were not exercised in a browser; the
 Events rail still folds on the way into the Detailed timeline (the sketch drew it open).
 
+## Track 11 — the timeline is the control (2026-10-01)
+
+Details: `app/design/ui.md`, "The timeline is the control". Two of six sketches, chosen by
+the user: prototype 3 for Topology's dock, prototype 6 for the Detailed timeline.
+
+### 11.1 Topology's dock: Break row with the three chips, the small timeline as the control
+Status: done (on branch `playground`)
+Note: `break/PlayDock.tsx`, `break/SettingChips.tsx`; `timeline/MiniTimeline.tsx` draws the
+application's lanes, labelled brackets with grips, the editable label number, outcome badges
+and pins, and has no caption.
+
+### 11.2 The Detailed timeline: no settings column, chips on the bar, braces open a popover
+Status: done (on branch `playground`)
+Note: `timeline/BracePopover.tsx`; `TuneStrip`, the `Settings` toggle and `dg-tune` are deleted.
+
+### 11.3 Leftovers
+Status: todo
+Note:
+- The retry-window grip drags `RETRY_DELAY` (else the connect timeout) and the window moves
+  by the number of gaps for each second: a sum, not a field. The number on its label is
+  therefore not a box. Whether that reads as honest is for the browser pass.
+- A pin under a grip at a decision (a threshold's end and a decision mark coincide) can cover
+  it; the grips are drawn last so they win, but the pin's head is then hard to see.
+- The application's four connect-string timings and the *Defaults* / *Tuned* presets had a
+  home in the column (Detailed timeline); now only the inspector and the Application
+  timeline's own strip have them, and the small timeline's retry-window grip reaches one.
+- The apply lag and the role transition are reachable only where the run draws their brace
+  (terminal recovery, catch-up, the role change); the column had them always. The lag limit
+  is only in the threshold's popover.
+- The small timeline always draws the application's lanes, whatever the Detailed timeline's
+  *App view* toggle says (`appLanesShown`); the readout and `restPlayhead` still read the
+  flag, so with it off the playhead's resting place is on an axis the small timeline's may
+  stretch past. Not yet checked in a browser.
+- The docked narrow layout (< 1024 px) has the scenarios and the small timeline but no chips:
+  its dock is not `PlayDock`.
+- Not exercised in a browser: the popover's placement and its flip below, the chips' wrap in
+  the dock at 1024 px, and the label packing on a crowded lane.
+- 9.4's ghost of the previous run is still todo.
