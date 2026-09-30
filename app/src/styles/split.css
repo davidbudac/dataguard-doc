@@ -250,7 +250,7 @@
    The column scrolls by itself when it is taller than the view. */
 .tune-col {
   --px: 12px;
-  flex: 0 0 244px; width: 244px; min-height: 0; padding: 0 0 12px;
+  flex: 0 0 284px; width: 284px; min-height: 0; padding: 0 0 12px;
   flex-direction: column; flex-wrap: nowrap; align-items: stretch; gap: 0;
   overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain;
   scrollbar-width: thin; scrollbar-color: var(--ln2) transparent;
