@@ -26,7 +26,9 @@ import type { BoundKey, DatabaseMember, MemberId, TopologyDoc, Trace } from '@/e
 import { setApplyLag, setFsfoThreshold, setRoleTransition } from '../inspector/edits';
 import { markTuned } from './run';
 
-export type TuneId = 'threshold' | 'roleTransition' | 'applyLag';
+/* `clientTiming` is a connect-string field (ui/inspector/client-timing.ts) that the
+   small timeline offers a grip for; `applyTune` knows the first three only. */
+export type TuneId = 'threshold' | 'roleTransition' | 'applyLag' | 'clientTiming';
 
 export interface Tune {
   id: TuneId;

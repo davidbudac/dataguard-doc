@@ -30,14 +30,15 @@ const isCurrent = (t: Template, list: unknown, healthy: boolean): boolean =>
     ? healthy && (list as readonly unknown[]).length === 0
     : t.events.length > 0 && same(list, sortEvents(t.events)));
 
-export function ScenarioRow() {
+/** `label` is the key at the left of the row, `Scenarios` unless a caller words it otherwise. */
+export function ScenarioRow({ label = 'Scenarios' }: { label?: string } = {}) {
   if (!canEdit(viewport.value)) return null;
   const doc = topology.value;
   const list = events.value;
   const healthy = healthyRun.value;
   return (
     <div class="dock-scn" role="group" aria-label="One-click scenarios">
-      <span class="dock-scn-k">Scenarios</span>
+      <span class="dock-scn-k">{label}</span>
       {shelf(doc, 0).map((t) => (
         <Action
           key={t.id}

@@ -14,7 +14,7 @@
  */
 
 import { useCallback, useEffect, useLayoutEffect, useRef } from 'preact/hooks';
-import { trace , runShown } from '@/state/derived';
+import { trace } from '@/state/derived';
 import {
   canEdit, floating, gridOn, inspectorOpen, introOpen, introPage, mode, modeGuide, railCollapsed, toast, viewport,
 } from '@/state/view';
@@ -22,17 +22,17 @@ import type { Mode } from '@/state/view';
 import { CollectDialog, CollectionNotice } from './import/CollectDialog';
 import { TopBar } from './TopBar';
 import { DocActions, DocCount, DocPicker } from './StatusBar';
-import { FindingsChips, FindingsPopover, FindingToast } from './Findings';
+import { FindingsPopover, FindingToast } from './Findings';
 import { Guidance, IntroCard } from './Guidance';
 import { usePrintExpand } from './print';
 import { installShortcuts } from './shortcuts';
 import { Readout } from './Readout';
-import { TerseReadout } from './break/RunBar';
 import { IssuePanel } from './IssuePanel';
 import { Sheet } from './common/Sheet';
 import { CanvasSlot } from './canvas/CanvasSlot';
 import { Inspector } from './inspector/Inspector';
 import { BreakRail } from './break/BreakRail';
+import { PlayDock } from './break/PlayDock';
 import { ScenarioRow } from './break/ScenarioRow';
 import { Panels } from './panels/Panels';
 import { LearnShell, LearnWorkbenchHeader } from './learn/LearnShell';
@@ -263,25 +263,11 @@ function Stage({ m, lanes = false }: { m: Mode; lanes?: boolean }) {
   return <HomeCanvas />;
 }
 
-/* Topology's floating dock: the readings and the finding chips on one row, the
-   scenarios in a row of their own and, while there is a run to glance at, the
-   small timeline under them. The Detailed timeline has no dock: its lanes are
-   the whole stage (break/LanesView.tsx). */
+/* Topology's floating dock: the scenarios with the discrete settings, the readings
+   and the small timeline that is the control (break/PlayDock.tsx). The Detailed
+   timeline has no dock: its lanes are the whole stage (break/LanesView.tsx). */
 function FloatDock() {
-  /* With a run the readings are the one terse line the Detailed timeline's bar
-     carries (break/RunBar.tsx): the dock holds the scenarios and the small
-     timeline too, and three rows of cards over them left the drawing a strip. */
-  const run = runShown();
-  return (
-    <>
-      <div class={run ? 'dock-status is-run' : 'dock-status'}>
-        {run ? <TerseReadout run /> : <Readout />}
-        <FindingsChips />
-      </div>
-      <ScenarioRow />
-      <MiniTimeline />
-    </>
-  );
+  return <PlayDock />;
 }
 
 /* The two parts that can be popped out into a window of their own
