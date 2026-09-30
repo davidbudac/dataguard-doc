@@ -193,7 +193,7 @@
 .insp .field-in{height:30px;padding:0 8px;font-size:12px;color:var(--ik);background:var(--sf2);
   border:1px solid var(--ln2);border-radius:2px;width:100%;min-width:0}
 .insp .field-in:hover:not(:disabled){border-color:var(--ik3)}
-.insp .field-in:focus{border-color:var(--vi)}
+.insp .field-in:focus{border-color:var(--fc)}
 .insp select.field-in{cursor:pointer;padding-right:4px}
 .insp input[type="range"].field-in{height:18px;padding:0;background:transparent;border:0}
 .insp input[type="range"].field-in:focus{outline:none}

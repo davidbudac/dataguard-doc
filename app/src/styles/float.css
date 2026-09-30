@@ -60,8 +60,8 @@
 select.btn{padding-right:8px}
 
 /* Segmented controls keep the published page's bordered look (shell.css: a
-   hairline box, hairlines between the options, the pressed one on the violet
-   fill with a 2 px underline) so they match the page they replaced. All that
+   hairline box, hairlines between the options, the pressed one lifted and
+   underlined in the neutral ink, not the fragment's violet) so they match the page they replaced. All that
    changes here is the face: sans for this page's own words, where the
    fragment's mono uppercase shouted every label. Oracle values are set mono
    again in the inspector. */
@@ -76,8 +76,8 @@ select.btn{padding-right:8px}
 .topbar-group .seg button{font-family:var(--mono);font-size:11.5px;letter-spacing:0;padding:3px 8px}
 
 /* Inputs keep the published page's typein look (shell.css: a 2 px corner, a
-   strong hairline, the sunken fill, a violet edge on focus); only the value's
-   ink is the reading ink here, not the accent. */
+   strong hairline, the sunken fill, the focus colour on the edge when focused);
+   only the value's ink is the reading ink here, not the fragment's violet. */
 .field-in{color:var(--ik)}
 
 /* ================= the rails ================= */

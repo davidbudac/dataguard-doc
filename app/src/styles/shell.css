@@ -119,7 +119,8 @@
    they are the largest control on it -- and, being navigation rather than a
    setting, they are set as the published page sets its chapter tabs: no box,
    no track, no hairline between them, plain secondary ink, and the one that is
-   on takes full ink, weight 600 and a 2 px violet underline. The underline is
+   on takes full ink, weight 600 and a 2 px underline in the same ink. Violet
+   is the observer's colour on this page, so control chrome never takes it. The underline is
    an inset shadow so it moves nothing. Everything on the right -- the
    release, the theme, undo/redo, the ? -- answers a question the reader asks
    once a session, so it is a size smaller, an ink quieter, and keeps the
@@ -130,7 +131,7 @@
 .topbar-modes .seg button:hover:not(:disabled){color:var(--ik);background:transparent}
 .topbar-modes .seg button[aria-pressed="true"],
 .topbar-modes .seg button[aria-pressed="true"]:hover:not(:disabled){
-  background:transparent;color:var(--ik);font-weight:600;box-shadow:inset 0 -2px 0 var(--vi)}
+  background:transparent;color:var(--ik);font-weight:600;box-shadow:inset 0 -2px 0 var(--ik)}
 .topbar-group .seg button{font-size:10.5px;padding:4px 9px;letter-spacing:.08em}
 .topbar-group .btn{font-size:10.5px;padding:5px 10px;color:var(--ik3)}
 .topbar-group .btn:hover:not(:disabled){color:var(--ik)}
@@ -242,6 +243,19 @@
 
 /* ---------------- segmented control ---------------- */
 
+/* The shapes are the published page's; the colour is this workbench's. The
+   fragment marks a pressed option in violet, but violet means "the observer's
+   decision" everywhere else here, so a control that is merely on takes the
+   neutral ink instead: a lifted fill (the sunken token in light, the strong
+   hairline in dark, where the surface and the track are two shades apart) with
+   full ink, weight 600 and a 2 px ink underline. The fill stays a step darker
+   than the hover fill (--sf2) in both schemes, and the underline and weight
+   carry the difference where the fills are close. */
+:root{--ctl-on:var(--sf3)}
+@media (prefers-color-scheme:dark){:root{--ctl-on:var(--ln2)}}
+:root[data-theme="dark"]{--ctl-on:var(--ln2)}
+:root[data-theme="light"]{--ctl-on:var(--sf3)}
+
 .seg{display:inline-flex;flex:0 0 auto;border:1px solid var(--ln2);border-radius:2px;
   overflow:hidden;background:var(--sf)}
 .seg button{font-family:var(--mono);font-size:11.5px;letter-spacing:.08em;color:var(--ik3);
@@ -249,8 +263,8 @@
   cursor:pointer;white-space:nowrap}
 .seg button:last-child{border-right:0}
 .seg button:hover:not(:disabled){color:var(--ik);background:var(--sf2)}
-.seg button[aria-pressed="true"]{background:var(--vif);color:var(--ik);font-weight:600;
-  box-shadow:inset 0 -2px 0 var(--vi)}
+.seg button[aria-pressed="true"]{background:var(--ctl-on);color:var(--ik);font-weight:600;
+  box-shadow:inset 0 -2px 0 var(--ik)}
 .seg button:disabled{opacity:.45;cursor:not-allowed}
 /* The control clips its corners, so a keyboard focus ring drawn outside the
    button would be cut off: draw it inside instead. */
@@ -274,14 +288,15 @@
 .field-note.is-warn{color:var(--am)}
 .field-in{font-family:var(--mono);font-size:13px;color:var(--vi);background:var(--sf2);
   border:1px solid var(--ln2);border-radius:2px;padding:6px 9px;width:100%;min-width:0}
-.field-in:focus{outline:none;border-color:var(--vi)}
+.field-in:focus{outline:none;border-color:var(--fc)}
 /* Keyboard focus keeps the ring a mouse click does not need. */
 .field-in:focus-visible{outline:2px solid var(--fc);outline-offset:1px}
 .field-in:disabled{opacity:.45;cursor:not-allowed}
 .field.is-off>*:not(.why){opacity:.46}
 
 /* A slider, drawn as the published page draws it: a 3 px track on the sunken
-   token and a round violet thumb ringed in the surface colour, so the thumb
+   token and a round thumb in the neutral ink (violet is the observer's, not a
+   control's), ringed in the surface colour, so the thumb
    stays readable over the track and over the card behind it. The native
    accent-color paint is not used -- it is a different blue-and-grey in every
    browser and takes no token. A disabled slider greys its thumb. */
@@ -291,17 +306,18 @@ input[type="range"]::-webkit-slider-runnable-track{height:3px;background:var(--s
   border-radius:2px;border:0}
 input[type="range"]::-moz-range-track{height:3px;background:var(--sf3);border-radius:2px;border:0}
 input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;
-  width:14px;height:14px;margin-top:-5.5px;border-radius:50%;background:var(--vi);
-  border:2px solid var(--sf);box-shadow:0 0 0 1px var(--vi)}
+  width:14px;height:14px;margin-top:-5.5px;border-radius:50%;background:var(--ik);
+  border:2px solid var(--sf);box-shadow:0 0 0 1px var(--ik)}
 input[type="range"]::-moz-range-thumb{width:12px;height:12px;border-radius:50%;
-  background:var(--vi);border:2px solid var(--sf);box-shadow:0 0 0 1px var(--vi)}
+  background:var(--ik);border:2px solid var(--sf);box-shadow:0 0 0 1px var(--ik)}
 input[type="range"]:disabled{cursor:not-allowed}
 input[type="range"]:disabled::-webkit-slider-thumb{background:var(--ik3);box-shadow:0 0 0 1px var(--ik3)}
 input[type="range"]:disabled::-moz-range-thumb{background:var(--ik3);box-shadow:0 0 0 1px var(--ik3)}
 
 /* A flag is a switch, as it is on the published page (`.sw-track`): a small
-   track with a knob that sits left when off and slides right, in the accent,
-   when on. It is the checkbox itself with its native paint switched off --
+   track with a knob that sits left when off and slides right when on, the
+   track then filling with the neutral ink and the knob taking the surface
+   colour (both invert with the theme, so the pair stays legible in each). It is the checkbox itself with its native paint switched off --
    the knob is a radial gradient on the input's own background, so no markup
    changes and the element stays a real, focusable, keyboard-operable checkbox.
    The knob is a 14 px tile holding a 10 px disc, so it sits 2 px in from the
@@ -312,8 +328,8 @@ input[type="checkbox"]{-webkit-appearance:none;appearance:none;flex:0 0 auto;
   background-color:var(--sf3);
   background-image:radial-gradient(circle,var(--ik3) 0 5px,transparent 5.5px);
   background-repeat:no-repeat;background-size:14px 14px;background-position:0 50%}
-input[type="checkbox"]:checked{border-color:var(--vi);background-color:var(--vif);
-  background-image:radial-gradient(circle,var(--vi) 0 5px,transparent 5.5px);
+input[type="checkbox"]:checked{border-color:var(--ik);background-color:var(--ik);
+  background-image:radial-gradient(circle,var(--sf) 0 5px,transparent 5.5px);
   background-position:100% 50%}
 input[type="checkbox"]:focus-visible{outline:2px solid var(--fc);outline-offset:2px;
   border-radius:8px}
