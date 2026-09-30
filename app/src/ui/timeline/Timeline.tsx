@@ -18,8 +18,6 @@ import type { AppSectionHead, Density, Layout, TimelineLane, TimelineMarker, Tim
 import { useRunTimeline } from './run';
 import type { RunTimeline } from './run';
 import { Brace, TopBrace } from './Brace';
-import { equationOf } from './equation';
-import { RunHeadline } from './RunHeadline';
 import type { Tune } from './tune';
 import { EventDrag } from './EventDrag';
 import { TuneDrag } from './TuneDrag';
@@ -43,11 +41,7 @@ export interface TimelineProps {
   speed?: number;
   onSeek?: (t: number) => void;
   onMoveEvent?: (index: number, at: number, expected: TimedEvent) => number | null | void;
-  /**
-   * Present where the reader may tune the run's settings from the timeline:
-   * with it, a failover's or a switchover's headline is the equation whose
-   * terms are editable (`RunHeadline`); without it, the sentence.
-   */
+  /** Present where the reader may tune the run's settings from the timeline: the clocks' ends carry grips. */
   onTune?: (t: Tune, value: number) => void;
   onPlayToggle?: () => void;
   onSpeed?: (speed: number) => void;
@@ -63,12 +57,6 @@ export interface TimelineProps {
   onAppView?: (shown: boolean) => void;
   /** How tightly the lanes are packed (`TL_COMPACT` in build.ts); `full` unless asked. */
   density?: Density;
-  /**
-   * Draw the run's headline sentence as a line of its own above the plot,
-   * truncated with the whole of it as the tooltip, instead of as the drawing's
-   * first text row.
-   */
-  headline?: boolean;
   /** The colour key and its buttons under the plot; on unless a bar carries them. */
   legend?: boolean;
   /** A `+` on each lane at the playhead, and a double-click, open the event menu for that lane (LaneAdd.tsx). */
@@ -358,7 +346,7 @@ export function TimelineBody(props: TimelineProps & { run: RunTimeline }) {
     doc, tNow, playing = false, speed = 1, run,
     onSeek, onMoveEvent, onTune, onPlayToggle, onSpeed, selection = null, onSelect,
     pinnedScale = false, showTransport = true, appView = true, onAppView,
-    headline = false, legend = true, laneEvents = false,
+    legend = true, laneEvents = false,
   } = props;
   const { model } = run;
   const TL = model.layout;
@@ -448,13 +436,6 @@ export function TimelineBody(props: TimelineProps & { run: RunTimeline }) {
 
   return (
     <section class={model.empty ? 'tl is-empty' : 'tl'} aria-label="Timeline">
-      {headline ? (
-        <RunHeadline
-          caption={model.caption}
-          equation={onTune ? equationOf(doc, props.trace, model.braces) : null}
-          {...(onTune ? { onTune } : {})}
-        />
-      ) : null}
       <div
         class="tl-plot" onPointerMove={onPointerMove} onDblClick={laneAdd.onDblClick}
         onPointerLeave={() => { setTip(null); laneAdd.track(null); }}
@@ -475,16 +456,14 @@ export function TimelineBody(props: TimelineProps & { run: RunTimeline }) {
           <Defs />
 
           {/* the caption, above everything, branching on the outcome */}
-          {headline ? null : (
-            <text
-              class={model.caption.tone === 'ink' ? 't-top' : `t-top ${model.caption.tone}`}
-              x={model.caption.x ?? model.scale.plotL}
-              y={TL.topY}
-              text-anchor={model.caption.anchor === 'middle' ? 'middle' : undefined}
-            >
-              {model.caption.text}
-            </text>
-          )}
+          <text
+            class={model.caption.tone === 'ink' ? 't-top' : `t-top ${model.caption.tone}`}
+            x={model.caption.x ?? model.scale.plotL}
+            y={TL.topY}
+            text-anchor={model.caption.anchor === 'middle' ? 'middle' : undefined}
+          >
+            {model.caption.text}
+          </text>
           {model.topBrace ? <TopBrace {...model.topBrace} /> : null}
 
           {/* the pre-failure band */}

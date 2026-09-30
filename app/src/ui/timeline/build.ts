@@ -122,7 +122,7 @@ export const TL_FULL = {
    * word, and starts the sentence after it; 0 stacks the badge above the label.
    */
   inlineNum: 0,
-  /** 1 draws the total-outage brace over the lanes; 0 leaves it to the headline. */
+  /** 1 draws the total-outage brace over the lanes; 0 does not draw it. */
   topBrace: 1,
   /** 1 sets the type at the packed timeline's larger sizes (`.is-big` in timeline.css). */
   big: 0,
@@ -178,9 +178,8 @@ export type Layout = { -readonly [K in keyof typeof TL_FULL]: number };
  * text, which read as calm and as too small; the dock scrolls and is
  * resizable, so the drawing is allowed to be tall.
  *
- * It is drawn with the headline outside the drawing (`Timeline`'s `headline`),
- * so the rows start where the caption's row was and the outage brace, whose
- * label the headline is, is not drawn over the lanes at all (`topBrace: 0`).
+ * It is drawn with no caption row and no outage brace over the lanes
+ * (`topBrace: 0`), so the rows start where the caption's row was.
  *
  * Above the lanes, top to bottom, are three rows that do not share a line:
  * the scrubber's time badge (and "Steady state") at `playRise` / `preY`, then
@@ -679,7 +678,7 @@ export const clampToAxis = (
 
 /* ---------------- lane ordering ---------------- */
 
-export type Facts = DerivedFacts & Partial<Omit<EngineFacts, keyof DerivedFacts>>;
+type Facts = DerivedFacts & Partial<Omit<EngineFacts, keyof DerivedFacts>>;
 
 interface LaneSeed {
   glyph: GlyphName | null;

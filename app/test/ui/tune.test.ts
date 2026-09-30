@@ -1,17 +1,15 @@
 /**
  * Tuning a run from the Detailed timeline itself: the mapping from a clock on the timeline
- * to the setting that is that clock (`tune.ts`), the headline as an equation
- * whose terms are those settings (`equation.ts`, `RunHeadline.tsx`), the axis
- * held while a setting is tuned (`run.ts`), and the strip of settings above the
- * timeline (`break/TuneStrip.tsx`) in both layouts.
+ * to the setting that is that clock (`tune.ts`), the axis held while a setting
+ * is tuned (`run.ts`), and the strip of settings beside the timeline
+ * (`break/TuneStrip.tsx`) in both layouts.
  *
- * jsdom lays nothing out: how the strip sits, and that the equation's boxes
- * leave the headline one line tall, are the browser pass.
+ * jsdom lays nothing out: how the strip sits is the browser pass.
  *
  * @vitest-environment jsdom
  */
 
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { h, render } from 'preact';
 import { act } from 'preact/test-utils';
 import {
@@ -33,8 +31,6 @@ import { addApplication, patchFsfo, setOwnClient, setRoleTransition } from '@/ui
 import { WHY } from '@/ui/inspector/why';
 import { isSectionOpen, resetSections } from '@/ui/inspector/sections';
 import { buildTimeline } from '@/ui/timeline/build';
-import { equationOf } from '@/ui/timeline/equation';
-import { RunHeadline } from '@/ui/timeline/RunHeadline';
 import { markTuned, tunedScenario, tuneDragging, useRunTimeline } from '@/ui/timeline/run';
 import type { RunTimeline } from '@/ui/timeline/run';
 import { applyTune, tuneForBrace, tunedStandby } from '@/ui/timeline/tune';
@@ -205,83 +201,6 @@ describe('tunedStandby', () => {
   });
 });
 
-/* ---------------- the equation ---------------- */
-
-describe('equationOf', () => {
-  const eq = (d: TopologyDoc) => {
-    const { tr, model } = modelOf(d);
-    return { tr, e: equationOf(d, tr, model.braces) };
-  };
-
-  it('adds a failover up to the moment the new primary is open, with 30 and 15 as its terms', () => {
-    const d = scenario('crash');
-    const { tr, e } = eq(d);
-    expect(e?.lead).toBe(`New primary open read-write at t = ${Math.round(tr.facts.tOpen! * 100) / 100} s`.replace(/\.0+ s$/, ' s'));
-    expect(e?.terms.map((t) => [t.key, Math.round(t.seconds)])).toEqual([['threshold', 30], ['role', 15]]);
-    expect(e?.terms.reduce((n, t) => n + t.seconds, 0)).toBeCloseTo(tr.facts.tOpen!, 1);
-    expect(e?.terms.every((t) => t.tune !== null)).toBe(true);
-    expect(e?.terms[0]).toMatchObject({ label: 'FastStartFailoverThreshold', mono: true });
-    expect(e?.terms[1]).toMatchObject({ label: 'role change and open', mono: false });
-    expect(e?.terms[0]?.title).toContain('FastStartFailoverThreshold — 30 s');
-  });
-
-  it('starts a clock that began after the first event with a term of its own, so the sum still adds up', () => {
-    const d = scenario('crash', classic.doc(), 20);
-    const { tr, e } = eq(d);
-    expect(e?.terms.map((t) => t.key)).toEqual(['start', 'threshold', 'role']);
-    expect(e?.terms[0]).toMatchObject({ seconds: 20, tune: null, label: 'clock starts' });
-    expect(e?.terms.reduce((n, t) => n + t.seconds, 0)).toBeCloseTo(tr.facts.tOpen!, 1);
-  });
-
-  it('carries the standby\'s apply lag as terminal recovery, editable', () => {
-    const { e } = eq(scenario('crash', lagged(10)));
-    expect(e?.terms.map((t) => [t.key, Math.round(t.seconds), t.tune?.id])).toEqual([
-      ['threshold', 30, 'threshold'], ['recovery', 10, 'applyLag'], ['role', 15, 'roleTransition'],
-    ]);
-    expect(e?.terms[1]?.label).toBe('terminal recovery');
-  });
-
-  it('adds a switchover up to its read-write downtime, from where the conversion begins', () => {
-    const d = scenario('switchover', lagged(10));
-    const { tr, e } = eq(d);
-    const downtime = (tr.facts as { switchover?: { downtime: number } }).switchover!.downtime;
-    expect(e?.lead).toBe(`Read-write downtime ≈ ${downtime} s`);
-    expect(e?.terms.map((t) => t.key)).toEqual(['sw-convert', 'sw-catchup', 'sw-role']);
-    expect(e?.terms.map((t) => t.label)).toEqual(['conversion', 'catch-up', 'role change and open']);
-    expect(e?.terms.reduce((n, t) => n + t.seconds, 0)).toBeCloseTo(downtime, 1);
-    expect(e?.terms.map((t) => t.tune?.id ?? null)).toEqual([null, 'applyLag', 'roleTransition']);
-  });
-
-  it('names what is left over as "other" when the braces do not cover the run, and only then', () => {
-    const d = scenario('crash');
-    const { tr, model } = modelOf(d);
-    const short = model.braces.filter((b) => b.key !== 'role');
-    const e = equationOf(d, tr, short);
-    expect(e?.terms.at(-1)).toMatchObject({ key: 'other', tune: null });
-    expect(e?.terms.reduce((n, t) => n + t.seconds, 0)).toBeCloseTo(tr.facts.tOpen!, 5);
-    /* More than the run: the equation is dropped rather than shown wrong. */
-    const long = model.braces.map((b) => (b.key === 'role' ? { ...b, b: b.b + 9 } : b));
-    expect(equationOf(d, tr, long)).toBeNull();
-  });
-
-  it('is null for a blocked failover and for every outcome that is not a sum', () => {
-    const base = classic.doc();
-    const blocked: TopologyDoc = {
-      ...base,
-      config: { ...base.config, protectionMode: 'MAXPERFORMANCE', fsfo: { ...base.config.fsfo, lagLimitSeconds: 5, lagLimitSet: true } },
-      members: base.members.map((m) => ({
-        ...m, logXptMode: 'ASYNC' as const,
-        ...(m.id === 'sby01' ? { applyLagSeconds: 60, transportLagSeconds: 60 } : {}),
-      })),
-    };
-    const b = scenario('crash', blocked);
-    expect(simulate(b, b.events).facts.blocked).toBe(true);
-    expect(eq(b).e).toBeNull();
-    for (const id of ['partition', 'dc2down', 'observer-lost']) expect(eq(scenario(id)).e).toBeNull();
-    expect(eq({ ...classic.doc(), events: [] }).e).toBeNull();
-  });
-});
-
 /* ---------------- applyTune ---------------- */
 
 describe('applyTune', () => {
@@ -436,122 +355,22 @@ describe('the axis while a setting is tuned', () => {
   });
 });
 
-/* ---------------- the headline ---------------- */
-
-describe('RunHeadline', () => {
-  const caption = { text: 'A sentence — with a tail', tone: 'f-am' as const, x: null, anchor: 'start' as const };
-  const eqOf = (d: TopologyDoc) => { const m = modelOf(d); return equationOf(d, m.tr, m.model.braces); };
-
-  beforeEach(() => {
-    root = document.createElement('div');
-    document.body.appendChild(root);
-  });
-
-  it('is the sentence, unchanged, without an equation or without a way to tune', () => {
-    act(() => render(h(RunHeadline, { caption, equation: null, onTune: () => undefined }), root!));
-    let p = root!.querySelector('p')!;
-    expect(p.className).toBe('tl-headline f-am');
-    expect(p.getAttribute('title')).toBe(caption.text);
-    expect(p.textContent).toBe(caption.text);
-    act(() => render(h(RunHeadline, { caption: { ...caption, tone: 'ink' }, equation: eqOf(scenario('crash')) }), root!));
-    p = root!.querySelector('p')!;
-    expect(p.className).toBe('tl-headline');
-    expect(p.textContent).toBe(caption.text);
-    expect(root!.querySelector('input')).toBeNull();
-  });
-
-  it('is the equation, with a box for every term that is a setting, when it can be tuned', () => {
-    const onTune = vi.fn();
-    act(() => render(h(RunHeadline, { caption: { ...caption, tone: 'ink' }, equation: eqOf(scenario('crash', lagged(10))), onTune }), root!));
-    const p = root!.querySelector('p')!;
-    expect(p.className).toBe('tl-headline tl-eq');
-    expect(p.getAttribute('title')).toBe(caption.text);
-    expect(p.textContent).toContain('New primary open read-write at t = 55 s —');
-    const boxes = [...p.querySelectorAll<HTMLInputElement>('input[type="number"]')];
-    expect(boxes.map((b) => [b.getAttribute('aria-label'), b.value])).toEqual([
-      ['FastStartFailoverThreshold', '30'], ['Apply lag', '10'], ['Role transition', '15'],
-    ]);
-    expect(boxes[0]).toMatchObject({ min: '6', max: '120', step: '1' });
-    expect(boxes[0]!.closest('.tl-eq-t')!.getAttribute('title')).toContain('Allowed: 6–120 s.');
-    expect(p.textContent).toMatch(/s FastStartFailoverThreshold \+ .*s terminal recovery \+ .*s role change and open$/);
-    act(() => typeInto(boxes[0]!, '25'));
-    expect(onTune).toHaveBeenLastCalledWith(expect.objectContaining({ id: 'threshold' }), 25);
-  });
-
-  it('waits on a value below the floor until the box is left, then clamps it', () => {
-    const onTune = vi.fn();
-    act(() => render(h(RunHeadline, { caption, equation: eqOf(scenario('crash')), onTune }), root!));
-    const box = root!.querySelector<HTMLInputElement>('input')!;
-    act(() => typeInto(box, '2'));
-    expect(onTune).not.toHaveBeenCalled();
-    expect(box.value).toBe('2');
-    act(() => typeInto(box, '25'));
-    expect(onTune).toHaveBeenLastCalledWith(expect.anything(), 25);
-    act(() => typeInto(box, '400'));
-    expect(onTune).toHaveBeenLastCalledWith(expect.anything(), 120);
-  });
-
-  it('scrubs the value when the label is dragged sideways, one step per 6 px, and lets the axis go after', () => {
-    const onTune = vi.fn();
-    act(() => render(h(RunHeadline, { caption, equation: eqOf(scenario('crash')), onTune }), root!));
-    const grip = root!.querySelector<HTMLElement>('.is-scrub')!;
-    grip.setPointerCapture = vi.fn();
-    grip.hasPointerCapture = () => true;
-    grip.releasePointerCapture = vi.fn();
-    const fire = (type: string, x: number): void => {
-      const e = new MouseEvent(type, { bubbles: true, clientX: x, button: 0 });
-      Object.defineProperty(e, 'pointerId', { value: 1 });
-      act(() => { grip.dispatchEvent(e); });
-    };
-    fire('pointerdown', 100);
-    expect(tuneDragging.value).toBe(true);
-    fire('pointermove', 118);
-    expect(onTune).toHaveBeenLastCalledWith(expect.objectContaining({ id: 'threshold' }), 33);
-    fire('pointermove', 64);
-    expect(onTune).toHaveBeenLastCalledWith(expect.anything(), 24);
-    fire('pointermove', -5000);
-    expect(onTune).toHaveBeenLastCalledWith(expect.anything(), 6);
-    fire('pointerup', 100);
-    expect(tuneDragging.value).toBe(false);
-    onTune.mockClear();
-    fire('pointermove', 200);
-    expect(onTune).not.toHaveBeenCalled();
-  });
-
-  it('lets the axis go if the headline goes while a scrub is in progress', () => {
-    act(() => render(h(RunHeadline, { caption, equation: eqOf(scenario('crash')), onTune: () => undefined }), root!));
-    const grip = root!.querySelector<HTMLElement>('.is-scrub')!;
-    grip.setPointerCapture = vi.fn();
-    const e = new MouseEvent('pointerdown', { bubbles: true, clientX: 10, button: 0 });
-    Object.defineProperty(e, 'pointerId', { value: 1 });
-    act(() => { grip.dispatchEvent(e); });
-    expect(tuneDragging.value).toBe(true);
-    act(() => render(null, root!));
-    expect(tuneDragging.value).toBe(false);
-  });
-});
-
 /* ---------------- the Detailed timeline, end to end ---------------- */
 
-describe('the Detailed timeline\'s headline', () => {
-  it('is the equation for a crash, and typing in a term changes the setting and keeps the axis', async () => {
+describe('tuning from the Detailed timeline', () => {
+  it('typing in the strip changes the setting and keeps the axis until Fit lets go of it', async () => {
     crash();
     const r = mount();
     await tick();
-    const line = r.querySelector('.tl-headline')!;
-    expect(line.classList.contains('tl-eq')).toBe(true);
-    const boxes = [...line.querySelectorAll<HTMLInputElement>('input')];
-    expect(boxes.map((b) => b.value)).toEqual(['30', '10', '15']);
     /* Without the application's lanes the axis follows the failover, which is what tuning moves. */
     appLanesShown.value = false;
     await tick();
     const axis = (): string => [...r.querySelectorAll('.tl-svg .t-tick')].map((t) => t.textContent).join(',');
     const before = axis();
-    typeInto(boxes[0]!, '25');
+    typeInto(num(r, 'FastStartFailoverThreshold'), '25');
     await tick();
     expect(topology.value.config.fsfo.thresholdSeconds).toBe(25);
     expect(undoLabel.value).toBe('Set FastStartFailoverThreshold to 25 s');
-    expect(r.querySelector('.tl-headline')!.textContent).toContain('t = 50 s');
     /* The axis stayed where it was, so the bar is seen to shrink; the bar's Fit lets go of it. */
     expect(axis()).toBe(before);
     const fit = r.querySelector<HTMLButtonElement>('.sb-fit');
@@ -562,26 +381,14 @@ describe('the Detailed timeline\'s headline', () => {
     expect(r.querySelector('.sb-fit')).toBeNull();
   });
 
-  it('is not the equation, and has no strip, in a read-only view', async () => {
+  it('has no strip in a read-only view', async () => {
     crash();
     const r = mount();
     await tick();
-    expect(r.querySelector('.tl-headline.tl-eq')).not.toBeNull();
+    expect(r.querySelector('.tune-strip')).not.toBeNull();
     viewport.value = 'narrow';
     await tick();
-    expect(r.querySelector('.tl-eq')).toBeNull();
     expect(r.querySelector('.tune-strip')).toBeNull();
-  });
-
-  it('is the equation in Lanes too', async () => {
-    crash();
-    const r = mount();
-    await tick();
-    const line = r.querySelector('.ln-head .tl-headline')!;
-    expect(line.classList.contains('tl-eq')).toBe(true);
-    typeInto(line.querySelector<HTMLInputElement>('input[aria-label="Role transition"]')!, '20');
-    await tick();
-    expect(topology.value.environment.roleTransitionSeconds).toBe(20);
   });
 });
 
@@ -601,7 +408,7 @@ describe('the tune strip', () => {
     expect(topology.value.environment.roleTransitionSeconds).toBe(20);
   });
 
-  it('carries the threshold\'s box, which edits the document and the headline\'s own box with it', async () => {
+  it('carries the threshold\'s box, which edits the document', async () => {
     crash();
     const r = mount();
     await tick();
@@ -613,8 +420,6 @@ describe('the tune strip', () => {
     expect(topology.value.config.fsfo.thresholdSeconds).toBe(25);
     expect(undoLabel.value).toBe('Set FastStartFailoverThreshold to 25 s');
     expect(num(r, 'FastStartFailoverThreshold').value).toBe('25');
-    expect((r.querySelector('.tl-headline input[aria-label="FastStartFailoverThreshold"]') as HTMLInputElement).value).toBe('25');
-    expect(r.querySelector('.tl-headline')!.textContent).toContain('t = 50 s');
   });
 
   it('is drawn with no run to draw', async () => {

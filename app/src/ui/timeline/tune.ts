@@ -5,9 +5,9 @@
  * interval *is* one setting: the threshold brace is FastStartFailoverThreshold
  * seconds long, the role brace is the role transition constant, the terminal
  * recovery brace is the standby's apply lag. Those are tunable in place --
- * from the number in the headline's equation, and (later) from the brace's own
- * handle -- and this module is the whole of that mapping, so every place that
- * offers it agrees on which clock is which setting.
+ * from the number in the settings, and from the brace's own handle -- and this
+ * module is the whole of that mapping, so every place that offers it agrees on
+ * which clock is which setting.
  *
  * A brace whose span is not its setting's value is not tunable, and says so by
  * having no tune: the run shortened the interval (a catch-up capped by the

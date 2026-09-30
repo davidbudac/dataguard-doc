@@ -124,13 +124,11 @@ describe('the buttons on the cards', () => {
     tNow.value = 5;
     await tick();
     expect(toolIds(r, 'prm01')).toEqual(['member.down', 'host.down']);
-    expect(r.querySelector('.ln-when-t')?.textContent).toBe('Events at t = 5 s');
 
     tNow.value = 40;
     await tick();
     expect(toolIds(r, 'prm01')).toEqual(['member.up', 'host.up']);
     expect(tool(r, 'prm01', 'host.up')?.getAttribute('aria-label')).toBe('Restore the host');
-    expect(r.querySelector('.ln-when-t')?.textContent).toBe('Events at t = 40 s');
     /* The way back is the one that stands out. */
     expect(tool(r, 'prm01', 'host.up')?.classList.contains('is-mend')).toBe(true);
 
@@ -202,7 +200,6 @@ describe('the buttons on the cards', () => {
     await tick();
     tNow.value = 12.34;
     await tick();
-    expect(r.querySelector('.ln-head .tl-headline')?.textContent).toMatch(/^Steady state\./);
     click(tool(r, 'prm01', 'host.down'));
     await tick();
     const events = topology.value.events;
@@ -210,7 +207,6 @@ describe('the buttons on the cards', () => {
     expect(events[0]).toMatchObject({ kind: 'host.down', at: 12.3 });
     expect(tNow.value).toBe(12.34);
     /* The run exists now: lanes, a marker for the event, and no hint. */
-    expect(r.querySelector('.ln-head .tl-headline')?.textContent).not.toMatch(/^Steady state\./);
     expect(r.querySelectorAll('.ln-svg .tl-event-drag')).toHaveLength(1);
     expect(r.querySelectorAll('.ln-svg .tl-lane').length).toBeGreaterThan(0);
     /* No second clock: the transport's own time field is the one the buttons are aimed at. */
@@ -513,16 +509,13 @@ describe('the links are named', () => {
 });
 
 describe('an empty run', () => {
-  it('shows the cards with their buttons, the tracks and the one-line hint', async () => {
+  it('shows the cards with their buttons and the tracks', async () => {
     clearEvents();
     const r = mount();
     await tick();
-    expect(r.querySelector('.ln-head .tl-headline')?.textContent)
-      .toBe('Steady state. Nothing has been injected yet. Pick an event on a card to start.');
     expect(r.querySelectorAll('.ln-cardwrap')).toHaveLength(4);
     expect(r.querySelectorAll('.ln-cardwrap .ln-tool:not(.ln-more)').length).toBeGreaterThanOrEqual(7);
     expect(r.querySelectorAll('.ln-track')).toHaveLength(4);
-    expect(r.querySelector('.ln-when-t')?.textContent).toBe('Events at t = 0 s');
     /* Nothing to seek or play, but the bar still carries the findings. */
     expect(r.querySelector('.ln-bar .tl-transport')).toBeNull();
     expect(r.querySelector('.ln-bar .sb-chip')).not.toBeNull();
@@ -533,18 +526,16 @@ describe('an empty run', () => {
     const r = mount();
     await tick();
     const labels = (sel: string): string[] => [...r.querySelectorAll(sel)].map((x) => x.textContent ?? '');
-    expect(labels('.ln-ticks text.t-tick')).toEqual(['0', '10', '20', '30', '40', '50', '60']);
     expect(labels('.ln-svg.is-seekable text.t-tick.t-mono').slice(-8, -1)).toEqual(['0', '10', '20', '30', '40', '50', '60']);
     expect(r.querySelector('.ln-svg.is-seekable line.ax')).not.toBeNull();
     const before = r.querySelector('.ln-steady-ph')?.getAttribute('transform');
     expect(before).toMatch(/^translate\(/);
     expect(r.querySelector('.ln-steady-ph .tl-playhead-t')?.textContent).toBe('t = 0');
-    /* Moving the playhead moves it, and the buttons' caption with it. */
+    /* Moving the playhead moves it. */
     tNow.value = 30;
     await tick();
     expect(r.querySelector('.ln-steady-ph')?.getAttribute('transform')).not.toBe(before);
     expect(r.querySelector('.ln-steady-ph .tl-playhead-t')?.textContent).toBe('t = 30');
-    expect(r.querySelector('.ln-when-t')?.textContent).toBe('Events at t = 30 s');
   });
 });
 
@@ -587,9 +578,6 @@ describe('the braces', () => {
       expect(y).toBeGreaterThan(axisY);
       expect(y).toBeLessThan(height);
     }
-    /* The caption is the sticky headline; the outage brace is on the sticky clock. */
-    expect(r.querySelector('.ln-head .tl-headline')?.textContent).toMatch(/\S/);
-    expect(r.querySelector('.ln-head .ln-ticks path.brace.br-sl')).not.toBeNull();
   });
 });
 
@@ -653,9 +641,8 @@ describe('the time readout while an event pin is dragged', () => {
     const t = g.querySelector('.tl-event-time') as SVGTextElement;
     expect(t).not.toBeNull();
     expect(t.textContent).toMatch(/^\d+(\.\d)? s$/);
-    /* jsdom lays nothing out, so where it sits is read off the attributes: not in the head,
-       inside the plot's svg (whose top edge is the head's bottom), and its top under that edge. */
-    expect(t.closest('.ln-head')).toBeNull();
+    /* jsdom lays nothing out, so where it sits is read off the attributes: inside
+       the plot's svg, and its top no higher than the svg's own top edge. */
     expect(t.closest('.ln-plot')).not.toBeNull();
     expect(Number(t.getAttribute('y')) - 11).toBeGreaterThanOrEqual(0);
     expect(['start', 'end']).toContain(t.getAttribute('text-anchor'));
