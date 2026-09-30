@@ -36,6 +36,7 @@ import { chipsThatFit } from './readout-fit';
 import { appTimelineOn, TimelineSwitch } from './TimelineView';
 import type { FitItem } from './readout-fit';
 import { ReadoutFold } from './SummaryBand';
+import { TuneToggle } from './TuneStrip';
 
 /**
  * What inside the bar keeps its own presses; anything else on it drags the
@@ -286,6 +287,7 @@ export function SplitBar({ run, sized }: {
       )}
       <ReadoutFold><TerseReadout run={trace.value !== null} /></ReadoutFold>
       {sized || run === null ? <TimelineSwitch /> : null}
+      {sized || run === null ? <TuneToggle /> : null}
       {run?.held && sized && !appTl ? (
         <button
           type="button" class="btn sb-fit" title="An event was moved and the axis stayed where it was: fit it to the run again"

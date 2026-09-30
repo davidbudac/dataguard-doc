@@ -245,7 +245,10 @@ for (const layout of ['split', 'lanes'] as const) {
         const bar = r.querySelector(barSel) as HTMLElement;
         const below = r.querySelector(belowSel) as HTMLElement;
         expect(bar.nextElementSibling).toBe(b);
-        expect(b.nextElementSibling).toBe(below);
+        /* The tune strip (break/TuneStrip.tsx) sits between the band and the timeline. */
+        const strip = b.nextElementSibling as HTMLElement;
+        expect(strip.classList.contains('tune-strip')).toBe(true);
+        expect(strip.nextElementSibling).toBe(below);
         expect(bar.parentElement).toBe(b.parentElement);
       });
 

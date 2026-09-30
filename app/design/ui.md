@@ -1848,3 +1848,66 @@ the connect-string parameters.
   there as 100 × 3 s (`CLIENT.SWITCHOVER_BUDGET_100X3`). The tooltip says so; the buttons are
   pressed while the descriptor holds exactly that set.
 - **Tests**: `test/ui/timeline-switch.test.ts`.
+
+## Tuning a run in Simulate (as built, 2026-09-30)
+
+Simulate used to offer no way to change a setting: the reader went to Build, edited the
+inspector and came back. Four things put the settings a run answers to on the timeline's own
+chrome. All four are offered under one gate -- Simulate, and `canEdit` -- so Learn, the printed
+report, the pinned-scale figures and the narrow read-only viewer draw exactly what they drew.
+
+- **One mapping** (`ui/timeline/tune.ts`). `tuneForBrace(doc, trace, brace)` answers which
+  setting a brace measures: `threshold` / `abort` / `stall-threshold` are
+  FastStartFailoverThreshold, `role` / `sw-role` the role transition constant, `recovery` /
+  `sw-catchup` the promoted standby's apply lag. Every other brace has none. **A clock is
+  tunable only where its length is the setting's value** (within 0.05 s): where the run
+  shortened the interval, a one-for-one edit would move the brace by something else, so there
+  is no tune. `applyTune` clamps to `BOUNDS` and calls the inspector's named setter
+  (`setFsfoThreshold`, `setRoleTransition`, `setApplyLag`, beside `setProtectionMode`,
+  `setFsfoState`, `setFsfoLagLimit` in `inspector/edits.ts`; the forms call the same
+  functions), so the undo sentence and the coalesce key are the rail's.
+- **The axis holds while a setting is tuned** (`ui/timeline/run.ts`). The axis fits the run,
+  so after a settings change every bar used to be redrawn at nearly its old width. A tuning
+  edit marks the document it produced (`markTuned` → `tunedScenario`); `useRunTimeline`
+  keeps the previous render's axis for that document while the run still fits it
+  (`lastInterestingT <= t1`) and unconditionally while a drag or scrub is in progress
+  (`tuneDragging`). `held` is true and *Fit timeline* lets go, as after an event drop. Undo, a
+  scenario and edits made elsewhere refit as before.
+- **The settings row** (`ui/break/TuneStrip.tsx`): Protection mode, FAST_START FAILOVER,
+  FastStartFailoverThreshold, FastStartFailoverLagLimit, then LogXptMode and Apply lag for the
+  standby the run is about (`tunedStandby`: the one promoted, else the first failover target,
+  else the first standby), Role transition, and *All settings* (Build, nothing selected, the
+  Fast-start failover fold open). Native selects and number boxes (`TuneNumber`: a value at or
+  above the minimum commits as it is typed, one below it on blur or Enter, so 25 can be typed
+  past a minimum of 6). Greyed by the inspector's own functions (`lagLimitGate`,
+  `logXptOptions` in `inspector/why.ts`) with the reason in a `WhyPill` beside the control,
+  cut to the room the row has and whole in its title; each control's title is the note the
+  inspector prints under that field (`inspector/notes.ts`). One row at 1100 px and up. It sits
+  between the summary band and the timeline in Split and in Lanes, is absent while the
+  Application timeline is drawn (that one has its own strip) and while the `Settings` button on
+  the bar is off (`tuneOn`, `dg-tune`, on by default).
+- **The headline is an equation** where the outcome is a sum (`ui/timeline/equation.ts`,
+  `RunHeadline.tsx`): `New primary open read-write at t = 45 s — 30 s
+  FastStartFailoverThreshold + 15 s role change and open`, and for a switchover the read-write
+  downtime as conversion + catch-up + role change. The terms are the braces' lengths; a term
+  that has a tune is a number box, and its label scrubs the value when dragged sideways. **It
+  never shows a sum that does not add up**: a clock that starts after t = 0 is a leading
+  `t = N s` term, a positive remainder is an `other` term, and anything else falls back to the
+  sentence. Every other outcome keeps its sentence.
+- **Grips on the clocks** (`ui/timeline/tune-handles.ts`, `TuneDrag.tsx`): one on the end of
+  each tunable brace and, where a lane's band is that same interval, one on the band's end.
+  `role="slider"`; a drag edits live in one undo entry, arrows step by the bound's step
+  (Shift: five), Home and End go to the bounds. A lane grip keeps its lane for the length of a
+  drag (`useTuneHandles`): the held axis can cut the band mid-drag, and a grip that unmounted
+  would drop the pointer.
+- **Events from a lane** (`ui/timeline/LaneAdd.tsx`, Split and the docked timeline): a `+`
+  beside the playhead on each member, observer and link lane that offers an action, shown for
+  the lane under the pointer and on focus, and a double-click on a lane. Both open Lanes'
+  grouped menu (`MoreMenu`, now with a `fixed` variant rendered into `body` so the dock cannot
+  clip it) at the playhead's time, and inject with `keepPlayhead`. Lanes has its buttons on
+  the cards and gets nothing new.
+- **Tests**: `test/ui/tune.test.ts`, `tune-drag.test.ts`, `lane-add.test.ts`. Browser pass
+  2026-09-30: Split and Lanes at 1440×900 and 1100×760, dark and light; typing, a lane-grip
+  drag and a brace-grip drag, the lane menu and Escape.
+- **Not built**: a ghost of the previous run with the delta beside it.
+

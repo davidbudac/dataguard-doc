@@ -679,7 +679,7 @@ export const clampToAxis = (
 
 /* ---------------- lane ordering ---------------- */
 
-type Facts = DerivedFacts & Partial<Omit<EngineFacts, keyof DerivedFacts>>;
+export type Facts = DerivedFacts & Partial<Omit<EngineFacts, keyof DerivedFacts>>;
 
 interface LaneSeed {
   glyph: GlyphName | null;

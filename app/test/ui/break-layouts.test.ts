@@ -273,8 +273,11 @@ describe('Split', () => {
     await tick();
     const line = r.querySelector('.tl-headline');
     expect(line).not.toBeNull();
-    expect(line?.getAttribute('title')).toBe(line?.textContent);
-    expect([...r.querySelectorAll('.tl-svg .t-top')].some((t) => t.textContent === line?.textContent)).toBe(false);
+    /* A failover's headline is the equation (timeline/RunHeadline.tsx): the sentence is its
+       tooltip, and the equation opens with the same lead. */
+    const sentence = line?.getAttribute('title') ?? '';
+    expect(line?.textContent?.startsWith(sentence.split(' — ')[0]!)).toBe(true);
+    expect([...r.querySelectorAll('.tl-svg .t-top')].some((t) => t.textContent === sentence)).toBe(false);
     /* Lanes are drawn packed. */
     const bg = r.querySelector('.tl-svg .lane-bg');
     expect(Number(bg?.getAttribute('height'))).toBe(TL_COMPACT.laneH);

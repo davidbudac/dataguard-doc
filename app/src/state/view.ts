@@ -159,6 +159,13 @@ export const breakApp = signal<string | null>(null);
  */
 export const summaryOpen = signal<boolean>(false);
 /**
+ * Whether Simulate's tune strip -- the row of settings above the Configuration
+ * timeline (break/TuneStrip.tsx) -- is drawn. On to start; remembered under
+ * `dg-tune` (persist.ts), read once at boot like `hintsOn`. The strip is
+ * absent, not hidden, while this is off.
+ */
+export const tuneOn = signal<boolean>(true);
+/**
  * Whether the rail beside the canvas is folded to its slim strip.
  *
  * Only where the rail is a column (`wide`, and not in Learn, whose right half

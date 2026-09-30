@@ -10,6 +10,7 @@
 import { useRef, useState } from 'preact/hooks';
 import { GLYPH } from '../common/eventIcons';
 import { GlyphDefs } from '../common/glyphs';
+import { Fragment } from 'preact';
 import type { JSX } from 'preact';
 import type { TimedEvent, TopologyDoc, Trace } from '@/engine';
 import { approxW, elideTo, fmt, gridSpans } from './build';
@@ -17,7 +18,13 @@ import type { AppSectionHead, Density, Layout, TimelineLane, TimelineMarker, Tim
 import { useRunTimeline } from './run';
 import type { RunTimeline } from './run';
 import { Brace, TopBrace } from './Brace';
+import { equationOf } from './equation';
+import { RunHeadline } from './RunHeadline';
+import type { Tune } from './tune';
 import { EventDrag } from './EventDrag';
+import { TuneDrag } from './TuneDrag';
+import { useTuneHandles } from './tune-handles';
+import { LaneAddButtons, LaneAddMenu, useLaneAdd } from './LaneAdd';
 import { Playhead } from './Playhead';
 import { usePlayback } from './playback';
 import { useHostWindow } from '../common/dom';
@@ -36,6 +43,12 @@ export interface TimelineProps {
   speed?: number;
   onSeek?: (t: number) => void;
   onMoveEvent?: (index: number, at: number, expected: TimedEvent) => number | null | void;
+  /**
+   * Present where the reader may tune the run's settings from the timeline:
+   * with it, a failover's or a switchover's headline is the equation whose
+   * terms are editable (`RunHeadline`); without it, the sentence.
+   */
+  onTune?: (t: Tune, value: number) => void;
   onPlayToggle?: () => void;
   onSpeed?: (speed: number) => void;
   selection?: string | null;
@@ -58,6 +71,8 @@ export interface TimelineProps {
   headline?: boolean;
   /** The colour key and its buttons under the plot; on unless a bar carries them. */
   legend?: boolean;
+  /** A `+` on each lane at the playhead, and a double-click, open the event menu for that lane (LaneAdd.tsx). */
+  laneEvents?: boolean;
 }
 
 /** What the Application's view button does, said once for every place that offers it. */
@@ -341,9 +356,9 @@ export function Timeline(props: TimelineProps) {
 export function TimelineBody(props: TimelineProps & { run: RunTimeline }) {
   const {
     doc, tNow, playing = false, speed = 1, run,
-    onSeek, onMoveEvent, onPlayToggle, onSpeed, selection = null, onSelect,
+    onSeek, onMoveEvent, onTune, onPlayToggle, onSpeed, selection = null, onSelect,
     pinnedScale = false, showTransport = true, appView = true, onAppView,
-    headline = false, legend = true,
+    headline = false, legend = true, laneEvents = false,
   } = props;
   const { model } = run;
   const TL = model.layout;
@@ -353,6 +368,9 @@ export function TimelineBody(props: TimelineProps & { run: RunTimeline }) {
     return result;
   };
   const [tip, setTip] = useState<TooltipState | null>(null);
+  const laneAdd = useLaneAdd({ enabled: laneEvents && !pinnedScale, model, doc, tNow });
+  /* The ends of the clocks that are one setting each: grips where the reader may tune. */
+  const handles = useTuneHandles(onTune !== undefined && !pinnedScale && !model.empty, doc, props.trace, model);
 
   /* ▶ moves the playhead. The loop lives in the UI layer -- the engine has no
      clock (CLAUDE.md) -- and leaves through the same `onSeek` a drag uses, so
@@ -416,6 +434,7 @@ export function TimelineBody(props: TimelineProps & { run: RunTimeline }) {
   };
 
   const onPointerMove = (e: JSX.TargetedPointerEvent<HTMLDivElement>): void => {
+    laneAdd.track(e.target);
     const text = tipFromEvent(e.target);
     if (text === null) { if (tip !== null) setTip(null); return; }
     const box = e.currentTarget.getBoundingClientRect();
@@ -430,11 +449,16 @@ export function TimelineBody(props: TimelineProps & { run: RunTimeline }) {
   return (
     <section class={model.empty ? 'tl is-empty' : 'tl'} aria-label="Timeline">
       {headline ? (
-        <p class={`tl-headline${model.caption.tone === 'ink' ? '' : ` ${model.caption.tone}`}`} title={model.caption.text}>
-          {model.caption.text}
-        </p>
+        <RunHeadline
+          caption={model.caption}
+          equation={onTune ? equationOf(doc, props.trace, model.braces) : null}
+          {...(onTune ? { onTune } : {})}
+        />
       ) : null}
-      <div class="tl-plot" onPointerMove={onPointerMove} onPointerLeave={() => setTip(null)}>
+      <div
+        class="tl-plot" onPointerMove={onPointerMove} onDblClick={laneAdd.onDblClick}
+        onPointerLeave={() => { setTip(null); laneAdd.track(null); }}
+      >
         <svg
           class={`tl-svg${canSeek ? ' is-seekable' : ''}${TL.big === 1 ? ' is-big' : ''}`}
           width={model.width}
@@ -540,8 +564,24 @@ export function TimelineBody(props: TimelineProps & { run: RunTimeline }) {
               <Marker marker={m} layout={TL} spans={gridSpans(model, model.laneTop - 4)} />
             </EventDrag>
           ))}
+          {onTune ? handles.map((hd) => {
+            const lane = hd.laneKey === null ? undefined : model.lanes.find((l) => l.key === hd.laneKey);
+            const start = () => { setTip(null); if (playing) onPlayToggle?.(); };
+            return (
+              <Fragment key={hd.key}>
+                <TuneDrag key={`${hd.key}:brace`} handle={hd} where="brace" x={hd.x} y={hd.braceY - 6} h={14}
+                  model={model} onTune={onTune} onStart={start} />
+                {lane === undefined ? null : (
+                  <TuneDrag key={`${hd.key}:lane`} handle={hd} where="lane" x={hd.x} y={lane.y + TL.barDy}
+                    h={lane.height - TL.barPad} model={model} onTune={onTune} onStart={start} />
+                )}
+              </Fragment>
+            );
+          }) : null}
+          <LaneAddButtons add={laneAdd} />
         </svg>
         <Tooltip tip={tip} />
+        <LaneAddMenu add={laneAdd} />
       </div>
 
       {model.quietLinks > 0 ? (

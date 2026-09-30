@@ -17,9 +17,10 @@ import { DESTS_ID, INSTANCES_ID } from './sections';
 import { RedoRoutesEditor } from './RedoRoutesEditor';
 import {
   addInstance, destPropsOf, patchDatabase, patchDest, patchInstance, patchMember, removeInstance,
-  renameMember, setLogXptMode, setPrimary,
+  renameMember, setApplyLag, setLogXptMode, setPrimary,
 } from './edits';
-import { gateOff, off, ON, WHY } from './why';
+import { APPLY_LAG_NOTE, LOG_XPT_NOTE } from './notes';
+import { gateOff, logXptOptions, off, ON, WHY } from './why';
 
 export interface MemberFormProps {
   member: Member;
@@ -145,12 +146,8 @@ export function MemberForm({ member, doc, graph }: MemberFormProps) {
             value={db.applyLagSeconds}
             coalesce={`alag:${id as string}`}
             enabled={gateOff(isPrimary, WHY.primaryNoApply)}
-            onChange={(v) => patchDatabase(
-              id, `Set the apply lag on ${id as string}`,
-              (m) => ({ ...m, applyLagSeconds: v, transportLagSeconds: Math.min(m.transportLagSeconds, v) }),
-              `alag:${id as string}`,
-            )}
-            note="Redo this standby holds but has not applied. It lengthens the catch-up a role change pays; it does not make the standby unsynchronized."
+            onChange={(v) => setApplyLag(id, v)}
+            note={APPLY_LAG_NOTE}
           />
           <Num
             name="Transport lag" prose
@@ -211,17 +208,9 @@ export function MemberForm({ member, doc, graph }: MemberFormProps) {
         <Choice
           name="LogXptMode"
           value={member.logXptMode}
-          options={[
-            { value: 'SYNC', label: 'SYNC' },
-            {
-              value: 'FASTSYNC',
-              label: 'FASTSYNC',
-              enabled: doc.config.protectionMode === 'MAXAVAILABILITY' ? ON : off(WHY.fastsyncMode),
-            },
-            { value: 'ASYNC', label: 'ASYNC' },
-          ]}
+          options={logXptOptions(doc)}
           onChange={(v) => setLogXptMode(id, v)}
-          note="How this member receives redo. Broker default ASYNC. SYNC maps to SYNC + AFFIRM, FASTSYNC to SYNC + NOAFFIRM, ASYNC to ASYNC + NOAFFIRM: AFFIRM acknowledges received redo after writing it to the standby redo log, NOAFFIRM before that write."
+          note={LOG_XPT_NOTE}
         />
       </Group>
 

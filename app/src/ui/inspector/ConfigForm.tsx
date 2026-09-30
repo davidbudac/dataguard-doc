@@ -19,9 +19,15 @@ import { errors } from '@/state/derived';
 import { Fact } from '../common/Chip';
 import { Action, Check, Choice, Fold, Note, Num, Pick, Text } from './controls';
 import { FieldNote } from '../common/Field';
-import { patchConfig, patchEnvironment, patchFsfo } from './edits';
+import {
+  patchConfig, patchEnvironment, patchFsfo, setFsfoLagLimit, setFsfoState, setFsfoThreshold, setProtectionMode,
+  setRoleTransition,
+} from './edits';
 import { revealForFlagged, sectionsWithErrors } from './sections';
-import { gateOff, off, ON, WHY } from './why';
+import {
+  fsfoStateNote, lagLimitNote, PROTECTION_NOTE, ROLE_TRANSITION_NOTE, THRESHOLD_NOTE,
+} from './notes';
+import { gateOff, lagLimitGate, off, ON, WHY } from './why';
 
 export interface ConfigFormProps {
   doc: TopologyDoc;
@@ -43,15 +49,9 @@ export function ConfigForm({ doc }: ConfigFormProps) {
   const databases = doc.members.filter(isDatabase);
   const targetList = f.target.kind === 'list' ? f.target.members : [];
 
-  /* 19c: a maximum performance property, and 19c disagrees with itself about
-     whether it reaches maximum availability at all -- this page follows the
-     observed 19.27 behaviour (not evaluated there) over the chapter's "must
-     be zero" sentence. 26ai: maximum availability has the role too, where 0
-     is the broker default and means zero data loss; that role is a 21c
-     feature, not a 26ai one. */
-  const lagLimitOff = perf
-    ? ON
-    : ((ed === '26ai' && avail) ? ON : off(ed === '26ai' ? WHY.lagTypeMode : WHY.lagLimitMaxAvail19c));
+  /* Which edition and mode can set it, and why not: one function (why.ts),
+     because Simulate's tune strip greys the same control the same way. */
+  const lagLimitOff = lagLimitGate(doc);
 
   const setTarget = (members: MemberId[]): void =>
     patchFsfo(
@@ -107,8 +107,8 @@ export function ConfigForm({ doc }: ConfigFormProps) {
             { value: 'MAXAVAILABILITY', label: 'MAXAVAILABILITY' },
             { value: 'MAXPERFORMANCE', label: 'MAXPERFORMANCE' },
           ]}
-          onChange={(v) => patchConfig(`Set the protection mode to ${v}`, (x) => ({ ...x, protectionMode: v }))}
-          note="Broker table 4-2 lists the transports each mode takes: SYNC under maximum protection, SYNC or FASTSYNC under maximum availability, and ASYNC as the only mode listed for maximum performance."
+          onChange={setProtectionMode}
+          note={PROTECTION_NOTE}
         />
         <Choice
           name="BystandersFollowRoleChange"
@@ -200,14 +200,8 @@ export function ConfigForm({ doc }: ConfigFormProps) {
             { value: 'enabled', label: 'ENABLED' },
             { value: 'observe-only', label: 'OBSERVE ONLY' },
           ]}
-          onChange={(v) => patchFsfo(
-            `Set fast-start failover to ${v}`, (x): FsfoConfig => ({ ...x, state: v }),
-          )}
-          note={f.state === 'observe-only'
-            ? 'ENABLE FAST_START FAILOVER OBSERVE ONLY: the observer watches, records what it would have done, and never fails over.'
-            : f.state === 'disabled'
-              ? 'Disabled is not the same as unobserved. With fast-start failover disabled a manual FAILOVER TO is the only thing that promotes a standby, and it needs no observer.'
-              : "Failover needs both the observer and the target standby to have lost the primary for the threshold, plus the target standby's readiness check. This page draws ObserverOverride at FALSE, the broker default."}
+          onChange={setFsfoState}
+          note={fsfoStateNote(f.state)}
         />
 
         {/* The target list is the one property here that is a list, so it is
@@ -292,11 +286,8 @@ export function ConfigForm({ doc }: ConfigFormProps) {
           bound="thresholdSeconds"
           value={f.thresholdSeconds}
           coalesce="fsfo:threshold"
-          onChange={(v) => patchFsfo(
-            `Set FastStartFailoverThreshold to ${v} s`,
-            (x): FsfoConfig => ({ ...x, thresholdSeconds: v }), 'fsfo:threshold',
-          )}
-          note="Default 30 s, minimum 6 s. The clock starts when the observer first loses its connection to the primary, and the isolated primary's own stall clock always uses it."
+          onChange={setFsfoThreshold}
+          note={THRESHOLD_NOTE}
         />
 
         <Num
@@ -306,18 +297,8 @@ export function ConfigForm({ doc }: ConfigFormProps) {
           coalesce="fsfo:laglimit"
           enabled={lagLimitOff}
           warn={lagLimit > f.thresholdSeconds}
-          onChange={(v) => patchFsfo(
-            `Set FastStartFailoverLagLimit to ${v} s`,
-            (x): FsfoConfig => ({ ...x, lagLimitSeconds: v, lagLimitSet: true }), 'fsfo:laglimit',
-          )}
-          note={(lagLimitIsSet(f) ? '' : 'Not set: the broker default for this edition and mode applies. ')
-            + (lagLimit > f.thresholdSeconds
-            ? 'Oracle recommends the lag limit at or below the threshold: past it the old primary can keep committing after fast-start failover is initiated, briefly risking two primaries.'
-            : ed === '26ai' && avail
-              ? '26ai gives maximum availability a lag limit too, with a broker default of 0 -- the standby must have received everything and the failover is zero-loss. Any non-zero value, minimum 5 s, makes it bounded-loss. The role arrived in 21c; 26ai\'s own contribution is the per-mode default.'
-              : ed === '19c' && avail
-                ? 'Under 19c this control is greyed because the property page and the fast-start failover chapter disagree about whether it reaches maximum availability at all -- see the why-pill. Default 30 s, minimum 5 s.'
-                : 'Default 30 s, minimum 5 s. Failover is permitted while the gated lag stays within it.')}
+          onChange={setFsfoLagLimit}
+          note={lagLimitNote(doc)}
         />
 
         <Choice
@@ -496,10 +477,8 @@ export function ConfigForm({ doc }: ConfigFormProps) {
           bound="roleTransitionSeconds"
           value={doc.environment.roleTransitionSeconds}
           coalesce="env:role"
-          onChange={(v) => patchEnvironment(
-            `Set the role transition to ${v} s`, (e) => ({ ...e, roleTransitionSeconds: v }), 'env:role',
-          )}
-          note="Terminal recovery, the role change and the open are environment-dependent, not parameter-driven. This is the drawing's constant for them."
+          onChange={setRoleTransition}
+          note={ROLE_TRANSITION_NOTE}
         />
         <Num
           name="Local redo write" prose

@@ -210,3 +210,58 @@
 
 .app-tl-pick { display: flex; flex-direction: column; gap: 2px; flex: 0 0 auto; padding: 2px 0; }
 .app-tl-pick select { max-width: 200px; }
+
+/* ---- Simulate's tune strip: the settings a run answers to, above the timeline ----
+   One row of labelled native controls (break/TuneStrip.tsx), the name over each
+   so the row stays about 34 px tall at 1280 px and wraps under that. Names follow
+   the inspector: Oracle property names in mono, this page's words in sans. Colour
+   from tokens only. */
+.tune-strip {
+  flex: 0 0 auto; display: flex; flex-wrap: wrap; align-items: flex-end; gap: 2px 12px;
+  padding: 3px 16px 4px; min-width: 0; box-sizing: border-box;
+  background: var(--sf2); border-bottom: 1px solid var(--ln);
+}
+.tune-g { display: inline-flex; align-items: flex-end; gap: 4px; flex: 0 1 auto; min-width: 0; }
+.tune-f { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.tune-k { font-size: 9.5px; line-height: 1.2; color: var(--ik3); white-space: nowrap; }
+.tune-k.mono { letter-spacing: 0; }
+.tune-c { display: inline-flex; align-items: center; gap: 4px; }
+.tune-sel, .tune-num {
+  height: 20px; box-sizing: border-box; padding: 0 4px; margin: 0;
+  font: 11.5px/1 var(--mono); color: var(--ik);
+  background: var(--sf); border: 1px solid var(--ln); border-radius: var(--r-ctl, 3px);
+}
+.tune-num { width: 52px; text-align: right; font-variant-numeric: tabular-nums; }
+.tune-sel:disabled, .tune-num:disabled { opacity: .55; }
+.tune-u { font-size: 11px; color: var(--ik3); }
+/* The reason a control is grey, beside it, cut to a line; the whole of it is the tooltip. */
+.tune-why { flex: 1 1 0; width: 5ch; min-width: 5ch; max-width: 44ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding-bottom: 2px; }
+/* A greyed control's group takes the row's spare room for its reason, and gives
+   it all back before the row would wrap: the reason is cut, never the row doubled. */
+.tune-g.has-why { flex: 1000 1 auto; }
+.tune-why .why { display: inline; font-size: 10.5px; white-space: nowrap; }
+.tune-spacer { flex: 1 1 0; min-width: 0; }
+.tune-all { flex: 0 0 auto; padding: 2px 8px; font-size: 11.5px; white-space: nowrap; border-color: var(--ln); }
+
+/* The bar's `Settings` button: pressed while the row is drawn. */
+.sb-tune { flex: 0 0 auto; padding: 2px 8px; font-size: 11.5px; white-space: nowrap; border-color: var(--ln); }
+.sb-tune[aria-pressed="true"] { color: var(--ik); background: var(--sf3); border-color: var(--ln2); font-weight: 600; }
+
+/* ---- the headline as an equation ----
+   The same one sticky line as the sentence (`.tl-headline`): its boxes are sized
+   to sit inside the line without making it taller, and a term's label is the grip
+   that scrubs its value. */
+.tl-eq { font-variant-numeric: tabular-nums; }
+.tl-eq-op { color: var(--ik3); font-weight: 400; }
+.tl-eq-t { white-space: nowrap; }
+.tl-eq-l.mono { font-size: 12.5px; }
+.tl-eq-l.is-scrub { cursor: ew-resize; touch-action: none; user-select: none; border-bottom: 1px dotted var(--ik3); }
+.tl-eq-l.is-scrub:hover { border-bottom-color: var(--ik); }
+.tl-eq-in {
+  width: 46px; height: 18px; margin: -3px 0; padding: 0 3px; box-sizing: border-box;
+  font: 600 12px/1 var(--mono); font-variant-numeric: tabular-nums; text-align: right;
+  color: inherit; background: var(--sf2); border: 1px solid var(--ln); border-radius: var(--r-ctl, 3px);
+  vertical-align: middle; -moz-appearance: textfield; appearance: textfield;
+}
+.tl-eq-in::-webkit-inner-spin-button, .tl-eq-in::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+.tl-eq-in:hover { border-color: var(--ln2); }

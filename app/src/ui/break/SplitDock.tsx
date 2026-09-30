@@ -19,6 +19,7 @@ import { shellTimelineProps } from '../timeline/shell-props';
 import { SplitBar } from './SplitBar';
 import { SummaryBand } from './SummaryBand';
 import { AppTimeline, appTimelineOn } from './TimelineView';
+import { TuneStrip } from './TuneStrip';
 
 function SplitRun({ t }: { t: Trace }) {
   const [ref, measured] = useWidth();
@@ -32,6 +33,7 @@ function SplitRun({ t }: { t: Trace }) {
     <>
       <SplitBar run={run} sized={!away} />
       <SummaryBand />
+      {away ? null : <TuneStrip />}
       {away ? (
         <div class="tl-slot"><PoppedAway kind="timeline" label="Timeline" /></div>
       ) : (
@@ -50,6 +52,7 @@ export function SplitDock() {
   return t === null ? (
     <>
       <SplitBar run={null} sized={false} />
+      <TuneStrip />
       <div class="tl-slot">
         {appTimelineOn() ? <AppTimeline /> : (
           <div class="empty">

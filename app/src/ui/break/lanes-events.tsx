@@ -154,9 +154,16 @@ export interface MoreMenuProps {
   view: HTMLElement | null;
   /** `restore`: put the focus back on the opener (Escape does, a press elsewhere does not). */
   onClose: (restore: boolean) => void;
+  /**
+   * Hang the menu off the window rather than off `view` (`position: fixed`,
+   * client coordinates): for a menu opened from a box that scrolls or clips,
+   * such as the Split timeline's dock. `view` is then only the document's
+   * `body`, which says which window to keep the menu inside.
+   */
+  fixed?: boolean;
 }
 
-export function MoreMenu({ target, doc, t, view, onClose }: MoreMenuProps): JSX.Element {
+export function MoreMenu({ target, doc, t, view, onClose, fixed = false }: MoreMenuProps): JSX.Element {
   const box = useRef<HTMLDivElement | null>(null);
   const at = snap(t);
   const blocks = target.subjects.map((s) => ({ ...s, ...breakBar(doc, [s.key], at, { keepPlayhead: true }) }));
@@ -169,13 +176,19 @@ export function MoreMenu({ target, doc, t, view, onClose }: MoreMenuProps): JSX.
   useLayoutEffect(() => {
     const el = box.current;
     if (!el || view === null) return;
-    const v = view.getBoundingClientRect();
+    const win = view.ownerDocument.defaultView;
+    const v: { left: number; top: number; width: number; height: number } = fixed && win
+      ? { left: 0, top: 0, width: win.innerWidth, height: win.innerHeight }
+      : view.getBoundingClientRect();
     const room = Math.max(120, v.height - 16);
     el.style.setProperty('max-height', `${room}px`);
     const h = Math.min(el.offsetHeight, room);
     const w = el.offsetWidth;
     const top = Math.max(8, Math.min(target.anchor.top - v.top - 6, v.height - h - 8));
-    const left = Math.max(8, Math.min(target.anchor.right - v.left + 8, v.width - w - 8));
+    /* Beside the opener on the right; on the left of it where the right has no room. */
+    const right = target.anchor.right - v.left + 8;
+    const beside = fixed && right + w > v.width - 8 ? target.anchor.left - v.left - 8 - w : right;
+    const left = Math.max(8, Math.min(beside, v.width - w - 8));
     el.style.setProperty('top', `${top}px`);
     el.style.setProperty('left', `${left}px`);
   });
@@ -199,11 +212,14 @@ export function MoreMenu({ target, doc, t, view, onClose }: MoreMenuProps): JSX.
       e.stopPropagation();
       onClose(true);
     };
-    document.addEventListener('pointerdown', away, true);
-    window.addEventListener('keydown', esc, true);
+    /* The window the menu is in, which is not this one in a popped-out timeline. */
+    const dom = el?.ownerDocument ?? document;
+    const win = dom.defaultView ?? window;
+    dom.addEventListener('pointerdown', away, true);
+    win.addEventListener('keydown', esc, true);
     return () => {
-      document.removeEventListener('pointerdown', away, true);
-      window.removeEventListener('keydown', esc, true);
+      dom.removeEventListener('pointerdown', away, true);
+      win.removeEventListener('keydown', esc, true);
     };
   }, []);
 
@@ -215,7 +231,7 @@ export function MoreMenu({ target, doc, t, view, onClose }: MoreMenuProps): JSX.
 
   return (
     <div
-      class="cv-bar cv-menu ln-menu"
+      class={fixed ? 'cv-bar cv-menu ln-menu is-fixed' : 'cv-bar cv-menu ln-menu'}
       role="group"
       aria-label={`Events for ${many ? 'these links' : first?.title ?? ''}`}
       tabindex={-1}

@@ -16,6 +16,7 @@ import {
 } from '@/state/view';
 import { setEventTime } from '../break/events';
 import type { TimelineProps } from './Timeline';
+import { applyTune } from './tune';
 
 /**
  * Never narrower than the plot needs to stay legible: below that the timeline
@@ -32,7 +33,8 @@ export function shellTimelineProps(trace: Trace, measured: number): TimelineProp
     playing: playing.value,
     speed: speed.value,
     onSeek: (t2) => { tNow.value = t2; },
-    ...(mode.value === 'break' && canEdit(viewport.value) ? { onMoveEvent: setEventTime } : {}),
+    ...(mode.value === 'break' && canEdit(viewport.value)
+      ? { onMoveEvent: setEventTime, onTune: applyTune, laneEvents: true } : {}),
     onPlayToggle: () => { playing.value = !playing.value; },
     onSpeed: (s) => { speed.value = s; },
     selection: selection.value[0] ?? null,
