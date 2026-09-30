@@ -145,7 +145,7 @@ export type WhyKey = keyof typeof WHY;
  * observed 19.27 behaviour (not evaluated there) over the chapter's "must be
  * zero" sentence. 26ai: maximum availability has the role too, where 0 is the
  * broker default and means zero data loss; that role is a 21c feature, not a
- * 26ai one. The rail's form and Simulate's tune strip both read this.
+ * 26ai one. The rail's form and the Detailed timeline's popover both read this.
  */
 export function lagLimitGate(doc: TopologyDoc): WhyState {
   const ed = doc.config.edition;

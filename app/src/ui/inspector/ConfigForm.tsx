@@ -50,7 +50,7 @@ export function ConfigForm({ doc }: ConfigFormProps) {
   const targetList = f.target.kind === 'list' ? f.target.members : [];
 
   /* Which edition and mode can set it, and why not: one function (why.ts),
-     because Simulate's tune strip greys the same control the same way. */
+     because the Detailed timeline's popover greys the same control the same way. */
   const lagLimitOff = lagLimitGate(doc);
 
   const setTarget = (members: MemberId[]): void =>

@@ -19,7 +19,7 @@ import { classic } from '@/presets';
 import { classicDoc, makeDoc } from '@/state/doc';
 import { resetHistory, undo, undoLabel, undoStack } from '@/state/history';
 import { topology } from '@/state/derived';
-import { breakTimeline, appLanesShown, mode, railCollapsed, selection, tNow, tuneOn, viewport } from '@/state/view';
+import { breakTimeline, appLanesShown, mode, railCollapsed, selection, tNow, viewport } from '@/state/view';
 import { App } from '@/ui/App';
 import { applyTemplate, templates } from '@/ui/break/events';
 import { resetSections } from '@/ui/inspector/sections';
@@ -85,7 +85,6 @@ beforeEach(() => {
   breakTimeline.value = 'config';
   railCollapsed.value = false;
   selection.value = [];
-  tuneOn.value = true;
   tunedScenario.value = null;
   tuneDragging.value = false;
   appLanesShown.value = false;

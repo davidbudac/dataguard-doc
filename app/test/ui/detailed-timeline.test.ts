@@ -138,7 +138,7 @@ describe('the words', () => {
     setRailCollapsed(false);
     await tick();
     expect(r.querySelector('.app-rail .empty p')?.textContent).toBe('Pick a scenario below, or add an event from a card.');
-    expect(r.querySelector('.tune-all')?.getAttribute('title')).toBe("Every setting, in Topology's inspector");
+    expect(r.querySelector('.ln-bar .sc-all')?.getAttribute('title')).toBe("Every setting, in Topology's inspector");
     /* Its Application timeline. */
     const b = [...r.querySelectorAll<HTMLButtonElement>('.seg[aria-label="Timeline"] button')].find((x) => x.textContent === 'Application');
     b?.click();
@@ -171,6 +171,12 @@ describe('where it floats', () => {
     expect(r.querySelector('.tl-full-btn')).toBeNull();
     /* Its bar is the view's own top edge. */
     expect(r.querySelector('.ln-view .sb-bar.ln-bar')).not.toBeNull();
+    /* The timeline is the control: no settings column, row or toggle; the three chips and the way on are in the bar. */
+    expect(r.querySelector('.tune-strip')).toBeNull();
+    expect(r.querySelector('.ln-main')).toBeNull();
+    expect(r.querySelector('.sb-tune')).toBeNull();
+    expect(r.querySelectorAll('.ln-bar .sc-row select')).toHaveLength(3);
+    expect(r.querySelector('.ln-bar .sc-all')).not.toBeNull();
   });
 
   it('has the bar over the lanes, with the transport on it and no floating banner', async () => {

@@ -27,7 +27,7 @@ import { resetHistory } from './state/history';
 import { decodeFragment, fragmentKind } from './state/codec';
 import {
   announceRestore, introDismissed, loadDoc, loadEdition, loadGrid, loadHints, loadIntro, loadIssuesOpen, loadPalette,
-  loadBreakTimeline, loadRailCollapsed, loadSummaryOpen, loadTheme, loadTune,
+  loadBreakTimeline, loadRailCollapsed, loadSummaryOpen, loadTheme,
   startAutosave,
 } from './state/persist';
 import { upgradeLegacyUrl } from './state/legacy-url';
@@ -77,7 +77,6 @@ async function boot(): Promise<void> {
   loadRailCollapsed();
   loadBreakTimeline();
   loadSummaryOpen();
-  loadTune();
 
   let restoredFromStorage = false;
   let notice: string | null = null;

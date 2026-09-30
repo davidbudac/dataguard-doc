@@ -12,10 +12,6 @@
 .bl-lanes .ln-note{font-size:12.5px;color:var(--ik2)}
 .bl-lanes .ln-pad{padding:16px}
 .bl-lanes .ln-body{position:relative;flex:1 1 auto;min-height:0;overflow:auto}
-/* The settings column and the lanes side by side. The body takes what the column leaves, and
-   its width is measured on the body, so the plot follows. */
-.bl-lanes .ln-main{display:flex;flex:1 1 auto;min-height:0;min-width:0}
-.bl-lanes .ln-main>.ln-body{flex:1 1 0;min-width:0}
 .bl-lanes .ln-plot{overflow:visible}
 .bl-lanes .ln-svg{display:block}
 @media screen{
@@ -137,3 +133,29 @@
 
 /* Lanes with the Application timeline selected: the strip and the figure where the rows were. */
 .bl-lanes .ln-app{padding:6px 12px 10px}
+
+/* The setting behind a brace (timeline/BracePopover.tsx): its label is a button with a ring and a caret, and the card it opens */
+.bl-lanes .ln-bl{cursor:pointer;outline:none}
+.bl-lanes .ln-bl-hit{fill:transparent;stroke:transparent;stroke-width:1;pointer-events:all}
+.bl-lanes .ln-bl:hover .ln-bl-hit{fill:var(--sf2);fill-opacity:.55;stroke:var(--ln2)}
+.bl-lanes .ln-bl:focus-visible .ln-bl-hit,.bl-lanes .ln-bl.is-open .ln-bl-hit{stroke:var(--fc,var(--vi));stroke-width:1.5}
+.bl-lanes .ln-bl-hint{font-size:9.5px;fill:var(--ik3);pointer-events:none}
+.bl-lanes .ln-bl:hover .ln-bl-hint,.bl-lanes .ln-bl.is-open .ln-bl-hint{fill:var(--ik)}
+
+/* the card: over the label, in the body's own coordinates (--x, --y are written by a ref) */
+.bl-lanes .ln-pop{position:absolute;z-index:40;left:var(--x,0);top:var(--y,0);transform:translateY(-100%);
+  width:300px;box-sizing:border-box;padding:10px 12px 12px;display:flex;flex-direction:column;gap:8px;
+  box-shadow:var(--sh-card)}
+.bl-lanes .ln-pop.is-below{transform:none}
+.bl-lanes .ln-pop-hd{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.bl-lanes .ln-pop-t{font-size:12px;font-weight:600;color:var(--ik)}
+.bl-lanes .ln-pop-t.mono{font-family:var(--mono);letter-spacing:0;font-size:11.5px}
+.bl-lanes .ln-pop-x{border:0;background:transparent;color:var(--ik3);font-size:12px;line-height:1;padding:3px 5px;
+  border-radius:4px;cursor:pointer}
+.bl-lanes .ln-pop-x:hover{background:var(--sf3);color:var(--ik)}
+.bl-lanes .ln-pop-f{display:flex;align-items:center;gap:6px}
+.bl-lanes .ln-pop-f .tune-num{width:64px}
+.bl-lanes .ln-pop-f2{display:flex;flex-direction:column;gap:4px;padding-top:8px;border-top:1px solid var(--ln)}
+.bl-lanes .ln-pop-f2 .ln-pop-f{justify-content:space-between}
+.bl-lanes .ln-pop-f2 .why{display:block;font-size:10.5px;line-height:1.4}
+.bl-lanes .ln-pop-note{margin:0;font-size:11px;line-height:1.45;color:var(--ik2)}

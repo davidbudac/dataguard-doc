@@ -240,11 +240,8 @@ describe('in the Detailed timeline', () => {
       const bar = r.querySelector(barSel) as HTMLElement;
       const below = r.querySelector(belowSel) as HTMLElement;
       expect(bar.nextElementSibling).toBe(b);
-        /* Lanes: the settings are a column beside the lanes, both inside `.ln-main` under the band. */
-        const main = b.nextElementSibling as HTMLElement;
-        expect(main.classList.contains('ln-main')).toBe(true);
-        expect(main.firstElementChild?.classList.contains('tune-col')).toBe(true);
-        expect(main.lastElementChild).toBe(below);
+      /* Directly above the lanes' body: there is no settings column or row between them. */
+      expect(b.nextElementSibling).toBe(below);
       expect(bar.parentElement).toBe(b.parentElement);
     });
 

@@ -76,7 +76,7 @@ function Chip({ name, mono = false, title, children }: {
   );
 }
 
-export function SettingChips({ logXpt = true }: { logXpt?: boolean } = {}) {
+export function SettingChips({ logXpt = true }: { logXpt?: boolean }) {
   const doc = topology.value;
   const f = doc.config.fsfo;
   const dis = !canEdit(viewport.value);

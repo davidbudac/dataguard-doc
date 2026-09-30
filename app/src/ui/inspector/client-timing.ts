@@ -2,8 +2,8 @@
  * The four connect-string timing parameters, said once.
  *
  * The inspector's application form, the Application timeline's strip and the
- * settings column of Simulate's Lanes layout all offer these four settings, as
- * different controls (a slider, a number box). What does not differ -- the
+ * small timeline's retry-window grip all offer these settings, as
+ * different controls (a slider, a number box, a grip). What does not differ -- the
  * name, the bound, the sentence under it, how a value reads and the edit a
  * value makes, with its undo label and its coalesce key -- is here, so a note
  * or a label changed once is changed in every place.

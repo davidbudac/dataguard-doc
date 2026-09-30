@@ -1313,8 +1313,8 @@ export function setLogXptMode(id: MemberId, xpt: XptMode): void {
 
 /* ---------------- the named settings ----------------
  *
- * The properties the inspector's forms and the tune strip
- * both edit. The undo sentence and the coalesce key are written once, here, so
+ * The properties the inspector's forms and the timeline's
+ * chips, grips and popovers both edit. The undo sentence and the coalesce key are written once, here, so
  * a value typed in the rail and the same value dragged on the timeline are one
  * kind of edit -- and a burst of either folds into one undo step. */
 

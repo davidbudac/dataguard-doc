@@ -55,7 +55,7 @@ export function promotedDatabase(doc: TopologyDoc, trace: Trace | null): Databas
 }
 
 /**
- * The standby the strip tunes: the one the run promoted, else the first of
+ * The standby the chips and the braces tune: the one the run promoted, else the first of
  * `FastStartFailoverTarget` when that is a list, else the first physical or
  * logical standby. Null where there is none. Never a primary: it applies no
  * redo, and its apply lag is a setting the rail greys.
