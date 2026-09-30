@@ -80,8 +80,8 @@ export const WHY = {
     'This member holds the primary role: give the role to another database first.',
   lastInstance:
     'A member runs at least one instance.',
-  siteHasHosts:
-    'This site still has hosts in it: move or remove them first.',
+  siteInUse:
+    'A database, an observer or an application still stands in this site: move or remove it first.',
   hostInUse:
     'This host still runs a database instance, an observer or an application.',
   noObserverDeployed:

@@ -281,12 +281,12 @@ describe('the shell wires those keys to real edits', () => {
      now, so the refusal is reachable the way a reader reaches it -- the
      sentence the rail prints under its Remove button, said out loud rather
      than swallowed. */
-  it('Delete refuses a data centre with hosts in it, out loud', async () => {
+  it('Delete refuses a data centre with a database in it, out loud', async () => {
     const root = mountApp();
     press(control(root, 'dc1'), 'Delete');
     await tick();
     expect(docSignal.value.topology.sites.map((s) => s.id as string)).toContain('dc1');
-    expect(toast.value?.text).toBe('dc1 stays: This site still has hosts in it: move or remove them first.');
+    expect(toast.value?.text).toBe('dc1 stays: A database, an observer or an application still stands in this site: move or remove it first.');
   });
 
   it('Delete takes a link out from its caption, because nothing refuses that', async () => {

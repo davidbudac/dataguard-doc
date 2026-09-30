@@ -699,9 +699,30 @@ export function removeHost(id: HostId): void {
   mutate(`Remove the host ${id as string}`, (t) => withoutHost(t, id));
 }
 
+/** The hosts something stands on: a member instance, an observer or an application. */
+export function hostsInUse(t: TopologyDoc): Set<string> {
+  const used = new Set<string>();
+  for (const m of t.members) for (const i of m.instances) used.add(i.host as string);
+  for (const o of t.observers) used.add(o.host as string);
+  for (const a of applicationsOf(t)) used.add(a.host as string);
+  return used;
+}
+
+/** Whether anything stands in a site -- on one of its hosts. A host nothing stands on is not "in use". */
+export function siteInUse(t: TopologyDoc, id: SiteId): boolean {
+  const used = hostsInUse(t);
+  return t.hosts.some((h) => h.site === id && used.has(h.id as string));
+}
+
+/**
+ * A site goes with the hosts in it: the canvas draws only what stands on a
+ * host, so a bare host is invisible and a site that looks empty must be
+ * removable. Each host leaves through `withoutHost`, in the same edit.
+ */
 export function removeSite(id: SiteId): void {
   edit(`Remove the site ${id as string}`, (d) => {
-    const t = d.topology;
+    let t = d.topology;
+    for (const h of t.hosts.filter((x) => x.site === id)) t = withoutHost(t, h.id);
     const next: TopologyDoc = {
       ...t,
       sites: t.sites.filter((s) => s.id !== id),
