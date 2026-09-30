@@ -24,14 +24,19 @@ import type { JSX } from 'preact';
 import type { CanvasTool } from '../canvas/HoverTools';
 import { frame, geometry, redoGraph, topology, trace } from '@/state/derived';
 import {
-  appLanesShown, clearSelection, playing, select, selection, speed, tNow,
+  appLanesShown, canEdit, clearSelection, mode, playing, select, selection, speed, tNow, viewport,
 } from '@/state/view';
 import { applicationsOf } from '@/engine';
 import type { Application, Trace, TopologyDoc } from '@/engine';
 import { buildTimeline, fmt, TL_FULL } from '../timeline/build';
-import type { AppSectionHead, TimelineLane, TimelineMarker, TimelineModel, TimelineSegment } from '../timeline/build';
+import type {
+  AppSectionHead, TimelineCaption, TimelineLane, TimelineMarker, TimelineModel, TimelineSegment,
+} from '../timeline/build';
 import { Defs, Lane, Marker } from '../timeline/Timeline';
 import { Brace, TopBrace } from '../timeline/Brace';
+import { equationOf } from '../timeline/equation';
+import { RunHeadline } from '../timeline/RunHeadline';
+import { applyTune } from '../timeline/tune';
 import { Playhead } from '../timeline/Playhead';
 import { EventDrag } from '../timeline/EventDrag';
 import { Transport } from '../timeline/Transport';
@@ -52,6 +57,7 @@ import { ReadoutFold, SummaryBand } from './SummaryBand';
 import { EventStrip, EV, MoreMenu, stripWidth } from './lanes-events';
 import type { MenuTarget } from './lanes-events';
 import { AppTimeline, appTimelineOn, TimelineSwitch } from './TimelineView';
+import { TuneStrip, TuneToggle } from './TuneStrip';
 import { assignLanes, cardSub, hostBands, planPills, segmentAt, siteOrder } from './lanes-layout';
 import type { Placed, PillPlan } from './lanes-layout';
 
@@ -81,6 +87,7 @@ const STEADY_T0 = 0;
 const STEADY_T1 = 60;
 const STEADY_STEP = 10;
 const STEADY_SENTENCE = 'Steady state. Nothing has been injected yet. Pick an event on a card to start.';
+const STEADY_CAPTION: TimelineCaption = { text: STEADY_SENTENCE, tone: 'ink', x: null, anchor: 'start' };
 
 interface Row {
   key: string; // the model lane key, or `node:<id>` where there is no lane
@@ -459,6 +466,7 @@ function LanesBar({ run }: { run: RunTimeline | null }) {
       ) : null}
       <ReadoutFold><TerseReadout run={trace.value !== null} /></ReadoutFold>
       <TimelineSwitch />
+      <TuneToggle />
       {run?.held ? (
         <button
           type="button" class="btn sb-fit"
@@ -770,12 +778,15 @@ function Lanes({ run, fr }: { run: RunTimeline | null; fr: Frame }) {
     return r.laneKey === null ? null : model?.lanes.find((l) => l.key === r.laneKey) ?? null;
   };
   const caption = model?.caption;
+  /* The same gate as the event drag's on the shell (shell-props.ts): tuning is Simulate's, on a screen that edits. */
+  const tunable = mode.value === 'break' && canEdit(viewport.value);
   const steadyX = scale.x(scale.clampT(t));
 
   return (
     <section class="ln-view float-card" aria-label="Simulate: topology and timeline" ref={section}>
       <LanesBar run={run} />
       <SummaryBand />
+      <TuneStrip />
 
       <div
         class="ln-body"
@@ -788,12 +799,11 @@ function Lanes({ run, fr }: { run: RunTimeline | null; fr: Frame }) {
             {/* What holds still while the rows scroll: the run in a sentence, then the
                 clock -- its ticks, the outage over them and what the buttons are aimed at. */}
             <div class="ln-head">
-              <p
-                class={`tl-headline${caption && caption.tone !== 'ink' ? ` ${caption.tone}` : ''}`}
-                title={caption?.text ?? STEADY_SENTENCE}
-              >
-                {caption?.text ?? STEADY_SENTENCE}
-              </p>
+              <RunHeadline
+                caption={caption ?? STEADY_CAPTION}
+                equation={tunable && tr && model ? equationOf(doc, tr, model.braces) : null}
+                {...(tunable ? { onTune: applyTune } : {})}
+              />
               <svg class="tl-svg ln-svg ln-ticks" width={width} height={HEAD_H} viewBox={`0 0 ${width} ${HEAD_H}`} role="group" aria-label="The clock">
                 <g class="ln-when">
                   <title>The event buttons act at the playhead. Move the playhead to add an event later.</title>

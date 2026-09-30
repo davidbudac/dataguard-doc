@@ -17,6 +17,9 @@ import type { AppSectionHead, Density, Layout, TimelineLane, TimelineMarker, Tim
 import { useRunTimeline } from './run';
 import type { RunTimeline } from './run';
 import { Brace, TopBrace } from './Brace';
+import { equationOf } from './equation';
+import { RunHeadline } from './RunHeadline';
+import type { Tune } from './tune';
 import { EventDrag } from './EventDrag';
 import { Playhead } from './Playhead';
 import { usePlayback } from './playback';
@@ -36,6 +39,12 @@ export interface TimelineProps {
   speed?: number;
   onSeek?: (t: number) => void;
   onMoveEvent?: (index: number, at: number, expected: TimedEvent) => number | null | void;
+  /**
+   * Present where the reader may tune the run's settings from the timeline:
+   * with it, a failover's or a switchover's headline is the equation whose
+   * terms are editable (`RunHeadline`); without it, the sentence.
+   */
+  onTune?: (t: Tune, value: number) => void;
   onPlayToggle?: () => void;
   onSpeed?: (speed: number) => void;
   selection?: string | null;
@@ -341,7 +350,7 @@ export function Timeline(props: TimelineProps) {
 export function TimelineBody(props: TimelineProps & { run: RunTimeline }) {
   const {
     doc, tNow, playing = false, speed = 1, run,
-    onSeek, onMoveEvent, onPlayToggle, onSpeed, selection = null, onSelect,
+    onSeek, onMoveEvent, onTune, onPlayToggle, onSpeed, selection = null, onSelect,
     pinnedScale = false, showTransport = true, appView = true, onAppView,
     headline = false, legend = true,
   } = props;
@@ -430,9 +439,11 @@ export function TimelineBody(props: TimelineProps & { run: RunTimeline }) {
   return (
     <section class={model.empty ? 'tl is-empty' : 'tl'} aria-label="Timeline">
       {headline ? (
-        <p class={`tl-headline${model.caption.tone === 'ink' ? '' : ` ${model.caption.tone}`}`} title={model.caption.text}>
-          {model.caption.text}
-        </p>
+        <RunHeadline
+          caption={model.caption}
+          equation={onTune ? equationOf(doc, props.trace, model.braces) : null}
+          {...(onTune ? { onTune } : {})}
+        />
       ) : null}
       <div class="tl-plot" onPointerMove={onPointerMove} onPointerLeave={() => setTip(null)}>
         <svg

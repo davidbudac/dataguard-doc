@@ -19,6 +19,7 @@
  *   `dg-break-layout` Break's layout, `split` or `lanes` -- anything else reads as split
  *   `dg-break-timeline` Simulate's timeline, `config` or `app` -- anything else reads as config
  *   `dg-summary`     whether Break's run summary band is unfolded ('1' = unfolded)
+ *   `dg-tune`        whether Simulate's tune strip is drawn ('0' = away; unset reads as drawn)
  *   `dg-fsfo-cfg-v1` the published page's stored configuration. Read once when
  *                    there is nothing newer, and never deleted: the old page
  *                    is still serving from /legacy/ and still owns that key.
@@ -40,7 +41,7 @@ import { isDesktop, saveFile } from '@/ui/common/desktop';
 import type { DecodeResult } from './codec';
 import {
   BREAK_LAYOUTS, BREAK_TIMELINES, breakLayout, breakTimeline, gridOn, hintsOn, inspectorOpen, issuesOpen, railCollapsed,
-  summaryOpen, timelineH, TL_MIN_H, viewport,
+  summaryOpen, timelineH, TL_MIN_H, tuneOn, viewport,
 } from './view';
 import type { BreakLayout, BreakTimeline, PalettePref, ThemePref } from './view';
 
@@ -58,6 +59,7 @@ export const RAIL_KEY = 'dg-rail';
 export const BREAK_LAYOUT_KEY = 'dg-break-layout';
 export const BREAK_TIMELINE_KEY = 'dg-break-timeline';
 export const SUMMARY_KEY = 'dg-summary';
+export const TUNE_KEY = 'dg-tune';
 
 export const AUTOSAVE_MS = 500;
 export const RESTORE_NOTICE_MS = 8000;
@@ -201,6 +203,20 @@ export function setSummaryOpen(on: boolean): void {
 }
 
 export const toggleSummary = (): void => setSummaryOpen(!summaryOpen.value);
+
+/* ---------------- Simulate's tune strip ---------------- */
+
+/** Drawn or not -- `tuneOn` in `view.ts`; unset, or anything but '0', means drawn. */
+export function loadTune(): void {
+  tuneOn.value = read(TUNE_KEY) !== '0';
+}
+
+export function setTune(on: boolean): void {
+  tuneOn.value = on;
+  write(TUNE_KEY, on ? '1' : '0');
+}
+
+export const toggleTune = (): void => setTune(!tuneOn.value);
 
 /* ---------------- Break's timeline region ---------------- */
 
