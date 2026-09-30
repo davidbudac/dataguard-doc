@@ -21,6 +21,7 @@ import { equationOf } from './equation';
 import { RunHeadline } from './RunHeadline';
 import type { Tune } from './tune';
 import { EventDrag } from './EventDrag';
+import { LaneAddButtons, LaneAddMenu, useLaneAdd } from './LaneAdd';
 import { Playhead } from './Playhead';
 import { usePlayback } from './playback';
 import { useHostWindow } from '../common/dom';
@@ -67,6 +68,8 @@ export interface TimelineProps {
   headline?: boolean;
   /** The colour key and its buttons under the plot; on unless a bar carries them. */
   legend?: boolean;
+  /** A `+` on each lane at the playhead, and a double-click, open the event menu for that lane (LaneAdd.tsx). */
+  laneEvents?: boolean;
 }
 
 /** What the Application's view button does, said once for every place that offers it. */
@@ -352,7 +355,7 @@ export function TimelineBody(props: TimelineProps & { run: RunTimeline }) {
     doc, tNow, playing = false, speed = 1, run,
     onSeek, onMoveEvent, onTune, onPlayToggle, onSpeed, selection = null, onSelect,
     pinnedScale = false, showTransport = true, appView = true, onAppView,
-    headline = false, legend = true,
+    headline = false, legend = true, laneEvents = false,
   } = props;
   const { model } = run;
   const TL = model.layout;
@@ -362,6 +365,7 @@ export function TimelineBody(props: TimelineProps & { run: RunTimeline }) {
     return result;
   };
   const [tip, setTip] = useState<TooltipState | null>(null);
+  const laneAdd = useLaneAdd({ enabled: laneEvents && !pinnedScale, model, doc, tNow });
 
   /* ▶ moves the playhead. The loop lives in the UI layer -- the engine has no
      clock (CLAUDE.md) -- and leaves through the same `onSeek` a drag uses, so
@@ -425,6 +429,7 @@ export function TimelineBody(props: TimelineProps & { run: RunTimeline }) {
   };
 
   const onPointerMove = (e: JSX.TargetedPointerEvent<HTMLDivElement>): void => {
+    laneAdd.track(e.target);
     const text = tipFromEvent(e.target);
     if (text === null) { if (tip !== null) setTip(null); return; }
     const box = e.currentTarget.getBoundingClientRect();
@@ -445,7 +450,10 @@ export function TimelineBody(props: TimelineProps & { run: RunTimeline }) {
           {...(onTune ? { onTune } : {})}
         />
       ) : null}
-      <div class="tl-plot" onPointerMove={onPointerMove} onPointerLeave={() => setTip(null)}>
+      <div
+        class="tl-plot" onPointerMove={onPointerMove} onDblClick={laneAdd.onDblClick}
+        onPointerLeave={() => { setTip(null); laneAdd.track(null); }}
+      >
         <svg
           class={`tl-svg${canSeek ? ' is-seekable' : ''}${TL.big === 1 ? ' is-big' : ''}`}
           width={model.width}
@@ -551,8 +559,10 @@ export function TimelineBody(props: TimelineProps & { run: RunTimeline }) {
               <Marker marker={m} layout={TL} spans={gridSpans(model, model.laneTop - 4)} />
             </EventDrag>
           ))}
+          <LaneAddButtons add={laneAdd} />
         </svg>
         <Tooltip tip={tip} />
+        <LaneAddMenu add={laneAdd} />
       </div>
 
       {model.quietLinks > 0 ? (
