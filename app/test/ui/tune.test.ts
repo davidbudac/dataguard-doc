@@ -221,7 +221,7 @@ describe('equationOf', () => {
     expect(e?.terms.reduce((n, t) => n + t.seconds, 0)).toBeCloseTo(tr.facts.tOpen!, 1);
     expect(e?.terms.every((t) => t.tune !== null)).toBe(true);
     expect(e?.terms[0]).toMatchObject({ label: 'FastStartFailoverThreshold', mono: true });
-    expect(e?.terms[1]).toMatchObject({ label: 'role change + open', mono: false });
+    expect(e?.terms[1]).toMatchObject({ label: 'role change and open', mono: false });
     expect(e?.terms[0]?.title).toContain('FastStartFailoverThreshold — 30 s');
   });
 
@@ -247,7 +247,7 @@ describe('equationOf', () => {
     const downtime = (tr.facts as { switchover?: { downtime: number } }).switchover!.downtime;
     expect(e?.lead).toBe(`Read-write downtime ≈ ${downtime} s`);
     expect(e?.terms.map((t) => t.key)).toEqual(['sw-convert', 'sw-catchup', 'sw-role']);
-    expect(e?.terms.map((t) => t.label)).toEqual(['conversion', 'catch-up', 'role change + open']);
+    expect(e?.terms.map((t) => t.label)).toEqual(['conversion', 'catch-up', 'role change and open']);
     expect(e?.terms.reduce((n, t) => n + t.seconds, 0)).toBeCloseTo(downtime, 1);
     expect(e?.terms.map((t) => t.tune?.id ?? null)).toEqual([null, 'applyLag', 'roleTransition']);
   });
@@ -466,7 +466,7 @@ describe('RunHeadline', () => {
     const p = root!.querySelector('p')!;
     expect(p.className).toBe('tl-headline tl-eq');
     expect(p.getAttribute('title')).toBe(caption.text);
-    expect(p.textContent).toContain('New primary open read-write at t = 55 s =');
+    expect(p.textContent).toContain('New primary open read-write at t = 55 s —');
     const boxes = [...p.querySelectorAll<HTMLInputElement>('input[type="number"]')];
     expect(boxes.map((b) => [b.getAttribute('aria-label'), b.value])).toEqual([
       ['FastStartFailoverThreshold', '30'], ['Apply lag', '10'], ['Role transition', '15'],

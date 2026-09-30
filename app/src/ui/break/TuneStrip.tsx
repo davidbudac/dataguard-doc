@@ -72,7 +72,7 @@ function Field({ name, mono = false, note, why, children }: {
   name: ComponentChildren; mono?: boolean; note?: string; why?: WhyState | undefined; children: ComponentChildren;
 }) {
   return (
-    <span class="tune-g">
+    <span class={why === undefined ? 'tune-g' : 'tune-g has-why'}>
       <label class="tune-f" title={note}>
         <span class={mono ? 'tune-k mono' : 'tune-k'}>{name}</span>
         <span class="tune-c">{children}</span>

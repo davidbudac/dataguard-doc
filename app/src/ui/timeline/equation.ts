@@ -47,10 +47,10 @@ const LABEL: Record<string, { label: string; mono: boolean }> = {
   detect: { label: 'ping detection', mono: false },
   nethop: { label: 'command in flight', mono: false },
   recovery: { label: 'terminal recovery', mono: false },
-  role: { label: 'role change + open', mono: false },
+  role: { label: 'role change and open', mono: false },
   'sw-convert': { label: 'conversion', mono: false },
   'sw-catchup': { label: 'catch-up', mono: false },
-  'sw-role': { label: 'role change + open', mono: false },
+  'sw-role': { label: 'role change and open', mono: false },
 };
 
 function term(

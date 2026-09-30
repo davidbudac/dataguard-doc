@@ -3,8 +3,8 @@
  *
  * For most outcomes it is a sentence, and stays one. For the two that are a
  * sum -- a failover's open time and a switchover's downtime -- it is the
- * equation (`equationOf`): `New primary open read-write at t = 45 s = 30 s
- * FastStartFailoverThreshold + 15 s role change + open`, where every term that
+ * equation (`equationOf`): `New primary open read-write at t = 45 s — 30 s
+ * FastStartFailoverThreshold + 15 s role change and open`, where every term that
  * is a setting is a number box. Type in it, arrow it, or press its label and
  * drag sideways to scrub it; the timeline under it follows, on the axis it
  * already had (run.ts), so the bar that shrinks is seen shrinking.
@@ -120,7 +120,7 @@ export function RunHeadline({ caption, equation, onTune }: RunHeadlineProps) {
   return (
     <p class={`tl-headline tl-eq${tone}`} title={caption.text}>
       <span class="tl-eq-lead">{equation.lead}</span>
-      <span class="tl-eq-op"> = </span>
+      <span class="tl-eq-op"> — </span>
       {equation.terms.map((t, i) => (
         <Fragment key={t.key}>
           {i === 0 ? null : <span class="tl-eq-op"> + </span>}

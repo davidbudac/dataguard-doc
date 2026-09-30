@@ -217,7 +217,7 @@
    the inspector: Oracle property names in mono, this page's words in sans. Colour
    from tokens only. */
 .tune-strip {
-  flex: 0 0 auto; display: flex; flex-wrap: wrap; align-items: flex-end; gap: 2px 14px;
+  flex: 0 0 auto; display: flex; flex-wrap: wrap; align-items: flex-end; gap: 2px 12px;
   padding: 3px 16px 4px; min-width: 0; box-sizing: border-box;
   background: var(--sf2); border-bottom: 1px solid var(--ln);
 }
@@ -235,7 +235,10 @@
 .tune-sel:disabled, .tune-num:disabled { opacity: .55; }
 .tune-u { font-size: 11px; color: var(--ik3); }
 /* The reason a control is grey, beside it, cut to a line; the whole of it is the tooltip. */
-.tune-why { flex: 0 1 auto; min-width: 0; max-width: 20ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding-bottom: 2px; }
+.tune-why { flex: 1 1 0; width: 5ch; min-width: 5ch; max-width: 44ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding-bottom: 2px; }
+/* A greyed control's group takes the row's spare room for its reason, and gives
+   it all back before the row would wrap: the reason is cut, never the row doubled. */
+.tune-g.has-why { flex: 1000 1 auto; }
 .tune-why .why { display: inline; font-size: 10.5px; white-space: nowrap; }
 .tune-spacer { flex: 1 1 0; min-width: 0; }
 .tune-all { flex: 0 0 auto; padding: 2px 8px; font-size: 11.5px; white-space: nowrap; border-color: var(--ln); }

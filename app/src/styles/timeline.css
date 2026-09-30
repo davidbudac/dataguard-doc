@@ -422,8 +422,8 @@
 /* The grip on the end of a clock: quiet at rest, plain when the plot, the grip or the drag is live. */
 .tl-tune{cursor:ew-resize;touch-action:none}
 .tl-tune-hit{fill:transparent;stroke:transparent}
-.tl-tune-grip{fill:var(--ik3);stroke:var(--sf);stroke-width:1;opacity:.35}
-.tl-plot:hover .tl-tune-grip{opacity:.7}
+.tl-tune-grip{fill:var(--ik2);stroke:var(--sf);stroke-width:1;opacity:.6}
+.tl-plot:hover .tl-tune-grip{opacity:.9}
 .tl-tune:hover .tl-tune-grip,
 .tl-tune:focus-visible .tl-tune-grip{fill:var(--ik);opacity:1}
 .tl-tune.is-dragging .tl-tune-grip{fill:var(--fc);opacity:1}
