@@ -3,10 +3,12 @@
  * it, wired to the page's signals. Read where the timeline is drawn, so the
  * component that calls it re-renders when the playhead does.
  *
- * One place, because three parts draw the timeline from the same state -- the
- * shell's own slot (`TimelineSlot` in App.tsx: the docked Break, Learn and the
- * popped-out window) and Break's Split layout, which owns the model itself so
- * its bar can read it too.
+ * One place, because the shell's own slot (`TimelineSlot` in App.tsx: the
+ * docked Detailed timeline, Learn and the timeline popped out of Topology or
+ * of the Detailed timeline) draws the full timeline from this state. Moving an
+ * event, tuning a setting and adding an event from a lane are offered in
+ * Topology and the Detailed timeline on a screen that edits -- and not in
+ * Learn, whose drawing is a lesson's.
  */
 
 import type { Trace } from '@/engine';
@@ -33,7 +35,7 @@ export function shellTimelineProps(trace: Trace, measured: number): TimelineProp
     playing: playing.value,
     speed: speed.value,
     onSeek: (t2) => { tNow.value = t2; },
-    ...(mode.value === 'break' && canEdit(viewport.value)
+    ...((mode.value === 'build' || mode.value === 'break') && canEdit(viewport.value)
       ? { onMoveEvent: setEventTime, onTune: applyTune, laneEvents: true } : {}),
     onPlayToggle: () => { playing.value = !playing.value; },
     onSpeed: (s) => { speed.value = s; },

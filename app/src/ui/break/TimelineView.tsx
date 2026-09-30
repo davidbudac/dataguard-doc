@@ -17,12 +17,11 @@
  * selected, and choosing here moves that selection along).
  *
  * The Application choice exists only while the drawing has an application card
- * and only in Simulate: with none the switch is not drawn and the
+ * and only in the Detailed timeline: with none the switch is not drawn and the
  * configuration's timeline is what shows, whatever `breakTimeline` holds.
  *
- * Where the switch sits: in the bar of the Split and Lanes layouts
- * (`break/SplitBar.tsx`, `LanesView.tsx`), which is the timeline region's
- * header there, and on a slim row at the top of the timeline slot where there
+ * Where the switch sits: in the bar of the Detailed timeline
+ * (`LanesView.tsx`), which is the timeline region's header there, and on a slim row at the top of the timeline slot where there
  * is no bar (the docked timeline and the popped-out window, `TimelineSlot` in
  * App.tsx). The choice is a reading preference remembered under
  * `dg-break-timeline` (state/persist.ts); the run, the playhead and the

@@ -20,12 +20,11 @@
 import type { ComponentChildren } from 'preact';
 import { canUndo, canRedo, redo, redoLabel, undo, undoLabel } from '@/state/history';
 import {
-  applyPalette, applyTheme, edition, floating, introOpen, introPage, mode, MODE_LABEL, MODE_SUB, MODES, nextTheme, palette, theme, viewport,
+  applyPalette, applyTheme, edition, introOpen, mode, MODE_LABEL, MODE_SUB, MODES, nextTheme, palette, theme,
 } from '@/state/view';
 import type { Mode, PalettePref, ThemePref } from '@/state/view';
 import { saveEdition, savePalette, saveTheme } from '@/state/persist';
 import { Segmented } from './common/Segmented';
-import { LayoutSwitch } from './break/LayoutSwitch';
 import { INTRO_HREF, leaveIntro, openIntro } from './intro/route';
 
 const THEME_WORD: Record<ThemePref, string> = { auto: 'system', light: 'light', dark: 'dark' };
@@ -75,11 +74,6 @@ export function TopBar({ doc, actions }: TopBarProps = {}) {
       </div>
 
       <div class="topbar-group">
-        {/* Break's layout, where Break has more than one: not over the
-            Introduction, and not in the docked fallback below 1024 px, which
-            is a single layout. Absent, it takes no room: the group is
-            right-aligned, so the release switch does not move. */}
-        {m === 'break' && !introPage.value && floating(m, viewport.value) ? <LayoutSwitch /> : null}
         <Segmented<'19c' | '26ai'>
           label="Oracle release"
           value={edition.value}

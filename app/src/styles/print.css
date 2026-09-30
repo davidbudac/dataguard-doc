@@ -38,6 +38,9 @@
      deployment. `canvas.css` drops it too; this is the sheet that says what
      paper is. */
   .tp-actions{display:none}
+  /* Topology's scenario buttons are gestures too: a row of controls, and the
+     run they made is what the readout and the timeline carry. */
+  .dock-scn{display:none}
 }
 
 /* Learn mode on paper (ui.md SS3: "print expands everything").

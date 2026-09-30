@@ -1,5 +1,5 @@
 /**
- * Tuning a run from Simulate itself: the mapping from a clock on the timeline
+ * Tuning a run from the Detailed timeline itself: the mapping from a clock on the timeline
  * to the setting that is that clock (`tune.ts`), the headline as an equation
  * whose terms are those settings (`equation.ts`, `RunHeadline.tsx`), the axis
  * held while a setting is tuned (`run.ts`), and the strip of settings above the
@@ -24,7 +24,7 @@ import { resetHistory, undo, undoLabel, undoStack } from '@/state/history';
 import { topology, trace } from '@/state/derived';
 import { loadTune, setTune, TUNE_KEY } from '@/state/persist';
 import {
-  appLanesShown, breakLayout, breakTimeline, mode, railCollapsed, selection, timelineFull, timelineH, tuneOn, viewport,
+  appLanesShown, breakTimeline, mode, railCollapsed, selection, tuneOn, viewport,
 } from '@/state/view';
 import { App } from '@/ui/App';
 import { applyTemplate, templates } from '@/ui/break/events';
@@ -119,11 +119,8 @@ beforeEach(() => {
   resetSections();
   viewport.value = 'wide';
   mode.value = 'break';
-  breakLayout.value = 'split';
   breakTimeline.value = 'config';
   railCollapsed.value = false;
-  timelineH.value = null;
-  timelineFull.value = false;
   selection.value = [];
   tuneOn.value = true;
   tunedScenario.value = null;
@@ -534,9 +531,9 @@ describe('RunHeadline', () => {
   });
 });
 
-/* ---------------- Simulate, end to end ---------------- */
+/* ---------------- the Detailed timeline, end to end ---------------- */
 
-describe('Simulate\'s headline', () => {
+describe('the Detailed timeline\'s headline', () => {
   it('is the equation for a crash, and typing in a term changes the setting and keeps the axis', async () => {
     crash();
     const r = mount();
@@ -577,7 +574,6 @@ describe('Simulate\'s headline', () => {
   });
 
   it('is the equation in Lanes too', async () => {
-    breakLayout.value = 'lanes';
     crash();
     const r = mount();
     await tick();
@@ -592,28 +588,7 @@ describe('Simulate\'s headline', () => {
 /* ---------------- the strip ---------------- */
 
 describe('the tune strip', () => {
-  it('is drawn in Split between the bar\'s summary and the timeline, and its threshold box edits the document', async () => {
-    crash();
-    const r = mount();
-    await tick();
-    const s = strip(r)!;
-    expect(s).not.toBeNull();
-    expect(s.nextElementSibling?.classList.contains('tl-slot')).toBe(true);
-    expect(s.parentElement?.querySelector('.sb-bar')).not.toBeNull();
-    const box = num(r, 'FastStartFailoverThreshold');
-    expect(box.value).toBe('30');
-    expect(box).toMatchObject({ min: '6', max: '120', step: '1' });
-    typeInto(box, '25');
-    await tick();
-    expect(topology.value.config.fsfo.thresholdSeconds).toBe(25);
-    expect(undoLabel.value).toBe('Set FastStartFailoverThreshold to 25 s');
-    expect(num(r, 'FastStartFailoverThreshold').value).toBe('25');
-    expect((r.querySelector('.tl-headline input[aria-label="FastStartFailoverThreshold"]') as HTMLInputElement).value).toBe('25');
-    expect(r.querySelector('.tl-headline')!.textContent).toContain('t = 50 s');
-  });
-
   it('is drawn in Lanes as a column beside the rows, and its role transition box edits the document', async () => {
-    breakLayout.value = 'lanes';
     crash();
     const r = mount();
     await tick();
@@ -626,21 +601,35 @@ describe('the tune strip', () => {
     expect(topology.value.environment.roleTransitionSeconds).toBe(20);
   });
 
-  it('is drawn with no run to draw, in both layouts', async () => {
-    let r = mount();
+  it('carries the threshold\'s box, which edits the document and the headline\'s own box with it', async () => {
+    crash();
+    const r = mount();
+    await tick();
+    const box = num(r, 'FastStartFailoverThreshold');
+    expect(box.value).toBe('30');
+    expect(box).toMatchObject({ min: '6', max: '120', step: '1' });
+    typeInto(box, '25');
+    await tick();
+    expect(topology.value.config.fsfo.thresholdSeconds).toBe(25);
+    expect(undoLabel.value).toBe('Set FastStartFailoverThreshold to 25 s');
+    expect(num(r, 'FastStartFailoverThreshold').value).toBe('25');
+    expect((r.querySelector('.tl-headline input[aria-label="FastStartFailoverThreshold"]') as HTMLInputElement).value).toBe('25');
+    expect(r.querySelector('.tl-headline')!.textContent).toContain('t = 50 s');
+  });
+
+  it('is drawn with no run to draw', async () => {
+    const r = mount();
     await tick();
     expect(trace.value).toBeNull();
     expect(strip(r)).not.toBeNull();
-    render(null, r);
-    breakLayout.value = 'lanes';
-    r = mount();
-    await tick();
-    expect(strip(r)).not.toBeNull();
   });
 
-  it('carries the controls in order, named as the inspector names them', async () => {
+  it('carries the controls in order, named as the inspector names them (the row, under 1180 px)', async () => {
     crash();
-    const r = mount();
+    root = document.createElement('div');
+    document.body.appendChild(root);
+    act(() => render(h(TuneStrip, { layout: 'row' }), root!));
+    const r = root;
     await tick();
     const names = [...strip(r)!.querySelectorAll('.tune-k')].map((k) => k.textContent);
     expect(names).toEqual([
@@ -733,7 +722,6 @@ describe('the tune strip', () => {
   });
 
   it('has the same toggle in Lanes\' bar', async () => {
-    breakLayout.value = 'lanes';
     crash();
     const r = mount();
     await tick();
@@ -764,7 +752,6 @@ describe('the tune strip', () => {
     expect(strip(r)).toBeNull();
     expect(r.querySelector('.app-tl-strip')).not.toBeNull();
     expect(toggle(r)).toBeUndefined();
-    breakLayout.value = 'lanes';
     await tick();
     expect(strip(r)).toBeNull();
     expect(toggle(r)).toBeUndefined();
@@ -816,7 +803,6 @@ describe('the settings column', () => {
   const heads = (r: ParentNode): (string | null)[] =>
     [...col(r)!.querySelectorAll('.grp-hd .eyebrow')].map((e) => e.textContent);
   const lanes = async (): Promise<HTMLElement> => {
-    breakLayout.value = 'lanes';
     crash();
     const r = mount();
     await tick();
@@ -979,15 +965,6 @@ describe('the settings column', () => {
     expect(controls.length).toBeGreaterThanOrEqual(6);
     expect(controls.every((c) => c.disabled)).toBe(true);
     expect(root.querySelector('.tune-col > .tune-why')?.textContent).toBe('This is a read-only view here.');
-  });
-
-  it('leaves the row in Split, above the timeline', async () => {
-    crash();
-    const r = mount();
-    await tick();
-    expect(strip(r)!.classList.contains('tune-col')).toBe(false);
-    expect(col(r)).toBeNull();
-    expect(r.querySelector('.ln-main')).toBeNull();
   });
 
   it('decides column or row from the section\'s width: the column from 1180 px', () => {

@@ -1,5 +1,5 @@
-/* Break's run summary (break/SummaryBand.tsx): a band of cards under the bar in
-   Split and in Lanes, and the fold that stands where the terse line stands in
+/* The Detailed timeline's run summary (break/SummaryBand.tsx): a band of cards under the bar,
+   and the fold that stands where the terse line stands in
    the bar. Colour from tokens only; the tone classes are the readout's own
    (`t-tl`, `t-am`, ...). No inline style: the cards wrap on their own. */
 

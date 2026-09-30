@@ -73,8 +73,7 @@ export function revealFindings(): void {
     };
   } else if (mode.value === 'configure') mode.value = 'build';
   /* Over a full-bleed canvas the findings are a popover -- the status card's
-     chips open it in Topology, the count on the bar in the Detailed timeline, in Split and in
-     Lanes alike. */
+     chips open it in Topology, the count on the bar in the Detailed timeline. */
   if (floating(mode.value, viewport.value)) {
     findingsOpen.value = true;
     return;

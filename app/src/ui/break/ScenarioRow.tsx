@@ -18,7 +18,6 @@ import { sortEvents } from '@/engine';
 import { events, topology } from '@/state/derived';
 import { canEdit, healthyRun, viewport } from '@/state/view';
 import { Action } from '../inspector/controls';
-import { WHY } from '../inspector/why';
 import { applyTemplate, shelf } from './events';
 import type { Template } from './events';
 

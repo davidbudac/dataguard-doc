@@ -1,5 +1,6 @@
 /**
- * Adding an event from a lane of Split's timeline: the `+` beside the playhead,
+ * Adding an event from a lane of the full timeline (the docked Detailed timeline below
+ * 1024 px, and the timeline popped out of Topology): the `+` beside the playhead,
  * the grouped menu it opens, and the double-click that opens the same menu at
  * the pointer.
  *
@@ -19,7 +20,7 @@ import { simulate } from '@/engine';
 import { classicDoc } from '@/state/doc';
 import { resetHistory, undoStack } from '@/state/history';
 import { topology } from '@/state/derived';
-import { breakLayout, findingsOpen, healthyRun, mode, playing, railCollapsed, selection, timelineFull, timelineH, tNow, viewport } from '@/state/view';
+import { findingsOpen, healthyRun, mode, playing, railCollapsed, selection, tNow, viewport } from '@/state/view';
 import { App } from '@/ui/App';
 import { applyTemplate, healthyScenario, templates } from '@/ui/break/events';
 import { Timeline } from '@/ui/timeline/Timeline';
@@ -92,13 +93,11 @@ beforeEach(() => {
   document.documentElement.removeAttribute('style');
   memory.clear();
   resetHistory(classicDoc());
-  viewport.value = 'wide';
+  /* The docked layout draws the full timeline (`TimelineBody`) in its dock. */
+  viewport.value = 'compact';
   mode.value = 'break';
-  breakLayout.value = 'split';
   railCollapsed.value = false;
   findingsOpen.value = false;
-  timelineFull.value = false;
-  timelineH.value = null;
   healthyRun.value = false;
   playing.value = false;
   selection.value = [];

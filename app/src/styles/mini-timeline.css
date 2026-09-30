@@ -21,6 +21,7 @@
 
 .mtl-acts { display: inline-flex; align-items: center; gap: 4px; flex: 0 0 auto; margin-left: auto; }
 .mtl-acts .btn { padding: 3px 10px; font-size: 12px; white-space: nowrap; }
+.mtl-acts .btn.is-icon { padding: 0; }
 
 .mtl-plot { position: relative; overflow-x: auto; overflow-y: hidden; min-width: 0; }
 

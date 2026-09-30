@@ -21,17 +21,15 @@ function snapNow(): void {
 }
 
 /**
- * Fold the rail to its strip while one of Break's two layouts (Split or Lanes)
- * is on screen, so the drawing or the lanes keep the width the timeline wants.
+ * Fold the rail to its strip while the Detailed timeline's lanes are on
+ * screen, so they keep the width the timeline wants.
  *
  * In memory only -- a plain signal write, not `setRailCollapsed`, so the
- * reader's remembered choice (`dg-rail`) is untouched by a layout they chose
- * for another reason. Opening or folding the rail by hand inside a layout is the
+ * reader's remembered choice (`dg-rail`) is untouched by a fold they did not
+ * ask for. Opening or folding the rail by hand while the lanes are up is the
  * reader's own choice and is stored as it is anywhere; it is then left alone on
- * the way out. Otherwise, leaving Break puts the rail back as it was.
- *
- * Callers pass "either layout", not one of them: the flag then stays true across
- * a switch between the two, and the rail does not fold, unfold and fold again.
+ * the way out. Otherwise, leaving the Detailed timeline puts the rail back as
+ * it was.
  */
 export function useFoldRailWhile(active: boolean): void {
   useLayoutEffect(() => {

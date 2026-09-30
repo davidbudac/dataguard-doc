@@ -101,7 +101,7 @@ export function findingCounts(): { errs: number; warns: number; notes: number; t
 /**
  * The head and the rows of the findings popover: the counts, a close button,
  * and `IssuePanel`'s own rows. The popover over the canvas (`FindingsPopover`)
- * and the dropdown on Break's Split bar (`break/SplitBar.tsx`) both wrap it, so
+ * and the dropdown on the Detailed timeline's bar (`break/RunBar.tsx`) both wrap it, so
  * the two read and behave as one.
  */
 export function FindingsSheet() {

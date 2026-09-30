@@ -16,7 +16,7 @@ import { resetHistory } from '@/state/history';
 import {
   loadRailCollapsed, RAIL_KEY, revealRail, setRailCollapsed, toggleRail,
 } from '@/state/persist';
-import { breakLayout, inspectorOpen, mode, railCollapsed, selection, viewport } from '@/state/view';
+import { inspectorOpen, mode, railCollapsed, selection, viewport } from '@/state/view';
 import { topology } from '@/state/derived';
 import { applyTemplate, templates } from '@/ui/break/events';
 
@@ -58,7 +58,6 @@ beforeEach(() => {
   selection.value = [];
   inspectorOpen.value = false;
   railCollapsed.value = false;
-  breakLayout.value = 'split';
 });
 
 afterEach(() => {
@@ -116,9 +115,8 @@ describe('the side rail folds', () => {
     expect(railCollapsed.value).toBe(false);
   });
 
-  it('draws no event menu in Break, in the rail column or on the stage, folded or open', async () => {
+  it('draws no event menu in the Detailed timeline, in the rail column or on the stage, folded or open', async () => {
     mode.value = 'break';
-    breakLayout.value = 'split';
     selection.value = ['sby01'];
     const root = mount();
     await tick();
@@ -133,7 +131,6 @@ describe('the side rail folds', () => {
 
   it('draws no event menu over Lanes at 1440 either, with a selection and the rail open', async () => {
     mode.value = 'break';
-    breakLayout.value = 'lanes';
     selection.value = ['sby01'];
     const root = mount();
     await tick();
@@ -147,7 +144,6 @@ describe('the side rail folds', () => {
 
   it('floats nothing over Lanes at a width with no rail column, and its drawer holds the event list alone', async () => {
     mode.value = 'break';
-    breakLayout.value = 'lanes';
     viewport.value = 'medium';
     const root = mount();
     await tick();
@@ -168,7 +164,6 @@ describe('the side rail folds', () => {
 
   it('carries the event list in its drawer at 1024, and closes by button, Esc and outside press', async () => {
     mode.value = 'break';
-    breakLayout.value = 'lanes';
     viewport.value = 'medium';
     const crash = templates(topology.value, 0).find((x) => x.id === 'crash');
     applyTemplate(crash!);
@@ -217,19 +212,6 @@ describe('the side rail folds', () => {
     await settle();
     expect(document.querySelector('.sheet')).toBeNull();
     expect(root.querySelector('.ln-bar')).not.toBeNull();
-  });
-
-  it('floats no event menu over Split where there is no rail column either', async () => {
-    mode.value = 'break';
-    breakLayout.value = 'split';
-    viewport.value = 'medium';
-    const root = mount();
-    await tick();
-    expect(root.querySelector('.evmenu')).toBeNull();
-    selection.value = ['sby01'];
-    await tick();
-    expect(root.querySelector('.evmenu')).toBeNull();
-    expect(root.querySelector('.app')?.className).not.toContain('has-evm');
   });
 
   it('does not fold Learn\'s workbench', async () => {

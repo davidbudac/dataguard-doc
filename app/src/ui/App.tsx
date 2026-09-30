@@ -14,10 +14,9 @@
  */
 
 import { useCallback, useEffect, useLayoutEffect, useRef } from 'preact/hooks';
-import { geometry, trace } from '@/state/derived';
+import { trace } from '@/state/derived';
 import {
-  breakLayout, canEdit, floating, gridOn, inspectorOpen, introOpen, introPage, mode, modeGuide, railCollapsed,
-  timelineDefaultH, timelineFull, timelineH, toast, viewport,
+  canEdit, floating, gridOn, inspectorOpen, introOpen, introPage, mode, modeGuide, railCollapsed, toast, viewport,
 } from '@/state/view';
 import type { Mode } from '@/state/view';
 import { CollectDialog, CollectionNotice } from './import/CollectDialog';
@@ -32,7 +31,7 @@ import { IssuePanel } from './IssuePanel';
 import { Sheet } from './common/Sheet';
 import { CanvasSlot } from './canvas/CanvasSlot';
 import { Inspector } from './inspector/Inspector';
-import { BreakRail, ScenarioPalette } from './break/BreakRail';
+import { BreakRail } from './break/BreakRail';
 import { ScenarioRow } from './break/ScenarioRow';
 import { Panels } from './panels/Panels';
 import { LearnShell, LearnWorkbenchHeader } from './learn/LearnShell';
@@ -47,9 +46,8 @@ import { Popout, PopoutButton, PoppedAway, popped } from './common/popout';
 import { RAIL_ID, RailBar, RailStrip } from './RailFrame';
 import { useWidth } from './common/use-width';
 import { LanesView } from './break/LanesView';
-import { SplitDock } from './break/SplitDock';
 import { AppTimeline, appTimelineOn, TimelineSwitchRow } from './break/TimelineView';
-import { railSnap, useFoldRailWhile } from './break/split-rail';
+import { railSnap, useFoldRailWhile } from './break/rail-fold';
 
 /** Which modes keep a rail beside the canvas. Learn's right half is the workbench. */
 const HAS_RAIL: Record<Mode, boolean> = {
@@ -98,8 +96,8 @@ function useBarAnchor(): (el: HTMLElement | null) => void {
 /**
  * Write the floating dock's measured height into `--dock-h`, so the drawing's
  * inset, the zoom pill and the warning card above the dock follow it as it
- * grows -- a Break run with twelve lanes is a much taller panel than Build's
- * one row of readings. Same escape hatch as `--bar-bottom`.
+ * grows -- Topology's dock is a row of readings, a row of scenarios and, with
+ * a run, the small timeline. Same escape hatch as `--bar-bottom`.
  */
 function useDockAnchor(): (el: HTMLElement | null) => void {
   const observer = useRef<ResizeObserver | null>(null);
@@ -109,9 +107,6 @@ function useDockAnchor(): (el: HTMLElement | null) => void {
     observer.current = null;
     if (!el) return;
     const write = (): void => {
-      /* Full screen is a moment over the drawing, not a new room for it: the
-         drawing keeps the fit it had, and has it back on the way out. */
-      if (timelineFull.peek()) return;
       const h = Math.round(el.getBoundingClientRect().height);
       if (h > 0) el.ownerDocument.documentElement.style.setProperty('--dock-h', `${h}px`);
     };
@@ -153,7 +148,7 @@ function useChromeInsets(): (el: HTMLElement | null) => void {
     else root.removeProperty('--pal-r');
   }, []);
   /* Re-find the palettes and re-observe them when they have been swapped for
-     others (Topology's tools, and the Split layout's scenarios). */
+     others (Topology's tools come and go with the mode). */
   const rescan = useCallback((): void => {
     const app = host.current;
     if (!app) return;
@@ -219,7 +214,7 @@ function TimelineSlot({ popup = false }: { popup?: boolean }) {
           <p>
             {learn
               ? 'No events in this step. A step whose "Show me" breaks something draws its timeline here.'
-              : 'No events yet. Select a card to add an event, or pick a scenario.'}
+              : 'No events yet. Pick a scenario, or add an event from a card on the drawing.'}
           </p>
         </div>
       ) : <Timeline {...shellTimelineProps(t, width)} />}
@@ -242,15 +237,16 @@ function Workbench() {
   );
 }
 
-/* Break's rail is its own events and nothing else: the list of what has been
-   added, and (docked) the scenarios and the findings. What can be added lives
-   on the drawing -- the bar a click opens, the icons on a card -- and on the
-   lanes' own buttons, never here. */
+/* The Detailed timeline's rail is its own events and nothing else: the list of
+   what has been added, and (docked) the scenarios and the findings. What can be
+   added lives on the drawing -- the bar a click opens, the icons on a card --
+   and on the lanes' own buttons, never here. */
 function Rail({ m, float = false }: { m: Mode; float?: boolean }) {
   switch (m) {
     case 'build': return <Inspector />;
-    /* Floating, the scenarios are on the palette and the findings behind the
-       status chips, so the rail is the reader's own events and nothing else. */
+    /* Floating, the scenarios are Topology's dock row and the findings are
+       behind the lanes' bar, so the rail is the reader's own events and
+       nothing else. */
     case 'break': return <BreakRail scenarios={!float} validation={!float} />;
     case 'configure': return <Inspector />;
     case 'learn': return <Workbench />;
@@ -264,62 +260,25 @@ function HomeCanvas() {
 
 function Stage({ m, lanes = false }: { m: Mode; lanes?: boolean }) {
   if (m === 'learn') return <LearnShell />;
-  /* Break's Lanes layout: the drawing and the timeline are one view. Its cards, data-centre
-     headers and link pills carry the events. */
+  /* The Detailed timeline's lanes: the cards and the timeline are one view. Its cards,
+     data-centre headers and link pills carry the events. */
   if (lanes) return <LanesView />;
   return <HomeCanvas />;
 }
 
-/**
- * The reader's height for Break's lower region, as `--tl-h` on the root -- the
- * same escape hatch as `--dock-h`, and on the root for the same reason:
- * nothing inside the application ever carries a style attribute. Unset, the
- * region takes split.css's default. The drawing follows through `--dock-h`,
- * which the dock's own observer writes as the region changes size.
- */
-function useTimelineHeight(): void {
-  const h = timelineH.value;
-  const drawing = geometry.value?.viewBox.h;
-  useLayoutEffect(() => {
-    if (typeof document === 'undefined') return;
-    const root = document.documentElement;
-    if (h === null) root.style.removeProperty('--tl-h');
-    else root.style.setProperty('--tl-h', `${h}px`);
-  }, [h]);
-  /* The region's default height, `--tl-fit`: what leaves the whole drawing on
-     show at 1:1 (`timelineDefaultH`). It depends on the window and on where
-     the header's bottom is, so it is measured now and again on every resize;
-     split.css's `--tl-default` reads it. */
-  useLayoutEffect(() => {
-    if (typeof document === 'undefined' || typeof window === 'undefined') return undefined;
-    const root = document.documentElement;
-    const write = (): void => {
-      const bottom = document.querySelector('.app-head')?.getBoundingClientRect().bottom ?? 0;
-      root.style.setProperty(
-        '--tl-fit', `${timelineDefaultH(window.innerHeight, bottom > 0 ? bottom : 80, drawing)}px`,
-      );
-    };
-    write();
-    window.addEventListener('resize', write);
-    return () => { window.removeEventListener('resize', write); root.style.removeProperty('--tl-fit'); };
-  }, [drawing]);
-}
-
-/* The floating dock. Topology's is the readings and the finding chips on one
-   row, the scenarios in a row of their own, and, while there is a run to glance
-   at, the small timeline under them.
-   Break's Split layout is the bar and the timeline under it
-   (break/SplitDock.tsx), which carry the same things and the transport. */
-function FloatDock({ m }: { m: Mode }) {
-  if (m === 'break') return <SplitDock />;
+/* Topology's floating dock: the readings and the finding chips on one row, the
+   scenarios in a row of their own and, while there is a run to glance at, the
+   small timeline under them. The Detailed timeline has no dock: its lanes are
+   the whole stage (break/LanesView.tsx). */
+function FloatDock() {
   return (
     <>
       <div class="dock-status">
         <Readout />
         <FindingsChips />
       </div>
-      {m === 'build' ? <ScenarioRow /> : null}
-      {m === 'build' ? <MiniTimeline /> : null}
+      <ScenarioRow />
+      <MiniTimeline />
     </>
   );
 }
@@ -375,30 +334,22 @@ export function App() {
   /* Folded to its strip: a column that is there, in every mode but Learn,
      whose right half is the workbench rather than a rail. */
   const railShut = railInGrid && m !== 'learn' && railCollapsed.value;
-  /* Build and Break draw the canvas full-bleed with everything else floating
-     over it; Configure and Learn keep the docked grid (state/view.ts). */
+  /* Topology draws the canvas full-bleed with everything else floating over
+     it, and the Detailed timeline floats its lanes; Config and Learn keep the
+     docked grid (state/view.ts). */
   const float = !intro && floating(m, viewport.value);
   const t = toast.value;
-  /* Break's two layouts, where Break floats: Lanes joins the drawing and the
-     timeline into one view; Split (the default) stacks them. */
-  const lanes = float && m === 'break' && breakLayout.value === 'lanes';
-  const split = float && m === 'break' && !lanes;
-  /* Both layouts fold the rail to its strip on the way in, so the drawing (Split) or
-     the lanes keep the width they want; the reader can open it (break/split-rail.ts).
-     One flag for both: a switch between them never touches the rail. */
-  useFoldRailWhile(split || lanes);
+  /* The Detailed timeline, where it floats, is the lanes: the members' cards
+     and their timelines are one view, and there is no drawing of the topology
+     (the docked layout below 1024 px keeps the drawing and the timeline
+     stacked, as a viewer). */
+  const lanes = float && m === 'break';
+  /* The lanes want the width, so the rail folds to its strip on the way in;
+     the reader can open it (break/rail-fold.ts). */
+  useFoldRailWhile(lanes);
   const barRef = useBarAnchor();
   const dockRef = useDockAnchor();
   const appRef = useChromeInsets();
-  useTimelineHeight();
-  /* Split's lower region is sized by the reader once there is a run to show;
-     the steady state's one sentence keeps its own height, and so does the
-     note left behind when the timeline is popped out. */
-  const sized = split && trace.value !== null && popped.value.timeline === undefined;
-  const full = sized && timelineFull.value;
-  /* Full screen belongs to the run on screen: leaving Break, or clearing the
-     events, puts the drawing back. */
-  useEffect(() => { if (!sized) timelineFull.value = false; }, [sized]);
   /* Installed by the shell, not by a mode: `beforeprint` fires once on the
      window, and both the Configure panels and Build's folded notes expand off
      the same signal (ui/print.ts). */
@@ -407,7 +358,7 @@ export function App() {
   useEffect(() => installShortcuts(), []);
 
   return (
-    <div ref={appRef} class={intro ? 'app m-intro' : `app m-${m}${float ? ' is-float' : ''}${float && !gridOn.value ? ' no-grid' : ''}${full ? ' tl-full' : ''}${railShut ? ' rail-shut' : ''}${railSnap.value ? ' rail-snap' : ''}${lanes ? ' bl-lanes' : split ? ' bl-split' : ''}`}>
+    <div ref={appRef} class={intro ? 'app m-intro' : `app m-${m}${float ? ' is-float' : ''}${float && !gridOn.value ? ' no-grid' : ''}${railShut ? ' rail-shut' : ''}${railSnap.value ? ' rail-snap' : ''}${lanes ? ' bl-lanes' : ''}`}>
       {/* One header, three bands: the modes and the small controls, then the
           quieter document row, then the line that says what to do in the mode
           that is open. It is one element so the toast can be anchored to the
@@ -471,8 +422,6 @@ export function App() {
             <Stage m={m} lanes={lanes} />
           </main>
 
-          {split && canEdit(viewport.value) ? <ScenarioPalette /> : null}
-
           {railInGrid
             ? (
               <aside
@@ -496,12 +445,12 @@ export function App() {
 
           {float && !lanes ? (
             <>
-              {/* Break's findings are the count on the Split bar and the rows
-                  that open from it; Build has no bar to carry them. */}
-              {m === 'build' ? <FindingToast /> : null}
-              {m === 'build' ? <FindingsPopover /> : null}
-              <div class={sized ? `app-dock float-card has-tl${timelineH.value === null ? '' : ' is-set'}` : 'app-dock float-card'} ref={dockRef}>
-                <FloatDock m={m} />
+              {/* The Detailed timeline's findings are the count on its bar and
+                  the rows that open from it; Topology has no bar to carry them. */}
+              <FindingToast />
+              <FindingsPopover />
+              <div class="app-dock float-card" ref={dockRef}>
+                <FloatDock />
               </div>
             </>
           ) : null}

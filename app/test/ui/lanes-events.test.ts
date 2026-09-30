@@ -18,7 +18,7 @@ import { act } from 'preact/test-utils';
 import { classicDoc } from '@/state/doc';
 import { resetHistory } from '@/state/history';
 import { frame, geometry, topology } from '@/state/derived';
-import { breakLayout, findingsOpen, mode, playing, railCollapsed, selection, tNow, viewport } from '@/state/view';
+import { findingsOpen, mode, playing, railCollapsed, selection, tNow, viewport } from '@/state/view';
 import { App } from '@/ui/App';
 import { applyTemplate, clearEvents, templates } from '@/ui/break/events';
 import { siteOrder } from '@/ui/break/lanes-layout';
@@ -74,7 +74,6 @@ beforeEach(() => {
   resetHistory(classicDoc());
   viewport.value = 'wide';
   mode.value = 'break';
-  breakLayout.value = 'lanes';
   railCollapsed.value = false;
   findingsOpen.value = false;
   playing.value = false;
@@ -662,8 +661,8 @@ describe('the time readout while an event pin is dragged', () => {
     expect(['start', 'end']).toContain(t.getAttribute('text-anchor'));
   });
 
-  it('in Split keeps to the old place: centred over the pin', async () => {
-    breakLayout.value = 'split';
+  it('in the full timeline (docked, or popped out) keeps to the old place: centred over the pin', async () => {
+    viewport.value = 'compact';
     crashAt(10);
     const r = mount();
     await tick();

@@ -66,7 +66,7 @@ export interface TimelineProps {
   /**
    * Draw the run's headline sentence as a line of its own above the plot,
    * truncated with the whole of it as the tooltip, instead of as the drawing's
-   * first text row. Split says it there and gives the drawing the row back.
+   * first text row.
    */
   headline?: boolean;
   /** The colour key and its buttons under the plot; on unless a bar carries them. */
@@ -339,8 +339,8 @@ function AppHead({ sec, model }: { sec: AppSectionHead; model: TimelineModel }) 
 /* ---------------- the component ---------------- */
 
 /**
- * The timeline with its own model. Break's Split layout owns the model itself
- * (`useRunTimeline`), because its bar reads it too, and draws `TimelineBody`.
+ * The timeline with its own model. Where a bar reads the model too, the owner
+ * calls `useRunTimeline` itself and draws `TimelineBody`.
  */
 export function Timeline(props: TimelineProps) {
   const run = useRunTimeline({

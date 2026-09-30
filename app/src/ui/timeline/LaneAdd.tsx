@@ -1,8 +1,8 @@
 /**
  * Adding an event from the timeline's own lane.
  *
- * In Split, adding an event meant moving the playhead and then finding the
- * card on the canvas above. Here the lane offers it: a small `+` beside the
+ * Adding an event used to mean moving the playhead and then finding the card
+ * on the canvas. Here the lane offers it: a small `+` beside the
  * playhead on each lane whose subject has something to do, and a double-click
  * on the lane for the same list at the pointer. Both open Lanes' grouped menu
  * (`MoreMenu`, the canvas's context menu's own rows, refusals and header) for

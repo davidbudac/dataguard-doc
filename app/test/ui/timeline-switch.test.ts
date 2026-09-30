@@ -1,11 +1,10 @@
 /**
- * Simulate's two timelines -- Configuration and Application -- the switch
+ * The Detailed timeline's two timelines -- Configuration and Application -- the switch
  * between them, and the connect-string strip the Application one carries.
  *
  * What is pinned: the preference and its storage, that the switch exists only
  * for a drawing with an application, that it swaps the view in each of the
- * three places Simulate draws a timeline (Split's bar, Lanes' bar, the docked
- * slot), that Defaults and Tuned write the four parameters as one undoable
+ * two places the Detailed timeline draws (the lanes' bar, the docked slot), that Defaults and Tuned write the four parameters as one undoable
  * edit, that an edit redraws the figure, and that the Config panel still draws
  * the same figure. jsdom lays nothing out; where the switch sits on screen is
  * the browser pass (app/design/ui.md).
@@ -23,7 +22,7 @@ import { topology } from '@/state/derived';
 import { BREAK_TIMELINE_KEY, loadBreakTimeline, setBreakTimeline } from '@/state/persist';
 import { URL_FIELDS } from '@/state/url';
 import {
-  breakApp, breakLayout, breakTimeline, clearSelection, findingsOpen, mode, panelTab, railCollapsed, timelineFull, timelineH, viewport,
+  breakApp, breakTimeline, clearSelection, findingsOpen, mode, panelTab, railCollapsed, viewport,
 } from '@/state/view';
 import { App } from '@/ui/App';
 import { applyTemplate, templates } from '@/ui/break/events';
@@ -83,13 +82,10 @@ beforeEach(() => {
   resetHistory(classicDoc());
   viewport.value = 'wide';
   mode.value = 'break';
-  breakLayout.value = 'split';
   breakTimeline.value = 'config';
   breakApp.value = null;
   clearSelection();
   railCollapsed.value = false;
-  timelineH.value = null;
-  timelineFull.value = false;
   findingsOpen.value = false;
 });
 
@@ -139,10 +135,10 @@ describe('the switch', () => {
     await tick();
     expect(sw(r)).toBeNull();
     expect(r.querySelector('.app-tl')).toBeNull();
-    expect(r.querySelector('section.tl')).not.toBeNull();
+    expect(r.querySelector('.ln-view svg[aria-label="Members and their timelines"]')).not.toBeNull();
   });
 
-  it('is offered in Simulate only', async () => {
+  it('is offered in the Detailed timeline only', async () => {
     crash();
     const r = mount();
     await tick();
@@ -165,29 +161,6 @@ describe('the switch', () => {
     expect(pressed(r)).toBe('Application');
   });
 
-  it('swaps the view in the Split layout, with the switch on the bar', async () => {
-    crash();
-    const r = mount();
-    await tick();
-    expect(r.querySelector('.sb-bar .seg[aria-label="Timeline"]')).not.toBeNull();
-    expect(r.querySelector('section.tl')).not.toBeNull();
-    expect(r.querySelector('.app-tl')).toBeNull();
-    press(r, 'Application');
-    await tick();
-    expect(breakTimeline.value).toBe('app');
-    expect(memory.get(BREAK_TIMELINE_KEY)).toBe('app');
-    expect(r.querySelector('section.tl')).toBeNull();
-    expect(r.querySelector('.app-tl .app-tl-strip')).not.toBeNull();
-    expect(r.querySelector('.app-tl-fig svg')).not.toBeNull();
-    /* The configuration's transport is not the application's. */
-    expect(r.querySelector('.sb-bar .tl-transport')).toBeNull();
-    press(r, 'Configuration');
-    await tick();
-    expect(r.querySelector('section.tl')).not.toBeNull();
-    expect(r.querySelector('.app-tl')).toBeNull();
-    expect(r.querySelector('.sb-bar .tl-transport')).not.toBeNull();
-  });
-
   it('is on the bar with no run yet, and Application shows the steady-state note', async () => {
     const r = mount();
     await tick();
@@ -199,21 +172,26 @@ describe('the switch', () => {
     expect(r.querySelector('.app-tl-fig svg')).toBeNull();
   });
 
-  it('swaps the view in the Lanes layout, where the stage is the lanes', async () => {
-    breakLayout.value = 'lanes';
+  it('swaps the view in the lanes, with the switch on the bar', async () => {
     crash();
     const r = mount();
     await tick();
     expect(r.querySelector('.ln-view .ln-bar .seg[aria-label="Timeline"]')).not.toBeNull();
     expect(r.querySelector('.ln-view svg[aria-label="Members and their timelines"]')).not.toBeNull();
+    expect(r.querySelector('.ln-bar .tl-transport')).not.toBeNull();
     press(r, 'Application');
     await tick();
+    expect(breakTimeline.value).toBe('app');
+    expect(memory.get(BREAK_TIMELINE_KEY)).toBe('app');
+    /* The configuration's transport is not the application's. */
+    expect(r.querySelector('.ln-bar .tl-transport')).toBeNull();
     expect(r.querySelector('.ln-view svg[aria-label="Members and their timelines"]')).toBeNull();
     expect(r.querySelector('.ln-view .ln-app .app-tl-fig svg')).not.toBeNull();
     press(r, 'Configuration');
     await tick();
     expect(r.querySelector('.ln-view svg[aria-label="Members and their timelines"]')).not.toBeNull();
     expect(r.querySelector('.ln-app')).toBeNull();
+    expect(r.querySelector('.ln-bar .tl-transport')).not.toBeNull();
   });
 
   it('swaps the view in the docked timeline, where it has a row of its own', async () => {

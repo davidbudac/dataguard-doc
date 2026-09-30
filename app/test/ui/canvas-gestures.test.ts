@@ -311,6 +311,8 @@ describe('a card dragged into another data centre moves there', () => {
 
   it('is not offered in Break mode, where the drawing is not edited', async () => {
     mode.value = 'break';
+    /* The drawing is on screen in the Detailed timeline only in the docked layout. */
+    viewport.value = 'compact';
     const root = await mountApp();
     const card = rectOf(root, 'sby01', 'rect.tp-card');
     const panel = rectOf(root, 'dc3', 'rect.tp-site');
@@ -408,6 +410,8 @@ describe('a line drawn from a card\'s port connects it', () => {
 
   it('draws no port on a drawing nobody may edit', async () => {
     mode.value = 'break';
+    /* The drawing is on screen in the Detailed timeline only in the docked layout. */
+    viewport.value = 'compact';
     const root = await mountApp();
     expect(root.querySelector('.tp-port')).toBeNull();
   });

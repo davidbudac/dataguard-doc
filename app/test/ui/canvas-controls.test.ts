@@ -412,6 +412,8 @@ describe('a selection is made, moved and removed as one', () => {
 
   it('is not offered in Break, where the ground is still the paper', async () => {
     mode.value = 'break';
+    /* The drawing is on screen in the Detailed timeline only in the docked layout. */
+    viewport.value = 'compact';
     const root = await mountApp();
     await dragGround(root, [0, 0], [400, 400]);
     expect(root.querySelector('.tp-band')).toBeNull();

@@ -170,7 +170,7 @@ export const TL_FULL = {
 export type Layout = { -readonly [K in keyof typeof TL_FULL]: number };
 
 /**
- * The same drawing, packed -- what Break's Split layout draws its lanes with --
+ * The same drawing, packed -- what Topology's small timeline and the popped-out one draw with --
  * but with room to read it: lanes 36 px tall with a 10 px gap, 13 px text on
  * the bars and the sentences, an 18 px type icon, the name on the bar's own
  * line (`subDy: 0` drops the second line, and the lane's `<title>` carries it
@@ -249,7 +249,7 @@ export type Density = 'full' | 'compact';
  * The ladder for a density. The model carries the one it was built with
  * (`TimelineModel.layout`) and everything that paints from the model reads it
  * there: there is no shared "current layout" for two timelines to disagree
- * about, so Split's packed lanes and the Lanes view's roomy ones (and the
+ * about, so the packed lanes and the Detailed timeline's roomy ones (and the
  * popped-out window's) can be on screen at once.
  */
 export const layoutFor = (density: Density): Layout => (density === 'compact' ? TL_COMPACT : TL_FULL);

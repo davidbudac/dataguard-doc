@@ -49,13 +49,14 @@ import type { RunTimeline } from '../timeline/run';
 import { Tooltip, tipFromEvent } from '../timeline/Tooltip';
 import type { TooltipState } from '../timeline/Tooltip';
 import { useHostWindow } from '../common/dom';
+import { popped } from '../common/popout';
 import { useWidth } from '../common/use-width';
 import { hoverTools, setEventTime, snapT } from './events';
 import { buildLinks, cardFrameFor, cardRoleFor, chipsFor, NEUTRAL_FRAME, siteIsDown } from '../canvas/routing';
 import type { CanvasLink } from '../canvas/routing';
 import type { NodeBox } from '../canvas/layout';
 import { approxW, elide, fitLabel } from '../canvas/measure';
-import { FindingsMenu, KeyMenu, TerseReadout, TIGHT_W } from './SplitBar';
+import { FindingsMenu, KeyMenu, TerseReadout, TIGHT_W } from './RunBar';
 import { ReadoutFold, SummaryBand } from './SummaryBand';
 import { EventStrip, EV, MoreMenu, stripWidth } from './lanes-events';
 import type { MenuTarget } from './lanes-events';
@@ -667,7 +668,9 @@ function Lanes({ run, fr }: { run: RunTimeline | null; fr: Frame }) {
   usePlayback({
     view, playing: isPlaying, speed: speed.value, tNow: t,
     t0: model?.scale.t0 ?? 0, t1: model?.scale.t1 ?? 0,
-    enabled: model !== null && !model.empty,
+    /* Not while the timeline is popped out into a window of its own: that
+       window drives the playhead (one loop, or the end would toggle twice). */
+    enabled: model !== null && !model.empty && popped.value.timeline === undefined,
     onSeek: (v) => { tNow.value = v; },
     onEnd: () => { playing.value = !playing.value; },
   });

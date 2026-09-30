@@ -4,8 +4,9 @@
  * Topology is where a reader draws a configuration, breaks it and sees what
  * happens; this is the "what happens", one thin bar per member and observer
  * on the clock the Detailed timeline draws, with the transport, the run's
- * headline sentence and the two ways on -- `Clear`, and the Detailed timeline
- * itself, at the same playhead.
+ * headline sentence and the ways on -- `Clear`, the Detailed timeline itself at
+ * the same playhead, and the full timeline in a window of its own, so the
+ * drawing can stay in this one.
  *
  * It draws from the same model the big timeline does (`useRunTimeline`, so
  * the axis, the segments' phases and their tooltips are the engine's own) and
@@ -27,6 +28,7 @@ import type { Trace } from '@/engine';
 import { topology, trace } from '@/state/derived';
 import { appLanesShown, canEdit, mode, MODE_LABEL, playing, speed, tNow, viewport } from '@/state/view';
 import { clearEvents } from '../break/events';
+import { PopoutButton, popped } from '../common/popout';
 import { useHostWindow } from '../common/dom';
 import { useWidth } from '../common/use-width';
 import { elideTo, fmt, spoken } from './build';
@@ -87,9 +89,12 @@ function MiniRun({ t }: { t: Trace }) {
 
   const togglePlay = (): void => { playing.value = !playing.value; };
   const seekTo = (v: number): void => { tNow.value = v; };
+  /* The window the full timeline was popped out into drives the playhead
+     while it is there: two loops writing one playhead would each toggle
+     `playing` at the end of the axis, and the second toggle would restart it. */
   usePlayback({
     view, playing: isPlaying, speed: speed.value, tNow: now, t0: scale.t0, t1: scale.t1,
-    enabled: canSeek, onSeek: seekTo, onEnd: togglePlay,
+    enabled: canSeek && popped.value.timeline === undefined, onSeek: seekTo, onEnd: togglePlay,
   });
 
   /* A press anywhere on the plot moves the playhead there, and a drag keeps
@@ -181,6 +186,8 @@ function MiniRun({ t }: { t: Trace }) {
           >
             {MODE_LABEL.break}
           </button>
+          {/* The full timeline in a window of its own -- the drawing stays here. */}
+          <PopoutButton kind="timeline" />
         </span>
       </div>
       <div class="mtl-plot" ref={ref}>

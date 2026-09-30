@@ -34,46 +34,6 @@ export const WHY_MAX = 'As large as the ladder goes.';
 export const zoom = signal<number>(FIT_ZOOM);
 
 /**
- * Whether the drawing is sized by its room rather than by the reader.
- *
- * Where a layout gives the drawing a region of its own (Break's Split, whose
- * region the reader resizes) the home size is the true one: 1:1, card text at
- * its normal size, and if that is more than the region holds the drawing is
- * clipped and pannable -- centred on its content to start with -- rather than
- * shrunk until the percentage on the strip is a lie. `Fit` is the one thing
- * that hands the size to the room: true from the reader's press of it, the
- * drawing is then scaled to lie wholly inside the region (below 1:1 if that is
- * what it takes, above it up to `AUTO_MAX` where there is room to spare), and
- * `zoom` is the factor it lands on -- not a rung, which is why `zoomIndex`
- * takes the nearest. False from the start and again on entering the layout;
- * false from the first `+`, `-` or wheel step, so a reader who has zoomed or
- * panned is never fought by a resize.
- */
-export const zoomAuto = signal<boolean>(false);
-
-/** How far `Fit` scales a drawing up: the top rung, never more. */
-export const AUTO_MAX = ZOOM_STEPS[ZOOM_STEPS.length - 1] as number;
-/**
- * How far `Fit` scales a drawing down. Below the ladder's own floor, because
- * the widest preset in a narrow region needs it, but not to a speck.
- */
-export const AUTO_MIN = 0.35;
-
-/**
- * The factor that makes a drawing of `view` lie inside `room` -- the whole of
- * it, whether that is above or below 1 -- but never above `AUTO_MAX`, so a
- * two-node drawing in a big region is not blown up to a poster, and never below
- * `AUTO_MIN`. Floored to a hundredth so the rounded pixel size cannot poke a
- * pixel past the room. With no room to measure (jsdom, a hidden stage) it is
- * 1:1, the honest default.
- */
-export function autoFactor(view: { w: number; h: number }, room: { w: number; h: number }): number {
-  if (!(view.w > 0) || !(view.h > 0) || !(room.w > 0) || !(room.h > 0)) return FIT_ZOOM;
-  const f = Math.floor(Math.min(room.w / view.w, room.h / view.h) * 100) / 100;
-  return Math.min(AUTO_MAX, Math.max(AUTO_MIN, f));
-}
-
-/**
  * Which rung a factor is on.
  *
  * Nearest rather than exact: nothing outside this module should be able to
@@ -100,18 +60,14 @@ export function zoomBy(dir: 1 | -1): void {
   const next = zoomIndex() + dir;
   const step = ZOOM_STEPS[next];
   if (step === undefined) return;
-  zoomAuto.value = false;
   if (zoom.peek() !== step) zoom.value = step;
 }
 
 /**
- * `Fit`. Where the layout gives the drawing a region of its own this hands the
- * size to that region (`zoomAuto`) and the canvas writes the factor the whole
- * drawing needs to lie inside it; elsewhere it is back to 1:1, which is the
- * stage's own cap.
+ * `Fit`: back to 1:1, the drawing against its own viewBox, which is the stage's
+ * own cap -- the whole drawing inside the room the chrome leaves it.
  */
 export function fitZoom(): void {
-  zoomAuto.value = true;
   if (zoom.peek() !== FIT_ZOOM) zoom.value = FIT_ZOOM;
 }
 

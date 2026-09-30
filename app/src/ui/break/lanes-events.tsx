@@ -157,7 +157,7 @@ export interface MoreMenuProps {
   /**
    * Hang the menu off the window rather than off `view` (`position: fixed`,
    * client coordinates): for a menu opened from a box that scrolls or clips,
-   * such as the Split timeline's dock. `view` is then only the document's
+   * such as the timeline's dock. `view` is then only the document's
    * `body`, which says which window to keep the menu inside.
    */
   fixed?: boolean;

@@ -245,6 +245,8 @@ describe('the shell wires those keys to real edits', () => {
 
   it('Delete edits nothing in Break mode: that mode breaks, it does not build', async () => {
     mode.value = 'break';
+    /* The drawing is on screen in the Detailed timeline only in the docked layout. */
+    viewport.value = 'compact';
     const root = mountApp();
     await tick();
     press(card(root, 'sby01'), 'Delete');
@@ -262,6 +264,8 @@ describe('the shell wires those keys to real edits', () => {
     built.remove();
 
     mode.value = 'break';
+    /* The drawing is on screen in the Detailed timeline only in the docked layout. */
+    viewport.value = 'compact';
     const root = mountApp();
     /* Effects run after the paint: let the change of mode (and the drawings
        earlier tests left mounted, which see it too) settle before the key, or
