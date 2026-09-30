@@ -473,7 +473,7 @@ describe('RunHeadline', () => {
     ]);
     expect(boxes[0]).toMatchObject({ min: '6', max: '120', step: '1' });
     expect(boxes[0]!.closest('.tl-eq-t')!.getAttribute('title')).toContain('Allowed: 6–120 s.');
-    expect(p.textContent).toMatch(/s FastStartFailoverThreshold \+ .*s terminal recovery \+ .*s role change \+ open$/);
+    expect(p.textContent).toMatch(/s FastStartFailoverThreshold \+ .*s terminal recovery \+ .*s role change and open$/);
     act(() => typeInto(boxes[0]!, '25'));
     expect(onTune).toHaveBeenLastCalledWith(expect.objectContaining({ id: 'threshold' }), 25);
   });

@@ -328,3 +328,23 @@ under the configuration's lanes (`timeline/app-lanes.ts`). Tests: `test/app-plac
 Open: a driver selector (OCI / JDBC thin) — needs its own citations; per-line cuts between the
 application and one database (today a site link or the data centre is what fails).
 
+## Track 9 — tuning a run in Simulate (2026-09-30)
+
+Details: `app/design/ui.md`, "Tuning a run in Simulate".
+
+### 9.1 A row of settings above the timeline
+Status: done (branch `tunable-simulate`)
+
+### 9.2 The headline as an equation with editable terms
+Status: done (branch `tunable-simulate`)
+
+### 9.3 Drag the end of a clock to change its setting
+Status: done (branch `tunable-simulate`)
+
+### 9.4 A ghost of the previous run, with the delta
+Status: todo
+Note: left out on request. The held axis (`timeline/run.ts`) is the half of it that exists.
+
+### 9.5 Add an event from a timeline lane
+Status: done (branch `tunable-simulate`)
+
