@@ -1311,6 +1311,52 @@ export function setLogXptMode(id: MemberId, xpt: XptMode): void {
   patchMember(id, `Set LogXptMode to ${xpt} on ${id as string}`, (m) => ({ ...m, logXptMode: xpt }));
 }
 
+/* ---------------- the named settings ----------------
+ *
+ * The properties the inspector's forms and Simulate's tune strip and headline
+ * both edit. The undo sentence and the coalesce key are written once, here, so
+ * a value typed in the rail and the same value dragged on the timeline are one
+ * kind of edit -- and a burst of either folds into one undo step. */
+
+type Config = TopologyDoc['config'];
+
+export function setProtectionMode(v: Config['protectionMode']): void {
+  patchConfig(`Set the protection mode to ${v}`, (x) => ({ ...x, protectionMode: v }));
+}
+
+export function setFsfoState(v: Config['fsfo']['state']): void {
+  patchFsfo(`Set fast-start failover to ${v}`, (x) => ({ ...x, state: v }));
+}
+
+export function setFsfoThreshold(v: number): void {
+  patchFsfo(
+    `Set FastStartFailoverThreshold to ${v} s`, (x) => ({ ...x, thresholdSeconds: v }), 'fsfo:threshold',
+  );
+}
+
+/** Setting the limit also marks it as set: until then the edition's broker default is what applies. */
+export function setFsfoLagLimit(v: number): void {
+  patchFsfo(
+    `Set FastStartFailoverLagLimit to ${v} s`,
+    (x) => ({ ...x, lagLimitSeconds: v, lagLimitSet: true }), 'fsfo:laglimit',
+  );
+}
+
+export function setRoleTransition(v: number): void {
+  patchEnvironment(
+    `Set the role transition to ${v} s`, (e) => ({ ...e, roleTransitionSeconds: v }), 'env:role',
+  );
+}
+
+/** A standby's apply lag; the transport lag stays at or under it, because redo cannot be applied before it arrives. */
+export function setApplyLag(id: MemberId, v: number): void {
+  patchDatabase(
+    id, `Set the apply lag on ${id as string}`,
+    (m) => ({ ...m, applyLagSeconds: v, transportLagSeconds: Math.min(m.transportLagSeconds, v) }),
+    `alag:${id as string}`,
+  );
+}
+
 /** Rename an observer, carrying the events that name it along. */
 export function renameObserver(id: ObserverId, raw: string): void {
   const name = raw.trim();

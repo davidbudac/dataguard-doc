@@ -22,6 +22,8 @@
  * the reader can build the mistake and read what Oracle says about it.
  */
 
+import type { TopologyDoc, XptMode } from '@/engine';
+import type { SegmentedOption } from '../common/Segmented';
 import type { WhyState } from '../common/WhyPill';
 
 export const ON: WhyState = { state: 'on' };
@@ -134,3 +136,34 @@ export const WHY = {
 } as const;
 
 export type WhyKey = keyof typeof WHY;
+
+/**
+ * Whether `FastStartFailoverLagLimit` can be set, and if not, why.
+ *
+ * 19c: a maximum performance property, and 19c disagrees with itself about
+ * whether it reaches maximum availability at all -- this page follows the
+ * observed 19.27 behaviour (not evaluated there) over the chapter's "must be
+ * zero" sentence. 26ai: maximum availability has the role too, where 0 is the
+ * broker default and means zero data loss; that role is a 21c feature, not a
+ * 26ai one. The rail's form and Simulate's tune strip both read this.
+ */
+export function lagLimitGate(doc: TopologyDoc): WhyState {
+  const ed = doc.config.edition;
+  const mode = doc.config.protectionMode;
+  return mode === 'MAXPERFORMANCE'
+    ? ON
+    : ((ed === '26ai' && mode === 'MAXAVAILABILITY') ? ON : off(ed === '26ai' ? WHY.lagTypeMode : WHY.lagLimitMaxAvail19c));
+}
+
+/** `LogXptMode`'s three values; FASTSYNC is offered under maximum availability only. */
+export function logXptOptions(doc: TopologyDoc): SegmentedOption<XptMode>[] {
+  return [
+    { value: 'SYNC', label: 'SYNC' },
+    {
+      value: 'FASTSYNC',
+      label: 'FASTSYNC',
+      enabled: doc.config.protectionMode === 'MAXAVAILABILITY' ? ON : off(WHY.fastsyncMode),
+    },
+    { value: 'ASYNC', label: 'ASYNC' },
+  ];
+}

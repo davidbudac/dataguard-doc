@@ -10,12 +10,23 @@
  *
  * Hold the viewport only for the exact document produced by our drop: undo,
  * rail edits and scenario or configuration changes fit automatically.
+ *
+ * The same rule holds it for a setting tuned from Simulate's own chrome (the
+ * tune strip, the headline's terms): the axis auto-fits to the run, so without
+ * a hold every bar would be redrawn at nearly the same width and only the tick
+ * labels would move -- the reader could not see a 30 s threshold become 25 s.
+ * A tuning edit marks the document it produced (`markTuned`); that document is
+ * drawn on the axis the previous one had while the run still fits it, or while
+ * a drag is in progress (`tuneDragging`). Undo, a scenario change and an edit
+ * made anywhere else are other documents and fit themselves.
  */
 
-import { useMemo, useState } from 'preact/hooks';
+import { signal } from '@preact/signals';
+import { useMemo, useRef, useState } from 'preact/hooks';
 import type { TimedEvent, TopologyDoc, Trace } from '@/engine';
 import { sortEvents } from '@/engine';
-import { buildTimeline } from './build';
+import { topology } from '@/state/derived';
+import { buildTimeline, lastInterestingT } from './build';
 import type { Density, TimelineModel, TimelineView } from './build';
 
 export interface RunTimelineInput {
@@ -33,6 +44,20 @@ export interface RunTimelineInput {
   gutter?: number;
   /** Which network links get a lane; `auto` unless a layout draws them itself. */
   links?: TimelineView['links'];
+}
+
+/** The document a tuning edit produced, as `JSON.stringify` -- the one whose axis is held while it fits. */
+export const tunedScenario = signal<string | null>(null);
+
+/** A scrub or a drag of a tuned value is in progress: hold the axis whatever the run does. */
+export const tuneDragging = signal(false);
+
+/**
+ * Call right after the edit of a tuned setting, in the same batch: the
+ * document that edit just produced is the one whose axis stays.
+ */
+export function markTuned(): void {
+  tunedScenario.value = JSON.stringify(topology.value);
 }
 
 export interface RunTimeline {
@@ -55,7 +80,16 @@ export function useRunTimeline(input: RunTimelineInput): RunTimeline {
   const [heldAxis, setHeldAxis] = useState<{
     scenario: string; t0: number; t1: number;
   } | null>(null);
-  const axis = heldAxis?.scenario === scenario ? heldAxis : undefined;
+  /* The axis of the render before, kept by identity while its ends do not move. */
+  const lastAxis = useRef<{ t0: number; t1: number } | null>(null);
+  const dropHold = heldAxis?.scenario === scenario ? heldAxis : undefined;
+  const tunedHere = tunedScenario.value === scenario;
+  const dragging = tuneDragging.value;
+  const before = lastAxis.current;
+  const tuneHold = dropHold === undefined && !pinnedScale && tunedHere && before !== null
+    && (dragging || lastInterestingT(trace, sortEvents(doc.events), appView ? doc : undefined) <= before.t1)
+    ? before : undefined;
+  const axis = dropHold ?? tuneHold;
   const model = useMemo(
     () => buildTimeline(trace, doc, {
       width, pinnedScale, selection, app: appView, density, ...(axis ? { axis } : {}),
@@ -63,10 +97,13 @@ export function useRunTimeline(input: RunTimelineInput): RunTimeline {
     }),
     [trace, doc, width, pinnedScale, selection, axis, appView, density, gutter, links],
   );
+  if (!pinnedScale && (before === null || before.t0 !== model.scale.t0 || before.t1 !== model.scale.t1)) {
+    lastAxis.current = { t0: model.scale.t0, t1: model.scale.t1 };
+  }
   return {
     model,
     held: axis !== undefined && !pinnedScale,
-    fit: () => setHeldAxis(null),
+    fit: () => { setHeldAxis(null); tunedScenario.value = null; },
     dropped: (index, at, expected, result) => {
       if (typeof result !== 'number' || result < 0 || at === expected.at) return;
       const next = { ...doc, events: sortEvents(doc.events.map((event, i) =>
