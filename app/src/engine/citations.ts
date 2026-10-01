@@ -490,6 +490,16 @@ export const CITATIONS = {
     quote: 'SET MASTEROBSERVER TO observer_name',
     note: "The Format line of the 19c command reference. 'The SET MASTEROBSERVER TO command lets you manually change which observer is recognized as the master observer.' Its Usage Notes DO document the preconditions (re-verified 2026-08-17): 'When this command is issued, the actual switch does not happen until the next time the primary contacts the target standby, usually within three seconds if fast-start failover is enabled.' and 'For the manual setting to succeed, the following conditions must be met during the next fast-start failover ping: The target standby is enabled and does not require reinstatement. There is no role change, reinstating, or fast-start failover target switch in progress'. An earlier revision of the fact sheet (D5) recorded the preconditions as undocumented; that was wrong.",
   },
+  'OBS.STOP_MASTER_REFUSED': {
+    url: U.bkr19Cmds, edition: '19c', verified: 'primary',
+    quote: 'The STOP OBSERVER command fails if there are two or more registered observers and you attempt to stop only the master.',
+    note: 'STOP OBSERVER, Usage Notes; the 26ai page (dgbkr/stop-observer.html) carries the same sentence. "Registered" is read here as every observer the configuration lists, running or not. A crashed observer host is not this command: it is how a master is lost and a backup nominated.',
+  },
+  'OBS.STOP_NEEDS_CONNECTION': {
+    url: U.bkr19Cmds, edition: '19c', verified: 'primary',
+    quote: 'If fast-start failover is enabled when you issue the STOP OBSERVER command, then the primary and standby databases must be connected and communicating with each other.',
+    note: 'STOP OBSERVER, Usage Notes, which continues: "Otherwise the following error is returned: ... ORA-16636 fast-start failover target standby in error state, cannot stop observer". The 26ai page (dgbkr/stop-observer.html) carries the same text.',
+  },
   'OBS.OBSERVER_ORA': {
     url: U.bkr19Cmds, edition: '19c', verified: 'primary',
     quote: 'The default value of the property ObserverConfigFile is observer.ora. You can specify an absolute path for the observer configuration file. If you specify only a file name, the default path is the DG_ADMIN directory.',
@@ -785,6 +795,21 @@ export const CITATIONS = {
     url: U.bkr19Switch, edition: '19c', verified: 'primary',
     quote: 'For manual failover, the observer is started and communicating with the target standby database. You must ensure that the primary database is shut down prior to performing a manual failover.',
     note: "Performing Manual Role Changes When Fast-Start Failover Is Enabled: 'If fast-start failover is enabled you can still perform a switchover or a manual failover as long as certain conditions are met. The conditions are as follows: The role change is directed to the same standby database that was specified for the FastStartFailoverTarget database property on the primary database. The target standby database is synchronized with the primary database if it is a configuration operating in maximum availability or maximum protection mode, or the target standby database is within the lag limit if it is a configuration operating in maximum performance mode.' -- and then the quoted third condition.",
+  },
+  'FSFO.DISABLE_NEEDS_CONNECTIONS': {
+    url: U.bkr19Switch, edition: '19c', verified: 'primary',
+    quote: 'Disabling fast-start failover without the FORCE option can succeed only if the database on which the command is issued has a network connection with the primary database and if the primary database and target standby database have a network connection.',
+    note: 'Disabling Fast-Start Failover, in the 19c chapter and in the 26ai fast-start failover chapter. This page\'s DISABLE FAST_START FAILOVER event names no issuing database, so the engine treats the primary as the issuer.',
+  },
+  'FSFO.DISABLE_FORCE_NO_PREVENT': {
+    url: U.bkr19Cmds, edition: '19c', verified: 'primary',
+    quote: 'Disabling fast-start failover with the FORCE option on a primary database that is disconnected from the observer and the target standby database does not prevent the observer from initiating a fast-start failover to the target standby database.',
+    note: 'DISABLE FAST_START FAILOVER, Usage Notes; the 26ai page (dgbkr/disable-fast_start-failover.html) carries the same sentence.',
+  },
+  'FSFO.DISABLE_TWO_PRIMARIES': {
+    url: U.bkr19Switch, edition: '19c', verified: 'primary',
+    quote: 'This action may result in two databases in the configuration simultaneously assuming the primary database role.',
+    note: 'Disabling Fast-Start Failover: said of the FORCE option on a primary that cannot reach the observer and the target standby.',
   },
   'ORA.16827': {
     url: U.ora16827, edition: '19c', verified: 'primary',

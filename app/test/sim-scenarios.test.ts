@@ -197,9 +197,12 @@ describe('far sync host down under MaxAvailability (SS3.2)', () => {
   });
 });
 
+/* The master is lost by taking its host down. STOP OBSERVER is the command
+   Oracle refuses for a master while two or more observers are registered
+   (fact check 2026-10-01 SIM-22), so it cannot be how these runs lose one. */
 describe('observer master lost with the primary and target connected', () => {
   const doc = multiObserverDoc();
-  const trace = simulate(doc, [{ at: 10, kind: 'observer.stop', observer: observerId('obs01') }]);
+  const trace = simulate(doc, [{ at: 10, kind: 'host.down', host: hostId('dc3-obs01') }]);
 
   it('the broker tries to nominate a backup observer as the new master', () => {
     const d = trace.decisions.find((x) => x.id === 'NOMINATION.NEW_MASTER');
@@ -214,8 +217,8 @@ describe('observer master lost with the primary and target connected', () => {
 
   it('with every observer stopped the configuration is unobserved, not nominating', () => {
     const gone = simulate(doc, [
-      { at: 10, kind: 'observer.stop', observer: observerId('obs01') },
-      { at: 20, kind: 'observer.stop', observer: observerId('obs02') },
+      { at: 10, kind: 'host.down', host: hostId('dc3-obs01') },
+      { at: 20, kind: 'host.down', host: hostId('dc4-obs02') },
     ]);
     expect(gone.facts.outcome).toBe('observer-lost');
     const d = gone.decisions.find((x) => x.id === 'NOMINATION.PRECONDITION');
@@ -228,8 +231,8 @@ describe('observer master lost with the primary and target connected', () => {
        gone: that is not the documented nomination case, and the configuration
        is reported unobserved rather than nominating. */
     const cut = simulate(doc, [
-      { at: 0, kind: 'observer.stop', observer: observerId('obs01') },
-      { at: 0, kind: 'observer.stop', observer: observerId('obs02') },
+      { at: 0, kind: 'host.down', host: hostId('dc3-obs01') },
+      { at: 0, kind: 'host.down', host: hostId('dc4-obs02') },
       { at: 0, kind: 'site.down', site: siteId('dc2') },
     ]);
     const d = cut.decisions.find((x) => x.id === 'NOMINATION.PRECONDITION');
