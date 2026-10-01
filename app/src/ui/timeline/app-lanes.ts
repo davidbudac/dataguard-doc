@@ -170,6 +170,9 @@ export function appLanes(ap: AppModel, doc: TopologyDoc, t0: Seconds, t1: Second
     : atLoss.publishers.some((p) => p.member === ap.sessionsOn && !p.reached));
 
   /* ---- lane 2: sessions that were already connected ---- */
+  /* The pool is rebuilt on a database; after one instance of it was lost, on the instance reached. */
+  const rebuiltOn = (m: string): string => (ap.instanceLoss?.member === m && ap.instanceLoss.to !== null
+    ? ap.instanceLoss.to : nameOf(m));
   for (const s of spans) {
     const before = lost === null || s.b <= lost + 1e-9;
     const after = end !== null && s.a >= end - 1e-9;
@@ -179,7 +182,9 @@ export function appLanes(ap: AppModel, doc: TopologyDoc, t0: Seconds, t1: Second
       push(pool, s.a, s.b, HANGING.has(s.servingState ?? '') ? AMBER : TEAL,
         HANGING.has(s.servingState ?? '')
           ? ['Commits hang — the primary cannot write redo anywhere', 'Commits hang', 'Hanging']
-          : reachedOf(s).length >= 2 && on !== null
+          : ap.instanceLoss !== null
+            ? [`Pooled sessions working on ${ap.instanceLoss.instance}`, 'Working', 'OK']
+            : reachedOf(s).length >= 2 && on !== null
             ? [`Pooled sessions working on ${nameOf(on as string)}`, 'Working', 'OK']
             : ['Pooled sessions working', 'Working', 'OK']);
       continue;
@@ -187,7 +192,7 @@ export function appLanes(ap: AppModel, doc: TopologyDoc, t0: Seconds, t1: Second
     if (after) {
       if (s.serving !== null) {
         push(pool, s.a, s.b, TEAL,
-          [`Pool rebuilt on ${nameOf(s.serving as string)}`, 'Pool rebuilt', 'OK']);
+          [`Pool rebuilt on ${rebuiltOn(s.serving as string)}`, 'Pool rebuilt', 'OK']);
       } else {
         push(pool, s.a, s.b, HATCH,
           ['Sessions lost — the service is gone again', 'Sessions lost', 'Lost']);
@@ -204,14 +209,16 @@ export function appLanes(ap: AppModel, doc: TopologyDoc, t0: Seconds, t1: Second
       const burst = Math.min((lost ?? a) + ERROR_BURST, end ?? Infinity);
       push(pool, a, Math.min(b, burst), HATCH, ap.switchover
         ? ['Terminated as the primary converts', 'Terminated']
-        : ['In-flight calls error — ORA-3113', 'Errors']);
+        : ap.instanceLoss !== null
+          ? [`Sessions on ${ap.instanceLoss.instance} terminated — the application is notified`, 'Terminated']
+          : ['In-flight calls error — ORA-3113', 'Errors']);
       push(pool, Math.max(a, burst), b, AMBER,
         ['Pool empty — requests wait or fail', 'Pool empty', 'Empty']);
     }
     if (end !== null && s.b > end) {
       if (s.serving !== null) {
         push(pool, end, s.b, TEAL,
-          [`Pool rebuilt on ${nameOf(s.serving as string)}`, 'Pool rebuilt', 'OK']);
+          [`Pool rebuilt on ${rebuiltOn(s.serving as string)}`, 'Pool rebuilt', 'OK']);
       } else {
         push(pool, end, s.b, HATCH,
           ['Sessions lost — the service is gone again', 'Sessions lost', 'Lost']);
@@ -249,7 +256,7 @@ export function appLanes(ap: AppModel, doc: TopologyDoc, t0: Seconds, t1: Second
     }
     if (quiet) {
       return [TEAL, HANGING.has(sp.servingState ?? '')
-        ? ['The listener still answers — connections are accepted throughout', 'The listener still answers', 'Connects']
+        ? ['The listener still answers (this page\'s model) — connections are accepted throughout', 'The listener still answers', 'Connects']
         : ['New connections are accepted throughout', 'Connects', 'OK']];
     }
     return [SLATE, ['Any request connects at once', 'Connects at once', '—']];
@@ -334,9 +341,11 @@ export function appLanes(ap: AppModel, doc: TopologyDoc, t0: Seconds, t1: Second
   } else if (ap.tConn !== null) {
     const out = ap.tConn - (lost ?? ap.startAt);
     const inside = ap.tService === null ? 0 : ap.tConn - ap.tService;
-    note = inside > ap.estab + 0.05
-      ? `outage ${fmt(out)} s — ${fmt(inside)} s of it inside the connect string`
-      : `outage ${fmt(out)} s`;
+    note = ap.instanceLoss !== null
+      ? `outage ${fmt(out)} s — the sessions on ${ap.instanceLoss.instance} end and the connect string dials on${ap.instanceLoss.to === null ? '' : ` to ${ap.instanceLoss.to}`}`
+      : inside > ap.estab + 0.05
+        ? `outage ${fmt(out)} s — ${fmt(inside)} s of it inside the connect string`
+        : `outage ${fmt(out)} s`;
     marks.push({
       key: 'reconnect', t: ap.tConn, tone: 'f-vi',
       label: `Application reconnected at t = ${fmt(ap.tConn)} s`,
@@ -357,6 +366,9 @@ export function appLanes(ap: AppModel, doc: TopologyDoc, t0: Seconds, t1: Second
   return {
     lanes, note, tone, marks,
     basis: `This page's model. ${ap.claims.vantage.value}; ${ap.claims.nominal.value}. ${ap.claims.nominal.note ?? ''}${
-      ap.claims.overlap === undefined ? '' : ` ${ap.claims.overlap.value}. ${ap.claims.overlap.note ?? ''}`}`.trim(),
+      ap.claims.overlap === undefined ? '' : ` ${ap.claims.overlap.value}. ${ap.claims.overlap.note ?? ''}`}${
+      ap.claims.drain === undefined ? '' : ` ${ap.claims.drain.value}. ${ap.claims.drain.note ?? ''}`}${
+      ap.claims.sessionSpread === undefined ? '' : ` ${ap.claims.sessionSpread.value}. ${ap.claims.sessionSpread.note ?? ''}`}${
+      ap.claims.stalledLogons === undefined ? '' : ` ${ap.claims.stalledLogons.value}. ${ap.claims.stalledLogons.note ?? ''}`}`.trim(),
   };
 }
