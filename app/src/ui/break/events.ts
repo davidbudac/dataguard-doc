@@ -392,8 +392,11 @@ export function actionsForKey(doc: TopologyDoc, key: string, at: number): EventA
         label: `SWITCHOVER TO ${key}`,
         plural: 'Switch over',
         enabled: !primary ? off(WHY.noTarget)
-          : targetDown ? off(WHY.switchoverTargetDown)
-            : primaryDown ? off(WHY.switchoverPrimaryDown) : ON,
+          : member.role === 'snapshot' ? off(WHY.switchoverSnapshot)
+            : member.role === 'logical' && doc.config.protectionMode === 'MAXPROTECTION'
+              ? off(WHY.switchoverLogicalMaxProt)
+              : targetDown ? off(WHY.switchoverTargetDown)
+                : primaryDown ? off(WHY.switchoverPrimaryDown) : ON,
         events: [{ at, kind: 'cmd.switchover', to: member.id }],
       });
       out.push({
@@ -414,16 +417,19 @@ export function actionsForKey(doc: TopologyDoc, key: string, at: number): EventA
         events: [{ at, kind: 'cmd.reinstate', member: member.id }],
       });
       const running = member.applyRunning;
+      /* Redo Apply on a physical standby, SQL Apply on a logical one. */
+      const applyName = member.role === 'logical' ? 'SQL Apply' : 'redo apply';
       out.push({
         id: 'apply.toggle',
-        label: running ? `Stop redo apply on ${key}` : `Start redo apply on ${key}`,
-        plural: 'Toggle redo apply',
-        enabled: member.role === 'primary' ? off(WHY.primaryNoApply) : ON,
+        label: running ? `Stop ${applyName} on ${key}` : `Start ${applyName} on ${key}`,
+        plural: `Toggle ${applyName}`,
+        enabled: member.role === 'primary' ? off(WHY.primaryNoApply)
+          : member.role === 'snapshot' ? off(WHY.snapshotNoApply) : ON,
         events: [],
         property: true,
         icon: running ? 'stop' : 'start',
         run: () => edit(
-          `${running ? 'Stop' : 'Start'} redo apply on ${key}`,
+          `${running ? 'Stop' : 'Start'} ${applyName} on ${key}`,
           (d) => ({
             ...d,
             topology: {

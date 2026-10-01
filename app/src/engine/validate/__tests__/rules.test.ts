@@ -694,6 +694,39 @@ const CASES: Case[] = [
     },
   },
   {
+    id: 'ROLE.SWITCHOVER_SNAPSHOT',
+    fires: 'a SWITCHOVER names a snapshot standby',
+    quiet: 'it names a physical standby',
+    trigger: () => {
+      const d = baseDoc({ fsfo: 'disabled' });
+      dbOf(d, 'sby01').role = 'snapshot';
+      d.events = [{ at: 0, kind: 'cmd.switchover', to: M('sby01') }];
+      return d;
+    },
+    silent: () => {
+      const d = baseDoc({ fsfo: 'disabled' });
+      d.events = [{ at: 0, kind: 'cmd.switchover', to: M('sby01') }];
+      return d;
+    },
+  },
+  {
+    id: 'ROLE.SWITCHOVER_LOGICAL_MAXPROT',
+    fires: 'a SWITCHOVER names a logical standby in maximum protection',
+    quiet: 'the mode is maximum availability',
+    trigger: () => {
+      const d = baseDoc({ fsfo: 'disabled', mode: 'MAXPROTECTION' });
+      dbOf(d, 'sby01').role = 'logical';
+      d.events = [{ at: 0, kind: 'cmd.switchover', to: M('sby01') }];
+      return d;
+    },
+    silent: () => {
+      const d = baseDoc({ fsfo: 'disabled', mode: 'MAXAVAILABILITY' });
+      dbOf(d, 'sby01').role = 'logical';
+      d.events = [{ at: 0, kind: 'cmd.switchover', to: M('sby01') }];
+      return d;
+    },
+  },
+  {
     id: 'OBS.NAME_RESERVED',
     fires: 'two observers share a name',
     quiet: 'their names differ',

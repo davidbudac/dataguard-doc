@@ -56,9 +56,11 @@ import {
   isMultiInstanceApply, participantLostClaim, roleChangeApplyClaim, setApplyClaim,
 } from './rac';
 import {
-  bystanderAhead, bystanderClaim, bystanders, executionClaim, manualFailoverFindings,
-  manualLossClaim, nominalBandsClaim, reinstateBandClaim, reinstateCommandFindings,
-  reinstateFindings, switchoverGate, switchoverLossClaim, switchoverRefused, switchoverSchedule,
+  bystanderAhead, bystanderClaim, bystanders, disabledByLogicalRole, executionClaim,
+  logicalRoleClaim, manualFailoverFindings, manualLossClaim, nominalBandsClaim, reinstateBandClaim,
+  reinstateCommandFindings, reinstateFindings, SNAPSHOT_CONVERT, snapshotConvertApplyClaim,
+  snapshotConvertBandClaim, snapshotFailoverAllowedClaim, snapshotFailoverFinding, switchoverGate,
+  switchoverLossClaim, switchoverRefused, switchoverSchedule, unappliedBacklog, unappliedWaitClaim,
 } from './roles';
 import type { SwitchoverRefusal } from './roles';
 
@@ -465,6 +467,15 @@ export function simulate(
       { kind: 'member', id: member as string });
   }
 
+  /**
+   * How long the primary ran in this run before it was lost -- the redo a
+   * standby that applies nothing has piled up. From the instant the observer
+   * lost it where it did, else up to `at`.
+   */
+  function primaryRanFor(at: Seconds): Seconds {
+    return Math.max(0, Math.min(at, state.obsLostPrimarySince ?? at));
+  }
+
   /** Seconds of redo the primary generated that this member never received. */
   function unsent(id: MemberId, at: Seconds): Seconds {
     const since = state.unsentSince[id as string];
@@ -544,7 +555,12 @@ export function simulate(
       { kind: 'member', id: target as string });
 
     const netHop = netHopSeconds(doc, view, target);
-    const applyRemaining = applyLagOf(targetMember, state);
+    const backlog = unappliedBacklog(targetMember, primaryRanFor(at));
+    const applyRemaining = applyLagOf(targetMember, state) + backlog;
+    if (backlog > 0 && readiness.passes) {
+      decide(at, 'FAILOVER.APPLY_WAIT', true, unappliedWaitClaim(target, backlog),
+        { kind: 'member', id: target as string });
+    }
     const gap = applyGapOf(targetMember, state);
     if (gap > 0 && isDatabase(targetMember)) {
       decide(at, 'RAC.APPLY_GAP_IN_FAILOVER', true, applyGapFailoverClaim(targetMember, gap),
@@ -681,9 +697,19 @@ export function simulate(
     }
 
     const follow = doc.config.bystandersFollowRoleChange;
-    decide(at, 'BYSTANDERS.FOLLOW', follow === 'ALL', asString(bystanderClaim(follow)));
+    const gone = disableForLogical(at, target, true);
+    if (gone.length > 0) {
+      /* They are disabled whatever the property says, so the property's
+         decision is not that they follow. */
+      decide(at, 'BYSTANDERS.FOLLOW', false, asString(
+        documented(false, ['FAILOVER.LOGICAL_DISABLES_OTHERS'],
+          `${target as string} is a logical standby: the physical and snapshot standbys do not follow the new primary, whatever BystandersFollowRoleChange (${follow}) says -- they are disabled.`),
+        `BystandersFollowRoleChange does not apply to ${gone.map((g) => g as string).join(', ')}: a failover to a logical standby disables them.`));
+    } else {
+      decide(at, 'BYSTANDERS.FOLLOW', follow === 'ALL', asString(bystanderClaim(follow)));
+    }
     for (const b of bystanders(doc, target)) {
-      if (b === state.formerPrimary) continue;
+      if (b === state.formerPrimary || gone.includes(b)) continue;
       if (follow === 'NONE') {
         state.disabledMembers.push(b);
         continue;
@@ -784,6 +810,8 @@ export function simulate(
       targetUp,
       connected: view.primaryAlive && targetUp
         && membersReachable(doc, state.net, view.primary, m, view.reach),
+      targetRole: isDatabase(m) ? m.role : 'physical',
+      maxProtection: doc.config.protectionMode === 'MAXPROTECTION',
     });
     const refusal = refusalText(gate.reason, to, gateLag);
     decide(at, 'SWITCHOVER.GATE', !gate.blocked, asString(gate.claim,
@@ -795,9 +823,13 @@ export function simulate(
       state.switchover = switchoverRefused(at, to, gate.reason);
       const needs = gate.reason === 'primary-down' || gate.reason === 'target-down'
         || gate.reason === 'not-connected';
+      const kind = gate.reason === 'snapshot-target' || gate.reason === 'logical-maxprotection';
       addFinding({
-        id: 'SWITCHOVER.REFUSED', severity: needs ? 'error' : 'warning', basis: 'documented',
-        cite: needs ? ['SWITCHOVER.FARSYNC_NO_EFFECT', 'SWITCHOVER.FORMER_PRIMARY_RESTARTS']
+        id: 'SWITCHOVER.REFUSED', severity: needs || kind ? 'error' : 'warning', basis: 'documented',
+        cite: gate.reason === 'snapshot-target'
+          ? ['SWITCHOVER.SNAPSHOT_NOT_TARGET', 'SWITCHOVER.SNAPSHOT_CONVERT_FIRST']
+          : gate.reason === 'logical-maxprotection' ? ['SWITCHOVER.LOGICAL_MAXPROT']
+          : needs ? ['SWITCHOVER.FARSYNC_NO_EFFECT', 'SWITCHOVER.FORMER_PRIMARY_RESTARTS']
           : gate.reason === 'past-lag-limit'
             ? ['SWITCHOVER.FSFO_GATE', 'FSFO.LAGLIMIT_RECOMMENDATION']
             : gate.reason === 'not-target'
@@ -838,6 +870,10 @@ export function simulate(
 
   function refusalText(reason: SwitchoverRefusal | null, to: MemberId, gateLag: Seconds): string {
     switch (reason) {
+      case 'snapshot-target':
+        return `${to as string} is a snapshot standby, which cannot be the target of a switchover: it has to be converted back to a physical standby first`;
+      case 'logical-maxprotection':
+        return `${to as string} is a logical standby, and a switchover to a logical standby is disallowed while the configuration is in maximum protection mode`;
       case 'primary-down':
         return 'the primary is down, and a switchover is a planned role reversal between two running databases -- what is left is a failover';
       case 'target-down':
@@ -885,6 +921,35 @@ export function simulate(
     return true;
   }
 
+  /**
+   * A role change to a logical standby leaves the physical and snapshot
+   * standbys (and, after a failover, the original primary) disabled: they
+   * "must be re-created from a copy of the new primary database", which is no
+   * REINSTATE. Returns the members it disabled.
+   */
+  function disableForLogical(at: Seconds, target: MemberId, failover: boolean): MemberId[] {
+    const t = doc.members.find((x) => x.id === target);
+    if (!t || !isDatabase(t) || t.role !== 'logical') return [];
+    const mine = disabledByLogicalRole(doc, target, state.formerPrimary, failover);
+    for (const id of mine) {
+      if (!state.disabledMembers.includes(id)) state.disabledMembers.push(id);
+      if (!state.recreateMembers.includes(id)) state.recreateMembers.push(id);
+      const mm = doc.members.find((x) => x.id === id);
+      const claim = logicalRoleClaim(failover, mine.length);
+      addFinding({
+        id: 'ROLE.LOGICAL_DISABLES', severity: 'warning', basis: 'documented',
+        cite: [...claim.cite],
+        subject: { kind: 'member', id: id as string },
+        message: `${mm?.name ?? (id as string)} is disabled: ${failover ? 'the failover target' : 'the switchover target'} ${target as string} is a logical standby database, so the physical and snapshot standby databases${failover ? ' and the original primary' : ''} are disabled and must be re-created from a copy of the new primary database. REINSTATE does not bring them back.`,
+      });
+    }
+    if (mine.length > 0) {
+      decide(at, 'ROLE.LOGICAL_DISABLES', true, logicalRoleClaim(failover, mine.length),
+        { kind: 'member', id: target as string });
+    }
+    return mine;
+  }
+
   function completeSwitchover(at: Seconds): void {
     const sw = state.switchover;
     if (!sw || sw.blocked) return;
@@ -897,6 +962,7 @@ export function simulate(
     state.ackArmed = false;
     state.ackLostSince = null;
     if (state.formerPrimary !== null) rearmApply(state.formerPrimary, at);
+    disableForLogical(at, sw.to, false);
     decide(at, 'SWITCHOVER.ZERO_LOSS', true, asString(switchoverLossClaim(),
       'The roles swap only once the standby has everything: zero data loss in every protection mode. The former primary restarts as the new standby, and the new primary does not wait for it.'));
   }
@@ -964,12 +1030,28 @@ export function simulate(
        ordered its own, which is the whole point of DISABLE FAST_START FAILOVER
        FORCE in the documented conditions above. */
     state.phase = 'failing-over';
-    /* An immediate failover applies none of the redo the standby holds. */
-    const applyRemaining = cmd.immediate ? 0 : applyLagOf(m, state);
+    /* An immediate failover applies none of the redo the standby holds. A
+       snapshot standby is first converted back to a physical standby, and a
+       standby whose apply is stopped has redo to apply that its lag figure
+       does not count: the broker "waits for the target standby database to
+       finish applying any unapplied redo data". */
+    const snapshot = isDatabase(m) && m.role === 'snapshot';
+    const convert = snapshot ? SNAPSHOT_CONVERT : 0;
+    const backlog = cmd.immediate ? 0 : unappliedBacklog(m, primaryRanFor(at));
+    const applyRemaining = cmd.immediate ? 0 : applyLagOf(m, state) + backlog;
     state.execStartAt = at;
-    state.tOpenAt = at + applyRemaining + doc.environment.roleTransitionSeconds;
+    state.tOpenAt = at + convert + applyRemaining + doc.environment.roleTransitionSeconds;
     state.converting = to;
     q.push({ kind: 'fsfo.open', at: state.tOpenAt, subject }, 'fsfo.open', false, to);
+    if (snapshot) {
+      addFinding(snapshotFailoverFinding(to));
+      decide(at, 'FAILOVER.SNAPSHOT_ALLOWED', true, snapshotFailoverAllowedClaim(to), subject);
+      decide(at, 'FAILOVER.SNAPSHOT_CONVERT_APPLY', true, snapshotConvertApplyClaim(to), subject);
+      decide(at, 'FAILOVER.SNAPSHOT_BAND', true,
+        snapshotConvertBandClaim(to, SNAPSHOT_CONVERT, applyRemaining, cmd.immediate), subject);
+    } else if (backlog > 0) {
+      decide(at, 'FAILOVER.APPLY_WAIT', true, unappliedWaitClaim(to, backlog), subject);
+    }
     decide(at, 'FSFO.MANUAL_FAILOVER', true, asString(
       documented(true, ['FSFO.MANUAL_FAILOVER_CONDITIONS', 'FSFO.STATUS_DISABLED'],
         'A manual FAILOVER TO needs no observer while fast-start failover is disabled. With fast-start failover enabled it is conditional: the target must be the current fast-start failover target, synchronized (maximum availability or protection) or inside the lag limit (maximum performance), with the observer started and communicating with it, and the primary shut down first.'),
@@ -1012,6 +1094,19 @@ export function simulate(
     if (id === null) return;
     const m = doc.members.find((x) => x.id === id);
     if (!m || !isDatabase(m)) return;
+    if (state.recreateMembers.includes(id)) {
+      const finding: Finding = {
+        id: 'REINSTATE.MUST_RECREATE', severity: 'error', basis: 'documented',
+        cite: ['SWITCHOVER.LOGICAL_DISABLES_OTHERS', 'FAILOVER.LOGICAL_DISABLES_OTHERS'],
+        subject: { kind: 'member', id: id as string },
+        message: `REINSTATE DATABASE ${id as string} cannot bring it back: the role change to a logical standby disabled it, and it must be re-created from a copy of the new primary database.`,
+      };
+      addFinding(finding);
+      decideAt(at, 'REINSTATE.COMMAND', false, {
+        value: finding.message, basis: 'documented', cite: [...finding.cite],
+      }, { kind: 'member', id: id as string });
+      return;
+    }
     const failedOver = state.phase === 'failed-over';
     const needs = failedOver
       && (state.formerPrimary === id || state.disabledMembers.includes(id));
@@ -2276,6 +2371,9 @@ function memberStateOf(
   /* A RAC standby waiting out ApplyInstanceTimeout has no instance applying. */
   const lost = state.applyLostSince[m.id as string];
   if (tracksApply(state, m) && lost !== null && lost !== undefined) return 'mounted-noapply';
+  /* "A snapshot standby database does not apply the redo data that it
+     receives": whatever applyRunning says, it is not drawn applying. */
+  if (m.role === 'snapshot') return 'mounted-noapply';
   return m.applyRunning ? 'mounted-apply' : 'mounted-noapply';
 }
 
@@ -2651,6 +2749,7 @@ function initialState(doc: TopologyDoc): SimState {
     abortAt: null,
     abortReason: null,
     disabledMembers: [],
+    recreateMembers: [],
     disabledDests: [],
     altLatched: [],
     groupChoice: {},

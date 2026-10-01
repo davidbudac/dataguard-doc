@@ -290,8 +290,13 @@ export interface SimState {
   abortedMembers: MemberId[];
   abortAt: Seconds | null;
   abortReason: 'stall' | 'maxprotection' | null;
-  /** Members taken out of service by BystandersFollowRoleChange = NONE. */
+  /** Members taken out of service by BystandersFollowRoleChange = NONE, or by a role change to a logical standby. */
   disabledMembers: MemberId[];
+  /**
+   * The disabled members that cannot be reinstated: a role change to a logical
+   * standby leaves them "to be re-created from a copy of the new primary".
+   */
+  recreateMembers: MemberId[];
 
   /* destinations across epochs (dests.ts) */
   /**

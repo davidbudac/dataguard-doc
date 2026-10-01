@@ -796,6 +796,15 @@ export const CITATIONS = {
     quote: 'To enable fast-start failover when a far sync instance is used to ship redo data to the standby database, the FastStartFailoverTarget property must first be set on both the primary and target standby database',
     note: 'Scenario 7: Enabling Fast-Start Failover When a Far Sync Instance Is In Use.',
   },
+  'MEMBER.SNAPSHOT_NO_APPLY': {
+    url: U.bkr19Members, edition: '19c', verified: 'primary',
+    quote: 'unlike a physical or logical standby database, a snapshot standby database does not apply the redo data that it receives',
+  },
+  'MEMBER.SNAPSHOT_NO_STATES': {
+    url: U.bkr19Members, edition: '19c', verified: 'primary',
+    quote: 'Snapshot standby databases are not listed in this table because they do not have states; they only receive redo data.',
+    note: 'The table of standby database states (APPLY-ON, APPLY-OFF, ...): a snapshot standby has no apply state to start or stop.',
+  },
   'MEMBER.SNAPSHOT_CONVERT_NEEDS_FLASHBACK': {
     url: U.bkr19Members, edition: '19c', verified: 'primary',
     quote: 'To convert a physical standby database to a snapshot standby database you must have Flashback Database enabled.',
@@ -803,6 +812,30 @@ export const CITATIONS = {
   'FSFO.SNAPSHOT_NOT_TARGET': {
     url: U.bkr19Switch, edition: '19c', verified: 'primary',
     quote: 'A snapshot standby cannot be the target of a switchover or fast-start failover operation. You can, however, perform a manual failover to a snapshot standby.',
+  },
+  'SWITCHOVER.SNAPSHOT_NOT_TARGET': {
+    url: U.bkr19Cmds, edition: '19c', verified: 'primary',
+    quote: 'A snapshot standby database cannot be the target of a switchover or a fast-start failover.',
+    note: 'CONVERT DATABASE, Usage Notes; identical on the 26ai CONVERT DATABASE page.',
+  },
+  'SWITCHOVER.SNAPSHOT_CONVERT_FIRST': {
+    url: U.bkr19Switch, edition: '19c', verified: 'primary',
+    quote: 'You cannot perform a switchover to a snapshot standby database unless you first convert it back to a physical standby database.',
+  },
+  'FAILOVER.SNAPSHOT_CONVERT_APPLY': {
+    url: U.bkr19Switch, edition: '19c', verified: 'primary',
+    quote: 'the broker first converts the database back to a physical standby and then starts Redo Apply to apply all the accumulated redo',
+    note: 'Manual failover to a snapshot standby; the 26ai manual failover page carries the same sentence.',
+  },
+  'ROLES.SNAPSHOT_NO_ROLE_TRANSITION': {
+    url: U.sbyRoles, edition: '19c', verified: 'primary',
+    quote: 'A snapshot standby cannot be the target of a role transition.',
+    note: 'Role Transitions concepts. It conflicts with the broker commands page (FAILOVER.SNAPSHOT_MANUAL_ALLOWED), which allows a manual failover to one; the documentation does not reconcile the two.',
+  },
+  'FAILOVER.SNAPSHOT_MANUAL_ALLOWED': {
+    url: U.bkr19Cmds, edition: '19c', verified: 'primary',
+    quote: 'can be the target of a manual failover if fast-start failover is disabled',
+    note: 'CONVERT DATABASE, Usage Notes, the clause that follows the switchover and fast-start failover restriction (SWITCHOVER.SNAPSHOT_NOT_TARGET). It conflicts with ROLES.SNAPSHOT_NO_ROLE_TRANSITION.',
   },
   'FSFO.PRIMARY_UNOBSERVED': {
     url: U.bkr19Switch, edition: '19c', verified: 'primary',
@@ -900,6 +933,11 @@ export const CITATIONS = {
     quote: 'If fast-start failover is enabled, you can perform a complete manual failover only to the fast-start failover target standby database and only if the fast-start failover target standby database is synchronized with, or within the lag limit of, the primary database, and only when the observer is started. You cannot perform an immediate manual failover when fast-start failover is enabled.',
     note: 'FAILOVER, Usage Notes; identical on the 26ai FAILOVER page.',
   },
+  'FAILOVER.WAITS_FOR_APPLY': {
+    url: U.bkr19Switch, edition: '19c', verified: 'primary',
+    quote: 'Waits for the target standby database to finish applying any unapplied redo data before stopping Redo Apply',
+    note: 'The steps of a complete manual failover. How long the wait is depends on the redo outstanding and is environment-dependent.',
+  },
   'SWITCHOVER.FSFO_TARGET_ONLY': {
     url: U.bkr19Cmds, edition: '19c', verified: 'primary',
     quote: 'If fast-start failover is enabled, you may switch over only to the fast-start failover target standby database.',
@@ -975,6 +1013,22 @@ export const CITATIONS = {
     url: U.bkr19Switch, edition: '19c', verified: 'primary',
     quote: 'The original primary database will be restarted as a part of the switchover operation.',
     note: "The restart is what ends the sessions on the former primary; the pre-12c 'COMMIT TO SWITCHOVER ... WITH SESSION SHUTDOWN' syntax is no longer on the 19c pages and is not quoted. The DGMGRL SWITCHOVER command's WAIT option 'specifies that you want to wait for sessions to drain before proceeding with the switchover' (command reference). Duration is environment-dependent.",
+  },
+
+  'SWITCHOVER.LOGICAL_DISABLES_OTHERS': {
+    url: U.bkr19Switch, edition: '19c', verified: 'primary',
+    quote: 'All physical and snapshot standby databases will be disabled and must be re-created from a copy of the new primary database after a switchover to a logical standby database.',
+    note: 'Identical on the 26ai SWITCHOVER page.',
+  },
+  'FAILOVER.LOGICAL_DISABLES_OTHERS': {
+    url: U.bkr19Switch, edition: '19c', verified: 'primary',
+    quote: 'If the failover target is a logical standby database, the original primary database and all physical and snapshot standby databases in the configuration will be disabled.',
+    note: 'Identical on the 26ai manual failover page.',
+  },
+  'SWITCHOVER.LOGICAL_MAXPROT': {
+    url: U.bkr19Switch, edition: '19c', verified: 'primary',
+    quote: 'Switchover to a logical standby database is disallowed when the configuration is operating in maximum protection mode.',
+    note: 'Identical on the 26ai SWITCHOVER page.',
   },
 
   /* ---------------- Transport modes ---------------- */

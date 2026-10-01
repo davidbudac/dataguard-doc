@@ -68,6 +68,8 @@ export const WHY = {
     'The primary is not a failover target of itself.',
   primaryNoApply:
     'A primary applies no redo of its own.',
+  snapshotNoApply:
+    'A snapshot standby database does not apply the redo data that it receives, and it has no apply state to start or stop.',
   alreadyPrimary:
     'It holds the primary role already.',
   alreadyMaster:
@@ -96,6 +98,10 @@ export const WHY = {
     'No physical or logical standby is configured to move the role to.',
   switchoverTargetDown:
     'SWITCHOVER needs the target standby up: it is down at this point on the clock.',
+  switchoverSnapshot:
+    'A snapshot standby database cannot be the target of a switchover: convert it back to a physical standby first. A manual failover to it is allowed.',
+  switchoverLogicalMaxProt:
+    'Switchover to a logical standby database is disallowed when the configuration is operating in maximum protection mode.',
   switchoverPrimaryDown:
     'SWITCHOVER needs the primary up: it is down at this point on the clock.',
   failoverTargetDown:
