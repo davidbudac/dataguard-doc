@@ -25,7 +25,7 @@ import { assertCitesAllowed } from '../citations';
 import type { CitationId } from '../citations';
 import type { Edition, MemberId, Millis } from '../ids';
 import type { Claim } from '../types/claims';
-import { documented, model } from '../types/claims';
+import { documented, inferred, model } from '../types/claims';
 import type { MemberKind, ProtectionMode, XptMode } from '../types/topology';
 import type { CommitAxisSpec } from './axis';
 import { commitAxis } from './axis';
@@ -112,9 +112,10 @@ export interface CommitModel {
 const MAX_NOT_SUM_CITES: CitationId[] = ['COMMIT.THIRTEEN_STEPS'];
 assertCitesAllowed('COMMIT_MAX_NOT_SUM', MAX_NOT_SUM_CITES);
 
-const MAX_NOT_SUM = documented<string>(
+const MAX_NOT_SUM = inferred<string>(
   'a commit costs max(local write, remote ack path), never their sum',
   MAX_NOT_SUM_CITES,
+  'The documented thirteen-step path starts the remote write at step 5, issues the local write at step 6 and waits for the remote one at step 7. Oracle orders the steps and never says "max" or "parallel"; the maximum is this page\'s reading of that order.',
 );
 
 const AFFIRM = documented<string>(

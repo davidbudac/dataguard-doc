@@ -833,7 +833,7 @@ interface Look {
  * Every phrase here is the published fragment's, kept word for word: the
  * drawing may be rebuilt, but nothing it says about Oracle is re-worded.
  */
-function look(state: AnyState, group: LaneGroup, ctx: { pingSet: boolean }): Look {
+function look(state: AnyState, group: LaneGroup, ctx: { pingSet: boolean; snapshot?: boolean }): Look {
   const primary = group === 'primary';
   switch (state) {
     case 'open-rw':
@@ -845,6 +845,16 @@ function look(state: AnyState, group: LaneGroup, ctx: { pingSet: boolean }): Loo
     case 'mounted-apply':
       return { phase: 'b-bl', ink: 'f-bl', labels: ['Applying redo', 'Applying'] };
     case 'mounted-noapply':
+      /* Redo apply being "stopped" is only true of a standby someone stopped it
+         on. A snapshot standby is open read-write by design, and the primary
+         lane is the former primary after a role change, where Oracle says
+         "Redo Apply begins applying redo data from the new primary database". */
+      if (ctx.snapshot === true) {
+        return { phase: 'b-sl', ink: 'f-sl', labels: ['Snapshot standby — open read-write, not applying redo', 'Snapshot standby', 'Snapshot'] };
+      }
+      if (primary) {
+        return { phase: 'b-sl', ink: 'f-sl', labels: ['Mounted — not applying redo yet', 'Not applying yet', 'Mounted'] };
+      }
       return { phase: 'b-sl', ink: 'f-sl', labels: ['Mounted — redo apply is stopped', 'Apply stopped', 'Mounted'] };
     case 'stalled':
       return { phase: 'b-hatch', ink: 'f-rd', labels: ['STALLED — redo generation halted', 'STALLED'] };
@@ -864,7 +874,7 @@ function look(state: AnyState, group: LaneGroup, ctx: { pingSet: boolean }): Loo
     case 'unreachable':
       return { phase: 'b-am', ink: 'f-am', labels: primary
         ? ['Open read-write — serving, but unreachable', 'Open, but unreachable', 'Open']
-        : ['Lagging — no redo is arriving from the primary', 'No redo arriving', 'Lagging'] };
+        : ['No redo is arriving from the primary', 'No redo arriving', 'No redo'] };
     case 'receiving':
       return { phase: 'b-bl', ink: 'f-bl', labels: ['Receiving redo and forwarding it', 'Receiving redo', 'Receiving'] };
     case 'forwarding-stalled':
@@ -874,7 +884,7 @@ function look(state: AnyState, group: LaneGroup, ctx: { pingSet: boolean }): Loo
     case 'backup':
       return { phase: 'b-sl', ink: 'f-sl', labels: ['Backup observer — registered, not deciding', 'Backup observer', 'Backup'] };
     case 'stopped':
-      return { phase: 'b-hatch', ink: 'f-rd', labels: ['Observer stopped — nobody is watching', 'Observer stopped', 'Stopped'] };
+      return { phase: 'b-hatch', ink: 'f-rd', labels: ['Observer stopped — not watching', 'Observer stopped', 'Stopped'] };
     case 'lost-primary':
       return { phase: 'b-am', ink: 'f-am', labels: ctx.pingSet
         ? ['Ping retries — no answer', 'Ping retries', 'Retries']
@@ -889,7 +899,7 @@ function look(state: AnyState, group: LaneGroup, ctx: { pingSet: boolean }): Loo
       return { phase: 'b-sl', ink: 'f-sl', labels: ['Link up', 'Up'] };
     case 'down':
       if (group === 'primary') return { phase: 'b-hatch', ink: 'f-rd', labels: ['Down — host has crashed', 'Down'] };
-      if (group === 'observer') return { phase: 'b-hatch', ink: 'f-rd', labels: ['Host down — nobody is watching', 'Host down', 'Down'] };
+      if (group === 'observer') return { phase: 'b-hatch', ink: 'f-rd', labels: ['Host down — not watching', 'Host down', 'Down'] };
       if (group === 'farsync') return { phase: 'b-hatch', ink: 'f-rd', labels: ['Down — nothing is forwarding redo', 'Down'] };
       if (group === 'link') return { phase: 'b-hatch', ink: 'f-rd', labels: ['Link cut', 'Cut'] };
       return { phase: 'b-hatch', ink: 'f-rd', labels: ['Down — nothing is receiving redo here', 'Down'] };
@@ -932,11 +942,11 @@ export function describeEvent(doc: TopologyDoc, e: TimedEvent): string {
     case 'observer.stop': return `Observer ${observerName(doc, e.observer)} stops`;
     case 'observer.start': return `Observer ${observerName(doc, e.observer)} starts`;
     case 'cmd.switchover': return `SWITCHOVER TO ${memberName(doc, e.to)}`;
-    case 'cmd.failover': return `FAILOVER TO ${memberName(doc, e.to)}`;
+    case 'cmd.failover': return `FAILOVER TO ${memberName(doc, e.to)}${e.immediate === true ? ' IMMEDIATE' : ''}`;
     case 'cmd.reinstate': return `REINSTATE DATABASE ${memberName(doc, e.member)}`;
     case 'cmd.setMasterObserver': return `SET MASTEROBSERVER TO ${observerName(doc, e.observer)}`;
     case 'cmd.setApplyInstance': return `SET STATE='APPLY-ON' WITH APPLY INSTANCE='${e.instance}' on ${memberName(doc, e.member)}`;
-    case 'cmd.disableFsfo': return 'DISABLE FAST_START FAILOVER';
+    case 'cmd.disableFsfo': return `DISABLE FAST_START FAILOVER${e.force === true ? ' FORCE' : ''}`;
     case 'lag.set': {
       const parts: string[] = [];
       if (e.applyLag !== undefined) parts.push(`apply lag ${fmt(e.applyLag)} s`);
@@ -1181,7 +1191,7 @@ function buildCaption(
       };
     case 'stall-noone':
       return {
-        text: 'No failover is possible — the observer died with the standby',
+        text: 'The primary has stalled — it can reach neither an observer nor the standby, and no failover is initiated',
         tone: 'f-rd', x: null, anchor: 'start',
       };
     case 'maxprot-shutdown':
@@ -1194,11 +1204,26 @@ function buildCaption(
         text: 'No automatic failover possible while unobserved — primary and standby carry on',
         tone: 'f-am', x: null, anchor: 'start',
       };
-    case 'manual':
+    case 'manual': {
+      if (f.tOpen !== null) {
+        return {
+          text: 'A manual FAILOVER TO promoted the standby — fast-start failover did not',
+          tone: 'f-am', x: null, anchor: 'start',
+        };
+      }
+      /* The primary is gone and nothing promoted a standby. Whether
+         fast-start failover is armed decides what that means: "no fast-start
+         failover is armed" is only true where it is disabled. */
+      const fsfoState = doc.config.fsfo.state;
       return {
-        text: 'No fast-start failover is armed — only a manual FAILOVER TO can promote the standby',
+        text: fsfoState === 'disabled'
+          ? 'No fast-start failover is armed — only a manual FAILOVER TO can promote the standby'
+          : fsfoState === 'observe-only'
+            ? 'Observe-only mode never initiates a failover — only a manual FAILOVER TO can promote the standby'
+            : 'Fast-start failover is enabled but did not initiate — only a manual FAILOVER TO can promote the standby',
         tone: 'f-am', x: null, anchor: 'start',
       };
+    }
     case 'continues':
     default: {
       const c = f.conditions;
@@ -1348,7 +1373,7 @@ export function buildTimeline(trace: Trace, doc: TopologyDoc, view: TimelineView
     const segments: TimelineSegment[] = [];
     bands.forEach((b, k) => {
       if (b.t1 - b.t0 <= 0 && bands.length > 1) return;
-      const lk = look(b.state, seed.group, { pingSet: ping });
+      const lk = look(b.state, seed.group, { pingSet: ping, snapshot: seedMember !== undefined && isDatabase(seedMember) && seedMember.role === 'snapshot' });
       const applying = b.state === 'mounted-apply' || b.state === 'open-ro';
       /* A RAC standby open read-only with no instance applying is waiting out
          ApplyInstanceTimeout: open, and not applying. */

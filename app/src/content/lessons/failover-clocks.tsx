@@ -92,7 +92,12 @@ export const failoverClocks: Lesson = {
           >
             interval × (retries + 1)
           </Fact>{' '}
-          — the first failed ping plus its retries — is this page&rsquo;s model of it.
+          — the first failed ping plus its retries — is this page&rsquo;s model of it.{' '}
+          <Fact id="FSFO.PING_LOW_LATENCY_ONLY">
+            Setting the ObserverPingInterval and ObserverPingRetry properties must be used only in low
+            latency environments
+          </Fact>
+          .
         </P>
       ),
       apply: {
@@ -164,8 +169,19 @@ export const failoverClocks: Lesson = {
         <P>
           The broker restarts the old primary as part of the switchover — that restart is what ends
           its sessions — before starting Redo Apply in its new standby role; the downtime window runs
-          from there to the new primary&rsquo;s read-write open. The documentation is explicit that
-          the <em>new</em> primary does not need to be restarted and does not wait for the old one.
+          from there to the new primary&rsquo;s read-write open.{' '}
+          <Fact id="SWITCHOVER.FORMER_PRIMARY_RESTARTS">
+            Note that the new primary database does not need to be restarted
+          </Fact>
+          ; that it also does not wait for the old one is{' '}
+          <Fact
+            id="SWITCHOVER.FORMER_PRIMARY_RESTARTS"
+            basis="inferred"
+            note="The sentence says only that the new primary need not be restarted. Nothing says whether the new primary opens before the old one has finished restarting; this page draws the open without waiting."
+          >
+            how this page draws it
+          </Fact>
+          .
         </P>
       ),
     },
@@ -186,11 +202,11 @@ export const failoverClocks: Lesson = {
           target standby is where <M>FS_FAILOVER_STATUS</M> reads <M>PRIMARY UNOBSERVED</M>. In time
           the broker raises <M>ORA-16820</M>.{' '}
           <Fact
-            id={['OBS.THREE_19C', 'OBS.FOUR_26AI']}
+            id={['OBS.THREE_19C', 'OBS.FOUR_CMD19', 'OBS.FOUR_26AI', 'OBS.THREE_26AI_SHOW']}
             basis="conflict"
-            note="19c registers three; the 26ai fast-start failover chapter says four while its own SHOW OBSERVER page still says three."
+            note="Oracle disagrees with itself in both editions. 19c: the fast-start failover chapter says up to three observers, the START OBSERVER command reference says up to four. 26ai: the fast-start failover chapter says four while its own SHOW OBSERVER page still says three."
           >
-            19c registers up to three observers
+            Oracle gives three or four as the observer maximum
           </Fact>
           ; if the master is lost while primary and standby stay connected, the broker tries to
           nominate a backup as the new master; nomination is an attempt, and only in that connected

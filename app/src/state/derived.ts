@@ -425,7 +425,7 @@ export function readoutFor(steady: boolean): ReadoutChip[] {
         v: unknown ? 'unknown' : zero ? 'none' : fmt(rpo.value),
         ...(unknown || zero ? {} : { unit: 's' }),
         sub: unknown
-          ? 'The far sync instance went down with the primary, and what it had not yet forwarded is lost with it. This run cannot say how much.'
+          ? 'The far sync instance was down or cut off from the standby when the primary failed, so redo it had not yet forwarded could not be sent on to the standby. This run cannot say how much.'
           : zero
             ? (f.dataLossKind === 'manual'
               ? 'The standby held everything the primary had generated when it was promoted. A manual failover guarantees nothing of the kind.'

@@ -5,7 +5,7 @@
  * failover clock, and it lives in the transport table next door.
  */
 
-import { M } from '../facts-ui';
+import { Fact, M } from '../facts-ui';
 import { Fn } from '../footnotes';
 import { byEdition, type RefTableData } from './RefTable';
 
@@ -84,10 +84,20 @@ export const brokerProperties: RefTableData = {
         'APPLY',
         '—',
         <>
-          Which lag <M>FastStartFailoverLagLimit</M> is measured against: <M>APPLY</M>, the
-          standby&rsquo;s apply point, or <M>TRANSPORT</M>, the redo it has received. Under{' '}
-          <M>TRANSPORT</M> the limit bounds redo that never arrived; redo already received is still
-          applied during terminal recovery. Documented as maximum-performance-mode behavior.
+          <Fact id="FSFO.LAGTYPE">
+            Specifies the type of lag (apply lag or transport lag) the user wishes to use to specify
+            their data loss threshold
+          </Fact>
+          , <M>APPLY</M> or <M>TRANSPORT</M>, and documented as maximum-performance-mode behavior.{' '}
+          <Fact
+            id="FSFO.LAGTYPE"
+            basis="model"
+            note="The property page says only which lag type the threshold is expressed in. That under TRANSPORT the limit bounds redo that never arrived, and that redo already received is still applied during terminal recovery, comes from the Data Guard product manager's blog, not from Oracle's documentation; the workbench draws it that way."
+          >
+            Read as the standby&rsquo;s apply point against the redo it has received, with redo already
+            received still applied during terminal recovery
+          </Fact>
+          .
         </>,
       ],
     },
@@ -111,7 +121,7 @@ export const brokerProperties: RefTableData = {
       onlyIn: '26ai',
       cells: [
         <M>PrimaryDatabaseCandidates</M>,
-        '—',
+        'empty — no restriction',
         '—',
         <>
           Lists the members the broker may make primary. While fast-start failover is disabled it

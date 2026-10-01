@@ -41,7 +41,13 @@ export const applicationView: Lesson = {
       prose: (
         <P>
           A role-based service exists only where the database runs as primary (
-          <M>srvctl add service -role PRIMARY</M>, or a startup trigger on <M>DATABASE_ROLE</M>).
+          <M>srvctl add service -role PRIMARY</M>, or a trigger fired by the <M>DB_ROLE_CHANGE</M>{' '}
+          system event, the one trigger event Oracle&rsquo;s role-transition chapter documents:{' '}
+          <Fact id="ROLES.DB_ROLE_CHANGE_TRIGGER">
+            The DB_ROLE_CHANGE system event can be used to fire a trigger that performs a set of
+            actions whenever a role transition occurs
+          </Fact>
+          ).
           Nothing publishes <M>app_svc</M> on the standby, so its listener answers <M>ORA-12514</M>{' '}
           instantly — the refusal is what makes a two-address string safe.
         </P>
@@ -82,9 +88,18 @@ export const applicationView: Lesson = {
       title: 'Short delays, many retries',
       prose: (
         <P>
-          Oracle&rsquo;s HA guidance: a generous <M>CONNECT_TIMEOUT</M> (90 s in the documented
-          example), a transport timeout around a second, and a short <M>RETRY_DELAY</M> with a high{' '}
-          <M>RETRY_COUNT</M>.{' '}
+          Oracle&rsquo;s HA guide: a transport timeout around a second (its example uses 1000 ms) and a
+          short <M>RETRY_DELAY</M> with a high <M>RETRY_COUNT</M>. On <M>CONNECT_TIMEOUT</M> Oracle
+          points two ways:{' '}
+          <Fact
+            id={['CLIENT.CONNECT_TIMEOUT_VERY_GENEROUS', 'CLIENT.CONNECT_TIMEOUT_SMALL_BROKER']}
+            basis="conflict"
+            note="The HA guide's example connect string uses CONNECT_TIMEOUT=90 and calls 90 seconds very generous, to be shortened in some cases; the broker guide says to set CONNECT_TIMEOUT to a small value (its example is 5). Oracle does not reconcile the two. The 90 s the step sets is the HA example's value."
+          >
+            the HA example sets 90 s and calls that very generous, the broker guide says to set it to a
+            small value
+          </Fact>
+          .{' '}
           <Fact id="CLIENT.SWITCHOVER_BUDGET_100X3">
             Its switchover sizing example budgets <M>RETRY_COUNT</M> × <M>RETRY_DELAY</M> = 100 × 3 s
             = 300 s

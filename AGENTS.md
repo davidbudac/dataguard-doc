@@ -489,8 +489,10 @@ agree on:
   unconditional (see the `FastStartFailoverLagLimit` rule above).
 - **One role change per run.** The engine evaluates one failover or switchover
   and says so (`SIM.ONE_ROLE_CHANGE`) when later events would need a second.
-  Oracle documents that fast-start failover stays enabled and the reinstated
-  database becomes the new target; the page does not draw that.
+  Oracle documents, for a failover plus a reinstatement, that "the reinstated database
+  acts as the fast-start failover target for the new primary database"; that fast-start
+  failover stays enabled across a *switchover* is only implied, so never write it as
+  Oracle's sentence. The page does not draw a second role change.
 - `NET_TIMEOUT` is a `LOG_ARCHIVE_DEST_n` transport attribute (broker property
   `NetTimeout`), default 30 s, min 1 s, ≥ 8–10 s recommended. It bounds how long
   LGWR waits for the standby's SYNC ack; it is NEVER a failover clock, never
@@ -510,10 +512,10 @@ agree on:
   MaxPerformance it **refuses the command** — word it as a refused `SWITCHOVER`, never as a
   forbidden failover. An apply lag does *not* block MaxAvailability, because synchronized is about
   redo **received**; it only lengthens the catch-up. The **former primary** is the database that
-  restarts (as the new standby); "the new primary database does not need to be restarted", and it
-  does not wait for the old one. Sessions on the primary are terminated as it converts. No failover
+  restarts (as the new standby); "the new primary database does not need to be restarted" is the whole
+  sentence — that it does not wait for the old one is this page's drawing (`inferred`). Sessions on the primary are terminated as it converts. No failover
   clock runs at all — threshold, `ObserverPing*` and `FastStartFailoverPmyShutdown` are spectators,
-  and FSFO stays enabled across the swap. Duration is environment-dependent (unapplied redo, update
+  and FSFO is drawn enabled across the swap (implied, not stated for a switchover). Duration is environment-dependent (unapplied redo, update
   activity at the moment of the command, online redo logs to clear), so label it that way; the 1 s
   verify and 2 s convert bands are nominal drawing constants (footnote 3), not documented numbers.
 - Reinstate (`FastStartFailoverAutoReinstate`, Flashback Database) is

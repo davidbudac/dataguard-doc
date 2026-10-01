@@ -6,7 +6,7 @@
  * counts a cascaded destination) are labelled where they are asserted.
  */
 
-import { memberId } from '@/engine';
+import { hostId, memberId } from '@/engine';
 import { Fact, M } from '../facts-ui';
 import { Caption, Code, Dim, P } from '../prose';
 import type { Lesson } from '../types';
@@ -126,7 +126,10 @@ export const cascading: Lesson = {
           {
             op: 'replace',
             path: '/members/1/redoRoutes',
-            value: [{ source: ['prm01'], groups: [{ dests: [{ target: 'sby02', xpt: 'ASYNC' }] }] }],
+            value: [{
+              source: [memberId('North_Sales')],
+              groups: [{ dests: [{ target: memberId('Remote_Sales'), xpt: 'ASYNC' }] }],
+            }],
           },
         ],
       },
@@ -157,7 +160,13 @@ export const cascading: Lesson = {
           <Fact id="CASCADE.MANUAL_FAILOVER_UNSENT">
             no attempt is made to transmit any unsent redo from the cascader to the terminal standby
           </Fact>
-          . Whatever the cascader was still holding does not follow.{' '}
+          . Whatever the cascader was still holding does not follow. With fast-start failover enabled
+          the broker would refuse this command, because{' '}
+          <Fact id="FAILOVER.CURRENT_TARGET_ONLY">
+            the failover can only be performed to the current target standby database
+          </Fact>
+          , and the terminal standby cannot be that target (the previous step), so the step switches
+          fast-start failover off and takes the primary down first.{' '}
           <Fact
             id="CASCADE.MANUAL_FAILOVER_UNSENT"
             basis="model"
@@ -169,9 +178,13 @@ export const cascading: Lesson = {
         </P>
       ),
       apply: {
-        events: [{ at: 0, kind: 'cmd.failover', to: memberId('sby02') }],
+        patches: [{ op: 'replace', path: '/config/fsfo/state', value: 'disabled' }],
+        events: [
+          { at: 0, kind: 'host.down', host: hostId('dc1-north') },
+          { at: 5, kind: 'cmd.failover', to: memberId('Remote_Sales') },
+        ],
       },
-      note: 'A manual failover to the terminal standby: the readout names the redo the cascader never sent.',
+      note: 'Fast-start failover is switched off, the primary host goes down, and a manual FAILOVER goes to the terminal standby: the validation panel warns that no unsent redo follows it from the cascader.',
     },
     {
       title: 'The protection mode looks at the primary’s own destinations',

@@ -11,7 +11,7 @@ import {
 import type { Preset } from './types';
 import type { TimedEvent, TopologyDoc } from '../engine';
 
-/* Two candidate targets and three observers -- the 19c maximum. */
+/* Two candidate targets and three observers -- the 19c chapter's maximum (the START OBSERVER page says four). */
 function multiTargetDoc(): TopologyDoc {
   /* Every database takes SYNC, the primary included: after a role change
      it is the standby. */
@@ -71,7 +71,8 @@ export const multiTargetThreeObservers: Preset = {
     + 'in which they are specified", and "If the designated fast-start failover target develops '
     + 'a problem ... the broker automatically changes the fast-start failover target to one of '
     + 'the other candidate targets". Targets are verified when fast-start failover is enabled. '
-    + 'Three observers are registered, the 19c maximum -- one master, the others backups, and '
+    + 'Three observers are registered -- the 19c fast-start failover chapter says three is the '
+    + 'maximum, while the 19c START OBSERVER reference says four -- one master, the others backups, and '
     + 'only the master observer can coordinate fast-start failover; if the primary and target '
     + 'standby stay connected but the connection to the master observer is lost, the broker '
     + 'tries to nominate a backup observer as the new master, a documented attempt under that '
@@ -90,7 +91,7 @@ export const multiTargetThreeObservers: Preset = {
   cite: [
     'FSFO.MULTI_TARGET_12_2', 'FSFO.TARGET_MUST_BE_EXPLICIT', 'FSFO.TARGET_ORDER',
     'FSFO.TARGET_AUTO_CHANGE', 'FSFO.NO_SECOND_TARGET_26AI', 'FSFO.TARGET_VERIFIED_ON_ENABLE',
-    'OBS.THREE_19C',
+    'OBS.THREE_19C', 'OBS.FOUR_CMD19',
     'OBS.MASTER_ONLY_COORDINATES', 'OBS.NOMINATION_PRECONDITION', 'FSFO.THRESHOLD',
     'FSFO.BOTH_MUST_HAVE_LOST', 'OBS.PLACEMENT_NEVER_ON_DB_HOST',
   ],

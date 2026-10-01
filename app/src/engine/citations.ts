@@ -58,6 +58,7 @@ const U = {
   bkr122Changes: 'https://docs.oracle.com/en/database/oracle/oracle-database/12.2/dgbkr/release-changes.html',
   bkr19Changes: 'https://docs.oracle.com/en/database/oracle/oracle-database/19/dgbkr/release-changes.html',
   bkr26Fsfo: 'https://docs.oracle.com/en/database/oracle/oracle-database/26/dgbkr/fast-start-failover2.html',
+  bkr26Concepts: 'https://docs.oracle.com/en/database/oracle/oracle-database/26/dgbkr/oracle-data-guard-broker-concepts.html',
   bkr26ShowObserver: 'https://docs.oracle.com/en/database/oracle/oracle-database/26/dgbkr/show-observer.html',
   bkr26Routes: 'https://docs.oracle.com/en/database/oracle/oracle-database/26/dgbkr/redo-routing-rules.html',
   bkr26RoutesProp: 'https://docs.oracle.com/en/database/oracle/oracle-database/26/dgbkr/redoroutes.html',
@@ -84,6 +85,7 @@ const U = {
   haTns: 'https://docs.oracle.com/en/database/oracle/oracle-database/19/haovw/oracle-net-tns-string-parameters.html',
   haConnEstimates: 'https://docs.oracle.com/en/database/oracle/oracle-database/19/haovw/connection-time-estimates-data-guard-switchover-or-failover.html',
   netrfTns: 'https://docs.oracle.com/en/database/oracle/oracle-database/19/netrf/local-naming-parameters-in-tns-ora-file.html',
+  netag19Optimize: 'https://docs.oracle.com/en/database/oracle/oracle-database/19/netag/optimizing-performance.html',
   netrfSqlnet19: 'https://docs.oracle.com/en/database/oracle/oracle-database/19/netrf/parameters-for-the-sqlnet.ora.html',
   netrfSqlnet26: 'https://docs.oracle.com/en/database/oracle/oracle-database/26/netrf/parameters-for-the-sqlnet.ora.html',
   haConfigDeploy: 'https://docs.oracle.com/en/database/oracle/oracle-database/19/haovw/configure-and-deploy-oracle-data-guard.html',
@@ -162,6 +164,11 @@ export const CITATIONS = {
   'FS.ONWARD_ASYNC': {
     url: U.farSync19, edition: '19c', verified: 'primary',
     quote: 'uses ASYNC transport to ship the incoming redo to terminal standbys',
+  },
+  'FS.UNSENT_REDO_TRANSMITTED': {
+    url: U.bkr19Switch, edition: '19c', verified: 'primary',
+    quote: 'Any unsent redo data residing on the far sync instance is transmitted to the target physical standby prior to converting the physical standby into a primary database.',
+    note: 'Complete Failovers in Configurations Using Far Sync Instances, in the broker switchover and failover chapter (identical on the 26ai manual failover page). It says what happens to redo left on the far sync instance; it does not say what happens when the far sync instance is down.',
   },
   'FS.MODES_CA_19C': {
     url: U.farSync19, edition: '19c', verified: 'primary',
@@ -742,6 +749,11 @@ export const CITATIONS = {
     quote: 'The minimum value of ObserverPingRetry is 10. Therefore, the detection time can be reduced to nearly 1 second.',
     note: 'The 26ai property page gives Broker default 0 (not set); the explicitly-set minimum stays 10.',
   },
+  'FSFO.PING_LOW_LATENCY_ONLY': {
+    url: U.bkr26Fsfo, edition: '26ai', verified: 'primary',
+    quote: 'Setting the ObserverPingInterval and ObserverPingRetry properties must be used only in low latency environments.',
+    note: 'The Note after the sentence "Set both these properties to achieve a primary failure detection time of 1 second." in the Task 5 text of the 26ai chapter; identical in the 21c chapter. The 19c chapter has neither property.',
+  },
   'FSFO.LAGLIMIT_RANGES': {
     url: U.bkr26LagLimit, edition: '26ai', verified: 'primary',
     quote: 'Broker default Maximum performance mode: 30 seconds Maximum availability mode: 0 seconds',
@@ -1058,12 +1070,17 @@ export const CITATIONS = {
   'SWITCHOVER.FORMER_PRIMARY_RESTARTS': {
     url: U.bkr19Switch, edition: '19c', verified: 'primary',
     quote: 'The original primary database will be restarted as a part of the switchover operation. Note that the new primary database does not need to be restarted.',
-    note: 'The former primary is the database that restarts, as the new standby, and the new primary does not wait for it.',
+    note: 'The former primary is the database that restarts, as the new standby. The sentence says only that the new primary need not be restarted; that it also does not wait for the old one is this page\'s drawing, not a sentence.',
   },
   'SWITCHOVER.SESSIONS_END': {
     url: U.bkr19Switch, edition: '19c', verified: 'primary',
     quote: 'The original primary database will be restarted as a part of the switchover operation.',
     note: "The restart is what ends the sessions on the former primary; the pre-12c 'COMMIT TO SWITCHOVER ... WITH SESSION SHUTDOWN' syntax is no longer on the 19c pages and is not quoted. The DGMGRL SWITCHOVER command's WAIT option 'specifies that you want to wait for sessions to drain before proceeding with the switchover' (command reference). Duration is environment-dependent.",
+  },
+  'ROLES.DB_ROLE_CHANGE_TRIGGER': {
+    url: U.sbyRoles, edition: '19c', verified: 'primary',
+    quote: 'The DB_ROLE_CHANGE system event can be used to fire a trigger that performs a set of actions whenever a role transition occurs.',
+    note: 'Role Transition Triggers, Data Guard Concepts and Administration. The broker chapter also names it for moving a network name to the new primary: "Create a trigger based on the DB_ROLE_CHANGE system event that changes the network address associated with the network name to the network address of the new primary database after a failover." Identical on the 26ai page.',
   },
 
   'SWITCHOVER.LOGICAL_DISABLES_OTHERS': {
@@ -1102,6 +1119,16 @@ export const CITATIONS = {
     url: U.bkr26Fsfo, edition: '26ai', verified: 'primary',
     quote: 'Maximum availability -- SYNC or FASTSYNC or ASYNC',
     note: 'The LogXptMode line of the 26ai prerequisites list. Zero data loss still wants SYNC or FASTSYNC.',
+  },
+  'XPT.MAXAVAIL_ASYNC_21C': {
+    url: U.bkr21Switch, edition: '21c', verified: 'cross-edition',
+    quote: 'Maximum availability -- SYNC or FASTSYNC or ASYNC',
+    note: "The LogXptMode line of the 21c fast-start failover prerequisites list, which also reads 'Maximum performance -- SYNC or FASTSYNC or ASYNC'. The 19c chapter has no ASYNC on the maximum availability line, so the line moved in 21c, not in 26ai.",
+  },
+  'CHANGES.NEW_BROKER_PROPERTIES_26AI': {
+    url: U.bkr26Concepts, edition: '26ai', verified: 'primary',
+    quote: 'New Broker properties: - FastStartFailoverLagType - FastStartFailoverLagGraceTime',
+    note: "The list under 'Changes in Oracle AI Database Release 26ai for Oracle Data Guard Broker' (list flattened). PrimaryDatabaseCandidates is not on it, although it has its own 26ai property page.",
   },
   'MODE.AT_LEAST_ONE_SUPPORTS': {
     url: U.bkr19Members, edition: '19c', verified: 'primary',
@@ -1143,6 +1170,11 @@ export const CITATIONS = {
     quote: 'Error: Switchover to this standby is not possible since there are no other standbys that can support the protection mode',
     note: "Scenario 3, Example: Validate the Physical Standby Database -- VALIDATE DATABASE 'South_Sales' in MaxAvailability, 'Ready for Switchover: No'. The standby is fine; what is missing is a database to support the protection mode once it is the primary.",
   },
+  'DGMGRL.VALIDATE_FSFO_19C': {
+    url: U.bkr19Cmds, edition: '19c', verified: 'primary',
+    quote: 'The VALIDATE FAST_START FAILOVER command enables you to validate a fast-start failover configuration.',
+    note: 'The command is in the 19c command reference, so it is not new in 26ai.',
+  },
   'XPT.FASTSYNC_12_1': {
     url: U.bkr121Changes, edition: '12.1', verified: 'cross-edition',
     quote: 'A new high performance redo transport mode, FASTSYNC, supports the maximum availability data protection modes.',
@@ -1159,6 +1191,11 @@ export const CITATIONS = {
     url: U.haRedoTuning, edition: '19c', verified: 'primary',
     quote: 'After preprocessing, if there is a SYNC standby, LGWR starts the remote write ("SYNC remote write" starts). LGWR issues local write ("log file parallel write"). If there is a SYNC standby, LGWR waits for the remote write to complete.',
     note: 'Steps 5, 6 and 7 of the thirteen-step list under Assessing Performance in a Synchronous Redo Transport Environment. The step ordering is the whole evidence for max(local, remote) -- Oracle never calls it "parallel".',
+  },
+  'COMMIT.AWR_TABLE_17_3_RED_FLAG': {
+    url: U.haRedoTuning, edition: '19c', verified: 'primary',
+    quote: "This is an immediate red flag given that the primary and standby were using the same hardware, and the SYNC remote write average time should be similar to the primary's log file parallel write average time.",
+    note: "The text after Table 17-3 (log file sync 0.68 ms to 4.60 ms, TPS -20.3%): Oracle reads its own example as a misconfiguration, then moves the standby redo logs to a single member on a fast disk group, and Table 17-4 shows log file sync 0.67 ms to 1.60 ms and TPS -3.3%.",
   },
   'COMMIT.LOG_FILE_PARALLEL_WRITE_STALE': {
     url: U.haRedoTuning, edition: '19c', verified: 'primary',
@@ -1252,6 +1289,16 @@ export const CITATIONS = {
     quote: 'Data Guard Switchover: RETRY_COUNT X RETRY_DELAY = 100 x 3 sec = 300 sec.',
     note: "Connection Time Estimates During Data Guard Switchover or Failover (19c HA Overview). Same page: 'Increase RETRY_COUNT if your system might take longer than 300 sec to complete a switchover or failover.'",
   },
+  'CLIENT.CONNECT_TIMEOUT_VERY_GENEROUS': {
+    url: U.haTns, edition: '19c', verified: 'primary',
+    quote: 'The value of 90 seconds in the example connect string is very generous and might need to be shortened in some cases.',
+    note: "Oracle Net TNS String Parameters (19c HA Overview), CONNECT_TIMEOUT. The same paragraph: 'Oracle recommends the value for CONNECT_TIMEOUT be large enough to account for the value of TRANSPORT_CONNECT_TIMEOUT, in addition to potential delays that may occur when connecting to busy listeners and hosts.' The broker guide says the opposite direction (CLIENT.CONNECT_TIMEOUT_SMALL_BROKER).",
+  },
+  'CLIENT.CONNECT_TIMEOUT_SMALL_BROKER': {
+    url: U.bkr19Switch, edition: '19c', verified: 'primary',
+    quote: 'Set the CONNECT_TIMEOUT parameter to a small value to minimize the delay experienced if a network address is not available.',
+    note: "Configuring connect-time failover in the broker fast-start failover chapter (identical on the 21c page); its example descriptor uses (CONNECT_TIMEOUT=5). Followed by 'Increase the value of this parameter if resource contention causes connection timeouts to occur during normal operation.' Against the HA guide's 90 s (CLIENT.CONNECT_TIMEOUT_VERY_GENEROUS).",
+  },
   'CLIENT.JDBC_19C': {
     url: U.jdbc19, edition: '19c', verified: 'primary',
     quote: 'The connect timeout controls how much time is allowed to connect the socket to the database. Successfully connecting the socket doesn\'t necessarily mean that the database service is up but it means that the listener is accepting connections. This value is in seconds. Default value is "0" (no timeout). This affects only the thin driver.',
@@ -1278,6 +1325,26 @@ export const CITATIONS = {
     url: U.netrfSqlnet26, edition: '26ai', verified: 'primary',
     quote: 'For clients: 8192 bytes (8 KB) For servers: 65536 bytes (64KB)',
     note: 'DEFAULT_SDU_SIZE on the 26ai sqlnet.ora parameters page splits the default by role; the 19c page (NET.SDU_RANGE_19C) gives one flat default, 8192, for both. Range unchanged: 512 to 2097152 bytes.',
+  },
+  'NET.SDU_SHARED_SERVER_NETAG': {
+    url: U.netag19Optimize, edition: '19c', verified: 'primary',
+    quote: 'The default SDU size for the client and a dedicated server is 8192 bytes. The default SDU size for a shared server is 65535 bytes.',
+    note: "Configuring Session Data Unit, Net Services Administrator's Guide. The 19c Net Reference prints one default, 8192, for DEFAULT_SDU_SIZE (NET.SDU_RANGE_19C); the 26ai Net Reference splits it 8192 / 65536 (NET.DEFAULT_SDU_26AI).",
+  },
+  'NET.BUF_DEFAULT_LINUX_NETRF': {
+    url: U.netrfTns, edition: '19c', verified: 'primary',
+    quote: 'The default for the Linux 2.6 operating system is 87380 bytes.',
+    note: "RECV_BUF_SIZE on the 19c Net Reference; SEND_BUF_SIZE on the same page: 'The default for the Linux 2.6 operating system is 16 KB.' Against the Net Services Administrator's Guide (NET.BUF_DEFAULT_LINUX_NETAG).",
+  },
+  'NET.BUF_DEFAULT_LINUX_NETAG': {
+    url: U.netag19Optimize, edition: '19c', verified: 'primary',
+    quote: 'The following are the defaults for the Linux operating system: - SEND_BUF_SIZE: 131,072 bytes (128k) - RECV_BUF_SIZE: 174,700 bytes',
+    note: "Configuring I/O Buffer Space, Net Services Administrator's Guide (list flattened). Against the Net Reference's Linux 2.6 figures, 16 KB send and 87380 bytes receive (NET.BUF_DEFAULT_LINUX_NETRF).",
+  },
+  'NET.GLOBAL_DBNAME_DISABLES_FAILOVER': {
+    url: U.netrfTns, edition: '19c', verified: 'primary',
+    quote: 'Do not set the GLOBAL_DBNAME parameter in the SID_LIST_listener_name section of the listener.ora. A statically configured global database name disables connect-time failover.',
+    note: 'The Note under the FAILOVER parameter of the Net Reference tnsnames.ora page; identical on the 26ai page. The broker still wants a static service where Clusterware or Oracle Restart is not used (RAC.STATIC_ONLY_WITHOUT_CLUSTERWARE), which is a different listener entry from the SDU one a lesson sample shows.',
   },
 
   /* ---------------- Errors and limits ---------------- */
