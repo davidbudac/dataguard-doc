@@ -23,7 +23,7 @@ Single-context: root `CONTEXT.md` + `docs/adr/`. See `docs/agents/domain.md`.
 
 Reviewing what the workbench asserts against Oracle's documentation is a procedure, not an
 improvisation: `docs/agents/fact-check.md`. It produces a report and no fixes. The last one is
-`SIMULATOR_FACT_CHECK_2026-09-28.md`; its scenarios run with
+`SIMULATOR_FACT_CHECK_2026-10-01.md` (before it, `SIMULATOR_FACT_CHECK_2026-09-28.md`); their scenarios run with
 `cd app && npx vitest run --config vitest.factcheck.config.ts`. A feature that adds an outcome
 adds its probes to `app/test/fact-check/probes.probe.ts`.
 
