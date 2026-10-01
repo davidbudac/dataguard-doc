@@ -135,8 +135,10 @@ export { buildClientFiles } from './generate/client';
 export type { DgmgrlOptions } from './generate/dgmgrl';
 export { generateDgmgrl } from './generate/dgmgrl';
 export type { InitOraOptions } from './generate/initora';
-export { generateInitOra, generateInitOraFiles, generateRacParameters } from './generate/initora';
-export type { ShowConfigurationOptions } from './generate/show';
+export {
+  generateInitOra, generateInitOraFiles, generateRacParameters, generateStandbyRedoLogs,
+} from './generate/initora';
+export type { ShowConfigurationOptions, ShowRun } from './generate/show';
 export {
   generateShowMocks, showConfiguration, showDatabase, showFastStartFailover, showObserver,
 } from './generate/show';
