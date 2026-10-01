@@ -27,7 +27,8 @@ export function Dgmgrl() {
           Values that differ from their documented defaults are highlighted; the grey lines
           are this page commenting, not DGMGRL syntax. Command syntax per the 19c broker
           commands reference; the clock properties (<span class="mono">FastStartFailoverThreshold</span>,
-          the two <span class="mono">ObserverPing*</span> properties,
+          the two <span class="mono">ObserverPing*</span> properties (21c and later; 19c has
+          neither),
           <span class="mono"> FastStartFailoverLagLimit</span>,
           <span class="mono"> FastStartFailoverPmyShutdown</span>) are configuration-wide, while
           <span class="mono"> LogXptMode</span> is set per database.

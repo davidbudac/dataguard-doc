@@ -459,6 +459,13 @@ function chipsFor(rp: ReopenModel, fsfoOn: boolean): ReadoutChip[] {
       sub: `FastStartFailoverLagGraceTime = ${fmt(rp.lagGraceTime)} s: permission was asked for that far ahead of the limit and is already granted when the lag crosses it`,
     });
   }
+  if (fsfoOn && rp.edition === '19c' && rp.mode !== 'MAXPROTECTION') {
+    chips.push({
+      id: 'stall19', tone: 'am', k: 'Primary stall at the transition', v: 'not drawn',
+      sub: 'The 19c chapter says redo generation on the primary is stalled when the data loss guarantee cannot be upheld, until the observer or the target standby allows it to continue after recording that a failover cannot happen. It gives no duration, and this panel draws the pause only under 26ai',
+      basis: 'model',
+    });
+  }
   return chips;
 }
 
@@ -483,6 +490,9 @@ function caption(rp: ReopenModel, fsfoOn: boolean): string {
     : rp.lagGated
       ? `Fast-start failover survives until ${fmt(rp.fsfoLostAt)} s, when the apply lag passes FastStartFailoverLagLimit.`
       : 'Fast-start failover is disarmed from the first second: the standby is UNSYNCHRONIZED as soon as the link breaks.';
+  if (fsfoOn && rp.edition === '19c' && rp.mode !== 'MAXPROTECTION') {
+    fsfoLine += ' The 19c fast-start failover chapter also says redo generation on the primary will be stalled when the data loss guarantee cannot be upheld, until the observer or the target standby allows it to continue after recording that a fast-start failover cannot happen; that pause is not drawn under 19c here, and the page gives no duration for it.';
+  }
   if (rp.lagStallAt !== null) {
     fsfoLine += ' The crossing itself costs the primary a pause of up to one FastStartFailoverThreshold, because that is where it asks permission -- of the observer or the target standby -- to enter LAGGING; set FastStartFailoverLagGraceTime and it asks early instead.';
   } else if (rp.lagGraceArmed) {

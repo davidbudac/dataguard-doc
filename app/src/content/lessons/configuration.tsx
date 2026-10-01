@@ -40,8 +40,8 @@ export const configuration: Lesson = {
       prose: (
         <P>
           The clock properties — <M>FastStartFailoverThreshold</M>, the two <M>ObserverPing*</M>{' '}
-          properties, <M>FastStartFailoverLagLimit</M>, <M>FastStartFailoverPmyShutdown</M> — are
-          configuration-wide, while <M>LogXptMode</M> is set per database, on the member that{' '}
+          properties (21c and later; 19c has neither), <M>FastStartFailoverLagLimit</M>,{' '}
+          <M>FastStartFailoverPmyShutdown</M> — are configuration-wide, while <M>LogXptMode</M> is set per database, on the member that{' '}
           <em>receives</em> the redo. <M>NetTimeout</M> is a transport property: it lands in the{' '}
           <M>LOG_ARCHIVE_DEST_n</M> attribute <M>NET_TIMEOUT</M> on the primary and never decides a
           failover.
@@ -55,7 +55,13 @@ export const configuration: Lesson = {
           <P>
             A <M>RedoRoutes</M> rule is active when its source field names the current primary, so the
             reverse routes are written once, at build time, and simply activate when the roles swap.{' '}
-            <Fact id="FS.ROUTES_BOTH_DIRECTIONS">Nothing rewrites them on a role change.</Fact>
+            <Fact
+              id={['FS.ROUTES_BOTH_DIRECTIONS', 'ROUTES.RULE_ACTIVE']}
+              basis="inferred"
+              note="Oracle's examples declare the rule for each direction in advance and say a rule is active only when its source is the current primary; no sentence says the broker leaves the property alone on a role change. That reading is this page's."
+            >
+              Nothing rewrites them on a role change.
+            </Fact>
           </P>
           <Code label="DGMGRL — both directions, declared once">
             <Dim>{'-- while prm01 is primary\n'}</Dim>

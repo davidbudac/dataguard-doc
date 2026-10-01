@@ -36,8 +36,17 @@ export const syncTransport: Lesson = {
       title: 'SDU is the unit Oracle Net ships',
       prose: (
         <P>
-          SDU is how much data Oracle Net buffers before sending; range 512 bytes to 2 MB. The default
-          is one flat 8192 bytes for both ends under 19c;{' '}
+          SDU is how much data Oracle Net buffers before sending; range 512 bytes to 2 MB. The Net
+          Reference gives one flat 8192 bytes for both ends under 19c, while the Net Services
+          Administrator&rsquo;s Guide gives a shared server{' '}
+          <Fact
+            id={['NET.SDU_RANGE_19C', 'NET.SDU_SHARED_SERVER_NETAG']}
+            basis="conflict"
+            note="The 19c Net Reference prints Default 8192 bytes (8 KB) for DEFAULT_SDU_SIZE, one value for client and server; the Net Services Administrator's Guide prints 8192 bytes for a client and dedicated server and 65535 bytes for a shared server. Oracle does not reconcile the two."
+          >
+            a default of 65535 bytes
+          </Fact>
+          ;{' '}
           <Fact
             id="NET.DEFAULT_SDU_26AI"
             basis="documented"
@@ -72,7 +81,15 @@ export const syncTransport: Lesson = {
       prose: (
         <P>
           These two parameters set the TCP socket buffer space Oracle Net requests, on both ends of the
-          link. Defaults are OS-specific (Linux 2.6: 16 KB send, 87380 bytes receive). They go in{' '}
+          link. Defaults are OS-specific, and for Linux the two Oracle books give different numbers:{' '}
+          <Fact
+            id={['NET.BUF_DEFAULT_LINUX_NETRF', 'NET.BUF_DEFAULT_LINUX_NETAG']}
+            basis="conflict"
+            note="The Net Reference prints 16 KB (send) and 87380 bytes (receive) for Linux 2.6; the Net Services Administrator's Guide prints 131,072 bytes (128k) and 174,700 bytes for Linux. Neither says which kernel or release it measured."
+          >
+            16 KB send and 87380 bytes receive in one, 131,072 and 174,700 in the other
+          </Fact>
+          . They go in{' '}
           <M>sqlnet.ora</M>, or per descriptor in <M>tnsnames.ora</M> / <M>listener.ora</M> at{' '}
           <M>DESCRIPTION</M> or <M>ADDRESS</M> level. The value is a request; the OS may grant less.
         </P>
@@ -103,11 +120,12 @@ export const syncTransport: Lesson = {
             {'    (CONNECT_DATA = (SERVICE_NAME = <standby_db>))\n  )\n\n'}
             <Dim>
               {'# Standby: listener.ora, the other end of the same connection. SDU is\n'}
-              {'# a property of the service, the buffers of the endpoint.\n'}
+              {'# a property of the service, the buffers of the endpoint. No\n'}
+              {'# GLOBAL_DBNAME in the SID_LIST: see the note under this block.\n'}
             </Dim>
             {'SID_LIST_LISTENER =\n  (SID_LIST =\n    (SID_DESC =\n      ('}
             <Hl>SDU = 65535</Hl>
-            {')\n      (GLOBAL_DBNAME = <standby_db>)\n      (SID_NAME = <standby_db>)\n    )\n  )\n'}
+            {')\n      (SID_NAME = <standby_db>)\n    )\n  )\n'}
             {'LISTENER =\n  (DESCRIPTION =\n    ('}
             <Hl>{'SEND_BUF_SIZE = <3 x BDP>'}</Hl>
             {')\n    ('}
@@ -119,11 +137,12 @@ export const syncTransport: Lesson = {
               {'# high-bandwidth link. The Net Services worked example:\n'}
               {'#   100 Mbit/s x 5 ms / 8 bits = 62500 bytes, about 64 KB\n#\n'}
               {'# Or once for every Oracle Net connection on the host, in sqlnet.ora:\n'}
-              {'#   DEFAULT_SDU_SIZE = 65535        (range 512 - 2097152; default 8192 flat\n'}
-              {'#                                    under 19c, 8192 client / 65536 server\n'}
-              {'#                                    under 26ai)\n'}
-              {'#   SEND_BUF_SIZE    = <3 x BDP>    (defaults are OS-specific; Linux 2.6\n'}
-              {'#   RECV_BUF_SIZE    = <3 x BDP>     is 16 KB send, 87380 bytes receive)\n#\n'}
+              {'#   DEFAULT_SDU_SIZE = 65535        (range 512 - 2097152; the Net Reference\n'}
+              {'#                                    says 8192 flat under 19c, the Net Admin\n'}
+              {'#                                    guide 65535 for a shared server; 26ai:\n'}
+              {'#                                    8192 client / 65536 server)\n'}
+              {'#   SEND_BUF_SIZE    = <3 x BDP>    (defaults are OS-specific, and the two\n'}
+              {'#   RECV_BUF_SIZE    = <3 x BDP>     books differ for Linux; see above)\n#\n'}
               {'# The HA guide gets there the other way: leave each socket to the TCP\n'}
               {'# stack and raise the kernel maximum instead. Its own Linux example,\n'}
               {'# as root, sets a 16 MB ceiling and leaves the other two values alone:\n'}
@@ -131,6 +150,14 @@ export const syncTransport: Lesson = {
               {"#   sysctl -w net.ipv4.tcp_wmem='4096 16384 16777216'\n"}
             </Dim>
           </Code>
+          <Caption>
+            The standby&rsquo;s <M>SID_DESC</M> names the instance and leaves out{' '}
+            <M>GLOBAL_DBNAME</M>:{' '}
+            <Fact id="NET.GLOBAL_DBNAME_DISABLES_FAILOVER">
+              Do not set the GLOBAL_DBNAME parameter in the SID_LIST_listener_name section of the
+              listener.ora. A statically configured global database name disables connect-time failover.
+            </Fact>
+          </Caption>
         </>
       ),
     },
@@ -230,9 +257,17 @@ export const syncTransport: Lesson = {
         <>
           <P>
             Capture the same AWR metrics on the same workload before and after enabling SYNC.
-            Oracle&rsquo;s worked example: redo rate unchanged, <M>log file sync</M> average 0.68 ms to
-            4.60 ms, transactions per second down 20.3%, redo writes down 61% with the average write up
-            94% (commit batching). Their numbers, on their test system — never a prediction for yours.
+            Oracle&rsquo;s worked example (Table 17-3) is a run Oracle itself reads as a problem: redo
+            rate unchanged, <M>log file sync</M> average 0.68 ms to 4.60 ms, transactions per second
+            down 20.3%, redo writes down 61% with the average write up 94% (commit batching).{' '}
+            <Fact id="COMMIT.AWR_TABLE_17_3_RED_FLAG">
+              This is an immediate red flag given that the primary and standby were using the same
+              hardware, and the SYNC remote write average time should be similar to the primary&rsquo;s
+              log file parallel write average time.
+            </Fact>{' '}
+            After the standby redo logs went to a single member on a fast disk group, the next table
+            shows <M>log file sync</M> at 0.67 ms to 1.60 ms and transactions per second down 3.3%.
+            Their numbers, on their test system — never a prediction for yours.
           </P>
           <RefTable data={awrCapture} />
           <Caption>

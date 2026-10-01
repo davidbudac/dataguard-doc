@@ -309,7 +309,7 @@ function chipsFor(cm: CommitModel, name: string): ReadoutChip[] {
       id: 'delta', tone: 'vi', k: 'SYNC vs FASTSYNC here',
       v: delta > 0 ? `−${fmt(delta)}` : '0', unit: 'ms',
       sub: delta <= 0
-        ? 'No gap at these settings: the local write is at least as long as the round trip, so AFFIRM costs nothing'
+        ? 'No gap at these settings: the local write is at least as long as the round trip plus the standby write, so AFFIRM costs nothing'
         : Math.abs(delta - (g?.destWriteMs ?? 0)) < 1e-9
           ? `FASTSYNC returns ${fmt(delta)} ms sooner at these settings -- exactly the standby redo log write`
           : `FASTSYNC returns ${fmt(delta)} ms sooner at these settings -- less than the full standby redo log write, the local write already covers the rest`,

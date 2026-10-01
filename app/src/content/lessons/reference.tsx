@@ -5,7 +5,7 @@
  * so the same rows feed the print stylesheet and the tests.
  */
 
-import { M } from '../facts-ui';
+import { Fact, M } from '../facts-ui';
 import { Footnotes } from '../footnotes';
 import {
   RefTable, brokerProperties, changes26ai, transportProperties,
@@ -92,8 +92,15 @@ export const reference: Lesson = {
             failover configuration, replacing the deprecated <M>V$DATABASE.FS_FAILOVER_*</M> columns;{' '}
             <M>V$FS_LAG_HISTOGRAM</M> samples the lag per minute into buckets and is the tuning aid for{' '}
             <M>FastStartFailoverLagLimit</M>; <M>V$DG_BROKER_PROPERTY</M> lists the broker properties;
-            and <M>V$DG_BROKER_CONFIG</M> gains <M>SWITCHOVER_READY</M> and <M>FAILOVER_READY</M>.{' '}
-            <M>VALIDATE FAST_START FAILOVER</M> in DGMGRL runs the readiness checks in one command.
+            and <M>V$DG_BROKER_CONFIG</M> gains <M>SWITCHOVER_READY</M> and <M>FAILOVER_READY</M>.
+          </Caption>
+          <Caption>
+            Not new in 26ai:{' '}
+            <Fact id="DGMGRL.VALIDATE_FSFO_19C">
+              The VALIDATE FAST_START FAILOVER command enables you to validate a fast-start failover
+              configuration
+            </Fact>
+            , and it is on the 19c command reference too.
           </Caption>
         </>
       ),

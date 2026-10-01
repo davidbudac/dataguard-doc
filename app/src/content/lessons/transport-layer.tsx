@@ -67,9 +67,13 @@ export const transportLayer: Lesson = {
       title: 'FASTSYNC drops the standby disk wait',
       prose: (
         <P>
-          Since 12.1, maximum availability mode only. It saves the standby redo log write, but only
-          while the network is the bottleneck: once the local write outlasts the round trip, the saving
-          reads zero. The broker documents that fast-start failover cannot be initiated while{' '}
+          <Fact id="XPT.FASTSYNC_12_1">Since 12.1, maximum availability mode only</Fact>
+          . It saves the standby redo log write in full only while the network is the bottleneck, that
+          is while the round trip is at least the local write. The saving is the gap between{' '}
+          <M>max(local, round trip + standby write)</M> and <M>max(local, round trip)</M>, so it
+          shrinks as the local write grows and reads zero only once the local write is at least the
+          round trip plus the standby write. The broker documents that fast-start failover cannot be
+          initiated while{' '}
           <M>FASTSYNC</M> is in use and the standby is missing redo data.
         </P>
       ),

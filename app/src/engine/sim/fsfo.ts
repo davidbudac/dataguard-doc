@@ -234,13 +234,13 @@ export function notReadyClaim(
       : by === 'unobserved' ? 'The configuration is unobserved, so nothing has to be confirmed: the primary carries on and'
         : 'Fast-start failover is not enabled, so nothing has to be confirmed: the primary carries on and';
   const tail = by === 'observer' || by === 'target'
-    ? ` that fast-start failover cannot happen, and the primary continues without ${target as string}: the state is ${state}.`
+    ? ` that a fast-start failover to ${target as string} cannot happen, and the primary continues without it: the state is ${state}. If the configuration lists another target the broker can change the target and a later failure can still fail over to that one.`
     : ` ${target as string} no longer has all of its redo.`;
   return model(`${who}${tail}`,
     lagGated(doc)
       ? 'FSFO.NOT_READY_TIMING: that the change has to be recorded before the primary continues is documented; when the lag crosses the limit is not. This page grows the lag by one second for every second the primary generates redo the target does not receive, starting from the lag as configured.'
       : 'FSFO.NOT_READY_TIMING: that the change has to be recorded before the primary continues is documented; when the recording lands is not. This page draws it where the commit hang ends -- one NET_TIMEOUT after the acknowledgement stopped -- which is the instant the primary starts committing without the target.',
-    ['FSFO.GUARANTEE_STALL', 'FSFO.STATUS_STALLED', 'DEST.NET_TIMEOUT']);
+    ['FSFO.GUARANTEE_STALL', 'FSFO.STATUS_STALLED', 'DEST.NET_TIMEOUT', 'FSFO.TARGET_AUTO_CHANGE']);
 }
 
 /**
