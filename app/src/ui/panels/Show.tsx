@@ -52,7 +52,12 @@ export function Show() {
   const files = generateShowMocks(doc, {
     verbose: showVerbose.value,
     ...(f !== null && at !== null
-      ? { run: { primary: at, roleChange, states: f.members as Readonly<Record<string, string>> } }
+      ? {
+        run: {
+          primary: at, roleChange, states: f.members as Readonly<Record<string, string>>,
+          observers: f.observers as Readonly<Record<string, string>>,
+        },
+      }
       : {}),
     applyInstances: f === null ? steadyApply : f.applyInstances ?? {},
     downInstances: f === null ? [] : stoppedInstances(doc, f.epoch.net),

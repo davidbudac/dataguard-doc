@@ -579,7 +579,7 @@ describe('the SHOW mocks', () => {
     expect(text).toContain('prm01 is still open read-write as a primary in this run');
     /* The configuration's own view of it is not rewritten: after a failover
        it is a disabled standby awaiting reinstatement. */
-    expect(text).toContain('prm01 - Physical standby database (disabled)');
+    expect(text).toContain('prm01 - (*) Physical standby database (disabled)');
     const line = file.lines.find((l) => lineText(l).includes('prm01 is still open'));
     expect(line?.basis).toBe('model');
     expect(line?.cite).toEqual(['FAILOVER.PRIMARY_SHUT_DOWN', 'FSFO.MANUAL_FAILOVER_CONDITIONS']);

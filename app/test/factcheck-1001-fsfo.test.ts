@@ -47,7 +47,7 @@ const down = (at: number, host: typeof PRM): TimedEvent => ({ at, kind: 'host.do
 const up = (at: number, host: typeof PRM): TimedEvent => ({ at, kind: 'host.up', host });
 const failover = (at: number): TimedEvent => ({ at, kind: 'cmd.failover', to: SBY });
 const stopObserver = (at: number): TimedEvent => ({ at, kind: 'observer.stop', observer: OBS });
-/** The observer's host crashes: how the observer is lost after a failover, where STOP OBSERVER is refused (ORA-16636). */
+/** The observer's host crashes: the observer lost without a STOP OBSERVER command (which a failover's aftermath also accepts, D9). */
 const crashObserver = (at: number): TimedEvent => ({ at, kind: 'host.down', host: hostId('dc3-obs01') });
 const isolate: TimedEvent[] = [cut(0, DC1_DC2), cut(0, DC1_DC3)];
 
@@ -119,11 +119,10 @@ describe('SIM-15 (D6): after a role change the new primary has no target, so los
       expect(endState(t, 'sby01')).toBe('open-rw');
       expect(neverStalledOrAborted(t, 'sby01')).toBe(true);
       expect(finding(t, 'SIM.ONE_ROLE_CHANGE')?.message ?? '').not.toContain('is down');
-      /* After a failover STOP OBSERVER is refused (ORA-16636: the primary and
-         the target are not connected, the former primary being down), so those
-         rows lose the observer by crashing its host, or by cutting its link
-         (row 3). After a switchover the restarted former primary is reachable
-         and STOP OBSERVER is accepted. */
+      /* The failover rows lose the observer by crashing its host, or by
+         cutting its link (row 3); the switchover row stops it, which is
+         accepted because the restarted former primary is reachable. After a
+         failover STOP OBSERVER is accepted too (D9), see the tests below. */
       if (label.includes('switchover')) {
         const obsLane = t.lanes.find((l) => l.subject.kind === 'observer' && l.subject.id === 'obs01');
         expect(obsLane?.segments.at(-1)?.state).toBe('stopped');
@@ -140,19 +139,37 @@ describe('SIM-15 (D6): after a role change the new primary has no target, so los
     });
   }
 
-  it('STOP OBSERVER after a failover with the former primary down stays refused (ORA-16636): the observer keeps running', () => {
+  it('STOP OBSERVER after a failover with the former primary down is accepted (D9, live 19.27): the observer stops, the new primary stalls nothing', () => {
     const t = simulate(classic(), [down(0, PRM), stopObserver(200)]);
-    const f = finding(t, 'OBS.STOP_NEEDS_CONNECTION');
-    expect(f?.ora).toBe('ORA-16636');
-    expect(t.lanes.find((l) => l.subject.kind === 'observer')?.segments.at(-1)?.state).not.toBe('stopped');
+    expect(finding(t, 'OBS.STOP_NEEDS_CONNECTION')).toBeUndefined();
+    expect(t.lanes.find((l) => l.subject.kind === 'observer')?.segments.at(-1)?.state).toBe('stopped');
+    expect(endState(t, 'sby01')).toBe('open-rw');
+    expect(neverStalledOrAborted(t, 'sby01')).toBe(true);
+    /* An inference with the live observation in its note, not a documented outcome. */
+    const d = decision(t, 'OBS.STOP_OBSERVER');
+    expect(d?.taken).toBe(true);
+    expect(d?.at).toBe(200);
+    expect(d?.claim.basis).toBe('inferred');
+    expect(d?.claim.note).toMatch(/live 19\.27/);
+  });
+
+  it('DISABLE FAST_START FAILOVER without FORCE is accepted there too (D9, live 19.27): the former primary is not the target', () => {
+    const t = simulate(classic(), [down(0, PRM), { at: 200, kind: 'cmd.disableFsfo', force: false }]);
+    expect(finding(t, 'FSFO.DISABLE_REFUSED')).toBeUndefined();
+    const d = decision(t, 'FSFO.DISABLE_FAST_START_FAILOVER');
+    expect(d?.taken).toBe(true);
+    expect(d?.claim.basis).toBe('inferred');
+    expect(d?.claim.note).toMatch(/live 19\.27/);
     expect(endState(t, 'sby01')).toBe('open-rw');
     expect(neverStalledOrAborted(t, 'sby01')).toBe(true);
   });
 
-  it('DISABLE FAST_START FAILOVER without FORCE is refused there too: the primary and its target are not connected', () => {
-    const t = simulate(classic(), [down(0, PRM), { at: 200, kind: 'cmd.disableFsfo', force: false }]);
-    expect(finding(t, 'FSFO.DISABLE_REFUSED')?.basis).toBe('documented');
-    expect(endState(t, 'sby01')).toBe('open-rw');
+  it('DISABLE after a manual failover with the former primary aborted is accepted too', () => {
+    const t = simulate(classic(), [
+      down(0, PRM), failover(1), { at: 200, kind: 'cmd.disableFsfo', force: false },
+    ]);
+    expect(finding(t, 'FSFO.DISABLE_REFUSED')).toBeUndefined();
+    expect(decision(t, 'FSFO.DISABLE_FAST_START_FAILOVER')?.taken).toBe(true);
   });
 
   it('STOP OBSERVER and DISABLE are accepted after a switchover (the restarted former primary is reachable)', () => {
