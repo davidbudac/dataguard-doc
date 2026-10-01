@@ -241,7 +241,7 @@ describe('the wordings the accuracy rules pin down', () => {
   });
 
   it('keeps "no observer deployed" apart from "unobserved"', () => {
-    const f = validate(baseDoc({ observers: [] })).find((x) => x.id === 'OBS.NONE_DEPLOYED');
+    const f = validate(baseDoc({ observers: [], fsfo: 'disabled' })).find((x) => x.id === 'OBS.NONE_DEPLOYED');
     expect(f?.message).toContain('not the same as being unobserved');
     expect(f?.message).toContain('DISABLED');
     expect(f?.message).toContain('ORA-16820');

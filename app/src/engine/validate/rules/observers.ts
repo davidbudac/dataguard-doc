@@ -99,14 +99,21 @@ export const observerInPrimarySite: Rule = (ctx): Finding[] => {
 export const noObserverDeployed: Rule = (ctx): Finding[] => {
   if (ctx.doc.observers.length > 0) return [];
   const claimsEnabled = ctx.doc.config.fsfo.state !== 'disabled';
-  const base = 'No observer is deployed. That is not the same as being unobserved. V$DATABASE.FS_FAILOVER_STATUS reads DISABLED, the FastStartFailover* properties can be set but nothing arms them, and a manual FAILOVER TO is the only thing that promotes a standby. Unobserved means fast-start failover is enabled and the master observer is missing: PRIMARY UNOBSERVED on the target standby, ORA-16820 as the standing health condition, and "The master observer is not running" among the documented reasons fast-start failover cannot occur. Corollary: the maximum performance switchover refusal past FastStartFailoverLagLimit is fast-start failover\'s own gate, so it cannot fire with no observer deployed.';
-  const enabled = ` Fast-start failover is ${ctx.doc.config.fsfo.state === 'observe-only' ? 'enabled in observe-only mode' : 'enabled'} here. That is legal: enabling fast-start failover with no observer started is a documented, supported configuration. The broker displays ORA-16819 (fast-start failover observer not started) for the primary and target standby databases, and fast-start failover could not happen in the case of a primary database failure. The configuration is unobserved and no failover can happen until an observer is started.`;
+  /* Fast-start failover disabled: the third state -- nothing arms the
+     properties, and the status reads DISABLED. */
+  const disabled = 'No observer is deployed. That is not the same as being unobserved. V$DATABASE.FS_FAILOVER_STATUS reads DISABLED, the FastStartFailover* properties can be set but nothing arms them, and a manual FAILOVER TO is the only thing that promotes a standby. Unobserved means fast-start failover is enabled and the master observer is missing: PRIMARY UNOBSERVED on the target standby, ORA-16820 as the standing health condition, and "The master observer is not running" among the documented reasons fast-start failover cannot occur. Corollary: the maximum performance switchover refusal past FastStartFailoverLagLimit is fast-start failover\'s own gate, so it cannot fire while fast-start failover is disabled.';
+  /* Enabled (VAL-13): the disabled text does not apply -- the status is not
+     DISABLED, and fast-start failover\'s switchover restrictions are in force
+     whether or not an observer runs ("only if the standby database is
+     synchronized with the primary database or is within the configured lag
+     limit" carries no observer condition). */
+  const enabled = `No observer is deployed. Fast-start failover is ${ctx.doc.config.fsfo.state === 'observe-only' ? 'enabled in observe-only mode' : 'enabled'} here. That is legal: enabling fast-start failover with no observer started is a documented, supported configuration. The broker displays ORA-16819 (fast-start failover observer not started) for the primary and target standby databases, and fast-start failover could not happen in the case of a primary database failure. The configuration is unobserved and no failover can happen until an observer is started; it is not DISABLED. Fast-start failover's switchover restrictions apply all the same: they carry no observer condition.`;
   return [mk('OBS.NONE_DEPLOYED', {
     subject: configSubject(),
     ...(claimsEnabled ? { severity: 'warning' as const } : {}),
-    message: claimsEnabled ? base + enabled : base,
+    message: claimsEnabled ? enabled : disabled,
     cite: claimsEnabled
-      ? ['FSFO.STATUS_DISABLED', 'FSFO.PRIMARY_UNOBSERVED', 'OBS.CANNOT_OCCUR_LIST', 'ORA.16819']
+      ? ['OBS.NOT_STARTED_16819', 'ORA.16819', 'OBS.CANNOT_OCCUR_LIST', 'SWITCHOVER.FSFO_GATE']
       : ['FSFO.STATUS_DISABLED', 'FSFO.PRIMARY_UNOBSERVED', 'OBS.CANNOT_OCCUR_LIST'],
     ...(claimsEnabled ? { ora: 'ORA-16819' } : {}),
   })];
