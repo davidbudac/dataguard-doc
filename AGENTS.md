@@ -316,12 +316,22 @@ agree on:
   page, both of which still carry the stale "maximum performance mode only"
   sentence.** The property page is a valid citation for the value ranges only;
   the page states the contradiction in footnote 5 rather than hiding it.
-  Task 3 is stale on the transports too: it still says MaxAvailability takes
-  SYNC or FASTSYNC, against the prerequisites list's "SYNC or FASTSYNC or
-  ASYNC" — so **ASYNC under MaxAvailability is a mode conflict only under
-  19c**; under 26ai the commit view draws an informational "allowed" note
-  instead (`computeCommit` takes `version`, and zero data loss still wants
-  SYNC/FASTSYNC). **Oracle recommends `FastStartFailoverLagLimit` at or below
+  Task 3 still says MaxAvailability takes SYNC or FASTSYNC, against the
+  prerequisites list's "SYNC or FASTSYNC or ASYNC" — so **ASYNC under
+  MaxAvailability is a mode error under 19c**; under 26ai the commit view draws
+  an informational "allowed" note (`computeCommit` takes `version`, and zero
+  data loss still wants SYNC/FASTSYNC) and the validator warns with basis
+  `conflict` (`XPT.TABLE_4_2`, `XPT.PRIMARY_LOGXPTMODE`), citing the prerequisites
+  list against Table 4-2 and Task 3 (`FSFO.TASK3_MAXAVAIL_26AI`, cited as that
+  side of the conflict only, never as the rule). **The RedoRoutes alternative
+  to the primary's `LogXptMode`** is named by the 26ai prerequisites for
+  MaxAvailability and MaxPerformance only, so under 26ai MaxProtection a
+  pre-declared rule is not counted (19c names the alternative without that
+  restriction). **In 26ai MaxAvailability the lag limit takes 0** — the broker
+  default — and the page's own conflict is shown, not hidden: the same page says
+  a value "must be greater than, or equal to, 5". The control's floor is 0 there
+  (`lagLimitAllowsZero`, `clampLagLimit`), 5 everywhere else, and "back to the
+  broker default" returns the property to not set. **Oracle recommends `FastStartFailoverLagLimit` at or below
   `FastStartFailoverThreshold`**: past it the old primary can keep committing
   after fast-start failover is initiated, briefly risking two primaries — the
   rail warns when the sliders cross, and no asset may present "at most one
@@ -910,8 +920,11 @@ condensed out of it:
   favour of `V$FAST_START_FAILOVER_CONFIG`; name the view of the edition on
   screen. `SWITCHOVER … WAIT` is deprecated in 26ai in favour of `DrainTimeout`.
 - **Three more spellings worth pinning.** `ConfigurationWideServiceName`
-  defaults to `primarydbname_CFG` and "the service name does not change after a
-  role transition" (19c, introduced 12.2). `TransportDisconnectedThreshold`
+  defaults to `primarydbname_CFG` — the primary database's name, never the
+  configuration's own — and "the service name does not change after a
+  role transition" (19c, introduced 12.2); its first character is alphanumeric
+  and it runs to at most 30 characters (the form refuses otherwise,
+  `CFG.SERVICE_NAME_FORMAT` flags an imported one). `TransportDisconnectedThreshold`
   (19c, broker default 30 s, 0 = no warnings) generates a **warning status**
   when the last communication from the primary exceeds it — it is never a
   failover clock. The 19c list headed "Fast-start failover cannot occur if:"
@@ -1034,6 +1047,14 @@ global appears in it; `app/test/import-boundary.test.ts` keeps the layering
   test is the gate: the general engine may not "improve" on the verified
   outcomes. Change a cell there and you are changing `site/test.mjs`,
   `diagrams/README.md` and the fragment in the same commit, or you are wrong.
+- **Numeric ranges** (`BOUNDS`) carry Oracle's floors and this page's ceilings.
+  Oracle documents a floor for most settings (threshold >= 6, lag limit >= 5)
+  and almost never a ceiling, so a maximum is the page's own and is wide
+  enough that no documented value is out of reach: 3600 s for the threshold,
+  lag limit and `ApplyInstanceTimeout` (step 1, so a typed 7 stays 7), 1200 for
+  `NetTimeout`, 600 for `TRANSPORT_CONNECT_TIMEOUT`, 1000 for `RETRY_COUNT`
+  ("change RETRY_COUNT greater than 100"). A range that wide is a number box,
+  not a slider.
 - **Validation** (`validate/*`) is 55 rules in one catalogue (`RULE_CATALOGUE`,
   one of them 26ai-only), each with an id, a severity, a permitted set of bases
   and its citations: far sync never primary, FSFO target kind and direct-redo,
