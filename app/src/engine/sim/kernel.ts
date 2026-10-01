@@ -285,6 +285,32 @@ export interface SimState {
    * or is aborted; a restart after that is a former primary that restarts.
    */
   formerOpen: boolean;
+  /**
+   * The former primary is still running as a primary after the role change and
+   * is not at peace with it: it stalled before the role change and nobody has
+   * reached it since, or (`formerLostTarget`) a manual failover took its
+   * target. It keeps its own stall clock and counts down to its own abort.
+   * Cleared the moment it is down, aborted or reached again; a former primary
+   * that restarts afterwards is started and mounted, not an acting primary
+   * (fact check 2026-10-01, SIM-15).
+   */
+  formerActs: boolean;
+  /**
+   * A manual failover with fast-start failover enabled converted the target
+   * the old primary was running with, and the old primary was still running:
+   * it has lost its target, so it is drawn stalled from that instant (owner
+   * decision D5, a `model`).
+   */
+  formerLostTarget: boolean;
+  /** Members that were down or aborted at some epoch of the run: what "restarted" means. */
+  everDown: MemberId[];
+  /**
+   * Automatic reinstatement of this former primary is pending: the failover
+   * that left it behind is one the broker reinstates after. The band starts
+   * only once the former primary is running, the master observer reaches it
+   * and it reaches the new primary (SIM-16).
+   */
+  reinstatePending: MemberId | null;
   converting: MemberId | null;
   reinstating: MemberId | null;
   abortedMembers: MemberId[];

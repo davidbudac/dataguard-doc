@@ -226,9 +226,15 @@ describe('FastStartFailoverAutoReinstate covers observer-initiated failovers onl
       members: [prm, sby], observers: [observer('obs01', 'dc3-obs01')], targets: [sby.id],
     });
     doc.config.fsfo.autoReinstate = true;
-    const trace = simulate(doc, [{ at: 0, kind: 'host.down', host: hostId('dc1-prm01') }]);
+    /* SIM-16 (2026-10-01): the band starts when the former primary is running
+       and reachable, so the crashed primary is started again. */
+    const trace = simulate(doc, [
+      { at: 0, kind: 'host.down', host: hostId('dc1-prm01') },
+      { at: 100, kind: 'host.up', host: hostId('dc1-prm01') },
+    ]);
     expect(trace.facts.newPrimary).toBe(memberId('sby01'));
     expect(decision(trace, 'REINSTATE.OPEN_BAND')?.taken).toBe(true);
+    expect(decision(trace, 'REINSTATE.OPEN_BAND')?.at).toBe(100);
   });
 });
 
