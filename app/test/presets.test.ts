@@ -151,11 +151,11 @@ const EXPECTED_FINDINGS: Record<PresetId, string[]> = {
   ].sort(),
 
   'far-sync-zero-loss': [
-    /* One MaxFailure destination on the primary, so one deprecation notice and
-       one note on what reaching the limit does. The fast-start failover
+    /* One MaxFailure destination on the primary, so one note on what reaching
+       the limit does. Its MaxFailure is 1, the in-group default, so it is not
+       reported as a change (GEN-21). The fast-start failover
        target is fed through a far sync instance, so Scenario 7's "set on
        both sides" note applies (VAL-07.7). */
-    'info documented DEST.DEPRECATED_19C North_Sales',
     'info documented EDIT.FSFO_ENABLED_BLOCKS',
     'info documented EDIT.REMOVE_TARGET South_Sales',
     'info documented FSFO.FARSYNC_TARGET_BOTH_SIDES South_Sales',
@@ -164,12 +164,10 @@ const EXPECTED_FINDINGS: Record<PresetId, string[]> = {
   ].sort(),
 
   'far-sync-ha-pair': [
-    /* Two far syncs, so both notes twice -- once per destination. The subject
+    /* Two far syncs, so the reset note twice -- once per destination. The subject
        is the sending database, which is why the two lines look alike. The
        fast-start failover target is fed through a far sync instance too
        (VAL-07.7). */
-    'info documented DEST.DEPRECATED_19C North_Sales',
-    'info documented DEST.DEPRECATED_19C North_Sales',
     'info documented EDIT.FSFO_ENABLED_BLOCKS',
     'info documented EDIT.REMOVE_TARGET South_Sales',
     'info documented FSFO.FARSYNC_TARGET_BOTH_SIDES South_Sales',
@@ -198,8 +196,6 @@ const EXPECTED_FINDINGS: Record<PresetId, string[]> = {
 
   'priority-alternates': [
     /* Both destinations of the priority list carry MaxFailure. */
-    'info documented DEST.DEPRECATED_19C North_Sales',
-    'info documented DEST.DEPRECATED_19C North_Sales',
     'info documented EDIT.FSFO_ENABLED_BLOCKS',
     'info documented EDIT.REMOVE_TARGET Local_Sales',
     'info model DEST.MAXFAILURE_RESET_UNDOC North_Sales',
@@ -286,7 +282,7 @@ describe('the recorded validation output', () => {
       Object.values(EXPECTED_FINDINGS).flat().map((l) => l.split(' ')[2] as string),
     );
     expect([...reached].sort()).toEqual([
-      'DEST.DEPRECATED_19C', 'DEST.MAXFAILURE_RESET_UNDOC', 'EDIT.FSFO_ENABLED_BLOCKS',
+      'DEST.MAXFAILURE_RESET_UNDOC', 'EDIT.FSFO_ENABLED_BLOCKS',
       'EDIT.REMOVE_TARGET', 'FSFO.FARSYNC_TARGET_BOTH_SIDES', 'FSFO.OBSERVE_ONLY',
       'MODEL.OBSERVER_OVERRIDE',
     ]);

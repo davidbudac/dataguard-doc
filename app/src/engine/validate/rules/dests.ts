@@ -8,6 +8,8 @@
  */
 
 import type { CitationId } from '../../citations';
+import { isParenthesised } from '../../redo/parse';
+import { defaultDestProps } from '../../serialize/schema';
 import { assertCitesAllowed } from '../../citations';
 import type { MemberId } from '../../ids';
 import { BROKER_DEFAULTS } from '../../defaults';
@@ -105,6 +107,18 @@ export const maxFailureReset: Rule = (ctx): Finding[] => {
 };
 
 /**
+ * The broker default MaxFailure for this destination's position: 1 inside a
+ * parenthesised RedoRoutes group, 0 outside one (GEN-21), so the in-group 1 is
+ * not reported as a change.
+ */
+const maxFailureDefault = (ctx: ValidateContext, e: DestEntry): number => {
+  const inGroup = ctx.declaredDests(e.from).some(
+    (d) => d.to.id === e.to && !d.fromAll && isParenthesised(d.group),
+  );
+  return defaultDestProps({ inGroup }).maxFailure;
+};
+
+/**
  * Neither is deprecated in 19c (the 19c deprecation list names nine
  * initialization-parameter-backed properties and not these two); the info
  * points at where the value lands and whose reference governs it. The
@@ -120,7 +134,7 @@ export const deprecatedProperties: Rule = (ctx): Finding[] => {
   for (const e of entries(ctx)) {
     const changed = [
       e.props.reopenSeconds !== d.reopenSeconds ? `ReopenSecs = ${e.props.reopenSeconds}` : null,
-      e.props.maxFailure !== d.maxFailure ? `MaxFailure = ${e.props.maxFailure}` : null,
+      e.props.maxFailure !== maxFailureDefault(ctx, e) ? `MaxFailure = ${e.props.maxFailure}` : null,
     ].filter((s): s is string => s !== null);
     if (changed.length === 0) continue;
     const where = `The broker writes them into the REOPEN and MAX_FAILURE attributes of the sending member's LOG_ARCHIVE_DEST_n, and that attribute reference governs their semantics. EDIT DATABASE ${q(e.from.name)} SET PARAMETER reaches the same attributes.`;
