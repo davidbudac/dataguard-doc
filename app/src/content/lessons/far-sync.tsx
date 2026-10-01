@@ -262,7 +262,7 @@ export const farSync: Lesson = {
           </P>
         </>
       ),
-      apply: { events: [{ at: 0, kind: 'member.down', member: memberId('fs1') }] },
+      apply: { events: [{ at: 0, kind: 'member.down', member: memberId('FS1') }] },
       note: 'The far sync goes away at t = 0: the redo path breaks, the protection level drops, and nothing fails over.',
     },
   ],

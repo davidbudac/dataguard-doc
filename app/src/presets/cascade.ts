@@ -67,7 +67,9 @@ export const cascadeTerminal: Preset = {
     + 'the prerequisite is that the target "must receive redo directly from the primary '
     + 'database", and a terminal standby by definition does not -- a deduction from two '
     + 'documented sentences rather than a literal prohibition, which is why the engine labels '
-    + 'it inferred. A manual FAILOVER to it is documented and legal, with the documented '
+    + 'it inferred. A manual FAILOVER to it is documented and legal while fast-start failover '
+    + 'is disabled (with it enabled the broker fails over only to the current target, and '
+    + 'this preset has it enabled), with the documented '
     + 'warning that "no attempt is made to transmit any unsent redo from the cascader to the '
     + 'terminal standby". The default event kills the primary at t = 0, and the failover goes '
     + 'to the cascading standby, the one member that does receive redo directly. Watch what '
@@ -75,7 +77,10 @@ export const cascadeTerminal: Preset = {
     + 'as its redo source, and a rule is active only while its source field names the current '
     + 'primary, so the cascade stops. Nothing rewrites on a role change -- routes for the '
     + 'other direction have to be pre-declared, exactly as the far sync examples pre-declare '
-    + 'theirs.',
+    + 'theirs. What the new primary does instead is not documented: its RedoRoutes is not '
+    + 'NULL, so the NULL default does not apply, and no page says what a member with no rule '
+    + 'for the current primary ships. The run draws it shipping nothing, and labels that '
+    + "(ROUTES.NO_RULE_FOR_NEW_PRIMARY) as this page's reading.",
   cite: [
     'CASCADE.TERMINAL_INDIRECT', 'CASCADE.PHYSICAL_ONLY', 'ROUTES.CASCADE_ASYNC_EXPLICIT',
     'CASCADE.THIRTY_TERMINAL', 'FSFO.TARGET_DIRECT_REDO', 'CASCADE.MANUAL_FAILOVER_UNSENT',

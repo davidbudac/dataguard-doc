@@ -57,7 +57,7 @@ import {
 } from './rac';
 import {
   bystanderAhead, bystanderClaim, bystanders, executionClaim, manualFailoverFindings,
-  manualLossClaim, nominalBandsClaim, reinstateBandClaim, reinstateCommandFindings,
+  manualLossClaim, nominalBandsClaim, noRuleForNewPrimary, reinstateBandClaim, reinstateCommandFindings,
   reinstateFindings, switchoverGate, switchoverLossClaim, switchoverRefused, switchoverSchedule,
 } from './roles';
 import type { SwitchoverRefusal } from './roles';
@@ -682,6 +682,8 @@ export function simulate(
 
     const follow = doc.config.bystandersFollowRoleChange;
     decide(at, 'BYSTANDERS.FOLLOW', follow === 'ALL', asString(bystanderClaim(follow)));
+    for (const f of noRuleForNewPrimary(doc, target,
+      [target, ...bystanders(doc, target).filter((b) => b !== state.formerPrimary)])) addFinding(f);
     for (const b of bystanders(doc, target)) {
       if (b === state.formerPrimary) continue;
       if (follow === 'NONE') {

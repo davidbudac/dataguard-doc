@@ -16,6 +16,7 @@ import type { CitationId } from '../citations';
 import type { MemberId, Seconds } from '../ids';
 import type { TopologyDoc } from '../types/topology';
 import { isDatabase, isRac } from '../types/topology';
+import { activeRule } from '../redo/resolve';
 import type { SwitchoverFacts } from './kernel';
 
 /** Broker verifies both databases before it starts. Nominal, footnote 3. */
@@ -165,6 +166,34 @@ export const bystanderClaim = (follow: 'ALL' | 'NONE'): Claim<'ALL' | 'NONE'> =>
       'BystandersFollowRoleChange is ALL, the default: during the failover the broker determines whether each bystander standby is ahead of or behind the failover target. One that is behind simply gets its redo transport from the new primary; one that is ahead is disabled with a status of ORA-16661 and must be reinstated after the failover completes.')
     : documented(follow, ['BYSTANDERS.DEFAULT_ALL', 'BYSTANDERS.NONE_DISABLED'],
       'BystandersFollowRoleChange is NONE: the broker does not evaluate the bystander standbys as part of the failover. They are marked as disabled with a status of ORA-16661 so that they can be evaluated later, and the broker completes the failover as soon as possible.');
+
+/**
+ * A member whose RedoRoutes is not NULL but has no rule whose source is the new
+ * primary. The rule is inactive -- "A redo routing rule is active if its redo
+ * source field specifies the current primary database" -- but what the member
+ * does instead is on no page: the NULL default is documented, a non-NULL
+ * property with no rule for the new primary is not. This engine ships nothing
+ * from it (it does not fall back to the default), and says that is its reading.
+ */
+export function noRuleForNewPrimary(
+  doc: TopologyDoc, newPrimary: MemberId, memberIds: readonly MemberId[],
+): Finding[] {
+  const out: Finding[] = [];
+  for (const id of memberIds) {
+    const m = doc.members.find((x) => x.id === id);
+    if (!m || !m.enabled || !isDatabase(m)) continue;
+    if (m.redoRoutes.length === 0 || activeRule(m, newPrimary) !== undefined) continue;
+    const role = id === newPrimary ? 'the new primary' : 'a bystander';
+    out.push({
+      id: 'ROUTES.NO_RULE_FOR_NEW_PRIMARY', severity: 'info', basis: 'model',
+      cite: ['ROUTES.RULE_ACTIVE', 'ROUTES.DEFAULT_NULL'],
+      subject: { kind: 'member', id: id as string },
+      message: `${m.name}, ${role}, has a RedoRoutes property but no rule whose source is ${newPrimary as string}, so none of its rules is active and this run ships nothing from it.`,
+      note: `ROUTES.NO_RULE_FOR_NEW_PRIMARY: "A redo routing rule is active if its redo source field specifies the current primary database" says the rules for the old primary are inactive. What a member with a non-NULL RedoRoutes and no rule for the new primary does instead is not documented (the NULL default is "(LOCAL : ALL) at a primary database", and this property is not NULL). This engine draws it shipping nothing -- not falling back to the default -- which is this page's reading; a member that is meant to ship after a role change needs a rule for that direction pre-declared.`,
+    });
+  }
+  return out;
+}
 
 /**
  * A bystander that holds redo the new primary never received. That the broker
