@@ -948,6 +948,11 @@ export function templates(doc: TopologyDoc, at = 0): FailureTemplate[] {
     ? siteOfHost(doc, targetMember.instances[0].host)
     : undefined;
   const master = doc.observers.find((o) => o.role === 'master') ?? doc.observers[0];
+  /* The scenario's events kill the first-listed observer's host
+     (`scenarioEvents`), which is the master unless the document lists a backup
+     first: the caption names the one that actually dies. */
+  const killed = doc.observers[0];
+  const killedIsMaster = killed !== undefined && killed.role === 'master';
 
   const shift = (evts: TimedEvent[]): TimedEvent[] => evts.map((e) => ({ ...e, at }));
   const mk = (id: ClassicScenario): TimedEvent[] => shift(scenarioEvents(id, doc));
@@ -962,7 +967,9 @@ export function templates(doc: TopologyDoc, at = 0): FailureTemplate[] {
     {
       id: 'crash',
       label: 'Crash the primary host',
-      caption: 'The primary host dies outright. Observer and standby both lose it at the same instant.',
+      caption: primary && primary.instances.length > 1
+        ? 'The host of the primary’s first instance dies outright. The other instances keep running, so the primary stays up.'
+        : 'The primary host dies outright. Observer and standby both lose it at the same instant.',
       enabled: primary ? ON : noPrimary,
       events: mk('crash'),
     },
@@ -993,9 +1000,11 @@ export function templates(doc: TopologyDoc, at = 0): FailureTemplate[] {
     },
     {
       id: 'observer-lost',
-      label: 'Kill the master observer',
+      label: doc.observers.length > 1 && !killedIsMaster ? `Kill observer ${killed?.name ?? ''}`.trim() : 'Kill the master observer',
       caption: doc.observers.length > 1
-        ? 'The master observer’s host dies. The primary still reaches the standby, so it keeps serving; with both databases still connected, the broker tries to nominate a backup observer as the new master.'
+        ? (killedIsMaster
+          ? 'The master observer’s host dies. The primary still reaches the standby, so it keeps serving; with both databases still connected, the broker tries to nominate a backup observer as the new master.'
+          : `The host of ${killed?.name ?? 'the first-listed observer'}, which is not the master, dies. The master observer keeps running, so fast-start failover stays armed and the primary keeps serving.`)
         : 'The configuration’s only observer host dies. The primary still reaches the standby, so it keeps serving -- but nothing can fail over.',
       enabled: master === undefined ? off(WHY.noObserverDeployed) : ON,
       events: mk('observer-lost'),
@@ -1027,12 +1036,35 @@ export function applyTemplate(t: Template): void {
  * compare it against, and the walkthrough never asks for it. The shelf puts it
  * first, and the run it asks for is the engine's own, over no events.
  */
+/**
+ * What "runs as drawn" means for this document: only what it actually has.
+ * A standby with apply stopped, a snapshot standby, a far sync instance, a
+ * disabled or observer-less configuration and a document with no application
+ * are not described as applying, pinging or serving.
+ */
+function healthyCaption(doc: TopologyDoc): string {
+  const standbys = doc.members.filter(isDatabase).filter((m) => m.role !== 'primary');
+  const applying = standbys.filter((m) => m.applyRunning && m.role !== 'snapshot');
+  const parts = ['the primary is open read-write and shipping redo'];
+  if (applying.length > 0) {
+    parts.push(applying.length === standbys.length ? 'the standbys apply it' : 'the standbys with redo apply running apply it');
+  }
+  if (doc.config.fsfo.state !== 'disabled' && doc.observers.some((o) => o.running)) {
+    parts.push('the observer pings');
+  }
+  if ((doc.applications ?? []).length > 0) parts.push('the application is served');
+  const list = parts.length === 1 ? parts[0]
+    : parts.length === 2 ? `${parts[0]} and ${parts[1]}`
+      : `${parts.slice(0, -1).join(', ')}, and ${parts[parts.length - 1]}`;
+  return `Nothing fails. The configuration runs as drawn: ${list}.`;
+}
+
 export function healthyScenario(doc: TopologyDoc): Template {
   const primary = doc.members.find((m) => isDatabase(m) && m.role === 'primary');
   return {
     id: 'healthy',
     label: 'Everything is working',
-    caption: 'Nothing fails. The configuration runs as drawn: the primary is open read-write and shipping redo, the standbys apply it, the observer pings, and the application is served.',
+    caption: healthyCaption(doc),
     enabled: primary ? ON : off('No member holds the primary role.'),
     events: [],
   };

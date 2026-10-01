@@ -624,8 +624,8 @@ export function simulate(
         return {
           kind: 'unknown', seconds: gap,
           claim: model(gap,
-            `FAILOVER.LOSS_FARSYNC_GONE: zero data loss across a far sync instance rests on the far sync holding every committed change and forwarding it. ${lostFarSync as string} is not there to forward anything -- it was lost with the primary -- so whatever it had not yet sent over the ASYNC leg is lost with it, and this run cannot say how much. The number shown is the transport lag as configured, a floor and not a bound.`,
-            ['FS.SYNC_TO_FARSYNC', 'FS.ONWARD_ASYNC', 'FSFO.FARSYNC_XPT']),
+            `FAILOVER.LOSS_FARSYNC_GONE: zero data loss across a far sync instance rests on the far sync holding every committed change and forwarding it. ${lostFarSync as string} is down or cut off from the target, so it cannot forward anything: the documented transmission of unsent redo from the far sync instance before the standby is converted cannot happen, whatever it had not yet sent over the ASYNC leg is not known to have arrived, and this run cannot say how much. The number shown is the transport lag as configured, a floor and not a bound.`,
+            ['FS.SYNC_TO_FARSYNC', 'FS.ONWARD_ASYNC', 'FSFO.FARSYNC_XPT', 'FS.UNSENT_REDO_TRANSMITTED']),
         };
       }
       return {
@@ -726,7 +726,7 @@ export function simulate(
    * the run says so rather than letting the lanes pass for an Oracle outcome.
    */
   function oneRoleChange(at: Seconds, what: string, subject: { kind: 'member'; id: string }): void {
-    const note = 'SIM.ONE_ROLE_CHANGE: this page evaluates one role change per run. Oracle does not stop there -- fast-start failover stays enabled across a role change, and "the reinstated database acts as the fast-start failover target for the new primary database, making a subsequent fast-start failover possible" -- so what the lanes show after this instant is where the simulation ends, not what Oracle would do.';
+    const note = 'SIM.ONE_ROLE_CHANGE: this page evaluates one role change per run. Oracle documents what follows a failover and a reinstatement -- "the reinstated database acts as the fast-start failover target for the new primary database, making a subsequent fast-start failover possible" -- and that fast-start failover then stays enabled is implied by it; for a switchover Oracle documents no second role change, so that it stays enabled there is only implied. What the lanes show after this instant is where the simulation ends, not what Oracle would do.';
     addFinding({
       id: 'SIM.ONE_ROLE_CHANGE', severity: 'warning', basis: 'model',
       cite: ['FSFO.REINSTATED_IS_TARGET', 'FSFO.AUTO_REINSTATE'],
