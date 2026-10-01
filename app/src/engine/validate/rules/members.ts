@@ -127,6 +127,42 @@ export const snapshotNeedsFlashback: Rule = (ctx): Finding[] => {
   return out;
 };
 
+/**
+ * Two commands the broker refuses by the kind of standby they name. "A
+ * snapshot standby database cannot be the target of a switchover" -- it must
+ * be converted back to a physical standby first (a manual failover to one is
+ * a different command and stays legal) -- and "Switchover to a logical
+ * standby database is disallowed when the configuration is operating in
+ * maximum protection mode."
+ */
+export const switchoverKindRefused: Rule = (ctx): Finding[] => {
+  const out: Finding[] = [];
+  const seen = new Set<string>();
+  const maxProtection = ctx.doc.config.protectionMode === 'MAXPROTECTION';
+  for (const e of ctx.doc.events) {
+    if (e.kind !== 'cmd.switchover') continue;
+    const m = ctx.member(e.to);
+    if (!m || !isDatabase(m)) continue;
+    if (m.role === 'snapshot' && !seen.has(`s|${m.id as string}`)) {
+      seen.add(`s|${m.id as string}`);
+      out.push(mk('ROLE.SWITCHOVER_SNAPSHOT', {
+        subject: memberSubject(m),
+        message: `SWITCHOVER TO ${q(m.name)} is refused: ${q(m.name)} is a snapshot standby, and a snapshot standby cannot be the target of a switchover. Convert it back to a physical standby database first; a manual failover to it is the command that is allowed.`,
+        cite: ['SWITCHOVER.SNAPSHOT_NOT_TARGET', 'SWITCHOVER.SNAPSHOT_CONVERT_FIRST'],
+      }));
+    }
+    if (m.role === 'logical' && maxProtection && !seen.has(`l|${m.id as string}`)) {
+      seen.add(`l|${m.id as string}`);
+      out.push(mk('ROLE.SWITCHOVER_LOGICAL_MAXPROT', {
+        subject: memberSubject(m),
+        message: `SWITCHOVER TO ${q(m.name)} is refused: ${q(m.name)} is a logical standby, and a switchover to a logical standby database is disallowed while the configuration operates in maximum protection mode.`,
+        cite: ['SWITCHOVER.LOGICAL_MAXPROT'],
+      }));
+    }
+  }
+  return out;
+};
+
 /** Each RAC instance of one database on a node of its own. */
 export const instancesShareHost: Rule = (ctx): Finding[] => {
   const out: Finding[] = [];
@@ -147,6 +183,6 @@ export const instancesShareHost: Rule = (ctx): Finding[] => {
 };
 
 export const memberRules: Rule[] = [
-  farSyncNeverPrimary, memberLimit, snapshotNeedsFlashback, preferredApplyInstance,
-  applyInstancesUnused, instancesShareHost,
+  farSyncNeverPrimary, memberLimit, snapshotNeedsFlashback, switchoverKindRefused,
+  preferredApplyInstance, applyInstancesUnused, instancesShareHost,
 ];

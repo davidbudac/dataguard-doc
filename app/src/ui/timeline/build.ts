@@ -722,7 +722,7 @@ function initialMemberState(m: Member, isPrimary: boolean): AnyState {
   if (isFarSync(m)) return 'receiving';
   if (!m.enabled) return 'disabled';
   if (isPrimary) return 'open-rw';
-  if (!m.applyRunning) return 'mounted-noapply';
+  if (!m.applyRunning || m.role === 'snapshot') return 'mounted-noapply';
   return m.openMode === 'read-only-adg' ? 'open-ro' : 'mounted-apply';
 }
 
@@ -1122,6 +1122,8 @@ function buildBraces(doc: TopologyDoc, f: Facts): BraceInput[] {
  * here, and nothing is guessed from the wording of a finding.
  */
 const REFUSAL_CAPTION: Record<string, string> = {
+  'snapshot-target': 'SWITCHOVER refused — a snapshot standby cannot be the target of a switchover',
+  'logical-maxprotection': 'SWITCHOVER refused — a switchover to a logical standby is disallowed in maximum protection',
   'primary-down': 'SWITCHOVER refused — the primary is down',
   'target-down': 'SWITCHOVER refused — the target standby is down',
   'not-connected': 'SWITCHOVER refused — the primary and the target standby cannot reach each other',

@@ -82,6 +82,14 @@ export const RULE_CATALOGUE = {
     severity: 'warning', basis: 'documented',
     summary: 'A snapshot standby needs Flashback Database; it cannot be the target of a switchover or fast-start failover, though a manual failover to one is allowed (VAL-07.3).',
   },
+  'ROLE.SWITCHOVER_SNAPSHOT': {
+    severity: 'error', basis: 'documented',
+    summary: 'A snapshot standby cannot be the target of a switchover: convert it back to a physical standby first (SIM-17).',
+  },
+  'ROLE.SWITCHOVER_LOGICAL_MAXPROT': {
+    severity: 'error', basis: 'documented',
+    summary: 'Switchover to a logical standby database is disallowed in maximum protection mode (VAL-07).',
+  },
   'OBS.NAME_RESERVED': {
     severity: 'error', basis: 'documented',
     summary: 'Observer names are unique in a configuration and NONAME is reserved (VAL-07.5).',
