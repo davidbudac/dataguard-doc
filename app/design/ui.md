@@ -734,8 +734,9 @@ fewer. One bullet per change.
   event. Under `ApplyInstances` (multi-instance Redo Apply) the coordinator's row reads
   `COORDINATOR` and the other instances applying `APPLY`. Config gains a mock
   `SHOW DATABASE` per RAC database (`Instance(s):` with `(apply instance)`, walked by the
-  playhead), a `RAC -- per-instance parameters and standby redo logs` card (`<sid>.` /
-  `*.` entries, INSTANCE_NUMBER, `%t`, standby redo logs per thread), the SCAN form of
+  playhead), a `RAC -- per-instance parameters` card (`<sid>.` /
+  `*.` entries, INSTANCE_NUMBER, `%t`) and a `standby-redo-logs.sql` card (standby redo
+  logs per thread, on every member that receives redo), the SCAN form of
   the connect string, and static-service notes in the DGMGRL script. A tenth lesson,
   *RAC primary and standby*, walks the `rac-standby` preset. A former primary on its way
   back as a standby names, in its timeline band, the instance its apply will start on.
