@@ -404,6 +404,28 @@ agree on:
   nominate and reports the configuration unobserved. Never state the rule
   unconditionally, and never extend it to a failure that separates the primary
   from the target standby — that is not the documented case.
+- **STOP OBSERVER and DISABLE FAST_START FAILOVER are commands the broker can
+  refuse, and the run answers them.** "The STOP OBSERVER command fails if there
+  are two or more registered observers and you attempt to stop only the master",
+  and, with fast-start failover enabled, the primary and standby "must be
+  connected and communicating with each other" or ORA-16636 comes back; so a
+  master is lost in a run by crashing its observer host, never by `observer.stop`.
+  "Disabling fast-start failover without the FORCE option can succeed only if the
+  database on which the command is issued has a network connection with the
+  primary database and if the primary database and target standby database have a
+  network connection"; with FORCE on a primary cut off from the observer and the
+  target it "does not prevent the observer from initiating a fast-start failover",
+  and "two databases ... simultaneously assuming the primary database role" may
+  result. The event names no issuing database, so the engine takes the primary as
+  the issuer; the isolated primary's timing after a FORCE (commit hang, then
+  read-write) is a `model`.
+- **A commit waits for each SYNC destination.** At `DATA_GUARD_SYNC_LATENCY`'s
+  default LGWR waits "up to ... NET_TIMEOUT ... for each SYNC standby destination",
+  so one destination going silent among several hangs the commit even while
+  another answers. What ends the hang depends on the mode: the destination is
+  dropped and the primary carries on, or -- maximum protection with no
+  synchronized standby left -- the primary shuts down. Never write "carries on"
+  for the hang that ends in that shutdown.
 - **The scripting surfaces in the 26ai change table predate 26ai.** The official
   SQLcl `DG` page is scoped "Oracle Database release 21c only" and the ORDS
   Data Guard REST endpoints are documented from ORDS 21.1 onwards (an ORDS
