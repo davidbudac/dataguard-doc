@@ -39,8 +39,11 @@ const at = (root: unknown, path: string): unknown =>
 const EXPECTED: Record<string, readonly string[]> = {
   /* "Which protection modes, and where Oracle disagrees with itself": the step
      puts the far-sync configuration into MaxProtection precisely so the
-     validation panel names the two rules that refuse it. Its own note says so. */
-  'far-sync/3': ['FSFO.FARSYNC_MODE_19C', 'MODE.MAXPROT_NEEDS_SYNC_DB'],
+     validation panel names the two rules that refuse it. Its own note says so.
+     The preset now declares the reverse route through FS1 (Scenario 5, GEN-17),
+     so a third rule names it too: after a role change the primary would receive
+     through a far sync instance, which maximum protection cannot use. */
+  'far-sync/3': ['FSFO.FARSYNC_MODE_19C', 'MODE.MAXPROT_NEEDS_SYNC_DB', 'XPT.PRIMARY_LOGXPTMODE'],
 };
 
 const key = (lesson: string, i: number): string => `${lesson}/${i}`;
