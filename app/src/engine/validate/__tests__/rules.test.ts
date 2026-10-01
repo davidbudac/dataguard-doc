@@ -298,6 +298,23 @@ const CASES: Case[] = [
     },
   },
   {
+    id: 'ROUTES.SNAPSHOT_CONVERT_NONNULL',
+    fires: 'a snapshot standby carries a non-NULL RedoRoutes that forwards nothing',
+    quiet: 'its RedoRoutes is NULL',
+    trigger: () => {
+      const d = baseDoc({ fsfo: 'disabled' });
+      const sby = dbOf(d, 'sby01');
+      sby.role = 'snapshot';
+      sby.redoRoutes = [rule('LOCAL', [{ target: 'ALL' }])];
+      return d;
+    },
+    silent: () => {
+      const d = baseDoc({ fsfo: 'disabled' });
+      dbOf(d, 'sby01').role = 'snapshot';
+      return d;
+    },
+  },
+  {
     id: 'ROUTES.LOGICAL_LOCAL_ONLY',
     fires: 'a logical standby carries a rule whose source is not LOCAL',
     quiet: 'its only rule is a LOCAL one',
@@ -597,6 +614,102 @@ const CASES: Case[] = [
     silent: () => manyDestinationsDoc(30),
   },
   {
+    id: 'DEST.SYNC_ABOVE_10',
+    fires: 'a SYNC destination is the tenth remote destination, which lands in LOG_ARCHIVE_DEST_11',
+    quiet: 'the ninth is the last SYNC one',
+    trigger: () => manyDestinationsDoc(10),
+    silent: () => manyDestinationsDoc(9),
+  },
+  {
+    id: 'EVENT.REINSTATE',
+    fires: 'REINSTATE names a database with Flashback Database off',
+    quiet: 'it has Flashback Database on',
+    trigger: () => {
+      const d = baseDoc();
+      dbOf(d, 'sby01').flashbackOn = false;
+      d.events = [{ at: 5, kind: 'cmd.reinstate', member: M('sby01') }];
+      return d;
+    },
+    silent: () => {
+      const d = baseDoc();
+      d.events = [{ at: 5, kind: 'cmd.reinstate', member: M('sby01') }];
+      return d;
+    },
+  },
+  {
+    id: 'EVENT.SET_APPLY_INSTANCE',
+    fires: 'WITH APPLY INSTANCE names an instance the database does not have',
+    quiet: 'it names one of its instances',
+    trigger: () => {
+      const d = baseDoc();
+      d.events = [{ at: 5, kind: 'cmd.setApplyInstance', member: M('sby01'), instance: 'sby09' }];
+      return d;
+    },
+    silent: () => {
+      const d = baseDoc();
+      d.events = [{ at: 5, kind: 'cmd.setApplyInstance', member: M('sby01'), instance: 'sby01' }];
+      return d;
+    },
+  },
+  {
+    id: 'EVENT.SET_MASTER_OBSERVER',
+    fires: 'SET MASTEROBSERVER is issued while fast-start failover is disabled',
+    quiet: 'fast-start failover is enabled',
+    trigger: () => {
+      const d = baseDoc({ fsfo: 'disabled' });
+      d.events = [{ at: 5, kind: 'cmd.setMasterObserver', observer: d.observers[0]!.id }];
+      return d;
+    },
+    silent: () => {
+      const d = baseDoc();
+      d.events = [{ at: 5, kind: 'cmd.setMasterObserver', observer: d.observers[0]!.id }];
+      return d;
+    },
+  },
+  {
+    id: 'MEMBER.PRIMARY_COUNT',
+    fires: 'two databases are marked primary',
+    quiet: 'exactly one is',
+    trigger: () => {
+      const d = baseDoc();
+      dbOf(d, 'sby01').role = 'primary';
+      return d;
+    },
+    silent: () => baseDoc(),
+  },
+  {
+    id: 'MEMBER.NAME_DUPLICATE',
+    fires: 'two members carry the same name',
+    quiet: 'their names differ',
+    trigger: () => {
+      const d = baseDoc({ extra: [database('sby02', ['dc2-sby01'], 'physical', { name: 'SBY01' })] });
+      return d;
+    },
+    silent: () => baseDoc({ extra: [database('sby02', ['dc2-sby01'], 'physical')] }),
+  },
+  {
+    id: 'MEMBER.STATIC_SERVICE',
+    fires: 'a single-instance database has no static service and automatic reinstatement does not cover it',
+    quiet: 'it has one',
+    trigger: () => {
+      const d = baseDoc({ fsfo: 'disabled' });
+      dbOf(d, 'sby01').staticServices = false;
+      return d;
+    },
+    silent: () => baseDoc({ fsfo: 'disabled' }),
+  },
+  {
+    id: 'FSFO.TARGET_DISABLED',
+    fires: 'the only named target is disabled',
+    quiet: 'it is enabled',
+    trigger: () => {
+      const d = baseDoc();
+      dbOf(d, 'sby01').enabled = false;
+      return d;
+    },
+    silent: () => baseDoc(),
+  },
+  {
     id: 'EDIT.FSFO_ENABLED_BLOCKS',
     fires: 'fast-start failover is enabled',
     quiet: 'it is disabled',
@@ -868,7 +981,9 @@ describe('RedoRoutes rules, read the way Oracle writes them', () => {
     const d = twoStandbyDoc({ secondRole: 'logical', targets: [M('sby01')] });
     dbOf(d, 'sby02').redoRoutes = [rule([M('prm01')], [{ target: M('sby01'), xpt: 'ASYNC' }])];
     const f = find(d, 'ROUTES.LOGICAL_LOCAL_ONLY');
-    expect(f?.severity).toBe('warning');
+    /* An error since VAL-14: "can be set ... only if" bars the setting just as
+       firmly as "cannot be configured" bars the snapshot case. */
+    expect(f?.severity).toBe('error');
     expect(f?.basis).toBe('documented');
     expect(f?.message).toContain('redo source field');
     expect(f?.note).toBeUndefined();

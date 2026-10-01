@@ -420,6 +420,11 @@ export const CITATIONS = {
     quote: 'If the primary does not receive acknowledgement from at least one synchronized standby, then it operates as if it were in maximum performance mode',
     note: 'The Concepts and Administration protection-modes page words MaxAvailability this way; its MaxProtection paragraph says only that the primary "shuts the primary database down rather than allowing it to continue". The 19c broker chapter 4 does add "if it cannot write its redo stream to at least one synchronized standby database" for MaxProtection, so the "any one SYNC ack suffices" reading is a documented broker statement there, not this page\'s inference.',
   },
+  'MAXAVAIL.AT_LEAST_ONE_FARSYNC': {
+    url: U.bkr19Members, edition: '19c', verified: 'primary',
+    quote: 'at least one standby database that receives redo via the SYNC transport, either directly or through a far sync instance',
+    note: 'The 19c broker chapter 4, Setting the Protection Mode: the sentence that names a far sync instance on the SYNC path to a standby. Cite this, not MAXAVAIL.AT_LEAST_ONE, where the redo reaches the standby through a far sync instance.',
+  },
   'MAXAVAIL.FARSYNC_ACK_26AI': {
     url: U.bkr26Modes, edition: '26ai', verified: 'primary',
     quote: 'Transactions do not commit until all redo data needed to recover those transactions has been written to the online redo log and to the standby redo log on at least one synchronized standby database or far sync instance.',
@@ -584,6 +589,11 @@ export const CITATIONS = {
     url: U.racIntro, edition: '19c', verified: 'primary',
     quote: 'Oracle Clusterware is a required component for using Oracle RAC that provides the infrastructure necessary to run Oracle RAC.',
   },
+  'MEMBER.STATIC_SERVICE_SINGLE_INSTANCE': {
+    url: U.bkr19Members, edition: '19c', verified: 'primary',
+    quote: 'A single-instance database on which Oracle Restart is not configured must have a static service registered with the listener so that the DGMGRL CLI can automatically start the instance when necessary (for example, for the new standby after a switchover).',
+    note: 'Not limited to reinstatement: a switchover needs it for the new standby too. Oracle Restart cannot be stated in a document, so the rule that uses this is an inference.',
+  },
   'RAC.STATIC_ONLY_WITHOUT_CLUSTERWARE': {
     url: U.bkr19Install, edition: '19c', verified: 'primary',
     quote: 'A static service needs to be defined and registered only if Oracle Clusterware or Oracle Restart is not being used.',
@@ -636,6 +646,11 @@ export const CITATIONS = {
     quote: "DGMGRL> EDIT DATABASE 'South_Sales' SET STATE='APPLY-ON' WITH APPLY INSTANCE='south_sales2';",
     note: 'Once the apply instance is selected and still running, the broker disregards a change to PreferredApplyInstance; this command is how the running apply instance is moved. SHOW DATABASE lists the instances with "(apply instance)" after the one running apply.',
   },
+  'RAC.SET_APPLY_INSTANCE_IGNORED': {
+    url: U.bkr19Cmds, edition: '19c', verified: 'primary',
+    quote: 'If the target state is not APPLY-ON or if the database is currently in the primary role, the WITH APPLY INSTANCE clause is ignored even if it is specified.',
+    note: 'EDIT DATABASE ... SET STATE, Usage Notes.',
+  },
   'OBS.PLACEMENT_STANDBY_DC': {
     url: U.habpt121, edition: '12.1', verified: 'cross-edition',
     quote: 'locate the observer in the standby data center on a separate host and isolate the observer as much as possible from failures affecting the standby database',
@@ -668,6 +683,12 @@ export const CITATIONS = {
   'OBS.NAME_NONAME_RESERVED': {
     url: U.bkr19Switch, edition: '19c', verified: 'primary',
     quote: 'The string "NONAME" cannot be used as an observer name.',
+    note: 'The 19c fast-start failover chapter names NONAME alone; the START OBSERVER command page also reserves ALL (OBS.NAME_RESERVED_STRINGS).',
+  },
+  'OBS.NAME_RESERVED_STRINGS': {
+    url: U.bkr19Cmds, edition: '19c', verified: 'primary',
+    quote: 'The strings "NONAME" and "ALL" cannot be used as an observer name.',
+    note: 'START OBSERVER, Usage Notes; the 26ai START OBSERVER page (start-observer.html) says the same.',
   },
 
   /* ---------------- FSFO clocks and properties ---------------- */
@@ -803,6 +824,11 @@ export const CITATIONS = {
   'FSFO.SNAPSHOT_NOT_TARGET': {
     url: U.bkr19Switch, edition: '19c', verified: 'primary',
     quote: 'A snapshot standby cannot be the target of a switchover or fast-start failover operation. You can, however, perform a manual failover to a snapshot standby.',
+  },
+  'CONVERT.SNAPSHOT_REDOROUTES_NONNULL': {
+    url: U.bkr19Cmds, edition: '19c', verified: 'primary',
+    quote: 'A physical standby database cannot be converted to a snapshot standby database if its RedoRoutes configurable property is set to non-NULL value.',
+    note: 'CONVERT DATABASE, Usage Notes (26ai: convert-database.html). Stricter than the RedoRoutes property page, which only bars a snapshot standby that would send redo onward (ROUTES.SNAPSHOT_FORBIDDEN); Oracle does not name the difference.',
   },
   'FSFO.PRIMARY_UNOBSERVED': {
     url: U.bkr19Switch, edition: '19c', verified: 'primary',
@@ -1028,6 +1054,11 @@ export const CITATIONS = {
     quote: 'The current primary database must have its LogXptMode property set accordingly and must have standby redo logs configured.',
     note: "The 26ai Enabling Fast-Start Failover prerequisites, directly under the per-mode LogXptMode list (FSFO.PREREQ_TRANSPORTS_26AI), whose maximum availability row reads SYNC or FASTSYNC or ASYNC. Next sentence: 'If using either maximum availability or maximum performance mode, use the RedoRoutes property to configure the redo transport mode for the target standby and the database currently in the primary role.' The 26ai Task 3 still says SYNC or FASTSYNC for both databases -- stale (FSFO.LAGLIMIT_STALE_TASK3).",
   },
+  'FSFO.TASK3_MAXAVAIL_26AI': {
+    url: U.bkr26Fsfo, edition: '26ai', verified: 'primary',
+    quote: 'In maximum availability mode, set the LogXptMode database property for both the primary and target standby databases to SYNC or FASTSYNC.',
+    note: 'Task 3 of the 26ai Enabling Fast-Start Failover chapter: one side of a conflict with the prerequisites list beside it (FSFO.PREREQ_TRANSPORTS_26AI, XPT.MAXAVAIL_ASYNC_26AI), which adds ASYNC. Cite it as that side only, never as the rule.',
+  },
   'DGMGRL.VALIDATE_NO_SUPPORTING_STANDBY': {
     url: U.bkr19Scenarios, edition: '19c', verified: 'primary',
     quote: 'Error: Switchover to this standby is not possible since there are no other standbys that can support the protection mode',
@@ -1062,6 +1093,11 @@ export const CITATIONS = {
     url: U.sbyDestAttrs, edition: '19c', verified: 'primary',
     quote: 'The NET_TIMEOUT attribute specifies the number of seconds that the LGWR background process blocks waiting for a redo transport destination to acknowledge redo data sent to it. If an acknowledgement is not received within NET_TIMEOUT seconds, an error is logged and the redo transport session to that destination is terminated.',
     note: "Valid values 1 to 1200, default value 30 seconds; footnote: 'Although a minimum value of 1 second is allowed, Oracle recommends a minimum value of 8 to 10 seconds'; requires SYNC, and under ASYNC 'redo transport services ignores it; no error is returned'. This is the LOG_ARCHIVE_DEST_n attribute; the broker property of the same value is NetTimeout (BROKER.NET_TIMEOUT_PROPERTY), whose own page states a wider range. It is never a failover clock.",
+  },
+  'DEST.NET_TIMEOUT_ASYNC_IGNORED': {
+    url: U.sbyDestAttrs, edition: '19c', verified: 'primary',
+    quote: 'If you specify the ASYNC attribute, redo transport services ignores it; no error is returned.',
+    note: 'NET_TIMEOUT, the "Conflicts with attributes: ASYNC" row; the same row says it requires the SYNC attribute. An ASYNC destination is not given a NET_TIMEOUT wait, so a low value there is inert, not wrong.',
   },
   'BROKER.NET_TIMEOUT_PROPERTY': {
     url: U.bkr19Props, edition: '19c', verified: 'primary',
@@ -1181,6 +1217,21 @@ export const CITATIONS = {
     quote: 'ORA-16654 fast-start failover is enabled Cause The attempted command was not allowed while fast-start failover was enabled. This occurred because: The FastStartFailoverTarget property may not be modified. The LogXptMode property for either the primary database or the fast-start failover target standby database may not be modified. The protection mode of the configuration may not be modified.',
     note: "The Cause list continues with DISABLE/REMOVE of the configuration or the target, FAILOVER IMMEDIATE and DG_BROKER_START. This is the 26ai tab; the 21c and 19c tabs read 'The attempted command was not allowed while fast-start failover was enabled:' (no 'This occurred because') and \"The configuration's protection mode may not be modified\" for the third bullet -- the same three restrictions, worded slightly differently. FastStartFailoverTarget itself is refused only unless the new value still contains the current target (EDIT.FSFO_ENABLED_BLOCKS).",
   },
+  'MODE.DOWNGRADE_AFTER_FSFO_MAXPROT': {
+    url: U.bkr19Members, edition: '19c', verified: 'primary',
+    quote: 'An exception to this is that a downgrade to maximum availability mode is allowed when fast-start failover has been enabled in maximum protection mode.',
+    note: 'The exception to the rule that the protection mode cannot be changed while fast-start failover is enabled (ORA-16654). The 26ai managing-data-protection-modes page carries it too.',
+  },
+  'FSFO.DISABLE_FORCE_USE': {
+    url: U.bkr19Cmds, edition: '19c', verified: 'primary',
+    quote: 'Use DISABLE FAST_START FAILOVER with the FORCE option when the network between the primary and target standby databases is disconnected or when the database upon which the command is received does not have a connection with the primary database.',
+    note: 'DISABLE FAST_START FAILOVER, Usage Notes. FORCE is for a disconnected network, not for a missing observer.',
+  },
+  'FSFO.DISABLE_STANDBY_NOT_TARGET': {
+    url: U.bkr19Members, edition: '19c', verified: 'primary',
+    quote: 'the broker allows the disable operation to proceed only if the standby database is not the target standby database for fast-start failovers.',
+    note: 'The broker members page, on disabling a standby database. The start of the sentence is elided here.',
+  },
   'ORA.16658': {
     url: U.ora16658, edition: '26ai', verified: 'primary',
     quote: 'ORA-16658 unobserved fast-start failover configuration Cause The fast-start failover configuration was currently unobserved and so failover was not possible.',
@@ -1226,6 +1277,11 @@ export const CITATIONS = {
     url: U.bkr19Props, edition: '19c', verified: 'primary',
     quote: 'The default service name of this configuration-wide service is primarydbname_CFG, where the primary database name is appended with a suffix of _CFG. The service name does not change after a role transition.',
     note: 'Introduced in 12.2 (broker release changes) and documented on the 19c broker properties page (verified 2026-08-17).',
+  },
+  'CFG.WIDE_SERVICE_NAME_FORMAT': {
+    url: U.bkr19Props, edition: '19c', verified: 'primary',
+    quote: 'The first character must be an alphanumeric character. There is a 30–character maximum.',
+    note: 'ConfigurationWideServiceName, valid values. The 26ai property page (configurationwideservicename.html) carries the same text.',
   },
 
   /* ---------------- Generated scripts and mock SHOW output (SS7) ---------------- */

@@ -84,7 +84,7 @@ export const RULE_CATALOGUE = {
   },
   'OBS.NAME_RESERVED': {
     severity: 'error', basis: 'documented',
-    summary: 'Observer names are unique in a configuration and NONAME is reserved (VAL-07.5).',
+    summary: 'Observer names are unique in a configuration, and NONAME and ALL are reserved (VAL-07.5, VAL-11).',
   },
   'FSFO.LAGTYPE_MODE': {
     severity: 'info', basis: 'documented',
@@ -107,12 +107,12 @@ export const RULE_CATALOGUE = {
     summary: 'Oracle recommends a minimum of two standby databases in maximum protection mode (C3).',
   },
   'XPT.TABLE_4_2': {
-    severity: 'error', severities: ['error', 'warning', 'info'], basis: 'documented',
+    severity: 'error', severities: ['error', 'warning', 'info'], basis: 'documented', bases: ['documented', 'conflict'],
     summary: 'At least one standby in the configuration must support the mode (MEM19); an ASYNC bystander beside a SYNC standby is legal. The fast-start failover prerequisites carry a stricter, per-member requirement for the target and the primary only, while fast-start failover is enabled: maximum protection SYNC, maximum availability SYNC or FASTSYNC (26ai\'s prerequisites list add ASYNC there, a conflict with Table 4-2 and the LogXptMode page that 26ai does not name), maximum performance lists ASYNC as the only mode -- never "SYNC is illegal there".',
   },
   'XPT.PRIMARY_LOGXPTMODE': {
-    severity: 'error', severities: ['error', 'warning'], basis: 'documented',
-    summary: 'With fast-start failover enabled or observe-only in maximum availability or maximum protection, the primary is a standby after a role change: what it would then receive -- its LogXptMode, or a pre-declared RedoRoutes rule -- must meet the prerequisite set for both databases (19c Task 3: SYNC or FASTSYNC, SYNC in maximum protection). A warning under 26ai maximum availability, whose prerequisites list adds ASYNC.',
+    severity: 'error', severities: ['error', 'warning'], basis: 'documented', bases: ['documented', 'conflict'],
+    summary: 'With fast-start failover enabled or observe-only in maximum availability or maximum protection, the primary is a standby after a role change: what it would then receive -- its LogXptMode, or a pre-declared RedoRoutes rule (not counted in maximum protection under 26ai, whose prerequisite names that alternative for the other two modes only) -- must meet the prerequisite set for both databases (19c Task 3: SYNC or FASTSYNC, SYNC in maximum protection). A warning under 26ai maximum availability, whose prerequisites list adds ASYNC against Task 3: a conflict.',
   },
   'XPT.FASTSYNC_MAXAVAIL_ONLY': {
     severity: 'error', basis: 'documented',
@@ -134,8 +134,12 @@ export const RULE_CATALOGUE = {
     severity: 'error', basis: 'documented',
     summary: 'RedoRoutes cannot be configured so that a snapshot standby would send redo to another member; receiving is not restricted (A5).',
   },
+  'ROUTES.SNAPSHOT_CONVERT_NONNULL': {
+    severity: 'warning', basis: 'conflict',
+    summary: 'CONVERT DATABASE bars a snapshot standby whose RedoRoutes is non-NULL; the RedoRoutes page bars only one that would send redo onward. Oracle does not reconcile the two.',
+  },
   'ROUTES.LOGICAL_LOCAL_ONLY': {
-    severity: 'warning', basis: 'documented',
+    severity: 'error', basis: 'documented',
     summary: 'RedoRoutes can be set for a logical standby only if the redo source field is LOCAL (A5, 19c and 26ai).',
   },
   'ROUTES.ALT_NEEDS_MAXFAILURE': {
@@ -195,8 +199,8 @@ export const RULE_CATALOGUE = {
     summary: 'No observer deployed is legal: enabling fast-start failover with no observer started raises ORA-16819, the configuration is unobserved, and no failover can happen. A warning where the document says fast-start failover is enabled or observe-only; the standing info otherwise.',
   },
   'OBS.MASTER_UNIQUE': {
-    severity: 'error', basis: 'documented',
-    summary: 'One observer is the master and the others are backup observers; only the master coordinates fast-start failover.',
+    severity: 'error', severities: ['error', 'info'], basis: 'documented',
+    summary: 'One observer is the master and the others are backup observers; only the master coordinates fast-start failover. With fast-start failover disabled no observer is the master, so the finding is an info about what enabling would need.',
   },
   'OBS.PREFERRED_HOSTS': {
     severity: 'warning', basis: 'documented',
@@ -223,8 +227,8 @@ export const RULE_CATALOGUE = {
     summary: 'Two instances of one database on one host: this page draws each RAC instance on a node of its own.',
   },
   'REINSTATE.PRECONDITIONS': {
-    severity: 'warning', basis: 'documented',
-    summary: 'FastStartFailoverAutoReinstate needs Flashback Database on both databases and static service names, and covers only an observer-initiated failover after a primary crash or isolation.',
+    severity: 'warning', severities: ['warning', 'info'], basis: 'documented',
+    summary: 'FastStartFailoverAutoReinstate needs Flashback Database on both databases and static service names, and covers only an observer-initiated failover after a primary crash or isolation. A warning while fast-start failover is enabled; an info while it is disabled or observe-only, when no automatic reinstatement can happen.',
   },
   'DEST.NETTIMEOUT_LOW': {
     severity: 'warning', basis: 'documented',
@@ -246,17 +250,49 @@ export const RULE_CATALOGUE = {
     severity: 'warning', basis: 'documented',
     summary: 'LOG_ARCHIVE_DEST_n runs 1 to 31, and non-real-time cascading is limited to destinations 1 to 10.',
   },
+  'DEST.SYNC_ABOVE_10': {
+    severity: 'warning', basis: 'inferred',
+    summary: 'LOG_ARCHIVE_DEST_11 through _31 do not support SYNC; a member\'s 10th remote destination lands in _11 by this page\'s numbering, hence inferred.',
+  },
   'EDIT.FSFO_ENABLED_BLOCKS': {
     severity: 'info', basis: 'documented',
-    summary: 'While fast-start failover is enabled the broker blocks several edits with ORA-16654.',
+    summary: 'While fast-start failover is enabled the broker blocks several edits with ORA-16654; a downgrade from maximum protection to maximum availability is the exception, and FORCE on DISABLE FAST_START FAILOVER is for a disconnected network.',
   },
   'EDIT.REMOVE_TARGET': {
     severity: 'info', basis: 'documented',
     summary: 'A member named by FastStartFailoverTarget cannot be removed (ORA-16867).',
   },
+  'MEMBER.PRIMARY_COUNT': {
+    severity: 'error', basis: 'documented',
+    summary: 'A broker configuration has one primary database: none, or two, is not a configuration (VAL-18).',
+  },
+  'MEMBER.NAME_DUPLICATE': {
+    severity: 'error', basis: 'model',
+    summary: 'Two members, or two instances of one database, with the same name cannot be addressed apart; no Oracle sentence states the uniqueness (VAL-18).',
+  },
+  'MEMBER.STATIC_SERVICE': {
+    severity: 'info', basis: 'inferred',
+    summary: 'A single-instance database without Oracle Restart needs a static service for DGMGRL to start it, switchover included; the document cannot say whether Oracle Restart is configured (VAL-17).',
+  },
+  'FSFO.TARGET_DISABLED': {
+    severity: 'error', severities: ['error', 'info'], basis: 'documented',
+    summary: 'A standby that is the fast-start failover target cannot be disabled: every named target disabled is a state the broker would not let you reach. A condition of enabling fast-start failover: with it disabled, an info (VAL-19).',
+  },
   'LIMIT.MEMBERS_253': {
     severity: 'error', basis: 'documented',
     summary: '253 members per configuration, documented on the 19c and 26ai Managing Broker Configurations pages, word for word.',
+  },
+  'EVENT.REINSTATE': {
+    severity: 'warning', severities: ['warning', 'error'], basis: 'documented', bases: ['documented', 'inferred', 'model'],
+    summary: 'REINSTATE needs Flashback Database enabled on the database prior to the failover (a warning); it names a database of the configuration, never a far sync instance (an error, inferred or model).',
+  },
+  'EVENT.SET_APPLY_INSTANCE': {
+    severity: 'warning', severities: ['warning', 'info'], basis: 'documented', bases: ['documented', 'model'],
+    summary: 'WITH APPLY INSTANCE names an instance of a database of the configuration, and is ignored on a primary.',
+  },
+  'EVENT.SET_MASTER_OBSERVER': {
+    severity: 'info', severities: ['info', 'warning'], basis: 'documented', bases: ['documented', 'model'],
+    summary: 'SET MASTEROBSERVER names a deployed observer; with fast-start failover disabled no observer is the master.',
   },
   'MODEL.OBSERVER_OVERRIDE': {
     severity: 'info', basis: 'model',
