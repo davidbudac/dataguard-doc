@@ -129,7 +129,7 @@ export function ConfigForm({ doc }: ConfigFormProps) {
             else next.configurationWideServiceName = v.trim();
             return next;
           })}
-          note="One name for the configuration, as an alternative to listing every address. The default is primarydbname_CFG, documented in 12.2, 18c, 19c and 26ai alike -- never a later edition -- and does not change after a role transition."
+          note="Changes the name of the configuration-wide service the broker publishes on each member. The default is primarydbname_CFG, documented in 12.2, 18c, 19c and 26ai alike -- never a later edition -- and does not change after a role transition."
         />
         <Note>
           Default primarydbname_CFG.
@@ -311,7 +311,7 @@ export function ConfigForm({ doc }: ConfigFormProps) {
           )}
           note={ed === '19c'
             ? 'Documented from 26ai; absent from the 19c and 21c properties references. A live 19.27 system carries it regardless (SHOW FAST_START FAILOVER prints Lag Type:) -- an observation, never documentation.'
-            : 'Under TRANSPORT the gated quantity is the transport lag, clamped to the apply lag; terminal recovery still pays the apply lag.'}
+            : 'Oracle: the type of lag (apply lag or transport lag) used to specify the data loss threshold. Under TRANSPORT this page gates on the transport lag, clamped to the apply lag, and terminal recovery still pays the apply lag -- its reading, from a blog rather than the property page.'}
         />
 
         <Num
