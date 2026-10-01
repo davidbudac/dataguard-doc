@@ -12,6 +12,8 @@
  * run: CHANGED means the behaviour moved, not that it is right, and the row
  * still has to be read against the Oracle sentence it quotes.
  *
+ * The 2026-10-01 review's probes follow the 2026-09-28 ones, in a section of their own.
+ *
  * Adding a feature that touches the engine means adding its probes here, with
  * the sentence the outcome is held to. `docs/agents/fact-check.md` is the
  * procedure this file is one step of.
@@ -24,6 +26,7 @@ import type { ClassicKnobs } from '../../src/engine/compat/classic';
 import { generateDgmgrl } from '../../src/engine/generate/dgmgrl';
 import { renderPlain } from '../../src/engine/generate/lines';
 import { hostId, linkId, memberId, siteId } from '../../src/engine/ids';
+import type { HostId, MemberId, ObserverId } from '../../src/engine/ids';
 import { formatRedoRoutes, parseRedoRoutes } from '../../src/engine/redo/parse';
 import { withApplication } from '../../src/engine/application';
 import { computeApps } from '../../src/engine/models/app';
@@ -31,9 +34,10 @@ import { simulate } from '../../src/engine/sim/simulate';
 import type { EngineTrace } from '../../src/engine/sim/simulate';
 import { splitBrainOf } from '../../src/engine/sim/split-brain';
 import type { TimedEvent } from '../../src/engine/types/events';
-import type { TopologyDoc } from '../../src/engine/types/topology';
+import type { DatabaseMember, TopologyDoc } from '../../src/engine/types/topology';
 import { applicationsOf } from '../../src/engine/types/topology';
 import { validate } from '../../src/engine/validate';
+import { farSync as farSyncLesson } from '../../src/content/lessons/far-sync';
 import { preset } from '../../src/presets';
 import {
   build, db, dest, farSyncDoc, multiTargetDoc, observer,
@@ -56,6 +60,27 @@ const endState = (t: EngineTrace, id: string): string | undefined => {
   const segs = t.lanes.find((l) => l.subject.kind === 'member' && l.subject.id === id)?.segments;
   return segs?.[segs.length - 1]?.state;
 };
+
+const segments = (t: EngineTrace, id: string): { t0: number; state: string }[] =>
+  t.lanes.find((l) => l.subject.kind === 'member' && l.subject.id === id)?.segments ?? [];
+
+/** Every database of `d` with `over` applied; far syncs are left alone. */
+const withDatabases = (d: TopologyDoc, over: Partial<DatabaseMember>): TopologyDoc => ({
+  ...d,
+  members: d.members.map((m) => (m.kind === 'database' ? { ...m, ...over } : m)),
+});
+
+const withFsfoOff = (d: TopologyDoc): TopologyDoc =>
+  ({ ...d, config: { ...d.config, fsfo: { ...d.config.fsfo, state: 'disabled' } } });
+
+/** The host of the first standby in document order. */
+const firstStandbyHost = (d: TopologyDoc): HostId => {
+  const m = d.members.find((x) => x.kind === 'database' && x.role !== 'primary');
+  return (m as DatabaseMember).instances[0]?.host as HostId;
+};
+
+const logicalOf = (d: TopologyDoc): MemberId =>
+  (d.members.find((m) => m.kind === 'database' && m.role === 'logical') as DatabaseMember).id;
 
 const promoted = (t: EngineTrace): boolean => !t.facts.blocked && t.facts.newPrimary !== null;
 
@@ -443,6 +468,151 @@ const SIM: SimProbe[] = [
     oracle: 'neither property exists in 19c (absent from the 12.2/18c/19c pages and from the 19.27 binaries); the threshold minimum is 6 s',
     open: (t) => t.facts.initiateAt !== null && t.facts.initiateAt < 6,
   },
+
+  /* ---- 2026-10-01 review ---- */
+  {
+    finding: 'SIM-15a',
+    title: 'After a fast-start failover, losing the observer stalls and aborts the new primary',
+    doc: () => classic(),
+    events: () => [
+      { at: 0, kind: 'host.down', host: PRM },
+      { at: 200, kind: 'observer.stop', observer: CLASSIC_IDS.observer },
+    ],
+    oracle: '"While the configuration is in the unobserved state, fast-start failover cannot happen. Therefore, the primary database can continue processing transactions, even if the target standby database fails." (19c and 26ai FSFO chapter)',
+    open: (t) => segments(t, 'sby01').some((s) => s.t0 >= 200 && (s.state === 'stalled' || s.state === 'aborted')),
+    lanes: ['prm01', 'sby01'],
+  },
+  {
+    finding: 'SIM-15b',
+    title: 'After a switchover, losing the observer aborts the new primary and the new standby',
+    doc: () => classic(),
+    events: () => [
+      { at: 0, kind: 'cmd.switchover', to: CLASSIC_IDS.standby },
+      { at: 100, kind: 'observer.stop', observer: CLASSIC_IDS.observer },
+    ],
+    oracle: '"While the configuration is in the unobserved state, fast-start failover cannot happen. Therefore, the primary database can continue processing transactions, even if the target standby database fails." (19c and 26ai FSFO chapter); FastStartFailoverPmyShutdown shuts down the primary database, never a standby',
+    open: (t) => endState(t, 'sby01') === 'aborted' || endState(t, 'prm01') === 'aborted',
+    lanes: ['prm01', 'sby01'],
+  },
+  {
+    finding: 'SIM-16',
+    title: 'PmyShutdown FALSE, both links cut and never healed: reinstatement starts while the former primary is still cut off',
+    doc: () => {
+      const d = classic({ pmyShutdown: false });
+      return withDatabases(d, { flashbackOn: true, staticServices: true });
+    },
+    events: () => [
+      { at: 0, kind: 'link.cut', link: DC1_DC2 },
+      { at: 0, kind: 'link.cut', link: DC1_DC3 },
+    ],
+    oracle: 'Restrictions on reinstatement: "The master observer cannot connect to the former primary database" / "The former primary database cannot connect to the new primary database" (19c and 26ai FSFO chapter)',
+    open: (t) => segments(t, 'prm01').some((s) => s.state === 'reinstating'),
+    lanes: ['prm01', 'sby01'],
+  },
+  {
+    finding: 'SIM-17',
+    title: 'SWITCHOVER TO a snapshot standby (fast-start failover disabled)',
+    doc: () => {
+      const d = multiTargetDoc();
+      return {
+        ...d,
+        members: d.members.map((m, i) => (i === 1 && m.kind === 'database'
+          ? { ...m, role: 'snapshot' as const, flashbackOn: true } : m)),
+        config: { ...d.config, fsfo: { ...d.config.fsfo, state: 'disabled' } },
+      };
+    },
+    events: (d) => [{ at: 0, kind: 'cmd.switchover', to: (d.members[1] as { id: MemberId }).id }],
+    oracle: '"A snapshot standby database cannot be the target of a switchover or a fast-start failover." (19c broker commands, CONVERT DATABASE)',
+    open: (t) => !t.facts.blocked && t.facts.newPrimary === memberId('sby01'),
+    lanes: ['prm01', 'sby01'],
+  },
+  {
+    finding: 'SIM-18',
+    title: 'MaxProtection, two SYNC standbys: one of them lost at 0',
+    doc: () => preset('max-protection').doc(),
+    events: (d) => [{ at: 0, kind: 'host.down', host: firstStandbyHost(d) }],
+    oracle: '"The default value is 0, which means that the LGWR will wait up to the number of seconds specified by the NET_TIMEOUT attribute of the LOG_ARCHIVE_DEST_n parameter for each SYNC standby destination." (19c and 26ai Reference, DATA_GUARD_SYNC_LATENCY)',
+    open: (t) => !segments(t, 'prm01').some((s) => s.state === 'commit-hang'),
+    lanes: ['prm01'],
+  },
+  {
+    finding: 'SIM-19',
+    title: 'PmyShutdown FALSE, primary isolated: DISABLE FAST_START FAILOVER FORCE at 10',
+    doc: () => classic({ pmyShutdown: false }),
+    events: () => [
+      { at: 0, kind: 'link.cut', link: DC1_DC2 },
+      { at: 0, kind: 'link.cut', link: DC1_DC3 },
+      { at: 10, kind: 'cmd.disableFsfo', force: true },
+    ],
+    oracle: '"Disabling fast-start failover with the FORCE option on a primary database that is disconnected from the observer and the target standby database does not prevent the observer from initiating a fast-start failover to the target standby database." (26ai DISABLE FAST_START FAILOVER; the 19c FSFO chapter carries the same caution)',
+    open: (t) => t.facts.newPrimary === null && endState(t, 'prm01') === 'open-rw',
+    lanes: ['prm01', 'sby01'],
+  },
+  {
+    finding: 'SIM-20',
+    title: 'PmyShutdown FALSE, primary stalled by the cut, both links heal at 100: the stalled primary is drawn mounted, labelled documented',
+    doc: () => classic({ pmyShutdown: false }),
+    events: () => [
+      { at: 0, kind: 'link.cut', link: DC1_DC2 },
+      { at: 0, kind: 'link.cut', link: DC1_DC3 },
+      { at: 100, kind: 'link.heal', link: DC1_DC2 },
+      { at: 100, kind: 'link.heal', link: DC1_DC3 },
+    ],
+    oracle: 'Oracle documents only a former primary that is restarted: "the database must be started and mounted. It will not be allowed to open in any event if fast-start failover is enabled." Nothing says a stalled, still-open primary is closed when contact returns',
+    open: (t) => segments(t, 'prm01').some((s) => s.t0 === 100 && s.state === 'mounted-noapply')
+      && t.findings.some((f) => f.id === 'FSFO.FORMER_PRIMARY_NOT_OPEN' && f.basis === 'documented'),
+    lanes: ['prm01', 'sby01'],
+  },
+  {
+    finding: 'SIM-21',
+    title: 'Bystanders preset, fast-start failover disabled: SWITCHOVER TO the logical standby',
+    doc: () => withFsfoOff(preset('bystanders').doc()),
+    events: (d) => [{ at: 0, kind: 'cmd.switchover', to: logicalOf(d) }],
+    oracle: '"All physical and snapshot standby databases will be disabled and must be re-created from a copy of the new primary database after a switchover to a logical standby database." (19c FSFO chapter; 26ai SWITCHOVER)',
+    open: (t) => t.facts.outcome === 'switchover' && endState(t, 'sby01') === 'mounted-apply',
+    lanes: ['prm01', 'sby01', 'lsby01', 'snp01'],
+  },
+  {
+    finding: 'VAL-07',
+    title: 'Bystanders preset in MaxProtection, fast-start failover disabled: SWITCHOVER TO the logical standby',
+    doc: () => {
+      const d = withFsfoOff(preset('bystanders').doc());
+      return { ...d, config: { ...d.config, protectionMode: 'MAXPROTECTION' } };
+    },
+    events: (d) => [{ at: 0, kind: 'cmd.switchover', to: logicalOf(d) }],
+    oracle: '"Switchover to a logical standby database is disallowed when the configuration is operating in maximum protection mode." (19c FSFO chapter; 26ai SWITCHOVER)',
+    open: (t) => !t.facts.blocked && t.facts.newPrimary === memberId('lsby01'),
+    lanes: ['prm01', 'lsby01'],
+  },
+  {
+    finding: 'SIM-22',
+    title: 'Three observers: STOP OBSERVER on the master while the backups run',
+    doc: () => preset('multi-target-three-observers').doc(),
+    events: (d) => [{ at: 0, kind: 'observer.stop', observer: (d.observers.find((o) => o.role === 'master') as { id: ObserverId }).id }],
+    oracle: '"The STOP OBSERVER command fails if there are two or more registered observers and you attempt to stop only the master." (19c broker commands; 26ai STOP OBSERVER)',
+    open: (t) => !t.findings.some((f) => /STOP|REFUS/i.test(f.id))
+      && (t.decisions ?? []).some((d) => d.id === 'NOMINATION.NEW_MASTER'),
+  },
+  {
+    finding: 'TXT-52',
+    title: 'MaxProtection preset, its own events: the commit-hang decision says the primary "drops the destination and carries on" in the run that shuts it down',
+    doc: () => preset('max-protection').doc(),
+    events: () => preset('max-protection').events(),
+    oracle: '"To ensure that data loss cannot occur, the primary database will shut down, rather than continue processing transactions, if it cannot write its redo stream to at least one synchronized standby database." (19c members chapter)',
+    open: (t) => (t.decisions ?? []).some((d) => d.id === 'PROT.COMMIT_HANG' && String(d.claim.value).includes('carries on'))
+      && (t.decisions ?? []).some((d) => d.id === 'PROT.MAXPROT_SHUTDOWN'),
+    lanes: ['prm01'],
+  },
+  {
+    finding: 'SIM-31',
+    title: 'RAC primary preset, its own events: "no fast-start failover clock starts" is labelled documented',
+    doc: () => preset('rac-primary').doc(),
+    events: () => preset('rac-primary').events(),
+    oracle: '"Fast-start failover will not occur unless all instances comprising the Oracle RAC primary database are perceived to have failed." and "If you have an Oracle RAC primary database, consider specifying a higher value to minimize the possibility of a false failover in the event of an instance failure." (19c and 26ai FSFO chapter) -- neither cited sentence (RAC.PRIMARY_AVAILABLE, RAC.LAST_INSTANCE_FSFO) says anything about a clock',
+    open: (t) => (t.decisions ?? []).some((d) => d.id === 'RAC.PRIMARY_DEGRADED' && d.claim.basis === 'documented'
+      && String(d.claim.value).includes('no fast-start failover clock starts')),
+    lanes: ['prm01'],
+  },
 ];
 
 /* ---------------- B. rules and generated text ---------------- */
@@ -570,6 +740,37 @@ const TEXT: TextProbe[] = [
       const text = renderPlain(generateDgmgrl(classic({ version: '19c', pingSet: true })));
       const hit = text.includes('ObserverPingInterval');
       return { open: hit, now: hit ? 'emitted under 19c' : 'not emitted' };
+    },
+  },
+  /* ---- 2026-10-01 review ---- */
+  {
+    finding: 'TXT-50',
+    title: 'Far sync lesson, step "When the far sync fails": the member id its event names, against the preset the lesson runs on',
+    oracle: 'the step note says the far sync goes away and the protection level drops; with an unknown id the run shows neither',
+    run: () => {
+      const step = farSyncLesson.steps.find((x) => x.title === 'When the far sync fails');
+      const named = step?.apply?.events?.flatMap((e) => ('member' in e ? [e.member as string] : [])) ?? [];
+      const ids = preset('far-sync-zero-loss').doc().members.map((m) => m.id as string);
+      return {
+        open: named.length > 0 && named.some((id) => !ids.includes(id)),
+        now: `step names ${named.join(', ') || '(none)'}; preset members: ${ids.join(', ')}`,
+      };
+    },
+  },
+  {
+    finding: 'SIM-30',
+    title: 'RAC primary, one instance down at 0, an application on it: the sessions on that instance are drawn as untouched',
+    oracle: '"Any sessions active when the instance or service stops are terminated and the application user is immediately notified." / "If TAF is not configured, then the client only receives an error if the instance it is connected to fails." (19c RAC Administration, Application Continuity and Workload Management; 26ai the same)',
+    run: () => {
+      const base = withApplication(preset('rac-primary').doc(), siteId('dc1'));
+      const primary = base.members.find((m) => m.kind === 'database' && m.role === 'primary') as DatabaseMember;
+      const instance = primary.instances[0]?.name as string;
+      const t = simulate(base, [{ at: 0, kind: 'instance.down', member: primary.id, instance }]);
+      const [ap] = computeApps(t, base);
+      return {
+        open: ap !== undefined && ap.lostAt === null && ap.noEvent,
+        now: `instance.down ${primary.id}/${instance}: lostAt=${ap?.lostAt ?? 'null'} sessionsOn=${ap?.sessionsOn ?? '-'} noEvent=${ap?.noEvent ?? '-'} noEventKind=${ap?.noEventKind ?? '-'}`,
+      };
     },
   },
 ];
