@@ -305,7 +305,8 @@ describe('the classic walkthrough', () => {
     const threshold = inspector.querySelector<HTMLInputElement>('input[aria-label="FastStartFailoverThreshold"]');
     expect(threshold).not.toBeNull();
     threshold!.value = '20';
-    threshold!.dispatchEvent(new Event('input', { bubbles: true }));
+    /* A number box commits on change (ED-12 made the threshold one: 6 to 3600 is no slider). */
+    threshold!.dispatchEvent(new Event('change', { bubbles: true }));
     await tick();
     expect(doc.value.topology.config.fsfo.thresholdSeconds).toBe(20);
     button(guide, 'See the changed result').click();

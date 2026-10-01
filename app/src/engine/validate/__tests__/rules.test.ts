@@ -699,6 +699,21 @@ const CASES: Case[] = [
     silent: () => baseDoc({ fsfo: 'disabled' }),
   },
   {
+    id: 'CFG.SERVICE_NAME_FORMAT',
+    fires: 'ConfigurationWideServiceName starts with an underscore',
+    quiet: 'it starts with a letter',
+    trigger: () => {
+      const d = baseDoc();
+      d.config.configurationWideServiceName = '_cfg';
+      return d;
+    },
+    silent: () => {
+      const d = baseDoc();
+      d.config.configurationWideServiceName = 'north_cfg';
+      return d;
+    },
+  },
+  {
     id: 'FSFO.TARGET_DISABLED',
     fires: 'the only named target is disabled',
     quiet: 'it is enabled',

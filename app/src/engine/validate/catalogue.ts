@@ -274,6 +274,10 @@ export const RULE_CATALOGUE = {
     severity: 'info', basis: 'inferred',
     summary: 'A single-instance database without Oracle Restart needs a static service for DGMGRL to start it, switchover included; the document cannot say whether Oracle Restart is configured (VAL-17).',
   },
+  'CFG.SERVICE_NAME_FORMAT': {
+    severity: 'error', basis: 'documented',
+    summary: 'ConfigurationWideServiceName starts with an alphanumeric character and runs to at most 30 characters (ED-10).',
+  },
   'FSFO.TARGET_DISABLED': {
     severity: 'error', severities: ['error', 'info'], basis: 'documented',
     summary: 'A standby that is the fast-start failover target cannot be disabled: every named target disabled is a state the broker would not let you reach. A condition of enabling fast-start failover: with it disabled, an info (VAL-19).',

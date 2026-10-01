@@ -7,6 +7,7 @@
  * finds, so a second one, or none, changed nothing the rules could see.
  */
 
+import { configurationWideServiceNameProblem } from '../../defaults';
 import type { Finding } from '../../types/claims';
 import { isRac } from '../../types/topology';
 import type { Rule } from '../context';
@@ -120,6 +121,25 @@ export const staticServiceSingleInstance: Rule = (ctx): Finding[] => {
   return out;
 };
 
+/**
+ * ConfigurationWideServiceName: "The first character must be an alphanumeric
+ * character. There is a 30–character maximum." The form refuses a name that
+ * breaks either; a document that arrives with one (an import, a share link) is
+ * told here.
+ */
+export const configurationWideServiceName: Rule = (ctx): Finding[] => {
+  const name = ctx.doc.config.configurationWideServiceName;
+  if (name === undefined) return [];
+  const problem = configurationWideServiceNameProblem(name);
+  if (problem === null) return [];
+  return [mk('CFG.SERVICE_NAME_FORMAT', {
+    subject: configSubject(),
+    message: `ConfigurationWideServiceName is ${q(name)}. ${problem} The property takes a name whose first character is alphanumeric and which runs to at most 30 characters.`,
+    cite: ['CFG.WIDE_SERVICE_NAME_FORMAT'],
+  })];
+};
+
 export const integrityRules: Rule[] = [
   primaryCount, duplicateNames, targetsDisabled, staticServiceSingleInstance,
+  configurationWideServiceName,
 ];

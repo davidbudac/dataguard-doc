@@ -52,7 +52,7 @@ export function startClassicWalkthrough(): void {
   walkthroughPhase.value = edit ? 'crash' : 'advance';
 }
 
-/** Bring the threshold slider into view once the rail has drawn it. */
+/** Bring the threshold box into view once the rail has drawn it. */
 function showThreshold(): void {
   setTimeout(() => {
     if (typeof document === 'undefined') return;

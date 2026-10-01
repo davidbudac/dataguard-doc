@@ -28,17 +28,24 @@ export interface TuneNumberProps {
   title?: string;
   class?: string;
   disabled?: boolean;
+  /** A floor and a clamp of this box's own; see `NumProps` in the inspector's controls. */
+  min?: number;
+  clampTo?: (raw: unknown) => number;
 }
 
-export function TuneNumber({ bound, value, onValue, label, title, class: cls, disabled }: TuneNumberProps) {
+export function TuneNumber(
+  { bound, value, onValue, label, title, class: cls, disabled, min, clampTo }: TuneNumberProps,
+) {
   const b = BOUNDS[bound];
+  const floor = min ?? b.min;
+  const clampIt = clampTo ?? ((raw: unknown): number => clamp(bound, raw));
   const [draft, setDraft] = useState<string | null>(null);
   const parse = (raw: string): number => parseFloat(raw);
   return (
     <input
       class={cls ?? 'tune-num'}
       type="number"
-      min={b.min}
+      min={floor}
       max={b.max}
       step={b.step}
       value={draft ?? String(value)}
@@ -49,12 +56,12 @@ export function TuneNumber({ bound, value, onValue, label, title, class: cls, di
         const raw = (e.currentTarget as HTMLInputElement).value;
         setDraft(raw);
         const n = parse(raw);
-        if (Number.isFinite(n) && n >= b.min) onValue(clamp(bound, n));
+        if (Number.isFinite(n) && n >= floor) onValue(clampIt(n));
       }}
       onChange={(e) => {
         const n = parse((e.currentTarget as HTMLInputElement).value);
         setDraft(null);
-        if (Number.isFinite(n)) onValue(clamp(bound, n));
+        if (Number.isFinite(n)) onValue(clampIt(n));
       }}
       onBlur={() => setDraft(null)}
     />
