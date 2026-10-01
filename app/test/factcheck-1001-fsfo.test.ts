@@ -47,6 +47,8 @@ const down = (at: number, host: typeof PRM): TimedEvent => ({ at, kind: 'host.do
 const up = (at: number, host: typeof PRM): TimedEvent => ({ at, kind: 'host.up', host });
 const failover = (at: number): TimedEvent => ({ at, kind: 'cmd.failover', to: SBY });
 const stopObserver = (at: number): TimedEvent => ({ at, kind: 'observer.stop', observer: OBS });
+/** The observer's host crashes: how the observer is lost after a failover, where STOP OBSERVER is refused (ORA-16636). */
+const crashObserver = (at: number): TimedEvent => ({ at, kind: 'host.down', host: hostId('dc3-obs01') });
 const isolate: TimedEvent[] = [cut(0, DC1_DC2), cut(0, DC1_DC3)];
 
 const lane = (t: EngineTrace, id: string): string =>
@@ -103,11 +105,11 @@ describe('SIM-15 (D6): after a role change the new primary has no target, so los
      primary database": until the former primary is back there is no target. */
 
   const rows: [string, TimedEvent[]][] = [
-    ['crash @0 (fast-start failover), observer stopped @200', [down(0, PRM), stopObserver(200)]],
+    ['crash @0 (fast-start failover), observer host crashed @200', [down(0, PRM), crashObserver(200)]],
     ['switchover @0, observer stopped @100', [{ at: 0, kind: 'cmd.switchover', to: SBY }, stopObserver(100)]],
     ['crash @0, failover, the new primary loses only the observer (dc2-dc3 cut @200)', [down(0, PRM), cut(200, DC2_DC3)]],
-    ['crashed primary, clean manual failover @1, observer stopped @200', [down(0, PRM), failover(1), stopObserver(200)]],
-    ['manual failover with the old primary open (SBR-06), observer stopped @300', [failover(0), stopObserver(300)]],
+    ['crashed primary, clean manual failover @1, observer host crashed @200', [down(0, PRM), failover(1), crashObserver(200)]],
+    ['manual failover with the old primary open (SBR-06), observer host crashed @300', [failover(0), crashObserver(300)]],
   ];
 
   for (const [label, events] of rows) {
@@ -117,10 +119,12 @@ describe('SIM-15 (D6): after a role change the new primary has no target, so los
       expect(endState(t, 'sby01')).toBe('open-rw');
       expect(neverStalledOrAborted(t, 'sby01')).toBe(true);
       expect(finding(t, 'SIM.ONE_ROLE_CHANGE')?.message ?? '').not.toContain('is down');
-      /* STOP OBSERVER takes effect: with no target after the role change the
-         ORA-16636 refusal (primary and target not connected) has nothing to
-         apply to. */
-      if (events.some((e) => e.kind === 'observer.stop')) {
+      /* After a failover STOP OBSERVER is refused (ORA-16636: the primary and
+         the target are not connected, the former primary being down), so those
+         rows lose the observer by crashing its host, or by cutting its link
+         (row 3). After a switchover the restarted former primary is reachable
+         and STOP OBSERVER is accepted. */
+      if (label.includes('switchover')) {
         const obsLane = t.lanes.find((l) => l.subject.kind === 'observer' && l.subject.id === 'obs01');
         expect(obsLane?.segments.at(-1)?.state).toBe('stopped');
         expect(finding(t, 'OBS.STOP_NEEDS_CONNECTION')).toBeUndefined();
@@ -135,6 +139,15 @@ describe('SIM-15 (D6): after a role change the new primary has no target, so los
       expect(d[0]?.claim.note).toMatch(/^FSFO\.NO_TARGET_AFTER_ROLE_CHANGE:/);
     });
   }
+
+  it('STOP OBSERVER after a failover with the former primary down stays refused (ORA-16636): the observer keeps running', () => {
+    const t = simulate(classic(), [down(0, PRM), stopObserver(200)]);
+    const f = finding(t, 'OBS.STOP_NEEDS_CONNECTION');
+    expect(f?.ora).toBe('ORA-16636');
+    expect(t.lanes.find((l) => l.subject.kind === 'observer')?.segments.at(-1)?.state).not.toBe('stopped');
+    expect(endState(t, 'sby01')).toBe('open-rw');
+    expect(neverStalledOrAborted(t, 'sby01')).toBe(true);
+  });
 
   it('the lanes the report recorded as stalled and aborted now read open to the end', () => {
     expect(lane(simulate(classic(), rows[0]![1]), 'sby01')).toBe('0:unreachable | 55:open-rw');
@@ -158,7 +171,7 @@ describe('SIM-15 (D6): after a role change the new primary has no target, so los
     /* Everything cut off after the switchover: the old primary, now the
        standby, is out of reach of everyone, and that is all it is. */
     const t = simulate(classic(), [
-      { at: 0, kind: 'cmd.switchover', to: SBY }, cut(100, DC1_DC2), cut(100, DC1_DC3), stopObserver(100),
+      { at: 0, kind: 'cmd.switchover', to: SBY }, cut(100, DC1_DC2), cut(100, DC1_DC3), crashObserver(100),
     ]);
     expect(t.facts.newPrimary).toBe(SBY);
     expect(neverStalledOrAborted(t, 'prm01')).toBe(true);
@@ -167,7 +180,7 @@ describe('SIM-15 (D6): after a role change the new primary has no target, so los
   });
 
   it('a former primary that crashed and restarts after a failover is started and mounted, not an acting primary', () => {
-    const t = simulate(classic(), [down(0, PRM), up(100, PRM), stopObserver(200)]);
+    const t = simulate(classic(), [down(0, PRM), up(100, PRM), crashObserver(200)]);
     expect(lane(t, 'prm01')).toBe('0:down | 100:mounted-noapply');
     expect(neverStalledOrAborted(t, 'prm01')).toBe(true);
   });

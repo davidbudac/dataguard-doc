@@ -1237,9 +1237,18 @@ export function simulate(
     if (!view.primaryAlive) return false;
     const target = state.activeTarget;
     /* After a role change the new primary has no fast-start failover target
-       yet (D6), so there is no target standby to be out of contact with: the
-       ORA-16636 condition has nothing to apply to. */
-    if (target === null && (state.phase === 'failed-over' || state.phase === 'switched')) return true;
+       yet (D6), and the stale one must not be read: the member that will be
+       its target is the former primary, so the connection asked about is the
+       new primary's to it. A failover's former primary that is down, aborted
+       or cut off keeps the refusal; a switchover's restarted one, reachable,
+       does not. */
+    if (target === null && (state.phase === 'failed-over' || state.phase === 'switched')) {
+      const fp = doc.members.find((m) => m.id === state.formerPrimary);
+      const reachesFormer = !!fp && memberAlive(doc, state.net, fp)
+        && !state.abortedMembers.includes(fp.id)
+        && membersReachable(doc, state.net, view.primary, fp, view.reach);
+      return reachesFormer || view.anyTargetSeesPrimary;
+    }
     return target !== null ? (view.targetSeesPrimary[target as string] ?? false) : view.anyTargetSeesPrimary;
   }
 

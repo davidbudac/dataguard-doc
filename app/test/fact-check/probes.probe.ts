@@ -476,7 +476,8 @@ const SIM: SimProbe[] = [
     doc: () => classic(),
     events: () => [
       { at: 0, kind: 'host.down', host: PRM },
-      { at: 200, kind: 'observer.stop', observer: CLASSIC_IDS.observer },
+      /* The observer host crashes: STOP OBSERVER is refused after this failover (ORA-16636), so it would not lose the observer. */
+      { at: 200, kind: 'host.down', host: hostId('dc3-obs01') },
     ],
     oracle: '"While the configuration is in the unobserved state, fast-start failover cannot happen. Therefore, the primary database can continue processing transactions, even if the target standby database fails." (19c and 26ai FSFO chapter)',
     open: (t) => segments(t, 'sby01').some((s) => s.t0 >= 200 && (s.state === 'stalled' || s.state === 'aborted')),
