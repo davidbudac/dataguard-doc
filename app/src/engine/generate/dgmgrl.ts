@@ -182,13 +182,13 @@ export function generateDgmgrl(doc: TopologyDoc, opts: DgmgrlOptions = {}): Gene
       if (m.id === primary.id) {
         lines.push(nDoc(
           `${m.name} is the primary: the property is only used while it is a standby, and names its apply instance for after a switchover`,
-          ['RAC.PREFERRED_APPLY_INSTANCE', 'RAC.APPLY_INSTANCE_SELECTION'],
+          ['RAC.PREFERRED_APPLY_INSTANCE', 'RAC.PREFERRED_FOR_SWITCHOVER'],
         ));
       }
     } else {
       lines.push(nDoc(
         `${m.name} runs ${m.instances.length} instances and PreferredApplyInstance is empty (the default): the broker picks the apply instance`,
-        ['RAC.PREFERRED_APPLY_INSTANCE', 'RAC.APPLY_INSTANCE_SELECTION'],
+        ['RAC.PREFERRED_APPLY_INSTANCE', 'RAC.APPLY_INSTANCE_RANDOM'],
       ));
     }
     /* ApplyInstances is a physical standby property; a primary carries it for

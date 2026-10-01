@@ -27,7 +27,7 @@
 
 import type { MemberId, Seconds } from '../ids';
 import type { Claim } from '../types/claims';
-import { documented, model } from '../types/claims';
+import { documented, inferred, model } from '../types/claims';
 import type { DatabaseMember, Instance, Member } from '../types/topology';
 import { isDatabase, isRac } from '../types/topology';
 
@@ -40,6 +40,16 @@ import { isDatabase, isRac } from '../types/topology';
 export function hasApplyInstance(m: Member): m is DatabaseMember {
   return isDatabase(m) && isRac(m)
     && (m.role === 'physical' || m.role === 'logical') && m.applyRunning;
+}
+
+/**
+ * The member as the broker holds it after a SET STATE ... WITH APPLY INSTANCE:
+ * "The SET STATE command will update the PreferredApplyInstance property to
+ * the new apply instance value", so a later apply instance failover prefers
+ * the instance the command named, not the one the document was authored with.
+ */
+export function withPreferred(m: DatabaseMember, set: string | undefined): DatabaseMember {
+  return set === undefined ? m : { ...m, preferredApplyInstance: set };
 }
 
 /** PreferredApplyInstance, when it names an instance this member has. */
@@ -151,26 +161,81 @@ export function roleChangeApplyClaim(m: DatabaseMember, to: string): Claim<strin
     ? documented(text, ['RAC.PREFERRED_FOR_SWITCHOVER', 'RAC.PREFERRED_APPLY_INSTANCE'])
     : model(text,
       'RAC.APPLY_INSTANCE_ORDER: PreferredApplyInstance names no running instance, so the broker picks the apply instance; this engine draws the first running instance.',
-      ['RAC.APPLY_INSTANCE', 'RAC.APPLY_INSTANCE_SELECTION']);
+      ['RAC.APPLY_INSTANCE', 'RAC.APPLY_INSTANCE_RANDOM']);
 }
 
-/** EDIT DATABASE ... SET STATE='APPLY-ON' WITH APPLY INSTANCE=... */
-export function setApplyClaim(member: MemberId, instance: string, ok: boolean): Claim<string> {
+/**
+ * EDIT DATABASE ... SET STATE='APPLY-ON' WITH APPLY INSTANCE=...
+ *
+ * On a primary the clause is "ignored even if it is specified", so the command
+ * is not refused and nothing moves; against an instance that is not running,
+ * or a member that is not a RAC standby with apply, nothing moves either.
+ */
+export function setApplyClaim(
+  member: MemberId, instance: string, ok: boolean, onPrimary = false,
+): Claim<string> {
+  if (onPrimary) {
+    return documented(
+      `The WITH APPLY INSTANCE clause is ignored on ${member as string}: it is the primary, so ${instance} is not made an apply instance.`,
+      ['RAC.WITH_APPLY_INSTANCE_IGNORED'],
+    );
+  }
   return documented(
     ok
-      ? `Apply moves to ${instance} on ${member as string} by command. On a real broker the command also sets PreferredApplyInstance to ${instance}; this drawing leaves the document's property as it is.`
+      ? `Apply moves to ${instance} on ${member as string} by command, and the command updates PreferredApplyInstance to ${instance}.`
       : `Apply cannot move to ${instance} on ${member as string}: it is not a running instance of a RAC standby.`,
-    ['RAC.SET_APPLY_INSTANCE', 'RAC.APPLY_INSTANCE'],
+    ok ? ['RAC.SET_APPLY_INSTANCE', 'RAC.SET_STATE_UPDATES_PREFERRED', 'RAC.APPLY_INSTANCE']
+      : ['RAC.SET_APPLY_INSTANCE', 'RAC.APPLY_INSTANCE'],
+    ok ? 'The run keeps its own copy of the property: the document\'s PreferredApplyInstance field is left as authored, and a later apply instance failover in this run prefers the instance the command named.' : undefined,
   );
 }
 
-/** A RAC primary lost some, not all, of its instances. */
+/**
+ * A RAC primary lost some, not all, of its instances.
+ *
+ * Oracle says the primary "remains available" while one instance transports
+ * redo, and that fast-start failover "will not occur unless all instances ...
+ * are perceived to have failed". Neither says a threshold clock does not run:
+ * the chapter starts the interval "when the observer first loses its
+ * connection to the primary database" and advises a higher threshold on RAC
+ * "to minimize the possibility of a false failover in the event of an instance
+ * failure". Drawing no clock while any instance runs is this page's model.
+ */
 export function primaryDegradedClaim(
   primary: MemberId, down: readonly string[], running: readonly string[],
 ): Claim<string> {
-  return documented(
-    `${primary as string} lost ${down.join(', ')}; ${running.join(', ')} ${running.length === 1 ? 'is' : 'are'} still running, so the primary stays available and no fast-start failover clock starts.`,
-    ['RAC.PRIMARY_AVAILABLE', 'RAC.LAST_INSTANCE_FSFO'],
-    'Which instance was shipping which redo thread, and how a surviving instance covers a failed one\'s thread, is not modelled.',
+  return model(
+    `${primary as string} lost ${down.join(', ')}; ${running.join(', ')} ${running.length === 1 ? 'is' : 'are'} still running, so the primary stays available and this page starts no fast-start failover clock.`,
+    'RAC.PRIMARY_DEGRADED: the broker guide says the primary "remains available as long as at least one instance of the clustered database continues to transport redo data to the standby databases" and that "Fast-start failover will not occur unless all instances comprising the Oracle RAC primary database are perceived to have failed". Neither sentence mentions a clock. The chapter starts the threshold interval "when the observer first loses its connection to the primary database" and advises a higher FastStartFailoverThreshold on a RAC primary "to minimize the possibility of a false failover in the event of an instance failure" -- so a failover that follows an instance loss is something Oracle worries about, not something it rules out. This page draws no clock while any instance runs. Which instance was shipping which redo thread, and how a surviving instance covers a failed one\'s thread, is not modelled.',
+    ['RAC.PRIMARY_AVAILABLE', 'RAC.LAST_INSTANCE_FSFO', 'RAC.PERCEIVED_FAILED', 'RAC.THRESHOLD_ADVICE'],
+  );
+}
+
+/**
+ * The last instance of a RAC primary stopped after others had been lost
+ * earlier: the clock counts from now, not from the first loss. That reading is
+ * a deduction from two sentences, and Oracle states no such rule.
+ */
+export function lastInstanceClockClaim(primary: MemberId, at: Seconds): Claim<string> {
+  return inferred(
+    `The last instance of ${primary as string} stopped at ${at} s, so the fast-start failover threshold counts from here, not from the first instance lost.`,
+    ['RAC.PERCEIVED_FAILED', 'RAC.LAST_INSTANCE_FSFO'],
+    'RAC.CLOCK_FROM_LAST_INSTANCE: Oracle says fast-start failover "will not occur unless all instances comprising the Oracle RAC primary database are perceived to have failed" and that the interval starts "when the observer first loses its connection to the primary database". Reading the two together, the primary counts as lost when its last instance is, and the clock starts then. Oracle states no such rule for instances lost one after another, nor the threshold advice for RAC ("miscount + reconfiguration time + 30" seconds, RAC.THRESHOLD_MISCOUNT), so this is a deduction.',
+  );
+}
+
+/**
+ * Some running instances of a RAC primary cannot reach any standby while
+ * others can. The drawing treats the member as one unit -- reachable while any
+ * instance is -- so nothing follows from it; say so, because Oracle describes
+ * what the cluster would do.
+ */
+export function instanceCutOffClaim(
+  primary: MemberId, cut: readonly string[], reaching: readonly string[],
+): Claim<string> {
+  return model(
+    `${cut.join(', ')} of ${primary as string} cannot reach a standby while ${reaching.join(', ')} can; nothing is drawn about it.`,
+    'RAC.INSTANCE_CUT_OFF: Appendix D.2.2 of Data Guard Concepts and Administration says that "If any instance of an Oracle RAC primary database loses connectivity with a standby database, all other primary database instances stop sending redo to the standby database for the number of seconds specified on the LOG_ARCHIVE_DEST_n REOPEN attribute, after which all primary database instances attempt to reconnect", and in maximum protection that "If a lost destination is the last participating SYNC destination, then the instance loses connectivity and is shut down". This page draws neither the pause in redo nor the instance shutdown: it reads the primary as reachable while any one instance is, in every protection mode, and a real cluster would likely evict a node that lost its peers first.',
+    ['RAC.SOURCE_INSTANCE_LOSS_REOPEN', 'RAC.SOURCE_INSTANCE_LOSS_SYNC', 'RAC.PRIMARY_AVAILABLE'],
   );
 }

@@ -79,10 +79,12 @@ describe('an instance stops on a host that stays up', () => {
     expect(stateAt(t, 10).epoch.net.downHosts).toEqual(['dc1-node1']);
   });
 
-  it('the primary says, documented, that it stays available', () => {
+  it('the primary says it stays available, and that the drawing starts no clock, as a model', () => {
+    /* FC 10-01 SIM-31: the cited sentences say nothing about a clock, so the
+       claim is this page's model; it still cites the availability sentence. */
     const t = simulate(p.doc(), p.events());
     const d = t.decisions.find((x) => x.id === 'RAC.PRIMARY_DEGRADED');
-    expect(d?.claim.basis).toBe('documented');
+    expect(d?.claim.basis).toBe('model');
     expect(d?.claim.cite).toContain('RAC.PRIMARY_AVAILABLE');
     expect(claimWellFormed(d!.claim)).toBe(true);
   });

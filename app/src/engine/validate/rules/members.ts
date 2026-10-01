@@ -84,7 +84,7 @@ export const preferredApplyInstance: Rule = (ctx): Finding[] => {
       out.push(mk('RAC.PREFERRED_APPLY_UNUSED', {
         subject: memberSubject(m),
         message: `PreferredApplyInstance is set on ${q(m.name)}, ${m.role === 'snapshot' ? 'a snapshot standby' : 'a single-instance database'}. The property is used only when the database is a standby Oracle RAC database, and apply instance selection does not apply to snapshot standby databases.`,
-        cite: ['RAC.PREFERRED_APPLY_INSTANCE', 'RAC.APPLY_INSTANCE_SELECTION'],
+        cite: ['RAC.PREFERRED_APPLY_INSTANCE', 'RAC.APPLY_NOT_FOR_SNAPSHOT'],
       }));
     }
   }
@@ -139,7 +139,7 @@ export const instancesShareHost: Rule = (ctx): Finding[] => {
         subject: memberSubject(m),
         message: `Instances ${names.join(' and ')} of ${q(m.name)} both run on ${q(host)}. A crash of that host takes every one of them down, so the cluster is no more available than a single instance.`,
         cite: ['RAC.PRIMARY_AVAILABLE'],
-        note: 'RAC.ONE_INSTANCE_PER_NODE: the workbench draws each instance of a RAC database on a node of its own, which is how a cluster survives a node failure. This is a design convention, not a quoted Oracle prohibition.',
+        note: 'RAC.ONE_INSTANCE_PER_NODE: the workbench draws each instance of a RAC database on a node of its own, which is how a cluster survives a node failure. This is a design convention, not a quoted Oracle prohibition; RAC.PRIMARY_AVAILABLE is the sentence that makes one running instance enough, and that a crash of the shared host takes every instance on it follows from the hosts as drawn.',
       }));
     }
   }
