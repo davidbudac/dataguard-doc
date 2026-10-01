@@ -442,11 +442,15 @@ agree on:
   restarts* above as this case. A fast-start-failover-initiated failover and a
   switchover are untouched: their old primary is the documented stall / abort /
   `FastStartFailoverPmyShutdown` path, and the converted one.
-- **"Split brain" is this page's reading, never Oracle's word.** No Oracle page uses
-  the term or gives an interval for it, so the Break readout's *Split brain* chip
+- **"Split brain" is Oracle's word, the reading of it is this page's.** The HA guide defines
+  the term ("two copies of the same database open read-write, each operating independently of
+  the other", `SPLIT_BRAIN.DEFINITION`) and gives no interval for it, so the Break readout's *Split brain* chip
   (`splitBrainOf`, `engine/sim/split-brain.ts`) is `model`, note `SPLIT_BRAIN.READING`, and
   asks one question of the drawing: were two members `open-rw` at the same moment. A
-  STALLED primary is not counted (Oracle: its redo generation is stalled), and the old
+  STALLED primary is not counted (Oracle: its redo generation is stalled; stale reads from a
+  stalled old primary that `FastStartFailoverPmyShutdown` FALSE leaves running are disclosed in the
+  note, not counted: "A value of TRUE helps to ensure that an isolated primary database cannot
+  satisfy user queries"), and the old
   primary is drawn open where a manual failover found it still open (the rule above:
   reachable or not, fast-start failover on or off), so that reads *yes* with the window
   named, closed where the old primary crashes or shuts down. The chip is
@@ -505,13 +509,22 @@ agree on:
   no default; `FAILOVER` default on; `LOAD_BALANCE` default off inside an
   ADDRESS_LIST. Role-based services make the standby refuse instantly with
   ORA-12514. These parameters affect only NEW connections, never established
-  sessions. **The JDBC thin driver does not inherit Oracle Net's 60 s
-  transport default** — its own connect-timeout default is 0 in the 19c
-  driver and 20 s in current ones — so `buildJdbc()` always spells
-  `TRANSPORT_CONNECT_TIMEOUT` out with an explicit `sec` suffix (older thin
-  releases read a bare value as milliseconds). Never "simplify" the thin URL
-  back to the TNS omission rule, and never name the release that changed the
-  thin default — it is not stated on the API reference pages. Nominal drawing constants (footnote 3): refusal 0.2 s, OS refusal
+  sessions; a session is lost when its database stops serving or, on a RAC
+  database, when its instance does (Oracle: "Any sessions active when the instance
+  or service stops are terminated and the application user is immediately
+  notified" — which instance carries the sessions is `model`, `APP.SESSION_SPREAD`).
+  **The JDBC thin driver has defaults of its own from 26ai, split by edition:**
+  "Starting from Oracle AI Database Release 26ai, the default value of the
+  TRANSPORT_CONNECT_TIMEOUT parameter is 20 seconds" and RETRY_DELAY's is 1 second
+  (26ai JDBC "Data Sources and URLs"; `CLIENT.JDBC_TCT_26AI`,
+  `CLIENT.JDBC_RETRY_DELAY_26AI`). The 19c JDBC pages print neither, and Oracle Net's
+  60 s belongs to tnsnames.ora. The 20 s / 0 on the `OracleConnection` pages
+  (`CLIENT.JDBC_CURRENT`, `CLIENT.JDBC_19C`) is the `oracle.net.CONNECT_TIMEOUT`
+  connection property, not the descriptor keyword, and its release (23.6) must not be
+  cited for the keyword. `buildJdbc()` always spells `TRANSPORT_CONNECT_TIMEOUT` out, as
+  a bare number of seconds the way the JDBC page's own example writes it (units are
+  listed only for RETRY_DELAY): never invent a `sec` suffix, and never "simplify" the
+  thin URL back to the TNS omission rule. Nominal drawing constants (footnote 3): refusal 0.2 s, OS refusal
   0.15 s, establish 0.3 s; service assumed published the instant the new
   primary opens.
 - `LogXptMode` takes SYNC | FASTSYNC | ASYNC, broker default ASYNC, mapping to

@@ -1711,9 +1711,10 @@ handle on its top edge). Build's dock, chips and warning card are as they were.
     and, for a yes, *prm01 and sby01 are both open read-write from 30 s to the end of the run:
     prm01 is still open when sby01 opens at 30 s* — the window, closed at its end where
     something closes it (*… from 25 s to 60 s: …* where the old primary crashes at 60 s).
-  - *Basis*: `model`, note `SPLIT_BRAIN.READING`. Oracle does not use the term and gives no
-    interval, so no citation documents the reading; the ones it carries
-    (`FSFO.GUARANTEE_STALL`, `FSFO.PMY_SHUTDOWN`, `FAILOVER.PRIMARY_SHUT_DOWN`,
+  - *Basis*: `model`, note `SPLIT_BRAIN.READING`. The HA guide defines the term
+    (`SPLIT_BRAIN.DEFINITION`) and gives no interval, so no citation documents the reading; the ones it
+    carries (`SPLIT_BRAIN.DEFINITION`, `FSFO.GUARANTEE_STALL`, `FSFO.PMY_SHUTDOWN`,
+    `FSFO.PMY_SHUTDOWN_NO_STALE_QUERIES`, `FAILOVER.PRIMARY_SHUT_DOWN`,
     `FSFO.MANUAL_FAILOVER_CONDITIONS`) support the
     pieces, and it renders as this page's model wherever a chip does. **What the reading
     counts as open** is the engine's own drawing: a STALLED primary is not counted (Oracle:
