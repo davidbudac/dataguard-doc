@@ -390,6 +390,34 @@ describe('VAL-09 (decision D8): SYNC in maximum performance with fast-start fail
   });
 });
 
+describe('GEN-21: the in-group MaxFailure default of 1 is not a change', () => {
+  /* "If the standby database is part of a group as specified with the broker
+     RedoRoutes property, then the default value 1." (outside a group: 0) */
+  const grouped = (maxFailure: number): TopologyDoc => {
+    const d = baseDoc();
+    dbOf(d, 'prm01').redoRoutes = [{
+      source: 'LOCAL',
+      groups: [{ explicitGroup: true, dests: [{ target: M('sby01'), xpt: 'SYNC', priority: 1 }] }],
+    }];
+    memberOf(d, 'prm01').dests[M('sby01')] = { netTimeoutSeconds: 30, reopenSeconds: 300, maxFailure };
+    return d;
+  };
+
+  it('stays quiet at 1 inside a group, and speaks at any other value', () => {
+    expect(ids(grouped(1))).not.toContain('DEST.DEPRECATED_19C');
+    expect(find(grouped(2), 'DEST.DEPRECATED_19C')?.message).toContain('MaxFailure = 2');
+    expect(find(grouped(0), 'DEST.DEPRECATED_19C')?.message).toContain('MaxFailure = 0');
+  });
+
+  it('still calls 1 a change outside a group, and 0 the default', () => {
+    const d = baseDoc();
+    memberOf(d, 'prm01').dests[M('sby01')] = { netTimeoutSeconds: 30, reopenSeconds: 300, maxFailure: 1 };
+    expect(find(d, 'DEST.DEPRECATED_19C')?.message).toContain('MaxFailure = 1');
+    memberOf(d, 'prm01').dests[M('sby01')] = { netTimeoutSeconds: 30, reopenSeconds: 300, maxFailure: 0 };
+    expect(ids(d)).not.toContain('DEST.DEPRECATED_19C');
+  });
+});
+
 /* ---------------- restrictions that had no rule ---------------- */
 
 describe('destinations 11 to 31 do not support SYNC', () => {
