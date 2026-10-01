@@ -187,6 +187,8 @@ Rule catalogue (id · severity · basis · rule):
 - FSFO.OBSERVE_ONLY · info · documented · observe-only never fails over
 - MODE.MAXPROT_NEEDS_SYNC_DB · error · documented · far sync alone insufficient (A4)
 - MODE.MAXPROT_SNAPSHOT_ONLY · error · documented
+- ROLE.SWITCHOVER_SNAPSHOT · error · documented · a SWITCHOVER naming a snapshot standby (fact check 10-01 SIM-17)
+- ROLE.SWITCHOVER_LOGICAL_MAXPROT · error · documented · a SWITCHOVER naming a logical standby in MaxProtection (VAL-07)
 - MODE.MAXPROT_ONE_STANDBY · warning · documented · ≥2 standbys recommended (C3)
 - XPT.TABLE_4_2 · error/warn/info · documented · MaxProt SYNC; MaxAvail SYNC|FASTSYNC (26ai ASYNC → warning); MaxPerf ASYNC only mode *listed* → info, never "SYNC illegal"
 - XPT.FASTSYNC_MAXAVAIL_ONLY · error · documented
@@ -344,7 +346,9 @@ at lastAck+netTimeout (model PROT.MAXPROT_SHUTDOWN_TIMING). Bystanders per
 BystandersFollowRoleChange (default ALL). Reinstate: open band with no end
 (environment-dependent), preconditions as Findings.
 **Refused commands never change role.** SWITCHOVER TO refuses a down target, a down primary or
-the two unable to reach each other (`SWITCHOVER.GATE`); FAILOVER TO refuses a down target
+the two unable to reach each other (`SWITCHOVER.GATE`), a snapshot standby ("cannot be the target of
+a switchover"; the refusal reason is `snapshot-target`) and a logical standby in maximum protection
+(`logical-maxprotection`); FAILOVER TO refuses a down target
 (`FAILOVER.TARGET_DOWN`), and separately raises an error -- without refusing the command -- when
 the primary is still open, because the broker cannot see to it that an operator shuts it down
 first (`FAILOVER.PRIMARY_STILL_OPEN`). A manual failover with fast-start failover enabled is
@@ -352,6 +356,18 @@ conditional on the target being the current target, synchronized or inside the l
 the observer reaching it (`manualFailoverFindings`, roles.ts); the loss it books is the redo the
 target never received -- never documented as bounded, zero or lossless, always model
 (`FAILOVER.LOSS_DEPENDS`).
+**A role change to the wrong kind of standby** (fact check 2026-10-01). A role change to a *logical* standby
+disables every physical and snapshot standby, and after a failover the original primary too
+(`disableForLogical`, `SimState.recreateMembers`): they are drawn `disabled`, REINSTATE refuses them
+(`REINSTATE.MUST_RECREATE` -- they are re-created from a copy of the new primary), and
+`BYSTANDERS.FOLLOW` reads "not followed". A manual failover to a *snapshot* standby is legal but the broker first
+converts it back to a physical standby and applies the accumulated redo: the open moves later by
+`SNAPSHOT_CONVERT` (5 s, a nominal constant) plus the redo the primary generated in the run
+(`unappliedBacklog`, applied 1:1 like every apply lag here), and `FAILOVER.SNAPSHOT_ALLOWED` is a `conflict`
+(the concepts page says a snapshot "cannot be the target of a role transition", the commands page allows the manual
+failover). A standby whose apply is stopped for the run, or a snapshot, never has a zero backlog at a failover:
+the broker "waits for the target standby database to finish applying any unapplied redo" -- the wait is
+documented, its size is `model` (`FAILOVER.APPLY_WAIT`). A snapshot standby never draws `mounted-apply`.
 **A manual failover does not close a primary that is still open -- unless fast-start failover is
 enabled.** Oracle puts the shutdown on the operator (`FAILOVER.PRIMARY_SHUT_DOWN`,
 `FSFO.MANUAL_FAILOVER_CONDITIONS`) and no page says the broker closes or mounts an old primary that

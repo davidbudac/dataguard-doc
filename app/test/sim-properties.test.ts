@@ -138,16 +138,16 @@ function corpus(): Case[] {
     events: [{ at: 0, kind: 'host.down', host: hostId('dc1-prm01') }],
   });
   out.push({
-    name: 'two observers, the master stops',
+    name: 'two observers, the master\'s host goes down',
     doc: multiObserverDoc(),
-    events: [{ at: 10, kind: 'observer.stop', observer: observerId('obs01') }],
+    events: [{ at: 10, kind: 'host.down', host: hostId('dc3-obs01') }],
   });
   out.push({
-    name: 'two observers, both stop',
+    name: 'two observers, both hosts go down',
     doc: multiObserverDoc(),
     events: [
-      { at: 10, kind: 'observer.stop', observer: observerId('obs01') },
-      { at: 20, kind: 'observer.stop', observer: observerId('obs02') },
+      { at: 10, kind: 'host.down', host: hostId('dc3-obs01') },
+      { at: 20, kind: 'host.down', host: hostId('dc4-obs02') },
     ],
   });
   return out;

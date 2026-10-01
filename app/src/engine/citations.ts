@@ -491,6 +491,16 @@ export const CITATIONS = {
     quote: 'SET MASTEROBSERVER TO observer_name',
     note: "The Format line of the 19c command reference. 'The SET MASTEROBSERVER TO command lets you manually change which observer is recognized as the master observer.' Its Usage Notes DO document the preconditions (re-verified 2026-08-17): 'When this command is issued, the actual switch does not happen until the next time the primary contacts the target standby, usually within three seconds if fast-start failover is enabled.' and 'For the manual setting to succeed, the following conditions must be met during the next fast-start failover ping: The target standby is enabled and does not require reinstatement. There is no role change, reinstating, or fast-start failover target switch in progress'. An earlier revision of the fact sheet (D5) recorded the preconditions as undocumented; that was wrong.",
   },
+  'OBS.STOP_MASTER_REFUSED': {
+    url: U.bkr19Cmds, edition: '19c', verified: 'primary',
+    quote: 'The STOP OBSERVER command fails if there are two or more registered observers and you attempt to stop only the master.',
+    note: 'STOP OBSERVER, Usage Notes; the 26ai page (dgbkr/stop-observer.html) carries the same sentence. "Registered" is read here as every observer the configuration lists, running or not. A crashed observer host is not this command: it is how a master is lost and a backup nominated.',
+  },
+  'OBS.STOP_NEEDS_CONNECTION': {
+    url: U.bkr19Cmds, edition: '19c', verified: 'primary',
+    quote: 'If fast-start failover is enabled when you issue the STOP OBSERVER command, then the primary and standby databases must be connected and communicating with each other.',
+    note: 'STOP OBSERVER, Usage Notes, which continues: "Otherwise the following error is returned: ... ORA-16636 fast-start failover target standby in error state, cannot stop observer". The 26ai page (dgbkr/stop-observer.html) carries the same text.',
+  },
   'OBS.OBSERVER_ORA': {
     url: U.bkr19Cmds, edition: '19c', verified: 'primary',
     quote: 'The default value of the property ObserverConfigFile is observer.ora. You can specify an absolute path for the observer configuration file. If you specify only a file name, the default path is the DG_ADMIN directory.',
@@ -787,6 +797,21 @@ export const CITATIONS = {
     quote: 'For manual failover, the observer is started and communicating with the target standby database. You must ensure that the primary database is shut down prior to performing a manual failover.',
     note: "Performing Manual Role Changes When Fast-Start Failover Is Enabled: 'If fast-start failover is enabled you can still perform a switchover or a manual failover as long as certain conditions are met. The conditions are as follows: The role change is directed to the same standby database that was specified for the FastStartFailoverTarget database property on the primary database. The target standby database is synchronized with the primary database if it is a configuration operating in maximum availability or maximum protection mode, or the target standby database is within the lag limit if it is a configuration operating in maximum performance mode.' -- and then the quoted third condition.",
   },
+  'FSFO.DISABLE_NEEDS_CONNECTIONS': {
+    url: U.bkr19Switch, edition: '19c', verified: 'primary',
+    quote: 'Disabling fast-start failover without the FORCE option can succeed only if the database on which the command is issued has a network connection with the primary database and if the primary database and target standby database have a network connection.',
+    note: 'Disabling Fast-Start Failover, in the 19c chapter and in the 26ai fast-start failover chapter. This page\'s DISABLE FAST_START FAILOVER event names no issuing database, so the engine treats the primary as the issuer.',
+  },
+  'FSFO.DISABLE_FORCE_NO_PREVENT': {
+    url: U.bkr19Cmds, edition: '19c', verified: 'primary',
+    quote: 'Disabling fast-start failover with the FORCE option on a primary database that is disconnected from the observer and the target standby database does not prevent the observer from initiating a fast-start failover to the target standby database.',
+    note: 'DISABLE FAST_START FAILOVER, Usage Notes; the 26ai page (dgbkr/disable-fast_start-failover.html) carries the same sentence.',
+  },
+  'FSFO.DISABLE_TWO_PRIMARIES': {
+    url: U.bkr19Switch, edition: '19c', verified: 'primary',
+    quote: 'This action may result in two databases in the configuration simultaneously assuming the primary database role.',
+    note: 'Disabling Fast-Start Failover: said of the FORCE option on a primary that cannot reach the observer and the target standby.',
+  },
   'ORA.16827': {
     url: U.ora16827, edition: '19c', verified: 'primary',
     quote: 'ORA-16827 Flashback Database is disabled Cause The broker detected that the Flashback Database feature was disabled. With Flashback Database disabled, the broker could not reinstate a database that required reinstatement.',
@@ -797,6 +822,15 @@ export const CITATIONS = {
     quote: 'To enable fast-start failover when a far sync instance is used to ship redo data to the standby database, the FastStartFailoverTarget property must first be set on both the primary and target standby database',
     note: 'Scenario 7: Enabling Fast-Start Failover When a Far Sync Instance Is In Use.',
   },
+  'MEMBER.SNAPSHOT_NO_APPLY': {
+    url: U.bkr19Members, edition: '19c', verified: 'primary',
+    quote: 'unlike a physical or logical standby database, a snapshot standby database does not apply the redo data that it receives',
+  },
+  'MEMBER.SNAPSHOT_NO_STATES': {
+    url: U.bkr19Members, edition: '19c', verified: 'primary',
+    quote: 'Snapshot standby databases are not listed in this table because they do not have states; they only receive redo data.',
+    note: 'The table of standby database states (APPLY-ON, APPLY-OFF, ...): a snapshot standby has no apply state to start or stop.',
+  },
   'MEMBER.SNAPSHOT_CONVERT_NEEDS_FLASHBACK': {
     url: U.bkr19Members, edition: '19c', verified: 'primary',
     quote: 'To convert a physical standby database to a snapshot standby database you must have Flashback Database enabled.',
@@ -804,6 +838,30 @@ export const CITATIONS = {
   'FSFO.SNAPSHOT_NOT_TARGET': {
     url: U.bkr19Switch, edition: '19c', verified: 'primary',
     quote: 'A snapshot standby cannot be the target of a switchover or fast-start failover operation. You can, however, perform a manual failover to a snapshot standby.',
+  },
+  'SWITCHOVER.SNAPSHOT_NOT_TARGET': {
+    url: U.bkr19Cmds, edition: '19c', verified: 'primary',
+    quote: 'A snapshot standby database cannot be the target of a switchover or a fast-start failover.',
+    note: 'CONVERT DATABASE, Usage Notes; identical on the 26ai CONVERT DATABASE page.',
+  },
+  'SWITCHOVER.SNAPSHOT_CONVERT_FIRST': {
+    url: U.bkr19Switch, edition: '19c', verified: 'primary',
+    quote: 'You cannot perform a switchover to a snapshot standby database unless you first convert it back to a physical standby database.',
+  },
+  'FAILOVER.SNAPSHOT_CONVERT_APPLY': {
+    url: U.bkr19Switch, edition: '19c', verified: 'primary',
+    quote: 'the broker first converts the database back to a physical standby and then starts Redo Apply to apply all the accumulated redo',
+    note: 'Manual failover to a snapshot standby; the 26ai manual failover page carries the same sentence.',
+  },
+  'ROLES.SNAPSHOT_NO_ROLE_TRANSITION': {
+    url: U.sbyRoles, edition: '19c', verified: 'primary',
+    quote: 'A snapshot standby cannot be the target of a role transition.',
+    note: 'Role Transitions concepts. It conflicts with the broker commands page (FAILOVER.SNAPSHOT_MANUAL_ALLOWED), which allows a manual failover to one; the documentation does not reconcile the two.',
+  },
+  'FAILOVER.SNAPSHOT_MANUAL_ALLOWED': {
+    url: U.bkr19Cmds, edition: '19c', verified: 'primary',
+    quote: 'can be the target of a manual failover if fast-start failover is disabled',
+    note: 'CONVERT DATABASE, Usage Notes, the clause that follows the switchover and fast-start failover restriction (SWITCHOVER.SNAPSHOT_NOT_TARGET). It conflicts with ROLES.SNAPSHOT_NO_ROLE_TRANSITION.',
   },
   'FSFO.PRIMARY_UNOBSERVED': {
     url: U.bkr19Switch, edition: '19c', verified: 'primary',
@@ -936,6 +994,11 @@ export const CITATIONS = {
     quote: 'If fast-start failover is enabled, you can perform a complete manual failover only to the fast-start failover target standby database and only if the fast-start failover target standby database is synchronized with, or within the lag limit of, the primary database, and only when the observer is started. You cannot perform an immediate manual failover when fast-start failover is enabled.',
     note: 'FAILOVER, Usage Notes; identical on the 26ai FAILOVER page.',
   },
+  'FAILOVER.WAITS_FOR_APPLY': {
+    url: U.bkr19Switch, edition: '19c', verified: 'primary',
+    quote: 'Waits for the target standby database to finish applying any unapplied redo data before stopping Redo Apply',
+    note: 'The steps of a complete manual failover. How long the wait is depends on the redo outstanding and is environment-dependent.',
+  },
   'SWITCHOVER.FSFO_TARGET_ONLY': {
     url: U.bkr19Cmds, edition: '19c', verified: 'primary',
     quote: 'If fast-start failover is enabled, you may switch over only to the fast-start failover target standby database.',
@@ -1011,6 +1074,22 @@ export const CITATIONS = {
     url: U.bkr19Switch, edition: '19c', verified: 'primary',
     quote: 'The original primary database will be restarted as a part of the switchover operation.',
     note: "The restart is what ends the sessions on the former primary; the pre-12c 'COMMIT TO SWITCHOVER ... WITH SESSION SHUTDOWN' syntax is no longer on the 19c pages and is not quoted. The DGMGRL SWITCHOVER command's WAIT option 'specifies that you want to wait for sessions to drain before proceeding with the switchover' (command reference). Duration is environment-dependent.",
+  },
+
+  'SWITCHOVER.LOGICAL_DISABLES_OTHERS': {
+    url: U.bkr19Switch, edition: '19c', verified: 'primary',
+    quote: 'All physical and snapshot standby databases will be disabled and must be re-created from a copy of the new primary database after a switchover to a logical standby database.',
+    note: 'Identical on the 26ai SWITCHOVER page.',
+  },
+  'FAILOVER.LOGICAL_DISABLES_OTHERS': {
+    url: U.bkr19Switch, edition: '19c', verified: 'primary',
+    quote: 'If the failover target is a logical standby database, the original primary database and all physical and snapshot standby databases in the configuration will be disabled.',
+    note: 'Identical on the 26ai manual failover page.',
+  },
+  'SWITCHOVER.LOGICAL_MAXPROT': {
+    url: U.bkr19Switch, edition: '19c', verified: 'primary',
+    quote: 'Switchover to a logical standby database is disallowed when the configuration is operating in maximum protection mode.',
+    note: 'Identical on the 26ai SWITCHOVER page.',
   },
 
   /* ---------------- Transport modes ---------------- */

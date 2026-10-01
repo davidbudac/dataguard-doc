@@ -7,7 +7,7 @@
  * an order, never a race to whichever standby happens to be usable.
  */
 
-import { observerId } from '@/engine';
+import { hostId } from '@/engine';
 import { Fact, M } from '../facts-ui';
 import { Caption, Code, Dim, P } from '../prose';
 import type { Lesson } from '../types';
@@ -77,8 +77,8 @@ export const multiObserver: Lesson = {
           page does not nominate there.
         </P>
       ),
-      apply: { events: [{ at: 0, kind: 'observer.stop', observer: observerId('obs01') }] },
-      note: 'The master observer stops while both databases stay connected: the documented nomination case, and the only one drawn.',
+      apply: { events: [{ at: 0, kind: 'host.down', host: hostId('dc4-obs01') }] },
+      note: 'The master observer\'s host dies while both databases stay connected: the documented nomination case, and the only one drawn. STOP OBSERVER is not how a master is lost here: Oracle refuses it for the master while two or more observers are registered.',
     },
     {
       title: 'Starting them, naming them, moving the master',

@@ -164,11 +164,11 @@ export function MemberForm({ member, doc, graph }: MemberFormProps) {
           />
           <Check
             name="Apply running" prose
-            label="Redo apply is running"
-            checked={db.applyRunning}
-            enabled={gateOff(isPrimary, WHY.primaryNoApply)}
+            label={db.role === 'logical' ? 'SQL Apply is running' : 'Redo apply is running'}
+            checked={db.role === 'snapshot' ? false : db.applyRunning}
+            enabled={isPrimary ? gateOff(true, WHY.primaryNoApply) : gateOff(db.role === 'snapshot', WHY.snapshotNoApply)}
             onChange={(v) => patchDatabase(
-              id, `${v ? 'Start' : 'Stop'} redo apply on ${id as string}`,
+              id, `${v ? 'Start' : 'Stop'} ${db.role === 'logical' ? 'SQL Apply' : 'redo apply'} on ${id as string}`,
               (m) => ({ ...m, applyRunning: v }),
             )}
           />

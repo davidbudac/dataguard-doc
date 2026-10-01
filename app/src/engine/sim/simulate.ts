@@ -40,8 +40,9 @@ import {
   selectTarget, transportLagOf,
 } from './fsfo';
 import type { Readiness } from './fsfo';
+import type { CommitHangEnd } from './protection';
 import {
-  abortClaim, commitHangClaim, honestLevel, maxAvailDegraded, maxProtectionShutdown,
+  abortClaim, commitHangClaim, commitHangText, honestLevel, maxAvailDegraded, maxProtectionShutdown,
   modeAfterFailover, netTimeoutForMode, netTimeoutOf, noStallClaim, stallClaim, syncAckDatabases,
   syncAckMembers,
 } from './protection';
@@ -56,9 +57,11 @@ import {
   isMultiInstanceApply, participantLostClaim, roleChangeApplyClaim, setApplyClaim,
 } from './rac';
 import {
-  bystanderAhead, bystanderClaim, bystanders, executionClaim, manualFailoverFindings,
-  manualLossClaim, nominalBandsClaim, reinstateBandClaim, reinstateCommandFindings,
-  reinstateFindings, switchoverGate, switchoverLossClaim, switchoverRefused, switchoverSchedule,
+  bystanderAhead, bystanderClaim, bystanders, disabledByLogicalRole, executionClaim,
+  logicalRoleClaim, manualFailoverFindings, manualLossClaim, nominalBandsClaim, reinstateBandClaim,
+  reinstateCommandFindings, reinstateFindings, SNAPSHOT_CONVERT, snapshotConvertApplyClaim,
+  snapshotConvertBandClaim, snapshotFailoverAllowedClaim, snapshotFailoverFinding, switchoverGate,
+  switchoverLossClaim, switchoverRefused, switchoverSchedule, unappliedBacklog, unappliedWaitClaim,
 } from './roles';
 import type { SwitchoverRefusal } from './roles';
 
@@ -194,6 +197,9 @@ interface View {
   stalled: boolean;
   syncAcks: MemberId[];
   syncAckDbs: MemberId[];
+  /** `from>to` of the primary's SYNC / FASTSYNC destinations that acknowledge now, and of those in service that are silent. */
+  syncUp: string[];
+  syncSilent: string[];
   /** The primary declares at least one SYNC or FASTSYNC destination, up or not. */
   syncDeclared: boolean;
   conditions: Conditions;
@@ -341,6 +347,8 @@ export function simulate(
     /* 3. commands are answered against those facts, then the deadlines that
           fall due are fired against them. */
     if (state.pendingMasterObserver !== null) runSetMasterObserver(t);
+    if (state.pendingStopObservers.length > 0) { runStopObservers(view, t); view = computeView(doc, state, viewOpts); }
+    if (state.pendingDisableFsfo !== null) { runDisableFsfo(view, t); view = computeView(doc, state, viewOpts); }
     if (state.pendingSwitchover !== null) { runSwitchover(view, t); view = computeView(doc, state, viewOpts); }
     if (state.pendingFailover !== null) { runManualFailover(view, t); view = computeView(doc, state, viewOpts); }
     if (state.pendingReinstate !== null) { runReinstate(view, t); view = computeView(doc, state, viewOpts); }
@@ -467,6 +475,15 @@ export function simulate(
       { kind: 'member', id: member as string });
   }
 
+  /**
+   * How long the primary ran in this run before it was lost -- the redo a
+   * standby that applies nothing has piled up. From the instant the observer
+   * lost it where it did, else up to `at`.
+   */
+  function primaryRanFor(at: Seconds): Seconds {
+    return Math.max(0, Math.min(at, state.obsLostPrimarySince ?? at));
+  }
+
   /** Seconds of redo the primary generated that this member never received. */
   function unsent(id: MemberId, at: Seconds): Seconds {
     const since = state.unsentSince[id as string];
@@ -546,7 +563,12 @@ export function simulate(
       { kind: 'member', id: target as string });
 
     const netHop = netHopSeconds(doc, view, target);
-    const applyRemaining = applyLagOf(targetMember, state);
+    const backlog = unappliedBacklog(targetMember, primaryRanFor(at));
+    const applyRemaining = applyLagOf(targetMember, state) + backlog;
+    if (backlog > 0 && readiness.passes) {
+      decide(at, 'FAILOVER.APPLY_WAIT', true, unappliedWaitClaim(target, backlog),
+        { kind: 'member', id: target as string });
+    }
     const gap = applyGapOf(targetMember, state);
     if (gap > 0 && isDatabase(targetMember)) {
       decide(at, 'RAC.APPLY_GAP_IN_FAILOVER', true, applyGapFailoverClaim(targetMember, gap),
@@ -669,7 +691,10 @@ export function simulate(
        stall, the abort). */
     const fp = doc.members.find((m) => m.id === state.formerPrimary);
     const fpRuns = !!fp && memberAlive(doc, state.net, fp) && !state.abortedMembers.includes(fp.id);
-    state.formerOpen = manual && fpRuns;
+    /* A fast-start failover the old primary was FORCE-disabled for leaves it
+       open as well (documented: two databases may both assume the primary
+       role); that is not the manual-failover reading below. */
+    state.formerOpen = (manual || state.forcedOffPrimary === state.formerPrimary) && fpRuns;
     state.formerLostTarget = manual && fpRuns && view.fsfoEnabled;
     /* Still running as a primary: stalled before the role change and nobody has
        reached it since, or the D5 case. A crashed former primary that restarts
@@ -698,9 +723,19 @@ export function simulate(
     }
 
     const follow = doc.config.bystandersFollowRoleChange;
-    decide(at, 'BYSTANDERS.FOLLOW', follow === 'ALL', asString(bystanderClaim(follow)));
+    const gone = disableForLogical(at, target, true);
+    if (gone.length > 0) {
+      /* They are disabled whatever the property says, so the property's
+         decision is not that they follow. */
+      decide(at, 'BYSTANDERS.FOLLOW', false, asString(
+        documented(false, ['FAILOVER.LOGICAL_DISABLES_OTHERS'],
+          `${target as string} is a logical standby: the physical and snapshot standbys do not follow the new primary, whatever BystandersFollowRoleChange (${follow}) says -- they are disabled.`),
+        `BystandersFollowRoleChange does not apply to ${gone.map((g) => g as string).join(', ')}: a failover to a logical standby disables them.`));
+    } else {
+      decide(at, 'BYSTANDERS.FOLLOW', follow === 'ALL', asString(bystanderClaim(follow)));
+    }
     for (const b of bystanders(doc, target)) {
-      if (b === state.formerPrimary) continue;
+      if (b === state.formerPrimary || gone.includes(b)) continue;
       if (follow === 'NONE') {
         state.disabledMembers.push(b);
         continue;
@@ -722,7 +757,7 @@ export function simulate(
        failover caused by a primary crash or isolation -- never after a manual
        FAILOVER TO, a user-configurable health condition or a
        DBMS_DG.INITIATE_FS_FAILOVER call. */
-    const former = manual ? null : state.formerPrimary;
+    const former = manual || state.formerOpen ? null : state.formerPrimary;
     if (former !== null) {
       const missing = reinstateFindings(doc, former, target);
       for (const f of missing) addFinding(f);
@@ -851,6 +886,8 @@ export function simulate(
       targetUp,
       connected: view.primaryAlive && targetUp
         && membersReachable(doc, state.net, view.primary, m, view.reach),
+      targetRole: isDatabase(m) ? m.role : 'physical',
+      maxProtection: doc.config.protectionMode === 'MAXPROTECTION',
     });
     const refusal = refusalText(gate.reason, to, gateLag);
     decide(at, 'SWITCHOVER.GATE', !gate.blocked, asString(gate.claim,
@@ -862,9 +899,13 @@ export function simulate(
       state.switchover = switchoverRefused(at, to, gate.reason);
       const needs = gate.reason === 'primary-down' || gate.reason === 'target-down'
         || gate.reason === 'not-connected';
+      const kind = gate.reason === 'snapshot-target' || gate.reason === 'logical-maxprotection';
       addFinding({
-        id: 'SWITCHOVER.REFUSED', severity: needs ? 'error' : 'warning', basis: 'documented',
-        cite: needs ? ['SWITCHOVER.FARSYNC_NO_EFFECT', 'SWITCHOVER.FORMER_PRIMARY_RESTARTS']
+        id: 'SWITCHOVER.REFUSED', severity: needs || kind ? 'error' : 'warning', basis: 'documented',
+        cite: gate.reason === 'snapshot-target'
+          ? ['SWITCHOVER.SNAPSHOT_NOT_TARGET', 'SWITCHOVER.SNAPSHOT_CONVERT_FIRST']
+          : gate.reason === 'logical-maxprotection' ? ['SWITCHOVER.LOGICAL_MAXPROT']
+          : needs ? ['SWITCHOVER.FARSYNC_NO_EFFECT', 'SWITCHOVER.FORMER_PRIMARY_RESTARTS']
           : gate.reason === 'past-lag-limit'
             ? ['SWITCHOVER.FSFO_GATE', 'FSFO.LAGLIMIT_RECOMMENDATION']
             : gate.reason === 'not-target'
@@ -905,6 +946,10 @@ export function simulate(
 
   function refusalText(reason: SwitchoverRefusal | null, to: MemberId, gateLag: Seconds): string {
     switch (reason) {
+      case 'snapshot-target':
+        return `${to as string} is a snapshot standby, which cannot be the target of a switchover: it has to be converted back to a physical standby first`;
+      case 'logical-maxprotection':
+        return `${to as string} is a logical standby, and a switchover to a logical standby is disallowed while the configuration is in maximum protection mode`;
       case 'primary-down':
         return 'the primary is down, and a switchover is a planned role reversal between two running databases -- what is left is a failover';
       case 'target-down':
@@ -952,6 +997,35 @@ export function simulate(
     return true;
   }
 
+  /**
+   * A role change to a logical standby leaves the physical and snapshot
+   * standbys (and, after a failover, the original primary) disabled: they
+   * "must be re-created from a copy of the new primary database", which is no
+   * REINSTATE. Returns the members it disabled.
+   */
+  function disableForLogical(at: Seconds, target: MemberId, failover: boolean): MemberId[] {
+    const t = doc.members.find((x) => x.id === target);
+    if (!t || !isDatabase(t) || t.role !== 'logical') return [];
+    const mine = disabledByLogicalRole(doc, target, state.formerPrimary, failover);
+    for (const id of mine) {
+      if (!state.disabledMembers.includes(id)) state.disabledMembers.push(id);
+      if (!state.recreateMembers.includes(id)) state.recreateMembers.push(id);
+      const mm = doc.members.find((x) => x.id === id);
+      const claim = logicalRoleClaim(failover, mine.length);
+      addFinding({
+        id: 'ROLE.LOGICAL_DISABLES', severity: 'warning', basis: 'documented',
+        cite: [...claim.cite],
+        subject: { kind: 'member', id: id as string },
+        message: `${mm?.name ?? (id as string)} is disabled: ${failover ? 'the failover target' : 'the switchover target'} ${target as string} is a logical standby database, so the physical and snapshot standby databases${failover ? ' and the original primary' : ''} are disabled and must be re-created from a copy of the new primary database. REINSTATE does not bring them back.`,
+      });
+    }
+    if (mine.length > 0) {
+      decide(at, 'ROLE.LOGICAL_DISABLES', true, logicalRoleClaim(failover, mine.length),
+        { kind: 'member', id: target as string });
+    }
+    return mine;
+  }
+
   function completeSwitchover(at: Seconds): void {
     const sw = state.switchover;
     if (!sw || sw.blocked) return;
@@ -971,6 +1045,7 @@ export function simulate(
     state.formerActs = false;
     state.formerOpen = false;
     if (state.formerPrimary !== null) rearmApply(state.formerPrimary, at);
+    disableForLogical(at, sw.to, false);
     decide(at, 'SWITCHOVER.ZERO_LOSS', true, asString(switchoverLossClaim(),
       'The roles swap only once the standby has everything: zero data loss in every protection mode. The former primary restarts as the new standby, and the new primary does not wait for it.'));
   }
@@ -1038,12 +1113,28 @@ export function simulate(
        ordered its own, which is the whole point of DISABLE FAST_START FAILOVER
        FORCE in the documented conditions above. */
     state.phase = 'failing-over';
-    /* An immediate failover applies none of the redo the standby holds. */
-    const applyRemaining = cmd.immediate ? 0 : applyLagOf(m, state);
+    /* An immediate failover applies none of the redo the standby holds. A
+       snapshot standby is first converted back to a physical standby, and a
+       standby whose apply is stopped has redo to apply that its lag figure
+       does not count: the broker "waits for the target standby database to
+       finish applying any unapplied redo data". */
+    const snapshot = isDatabase(m) && m.role === 'snapshot';
+    const convert = snapshot ? SNAPSHOT_CONVERT : 0;
+    const backlog = cmd.immediate ? 0 : unappliedBacklog(m, primaryRanFor(at));
+    const applyRemaining = cmd.immediate ? 0 : applyLagOf(m, state) + backlog;
     state.execStartAt = at;
-    state.tOpenAt = at + applyRemaining + doc.environment.roleTransitionSeconds;
+    state.tOpenAt = at + convert + applyRemaining + doc.environment.roleTransitionSeconds;
     state.converting = to;
     q.push({ kind: 'fsfo.open', at: state.tOpenAt, subject }, 'fsfo.open', false, to);
+    if (snapshot) {
+      addFinding(snapshotFailoverFinding(to));
+      decide(at, 'FAILOVER.SNAPSHOT_ALLOWED', true, snapshotFailoverAllowedClaim(to), subject);
+      decide(at, 'FAILOVER.SNAPSHOT_CONVERT_APPLY', true, snapshotConvertApplyClaim(to), subject);
+      decide(at, 'FAILOVER.SNAPSHOT_BAND', true,
+        snapshotConvertBandClaim(to, SNAPSHOT_CONVERT, applyRemaining, cmd.immediate), subject);
+    } else if (backlog > 0) {
+      decide(at, 'FAILOVER.APPLY_WAIT', true, unappliedWaitClaim(to, backlog), subject);
+    }
     decide(at, 'FSFO.MANUAL_FAILOVER', true, asString(
       documented(true, ['FSFO.MANUAL_FAILOVER_CONDITIONS', 'FSFO.STATUS_DISABLED'],
         'A manual FAILOVER TO needs no observer while fast-start failover is disabled. With fast-start failover enabled it is conditional: the target must be the current fast-start failover target, synchronized (maximum availability or protection) or inside the lag limit (maximum performance), with the observer started and communicating with it, and the primary shut down first.'),
@@ -1086,6 +1177,19 @@ export function simulate(
     if (id === null) return;
     const m = doc.members.find((x) => x.id === id);
     if (!m || !isDatabase(m)) return;
+    if (state.recreateMembers.includes(id)) {
+      const finding: Finding = {
+        id: 'REINSTATE.MUST_RECREATE', severity: 'error', basis: 'documented',
+        cite: ['SWITCHOVER.LOGICAL_DISABLES_OTHERS', 'FAILOVER.LOGICAL_DISABLES_OTHERS'],
+        subject: { kind: 'member', id: id as string },
+        message: `REINSTATE DATABASE ${id as string} cannot bring it back: the role change to a logical standby disabled it, and it must be re-created from a copy of the new primary database.`,
+      };
+      addFinding(finding);
+      decideAt(at, 'REINSTATE.COMMAND', false, {
+        value: finding.message, basis: 'documented', cite: [...finding.cite],
+      }, { kind: 'member', id: id as string });
+      return;
+    }
     const failedOver = state.phase === 'failed-over';
     const needs = failedOver
       && (state.formerPrimary === id || state.disabledMembers.includes(id));
@@ -1126,6 +1230,106 @@ export function simulate(
     masterSwitches.push({ at: due, observer });
     q.push({ kind: 'observer.master', at: due, subject: { kind: 'observer', id: observer as string } },
       'observer.master', false);
+  }
+
+  /** The primary reaches the target standby: the connection STOP OBSERVER and DISABLE look for. */
+  function primaryConnectedToTarget(view: View): boolean {
+    if (!view.primaryAlive) return false;
+    const target = state.activeTarget;
+    /* After a role change the new primary has no fast-start failover target
+       yet (D6), so there is no target standby to be out of contact with: the
+       ORA-16636 condition has nothing to apply to. */
+    if (target === null && (state.phase === 'failed-over' || state.phase === 'switched')) return true;
+    return target !== null ? (view.targetSeesPrimary[target as string] ?? false) : view.anyTargetSeesPrimary;
+  }
+
+  /**
+   * STOP OBSERVER. Oracle refuses it twice over, and the page used to accept
+   * both: "The STOP OBSERVER command fails if there are two or more registered
+   * observers and you attempt to stop only the master", and, with fast-start
+   * failover enabled, "the primary and standby databases must be connected and
+   * communicating with each other" or ORA-16636 comes back. A refused stop
+   * leaves the observer running; a master is lost by taking its host down.
+   */
+  function runStopObservers(view: View, at: Seconds): void {
+    const stops = state.pendingStopObservers;
+    state.pendingStopObservers = [];
+    for (const id of stops) {
+      const o = state.observers[id as string];
+      if (!o || !o.running) continue;
+      const subject = { kind: 'observer' as const, id: id as string };
+      const registered = doc.observers.length;
+      if (view.master === id && registered >= 2) {
+        const message = `STOP OBSERVER ${id as string} is refused: it is the master observer and ${registered} observers are registered. The command fails if there are two or more registered observers and you attempt to stop only the master, so ${id as string} keeps running.`;
+        addFinding({
+          id: 'OBS.STOP_MASTER_REFUSED', severity: 'error', basis: 'documented',
+          cite: ['OBS.STOP_MASTER_REFUSED'], subject, message,
+          note: '"Registered" is read as every observer the configuration lists, running or not. Losing a master is what a crashed observer host does: the broker then nominates a backup.',
+        });
+        decideAt(at, 'OBS.STOP_OBSERVER', false, documented(message, ['OBS.STOP_MASTER_REFUSED']), subject);
+        continue;
+      }
+      if (state.fsfoState !== 'disabled' && !primaryConnectedToTarget(view)) {
+        const message = `STOP OBSERVER ${id as string} is refused with ORA-16636: fast-start failover is enabled and the primary and the target standby are not connected and communicating with each other, so ${id as string} keeps running.`;
+        addFinding({
+          id: 'OBS.STOP_NEEDS_CONNECTION', severity: 'error', basis: 'documented',
+          cite: ['OBS.STOP_NEEDS_CONNECTION'], subject, message, ora: 'ORA-16636',
+          note: 'Oracle prints the error as "ORA-16636 fast-start failover target standby in error state, cannot stop observer".',
+        });
+        decideAt(at, 'OBS.STOP_OBSERVER', false, documented(message, ['OBS.STOP_NEEDS_CONNECTION']), subject);
+        continue;
+      }
+      o.running = false;
+    }
+  }
+
+  /**
+   * DISABLE FAST_START FAILOVER. Without FORCE it "can succeed only if the
+   * database on which the command is issued has a network connection with the
+   * primary database and if the primary database and target standby database
+   * have a network connection". With FORCE on a primary that is cut off from
+   * the observer and the target, it disables fast-start failover on that
+   * primary alone: the observer and the target still have it enabled, so the
+   * failover goes ahead and two databases may both be primary.
+   *
+   * The event names no issuing database. The primary is taken as the issuer
+   * while it is up; with the primary down no database has a connection to it.
+   */
+  function runDisableFsfo(view: View, at: Seconds): void {
+    const cmd = state.pendingDisableFsfo;
+    state.pendingDisableFsfo = null;
+    if (cmd === null || state.fsfoState === 'disabled') return;
+    const subject = { kind: 'config' as const };
+    const connected = primaryConnectedToTarget(view);
+    if (!cmd.force) {
+      if (connected) { state.fsfoState = 'disabled'; return; }
+      const why = view.primaryAlive
+        ? 'the primary and the target standby are not connected'
+        : 'the primary is down, so no database has a network connection with it';
+      const message = `DISABLE FAST_START FAILOVER is refused: without the FORCE option it can succeed only if the database it is issued on has a network connection with the primary and the primary and the target standby have a network connection, and ${why}. Fast-start failover stays enabled; FORCE is the way past it.`;
+      addFinding({
+        id: 'FSFO.DISABLE_REFUSED', severity: 'error', basis: 'documented',
+        cite: ['FSFO.DISABLE_NEEDS_CONNECTIONS'], subject, message,
+        note: 'The event names no issuing database. Whichever database issues it, the primary-to-target connection is missing or the primary is down, so the documented condition fails.',
+      });
+      decideAt(at, 'FSFO.DISABLE_FAST_START_FAILOVER', false,
+        documented(message, ['FSFO.DISABLE_NEEDS_CONNECTIONS']), subject);
+      return;
+    }
+    const isolated = view.primaryAlive && !view.obsSeesPrimary && !view.anyTargetSeesPrimary;
+    if (!isolated) { state.fsfoState = 'disabled'; return; }
+    state.forcedOffPrimary = state.primary;
+    const message = `DISABLE FAST_START FAILOVER FORCE on ${state.primary as string}, which is disconnected from the observer and the target standby, disables fast-start failover on that primary only. It does not prevent the observer from initiating a fast-start failover to the target standby, and this action may result in two databases in the configuration simultaneously assuming the primary database role.`;
+    addFinding({
+      id: 'FSFO.DISABLE_FORCE_ISOLATED', severity: 'warning', basis: 'documented',
+      cite: ['FSFO.DISABLE_FORCE_NO_PREVENT', 'FSFO.DISABLE_TWO_PRIMARIES'], subject, message,
+    });
+    decideAt(at, 'FSFO.DISABLE_FAST_START_FAILOVER', true,
+      documented(message, ['FSFO.DISABLE_FORCE_NO_PREVENT', 'FSFO.DISABLE_TWO_PRIMARIES']), subject);
+    decideAt(at, 'FSFO.DISABLE_FORCE_PRIMARY_RUNS', true, model(
+      `${state.primary as string} stops stalling: with fast-start failover disabled on it, its commits wait out NET_TIMEOUT and it then carries on read-write, while the observer's threshold clock keeps running.`,
+      'FSFO.DISABLE_FORCE_PRIMARY_RUNS: Oracle documents that the observer is not prevented from failing over and that two primaries may result. It does not say how the isolated primary behaves in between, so this page draws it as an ordinary primary that has lost its SYNC standby (a commit hang for NET_TIMEOUT, then read-write) and as unaware of the failover, which is the reading the two-primaries sentence needs.',
+      ['FSFO.DISABLE_FORCE_NO_PREVENT', 'FSFO.DISABLE_TWO_PRIMARIES', 'DEST.NET_TIMEOUT']), subject);
   }
 
   function applyMasterSwitches(view: View, at: Seconds): void {
@@ -1220,10 +1424,30 @@ export function simulate(
        lose, so nothing hangs: it opens read-write at the instant the role
        change completes, which is what the readout and the timeline say. */
     if (view.syncAcks.length > 0) state.ackArmed = true;
-    state.ackLostSince = wantsAck && state.ackArmed && view.primaryAlive
-      && view.syncAcks.length === 0
-      ? state.ackLostSince ?? at
+    /* LGWR waits "up to the number of seconds specified by the NET_TIMEOUT
+       attribute ... for each SYNC standby destination" (the default of
+       DATA_GUARD_SYNC_LATENCY), so one destination going silent among several
+       hangs the commit for its NET_TIMEOUT even while another still answers.
+       Only a destination that was acknowledging during this primary's tenure
+       can go silent; each new silence restarts the wait. */
+    const seen = state.syncSeen;
+    if (seen.primary !== state.primary) {
+      /* The configuration as declared is acknowledging (kernel.ts, `ackArmed`):
+         the run's first primary starts with every destination it has in service,
+         so one that is down from the first epoch is a loss. A primary that took
+         the role mid-run starts with none and earns each one. */
+      const declared = seen.primary === null;
+      seen.primary = state.primary;
+      seen.up = declared ? [...view.syncUp, ...view.syncSilent] : [];
+      seen.silent = 0;
+    }
+    for (const k of view.syncUp) if (!seen.up.includes(k)) seen.up.push(k);
+    const silent = view.syncSilent.filter((k) => seen.up.includes(k)).length;
+    const lostAll = state.ackArmed && view.syncAcks.length === 0;
+    state.ackLostSince = wantsAck && view.primaryAlive && (lostAll || silent > 0)
+      ? (silent > seen.silent ? at : state.ackLostSince ?? at)
       : null;
+    seen.silent = silent;
 
     if (state.phase === 'normal') {
       trackObserved(view, at);
@@ -1599,7 +1823,9 @@ export function simulate(
          connection to the master observer is lost" -- a dead primary, or one
          cut off from every target, is outside the documented case. */
       const precondition = view.primaryAlive && view.anyTargetSeesPrimary;
-      const backups = doc.observers.filter((o) => state.observers[o.id as string]?.running);
+      /* A backup whose host is down is not there to be nominated. */
+      const backups = doc.observers.filter((o) => (state.observers[o.id as string]?.running ?? false)
+        && hostUp(doc, state.net, o.host));
       if (view.primaryAlive) {
         decide(at, 'OBS.MASTER_LOST', true, asString(
           documented(true, ['FSFO.PRIMARY_UNOBSERVED', 'ORA.16820', 'OBS.CANNOT_OCCUR_LIST'],
@@ -1661,9 +1887,19 @@ export function simulate(
       const up = !!fp && memberAlive(doc, state.net, fp)
         && !state.abortedMembers.includes(fp.id) && !stalledFormer;
       if (fp && up && state.reinstating !== fp.id) {
-        addFinding(formerPrimaryFinding(doc, view, fp, state.formerOpen,
-          memberStateOf(doc, state, view, fp, at) === 'open-rw', state.primary,
-          !state.everDown.includes(fp.id)));
+        if (state.formerOpen && state.forcedOffPrimary === fp.id) {
+          addFinding({
+            id: 'FSFO.DISABLE_FORCE_TWO_PRIMARIES', severity: 'warning', basis: 'model',
+            cite: ['FSFO.DISABLE_FORCE_NO_PREVENT', 'FSFO.DISABLE_TWO_PRIMARIES'],
+            subject: { kind: 'member', id: fp.id as string },
+            message: `${fp.name} is still running and open read-write after the fast-start failover to ${state.primary as string}: DISABLE FAST_START FAILOVER FORCE had disabled fast-start failover on ${fp.name} alone, so the observer failed over without it knowing. Two databases are primary at once.`,
+            note: 'FSFO.DISABLE_FORCE_TWO_PRIMARIES: that two databases may both assume the primary role is documented. That the old primary stays open until something takes it down, with nothing closing it when contact returns, is this page\'s reading of a case Oracle does not spell out.',
+          });
+        } else {
+          addFinding(formerPrimaryFinding(doc, view, fp, state.formerOpen,
+            memberStateOf(doc, state, view, fp, at) === 'open-rw', state.primary,
+            !state.everDown.includes(fp.id)));
+        }
       }
       if (fp && stalledFormer && state.formerLostTarget) {
         const stalls = formerPrimaryStalls(doc, fp, state.primary);
@@ -1704,10 +1940,13 @@ export function simulate(
 
     if (state.ackLostSince !== null && modeNow(doc, state) !== 'MAXPERFORMANCE') {
       const until = state.ackLostSince + netTimeoutForMode(doc, view.graph);
-      decide(at, 'PROT.COMMIT_HANG', true, asString(commitHangClaim(until, view.stalled),
-        view.stalled
-          ? 'The commit hang spans the whole stall: the fast-start failover stall overrides NET_TIMEOUT\'s drop-and-continue behaviour.'
-          : `Commits wait for the synchronous acknowledgement until NET_TIMEOUT expires at ${until} s, and the primary then drops the destination and carries on.`));
+      const hangEnd: CommitHangEnd = modeNow(doc, state) !== 'MAXPROTECTION' ? 'drop'
+        : view.syncAckDbs.length > 0 ? 'drop-another-remains' : 'shutdown';
+      /* One decision per hang: a second standby lost later is its own wait, and
+         it may end differently (the last synchronized standby shuts the primary down). */
+      decide(at, 'PROT.COMMIT_HANG', true,
+        asString(commitHangClaim(until, view.stalled, hangEnd), commitHangText(until, view.stalled, hangEnd)),
+        undefined, String(state.ackLostSince));
     }
 
     if (modeNow(doc, state) === 'MAXAVAILABILITY') {
@@ -1858,7 +2097,8 @@ export function simulate(
     /* NET_TIMEOUT bounds the commit hang, and is never a failover clock. In a
        full fast-start failover stall the stall overrides it. */
     if (state.ackLostSince !== null && !view.stalled
-      && modeNow(doc, state) === 'MAXAVAILABILITY') {
+      && (modeNow(doc, state) === 'MAXAVAILABILITY'
+        || (modeNow(doc, state) === 'MAXPROTECTION' && view.syncAckDbs.length > 0))) {
       const until = state.ackLostSince + netTimeoutForMode(doc, view.graph);
       if (until > at + EPS) q.push({ kind: 'net.timeout', at: until }, 'net.timeout', true);
     }
@@ -2117,11 +2357,9 @@ function applyEvent(doc: TopologyDoc, state: SimState, e: TimedEvent): void {
       if (m?.instances.some((i) => i.name === e.instance)) state.net = applyNetEvent(state.net, e);
       break;
     }
-    case 'observer.stop': {
-      const o = state.observers[e.observer as string];
-      if (o) o.running = false;
-      break;
-    }
+    /* STOP OBSERVER and DISABLE FAST_START FAILOVER are commands the broker
+       can refuse, so they wait one step like the others. */
+    case 'observer.stop': state.pendingStopObservers.push(e.observer); break;
     case 'observer.start': {
       const o = state.observers[e.observer as string];
       if (o) o.running = true;
@@ -2130,7 +2368,7 @@ function applyEvent(doc: TopologyDoc, state: SimState, e: TimedEvent): void {
     /* Commands wait one step: each is answered against the epoch's facts. */
     case 'cmd.setMasterObserver': state.pendingMasterObserver = e.observer; break;
     case 'cmd.setApplyInstance': state.pendingApplyMove = { member: e.member, instance: e.instance }; break;
-    case 'cmd.disableFsfo': state.fsfoState = 'disabled'; break;
+    case 'cmd.disableFsfo': state.pendingDisableFsfo = { force: e.force === true }; break;
     case 'cmd.switchover': state.pendingSwitchover = e.to; break;
     case 'cmd.failover':
       state.pendingFailover = { to: e.to, immediate: e.immediate === true };
@@ -2320,10 +2558,20 @@ function computeView(doc: TopologyDoc, state: SimState, opts: ViewOpts): View {
       running: isolated && !stalledNow ? (state.unobserved ? 'unobserved' : 'not-ready') : null,
     };
   }
+  /* A primary that disabled fast-start failover on itself with FORCE does not
+     stall: it no longer waits on a failover to be confirmed. The observer and
+     the target have not heard, which is the rest of the configuration's view
+     and is left as computed. */
+  const forced = state.forcedOffPrimary === null ? undefined : actors[state.forcedOffPrimary as string];
+  if (forced) { forced.stalled = false; forced.running = null; }
 
   const stalled = actors[state.primary as string]?.stalled ?? false;
   const acks = syncAckMembers(graph);
   const ackDbs = syncAckDatabases(doc, graph);
+  const syncEdges = graph.edges.filter((e) => e.from === state.primary
+    && (e.xpt === 'SYNC' || e.xpt === 'FASTSYNC') && e.active);
+  const syncUp = syncEdges.filter((e) => e.up).map((e) => `${e.from as string}>${e.to as string}`);
+  const syncSilent = syncEdges.filter((e) => !e.up).map((e) => `${e.from as string}>${e.to as string}`);
   const syncDeclared = graph.edges.some((e) => e.from === state.primary
     && (e.xpt === 'SYNC' || e.xpt === 'FASTSYNC'));
   const redoFlowing = primaryAlive
@@ -2335,7 +2583,7 @@ function computeView(doc: TopologyDoc, state: SimState, opts: ViewOpts): View {
     reach, graph, primary, primaryAlive, fsfoEnabled, master, masterHost,
     armed: fsfoEnabled && master !== null,
     obsSeesPrimary, candidates, targetSeesPrimary, obsSeesTarget, targetAlive,
-    anyTargetSeesPrimary, actors, stalled, syncAcks: acks, syncAckDbs: ackDbs, syncDeclared,
+    anyTargetSeesPrimary, actors, stalled, syncAcks: acks, syncAckDbs: ackDbs, syncUp, syncSilent, syncDeclared,
     conditions: {
       stalled, standbyGone, redoFlowing,
       pmyReachable: primaryReachableFromOutside(doc, net, primary, primaryAlive),
@@ -2422,7 +2670,8 @@ function memberStateOf(
     /* A fast-start failover is under way and this is the primary it is
        leaving behind, back on its feet: it has to be told it may open, and
        what it is told is that a failover is in progress. */
-    if (state.phase === 'failing-over' && state.initiateAt !== null && state.target !== m.id) {
+    if (state.phase === 'failing-over' && state.initiateAt !== null && state.target !== m.id
+      && state.forcedOffPrimary !== m.id) {
       return 'mounted-noapply';
     }
     if (state.ackLostSince !== null && modeNow(doc, state) !== 'MAXPERFORMANCE'
@@ -2466,6 +2715,9 @@ function memberStateOf(
   /* A RAC standby waiting out ApplyInstanceTimeout has no instance applying. */
   const lost = state.applyLostSince[m.id as string];
   if (tracksApply(state, m) && lost !== null && lost !== undefined) return 'mounted-noapply';
+  /* "A snapshot standby database does not apply the redo data that it
+     receives": whatever applyRunning says, it is not drawn applying. */
+  if (m.role === 'snapshot') return 'mounted-noapply';
   return m.applyRunning ? 'mounted-apply' : 'mounted-noapply';
 }
 
@@ -2845,6 +3097,7 @@ function initialState(doc: TopologyDoc): SimState {
     abortAt: null,
     abortReason: null,
     disabledMembers: [],
+    recreateMembers: [],
     disabledDests: [],
     altLatched: [],
     groupChoice: {},
@@ -2862,6 +3115,10 @@ function initialState(doc: TopologyDoc): SimState {
     pendingFailover: null,
     pendingReinstate: null,
     pendingMasterObserver: null,
+    pendingStopObservers: [],
+    pendingDisableFsfo: null,
+    forcedOffPrimary: null,
+    syncSeen: { primary: null, up: [], silent: 0 },
     modeAfterRoleChange: null,
     loss: null,
     primaryWasDown: false,

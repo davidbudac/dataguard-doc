@@ -612,8 +612,16 @@ const SIM: SimProbe[] = [
     doc: () => preset('max-protection').doc(),
     events: () => preset('max-protection').events(),
     oracle: '"To ensure that data loss cannot occur, the primary database will shut down, rather than continue processing transactions, if it cannot write its redo stream to at least one synchronized standby database." (19c members chapter)',
-    open: (t) => (t.decisions ?? []).some((d) => d.id === 'PROT.COMMIT_HANG' && String(d.claim.value).includes('carries on'))
-      && (t.decisions ?? []).some((d) => d.id === 'PROT.MAXPROT_SHUTDOWN'),
+    /* Since the fix a commit hang is a decision of its own each time (the first standby lost
+       carries on, the last one lost shuts the primary down), so the question is about the
+       hang that ends in the shutdown, not about whether any hang says "carries on". */
+    open: (t) => {
+      const ds = t.decisions ?? [];
+      const shutdown = ds.find((d) => d.id === 'PROT.MAXPROT_SHUTDOWN');
+      const hang = shutdown === undefined ? undefined
+        : ds.filter((d) => d.id === 'PROT.COMMIT_HANG' && d.at <= shutdown.at).pop();
+      return hang !== undefined && String(hang.claim.value).includes('carries on');
+    },
     lanes: ['prm01'],
   },
   {

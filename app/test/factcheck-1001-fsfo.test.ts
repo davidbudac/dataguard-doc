@@ -117,6 +117,14 @@ describe('SIM-15 (D6): after a role change the new primary has no target, so los
       expect(endState(t, 'sby01')).toBe('open-rw');
       expect(neverStalledOrAborted(t, 'sby01')).toBe(true);
       expect(finding(t, 'SIM.ONE_ROLE_CHANGE')?.message ?? '').not.toContain('is down');
+      /* STOP OBSERVER takes effect: with no target after the role change the
+         ORA-16636 refusal (primary and target not connected) has nothing to
+         apply to. */
+      if (events.some((e) => e.kind === 'observer.stop')) {
+        const obsLane = t.lanes.find((l) => l.subject.kind === 'observer' && l.subject.id === 'obs01');
+        expect(obsLane?.segments.at(-1)?.state).toBe('stopped');
+        expect(finding(t, 'OBS.STOP_NEEDS_CONNECTION')).toBeUndefined();
+      }
       /* Said once, as an inference from the two sentences. */
       const d = decisions(t, 'FSFO.NO_TARGET_AFTER_ROLE_CHANGE');
       expect(d).toHaveLength(1);

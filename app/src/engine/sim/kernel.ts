@@ -316,8 +316,13 @@ export interface SimState {
   abortedMembers: MemberId[];
   abortAt: Seconds | null;
   abortReason: 'stall' | 'maxprotection' | null;
-  /** Members taken out of service by BystandersFollowRoleChange = NONE. */
+  /** Members taken out of service by BystandersFollowRoleChange = NONE, or by a role change to a logical standby. */
   disabledMembers: MemberId[];
+  /**
+   * The disabled members that cannot be reinstated: a role change to a logical
+   * standby leaves them "to be re-created from a copy of the new primary".
+   */
+  recreateMembers: MemberId[];
 
   /* destinations across epochs (dests.ts) */
   /**
@@ -357,6 +362,24 @@ export interface SimState {
   pendingFailover: { to: MemberId; immediate: boolean } | null;
   pendingReinstate: MemberId | null;
   pendingMasterObserver: ObserverId | null;
+  /** STOP OBSERVER, answered against the epoch's facts: the broker may refuse it. */
+  pendingStopObservers: ObserverId[];
+  /** DISABLE FAST_START FAILOVER [FORCE], answered the same way. */
+  pendingDisableFsfo: { force: boolean } | null;
+  /**
+   * The primary that ran DISABLE FAST_START FAILOVER FORCE while cut off from
+   * the observer and the target standby. Only it treats fast-start failover as
+   * disabled; the observer and the target still have it enabled, so they carry
+   * on with a failover it does not know about. Null in every other run.
+   */
+  forcedOffPrimary: MemberId | null;
+  /**
+   * The SYNC destinations the primary has seen acknowledging during its tenure
+   * (`from>to` keys), the primary they belong to, and how many of them are
+   * silent right now -- so a destination that stops answering among several
+   * starts a commit hang of its own, and one that was never up does not.
+   */
+  syncSeen: { primary: MemberId | null; up: string[]; silent: number };
   /** The protection mode the new primary runs in after a role change, where it differs. */
   modeAfterRoleChange: ProtectionMode | null;
   /** What the role change cost, decided where the role change was decided. */

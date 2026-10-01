@@ -484,10 +484,10 @@ describe('the threshold clock belongs to a running master observer', () => {
   it('an observer started after the crash counts from the moment it takes over', () => {
     const doc = multiObserverDoc();
     const trace = simulate(doc, [
-      { at: 0, kind: 'observer.stop', observer: observerId('obs01') },
-      { at: 0, kind: 'observer.stop', observer: observerId('obs02') },
+      { at: 0, kind: 'host.down', host: hostId('dc3-obs01') },
+      { at: 0, kind: 'host.down', host: hostId('dc4-obs02') },
       { at: 0, kind: 'host.down', host: hostId('dc1-prm01') },
-      { at: 20, kind: 'observer.start', observer: observerId('obs01') },
+      { at: 20, kind: 'host.up', host: hostId('dc3-obs01') },
     ]);
     expect(trace.facts.initiateAt).toBe(50);
   });
