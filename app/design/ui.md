@@ -1719,14 +1719,16 @@ handle on its top edge). Build's dock, chips and warning card are as they were.
     counts as open** is the engine's own drawing: a STALLED primary is not counted (Oracle:
     its redo generation is stalled, so it commits nothing the new primary will not have),
     which is how the old page read it too; and a former primary is drawn open where a manual
-    failover found it still running and open — Oracle puts its shutdown on the operator
-    (`FAILOVER.PRIMARY_SHUT_DOWN`, `FSFO.MANUAL_FAILOVER_CONDITIONS`) and no page says the
-    broker closes or mounts it — whether or not the new primary can reach it and whether
-    fast-start failover is enabled or disabled (`FAILOVER.FORMER_PRIMARY_OPEN`'s note). **A
-    manual failover with the old primary still running reads `yes`** from the instant the new
-    primary opens, and the run also raises `FAILOVER.PRIMARY_STILL_OPEN` (Oracle's
-    instruction, at the command) beside it; probe SBR-04 (and SBR-06, -07, -08) hold the
-    reading in view. A former primary that went down and restarts is not that one: it is
+    failover found it still running and open with fast-start failover disabled — Oracle puts
+    its shutdown on the operator (`FAILOVER.PRIMARY_SHUT_DOWN`,
+    `FSFO.MANUAL_FAILOVER_CONDITIONS`) and no page says the broker closes or mounts it —
+    whether or not the new primary can reach it (`FAILOVER.FORMER_PRIMARY_OPEN`'s note). With
+    fast-start failover enabled the old primary has lost its target and is drawn stalled, then
+    aborted (`FAILOVER.FORMER_PRIMARY_STALLS`, `model`, owner decision D5), so it reads `no`.
+    **A manual failover with the old primary still running and fast-start failover disabled
+    reads `yes`** from the instant the new primary opens, and the run also raises
+    `FAILOVER.PRIMARY_STILL_OPEN` (Oracle's instruction, at the command) beside it; probe
+    SBR-04 (and SBR-06, -07, -08) hold the reading in view. A former primary that went down and restarts is not that one: it is
     mounted, so a run that crashes the old primary before the failover reads `no`. A
     switchover, whose old primary is converted before the new one opens, has no chip at all.
     Where the run also draws the application, the old primary keeps publishing the service

@@ -37,13 +37,18 @@ afterEach(() => {
 });
 
 describe('SHOW CONFIGURATION where the old primary stayed open', () => {
-  it('names the old primary as still open, with fast-start failover disabled or enabled', () => {
-    for (const d of [fsfoOff(), CLASSIC]) {
-      const text = show(d, [{ at: 0, kind: 'cmd.failover', to: SBY }], 100);
-      expect(trace.value?.facts.newPrimary).toBe(SBY);
-      expect(text).toContain('SHOW CONFIGURATION WHEN PRIMARY IS sby01');
-      expect(text).toContain('prm01 is still open read-write as a primary in this run');
-    }
+  it('names the old primary as still open, with fast-start failover disabled', () => {
+    const text = show(fsfoOff(), [{ at: 0, kind: 'cmd.failover', to: SBY }], 100);
+    expect(trace.value?.facts.newPrimary).toBe(SBY);
+    expect(text).toContain('SHOW CONFIGURATION WHEN PRIMARY IS sby01');
+    expect(text).toContain('prm01 is still open read-write as a primary in this run');
+  });
+
+  it('says nothing with fast-start failover enabled: the old primary has lost its target and is aborted (owner decision D5)', () => {
+    const text = show(CLASSIC, [{ at: 0, kind: 'cmd.failover', to: SBY }], 100);
+    expect(trace.value?.facts.newPrimary).toBe(SBY);
+    expect(text).toContain('SHOW CONFIGURATION WHEN PRIMARY IS sby01');
+    expect(text).not.toContain('still open read-write');
   });
 
   it('says nothing once the old primary is down, or before the new primary opens', () => {

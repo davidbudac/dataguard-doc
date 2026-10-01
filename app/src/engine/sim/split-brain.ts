@@ -20,11 +20,13 @@
  *
  * The lanes' `open-rw` for a former primary is itself this page's reading
  * (`FAILOVER.FORMER_PRIMARY_OPEN` in simulate.ts): a manual failover that
- * finds the old primary still running and open does not close it -- Oracle puts
- * the shutdown on the operator -- so it is drawn open beside the new primary
- * until a crash, a shutdown or an abort takes it down, whether or not the new
- * primary can reach it and whether or not fast-start failover is enabled.
- * That is why the claim is a `model`.
+ * finds the old primary still running and open, with fast-start failover
+ * DISABLED, does not close it -- Oracle puts the shutdown on the operator -- so
+ * it is drawn open beside the new primary until a crash or a shutdown takes it
+ * down, whether or not the new primary can reach it. With fast-start failover
+ * enabled the old primary has lost its target and is drawn stalled, then
+ * aborted (`FAILOVER.FORMER_PRIMARY_STALLS`, owner decision D5), so it is not
+ * counted. That is why the claim is a `model`.
  */
 
 import type { MemberId, Seconds } from '../ids';

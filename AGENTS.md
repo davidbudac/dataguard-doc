@@ -393,7 +393,14 @@ agree on:
   `DBMS_DG.INITIATE_FS_FAILOVER` call — and needs Flashback Database on both
   databases, the former primary started and mounted (a manual restart when
   `FastStartFailoverPmyShutdown` aborted it), the master observer able to reach
-  it, and static service names without Clusterware/Oracle Restart. Reinstate
+  it, and static service names without Clusterware/Oracle Restart. The page draws
+  the `reinstating` band (`REINSTATE.OPEN_BAND`) only from the first instant the
+  former primary is running, the master observer reaches it **and** it reaches the
+  new primary — "The master observer cannot connect to the former primary
+  database" and "The former primary database cannot connect to the new primary
+  database" are the broker's own restrictions — which may be never; until then
+  `REINSTATE.WAITING` says why, once (an aborted one waits for a manual restart,
+  nothing in a run restarts it). Reinstate
   stays out of scope; this is the wording for the one reference row and the
   sequence-diagram footer that mention it.
 - **`V$FS_FAILOVER_OBSERVERS`** (26ai diagnostics): `CURRENT_TIME` is the time the
@@ -454,34 +461,50 @@ agree on:
   not be allowed to open in any event if fast-start failover is enabled."
   (`ORA-16649`). That sentence is about a former primary that *restarts*: draw it
   mounted and needing reinstatement; never draw two databases open read-write
-  because a host came back. With fast-start failover disabled no page spells out
-  what state a restarted former primary is left in, so mounted is this page's
-  reading (`FAILOVER.FORMER_PRIMARY_MOUNTED`, `model`) — and it is drawn open where it
-  cannot reach the new primary, because nothing tells it.
+  because a host came back. With fast-start failover disabled the 19c pages do not
+  spell out what state a restarted former primary is left in, so mounted is this
+  page's reading under 19c (`FAILOVER.FORMER_PRIMARY_MOUNTED`, `model`); the 26ai
+  Scenario 11 does spell it out ("Because a role transition occurred while the old
+  primary was offline, Data Guard prevents the database from reopening and leaves it
+  in a mounted state…", `FAILOVER.FORMER_PRIMARY_MOUNTED_26AI`), so under 26ai it is
+  `documented`. Either way it is drawn open where it cannot reach the new primary,
+  because nothing tells it — a `model` under both editions. **A stalled primary that
+  is reached again without ever restarting** is drawn mounted as well, but as a
+  `model` (`FSFO.FORMER_PRIMARY_NOT_OPEN` carries that basis then): the sentence is
+  about a database that is *restarted*, and no page says a stalled, still-open primary
+  is closed when contact returns.
 - **A manual failover does not close a primary that is still open.** Oracle puts
   the shutdown on the operator ("ensure that the primary database is shut down",
   `FAILOVER.PRIMARY_SHUT_DOWN`; "shut down prior to performing a manual failover",
   `FSFO.MANUAL_FAILOVER_CONDITIONS`), and the engine raises
   `FAILOVER.PRIMARY_STILL_OPEN` (documented) at the command when it is still running. No page says the broker closes or mounts an old primary that
   is still open when a manual failover completes, and ORA-16649 is not about one that
-  stayed open. So the old primary is drawn **open read-write, as primary, beside the new
-  one** — whether or not the new primary can reach it, and with fast-start failover
-  enabled or disabled alike — until something takes it down: a crash, a shutdown or
-  abort event, a fast-start failover stall and abort that already applies, or the end of
-  the run. That is this page's reading of an undocumented gap
+  stayed open. So with **fast-start failover disabled** the old primary is drawn **open
+  read-write, as primary, beside the new one** — whether or not the new primary can
+  reach it — until something takes it down: a crash, a shutdown or abort event, or the
+  end of the run. That is this page's reading of an undocumented gap
   (`FAILOVER.FORMER_PRIMARY_OPEN`, `model`, citing the two sentences as the reason);
   never write it as "the broker leaves it open", and never word the *former primary that
-  restarts* above as this case. A fast-start-failover-initiated failover and a
-  switchover are untouched: their old primary is the documented stall / abort /
+  restarts* above as this case. With **fast-start failover enabled** the target it was
+  running with has just become the primary, so it has lost its target: it is drawn
+  **stalled** from the completion instant and then follows
+  `FastStartFailoverPmyShutdown` — aborted one `FastStartFailoverThreshold` later, or
+  stalled for good (`FAILOVER.FORMER_PRIMARY_STALLS`, `model`, owner decision D5,
+  2026-10-01, citing "Data Guard fast-start failover always guarantees that only one
+  primary database exists" and the STALLED row's "It shuts down or stalls because it is
+  likely a failover has occurred."). Nothing documented says it; never present it as
+  Oracle's outcome. A fast-start-failover-initiated failover and a switchover are
+  untouched: their old primary is the documented stall / abort /
   `FastStartFailoverPmyShutdown` path, and the converted one.
 - **"Split brain" is this page's reading, never Oracle's word.** No Oracle page uses
   the term or gives an interval for it, so the Break readout's *Split brain* chip
   (`splitBrainOf`, `engine/sim/split-brain.ts`) is `model`, note `SPLIT_BRAIN.READING`, and
   asks one question of the drawing: were two members `open-rw` at the same moment. A
   STALLED primary is not counted (Oracle: its redo generation is stalled), and the old
-  primary is drawn open where a manual failover found it still open (the rule above:
-  reachable or not, fast-start failover on or off), so that reads *yes* with the window
-  named, closed where the old primary crashes or shuts down. The chip is
+  primary is drawn open where a manual failover found it still open with fast-start
+  failover disabled (the rule above: reachable or not), so that reads *yes* with the
+  window named, closed where the old primary crashes or shuts down; with fast-start
+  failover enabled it is stalled, then aborted, and reads *no*. The chip is
   asked only where a new primary opens by failover or manual failover, so a switchover
   has none. Never write a
   *no* that says the old primary "cannot" be open: say what the drawing shows (aborted
@@ -492,7 +515,17 @@ agree on:
   Oracle documents, for a failover plus a reinstatement, that "the reinstated database
   acts as the fast-start failover target for the new primary database"; that fast-start
   failover stays enabled across a *switchover* is only implied, so never write it as
-  Oracle's sentence. The page does not draw a second role change.
+  Oracle's sentence. The page does not draw a second role change, nor the former
+  primary becoming the target again. So after the role change the new primary has
+  **no synchronized fast-start failover target yet** (owner decision D6, 2026-10-01):
+  losing the observer and/or its standbys stalls and aborts nothing, it keeps
+  processing transactions, and the run says why once
+  (`FSFO.NO_TARGET_AFTER_ROLE_CHANGE`, `inferred` from "The reinstated database acts
+  as the fast-start failover target for the new primary database…" and "While the
+  configuration is in the unobserved state, fast-start failover cannot happen.
+  Therefore, the primary database can continue processing transactions…"). A
+  switchover's former primary is a standby from then on — never stalled or aborted
+  as a primary.
 - `NET_TIMEOUT` is a `LOG_ARCHIVE_DEST_n` transport attribute (broker property
   `NetTimeout`), default 30 s, min 1 s, ≥ 8–10 s recommended. It bounds how long
   LGWR waits for the standby's SYNC ack; it is NEVER a failover clock, never
