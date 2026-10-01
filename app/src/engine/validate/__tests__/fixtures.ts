@@ -296,6 +296,51 @@ export function corpus(): TopologyDoc[] {
 
     out.push(manyMembersDoc(253));
     out.push(manyDestinationsDoc(31));
+
+    /* The rules of the 2026-10-01 fact check. */
+    out.push(manyDestinationsDoc(10));                                  /* DEST.SYNC_ABOVE_10 */
+
+    const twoPrimaries = baseDoc({ edition });
+    dbOf(twoPrimaries, 'sby01').role = 'primary';                       /* MEMBER.PRIMARY_COUNT */
+    out.push(twoPrimaries);
+
+    const dupName = baseDoc({
+      edition, extra: [database('sby02', ['dc2-sby01'], 'physical', { name: 'SBY01' })],
+    });                                                                 /* MEMBER.NAME_DUPLICATE */
+    out.push(dupName);
+
+    const off = baseDoc({ edition });
+    dbOf(off, 'sby01').enabled = false;                                 /* FSFO.TARGET_DISABLED */
+    out.push(off);
+
+    const noStatic = baseDoc({ edition, fsfo: 'disabled' });
+    dbOf(noStatic, 'sby01').staticServices = false;                     /* MEMBER.STATIC_SERVICE */
+    out.push(noStatic);
+
+    const badName = baseDoc({ edition });
+    badName.config.configurationWideServiceName = '_cfg';               /* CFG.SERVICE_NAME_FORMAT */
+    out.push(badName);
+
+    const reservedName = baseDoc({ edition });
+    reservedName.observers = [{ ...observer('obs01', 'dc3-obs01'), name: 'ALL' }];  /* OBS.NAME_RESERVED */
+    out.push(reservedName);
+
+    const commands = baseDoc({ edition, fsfo: 'disabled' });
+    dbOf(commands, 'sby01').flashbackOn = false;
+    commands.events = [
+      { at: 5, kind: 'cmd.reinstate', member: M('sby01') },             /* EVENT.REINSTATE */
+      { at: 6, kind: 'cmd.setApplyInstance', member: M('sby01'), instance: 'nope' },  /* EVENT.SET_APPLY_INSTANCE */
+      { at: 7, kind: 'cmd.setMasterObserver', observer: commands.observers[0]!.id },  /* EVENT.SET_MASTER_OBSERVER */
+    ];
+    out.push(commands);
+
+    const snapRoutes = baseDoc({ edition, fsfo: 'disabled' });
+    dbOf(snapRoutes, 'sby01').role = 'snapshot';
+    dbOf(snapRoutes, 'sby01').redoRoutes = [rule('LOCAL', [{ target: 'ALL' }])];  /* ROUTES.SNAPSHOT_CONVERT_NONNULL */
+    out.push(snapRoutes);
+
+    const perfSync = baseDoc({ edition, mode: 'MAXPERFORMANCE' });      /* VAL-09 warnings */
+    out.push(perfSync);
   }
   return out;
 }
