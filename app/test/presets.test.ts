@@ -151,30 +151,37 @@ const EXPECTED_FINDINGS: Record<PresetId, string[]> = {
   ].sort(),
 
   'far-sync-zero-loss': [
-    /* One MaxFailure destination on the primary, so one deprecation notice and
-       one note on what reaching the limit does. The fast-start failover
+    /* One MaxFailure destination on the primary, so one note on what reaching
+       the limit does. Its MaxFailure is 1, the in-group default, so it is not
+       reported as a change (GEN-21). The fast-start failover
        target is fed through a far sync instance, so Scenario 7's "set on
-       both sides" note applies (VAL-07.7). */
-    'info documented DEST.DEPRECATED_19C North_Sales',
+       both sides" note applies (VAL-07.7). South_Sales ships to FS1 too, for
+       the role change (Scenario 5, GEN-17), with FS1's MaxFailure: inside
+       North_Sales' group 1 is the default, so it is not reported; South_Sales
+       ships to FS1 outside a group, where it is not, so South_Sales gets the
+       notice. */
+    'info documented DEST.DEPRECATED_19C South_Sales',
     'info documented EDIT.FSFO_ENABLED_BLOCKS',
     'info documented EDIT.REMOVE_TARGET South_Sales',
     'info documented FSFO.FARSYNC_TARGET_BOTH_SIDES South_Sales',
     'info model DEST.MAXFAILURE_RESET_UNDOC North_Sales',
+    'info model DEST.MAXFAILURE_RESET_UNDOC South_Sales',
     'info model MODEL.OBSERVER_OVERRIDE',
   ].sort(),
 
   'far-sync-ha-pair': [
-    /* Two far syncs, so both notes twice -- once per destination. The subject
+    /* Two far syncs, so the reset note twice -- once per destination. The subject
        is the sending database, which is why the two lines look alike. The
        fast-start failover target is fed through a far sync instance too
-       (VAL-07.7). */
-    'info documented DEST.DEPRECATED_19C North_Sales',
-    'info documented DEST.DEPRECATED_19C North_Sales',
+       (VAL-07.7). South_Sales ships to FS1 for the role change (GEN-17),
+       outside a group, so its MaxFailure is not the default there (GEN-21). */
+    'info documented DEST.DEPRECATED_19C South_Sales',
     'info documented EDIT.FSFO_ENABLED_BLOCKS',
     'info documented EDIT.REMOVE_TARGET South_Sales',
     'info documented FSFO.FARSYNC_TARGET_BOTH_SIDES South_Sales',
     'info model DEST.MAXFAILURE_RESET_UNDOC North_Sales',
     'info model DEST.MAXFAILURE_RESET_UNDOC North_Sales',
+    'info model DEST.MAXFAILURE_RESET_UNDOC South_Sales',
     'info model MODEL.OBSERVER_OVERRIDE',
   ].sort(),
 
@@ -198,8 +205,6 @@ const EXPECTED_FINDINGS: Record<PresetId, string[]> = {
 
   'priority-alternates': [
     /* Both destinations of the priority list carry MaxFailure. */
-    'info documented DEST.DEPRECATED_19C North_Sales',
-    'info documented DEST.DEPRECATED_19C North_Sales',
     'info documented EDIT.FSFO_ENABLED_BLOCKS',
     'info documented EDIT.REMOVE_TARGET Local_Sales',
     'info model DEST.MAXFAILURE_RESET_UNDOC North_Sales',

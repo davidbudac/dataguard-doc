@@ -6,7 +6,13 @@
  * it rather than carrying ranges of its own (engine design SS1.7).
  *
  * Every range mirrors the published simulator's control, except where a range
- * is deliberately wider in the new app; those two are marked.
+ * is deliberately wider in the new app; those are marked. Oracle documents a
+ * floor for most of these and almost never a ceiling (ED-12: "Integral number
+ * of seconds. Must be greater than, or equal to, 6" for the threshold, ">= 5"
+ * for the lag limit, 0 or more for ApplyInstanceTimeout, and RETRY_COUNT
+ * "greater than 100" in the HA guide's own advice for a long switchover), so a
+ * maximum here is this page's ceiling for the control and never Oracle's. The
+ * floors are Oracle's.
  */
 
 import type { Edition, Millis, Seconds } from './ids';
@@ -26,8 +32,11 @@ export interface Bound {
 
 export const BOUNDS = {
   /* ---- fast-start failover ---- */
-  thresholdSeconds: { min: 6, max: 120, step: 1, default: 30, unit: 's', label: 'FastStartFailoverThreshold' },
-  lagLimitSeconds: { min: 5, max: 90, step: 1, default: 30, unit: 's', label: 'FastStartFailoverLagLimit' },
+  /* Wider than the published simulator's 6-120 and 5-90. Oracle gives a floor
+     only (>= 6, >= 5); an hour is this page's ceiling, high enough that no
+     documented setting is out of reach. */
+  thresholdSeconds: { min: 6, max: 3600, step: 1, default: 30, unit: 's', label: 'FastStartFailoverThreshold' },
+  lagLimitSeconds: { min: 5, max: 3600, step: 1, default: 30, unit: 's', label: 'FastStartFailoverLagLimit' },
   lagGraceTimeSeconds: { min: 0, max: 60, step: 5, default: 0, unit: 's', label: 'FastStartFailoverLagGraceTime' },
   pingIntervalMs: { min: 100, max: 5000, step: 100, default: 100, unit: 'ms', label: 'ObserverPingInterval' },
   pingRetry: { min: 10, max: 50, step: 1, default: 10, unit: 'count', label: 'ObserverPingRetry' },
@@ -41,7 +50,11 @@ export const BOUNDS = {
   redoRateMBs: { min: 1, max: 50, step: 1, default: 5, unit: 'MB/s', label: 'redo rate' },
 
   /* ---- destination attributes ---- */
-  netTimeoutSeconds: { min: 1, max: 120, step: 1, default: 30, unit: 's', label: 'NetTimeout' },
+  /* Wider than the published simulator's 1-120: the NET_TIMEOUT attribute page
+     and the broker property page both print 1200 (or 0) to 1200. The floor
+     stays at the attribute page's 1; the property page's 0 is the disagreement
+     BROKER.NET_TIMEOUT_PROPERTY names. */
+  netTimeoutSeconds: { min: 1, max: 1200, step: 1, default: 30, unit: 's', label: 'NetTimeout' },
   /* Wider than the published simulator's 30-900: the new app lets a destination
      sit out a full hour. The 30 s floor is unchanged and deliberate -- the
      meaning of REOPEN = 0 is not documented, so the slider never offers it. */
@@ -51,17 +64,22 @@ export const BOUNDS = {
 
   /* ---- RAC standby ---- */
   /* The broker default is 0, "immediate apply instance failover"; the ceiling
-     is this page's, not Oracle's -- the property takes any value >= 0. */
-  applyInstanceTimeoutSeconds: { min: 0, max: 600, step: 5, default: 0, unit: 's', label: 'ApplyInstanceTimeout' },
+     is this page's, not Oracle's -- the property takes any value >= 0, in whole
+     seconds, so the step is 1 (it was 5, and a typed 7 was stored as 5). */
+  applyInstanceTimeoutSeconds: { min: 0, max: 3600, step: 1, default: 0, unit: 's', label: 'ApplyInstanceTimeout' },
 
   /* ---- commit anatomy ---- */
   localWriteMs: { min: 0, max: 25, step: 1, default: 2, unit: 'ms', label: 'local redo write' },
   standbyWriteMs: { min: 0, max: 25, step: 1, default: 2, unit: 'ms', label: 'standby redo log write' },
 
   /* ---- client connect descriptor ---- */
-  transportConnectTimeoutSeconds: { min: 1, max: 60, step: 1, default: 60, unit: 's', label: 'TRANSPORT_CONNECT_TIMEOUT' },
+  /* The default is 60 s, so a ceiling of 60 left nothing above it to set. Whole
+     seconds: a value below one second is not drawn. */
+  transportConnectTimeoutSeconds: { min: 1, max: 600, step: 1, default: 60, unit: 's', label: 'TRANSPORT_CONNECT_TIMEOUT' },
   connectTimeoutSeconds: { min: 0, max: 120, step: 1, default: 0, unit: 's', label: 'CONNECT_TIMEOUT' },
-  retryCount: { min: 0, max: 100, step: 1, default: 0, unit: 'count', label: 'RETRY_COUNT' },
+  /* "If you need more time to complete a Data Guard switchover, then change
+     RETRY_COUNT greater than 100." (HA guide, connection time estimates). */
+  retryCount: { min: 0, max: 1000, step: 1, default: 0, unit: 'count', label: 'RETRY_COUNT' },
   retryDelaySeconds: { min: 0, max: 30, step: 1, default: 0, unit: 's', label: 'RETRY_DELAY' },
 
   /* ---- identity ---- */
@@ -285,6 +303,29 @@ export function defaultLagLimit(edition: Edition, mode: ProtectionMode): Seconds
 }
 
 /**
+ * Is 0 a FastStartFailoverLagLimit this edition and mode document? Only where
+ * it is the broker default: 26ai maximum availability, "the standby must have
+ * received all the redo data the primary has generated". Everywhere else the
+ * documented floor is 5 (the property page: "Must be greater than, or equal
+ * to, 5"). Oracle's 26ai page states both for maximum availability -- a default
+ * of 0 and a minimum of 5 -- and does not reconcile them (ED-09, TXT-46).
+ */
+export const lagLimitAllowsZero = (edition: Edition, mode: ProtectionMode): boolean =>
+  mode === 'MAXAVAILABILITY' && BROKER_DEFAULTS[edition].lagLimitMaxAvailSeconds === 0;
+
+/**
+ * A typed FastStartFailoverLagLimit, clamped for the edition and mode it is
+ * read under: the documented floor of 5, except that 26ai maximum availability
+ * also takes 0. A value between 0 and 5 there goes to whichever of the two is
+ * nearer, so the control can come back to the default.
+ */
+export function clampLagLimit(edition: Edition, mode: ProtectionMode, value: unknown): number {
+  const n = typeof value === 'number' ? value : parseFloat(String(value));
+  if (lagLimitAllowsZero(edition, mode) && isFinite(n) && n < BOUNDS.lagLimitSeconds.min / 2) return 0;
+  return clamp('lagLimitSeconds', value, defaultLagLimit(edition, mode));
+}
+
+/**
  * What a document stores in `lagLimitSeconds` while FastStartFailoverLagLimit
  * is not set: the one universal default every document carried before "not
  * set" existed. The serializer reads a stored 30 with no marker as not set,
@@ -312,6 +353,25 @@ export function lagLimitOf(
   return lagLimitIsSet(c.fsfo)
     ? c.fsfo.lagLimitSeconds
     : defaultLagLimit(c.edition, c.protectionMode);
+}
+
+/**
+ * What is wrong with a ConfigurationWideServiceName, or null: "The first
+ * character must be an alphanumeric character. There is a 30–character
+ * maximum." (ED-10; CFG.WIDE_SERVICE_NAME_FORMAT). Empty is not a name, so it
+ * is not wrong: the property is then not set.
+ */
+export const CONFIG_WIDE_SERVICE_NAME_MAX = 30;
+
+export function configurationWideServiceNameProblem(name: string): string | null {
+  if (name === '') return null;
+  if (!/^[A-Za-z0-9]/.test(name)) {
+    return 'The first character must be an alphanumeric character.';
+  }
+  if (name.length > CONFIG_WIDE_SERVICE_NAME_MAX) {
+    return `There is a ${CONFIG_WIDE_SERVICE_NAME_MAX}-character maximum; this name has ${name.length}.`;
+  }
+  return null;
 }
 
 /** Nominal drawing constants -- footnote 3 of the published page, not documented numbers. */

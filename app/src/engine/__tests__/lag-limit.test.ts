@@ -156,7 +156,11 @@ const code = (text: string): string =>
  * lagLimitOf.
  */
 const ALLOWED: Record<string, RegExp[]> = {
-  'engine/defaults.ts': [/\bc\.fsfo\.lagLimitSeconds\b/g, /\bd\.lagLimitSeconds\b/g],
+  'engine/defaults.ts': [
+    /\bc\.fsfo\.lagLimitSeconds\b/g, /\bd\.lagLimitSeconds\b/g,
+    /* The bound's own floor, read by clampLagLimit (ED-09). */
+    /\bBOUNDS\.lagLimitSeconds\b/g,
+  ],
   'engine/serialize/schema.ts': [
     /\bd\.lagLimitSeconds\b/g, /\bout\.lagLimitSeconds\b/g, /\bBOUNDS\.lagLimitSeconds\b/g,
     /'config\.fsfo\.lagLimitSeconds'/g,

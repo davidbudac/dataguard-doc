@@ -18,6 +18,8 @@
  */
 
 import { lagLimitOf, NOMINAL } from '../defaults';
+import { initialNetState } from '../net/graph';
+import { resolveRedoGraph } from '../redo/resolve';
 import type { Claim, Finding } from '../types/claims';
 import { documented, inferred, model } from '../types/claims';
 import { assertCitesAllowed } from '../citations';
@@ -209,15 +211,30 @@ export function readinessGate(
         `${effectiveLagType(doc)} lag ${gateLag} s against a FastStartFailoverLagLimit of ${limit} s: failover is possible any time the lag is at or below the limit, and cannot occur if the target lags by more than the limit at the time the primary database failed.${grown}`),
     };
   }
-  return {
-    passes: ready,
-    gateLag,
-    claim: documented(ready,
-      ['FSFO.CANNOT_NOT_SYNCHRONIZED', 'FSFO.BOTH_MUST_HAVE_LOST', 'MAXAVAIL.AT_LEAST_ONE', 'XPT.TABLE_4_2'],
-      ready
-        ? 'The target standby is synchronized, which is what maximum availability and maximum protection ask of it.'
-        : 'The target standby was not synchronized with the primary database at the time the primary database failed, and in maximum availability or maximum protection mode fast-start failover cannot occur then.'),
-  };
+  const cites: CitationId[] =
+    ['FSFO.CANNOT_NOT_SYNCHRONIZED', 'FSFO.BOTH_MUST_HAVE_LOST', 'MAXAVAIL.AT_LEAST_ONE', 'XPT.TABLE_4_2'];
+  const text = ready
+    ? 'The target standby is synchronized, which is what maximum availability and maximum protection ask of it.'
+    : 'The target standby was not synchronized with the primary database at the time the primary database failed, and in maximum availability or maximum protection mode fast-start failover cannot occur then.';
+  /* The check is only as well founded as the SYNCHRONIZED state it reads. Where
+     the redo graph itself labels that state (a target fed across a far sync
+     hop is this page's model: how SYNCHRONIZED is computed there is not
+     documented), the gate says so too instead of presenting a documented pass
+     (SIM-27). */
+  const fed = state === undefined ? undefined : resolveRedoGraph(doc, {
+    primary: state.primary, net: initialNetState(doc),
+  }).members[target.id]?.synchronized;
+  if (fed !== undefined && fed.basis !== 'documented' && fed.note !== undefined) {
+    const note = `${text} How SYNCHRONIZED is read for this target is not a documented fact: ${fed.note}`;
+    const merged = [...new Set<CitationId>([...cites, ...fed.cite])];
+    return {
+      passes: ready,
+      gateLag,
+      claim: fed.basis === 'inferred' ? inferred(ready, merged, note)
+        : model(ready, note, merged),
+    };
+  }
+  return { passes: ready, gateLag, claim: documented(ready, cites, text) };
 }
 
 /**
@@ -234,13 +251,13 @@ export function notReadyClaim(
       : by === 'unobserved' ? 'The configuration is unobserved, so nothing has to be confirmed: the primary carries on and'
         : 'Fast-start failover is not enabled, so nothing has to be confirmed: the primary carries on and';
   const tail = by === 'observer' || by === 'target'
-    ? ` that fast-start failover cannot happen, and the primary continues without ${target as string}: the state is ${state}.`
+    ? ` that a fast-start failover to ${target as string} cannot happen, and the primary continues without it: the state is ${state}. If the configuration lists another target the broker can change the target and a later failure can still fail over to that one.`
     : ` ${target as string} no longer has all of its redo.`;
   return model(`${who}${tail}`,
     lagGated(doc)
       ? 'FSFO.NOT_READY_TIMING: that the change has to be recorded before the primary continues is documented; when the lag crosses the limit is not. This page grows the lag by one second for every second the primary generates redo the target does not receive, starting from the lag as configured.'
       : 'FSFO.NOT_READY_TIMING: that the change has to be recorded before the primary continues is documented; when the recording lands is not. This page draws it where the commit hang ends -- one NET_TIMEOUT after the acknowledgement stopped -- which is the instant the primary starts committing without the target.',
-    ['FSFO.GUARANTEE_STALL', 'FSFO.STATUS_STALLED', 'DEST.NET_TIMEOUT']);
+    ['FSFO.GUARANTEE_STALL', 'FSFO.STATUS_STALLED', 'DEST.NET_TIMEOUT', 'FSFO.TARGET_AUTO_CHANGE']);
 }
 
 /**

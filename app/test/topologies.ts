@@ -99,7 +99,8 @@ export const dest = (from: Member, to: MemberId, over: Partial<ReturnType<typeof
 /**
  * Example 5-2 in document form: the primary ships SYNC to a far sync instance
  * beside it, which forwards ASYNC to the terminal standby. The routes are
- * pre-declared in both directions -- nothing rewrites on a role change.
+ * declared in one direction only, primary -> far sync -> standby; the fixture
+ * declares no route for the reverse path after a role change.
  */
 export function farSyncDoc(mode: ProtectionMode = 'MAXAVAILABILITY'): TopologyDoc {
   const prm = db('prm01', ['dc1-prm01'], 'primary', {

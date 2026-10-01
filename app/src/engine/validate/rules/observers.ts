@@ -13,6 +13,8 @@ import type { DatabaseMember } from '../../types/topology';
 import { isDatabase, isRac } from '../../types/topology';
 import type { Rule } from '../context';
 import { configSubject, mk, q } from '../context';
+import { eventRules } from './events';
+import { integrityRules } from './integrity';
 
 const observerLimit = (e: Edition): number => (e === '26ai' ? 4 : 3);
 
@@ -99,14 +101,21 @@ export const observerInPrimarySite: Rule = (ctx): Finding[] => {
 export const noObserverDeployed: Rule = (ctx): Finding[] => {
   if (ctx.doc.observers.length > 0) return [];
   const claimsEnabled = ctx.doc.config.fsfo.state !== 'disabled';
-  const base = 'No observer is deployed. That is not the same as being unobserved. V$DATABASE.FS_FAILOVER_STATUS reads DISABLED, the FastStartFailover* properties can be set but nothing arms them, and a manual FAILOVER TO is the only thing that promotes a standby. Unobserved means fast-start failover is enabled and the master observer is missing: PRIMARY UNOBSERVED on the target standby, ORA-16820 as the standing health condition, and "The master observer is not running" among the documented reasons fast-start failover cannot occur. Corollary: the maximum performance switchover refusal past FastStartFailoverLagLimit is fast-start failover\'s own gate, so it cannot fire with no observer deployed.';
-  const enabled = ` Fast-start failover is ${ctx.doc.config.fsfo.state === 'observe-only' ? 'enabled in observe-only mode' : 'enabled'} here. That is legal: enabling fast-start failover with no observer started is a documented, supported configuration. The broker displays ORA-16819 (fast-start failover observer not started) for the primary and target standby databases, and fast-start failover could not happen in the case of a primary database failure. The configuration is unobserved and no failover can happen until an observer is started.`;
+  /* Fast-start failover disabled: the third state -- nothing arms the
+     properties, and the status reads DISABLED. */
+  const disabled = 'No observer is deployed. That is not the same as being unobserved. V$DATABASE.FS_FAILOVER_STATUS reads DISABLED, the FastStartFailover* properties can be set but nothing arms them, and a manual FAILOVER TO is the only thing that promotes a standby. Unobserved means fast-start failover is enabled and the master observer is missing: PRIMARY UNOBSERVED on the target standby, ORA-16820 as the standing health condition, and "The master observer is not running" among the documented reasons fast-start failover cannot occur. Corollary: the maximum performance switchover refusal past FastStartFailoverLagLimit is fast-start failover\'s own gate, so it cannot fire while fast-start failover is disabled.';
+  /* Enabled (VAL-13): the disabled text does not apply -- the status is not
+     DISABLED, and fast-start failover\'s switchover restrictions are in force
+     whether or not an observer runs ("only if the standby database is
+     synchronized with the primary database or is within the configured lag
+     limit" carries no observer condition). */
+  const enabled = `No observer is deployed. Fast-start failover is ${ctx.doc.config.fsfo.state === 'observe-only' ? 'enabled in observe-only mode' : 'enabled'} here. That is legal: enabling fast-start failover with no observer started is a documented, supported configuration. The broker displays ORA-16819 (fast-start failover observer not started) for the primary and target standby databases, and fast-start failover could not happen in the case of a primary database failure. The configuration is unobserved and no failover can happen until an observer is started; it is not DISABLED. Fast-start failover's switchover restrictions apply all the same: they carry no observer condition.`;
   return [mk('OBS.NONE_DEPLOYED', {
     subject: configSubject(),
     ...(claimsEnabled ? { severity: 'warning' as const } : {}),
-    message: claimsEnabled ? base + enabled : base,
+    message: claimsEnabled ? enabled : disabled,
     cite: claimsEnabled
-      ? ['FSFO.STATUS_DISABLED', 'FSFO.PRIMARY_UNOBSERVED', 'OBS.CANNOT_OCCUR_LIST', 'ORA.16819']
+      ? ['OBS.NOT_STARTED_16819', 'ORA.16819', 'OBS.CANNOT_OCCUR_LIST', 'SWITCHOVER.FSFO_GATE']
       : ['FSFO.STATUS_DISABLED', 'FSFO.PRIMARY_UNOBSERVED', 'OBS.CANNOT_OCCUR_LIST'],
     ...(claimsEnabled ? { ora: 'ORA-16819' } : {}),
   })];
@@ -114,8 +123,8 @@ export const noObserverDeployed: Rule = (ctx): Finding[] => {
 
 /**
  * "No two observers on the same Data Guard Broker configuration can have the
- * same name." "The string \"NONAME\" cannot be used as an observer name."
- * Observer names are case-insensitive.
+ * same name." "The strings "NONAME" and "ALL" cannot be used as an observer
+ * name." Observer names are case-insensitive.
  */
 export const observerNamesReserved: Rule = (ctx): Finding[] => {
   const out: Finding[] = [];
@@ -123,11 +132,11 @@ export const observerNamesReserved: Rule = (ctx): Finding[] => {
   for (const o of ctx.doc.observers) {
     const name = o.name;
     const lower = name.toLowerCase();
-    if (lower === 'noname') {
+    if (lower === 'noname' || lower === 'all') {
       out.push(mk('OBS.NAME_RESERVED', {
         subject: { kind: 'observer', id: o.id as string },
-        message: `The observer named ${q(name)} uses the reserved name. The string "NONAME" cannot be used as an observer name.`,
-        cite: ['OBS.NAME_NONAME_RESERVED'],
+        message: `The observer named ${q(name)} uses a reserved name. The strings "NONAME" and "ALL" cannot be used as an observer name.`,
+        cite: ['OBS.NAME_RESERVED_STRINGS'],
       }));
     }
     const dup = seen.get(lower);
@@ -144,14 +153,23 @@ export const observerNamesReserved: Rule = (ctx): Finding[] => {
   return out;
 };
 
-/** One master observer; only the master coordinates fast-start failover. */
+/**
+ * One master observer; only the master coordinates fast-start failover. With
+ * fast-start failover disabled "no observer is called the master observer; all
+ * observers have the same functionality", so a second master marker is not
+ * wrong yet -- it is what enabling would have to resolve (the VAL-04 shape).
+ */
 export const masterObserverUnique: Rule = (ctx): Finding[] => {
   const masters = ctx.doc.observers.filter((o) => o.role === 'master');
   if (masters.length <= 1) return [];
+  const names = masters.map((o) => q(o.name)).join(', ');
   return [mk('OBS.MASTER_UNIQUE', {
     subject: configSubject(),
-    message: `${masters.length} observers are marked master (${masters.map((o) => q(o.name)).join(', ')}). One observer is the master observer and the others are backup observers, and only the master observer can coordinate fast-start failover. To move the role, run SET MASTEROBSERVER TO name;`,
-    cite: ['OBS.THREE_19C', 'OBS.MASTER_ONLY_COORDINATES', 'OBS.SET_MASTEROBSERVER'],
+    ...(ctx.fsfoOn ? {} : { severity: 'info' as const }),
+    message: ctx.fsfoOn
+      ? `${masters.length} observers are marked master (${names}). One observer is the master observer and the others are backup observers, and only the master observer can coordinate fast-start failover. To move the role, run SET MASTEROBSERVER TO name;`
+      : `${masters.length} observers are marked master (${names}), but fast-start failover is disabled, and then no observer is called the master observer: all observers have the same functionality. Nothing is refused yet. Once fast-start failover is enabled, one observer is the master observer and the others are backup observers, and only the master observer can coordinate fast-start failover.`,
+    cite: ['OBS.THREE_19C', 'OBS.MASTER_ONLY_COORDINATES', 'OBS.SET_MASTEROBSERVER', 'OBS.NO_MASTER_WHEN_DISABLED'],
   })];
 };
 
@@ -180,6 +198,10 @@ export const preferredObserverHosts: Rule = (ctx): Finding[] => {
  */
 export const reinstatePreconditions: Rule = (ctx): Finding[] => {
   if (!ctx.doc.config.fsfo.autoReinstate) return [];
+  /* Automatic reinstatement follows an observer-initiated failover, so it can
+     only happen with fast-start failover enabled: disabled, or observe-only
+     (which never fails over), the finding says what enabling would need. */
+  const live = ctx.doc.config.fsfo.state === 'enabled';
   const primary = ctx.primary;
   const involved = [primary, ...ctx.candidates.map((id) => ctx.member(id))]
     .filter((m): m is DatabaseMember => !!m && isDatabase(m));
@@ -197,7 +219,8 @@ export const reinstatePreconditions: Rule = (ctx): Finding[] => {
   }).join(', ');
   return [mk('REINSTATE.PRECONDITIONS', {
     subject: configSubject(),
-    message: `FastStartFailoverAutoReinstate is TRUE, but ${detail}. Automatic reinstatement needs Flashback Database on both databases, the former primary started and mounted (a manual restart where FastStartFailoverPmyShutdown aborted it), the master observer able to reach it, and static service names without Clusterware or Oracle Restart. It reinstates only after an observer-initiated failover caused by a primary crash or isolation, never after a user-configurable health condition or a DBMS_DG.INITIATE_FS_FAILOVER call.`,
+    ...(live ? {} : { severity: 'info' as const }),
+    message: `FastStartFailoverAutoReinstate is TRUE, but ${detail}.${live ? '' : ' Fast-start failover is not enabled, so no automatic reinstatement happens now; this is what enabling it would need.'} Automatic reinstatement needs Flashback Database on both databases, the former primary started and mounted (a manual restart where FastStartFailoverPmyShutdown aborted it), the master observer able to reach it, and static service names without Clusterware or Oracle Restart. It reinstates only after an observer-initiated failover caused by a primary crash or isolation, never after a user-configurable health condition or a DBMS_DG.INITIATE_FS_FAILOVER call.`,
     cite: ['FSFO.AUTO_REINSTATE', 'FSFO.PMY_SHUTDOWN', 'RAC.STATIC_ONLY_WITHOUT_CLUSTERWARE', 'RAC.CLUSTERWARE_REQUIRED'],
   })];
 };
@@ -217,4 +240,7 @@ export const observerRules: Rule[] = [
   observerCount, observerOnDatabaseHost, observerOnDatabaseCluster, observerInPrimarySite,
   noObserverDeployed, masterObserverUnique, observerNamesReserved, preferredObserverHosts,
   reinstatePreconditions, observerOverrideAssumption,
+  /* The scenario commands that name an observer, a database or an instance, and
+     whether the document is a configuration at all. */
+  ...eventRules, ...integrityRules,
 ];

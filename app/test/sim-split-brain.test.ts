@@ -170,32 +170,43 @@ describe('a manual failover with the old primary still running and reachable', (
   const manual = [{ at: 0, kind: 'cmd.failover', to: SBY } as TimedEvent];
   const enabled = (): TopologyDoc => classicTopology({ observerLoc: 'dc3' });
 
-  for (const [label, doc] of [['fast-start failover disabled', fsfoOff], ['fast-start failover enabled', enabled]] as const) {
-    it(`draws the old primary open beside the new one, and reads yes, ${label}`, () => {
-      const t = run(doc(), manual);
-      expect(t.facts.outcome).toBe('manual');
-      expect(lane(t, PRM)).toEqual(['open-rw']);
-      expect(lane(t, SBY)).toEqual(['converting', 'open-rw']);
-      const sb = splitBrainOf(t);
-      expect(sb?.split.value).toBe(true);
-      expect(sb?.windows).toEqual([{ from: t.facts.tOpen, to: null, members: [SBY, PRM] }]);
-      expect(sb?.formerAtOpen).toBeNull();
-    });
+  /* Fast-start failover DISABLED: nothing stalls the old primary, so it stays
+     open. (With it enabled the old primary has lost its target and is drawn
+     stalled, then aborted -- owner decision D5, 2026-10-01; see
+     `factcheck-1001-fsfo.test.ts`.) */
+  it('draws the old primary open beside the new one, and reads yes, fast-start failover disabled', () => {
+    const t = run(fsfoOff(), manual);
+    expect(t.facts.outcome).toBe('manual');
+    expect(lane(t, PRM)).toEqual(['open-rw']);
+    expect(lane(t, SBY)).toEqual(['converting', 'open-rw']);
+    const sb = splitBrainOf(t);
+    expect(sb?.split.value).toBe(true);
+    expect(sb?.windows).toEqual([{ from: t.facts.tOpen, to: null, members: [SBY, PRM] }]);
+    expect(sb?.formerAtOpen).toBeNull();
+  });
 
-    it(`says so as this page's reading, citing the operator's shutdown, ${label}`, () => {
-      const t = run(doc(), manual);
-      const f = finding(t, 'FAILOVER.FORMER_PRIMARY_OPEN');
-      expect(f?.basis).toBe('model');
-      expect(f?.cite).toEqual(['FAILOVER.PRIMARY_SHUT_DOWN', 'FSFO.MANUAL_FAILOVER_CONDITIONS']);
-      expect(f?.note).toMatch(/^FAILOVER\.FORMER_PRIMARY_OPEN:/);
-      expect(f?.note).toContain('ORA-16649');
-      /* Neither of the two mounted readings applies to a primary that stayed open. */
-      expect(finding(t, 'FAILOVER.FORMER_PRIMARY_MOUNTED')).toBeUndefined();
-      expect(finding(t, 'FSFO.FORMER_PRIMARY_NOT_OPEN')).toBeUndefined();
-      /* And the documented error is still raised beside it. */
-      expect(finding(t, 'FAILOVER.PRIMARY_STILL_OPEN')?.basis).toBe('documented');
-    });
-  }
+  it('says so as this page\'s reading, citing the operator\'s shutdown, fast-start failover disabled', () => {
+    const t = run(fsfoOff(), manual);
+    const f = finding(t, 'FAILOVER.FORMER_PRIMARY_OPEN');
+    expect(f?.basis).toBe('model');
+    expect(f?.cite).toEqual(['FAILOVER.PRIMARY_SHUT_DOWN', 'FSFO.MANUAL_FAILOVER_CONDITIONS']);
+    expect(f?.note).toMatch(/^FAILOVER\.FORMER_PRIMARY_OPEN:/);
+    expect(f?.note).toContain('ORA-16649');
+    /* Neither of the two mounted readings applies to a primary that stayed open. */
+    expect(finding(t, 'FAILOVER.FORMER_PRIMARY_MOUNTED')).toBeUndefined();
+    expect(finding(t, 'FSFO.FORMER_PRIMARY_NOT_OPEN')).toBeUndefined();
+    /* And the documented error is still raised beside it. */
+    expect(finding(t, 'FAILOVER.PRIMARY_STILL_OPEN')?.basis).toBe('documented');
+  });
+
+  it('draws it stalled, then aborted, with fast-start failover enabled: split brain reads no (D5)', () => {
+    const t = run(enabled(), manual);
+    expect(lane(t, PRM)).toEqual(['open-rw', 'stalled', 'aborted']);
+    const sb = splitBrainOf(t);
+    expect(sb?.split.value).toBe(false);
+    expect(sb?.windows).toEqual([]);
+    expect(sb?.formerAtOpen).toEqual({ kind: 'stalled', abortsAt: (t.facts.tOpen as number) + 30 });
+  });
 
   it('is the same wherever the new primary can reach it or not', () => {
     const reachable = run(fsfoOff(), manual);
@@ -217,13 +228,11 @@ describe('a manual failover with the old primary still running and reachable', (
     const prm = hostId('dc1-prm01');
 
     it('a crash', () => {
-      for (const doc of [fsfoOff(), enabled()]) {
-        const t = run(doc, [...manual, { at: 60, kind: 'host.down', host: prm }]);
-        const sb = splitBrainOf(t);
-        expect(sb?.split.value).toBe(true);
-        expect(sb?.windows).toEqual([{ from: t.facts.tOpen, to: 60, members: [SBY, PRM] }]);
-        expect(lane(t, PRM)).toEqual(['open-rw', 'down']);
-      }
+      const t = run(fsfoOff(), [...manual, { at: 60, kind: 'host.down', host: prm }]);
+      const sb = splitBrainOf(t);
+      expect(sb?.split.value).toBe(true);
+      expect(sb?.windows).toEqual([{ from: t.facts.tOpen, to: 60, members: [SBY, PRM] }]);
+      expect(lane(t, PRM)).toEqual(['open-rw', 'down']);
     });
 
     it('a shutdown of the member', () => {
@@ -259,8 +268,12 @@ describe('a manual failover with the old primary still running and reachable', (
     });
 
     it('with fast-start failover enabled it is not allowed to open: ORA-16649, documented', () => {
-      const t = run(enabled(), crashThenRestart);
-      expect(lane(t, PRM)).toEqual(['open-rw', 'down', 'mounted-noapply']);
+      /* Owner decision D5: with fast-start failover enabled the old primary is
+         stalled from the moment the manual failover completes (25 s) and would
+         shut itself down at 55 s, so the crash comes while it is stalled. */
+      const t = run(enabled(), [...manual, { at: 40, kind: 'host.down', host: prm },
+        { at: 100, kind: 'host.up', host: prm }]);
+      expect(lane(t, PRM)).toEqual(['open-rw', 'stalled', 'down', 'mounted-noapply']);
       const f = finding(t, 'FSFO.FORMER_PRIMARY_NOT_OPEN');
       expect(f?.basis).toBe('documented');
       expect(f?.ora).toBe('ORA-16649');
@@ -451,10 +464,17 @@ describe('the claim', () => {
     }
   });
 
-  it('rests on citations that exist, none of them claiming Oracle names the term', () => {
+  it('rests on citations that exist, one of them the HA guide\'s own definition of the term', () => {
+    /* FC 10-01 TXT-87: this test used to say no citation names the term, on the premise that
+       Oracle does not use it. The HA guide does, and defines it; the claim cites that sentence,
+       and every other citation it carries still stays out of the business of naming it. */
     for (const sb of claims) {
       expect(sb!.split.cite.length).toBeGreaterThan(0);
-      for (const id of sb!.split.cite) expect(citation(id).quote.toLowerCase()).not.toContain('split brain');
+      expect(sb!.split.cite).toContain('SPLIT_BRAIN.DEFINITION');
+      for (const id of sb!.split.cite) {
+        if (id === 'SPLIT_BRAIN.DEFINITION') continue;
+        expect(citation(id).quote.toLowerCase()).not.toContain('split brain');
+      }
     }
   });
 });

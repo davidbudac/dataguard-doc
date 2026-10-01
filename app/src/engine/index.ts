@@ -56,7 +56,10 @@ export type { Bound, BoundKey, BrokerDefaults, ClientTiming } from './defaults';
 export {
   BOUNDS, boundOf, BROKER_DEFAULTS, clamp, CLIENT_TIMING_DEFAULTS, CLIENT_TIMING_TUNED, defaultLagLimit, NOMINAL, pingSet, withinBounds,
 } from './defaults';
-export { LAG_LIMIT_UNSET_STORED, lagLimitIsSet, lagLimitOf } from './defaults';
+export {
+  clampLagLimit, CONFIG_WIDE_SERVICE_NAME_MAX, configurationWideServiceNameProblem,
+  LAG_LIMIT_UNSET_STORED, lagLimitAllowsZero, lagLimitIsSet, lagLimitOf,
+} from './defaults';
 
 /* serialization */
 export type { IssueSeverity, ParseResult, SchemaIssue } from './serialize/schema';
@@ -135,8 +138,10 @@ export { buildClientFiles } from './generate/client';
 export type { DgmgrlOptions } from './generate/dgmgrl';
 export { generateDgmgrl } from './generate/dgmgrl';
 export type { InitOraOptions } from './generate/initora';
-export { generateInitOra, generateInitOraFiles, generateRacParameters } from './generate/initora';
-export type { ShowConfigurationOptions } from './generate/show';
+export {
+  generateInitOra, generateInitOraFiles, generateRacParameters, generateStandbyRedoLogs,
+} from './generate/initora';
+export type { ShowConfigurationOptions, ShowRun } from './generate/show';
 export {
   generateShowMocks, showConfiguration, showDatabase, showFastStartFailover, showObserver,
 } from './generate/show';
@@ -167,7 +172,8 @@ export type { ManualFailoverInput, SwitchoverGateInput, SwitchoverRefusal } from
 export { bystanderAhead, manualLossClaim, reinstateCommandFindings } from './sim/roles';
 export {
   applyFailoverClaim, applyInstanceTimeout, applyParticipants, hasApplyInstance,
-  initialApplyInstance, isMultiInstanceApply, nextApplyInstance, primaryDegradedClaim,
+  initialApplyInstance, isMultiInstanceApply, lastInstanceClockClaim, nextApplyInstance,
+  primaryDegradedClaim,
 } from './sim/rac';
 export {
   bystanderClaim, bystanders, executionClaim, manualFailoverFindings, nominalBandsClaim,

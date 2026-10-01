@@ -19,7 +19,7 @@ produced, and how to extend it without breaking consistency or accuracy.
 | `diagrams/fsfo-sequence.svg` (+`.png`) | Sequence diagram of the crash case with an elapsed-time gutter |
 | `diagrams/fsfo-net-timeout.svg` (+`.png`) | Two panels separating NET_TIMEOUT (redo transport) from the broker failover clocks |
 | `diagrams/README.md` | Figure embeds, broker-property and redo-transport-property tables with verified defaults, the ping-properties quirk, the verified-facts sections behind the commit/reopen/observer/placement/side-topics views (including the 24-cell observer-placement outcome matrix) and behind the 26ai edition switch (the MaxAvailability lag-limit semantics and Oracle's self-contradiction on them, `PrimaryDatabaseCandidates`, `V$FS_FAILOVER_OBSERVERS`), the drawing idealizations, Oracle doc links. Its *Topology features* section points at `app/design/facts.md` for far sync, cascading, RedoRoutes, multi-target and multi-observer sources |
-| `app/` | The workbench: TypeScript + Vite + Preact + signals. A pure, DOM-free engine in `app/src/engine` (types, citation catalogue, validation rules, redo-graph resolver, epoch-loop simulator, generators, the legacy adapter), the interface in `app/src/ui` (including the on-canvas action bar, the Introduction page and the `Hints` toggle — see `app/design/ui.md` §3c–§3i; §3h is how the drawing is driven: click selects, `⋯` for the bar, drag-to-place, inline rename, marquee, shortcuts; §3i is the lean pass: the toolbar is the one add surface, Remove sits in the rail header; "Simulate's two layouts", at the end, is the Split and Lanes layouts of the Simulate screen and the switch between them), state in `app/src/state`, twelve presets in `app/src/presets`, ten lessons and the reference tables in `app/src/content`, 2883 vitest tests across 112 files in `app/src/**/__tests__` and `app/test`. Built to `_site/` and served at `/dataguard/`. Zero external requests, no inline script and no inline style — the page is meant to run under `script-src 'self'; style-src 'self'` |
+| `app/` | The workbench: TypeScript + Vite + Preact + signals. A pure, DOM-free engine in `app/src/engine` (types, citation catalogue, validation rules, redo-graph resolver, epoch-loop simulator, generators, the legacy adapter), the interface in `app/src/ui` (including the on-canvas action bar, the Introduction page and the `Hints` toggle — see `app/design/ui.md` §3c–§3i; §3h is how the drawing is driven: click selects, `⋯` for the bar, drag-to-place, inline rename, marquee, shortcuts; §3i is the lean pass: the toolbar is the one add surface, Remove sits in the rail header; "Simulate's two layouts", at the end, is the Split and Lanes layouts of the Simulate screen and the switch between them), state in `app/src/state`, twelve presets in `app/src/presets`, ten lessons and the reference tables in `app/src/content`, 3254 vitest tests across 119 files in `app/src/**/__tests__` and `app/test`. Built to `_site/` and served at `/dataguard/`. Zero external requests, no inline script and no inline style — the page is meant to run under `script-src 'self'; style-src 'self'` |
 | `app/public/collectors/` | Read-only SQL collector, optional Bash/SQL*Plus wrapper and run instructions for existing setups. The ⋯ menu's **Import existing setup** sheet previews pasted/file output before drawing it. `engine/collect.ts` maps current routes; imported `routesObserved` prevents invented NULL-default routes. Missing broker settings and placement assumptions remain in document notes. Validated live on a 19c primary + mounted standby (SYSDBA, local OS auth); wallet, least-privilege, RAC and far sync remain unverified. DGMGRL transcripts are not parsed. |
 | `app/design/facts.md` | The verified Oracle fact sheet for the topology features (far sync, cascading, multiple standbys and FSFO targets, multiple observers, RedoRoutes, member types, destination counts), researched 2026-08-16 against docs.oracle.com and re-verified 2026-08-17, marked `[D]` / `[D-later]` / `[UNDOC]` / `[CONFLICT]` per claim. **The only permitted source of a "documented" claim in the application.** Its top-five traps are restated in the accuracy rules below |
 | `app/design/engine.md` | The engine design: `Claim`/`Basis` labelling, the topology data model, the validation catalogue, the redo-graph resolver, the epoch-loop failure engine, the compat adapter and the 24-cell matrix gate, the generators, the module layout — plus §10, *Deviations from the design as built*, which is where the code and the specification differ |
@@ -67,8 +67,8 @@ public URL.
 
 The three gates, and what each one can catch that the others cannot:
 
-1. `npm --prefix app run test` — the application's own suite (**2883 tests
-   across 112 files**): the engine's invariants, the 24-cell matrix through the
+1. `npm --prefix app run test` — the application's own suite (**3254 tests
+   across 119 files**): the engine's invariants, the 24-cell matrix through the
    compat adapter, the validation catalogue, the generator goldens, the canvas
    and timeline geometry, the URL and file round trips.
 2. `node --test site/test.mjs` — the same kind of assertion against the legacy
@@ -316,12 +316,22 @@ agree on:
   page, both of which still carry the stale "maximum performance mode only"
   sentence.** The property page is a valid citation for the value ranges only;
   the page states the contradiction in footnote 5 rather than hiding it.
-  Task 3 is stale on the transports too: it still says MaxAvailability takes
-  SYNC or FASTSYNC, against the prerequisites list's "SYNC or FASTSYNC or
-  ASYNC" — so **ASYNC under MaxAvailability is a mode conflict only under
-  19c**; under 26ai the commit view draws an informational "allowed" note
-  instead (`computeCommit` takes `version`, and zero data loss still wants
-  SYNC/FASTSYNC). **Oracle recommends `FastStartFailoverLagLimit` at or below
+  Task 3 still says MaxAvailability takes SYNC or FASTSYNC, against the
+  prerequisites list's "SYNC or FASTSYNC or ASYNC" — so **ASYNC under
+  MaxAvailability is a mode error under 19c**; under 26ai the commit view draws
+  an informational "allowed" note (`computeCommit` takes `version`, and zero
+  data loss still wants SYNC/FASTSYNC) and the validator warns with basis
+  `conflict` (`XPT.TABLE_4_2`, `XPT.PRIMARY_LOGXPTMODE`), citing the prerequisites
+  list against Table 4-2 and Task 3 (`FSFO.TASK3_MAXAVAIL_26AI`, cited as that
+  side of the conflict only, never as the rule). **The RedoRoutes alternative
+  to the primary's `LogXptMode`** is named by the 26ai prerequisites for
+  MaxAvailability and MaxPerformance only, so under 26ai MaxProtection a
+  pre-declared rule is not counted (19c names the alternative without that
+  restriction). **In 26ai MaxAvailability the lag limit takes 0** — the broker
+  default — and the page's own conflict is shown, not hidden: the same page says
+  a value "must be greater than, or equal to, 5". The control's floor is 0 there
+  (`lagLimitAllowsZero`, `clampLagLimit`), 5 everywhere else, and "back to the
+  broker default" returns the property to not set. **Oracle recommends `FastStartFailoverLagLimit` at or below
   `FastStartFailoverThreshold`**: past it the old primary can keep committing
   after fast-start failover is initiated, briefly risking two primaries — the
   rail warns when the sliders cross, and no asset may present "at most one
@@ -383,7 +393,14 @@ agree on:
   `DBMS_DG.INITIATE_FS_FAILOVER` call — and needs Flashback Database on both
   databases, the former primary started and mounted (a manual restart when
   `FastStartFailoverPmyShutdown` aborted it), the master observer able to reach
-  it, and static service names without Clusterware/Oracle Restart. Reinstate
+  it, and static service names without Clusterware/Oracle Restart. The page draws
+  the `reinstating` band (`REINSTATE.OPEN_BAND`) only from the first instant the
+  former primary is running, the master observer reaches it **and** it reaches the
+  new primary — "The master observer cannot connect to the former primary
+  database" and "The former primary database cannot connect to the new primary
+  database" are the broker's own restrictions — which may be never; until then
+  `REINSTATE.WAITING` says why, once (an aborted one waits for a manual restart,
+  nothing in a run restarts it). Reinstate
   stays out of scope; this is the wording for the one reference row and the
   sequence-diagram footer that mention it.
 - **`V$FS_FAILOVER_OBSERVERS`** (26ai diagnostics): `CURRENT_TIME` is the time the
@@ -404,6 +421,28 @@ agree on:
   nominate and reports the configuration unobserved. Never state the rule
   unconditionally, and never extend it to a failure that separates the primary
   from the target standby — that is not the documented case.
+- **STOP OBSERVER and DISABLE FAST_START FAILOVER are commands the broker can
+  refuse, and the run answers them.** "The STOP OBSERVER command fails if there
+  are two or more registered observers and you attempt to stop only the master",
+  and, with fast-start failover enabled, the primary and standby "must be
+  connected and communicating with each other" or ORA-16636 comes back; so a
+  master is lost in a run by crashing its observer host, never by `observer.stop`.
+  "Disabling fast-start failover without the FORCE option can succeed only if the
+  database on which the command is issued has a network connection with the
+  primary database and if the primary database and target standby database have a
+  network connection"; with FORCE on a primary cut off from the observer and the
+  target it "does not prevent the observer from initiating a fast-start failover",
+  and "two databases ... simultaneously assuming the primary database role" may
+  result. The event names no issuing database, so the engine takes the primary as
+  the issuer; the isolated primary's timing after a FORCE (commit hang, then
+  read-write) is a `model`.
+- **A commit waits for each SYNC destination.** At `DATA_GUARD_SYNC_LATENCY`'s
+  default LGWR waits "up to ... NET_TIMEOUT ... for each SYNC standby destination",
+  so one destination going silent among several hangs the commit even while
+  another answers. What ends the hang depends on the mode: the destination is
+  dropped and the primary carries on, or -- maximum protection with no
+  synchronized standby left -- the primary shuts down. Never write "carries on"
+  for the hang that ends in that shutdown.
 - **The scripting surfaces in the 26ai change table predate 26ai.** The official
   SQLcl `DG` page is scoped "Oracle Database release 21c only" and the ORDS
   Data Guard REST endpoints are documented from ORDS 21.1 onwards (an ORDS
@@ -422,34 +461,53 @@ agree on:
   not be allowed to open in any event if fast-start failover is enabled."
   (`ORA-16649`). That sentence is about a former primary that *restarts*: draw it
   mounted and needing reinstatement; never draw two databases open read-write
-  because a host came back. With fast-start failover disabled no page spells out
-  what state a restarted former primary is left in, so mounted is this page's
-  reading (`FAILOVER.FORMER_PRIMARY_MOUNTED`, `model`) — and it is drawn open where it
-  cannot reach the new primary, because nothing tells it.
+  because a host came back. With fast-start failover disabled the 19c pages do not
+  spell out what state a restarted former primary is left in, so mounted is this
+  page's reading under 19c (`FAILOVER.FORMER_PRIMARY_MOUNTED`, `model`); the 26ai
+  Scenario 11 does spell it out ("Because a role transition occurred while the old
+  primary was offline, Data Guard prevents the database from reopening and leaves it
+  in a mounted state…", `FAILOVER.FORMER_PRIMARY_MOUNTED_26AI`), so under 26ai it is
+  `documented`. Either way it is drawn open where it cannot reach the new primary,
+  because nothing tells it — a `model` under both editions. **A stalled primary that
+  is reached again without ever restarting** is drawn mounted as well, but as a
+  `model` (`FSFO.FORMER_PRIMARY_NOT_OPEN` carries that basis then): the sentence is
+  about a database that is *restarted*, and no page says a stalled, still-open primary
+  is closed when contact returns.
 - **A manual failover does not close a primary that is still open.** Oracle puts
   the shutdown on the operator ("ensure that the primary database is shut down",
   `FAILOVER.PRIMARY_SHUT_DOWN`; "shut down prior to performing a manual failover",
   `FSFO.MANUAL_FAILOVER_CONDITIONS`), and the engine raises
   `FAILOVER.PRIMARY_STILL_OPEN` (documented) at the command when it is still running. No page says the broker closes or mounts an old primary that
   is still open when a manual failover completes, and ORA-16649 is not about one that
-  stayed open. So the old primary is drawn **open read-write, as primary, beside the new
-  one** — whether or not the new primary can reach it, and with fast-start failover
-  enabled or disabled alike — until something takes it down: a crash, a shutdown or
-  abort event, a fast-start failover stall and abort that already applies, or the end of
-  the run. That is this page's reading of an undocumented gap
+  stayed open. So with **fast-start failover disabled** the old primary is drawn **open
+  read-write, as primary, beside the new one** — whether or not the new primary can
+  reach it — until something takes it down: a crash, a shutdown or abort event, or the
+  end of the run. That is this page's reading of an undocumented gap
   (`FAILOVER.FORMER_PRIMARY_OPEN`, `model`, citing the two sentences as the reason);
   never write it as "the broker leaves it open", and never word the *former primary that
-  restarts* above as this case. A fast-start-failover-initiated failover and a
-  switchover are untouched: their old primary is the documented stall / abort /
+  restarts* above as this case. With **fast-start failover enabled** the target it was
+  running with has just become the primary, so it has lost its target: it is drawn
+  **stalled** from the completion instant and then follows
+  `FastStartFailoverPmyShutdown` — aborted one `FastStartFailoverThreshold` later, or
+  stalled for good (`FAILOVER.FORMER_PRIMARY_STALLS`, `model`, owner decision D5,
+  2026-10-01, citing "Data Guard fast-start failover always guarantees that only one
+  primary database exists" and the STALLED row's "It shuts down or stalls because it is
+  likely a failover has occurred."). Nothing documented says it; never present it as
+  Oracle's outcome. A fast-start-failover-initiated failover and a switchover are
+  untouched: their old primary is the documented stall / abort /
   `FastStartFailoverPmyShutdown` path, and the converted one.
-- **"Split brain" is this page's reading, never Oracle's word.** No Oracle page uses
-  the term or gives an interval for it, so the Break readout's *Split brain* chip
+- **"Split brain" is Oracle's word, the reading of it is this page's.** The HA guide defines
+  the term ("two copies of the same database open read-write, each operating independently of
+  the other", `SPLIT_BRAIN.DEFINITION`) and gives no interval for it, so the Break readout's *Split brain* chip
   (`splitBrainOf`, `engine/sim/split-brain.ts`) is `model`, note `SPLIT_BRAIN.READING`, and
   asks one question of the drawing: were two members `open-rw` at the same moment. A
-  STALLED primary is not counted (Oracle: its redo generation is stalled), and the old
-  primary is drawn open where a manual failover found it still open (the rule above:
-  reachable or not, fast-start failover on or off), so that reads *yes* with the window
-  named, closed where the old primary crashes or shuts down. The chip is
+  STALLED primary is not counted (Oracle: its redo generation is stalled; stale reads from a
+  stalled old primary that `FastStartFailoverPmyShutdown` FALSE leaves running are disclosed in the
+  note, not counted: "A value of TRUE helps to ensure that an isolated primary database cannot
+  satisfy user queries"), and the old primary is drawn open where a manual failover found it
+  still open with fast-start failover disabled (the rule above: reachable or not), so that reads
+  *yes* with the window named, closed where the old primary crashes or shuts down; with
+  fast-start failover enabled it is stalled, then aborted, and reads *no*. The chip is
   asked only where a new primary opens by failover or manual failover, so a switchover
   has none. Never write a
   *no* that says the old primary "cannot" be open: say what the drawing shows (aborted
@@ -457,8 +515,20 @@ agree on:
   unconditional (see the `FastStartFailoverLagLimit` rule above).
 - **One role change per run.** The engine evaluates one failover or switchover
   and says so (`SIM.ONE_ROLE_CHANGE`) when later events would need a second.
-  Oracle documents that fast-start failover stays enabled and the reinstated
-  database becomes the new target; the page does not draw that.
+  Oracle documents, for a failover plus a reinstatement, that "the reinstated database
+  acts as the fast-start failover target for the new primary database"; that fast-start
+  failover stays enabled across a *switchover* is only implied, so never write it as
+  Oracle's sentence. The page does not draw a second role change, nor the former
+  primary becoming the target again. So after the role change the new primary has
+  **no synchronized fast-start failover target yet** (owner decision D6, 2026-10-01):
+  losing the observer and/or its standbys stalls and aborts nothing, it keeps
+  processing transactions, and the run says why once
+  (`FSFO.NO_TARGET_AFTER_ROLE_CHANGE`, `inferred` from "The reinstated database acts
+  as the fast-start failover target for the new primary database…" and "While the
+  configuration is in the unobserved state, fast-start failover cannot happen.
+  Therefore, the primary database can continue processing transactions…"). A
+  switchover's former primary is a standby from then on — never stalled or aborted
+  as a primary.
 - `NET_TIMEOUT` is a `LOG_ARCHIVE_DEST_n` transport attribute (broker property
   `NetTimeout`), default 30 s, min 1 s, ≥ 8–10 s recommended. It bounds how long
   LGWR waits for the standby's SYNC ack; it is NEVER a failover clock, never
@@ -478,10 +548,10 @@ agree on:
   MaxPerformance it **refuses the command** — word it as a refused `SWITCHOVER`, never as a
   forbidden failover. An apply lag does *not* block MaxAvailability, because synchronized is about
   redo **received**; it only lengthens the catch-up. The **former primary** is the database that
-  restarts (as the new standby); "the new primary database does not need to be restarted", and it
-  does not wait for the old one. Sessions on the primary are terminated as it converts. No failover
+  restarts (as the new standby); "the new primary database does not need to be restarted" is the whole
+  sentence — that it does not wait for the old one is this page's drawing (`inferred`). Sessions on the primary are terminated as it converts. No failover
   clock runs at all — threshold, `ObserverPing*` and `FastStartFailoverPmyShutdown` are spectators,
-  and FSFO stays enabled across the swap. Duration is environment-dependent (unapplied redo, update
+  and FSFO is drawn enabled across the swap (implied, not stated for a switchover). Duration is environment-dependent (unapplied redo, update
   activity at the moment of the command, online redo logs to clear), so label it that way; the 1 s
   verify and 2 s convert bands are nominal drawing constants (footnote 3), not documented numbers.
 - Reinstate (`FastStartFailoverAutoReinstate`, Flashback Database) is
@@ -505,13 +575,22 @@ agree on:
   no default; `FAILOVER` default on; `LOAD_BALANCE` default off inside an
   ADDRESS_LIST. Role-based services make the standby refuse instantly with
   ORA-12514. These parameters affect only NEW connections, never established
-  sessions. **The JDBC thin driver does not inherit Oracle Net's 60 s
-  transport default** — its own connect-timeout default is 0 in the 19c
-  driver and 20 s in current ones — so `buildJdbc()` always spells
-  `TRANSPORT_CONNECT_TIMEOUT` out with an explicit `sec` suffix (older thin
-  releases read a bare value as milliseconds). Never "simplify" the thin URL
-  back to the TNS omission rule, and never name the release that changed the
-  thin default — it is not stated on the API reference pages. Nominal drawing constants (footnote 3): refusal 0.2 s, OS refusal
+  sessions; a session is lost when its database stops serving or, on a RAC
+  database, when its instance does (Oracle: "Any sessions active when the instance
+  or service stops are terminated and the application user is immediately
+  notified" — which instance carries the sessions is `model`, `APP.SESSION_SPREAD`).
+  **The JDBC thin driver has defaults of its own from 26ai, split by edition:**
+  "Starting from Oracle AI Database Release 26ai, the default value of the
+  TRANSPORT_CONNECT_TIMEOUT parameter is 20 seconds" and RETRY_DELAY's is 1 second
+  (26ai JDBC "Data Sources and URLs"; `CLIENT.JDBC_TCT_26AI`,
+  `CLIENT.JDBC_RETRY_DELAY_26AI`). The 19c JDBC pages print neither, and Oracle Net's
+  60 s belongs to tnsnames.ora. The 20 s / 0 on the `OracleConnection` pages
+  (`CLIENT.JDBC_CURRENT`, `CLIENT.JDBC_19C`) is the `oracle.net.CONNECT_TIMEOUT`
+  connection property, not the descriptor keyword, and its release (23.6) must not be
+  cited for the keyword. `buildJdbc()` always spells `TRANSPORT_CONNECT_TIMEOUT` out, as
+  a bare number of seconds the way the JDBC page's own example writes it (units are
+  listed only for RETRY_DELAY): never invent a `sec` suffix, and never "simplify" the
+  thin URL back to the TNS omission rule. Nominal drawing constants (footnote 3): refusal 0.2 s, OS refusal
   0.15 s, establish 0.3 s; service assumed published the instant the new
   primary opens.
 - `LogXptMode` takes SYNC | FASTSYNC | ASYNC, broker default ASYNC, mapping to
@@ -525,7 +604,10 @@ agree on:
   the notice (same precedent as the 21c ObserverPing* citation). Legality per
   broker Table 4-2: MaxProtection SYNC; MaxAvailability SYNC or FASTSYNC;
   MaxPerformance ASYNC is the only mode listed — never write that SYNC is
-  illegal there. **The table is met by "at least one standby database"**, not by
+  illegal there. With fast-start failover enabled, a SYNC or FASTSYNC target or
+  primary in MaxPerformance is a **warning**, not an error: the setup lists
+  ASYNC for both (Task 3) and no sentence says the broker refuses anything else
+  (decision D8, `XPT.TABLE_4_2`, `XPT.PRIMARY_LOGXPTMODE`). **The table is met by "at least one standby database"**, not by
   every destination: "the broker verifies that there is at least one standby
   database in the configuration that can support the desired grade of
   protection", so an ASYNC bystander beside a SYNC standby is legal in every
@@ -910,8 +992,11 @@ condensed out of it:
   favour of `V$FAST_START_FAILOVER_CONFIG`; name the view of the edition on
   screen. `SWITCHOVER … WAIT` is deprecated in 26ai in favour of `DrainTimeout`.
 - **Three more spellings worth pinning.** `ConfigurationWideServiceName`
-  defaults to `primarydbname_CFG` and "the service name does not change after a
-  role transition" (19c, introduced 12.2). `TransportDisconnectedThreshold`
+  defaults to `primarydbname_CFG` — the primary database's name, never the
+  configuration's own — and "the service name does not change after a
+  role transition" (19c, introduced 12.2); its first character is alphanumeric
+  and it runs to at most 30 characters (the form refuses otherwise,
+  `CFG.SERVICE_NAME_FORMAT` flags an imported one). `TransportDisconnectedThreshold`
   (19c, broker default 30 s, 0 = no warnings) generates a **warning status**
   when the last communication from the primary exceeds it — it is never a
   failover clock. The 19c list headed "Fast-start failover cannot occur if:"
@@ -1034,7 +1119,15 @@ global appears in it; `app/test/import-boundary.test.ts` keeps the layering
   test is the gate: the general engine may not "improve" on the verified
   outcomes. Change a cell there and you are changing `site/test.mjs`,
   `diagrams/README.md` and the fragment in the same commit, or you are wrong.
-- **Validation** (`validate/*`) is 55 rules in one catalogue (`RULE_CATALOGUE`,
+- **Numeric ranges** (`BOUNDS`) carry Oracle's floors and this page's ceilings.
+  Oracle documents a floor for most settings (threshold >= 6, lag limit >= 5)
+  and almost never a ceiling, so a maximum is the page's own and is wide
+  enough that no documented value is out of reach: 3600 s for the threshold,
+  lag limit and `ApplyInstanceTimeout` (step 1, so a typed 7 stays 7), 1200 for
+  `NetTimeout`, 600 for `TRANSPORT_CONNECT_TIMEOUT`, 1000 for `RETRY_COUNT`
+  ("change RETRY_COUNT greater than 100"). A range that wide is a number box,
+  not a slider.
+- **Validation** (`validate/*`) is 71 rules in one catalogue (`RULE_CATALOGUE`,
   one of them 26ai-only), each with an id, a severity, a permitted set of bases
   and its citations: far sync never primary, FSFO target kind and direct-redo,
   multi-target explicitness, the protection-mode/transport table, the RedoRoutes
@@ -1256,7 +1349,7 @@ sections it supersedes.
 
 ### Tests
 
-`npm --prefix app run test` is **2883 tests across 112 files**. What is where:
+`npm --prefix app run test` is **3254 tests across 119 files**. What is where:
 
 - `app/src/engine/__tests__/` — the engine's own unit tests (purity, citations,
   claims, schema, migrate, URL codec, parse, resolve, graph, axis, classic).
@@ -1290,6 +1383,8 @@ sections it supersedes.
   `detailed-timeline.test.ts`), Topology with a run (`topology-mode.test.ts`), the
   legacy-URL upgrade.
 - `app/test/content/` — every lesson and reference table renders.
+- `app/test/factcheck-1001-*.test.ts` — the 2026-10-01 fact check's fixes, one file per slice
+  (roles, commands, generate, rules, prose, client-rac, fsfo).
 - `site/smoke.mjs` — the built bundle in a browser (see Publishing).
 
 A golden is a record of geometry or of generated text, not of a domain fact.

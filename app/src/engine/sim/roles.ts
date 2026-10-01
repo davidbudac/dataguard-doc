@@ -11,17 +11,27 @@
 
 import { NOMINAL } from '../defaults';
 import type { Claim, Finding } from '../types/claims';
-import { documented, model } from '../types/claims';
+import { conflict, documented, model } from '../types/claims';
 import type { CitationId } from '../citations';
 import type { MemberId, Seconds } from '../ids';
 import type { TopologyDoc } from '../types/topology';
+import type { DbRole, Member } from '../types/topology';
 import { isDatabase, isRac } from '../types/topology';
+import { activeRule } from '../redo/resolve';
 import type { SwitchoverFacts } from './kernel';
 
 /** Broker verifies both databases before it starts. Nominal, footnote 3. */
 export const SW_VERIFY: Seconds = NOMINAL.switchoverVerifySeconds;
 /** The primary converts to a standby; its sessions end here. Nominal, footnote 3. */
 export const SW_CONVERT: Seconds = NOMINAL.switchoverConvertSeconds;
+
+/**
+ * Converting a snapshot standby back to a physical standby ahead of a manual
+ * failover: the flashback to the restore point and the restart as a mounted
+ * physical standby. Oracle gives the sequence and no duration, so this is a
+ * nominal drawing constant of this page, not a documented number.
+ */
+export const SNAPSHOT_CONVERT: Seconds = 5;
 
 export const nominalBandsClaim = (): Claim<[Seconds, Seconds]> =>
   model<[Seconds, Seconds]>([SW_VERIFY, SW_CONVERT],
@@ -60,9 +70,14 @@ export interface SwitchoverGateInput {
   targetUp: boolean;
   /** The two reach each other directly. */
   connected: boolean;
+  /** The role the member named by the command holds. */
+  targetRole: DbRole;
+  /** The configured protection mode is maximum protection. */
+  maxProtection: boolean;
 }
 
 export type SwitchoverRefusal =
+  | 'snapshot-target' | 'logical-maxprotection'
   | 'primary-down' | 'target-down' | 'not-connected'
   | 'not-target' | 'not-synchronized' | 'past-lag-limit';
 
@@ -70,6 +85,22 @@ export function switchoverGate(
   input: SwitchoverGateInput,
 ): { blocked: boolean; reason: SwitchoverRefusal | null; claim: Claim<boolean> } {
   const { fsfoEnabled, maxPerformance, gateLag, lagLimit, isTarget, synchronized } = input;
+  /* The two restrictions that belong to the kind of standby the command names,
+     whatever the state of anything else. */
+  if (input.targetRole === 'snapshot') {
+    return {
+      blocked: true, reason: 'snapshot-target',
+      claim: documented(true, ['SWITCHOVER.SNAPSHOT_NOT_TARGET', 'SWITCHOVER.SNAPSHOT_CONVERT_FIRST'],
+        'A snapshot standby database cannot be the target of a switchover: it has to be converted back to a physical standby database first. (A manual failover to one is a different command, and legal while fast-start failover is disabled.)'),
+    };
+  }
+  if (input.targetRole === 'logical' && input.maxProtection) {
+    return {
+      blocked: true, reason: 'logical-maxprotection',
+      claim: documented(true, ['SWITCHOVER.LOGICAL_MAXPROT'],
+        'Switchover to a logical standby database is disallowed when the configuration is operating in maximum protection mode.'),
+    };
+  }
   const needs: SwitchoverRefusal | null = !input.primaryUp ? 'primary-down'
     : !input.targetUp ? 'target-down'
       : !input.connected ? 'not-connected' : null;
@@ -143,13 +174,105 @@ export function switchoverRefused(
 
 export const switchoverLossClaim = (): Claim<number> =>
   documented(0, ['SWITCHOVER.ZERO_LOSS'],
-    'A switchover is zero data loss in every protection mode: the roles swap only once the standby has everything. No failover clock runs at all -- the threshold, the ObserverPing properties and FastStartFailoverPmyShutdown are spectators, and fast-start failover stays enabled across the swap.');
+    'A switchover is zero data loss in every protection mode: the roles swap only once the standby has everything. No failover clock runs at all -- the threshold, the ObserverPing properties and FastStartFailoverPmyShutdown are spectators.');
 
 /** Terminal recovery, the role change and the open. */
 export const executionClaim = (roleTransition: Seconds): Claim<Seconds> =>
   model(roleTransition,
     'EXEC.ENV_DEPENDENT: failover execution -- terminal recovery, the role change and the open -- is environment-dependent, not parameter-driven. The seconds drawn here are the workbench\'s own input, never a documented duration.',
     ['SWITCHOVER.FORMER_PRIMARY_RESTARTS']);
+
+/* ---------------- logical standby as the new primary ---------------- */
+
+/**
+ * The members a role change to a logical standby leaves behind: "All physical
+ * and snapshot standby databases will be disabled and must be re-created from
+ * a copy of the new primary database". After a failover the original primary
+ * goes with them. Other logical standbys are not named, so they stay with the
+ * ordinary bystander rules.
+ */
+export function disabledByLogicalRole(
+  doc: TopologyDoc, newPrimary: MemberId, former: MemberId | null, failover: boolean,
+): MemberId[] {
+  const out: MemberId[] = [];
+  for (const m of doc.members) {
+    if (!isDatabase(m) || m.id === newPrimary) continue;
+    if (m.role === 'physical' || m.role === 'snapshot' || (failover && m.id === former)) out.push(m.id);
+  }
+  return out;
+}
+
+export const logicalRoleClaim = (failover: boolean, count: number): Claim<string> =>
+  documented(
+    `${count} member${count === 1 ? ' is' : 's are'} disabled and must be re-created from a copy of the new primary.`,
+    [failover ? 'FAILOVER.LOGICAL_DISABLES_OTHERS' : 'SWITCHOVER.LOGICAL_DISABLES_OTHERS'],
+    failover
+      ? 'The failover target is a logical standby database: the original primary database and all physical and snapshot standby databases in the configuration will be disabled. They do not follow the new primary, whatever BystandersFollowRoleChange says.'
+      : 'The switchover target is a logical standby database: all physical and snapshot standby databases will be disabled and must be re-created from a copy of the new primary database. They do not follow the new primary.');
+
+/* ---------------- redo a standby has not applied ---------------- */
+
+/**
+ * Redo a standby holds but has not applied, beyond its apply lag: a standby
+ * whose apply is stopped for the run, or a snapshot standby (which applies
+ * nothing it receives), has piled up everything the primary generated while it
+ * ran in this run. Drawn 1:1, as this page draws every apply lag. Zero for a
+ * standby that is applying.
+ */
+export function unappliedBacklog(m: Member, ranFor: Seconds): Seconds {
+  if (!isDatabase(m) || m.role === 'primary') return 0;
+  if (m.role === 'snapshot') return ranFor;
+  return m.applyRunning ? 0 : ranFor;
+}
+
+/**
+ * "Waits for the target standby database to finish applying any unapplied redo
+ * data before stopping Redo Apply" is the documented step. How much redo is
+ * outstanding when apply was stopped, and how long applying it takes, is this
+ * page's arithmetic.
+ */
+export const unappliedWaitClaim = (target: MemberId, backlog: Seconds): Claim<string> =>
+  model(
+    `${target as string} has apply stopped, so the failover first waits for the ${backlog} s of redo the primary generated in this run to be applied.`,
+    'FAILOVER.APPLY_WAIT_SIZE: that the broker waits for the target to finish applying unapplied redo is documented. How much is outstanding when apply was stopped for the run, and how long applying it takes, is this page\'s model: the primary\'s running time, applied 1:1 as every apply lag on this page is.',
+    ['FAILOVER.WAITS_FOR_APPLY']);
+
+/* ---------------- manual failover to a snapshot standby ---------------- */
+
+const SNAPSHOT_FAILOVER_CONFLICT =
+  'The documentation disagrees with itself and does not say so. The role-transitions concepts page says "A snapshot standby cannot be the target of a role transition."; the broker commands page says a snapshot standby "can be the target of a manual failover if fast-start failover is disabled". This page follows the broker, which describes the procedure, and draws the failover.';
+
+/** That a manual failover to a snapshot standby is allowed at all is a conflict between two pages. */
+export const snapshotFailoverAllowedClaim = (target: MemberId): Claim<string> =>
+  conflict(
+    `FAILOVER TO ${target as string} is accepted although ${target as string} is a snapshot standby.`,
+    ['FAILOVER.SNAPSHOT_MANUAL_ALLOWED', 'ROLES.SNAPSHOT_NO_ROLE_TRANSITION', 'SWITCHOVER.SNAPSHOT_NOT_TARGET'],
+    SNAPSHOT_FAILOVER_CONFLICT);
+
+/** What the broker does first: documented. */
+export const snapshotConvertApplyClaim = (target: MemberId): Claim<string> =>
+  documented(
+    `For a failover to a snapshot standby, the broker first converts ${target as string} back to a physical standby and then starts Redo Apply to apply all the accumulated redo.`,
+    ['FAILOVER.SNAPSHOT_CONVERT_APPLY']);
+
+/** How long: this page's. */
+export const snapshotConvertBandClaim = (
+  target: MemberId, convert: Seconds, apply: Seconds, immediate: boolean,
+): Claim<string> =>
+  model(
+    immediate
+      ? `${target as string} converts back to a physical standby (${convert} s drawn); an IMMEDIATE failover applies none of the accumulated redo.`
+      : `${target as string} converts back to a physical standby (${convert} s drawn), then applies the accumulated redo (${apply} s drawn), before the role change begins.`,
+    'FAILOVER.SNAPSHOT_BAND: the sequence -- convert, then apply the accumulated redo -- is documented; the durations are not. The convert is a nominal drawing constant, and the redo to apply is the primary\'s running time in this run plus the configured apply lag, applied 1:1 as every apply lag on this page is. An IMMEDIATE failover is drawn with the convert and no apply; the documentation states the sequence for the complete failover only.',
+    ['FAILOVER.SNAPSHOT_CONVERT_APPLY']);
+
+export const snapshotFailoverFinding = (target: MemberId): Finding => ({
+  id: 'FAILOVER.SNAPSHOT_CONVERTS', severity: 'info', basis: 'conflict',
+  cite: ['FAILOVER.SNAPSHOT_MANUAL_ALLOWED', 'ROLES.SNAPSHOT_NO_ROLE_TRANSITION', 'FAILOVER.SNAPSHOT_CONVERT_APPLY'],
+  subject: { kind: 'member', id: target as string },
+  message: `${target as string} is a snapshot standby. A manual failover to it is allowed while fast-start failover is disabled, and the broker first converts it back to a physical standby and starts Redo Apply on the accumulated redo, so it opens later than a physical standby would.`,
+  note: SNAPSHOT_FAILOVER_CONFLICT,
+});
 
 /* ---------------- bystanders ---------------- */
 
@@ -165,6 +288,34 @@ export const bystanderClaim = (follow: 'ALL' | 'NONE'): Claim<'ALL' | 'NONE'> =>
       'BystandersFollowRoleChange is ALL, the default: during the failover the broker determines whether each bystander standby is ahead of or behind the failover target. One that is behind simply gets its redo transport from the new primary; one that is ahead is disabled with a status of ORA-16661 and must be reinstated after the failover completes.')
     : documented(follow, ['BYSTANDERS.DEFAULT_ALL', 'BYSTANDERS.NONE_DISABLED'],
       'BystandersFollowRoleChange is NONE: the broker does not evaluate the bystander standbys as part of the failover. They are marked as disabled with a status of ORA-16661 so that they can be evaluated later, and the broker completes the failover as soon as possible.');
+
+/**
+ * A member whose RedoRoutes is not NULL but has no rule whose source is the new
+ * primary. The rule is inactive -- "A redo routing rule is active if its redo
+ * source field specifies the current primary database" -- but what the member
+ * does instead is on no page: the NULL default is documented, a non-NULL
+ * property with no rule for the new primary is not. This engine ships nothing
+ * from it (it does not fall back to the default), and says that is its reading.
+ */
+export function noRuleForNewPrimary(
+  doc: TopologyDoc, newPrimary: MemberId, memberIds: readonly MemberId[],
+): Finding[] {
+  const out: Finding[] = [];
+  for (const id of memberIds) {
+    const m = doc.members.find((x) => x.id === id);
+    if (!m || !m.enabled || !isDatabase(m)) continue;
+    if (m.redoRoutes.length === 0 || activeRule(m, newPrimary) !== undefined) continue;
+    const role = id === newPrimary ? 'the new primary' : 'a bystander';
+    out.push({
+      id: 'ROUTES.NO_RULE_FOR_NEW_PRIMARY', severity: 'info', basis: 'model',
+      cite: ['ROUTES.RULE_ACTIVE', 'ROUTES.DEFAULT_NULL'],
+      subject: { kind: 'member', id: id as string },
+      message: `${m.name}, ${role}, has a RedoRoutes property but no rule whose source is ${newPrimary as string}, so none of its rules is active and this run ships nothing from it.`,
+      note: `ROUTES.NO_RULE_FOR_NEW_PRIMARY: "A redo routing rule is active if its redo source field specifies the current primary database" says the rules for the old primary are inactive. What a member with a non-NULL RedoRoutes and no rule for the new primary does instead is not documented (the NULL default is "(LOCAL : ALL) at a primary database", and this property is not NULL). This engine draws it shipping nothing -- not falling back to the default -- which is this page's reading; a member that is meant to ship after a role change needs a rule for that direction pre-declared.`,
+    });
+  }
+  return out;
+}
 
 /**
  * A bystander that holds redo the new primary never received. That the broker

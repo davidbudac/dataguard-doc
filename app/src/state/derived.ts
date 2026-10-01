@@ -243,7 +243,7 @@ function splitBrainSentence(sb: SplitBrain, topo: TopologyDoc): string {
       return `${oldP} aborts at ${fmt(at.at)} s, before ${open}.`;
     case 'stalled':
       return at.abortsAt === null
-        ? `${oldP} is STALLED when ${open}, and nothing shuts it down; a stalled primary commits nothing.`
+        ? `${oldP} is STALLED when ${open}, and nothing shuts it down; a stalled primary commits nothing, but this drawing keeps it publishing the service, so a client that connects to it reads data ${newP} has moved past (stale reads, not counted as a second open database).`
         : `${oldP} is STALLED when ${open} and cannot commit; it shuts itself down at ${fmt(at.abortsAt)} s.`;
     case 'closed':
       return at.state.startsWith('mounted')
@@ -425,7 +425,7 @@ export function readoutFor(steady: boolean): ReadoutChip[] {
         v: unknown ? 'unknown' : zero ? 'none' : fmt(rpo.value),
         ...(unknown || zero ? {} : { unit: 's' }),
         sub: unknown
-          ? 'The far sync instance went down with the primary, and what it had not yet forwarded is lost with it. This run cannot say how much.'
+          ? 'The far sync instance was down or cut off from the standby when the primary failed, so redo it had not yet forwarded could not be sent on to the standby. This run cannot say how much.'
           : zero
             ? (f.dataLossKind === 'manual'
               ? 'The standby held everything the primary had generated when it was promoted. A manual failover guarantees nothing of the kind.'
@@ -496,9 +496,11 @@ export function readoutFor(steady: boolean): ReadoutChip[] {
     chips.push(ap.tConn !== null
       ? {
         ...base, tone: 'tl', k: many ? `${name} reconnects` : 'Application reconnects', v: fmt(ap.tConn), unit: 's',
-        sub: ap.servedAtLoss !== null
-          ? `${name} gets a new connection at this instant: ${memberName(ap.sessionsOn)} went down with its sessions while ${memberName(ap.servedAtLoss)} was already publishing the service, so the outage is the connect string's own.`
-          : `${name} gets a new connection at this instant: the connect string's own waits, on top of the role change.`,
+        sub: ap.instanceLoss !== null
+          ? `${name} gets a new connection at this instant: its sessions on ${ap.instanceLoss.instance} were terminated with the instance while ${memberName(ap.sessionsOn)} went on serving, so the outage is the connect string's own.`
+          : ap.servedAtLoss !== null
+            ? `${name} gets a new connection at this instant: ${memberName(ap.sessionsOn)} went down with its sessions while ${memberName(ap.servedAtLoss)} was already publishing the service, so the outage is the connect string's own.`
+            : `${name} gets a new connection at this instant: the connect string's own waits, on top of the role change.`,
         basis: 'model',
       }
       : {

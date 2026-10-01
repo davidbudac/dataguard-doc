@@ -11,7 +11,7 @@ import {
 import type { Preset } from './types';
 import type { TimedEvent, TopologyDoc } from '../engine';
 
-/* Two candidate targets and three observers -- the 19c maximum. */
+/* Two candidate targets and three observers -- the 19c chapter's maximum (the START OBSERVER page says four). */
 function multiTargetDoc(): TopologyDoc {
   /* Every database takes SYNC, the primary included: after a role change
      it is the standby. */
@@ -71,7 +71,8 @@ export const multiTargetThreeObservers: Preset = {
     + 'in which they are specified", and "If the designated fast-start failover target develops '
     + 'a problem ... the broker automatically changes the fast-start failover target to one of '
     + 'the other candidate targets". Targets are verified when fast-start failover is enabled. '
-    + 'Three observers are registered, the 19c maximum -- one master, the others backups, and '
+    + 'Three observers are registered -- the 19c fast-start failover chapter says three is the '
+    + 'maximum, while the 19c START OBSERVER reference says four -- one master, the others backups, and '
     + 'only the master observer can coordinate fast-start failover; if the primary and target '
     + 'standby stay connected but the connection to the master observer is lost, the broker '
     + 'tries to nominate a backup observer as the new master, a documented attempt under that '
@@ -90,7 +91,7 @@ export const multiTargetThreeObservers: Preset = {
   cite: [
     'FSFO.MULTI_TARGET_12_2', 'FSFO.TARGET_MUST_BE_EXPLICIT', 'FSFO.TARGET_ORDER',
     'FSFO.TARGET_AUTO_CHANGE', 'FSFO.NO_SECOND_TARGET_26AI', 'FSFO.TARGET_VERIFIED_ON_ENABLE',
-    'OBS.THREE_19C',
+    'OBS.THREE_19C', 'OBS.FOUR_CMD19',
     'OBS.MASTER_ONLY_COORDINATES', 'OBS.NOMINATION_PRECONDITION', 'FSFO.THRESHOLD',
     'FSFO.BOTH_MUST_HAVE_LOST', 'OBS.PLACEMENT_NEVER_ON_DB_HOST',
   ],
@@ -131,17 +132,21 @@ export const racPrimary: Preset = {
     'The primary is a two-instance cluster; the observer, as always, runs on a host of its own, '
     + 'because it "should never be deployed at the primary database server or cluster, or on '
     + 'the standby database server or cluster". The default event stops one instance at t = 0. '
-    + 'Nothing else happens: the observer and the target standby both still reach the surviving '
-    + 'instance, and fast-start failover needs both of them to have lost the primary for '
-    + 'FastStartFailoverThreshold before it initiates anything, so no clock ever starts. Two '
-    + "modelling notes belong to this preset rather than to Oracle: the engine treats a member "
-    + 'as reachable while any one of its instance hosts is up -- degraded, not down -- and '
+    + 'Nothing else happens here: the observer and the target standby both still reach the '
+    + 'surviving instance, and Oracle says fast-start failover "will not occur unless all '
+    + 'instances comprising the Oracle RAC primary database are perceived to have failed". '
+    + 'Three modelling notes belong to this preset rather than to Oracle. The drawing starts no '
+    + 'threshold clock while any instance runs -- no Oracle sentence says whether one would; '
+    + 'Oracle advises a higher FastStartFailoverThreshold on a RAC primary "to minimize the '
+    + 'possibility of a false failover in the event of an instance failure". The engine treats a '
+    + 'member as reachable while any one of its instance hosts is up -- degraded, not down. And '
     + 'instance-level LGWR and NSS ownership is out of scope, so which instance was shipping '
     + 'redo makes no difference here. Kill the second instance too and the configuration '
-    + 'becomes the ordinary primary crash.',
+    + 'becomes the ordinary primary crash, its clock counted from the last instance lost (an '
+    + 'inference).',
   cite: [
     'OBS.PLACEMENT_NEVER_ON_DB_HOST', 'FSFO.BOTH_MUST_HAVE_LOST', 'FSFO.THRESHOLD',
-    'FSFO.OBSERVER_OVERRIDE_FALSE',
+    'FSFO.OBSERVER_OVERRIDE_FALSE', 'RAC.PERCEIVED_FAILED', 'RAC.THRESHOLD_ADVICE',
   ],
   doc: racDoc,
   events: () => [instanceDown(0, 'prm01', 'prm011')],

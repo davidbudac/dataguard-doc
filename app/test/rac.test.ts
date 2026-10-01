@@ -79,10 +79,12 @@ describe('an instance stops on a host that stays up', () => {
     expect(stateAt(t, 10).epoch.net.downHosts).toEqual(['dc1-node1']);
   });
 
-  it('the primary says, documented, that it stays available', () => {
+  it('the primary says it stays available, and that the drawing starts no clock, as a model', () => {
+    /* FC 10-01 SIM-31: the cited sentences say nothing about a clock, so the
+       claim is this page's model; it still cites the availability sentence. */
     const t = simulate(p.doc(), p.events());
     const d = t.decisions.find((x) => x.id === 'RAC.PRIMARY_DEGRADED');
-    expect(d?.claim.basis).toBe('documented');
+    expect(d?.claim.basis).toBe('model');
     expect(d?.claim.cite).toContain('RAC.PRIMARY_AVAILABLE');
     expect(claimWellFormed(d!.claim)).toBe(true);
   });
@@ -351,13 +353,17 @@ describe('what the Configure tab writes for RAC', () => {
     expect(generateShowMocks(preset('classic').doc())).toHaveLength(3);
   });
 
-  it('writes per-instance parameters and standby redo logs for every thread', () => {
-    const rac = generateInitOraFiles(doc).find((f) => f.id === 'initora.rac')!;
-    const plain = renderPlain(rac);
+  it('writes per-instance parameters, and the standby redo logs for every thread as SQL of their own', () => {
+    const files = generateInitOraFiles(doc);
+    const plain = renderPlain(files.find((f) => f.id === 'initora.rac')!);
     expect(plain).toContain('prm011.instance_number=1');
     expect(plain).toContain('prm012.instance_number=2');
-    expect(plain).toContain('ALTER DATABASE ADD STANDBY LOGFILE THREAD 2 SIZE 500M;');
     expect(plain).toContain('%t');
+    /* GEN-28: SQL does not belong in a file typed init.ora. */
+    expect(plain).not.toContain('ALTER DATABASE');
+    const srl = files.find((f) => f.id === 'srl.rac')!;
+    expect(srl.syntax).toBe('sql');
+    expect(renderPlain(srl)).toContain('ALTER DATABASE ADD STANDBY LOGFILE THREAD 2 SIZE 500M;');
     expect(generateInitOraFiles(preset('classic').doc()).some((f) => f.id === 'initora.rac')).toBe(false);
   });
 

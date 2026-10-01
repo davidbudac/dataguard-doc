@@ -44,7 +44,7 @@ describe('collector import', () => {
     expect(result.notes.join(' ')).toContain('DEFERRED');
   });
   it('records simulator numeric repairs instead of silently clamping live data', () => {
-    const input = block('P', 'PRIMARY', [{ ...dest(), netTimeout: 600 }]) + '\n' + block('S', 'PHYSICAL STANDBY');
+    const input = block('P', 'PRIMARY', [{ ...dest(), netTimeout: 5000 }]) + '\n' + block('S', 'PHYSICAL STANDBY');
     expect(importCollectedTopology(input).notes.join(' ')).toMatch(/Simulator adjustment.*netTimeout/);
   });
   it('imports far sync and cascading as their own hops', () => {

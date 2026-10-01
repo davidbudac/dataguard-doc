@@ -24,7 +24,7 @@ export function fsfoStateNote(state: TopologyDoc['config']['fsfo']['state']): st
 }
 
 export const THRESHOLD_NOTE =
-  "Default 30 s, minimum 6 s. The clock starts when the observer first loses its connection to the primary, and the isolated primary's own stall clock always uses it.";
+  "Default 30 s, minimum 6 s. The clock starts when the observer first loses its connection to the primary, and the isolated primary's own stall clock always uses it. “If you have an Oracle RAC primary database, consider specifying a higher value to minimize the possibility of a false failover in the event of an instance failure.” The HA guide's table puts the RAC figure at “Oracle RAC miscount + reconfiguration time + 30 seconds”.";
 
 export function lagLimitNote(doc: TopologyDoc): string {
   const f = doc.config.fsfo;
@@ -35,7 +35,7 @@ export function lagLimitNote(doc: TopologyDoc): string {
     + (limit > f.thresholdSeconds
       ? 'Oracle recommends the lag limit at or below the threshold: past it the old primary can keep committing after fast-start failover is initiated, briefly risking two primaries.'
       : ed === '26ai' && avail
-        ? '26ai gives maximum availability a lag limit too, with a broker default of 0 -- the standby must have received everything and the failover is zero-loss. Any non-zero value, minimum 5 s, makes it bounded-loss. The role arrived in 21c; 26ai\'s own contribution is the per-mode default.'
+        ? '26ai gives maximum availability a lag limit too, with a broker default of 0 -- the standby must have received everything and the failover is zero-loss. Any non-zero value, minimum 5 s, makes it bounded-loss. Oracle\'s own page also says a value must be at least 5, which the default of 0 sits below; the two are not reconciled. The role arrived in 21c; 26ai\'s own contribution is the per-mode default.'
         : ed === '19c' && avail
           ? 'Under 19c this control is greyed because the property page and the fast-start failover chapter disagree about whether it reaches maximum availability at all -- see the why-pill. Default 30 s, minimum 5 s.'
           : 'Default 30 s, minimum 5 s. Failover is permitted while the gated lag stays within it.');

@@ -957,19 +957,20 @@ describe('FastStartFailoverLagLimit: the limit in force until it is set (ED-03)'
     await tick();
     await unfold(root, 'Fast-start failover');
     /* 26ai maximum availability: the broker default is 0, zero data loss. */
-    expect(lagField(root)?.querySelector('.field-val')?.textContent).toBe('0 s');
+    const box = (): HTMLInputElement =>
+      lagField(root)?.querySelector<HTMLInputElement>('input') as HTMLInputElement;
+    expect(box().value).toBe('0');
     edition.value = '19c';
     await tick();
-    expect(lagField(root)?.querySelector('.field-val')?.textContent).toBe('30 s');
+    expect(box().value).toBe('30');
     edition.value = '26ai';
     await tick();
-    const input = lagField(root)?.querySelector<HTMLInputElement>('input');
-    expect(input).toBeDefined();
-    (input as HTMLInputElement).value = '10';
-    (input as HTMLInputElement).dispatchEvent(new Event('input', { bubbles: true }));
+    /* A number box commits on change (ED-12 made the limit one: 5 to 3600 is no slider). */
+    box().value = '10';
+    box().dispatchEvent(new Event('change', { bubbles: true }));
     await tick();
     expect(doc.value.topology.config.fsfo.lagLimitSet).toBe(true);
     expect(doc.value.topology.config.fsfo.lagLimitSeconds).toBe(10);
-    expect(lagField(root)?.querySelector('.field-val')?.textContent).toBe('10 s');
+    expect(box().value).toBe('10');
   });
 });

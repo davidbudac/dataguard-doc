@@ -394,11 +394,15 @@ describe('the Split brain reading', () => {
   });
 
   it('is a yes, naming the window, where the old primary is still open and the new one can reach it', () => {
-    for (const d of [fsfoOff(), CLASSIC]) {
-      load(d, [{ at: 0, kind: 'cmd.failover', to: SBY }]);
-      expect(chip()).toMatchObject({ v: 'yes', tone: 'rd', basis: 'model' });
-      expect(chip()?.sub).toMatch(/^prm01 and sby01 are both open read-write from \d+ s to the end of the run: prm01 is still open when sby01 opens at \d+ s/);
-    }
+    load(fsfoOff(), [{ at: 0, kind: 'cmd.failover', to: SBY }]);
+    expect(chip()).toMatchObject({ v: 'yes', tone: 'rd', basis: 'model' });
+    expect(chip()?.sub).toMatch(/^prm01 and sby01 are both open read-write from \d+ s to the end of the run: prm01 is still open when sby01 opens at \d+ s/);
+  });
+
+  it('is a no where fast-start failover is enabled: the old primary has lost its target and stalls, then shuts down (owner decision D5)', () => {
+    load(CLASSIC, [{ at: 0, kind: 'cmd.failover', to: SBY }]);
+    expect(chip()).toMatchObject({ v: 'no', tone: 'tl', basis: 'model' });
+    expect(chip()?.sub).toMatch(/^prm01 is STALLED when sby01 opens at \d+ s and cannot commit; it shuts itself down at \d+ s\.$/);
   });
 
   it('closes the window where the old primary is taken down later', () => {

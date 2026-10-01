@@ -83,7 +83,7 @@ function noEventLanes(ap: AppModel, service: string, t0: number, t1: number): Fi
     lanes[2]?.segs.push({
       a: t0, b: t1, cls: 'b-tl', ink: 'f-tl',
       labs: [
-        'The listener still answers -- connections are accepted throughout',
+        "The listener still answers (this page's model) -- connections are accepted throughout",
         'The listener still answers', 'Connects',
       ],
     });
@@ -128,14 +128,25 @@ function failureLanes(
   rd: number, t0: number, t1: number, pps: number, overlap: Overlap | null,
 ): Ladder {
   const lanes = LANES(service);
-  const down = overlap?.down ?? 0;
+  /* One instance of a RAC database stopped and the database went on serving:
+     the service never left, the sessions on that instance did. */
+  const inst = ap.instanceLoss;
+  const down = overlap?.down ?? (inst === null ? 0 : ap.lostAt ?? 0);
   const att = ap.attempts;
   const last = att[att.length - 1];
   const aggregate = att.length > 1 && ((ap.passCost + rd) * pps < 22 || att.length > 48);
   const ticks: number[] = [];
 
   /* lane 0 -- where the service is published */
-  if (overlap !== null) {
+  if (inst !== null) {
+    lanes[0]?.segs.push({
+      a: t0, b: t1, cls: 'b-tl', ink: 'f-tl',
+      labs: [
+        `Published by the instances of the database that are still up -- ${inst.instance} no longer registers it`,
+        'On the surviving instances', 'Surviving',
+      ],
+    });
+  } else if (overlap !== null) {
     lanes[0]?.segs.push(
       {
         a: t0, b: overlap.opened, cls: 'b-tl', ink: 'f-tl',
@@ -174,7 +185,12 @@ function failureLanes(
   lanes[1]?.segs.push({
     a: t0, b: down, cls: 'b-tl', ink: 'f-tl',
     /* With two primaries open, the sessions are on the old one. */
-    labs: [overlap !== null ? 'Pooled sessions working on the old primary' : 'Pooled sessions working on the primary', 'Working', 'OK'],
+    labs: [
+      inst !== null
+        ? `Pooled sessions working on ${inst.instance}`
+        : overlap !== null ? 'Pooled sessions working on the old primary' : 'Pooled sessions working on the primary',
+      'Working', 'OK',
+    ],
   });
   const poolEnd = ap.tConn !== null ? ap.tConn : t1;
   if (stalled) {
@@ -185,7 +201,12 @@ function failureLanes(
   } else {
     const bk = Math.min(down + 1.5, poolEnd);
     lanes[1]?.segs.push(
-      { a: down, b: bk, cls: 'b-hatch', ink: 'f-rd', labs: ['In-flight calls error -- ORA-3113', 'Errors'] },
+      {
+        a: down, b: bk, cls: 'b-hatch', ink: 'f-rd',
+        labs: inst !== null
+          ? [`Sessions on ${inst.instance} are terminated and the application is notified`, 'Sessions terminated', 'Errors']
+          : ['In-flight calls error -- ORA-3113', 'Errors'],
+      },
       {
         a: bk, b: poolEnd, cls: 'b-am', ink: 'f-am',
         labs: ['Pool empty -- requests wait or fail', 'Pool empty', 'Empty'],
@@ -195,7 +216,9 @@ function failureLanes(
   if (ap.tConn !== null) {
     lanes[1]?.segs.push({
       a: ap.tConn, b: t1, cls: 'b-tl', ink: 'f-tl',
-      labs: ['Pool rebuilt on the new primary', 'Pool rebuilt', 'OK'],
+      labs: inst !== null
+        ? [`Pool rebuilt${inst.to === null ? '' : ` on ${inst.to}`}`, 'Pool rebuilt', 'OK']
+        : ['Pool rebuilt on the new primary', 'Pool rebuilt', 'OK'],
     });
   }
 
@@ -228,7 +251,9 @@ function failureLanes(
     for (const at of att) {
       lanes[2]?.segs.push({
         a: at.start, b: at.a1End, cls: 'b-am', ink: 'f-am',
-        labs: [`Address 1 -- dead, ${fmt(ap.d1)} s`, `${fmt(ap.d1)} s`],
+        labs: inst !== null
+          ? [`Address 1 -- ${inst.instance} does not offer ${service} (ORA-12514), ${fmt(ap.d1)} s`, `${fmt(ap.d1)} s`]
+          : [`Address 1 -- dead, ${fmt(ap.d1)} s`, `${fmt(ap.d1)} s`],
       });
       if (!at.ok && at.end < t1) ticks.push(at.end);
     }
@@ -471,7 +496,10 @@ function AppFigure({ ap, client, tr, width }: {
      `down`, and the new primary had opened before that. Only this case moves. */
   const overlap: Overlap | null = kind === 'failure' && ap.servedAtLoss !== null
     ? { down: ap.lostAt ?? 0, opened: facts.tOpen ?? ap.lostAt ?? 0 } : null;
-  const down = overlap?.down ?? 0;
+  /* One instance stopped and the database went on serving: nothing opened,
+     nothing was gone, the sessions on that instance were. */
+  const inst = kind === 'failure' ? ap.instanceLoss : null;
+  const down = overlap?.down ?? (inst === null ? 0 : ap.lostAt ?? 0);
   /* When the new primary opened, for the marker on it: the failure figure's own
      answer is the service's return, which here is the same instant as the loss. */
   const opened = overlap?.opened ?? tOpen;
@@ -484,7 +512,7 @@ function AppFigure({ ap, client, tr, width }: {
 
   const braces = kind === 'none'
     ? []
-    : ladderBraces(ap, ladder.aggregate, kind === 'switchover' ? ap.startAt : down, tOpen, rc, rd);
+    : ladderBraces(ap, ladder.aggregate, kind === 'switchover' ? ap.startAt : down, inst === null ? tOpen : null, rc, rd);
   const height = figHeight(g, braceRows(braces, scale, width, g));
 
   const unit = kind === 'switchover'
@@ -502,9 +530,11 @@ function AppFigure({ ap, client, tr, width }: {
   const gapB = (g.lane[1] ?? 0) + g.laneH;
 
   /* the top annotation, which branches on the outcome and never on the event */
-  const outageLab = ap.tConn !== null && tOpen !== null
-    ? `Application outage = ${fmt(ap.tConn - (kind === 'switchover' ? ap.startAt : down))} s -- ${fmt(ap.tConn - tOpen)} s of it client-side`
-    : null;
+  const outageLab = ap.tConn !== null && inst !== null
+    ? `Application outage = ${fmt(ap.tConn - down)} s -- the sessions end, the connect string dials on`
+    : ap.tConn !== null && tOpen !== null
+      ? `Application outage = ${fmt(ap.tConn - (kind === 'switchover' ? ap.startAt : down))} s -- ${fmt(ap.tConn - tOpen)} s of it client-side`
+      : null;
   const outageW = outageLab === null ? 0 : approxW(outageLab, 12);
 
   const noEventTop = ap.switchoverRefused
@@ -520,12 +550,14 @@ function AppFigure({ ap, client, tr, width }: {
   const summary = kind === 'none'
     ? `The application's view: ${noEventTop}`
     : ap.tConn !== null
-      ? overlap !== null
+      ? inst !== null
+        ? `The application's view: its sessions on ${inst.instance} were terminated at t = ${fmt(down)} s, the database went on serving the service, and a new connection succeeded at ${fmt(ap.tConn)} s${inst.to === null ? '' : ` on ${inst.to}`}.`
+        : overlap !== null
         ? `The application's view: its sessions were lost at t = ${fmt(down)} s with the old primary, the new primary already publishing the service, and a new connection succeeded at ${fmt(ap.tConn)} s, ${fmt(ap.tConn - (tOpen ?? 0))} seconds of that spent inside the connect string.`
         : `The application's view: the service was gone from t = ${fmt(kind === 'switchover' ? ap.startAt : 0)} s and a new connection succeeded at ${fmt(ap.tConn)} s, ${fmt(ap.tConn - (tOpen ?? 0))} seconds of that spent inside the connect string.`
       : `The application's view: the connect string exhausted its retry budget${ap.gaveUp === null ? '' : ` at ${fmt(ap.gaveUp)} s`} and the application stayed down.`;
 
-  const serviceBack = tOpen !== null && !facts.blocked;
+  const serviceBack = tOpen !== null && !facts.blocked && inst === null;
   const openCands = [
     `New primary opens -- ${service} published at t = ${fmt(opened ?? 0)} s`,
     `${service} published at t = ${fmt(opened ?? 0)} s`,
@@ -558,9 +590,11 @@ function AppFigure({ ap, client, tr, width }: {
         <>
           <line class="partition" x1={r1(xz)} y1={g.laneTop - 4} x2={r1(xz)} y2={g.lanesBottom + 4} />
           <text class="t-mark f-rd" x={r1(xz + 8)} y={g.markY}>
-            {stalled
-              ? 'The primary becomes unreachable -- requests start failing'
-              : 'The primary is gone -- requests start failing'}
+            {inst !== null
+              ? `${inst.instance} stops -- the sessions on it are terminated`
+              : stalled
+                ? 'The primary becomes unreachable -- requests start failing'
+                : 'The primary is gone -- requests start failing'}
           </text>
         </>
       ) : null}
@@ -692,7 +726,11 @@ export function AppView() {
           <span class="mono"> ORA-12514</span>. The refusal, OS-refusal and establish costs
           are nominal drawing constants, not documented figures, and the role-based service
           is assumed published the instant the new primary opens. These parameters affect
-          only new connections -- no established session is touched by anything drawn here.
+          only new connections. An established session is lost only when the database it is
+          on stops serving, or -- on a RAC database -- when its instance does; a switchover
+          ends the old primary&rsquo;s sessions as it converts, and the draining that
+          <span class="mono"> SWITCHOVER ... WAIT</span> (19c) and
+          <span class="mono"> DrainTimeout</span> (26ai) offer is not drawn.
           {apps.length === 0 ? null : (
             <>
               {' '}The string is dialled from where each application stands on the drawing

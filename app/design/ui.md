@@ -734,8 +734,9 @@ fewer. One bullet per change.
   event. Under `ApplyInstances` (multi-instance Redo Apply) the coordinator's row reads
   `COORDINATOR` and the other instances applying `APPLY`. Config gains a mock
   `SHOW DATABASE` per RAC database (`Instance(s):` with `(apply instance)`, walked by the
-  playhead), a `RAC -- per-instance parameters and standby redo logs` card (`<sid>.` /
-  `*.` entries, INSTANCE_NUMBER, `%t`, standby redo logs per thread), the SCAN form of
+  playhead), a `RAC -- per-instance parameters` card (`<sid>.` /
+  `*.` entries, INSTANCE_NUMBER, `%t`) and a `standby-redo-logs.sql` card (standby redo
+  logs per thread, on every member that receives redo), the SCAN form of
   the connect string, and static-service notes in the DGMGRL script. A tenth lesson,
   *RAC primary and standby*, walks the `rac-standby` preset. A former primary on its way
   back as a standby names, in its timeline band, the instance its apply will start on.
@@ -1711,22 +1712,25 @@ handle on its top edge). Build's dock, chips and warning card are as they were.
     and, for a yes, *prm01 and sby01 are both open read-write from 30 s to the end of the run:
     prm01 is still open when sby01 opens at 30 s* — the window, closed at its end where
     something closes it (*… from 25 s to 60 s: …* where the old primary crashes at 60 s).
-  - *Basis*: `model`, note `SPLIT_BRAIN.READING`. Oracle does not use the term and gives no
-    interval, so no citation documents the reading; the ones it carries
-    (`FSFO.GUARANTEE_STALL`, `FSFO.PMY_SHUTDOWN`, `FAILOVER.PRIMARY_SHUT_DOWN`,
+  - *Basis*: `model`, note `SPLIT_BRAIN.READING`. The HA guide defines the term
+    (`SPLIT_BRAIN.DEFINITION`) and gives no interval, so no citation documents the reading; the ones it
+    carries (`SPLIT_BRAIN.DEFINITION`, `FSFO.GUARANTEE_STALL`, `FSFO.PMY_SHUTDOWN`,
+    `FSFO.PMY_SHUTDOWN_NO_STALE_QUERIES`, `FAILOVER.PRIMARY_SHUT_DOWN`,
     `FSFO.MANUAL_FAILOVER_CONDITIONS`) support the
     pieces, and it renders as this page's model wherever a chip does. **What the reading
     counts as open** is the engine's own drawing: a STALLED primary is not counted (Oracle:
     its redo generation is stalled, so it commits nothing the new primary will not have),
     which is how the old page read it too; and a former primary is drawn open where a manual
-    failover found it still running and open — Oracle puts its shutdown on the operator
-    (`FAILOVER.PRIMARY_SHUT_DOWN`, `FSFO.MANUAL_FAILOVER_CONDITIONS`) and no page says the
-    broker closes or mounts it — whether or not the new primary can reach it and whether
-    fast-start failover is enabled or disabled (`FAILOVER.FORMER_PRIMARY_OPEN`'s note). **A
-    manual failover with the old primary still running reads `yes`** from the instant the new
-    primary opens, and the run also raises `FAILOVER.PRIMARY_STILL_OPEN` (Oracle's
-    instruction, at the command) beside it; probe SBR-04 (and SBR-06, -07, -08) hold the
-    reading in view. A former primary that went down and restarts is not that one: it is
+    failover found it still running and open with fast-start failover disabled — Oracle puts
+    its shutdown on the operator (`FAILOVER.PRIMARY_SHUT_DOWN`,
+    `FSFO.MANUAL_FAILOVER_CONDITIONS`) and no page says the broker closes or mounts it —
+    whether or not the new primary can reach it (`FAILOVER.FORMER_PRIMARY_OPEN`'s note). With
+    fast-start failover enabled the old primary has lost its target and is drawn stalled, then
+    aborted (`FAILOVER.FORMER_PRIMARY_STALLS`, `model`, owner decision D5), so it reads `no`.
+    **A manual failover with the old primary still running and fast-start failover disabled
+    reads `yes`** from the instant the new primary opens, and the run also raises
+    `FAILOVER.PRIMARY_STILL_OPEN` (Oracle's instruction, at the command) beside it; probe
+    SBR-04 (and SBR-06, -07, -08) hold the reading in view. A former primary that went down and restarts is not that one: it is
     mounted, so a run that crashes the old primary before the failover reads `no`. A
     switchover, whose old primary is converted before the new one opens, has no chip at all.
     Where the run also draws the application, the old primary keeps publishing the service
@@ -1782,7 +1786,7 @@ the line unfold, *Why?* inside the line does not, the spacer, the band directly 
 the timeline, the cards against the readout, the model marker, *Why?* on the outcome card, no band and no
 button without a run, the preference and its storage, and the Split brain chip: yes, no, absent),
 `test/sim-split-brain.test.ts` (the reading off the trace: every no, the yes and its window — a manual
-failover with the old primary still open, fast-start failover on or off, closed where it crashes or is shut
+failover with fast-start failover disabled and the old primary still open (enabled, it is drawn stalled and not counted), closed where it crashes or is shut
 down, a restarted former primary still mounted, a switchover not asked — the application's view of it, the
 runs that are not asked, the claim's label), `test/ui/show-open-former.test.ts` (the SHOW CONFIGURATION note
 at a frame where the old primary is open), `readout-fit.test.ts` (Split brain is the first reading

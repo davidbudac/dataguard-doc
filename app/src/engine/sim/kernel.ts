@@ -285,13 +285,44 @@ export interface SimState {
    * or is aborted; a restart after that is a former primary that restarts.
    */
   formerOpen: boolean;
+  /**
+   * The former primary is still running as a primary after the role change and
+   * is not at peace with it: it stalled before the role change and nobody has
+   * reached it since, or (`formerLostTarget`) a manual failover took its
+   * target. It keeps its own stall clock and counts down to its own abort.
+   * Cleared the moment it is down, aborted or reached again; a former primary
+   * that restarts afterwards is started and mounted, not an acting primary
+   * (fact check 2026-10-01, SIM-15).
+   */
+  formerActs: boolean;
+  /**
+   * A manual failover with fast-start failover enabled converted the target
+   * the old primary was running with, and the old primary was still running:
+   * it has lost its target, so it is drawn stalled from that instant (owner
+   * decision D5, a `model`).
+   */
+  formerLostTarget: boolean;
+  /** Members that were down or aborted at some epoch of the run: what "restarted" means. */
+  everDown: MemberId[];
+  /**
+   * Automatic reinstatement of this former primary is pending: the failover
+   * that left it behind is one the broker reinstates after. The band starts
+   * only once the former primary is running, the master observer reaches it
+   * and it reaches the new primary (SIM-16).
+   */
+  reinstatePending: MemberId | null;
   converting: MemberId | null;
   reinstating: MemberId | null;
   abortedMembers: MemberId[];
   abortAt: Seconds | null;
   abortReason: 'stall' | 'maxprotection' | null;
-  /** Members taken out of service by BystandersFollowRoleChange = NONE. */
+  /** Members taken out of service by BystandersFollowRoleChange = NONE, or by a role change to a logical standby. */
   disabledMembers: MemberId[];
+  /**
+   * The disabled members that cannot be reinstated: a role change to a logical
+   * standby leaves them "to be re-created from a copy of the new primary".
+   */
+  recreateMembers: MemberId[];
 
   /* destinations across epochs (dests.ts) */
   /**
@@ -323,6 +354,8 @@ export interface SimState {
    */
   applyInstance: Record<string, string>;
   applyLostSince: Record<string, Seconds | null>;
+  /** PreferredApplyInstance after SET STATE ... WITH APPLY INSTANCE moved it (the command rewrites the property). */
+  preferredApply: Record<string, string>;
   manualFailoverAt: Seconds | null;
   /** Commands wait one step: they are answered against the epoch's own facts. */
   pendingSwitchover: MemberId | null;
@@ -331,6 +364,24 @@ export interface SimState {
   pendingFailover: { to: MemberId; immediate: boolean } | null;
   pendingReinstate: MemberId | null;
   pendingMasterObserver: ObserverId | null;
+  /** STOP OBSERVER, answered against the epoch's facts: the broker may refuse it. */
+  pendingStopObservers: ObserverId[];
+  /** DISABLE FAST_START FAILOVER [FORCE], answered the same way. */
+  pendingDisableFsfo: { force: boolean } | null;
+  /**
+   * The primary that ran DISABLE FAST_START FAILOVER FORCE while cut off from
+   * the observer and the target standby. Only it treats fast-start failover as
+   * disabled; the observer and the target still have it enabled, so they carry
+   * on with a failover it does not know about. Null in every other run.
+   */
+  forcedOffPrimary: MemberId | null;
+  /**
+   * The SYNC destinations the primary has seen acknowledging during its tenure
+   * (`from>to` keys), the primary they belong to, and how many of them are
+   * silent right now -- so a destination that stops answering among several
+   * starts a commit hang of its own, and one that was never up does not.
+   */
+  syncSeen: { primary: MemberId | null; up: string[]; silent: number };
   /** The protection mode the new primary runs in after a role change, where it differs. */
   modeAfterRoleChange: ProtectionMode | null;
   /** What the role change cost, decided where the role change was decided. */

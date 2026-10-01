@@ -459,10 +459,10 @@ function synchronizedClaim(
   if (directEdge && directEdge.up) {
     const sync = directEdge.xpt === 'SYNC' || directEdge.xpt === 'FASTSYNC';
     if (sync) {
-      return documented(true, ['XPT.TABLE_4_2', 'MAXAVAIL.AT_LEAST_ONE'],
+      return documented(true, ['XPT.SYNC_WAITS_ACK', 'MAXAVAIL.AT_LEAST_ONE'],
         `${directEdge.xpt} transport direct from the primary: the commit waits for this destination's acknowledgement, so there is no redo it has not received.`);
     }
-    return documented(false, ['XPT.TABLE_4_2'],
+    return documented(false, ['XPT.ASYNC_NO_WAIT'],
       'ASYNC transport: the primary never waits for this destination, so it is not synchronized.');
   }
 
@@ -504,7 +504,7 @@ function ackClaim(
   const acks = !!directEdge && directEdge.up
     && (directEdge.xpt === 'SYNC' || directEdge.xpt === 'FASTSYNC');
   if (!acks) {
-    return documented(false, ['XPT.TABLE_4_2'],
+    return documented(false, ['XPT.SYNC_WAITS_ACK', 'XPT.ASYNC_NO_WAIT'],
       'Only a destination the primary ships to synchronously acknowledges a commit.');
   }
   if (isFarSync(m)) {
@@ -534,7 +534,7 @@ function levelClaim(
     (r) => r.countsTowardProtectionAck.value && r.synchronized.value,
   );
   if (mode === 'MAXPERFORMANCE') {
-    return documented<ProtectionLevel>('MAXPERFORMANCE', ['XPT.TABLE_4_2'],
+    return documented<ProtectionLevel>('MAXPERFORMANCE', ['PROT.MAXPERF_ASYNC'],
       'Maximum performance never waits for a destination.');
   }
   if (mode === 'MAXPROTECTION') {
@@ -545,6 +545,22 @@ function levelClaim(
       'No synchronized acknowledgement is left: maximum protection shuts the primary database down rather than allowing it to continue. Oracle recommends a minimum of two standby databases so that one failure cannot do this.');
   }
   if (acks.length > 0) {
+    /* Every acknowledgement is a far sync instance's: the sentence that holds
+       the level up is the one that names the far sync path ("at least one
+       standby database that receives redo via the SYNC transport, either
+       directly or through a far sync instance"), not "at least one
+       synchronized standby", which does not mention it (SIM-27). */
+    const farSyncOnly = acks.every((r) => {
+      const m = doc.members.find((x) => x.id === r.id);
+      return !!m && isFarSync(m);
+    });
+    if (farSyncOnly) {
+      return documented<ProtectionLevel>('MAXAVAILABILITY',
+        doc.config.edition === '26ai'
+          ? ['MAXAVAIL.AT_LEAST_ONE_FARSYNC', 'MAXAVAIL.FARSYNC_ACK_26AI']
+          : ['MAXAVAIL.AT_LEAST_ONE_FARSYNC'],
+        'The only synchronous acknowledgement is the far sync instance\'s, and the broker counts a standby database that receives redo via the SYNC transport through a far sync instance.');
+    }
     return documented<ProtectionLevel>('MAXAVAILABILITY', ['MAXAVAIL.AT_LEAST_ONE']);
   }
   return documented<ProtectionLevel>('MAXPERFORMANCE',

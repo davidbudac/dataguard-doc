@@ -187,6 +187,8 @@ Rule catalogue (id · severity · basis · rule):
 - FSFO.OBSERVE_ONLY · info · documented · observe-only never fails over
 - MODE.MAXPROT_NEEDS_SYNC_DB · error · documented · far sync alone insufficient (A4)
 - MODE.MAXPROT_SNAPSHOT_ONLY · error · documented
+- ROLE.SWITCHOVER_SNAPSHOT · error · documented · a SWITCHOVER naming a snapshot standby (fact check 10-01 SIM-17)
+- ROLE.SWITCHOVER_LOGICAL_MAXPROT · error · documented · a SWITCHOVER naming a logical standby in MaxProtection (VAL-07)
 - MODE.MAXPROT_ONE_STANDBY · warning · documented · ≥2 standbys recommended (C3)
 - XPT.TABLE_4_2 · error/warn/info · documented · MaxProt SYNC; MaxAvail SYNC|FASTSYNC (26ai ASYNC → warning); MaxPerf ASYNC only mode *listed* → info, never "SYNC illegal"
 - XPT.FASTSYNC_MAXAVAIL_ONLY · error · documented
@@ -303,9 +305,17 @@ observer nor any target isolates a primary, but isolation alone is not STALLED: 
 was never observed, or whose target was never ready, has no recorded state left to change, so
 it keeps running and the run says why (`running: 'unobserved' | 'not-ready'`). It stalls once
 isolation coincides with something that *would* have to change to confirm it -- the
-configuration was observed and the active target was ready, or it is already stalled, or it is
-a former primary a role change has already passed by. `legacyStallWhenNotReady` (below) is the
-one switch that widens this back to "isolated stalls, full stop".
+configuration was observed and the active target was ready, or it is already stalled. After a
+role change the new primary has **no synchronized target yet**: `completeFailover` and
+`completeSwitchover` clear `activeTarget`, so `possible` is false and the new primary never
+stalls or aborts for the loss of the observer and/or its standbys (`FSFO.NO_TARGET_AFTER_ROLE_CHANGE`,
+`inferred`, recorded once, where it first matters; owner decision D6, 2026-10-01). The former
+primary becomes the target only once it is reinstated, or has restarted as the new standby, and the
+run draws both as open-ended bands. The only acting primaries after a role change are a former
+primary still running as a primary -- stalled before the role change and not reached since, or the
+D5 case below (`SimState.formerActs`); a switchover's former primary is a standby, and a crashed
+one that restarts is started and mounted. `legacyStallWhenNotReady` (below) is the one switch that
+widens the normal-phase rule back to "isolated stalls, full stop".
 Failover at `initiateAt` iff master lost the primary for threshold (or ping window when both
 ping props set) AND chosen target lost the primary (ObserverOverride FALSE) AND master reaches
 target AND readiness gate passes. `detect = pingSet ? pingIntervalMs*(pingRetry+1)/1000 : 0.3`
@@ -336,7 +346,9 @@ at lastAck+netTimeout (model PROT.MAXPROT_SHUTDOWN_TIMING). Bystanders per
 BystandersFollowRoleChange (default ALL). Reinstate: open band with no end
 (environment-dependent), preconditions as Findings.
 **Refused commands never change role.** SWITCHOVER TO refuses a down target, a down primary or
-the two unable to reach each other (`SWITCHOVER.GATE`); FAILOVER TO refuses a down target
+the two unable to reach each other (`SWITCHOVER.GATE`), a snapshot standby ("cannot be the target of
+a switchover"; the refusal reason is `snapshot-target`) and a logical standby in maximum protection
+(`logical-maxprotection`); FAILOVER TO refuses a down target
 (`FAILOVER.TARGET_DOWN`), and separately raises an error -- without refusing the command -- when
 the primary is still open, because the broker cannot see to it that an operator shuts it down
 first (`FAILOVER.PRIMARY_STILL_OPEN`). A manual failover with fast-start failover enabled is
@@ -344,30 +356,66 @@ conditional on the target being the current target, synchronized or inside the l
 the observer reaching it (`manualFailoverFindings`, roles.ts); the loss it books is the redo the
 target never received -- never documented as bounded, zero or lossless, always model
 (`FAILOVER.LOSS_DEPENDS`).
-**A manual failover does not close a primary that is still open.** Oracle puts the shutdown on the
-operator (`FAILOVER.PRIMARY_SHUT_DOWN`, `FSFO.MANUAL_FAILOVER_CONDITIONS`) and no page says the broker
-closes or mounts an old primary that is still open when the failover completes; ORA-16649
-(`FSFO.FORMER_PRIMARY_NOT_OPEN`) is about a former primary that *restarts* and is not allowed to open,
-not one that stayed open. So when a manual failover completes with the old primary alive and not
+**A role change to the wrong kind of standby** (fact check 2026-10-01). A role change to a *logical* standby
+disables every physical and snapshot standby, and after a failover the original primary too
+(`disableForLogical`, `SimState.recreateMembers`): they are drawn `disabled`, REINSTATE refuses them
+(`REINSTATE.MUST_RECREATE` -- they are re-created from a copy of the new primary), and
+`BYSTANDERS.FOLLOW` reads "not followed". A manual failover to a *snapshot* standby is legal but the broker first
+converts it back to a physical standby and applies the accumulated redo: the open moves later by
+`SNAPSHOT_CONVERT` (5 s, a nominal constant) plus the redo the primary generated in the run
+(`unappliedBacklog`, applied 1:1 like every apply lag here), and `FAILOVER.SNAPSHOT_ALLOWED` is a `conflict`
+(the concepts page says a snapshot "cannot be the target of a role transition", the commands page allows the manual
+failover). A standby whose apply is stopped for the run, or a snapshot, never has a zero backlog at a failover:
+the broker "waits for the target standby database to finish applying any unapplied redo" -- the wait is
+documented, its size is `model` (`FAILOVER.APPLY_WAIT`). A snapshot standby never draws `mounted-apply`.
+**A manual failover does not close a primary that is still open -- unless fast-start failover is
+enabled.** Oracle puts the shutdown on the operator (`FAILOVER.PRIMARY_SHUT_DOWN`,
+`FSFO.MANUAL_FAILOVER_CONDITIONS`) and no page says the broker closes or mounts an old primary that
+is still open when the failover completes; ORA-16649 (`FSFO.FORMER_PRIMARY_NOT_OPEN`) is about a
+former primary that *restarts* and is not allowed to open, not one that stayed open. With
+**fast-start failover disabled**, when a manual failover completes with the old primary alive and not
 aborted (`completeFailover` sets `SimState.formerOpen`), it is drawn `open-rw` beside the new primary --
-reachable or not, fast-start failover enabled or disabled -- until it is taken down: `simulate` clears
-`formerOpen` at the first epoch in which it is down or aborted, and a fast-start failover stall and abort
-that already applies (`stalled`, then `aborted`) comes first in `memberStateOf`. The run says so as a Finding,
-`FAILOVER.FORMER_PRIMARY_OPEN`, `model`, note citing those two sentences, beside the documented
-`FAILOVER.PRIMARY_STILL_OPEN` error raised at the command. **A former primary that restarts** (it was
-down when the failover completed, or went down since) is the case that keeps its old reading:
+reachable or not -- until it is taken down: `simulate` clears `formerOpen` at the first epoch in which
+it is down or aborted. The run says so as a Finding, `FAILOVER.FORMER_PRIMARY_OPEN`, `model`, note
+citing those two sentences, beside the documented `FAILOVER.PRIMARY_STILL_OPEN` error raised at the
+command. With **fast-start failover enabled** (owner decision D5, 2026-10-01) the target the old
+primary was running with has just become the primary, so it has lost its target: it is drawn
+`stalled` from the completion instant (`SimState.formerLostTarget`, `FAILOVER.FORMER_PRIMARY_STALLS`,
+`model`, citing "Data Guard fast-start failover always guarantees that only one primary database
+exists" and the STALLED row's "It shuts down or stalls because it is likely a failover has
+occurred.") and then follows `FastStartFailoverPmyShutdown`: TRUE aborts it one
+`FastStartFailoverThreshold` later through the same per-actor stall clock, FALSE leaves it stalled
+for good. Nothing documented says this; it is the page's reading of the sentences around the gap,
+and a stalled old primary is not counted as open by `splitBrainOf`. **A former primary that
+restarts** (it was down when the failover completed, or went down since) keeps its old reading:
 mounted, `FSFO.FORMER_PRIMARY_NOT_OPEN` (documented, ORA-16649) with fast-start failover enabled,
-`FAILOVER.FORMER_PRIMARY_MOUNTED` (this page's reading; not spelled out where fast-start failover is
-disabled) without -- and drawn open where it cannot reach the new primary, since nothing tells it. It
-stays mounted until REINSTATE DATABASE or a fresh START/STARTUP the run does not model. A fast-start-failover
-failover and a switchover are unchanged: the first's old primary is the documented stall / abort /
-`FastStartFailoverPmyShutdown` path, the second's is converted. `splitBrainOf` (`sim/split-brain.ts`) reads
+`FAILOVER.FORMER_PRIMARY_MOUNTED` without -- `documented` under 26ai (Scenario 11: "Because a role
+transition occurred while the old primary was offline, Data Guard prevents the database from
+reopening and leaves it in a mounted state to ensure there is only one database open in the
+primary role.", `FAILOVER.FORMER_PRIMARY_MOUNTED_26AI`), `model` under 19c, whose Scenario 11 says
+none of it -- and drawn open where it cannot reach the new primary, since nothing tells it (`model`
+under both editions). **A stalled primary that is reached again without ever restarting** (SIM-20)
+is drawn mounted too, but that is `model`: Oracle documents the started-and-mounted state for a
+database that is *restarted*, and no page says a stalled, still-open primary is closed when contact
+returns. It stays mounted until REINSTATE DATABASE or a fresh START/STARTUP the run does not model.
+**Reinstatement waits for contact** (SIM-16): `completeFailover` records that automatic
+reinstatement is *pending* (`SimState.reinstatePending`) when `reinstateFindings` finds the
+preconditions met, and `trackReinstatement` starts the `reinstating` band -- and decides
+`REINSTATE.OPEN_BAND` -- only at the first epoch in which the former primary is running, the master
+observer reaches it and it reaches the new primary ("The master observer cannot connect to the
+former primary database" and "The former primary database cannot connect to the new primary
+database" are the broker's own restrictions). Until then `REINSTATE.WAITING` records why once
+(documented): an aborted former primary "must be manually restarted before the master observer can
+attempt to reinstate it" -- nothing in a run restarts it -- a down one waits for its host, a cut-off
+one for the connection. A fast-start-failover failover and a switchover are otherwise unchanged:
+the first's old primary is the documented stall / abort / `FastStartFailoverPmyShutdown` path, the
+second's is converted. `splitBrainOf` (`sim/split-brain.ts`) reads
 the result back: two lanes `open-rw` over a stretch with a length. A `Claim<boolean>`, `model`, note
 `SPLIT_BRAIN.READING` -- Oracle has no term and no interval for it -- asked only of a failover or manual
 failover that moved a primary, with the window when yes (a manual failover with the old primary still
-open reads yes, from the new primary's open to where the old one goes down, or to the end of the run)
-and, when no, what the old primary was doing the instant the new one opened (down, aborted, stalled,
-mounted). A STALLED primary is not counted.
+open and fast-start failover disabled reads yes, from the new primary's open to where the old one goes
+down, or to the end of the run) and, when no, what the old primary was doing the instant the new one
+opened (down, aborted, stalled, mounted). A STALLED primary is not counted.
 **One role change per run.** A second failover after a role change -- fast-start failover stays
 armed, and "the reinstated database acts as the fast-start failover target for the new primary
 database, making a subsequent fast-start failover possible" -- is not simulated. The run stops
@@ -426,7 +474,7 @@ Pure `(doc) => GeneratedFile[]` with structured `Line`s (`cmd`/`note`/`comment`/
 - DGMGRL script order: CREATE CONFIGURATION; ADD DATABASE ×N; ADD FAR_SYNC ×N; LogXptMode; RedoRoutes per member (both directions pre-declared, comment says nothing rewrites on role change); NetTimeout; ENABLE FAR_SYNC; ENABLE CONFIGURATION; protection mode; FastStartFailover* properties; FastStartFailoverTarget = 'a,b'; ENABLE FAST_START FAILOVER [OBSERVE ONLY]; `START OBSERVER name FILE IS … LOGFILE IS … CONNECT IDENTIFIER IS … IN BACKGROUND` ×N; SET MASTEROBSERVER TO. Traps pinned by tests: `FILE IS` never `FILE=`; `GROUP` never in RedoRoutes; validation notes come from `validate` (one source of truth).
 - LOG_ARCHIVE_DEST_n: one block per primary destination from 2 upward, ranges 1–10 / 11–31; NET_TIMEOUT omitted under ASYNC; ALTERNATE=/GROUP=/PRIORITY= only here.
 - tnsnames/JDBC: ADDRESS_LIST over all service-publishing hosts, FAILOVER=on spelled, LOAD_BALANCE omitted unless on; ConfigurationWideServiceName alternative labelled doc-later.
-- SHOW mocks (CONFIGURATION [VERBOSE] [WHEN PRIMARY IS x], FAST_START FAILOVER, OBSERVER): indentation for cascade, `(receiving current redo)`, `(alternate of X)`, Active/Potential targets with valid flag, observer Master/Backup with Host Name and Last Ping lines. At a frame where a manual failover left the old primary open (`openAsPrimary`, read by the Show panel off the frame's `open-rw` members that are not the resolved primary), SHOW CONFIGURATION keeps its own line for that member and adds a `(model)` note that the run draws it still open (`FAILOVER.FORMER_PRIMARY_OPEN`). UNDOC spellings (far-sync line → `(far sync instance)` with no state column; observe-only spelling; valid column header) carry model markers; every mock block carries a generated header saying it is rendered from the model.
+- SHOW mocks (CONFIGURATION [VERBOSE], CONFIGURATION WHEN PRIMARY IS 'x' -- members only, no status, no VERBOSE --, FAST_START FAILOVER, OBSERVER, and DATABASE for a RAC member with its lags and Database Status): indentation for cascade, `(receiving current redo)`, `(alternate of X)`, Active/Potential targets with valid flag, observer Master/Backup with Host Name and Last Ping lines. At a playhead after a role change the Show panel passes the run (`ShowRun`: the primary at that moment, whether the role moved by switchover or failover, every member's state), and the blocks print what the broker would print then: plain SHOW CONFIGURATION for the new primary, a failed former primary `(disabled)` with ORA-16661 and the configuration WARNING (the FAILOVER example), the new primary's FastStartFailoverTarget the former primary (the reciprocal property), none listed with fast-start failover disabled; a switchover leaves a plain standby and SUCCESS. Fast-start failover enabled with no observer started keeps ENABLE and every property in the script, and SHOW prints ORA-16819 on the primary and the target with the configuration WARNING (`inferred`). At a frame where a manual failover left the old primary open (`openAsPrimary`, read by the Show panel off the frame's `open-rw` members that are not the resolved primary), SHOW CONFIGURATION keeps its own line for that member and adds a `(model)` note that the run draws it still open (`FAILOVER.FORMER_PRIMARY_OPEN`). UNDOC spellings (far-sync line → `(far sync instance)` with no state column; observe-only spelling; valid column header) carry model markers; every mock block carries a generated header saying it is rendered from the model.
 
 ## 8. Testing
 1. Ported matrix gate (`legacy-matrix.test.ts` = site/test.mjs against the adapter, verbatim names/comments).
@@ -539,7 +587,11 @@ the design did not state, so it is recorded rather than left to be rediscovered.
   move is a new segment in the same state, and `Snapshot.applyInstances` feeds the canvas's
   `APPLY` tag. The apply-lag input is not advanced by the gap, and multi-instance Redo Apply
   (`ApplyInstances`) is not drawn. A RAC primary that loses some instances records a
-  documented `RAC.PRIMARY_DEGRADED` decision.
+  `RAC.PRIMARY_DEGRADED` decision, a `model`: the cited sentences say the primary stays
+  available and that failover needs every instance perceived failed, and none mentions a clock.
+  Instances lost one after another count the threshold from the last, an `inferred`
+  `RAC.CLOCK_FROM_LAST_INSTANCE`; running instances that cannot reach a standby while others
+  can record a `model` `RAC.INSTANCE_CUT_OFF` and nothing else.
 - **RAC, second pass.** A RAC database leaving the primary role (switchover, or a failover
   followed by reinstatement) gets an apply instance at that instant: `PreferredApplyInstance`
   when it names a running instance (documented "in preparation for a switchover"), else the

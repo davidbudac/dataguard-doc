@@ -31,7 +31,7 @@
  */
 
 import type { ComponentChildren } from 'preact';
-import { lagLimitOf } from '@/engine';
+import { clampLagLimit, lagLimitAllowsZero, lagLimitOf } from '@/engine';
 import type { DatabaseMember, TopologyDoc } from '@/engine';
 import { applicationClient } from '@/engine';
 import { topology, trace } from '@/state/derived';
@@ -191,6 +191,8 @@ export function TuneStrip({ layout = 'row' }: { layout?: TuneLayout }) {
         >
           <TuneNumber
             bound="lagLimitSeconds" value={lagLimitOf(doc)} label="FastStartFailoverLagLimit"
+            min={lagLimitAllowsZero(doc.config.edition, doc.config.protectionMode) ? 0 : undefined}
+            clampTo={(raw) => clampLagLimit(doc.config.edition, doc.config.protectionMode, raw)}
             disabled={lagOff} onValue={(v) => tuned(() => setFsfoLagLimit(v))}
           />
           <Unit />
@@ -243,7 +245,7 @@ export function TuneStrip({ layout = 'row' }: { layout?: TuneLayout }) {
           {CLIENT_TIMING_FIELDS.map((t) => {
             const unit = clientTimingUnit(t, client);
             return (
-              <Field key={t.name} name={t.name} mono note={t.note}>
+              <Field key={t.name} name={t.name} mono note={t.note(topology.value.config.edition)}>
                 <TuneNumber
                   bound={t.bound} value={t.value(client)} label={t.name}
                   disabled={dis} onValue={(v) => tuned(() => editClientTiming(t, v, appId))}

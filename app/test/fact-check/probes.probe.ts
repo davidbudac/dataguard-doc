@@ -416,7 +416,7 @@ const SIM: SimProbe[] = [
     title: 'SBR-04 with fast-start failover ENABLED, observer on the target: manual failover at 0, split brain yes',
     doc: () => classic(),
     events: () => [{ at: 0, kind: 'cmd.failover', to: CLASSIC_IDS.standby }],
-    oracle: '"You must ensure that the primary database is shut down prior to performing a manual failover." (FSFO.MANUAL_FAILOVER_CONDITIONS) -- the shutdown is the operator\'s, and nothing documented closes the old primary otherwise, so it is drawn open with fast-start failover enabled too (owner decision, 2026-09-29)',
+    oracle: '"You must ensure that the primary database is shut down prior to performing a manual failover." (FSFO.MANUAL_FAILOVER_CONDITIONS) -- the shutdown is the operator\'s. Until 2026-10-01 the old primary was drawn open with fast-start failover enabled too (owner decision, 2026-09-29); decision D5 (2026-10-01) replaced that: with fast-start failover enabled the old primary has lost its target and is drawn stalled from the completion instant, then aborted one FastStartFailoverThreshold later (a model; FAILOVER.FORMER_PRIMARY_STALLS). This probe still asks the old question, so CHANGED is the decision, not a regression',
     open: (t) => splitBrainOf(t)?.split.value === true && endState(t, 'prm01') === 'open-rw',
     lanes: ['prm01', 'sby01'],
   },
@@ -564,6 +564,19 @@ const SIM: SimProbe[] = [
     lanes: ['prm01', 'sby01'],
   },
   {
+    finding: 'SIM-24',
+    title: '26ai, fast-start failover disabled, the old primary crashes before a manual failover and restarts: mounted, labelled model',
+    doc: () => withFsfoOff(classic({ version: '26ai' })),
+    events: () => [
+      { at: 0, kind: 'host.down', host: PRM },
+      { at: 5, kind: 'cmd.failover', to: CLASSIC_IDS.standby },
+      { at: 100, kind: 'host.up', host: PRM },
+    ],
+    oracle: '"Because a role transition occurred while the old primary was offline, Data Guard prevents the database from reopening and leaves it in a mounted state to ensure there is only one database open in the primary role." (26ai Scenario 11; the 19c and 21c pages say none of it)',
+    open: (t) => t.findings.some((f) => f.id === 'FAILOVER.FORMER_PRIMARY_MOUNTED' && f.basis === 'model'),
+    lanes: ['prm01', 'sby01'],
+  },
+  {
     finding: 'SIM-21',
     title: 'Bystanders preset, fast-start failover disabled: SWITCHOVER TO the logical standby',
     doc: () => withFsfoOff(preset('bystanders').doc()),
@@ -599,8 +612,16 @@ const SIM: SimProbe[] = [
     doc: () => preset('max-protection').doc(),
     events: () => preset('max-protection').events(),
     oracle: '"To ensure that data loss cannot occur, the primary database will shut down, rather than continue processing transactions, if it cannot write its redo stream to at least one synchronized standby database." (19c members chapter)',
-    open: (t) => (t.decisions ?? []).some((d) => d.id === 'PROT.COMMIT_HANG' && String(d.claim.value).includes('carries on'))
-      && (t.decisions ?? []).some((d) => d.id === 'PROT.MAXPROT_SHUTDOWN'),
+    /* Since the fix a commit hang is a decision of its own each time (the first standby lost
+       carries on, the last one lost shuts the primary down), so the question is about the
+       hang that ends in the shutdown, not about whether any hang says "carries on". */
+    open: (t) => {
+      const ds = t.decisions ?? [];
+      const shutdown = ds.find((d) => d.id === 'PROT.MAXPROT_SHUTDOWN');
+      const hang = shutdown === undefined ? undefined
+        : ds.filter((d) => d.id === 'PROT.COMMIT_HANG' && d.at <= shutdown.at).pop();
+      return hang !== undefined && String(hang.claim.value).includes('carries on');
+    },
     lanes: ['prm01'],
   },
   {

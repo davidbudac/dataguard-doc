@@ -59,7 +59,7 @@ export const farSync: Lesson = {
             standby database, used to perform health checks and switchover processing tasks
           </Fact>
           . Cut that link on the canvas and the redo still flows through the far sync while the
-          configuration loses the path its health checks and its role transitions need.
+          configuration loses the path its health checks and switchover processing need.
         </P>
       ),
       /* To cut the direct link and leave the redo path alone, the two have to
@@ -78,7 +78,7 @@ export const farSync: Lesson = {
         ],
         events: [{ at: 0, kind: 'link.cut', link: linkId('dc1-dc2') }],
       },
-      note: 'The far sync sits at the third site here, so cutting the primary-to-standby link leaves the redo path alone: redo keeps flowing through the far sync, and what the configuration has lost is the path its health checks and its role transitions need.',
+      note: 'The far sync sits at the third site here, so cutting the primary-to-standby link leaves the redo path alone: redo keeps flowing through the far sync, and what the configuration has lost is the path its health checks and switchover processing need.',
     },
     {
       title: 'Two hops, two transport modes',
@@ -262,7 +262,7 @@ export const farSync: Lesson = {
           </P>
         </>
       ),
-      apply: { events: [{ at: 0, kind: 'member.down', member: memberId('fs1') }] },
+      apply: { events: [{ at: 0, kind: 'member.down', member: memberId('FS1') }] },
       note: 'The far sync goes away at t = 0: the redo path breaks, the protection level drops, and nothing fails over.',
     },
   ],

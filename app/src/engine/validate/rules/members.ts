@@ -84,7 +84,7 @@ export const preferredApplyInstance: Rule = (ctx): Finding[] => {
       out.push(mk('RAC.PREFERRED_APPLY_UNUSED', {
         subject: memberSubject(m),
         message: `PreferredApplyInstance is set on ${q(m.name)}, ${m.role === 'snapshot' ? 'a snapshot standby' : 'a single-instance database'}. The property is used only when the database is a standby Oracle RAC database, and apply instance selection does not apply to snapshot standby databases.`,
-        cite: ['RAC.PREFERRED_APPLY_INSTANCE', 'RAC.APPLY_INSTANCE_SELECTION'],
+        cite: ['RAC.PREFERRED_APPLY_INSTANCE', 'RAC.APPLY_NOT_FOR_SNAPSHOT'],
       }));
     }
   }
@@ -127,6 +127,42 @@ export const snapshotNeedsFlashback: Rule = (ctx): Finding[] => {
   return out;
 };
 
+/**
+ * Two commands the broker refuses by the kind of standby they name. "A
+ * snapshot standby database cannot be the target of a switchover" -- it must
+ * be converted back to a physical standby first (a manual failover to one is
+ * a different command and stays legal) -- and "Switchover to a logical
+ * standby database is disallowed when the configuration is operating in
+ * maximum protection mode."
+ */
+export const switchoverKindRefused: Rule = (ctx): Finding[] => {
+  const out: Finding[] = [];
+  const seen = new Set<string>();
+  const maxProtection = ctx.doc.config.protectionMode === 'MAXPROTECTION';
+  for (const e of ctx.doc.events) {
+    if (e.kind !== 'cmd.switchover') continue;
+    const m = ctx.member(e.to);
+    if (!m || !isDatabase(m)) continue;
+    if (m.role === 'snapshot' && !seen.has(`s|${m.id as string}`)) {
+      seen.add(`s|${m.id as string}`);
+      out.push(mk('ROLE.SWITCHOVER_SNAPSHOT', {
+        subject: memberSubject(m),
+        message: `SWITCHOVER TO ${q(m.name)} is refused: ${q(m.name)} is a snapshot standby, and a snapshot standby cannot be the target of a switchover. Convert it back to a physical standby database first; a manual failover to it is the command that is allowed.`,
+        cite: ['SWITCHOVER.SNAPSHOT_NOT_TARGET', 'SWITCHOVER.SNAPSHOT_CONVERT_FIRST'],
+      }));
+    }
+    if (m.role === 'logical' && maxProtection && !seen.has(`l|${m.id as string}`)) {
+      seen.add(`l|${m.id as string}`);
+      out.push(mk('ROLE.SWITCHOVER_LOGICAL_MAXPROT', {
+        subject: memberSubject(m),
+        message: `SWITCHOVER TO ${q(m.name)} is refused: ${q(m.name)} is a logical standby, and a switchover to a logical standby database is disallowed while the configuration operates in maximum protection mode.`,
+        cite: ['SWITCHOVER.LOGICAL_MAXPROT'],
+      }));
+    }
+  }
+  return out;
+};
+
 /** Each RAC instance of one database on a node of its own. */
 export const instancesShareHost: Rule = (ctx): Finding[] => {
   const out: Finding[] = [];
@@ -139,7 +175,7 @@ export const instancesShareHost: Rule = (ctx): Finding[] => {
         subject: memberSubject(m),
         message: `Instances ${names.join(' and ')} of ${q(m.name)} both run on ${q(host)}. A crash of that host takes every one of them down, so the cluster is no more available than a single instance.`,
         cite: ['RAC.PRIMARY_AVAILABLE'],
-        note: 'RAC.ONE_INSTANCE_PER_NODE: the workbench draws each instance of a RAC database on a node of its own, which is how a cluster survives a node failure. This is a design convention, not a quoted Oracle prohibition.',
+        note: 'RAC.ONE_INSTANCE_PER_NODE: the workbench draws each instance of a RAC database on a node of its own, which is how a cluster survives a node failure. This is a design convention, not a quoted Oracle prohibition; RAC.PRIMARY_AVAILABLE is the sentence that makes one running instance enough, and that a crash of the shared host takes every instance on it follows from the hosts as drawn.',
       }));
     }
   }
@@ -147,6 +183,6 @@ export const instancesShareHost: Rule = (ctx): Finding[] => {
 };
 
 export const memberRules: Rule[] = [
-  farSyncNeverPrimary, memberLimit, snapshotNeedsFlashback, preferredApplyInstance,
-  applyInstancesUnused, instancesShareHost,
+  farSyncNeverPrimary, memberLimit, snapshotNeedsFlashback, switchoverKindRefused,
+  preferredApplyInstance, applyInstancesUnused, instancesShareHost,
 ];

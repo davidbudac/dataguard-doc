@@ -12,7 +12,7 @@
  */
 
 import {
-  activeRule, applicationClient, applicationId, applicationsOf, CLIENT_TIMING_DEFAULTS, CLIENT_TIMING_TUNED, declaredPrimary, defaultDestProps, expandAll, hostId, isParenthesised, linkId, memberId, observerId, primarySite,
+  activeRule, applicationClient, applicationId, applicationsOf, CLIENT_TIMING_DEFAULTS, CLIENT_TIMING_TUNED, declaredPrimary, defaultDestProps, expandAll, hostId, isParenthesised, LAG_LIMIT_UNSET_STORED, linkId, memberId, observerId, primarySite,
   findApplication, siteId, withApplication,
 } from '@/engine';
 import type {
@@ -549,10 +549,22 @@ function followPreferred(m: Member, from: string, to: string | null): Member {
   return to === null ? rest : { ...rest, preferredApplyInstance: to };
 }
 
+/**
+ * ApplyInstances names how many instances run Redo Apply, so it cannot exceed
+ * the instances the member has: a smaller cluster takes the count down with it,
+ * and a single instance has nothing left to set.
+ */
+function clampApplyInstances(m: Member): Member {
+  if (m.kind !== 'database' || typeof m.applyInstances !== 'number') return m;
+  if (m.applyInstances <= m.instances.length) return m;
+  const { applyInstances: _drop, ...rest } = m;
+  return m.instances.length >= 2 ? { ...rest, applyInstances: m.instances.length } : rest;
+}
+
 export function removeInstance(id: MemberId, index: number): void {
   patchMember(id, `Remove an instance from ${id as string}`, (m) => {
     const gone = m.instances[index]?.name;
-    const next = { ...m, instances: m.instances.filter((_, i) => i !== index) };
+    const next = clampApplyInstances({ ...m, instances: m.instances.filter((_, i) => i !== index) });
     return gone === undefined ? next : followPreferred(next, gone, null);
   });
 }
@@ -1339,6 +1351,22 @@ export function setFsfoLagLimit(v: number): void {
   patchFsfo(
     `Set FastStartFailoverLagLimit to ${v} s`,
     (x) => ({ ...x, lagLimitSeconds: v, lagLimitSet: true }), 'fsfo:laglimit',
+  );
+}
+
+/**
+ * Back to "not set": the edition's broker default for the mode applies again,
+ * 30 s in maximum performance and, under 26ai, 0 in maximum availability. Typing
+ * the default in does not do this -- that sets the property to the same number.
+ */
+export function unsetFsfoLagLimit(): void {
+  patchFsfo(
+    'Leave FastStartFailoverLagLimit at the broker default',
+    (x) => {
+      const { lagLimitSet: _drop, ...rest } = x;
+      return { ...rest, lagLimitSeconds: LAG_LIMIT_UNSET_STORED };
+    },
+    'fsfo:laglimit',
   );
 }
 

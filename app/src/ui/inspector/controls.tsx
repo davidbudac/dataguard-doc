@@ -19,7 +19,7 @@ import { Segmented } from '../common/Segmented';
 import type { SegmentedOption } from '../common/Segmented';
 import { WhyPill } from '../common/WhyPill';
 import type { WhyState } from '../common/WhyPill';
-import { useLayoutEffect, useRef } from 'preact/hooks';
+import { useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { focusField } from '@/state/view';
 import { hintsShown } from '../hints';
 import { printing } from '../print';
@@ -145,6 +145,13 @@ export interface NumProps {
   unit?: string;
   /** The name is this page's words rather than an Oracle property. */
   prose?: boolean;
+  /**
+   * A floor and a clamp of this control's own, where the bound's differs for
+   * the edition and mode the value is read under (the 26ai maximum
+   * availability lag limit, whose broker default 0 is below the bound's 5).
+   */
+  min?: number;
+  clampTo?: (raw: unknown) => number;
 }
 
 /** The width of a number box, and so of the control on a number row. */
@@ -155,9 +162,10 @@ const TEXT_PX = 150;
 const CHECK_PX = 64;
 
 export function Num(
-  { name, bound, value, onChange, kind = 'range', note, warn, enabled = ON, unit, prose }: NumProps,
+  { name, bound, value, onChange, kind = 'range', note, warn, enabled = ON, unit, prose, min, clampTo }: NumProps,
 ) {
   const b = BOUNDS[bound];
+  const clampIt = clampTo ?? ((raw: unknown): number => clamp(bound, raw));
   const off = enabled.state === 'off';
   const shown = unit ?? (b.unit === 'count' || b.unit === 'port' ? '' : b.unit);
   /* A slider takes the width under its name, its reading beside the name. A
@@ -176,17 +184,17 @@ export function Num(
       <input
         class="field-in"
         type={kind}
-        min={b.min}
+        min={min ?? b.min}
         max={b.max}
         step={b.step}
         value={String(value)}
         disabled={off}
         aria-label={name}
         onInput={kind === 'range'
-          ? (e) => onChange(clamp(bound, (e.currentTarget as HTMLInputElement).value))
+          ? (e) => onChange(clampIt((e.currentTarget as HTMLInputElement).value))
           : undefined}
         onChange={kind === 'number'
-          ? (e) => onChange(clamp(bound, (e.currentTarget as HTMLInputElement).value))
+          ? (e) => onChange(clampIt((e.currentTarget as HTMLInputElement).value))
           : undefined}
       />
     </Field>
@@ -206,6 +214,12 @@ export interface TextProps {
   /** When `focusField` holds this key, the input takes the focus once. */
   focusKey?: string;
   prose?: boolean;
+  /**
+   * What is wrong with a typed value, or null. A value that fails is not
+   * committed: the reason takes the place of the note, in the warning tone,
+   * until the next change.
+   */
+  problem?: (v: string) => string | null;
 }
 
 /**
@@ -213,10 +227,11 @@ export interface TextProps {
  * reference in the document, and half a name is not a document.
  */
 export function Text({
-  name, value, onCommit, placeholder, note, enabled = ON, focusKey, prose,
+  name, value, onCommit, placeholder, note, enabled = ON, focusKey, prose, problem,
 }: TextProps) {
   const off = enabled.state === 'off';
   const ref = useRef<HTMLInputElement | null>(null);
+  const [refused, setRefused] = useState<string | null>(null);
   /* A one-shot focus request from the drawing (a double-click on a card):
      read the signal, act once, clear it -- so the form re-rendering for any
      other reason never pulls the caret back here. */
@@ -232,7 +247,8 @@ export function Text({
       name={name}
       prose={prose}
       layout={fitsBeside(name, prose === true, TEXT_PX) ? 'row' : 'stack'}
-      note={note}
+      note={refused ?? note}
+      warn={refused !== null}
       enabled={enabled}
     >
       <input
@@ -244,7 +260,13 @@ export function Text({
         disabled={off}
         spellcheck={false}
         aria-label={name}
-        onChange={(e) => onCommit((e.currentTarget as HTMLInputElement).value)}
+        aria-invalid={refused !== null}
+        onChange={(e) => {
+          const typed = (e.currentTarget as HTMLInputElement).value;
+          const why = problem === undefined ? null : problem(typed.trim());
+          setRefused(why);
+          if (why === null) onCommit(typed);
+        }}
       />
     </Field>
   );

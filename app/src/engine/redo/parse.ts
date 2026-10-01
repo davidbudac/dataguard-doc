@@ -187,6 +187,7 @@ export function parseRedoRoutes(text: string): RedoRoutesParseResult {
   };
 
   const parseRule = (): RedoRouteRule | undefined => {
+    const firstAt = peek()?.at;
     if (!expect('(')) return undefined;
 
     /* source */
@@ -245,6 +246,13 @@ export function parseRedoRoutes(text: string): RedoRoutesParseResult {
     flushFlat();
     if (!expect(')')) return undefined;
     if (groups.length === 0) { fail('a rule needs at least one destination'); return undefined; }
+    /* The grammar is `destlist := 'ALL' [xpt] | group [',' group]*`: ALL is a
+       destination list of its own, not one more name among the groups. */
+    const every = groups.flatMap((g) => g.dests);
+    if (every.some((d) => d.target === 'ALL') && (every.length > 1 || groups[0]?.explicitGroup === true)) {
+      fail("ALL is a destination list by itself and cannot be mixed with other destinations or put inside a group: write (source : ALL [xpt])", firstAt);
+      return undefined;
+    }
     return { source, groups };
   };
 

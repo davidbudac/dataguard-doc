@@ -12,7 +12,7 @@
  */
 
 import { useLayoutEffect } from 'preact/hooks';
-import { BOUNDS } from '@/engine';
+import { BOUNDS, clampLagLimit, configurationWideServiceNameProblem, lagLimitAllowsZero } from '@/engine';
 import type { FsfoConfig, MemberId, RoutePriority, TopologyDoc } from '@/engine';
 import { hostId, isDatabase, lagLimitIsSet, lagLimitOf } from '@/engine';
 import { errors } from '@/state/derived';
@@ -21,7 +21,7 @@ import { Action, Check, Choice, Fold, Note, Num, Pick, Text } from './controls';
 import { FieldNote } from '../common/Field';
 import {
   patchConfig, patchEnvironment, patchFsfo, setFsfoLagLimit, setFsfoState, setFsfoThreshold, setProtectionMode,
-  setRoleTransition,
+  setRoleTransition, unsetFsfoLagLimit,
 } from './edits';
 import { revealForFlagged, sectionsWithErrors } from './sections';
 import {
@@ -52,6 +52,9 @@ export function ConfigForm({ doc }: ConfigFormProps) {
   /* Which edition and mode can set it, and why not: one function (why.ts),
      because Simulate's tune strip greys the same control the same way. */
   const lagLimitOff = lagLimitGate(doc);
+  /* 0 is a documented limit only where it is the broker default: 26ai maximum
+     availability (ED-09). */
+  const zeroOk = lagLimitAllowsZero(ed, c.protectionMode);
 
   const setTarget = (members: MemberId[]): void =>
     patchFsfo(
@@ -122,14 +125,15 @@ export function ConfigForm({ doc }: ConfigFormProps) {
         <Text
           name="ConfigurationWideServiceName"
           value={c.configurationWideServiceName ?? ''}
-          placeholder={`not set (default ${c.name}_CFG)`}
+          placeholder="not set (default <primary database name>_CFG)"
+          problem={configurationWideServiceNameProblem}
           onCommit={(v) => patchConfig('Set ConfigurationWideServiceName', (x) => {
             const next = { ...x };
             if (v.trim() === '') delete next.configurationWideServiceName;
             else next.configurationWideServiceName = v.trim();
             return next;
           })}
-          note="One name for the configuration, as an alternative to listing every address. The default is primarydbname_CFG, documented in 12.2, 18c, 19c and 26ai alike -- never a later edition -- and does not change after a role transition."
+          note="Changes the name of the configuration-wide service the broker publishes on each member. The default is primarydbname_CFG -- the name of the primary database with _CFG appended, not the configuration's own name -- documented in 12.2, 18c, 19c and 26ai alike, and it does not change after a role transition. The first character must be alphanumeric and the name runs to at most 30 characters."
         />
         <Note>
           Default primarydbname_CFG.
@@ -284,6 +288,7 @@ export function ConfigForm({ doc }: ConfigFormProps) {
         <Num
           name="FastStartFailoverThreshold"
           bound="thresholdSeconds"
+          kind="number"
           value={f.thresholdSeconds}
           coalesce="fsfo:threshold"
           onChange={setFsfoThreshold}
@@ -293,13 +298,32 @@ export function ConfigForm({ doc }: ConfigFormProps) {
         <Num
           name="FastStartFailoverLagLimit"
           bound="lagLimitSeconds"
+          kind="number"
           value={lagLimit}
           coalesce="fsfo:laglimit"
           enabled={lagLimitOff}
           warn={lagLimit > f.thresholdSeconds}
+          min={zeroOk ? 0 : undefined}
+          clampTo={(raw) => clampLagLimit(ed, c.protectionMode, raw)}
           onChange={setFsfoLagLimit}
           note={lagLimitNote(doc)}
         />
+        {lagLimitOff.state === 'off' || !lagLimitIsSet(f) ? null : (
+          <div class="rr-line lrow is-acts">
+            <Action
+              label={zeroOk ? 'Back to the broker default (0)' : 'Back to the broker default'}
+              onClick={unsetFsfoLagLimit}
+            />
+          </div>
+        )}
+        {zeroOk && lagLimitOff.state !== 'off' ? (
+          <Note>
+            26ai gives maximum availability a lag limit default of 0, and the same page says a value
+            must be greater than or equal to 5. Oracle does not reconcile the two; 0 is taken here as
+            the zero-data-loss setting and any other value from 5.
+            <Fact basis="conflict" id="FSFO.LAGLIMIT_RANGES" />
+          </Note>
+        ) : null}
 
         <Choice
           name="FastStartFailoverLagType"
@@ -311,7 +335,7 @@ export function ConfigForm({ doc }: ConfigFormProps) {
           )}
           note={ed === '19c'
             ? 'Documented from 26ai; absent from the 19c and 21c properties references. A live 19.27 system carries it regardless (SHOW FAST_START FAILOVER prints Lag Type:) -- an observation, never documentation.'
-            : 'Under TRANSPORT the gated quantity is the transport lag, clamped to the apply lag; terminal recovery still pays the apply lag.'}
+            : 'Oracle: the type of lag (apply lag or transport lag) used to specify the data loss threshold. Under TRANSPORT this page gates on the transport lag, clamped to the apply lag, and terminal recovery still pays the apply lag -- its reading, from a blog rather than the property page.'}
         />
 
         <Num
@@ -464,6 +488,12 @@ export function ConfigForm({ doc }: ConfigFormProps) {
             ? ' Under 26ai the master observer is changed automatically to an observer running on a higher priority host.'
             : ' Under 19c a change does not affect the location of the master observer until the next role change; 26ai changes it automatically instead.'}
           <Fact basis="documented" id={ed === '26ai' ? 'OBS.PREFERRED_HOSTS_26AI' : 'OBS.PREFERRED_HOSTS'} />
+        </Note>
+        <Note>
+          Oracle sets the property on each database separately. This page keeps one list for the
+          whole configuration and writes that same list to each database that needs one, so two
+          databases with different lists cannot be drawn here.
+          <Fact basis="model" id="OBS.PREFERRED_HOSTS" />
         </Note>
       </Fold>
 

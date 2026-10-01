@@ -4,7 +4,12 @@
  * Two spellings matter here. The "at least one synchronized standby" sentence
  * belongs to maximum availability and to nothing else. And broker Table 4-2
  * lists ASYNC as the only transport mode for maximum performance -- it never
- * says SYNC is illegal there, so that branch is an informational note.
+ * says SYNC is illegal there. A SYNC or FASTSYNC transport on the fast-start
+ * failover target or the primary in maximum performance departs from the
+ * fast-start failover setup, which lists ASYNC for both (VAL-09, decision D8):
+ * a warning while fast-start failover is enabled, not an error, because no
+ * sentence says the broker refuses it. Any other SYNC destination in maximum
+ * performance stays an informational note.
  */
 
 import type { CitationId } from '../../citations';
@@ -104,7 +109,7 @@ export const atLeastOneSupportsMode: Rule = (ctx): Finding[] => {
  * availability row adds ASYNC, a conflict with Table 4-2 that 26ai does not
  * name. A far sync feed is farSyncTransports' concern, not this rule's.
  */
-const MAXAVAIL_26AI_CITES: CitationId[] = ['XPT.MAXAVAIL_ASYNC_26AI', 'XPT.TABLE_4_2'];
+const MAXAVAIL_26AI_CITES: CitationId[] = ['XPT.MAXAVAIL_ASYNC_26AI', 'XPT.TABLE_4_2', 'FSFO.TASK3_MAXAVAIL_26AI'];
 assertCitesAllowed('MAXAVAIL_TRANSPORTS', MAXAVAIL_26AI_CITES);
 
 export const fsfoTargetTransport: Rule = (ctx): Finding[] => {
@@ -141,13 +146,25 @@ export const fsfoTargetTransport: Rule = (ctx): Finding[] => {
       }));
       continue;
     }
+    if (mode === 'MAXPERFORMANCE' && e.xpt !== 'ASYNC') {
+      out.push(mk('XPT.TABLE_4_2', {
+        severity: 'warning',
+        subject: memberSubject(m),
+        message: `${name} is a candidate fast-start failover target and receives ${e.xpt} while the configuration is in MAXPERFORMANCE. ASYNC is the only transport mode broker Table 4-2 lists for maximum performance, and the fast-start failover setup lists ASYNC for the target standby and for the primary. Nothing in the documentation says the broker refuses ${e.xpt} here, and Table 4-2 does not say the others cannot be used, so this warns about a departure from the listed setup and does not call it an error. Under ${e.xpt} the primary waits for this destination on commit.${cmd('ASYNC')}`,
+        cite: [is26 ? 'FSFO.PREREQ_TRANSPORTS_26AI' : 'FSFO.PREREQ_TRANSPORTS_19C', 'FSFO.TASK3_MAXPERF_ASYNC', 'XPT.TABLE_4_2'],
+        ...(fixTo('ASYNC') ? { fix: fixTo('ASYNC') } : {}),
+      }));
+      continue;
+    }
     if (mode === 'MAXAVAILABILITY') {
       if (is26 && e.xpt === 'ASYNC') {
         out.push(mk('XPT.TABLE_4_2', {
           severity: 'warning',
           subject: memberSubject(m),
-          message: `${name} is a candidate fast-start failover target and receives ASYNC while the configuration is in MAXAVAILABILITY. Under 26ai the fast-start failover prerequisites allow SYNC, FASTSYNC or ASYNC for a maximum availability target. That conflicts with Table 4-2 and the LogXptMode page, which still give SYNC or FASTSYNC; 26ai does not name the conflict. ASYNC is accepted here, but zero data loss still wants SYNC or FASTSYNC.`,
+          basis: 'conflict',
+          message: `${name} is a candidate fast-start failover target and receives ASYNC while the configuration is in MAXAVAILABILITY. Under 26ai the fast-start failover prerequisites allow SYNC, FASTSYNC or ASYNC for a maximum availability target. That conflicts with Table 4-2, the LogXptMode page and the chapter's own Task 3, which still give SYNC or FASTSYNC; 26ai does not name the conflict. ASYNC is accepted here, but zero data loss still wants SYNC or FASTSYNC.`,
           cite: MAXAVAIL_26AI_CITES,
+          note: 'Two parts of the 26ai broker guide disagree and neither says so: the Enabling Fast-Start Failover prerequisites list SYNC or FASTSYNC or ASYNC for maximum availability, while Table 4-2, the LogXptMode property page and Task 3 of the same chapter give SYNC or FASTSYNC. The workbench accepts ASYNC (a warning, not an error) and names the disagreement rather than choosing a side.',
         }));
       } else if (!syncish(e.xpt)) {
         out.push(mk('XPT.TABLE_4_2', {
@@ -180,13 +197,13 @@ export const fsfoTargetTransport: Rule = (ctx): Finding[] => {
  */
 const PRIMARY_XPT_26AI_ASYNC_CITES: CitationId[] = [
   'FSFO.PREREQ_PRIMARY_XPT_26AI', 'FSFO.PREREQ_TRANSPORTS_26AI', 'XPT.MAXAVAIL_ASYNC_26AI',
+  'FSFO.TASK3_MAXAVAIL_26AI',
 ];
 assertCitesAllowed('MAXAVAIL_TRANSPORTS', PRIMARY_XPT_26AI_ASYNC_CITES);
 
 export const primaryTransportAfterRoleChange: Rule = (ctx): Finding[] => {
   if (!ctx.fsfoOn) return [];
   const mode = ctx.doc.config.protectionMode;
-  if (mode === 'MAXPERFORMANCE') return [];
   const p = ctx.primary;
   if (!p) return [];
   const is26 = ctx.doc.config.edition === '26ai';
@@ -196,9 +213,16 @@ export const primaryTransportAfterRoleChange: Rule = (ctx): Finding[] => {
     if (!t || !isDatabase(t) || t.id === p.id) continue;
     const after = resolveRedoGraph(ctx.doc, { primary: t.id, net: ctx.net });
     const rp = after.members[p.id];
+    /* 26ai names the RedoRoutes alternative to the primary's LogXptMode for
+       maximum availability and maximum performance only ("If using either
+       maximum availability or maximum performance mode, use the RedoRoutes
+       property ..."): under maximum protection a pre-declared rule is not
+       counted, and the primary's own LogXptMode is read. The 19c prerequisite
+       names the alternative without that restriction. */
+    const routesCount = !(is26 && mode === 'MAXPROTECTION');
     /* No route reaches it once the target is primary: the prerequisite still
        names the primary's own LogXptMode, so that is what is read. */
-    const routed = !!rp && rp.reachableFromPrimary && rp.feedPath.length >= 2;
+    const routed = routesCount && !!rp && rp.reachableFromPrimary && rp.feedPath.length >= 2;
     const path = routed ? (rp as { feedPath: MemberId[] }).feedPath : [t.id, p.id];
     const hop = ctx.member(path[1] as MemberId);
     const viaFarSync = path.length === 3 && !!hop && isFarSync(hop);
@@ -210,30 +234,47 @@ export const primaryTransportAfterRoleChange: Rule = (ctx): Finding[] => {
     const xpt = leg ? leg.xpt : p.logXptMode;
     const fromOwn = !leg || leg.xptSource === 'dest-logxptmode';
 
-    const ok = mode === 'MAXPROTECTION'
-      ? !viaFarSync && xpt === 'SYNC'
-      : syncish(xpt);
+    /* Maximum performance (VAL-09): the setup lists ASYNC for the primary too. */
+    const ok = mode === 'MAXPERFORMANCE'
+      ? xpt === 'ASYNC'
+      : mode === 'MAXPROTECTION'
+        ? !viaFarSync && xpt === 'SYNC'
+        : syncish(xpt);
     if (ok) continue;
 
     const pn = q(p.name);
     const tn = q(t.name);
     const why = !routed
-      ? `${pn} is the primary now, but after a role change to ${tn} it is the standby: no RedoRoutes rule would ship to it then, and its own LogXptMode is ${xpt}.`
+      ? (routesCount
+        ? `${pn} is the primary now, but after a role change to ${tn} it is the standby: no RedoRoutes rule would ship to it then, and its own LogXptMode is ${xpt}.`
+        : `${pn} is the primary now, but after a role change to ${tn} it is the standby, and in maximum protection under 26ai the prerequisite is its own LogXptMode, ${xpt}: the RedoRoutes alternative is named for maximum availability and maximum performance only, so a rule that ships to it is not counted.`)
       : `${pn} is the primary now, but after a role change to ${tn} it is the standby, and it would receive ${xpt}${viaFarSync ? ` through the far sync instance ${q((hop as Member).name)}` : ''}, as set by ${fromOwn ? (viaFarSync ? 'the far sync instance\'s LogXptMode' : 'its own LogXptMode') : `the RedoRoutes rule ${tn} holds for it`}.`;
-    const fix = (): Finding['fix'] | undefined => {
+    const fix = (want: 'SYNC' | 'ASYNC' = 'SYNC'): Finding['fix'] | undefined => {
       const i = ctx.indexOf(p.id);
       if (i < 0 || viaFarSync || !fromOwn) return undefined;
       return {
-        label: `Set LogXptMode on ${p.name} to SYNC`,
-        patch: [{ op: 'replace', path: `/members/${i}/logXptMode`, value: 'SYNC' }],
+        label: `Set LogXptMode on ${p.name} to ${want}`,
+        patch: [{ op: 'replace', path: `/members/${i}/logXptMode`, value: want }],
       };
     };
-    if (mode === 'MAXAVAILABILITY' && is26 && xpt === 'ASYNC') {
+    if (mode === 'MAXPERFORMANCE') {
       out.push(mk('XPT.PRIMARY_LOGXPTMODE', {
         severity: 'warning',
         subject: memberSubject(p),
-        message: `${why} Under 26ai the fast-start failover prerequisites list SYNC, FASTSYNC or ASYNC for maximum availability, and the current primary must have its LogXptMode set accordingly, so ASYNC is allowed. But once ${pn} is the standby, nothing it receives is synchronous, and zero data loss still wants SYNC or FASTSYNC.`,
+        message: `${why} The fast-start failover setup for maximum performance lists ASYNC for the primary as well as for the target standby, and under ${xpt} it would wait for the new primary on commit. Nothing in the documentation says the broker refuses ${xpt} here, so this warns about a departure from the listed setup and does not call it an error.${fix() ? ` EDIT DATABASE ${pn} SET PROPERTY 'LogXptMode' = 'ASYNC';` : ''}`,
+        cite: [is26 ? 'FSFO.PREREQ_TRANSPORTS_26AI' : 'FSFO.PREREQ_TRANSPORTS_19C', 'FSFO.TASK3_MAXPERF_ASYNC'],
+        ...(fix('ASYNC') ? { fix: fix('ASYNC') } : {}),
+      }));
+      continue;
+    }
+    if (mode === 'MAXAVAILABILITY' && is26 && xpt === 'ASYNC') {
+      out.push(mk('XPT.PRIMARY_LOGXPTMODE', {
+        severity: 'warning',
+        basis: 'conflict',
+        subject: memberSubject(p),
+        message: `${why} Under 26ai the fast-start failover prerequisites list SYNC, FASTSYNC or ASYNC for maximum availability, and the current primary must have its LogXptMode set accordingly, so ASYNC is allowed. Task 3 of the same chapter still says SYNC or FASTSYNC for both databases, and 26ai does not name the disagreement. Once ${pn} is the standby, nothing it receives is synchronous, and zero data loss still wants SYNC or FASTSYNC.`,
         cite: PRIMARY_XPT_26AI_ASYNC_CITES,
+        note: 'The 26ai prerequisites list adds ASYNC for maximum availability; Task 3 of the same chapter (and Table 4-2) still give SYNC or FASTSYNC. The workbench warns and names the disagreement rather than choosing a side.',
         ...(fix() ? { fix: fix() } : {}),
       }));
       continue;
@@ -261,6 +302,8 @@ export const maxPerformanceOtherTransportNote: Rule = (ctx): Finding[] => {
     if (e.xpt === 'ASYNC') continue;
     const m = ctx.member(e.to);
     if (!m) continue;
+    /* The fast-start failover target is warned about by fsfoTargetTransport. */
+    if (ctx.fsfoOn && ctx.candidates.includes(e.to) && ctx.graph?.members[e.to]?.depth === 1) continue;
     out.push(mk('XPT.TABLE_4_2', {
       severity: 'info',
       subject: memberSubject(m),

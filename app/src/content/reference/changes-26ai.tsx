@@ -4,7 +4,7 @@
  */
 
 import type { VNode } from 'preact';
-import { M } from '../facts-ui';
+import { Fact, M } from '../facts-ui';
 import type { RefTableData } from './RefTable';
 
 function Ext({ href, children }: { href: string; children: VNode | string }): VNode {
@@ -45,10 +45,13 @@ export const changes26ai: RefTableData = {
           (minimum 5 s) and MaxAvailability becomes bounded-loss instead &mdash; failover is permitted
           whenever the standby&rsquo;s apply lag is at or below the limit, and the loss is bounded by
           it. <M>V$FAST_START_FAILOVER_CONFIG</M> reports the two as <M>ZERO DATA LOSS</M> and{' '}
-          <M>POTENTIAL DATA LOSS</M>. The 26ai prerequisites list also lists <M>ASYNC</M> among the
+          <M>POTENTIAL DATA LOSS</M>. The prerequisites list also lists <M>ASYNC</M> among the
           transports allowed for a MaxAvailability target, where 19c listed only <M>SYNC</M> and{' '}
-          <M>FASTSYNC</M> &mdash; a conflict with 26ai&rsquo;s own Table 4-2 and LogXptMode page, which
-          still give SYNC or FASTSYNC only, and which 26ai does not name.
+          <M>FASTSYNC</M>: <Fact id="XPT.MAXAVAIL_ASYNC_21C">the line already reads &ldquo;Maximum
+          availability &mdash; SYNC or FASTSYNC or ASYNC&rdquo; in the 21c chapter</Fact>, so that
+          change is a <strong>21c</strong> one too, carried into 26ai. It conflicts with 26ai&rsquo;s own
+          Table 4-2 and LogXptMode page, which still give SYNC or FASTSYNC only, and which 26ai does
+          not name.
         </>,
         <>
           <Ext href={`${D26}/dgbkr/fast-start-failover2.html`}>
@@ -64,11 +67,22 @@ export const changes26ai: RefTableData = {
         <M>FastStartFailoverLagType</M>,
         <>
           New property, <M>APPLY</M> (the default, and the only 19c behavior) or <M>TRANSPORT</M>;
-          MaxPerformance only. Chooses which lag <M>FastStartFailoverLagLimit</M> is measured against:
-          the standby&rsquo;s apply point, or the redo it has received. Under <M>TRANSPORT</M> the
-          limit bounds only redo that never arrived &mdash; redo already received is still applied
-          during terminal recovery &mdash; so the same limit tolerates a deep apply queue without
-          refusing the failover.
+          MaxPerformance only.{' '}
+          <Fact id="FSFO.LAGTYPE">
+            It specifies the type of lag (apply lag or transport lag) the user wishes to use to
+            specify their data loss threshold
+          </Fact>
+          .{' '}
+          <Fact
+            id="FSFO.LAGTYPE"
+            basis="model"
+            note="The property page says only which lag type the threshold is expressed in. What follows, that under TRANSPORT the limit bounds only redo that never arrived, that redo already received is still applied during terminal recovery, and that the same limit therefore tolerates a deep apply queue, is from the Data Guard product manager's blog (Caldara #3), not from Oracle's documentation."
+          >
+            Read as the standby&rsquo;s apply point against the redo it has received: under{' '}
+            <M>TRANSPORT</M> the limit bounds only redo that never arrived, so the same limit tolerates
+            a deep apply queue without refusing the failover
+          </Fact>
+          .
         </>,
         <>
           <Ext href={`${D26}/dgbkr/faststartfailoverlagtype.html`}>26ai docs</Ext> ·{' '}
@@ -184,8 +198,12 @@ export const changes26ai: RefTableData = {
           refused with <M>ORA-16529</M>. With fast-start failover enabled it adds no new restriction,
           because <M>FastStartFailoverTarget</M> already governs which member can become primary. The
           broker adds the current primary itself if the list omits it, and the default &mdash; an empty
-          string &mdash; restricts nothing. Reported as backported to 19.26 by the Data Guard product
-          manager&rsquo;s blog series; not reflected in Oracle&rsquo;s release-update documentation.
+          string &mdash; restricts nothing. <Fact id="CHANGES.NEW_BROKER_PROPERTIES_26AI">The 26ai
+          changes list names only FastStartFailoverLagType and FastStartFailoverLagGraceTime as new
+          broker properties</Fact>; this one is listed here because it has its own 26ai property page
+          and is absent from the 19c and 21c property pages. Reported as backported to 19.26 by the Data
+          Guard product manager&rsquo;s blog series; not reflected in Oracle&rsquo;s release-update
+          documentation.
         </>,
         <>
           <Ext href={`${D26}/dgbkr/primarydatabasecandidates.html`}>26ai docs</Ext> ·{' '}
@@ -227,8 +245,10 @@ export const changes26ai: RefTableData = {
       cells: [
         'Faster role transitions',
         <>
-          Switchover and failover internals are reworked; Oracle claims transitions up to several times
-          faster than 19c, with nothing to configure. The role-transition time stays yours to set
+          Switchover and failover internals are reworked, with transitions up to several times faster
+          than 19c and nothing to configure, according to the Data Guard product manager&rsquo;s blog
+          series. Nothing in Oracle&rsquo;s documentation set that this page cites says so, so the
+          speed-up is a report, not a documented figure. The role-transition time stays yours to set
           &mdash; measure your own transition and enter it.
         </>,
         <>
@@ -241,8 +261,10 @@ export const changes26ai: RefTableData = {
       cells: [
         'Multiple ASYNC connections',
         <>
-          A lagging ASYNC standby is caught up over several automatic network connections instead of
-          one, with no configuration &mdash; the same gap-resolution story, only faster on wide links.
+          Reported by the Data Guard product manager&rsquo;s blog series, and not found in Oracle&rsquo;s
+          documentation set: a lagging ASYNC standby is caught up over several automatic network
+          connections instead of one, with no configuration &mdash; the same gap-resolution story,
+          only faster on wide links.
         </>,
         <>
           <Ext href={`${CAL}/dg26ai-multiple-async-connections/`}>Caldara #8</Ext>

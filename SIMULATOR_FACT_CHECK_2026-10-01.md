@@ -9,7 +9,8 @@ Reviewed state: `main` at `6f2ccdb` (2026-09-30), in a pinned worktree. Since th
 review, `main` gained ~2 000 lines of engine change: RAC members (`sim/rac.ts`), the split-brain
 reading (`sim/split-brain.ts`), the application's sessions and two publishers (`models/app.ts`),
 a manual failover that leaves a running old primary open, and the Topology / Detailed timeline
-UI. Those are where most of the new findings are.
+UI. Those are where most of the new findings are. The fixes followed the same day; see
+*Resolution*.
 
 To repeat the review: `docs/agents/fact-check.md` (procedure), `app/test/fact-check/probes.probe.ts`
 (the scenarios below, runnable), `app/test/fact-check/fetch-docs.sh` (the Oracle pages, as
@@ -18,6 +19,75 @@ greppable text).
 ```bash
 cd app && npx vitest run --config vitest.factcheck.config.ts
 ```
+
+## Resolution (same day)
+
+Everything below this section is the report as it was written, before any fix. This section
+is what was done about it. After the fixes: 3254 tests green across 119 files (2883 across
+112 before), the legacy fragment's 63 tests unmodified and green, all fourteen 2026-10-01 probes
+`CHANGED` (43 of 53 rows in all; the ten still `OPEN` are SBR-01 to -05, -07, -08, HEALTHY-01,
+APP-01 and APP-02, the feature rows section F found correct), and 324 checked citation quotes
+found word for word on their pages, 17 paraphrases unchecked by design, one miss — still
+`XPT.TABLE_4_2`, the footnote marker, not a wrong quote. The regression tests are in
+`app/test/factcheck-1001-*.test.ts`, one file per area, one `describe` per finding.
+
+### Decisions taken
+
+| # | Question | Decision |
+|---|---|---|
+| D5 | The old primary after a manual failover with fast-start failover enabled | **Stall, then the PmyShutdown abort, labelled `model`** (`FAILOVER.FORMER_PRIMARY_STALLS`). Stalled from the instant the target converts; aborted one `FastStartFailoverThreshold` later with `FastStartFailoverPmyShutdown` TRUE, stalled for good with FALSE. With fast-start failover disabled it stays open, as before (`FAILOVER.FORMER_PRIMARY_OPEN`), and only then does Split brain read yes |
+| D6 | What the run evaluates after a role change | **(a), re-evaluate against the new primary's own target.** The new primary has no synchronized fast-start failover target within the run (the former primary's reinstatement or restart is an open-ended band), so losing the observer or its standbys stalls and aborts nothing; the run says why once (`FSFO.NO_TARGET_AFTER_ROLE_CHANGE`, `inferred`). A switchover's former primary is a standby, never an acting primary. STOP OBSERVER and DISABLE FAST_START FAILOVER after a role change read the connection to the former primary, the new primary's target-to-be: refused (ORA-16636; no FORCE) while it is down or cut off |
+| D7 | 26ai: a restarted former primary with fast-start failover disabled | **Mounted is `documented` under 26ai** (`FAILOVER.FORMER_PRIMARY_MOUNTED_26AI`, Scenario 11). Under 19c it stays `model`; "cannot reach the new primary, so it opens" stays `model` under both |
+| D8 | A SYNC target in MaxPerformance with fast-start failover | **A warning while fast-start failover is enabled** (observe-only included, as the other rules treat it), citing "Maximum performance — ASYNC" and Task 3; an info while disabled. No preset trips it |
+| D9 | A live check | **Not taken.** No drill or `SHOW` was run; every finding still rests on documentation |
+
+### Per finding
+
+| Finding | Status | What the page does now |
+|---|---|---|
+| SIM-15 | fixed (D6) | No stall or abort on the new primary after either role change; the switched-over former primary is not aborted. The SIM-15a probe stops the observer after a crash failover, which is now refused (ORA-16636: the former primary is down), so it prints `CHANGED` for that reason; the no-stall itself is shown by the regression tests, which lose the observer with its host |
+| SIM-16 | fixed | Automatic reinstatement is pending at the open and starts only once the former primary is running, the master observer reaches it and it reaches the new primary. `REINSTATE.WAITING` says why not: aborted ("must be manually restarted"), down, or cut off |
+| SIM-17 | fixed | Refused in the engine, in `validate()` (`ROLE.SWITCHOVER_SNAPSHOT`) and greyed in the menu, before any other gate |
+| SIM-18 | fixed | Any SYNC destination that was acknowledging and goes silent hangs commits for NET_TIMEOUT, whether or not another still answers |
+| SIM-19 | fixed | Without FORCE, refused unless the connections hold. With FORCE on an isolated primary, that primary carries on, the observer still fails over, and the run ends with two primaries (`FSFO.DISABLE_FORCE_TWO_PRIMARIES`) |
+| SIM-20 | fixed | A stalled former primary that reconnects without restarting is drawn as before, labelled `model`; a restarted one stays `documented` |
+| SIM-21 | fixed | Physical and snapshot standbys (and, after a failover, the old primary) are disabled and must be re-created; `REINSTATE` is refused for them (`REINSTATE.MUST_RECREATE`). A down old primary still draws `down` on its lane; the disablement shows as a finding |
+| VAL-07 | fixed | Refused in the engine, `ROLE.SWITCHOVER_LOGICAL_MAXPROT`, greyed in the menu. Closes the 09-28 item 4 too |
+| SIM-22 | fixed in the engine | Both refusals, as a finding and a decision. The menu row is **not** greyed: it cannot know who is master or whether the links are up at that instant |
+| SIM-23 | fixed | Not offered on a snapshot standby, never drawn applying; a logical standby's row says SQL Apply. No `validate()` finding for a snapshot document with apply set on |
+| SIM-24 | fixed (D7) | |
+| SIM-25 | fixed | `ROUTES.NO_RULE_FOR_NEW_PRIMARY` (info, `model`) where a member with a non-null RedoRoutes has no rule for the new primary |
+| SIM-26 | fixed | With apply stopped, the failover waits for the redo the primary generated before it was lost (`FAILOVER.APPLY_WAIT`; the wait is documented, its size `model`). It overcounts a manual failover with fast-start failover disabled whose primary crashed well before the command |
+| SIM-27 | fixed | The readiness gate takes the label of the SYNCHRONIZED state it reads; the far-sync-only level cites `MAXAVAIL.AT_LEAST_ONE_FARSYNC` |
+| SIM-28 | fixed | A nominal convert (`model`) plus the accumulated redo inside the converting band; the documented sentence as a decision; "allowed" labelled `conflict` (Concepts vs. CONVERT DATABASE) |
+| SIM-30 | fixed | Sessions on a stopped instance are lost and reconnect to a survivor; which instance carries them is `model` (`APP.SESSION_SPREAD`) |
+| SIM-31 | fixed | "No clock starts" is `model`; the clock from the last instance is `inferred` (`RAC.CLOCK_FROM_LAST_INSTANCE`); the three RAC sentences are in the catalogue |
+| SIM-32 … 35 | fixed | `FAILOVER=off` dials one address; 33 and 34 disclosed as not drawn (`model`); a STALLED primary accepting logons is labelled |
+| ED-08 … 11 | fixed | Placeholder `<primary database name>_CFG`; 26ai MaxAvailability lag limit returns to 0, Oracle's own default-below-minimum shown as `conflict`; the service name validated (`CFG.SERVICE_NAME_FORMAT`); PreferredObserverHosts' one list disclosed |
+| ED-12 | fixed, one part not | Floors are Oracle's; ceilings are the page's own (3600 s, RETRY_COUNT 1000, TRANSPORT_CONNECT_TIMEOUT 600); `ApplyInstanceTimeout` steps by 1; threshold, lag limit and NetTimeout are number boxes now. A sub-second TRANSPORT_CONNECT_TIMEOUT cannot be stored |
+| ED-13, ED-14 | fixed | ApplyInstances capped at 16, physical standbys only, clamped on instance removal; the 26ai thin defaults (20 s, 1 s) split by edition |
+| VAL-09 | fixed (D8) | |
+| VAL-10 | fixed, one part not | The exception, the disable-target rule and FORCE's use are in the message. The RedoRoutes restriction is not: the report quotes no sentence for it |
+| VAL-11 … 20 | fixed | VAL-14: `ROUTES.LOGICAL_LOCAL_ONLY` is an error like its neighbour, and `ROUTES.SNAPSHOT_CONVERT_NONNULL` names the CONVERT DATABASE conflict. VAL-17: `MEMBER.STATIC_SERVICE` (info, `inferred`) for any single-instance database; Oracle Restart still cannot be expressed. VAL-18: `MEMBER.PRIMARY_COUNT`, `MEMBER.NAME_DUPLICATE`. VAL-19: `FSFO.TARGET_DISABLED` |
+| No-rule list | partly | Added `DEST.SYNC_ABOVE_10`, `EVENT.*` checks for `cmd.reinstate`, `cmd.setApplyInstance` and `cmd.setMasterObserver`, and the parser refuses `ALL` mixed with groups. ORA-16668 has no rule (no quoted sentence; `FSFO.TARGET_KIND` covers a named snapshot target); the rest of the list is untouched |
+| GEN-14 … 29 | fixed | GEN-21 in both halves (the generator's note, and `DEST.DEPRECATED_19C` compares MaxFailure with the default for its position). The far sync presets gain South_Sales' route to FS1 (Scenario 5, GEN-17), so a role change reaches a far sync; TXT-92 follows |
+| GEN-30 | fixed | The SHOW panel reads the run at the playhead: plain SHOW CONFIGURATION for the new primary, the former primary `(disabled)` with ORA-16661 and WARNING after a failover. The fast-start failover line stays the document's, with an `inferred` note: the FAILOVER example's DISABLED came from a run with it disabled |
+| TXT-14 … 60, 80 … 92 | fixed | TXT-45 by a label (the 19c page does carry the stall sentence, so the report's "unverified" hedge did not hold). TXT-50's id walk now covers every step of every lesson |
+| TXT-71 | partly | The catalogue entries and the 19c licence sentence are in the ApplyInstances note; `RAC.APPLY_INSTANCES_UNUSED` does not mention the licence |
+
+Five generator goldens moved (generated text, not geometry); no canvas golden moved. Two probe
+predicates were adjusted to keep asking their question: TXT-52 (the preset now has two hangs, and
+the probe reads the one before the shutdown) and SIM-15a (see above).
+
+### Still open
+
+- D9: nothing was run against a live database, 19c or 26ai.
+- SIM-22's menu row; VAL-10's RedoRoutes restriction; TXT-71's licence in the rule; a snapshot
+  document with apply set on; a sub-second TRANSPORT_CONNECT_TIMEOUT.
+- The documented restrictions with no rule (section C), bar the four added.
+- From 09-28: `XPT.PRIMARY_LOGXPTMODE` and a primary fed through a cascader after the role
+  change; the 12.1 alternate on unreachability rather than the `MaxFailure` count; old documents
+  with several parenthesised groups and no priority.
 
 ## The short answer
 

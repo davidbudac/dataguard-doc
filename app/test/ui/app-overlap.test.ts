@@ -23,11 +23,17 @@ import { AppDetail } from '@/ui/panels/AppView';
 import { buildTimeline } from '@/ui/timeline/build';
 
 const classic = (): TopologyDoc => PRESETS.find((p) => p.id === 'classic')!.doc();
+/* Fast-start failover disabled: only then does a manual failover leave the old
+   primary open to the end. With it enabled the old primary has lost its target
+   and is drawn stalled, then aborted (owner decision D5, 2026-10-01). */
+const fsfoOff = (d: TopologyDoc): TopologyDoc =>
+  ({ ...d, config: { ...d.config, fsfo: { ...d.config.fsfo, state: 'disabled' } } });
 const manual: TimedEvent = { at: 0, kind: 'cmd.failover', to: 'sby01' as never };
 const crash = (at: number): TimedEvent => ({ at, kind: 'host.down', host: hostId('dc1-prm01') });
 
 const load = (events: TimedEvent[], patch: (d: TopologyDoc) => TopologyDoc = (d) => d): TopologyDoc => {
-  const d = patch({ ...classic(), events });
+  const base = events.includes(manual) ? fsfoOff(classic()) : classic();
+  const d = patch({ ...base, events });
   resetHistory(makeDoc(d));
   return d;
 };
