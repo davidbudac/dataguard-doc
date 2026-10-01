@@ -1786,7 +1786,7 @@ the line unfold, *Why?* inside the line does not, the spacer, the band directly 
 the timeline, the cards against the readout, the model marker, *Why?* on the outcome card, no band and no
 button without a run, the preference and its storage, and the Split brain chip: yes, no, absent),
 `test/sim-split-brain.test.ts` (the reading off the trace: every no, the yes and its window — a manual
-failover with the old primary still open, fast-start failover on or off, closed where it crashes or is shut
+failover with fast-start failover disabled and the old primary still open (enabled, it is drawn stalled and not counted), closed where it crashes or is shut
 down, a restarted former primary still mounted, a switchover not asked — the application's view of it, the
 runs that are not asked, the claim's label), `test/ui/show-open-former.test.ts` (the SHOW CONFIGURATION note
 at a frame where the old primary is open), `readout-fit.test.ts` (Split brain is the first reading

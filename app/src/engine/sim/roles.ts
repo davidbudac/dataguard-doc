@@ -174,7 +174,7 @@ export function switchoverRefused(
 
 export const switchoverLossClaim = (): Claim<number> =>
   documented(0, ['SWITCHOVER.ZERO_LOSS'],
-    'A switchover is zero data loss in every protection mode: the roles swap only once the standby has everything. No failover clock runs at all -- the threshold, the ObserverPing properties and FastStartFailoverPmyShutdown are spectators, and fast-start failover stays enabled across the swap.');
+    'A switchover is zero data loss in every protection mode: the roles swap only once the standby has everything. No failover clock runs at all -- the threshold, the ObserverPing properties and FastStartFailoverPmyShutdown are spectators.');
 
 /** Terminal recovery, the role change and the open. */
 export const executionClaim = (roleTransition: Seconds): Claim<Seconds> =>

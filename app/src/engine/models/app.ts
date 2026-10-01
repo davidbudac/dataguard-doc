@@ -102,7 +102,7 @@ export interface AppSpan {
   /**
    * Every member publishing the service at a listed address whose host is up,
    * once each, in the ADDRESS_LIST order of its first such address. Normally
-   * one. Two while a manual failover's old primary stays open beside the new
+   * one. Two while a manual failover's old primary stays open (with fast-start failover disabled) beside the new
    * one (FAILOVER.FORMER_PRIMARY_OPEN, this page's reading). `reached` says
    * whether the application can reach it. `serving` is the first reached
    * address's member and `published` the first address's member, unchanged.
