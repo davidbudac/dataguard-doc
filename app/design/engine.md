@@ -303,9 +303,17 @@ observer nor any target isolates a primary, but isolation alone is not STALLED: 
 was never observed, or whose target was never ready, has no recorded state left to change, so
 it keeps running and the run says why (`running: 'unobserved' | 'not-ready'`). It stalls once
 isolation coincides with something that *would* have to change to confirm it -- the
-configuration was observed and the active target was ready, or it is already stalled, or it is
-a former primary a role change has already passed by. `legacyStallWhenNotReady` (below) is the
-one switch that widens this back to "isolated stalls, full stop".
+configuration was observed and the active target was ready, or it is already stalled. After a
+role change the new primary has **no synchronized target yet**: `completeFailover` and
+`completeSwitchover` clear `activeTarget`, so `possible` is false and the new primary never
+stalls or aborts for the loss of the observer and/or its standbys (`FSFO.NO_TARGET_AFTER_ROLE_CHANGE`,
+`inferred`, recorded once, where it first matters; owner decision D6, 2026-10-01). The former
+primary becomes the target only once it is reinstated, or has restarted as the new standby, and the
+run draws both as open-ended bands. The only acting primaries after a role change are a former
+primary still running as a primary -- stalled before the role change and not reached since, or the
+D5 case below (`SimState.formerActs`); a switchover's former primary is a standby, and a crashed
+one that restarts is started and mounted. `legacyStallWhenNotReady` (below) is the one switch that
+widens the normal-phase rule back to "isolated stalls, full stop".
 Failover at `initiateAt` iff master lost the primary for threshold (or ping window when both
 ping props set) AND chosen target lost the primary (ObserverOverride FALSE) AND master reaches
 target AND readiness gate passes. `detect = pingSet ? pingIntervalMs*(pingRetry+1)/1000 : 0.3`
@@ -344,30 +352,54 @@ conditional on the target being the current target, synchronized or inside the l
 the observer reaching it (`manualFailoverFindings`, roles.ts); the loss it books is the redo the
 target never received -- never documented as bounded, zero or lossless, always model
 (`FAILOVER.LOSS_DEPENDS`).
-**A manual failover does not close a primary that is still open.** Oracle puts the shutdown on the
-operator (`FAILOVER.PRIMARY_SHUT_DOWN`, `FSFO.MANUAL_FAILOVER_CONDITIONS`) and no page says the broker
-closes or mounts an old primary that is still open when the failover completes; ORA-16649
-(`FSFO.FORMER_PRIMARY_NOT_OPEN`) is about a former primary that *restarts* and is not allowed to open,
-not one that stayed open. So when a manual failover completes with the old primary alive and not
+**A manual failover does not close a primary that is still open -- unless fast-start failover is
+enabled.** Oracle puts the shutdown on the operator (`FAILOVER.PRIMARY_SHUT_DOWN`,
+`FSFO.MANUAL_FAILOVER_CONDITIONS`) and no page says the broker closes or mounts an old primary that
+is still open when the failover completes; ORA-16649 (`FSFO.FORMER_PRIMARY_NOT_OPEN`) is about a
+former primary that *restarts* and is not allowed to open, not one that stayed open. With
+**fast-start failover disabled**, when a manual failover completes with the old primary alive and not
 aborted (`completeFailover` sets `SimState.formerOpen`), it is drawn `open-rw` beside the new primary --
-reachable or not, fast-start failover enabled or disabled -- until it is taken down: `simulate` clears
-`formerOpen` at the first epoch in which it is down or aborted, and a fast-start failover stall and abort
-that already applies (`stalled`, then `aborted`) comes first in `memberStateOf`. The run says so as a Finding,
-`FAILOVER.FORMER_PRIMARY_OPEN`, `model`, note citing those two sentences, beside the documented
-`FAILOVER.PRIMARY_STILL_OPEN` error raised at the command. **A former primary that restarts** (it was
-down when the failover completed, or went down since) is the case that keeps its old reading:
+reachable or not -- until it is taken down: `simulate` clears `formerOpen` at the first epoch in which
+it is down or aborted. The run says so as a Finding, `FAILOVER.FORMER_PRIMARY_OPEN`, `model`, note
+citing those two sentences, beside the documented `FAILOVER.PRIMARY_STILL_OPEN` error raised at the
+command. With **fast-start failover enabled** (owner decision D5, 2026-10-01) the target the old
+primary was running with has just become the primary, so it has lost its target: it is drawn
+`stalled` from the completion instant (`SimState.formerLostTarget`, `FAILOVER.FORMER_PRIMARY_STALLS`,
+`model`, citing "Data Guard fast-start failover always guarantees that only one primary database
+exists" and the STALLED row's "It shuts down or stalls because it is likely a failover has
+occurred.") and then follows `FastStartFailoverPmyShutdown`: TRUE aborts it one
+`FastStartFailoverThreshold` later through the same per-actor stall clock, FALSE leaves it stalled
+for good. Nothing documented says this; it is the page's reading of the sentences around the gap,
+and a stalled old primary is not counted as open by `splitBrainOf`. **A former primary that
+restarts** (it was down when the failover completed, or went down since) keeps its old reading:
 mounted, `FSFO.FORMER_PRIMARY_NOT_OPEN` (documented, ORA-16649) with fast-start failover enabled,
-`FAILOVER.FORMER_PRIMARY_MOUNTED` (this page's reading; not spelled out where fast-start failover is
-disabled) without -- and drawn open where it cannot reach the new primary, since nothing tells it. It
-stays mounted until REINSTATE DATABASE or a fresh START/STARTUP the run does not model. A fast-start-failover
-failover and a switchover are unchanged: the first's old primary is the documented stall / abort /
-`FastStartFailoverPmyShutdown` path, the second's is converted. `splitBrainOf` (`sim/split-brain.ts`) reads
+`FAILOVER.FORMER_PRIMARY_MOUNTED` without -- `documented` under 26ai (Scenario 11: "Because a role
+transition occurred while the old primary was offline, Data Guard prevents the database from
+reopening and leaves it in a mounted state to ensure there is only one database open in the
+primary role.", `FAILOVER.FORMER_PRIMARY_MOUNTED_26AI`), `model` under 19c, whose Scenario 11 says
+none of it -- and drawn open where it cannot reach the new primary, since nothing tells it (`model`
+under both editions). **A stalled primary that is reached again without ever restarting** (SIM-20)
+is drawn mounted too, but that is `model`: Oracle documents the started-and-mounted state for a
+database that is *restarted*, and no page says a stalled, still-open primary is closed when contact
+returns. It stays mounted until REINSTATE DATABASE or a fresh START/STARTUP the run does not model.
+**Reinstatement waits for contact** (SIM-16): `completeFailover` records that automatic
+reinstatement is *pending* (`SimState.reinstatePending`) when `reinstateFindings` finds the
+preconditions met, and `trackReinstatement` starts the `reinstating` band -- and decides
+`REINSTATE.OPEN_BAND` -- only at the first epoch in which the former primary is running, the master
+observer reaches it and it reaches the new primary ("The master observer cannot connect to the
+former primary database" and "The former primary database cannot connect to the new primary
+database" are the broker's own restrictions). Until then `REINSTATE.WAITING` records why once
+(documented): an aborted former primary "must be manually restarted before the master observer can
+attempt to reinstate it" -- nothing in a run restarts it -- a down one waits for its host, a cut-off
+one for the connection. A fast-start-failover failover and a switchover are otherwise unchanged:
+the first's old primary is the documented stall / abort / `FastStartFailoverPmyShutdown` path, the
+second's is converted. `splitBrainOf` (`sim/split-brain.ts`) reads
 the result back: two lanes `open-rw` over a stretch with a length. A `Claim<boolean>`, `model`, note
 `SPLIT_BRAIN.READING` -- Oracle has no term and no interval for it -- asked only of a failover or manual
 failover that moved a primary, with the window when yes (a manual failover with the old primary still
-open reads yes, from the new primary's open to where the old one goes down, or to the end of the run)
-and, when no, what the old primary was doing the instant the new one opened (down, aborted, stalled,
-mounted). A STALLED primary is not counted.
+open and fast-start failover disabled reads yes, from the new primary's open to where the old one goes
+down, or to the end of the run) and, when no, what the old primary was doing the instant the new one
+opened (down, aborted, stalled, mounted). A STALLED primary is not counted.
 **One role change per run.** A second failover after a role change -- fast-start failover stays
 armed, and "the reinstated database acts as the fast-start failover target for the new primary
 database, making a subsequent fast-start failover possible" -- is not simulated. The run stops
