@@ -58,6 +58,7 @@ const U = {
   bkr122Changes: 'https://docs.oracle.com/en/database/oracle/oracle-database/12.2/dgbkr/release-changes.html',
   bkr19Changes: 'https://docs.oracle.com/en/database/oracle/oracle-database/19/dgbkr/release-changes.html',
   bkr26Fsfo: 'https://docs.oracle.com/en/database/oracle/oracle-database/26/dgbkr/fast-start-failover2.html',
+  bkr26Scenario11: 'https://docs.oracle.com/en/database/oracle/oracle-database/26/dgbkr/scenario-11-reinstating-failed-primary-database.html',
   bkr26ShowObserver: 'https://docs.oracle.com/en/database/oracle/oracle-database/26/dgbkr/show-observer.html',
   bkr26Routes: 'https://docs.oracle.com/en/database/oracle/oracle-database/26/dgbkr/redo-routing-rules.html',
   bkr26RoutesProp: 'https://docs.oracle.com/en/database/oracle/oracle-database/26/dgbkr/redoroutes.html',
@@ -875,6 +876,36 @@ export const CITATIONS = {
     quote: 'The reinstated database acts as the fast-start failover target for the new primary database, making a subsequent fast-start failover possible.',
     note: 'Identical in the 26ai chapter.',
   },
+  'FSFO.STALLED_LIKELY_FAILOVER': {
+    url: U.bkr19Switch, edition: '19c', verified: 'primary',
+    quote: 'It shuts down or stalls because it is likely a failover has occurred.',
+    note: 'Table 5-1, FS_FAILOVER_STATUS = STALLED, the sentence after the row\'s description (26ai Table 6-2). It is about a primary that has lost its target standby and the observer; it does not mention a manual failover.',
+  },
+  'FSFO.ONE_PRIMARY_GUARANTEE': {
+    url: U.haDeployDg, edition: '19c', verified: 'primary',
+    quote: 'Data Guard fast-start failover always guarantees that only one primary database exists, and external consistency is guaranteed by routing transactions to the primary database.',
+    note: 'Configure and Deploy Oracle Data Guard, in the paragraph on the observer\'s quorum of 2. It states the guarantee, not the mechanism for a manual failover that finds the old primary still running.',
+  },
+  'REINSTATE.WHEN_RECONNECTED': {
+    url: U.bkr19Switch, edition: '19c', verified: 'primary',
+    quote: 'After the fast-start failover completes successfully, the master observer will attempt to reinstate the former primary database as a new standby database when a connection to the former primary database is reestablished, and the FastStartFailoverAutoReinstate configuration property is set to TRUE.',
+    note: 'The list of what happens in a fast-start failover, "Reinstate the former primary database as a new standby database"; identical in the 26ai chapter. The next sentence is REINSTATE.PMY_SHUTDOWN_RESTART.',
+  },
+  'REINSTATE.PMY_SHUTDOWN_RESTART': {
+    url: U.bkr19Switch, edition: '19c', verified: 'primary',
+    quote: 'If the FastStartFailoverPmyShutdown configuration property is set to TRUE, then the former primary database will have been automatically shut down and must be manually restarted before the master observer can attempt to reinstate it.',
+    note: 'Same paragraph as REINSTATE.WHEN_RECONNECTED; identical in the 26ai chapter.',
+  },
+  'REINSTATE.RESTRICT_OBSERVER_CONNECT': {
+    url: U.bkr19Switch, edition: '19c', verified: 'primary',
+    quote: 'The master observer cannot connect to the former primary database',
+    note: 'One entry in Restrictions on Reinstatement (the fast-start failover chapter), the list headed "This list describes conditions in which the broker cannot automatically reinstate the former primary database."; identical in the 26ai chapter.',
+  },
+  'REINSTATE.RESTRICT_NEW_PRIMARY_CONNECT': {
+    url: U.bkr19Switch, edition: '19c', verified: 'primary',
+    quote: 'The former primary database cannot connect to the new primary database',
+    note: 'The next entry in the same list as REINSTATE.RESTRICT_OBSERVER_CONNECT; identical in the 26ai chapter.',
+  },
   'REINSTATE.NEEDS_FLASHBACK': {
     url: U.bkr19Switch, edition: '19c', verified: 'primary',
     quote: 'For the REINSTATE command to succeed, Flashback Database must have been enabled on the database prior to the failover and there must be sufficient flashback logs on that database. In addition, the database to be reinstated and the new primary database must have network connectivity.',
@@ -884,6 +915,11 @@ export const CITATIONS = {
     url: U.bkr19Switch, edition: '19c', verified: 'primary',
     quote: 'Before beginning a failover, first determine that there is no possibility of recovering the primary database in a timely manner, and ensure that the primary database is shut down.',
     note: 'Performing a Manual Failover Operation; identical on the 26ai manual failover page.',
+  },
+  'FAILOVER.FORMER_PRIMARY_MOUNTED_26AI': {
+    url: U.bkr26Scenario11, edition: '26ai', verified: 'primary',
+    quote: 'Because a role transition occurred while the old primary was offline, Data Guard prevents the database from reopening and leaves it in a mounted state to ensure there is only one database open in the primary role.',
+    note: 'Scenario 11: Reinstating a Failed Primary Database, 26ai only. The example restarts the old primary with fast-start failover Disabled and shows "ORA-16649: Data Guard prevented this database from opening." and "DGM-17290: Role change detected. This database may no longer be the primary database." The 19c and 21c Scenario 11 pages say none of this, so under 19c the state is this page\'s reading. Not documented either way: how the database learns of a role transition it cannot see.',
   },
   'FAILOVER.LOSS_DEPENDS': {
     url: U.bkr19Switch, edition: '19c', verified: 'primary',
