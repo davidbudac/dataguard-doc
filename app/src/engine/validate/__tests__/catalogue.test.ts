@@ -217,11 +217,18 @@ describe('the wordings the accuracy rules pin down', () => {
   });
 
   it('never says SYNC is illegal in maximum performance mode', () => {
-    const d = baseDoc({ mode: 'MAXPERFORMANCE' });
-    const f = validate(d).find((x) => x.id === 'XPT.TABLE_4_2');
+    /* With fast-start failover disabled the destination is an info (VAL-09:
+       the setup that lists ASYNC is the fast-start failover one); enabled, the
+       target's SYNC is a warning, and neither says it is illegal. */
+    const off = baseDoc({ mode: 'MAXPERFORMANCE', fsfo: 'disabled' });
+    const f = validate(off).find((x) => x.id === 'XPT.TABLE_4_2');
     expect(f?.severity).toBe('info');
     expect(f?.message).toContain('the only transport mode broker Table 4-2 lists for maximum performance');
     expect(f?.message).toMatch(/does not say the others cannot be used/);
+    const on = validate(baseDoc({ mode: 'MAXPERFORMANCE' })).find((x) => x.id === 'XPT.TABLE_4_2');
+    expect(on?.severity).toBe('warning');
+    expect(on?.message).toContain('the only transport mode broker Table 4-2 lists for maximum performance');
+    expect(on?.message).toMatch(/does not say the others cannot be used/);
     for (const m of messages) expect(m).not.toMatch(/SYNC is illegal/i);
   });
 

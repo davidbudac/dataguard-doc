@@ -351,6 +351,45 @@ describe('VAL-20: a 26ai document is not handed the 19c deprecation sentence', (
   });
 });
 
+describe('VAL-09 (decision D8): SYNC in maximum performance with fast-start failover is a warning, not an error', () => {
+  /* "Maximum performance \u2014 ASYNC" (fast-start failover prerequisites) and Task 3: "...ensure
+     that the LogXptMode database property for both the primary and target
+     standby database is set to ASYNC." No sentence says the broker refuses SYNC. */
+  const perf = (fsfo: 'enabled' | 'disabled' | 'observe-only', edition: '19c' | '26ai' = '19c'): TopologyDoc =>
+    baseDoc({ mode: 'MAXPERFORMANCE', fsfo, edition });
+
+  it('warns about a SYNC or FASTSYNC target while fast-start failover is on, in both editions', () => {
+    for (const edition of ['19c', '26ai'] as const) {
+      const f = find(perf('enabled', edition), 'XPT.TABLE_4_2');
+      expect(f?.severity, edition).toBe('warning');
+      expect(f?.message, edition).toContain('Nothing in the documentation says the broker refuses SYNC');
+      expect(f?.message, edition).not.toMatch(/illegal/i);
+      expect(f?.cite, edition).toContain('FSFO.TASK3_MAXPERF_ASYNC');
+      expect(f?.fix?.patch[0]?.value, edition).toBe('ASYNC');
+    }
+    const fast = perf('enabled');
+    dbOf(fast, 'sby01').logXptMode = 'FASTSYNC';
+    expect(find(fast, 'XPT.TABLE_4_2')?.severity).toBe('warning');
+  });
+
+  it('is an info while fast-start failover is disabled, and quiet for an ASYNC target', () => {
+    expect(find(perf('disabled'), 'XPT.TABLE_4_2')?.severity).toBe('info');
+    const ok = perf('enabled');
+    dbOf(ok, 'sby01').logXptMode = 'ASYNC';
+    dbOf(ok, 'prm01').logXptMode = 'ASYNC';
+    expect(validate(ok).filter((f) => f.severity !== 'info')).toEqual([]);
+  });
+
+  it('warns about the primary too: its transport after a role change is not ASYNC', () => {
+    const d = perf('enabled');
+    dbOf(d, 'sby01').logXptMode = 'ASYNC';
+    const f = find(d, 'XPT.PRIMARY_LOGXPTMODE');
+    expect(f?.severity).toBe('warning');
+    expect(f?.message).toContain('lists ASYNC for the primary');
+    expect(f?.fix?.patch[0]?.value).toBe('ASYNC');
+  });
+});
+
 /* ---------------- restrictions that had no rule ---------------- */
 
 describe('destinations 11 to 31 do not support SYNC', () => {
