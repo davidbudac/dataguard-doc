@@ -549,10 +549,22 @@ function followPreferred(m: Member, from: string, to: string | null): Member {
   return to === null ? rest : { ...rest, preferredApplyInstance: to };
 }
 
+/**
+ * ApplyInstances names how many instances run Redo Apply, so it cannot exceed
+ * the instances the member has: a smaller cluster takes the count down with it,
+ * and a single instance has nothing left to set.
+ */
+function clampApplyInstances(m: Member): Member {
+  if (m.kind !== 'database' || typeof m.applyInstances !== 'number') return m;
+  if (m.applyInstances <= m.instances.length) return m;
+  const { applyInstances: _drop, ...rest } = m;
+  return m.instances.length >= 2 ? { ...rest, applyInstances: m.instances.length } : rest;
+}
+
 export function removeInstance(id: MemberId, index: number): void {
   patchMember(id, `Remove an instance from ${id as string}`, (m) => {
     const gone = m.instances[index]?.name;
-    const next = { ...m, instances: m.instances.filter((_, i) => i !== index) };
+    const next = clampApplyInstances({ ...m, instances: m.instances.filter((_, i) => i !== index) });
     return gone === undefined ? next : followPreferred(next, gone, null);
   });
 }
