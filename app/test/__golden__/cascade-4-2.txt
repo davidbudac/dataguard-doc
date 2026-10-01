@@ -1,5 +1,9 @@
 ===== dgmgrl -- DGMGRL -- the broker configuration =====
 
+-- before the session: the connect identifiers used below (prm01, sby01, remote_sby) are Oracle Net names this script does not define -- each must be a tns alias that resolves to a connect identifier for its member on all systems hosting members of the configuration;
+-- before the session: no remote redo transport destination may be left set on a standby database or far sync instance that is about to be added -- clear any LOG_ARCHIVE_DEST_n that ships redo remotely first;
+-- before the transport and protection-mode commands: standby redo logs must be configured on the primary and the target standbys (the broker does not let those commands succeed without them), and DG_BROKER_START must be set to TRUE on each database or the broker does not start;
+
 CONNECT sys@prm01 AS SYSDBA;
 
 CREATE CONFIGURATION 'dg_config' AS PRIMARY DATABASE IS 'prm01' CONNECT IDENTIFIER IS prm01;
@@ -10,11 +14,11 @@ EDIT DATABASE 'sby01' SET PROPERTY 'LogXptMode' = 'SYNC';
 EDIT DATABASE 'remote_sby' SET PROPERTY 'LogXptMode' = 'ASYNC';
 -- default;
 EDIT DATABASE 'prm01' SET PROPERTY 'LogXptMode' = 'SYNC';
--- prm01 ships redo with it once a role swap makes it the standby;
+-- prm01 is the primary now, so its LogXptMode governs nothing yet: it takes effect once a role change makes prm01 a standby, and then applies to the redo the new primary ships to it -- unless a RedoRoutes rule on that sender names a transport mode, which overrides it;
 
 EDIT DATABASE 'prm01' SET PROPERTY 'RedoRoutes' = '(LOCAL : sby01 SYNC)';
 EDIT DATABASE 'sby01' SET PROPERTY 'RedoRoutes' = '(prm01 : remote_sby ASYNC)';
--- the routes are pre-declared for both directions: a rule is active when its redo source names the current primary, and nothing rewrites on a role change;
+-- only the routes for prm01 as primary are declared: a rule is active when its redo source names the current primary, and SHOW CONFIGURATION WHEN PRIMARY IS lists any member a role change would leave without redo under Members Not Receiving Redo;
 
 EDIT DATABASE 'sby01' SET PROPERTY 'NetTimeout' = 30;
 -- default;
@@ -41,7 +45,8 @@ EDIT CONFIGURATION SET PROPERTY FastStartFailoverAutoReinstate = TRUE;
 EDIT DATABASE 'prm01' SET PROPERTY 'FastStartFailoverTarget' = 'sby01';
 -- with more than one standby database the property must be set explicitly;
 -- the target can only be the name of a physical or logical standby -- never a snapshot standby, a far sync instance or a Zero Data Loss Recovery Appliance -- and it must receive redo directly from the primary database, receiving it from a far sync instance is the sanctioned exception;
--- targets are verified when fast-start failover is enabled, and the reciprocal value is set on the target automatically;
+-- targets are verified when fast-start failover is enabled;
+-- for a target that receives redo directly, the broker reciprocally sets the property on the target standby when fast-start failover is actually enabled, to indicate the primary as its future target: there is no need to set it there;
 
 ENABLE FAST_START FAILOVER;
 

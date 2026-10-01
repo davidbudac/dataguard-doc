@@ -56,7 +56,7 @@ export interface Line {
   note?: string;
 }
 
-export type FileSyntax = 'dgmgrl' | 'tnsnames' | 'initora' | 'jdbc' | 'show' | 'text';
+export type FileSyntax = 'dgmgrl' | 'tnsnames' | 'initora' | 'jdbc' | 'show' | 'text' | 'sql';
 
 export interface GeneratedFile {
   /** Stable id: the UI keys its cards off this. */
@@ -133,7 +133,7 @@ export function note(content: string | Span | Span[], claim: Claim<string>): Lin
  * treatment as a marker-less syntax would.
  */
 export const commentMarker = (syntax: FileSyntax): string =>
-  syntax === 'dgmgrl' || syntax === 'show' ? '' : '#';
+  syntax === 'dgmgrl' || syntax === 'show' ? '' : syntax === 'sql' ? '--' : '#';
 
 export const lineText = (line: Line): string =>
   ' '.repeat(line.indent ?? 0) + line.spans.map((s) => s.text).join('');

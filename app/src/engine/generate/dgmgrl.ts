@@ -25,12 +25,13 @@ import type { CitationId } from '../citations';
 import { BROKER_DEFAULTS, defaultLagLimit, lagLimitIsSet, lagLimitOf } from '../defaults';
 import type { MemberId } from '../ids';
 import { formatRedoRoutes, isParenthesised } from '../redo/parse';
-import { resolveRedoGraph } from '../redo/resolve';
+import { activeRule, resolveRedoGraph } from '../redo/resolve';
 import { defaultDestProps } from '../serialize/schema';
 import { detectClaim, pingPropertiesSet } from '../sim/fsfo';
 import type { Claim, Finding } from '../types/claims';
-import { conflict, docLater, documented, model } from '../types/claims';
+import { conflict, docLater, documented, inferred, model } from '../types/claims';
 import type { DestProps, Member, TopologyDoc } from '../types/topology';
+import type { RedoGraph } from '../types/trace';
 import { declaredPrimary, isDatabase, isFarSync, isRac } from '../types/topology';
 import { isMultiInstanceApply } from '../sim/rac';
 import type { GeneratedFile, Line, Span } from './lines';
@@ -66,6 +67,8 @@ const nModel = (text: string, why: string, cite: CitationId[] = []): Line =>
   note(text, model(text, why, cite));
 const nLater = (text: string, cite: CitationId[], why: string): Line =>
   note(text, docLater(text, cite, why));
+const nInferred = (text: string, why: string, cite: CitationId[] = []): Line =>
+  note(text, inferred(text, cite, why));
 
 export function generateDgmgrl(doc: TopologyDoc, opts: DgmgrlOptions = {}): GeneratedFile {
   const lines: Line[] = [];
@@ -105,9 +108,25 @@ export function generateDgmgrl(doc: TopologyDoc, opts: DgmgrlOptions = {}): Gene
      0 for a destination outside any group (DEST.MAX_FAILURE). */
   const grouped = groupedDestinationIds(doc);
 
+  /* ---- what the script assumes and does not write (GEN-25) ---- */
+  const identifiers = [...new Set(members.map((m) => m.connectIdentifier))].join(', ');
+  lines.push(nDoc(
+    `before the session: the connect identifiers used below (${identifiers}) are Oracle Net names this script does not define -- each must be a tns alias that resolves to a connect identifier for its member on all systems hosting members of the configuration`,
+    ['DGMGRL.TNS_ALIAS_ASSUMED'],
+  ));
+  lines.push(nDoc(
+    'before the session: no remote redo transport destination may be left set on a standby database or far sync instance that is about to be added -- clear any LOG_ARCHIVE_DEST_n that ships redo remotely first',
+    ['DGMGRL.CLEAR_REMOTE_DESTS'],
+  ));
+  lines.push(nDoc(
+    'before the transport and protection-mode commands: standby redo logs must be configured on the primary and the target standbys (the broker does not let those commands succeed without them), and DG_BROKER_START must be set to TRUE on each database or the broker does not start',
+    ['DGMGRL.SRL_BEFORE_ENABLE', 'DGMGRL.BROKER_START'],
+  ));
+  lines.push(blank());
+
   /* ---- the session ---- */
   lines.push(cmd(`CONNECT sys@${primary.connectIdentifier} AS SYSDBA;`,
-    { basis: 'documented', cite: ['DGMGRL.BROKER_COMMANDS'] }));
+    { basis: 'documented', cite: ['DGMGRL.CONNECT'] }));
   lines.push(blank());
 
   /* ---- CREATE CONFIGURATION, ADD DATABASE, ADD FAR_SYNC ---- */
@@ -148,16 +167,17 @@ export function generateDgmgrl(doc: TopologyDoc, opts: DgmgrlOptions = {}): Gene
     ));
     if (isDefault) lines.push(nDoc('default', ['XPT.LOGXPTMODE_VALUES']));
   }
-  /* The primary carries one too: it ships redo with it once a role swap makes
-     it the standby. */
+  /* The primary carries one too. LogXptMode is a property of the member that
+     RECEIVES redo (the broker propagates it to the sender's destination), so
+     the primary's value takes effect once a role change makes it a receiver. */
   lines.push(cmd(
     [span(`${editOf(primary)} SET PROPERTY 'LogXptMode' = '`),
       val(primary.logXptMode, primary.logXptMode === defaults.logXptMode), span("';")],
     { basis: 'documented', cite: ['XPT.LOGXPTMODE_VALUES'] },
   ));
   lines.push(nDoc(
-    `${primary.name} ships redo with it once a role swap makes it the standby`,
-    ['FS.ROUTES_BOTH_DIRECTIONS'],
+    `${primary.name} is the primary now, so its LogXptMode governs nothing yet: it takes effect once a role change makes ${primary.name} a standby, and then applies to the redo the new primary ships to it -- unless a RedoRoutes rule on that sender names a transport mode, which overrides it`,
+    ['XPT.LOGXPTMODE_RECEIVER'],
   ));
   if (farSyncs.length > 0 && fsfo.state !== 'disabled') {
     lines.push(nDoc(
@@ -223,17 +243,26 @@ export function generateDgmgrl(doc: TopologyDoc, opts: DgmgrlOptions = {}): Gene
   /* ---- static services, where a RAC database is in the configuration ---- */
   const anyRac = members.some((m) => isDatabase(m) && isRac(m));
   if (anyRac) {
+    /* TXT-15: the 26ai broker guide words the rule for "configurations where
+       Oracle Clusterware or Oracle Restart are not being used", with no
+       "only"; the 19c sentence says a static service is defined and
+       registered only if they are not. */
+    const staticRule = cfg.edition === '26ai'
+      ? 'for configurations where Oracle Clusterware or Oracle Restart are not being used, a static service must be registered with the local listener associated with each instance'
+      : 'one is defined and registered only if Oracle Clusterware or Oracle Restart is not being used';
+    const staticCite: CitationId = cfg.edition === '26ai'
+      ? 'RAC.STATIC_SERVICE_26AI' : 'RAC.STATIC_ONLY_WITHOUT_CLUSTERWARE';
     for (const m of members) {
       if (!isDatabase(m)) continue;
       if (isRac(m)) {
         lines.push(nDoc(
-          `${m.name} is RAC and runs under Oracle Clusterware, so it needs no static service: one is defined and registered only if Oracle Clusterware or Oracle Restart is not being used`,
-          ['RAC.STATIC_ONLY_WITHOUT_CLUSTERWARE', 'RAC.CLUSTERWARE_REQUIRED'],
+          `${m.name} is RAC and runs under Oracle Clusterware, so it needs no static service: ${staticRule}`,
+          [staticCite, 'RAC.CLUSTERWARE_REQUIRED'],
         ));
       } else if (!m.staticServices) {
         lines.push(nDoc(
           `${m.name} is a single instance: unless Oracle Restart manages it, register the static service ${m.name}_DGMGRL with its listener so DGMGRL and the observer can restart it`,
-          ['RAC.STATIC_ONLY_WITHOUT_CLUSTERWARE'],
+          [staticCite],
         ));
       }
     }
@@ -244,19 +273,39 @@ export function generateDgmgrl(doc: TopologyDoc, opts: DgmgrlOptions = {}): Gene
   const routed = members.filter((m) => m.redoRoutes.length > 0);
   if (routed.length > 0) {
     for (const m of routed) {
+      /* The 19c / 26ai grammar has groups and PRIORITY; only the 12.1 ALT=(...)
+         form is the 12.1 grammar's (TXT-23). */
+      const hasAlt = m.redoRoutes.some((r) => r.groups.some((g) => g.dests.some((d) => d.alt !== undefined)));
       lines.push(cmd(
         [span(`${editOf(m)} SET PROPERTY 'RedoRoutes' = '`),
           hl(formatRedoRoutes(m.redoRoutes)), span("';")],
-        { basis: 'documented', cite: ['ROUTES.GRAMMAR_121', 'ROUTES.CANONICAL_PAIR'] },
+        { basis: 'documented', cite: hasAlt
+          ? ['ROUTES.GRAMMAR_19C', 'ROUTES.GRAMMAR_121', 'ROUTES.CANONICAL_PAIR']
+          : ['ROUTES.GRAMMAR_19C', 'ROUTES.CANONICAL_PAIR'] },
       ));
     }
-    lines.push(nDoc(
-      'the routes are pre-declared for both directions: a rule is active when its redo source names the current primary, and nothing rewrites on a role change',
-      ['FS.ROUTES_BOTH_DIRECTIONS', 'ROUTES.RULE_ACTIVE'],
-    ));
-    if (routed.some((m) => m.redoRoutes.some((r) => r.groups.some((g) => g.dests.some((d) => d.priority !== undefined))))) {
+    /* "Pre-declared for both directions" is only true when some member holds a
+       rule that is not the active one under the current primary (GEN-17): the
+       far sync's reverse rule, the standby's LOCAL rule. */
+    const reverseDeclared = routed.some((m) => {
+      const act = activeRule(m, primary.id);
+      return m.redoRoutes.some((r) => r !== act?.rule);
+    });
+    if (reverseDeclared) {
       lines.push(nDoc(
+        'the routes are pre-declared for both directions: a rule is active when its redo source names the current primary, and nothing rewrites on a role change',
+        ['FS.ROUTES_BOTH_DIRECTIONS', 'ROUTES.RULE_ACTIVE'],
+      ));
+    } else {
+      lines.push(nDoc(
+        `only the routes for ${primary.name} as primary are declared: a rule is active when its redo source names the current primary, and SHOW CONFIGURATION WHEN PRIMARY IS lists any member a role change would leave without redo under Members Not Receiving Redo`,
+        ['ROUTES.RULE_ACTIVE', 'DGMGRL.SHOW_WHEN_PRIMARY_IS', 'DGMGRL.MEMBERS_NOT_RECEIVING_REDO'],
+      ));
+    }
+    if (routed.some((m) => m.redoRoutes.some((r) => r.groups.some((g) => g.dests.some((d) => d.priority !== undefined))))) {
+      lines.push(nInferred(
         'PRIORITY is RedoRoutes syntax; GROUP is not -- GROUP is a LOG_ARCHIVE_DEST_n attribute and appears in the init.ora block instead',
+        'An inference from two pages, not a sentence on either: the LOG_ARCHIVE_DEST_n attributes page documents GROUP and PRIORITY, and the Redo Routing Rules grammar has PRIORITY=n and no GROUP keyword.',
         ['ROUTES.GROUP_IS_NOT_ROUTES_SYNTAX', 'ROUTES.PRIORITY_26AI'],
       ));
     }
@@ -275,15 +324,25 @@ export function generateDgmgrl(doc: TopologyDoc, opts: DgmgrlOptions = {}): Gene
      broker writes these into the NET_TIMEOUT / REOPEN / MAX_FAILURE
      attributes of the LOG_ARCHIVE_DEST_n it manages; init.ora shows where
      they land, but this script is what sets them. ---- */
-  const netTimeouts: Array<{ m: Member; d: DestProps }> = [];
+  const netTimeouts: Array<{
+    m: Member; d: DestProps; sender: Member; differing: Member[];
+  }> = [];
   for (const m of members) {
-    for (const sender of members) {
+    const fed = members.flatMap((sender) => {
       const d = sender.dests[m.id];
-      if (d !== undefined) { netTimeouts.push({ m, d }); break; }
-    }
+      return d === undefined ? [] : [{ sender, d }];
+    });
+    const first = fed[0];
+    if (first === undefined) continue;
+    /* One receiving member carries one value of each: the broker propagates it
+       to the sending side's destination (GEN-21). */
+    const differing = fed.slice(1).filter((o) => o.d.netTimeoutSeconds !== first.d.netTimeoutSeconds
+      || o.d.reopenSeconds !== first.d.reopenSeconds || o.d.maxFailure !== first.d.maxFailure)
+      .map((o) => o.sender);
+    netTimeouts.push({ m, d: first.d, sender: first.sender, differing });
   }
   if (netTimeouts.length > 0) {
-    for (const { m, d } of netTimeouts) {
+    for (const { m, d, sender, differing } of netTimeouts) {
       const isDefault = d.netTimeoutSeconds === defaults.netTimeoutSeconds;
       lines.push(cmd(
         [span(`${editOf(m)} SET PROPERTY 'NetTimeout' = `), val(d.netTimeoutSeconds, isDefault), span(';')],
@@ -314,13 +373,28 @@ export function generateDgmgrl(doc: TopologyDoc, opts: DgmgrlOptions = {}): Gene
         ));
       }
       if (d.maxFailure !== brokerDefault.maxFailure) {
-        lines.push(cmd(
-          [span(`${editOf(m)} SET PROPERTY 'MaxFailure' = `), hl(String(d.maxFailure)), span(';')],
-          { basis: 'documented', cite: ['DEST.MAX_FAILURE', 'DEST.BROKER_OWNED_PROPERTIES'] },
-        ));
-        lines.push(nDoc(
-          `the broker default is ${brokerDefault.maxFailure} here -- 1 for a member inside a parenthesised RedoRoutes group, 0 otherwise`,
-          ['DEST.MAX_FAILURE'],
+        if (isFarSync(m)) {
+          /* GEN-20: Oracle's own page disagrees about whether a far sync
+             instance carries MaxFailure, so no EDIT FAR_SYNC line is written. */
+          const text = `MaxFailure = ${d.maxFailure} is set for the destination to ${m.name}, a far sync instance, and no EDIT FAR_SYNC line is written for it: the MaxFailure property's Role row lists a standby database and a Recovery Appliance, not a far sync instance, while its footnote says the property is set for a standby database or far sync instance`;
+          lines.push(note(text, conflict(text, ['DEST.MAX_FAILURE', 'DEST.MAXFAILURE_ROLE_FARSYNC'],
+            'The 19c MaxFailure row and its own footnote disagree about far sync instances; the other per-receiver properties (ReopenSecs, NetTimeout) do list them. The init.ora block still shows MAX_FAILURE for the destination.')));
+        } else {
+          lines.push(cmd(
+            [span(`${editOf(m)} SET PROPERTY 'MaxFailure' = `), hl(String(d.maxFailure)), span(';')],
+            { basis: 'documented', cite: ['DEST.MAX_FAILURE', 'DEST.BROKER_OWNED_PROPERTIES'] },
+          ));
+          lines.push(nDoc(
+            `the broker default is ${brokerDefault.maxFailure} here -- 1 for a member inside a parenthesised RedoRoutes group, 0 otherwise`,
+            ['DEST.MAX_FAILURE'],
+          ));
+        }
+      }
+      if (differing.length > 0) {
+        lines.push(nInferred(
+          `${m.name} receives from ${[sender, ...differing].map((x) => x.name).join(' and ')} with different NetTimeout, ReopenSecs or MaxFailure values, but each is a single property of the receiving member: the lines above use ${sender.name}'s, and the init.ora cards show each sender's own`,
+          'The footnote says the broker propagates the setting specified on the receiving member to the sending side; that one member therefore cannot hold two values for two senders is this page\'s reading, not a sentence.',
+          ['XPT.LOGXPTMODE_RECEIVER'],
         ));
       }
     }
@@ -376,13 +450,50 @@ export function generateDgmgrl(doc: TopologyDoc, opts: DgmgrlOptions = {}): Gene
   }
   lines.push(blank());
 
+  /* ---- configuration properties the inspector offers (GEN-16): written only
+     when they differ from the broker default ---- */
+  const cfgProperties: Line[] = [];
+  if (cfg.bystandersFollowRoleChange !== defaults.bystandersFollowRoleChange) {
+    cfgProperties.push(cmd(
+      [span("EDIT CONFIGURATION SET PROPERTY 'BystandersFollowRoleChange' = '"),
+        hl(cfg.bystandersFollowRoleChange), span("';")],
+      { basis: 'documented', cite: ['BYSTANDERS.DEFAULT_ALL', 'BYSTANDERS.NONE_DISABLED'] },
+    ));
+    cfgProperties.push(nDoc(
+      'NONE: the broker does not evaluate the bystander standbys as part of a failover, it marks them disabled with a status of ORA-16661 so that they can be evaluated later, and they have to be reinstated afterwards',
+      ['BYSTANDERS.NONE_DISABLED'],
+    ));
+  }
+  const wideService = cfg.configurationWideServiceName;
+  if (wideService !== undefined && wideService !== '') {
+    cfgProperties.push(cmd(
+      [span("EDIT CONFIGURATION SET PROPERTY 'ConfigurationWideServiceName' = '"), hl(wideService), span("';")],
+      { basis: 'documented', cite: ['CFG.WIDE_SERVICE_NAME'] },
+    ));
+    cfgProperties.push(nDoc(
+      'the default service name of the configuration-wide service is primarydbname_CFG, and the service name does not change after a role transition',
+      ['CFG.WIDE_SERVICE_NAME'],
+    ));
+  }
+  if (cfgProperties.length > 0) {
+    lines.push(...cfgProperties);
+    lines.push(blank());
+  }
+
   /* ---- PrimaryDatabaseCandidates: a fast-start-failover-DISABLED fence ---- */
   const candidates = cfg.primaryDatabaseCandidates ?? [];
   if (candidates.length > 0) {
     const names = candidates.map((id) => nameOf(doc, id)).join(',');
+    /* GEN-22: absent from the whole 19c and 21c property pages -- documented
+       from 26ai, observed on a live 19.27 system. */
     lines.push(cmd(
       [span("EDIT CONFIGURATION SET PROPERTY 'PrimaryDatabaseCandidates' = '"), hl(names), span("';")],
-      { basis: 'documented', cite: ['FSFO.PRIMARY_DB_CANDIDATES'] },
+      cfg.edition === '19c'
+        ? {
+          basis: 'doc-later', cite: ['FSFO.PRIMARY_DB_CANDIDATES'],
+          note: 'Documented from 26ai: the 19c and 21c broker properties pages do not list PrimaryDatabaseCandidates. A live 19.27 system carries the property, which is an observation, not documentation.',
+        }
+        : { basis: 'documented', cite: ['FSFO.PRIMARY_DB_CANDIDATES'] },
     ));
     lines.push(nDoc(
       'while fast-start failover is disabled this list restricts SWITCHOVER and FAILOVER to its members and refuses anything else with ORA-16529; once fast-start failover is enabled it adds nothing new, because FastStartFailoverTarget already governs the target',
@@ -392,7 +503,12 @@ export function generateDgmgrl(doc: TopologyDoc, opts: DgmgrlOptions = {}): Gene
   }
 
   /* ---- fast-start failover ---- */
-  if (doc.observers.length === 0) {
+  /* GEN-15: no observer deployed AND fast-start failover disabled is the only
+     case in which nothing is armed. Enabled with no observer started is legal
+     ("If you do not start the observer after you have enabled fast-start
+     failover, the ORA-16819 warning is displayed"), so the script keeps
+     ENABLE FAST_START FAILOVER and every property, and says what follows. */
+  if (doc.observers.length === 0 && fsfo.state === 'disabled') {
     /* The clock properties are configuration-wide whether an observer exists
        or not. What is missing is the thing that turns them into a failover. */
     lines.push(nDoc(
@@ -403,8 +519,8 @@ export function generateDgmgrl(doc: TopologyDoc, opts: DgmgrlOptions = {}): Gene
       /* ED-06: 26ai deprecates the V$DATABASE.FS_FAILOVER_* columns in favour
          of V$FAST_START_FAILOVER_CONFIG. */
       cfg.edition === '26ai'
-        ? 'with no observer deployed V$FAST_START_FAILOVER_CONFIG simply reads DISABLED -- deploying no observer is not the same as being unobserved'
-        : 'with no observer deployed V$DATABASE.FS_FAILOVER_STATUS simply reads DISABLED -- deploying no observer is not the same as being unobserved',
+        ? 'with fast-start failover disabled and no observer deployed V$FAST_START_FAILOVER_CONFIG simply reads DISABLED -- deploying no observer is not the same as being unobserved'
+        : 'with fast-start failover disabled and no observer deployed V$DATABASE.FS_FAILOVER_STATUS simply reads DISABLED -- deploying no observer is not the same as being unobserved',
       cfg.edition === '26ai'
         ? ['FSFO.FS_FAILOVER_CONFIG_26AI', 'FSFO.PRIMARY_UNOBSERVED']
         : ['FSFO.STATUS_DISABLED', 'FSFO.PRIMARY_UNOBSERVED'],
@@ -423,9 +539,41 @@ export function generateDgmgrl(doc: TopologyDoc, opts: DgmgrlOptions = {}): Gene
     }
   } else {
     lines.push(...fsfoPropertyLines(doc, defaults));
-    lines.push(...targetLines(doc, primary));
+    lines.push(...targetLines(doc, primary, graph));
     lines.push(blank());
     lines.push(...enableAndObserverLines(doc, primary));
+    if (doc.observers.length === 0) {
+      lines.push(blank());
+      lines.push(nDoc(
+        'no observer is deployed in this document, so no START OBSERVER line follows: enabling fast-start failover without starting one is legal, the broker then displays the ORA-16819 warning for the primary and the target standby databases (Database Status WARNING), and fast-start failover cannot happen until an observer is started',
+        ['OBS.NOT_STARTED_16819', 'ORA.16819', 'OBS.CANNOT_OCCUR_LIST'],
+      ));
+    }
+  }
+
+  /* ---- role-based services (GEN-29) ---- */
+  const services = cfg.services.filter((sv) => sv.members.some((id) => {
+    const m = members.find((x) => x.id === id);
+    return m !== undefined && isDatabase(m);
+  }));
+  if (services.length > 0) {
+    lines.push(blank());
+    lines.push(nDoc(
+      'role-based services are created outside DGMGRL, with SRVCTL, explicitly on each database where the service must be active -- on Oracle RAC or on a single instance managed by Oracle Restart; the lines below are runbook text for a shell on each database host, and the options after -role are yours',
+      ['SERVICE.SRVCTL_PER_DATABASE', 'SERVICE.ROLE_BASED_PLATFORMS'],
+    ));
+    for (const sv of services) {
+      for (const id of sv.members) {
+        const m = members.find((x) => x.id === id);
+        if (m === undefined || !isDatabase(m)) continue;
+        lines.push(comment(`srvctl add service -db ${m.name} -service ${sv.name} -role ${sv.role} ...`,
+          { basis: 'documented', cite: ['SERVICE.SRVCTL_PER_DATABASE'] }));
+      }
+    }
+    lines.push(nDoc(
+      'all SRVCTL add service options must be identical on all the databases so that the services behave the same way before and after a role change',
+      ['SERVICE.SRVCTL_OPTIONS_IDENTICAL'],
+    ));
   }
 
   /* ---- what validate had to say, verbatim ---- */
@@ -687,10 +835,20 @@ function firstTargetName(doc: TopologyDoc, primary: MemberId): string | null {
   return first === undefined ? null : nameOf(doc, first);
 }
 
-function targetLines(doc: TopologyDoc, primary: Member): Line[] {
+function targetLines(doc: TopologyDoc, primary: Member, graph: RedoGraph): Line[] {
   const out: Line[] = [];
   const t = doc.config.fsfo.target;
   const standbys = doc.members.filter((m) => isDatabase(m) && m.id !== primary.id);
+  /* GEN-14: a target that receives its redo through a far sync instance needs
+     FastStartFailoverTarget set on BOTH sides before ENABLE (Scenario 7) --
+     the reciprocal is not set for it. */
+  const viaFarSync = (t.kind === 'list' ? t.members : standbys.map((m) => m.id)).filter((id) => {
+    const path = graph.members[id]?.feedPath ?? [];
+    return path.slice(1, -1).some((hop) => {
+      const h = doc.members.find((m) => m.id === hop);
+      return h !== undefined && isFarSync(h);
+    });
+  });
 
   if (t.kind === 'ANY') {
     out.push(cmd(
@@ -721,14 +879,29 @@ function targetLines(doc: TopologyDoc, primary: Member): Line[] {
       ));
     }
   }
+  for (const id of viaFarSync) {
+    out.push(cmd(
+      [span(`EDIT DATABASE ${q(nameOf(doc, id))} SET PROPERTY 'FastStartFailoverTarget' = '`), hl(primary.name), span("';")],
+      { basis: 'documented', cite: ['FSFO.FARSYNC_TARGET_SCENARIO7'] },
+    ));
+  }
   out.push(nDoc(
     'the target can only be the name of a physical or logical standby -- never a snapshot standby, a far sync instance or a Zero Data Loss Recovery Appliance -- and it must receive redo directly from the primary database; receiving it from a far sync instance is the sanctioned exception',
     ['FSFO.TARGET_KIND', 'FSFO.TARGET_DIRECT_REDO', 'FSFO.TARGET_NOT_FARSYNC'],
   ));
-  out.push(nDoc(
-    'targets are verified when fast-start failover is enabled, and the reciprocal value is set on the target automatically',
-    ['FSFO.TARGET_VERIFIED_ON_ENABLE'],
-  ));
+  out.push(nDoc('targets are verified when fast-start failover is enabled', ['FSFO.TARGET_VERIFIED_ON_ENABLE']));
+  if (viaFarSync.length > 0) {
+    out.push(nDoc(
+      `${viaFarSync.map((id) => nameOf(doc, id)).join(' and ')} receive${viaFarSync.length === 1 ? 's' : ''} redo through a far sync instance, so FastStartFailoverTarget is set on both sides before ENABLE FAST_START FAILOVER, as above -- the reciprocal is not left to the broker here`,
+      ['FSFO.FARSYNC_TARGET_SCENARIO7'],
+    ));
+  }
+  if (viaFarSync.length < Math.max(t.kind === 'list' ? t.members.length : standbys.length, 1)) {
+    out.push(nDoc(
+      'for a target that receives redo directly, the broker reciprocally sets the property on the target standby when fast-start failover is actually enabled, to indicate the primary as its future target: there is no need to set it there',
+      ['FSFO.TARGET_RECIPROCAL_AUTO'],
+    ));
+  }
   return out;
 }
 

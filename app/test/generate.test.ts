@@ -281,8 +281,9 @@ describe('the DGMGRL script', () => {
     expect(text).toContain('far sync transport mode must be SYNC or FASTSYNC and the target standby transport mode must be ASYNC');
   });
 
-  it('never arms fast-start failover with no observer deployed', () => {
-    const doc = { ...classicDoc(), observers: [] };
+  it('never arms fast-start failover that is disabled, with or without an observer', () => {
+    const base = classicDoc();
+    const doc = { ...base, observers: [], config: { ...base.config, fsfo: { ...base.config.fsfo, state: 'disabled' as const } } };
     const script = generateDgmgrl(doc);
     const text = textOf(script);
     expect(commandsOf(script).map(lineText).filter((l) => l.startsWith('ENABLE FAST_START FAILOVER'))).toEqual([]);
@@ -292,7 +293,8 @@ describe('the DGMGRL script', () => {
   });
 
   it('FAILOVER TO is commented runbook text, never an executable script line (GEN-05)', () => {
-    const doc = { ...classicDoc(), observers: [] };
+    const base = classicDoc();
+    const doc = { ...base, observers: [], config: { ...base.config, fsfo: { ...base.config.fsfo, state: 'disabled' as const } } };
     const script = generateDgmgrl(doc);
     expect(commandsOf(script).map(lineText).some((l) => l.startsWith('FAILOVER TO'))).toBe(false);
     const text = textOf(script);
@@ -537,7 +539,9 @@ describe('the SHOW mocks', () => {
     const sby = lines.find((l) => l.includes('sby01 -')) as string;
     const remote = lines.find((l) => l.includes('remote_sby -')) as string;
     expect(prm).toBe('  prm01 - Primary database');
-    expect(sby).toBe('    sby01 - Physical standby database');
+    /* The current fast-start failover target wears the asterisk in the plain
+       output too (GEN-19). */
+    expect(sby).toBe('    sby01 - (*) Physical standby database');
     expect(remote).toBe('      remote_sby - Physical standby database (receiving current redo)');
   });
 
@@ -561,19 +565,21 @@ describe('the SHOW mocks', () => {
   it('resolve another primary for WHEN PRIMARY IS', () => {
     const doc = farSync52();
     const text = renderPlain(showConfiguration(doc, { whenPrimaryIs: memberId('sby01') as MemberId }));
-    expect(text).toContain('DGMGRL> SHOW CONFIGURATION WHEN PRIMARY IS sby01;');
+    expect(text).toContain("DGMGRL> SHOW CONFIGURATION WHEN PRIMARY IS 'sby01';");
+    expect(text).toContain('Configuration when sby01 is primary - dg_config');
     expect(text).toContain('sby01 - Primary database');
     expect(text).toContain('prm01 - Physical standby database');
   });
 
   it('say where the drawing differs for an old primary a manual failover left open', () => {
     const doc = farSync52();
-    const opts = { whenPrimaryIs: memberId('sby01') as MemberId };
+    const opts = { run: { primary: memberId('sby01') as MemberId, roleChange: 'failover' as const, states: {} } };
     const file = showConfiguration(doc, { ...opts, openAsPrimary: ['prm01'] });
     const text = renderPlain(file);
     expect(text).toContain('prm01 is still open read-write as a primary in this run');
-    /* The configuration's own view of it is not rewritten. */
-    expect(text).toContain('prm01 - Physical standby database');
+    /* The configuration's own view of it is not rewritten: after a failover
+       it is a disabled standby awaiting reinstatement. */
+    expect(text).toContain('prm01 - Physical standby database (disabled)');
     const line = file.lines.find((l) => lineText(l).includes('prm01 is still open'));
     expect(line?.basis).toBe('model');
     expect(line?.cite).toEqual(['FAILOVER.PRIMARY_SHUT_DOWN', 'FSFO.MANUAL_FAILOVER_CONDITIONS']);
@@ -586,7 +592,7 @@ describe('the SHOW mocks', () => {
   it('list Active Target, Potential Targets and a per-target valid flag', () => {
     const text = renderPlain(generateShowMocks(multiTargetThreeObservers())[1] as GeneratedFile);
     expect(text).toContain('Active Target:        sby01');
-    expect(text).toContain('Potential Targets:    "sby01,sby02"');
+    expect(text).toContain('Potential Targets:    "sby01, sby02"');
     expect(text).toContain('sby01:              valid   (model)');
     expect(text).toContain('Observer Override:    FALSE');
   });
@@ -626,13 +632,18 @@ describe('the SHOW mocks', () => {
   });
 
   it('say that no observer deployed is not the same as unobserved', () => {
-    const doc = { ...classicDoc(), observers: [] };
+    const base = classicDoc();
+    const doc = { ...base, observers: [], config: { ...base.config, fsfo: { ...base.config.fsfo, state: 'disabled' as const } } };
     const text = renderPlain(generateShowMocks(doc)[2] as GeneratedFile);
     expect(text).toContain('not the same as unobserved');
   });
 
   it('names V$FAST_START_FAILOVER_CONFIG, not V$DATABASE, once the document is 26ai (ED-06)', () => {
-    const doc = { ...classicDoc(), observers: [], config: { ...classicDoc().config, edition: '26ai' as const } };
+    const base = classicDoc();
+    const doc = {
+      ...base, observers: [],
+      config: { ...base.config, edition: '26ai' as const, fsfo: { ...base.config.fsfo, state: 'disabled' as const } },
+    };
     const text = renderPlain(generateShowMocks(doc)[2] as GeneratedFile);
     expect(text).toContain('V$FAST_START_FAILOVER_CONFIG');
     expect(text).not.toContain('V$DATABASE.FS_FAILOVER_STATUS');
@@ -674,13 +685,14 @@ describe('the SHOW mocks', () => {
     });
   });
 
-  it('marks the (*) fast-start failover target and the legend under it, VERBOSE only (GEN-12)', () => {
+  it('marks the (*) fast-start failover target in both forms and the legend under it in VERBOSE only (GEN-12, GEN-19)', () => {
     const doc = multiTargetThreeObservers();
     const verbose = renderPlain(showConfiguration(doc, { verbose: true }));
     expect(verbose).toContain('sby01 - (*) Physical standby database');
     expect(verbose).toContain('(*) Fast-Start Failover target');
     const plain = renderPlain(showConfiguration(doc));
-    expect(plain).not.toContain('(*)');
+    expect(plain).toContain('sby01 - (*) Physical standby database');
+    expect(plain).not.toContain('(*) Fast-Start Failover target');
   });
 
   it('draws a member no active route reaches under "Members Not Receiving Redo:" (GEN-12)', () => {

@@ -938,9 +938,12 @@ describe('a document that says fast-start failover is enabled with no observer',
     expect(f?.message).toContain('is unobserved and no failover can happen');
     expect(f?.ora).toBe('ORA-16819');
     expect(f?.cite).toContain('ORA.16819');
-    /* Never "unobserved": that is the state with fast-start failover enabled
-       and the master observer missing. */
-    expect(f?.message).toContain('That is not the same as being unobserved');
+    /* VAL-13: the text of the DISABLED case is not prepended. The status is
+       not DISABLED here, and the lag-limit switchover restriction is in force
+       without an observer. */
+    expect(f?.message).not.toContain('That is not the same as being unobserved');
+    expect(f?.message).not.toContain('FS_FAILOVER_STATUS reads DISABLED');
+    expect(f?.message).not.toContain('cannot fire');
     expect(f?.message).not.toContain('cannot both be true');
   });
 

@@ -459,10 +459,10 @@ function synchronizedClaim(
   if (directEdge && directEdge.up) {
     const sync = directEdge.xpt === 'SYNC' || directEdge.xpt === 'FASTSYNC';
     if (sync) {
-      return documented(true, ['XPT.TABLE_4_2', 'MAXAVAIL.AT_LEAST_ONE'],
+      return documented(true, ['XPT.SYNC_WAITS_ACK', 'MAXAVAIL.AT_LEAST_ONE'],
         `${directEdge.xpt} transport direct from the primary: the commit waits for this destination's acknowledgement, so there is no redo it has not received.`);
     }
-    return documented(false, ['XPT.TABLE_4_2'],
+    return documented(false, ['XPT.ASYNC_NO_WAIT'],
       'ASYNC transport: the primary never waits for this destination, so it is not synchronized.');
   }
 
@@ -504,7 +504,7 @@ function ackClaim(
   const acks = !!directEdge && directEdge.up
     && (directEdge.xpt === 'SYNC' || directEdge.xpt === 'FASTSYNC');
   if (!acks) {
-    return documented(false, ['XPT.TABLE_4_2'],
+    return documented(false, ['XPT.SYNC_WAITS_ACK', 'XPT.ASYNC_NO_WAIT'],
       'Only a destination the primary ships to synchronously acknowledges a commit.');
   }
   if (isFarSync(m)) {
@@ -534,7 +534,7 @@ function levelClaim(
     (r) => r.countsTowardProtectionAck.value && r.synchronized.value,
   );
   if (mode === 'MAXPERFORMANCE') {
-    return documented<ProtectionLevel>('MAXPERFORMANCE', ['XPT.TABLE_4_2'],
+    return documented<ProtectionLevel>('MAXPERFORMANCE', ['PROT.MAXPERF_ASYNC'],
       'Maximum performance never waits for a destination.');
   }
   if (mode === 'MAXPROTECTION') {

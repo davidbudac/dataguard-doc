@@ -29,10 +29,16 @@ export const rac: Lesson = {
             <Fact id="RAC.CLUSTERWARE_REQUIRED">
               Oracle Clusterware is a required component for using Oracle RAC
             </Fact>
-            {' '}— and that is why neither database needs the static service a single instance would:{' '}
+            {' '}— and that is why neither database needs the static service a single instance would. The
+            19c guide words it{' '}
             <Fact id="RAC.STATIC_ONLY_WITHOUT_CLUSTERWARE">
               a static service needs to be defined and registered only if Oracle Clusterware or Oracle
               Restart is not being used
+            </Fact>
+            , the 26ai guide{' '}
+            <Fact id="RAC.STATIC_SERVICE_26AI">
+              for configurations where Oracle Clusterware or Oracle Restart are not being used, a static
+              service must be registered with the local listener associated with each instance
             </Fact>
             .
           </P>
