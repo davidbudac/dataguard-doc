@@ -535,7 +535,10 @@ agree on:
   the notice (same precedent as the 21c ObserverPing* citation). Legality per
   broker Table 4-2: MaxProtection SYNC; MaxAvailability SYNC or FASTSYNC;
   MaxPerformance ASYNC is the only mode listed — never write that SYNC is
-  illegal there. **The table is met by "at least one standby database"**, not by
+  illegal there. With fast-start failover enabled, a SYNC or FASTSYNC target or
+  primary in MaxPerformance is a **warning**, not an error: the setup lists
+  ASYNC for both (Task 3) and no sentence says the broker refuses anything else
+  (decision D8, `XPT.TABLE_4_2`, `XPT.PRIMARY_LOGXPTMODE`). **The table is met by "at least one standby database"**, not by
   every destination: "the broker verifies that there is at least one standby
   database in the configuration that can support the desired grade of
   protection", so an ASYNC bystander beside a SYNC standby is legal in every

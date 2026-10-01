@@ -1044,6 +1044,11 @@ export const CITATIONS = {
     quote: 'Ensure that the standby database you choose to be the target of fast-start failover has its LogXptMode property set as follows, depending on the protection mode: Maximum protection — SYNC Maximum availability — SYNC or FASTSYNC or ASYNC Maximum performance — ASYNC',
     note: '26ai Enabling Fast-Start Failover prerequisites. The maximum availability row adds ASYNC against 19c and against 26ai Table 4-2 itself (XPT.TABLE_4_2).',
   },
+  'FSFO.TASK3_MAXPERF_ASYNC': {
+    url: U.bkr19Switch, edition: '19c', verified: 'primary',
+    quote: 'ensure that the LogXptMode database property for both the primary and target standby database is set to ASYNC.',
+    note: 'Enabling Fast-Start Failover, Task 3, the maximum performance line (the start of the sentence is elided). It is a setup instruction; nothing on the page says the broker refuses SYNC there.',
+  },
   'FSFO.TASK3_PRIMARY_XPT_19C': {
     url: U.bkr19Switch, edition: '19c', verified: 'primary',
     quote: 'In maximum availability mode, set the LogXptMode database property for both the primary and target standby databases to SYNC or FASTSYNC. In maximum protection mode, set the LogXptMode database property to SYNC (note that in maximum protection mode, a far sync instance cannot be used to ship redo to a standby).',
