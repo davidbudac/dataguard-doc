@@ -363,6 +363,7 @@ export function MemberForm({ member, doc, graph }: MemberFormProps) {
               <Num
                 name="NetTimeout"
                 bound="netTimeoutSeconds"
+                kind="number"
                 value={p.netTimeoutSeconds}
                 coalesce={`nt:${id as string}:${to.id as string}`}
                 enabled={async ? off(WHY.netTimeoutAsync) : ON}

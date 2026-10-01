@@ -12,7 +12,7 @@
  */
 
 import {
-  activeRule, applicationClient, applicationId, applicationsOf, CLIENT_TIMING_DEFAULTS, CLIENT_TIMING_TUNED, declaredPrimary, defaultDestProps, expandAll, hostId, isParenthesised, linkId, memberId, observerId, primarySite,
+  activeRule, applicationClient, applicationId, applicationsOf, CLIENT_TIMING_DEFAULTS, CLIENT_TIMING_TUNED, declaredPrimary, defaultDestProps, expandAll, hostId, isParenthesised, LAG_LIMIT_UNSET_STORED, linkId, memberId, observerId, primarySite,
   findApplication, siteId, withApplication,
 } from '@/engine';
 import type {
@@ -1339,6 +1339,22 @@ export function setFsfoLagLimit(v: number): void {
   patchFsfo(
     `Set FastStartFailoverLagLimit to ${v} s`,
     (x) => ({ ...x, lagLimitSeconds: v, lagLimitSet: true }), 'fsfo:laglimit',
+  );
+}
+
+/**
+ * Back to "not set": the edition's broker default for the mode applies again,
+ * 30 s in maximum performance and, under 26ai, 0 in maximum availability. Typing
+ * the default in does not do this -- that sets the property to the same number.
+ */
+export function unsetFsfoLagLimit(): void {
+  patchFsfo(
+    'Leave FastStartFailoverLagLimit at the broker default',
+    (x) => {
+      const { lagLimitSet: _drop, ...rest } = x;
+      return { ...rest, lagLimitSeconds: LAG_LIMIT_UNSET_STORED };
+    },
+    'fsfo:laglimit',
   );
 }
 

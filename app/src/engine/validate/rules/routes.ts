@@ -83,7 +83,31 @@ export const snapshotForbidden: Rule = (ctx): Finding[] => {
     out.push(mk('ROUTES.SNAPSHOT_FORBIDDEN', {
       subject: routeSubject(m),
       message: `RedoRoutes on ${q(m.name)}, a snapshot standby database, forwards redo to ${to.map(q).join(', ')}. The property cannot be configured so that a snapshot standby would send redo data to another member. A snapshot standby still receives and archives redo from the primary.`,
-      cite: ['ROUTES.SNAPSHOT_FORBIDDEN', 'ROUTES.SNAPSHOT_RECEIVES_REDO'],
+      cite: ['ROUTES.SNAPSHOT_FORBIDDEN', 'ROUTES.SNAPSHOT_RECEIVES_REDO', 'CONVERT.SNAPSHOT_REDOROUTES_NONNULL'],
+    }));
+  }
+  return out;
+};
+
+/**
+ * Two Oracle pages draw the snapshot line in different places. The RedoRoutes
+ * property page bars a snapshot standby that would send redo onward; the
+ * CONVERT DATABASE page bars converting a physical standby whose RedoRoutes is
+ * non-NULL, whatever it says. A snapshot standby that carries a rule but
+ * forwards nothing (a LOCAL rule, which sends nothing while it is a standby)
+ * is inside the first and outside the second. Oracle does not name the
+ * difference, so the finding carries both sides.
+ */
+export const snapshotConvertNonNull: Rule = (ctx): Finding[] => {
+  const out: Finding[] = [];
+  for (const m of ctx.databases) {
+    if (m.role !== 'snapshot' || m.redoRoutes.length === 0) continue;
+    if (ctx.forwardedDests(m).length > 0) continue;
+    out.push(mk('ROUTES.SNAPSHOT_CONVERT_NONNULL', {
+      subject: routeSubject(m),
+      message: `${q(m.name)} is a snapshot standby database and its RedoRoutes property is set to a non-NULL value, although no rule of it sends redo to another member while it is a standby. The RedoRoutes property page only bars a snapshot standby that would send redo data to another member. The CONVERT DATABASE page is stricter: a physical standby database cannot be converted to a snapshot standby database if its RedoRoutes configurable property is set to non-NULL value.`,
+      cite: ['ROUTES.SNAPSHOT_FORBIDDEN', 'CONVERT.SNAPSHOT_REDOROUTES_NONNULL'],
+      note: 'Oracle states both and does not reconcile them. Read by the CONVERT DATABASE page, this rule set cannot be converted at all; read by the RedoRoutes page it is fine. The workbench draws the snapshot standby and flags the disagreement rather than choosing a side.',
     }));
   }
   return out;
@@ -280,7 +304,7 @@ export const routeCycle: Rule = (ctx): Finding[] =>
   (ctx.graph?.findings ?? []).filter((f) => f.id === 'ROUTES.CYCLE');
 
 export const routeRules: Rule[] = [
-  sourceUnique, localAtFarSync, snapshotForbidden, logicalLocalOnly,
+  sourceUnique, localAtFarSync, snapshotForbidden, snapshotConvertNonNull, logicalLocalOnly,
   alternateNeedsMaxFailure, groupNeedsMaxFailure, alternate121Only,
   cascadePhysicalOnly, cascadeRealTimeAsync, cascadeFanout, cascadeSyncUndocumented,
   farSyncOnwardSync, routeCycle,

@@ -221,7 +221,7 @@ describe('applyTune', () => {
   });
 
   it('clamps to the bound', () => {
-    applyTune(threshold(), 500);
+    applyTune(threshold(), 500000);
     expect(topology.value.config.fsfo.thresholdSeconds).toBe(BOUNDS.thresholdSeconds.max);
     applyTune(threshold(), 2);
     expect(topology.value.config.fsfo.thresholdSeconds).toBe(BOUNDS.thresholdSeconds.min);
@@ -414,7 +414,7 @@ describe('the tune strip', () => {
     await tick();
     const box = num(r, 'FastStartFailoverThreshold');
     expect(box.value).toBe('30');
-    expect(box).toMatchObject({ min: '6', max: '120', step: '1' });
+    expect(box).toMatchObject({ min: '6', max: '3600', step: '1' });
     typeInto(box, '25');
     await tick();
     expect(topology.value.config.fsfo.thresholdSeconds).toBe(25);

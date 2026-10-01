@@ -545,6 +545,22 @@ function levelClaim(
       'No synchronized acknowledgement is left: maximum protection shuts the primary database down rather than allowing it to continue. Oracle recommends a minimum of two standby databases so that one failure cannot do this.');
   }
   if (acks.length > 0) {
+    /* Every acknowledgement is a far sync instance's: the sentence that holds
+       the level up is the one that names the far sync path ("at least one
+       standby database that receives redo via the SYNC transport, either
+       directly or through a far sync instance"), not "at least one
+       synchronized standby", which does not mention it (SIM-27). */
+    const farSyncOnly = acks.every((r) => {
+      const m = doc.members.find((x) => x.id === r.id);
+      return !!m && isFarSync(m);
+    });
+    if (farSyncOnly) {
+      return documented<ProtectionLevel>('MAXAVAILABILITY',
+        doc.config.edition === '26ai'
+          ? ['MAXAVAIL.AT_LEAST_ONE_FARSYNC', 'MAXAVAIL.FARSYNC_ACK_26AI']
+          : ['MAXAVAIL.AT_LEAST_ONE_FARSYNC'],
+        'The only synchronous acknowledgement is the far sync instance\'s, and the broker counts a standby database that receives redo via the SYNC transport through a far sync instance.');
+    }
     return documented<ProtectionLevel>('MAXAVAILABILITY', ['MAXAVAIL.AT_LEAST_ONE']);
   }
   return documented<ProtectionLevel>('MAXPERFORMANCE',

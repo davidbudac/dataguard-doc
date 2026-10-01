@@ -40,6 +40,10 @@ export const WHY = {
     'A later edition states this: switch the release to 26ai to set it here.',
   lagLimitMaxAvail19c:
     'Under 19c FastStartFailoverLagLimit is a maximum performance property, and 19c\'s own fast-start failover chapter and property page disagree about whether it reaches maximum availability at all. The maximum availability role is a 21c feature; 26ai gives that role its own default of 0.',
+  lagLimitMaxProt:
+    'The FastStartFailoverLagLimit property is not used in maximum protection mode.',
+  lagLimitMaxProt19c:
+    'No 19c page gives FastStartFailoverLagLimit a role in maximum protection mode, and the 26ai property page says so outright: "The FastStartFailoverLagLimit property is not used in maximum protection mode."',
   pingPropsNotIn19c:
     'ObserverPingInterval and ObserverPingRetry do not exist in 19c: absent from the 12.2, 18c and 19c property pages and from a live 19.27 system. Documented from 21c.',
   docLater26aiObservedIn1927:
@@ -151,14 +155,18 @@ export type WhyKey = keyof typeof WHY;
  * observed 19.27 behaviour (not evaluated there) over the chapter's "must be
  * zero" sentence. 26ai: maximum availability has the role too, where 0 is the
  * broker default and means zero data loss; that role is a 21c feature, not a
- * 26ai one. The rail's form and Simulate's tune strip both read this.
+ * 26ai one. Maximum protection: "The FastStartFailoverLagLimit property is not
+ * used in maximum protection mode" (26ai property page; 19c agrees by
+ * omission) -- the reason given there is that one, not the maximum performance
+ * wording of the lag type (TXT-80). The rail's form and Simulate's tune strip
+ * both read this.
  */
 export function lagLimitGate(doc: TopologyDoc): WhyState {
   const ed = doc.config.edition;
   const mode = doc.config.protectionMode;
-  return mode === 'MAXPERFORMANCE'
-    ? ON
-    : ((ed === '26ai' && mode === 'MAXAVAILABILITY') ? ON : off(ed === '26ai' ? WHY.lagTypeMode : WHY.lagLimitMaxAvail19c));
+  if (mode === 'MAXPERFORMANCE') return ON;
+  if (mode === 'MAXPROTECTION') return off(ed === '26ai' ? WHY.lagLimitMaxProt : WHY.lagLimitMaxProt19c);
+  return ed === '26ai' ? ON : off(WHY.lagLimitMaxAvail19c);
 }
 
 /** `LogXptMode`'s three values; FASTSYNC is offered under maximum availability only. */

@@ -150,7 +150,7 @@ describe('tuneHandles', () => {
     }
     expect(hs[0]!.tune).toMatchObject({ id: 'threshold', value: 30 });
     expect(hs[1]!.tune).toMatchObject({ id: 'roleTransition', value: 15 });
-    expect(hs[0]!.title).toBe('Drag to change FastStartFailoverThreshold. Arrow keys: 1 s; Shift: 5 s. Allowed: 6–120 s.');
+    expect(hs[0]!.title).toBe('Drag to change FastStartFailoverThreshold. Arrow keys: 1 s; Shift: 5 s. Allowed: 6–3600 s.');
   });
 
   it('attaches both to the standby\'s lane: its two bars are exactly those clocks', () => {
@@ -205,7 +205,7 @@ describe('the grips in the full timeline', () => {
       expect(g.getAttribute('aria-valuenow')).toBe('30');
       expect(g.getAttribute('aria-valuetext')).toBe('30 seconds');
       expect(g.querySelector('title')?.textContent)
-        .toBe('Drag to change FastStartFailoverThreshold. Arrow keys: 1 s; Shift: 5 s. Allowed: 6–120 s.');
+        .toBe('Drag to change FastStartFailoverThreshold. Arrow keys: 1 s; Shift: 5 s. Allowed: 6–3600 s.');
     }
     expect(grips(r, 'roleTransition')).toHaveLength(2);
   });
@@ -288,7 +288,7 @@ describe('the grips in the full timeline', () => {
     pointer(grip, 'pointermove', 500 - pps * 100);
     await tick();
     expect(threshold()).toBe(BOUNDS.thresholdSeconds.min);
-    pointer(grip, 'pointermove', 500 + pps * 500);
+    pointer(grip, 'pointermove', 500 + pps * (BOUNDS.thresholdSeconds.max + 100));
     await tick();
     expect(threshold()).toBe(BOUNDS.thresholdSeconds.max);
     pointer(grip, 'pointercancel', 500);

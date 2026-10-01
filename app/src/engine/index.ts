@@ -56,7 +56,10 @@ export type { Bound, BoundKey, BrokerDefaults, ClientTiming } from './defaults';
 export {
   BOUNDS, boundOf, BROKER_DEFAULTS, clamp, CLIENT_TIMING_DEFAULTS, CLIENT_TIMING_TUNED, defaultLagLimit, NOMINAL, pingSet, withinBounds,
 } from './defaults';
-export { LAG_LIMIT_UNSET_STORED, lagLimitIsSet, lagLimitOf } from './defaults';
+export {
+  clampLagLimit, CONFIG_WIDE_SERVICE_NAME_MAX, configurationWideServiceNameProblem,
+  LAG_LIMIT_UNSET_STORED, lagLimitAllowsZero, lagLimitIsSet, lagLimitOf,
+} from './defaults';
 
 /* serialization */
 export type { IssueSeverity, ParseResult, SchemaIssue } from './serialize/schema';
