@@ -63,11 +63,34 @@ export const rac: Lesson = {
             least one instance of the clustered database continues to transport redo data to the standby
             databases
           </Fact>
-          , so the observer and the standby still reach <M>prm012</M> and no clock starts. Only when{' '}
+          , so the observer and the standby still reach <M>prm012</M>, and{' '}
+          <Fact id="RAC.PERCEIVED_FAILED">
+            Fast-start failover will not occur unless all instances comprising the Oracle RAC primary
+            database are perceived to have failed
+          </Fact>
+          . The drawing starts no threshold clock while an instance runs.{' '}
+          <Fact
+            id={['RAC.PERCEIVED_FAILED', 'RAC.THRESHOLD_ADVICE']}
+            basis="model"
+            note="Neither sentence says whether a clock runs. Oracle advises a higher FastStartFailoverThreshold on a RAC primary to minimize the possibility of a false failover in the event of an instance failure, so a clock is something it worries about, not something it rules out. The drawing's choice is its own."
+          >
+            No clock is this drawing&rsquo;s model
+          </Fact>
+          . When{' '}
           <Fact id="RAC.LAST_INSTANCE_FSFO">
-            the last instance of the primary database fails, and fast-start failover is enabled
-          </Fact>{' '}
-          does the broker fail over.{' '}
+            the last instance of the primary database fails, and fast-start failover is enabled, the
+            broker can continue to provide high availability by automatically failing over to a
+            pre-determined standby database
+          </Fact>
+          , and with instances lost one after another the drawing counts the threshold from the last one:{' '}
+          <Fact
+            id={['RAC.PERCEIVED_FAILED', 'RAC.LAST_INSTANCE_FSFO']}
+            basis="inferred"
+            note="Oracle says failover needs every instance perceived failed, and that the interval starts when the observer first loses its connection to the primary. It states no rule for instances lost in turn."
+          >
+            a deduction, not a documented rule
+          </Fact>
+          .{' '}
           <Fact
             id="RAC.PRIMARY_AVAILABLE"
             basis="model"
@@ -161,13 +184,18 @@ export const rac: Lesson = {
       title: 'Moving apply by hand',
       prose: (
         <P>
-          <Fact id="RAC.SET_APPLY_INSTANCE">
-            Once the apply instance is selected and, as long as it is still running, the broker
-            disregards the value of the PreferredApplyInstance property even if you change it
+          <Fact id="RAC.PREFERRED_DISREGARDED">
+            Once the apply instance is selected and, as long as the apply instance is still running, the
+            broker disregards the value of the PreferredApplyInstance property even if you change it
           </Fact>
           . To move it, give the state again with an instance:{' '}
           <Fact id="RAC.SET_APPLY_INSTANCE">
             EDIT DATABASE 'South_Sales' SET STATE='APPLY-ON' WITH APPLY INSTANCE='south_sales2';
+          </Fact>
+          .{' '}
+          <Fact id="RAC.SET_STATE_UPDATES_PREFERRED">
+            The SET STATE command will update the PreferredApplyInstance property to the new apply
+            instance value, and then move log apply services to the new instance
           </Fact>
           . In Topology, right-click the standby and its events menu offers it as “Move apply to”.
         </P>

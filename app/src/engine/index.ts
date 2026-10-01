@@ -172,7 +172,8 @@ export type { ManualFailoverInput, SwitchoverGateInput, SwitchoverRefusal } from
 export { bystanderAhead, manualLossClaim, reinstateCommandFindings } from './sim/roles';
 export {
   applyFailoverClaim, applyInstanceTimeout, applyParticipants, hasApplyInstance,
-  initialApplyInstance, isMultiInstanceApply, nextApplyInstance, primaryDegradedClaim,
+  initialApplyInstance, isMultiInstanceApply, lastInstanceClockClaim, nextApplyInstance,
+  primaryDegradedClaim,
 } from './sim/rac';
 export {
   bystanderClaim, bystanders, executionClaim, manualFailoverFindings, nominalBandsClaim,

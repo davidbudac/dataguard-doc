@@ -285,7 +285,7 @@ export function MemberForm({ member, doc, graph }: MemberFormProps) {
               )}
               note={isPrimary
                 ? 'Only used while the database is a standby: set on a primary it names the apply instance for after a switchover.'
-                : 'The instance apply starts on, and the one it returns to after the apply instance fails, when that one is running. Empty, the broker picks at random; this page draws the first running instance.'}
+                : 'The instance apply starts on, and the one it returns to after the apply instance fails, when that one is running. Empty, the broker picks at random; this page draws the first running instance. “Once the apply instance is selected and, as long as the apply instance is still running, the broker disregards the value of the PreferredApplyInstance property even if you change it” -- SET STATE ... WITH APPLY INSTANCE is how a running apply instance is moved, and it updates this property.'}
             />
             <Num
               name="ApplyInstanceTimeout"
@@ -301,13 +301,13 @@ export function MemberForm({ member, doc, graph }: MemberFormProps) {
               )}
               note="How long the broker waits after detecting that the apply instance failed before it moves apply. Broker default 0: immediate apply instance failover."
             />
-            {db.role === 'physical' || db.role === 'primary' ? (
+            {db.role === 'physical' || db.applyInstances !== undefined ? (
               <Pick
                 name="ApplyInstances"
                 value={db.applyInstances === undefined ? '0' : String(db.applyInstances)}
                 options={[
                   { value: '0', label: '0 — one instance (the default)' },
-                  ...Array.from({ length: member.instances.length - 1 }, (_, k) => ({
+                  ...Array.from({ length: Math.min(member.instances.length, 16) - 1 }, (_, k) => ({
                     value: String(k + 2), label: `${k + 2} — up to ${k + 2} instances`,
                   })),
                   { value: 'ALL', label: 'ALL — every running instance' },
@@ -319,7 +319,7 @@ export function MemberForm({ member, doc, graph }: MemberFormProps) {
                     return v === '0' ? rest : { ...rest, applyInstances: v === 'ALL' ? 'ALL' : Number(v) };
                   },
                 )}
-                note="Physical standby only. Above 1, Redo Apply runs on several instances with one of them the coordinator, the broker's apply instance; the database picks which, and this page draws the first running ones. What happens when an instance other than the coordinator fails is not documented: this page keeps apply going on the rest."
+                note={`Valid values 0 to 16, or ALL; physical standby only${db.role === 'physical' ? '' : ', so it is not used while this database is the primary'}. Above 1, Redo Apply runs on several instances with one of them the coordinator, the broker's apply instance; the database picks which, and this page draws the first running ones. What happens when an instance other than the coordinator fails is not documented: this page keeps apply going on the rest.${doc.config.edition === '26ai' ? ' The 19c members chapter adds “(This feature requires the standby database to have a license for the Oracle Active Data Guard option.)”; the 26ai page does not carry the sentence.' : ' “(This feature requires the standby database to have a license for the Oracle Active Data Guard option.)”'}`}
               />
             ) : null}
           </>

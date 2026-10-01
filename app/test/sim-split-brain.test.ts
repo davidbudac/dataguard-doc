@@ -464,10 +464,17 @@ describe('the claim', () => {
     }
   });
 
-  it('rests on citations that exist, none of them claiming Oracle names the term', () => {
+  it('rests on citations that exist, one of them the HA guide\'s own definition of the term', () => {
+    /* FC 10-01 TXT-87: this test used to say no citation names the term, on the premise that
+       Oracle does not use it. The HA guide does, and defines it; the claim cites that sentence,
+       and every other citation it carries still stays out of the business of naming it. */
     for (const sb of claims) {
       expect(sb!.split.cite.length).toBeGreaterThan(0);
-      for (const id of sb!.split.cite) expect(citation(id).quote.toLowerCase()).not.toContain('split brain');
+      expect(sb!.split.cite).toContain('SPLIT_BRAIN.DEFINITION');
+      for (const id of sb!.split.cite) {
+        if (id === 'SPLIT_BRAIN.DEFINITION') continue;
+        expect(citation(id).quote.toLowerCase()).not.toContain('split brain');
+      }
     }
   });
 });

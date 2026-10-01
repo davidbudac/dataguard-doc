@@ -53,8 +53,9 @@ import {
 import type { AuthoredDest } from './dests';
 import {
   applyFailoverClaim, applyGapFailoverClaim, applyInstanceTimeout, applyWaitClaim,
-  hasApplyInstance, initialApplyInstance, nextApplyInstance, primaryDegradedClaim,
-  isMultiInstanceApply, participantLostClaim, roleChangeApplyClaim, setApplyClaim,
+  hasApplyInstance, initialApplyInstance, instanceCutOffClaim, lastInstanceClockClaim, nextApplyInstance,
+  primaryDegradedClaim,
+  isMultiInstanceApply, participantLostClaim, roleChangeApplyClaim, setApplyClaim, withPreferred,
 } from './rac';
 import {
   bystanderAhead, bystanderClaim, bystanders, disabledByLogicalRole, executionClaim,
@@ -935,6 +936,12 @@ export function simulate(
       });
     }
 
+    /* A standby with no instance applying has its gap to catch up first. */
+    const switchGap = applyGapOf(m, state);
+    if (switchGap > 0 && isDatabase(m)) {
+      decide(at, 'RAC.APPLY_GAP_IN_FAILOVER', true, applyGapFailoverClaim(m, switchGap),
+        { kind: 'member', id: to as string });
+    }
     state.switchover = switchoverSchedule(
       at, to, applyLagOf(m, state), doc.environment.roleTransitionSeconds,
     );
@@ -1125,6 +1132,11 @@ export function simulate(
     const convert = snapshot ? SNAPSHOT_CONVERT : 0;
     const backlog = cmd.immediate ? 0 : unappliedBacklog(m, primaryRanFor(at));
     const applyRemaining = cmd.immediate ? 0 : applyLagOf(m, state) + backlog;
+    const failGap = cmd.immediate ? 0 : applyGapOf(m, state);
+    if (failGap > 0 && isDatabase(m)) {
+      decide(at, 'RAC.APPLY_GAP_IN_FAILOVER', true, applyGapFailoverClaim(m, failGap),
+        { kind: 'member', id: to as string });
+    }
     state.execStartAt = at;
     state.tOpenAt = at + convert + applyRemaining + doc.environment.roleTransitionSeconds;
     state.converting = to;
@@ -1714,6 +1726,27 @@ export function simulate(
           primaryDegradedClaim(primary.id, down, running),
           { kind: 'member', id: primary.id as string });
       }
+    } else if (primary && isRac(primary)
+      && liveInstances(doc, state.net, primary).length === 0
+      && decisions.some((d) => d.id === 'RAC.PRIMARY_DEGRADED' && d.subject?.id === (primary.id as string))) {
+      /* The last instance went after others had gone before it. */
+      decide(at, 'RAC.CLOCK_FROM_LAST_INSTANCE', true,
+        lastInstanceClockClaim(primary.id, at),
+        { kind: 'member', id: primary.id as string });
+    }
+
+    /* Some running instances cut off from every standby while others reach one. */
+    if (primary && isRac(primary)) {
+      const live = liveInstances(doc, state.net, primary);
+      const standbys = doc.members.filter((x) => isDatabase(x) && x.id !== primary.id && x.enabled);
+      const reaches = (host: HostId): boolean => standbys.some((s) =>
+        liveInstances(doc, state.net, s).some((si) => view.reach.reachable(host, si.host)));
+      const cut = live.filter((i) => !reaches(i.host)).map((i) => i.name);
+      if (live.length >= 2 && standbys.length > 0 && cut.length > 0 && cut.length < live.length) {
+        decide(at, 'RAC.INSTANCE_CUT_OFF', true,
+          instanceCutOffClaim(primary.id, cut, live.map((i) => i.name).filter((n) => !cut.includes(n))),
+          { kind: 'member', id: primary.id as string }, cut.join(','));
+      }
     }
 
     /* Moving apply by hand. The command also rewrites PreferredApplyInstance
@@ -1724,24 +1757,34 @@ export function simulate(
     if (move !== null) {
       const m = doc.members.find((x) => x.id === move.member);
       const subject = { kind: 'member' as const, id: move.member as string };
-      const ok = m !== undefined && tracksApply(state, m)
+      /* "...or if the database is currently in the primary role, the WITH
+         APPLY INSTANCE clause is ignored even if it is specified." */
+      const onPrimary = m !== undefined && m.id === state.primary;
+      const ok = !onPrimary && m !== undefined && tracksApply(state, m)
         && liveInstances(doc, state.net, m).some((i) => i.name === move.instance);
-      decide(at, 'RAC.SET_APPLY_INSTANCE', ok, setApplyClaim(move.member, move.instance, ok),
+      decide(at, 'RAC.SET_APPLY_INSTANCE', ok, setApplyClaim(move.member, move.instance, ok, onPrimary),
         subject, `${move.instance}@${at}`);
       if (ok) {
         state.applyInstance[move.member as string] = move.instance;
         state.applyLostSince[move.member as string] = null;
+        /* The command rewrites PreferredApplyInstance to the instance it named. */
+        state.preferredApply[move.member as string] = move.instance;
       } else {
         addFinding({
           id: 'RAC.SET_APPLY_INSTANCE', severity: 'warning', basis: 'documented',
-          cite: ['RAC.SET_APPLY_INSTANCE', 'RAC.APPLY_INSTANCE'],
+          cite: onPrimary
+            ? ['RAC.WITH_APPLY_INSTANCE_IGNORED']
+            : ['RAC.SET_APPLY_INSTANCE', 'RAC.APPLY_INSTANCE'],
           subject,
-          message: `SET STATE='APPLY-ON' WITH APPLY INSTANCE='${move.instance}' on ${move.member as string} changes nothing here: apply runs on a running instance of a RAC standby, and ${move.instance} is not one.`,
+          message: onPrimary
+            ? `SET STATE='APPLY-ON' WITH APPLY INSTANCE='${move.instance}' on ${move.member as string} changes nothing here: ${move.member as string} is the primary, and the clause is ignored when the database is in the primary role.`
+            : `SET STATE='APPLY-ON' WITH APPLY INSTANCE='${move.instance}' on ${move.member as string} changes nothing here: apply runs on a running instance of a RAC standby, and ${move.instance} is not one.`,
         });
       }
     }
 
-    for (const m of doc.members) {
+    for (const member of doc.members) {
+      const m = isDatabase(member) ? withPreferred(member, state.preferredApply[member.id as string]) : member;
       if (!tracksApply(state, m)) continue;
       const id = m.id as string;
       const holder = state.applyInstance[id] as string;
@@ -1797,8 +1840,9 @@ export function simulate(
    * of the member taking the role.)
    */
   function rearmApply(member: MemberId, at: Seconds): void {
-    const m = doc.members.find((x) => x.id === member);
-    if (!m || !isDatabase(m) || !isRac(m)) return;
+    const authored = doc.members.find((x) => x.id === member);
+    if (!authored || !isDatabase(authored) || !isRac(authored)) return;
+    const m = withPreferred(authored, state.preferredApply[member as string]);
     const running = liveInstances(doc, state.net, m);
     const to = nextApplyInstance(m, running.length > 0 ? running : m.instances);
     if (to === null) return;
@@ -3121,6 +3165,7 @@ function initialState(doc: TopologyDoc): SimState {
     transportLag: {},
     applyInstance,
     applyLostSince: {},
+    preferredApply: {},
     manualFailoverAt: null,
     pendingSwitchover: null,
     pendingApplyMove: null,

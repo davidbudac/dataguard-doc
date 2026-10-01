@@ -17,6 +17,7 @@ import type { Application, ClientDescriptor, TopologyDoc } from '@/engine';
 import {
   applicationClient, applicationsOf, CLIENT_TIMING_DEFAULTS, CLIENT_TIMING_TUNED, siteId,
 } from '@/engine';
+import { topology } from '@/state/derived';
 import { canEdit, viewport } from '@/state/view';
 import { CLIENT_TIMING_FIELDS, editClientTiming } from './client-timing';
 import { Check, Choice, Group, Note, Num, Pick, Text } from './controls';
@@ -39,6 +40,7 @@ export interface ApplicationFormProps {
  */
 export function ClientTimingControls({ client: c, appId }: { client: ClientDescriptor; appId?: string }) {
   const enabled = canEdit(viewport.value) ? ON : off(WHY.readOnlyView);
+  const edition = topology.value.config.edition;
   return (
     <>
       {CLIENT_TIMING_FIELDS.map((f) => (
@@ -52,7 +54,7 @@ export function ClientTimingControls({ client: c, appId }: { client: ClientDescr
           {...(f.unit === undefined ? {} : { unit: f.unit(c) })}
           coalesce={f.coalesce}
           onChange={(v) => editClientTiming(f, v, appId)}
-          note={f.note}
+          note={f.note(edition)}
         />
       ))}
     </>
@@ -173,7 +175,7 @@ export function ApplicationForm({ application, doc }: ApplicationFormProps) {
           onChange={(v) => patch(
             `Set FAILOVER ${v ? 'on' : 'off'}`, (x) => ({ ...x, failover: v }),
           )}
-          note="Default on. It is written into the generated string as set here; the ladder on this page is drawn with it on."
+          note="Default on. Off, “Oracle Net tries one protocol address”: which one is not stated, and the ladder here dials the first address of the list on every traversal. It is written into the generated string as set here."
         />
         <Check
           name="LOAD_BALANCE"

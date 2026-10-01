@@ -243,7 +243,7 @@ function splitBrainSentence(sb: SplitBrain, topo: TopologyDoc): string {
       return `${oldP} aborts at ${fmt(at.at)} s, before ${open}.`;
     case 'stalled':
       return at.abortsAt === null
-        ? `${oldP} is STALLED when ${open}, and nothing shuts it down; a stalled primary commits nothing.`
+        ? `${oldP} is STALLED when ${open}, and nothing shuts it down; a stalled primary commits nothing, but this drawing keeps it publishing the service, so a client that connects to it reads data ${newP} has moved past (stale reads, not counted as a second open database).`
         : `${oldP} is STALLED when ${open} and cannot commit; it shuts itself down at ${fmt(at.abortsAt)} s.`;
     case 'closed':
       return at.state.startsWith('mounted')
@@ -496,9 +496,11 @@ export function readoutFor(steady: boolean): ReadoutChip[] {
     chips.push(ap.tConn !== null
       ? {
         ...base, tone: 'tl', k: many ? `${name} reconnects` : 'Application reconnects', v: fmt(ap.tConn), unit: 's',
-        sub: ap.servedAtLoss !== null
-          ? `${name} gets a new connection at this instant: ${memberName(ap.sessionsOn)} went down with its sessions while ${memberName(ap.servedAtLoss)} was already publishing the service, so the outage is the connect string's own.`
-          : `${name} gets a new connection at this instant: the connect string's own waits, on top of the role change.`,
+        sub: ap.instanceLoss !== null
+          ? `${name} gets a new connection at this instant: its sessions on ${ap.instanceLoss.instance} were terminated with the instance while ${memberName(ap.sessionsOn)} went on serving, so the outage is the connect string's own.`
+          : ap.servedAtLoss !== null
+            ? `${name} gets a new connection at this instant: ${memberName(ap.sessionsOn)} went down with its sessions while ${memberName(ap.servedAtLoss)} was already publishing the service, so the outage is the connect string's own.`
+            : `${name} gets a new connection at this instant: the connect string's own waits, on top of the role change.`,
         basis: 'model',
       }
       : {

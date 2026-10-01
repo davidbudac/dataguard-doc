@@ -587,7 +587,11 @@ the design did not state, so it is recorded rather than left to be rediscovered.
   move is a new segment in the same state, and `Snapshot.applyInstances` feeds the canvas's
   `APPLY` tag. The apply-lag input is not advanced by the gap, and multi-instance Redo Apply
   (`ApplyInstances`) is not drawn. A RAC primary that loses some instances records a
-  documented `RAC.PRIMARY_DEGRADED` decision.
+  `RAC.PRIMARY_DEGRADED` decision, a `model`: the cited sentences say the primary stays
+  available and that failover needs every instance perceived failed, and none mentions a clock.
+  Instances lost one after another count the threshold from the last, an `inferred`
+  `RAC.CLOCK_FROM_LAST_INSTANCE`; running instances that cannot reach a standby while others
+  can record a `model` `RAC.INSTANCE_CUT_OFF` and nothing else.
 - **RAC, second pass.** A RAC database leaving the primary role (switchover, or a failover
   followed by reinstatement) gets an apply instance at that instant: `PreferredApplyInstance`
   when it names a running instance (documented "in preparation for a switchover"), else the

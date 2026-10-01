@@ -34,11 +34,12 @@ export function Tns() {
           One ADDRESS per host that can publish the role-based service, so a client that
           reaches the wrong one is refused instantly with <span class="mono">ORA-12514</span>
           {' '}rather than waiting. These parameters affect only new connections -- no
-          established session is touched by anything here. The JDBC thin driver does not
-          inherit Oracle Net's 60 s transport default, so
-          <span class="mono"> TRANSPORT_CONNECT_TIMEOUT</span> is always spelled out there,
-          with an explicit <span class="mono">sec</span> suffix: older thin releases read a
-          bare value as milliseconds.
+          established session is touched by anything here. Under 26ai the JDBC thin driver has
+          defaults of its own (<span class="mono">TRANSPORT_CONNECT_TIMEOUT</span> 20 s,
+          <span class="mono"> RETRY_DELAY</span> 1 s) where Oracle Net's is 60 s, and the 19c
+          JDBC pages print none, so <span class="mono"> TRANSPORT_CONNECT_TIMEOUT</span> is always
+          spelled out there, as a bare number of seconds the way the JDBC page's own example
+          writes it.
         </p>
       </div>
       <div class="panel-body">

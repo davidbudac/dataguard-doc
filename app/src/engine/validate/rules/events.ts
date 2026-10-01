@@ -103,7 +103,7 @@ export const setApplyInstanceCommand: Rule = (ctx): Finding[] => {
         subject: memberSubject(m),
         severity: 'info',
         message: `SET STATE='APPLY-ON' WITH APPLY INSTANCE=${q(e.instance)} at ${e.at} s names ${name}, which is the primary and nothing in the scenario has changed that before this point. If the database is currently in the primary role, the WITH APPLY INSTANCE clause is ignored even if it is specified.`,
-        cite: ['RAC.SET_APPLY_INSTANCE_IGNORED'],
+        cite: ['RAC.WITH_APPLY_INSTANCE_IGNORED'],
       }));
     }
   }

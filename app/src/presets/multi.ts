@@ -132,17 +132,21 @@ export const racPrimary: Preset = {
     'The primary is a two-instance cluster; the observer, as always, runs on a host of its own, '
     + 'because it "should never be deployed at the primary database server or cluster, or on '
     + 'the standby database server or cluster". The default event stops one instance at t = 0. '
-    + 'Nothing else happens: the observer and the target standby both still reach the surviving '
-    + 'instance, and fast-start failover needs both of them to have lost the primary for '
-    + 'FastStartFailoverThreshold before it initiates anything, so no clock ever starts. Two '
-    + "modelling notes belong to this preset rather than to Oracle: the engine treats a member "
-    + 'as reachable while any one of its instance hosts is up -- degraded, not down -- and '
+    + 'Nothing else happens here: the observer and the target standby both still reach the '
+    + 'surviving instance, and Oracle says fast-start failover "will not occur unless all '
+    + 'instances comprising the Oracle RAC primary database are perceived to have failed". '
+    + 'Three modelling notes belong to this preset rather than to Oracle. The drawing starts no '
+    + 'threshold clock while any instance runs -- no Oracle sentence says whether one would; '
+    + 'Oracle advises a higher FastStartFailoverThreshold on a RAC primary "to minimize the '
+    + 'possibility of a false failover in the event of an instance failure". The engine treats a '
+    + 'member as reachable while any one of its instance hosts is up -- degraded, not down. And '
     + 'instance-level LGWR and NSS ownership is out of scope, so which instance was shipping '
     + 'redo makes no difference here. Kill the second instance too and the configuration '
-    + 'becomes the ordinary primary crash.',
+    + 'becomes the ordinary primary crash, its clock counted from the last instance lost (an '
+    + 'inference).',
   cite: [
     'OBS.PLACEMENT_NEVER_ON_DB_HOST', 'FSFO.BOTH_MUST_HAVE_LOST', 'FSFO.THRESHOLD',
-    'FSFO.OBSERVER_OVERRIDE_FALSE',
+    'FSFO.OBSERVER_OVERRIDE_FALSE', 'RAC.PERCEIVED_FAILED', 'RAC.THRESHOLD_ADVICE',
   ],
   doc: racDoc,
   events: () => [instanceDown(0, 'prm01', 'prm011')],

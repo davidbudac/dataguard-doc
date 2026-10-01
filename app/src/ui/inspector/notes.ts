@@ -24,7 +24,7 @@ export function fsfoStateNote(state: TopologyDoc['config']['fsfo']['state']): st
 }
 
 export const THRESHOLD_NOTE =
-  "Default 30 s, minimum 6 s. The clock starts when the observer first loses its connection to the primary, and the isolated primary's own stall clock always uses it.";
+  "Default 30 s, minimum 6 s. The clock starts when the observer first loses its connection to the primary, and the isolated primary's own stall clock always uses it. “If you have an Oracle RAC primary database, consider specifying a higher value to minimize the possibility of a false failover in the event of an instance failure.” The HA guide's table puts the RAC figure at “Oracle RAC miscount + reconfiguration time + 30 seconds”.";
 
 export function lagLimitNote(doc: TopologyDoc): string {
   const f = doc.config.fsfo;

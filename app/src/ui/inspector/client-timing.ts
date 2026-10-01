@@ -9,7 +9,7 @@
  * or a label changed once is changed in every place.
  */
 
-import type { BoundKey, ClientDescriptor } from '@/engine';
+import type { BoundKey, ClientDescriptor, TopologyDoc } from '@/engine';
 import { BOUNDS } from '@/engine';
 import { patchClient } from './edits';
 
@@ -19,8 +19,8 @@ export interface ClientTimingField {
   bound: BoundKey;
   /** A count reads better as a number box than as a slider. */
   kind: 'range' | 'number';
-  /** The sentence the inspector prints under the control. */
-  note: string;
+  /** The sentence the inspector prints under the control, for the edition being drawn. */
+  note: (edition: TopologyDoc['config']['edition']) => string;
   /** Folds a burst of edits into one undo entry. */
   coalesce: string;
   /** The setting as it stands; an unset CONNECT_TIMEOUT reads 0. */
@@ -36,7 +36,10 @@ export const CLIENT_TIMING_FIELDS: readonly ClientTimingField[] = [
     name: 'TRANSPORT_CONNECT_TIMEOUT',
     bound: 'transportConnectTimeoutSeconds',
     kind: 'range',
-    note: 'Default 60 s, for each ADDRESS and each IP address a host name is mapped to. This page draws one IP address per host. The JDBC thin driver does not inherit this default, so the generated URL always spells the value out.',
+    note: (ed) => 'Default 60 s in tnsnames.ora, for each ADDRESS and each IP address a host name is mapped to. This page draws one IP address per host. '
+      + (ed === '26ai'
+        ? 'The JDBC thin driver has a default of its own from 26ai: 20 seconds.'
+        : 'The 19c JDBC pages print no default for the thin driver, so the generated URL always spells the value out.'),
     coalesce: 'client:tct',
     value: (c) => c.transportConnectTimeoutSeconds,
     edit: (v) => ({
@@ -48,7 +51,7 @@ export const CLIENT_TIMING_FIELDS: readonly ClientTimingField[] = [
     name: 'CONNECT_TIMEOUT',
     bound: 'connectTimeoutSeconds',
     kind: 'range',
-    note: 'Per ADDRESS, and no default is documented: at 0 it is left out of the string. Set, the wait on one address is the smaller of the two timeouts.',
+    note: () => 'Per ADDRESS, and no default is documented: at 0 it is left out of the string. Set, the wait on one address is the smaller of the two timeouts.',
     coalesce: 'client:ct',
     value: (c) => c.connectTimeoutSeconds ?? 0,
     unit: (c) => (c.connectTimeoutSeconds === null || c.connectTimeoutSeconds === 0 ? 's — not set' : 's'),
@@ -61,7 +64,7 @@ export const CLIENT_TIMING_FIELDS: readonly ClientTimingField[] = [
     name: 'RETRY_COUNT',
     bound: 'retryCount',
     kind: 'number',
-    note: 'Extra traversals of the whole address list after the first one fails across all of it. The reference prints no default; one traversal when unset is this page\'s reading.',
+    note: () => 'Extra traversals of the whole address list after the first one fails across all of it. The reference prints no default; one traversal when unset is this page\'s reading.',
     coalesce: 'client:rc',
     value: (c) => c.retryCount,
     edit: (v) => ({
@@ -73,7 +76,9 @@ export const CLIENT_TIMING_FIELDS: readonly ClientTimingField[] = [
     name: 'RETRY_DELAY',
     bound: 'retryDelaySeconds',
     kind: 'range',
-    note: 'Seconds between traversals. No default is documented; at 0 the next traversal starts at once.',
+    note: (ed) => (ed === '26ai'
+      ? 'Seconds between traversals. No default in tnsnames.ora is documented, and at 0 the next traversal starts at once; the JDBC thin driver defaults to 1 second from 26ai, so its URL spells 0 out.'
+      : 'Seconds between traversals. No default is documented; at 0 the next traversal starts at once.'),
     coalesce: 'client:rd',
     value: (c) => c.retryDelaySeconds,
     edit: (v) => ({

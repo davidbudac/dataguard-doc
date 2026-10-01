@@ -50,6 +50,8 @@ const U = {
   sbyRac: 'https://docs.oracle.com/en/database/oracle/oracle-database/19/sbydb/configuring-data-guard-standby-databases-in-oracle-RAC.html',
   racIntro: 'https://docs.oracle.com/en/database/oracle/oracle-database/19/racad/introduction-to-oracle-rac.html',
   racInstances: 'https://docs.oracle.com/en/database/oracle/oracle-database/19/racad/administering-database-instances-and-cluster-databases.html',
+  racContinuity: 'https://docs.oracle.com/en/database/oracle/oracle-database/19/racad/ensuring-application-continuity.html',
+  racWorkload: 'https://docs.oracle.com/en/database/oracle/oracle-database/19/racad/workload-management-with-dynamic-database-services.html',
   refInstanceNumber: 'https://docs.oracle.com/en/database/oracle/oracle-database/19/refrn/INSTANCE_NUMBER.html',
   haDeployDg: 'https://docs.oracle.com/en/database/oracle/oracle-database/19/haovw/configure-and-deploy-oracle-data-guard.html',
   haLevel1: 'https://docs.oracle.com/en/database/oracle/oracle-database/19/haovw/configuring-level-1-basic-application-high-availability.html',
@@ -115,6 +117,7 @@ const U = {
   bkr26Modes: 'https://docs.oracle.com/en/database/oracle/oracle-database/26/dgbkr/managing-data-protection-modes.html',
   bkr19Roles: 'https://docs.oracle.com/en/database/oracle/oracle-database/19/sbydb/managing-oracle-data-guard-role-transitions.html',
   sbyAlternate19: 'https://docs.oracle.com/en/database/oracle/oracle-database/19/sbydb/using-ALTERNATE-attribute-to-configure-alternate-destinations.html',
+  bkr26Drain: 'https://docs.oracle.com/en/database/oracle/oracle-database/26/dgbkr/draintimeout.html',
   jdbc26Urls: 'https://docs.oracle.com/en/database/oracle/oracle-database/26/jjdbc/data-sources-and-URLs.html',
 } as const;
 
@@ -602,7 +605,17 @@ export const CITATIONS = {
   'RAC.APPLY_INSTANCE_SELECTION': {
     url: U.bkr19Members, edition: '19c', verified: 'primary',
     quote: 'if the PreferredApplyInstance property indicates an instance that is currently running, select it as the new apply instance; otherwise pick a random instance that is currently running to be the new apply instance.',
-    note: 'With no preference the broker "randomly picks an apply instance" to begin with, too. Random is Oracle\'s word: a drawing that picks the first running instance is drawing its own model of it.',
+    note: 'This is the rule after a failure. The first selection, with no preference, is RAC.APPLY_INSTANCE_RANDOM; moving apply in preparation for a switchover is RAC.PREFERRED_FOR_SWITCHOVER. Random is Oracle\'s word: a drawing that picks the first running instance is drawing its own model of it.',
+  },
+  'RAC.APPLY_INSTANCE_RANDOM': {
+    url: U.bkr19Members, edition: '19c', verified: 'primary',
+    quote: 'If you have no preference which instance is to be the apply instance in an Oracle RAC standby database, the broker randomly picks an apply instance.',
+    note: '"Selecting the Apply Instance". Random is Oracle\'s word: a drawing that picks the first running instance is drawing its own model of it.',
+  },
+  'RAC.APPLY_NOT_FOR_SNAPSHOT': {
+    url: U.bkr19Members, edition: '19c', verified: 'primary',
+    quote: 'The information in this section is not applicable to snapshot standby databases or far sync instances.',
+    note: 'The opening of "Apply Services in an Oracle RAC Database Environment" and its "Selecting the Apply Instance" part.',
   },
   'RAC.PREFERRED_APPLY_INSTANCE': {
     url: U.bkr19Props, edition: '19c', verified: 'primary',
@@ -685,15 +698,75 @@ export const CITATIONS = {
     quote: 'The ApplyInstances property lets you specify how many physical standby instances run Redo Apply.',
     note: 'Valid values 0 to 16 or ALL; 0 and 1 start recovery in single instance mode; >1 means no more than that many instances; ALL means every currently active instance. Broker default 0.',
   },
+  'RAC.ADDRESS_LIST_EACH_INSTANCE': {
+    url: U.sbyRac, edition: '19c', verified: 'primary',
+    quote: 'The net service name should resolve to an Oracle Net connect descriptor that contains an address list, and that address list should contain connection data for each standby database instance.',
+    note: 'D.1.3.2 "Configuring an Oracle RAC Primary Database to Send Redo Data": about the SERVICE attribute of LOG_ARCHIVE_DEST_n, so about the redo transport alias in the database homes, not an application\'s connect string. Contrast RAC.SCAN_ALIASES, which asks for the SCAN name.',
+  },
   'RAC.SET_APPLY_INSTANCE': {
     url: U.bkr19Members, edition: '19c', verified: 'primary',
     quote: "DGMGRL> EDIT DATABASE 'South_Sales' SET STATE='APPLY-ON' WITH APPLY INSTANCE='south_sales2';",
     note: 'Once the apply instance is selected and still running, the broker disregards a change to PreferredApplyInstance; this command is how the running apply instance is moved. SHOW DATABASE lists the instances with "(apply instance)" after the one running apply.',
   },
-  'RAC.SET_APPLY_INSTANCE_IGNORED': {
+  'RAC.PERCEIVED_FAILED': {
+    url: U.bkr19Switch, edition: '19c', verified: 'primary',
+    quote: 'Fast-start failover will not occur unless all instances comprising the Oracle RAC primary database are perceived to have failed.',
+    note: 'FSFO overview; the same sentence is in the 26ai chapter (fast-start-failover2.html). It says when a failover cannot happen, not when a clock starts: the sentence before it has the master observer attempting "to connect to one of the remaining primary instances". The chapter also says "The time interval starts when the observer first loses its connection to the primary database", and does not say whether losing the instance the observer was connected to counts.',
+  },
+  'RAC.THRESHOLD_ADVICE': {
+    url: U.bkr19Switch, edition: '19c', verified: 'primary',
+    quote: 'If you have an Oracle RAC primary database, consider specifying a higher value to minimize the possibility of a false failover in the event of an instance failure.',
+    note: 'FastStartFailoverThreshold, in the FSFO chapter of both 19c and 26ai (default 30 seconds, minimum 6 seconds, in the sentence before it). Oracle talks about a false failover on an instance failure; it does not say a clock never starts.',
+  },
+  'RAC.THRESHOLD_MISCOUNT': {
+    url: U.haDeployDg, edition: '19c', verified: 'primary',
+    quote: 'Oracle RAC miscount + reconfiguration time + 30 seconds',
+    note: 'The "Oracle RAC primary" row of Table 16-1, "Minimum Recommended Settings for FastStartFailoverThreshold", in the HA guide (the single-instance rows read 15 and 30 seconds). A cluster\'s own reconfiguration is part of the figure, which is why the plain 30 s default is not the RAC advice.',
+  },
+  'RAC.PREFERRED_DISREGARDED': {
+    url: U.bkr19Members, edition: '19c', verified: 'primary',
+    quote: 'Once the apply instance is selected and, as long as the apply instance is still running, the broker disregards the value of the PreferredApplyInstance property even if you change it.',
+    note: '"Selecting the Apply Instance", the first method (setting PreferredApplyInstance).',
+  },
+  'RAC.SET_STATE_UPDATES_PREFERRED': {
+    url: U.bkr19Members, edition: '19c', verified: 'primary',
+    quote: 'The SET STATE command will update the PreferredApplyInstance property to the new apply instance value, and then move log apply services to the new instance.',
+    note: '"Selecting the Apply Instance", the second method (changing the apply instance while it runs).',
+  },
+  'RAC.WITH_APPLY_INSTANCE_IGNORED': {
     url: U.bkr19Cmds, edition: '19c', verified: 'primary',
     quote: 'If the target state is not APPLY-ON or if the database is currently in the primary role, the WITH APPLY INSTANCE clause is ignored even if it is specified.',
     note: 'EDIT DATABASE ... SET STATE, Usage Notes.',
+  },
+  'RAC.MULTI_INSTANCE_APPLY_LICENSE': {
+    url: U.bkr19Members, edition: '19c', verified: 'primary',
+    quote: '(This feature requires the standby database to have a license for the Oracle Active Data Guard option.)',
+    note: 'The multi-instance Redo Apply paragraph of the 19c members chapter. The 26ai members chapter does not carry the sentence.',
+  },
+  'RAC.SESSIONS_TERMINATED': {
+    url: U.racContinuity, edition: '19c', verified: 'primary',
+    quote: 'Any sessions active when the instance or service stops are terminated and the application user is immediately notified.',
+    note: 'Oracle RAC Administration and Deployment, "Ensuring Application Continuity"; the 26ai page reads the same. Incomplete transactions can be protected by Application Continuity, if it is enabled; this page draws none.',
+  },
+  'RAC.FAN_IN_FLIGHT': {
+    url: U.racContinuity, edition: '19c', verified: 'primary',
+    quote: 'With FAN, in-flight transactions are immediately terminated and the client notified when the instance fails.',
+    note: 'Same chapter, same sentence on the 26ai page.',
+  },
+  'RAC.TAF_ERROR_ONLY': {
+    url: U.racWorkload, edition: '19c', verified: 'primary',
+    quote: 'If TAF is not configured, then the client only receives an error if the instance it is connected to fails.',
+    note: 'Workload Management with Dynamic Database Services; the 26ai page reads the same. A client of a surviving instance is not told anything.',
+  },
+  'RAC.SOURCE_INSTANCE_LOSS_SYNC': {
+    url: U.sbyRac, edition: '19c', verified: 'primary',
+    quote: 'If a lost destination is the last participating SYNC destination, then the instance loses connectivity and is shut down.',
+    note: 'Appendix D.2.2 "Data Protection Modes", the "Maximum protection configuration" item. The item continues: "Other instances in an Oracle RAC configuration that still have connectivity to the standby destinations recover the lost instance and continue sending redo to their standby destinations." The same text is on the 26ai page.',
+  },
+  'RAC.SOURCE_INSTANCE_LOSS_REOPEN': {
+    url: U.sbyRac, edition: '19c', verified: 'primary',
+    quote: 'If any instance of an Oracle RAC primary database loses connectivity with a standby database, all other primary database instances stop sending redo to the standby database for the number of seconds specified on the LOG_ARCHIVE_DEST_n REOPEN attribute, after which all primary database instances attempt to reconnect to the standby database.',
+    note: 'Appendix D.2.2 "Data Protection Modes", the paragraph that opens the section; the same text is on the 26ai page.',
   },
   'OBS.PLACEMENT_STANDBY_DC': {
     url: U.habpt121, edition: '12.1', verified: 'cross-edition',
@@ -840,6 +913,16 @@ export const CITATIONS = {
     url: U.bkr26LagGrace, edition: '26ai', verified: 'primary',
     quote: 'If the primary has been granted permission to move to the lagging state (by the observer or target standby) before the lag limit is reached, the primary will not stall. If the lag limit is reached, the primary will stall until either permission is granted or the fast-start failover threshold (specified by the FastStartFailoverThreshold property) has expired. This property is used when fast-start failover is enabled and the configuration is operating in maximum performance mode.',
     note: "Broker default 0; 'The lowest possible value is 5 seconds. A default value of 0 indicates that no lag limit grace period is in effect.' The LAGGING permission is granted by the observer or the target standby -- never the observer alone.",
+  },
+  'SPLIT_BRAIN.DEFINITION': {
+    url: U.haOptimize, edition: '19c', verified: 'primary',
+    quote: 'The term ‘split brain’ describes a scenario where there are two copies of the same database open read-write, each operating independently of the other.',
+    note: '"Automatic Data Integrity and Avoidance of Split Brain", in the HA guide chapter on optimizing automatic failover. The page uses the term and defines it; this page\'s reading asks exactly that question of the drawing, and gives no interval because Oracle gives none.',
+  },
+  'FSFO.PMY_SHUTDOWN_NO_STALE_QUERIES': {
+    url: U.bkr19Props, edition: '19c', verified: 'primary',
+    quote: 'A value of TRUE helps to ensure that an isolated primary database cannot satisfy user queries.',
+    note: 'FastStartFailoverPmyShutdown. The other half of the property: with FALSE a stalled, isolated primary is not shut down and can still answer queries, which are reads of data the new primary has since moved past. Not the same thing as two databases open read-write.',
   },
   'FSFO.PMY_SHUTDOWN': {
     url: U.bkr19Props, edition: '19c', verified: 'primary',
@@ -1159,6 +1242,16 @@ export const CITATIONS = {
     quote: 'The original primary database will be restarted as a part of the switchover operation. Note that the new primary database does not need to be restarted.',
     note: 'The former primary is the database that restarts, as the new standby. The sentence says only that the new primary need not be restarted; that it also does not wait for the old one is this page\'s drawing, not a sentence.',
   },
+  'SWITCHOVER.WAIT_DRAIN': {
+    url: U.bkr19Cmds, edition: '19c', verified: 'primary',
+    quote: 'The WAIT option specifies that you want to wait for sessions to drain before proceeding with the switchover.',
+    note: 'SWITCHOVER, Usage Notes. The paragraph continues: "The WAIT option has no effect on a single instance database; it is valid only when services are configured with attributes related to Application Continuity in Oracle Clusterware."',
+  },
+  'SWITCHOVER.DRAIN_TIMEOUT_26AI': {
+    url: U.bkr26Drain, edition: '26ai', verified: 'primary',
+    quote: 'This property replaces the value specified for the WAIT option of SWITCHOVER because that option has been deprecated in 26ai.',
+    note: 'DrainTimeout, 26ai: "A value of zero indicates that you do not want to wait for sessions to drain before a switchover operation."',
+  },
   'SWITCHOVER.SESSIONS_END': {
     url: U.bkr19Switch, edition: '19c', verified: 'primary',
     quote: 'The original primary database will be restarted as a part of the switchover operation.',
@@ -1401,6 +1494,26 @@ export const CITATIONS = {
     quote: 'FAILOVER ... Default on for the DESCRIPTION_LIST, DESCRIPTION, and ADDRESS_LIST parameters ... LOAD_BALANCE ... Default on under DESCRIPTION_LIST off under DESCRIPTION, ADDRESS_LIST, and ADDRESS',
     note: "RETRY_COUNT: 'To specify the number of times an ADDRESS list is traversed before the connection attempt is terminated.' -- the HA guide (oracle-net-tns-string-parameters) words it as extra traversals: 'If a connection attempt fails across all ADDRESS_LISTS, then additional attempts to connect beginning with the first ADDRESS_LIST will be made RETRY_COUNT times.' Neither page prints a default for RETRY_COUNT or RETRY_DELAY; 'no extra traversal unless set' is this page's reading.",
   },
+  'CLIENT.VIP_NEXT_ADDRESS': {
+    url: U.haTns, edition: '19c', verified: 'primary',
+    quote: 'This means that if a node or network is down, the VIP sends an instant reply, so that when connecting, the next address is used immediately if the service is not offered at the VIP address.',
+    note: 'HA overview, "Oracle Net TNS String Parameters", the TRANSPORT_CONNECT_TIMEOUT item, after "The host names specify SCAN VIPs. They are always available when using a cluster."',
+  },
+  'CLIENT.LISTENER_ANSWERS_IMMEDIATELY': {
+    url: U.haConnEstimates, edition: '19c', verified: 'primary',
+    quote: 'the listener on the standby will answer immediately that the service is not there, prompting the client to connect to the other ADDRESS_LIST.',
+    note: 'About a standby listener once the old primary has become the standby again; the same page sizes the failover budget as "(3 SCANs x TRANSPORT_CONNECT_TIMEOUT)", one SCAN per cluster.',
+  },
+  'CLIENT.SCAN_EXPANDED': {
+    url: U.haTns, edition: '19c', verified: 'primary',
+    quote: 'When an Oracle RAC SCAN host name is used, each IP in the SCAN address is expanded internally into a separate ADDRESS string.',
+    note: 'The TRANSPORT_CONNECT_TIMEOUT item of "Oracle Net TNS String Parameters". Oracle\'s string for a cluster names one SCAN per cluster; this page\'s ladder dials one address per node.',
+  },
+  'CLIENT.FAILOVER_OFF': {
+    url: U.netrfTns, edition: '19c', verified: 'primary',
+    quote: 'When you set the parameter to on, yes, or true, Oracle Net fails over at connect time to a different address if the first protocol address fails. When you set the parameter to off, no, or false, Oracle Net tries one protocol address.',
+    note: 'FAILOVER, Usage Notes (the 26ai page reads the same). Which one address it tries is not stated; the first in the list is this page\'s reading, a random one with LOAD_BALANCE on.',
+  },
   'CLIENT.SWITCHOVER_BUDGET_100X3': {
     url: U.haConnEstimates, edition: '19c', verified: 'primary',
     quote: 'Data Guard Switchover: RETRY_COUNT X RETRY_DELAY = 100 x 3 sec = 300 sec.',
@@ -1424,7 +1537,7 @@ export const CITATIONS = {
   'CLIENT.JDBC_CURRENT': {
     url: U.jdbc26, edition: '26ai', verified: 'primary',
     quote: 'This value is assumed in seconds if set in the URL with no explicit units and in milliseconds if set in the connection\'s properties. Starting in 23.6, the default value was changed from "0" (no timeout) to "20000" (20 seconds). This affects only the thin driver.',
-    note: 'The 26ai OracleConnection page now names the release that changed the default (23.6); the 19c page does not.',
+    note: 'The 26ai OracleConnection page now names the release that changed the default (23.6); the 19c page does not. This is the oracle.net.CONNECT_TIMEOUT connection property (and its 19c counterpart in CLIENT.JDBC_19C), not the TRANSPORT_CONNECT_TIMEOUT keyword of a connect descriptor; for that keyword see CLIENT.JDBC_TCT_26AI.',
   },
 
   /* ---------------- Session data unit ---------------- */
@@ -1658,7 +1771,17 @@ export const CITATIONS = {
   'CLIENT.JDBC_RETRY_DELAY_26AI': {
     url: U.jdbc26Urls, edition: '26ai', verified: 'primary',
     quote: 'The RETRY_DELAY connection attribute specifies the delay between connection retries in seconds by default. Starting from Oracle AI Database Release 26ai, the default value of this parameter is 1 second.',
-    note: 'ED-06: earlier drivers default RETRY_DELAY to no delay; 26ai changes the default to 1 second, so a 26ai URL with RETRY_DELAY=0 is a value the operator chose, not the driver default, and is worth spelling out.',
+    note: 'ED-06: 26ai gives the thin driver\'s RETRY_DELAY a default of 1 second, so a 26ai URL with RETRY_DELAY=0 is a value the operator chose, not the driver default, and is worth spelling out. What an earlier driver defaults to is not stated on this page (nor is a default printed on the 19c Oracle Net pages), so the 19c cards say no default is documented.',
+  },
+  'CLIENT.JDBC_URL_BARE': {
+    url: U.jdbc26Urls, edition: '26ai', verified: 'primary',
+    quote: '(connect_timeout=60)(transport_connect_timeout=30)',
+    note: 'The 26ai JDBC "Data Sources and URLs" page\'s own example of a thin descriptor: bare numbers, no unit. The page lists units only for RETRY_DELAY ("ms (milliseconds)", "s (seconds)", "minutes (m)", from 21c); on the Oracle Net page \"In case, no unit is mentioned, the default unit is sec\" (CLIENT.TIMEOUTS).',
+  },
+  'CLIENT.JDBC_TCT_26AI': {
+    url: U.jdbc26Urls, edition: '26ai', verified: 'primary',
+    quote: 'Starting from Oracle AI Database Release 26ai, the default value of the TRANSPORT_CONNECT_TIMEOUT parameter is 20 seconds.',
+    note: 'The thin driver\'s own default for the descriptor keyword, on the 26ai JDBC "Data Sources and URLs" page. The Oracle Net default in tnsnames.ora stays 60 s (CLIENT.TIMEOUTS). Not to be confused with CLIENT.JDBC_CURRENT, the oracle.net.CONNECT_TIMEOUT connection property, whose default went from 0 to 20 s.',
   },
   'FSFO.STATUS_WORDS': {
     url: U.bkr19Cmds, edition: '19c', verified: 'primary', paraphrase: true,

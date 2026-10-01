@@ -354,6 +354,8 @@ export interface SimState {
    */
   applyInstance: Record<string, string>;
   applyLostSince: Record<string, Seconds | null>;
+  /** PreferredApplyInstance after SET STATE ... WITH APPLY INSTANCE moved it (the command rewrites the property). */
+  preferredApply: Record<string, string>;
   manualFailoverAt: Seconds | null;
   /** Commands wait one step: they are answered against the epoch's own facts. */
   pendingSwitchover: MemberId | null;
