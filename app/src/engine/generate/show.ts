@@ -409,8 +409,8 @@ export function showConfiguration(
     lines.push(opts.run?.roleChange === 'failover'
       ? nInferred(
         `the role has moved: the Fast-Start Failover line above is the document's setting, kept after the failover -- Oracle's FAILOVER example prints DISABLED because fast-start failover was disabled there`,
-        'REINSTATE REQUIRED is documented as present only after fast-start failover has occurred, which implies it stays enabled; no example shows the SHOW CONFIGURATION line between an observer-initiated failover and the reinstatement.',
-        ['FSFO.REINSTATE_REQUIRED_STATUS', 'FAILOVER.SHOW_CONFIGURATION_AFTER'],
+        'REINSTATE REQUIRED is documented as present only after fast-start failover has occurred, which implies it stays enabled; no example shows the SHOW CONFIGURATION line between an observer-initiated failover and the reinstatement. The (disabled) marker and ORA-16661 under the former primary are the manual FAILOVER example\'s; the cause of ORA-16661, a role change operation that made the database require reinstatement, is not specific to a manual failover.',
+        ['FSFO.REINSTATE_REQUIRED_STATUS', 'FAILOVER.SHOW_CONFIGURATION_AFTER', 'ORA.16661'],
       )
       : nModel(
         'the role has moved: the Fast-Start Failover line above is the document\'s setting; whether a switchover leaves fast-start failover armed is documented only by implication',
