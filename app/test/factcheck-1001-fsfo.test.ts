@@ -149,6 +149,19 @@ describe('SIM-15 (D6): after a role change the new primary has no target, so los
     expect(neverStalledOrAborted(t, 'sby01')).toBe(true);
   });
 
+  it('DISABLE FAST_START FAILOVER without FORCE is refused there too: the primary and its target are not connected', () => {
+    const t = simulate(classic(), [down(0, PRM), { at: 200, kind: 'cmd.disableFsfo', force: false }]);
+    expect(finding(t, 'FSFO.DISABLE_REFUSED')?.basis).toBe('documented');
+    expect(endState(t, 'sby01')).toBe('open-rw');
+  });
+
+  it('STOP OBSERVER and DISABLE are accepted after a switchover (the restarted former primary is reachable)', () => {
+    const t = simulate(classic(), [
+      { at: 0, kind: 'cmd.switchover', to: SBY }, { at: 100, kind: 'cmd.disableFsfo', force: false },
+    ]);
+    expect(finding(t, 'FSFO.DISABLE_REFUSED')).toBeUndefined();
+  });
+
   it('the lanes the report recorded as stalled and aborted now read open to the end', () => {
     expect(lane(simulate(classic(), rows[0]![1]), 'sby01')).toBe('0:unreachable | 55:open-rw');
     const sw = simulate(classic(), rows[1]![1]);
