@@ -1247,24 +1247,54 @@ export function simulate(
       'observer.master', false);
   }
 
-  /** The primary reaches the target standby: the connection STOP OBSERVER and DISABLE look for. */
+  /** The former primary, reachable from the new primary: up, not aborted, and in reach over the links. */
+  function reachesFormerPrimary(view: View): boolean {
+    const fp = doc.members.find((m) => m.id === state.formerPrimary);
+    return !!fp && memberAlive(doc, state.net, fp)
+      && !state.abortedMembers.includes(fp.id)
+      && membersReachable(doc, state.net, view.primary, fp, view.reach);
+  }
+
+  /** After a failover, with no target yet: the stage at which the former primary is a member awaiting reinstatement. */
+  function awaitingReinstatement(): boolean {
+    return state.activeTarget === null && state.phase === 'failed-over';
+  }
+
+  /**
+   * The primary reaches the target standby: the connection STOP OBSERVER and DISABLE look for.
+   *
+   * After a switchover the new primary has no target yet and the member that
+   * will be its target is the former primary, restarted as a standby: the
+   * connection asked about is the new primary's to it, the documented rule
+   * applied to the real target. After a failover it is not asked about: a live
+   * 19.27 configuration accepted both DISABLE FAST_START FAILOVER (no FORCE)
+   * and STOP OBSERVER with the former primary down (fact check 2026-10-01,
+   * D9). The former primary is then a member that needs reinstatement, not a
+   * target the connection is read to, so the command is not refused on its
+   * account (see `acceptedAfterFailover`).
+   */
   function primaryConnectedToTarget(view: View): boolean {
     if (!view.primaryAlive) return false;
     const target = state.activeTarget;
-    /* After a role change the new primary has no fast-start failover target
-       yet (D6), and the stale one must not be read: the member that will be
-       its target is the former primary, so the connection asked about is the
-       new primary's to it. A failover's former primary that is down, aborted
-       or cut off keeps the refusal (it is a target that needs reinstatement);
-       a switchover's restarted one, reachable, does not. */
-    if (target === null && (state.phase === 'failed-over' || state.phase === 'switched')) {
-      const fp = doc.members.find((m) => m.id === state.formerPrimary);
-      const reachesFormer = !!fp && memberAlive(doc, state.net, fp)
-        && !state.abortedMembers.includes(fp.id)
-        && membersReachable(doc, state.net, view.primary, fp, view.reach);
-      return reachesFormer;
-    }
+    if (target === null && state.phase === 'switched') return reachesFormerPrimary(view);
+    if (awaitingReinstatement()) return true;
     return target !== null ? (view.targetSeesPrimary[target as string] ?? false) : view.anyTargetSeesPrimary;
+  }
+
+  /**
+   * A command accepted after a failover with the former primary out of reach:
+   * the case the documented condition ("connected and communicating") would
+   * refuse if the former primary were read as the target. Said as an
+   * inference, with the live observation, where it is decided.
+   */
+  function acceptedAfterFailover(view: View, at: Seconds, id: string, what: string,
+    subject: Decision['subject']): void {
+    if (!awaitingReinstatement() || reachesFormerPrimary(view)) return;
+    decideAt(at, id, true, inferred(
+      `${what} is accepted: the former primary ${state.formerPrimary as string} is a member that needs reinstatement, not the target, so the connection between the primary and its target is not asked of it.`,
+      ['OBS.STOP_NEEDS_CONNECTION', 'FSFO.DISABLE_NEEDS_CONNECTIONS', 'FSFO.REINSTATED_IS_TARGET'],
+      `${id}: the documented condition is a connection between the primary and its target standby, and "The reinstated database acts as the fast-start failover target for the new primary database" -- so before the reinstatement there is no target to be connected to. Observed on a live 19.27 configuration (fact check 2026-10-01, D9): DISABLE FAST_START FAILOVER without FORCE was accepted right after a manual failover with the former primary aborted, and STOP OBSERVER right after an observer-initiated failover with the former primary down (SHOW OBSERVER then printed "No observers."). An observation, not documentation.`,
+    ), subject);
   }
 
   /**
@@ -1284,11 +1314,11 @@ export function simulate(
       const subject = { kind: 'observer' as const, id: id as string };
       const registered = doc.observers.length;
       if (view.master === id && registered >= 2) {
-        const message = `STOP OBSERVER ${id as string} is refused: it is the master observer and ${registered} observers are registered. The command fails if there are two or more registered observers and you attempt to stop only the master, so ${id as string} keeps running.`;
+        const message = `STOP OBSERVER ${id as string} is refused with ORA-16878 (master observer cannot be stopped): it is the master observer and ${registered} observers are registered. The command fails if there are two or more registered observers and you attempt to stop only the master, so ${id as string} keeps running.`;
         addFinding({
           id: 'OBS.STOP_MASTER_REFUSED', severity: 'error', basis: 'documented',
-          cite: ['OBS.STOP_MASTER_REFUSED'], subject, message,
-          note: '"Registered" is read as every observer the configuration lists, running or not. Losing a master is what a crashed observer host does: the broker then nominates a backup.',
+          cite: ['OBS.STOP_MASTER_REFUSED', 'ORA.16878'], subject, message, ora: 'ORA-16878',
+          note: '"Registered" is read as every observer the configuration lists, running or not. Losing a master is what a crashed observer host does: the broker then nominates a backup. ORA-16878 "master observer cannot be stopped" is the error the page documents for it; a live 19.27 configuration printed "Error: ORA-16878: master observer cannot be stopped" with two observers registered (fact check 2026-10-01, D9).',
         });
         decideAt(at, 'OBS.STOP_OBSERVER', false, documented(message, ['OBS.STOP_MASTER_REFUSED']), subject);
         continue;
@@ -1303,6 +1333,7 @@ export function simulate(
         decideAt(at, 'OBS.STOP_OBSERVER', false, documented(message, ['OBS.STOP_NEEDS_CONNECTION']), subject);
         continue;
       }
+      acceptedAfterFailover(view, at, 'OBS.STOP_OBSERVER', `STOP OBSERVER ${id as string}`, subject);
       o.running = false;
     }
   }
@@ -1326,7 +1357,11 @@ export function simulate(
     const subject = { kind: 'config' as const };
     const connected = primaryConnectedToTarget(view);
     if (!cmd.force) {
-      if (connected) { state.fsfoState = 'disabled'; return; }
+      if (connected) {
+        acceptedAfterFailover(view, at, 'FSFO.DISABLE_FAST_START_FAILOVER', 'DISABLE FAST_START FAILOVER', subject);
+        state.fsfoState = 'disabled';
+        return;
+      }
       const why = view.primaryAlive
         ? 'the primary and the target standby are not connected'
         : 'the primary is down, so no database has a network connection with it';
@@ -2281,14 +2316,16 @@ function formerPrimaryStalls(
     ? `With FastStartFailoverPmyShutdown TRUE it shuts itself down ${threshold} s later (FastStartFailoverThreshold).`
     : 'With FastStartFailoverPmyShutdown FALSE it stays stalled until an operator intervenes.';
   const message = `${fp.name} was still running when the manual failover completed and fast-start failover is enabled: the target it was running with is now the primary ${newPrimary as string}, so ${fp.name} has lost its target and is drawn STALLED from that instant. ${then}`;
-  const note = 'FAILOVER.FORMER_PRIMARY_STALLS: nothing documented says what an old primary that is still running does when a manual failover completes with fast-start failover enabled -- Oracle only says to shut it down first ("You must ensure that the primary database is shut down prior to performing a manual failover."). The sentences around it lean one way: "Data Guard fast-start failover always guarantees that only one primary database exists"; the STALLED state is "after loss of connectivity to the target standby database ... cannot be confirmed by either the target standby database or the observer", and "It shuts down or stalls because it is likely a failover has occurred." Once its target has converted, the old primary has no target to confirm anything, which is what STALLED describes; the shutdown that follows is the documented FastStartFailoverPmyShutdown one. Applying all of that to a manual failover is this page\'s model, not a documented outcome. With fast-start failover disabled nothing stalls it and it stays open (FAILOVER.FORMER_PRIMARY_OPEN).';
+  const note = 'FAILOVER.FORMER_PRIMARY_STALLS: nothing documented says what an old primary that is still running does when a manual failover completes with fast-start failover enabled -- Oracle only says to shut it down first ("You must ensure that the primary database is shut down prior to performing a manual failover."). The sentences around it lean one way: "Data Guard fast-start failover always guarantees that only one primary database exists"; the STALLED state is "after loss of connectivity to the target standby database ... cannot be confirmed by either the target standby database or the observer", and "It shuts down or stalls because it is likely a failover has occurred." Once its target has converted, the old primary has no target to confirm anything, which is what STALLED describes; the shutdown that follows is the documented FastStartFailoverPmyShutdown one. Applying all of that to a manual failover is this page\'s model, not a documented outcome. Observed on a live 19.27 configuration (fact check 2026-10-01, D9), which agrees with the drawing: with fast-start failover enabled and the old primary still open, it stalled when its target began converting (commits hung) and shut itself down 31 s later with threshold 30 (FastStartFailoverPmyShutdown TRUE), alert text "Primary has heard from neither observer nor target standby within FastStartFailoverThreshold seconds. It is likely an automatic failover has already occurred. Primary is shutting down." and ORA-16830. An observation, not documentation. With fast-start failover disabled nothing stalls it and it stays open (FAILOVER.FORMER_PRIMARY_OPEN).';
   const cite: CitationId[] = [
     'FSFO.ONE_PRIMARY_GUARANTEE', 'FSFO.STATUS_STALLED', 'FSFO.STALLED_LIKELY_FAILOVER',
     'FSFO.PMY_SHUTDOWN', 'FSFO.MANUAL_FAILOVER_CONDITIONS',
   ];
+  if (doc.config.fsfo.pmyShutdown) cite.push('ORA.16830');
   return {
     finding: {
       id: 'FAILOVER.FORMER_PRIMARY_STALLS', severity: 'warning', basis: 'model', cite, subject, message, note,
+      ...(doc.config.fsfo.pmyShutdown ? { ora: 'ORA-16830' } : {}),
     },
     claim: model(message, note, cite),
   };

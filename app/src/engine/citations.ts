@@ -105,6 +105,8 @@ const U = {
   bkr26Manual: 'https://docs.oracle.com/en/database/oracle/oracle-database/26/dgbkr/manual-failover1.html',
   ora16658: 'https://docs.oracle.com/en/error-help/db/ora-16658/',
   ora16820: 'https://docs.oracle.com/en/error-help/db/ora-16820/',
+  ora16830: 'https://docs.oracle.com/en/error-help/db/ora-16830/',
+  ora16878: 'https://docs.oracle.com/en/error-help/db/ora-16878/',
   ora16867: 'https://docs.oracle.com/en/error-help/db/ora-16867/',
   ora16827: 'https://docs.oracle.com/en/error-help/db/ora-16827/',
   ora16647: 'https://docs.oracle.com/en/error-help/db/ora-16647/',
@@ -1617,6 +1619,16 @@ export const CITATIONS = {
     url: U.ora16820, edition: '19c', verified: 'primary',
     quote: 'ORA-16820 fast-start failover observer is no longer observing this database Cause A previously started observer was no longer actively observing this database. A significant amount of time elapsed since this database last heard from the observer.',
     note: 'The standing health condition while unobserved.',
+  },
+  'ORA.16830': {
+    url: U.ora16830, edition: '19c', verified: 'primary',
+    quote: 'ORA-16830 primary isolated from fast-start failover partners longer than FastStartFailoverThreshold seconds: shutting down Cause The primary database was isolated from both the observer and target standby database for longer than the seconds specified by the FastStartFailoverThreshold property. A fast-start failover probably occurred. If the FastStartFailoverPmyShutdown configuration property was set to TRUE, the broker will shut down the primary database in this situation.',
+    note: 'The 19c tab of the error-help page. The 26ai tab words the title and the last sentence differently (the broker shut down the primary database).',
+  },
+  'ORA.16878': {
+    url: U.ora16878, edition: '19c', verified: 'primary',
+    quote: 'ORA-16878 master observer cannot be stopped Cause The master observer cannot be stopped when another observer is registered. Action Use the SET MASTEROBSERVER command to establish another observer as the master observer. Then use the STOP OBSERVER command to stop the former master observer.',
+    note: 'The 26ai, 21c and 19c tabs read the same.',
   },
   'ORA.16649': {
     url: U.ora16649, edition: '19c', verified: 'primary',

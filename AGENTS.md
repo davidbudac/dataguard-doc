@@ -19,7 +19,7 @@ produced, and how to extend it without breaking consistency or accuracy.
 | `diagrams/fsfo-sequence.svg` (+`.png`) | Sequence diagram of the crash case with an elapsed-time gutter |
 | `diagrams/fsfo-net-timeout.svg` (+`.png`) | Two panels separating NET_TIMEOUT (redo transport) from the broker failover clocks |
 | `diagrams/README.md` | Figure embeds, broker-property and redo-transport-property tables with verified defaults, the ping-properties quirk, the verified-facts sections behind the commit/reopen/observer/placement/side-topics views (including the 24-cell observer-placement outcome matrix) and behind the 26ai edition switch (the MaxAvailability lag-limit semantics and Oracle's self-contradiction on them, `PrimaryDatabaseCandidates`, `V$FS_FAILOVER_OBSERVERS`), the drawing idealizations, Oracle doc links. Its *Topology features* section points at `app/design/facts.md` for far sync, cascading, RedoRoutes, multi-target and multi-observer sources |
-| `app/` | The workbench: TypeScript + Vite + Preact + signals. A pure, DOM-free engine in `app/src/engine` (types, citation catalogue, validation rules, redo-graph resolver, epoch-loop simulator, generators, the legacy adapter), the interface in `app/src/ui` (including the on-canvas action bar, the Introduction page and the `Hints` toggle — see `app/design/ui.md` §3c–§3i; §3h is how the drawing is driven: click selects, `⋯` for the bar, drag-to-place, inline rename, marquee, shortcuts; §3i is the lean pass: the toolbar is the one add surface, Remove sits in the rail header; "Simulate's two layouts", at the end, is the Split and Lanes layouts of the Simulate screen and the switch between them), state in `app/src/state`, twelve presets in `app/src/presets`, ten lessons and the reference tables in `app/src/content`, 3254 vitest tests across 119 files in `app/src/**/__tests__` and `app/test`. Built to `_site/` and served at `/dataguard/`. Zero external requests, no inline script and no inline style — the page is meant to run under `script-src 'self'; style-src 'self'` |
+| `app/` | The workbench: TypeScript + Vite + Preact + signals. A pure, DOM-free engine in `app/src/engine` (types, citation catalogue, validation rules, redo-graph resolver, epoch-loop simulator, generators, the legacy adapter), the interface in `app/src/ui` (including the on-canvas action bar, the Introduction page and the `Hints` toggle — see `app/design/ui.md` §3c–§3i; §3h is how the drawing is driven: click selects, `⋯` for the bar, drag-to-place, inline rename, marquee, shortcuts; §3i is the lean pass: the toolbar is the one add surface, Remove sits in the rail header; "Simulate's two layouts", at the end, is the Split and Lanes layouts of the Simulate screen and the switch between them), state in `app/src/state`, twelve presets in `app/src/presets`, ten lessons and the reference tables in `app/src/content`, 3258 vitest tests across 119 files in `app/src/**/__tests__` and `app/test`. Built to `_site/` and served at `/dataguard/`. Zero external requests, no inline script and no inline style — the page is meant to run under `script-src 'self'; style-src 'self'` |
 | `app/public/collectors/` | Read-only SQL collector, optional Bash/SQL*Plus wrapper and run instructions for existing setups. The ⋯ menu's **Import existing setup** sheet previews pasted/file output before drawing it. `engine/collect.ts` maps current routes; imported `routesObserved` prevents invented NULL-default routes. Missing broker settings and placement assumptions remain in document notes. Validated live on a 19c primary + mounted standby (SYSDBA, local OS auth); wallet, least-privilege, RAC and far sync remain unverified. DGMGRL transcripts are not parsed. |
 | `app/design/facts.md` | The verified Oracle fact sheet for the topology features (far sync, cascading, multiple standbys and FSFO targets, multiple observers, RedoRoutes, member types, destination counts), researched 2026-08-16 against docs.oracle.com and re-verified 2026-08-17, marked `[D]` / `[D-later]` / `[UNDOC]` / `[CONFLICT]` per claim. **The only permitted source of a "documented" claim in the application.** Its top-five traps are restated in the accuracy rules below |
 | `app/design/engine.md` | The engine design: `Claim`/`Basis` labelling, the topology data model, the validation catalogue, the redo-graph resolver, the epoch-loop failure engine, the compat adapter and the 24-cell matrix gate, the generators, the module layout — plus §10, *Deviations from the design as built*, which is where the code and the specification differ |
@@ -67,7 +67,7 @@ public URL.
 
 The three gates, and what each one can catch that the others cannot:
 
-1. `npm --prefix app run test` — the application's own suite (**3254 tests
+1. `npm --prefix app run test` — the application's own suite (**3258 tests
    across 119 files**): the engine's invariants, the 24-cell matrix through the
    compat adapter, the validation catalogue, the generator goldens, the canvas
    and timeline geometry, the URL and file round trips.
@@ -435,7 +435,16 @@ agree on:
   and "two databases ... simultaneously assuming the primary database role" may
   result. The event names no issuing database, so the engine takes the primary as
   the issuer; the isolated primary's timing after a FORCE (commit hang, then
-  read-write) is a `model`.
+  read-write) is a `model`. **After a failover neither refusal applies on account
+  of the former primary** (D9, live 19.27, 2026-10-01): DISABLE without FORCE was
+  accepted right after a manual failover with the former primary aborted, and STOP
+  OBSERVER right after an observer-initiated failover with it down. The former
+  primary is a member awaiting reinstatement, not the target (SHOW FAST_START
+  FAILOVER lists it "invalid - member is disabled"), so the engine accepts both and
+  says so as an `inferred` decision whose note carries the observation. After a
+  *switchover* the former primary really is the target, so the connection to it is
+  still read. STOP OBSERVER naming the master of several prints ORA-16878 (cited,
+  `ORA.16878`).
 - **A commit waits for each SYNC destination.** At `DATA_GUARD_SYNC_LATENCY`'s
   default LGWR waits "up to ... NET_TIMEOUT ... for each SYNC standby destination",
   so one destination going silent among several hangs the commit even while
@@ -528,7 +537,13 @@ agree on:
   configuration is in the unobserved state, fast-start failover cannot happen.
   Therefore, the primary database can continue processing transactions…"). A
   switchover's former primary is a standby from then on — never stalled or aborted
-  as a primary.
+  as a primary. Live 19.27 agreed (D9): the new primary ran 3+ minutes unobserved
+  after a crash failover with no stall; its SHOW CONFIGURATION keeps fast-start
+  failover enabled and the former primary as `- (*) … (disabled)` with ORA-16661
+  (`inferred`: an observation, not Oracle's FAILOVER example, which ran with
+  fast-start failover disabled and so carries no marker), and once every observer
+  has stopped it prints `Error: ORA-16820 …` under the primary with status ERROR
+  (`inferred`; the cause text is `ORA.16820`'s, the form is the observation).
 - `NET_TIMEOUT` is a `LOG_ARCHIVE_DEST_n` transport attribute (broker property
   `NetTimeout`), default 30 s, min 1 s, ≥ 8–10 s recommended. It bounds how long
   LGWR waits for the standby's SYNC ack; it is NEVER a failover clock, never
@@ -1349,7 +1364,7 @@ sections it supersedes.
 
 ### Tests
 
-`npm --prefix app run test` is **3254 tests across 119 files**. What is where:
+`npm --prefix app run test` is **3258 tests across 119 files**. What is where:
 
 - `app/src/engine/__tests__/` — the engine's own unit tests (purity, citations,
   claims, schema, migrate, URL codec, parse, resolve, graph, axis, classic).

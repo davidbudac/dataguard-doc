@@ -52,6 +52,7 @@ function runAt(doc: TopologyDoc, events: ReturnType<typeof preset>['events'] ext
       primary: frame.epoch.primary,
       roleChange: !moved ? null : trace.facts.outcome === 'switchover' ? 'switchover' as const : 'failover' as const,
       states: frame.members as Readonly<Record<string, string>>,
+      observers: frame.observers as Readonly<Record<string, string>>,
     },
   };
 }
@@ -533,10 +534,14 @@ describe('GEN-30: the SHOW panel after a role change', () => {
     const out = text(f);
     expect(out).toContain('DGMGRL> SHOW CONFIGURATION;');
     expect(out).toContain('sby01 - Primary database');
-    expect(out).toContain('prm01 - Physical standby database (disabled)');
+    /* D9: with fast-start failover still enabled the former primary keeps the
+       target marker, as a live 19.27 configuration printed it. */
+    expect(out).toContain('prm01 - (*) Physical standby database (disabled)');
     expect(out).toContain('ORA-16661: the standby database needs to be reinstated');
     expect(out).toMatch(/Configuration Status:\nWARNING/);
-    expect(lineWith(f, 'prm01 - Physical standby database (disabled)')?.basis).toBe('documented');
+    const former = lineWith(f, 'prm01 - (*) Physical standby database (disabled)');
+    expect(former?.basis).toBe('inferred');
+    expect(former?.note).toMatch(/live 19\.27/);
     /* The fast-start failover line is the document's, and the note says why. */
     expect(out).toContain('Fast-Start Failover: Enabled in Zero Data Loss Mode');
     expect(out).toContain('the role has moved');
@@ -556,6 +561,11 @@ describe('GEN-30: the SHOW panel after a role change', () => {
     expect(out).toContain('Active Target Standby: prm01');
   });
 
+  it('SHOW FAST_START FAILOVER says why the former primary is not a valid target yet (D9)', () => {
+    const out = text(showFastStartFailover(classic, { run: failedOver.run }));
+    expect(out).toContain('prm01:              invalid - member is disabled');
+  });
+
   it('with fast-start failover disabled, no target is listed and the words are DISABLED', () => {
     const off = withFsfo(classic, 'disabled');
     const run = runAt(off, [{ at: 0, kind: 'cmd.failover' as const, to: M('sby01') }], 200).run;
@@ -563,6 +573,10 @@ describe('GEN-30: the SHOW panel after a role change', () => {
     const out = text(showFastStartFailover(off, { run }));
     expect(out).toContain('Fast-Start Failover: DISABLED');
     expect(out).toContain('Active Target:        (none)');
+    /* Oracle's FAILOVER example, fast-start failover disabled: no target marker. */
+    const cfg = text(showConfiguration(off, { run }));
+    expect(cfg).toContain('prm01 - Physical standby database (disabled)');
+    expect(cfg).not.toContain('(*)');
     expect(text(showConfiguration(off, { run }))).toMatch(/Fast-Start Failover: DISABLED\n\nConfiguration Status:\nWARNING/);
   });
 
@@ -585,6 +599,33 @@ describe('GEN-30: the SHOW panel after a role change', () => {
     expect(out).toContain('prm01 - Primary database');
     expect(out).not.toContain('(disabled)');
     expect(text(showFastStartFailover(classic, { run: before.run }))).toContain('Active Target:        sby01');
+  });
+});
+
+/* ---------------- D9: every observer stopped ---------------- */
+
+describe('D9: SHOW CONFIGURATION once the last observer has stopped', () => {
+  const classic = preset('classic').doc();
+  const stop = [{ at: 10, kind: 'observer.stop' as const, observer: M('obs01') as never }];
+
+  it('prints ORA-16820 under the primary and the status ERROR (live 19.27), not the ORA-16819 warning', () => {
+    const r = runAt(classic, stop, 100);
+    const f = showConfiguration(classic, { run: r.run });
+    const out = text(f);
+    expect(out).toContain('Error: ORA-16820: fast-start failover observer is no longer observing this database');
+    expect(out).toMatch(/Configuration Status:\nERROR/);
+    expect(out).not.toContain('ORA-16819');
+    const l = lineWith(f, 'Error: ORA-16820');
+    expect(l?.basis).toBe('inferred');
+    expect(l?.cite).toContain('ORA.16820');
+    expect(l?.note).toMatch(/live 19\.27/);
+    expect(indexOfLine(f, 'Error: ORA-16820')).toBe(indexOfLine(f, 'prm01 - Primary database') + 1);
+  });
+
+  it('prints nothing of the sort while an observer is running, or before it stops', () => {
+    const early = runAt(classic, stop, 5);
+    expect(text(showConfiguration(classic, { run: early.run }))).not.toContain('ORA-16820');
+    expect(text(showConfiguration(classic, { run: early.run }))).toMatch(/Configuration Status:\nSUCCESS/);
   });
 });
 

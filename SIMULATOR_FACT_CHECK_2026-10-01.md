@@ -10,7 +10,8 @@ review, `main` gained ~2 000 lines of engine change: RAC members (`sim/rac.ts`),
 reading (`sim/split-brain.ts`), the application's sessions and two publishers (`models/app.ts`),
 a manual failover that leaves a running old primary open, and the Topology / Detailed timeline
 UI. Those are where most of the new findings are. The fixes followed the same day; see
-*Resolution*.
+*Resolution*. The same day, after the fixes, the 19c test pair was checked live (D9); see
+*Live check*.
 
 To repeat the review: `docs/agents/fact-check.md` (procedure), `app/test/fact-check/probes.probe.ts`
 (the scenarios below, runnable), `app/test/fact-check/fetch-docs.sh` (the Oracle pages, as
@@ -31,21 +32,24 @@ found word for word on their pages, 17 paraphrases unchecked by design, one miss
 `XPT.TABLE_4_2`, the footnote marker, not a wrong quote. The regression tests are in
 `app/test/factcheck-1001-*.test.ts`, one file per area, one `describe` per finding.
 
+After the live check's corrections: 3258 tests across 119 files, 326 quotes verbatim
+(`ORA.16830` and `ORA.16878` added), the same one miss, and no probe changed status.
+
 ### Decisions taken
 
 | # | Question | Decision |
 |---|---|---|
 | D5 | The old primary after a manual failover with fast-start failover enabled | **Stall, then the PmyShutdown abort, labelled `model`** (`FAILOVER.FORMER_PRIMARY_STALLS`). Stalled from the instant the target converts; aborted one `FastStartFailoverThreshold` later with `FastStartFailoverPmyShutdown` TRUE, stalled for good with FALSE. With fast-start failover disabled it stays open, as before (`FAILOVER.FORMER_PRIMARY_OPEN`), and only then does Split brain read yes |
-| D6 | What the run evaluates after a role change | **(a), re-evaluate against the new primary's own target.** The new primary has no synchronized fast-start failover target within the run (the former primary's reinstatement or restart is an open-ended band), so losing the observer or its standbys stalls and aborts nothing; the run says why once (`FSFO.NO_TARGET_AFTER_ROLE_CHANGE`, `inferred`). A switchover's former primary is a standby, never an acting primary. STOP OBSERVER and DISABLE FAST_START FAILOVER after a role change read the connection to the former primary, the new primary's target-to-be: refused (ORA-16636; no FORCE) while it is down or cut off |
+| D6 | What the run evaluates after a role change | **(a), re-evaluate against the new primary's own target.** The new primary has no synchronized fast-start failover target within the run (the former primary's reinstatement or restart is an open-ended band), so losing the observer or its standbys stalls and aborts nothing; the run says why once (`FSFO.NO_TARGET_AFTER_ROLE_CHANGE`, `inferred`). A switchover's former primary is a standby, never an acting primary. After a switchover, STOP OBSERVER and DISABLE FAST_START FAILOVER read the connection to the former primary, which is the new target: refused (ORA-16636; no FORCE) while it is down or cut off. After a failover neither command is refused on account of the former primary. This half was first written as a refusal too, and the live check corrected it: 19.27 accepted both (`inferred`, see *Live check*) |
 | D7 | 26ai: a restarted former primary with fast-start failover disabled | **Mounted is `documented` under 26ai** (`FAILOVER.FORMER_PRIMARY_MOUNTED_26AI`, Scenario 11). Under 19c it stays `model`; "cannot reach the new primary, so it opens" stays `model` under both |
 | D8 | A SYNC target in MaxPerformance with fast-start failover | **A warning while fast-start failover is enabled** (observe-only included, as the other rules treat it), citing "Maximum performance — ASYNC" and Task 3; an info while disabled. No preset trips it |
-| D9 | A live check | **Not taken.** No drill or `SHOW` was run; every finding still rests on documentation |
+| D9 | A live check | **Taken the same day, after the fixes.** Read-only `SHOW` commands, both drills and two more, on the 19.27 pair. D5 and D6's no-stall were confirmed. Four things the page drew were corrected, among them D6's refusals after a failover; see *Live check* |
 
 ### Per finding
 
 | Finding | Status | What the page does now |
 |---|---|---|
-| SIM-15 | fixed (D6) | No stall or abort on the new primary after either role change; the switched-over former primary is not aborted. The SIM-15a probe stops the observer after a crash failover, which is now refused (ORA-16636: the former primary is down), so it prints `CHANGED` for that reason; the no-stall itself is shown by the regression tests, which lose the observer with its host |
+| SIM-15 | fixed (D6), confirmed live | No stall or abort on the new primary after either role change; the switched-over former primary is not aborted. The SIM-15a probe stops the observer after a crash failover. That stop is accepted, as on 19.27, and nothing stalls, so it prints `CHANGED`. Before the live check the stop was refused with ORA-16636, and the probe read `CHANGED` for that reason instead |
 | SIM-16 | fixed | Automatic reinstatement is pending at the open and starts only once the former primary is running, the master observer reaches it and it reaches the new primary. `REINSTATE.WAITING` says why not: aborted ("must be manually restarted"), down, or cut off |
 | SIM-17 | fixed | Refused in the engine, in `validate()` (`ROLE.SWITCHOVER_SNAPSHOT`) and greyed in the menu, before any other gate |
 | SIM-18 | fixed | Any SYNC destination that was acknowledging and goes silent hangs commits for NET_TIMEOUT, whether or not another still answers |
@@ -71,7 +75,7 @@ found word for word on their pages, 17 paraphrases unchecked by design, one miss
 | VAL-11 … 20 | fixed | VAL-14: `ROUTES.LOGICAL_LOCAL_ONLY` is an error like its neighbour, and `ROUTES.SNAPSHOT_CONVERT_NONNULL` names the CONVERT DATABASE conflict. VAL-17: `MEMBER.STATIC_SERVICE` (info, `inferred`) for any single-instance database; Oracle Restart still cannot be expressed. VAL-18: `MEMBER.PRIMARY_COUNT`, `MEMBER.NAME_DUPLICATE`. VAL-19: `FSFO.TARGET_DISABLED` |
 | No-rule list | partly | Added `DEST.SYNC_ABOVE_10`, `EVENT.*` checks for `cmd.reinstate`, `cmd.setApplyInstance` and `cmd.setMasterObserver`, and the parser refuses `ALL` mixed with groups. ORA-16668 has no rule (no quoted sentence; `FSFO.TARGET_KIND` covers a named snapshot target); the rest of the list is untouched |
 | GEN-14 … 29 | fixed | GEN-21 in both halves (the generator's note, and `DEST.DEPRECATED_19C` compares MaxFailure with the default for its position). The far sync presets gain South_Sales' route to FS1 (Scenario 5, GEN-17), so a role change reaches a far sync; TXT-92 follows |
-| GEN-30 | fixed | The SHOW panel reads the run at the playhead: plain SHOW CONFIGURATION for the new primary, the former primary `(disabled)` with ORA-16661 and WARNING after a failover. The fast-start failover line stays the document's, with an `inferred` note: the FAILOVER example's DISABLED came from a run with it disabled |
+| GEN-30 | fixed | The SHOW panel reads the run at the playhead: plain SHOW CONFIGURATION for the new primary, the former primary `(disabled)` with ORA-16661 and WARNING after a failover. The fast-start failover line stays the document's, with an `inferred` note: the FAILOVER example's DISABLED came from a run with it disabled. Since the live check, the disabled former primary also keeps `(*)` while fast-start failover stays enabled. With every observer stopped, the panel prints `Error: ORA-16820` and ERROR |
 | TXT-14 … 60, 80 … 92 | fixed | TXT-45 by a label (the 19c page does carry the stall sentence, so the report's "unverified" hedge did not hold). TXT-50's id walk now covers every step of every lesson |
 | TXT-71 | partly | The catalogue entries and the 19c licence sentence are in the ApplyInstances note; `RAC.APPLY_INSTANCES_UNUSED` does not mention the licence |
 
@@ -81,13 +85,58 @@ the probe reads the one before the shutdown) and SIM-15a (see above).
 
 ### Still open
 
-- D9: nothing was run against a live database, 19c or 26ai.
+- Not checked live: anything 26ai (the test pair is 19c), D7, D8, and SIM-16's unreachable
+  former primary (it needs firewall rules, and root on the hosts was not used).
 - SIM-22's menu row; VAL-10's RedoRoutes restriction; TXT-71's licence in the rule; a snapshot
   document with apply set on; a sub-second TRANSPORT_CONNECT_TIMEOUT.
 - The documented restrictions with no rule (section C), bar the four added.
 - From 09-28: `XPT.PRIMARY_LOGXPTMODE` and a primary fed through a cascader after the role
   change; the 12.1 alternate on unreachability rather than the `MaxFailure` count; old documents
   with several parenthesised groups and no priority.
+
+## Live check (D9, same day)
+
+Run after the fixes were merged, with the owner's go-ahead, on the 19c test pair:
+- Oracle 19.27: `cdb1` is the primary, with Flashback Database on; `cdb1_stby` is the
+  fast-start failover target, with it off. One observer runs on a third host.
+- MaxAvailability, threshold 30 s, `FastStartFailoverPmyShutdown` and auto-reinstate
+  TRUE.
+- A commit probe and a once-a-second read of `V$DATABASE` ran on both databases
+  throughout.
+- The pair ended in its starting roles, with `SUCCESS`.
+
+The drills are written up as runbook drill 13 and as notes on drills 1 and 3 in
+`testing/README.md`.
+
+| What was run | What 19.27 did | The page |
+|---|---|---|
+| Read-only `SHOW` | `ConfigurationWideServiceName` was `cdb1_CFG`, while the configuration is named `my_dg_config`. The lag limit printed `30 seconds (not in use)` in MaxAvailability. The five health conditions were at their defaults | Agrees: ED-08's placeholder, the lag-limit note and the SHOW FAST_START FAILOVER mock |
+| **D5:** manual `FAILOVER TO cdb1_stby` with `cdb1` open | The command took 16 s. `cdb1` read `STALLED` 7 s in, as its target began converting, and its commits hung from then. It read `REINSTATE REQUIRED` while still open read-write. 31 s after the stall began it stopped: "Primary has heard from neither observer nor target standby within FastStartFailoverThreshold seconds. It is likely an automatic failover has already occurred. Primary is shutting down." (ORA-16830). It acknowledged no commit after the stall, and RPO was 0 | **Agrees with D5.** The `model` note now gives the observation, and the abort carries ORA-16830 (new citation) |
+| DISABLE FAST_START FAILOVER without FORCE, right after that failover, former primary down | Accepted | **Disagreed:** the D6 fix had refused it with ORA-16636. Corrected: after a failover neither DISABLE nor STOP OBSERVER is refused on account of the former primary. An `inferred` decision gives the observation |
+| Crash: `SHUTDOWN ABORT` of `cdb1` | "Attempting Fast-Start Failover because the threshold of 30 seconds has elapsed" appeared 32.6 s after the abort. Terminal recovery took 3.6 s, with no data loss. The new primary was open read-write 37 s after the abort | Agrees. The conversion band is `model`, and this small database converted much faster than the band draws |
+| STOP OBSERVER right after that failover, former primary down | Accepted; `SHOW OBSERVER` printed "No observers." | **Disagreed**, as for DISABLE, and corrected with it |
+| The new primary, unobserved, before the reinstatement | 3 min 23 s with no observer and no valid target (`REINSTATE REQUIRED`). It never stalled or aborted, and every commit was acknowledged | **Agrees with D6** |
+| SHOW CONFIGURATION after either failover | `cdb1 - (*) Physical standby database (disabled)` with ORA-16661 under it, and `Fast-Start Failover: Enabled in Zero Data Loss Mode`. After the manual failover the primary also carried `Warning: ORA-16824` and the status was WARNING | The fast-start failover line agrees with GEN-30's reading. **The `(*)` was missing; corrected** (`inferred`). SHOW FAST_START FAILOVER's target line now reads `invalid - member is disabled` |
+| SHOW CONFIGURATION with the observer stopped for minutes | `Error: ORA-16820: fast-start failover observer is no longer observing this database` under the primary; status ERROR | **The page printed nothing** (ORA-16819 only for no observer configured). Corrected: printed once every observer has stopped (`inferred`). The page prints it at once, and the live system took minutes |
+| Switchover back to `cdb1` | Fast-start failover stayed `Enabled in Zero Data Loss Mode`. The former primary showed as `(*) Physical standby database` | The switchover note no longer says "documented only by implication": `model` became `inferred`, with the observation |
+| `STOP OBSERVER dg_observer` with two observers registered | `Error: ORA-16878: master observer cannot be stopped` | Agrees (`OBS.STOP_MASTER_REFUSED`). The finding now names ORA-16878 (new citation) |
+| `STOP OBSERVER ALL` after the switchover | Accepted. The primary stayed `SYNCHRONIZED` with observer-present `NO` and kept committing. The target standby read `PRIMARY UNOBSERVED` about 20 s later | **Agrees with the SIM-15 fix:** nothing stalled when the observer was lost, where the old engine stalled at once. The primary/standby split agrees with the page and **corrects runbook drill 3**, which expected `PRIMARY UNOBSERVED` on the primary |
+
+How much the switchover case settles is limited. Something on the observer host restarts the
+observer about 20 s after each stop. Five unobserved stretches after the switchover, each under
+the threshold, showed no stall and 111 of 111 commits acknowledged. The stretch of over three
+minutes was after the failover.
+
+Snags from the test database, not from Oracle's behaviour:
+- **The first reinstatement failed** with ORA-16653. A datafile in PDB1 had been taken
+  offline by an earlier experiment, and its flashback images were missing (ORA-38795,
+  ORA-10069; then ORA-16461 on the conversion). It went through after `OFFLINE FOR DROP`,
+  and the file was restored from the new primary with `RESTORE DATAFILE … FROM SERVICE`.
+- **`VALIDATE DATABASE` reports a broken restart address.** `cdb1`'s static connect
+  identifier is not served by its listener (ORA-12514). Even so, the broker restarted the
+  other database itself after each switchover.
+- **DGMGRL needs a password login.** Connected with `/` it cannot reach the other member
+  (ORA-01017). A SYSDBA drill account was created for the run and dropped afterwards.
 
 ## The short answer
 

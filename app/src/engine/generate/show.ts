@@ -117,6 +117,8 @@ export interface ShowRun {
   roleChange: 'switchover' | 'failover' | null;
   /** Every member's state at the playhead, by member id. */
   states: Readonly<Record<string, string>>;
+  /** Every observer's state at the playhead, by observer id (`stopped` is no longer observing). */
+  observers?: Readonly<Record<string, string>>;
 }
 
 export interface ShowConfigurationOptions {
@@ -287,6 +289,12 @@ export function showConfiguration(
   const unobserved = armed && doc.observers.length === 0 && !hypothetical;
   const warned = new Set<string>(unobserved
     ? [primary as string, ...targets.map((t) => t as string)] : []);
+  /* Every observer the document registers has stopped by the playhead while
+     fast-start failover is enabled: the broker's ORA-16820, on the primary.
+     Not the no-observer-deployed case above, which is ORA-16819. */
+  const observerStates = Object.values(opts.run?.observers ?? {});
+  const observerLost = armed && !hypothetical && doc.observers.length > 0
+    && observerStates.length > 0 && observerStates.every((s) => s === 'stopped');
 
   lines.push(cmd(hypothetical
     ? `Configuration when ${nameById(primary)} is primary - ${doc.config.name}`
@@ -326,8 +334,12 @@ export function showConfiguration(
       if (of !== undefined) markers.push(`(alternate of ${of})`);
     }
     const off = v.disabled.has(m.id as string) && m.id !== primary;
-    /* A disabled member awaiting reinstatement is not the current target. */
-    const marked = m.id === activeTargetId && !off;
+    /* A disabled bystander is not the current target. A former primary that
+       fast-start failover left disabled and awaiting reinstatement is: the
+       live 19.27 configuration kept the marker on it (`v.moved` is the only
+       way a disabled member is the active target, see `targetIdsOf`). */
+    const marked = m.id === activeTargetId && (!off || v.moved);
+    const markedWhileOff = marked && off;
     const dash = marked ? '- (*)' : '-';
     if (off) markers.push('(disabled)');
     const text = `${m.name} ${dash} ${roleWord(m, primary)}${markers.length > 0 ? ` ${markers.join(' ')}` : ''}`;
@@ -343,11 +355,22 @@ export function showConfiguration(
           ? ['CASCADE.EXAMPLE_4_2', 'ROUTES.CASCADE_ASYNC_EXPLICIT']
           : markers.length > 0 ? ['DGMGRL.VERBOSE_ALTERNATE', 'ROUTES.PRIORITY_19C_EX_4_3'] : ['DGMGRL.BROKER_COMMANDS'];
       if (marked) cite.push('DGMGRL.SHOW_CONFIG_TARGET_ASTERISK');
-      lines.push(cmd(text, { indent, basis: 'documented', cite }));
+      lines.push(markedWhileOff
+        ? cmd(text, {
+          indent, basis: 'inferred', cite,
+          note: 'Oracle\'s FAILOVER example prints the disabled former primary without the (*) marker, but fast-start failover was disabled there. With fast-start failover still enabled, the former primary is the target the broker sets reciprocally, and a live 19.27 configuration printed "cdb1 - (*) Physical standby database (disabled)" with ORA-16661 under it after both a manual failover and an observer-initiated failover (fact check 2026-10-01, D9). Observed on a live 19.27 configuration, not documentation.',
+        })
+        : cmd(text, { indent, basis: 'documented', cite }));
     }
     if (off) {
       lines.push(cmd('ORA-16661: the standby database needs to be reinstated', {
         indent: indent + 2, basis: 'documented', cite: ['FAILOVER.SHOW_CONFIGURATION_AFTER', 'ORA.16661'],
+      }));
+    }
+    if (observerLost && m.id === primary) {
+      lines.push(cmd('Error: ORA-16820: fast-start failover observer is no longer observing this database', {
+        indent: indent + 2, basis: 'inferred', cite: ['ORA.16820', 'FAILOVER.SHOW_CONFIGURATION_AFTER'],
+        note: 'ORA-16820\'s cause text is documented ("A previously started observer was no longer actively observing this database"). The "Error:" form under the primary, and the ERROR configuration status, are what a live 19.27 configuration printed after its only observer was stopped and stayed away about three minutes (fact check 2026-10-01, D9); an observation, not documentation. The page prints it from the moment the last observer has stopped, without the wait the live system needed.',
       }));
     }
     if (warned.has(m.id as string)) {
@@ -409,19 +432,24 @@ export function showConfiguration(
     lines.push(opts.run?.roleChange === 'failover'
       ? nInferred(
         `the role has moved: the Fast-Start Failover line above is the document's setting, kept after the failover -- Oracle's FAILOVER example prints DISABLED because fast-start failover was disabled there`,
-        'REINSTATE REQUIRED is documented as present only after fast-start failover has occurred, which implies it stays enabled; no example shows the SHOW CONFIGURATION line between an observer-initiated failover and the reinstatement. The (disabled) marker and ORA-16661 under the former primary are the manual FAILOVER example\'s; the cause of ORA-16661, a role change operation that made the database require reinstatement, is not specific to a manual failover.',
+        'REINSTATE REQUIRED is documented as present only after fast-start failover has occurred, which implies it stays enabled. A live 19.27 configuration confirmed it (fact check 2026-10-01, D9): after both a manual failover with fast-start failover enabled and an observer-initiated failover, SHOW CONFIGURATION printed "Fast-Start Failover: Enabled in Zero Data Loss Mode" and the former primary as "- (*) Physical standby database (disabled)" with ORA-16661 under it. That is an observation, not documentation; Oracle\'s own FAILOVER example printed DISABLED and no marker because fast-start failover was disabled there. The cause of ORA-16661, a role change operation that made the database require reinstatement, is not specific to a manual failover.',
         ['FSFO.REINSTATE_REQUIRED_STATUS', 'FAILOVER.SHOW_CONFIGURATION_AFTER', 'ORA.16661'],
       )
-      : nModel(
-        'the role has moved: the Fast-Start Failover line above is the document\'s setting; whether a switchover leaves fast-start failover armed is documented only by implication',
-        'No example shows SHOW CONFIGURATION after a switchover with fast-start failover enabled.',
+      : nInferred(
+        'the role has moved: the Fast-Start Failover line above is the document\'s setting; a switchover leaves fast-start failover armed, and the former primary, restarted as a standby, is the target',
+        'No documented example shows SHOW CONFIGURATION after a switchover with fast-start failover enabled; the gate for a switchover is documented only by implication. A live 19.27 configuration (fact check 2026-10-01, D9) printed "Fast-Start Failover: Enabled in Zero Data Loss Mode" after a switchover and the former primary as "cdb1_stby - (*) Physical standby database". An observation, not documentation.',
         ['SWITCHOVER.FSFO_GATE'],
       ));
   }
   lines.push(blank());
   lines.push(cmd('Configuration Status:'));
   const reinstates = [...v.disabled].filter((id) => id !== (primary as string));
-  if (reinstates.length > 0) {
+  if (observerLost) {
+    lines.push(cmd('ERROR', {
+      basis: 'inferred', cite: ['ORA.16820'],
+      note: 'A live 19.27 configuration printed Configuration Status ERROR with ORA-16820 under the primary after its only observer was stopped, once the former primary had been reinstated (fact check 2026-10-01, D9). Observed, not documented. Whether ERROR outranks the reinstatement WARNING when both stand was not observed; the page lets the observer error take precedence.',
+    }));
+  } else if (reinstates.length > 0) {
     lines.push(cmd('WARNING', { basis: 'documented', cite: ['FAILOVER.SHOW_CONFIGURATION_AFTER'] }));
   } else if (unobserved) {
     lines.push(cmd('WARNING', {
@@ -557,9 +585,11 @@ export function showFastStartFailover(
       const m = doc.members.find((x) => x.id === t);
       const valid = m !== undefined && isDatabase(m) && (m.role === 'physical' || m.role === 'logical'
         || (v.moved && m.id === v.declared)) && !v.disabled.has(t as string);
-      lines.push(cmd(`${`${nameOf(t)}:`.padEnd(20, ' ')}${valid ? 'valid' : 'invalid'}${MODEL_MARK}`, {
+      const awaiting = v.disabled.has(t as string);
+      lines.push(cmd(`${`${nameOf(t)}:`.padEnd(20, ' ')}${valid ? 'valid' : 'invalid'}${awaiting ? ' - member is disabled' : ''}${MODEL_MARK}`, {
         indent: 4, basis: 'model', cite: [fieldsCite, 'FSFO.TARGET_KIND'],
-        note: "A per-target valid flag is documented; the column heading and its spacing are this page's model, and the flag here reports only whether the member could be a target at all -- a physical or logical standby.",
+        note: "A per-target valid flag is documented; the column heading and its spacing are this page's model, and the flag here reports only whether the member could be a target at all -- a physical or logical standby."
+          + (awaiting ? ' The reason after \'invalid\' is what a live 19.27 configuration printed for the former primary after a failover ("invalid - member is disabled", fact check 2026-10-01, D9): an observation, not documentation.' : ''),
       }));
     }
     if (targets.length > 1) {
