@@ -150,9 +150,11 @@ export const applicationView: Lesson = {
           <Caption>
             Defaults per the Oracle 19c Net Services Reference (connect-descriptor timeout
             parameters); tuning guidance per the 19c High Availability Overview, &ldquo;Oracle Net TNS
-            String Parameters.&rdquo; The JDBC thin driver does not inherit Oracle Net&rsquo;s 60 s
-            transport default, so the generated thin URL always spells{' '}
-            <M>TRANSPORT_CONNECT_TIMEOUT</M> out with an explicit <M>sec</M> suffix.
+            String Parameters.&rdquo; Under 26ai the JDBC thin driver has defaults of its own &mdash; a{' '}
+            <M>TRANSPORT_CONNECT_TIMEOUT</M> of 20 seconds and a <M>RETRY_DELAY</M> of 1 second &mdash;
+            where Oracle Net&rsquo;s is 60 s and prints none; the 19c JDBC pages print neither. The
+            generated thin URL therefore always spells <M>TRANSPORT_CONNECT_TIMEOUT</M> out, as a bare
+            number of seconds the way the JDBC page&rsquo;s own example writes it.
           </Caption>
         </>
       ),

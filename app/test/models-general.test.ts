@@ -281,8 +281,10 @@ describe('tnsnames.ora and the JDBC thin URL', () => {
       '   (CONNECT_DATA = (SERVICE_NAME = app_svc)))',
       '',
       '# not in the string, defaults apply:',
-      '#   TRANSPORT_CONNECT_TIMEOUT (60 s default) - CONNECT_TIMEOUT (no cap)',
-      '#   RETRY_COUNT (0 -- no retries) - RETRY_DELAY (immediate)',
+      '#   TRANSPORT_CONNECT_TIMEOUT (60 s default)',
+      '#   CONNECT_TIMEOUT (no printed default; drawn as no cap)',
+      '#   RETRY_COUNT (no printed default; drawn as 0)',
+      '#   RETRY_DELAY (no printed default; drawn as 0 s)',
     ].join('\n'));
   });
 
@@ -307,16 +309,18 @@ describe('tnsnames.ora and the JDBC thin URL', () => {
     expect(text).not.toContain('dc3-obs01');
   });
 
-  it('the thin URL always spells the transport timeout, with its sec suffix', () => {
+  it('the thin URL always spells the transport timeout, as a bare number of seconds', () => {
+    /* FC 10-01 GEN-27: the JDBC page writes bare numbers and lists units only for RETRY_DELAY, so no `sec` is invented. */
     const url = lineText(firstLine(buildJdbc(doc())));
-    expect(url).toContain('(TRANSPORT_CONNECT_TIMEOUT=60sec)');
+    expect(url).toContain('(TRANSPORT_CONNECT_TIMEOUT=60)');
+    expect(url).not.toMatch(/\dsec/);
     expect(url.startsWith('jdbc:oracle:thin:@(DESCRIPTION=')).toBe(true);
     const tuned = buildJdbc(classicTopology({ tct: 3, ct: 90, rc: 30, rd: 3, transportLag: 0 }));
     const tunedUrl = lineText(firstLine(tuned));
-    expect(tunedUrl).toContain('(TRANSPORT_CONNECT_TIMEOUT=3sec)(CONNECT_TIMEOUT=90sec)(RETRY_COUNT=30)(RETRY_DELAY=3)');
-    /* The sec note names neither driver release: the pages do not state one. */
+    expect(tunedUrl).toContain('(TRANSPORT_CONNECT_TIMEOUT=3)(CONNECT_TIMEOUT=90)(RETRY_COUNT=30)(RETRY_DELAY=3)');
+    /* The note names no driver release: the 19c card says no thin default is printed. */
     const text = renderPlain(tuned);
-    expect(text).toContain('sec written out on purpose');
+    expect(text).toContain('bare numbers');
     expect(text).not.toMatch(/1[89]c driver changed|21c|23ai/);
   });
 

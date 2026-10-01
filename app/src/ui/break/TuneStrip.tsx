@@ -243,7 +243,7 @@ export function TuneStrip({ layout = 'row' }: { layout?: TuneLayout }) {
           {CLIENT_TIMING_FIELDS.map((t) => {
             const unit = clientTimingUnit(t, client);
             return (
-              <Field key={t.name} name={t.name} mono note={t.note}>
+              <Field key={t.name} name={t.name} mono note={t.note(topology.value.config.edition)}>
                 <TuneNumber
                   bound={t.bound} value={t.value(client)} label={t.name}
                   disabled={dis} onValue={(v) => tuned(() => editClientTiming(t, v, appId))}

@@ -3,7 +3,9 @@
  *
  * Defaults per the Oracle 19c Net Services Reference (connect-descriptor
  * timeout parameters); tuning guidance per the 19c High Availability Overview,
- * "Oracle Net TNS String Parameters".
+ * "Oracle Net TNS String Parameters". The JDBC thin driver has defaults of its
+ * own from 26ai, from the 26ai JDBC "Data Sources and URLs" page: a
+ * TRANSPORT_CONNECT_TIMEOUT of 20 s and a RETRY_DELAY of 1 s.
  */
 
 import { M } from '../facts-ui';
@@ -24,7 +26,7 @@ export const clientParameters: RefTableData = {
       cells: [
         <M>TRANSPORT_CONNECT_TIMEOUT</M>,
         'DESCRIPTION',
-        '60 s',
+        '60 s · JDBC thin 20 s from 26ai',
         <>
           Establishing the TCP connection to one ADDRESS, charged per IP address the host name
           resolves to. The clock that runs while a host is silently unreachable.
@@ -60,8 +62,12 @@ export const clientParameters: RefTableData = {
       cells: [
         <M>RETRY_DELAY</M>,
         'DESCRIPTION',
-        'not set',
-        <>Seconds between traversals. Unset means the next traversal starts immediately.</>,
+        'not set · JDBC thin 1 s from 26ai',
+        <>
+          Seconds between traversals. The Oracle Net reference prints no default, and this page
+          draws unset as the next traversal starting immediately; the JDBC thin driver defaults to
+          1 second from 26ai, so its URL spells 0 out.
+        </>,
       ],
     },
     {

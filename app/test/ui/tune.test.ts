@@ -641,7 +641,7 @@ describe('the settings column', () => {
       'TRANSPORT_CONNECT_TIMEOUT', 'CONNECT_TIMEOUT', 'RETRY_COUNT', 'RETRY_DELAY',
     ]);
     expect([...group.querySelectorAll('.client-presets .btn')].map((b) => b.textContent)).toEqual(['Defaults', 'Tuned']);
-    expect(group.querySelector('.tune-f')!.getAttribute('title')).toMatch(/^Default 60 s, for each ADDRESS/);
+    expect(group.querySelector('.tune-f')!.getAttribute('title')).toMatch(/^Default 60 s in tnsnames\.ora, for each ADDRESS/);
     /* The application is the one `timelineApplication()` names: a new one is selected, and the column follows it. */
     addApplication();
     await tick();
