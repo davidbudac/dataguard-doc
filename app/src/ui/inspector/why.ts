@@ -158,8 +158,8 @@ export type WhyKey = keyof typeof WHY;
  * 26ai one. Maximum protection: "The FastStartFailoverLagLimit property is not
  * used in maximum protection mode" (26ai property page; 19c agrees by
  * omission) -- the reason given there is that one, not the maximum performance
- * wording of the lag type (TXT-80). The rail's form and Simulate's tune strip
- * both read this.
+ * wording of the lag type (TXT-80). The rail's form and the Detailed timeline's
+ * popover both read this.
  */
 export function lagLimitGate(doc: TopologyDoc): WhyState {
   const ed = doc.config.edition;

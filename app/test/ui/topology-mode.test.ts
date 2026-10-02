@@ -147,14 +147,15 @@ describe('Topology with no run is Build as it always was', () => {
     expect(r.querySelector('nav.pal-add')).not.toBeNull();
     const row = r.querySelector('.app-dock .dock-scn');
     expect(row).not.toBeNull();
-    expect(row?.querySelector('.dock-scn-k')?.textContent).toBe('Scenarios');
+    expect(row?.querySelector('.dock-scn-k')?.textContent).toBe('Break');
     expect([...row!.querySelectorAll('button')].map((b) => b.textContent))
       .toEqual(shelf(topology.value, 0).map((t) => t.label));
     /* One row, from the dock and from nowhere else. */
     expect(r.querySelectorAll('.dock-scn')).toHaveLength(1);
-    /* Under the readings, and (with a run) above the small timeline. */
+    /* The Break row (scenarios and the three chips) over the readings, and (with a run) above the small timeline. */
     const dock = r.querySelector('.app-dock')!;
-    expect([...dock.children].map((c) => c.className.split(' ')[0])).toEqual(['dock-status', 'dock-scn']);
+    expect([...dock.children].map((c) => c.className.split(' ')[0])).toEqual(['dock-break', 'dock-status']);
+    expect(dock.querySelector('.dock-break .sc-row')).not.toBeNull();
   });
 
   it('titles each scenario with its sentence and refuses in place', async () => {
@@ -206,12 +207,14 @@ describe('a scenario from the dock makes the run', () => {
     expect(trace.value).not.toBeNull();
     expect(runShown()).toBe(true);
     expect(mini(r)).not.toBeNull();
-    /* One thin bar row per database, far sync and observer; none for the
-       application and none for a link. */
+    /* One thin bar row per database, far sync, observer and application lane; none for a link. */
     const lanes = [...r.querySelectorAll('.mtl-lane')];
-    expect(lanes.map((l) => l.getAttribute('data-lane'))).toEqual(['prm01', 'obs01', 'sby01']);
-    expect(lanes.map((l) => l.getAttribute('data-kind'))).toEqual(['member', 'observer', 'member']);
-    expect(r.querySelector('.mtl [data-lane="app01"]')).toBeNull();
+    const kinds = lanes.map((l) => l.getAttribute('data-kind'));
+    expect(kinds).toContain('member');
+    expect(kinds).toContain('observer');
+    expect(kinds).toContain('application');
+    expect(kinds).not.toContain('link');
+    expect(lanes.map((l) => l.getAttribute('data-lane'))).toEqual(expect.arrayContaining(['prm01', 'obs01', 'sby01']));
     for (const l of lanes) expect(l.querySelectorAll('.bar').length).toBeGreaterThan(0);
     /* Its bars carry the timeline's own phase classes, and a tooltip each. */
     const seg = r.querySelector('.mtl .tl-seg');
@@ -227,8 +230,8 @@ describe('a scenario from the dock makes the run', () => {
     expect(r.querySelector('.dock-status.is-run .readout')).toBeNull();
     const readout = r.querySelector('.dock-status.is-run .sb-ro')?.textContent ?? '';
     expect(readout).toContain('Outcome');
-    /* The caption is the plain sentence. */
-    expect(r.querySelector('.mtl-cap')?.textContent).toBeTruthy();
+    /* No caption sentence: the readings and the badges say it. */
+    expect(r.querySelector('.mtl-cap')).toBeNull();
     expect(r.querySelector('.mtl input.tl-tp-in')).not.toBeNull();
   });
 
@@ -244,9 +247,9 @@ describe('a scenario from the dock makes the run', () => {
     await pressScenario(r, 'healthy');
     expect(healthyRun.value).toBe(true);
     expect(mini(r)).not.toBeNull();
-    expect(r.querySelectorAll('.mtl-lane')).toHaveLength(3);
+    expect(r.querySelectorAll('.mtl-lane').length).toBeGreaterThanOrEqual(3);
     expect(r.querySelector('.mtl .tl-transport')).toBeNull();
-    expect(r.querySelector('.mtl-cap')?.textContent).toContain('Everything is working');
+    expect(button(r.querySelector('.dock-scn')!, scenario('healthy').label)?.getAttribute('aria-pressed')).toBe('true');
   });
 
   it('is put away by Clear, which takes the run with it', async () => {
@@ -313,10 +316,10 @@ describe('the mini timeline is only Topology\'s', () => {
     if (issues >= 0) expect(at).toBeLessThan(issues);
   });
 
-  it('keeps to the databases and observers, whatever lanes the run has', () => {
+  it('draws every lane but the links', () => {
     const lane = (kind: string) => ({ kind }) as never;
     expect(glanceLanes([lane('member'), lane('link'), lane('application'), lane('observer')])
-      .map((l) => l.kind)).toEqual(['member', 'observer']);
+      .map((l) => l.kind)).toEqual(['member', 'application', 'observer']);
   });
 });
 

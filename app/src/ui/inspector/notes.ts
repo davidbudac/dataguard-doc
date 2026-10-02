@@ -1,8 +1,8 @@
 /**
  * The sentence under a setting, once.
  *
- * The inspector's forms print these under a control, and the tune strip
- * carries the same words as the control's tooltip: a value edited
+ * The inspector's forms print these under a control, and the timeline's
+ * chips and popovers carry the same words as the control's tooltip: a value edited
  * from either place is described by one sentence, never by two that could
  * drift. Nothing here is a claim the forms did not already make; the accuracy
  * rules for them (AGENTS.md) apply where they are defined, not where they are

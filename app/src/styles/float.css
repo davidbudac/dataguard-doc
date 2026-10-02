@@ -294,6 +294,14 @@ button.issue{border-bottom:1px solid var(--ln)}
   .dock-scn .ctl-off{gap:6px}
   .dock-scn .why{font-size:11px;white-space:nowrap;align-self:center}
 
+  /* The dock's Break row (break/PlayDock.tsx): the scenarios take what is left and the
+     three discrete settings sit at the right, on one row while they fit and wrapped
+     under the scenarios where they do not. */
+  .dock-break{display:flex;align-items:center;flex-wrap:wrap;gap:4px 14px;min-width:0;
+    border-bottom:1px solid var(--ln)}
+  .dock-break>.dock-scn{flex:1 1 auto;min-width:0;border-top:0}
+  .dock-break>.sc-row{margin-left:auto;padding:4px 16px 4px 0}
+
   .fnd-chips{display:flex;align-items:center;gap:6px;flex:0 0 auto;margin-left:auto}
   .fnd-chip{display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border:0;
     border-radius:999px;font:500 12px/1.4 var(--sans);white-space:nowrap;cursor:pointer;

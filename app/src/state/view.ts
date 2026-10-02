@@ -142,13 +142,6 @@ export const breakApp = signal<string | null>(null);
  */
 export const summaryOpen = signal<boolean>(false);
 /**
- * Whether the Detailed timeline's settings -- the column beside the lanes, or the
- * row above them where the window is narrow (break/TuneStrip.tsx) -- are drawn. On to start; remembered under
- * `dg-tune` (persist.ts), read once at boot like `hintsOn`. They are
- * absent, not hidden, while this is off.
- */
-export const tuneOn = signal<boolean>(true);
-/**
  * Whether the rail beside the canvas is folded to its slim strip.
  *
  * Only where the rail is a column (`wide`, and not in Learn, whose right half

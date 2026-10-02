@@ -14,6 +14,13 @@
  * empty view is not an instruction to go and find a menu: it is the cards, and
  * the buttons on them.
  *
+ * There is no settings column or row: the timeline is the control. The three
+ * settings that are a choice are chips on the bar (`SettingChips`), and a brace
+ * that is one setting has its label made a button that opens a popover with the
+ * number, the inspector's sentence and, for the threshold, the lag limit beside
+ * it (`BracePopover`); the grips on the braces and the lanes drag the same
+ * settings (`TuneDrag`).
+ *
  * The model's lane `y` values are not used: the rows are re-stacked here (data
  * centre headers between them), and the markers and braces that hang off a lane
  * or under the axis are moved by however far theirs moved.
@@ -35,6 +42,7 @@ import type {
 } from '../timeline/build';
 import { Defs, Lane, Marker } from '../timeline/Timeline';
 import { Brace } from '../timeline/Brace';
+import { BraceLabel, BracePopover } from '../timeline/BracePopover';
 import { applyTune } from '../timeline/tune';
 import { Playhead } from '../timeline/Playhead';
 import { EventDrag } from '../timeline/EventDrag';
@@ -59,7 +67,7 @@ import { ReadoutFold, SummaryBand } from './SummaryBand';
 import { EventStrip, EV, MoreMenu, stripWidth } from './lanes-events';
 import type { MenuTarget } from './lanes-events';
 import { AppTimeline, appTimelineOn, TimelineSwitch } from './TimelineView';
-import { SETTINGS_COLUMN_MIN_W, TuneStrip, TuneToggle, tuneLayoutFor } from './TuneStrip';
+import { SettingChips } from './SettingChips';
 import { assignLanes, cardSub, hostBands, planPills, segmentAt, siteOrder } from './lanes-layout';
 import type { Placed, PillPlan } from './lanes-layout';
 
@@ -464,8 +472,8 @@ function LanesBar({ run }: { run: RunTimeline | null }) {
         />
       ) : null}
       <ReadoutFold><TerseReadout run={trace.value !== null} /></ReadoutFold>
+      {appTl ? null : <SettingChips />}
       <TimelineSwitch />
-      <TuneToggle />
       {run?.held ? (
         <button
           type="button" class="btn sb-fit"
@@ -550,11 +558,8 @@ function Lanes({ run, fr }: { run: RunTimeline | null; fr: Frame }) {
   const [menuKey, setMenuKey] = useState<string | null>(null);
   const section = useRef<HTMLElement | null>(null);
   const body = useRef<HTMLElement | null>(null);
-  /* The settings are a column beside the lanes when the section has the room, else a row above
-     them. Decided by the section's width, never the body's: the column takes width from the body,
-     so a decision made on the body would flip itself. Until it is measured the column is assumed. */
-  const [measureSection, sectionW] = useWidth(SETTINGS_COLUMN_MIN_W);
-  const settings = tuneLayoutFor(sectionW);
+  /* The brace whose card is open, and the label it opened from. */
+  const [pop, setPop] = useState<{ key: string; trigger: Element } | null>(null);
 
   const plotR = model?.scale.plotR ?? width - TL_FULL.padR;
   const scale = useMemo(() => model?.scale ?? steadyScale(plotL, plotR), [model, plotL, plotR]);
@@ -788,15 +793,13 @@ function Lanes({ run, fr }: { run: RunTimeline | null; fr: Frame }) {
   const steadyX = scale.x(scale.clampT(t));
   /* The ends of the clocks that are one setting each: a grip on the brace and, where a lane's band is that clock, on the lane. */
   const handles = useTuneHandles(tunable && tr !== null && model !== null, doc, tr as Trace, model as TimelineModel);
+  const popHandle = pop === null ? undefined : handles.find((h) => h.key === pop.key);
 
   return (
-    <section class="ln-view float-card" aria-label="Detailed timeline: members and their timelines" ref={(el) => { section.current = el; measureSection(el); }}>
+    <section class="ln-view float-card" aria-label="Detailed timeline: members and their timelines" ref={section}>
       <LanesBar run={run} />
       <SummaryBand />
-      {settings === 'row' ? <TuneStrip /> : null}
 
-      <div class="ln-main">
-        {settings === 'column' ? <TuneStrip layout="column" /> : null}
       <div
         class="ln-body"
         ref={(el) => { body.current = el; fr.measure(el); }}
@@ -909,7 +912,22 @@ function Lanes({ run, fr }: { run: RunTimeline | null; fr: Frame }) {
                 {model?.zeroNote ? (
                   <text class="t-tick" x={model.scale.plotL} y={axisY + 28}>{model.zeroNote}</text>
                 ) : null}
-                {model ? model.braces.map((b) => <Brace key={b.key} brace={{ ...b, y: b.y + braceDy }} />) : null}
+                {model ? model.braces.map((b) => {
+                  const moved = { ...b, y: b.y + braceDy };
+                  /* A brace that is one setting has its label made a button over the plain one: it opens the setting. */
+                  const hd = handles.find((h) => h.key === b.key);
+                  return (
+                    <Fragment key={b.key}>
+                      <Brace brace={moved} />
+                      {hd === undefined ? null : (
+                        <BraceLabel
+                          brace={moved} open={pop?.key === b.key}
+                          onOpen={(el) => setPop(pop?.key === b.key ? null : { key: b.key, trigger: el })}
+                        />
+                      )}
+                    </Fragment>
+                  );
+                }) : null}
 
                 <Links
                   placed={placed} pills={pills} rows={rows} gapY={gapY} cardX={cardX}
@@ -984,9 +1002,14 @@ function Lanes({ run, fr }: { run: RunTimeline | null; fr: Frame }) {
               </svg>
               <Tooltip tip={tip} />
             </div>
+            {popHandle === undefined || pop === null ? null : (
+              <BracePopover
+                key={pop.key} handle={popHandle} doc={doc} anchor={pop.trigger} body={body.current}
+                disabled={!canEdit(viewport.value)} onClose={() => setPop(null)}
+              />
+            )}
           </>
         )}
-      </div>
       </div>
       {menu === null ? null : (
         <MoreMenu key={menuKey ?? ''} target={menu} doc={doc} t={t} view={section.current} onClose={closeMenu} />

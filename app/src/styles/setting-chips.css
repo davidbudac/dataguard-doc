@@ -1,0 +1,18 @@
+/* The discrete settings as chips (ui/break/SettingChips.tsx): on Topology's Break
+   row and on the Detailed timeline's bar. Colour from tokens only. */
+
+@media screen{
+  .sc-row{flex:0 0 auto;display:flex;align-items:center;flex-wrap:wrap;gap:4px 6px;min-width:0}
+  .sc{position:relative;display:inline-flex;align-items:center;gap:5px;height:24px;padding:0 20px 0 8px;
+    box-sizing:border-box;border:1px solid var(--ln);border-radius:12px;background:var(--sf);cursor:pointer;white-space:nowrap}
+  .sc:hover{border-color:var(--ln2);background:var(--sf3)}
+  .sc:focus-within{border-color:var(--fc,var(--vi))}
+  .sc::after{content:'▾';position:absolute;right:8px;top:50%;transform:translateY(-52%);
+    font-size:10px;color:var(--ik3);pointer-events:none}
+  .sc-k{font-size:10.5px;color:var(--ik3)}
+  .sc-k.mono{font-family:var(--mono);letter-spacing:0}
+  .sc-sel{appearance:none;-webkit-appearance:none;border:0;background:transparent;margin:0;padding:0;
+    font:600 11.5px/1 var(--mono);color:var(--ik);cursor:pointer;outline:none}
+  .sc-sel:disabled{opacity:.55;cursor:default}
+  .sc-all{flex:0 0 auto;padding:2px 8px;font-size:11.5px;white-space:nowrap;border-color:var(--ln)}
+}

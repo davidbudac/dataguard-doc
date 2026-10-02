@@ -17,7 +17,6 @@
  *   `dg-rail`        whether the side rail is folded to its strip ('1' = folded)
  *   `dg-break-timeline` the Detailed timeline's timeline, `config` or `app` -- anything else reads as config
  *   `dg-summary`     whether the Detailed timeline's run summary band is unfolded ('1' = unfolded)
- *   `dg-tune`        whether the Detailed timeline's settings are drawn ('0' = away; unset reads as drawn)
  *   `dg-fsfo-cfg-v1` the published page's stored configuration. Read once when
  *                    there is nothing newer, and never deleted: the old page
  *                    is still serving from /legacy/ and still owns that key.
@@ -39,7 +38,7 @@ import { isDesktop, saveFile } from '@/ui/common/desktop';
 import type { DecodeResult } from './codec';
 import {
   BREAK_TIMELINES, breakTimeline, gridOn, hintsOn, inspectorOpen, issuesOpen, railCollapsed,
-  summaryOpen, tuneOn, viewport,
+  summaryOpen, viewport,
 } from './view';
 import type { BreakTimeline, PalettePref, ThemePref } from './view';
 
@@ -55,7 +54,6 @@ export const ISSUES_KEY = 'dg-issues';
 export const RAIL_KEY = 'dg-rail';
 export const BREAK_TIMELINE_KEY = 'dg-break-timeline';
 export const SUMMARY_KEY = 'dg-summary';
-export const TUNE_KEY = 'dg-tune';
 
 export const AUTOSAVE_MS = 500;
 export const RESTORE_NOTICE_MS = 8000;
@@ -186,20 +184,6 @@ export function setSummaryOpen(on: boolean): void {
 }
 
 export const toggleSummary = (): void => setSummaryOpen(!summaryOpen.value);
-
-/* ---------------- Simulate's tune strip ---------------- */
-
-/** Drawn or not -- `tuneOn` in `view.ts`; unset, or anything but '0', means drawn. */
-export function loadTune(): void {
-  tuneOn.value = read(TUNE_KEY) !== '0';
-}
-
-export function setTune(on: boolean): void {
-  tuneOn.value = on;
-  write(TUNE_KEY, on ? '1' : '0');
-}
-
-export const toggleTune = (): void => setTune(!tuneOn.value);
 
 /* ---------------- the validation panel ---------------- */
 

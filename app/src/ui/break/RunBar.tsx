@@ -102,8 +102,10 @@ type Sizes = { sep: number; items: Record<string, { long: number; short: number 
  * line, and a reading that does not fit is left out whole, never clipped.
  * The line's title carries every reading, so the ones left out are a hover away.
  */
-export function TerseReadout({ run }: { run: boolean }) {
-  const chips = readout.value.filter((c) => c.id !== 'findings');
+export function TerseReadout({ run, omit }: { run: boolean; omit?: readonly string[] }) {
+  /* `omit` names readings (by their eyebrow) to leave off the line: a layout that
+     draws them somewhere else, on the small timeline, says so and the line forgets them. */
+  const chips = readout.value.filter((c) => c.id !== 'findings' && !(omit?.includes(c.k) ?? false));
   const [ref, width] = useWidth(1e6);
   const meter = useRef<HTMLDivElement>(null);
   const [sizes, setSizes] = useState<Sizes>({ sep: 0, items: {} });

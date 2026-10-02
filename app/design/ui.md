@@ -1855,6 +1855,8 @@ the connect-string parameters.
 
 ## Tuning a run in Simulate (as built, 2026-09-30)
 
+*Superseded 2026-10-01 by "The timeline is the control", below: the settings row and its `Settings` toggle (`TuneStrip`, `tuneOn`, `dg-tune`) are gone; the mapping, the held axis and the grips stand.*
+
 Simulate used to offer no way to change a setting: the reader went to Build, edited the
 inspector and came back. Four things put the settings a run answers to on the timeline's own
 chrome. All four are offered under one gate -- Simulate, and `canEdit` -- so Learn, the printed
@@ -1877,7 +1879,7 @@ report, the pinned-scale figures and the narrow read-only viewer draw exactly wh
   (`lastInterestingT <= t1`) and unconditionally while a drag or scrub is in progress
   (`tuneDragging`). `held` is true and *Fit timeline* lets go, as after an event drop. Undo, a
   scenario and edits made elsewhere refit as before.
-- **The settings row** (`ui/break/TuneStrip.tsx`): Protection mode, FAST_START FAILOVER,
+- **The settings row** (superseded 2026-10-01; `ui/break/TuneStrip.tsx` is deleted, its three choices are `SettingChips` and its numbers are braces): Protection mode, FAST_START FAILOVER,
   FastStartFailoverThreshold, FastStartFailoverLagLimit, then LogXptMode and Apply lag for the
   standby the run is about (`tunedStandby`: the one promoted, else the first failover target,
   else the first standby), Role transition, and *All settings* (Build, nothing selected, the
@@ -1917,6 +1919,8 @@ report, the pinned-scale figures and the narrow read-only viewer draw exactly wh
 
 ## Topology and the Detailed timeline (as built, 2026-09-30)
 
+*Superseded 2026-10-01 by "The timeline is the control", below: the dock's rows, the small timeline's caption and its bars, and the Detailed timeline's settings column and row; the names, the ids, the lanes and what went with Split stand.*
+
 Two of the four modes were re-cut. The ids did not move (`build`, `break`); what a reader
 calls them and what each holds did. **This section supersedes, for these two modes**: §3's
 table rows for Build and Simulate, "Simulate's two layouts" (there is one now; everything
@@ -1941,7 +1945,7 @@ say *Split* or *in both layouts*.
   says which table the bar is showing). The hover icons are the break icons, aimed at the
   playhead; a press on one does not start a drag. After a scenario or an event the playhead
   rests at the end of the run, as it did in Simulate.
-- **The dock** (`FloatDock` in `App.tsx`; the docked narrow layout stacks the same parts):
+- **The dock** (superseded 2026-10-01, see `break/PlayDock.tsx`; the docked narrow layout stacks the same parts):
   the status row, the scenario row (`break/ScenarioRow.tsx`: the shelf as one wrapping row of
   buttons, the one whose events are the current list pressed, hidden for read-only viewers),
   then the small timeline while a run exists. With a run the status row is the terse
@@ -1950,7 +1954,7 @@ say *Split* or *in both layouts*.
   strip at 1024×768. The scenarios were on the left under the add palette in the first cut;
   with a run on screen the two did not fit a 900 px window and the column scrolled in the
   middle of the canvas, so they are in the dock, above the timeline they cause.
-- **The small timeline** (`timeline/MiniTimeline.tsx`, `styles/mini-timeline.css`): the
+- **The small timeline** (superseded 2026-10-01; `timeline/MiniTimeline.tsx`, `styles/mini-timeline.css`): the
   transport, the run's headline as its plain sentence, *Clear*, *Detailed timeline* (the mode,
   playhead kept) and the pop-out; under them one 8 px bar per database, far sync and observer
   lane (no links, no application, no braces, no sentences), the injected events as numbered
@@ -1959,7 +1963,7 @@ say *Split* or *in both layouts*.
   playhead's resting place is on it) and not drawn.
 - **The Detailed timeline is the lanes.** `LanesView` is the mode wherever it floats
   (>= 1024 px); the drawing is not there, and the cards at the head of the lanes are the
-  picture of the topology. Its settings are a 284 px column at the left (`TuneStrip
+  picture of the topology. Its settings *were* (superseded 2026-10-01) a 284 px column at the left (`TuneStrip
   layout="column"`: Protection, Fast-start failover, Standby, Environment, Application with
   the four connect-string timings and *Defaults* / *Tuned*; a greyed control's reason in
   full under it), and the row above the lanes when the section is under 1180 px
@@ -1997,3 +2001,82 @@ say *Split* or *in both layouts*.
   threshold, the role transition and the apply lag are edited in the settings column and by
   the grips on the clocks; the outcome and the time the new primary opens are on the bar.
 
+## The timeline is the control (as built, 2026-10-01)
+
+The loop the page is for is *build, break, turn a knob, see the outcome move*, and the
+knobs were in a form: a row, then a column, of number boxes beside a drawing whose bars
+moved. Six sketches put the settings on the timeline instead -- in the dock, in a column at
+the right, under the cards, on the braces -- and were built side by side in one running page
+so they could be tried. The user chose two, and they are the page now: **prototype 3** for
+Topology's dock and **prototype 6** for the Detailed timeline. They won because the setting
+and the outcome are the same object: the threshold *is* the length of a bracket on the bar,
+the new primary's opening *is* a badge on the bar it happens on, and a control that sits
+away from them asks the reader to join the two. The other four sketches and the switch that
+held them did not come along.
+
+**What it replaced.** The settings row above the timeline and the settings column beside
+the lanes of 2026-09-30 (`TuneStrip`, its `Settings` toggle, `tuneOn`, `dg-tune`, the
+`.tune-*` rules and `SETTINGS_COLUMN_MIN_W`), and the small timeline's caption sentence and
+its bare bars. The mapping (`tuneForBrace`), the held axis (`run.ts`) and the grips
+(`tune-handles.ts`, `TuneDrag.tsx`) are untouched; `TuneNumber` stays as the number box the
+popover and the small timeline's labels edit in.
+
+- **One component for the three choices** (`ui/break/SettingChips.tsx`). Protection mode,
+  FAST_START FAILOVER and the LogXptMode of the standby the run is about
+  (`tunedStandby`) are `label value ▾` chips -- native selects -- and `All settings →`
+  opens Topology's inspector on the fast-start failover fold with nothing selected. Each
+  is the inspector's own setter wrapped in `tuned(...)`, greyed by `logXptOptions` with the
+  reason in the chip's title; the title opens with the inspector's own sentence
+  (`inspector/notes.ts`). Nothing new is claimed. The dock and the Detailed timeline's bar
+  both draw this component (`logXpt={false}` would leave the transport off); the bar leaves
+  it out while the Application timeline is the one drawn, which has its own strip.
+- **Topology's dock** (`ui/break/PlayDock.tsx`, three rows): **Break** -- the scenarios
+  (`ScenarioRow label="Break"`) with the chips right-aligned on the same row, wrapping under
+  the scenarios where they do not fit -- then the status row (`TerseReadout run` without
+  the two readings the timeline draws as badges, and the finding chips; the readout as it
+  stands without a run), then the small timeline.
+- **The small timeline is the control** (`timeline/MiniTimeline.tsx`, `mini-timeline.css`).
+  Every lane but the links is drawn, the application's too, in rows tall enough to carry
+  what governs a bar: a labelled **bracket** over the bar of the lane a setting's clock
+  belongs to (the lane whose band is that clock where there is one, else the master
+  observer's for the threshold and the promoted standby's for the role transition and the
+  apply lag), with its name, its
+  number and its unit on the label and a **grip** at its right end. Drag the grip and the
+  setting moves live and the run recomputes on the held axis; press the **number** on the
+  label and it becomes a box (Escape or leaving closes it). Labels of one lane are packed
+  left to right: one that would touch the one before slides right, then drops to its
+  number, then is left off (its tooltip and grip say the rest). **Outcome badges** -- white
+  on the bar, readings not controls -- sit at "New primary open" and at each application's
+  reconnect; the model's decision marks are **pins**. On an application's connect-string
+  lane a `retry window` bracket spans the first dial to the last that failed: a sum the
+  connect string makes, so its grip drags `RETRY_DELAY` when the string waits between
+  traversals (the window moves by the number of gaps for each second), else
+  `TRANSPORT_CONNECT_TIMEOUT` (`CONNECT_TIMEOUT` where that is set and smaller), and the
+  number on it is a reading, not a box. There is no caption sentence. A reader who cannot
+  edit sees the brackets and plays the run but has no grips and no boxes.
+- **The Detailed timeline** (`break/LanesView.tsx`): no settings column, row or toggle. The
+  bar carries the chips and `All settings →` after the readings. A brace that is one setting
+  has its label made a button over the plain one (`timeline/BracePopover.tsx`, `BraceLabel`):
+  a hover and focus ring and a caret; pressing it opens a card over the label with the
+  setting's name, its number box, the inspector's one sentence and -- for the threshold,
+  the one clock with a second setting bound to it -- FastStartFailoverLagLimit beside it,
+  greyed by `lagLimitGate` with the reason in a `WhyPill` (under 19c with maximum
+  availability, as the inspector). It closes on Escape, on a press outside it, on the cross
+  and on the label's second press, and hands focus back to the label. Its position is the
+  label's box in the body's coordinates, written as `--x` / `--y` through a ref (the one
+  escape hatch, as `App.tsx`'s `--bar-bottom`). The grips on the braces and lane bands are
+  unchanged: the label is the other way to the same setting.
+- **Files.** New: `break/SettingChips.tsx`, `break/PlayDock.tsx`, `timeline/BracePopover.tsx`,
+  `styles/setting-chips.css`. Replaced: `timeline/MiniTimeline.tsx` (its export, and
+  `glanceLanes`, now "every lane but the links"). Merged into existing sheets:
+  `mini-timeline.css` (brackets, badges, pins, the number box), `lanes.css` (the popover),
+  `float.css` (the dock's Break row). Additive changes to shared code: `ScenarioRow`'s
+  `label`, `TerseReadout`'s `omit`, `TuneId` gains `'clientTiming'`. Deleted: `break/TuneStrip.tsx`
+  and what hung on it (`tuneOn`, `toggleTune`, `setTune`, `loadTune`, `TUNE_KEY`, `.tune-strip`
+  / `.tune-col` / `.tune-g` / `.tune-f` / `.tune-k` / `.tune-c` / `.tune-sel` / `.tune-spacer` /
+  `.tune-all` / `.tune-why` / `.sb-tune`, `.ln-main`, `TuneLayout`, `tuneLayoutFor`).
+- **Tests**: `test/ui/mini-timeline-tune.test.ts` (the dock, badges, brackets, a grip, a
+  typed number, the retry window, read-only), `brace-popover.test.ts`, and the cases of
+  `tune.test.ts` / `tune-drag.test.ts` / `detailed-timeline.test.ts` /
+  `summary-band.test.ts` / `topology-mode.test.ts` that followed. Browser pass: to do
+  (popover placement, the chips' wrap in the dock at 1024 px, label packing at 1100 px).

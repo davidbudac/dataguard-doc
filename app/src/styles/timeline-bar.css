@@ -1,10 +1,10 @@
-/* The Detailed timeline's bar, the settings and the timeline's shared parts.
+/* The Detailed timeline's bar and the timeline's shared parts.
 
    The bar is the one line over the lanes (break/LanesView.tsx `LanesBar`): the
    transport, the run's readings as one terse line (break/RunBar.tsx), the
    findings as a count with a dropdown, and the colour key behind an (i). The
    rest of the file is what the timelines share: the application's timeline, and
-   the settings -- as a row or as a column (break/TuneStrip.tsx). Colour from tokens only. */
+   the number box a setting is typed in. Colour from tokens only. */
 
 @media screen {
   /* ---- the bar ---- */
@@ -127,65 +127,14 @@
 .app-tl-pick { display: flex; flex-direction: column; gap: 2px; flex: 0 0 auto; padding: 2px 0; }
 .app-tl-pick select { max-width: 200px; }
 
-/* ---- the settings a run answers to, above the lanes or beside them ----
-   One row of labelled native controls (break/TuneStrip.tsx), the name over each
-   so the row stays about 34 px tall at 1280 px and wraps under that. Names follow
-   the inspector: Oracle property names in mono, this page's words in sans. Colour
-   from tokens only. */
-.tune-strip {
-  flex: 0 0 auto; display: flex; flex-wrap: wrap; align-items: flex-end; gap: 2px 12px;
-  padding: 3px 16px 4px; min-width: 0; box-sizing: border-box;
-  background: var(--sf2); border-bottom: 1px solid var(--ln);
-}
-.tune-g { display: inline-flex; align-items: flex-end; gap: 4px; flex: 0 1 auto; min-width: 0; }
-.tune-f { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
-.tune-k { font-size: 9.5px; line-height: 1.2; color: var(--ik3); white-space: nowrap; }
-.tune-k.mono { letter-spacing: 0; }
-.tune-c { display: inline-flex; align-items: center; gap: 4px; }
-.tune-sel, .tune-num {
+/* ---- the number box of a setting ----
+   `TuneNumber` (timeline/TuneNumber.tsx) is the box the brace popover and the small
+   timeline's labels edit a setting in. Colour from tokens only. */
+.tune-num {
   height: 20px; box-sizing: border-box; padding: 0 4px; margin: 0;
   font: 11.5px/1 var(--mono); color: var(--ik);
   background: var(--sf); border: 1px solid var(--ln); border-radius: var(--r-ctl, 3px);
+  width: 52px; text-align: right; font-variant-numeric: tabular-nums;
 }
-.tune-num { width: 52px; text-align: right; font-variant-numeric: tabular-nums; }
-.tune-sel:disabled, .tune-num:disabled { opacity: .55; }
+.tune-num:disabled { opacity: .55; }
 .tune-u { font-size: 11px; color: var(--ik3); }
-/* The reason a control is grey, beside it, cut to a line; the whole of it is the tooltip. */
-.tune-why { flex: 1 1 0; width: 5ch; min-width: 5ch; max-width: 44ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding-bottom: 2px; }
-/* A greyed control's group takes the row's spare room for its reason, and gives
-   it all back before the row would wrap: the reason is cut, never the row doubled. */
-.tune-g.has-why { flex: 1000 1 auto; }
-.tune-why .why { display: inline; font-size: 10.5px; white-space: nowrap; }
-.tune-spacer { flex: 1 1 0; min-width: 0; }
-.tune-all { flex: 0 0 auto; padding: 2px 8px; font-size: 11.5px; white-space: nowrap; border-color: var(--ln); }
-
-/* The same settings as a column beside Lanes' lanes (`layout="column"`): the rail's
-   headings (`.grp`, `.eyebrow`), a control to a line with its name at the left and
-   the control at the right, and a greyed control's reason in full, wrapped, under
-   it. A long Oracle name lets its control drop to the line below rather than be cut.
-   The column scrolls by itself when it is taller than the view. */
-.tune-col {
-  --px: 12px;
-  flex: 0 0 284px; width: 284px; min-height: 0; padding: 0 0 12px;
-  flex-direction: column; flex-wrap: nowrap; align-items: stretch; gap: 0;
-  overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain;
-  scrollbar-width: thin; scrollbar-color: var(--ln2) transparent;
-  border-bottom: 0; border-right: 1px solid var(--ln);
-}
-.tune-col .grp { padding-bottom: 6px; }
-.tune-col .grp-hd { min-height: 26px; padding: 10px var(--px) 2px; }
-.tune-col .tune-g, .tune-col .tune-g.has-why {
-  flex: none; display: flex; flex-direction: column; align-items: stretch; gap: 2px; padding: 3px var(--px);
-}
-.tune-col .tune-f { flex-direction: row; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 2px 8px; }
-.tune-col .tune-k { font-size: 11px; color: var(--ik2); white-space: normal; overflow-wrap: anywhere; }
-.tune-col .tune-c { margin-left: auto; }
-.tune-col .tune-sel { max-width: 100%; }
-.tune-col .tune-why { flex: none; width: auto; min-width: 0; max-width: none; overflow: visible; text-overflow: clip; white-space: normal; padding: 0; }
-.tune-col .tune-why .why { display: block; white-space: normal; font-size: 10.5px; line-height: 1.4; }
-.tune-col > .tune-why { padding: 8px var(--px) 0; }
-.tune-col .tune-all { align-self: flex-start; margin: 10px var(--px) 0; }
-
-/* The bar's `Settings` button: pressed while the row is drawn. */
-.sb-tune { flex: 0 0 auto; padding: 2px 8px; font-size: 11.5px; white-space: nowrap; border-color: var(--ln); }
-.sb-tune[aria-pressed="true"] { color: var(--ik); background: var(--sf3); border-color: var(--ln2); font-weight: 600; }
