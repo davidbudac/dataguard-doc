@@ -9,14 +9,16 @@
  *                    on the old page finds it set here
  *   `dg-intro-v1`    set once the reader has been shown the Introduction
  *                    (ui.md SS3e) -- by leaving that page, or by their first
- *                    real gesture if they arrived through a link and never saw
- *                    it. It used to mean "the first-visit strip was dismissed";
- *                    the strip is gone and the page replaced it.
+ *                    real gesture. A record only: nothing opens the page on
+ *                    the strength of it (boot looks at `?intro=1` alone). It
+ *                    used to mean "the first-visit strip was dismissed"; the
+ *                    strip is gone and the page replaced it.
  *   `dg-hints`       whether the sentence under each control is shown
  *   `dg-issues`      whether Build's validation panel is unfolded ('0' = folded)
  *   `dg-rail`        whether the side rail is folded to its strip ('1' = folded)
  *   `dg-break-timeline` the Detailed timeline's timeline, `config` or `app` -- anything else reads as config
  *   `dg-summary`     whether the Detailed timeline's run summary band is unfolded ('1' = unfolded)
+ *   `dg-topology-timeline-v1` whether Topology's small timeline is open ('0' = folded; unset = open)
  *   `dg-fsfo-cfg-v1` the published page's stored configuration. Read once when
  *                    there is nothing newer, and never deleted: the old page
  *                    is still serving from /legacy/ and still owns that key.
@@ -37,7 +39,7 @@ import { fromWire, parseJsonText, toJsonText } from './codec';
 import { isDesktop, saveFile } from '@/ui/common/desktop';
 import type { DecodeResult } from './codec';
 import {
-  BREAK_TIMELINES, breakTimeline, gridOn, hintsOn, inspectorOpen, issuesOpen, railCollapsed,
+  BREAK_TIMELINES, breakTimeline, gridOn, hintsOn, inspectorOpen, issuesOpen, miniTimelineOpen, railCollapsed,
   summaryOpen, viewport,
 } from './view';
 import type { BreakTimeline, PalettePref, ThemePref } from './view';
@@ -54,6 +56,7 @@ export const ISSUES_KEY = 'dg-issues';
 export const RAIL_KEY = 'dg-rail';
 export const BREAK_TIMELINE_KEY = 'dg-break-timeline';
 export const SUMMARY_KEY = 'dg-summary';
+export const MINI_TIMELINE_KEY = 'dg-topology-timeline-v1';
 
 export const AUTOSAVE_MS = 500;
 export const RESTORE_NOTICE_MS = 8000;
@@ -109,9 +112,9 @@ export const saveEdition = (v: '19c' | '26ai'): void => write(EDITION_KEY, v);
 /**
  * Whether the reader has already been shown the Introduction (ui.md SS3e).
  *
- * A signal rather than a read at render time: the page is opened on the first
- * visit and never again on its own, and a component that reached into
+ * A signal rather than a read at render time: a component that reached into
  * `localStorage` while rendering would be reading storage on every keystroke.
+ * Boot does not consult it -- the page opens only when asked for.
  * Boot calls `loadIntro()` once; the tests call it to stand in for a reload.
  */
 export const introDismissed = signal<boolean>(false);
@@ -198,6 +201,20 @@ export function setIssuesOpen(on: boolean): void {
 }
 
 export const toggleIssues = (): void => setIssuesOpen(!issuesOpen.value);
+
+/* ---------------- Topology's small timeline ---------------- */
+
+/** Open or folded -- `miniTimelineOpen` in `view.ts`; unset, or anything but '0', means open. */
+export function loadMiniTimelineOpen(): void {
+  miniTimelineOpen.value = read(MINI_TIMELINE_KEY) !== '0';
+}
+
+export function setMiniTimelineOpen(on: boolean): void {
+  miniTimelineOpen.value = on;
+  write(MINI_TIMELINE_KEY, on ? '1' : '0');
+}
+
+export const toggleMiniTimeline = (): void => setMiniTimelineOpen(!miniTimelineOpen.value);
 
 /* ---------------- the side rail ---------------- */
 

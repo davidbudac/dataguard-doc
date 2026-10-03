@@ -630,20 +630,23 @@ and it is read by scanning.
   `introPage` in `state/view.ts`, round-tripping through
   `currentUrlState`/`applyUrlState`. It is a page rather than a fifth `mode`
   because the mode buttons stay live underneath it.
-- **Three ways in.** (a) the first visit — boot opens it when `dg-intro-v1` is
-  unset **and** the address names nothing else to look at (`introOnBoot` in
-  `ui/intro/route.ts`: no fragment, and no `mode`/`panel`/`sel`/`t`/`preset`/
-  `lesson`/`step`; `ed` and `theme` say how to render what is shown, not what
-  to show, so they do not count). A share link is therefore never hijacked.
-  (b) a quiet `Introduction` link in the header's brand corner — a real
-  `<a href="?intro=1">`, so a middle click opens it in a tab. (c) the same link
-  in the `?` card.
+- **Three ways in, and none of them is boot's own idea.** A first visit lands on
+  the Topology workbench (the default `mode`, `build`); the Introduction opens
+  only when it is asked for (2026-10-03 — it used to open itself on a first
+  visit). (a) its address, `?intro=1` — the only thing `introOnBoot` in
+  `ui/intro/route.ts` looks at. (b) the header's brand link, "Data Guard" — a
+  real `<a href="?intro=1">`, so a middle click opens it in a tab and a reload
+  keeps it, and a plain click calls `openIntro()`. (c) the same link in the `?`
+  card. A share link, a preset or a lesson link is therefore never in danger of
+  being hijacked, and there is no longer a rule to keep in step with the keys
+  the address can carry (`ADDRESSED` is deleted).
 - **`dg-intro-v1` changed meaning, and the strip is gone.** The key used to say
   "the first-visit strip has been dismissed"; it now says "this reader has been
   shown the Introduction". It is written by leaving the page — every mode
   button (`TopBar`), the hero buttons and every "Try it" go through
-  `leaveIntro()` — and, for a reader who arrived through a share link and never
-  saw the page, by their first real gesture (the effect in `Guidance.tsx`).
+  `leaveIntro()` — and, for a reader who went straight to work, by their first
+  real gesture (the effect in `Guidance.tsx`). Since 2026-10-03 it is a record
+  only: boot does not read it, because nothing opens the page on a first visit.
   Closing the `?` card writes nothing, as before: its button says **Close**
   now, not "Got it", because reading a keyboard map is not being shown the
   Introduction. The one-row `.intro-strip` and its `CLAUSES` are deleted;
@@ -1279,7 +1282,8 @@ single-application it says which one it shows.
 - **Found on the way, and fixed:** a published-page link opened the Introduction
   over itself on a first visit (its query keys are not in `ADDRESSED`), so
   `site/smoke.mjs` failed its two legacy-link checks. Boot now counts an upgraded
-  link as a document.
+  link as a document. (Moot since 2026-10-03: boot opens the Introduction only
+  for `?intro=1`, and the `ADDRESSED` set is gone.)
 
 
 ## Simulate's context menu on the drawing (as built, 2026-09-29)

@@ -45,7 +45,8 @@ import type { JSX } from 'preact';
 import { applicationClient, applicationsOf, BOUNDS } from '@/engine';
 import type { ClientDescriptor, TopologyDoc, Trace } from '@/engine';
 import { topology, trace } from '@/state/derived';
-import { canEdit, mode, MODE_LABEL, playing, speed, tNow, viewport } from '@/state/view';
+import { canEdit, miniTimelineOpen, mode, MODE_LABEL, playing, speed, tNow, viewport } from '@/state/view';
+import { toggleMiniTimeline } from '@/state/persist';
 import { clearEvents } from '../break/events';
 import { PopoutButton, popped } from '../common/popout';
 import { useHostWindow } from '../common/dom';
@@ -452,6 +453,7 @@ function MiniRun({ t }: { t: Trace }) {
   return (
     <section class="mtl" aria-label="Timeline of the run">
       <div class="mtl-head">
+        <FoldButton open />
         {model.empty ? null : (
           <Transport
             model={model} tNow={now} playing={isPlaying} speed={speed.value} speedControl="select"
@@ -479,7 +481,7 @@ function MiniRun({ t }: { t: Trace }) {
           <PopoutButton kind="timeline" />
         </span>
       </div>
-      <div class="mtl-plot" ref={ref}>
+      <div class="mtl-plot" id={PLOT_ID} ref={ref}>
         <svg
           class={`tl-svg mtl-svg${canSeek ? ' is-seekable' : ''}`}
           width={model.width}
@@ -697,11 +699,48 @@ function LabelEdit({ x, y, w, name, unit, tune, onClose }: {
   );
 }
 
+/** The plot's id: what the fold button's `aria-controls` names. */
+const PLOT_ID = 'mtl-plot';
+
+/**
+ * The fold: the heading of the small timeline and the one control that opens
+ * and closes it (`miniTimelineOpen`, remembered by persist.ts). A button with
+ * `aria-expanded`, so Enter and Space work and a screen reader says what it is.
+ * Folding pauses a run that is playing -- the playback clock lives in `MiniRun`,
+ * which is not mounted while folded, and a "playing" flag with nothing driving
+ * it would be a lie.
+ */
+function FoldButton({ open }: { open: boolean }) {
+  return (
+    <button
+      type="button"
+      class="mtl-fold"
+      aria-expanded={open}
+      aria-controls={PLOT_ID}
+      title={open ? 'Fold the timeline away to give the room back' : 'Show the timeline'}
+      onClick={() => {
+        if (open) playing.value = false;
+        toggleMiniTimeline();
+      }}
+    >
+      <span class="notes-caret" aria-hidden="true">{open ? '▾' : '▸'}</span>
+      Timeline
+    </button>
+  );
+}
+
 /**
  * The small timeline, while there is a run to show (`trace` is not null).
- * Absent otherwise: with nothing injected there is nothing to glance at.
+ * Absent otherwise: with nothing injected there is nothing to glance at. Folded,
+ * it is the heading alone -- the way back -- and the run is not drawn.
  */
 export function MiniTimeline() {
   const t = trace.value;
-  return t === null ? null : <MiniRun t={t} />;
+  if (t === null) return null;
+  if (miniTimelineOpen.value) return <MiniRun t={t} />;
+  return (
+    <section class="mtl is-folded" aria-label="Timeline of the run">
+      <div class="mtl-head"><FoldButton open={false} /></div>
+    </section>
+  );
 }

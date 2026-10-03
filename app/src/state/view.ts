@@ -158,9 +158,10 @@ export const introOpen = signal<boolean>(false);
  *
  * A page, not a card: it takes the stage, the rail and the dock, the header
  * stays above it with the modes still clickable, and it is addressable as
- * `?intro=1` so it can be linked to and reloaded. Boot opens it on a first
- * visit -- `dg-intro-v1` unset, and nothing in the address naming something
- * else to look at -- and any mode button leaves it (`ui/intro/route.ts`).
+ * `?intro=1` so it can be linked to and reloaded. Boot opens it only when the
+ * address asks for it -- the header's "Data Guard" link is that address; a
+ * first visit lands on Topology -- and any mode button leaves it
+ * (`ui/intro/route.ts`).
  */
 export const introPage = signal<boolean>(false);
 /**
@@ -182,6 +183,13 @@ export const notesOpen = signal<boolean>(false);
  * there are rows.
  */
 export const issuesOpen = signal<boolean>(true);
+/**
+ * Whether Topology's small timeline (ui/timeline/MiniTimeline.tsx) is open or
+ * folded to its heading. Open by default; remembered under
+ * `dg-topology-timeline-v1` (persist.ts) once the reader folds it. Folded, the
+ * dock keeps a slim "Timeline" row to open it again from.
+ */
+export const miniTimelineOpen = signal<boolean>(true);
 /**
  * Whether the sentence under each control is shown.
  *

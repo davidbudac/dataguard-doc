@@ -11,10 +11,11 @@ requests at runtime — no CDN, no web fonts, no network calls — and no inline
 `<script>` or `style=` anywhere, so the page runs under
 `script-src 'self'; style-src 'self'`.
 
-A first visit opens on the **Introduction** (`?intro=1`, `src/ui/intro/`) — what
-the tool is, what the drawing shows, what the four modes are for and how to do
-things — and every button on it loads a real configuration and lands in the mode
-it names. It is one link away in the header afterwards; see `design/ui.md` §3e.
+A first visit opens on the **Topology** workbench. The **Introduction**
+(`?intro=1`, `src/ui/intro/`) — what the tool is, what the drawing shows, what the
+four modes are for and how to do things — opens only from the "Data Guard" link
+in the header's top-left corner (or its own address), and every button on it loads
+a real configuration and lands in the mode it names; see `design/ui.md` §3e.
 
 Everything the page asserts about Oracle is either arithmetic over what you
 typed, a documented fact with a citation you can open, or labelled on screen as

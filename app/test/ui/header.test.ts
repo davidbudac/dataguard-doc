@@ -169,7 +169,7 @@ describe('the header', () => {
 
   /* Opening an explanation and shutting it again is not the same as having
      been shown the Introduction, which is what `dg-intro-v1` now records
-     (ui.md SS3e): the page is still owed on the next visit. */
+     (ui.md SS3e). */
   it('does not call the page understood because the ? was closed again', async () => {
     const bar = mount(TopBar);
     mount(Guidance);

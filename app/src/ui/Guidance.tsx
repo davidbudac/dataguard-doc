@@ -14,20 +14,20 @@
  *    button's `title` (`MODE_SUB`).
  *  - **The first visit no longer gets a strip here.** The three clauses on one
  *    row, with "Got it" at the end, were the previous answer; a whole
- *    Introduction page is the current one (`ui/intro/`, ui.md SS3e), and it
- *    opens instead of the workbench rather than on top of it. `dg-intro-v1`
- *    now records that the reader has been shown that page.
+ *    Introduction page is the current one (`ui/intro/`, ui.md SS3e). It does
+ *    not open on a first visit -- the header's "Data Guard" link opens it,
+ *    instead of the workbench rather than on top of it. `dg-intro-v1` now
+ *    records that the reader has been shown that page.
  *  - **The `?` in the header still opens the whole explanation**, which is
  *    where the keyboard map lives -- shortcuts nothing else on the page
  *    announces -- and it is where the Introduction is offered a second time.
  *    It is a toggle, and it says so through `aria-expanded`: a second press
  *    closes the card. Closing it writes nothing: opening an explanation and
  *    shutting it again is not the same as having read the Introduction.
- *  - **A reader who is already working stops being owed the page.** An edit or
+ *  - **A reader who is already working has been shown enough.** An edit or
  *    a change of mode writes `dg-intro-v1` (the mode buttons do it in
- *    `TopBar.tsx`, an edit in the effect below), because somebody who arrived
- *    through a share link and started editing has answered the question the
- *    Introduction exists to answer.
+ *    `TopBar.tsx`, an edit in the effect below), because somebody who started
+ *    editing has answered the question the Introduction exists to answer.
  *  - **The line itself is two halves.** The gesture -- "Click a card, a data
  *    centre or a link to edit it." -- is always on screen; the clause behind
  *    it is explanation and rides with `Hints` (`ui/hints.tsx`), the one switch
@@ -201,9 +201,9 @@ export function IntroCard() {
 /**
  * The first meaningful interaction settles the debt.
  *
- * A reader who arrived through a share link never saw the Introduction, so it
- * is still owed to them -- until they do something, at which point the
- * question it answers has been answered. An edit, an injected event and a
+ * A reader who goes straight to work never opened the Introduction; once they
+ * do something the question it answers has been answered, and the key records
+ * that. An edit, an injected event and a
  * preset load all replace `doc`; a change of mode replaces `mode` (and
  * `TopBar` writes the key for that one directly). The baseline is read when
  * this mounts rather than at import time, so the boot path -- which restores a

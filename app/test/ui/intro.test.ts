@@ -2,10 +2,10 @@
  * The Introduction (ui.md SS3e).
  *
  * What is pinned here is the contract the page makes with the rest of the
- * application: it is a page with an address, it is what a first visit opens
- * on, every button on it loads the configuration it names before it switches
- * mode, and leaving it -- by any door -- is what records that this reader has
- * been shown it.
+ * application: it is a page with an address, it opens only when asked for
+ * (the brand link, or `?intro=1` -- never on a first visit), every button on
+ * it loads the configuration it names before it switches mode, and leaving
+ * it -- by any door -- is what records that this reader has been shown it.
  *
  * @vitest-environment jsdom
  */
@@ -101,27 +101,18 @@ describe('?intro=1', () => {
 
 describe('what boot opens', () => {
   const boot = (o: Partial<Parameters<typeof introOnBoot>[0]>): boolean => introOnBoot({
-    asked: false, seen: false, hasDocument: false, keys: [], ...o,
+    asked: false, ...o,
   });
 
-  it('opens the Introduction on a first visit', () => {
-    expect(boot({})).toBe(true);
-    /* A reading preference says how to render what is shown, not what to
-       show: it does not count as an address of its own. */
-    expect(boot({ keys: ['theme', 'ed'] })).toBe(true);
+  it('does not open the Introduction on a first visit', () => {
+    expect(boot({})).toBe(false);
   });
 
-  it('leaves a link to something alone', () => {
-    expect(boot({ keys: ['preset'] })).toBe(false);
-    expect(boot({ keys: ['lesson', 'step'] })).toBe(false);
-    expect(boot({ keys: ['mode'] })).toBe(false);
-    expect(boot({ hasDocument: true })).toBe(false);
-  });
-
-  it('never opens it twice on its own, and always opens it when it is asked for', () => {
-    expect(boot({ seen: true })).toBe(false);
-    expect(boot({ seen: true, asked: true })).toBe(true);
-    expect(boot({ seen: true, asked: true, keys: ['preset'], hasDocument: true })).toBe(true);
+  it('opens it when its address, ?intro=1, is asked for', () => {
+    expect(boot({ asked: true })).toBe(true);
+    /* And that address is what the brand link carries. */
+    expect(INTRO_HREF).toBe('?intro=1');
+    expect(parseUrlQuery(INTRO_HREF).state.intro).toBe(true);
   });
 });
 

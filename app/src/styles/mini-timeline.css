@@ -16,6 +16,13 @@
 .mtl-head .tl-tp-btn { padding: 3px 8px; min-width: 28px; border-radius: var(--r-ctl); font-family: var(--sans); }
 .mtl-head .tl-tp-in { padding: 3px 6px; border-radius: var(--r-ctl); }
 
+/* The fold: the small timeline's heading and its toggle. Folded, the section is this row alone. */
+.mtl-fold { display: inline-flex; align-items: center; gap: 6px; flex: 0 0 auto; padding: 3px 6px 3px 2px; margin: 0;
+  border: 0; border-radius: var(--r-ctl); background: transparent; cursor: pointer;
+  font: 600 12px/16px var(--sans); color: var(--ik2); }
+.mtl-fold:hover { color: var(--ik); background: var(--sf2); }
+.mtl.is-folded { padding-bottom: 4px; }
+
 .mtl-acts { display: inline-flex; align-items: center; gap: 4px; flex: 0 0 auto; margin-left: auto; }
 .mtl-acts .btn { padding: 3px 10px; font-size: 12px; white-space: nowrap; }
 .mtl-acts .btn.is-icon { padding: 0; }
