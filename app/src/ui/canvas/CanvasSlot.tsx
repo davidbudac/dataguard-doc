@@ -13,8 +13,8 @@
 import type { JSX } from 'preact';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import type { TopologyDoc } from '@/engine';
-import { findApplication, hostId, siteId } from '@/engine';
-import { frame, geometry, redoGraph, runShown, topology } from '@/state/derived';
+import { findApplication, hostId, isDatabase, siteId } from '@/engine';
+import { drawnGeometry, drawnGraph, frame, redoGraph, runShown, topology } from '@/state/derived';
 import { doc, withLayout, withSiteOrder } from '@/state/doc';
 import { breakCoalescing, edit, undo, undoLabel } from '@/state/history';
 import { toggleGrid } from '@/state/persist';
@@ -29,7 +29,7 @@ import { resolveRoute, routeWord } from '../build/routes';
 import {
   addDatabase, addFsfoTarget, addLink, connectVerdict, mergeIntoHost, moveToSite,
   renameApplication, renameMember, renameObserver, renameSite, renameVerdict, setAddressListed,
-  shipRedo, tidyLayout,
+  setPrimary, shipRedo, tidyLayout,
 } from '../inspector/edits';
 import { inFlight, inFlightFrom, placeOver, renaming, setSiteAt } from './place';
 import { mergeVerdict } from './drop';
@@ -501,9 +501,61 @@ export interface CanvasSlotProps {
   interactive?: boolean;
 }
 
+/** How many databases the notice names as buttons before it points at the card. */
+const NOTICE_BUTTONS = 3;
+
+/**
+ * What the drawing says when no database holds the primary role.
+ *
+ * The drawing stays -- every card, still selectable and editable -- because a
+ * configuration that has lost its primary has to be repaired from somewhere,
+ * and the drawing is where the cards are. This is the card that says so, and
+ * the quickest way out: one button per database, the same `setPrimary` the
+ * inspector's Role choice and the action bar run, one undo step. It is the
+ * canvas's own chrome, not the toast (which goes after a few seconds) and not
+ * a finding (`MEMBER.PRIMARY_COUNT` is still the validator's, and still counts
+ * in the chips). A viewer who cannot edit is told and offered nothing.
+ */
+function NotPrimaryNotice({ doc: t, editable }: { doc: TopologyDoc; editable: boolean }) {
+  const databases = t.members.filter(isDatabase);
+  return (
+    <div class="cv-invalid">
+      <div class="cv-invalid-card" role="alert">
+        <p class="cv-invalid-k">Not a valid Data Guard configuration</p>
+        <p class="cv-invalid-t">No database has the primary role.</p>
+        {!editable ? null : databases.length === 0 ? (
+          <p class="cv-invalid-t">A database is needed to hold it: add one.</p>
+        ) : (
+          <>
+            <div class="cv-invalid-do">
+              {databases.slice(0, NOTICE_BUTTONS).map((m) => (
+                <button
+                  key={m.id as string}
+                  type="button"
+                  class="btn"
+                  onClick={() => setPrimary(m.id)}
+                >
+                  {`Make ${m.name} the primary`}
+                </button>
+              ))}
+            </div>
+            {databases.length > NOTICE_BUTTONS ? (
+              <p class="cv-invalid-t">Any database can be given the role from its card or the inspector.</p>
+            ) : null}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export function CanvasSlot({ interactive = true }: CanvasSlotProps) {
-  const graph = redoGraph.value;
-  const geo = geometry.value;
+  /* The drawing's own graph, never null: with no primary it is the document
+     with no redo (`edgelessGraph`), and `redoGraph` -- which the panels and
+     generators read as "nothing to say" -- stays null. */
+  const graph = drawnGraph.value;
+  const invalid = redoGraph.value === null;
+  const geo = drawnGeometry.value;
   const editable = interactive && canEdit(viewport.value);
   const keys = selection.value;
   const m = mode.value;
@@ -651,28 +703,17 @@ export function CanvasSlot({ interactive = true }: CanvasSlotProps) {
         {zooming ? <ZoomStrip tidy={editable && m === 'build'} /> : null}
       </div>
     );
-  if (graph === null) {
-    return (
-      <>
-        {toolbar}
-        <div class="empty">
-          <span class="empty-k">Canvas</span>
-          <p>
-            No database has the primary role, so there is no redo to draw. Give one
-            database <span class="mono">role: primary</span> to show the redo routes.
-          </p>
-        </div>
-      </>
-    );
-  }
   return (
     <>
       {toolbar}
+      {invalid ? <NotPrimaryNotice doc={topology.value} editable={editable} /> : null}
       <TopoCanvas
         doc={topology.value}
         graph={graph}
-        {...(geo ? { geometry: geo } : {})}
-        frame={runShown() ? frame.value : null}
+        geometry={geo}
+        /* A run is a run of a configuration; with no primary there is none
+           to draw (the engine falls back to the first member). */
+        frame={!invalid && runShown() ? frame.value : null}
         overrides={doc.value.layout}
         selection={selection.value}
         hovered={hovered.value}
@@ -815,7 +856,7 @@ export function CanvasSlot({ interactive = true }: CanvasSlotProps) {
             onResizeBy: (site: string, dx: number, dy: number): void => {
               /* Read live, not from the render: a second press before the
                  repaint must grow from where the first one left the box. */
-              const st = geometry.value?.sites.find((s) => (s.id as string) === site);
+              const st = drawnGeometry.value.sites.find((s) => (s.id as string) === site);
               if (!st) return;
               const box = resizedBox(
                 { start: st, fit: st.fit, anchor: st.anchor, empty: st.empty },

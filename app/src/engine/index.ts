@@ -99,7 +99,7 @@ export {
 } from './redo/parse';
 export type { ResolveOptions } from './redo/resolve';
 export {
-  activeRule, defaultDestPriority, destKey, expandAll, groupKey, resolveRedoGraph,
+  activeRule, defaultDestPriority, destKey, edgelessGraph, expandAll, groupKey, resolveRedoGraph,
 } from './redo/resolve';
 
 /* axes */

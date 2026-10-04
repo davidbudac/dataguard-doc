@@ -230,6 +230,16 @@ button.issue{border-bottom:1px solid var(--ln)}
   .app.is-float .app-stage>.tp-wrap.is-zoomed{min-height:0}
   .app.is-float .app-stage>.empty{position:absolute;top:calc(var(--bar-bottom,80px) + 18px);
     left:var(--pal-space);right:calc(var(--rail-space) + 18px)}
+  /* The not-a-valid-configuration card (canvas.css) over the top of the stage,
+     in the room the palette, the inspector and the zoom pill leave -- the same
+     room the drawing is fitted to. Its box lets the pointer through to the
+     drawing at either side of the card, and the drawing is given the row the
+     card needs (`.cv-invalid + .tp-wrap`, the card following it in the DOM) so
+     it never sits under a card it is meant to be clicked on. */
+  .app.is-float .app-stage>.cv-invalid{position:absolute;z-index:15;margin:0;pointer-events:none;
+    top:calc(var(--bar-bottom,80px) + 12px);left:var(--pal-space);right:calc(var(--rail-space) + 18px)}
+  .app.is-float .app-stage>.cv-invalid .cv-invalid-card{pointer-events:auto}
+  .app.is-float .app-stage>.cv-invalid + .tp-wrap{padding-top:calc(var(--bar-bottom,80px) + 18px + 120px)}
 
   /* The palette at the left edge. */
   .app.is-float .palette{position:absolute;left:var(--float-m);

@@ -12,7 +12,7 @@
  */
 
 import type {
-  Application, Member, Observer, RedoGraph, SiteId, TopologyDoc,
+  Application, Member, MemberId, Observer, RedoGraph, SiteId, TopologyDoc,
 } from '@/engine';
 import { applicationsOf, isDatabase, isFarSync } from '@/engine';
 import type { CardLines, Rect } from './measure';
@@ -364,17 +364,23 @@ const SLACK = LAYOUT.colPad - LAYOUT.fitPad;
  * Rank: the BFS depth the resolver already computed. A member nothing feeds
  * sits one column past the deepest reachable one, so "no redo reaches this"
  * reads as a place on the drawing rather than as a missing line.
+ *
+ * With no depth at all -- the edgeless graph of a configuration that has no
+ * primary -- nothing is "unreached": there is no source for it to be missed by.
+ * Every member takes rank 0 and none is flagged, so the data centres keep the
+ * order the document lists them in and the cards are drawn as they were.
  */
 function ranksOf(doc: TopologyDoc, graph: RedoGraph): {
   rank: Map<string, number>; maxRank: number; unreachableRank: number;
 } {
   const rank = new Map<string, number>();
   let maxDepth = 0;
+  let reached = false;
   for (const m of doc.members) {
     const d = graph.members[m.id]?.depth ?? -1;
-    if (d >= 0) maxDepth = Math.max(maxDepth, d);
+    if (d >= 0) { maxDepth = Math.max(maxDepth, d); reached = true; }
   }
-  const unreachableRank = maxDepth + 1;
+  const unreachableRank = reached ? maxDepth + 1 : 0;
   for (const m of doc.members) {
     const d = graph.members[m.id]?.depth ?? -1;
     rank.set(m.id as string, d >= 0 ? d : unreachableRank);
@@ -637,7 +643,12 @@ export function layoutTopology(
      out round the side of the site and sharing a segment with the next link. */
   const hop = (a: Member, b: Member): boolean => graph.edges.some((e) =>
     ((e.from as string) === (a.id as string) && (e.to as string) === (b.id as string))
-    || ((e.from as string) === (b.id as string) && (e.to as string) === (a.id as string)));
+    || ((e.from as string) === (b.id as string) && (e.to as string) === (a.id as string)))
+    /* The feed path says the same where there are no edges to read (the
+       edgeless graph of a configuration with no primary, which keeps the
+       places and nothing else). */
+    || feederOf(graph, a.id as string) === (b.id as string)
+    || feederOf(graph, b.id as string) === (a.id as string);
   const memGaps: number[][] = memRowsByCol.map((rows) => rows.map((row, i): number => {
     const next = rows[i + 1];
     if (!next) return 0;
@@ -1233,7 +1244,9 @@ function sameSiteCascade(
   doc: TopologyDoc, graph: RedoGraph, m: Member, siteOf: (m: Member) => string,
 ): boolean {
   const feeder = feederOf(graph, m.id as string);
-  if (feeder === null || feeder === (graph.primary as string)) return false;
+  /* Fed straight by the primary: depth 0, which is also what the edgeless
+     graph's stand-in primary has (its `primary` is an id nobody holds). */
+  if (feeder === null || feeder === (graph.primary as string) || graph.members[feeder as MemberId]?.depth === 0) return false;
   const fm = doc.members.find((x) => (x.id as string) === feeder);
   if (!fm) return false;
   return siteOf(fm) === siteOf(m);
