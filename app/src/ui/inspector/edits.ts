@@ -763,9 +763,10 @@ export function removeLink(id: LinkId): void {
 /**
  * Whether `raw` may be the name of the member, observer or data centre `key`.
  *
- * One answer for the rail's field and for the one on the drawing: the rail
- * says a refusal in a toast after the fact, the drawing says it under the
- * field while it is still open, and both are this sentence. An empty or an
+ * One answer for the rail's field and for the one on the drawing: the rail's
+ * field says a refusal in a toast after the fact and snaps back to the name
+ * the document has, the drawing says it under the field while it is still
+ * open, and both are this sentence. An empty or an
  * unchanged name is not refused -- it is simply not a rename.
  */
 export function renameVerdict(t: TopologyDoc, key: string, raw: string): WhyState {
@@ -781,6 +782,13 @@ export function renameVerdict(t: TopologyDoc, key: string, raw: string): WhyStat
     return takenIds(t).has(name) ? off(WHY.idTaken) : ON;
   }
   return ON;
+}
+
+/** The configuration's name: a label like a data centre's, and never empty. */
+export function renameConfig(raw: string): void {
+  const name = raw.trim();
+  if (name === '' || name === doc.value.topology.config.name) return;
+  patchConfig('Rename the configuration', (c) => ({ ...c, name }));
 }
 
 /** A data centre's name is a label: its id, and every reference to it, stays. */

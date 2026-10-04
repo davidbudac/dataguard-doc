@@ -35,7 +35,7 @@ import {
 } from '@/ui/inspector/edits';
 import { ADD_ACTIONS, AddToolbar, WHY_NO_SITE, WHY_ONE_SITE } from '@/ui/inspector/adds';
 import {
-  DEFAULT_OPEN, isSectionOpen, openSections, resetSections, SECTION_IDS, sectionOfRule, SUMMARY_ID,
+  DEFAULT_OPEN, isSectionOpen, openSections, resetSections, SECTION_IDS, sectionOfRule,
 } from '@/ui/inspector/sections';
 import { WHY } from '@/ui/inspector/why';
 import { printing } from '@/ui/print';
@@ -74,6 +74,10 @@ const tick = (): Promise<void> => new Promise((r) => setTimeout(r, 0));
 const whyTexts = (root: HTMLElement): string[] =>
   [...root.querySelectorAll('.why')].map((el) => el.textContent ?? '');
 
+/** The one-line "these rows cannot apply, and why" notes (controls.tsx, `Withheld`). */
+const withheldTexts = (root: HTMLElement): string[] =>
+  [...root.querySelectorAll('.is-withheld')].map((el) => el.textContent ?? '');
+
 /** The fold's toggle, found the way a reader finds it: by its section label. */
 const foldTog = (root: HTMLElement, title: string): HTMLButtonElement | undefined =>
   [...root.querySelectorAll<HTMLButtonElement>('button.grp-tog')]
@@ -110,13 +114,41 @@ describe('the WhyPill contract', () => {
     selection.value = ['prm01'];
     const root = mount(Inspector);
     await tick();
-    /* The primary applies no redo, so its apply-lag control is off -- and it
-       says so rather than greying out in silence. */
-    const pills = whyTexts(root);
-    expect(pills).toContain(WHY.primaryNoApply);
+    /* The primary applies no redo, so its four apply and lag rows cannot
+       apply -- for the one reason, so they are not four grey rows under a pill
+       apiece: they are one line, which says why rather than greying out in
+       silence. */
+    expect(withheldTexts(root)).toEqual([
+      `Apply lag, transport lag, redo apply and real-time apply: ${WHY.primaryNoApply}`,
+    ]);
+    const names = [...root.querySelectorAll('.field-name')].map((el) => el.textContent);
+    for (const gone of ['Apply lag', 'Transport lag', 'Apply running', 'Real-time apply']) {
+      expect(names).not.toContain(gone);
+    }
+    expect(whyTexts(root)).not.toContain(WHY.primaryNoApply);
+  });
+
+  it('keeps a control that is off for a reason of its own, grey, with its pill', async () => {
+    /* A snapshot standby applies nothing, so "Apply running" is off for a
+       reason the standby's other apply rows do not share: it stays where it
+       is, with the pill. */
+    const t = doc.value.topology;
+    resetHistory({
+      ...doc.value,
+      topology: {
+        ...t,
+        members: t.members.map((m) => (m.kind === 'database' && (m.id as string) === 'sby01'
+          ? { ...m, role: 'snapshot' as const }
+          : m)),
+      },
+    });
+    selection.value = ['sby01'];
+    const root = mount(Inspector);
+    await tick();
     const off = root.querySelector('.field.is-off');
-    expect(off).not.toBeNull();
-    expect(off?.querySelector('.why')?.textContent).toBeTruthy();
+    expect(off?.querySelector('.field-name')?.textContent).toBe('Apply running');
+    expect(off?.querySelector('.why')?.textContent).toBe(WHY.snapshotNoApply);
+    expect(withheldTexts(root)).toEqual([]);
   });
 
   it('never leaves a disabled input without one', async () => {
@@ -159,10 +191,18 @@ describe('the WhyPill contract', () => {
     const root = mount(Inspector);
     await tick();
     await unfold(root, 'Fast-start failover');
-    expect(whyTexts(root)).toContain(WHY.pingPropsNotIn19c);
+    /* The switch and both values are off for the one reason: one line. */
+    expect(withheldTexts(root)).toContain(
+      `ObserverPingInterval, ObserverPingRetry: ${WHY.pingPropsNotIn19c}`,
+    );
+    expect(root.querySelector('input[aria-label="ObserverPingInterval"]')).toBeNull();
     edition.value = '26ai';
     await tick();
-    expect(whyTexts(root)).not.toContain(WHY.pingPropsNotIn19c);
+    expect(root.textContent).not.toContain(WHY.pingPropsNotIn19c);
+    /* Unset under 26ai, the two values are off for a reason of their own --
+       and still one line, not two rows. */
+    expect(withheldTexts(root)).toContain(`ObserverPingInterval, ObserverPingRetry: ${WHY.pingUnset}`);
+    expect(root.querySelector('input[aria-label="Both properties are explicitly set"]')).not.toBeNull();
   });
 
   it('gates LagType/LagGraceTime and PrimaryDatabaseCandidates on the release (ED-02)', async () => {
@@ -170,13 +210,14 @@ describe('the WhyPill contract', () => {
     await tick();
     await unfold(root, 'Fast-start failover');
     await unfold(root, 'PrimaryDatabaseCandidates');
-    /* LagType and LagGraceTime carry the reason as a WhyPill; the checkbox
-       list for PrimaryDatabaseCandidates carries it as the fold's own note.
-       All three are present under 19c because the properties are documented
+    /* LagType and LagGraceTime carry the reason as one withheld line; the
+       checkbox list for PrimaryDatabaseCandidates carries it as the fold's own
+       note. All three are present under 19c because the properties are documented
        from 26ai and absent from the 19c and 21c properties references, even
        though a live 19.27 system carries all three. */
-    const pills = whyTexts(root);
-    expect(pills.filter((t) => t === WHY.docLater26aiObservedIn1927).length).toBe(2);
+    expect(withheldTexts(root)).toContain(
+      `FastStartFailoverLagType, FastStartFailoverLagGraceTime: ${WHY.docLater26aiObservedIn1927}`,
+    );
     expect(root.textContent).toContain(WHY.docLater26aiObservedIn1927);
     edition.value = '26ai';
     await tick();
@@ -325,12 +366,12 @@ describe('the foldable configuration groups', () => {
     const root = mount(Inspector);
     await tick();
     const togs = [...root.querySelectorAll<HTMLButtonElement>('button.grp-tog')];
-    /* The summary is a fold of its own now, above the five, and it starts
-       shut: the rail opens on the palette, not on a table of what is drawn. */
+    /* There is no summary above them: the rail opens on the five, with the
+       protection mode's section the one that is open. */
     expect(togs.map((b) => b.querySelector('.eyebrow')?.textContent))
-      .toEqual([SUMMARY_ID, ...SECTION_IDS]);
+      .toEqual([...SECTION_IDS]);
     expect(togs.map((b) => b.getAttribute('aria-expanded')))
-      .toEqual(['false', 'true', 'false', 'false', 'false', 'false']);
+      .toEqual(['true', 'false', 'false', 'false', 'false']);
     /* Folded means absent, not painted out of view (ui.md SS8). */
     expect(root.querySelector('input[aria-label="FastStartFailoverThreshold"]')).toBeNull();
     expect(root.querySelector('input[aria-label="Redo rate"]')).toBeNull();
@@ -407,7 +448,7 @@ describe('the foldable configuration groups', () => {
       await tick();
       expect([...root.querySelectorAll('button.grp-tog')]
         .map((b) => b.getAttribute('aria-expanded')))
-        .toEqual([SUMMARY_ID, ...SECTION_IDS].map(() => 'true'));
+        .toEqual([...SECTION_IDS].map(() => 'true'));
       expect(root.querySelector('input[aria-label="Redo rate"]')).not.toBeNull();
     } finally {
       printing.value = false;
@@ -424,29 +465,32 @@ describe('the foldable configuration groups', () => {
 });
 
 describe('adding happens in one place', () => {
-  it('opens the empty rail on the folded summary, with nothing to add there', async () => {
+  it('opens the empty rail on the configuration, with nothing to add and no summary', async () => {
     /* The rail used to open on a palette of the same four buttons the toolbar
-       over the drawing carries, and a selected card's header had a third copy
-       behind `Add`. The toolbar is the one surface now (ui.md SS3i). */
+       over the drawing carries, and then on a "Configuration summary" fold of
+       what the drawing already shows. Neither is here: the toolbar is the one
+       surface that adds (ui.md SS3i), and the rail opens on the properties. */
     const root = mount(Inspector);
     await tick();
     const eyebrows = [...root.querySelectorAll('.eyebrow')].map((el) => el.textContent);
-    expect(eyebrows[0]).toBe(SUMMARY_ID);
+    expect(eyebrows[0]).toBe('Configuration');
     expect(eyebrows).not.toContain('Add');
+    expect(eyebrows).not.toContain('Configuration summary');
     expect(root.querySelector('.sum')).toBeNull();
     expect(root.querySelector('.pal')).toBeNull();
   });
 
-  it('opens that summary when the reader asks for the explanations', async () => {
+  it('opens nothing when the reader asks for the explanations: the sentences only appear', async () => {
     const root = mount(Inspector);
     await tick();
-    expect(root.querySelector('.sum')).toBeNull();
+    const open = (): string[] => [...root.querySelectorAll('button.grp-tog')]
+      .map((b) => b.getAttribute('aria-expanded') ?? '');
+    const before = open();
     hintsOn.value = true;
     await tick();
-    expect(root.querySelector('.sum')).not.toBeNull();
-    /* Still a real toggle: hints opened it, they do not hold it open. */
-    await unfold(root, SUMMARY_ID);
+    expect(open()).toEqual(before);
     expect(root.querySelector('.sum')).toBeNull();
+    expect(root.querySelector('.insp-note')).not.toBeNull();
     hintsOn.value = false;
   });
 
@@ -496,6 +540,10 @@ describe('adding happens in one place', () => {
     selection.value = ['dc2'];
     const root = mount(Inspector);
     await tick();
+    /* The links are a fold of their own, shut to start with, and its hint says
+       how many are made. */
+    expect(foldTog(root, 'Links')?.querySelector('.grp-sum')?.textContent).toBe('1 of 2 linked');
+    await unfold(root, 'Links');
     const rows = () => [...root.querySelectorAll<HTMLElement>('.rr-dest')]
       .filter((r) => r.querySelector('.btn')?.textContent === '+ Link' || r.querySelector('.tag')?.textContent === 'linked');
     const nameOf = (id: string): string => t.sites.find((x) => (x.id as string) === id)?.name ?? id;
@@ -523,6 +571,8 @@ describe('adding happens in one place', () => {
     selection.value = [one.sites[0]!.id as string];
     const root = mount(Inspector);
     await tick();
+    expect(foldTog(root, 'Links')?.querySelector('.grp-sum')?.textContent).toBe('none possible');
+    await unfold(root, 'Links');
     expect(root.textContent).toContain(WHY_ONE_SITE);
     expect(buttonLabels(root, '.btn')).not.toContain('+ Link');
   });
@@ -586,10 +636,11 @@ describe('adding happens in one place', () => {
     selection.value = ['sby01'];
     const root = mount(Inspector);
     await tick();
+    /* The header's actions are Hints and Remove. What closes the rail is the
+       rail bar's button above it, not a second one here. */
     const head = buttonLabels(root, '.insp-hd .btn');
-    expect(head).toContain('Remove');
-    expect(head).toContain('Clear');
-    expect(head.some((l) => l.startsWith('Add'))).toBe(false);
+    expect(head).toEqual(['Hints', 'Remove']);
+    expect(root.querySelector('.insp-hd .insp-clear, .insp-hd .insp-close')).toBeNull();
     expect(root.querySelector('.pal')).toBeNull();
     [...root.querySelectorAll<HTMLButtonElement>('.insp-hd .btn')]
       .find((b) => b.textContent === 'Remove')?.click();
@@ -597,14 +648,22 @@ describe('adding happens in one place', () => {
     expect(doc.value.topology.members.map((m) => m.id as string)).not.toContain('sby01');
   });
 
-  it('says under the header why a removal is refused', async () => {
+  it('says why a removal is refused on the button, not in a box under the header', async () => {
     selection.value = ['prm01'];
     const root = mount(Inspector);
     await tick();
     const btn = [...root.querySelectorAll<HTMLButtonElement>('.insp-hd .btn')]
       .find((b) => b.textContent === 'Remove');
     expect(btn?.disabled).toBe(true);
-    expect(root.querySelector('.insp-why .why')?.textContent).toBeTruthy();
+    expect(btn?.title).toContain(WHY.primaryMember);
+    const described = btn?.getAttribute('aria-describedby');
+    expect(described).toBeTruthy();
+    const why = root.querySelector(`#${described}`);
+    expect(why?.textContent).toBe(WHY.primaryMember);
+    /* Visually hidden, and the only place the sentence is on the rail. */
+    expect(why?.classList.contains('sr')).toBe(true);
+    expect(root.querySelector('.insp-why')).toBeNull();
+    expect(root.querySelectorAll('.why').length).toBe(0);
   });
 });
 

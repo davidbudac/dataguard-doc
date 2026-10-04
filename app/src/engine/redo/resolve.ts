@@ -15,6 +15,7 @@
  */
 
 import type { Edition, MemberId } from '../ids';
+import { memberId } from '../ids';
 import { lagLimitOf } from '../defaults';
 import type { Claim, Finding } from '../types/claims';
 import { documented, inferred, model } from '../types/claims';
@@ -120,6 +121,60 @@ interface CandidateDest {
   /** Disabled at MaxFailure and not brought back by FALLBACK. */
   disabled: boolean;
 }
+
+/**
+ * The graph of a document in which no database holds the primary role: a graph
+ * for drawing it, not a resolution of it.
+ *
+ * `resolveRedoGraph` needs a primary, and with none there is no redo to
+ * resolve -- so the state keeps `redoGraph` null, which is what every
+ * generator and panel reads as "nothing to say". The drawing cannot do that:
+ * a canvas that blanks out leaves the reader no card to click and no way to
+ * repair the configuration. This is what it draws instead: the same document
+ * with no edges and nothing reached.
+ *
+ * It does not lie about a primary. `primary` is an id no member has (the empty
+ * one), so `graph.primary === m.id` is false for every card; there are no
+ * edges, no member is reachable, none has a transport, and the protection
+ * level is the mode as written, labelled as this page's model. It carries no
+ * findings: `MEMBER.PRIMARY_COUNT` is the validator's to raise.
+ *
+ * What it does keep is the *place* of each member: `depth` and `feedPath` are
+ * those of the first database taken as a stand-in primary, and nothing else
+ * of that resolution survives. The layout reads them and nothing says
+ * anything about them, so a configuration that has just lost its primary --
+ * the commonest way to have none is to change the one role -- is drawn in the
+ * columns it was drawn in a moment ago, instead of every card reshuffling
+ * under the reader's hand. (A document whose primary was not the first
+ * database moves a little; one with no database has nothing to keep.)
+ */
+export function edgelessGraph(doc: TopologyDoc): RedoGraph {
+  const stand = doc.members.find(isDatabase);
+  const sketch = stand === undefined ? undefined : resolveRedoGraph(doc, { primary: stand.id });
+  const members: Record<MemberId, ResolvedMember> = {};
+  for (const m of doc.members) {
+    const placed = sketch?.members[m.id];
+    members[m.id] = {
+      id: m.id,
+      reachableFromPrimary: false,
+      depth: placed?.depth ?? -1,
+      feedPath: placed?.feedPath ?? [],
+      effectiveXpt: null,
+      synchronized: model(false, NO_PRIMARY_NOTE),
+      countsTowardProtectionAck: model(false, NO_PRIMARY_NOTE),
+    };
+  }
+  return {
+    primary: memberId(''),
+    edges: [],
+    members,
+    protectionLevel: model(doc.config.protectionMode, NO_PRIMARY_NOTE),
+    findings: [],
+  };
+}
+
+const NO_PRIMARY_NOTE =
+  'No database holds the primary role, so there is no redo to resolve; this is the protection mode as configured, not a level.';
 
 export function resolveRedoGraph(doc: TopologyDoc, opts: ResolveOptions): RedoGraph {
   const net = opts.net ?? initialNetState(doc);

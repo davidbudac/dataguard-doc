@@ -19,7 +19,7 @@ import { memberId } from '@/engine';
 import { classicDoc, doc } from '@/state/doc';
 import { resetHistory, undo } from '@/state/history';
 import { instanceKey, parseInstanceKey } from '@/state/instanceKey';
-import { clearSelection, mode, selection, toast, viewport } from '@/state/view';
+import { clearSelection, mode, releaseRail, selection, toast, viewport } from '@/state/view';
 import { parseUrlQuery, serializeUrlQuery, URL_DEFAULTS } from '@/state/url';
 import { App } from '@/ui/App';
 import { barOpen, closeBar } from '@/ui/canvas/bar';
@@ -75,6 +75,7 @@ beforeEach(() => {
   toast.value = null;
   closeBar();
   clearSelection();
+  releaseRail();
   resetSections();
 });
 
@@ -191,11 +192,15 @@ describe('an instance on the drawing', () => {
     const root = await mountApp();
     await click(row(root, 'sby01~2')!);
     expect(selection.value).toEqual(['sby01~2']);
+    /* The rail arrives a moment after the first click of a selection (view.ts,
+       `railHeld`); stand in for the moment. */
+    releaseRail();
+    await tick();
     expect(row(root, 'sby01~2')!.querySelector('rect.tp-card')!.getAttribute('class')).toContain('is-sel');
     expect(row(root, 'sby01~2')!.getAttribute('aria-pressed')).toBe('true');
     expect(row(root, 'sby01~1')!.getAttribute('aria-pressed')).toBe('false');
     expect(root.querySelector('.insp-kind')?.textContent).toBe('RAC instance of sby01');
-    expect(root.querySelector('.insp-subj .title')?.textContent).toBe('sby012');
+    expect(root.querySelector('.insp-hd .insp-title')?.textContent).toBe('sby012');
     expect(root.querySelector<HTMLInputElement>('input[aria-label="Instance name"]')?.value).toBe('sby012');
     expect(root.querySelector<HTMLSelectElement>('select[aria-label="Host"]')?.value).toBe(sby().instances[1]!.host);
     /* The database's own form is not on the rail. */
@@ -203,7 +208,7 @@ describe('an instance on the drawing', () => {
     /* The rest of the card still selects the database. */
     await click(root.querySelector('.tp-node[data-node="sby01"] rect.tp-card')!);
     expect(selection.value).toEqual(['sby01']);
-    expect(railText(root)).toContain('db_unique_name');
+    expect(root.querySelector('.insp-hd input[aria-label="db_unique_name"]')).not.toBeNull();
   });
 
   it('is reached with the keyboard: Enter selects the row, and the card keeps its own Enter', async () => {

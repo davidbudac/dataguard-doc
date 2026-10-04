@@ -60,6 +60,9 @@ const memberById = (doc: TopologyDoc, id: string): Member | undefined =>
 
 /** The member that feeds this one, straight off the resolver's feed path. */
 export function feederName(doc: TopologyDoc, graph: RedoGraph, m: Member): string | null {
+  /* No primary (`edgelessGraph`): the feed path is where the layout puts the
+     member, not a route anything ships redo along. */
+  if (!memberById(doc, graph.primary as string)) return null;
   const rm = graph.members[m.id];
   if (!rm || rm.feedPath.length < 2) return null;
   const prev = rm.feedPath[rm.feedPath.length - 2];
@@ -103,6 +106,7 @@ export function transportOf(graph: RedoGraph, m: Member): string {
 
 /** Round trip between a member and whatever feeds it, in the document's links. */
 function feedRtt(doc: TopologyDoc, graph: RedoGraph, m: Member): string {
+  if (!memberById(doc, graph.primary as string)) return '';
   const rm = graph.members[m.id];
   if (!rm || rm.feedPath.length < 2) return '';
   const prev = rm.feedPath[rm.feedPath.length - 2];
@@ -184,8 +188,13 @@ export function shapeSentence(doc: TopologyDoc, graph: RedoGraph): string {
   return parts.length === 0 ? `${head}.` : `${head}, ${parts.join(', ')}.`;
 }
 
-/** Who feeds whom, in the resolver's own terms. */
+/**
+ * Who feeds whom, in the resolver's own terms. With no primary there is no
+ * resolver's answer (`edgelessGraph`), and the sentence says that instead of
+ * saying of every member that nothing reaches it.
+ */
 export function redoSentences(doc: TopologyDoc, graph: RedoGraph): string[] {
+  if (!memberById(doc, graph.primary as string)) return ['No redo route is drawn: no member is the primary.'];
   const others = doc.members.filter((m) => (m.id as string) !== (graph.primary as string));
   if (others.length > SENTENCE_LIMIT) {
     const reached = others.filter((m) => graph.members[m.id]?.reachableFromPrimary === true).length;
@@ -315,9 +324,11 @@ export function cardLabel(
   const feeder = feederName(doc, graph, m);
   const feed = (m.id as string) === (graph.primary as string)
     ? 'It is the primary.'
-    : rm && rm.reachableFromPrimary && feeder
-      ? `It receives redo from ${feeder}${rm.effectiveXpt ? ` over ${rm.effectiveXpt}` : ''}.`
-      : 'No active redo route reaches it from the primary.';
+    : !memberById(doc, graph.primary as string)
+      ? 'No member is the primary.'
+      : rm && rm.reachableFromPrimary && feeder
+        ? `It receives redo from ${feeder}${rm.effectiveXpt ? ` over ${rm.effectiveXpt}` : ''}.`
+        : 'No active redo route reaches it from the primary.';
   const st = frame ? frame.members[m.id] : undefined;
   const role = cardRoleFor(doc, node, frame);
   const kind = isFarSync(m) ? 'Far sync instance'

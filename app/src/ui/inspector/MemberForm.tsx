@@ -7,17 +7,22 @@
  * lag, no open mode and no broker state, so those controls are not there and
  * a sentence says why. What *is* greyed always carries its reason, out of the
  * one WHY table.
+ *
+ * The member's name is not a row here: it is the rail's header, and it is the
+ * `db_unique_name` (`Inspector.tsx`). The form opens on what the member *is* --
+ * its role and its transport -- and folds what it *has*: where it is reached,
+ * its instances, its routes and its destinations.
  */
 
 import type { Member, MemberId, RedoGraph, TopologyDoc, XptMode } from '@/engine';
 import { hostId, isDatabase, isRac } from '@/engine';
 import { Fact } from '../common/Chip';
-import { Action, Check, Choice, Fold, Group, Note, Num, Pick, Text } from './controls';
-import { DESTS_ID, INSTANCES_ID } from './sections';
+import { Action, Check, Choice, Fold, Group, Note, Num, Pick, Text, Withheld } from './controls';
+import { DESTS_ID, IDENTITY_ID, INSTANCES_ID } from './sections';
 import { RedoRoutesEditor } from './RedoRoutesEditor';
 import {
   addInstance, destPropsOf, patchDatabase, patchDest, patchInstance, patchMember, removeInstance,
-  renameMember, setApplyLag, setLogXptMode, setPrimary,
+  setApplyLag, setLogXptMode, setPrimary,
 } from './edits';
 import { APPLY_LAG_NOTE, LOG_XPT_NOTE } from './notes';
 import { gateOff, logXptOptions, off, ON, WHY } from './why';
@@ -61,34 +66,6 @@ export function MemberForm({ member, doc, graph }: MemberFormProps) {
 
   return (
     <>
-      {/* The header already says what this is (a primary database, a far sync
-          instance); the first group is its identity. */}
-      <Group title="General">
-        <Text
-          name="db_unique_name"
-          value={id as string}
-          onCommit={(v) => renameMember(id, v)}
-          focusKey={`name:${id as string}`}
-          note="The member's identity. Renaming it rewrites every reference in this configuration in the same edit."
-        />
-        <Text
-          name="Connect identifier" prose
-          value={member.connectIdentifier}
-          onCommit={(v) => patchMember(
-            id, `Set the connect identifier on ${id as string}`, (m) => ({ ...m, connectIdentifier: v }),
-          )}
-          note="What DGMGRL and the observer dial to reach this member."
-        />
-        <Check
-          name="Enabled" prose
-          label="In the broker configuration"
-          checked={member.enabled}
-          onChange={(v) => patchMember(
-            id, `${v ? 'Enable' : 'Disable'} ${id as string}`, (m) => ({ ...m, enabled: v }),
-          )}
-        />
-      </Group>
-
       {db === null ? (
         <Group title="Redo">
           <Note>
@@ -140,47 +117,56 @@ export function MemberForm({ member, doc, graph }: MemberFormProps) {
               id, `Set the open mode on ${id as string}`, (m) => ({ ...m, openMode: v }),
             )}
           />
-          <Num
-            name="Apply lag" prose
-            bound="applyLagSeconds"
-            value={db.applyLagSeconds}
-            coalesce={`alag:${id as string}`}
-            enabled={gateOff(isPrimary, WHY.primaryNoApply)}
-            onChange={(v) => setApplyLag(id, v)}
-            note={APPLY_LAG_NOTE}
-          />
-          <Num
-            name="Transport lag" prose
-            bound="transportLagSeconds"
-            value={db.transportLagSeconds}
-            coalesce={`xlag:${id as string}`}
-            enabled={gateOff(isPrimary, WHY.primaryNoApply)}
-            onChange={(v) => patchDatabase(
-              id, `Set the transport lag on ${id as string}`,
-              (m) => ({ ...m, transportLagSeconds: Math.min(v, m.applyLagSeconds) }),
-              `xlag:${id as string}`,
-            )}
-            note="Redo the standby has not received. Clamped to the apply lag, because redo cannot be applied before it arrives."
-          />
-          <Check
-            name="Apply running" prose
-            label={db.role === 'logical' ? 'SQL Apply is running' : 'Redo apply is running'}
-            checked={db.role === 'snapshot' ? false : db.applyRunning}
-            enabled={isPrimary ? gateOff(true, WHY.primaryNoApply) : gateOff(db.role === 'snapshot', WHY.snapshotNoApply)}
-            onChange={(v) => patchDatabase(
-              id, `${v ? 'Start' : 'Stop'} ${db.role === 'logical' ? 'SQL Apply' : 'redo apply'} on ${id as string}`,
-              (m) => ({ ...m, applyRunning: v }),
-            )}
-          />
-          <Check
-            name="Real-time apply" prose
-            label="Applies from the standby redo logs"
-            checked={db.realTimeApply}
-            enabled={gateOff(isPrimary, WHY.primaryNoApply)}
-            onChange={(v) => patchDatabase(
-              id, `Set real-time apply on ${id as string}`, (m) => ({ ...m, realTimeApply: v }),
-            )}
-          />
+          {/* A primary applies no redo, so these four are one line, not four
+              grey rows under one pill apiece. A snapshot standby is off for a
+              reason of its own, and keeps its row. */}
+          {isPrimary ? (
+            <Withheld
+              names="Apply lag, transport lag, redo apply and real-time apply"
+              why={WHY.primaryNoApply}
+            />
+          ) : (
+            <>
+              <Num
+                name="Apply lag" prose
+                bound="applyLagSeconds"
+                value={db.applyLagSeconds}
+                coalesce={`alag:${id as string}`}
+                onChange={(v) => setApplyLag(id, v)}
+                note={APPLY_LAG_NOTE}
+              />
+              <Num
+                name="Transport lag" prose
+                bound="transportLagSeconds"
+                value={db.transportLagSeconds}
+                coalesce={`xlag:${id as string}`}
+                onChange={(v) => patchDatabase(
+                  id, `Set the transport lag on ${id as string}`,
+                  (m) => ({ ...m, transportLagSeconds: Math.min(v, m.applyLagSeconds) }),
+                  `xlag:${id as string}`,
+                )}
+                note="Redo the standby has not received. Clamped to the apply lag, because redo cannot be applied before it arrives."
+              />
+              <Check
+                name="Apply running" prose
+                label={db.role === 'logical' ? 'SQL Apply is running' : 'Redo apply is running'}
+                checked={db.role === 'snapshot' ? false : db.applyRunning}
+                enabled={gateOff(db.role === 'snapshot', WHY.snapshotNoApply)}
+                onChange={(v) => patchDatabase(
+                  id, `${v ? 'Start' : 'Stop'} ${db.role === 'logical' ? 'SQL Apply' : 'redo apply'} on ${id as string}`,
+                  (m) => ({ ...m, applyRunning: v }),
+                )}
+              />
+              <Check
+                name="Real-time apply" prose
+                label="Applies from the standby redo logs"
+                checked={db.realTimeApply}
+                onChange={(v) => patchDatabase(
+                  id, `Set real-time apply on ${id as string}`, (m) => ({ ...m, realTimeApply: v }),
+                )}
+              />
+            </>
+          )}
           <Check
             name="Flashback Database" prose
             label="Flashback Database is on"
@@ -213,6 +199,32 @@ export function MemberForm({ member, doc, graph }: MemberFormProps) {
           note={LOG_XPT_NOTE}
         />
       </Group>
+
+      {/* Where it is reached and whether the broker has it: what the member
+          has, not what it is -- so it comes after the role and folds. Its name
+          is the rail's header, and it is the db_unique_name. */}
+      <Fold
+        id={IDENTITY_ID}
+        title="Connection"
+        hint={`${member.connectIdentifier || 'no connect identifier'} · ${member.enabled ? 'enabled' : 'disabled'}`}
+      >
+        <Text
+          name="Connect identifier" prose
+          value={member.connectIdentifier}
+          onCommit={(v) => patchMember(
+            id, `Set the connect identifier on ${id as string}`, (m) => ({ ...m, connectIdentifier: v }),
+          )}
+          note="What DGMGRL and the observer dial to reach this member."
+        />
+        <Check
+          name="Enabled" prose
+          label="In the broker configuration"
+          checked={member.enabled}
+          onChange={(v) => patchMember(
+            id, `${v ? 'Enable' : 'Disable'} ${id as string}`, (m) => ({ ...m, enabled: v }),
+          )}
+        />
+      </Fold>
 
       {/* The tail of the form folds (ui.md SS3f). Everything above is what the
           member *is*; instances and destinations are lists that grow, and a

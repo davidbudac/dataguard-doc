@@ -55,7 +55,9 @@ doc = signal<Doc>(PRESETS.classic); edition = signal<'19c'|'26ai'>('19c')  // NO
 View signals: `mode: 'build'|'break'|'configure'|'learn'`, `selection`, `hovered`, `tNow`, `playing`, `speed`, `panelTab`, `lessonId`, `lessonStep`, `proseOpen`, `theme`, `inspectorOpen`, `toast`.
 
 **Mode names.** The modes are labelled Build / Simulate / Config / Learn. The internal ids stay `'break'` and `'configure'` (as do `BreakRail`, `ui/break/`, the `m-break` classes); only the labels and the address changed. The `mode` URL key writes `simulate` and `config`, and reads either those or the old `break` / `configure`, so older links keep working.
-Derived (one file, one direction): `primaryId`, `issues = validate(...)`, `errors`, `redoGraph`, `geometry = layoutTopology(...)`, `trace = simulate(...)`, `frame = stateAt(trace, tNow)`, `outcome`, `readout`, `scripts = {dgmgrl, dests, tns, show(frame)}` — `SHOW CONFIGURATION` takes `frame` so scrubbing walks it through states. No component computes domain state locally. `trace` budget ~8 ms; if slow, compute in an idle effect and mark `.is-stale` (never a spinner).
+Derived (one file, one direction): `primaryId`, `issues = validate(...)`, `errors`, `redoGraph` (null when no database holds the primary role, which the panels and generators read as "nothing to say"), `drawnGraph` / `drawnGeometry = layoutTopology(...)` (never null: the drawing falls back to the same document with no edges, `edgelessGraph`) and `geometry` (the drawn one, or null with no redo graph, for the surfaces that draw the redo), `trace = simulate(...)`, `frame = stateAt(trace, tNow)`, `outcome`, `readout`, `scripts = {dgmgrl, dests, tns, show(frame)}` — `SHOW CONFIGURATION` takes `frame` so scrubbing walks it through states. No component computes domain state locally. `trace` budget ~8 ms; if slow, compute in an idle effect and mark `.is-stale` (never a spinner).
+
+**No primary stays on the drawing.** When no database holds the primary role the canvas does not blank out (that left no card to click, and so no way to repair the configuration from where it is drawn). `CanvasSlot` draws every card where the layout puts it, with no redo lines, over `drawnGraph`; the stand-in graph keeps each member's place (its depth and feed path under the first database) so the cards do not reshuffle the moment the role goes. A compact error-toned card with `role="alert"` (`.cv-invalid`) says `Not a valid Data Guard configuration` / `No database has the primary role.` In the floating layout and in the popped-out canvas it is positioned at the top of the stage, between the palette and the inspector, and the drawing is given the row it needs; docked (Configure, Learn's workbench, the narrow viewer) it is a row in the stage's own flow. Where the viewport can edit it offers `Make <name> the primary` for each of the first three databases (the same `setPrimary`, one undo step; more than three adds a line that any database can be given the role from its card or the inspector; no database says one is needed); a read-only view gets the message alone. It is the canvas's own chrome, not the toast and not a finding: `MEMBER.PRIMARY_COUNT` and the chips are unchanged. The Detailed timeline, the diagram figure and the report keep their own "nothing to draw" notes (`redoGraph` and `geometry` are still null).
 
 **URL**: fragment `#t=<base64url(deflate-raw(JSON(compact doc)))>` (fallback `#t0=` plain), 8000-char cap with an honest refusal ("too large for a link — export the file"); query keys human-readable: `ed`, `mode`, `panel`, `sel`, `t`, `preset`, `lesson`/`step`, `theme`; one exported FIELDS-style table with parse/serialize/default/clamp; unknown tokens ignored then dropped. The fragment is written **only when the Doc differs from the preset it names** — compared by value on the codec's wire form, so `?preset=classic` alone is the whole address until the first edit and again after undoing back to it; `?preset=` stays on as provenance once it does differ. Write path: effect → 16 ms timer → 300 ms debounce → `replaceState`; `tNow` excluded while playing/scrubbing. Undo never uses `pushState`.
 
@@ -714,7 +716,9 @@ fewer. One bullet per change.
   additions are a **2×2 of full-width buttons** (`.pal-adds`); `+ Host` and
   `+ Link` are a quieter second rank under a hairline (`.pal-more`), because
   both need a data centre named before the button means anything.
-- **The configuration summary is a fold.** `Configuration summary ▸`
+- **The configuration summary is a fold.** *(Gone since 2026-10-04: the empty rail
+  opens on the configuration's properties, with its name as the header's field --
+  "The inspector comes when asked", below.)* `Configuration summary ▸`
   (`SUMMARY_ID` in `sections.ts`), shut when the rail opens, with the
   configuration's name as the closed fold's hint — the readout strip already
   reads the protection level, the member count and the findings. Turning
@@ -1361,6 +1365,10 @@ every preset, every scale).
 
 ## The side rail folds (as built, 2026-09-29)
 
+*Since 2026-10-04 this is Break's Events rail alone. Topology's and Config's inspector
+has no strip: it is in the document or it is not, and the bar's button closes it -- "The
+inspector comes when asked", at the end.*
+
 The owner's ask: *"make the right-hand side panel collapsible and redesign it to be
 much more user-friendly and nicer"*.
 
@@ -1778,7 +1786,7 @@ handle on its top edge). Build's dock, chips and warning card are as they were.
   leave the wrong one behind. `TL` (the old export) is `TL_FULL`.
 - **What went**: the Simulate branch of `FloatDock` (readout + finding chips + grip + two
   buttons on the dock's head row), `FindingToast`/`FindingsPopover` in Simulate (Build
-  keeps both), the drag half of `DockGrip` (now `useDockDrag`, on the bar), the
+  kept both -- `FindingToast`, the card above the dock, went on 2026-10-04), the drag half of `DockGrip` (now `useDockDrag`, on the bar), the
   prototype's pill, `?variant=`, `import.meta.env.DEV` gating and `state/url.ts`'s
   carrying of the key.
 - **Findings when there is nowhere floating to put them**: `revealFindings` opens the
@@ -2084,3 +2092,80 @@ popover and the small timeline's labels edit in.
   `tune.test.ts` / `tune-drag.test.ts` / `detailed-timeline.test.ts` /
   `summary-band.test.ts` / `topology-mode.test.ts` that followed. Browser pass: to do
   (popover placement, the chips' wrap in the dock at 1024 px, label packing at 1100 px).
+
+
+## The timeline panel folds; the inspector comes when asked; the finding card is gone (as built, 2026-10-04)
+
+Three changes to the shell, after a pass on how busy it was.
+
+**The whole timeline panel folds, at a handle on its edge.** `timelineOpen` (`state/view.ts`,
+`dg-timeline`, open unless stored `'0'`; `loadTimelineOpen` at boot) is the one signal, and
+`ui/timeline/PanelHandle.tsx` the one handle. It is a real `<button aria-expanded
+aria-controls>` -- full width, a double hairline running out to a tab that carries the
+chevron (`▾` open, `▸` folded) and the word *Timeline* -- the first child of Topology's floating
+dock card (`#app-dock`) and of the docked `TimelineSlot` (`#tl-slot`: the Detailed timeline below
+1024 px, Learn's workbench). Folded, the card is the handle and **nothing else is rendered**: not the
+Break row, the chips, the status line, the small timeline, the plot, the transport or the empty
+state. With a run the bar's right side says `N events` (`steady state` for the healthy run). Folding
+pauses a run that is playing, as the small timeline's own fold does -- that one
+(`miniTimelineOpen`, `dg-topology-timeline-v1`) is untouched and is still the smaller fold
+inside the panel. `useDockAnchor` measures the card, so the drawing's inset, the zoom pill, the
+findings popover and the palette's height follow it to the handle's height with no new code.
+On paper both open (`printing`); the popped-out window (`TimelinePop`) has no handle and is
+always open. Tests: `test/ui/timeline-panel.test.ts`.
+
+**The inspector comes when asked.** At `wide`, in Topology and Config only, the rail
+(`<aside id="app-rail">`) is rendered iff `selection.length > 0 || inspectorOpen`
+(`inspectorRailWanted`, `railOnDemand` in `state/view.ts`); otherwise it is not in the
+document -- no strip -- and the room is given back: `.app.no-rail` makes the docked grid one
+column (`rail.css`) and restates `--rail-space` as the margin alone in the floating layout, so the
+drawing's fit, the dock, the zoom pill and the findings popover all follow. `inspectorOpen` is
+"the reader opened it on purpose" (the drawer's open state below `wide`, unchanged). The ways in
+with nothing selected: the top bar's Inspector button (the `PanelIcon` glyph, `aria-expanded`,
+`wide` in Topology and Config only), `]`, and every gesture that sends the reader to a property
+(`revealRail()` in `persist.ts`: Edit, a finding's row, `All settings →`, the walkthrough, the
+run explanation's settings links -- with a selection the rail is already there; with none it
+opens the configuration). `toggleRail()` toggles; shutting it with a selection also clears the
+selection. The rail bar's button is a **close** here (`Close the Inspector panel`, `]` in its
+title): it clears the selection and `inspectorOpen`. The strip state (`railCollapsed`, `dg-rail`) is
+Break's Events rail's alone, including `break/rail-fold.ts`; Build and Config ignore it. Break,
+Learn and the drawers below `wide` are unchanged.
+
+*The gesture the rail must not break.* The floating drawing is centred in a box inset by the
+rail's width (`--rail-space`) and the docked grid's stage narrows with its column, so the rail
+arriving moves the cards -- and a double-click to rename is two clicks: the first selects, the second
+would land on the ground. A press never selects (the card's `click` does, after the pointer is
+up), so a drag cannot bring the rail mid-gesture; the one gesture that is not safe is that
+double-click, so the first selection from nothing holds the rail for 450 ms (`holdRail`,
+`railHeld`, called from `CanvasSlot`'s `onSelect`), and the rail waits out a name being typed
+on the drawing (`renaming`) as well, arriving when it is committed. A gesture that asks for the
+rail by name (`revealRail`) releases the hold.
+
+**The inspector is decluttered.** The header is the subject: a tile, the kind over the **name, which
+is the field that renames it** (`NameField`, `inspector/controls.tsx`) -- the configuration's, a
+member's `db_unique_name` (the kind line says so), an observer's, a data centre's, an application's;
+a link, a derived line and a RAC instance have none and show plain text. It commits on change through the
+rename functions in `edits.ts` (`renameConfig`, `renameMember`, `renameObserver`, `renameSite`,
+`renameApplication`); a refused rename edits nothing and the field snaps back to the real name;
+`Esc` gives the typed name up; `focusField` still takes the caret into it, text selected. The
+`Name` / `db_unique_name` rows are gone from the forms, and with `Hints` the header carries the
+sentence that was under them. The `Configuration summary` fold and its Hints reveal are gone (the
+Detailed timeline's run summary, `summaryOpen`, is another thing and is untouched). The header's
+actions are `Hints` and, where it applies, `Remove`; a refused Remove carries its reason on the
+button (`title`, `aria-describedby` to a visually hidden span), not in a box under the header. Each
+form opens on its primary section and folds the rest with a one-line hint (a member: role and apply,
+and transport, then `Connection`, `Instances`, routes, destinations; an observer: its host, then
+`START OBSERVER`; a data centre: its hosts, then `Links`; an application: where it stands and its
+connect string, then `ADDRESS_LIST` and *This page's model*); a closed fold is one line, its title
+never wrapping and its hint cut with an ellipsis and whole in its `title`. Rows that are disabled
+for one identical reason are one line (`Withheld`): a primary's four apply and lag rows, and under
+19c the two ObserverPing values with their switch and LagType with LagGraceTime -- a row that is off
+for its own reason keeps its pill. `BystandersFollowRoleChange` and `ConfigurationWideServiceName`
+still sit open under `Configuration`: main has no `Advanced` fold to move them into. Closed folds
+carry no rule under them. Tests: `test/ui/rail.test.ts`, `inspector.test.ts`, `hints.test.ts`.
+
+**The finding card is gone.** `FindingToast` -- the small card above the dock that surfaced the most
+serious finding with `Details` and `×` -- and its `findingWaved` signal and `.fnd-toast` rules are
+deleted: the chips on the dock's status line (`FindingsChips`) count the findings and open the
+popover, and the Detailed timeline's bar carries its count. The generic action toast (`toast`) is
+unchanged.

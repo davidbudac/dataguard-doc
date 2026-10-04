@@ -1,32 +1,39 @@
 /**
  * The inspector: whatever is selected, and the configuration when nothing is.
  *
- * The empty state is not empty. A rail with nothing in it teaches nothing, so
- * with no selection this is a summary of the configuration -- what it is, what
- * mode it runs in, what the observer arrangement is -- followed by the
- * configuration's own properties. Selecting a card swaps the properties in;
- * clearing the selection brings the summary back. Adding is not here: the
- * toolbar over the drawing is the one place that adds (ui.md SS3i).
+ * At `wide`, in Topology and Config, the rail is not on screen until something
+ * is selected or the reader opened it (`App.tsx`), so this is never a summary of
+ * what the drawing already shows. With nothing selected it is the
+ * configuration's own properties; selecting a card swaps the subject's in.
+ * Adding is not here: the toolbar over the drawing is the one place that adds
+ * (ui.md SS3i).
+ *
+ * The header is the subject: a tile with the card's glyph, the kind of thing
+ * over its name, and the name is the field that renames it -- the
+ * configuration's, a member's `db_unique_name`, an observer's, a data centre's,
+ * an application's. A link and a derived line have no name of their own, so
+ * their title is plain text. The header carries `Hints` and `Remove` where
+ * there is something to remove; what closes the rail is the rail bar's button
+ * above it (`RailFrame.tsx`), not a second one here.
  *
  * Ids are one namespace here, exactly as they are on the canvas: a member, an
  * observer, a link and a site cannot share a name, so a selection key resolves
  * to precisely one subject.
  */
 
-import { useLayoutEffect } from 'preact/hooks';
-import { applicationsOf, findApplication } from '@/engine';
+import type { ComponentChildren } from 'preact';
+import { findApplication } from '@/engine';
 import type { Application, Instance, Link, Member, Observer, Site, TopologyDoc } from '@/engine';
-import { errors, issues, redoGraph, topology, warnings } from '@/state/derived';
+import { redoGraph, topology } from '@/state/derived';
 import { parseInstanceKey } from '@/state/instanceKey';
-import { canEdit, clearSelection, hintsOn, mode, selection, viewport } from '@/state/view';
-import { Fold, Note } from './controls';
-import { isOff, WhyPill } from '../common/WhyPill';
+import { canEdit, mode, selection, viewport } from '@/state/view';
+import { NameField, Note } from './controls';
+import { isOff } from '../common/WhyPill';
 import { removeAction } from '../build/actions';
 import { resolveRoute, routesOn, routeWord } from '../build/routes';
 import type { RouteRef } from '../build/routes';
 import { RouteSection } from './RouteSection';
 import { hintsShown, HintsToggle } from '../hints';
-import { revealSections, SUMMARY_ID } from './sections';
 import { ApplicationForm } from './ApplicationForm';
 import { ConfigForm } from './ConfigForm';
 import { InstanceForm } from './InstanceForm';
@@ -34,6 +41,7 @@ import { LinkForm } from './LinkForm';
 import { MemberForm } from './MemberForm';
 import { ObserverForm } from './ObserverForm';
 import { SiteForm } from './SiteForm';
+import { renameApplication, renameConfig, renameMember, renameObserver, renameSite } from './edits';
 import { WHY } from './why';
 import { useRailRow } from '../common/Field';
 import '@/styles/inspector.css';
@@ -187,77 +195,131 @@ function KindTile({ tone, glyph }: { tone: Tone; glyph: Glyph }) {
   );
 }
 
-/** The header's subject: the tile, the kind word over the name. */
-function SubjectHead({ look, kind, name }: { look: { tone: Tone; glyph: Glyph }; kind: string; name: string }) {
+/**
+ * The header's subject: the tile, the kind word over the name. The name is
+ * whatever the caller puts in: the field that renames it, or plain text.
+ */
+function SubjectHead(
+  { look, kind, children }: { look: { tone: Tone; glyph: Glyph }; kind: string; children: ComponentChildren },
+) {
   return (
     <span class="insp-subj">
       <KindTile tone={look.tone} glyph={look.glyph} />
       <span class="insp-subj-t">
-        <span class="insp-kind">{kind}</span>
-        {/* Ellipsed rather than wrapped mid-word (inspector.css), so the
-            whole name rides in the tooltip. */}
-        <span class="title mono" title={name}>{name}</span>
+        <span class="insp-kind" title={kind}>{kind}</span>
+        {children}
       </span>
     </span>
   );
 }
 
-/* ---------------- the sections ---------------- */
+/** A name the reader did not choose: a link's ends, a derived line, an instance of a RAC database. */
+function PlainName({ name }: { name: string }) {
+  /* Ellipsed rather than wrapped mid-word (inspector.css), so the whole name
+     rides in the tooltip. */
+  return <span class="insp-title mono" title={name}>{name}</span>;
+}
 
-function Summary({ doc }: { doc: TopologyDoc }) {
-  const primary = doc.members.find((m) => m.kind === 'database' && m.role === 'primary');
-  const standbys = doc.members.filter((m) => m.kind === 'database' && m.role !== 'primary');
-  const farsyncs = doc.members.filter((m) => m.kind === 'farsync');
-  const running = doc.observers.filter((o) => o.running);
-  const target = doc.config.fsfo.target;
-  const rows: [string, string][] = [
-    ['Configuration', doc.config.name],
-    ['Release', doc.config.edition],
-    ['Protection mode', doc.config.protectionMode],
-    ['Primary', primary ? (primary.id as string) : 'none declared'],
-    ['Standbys', standbys.length === 0 ? 'none' : standbys.map((m) => m.id as string).join(', ')],
-    ['Far sync', farsyncs.length === 0 ? 'none' : farsyncs.map((m) => m.id as string).join(', ')],
-    ['Fast-start failover', doc.config.fsfo.state],
-    ['Target', target.kind === 'ANY' ? 'ANY' : (target.members.join(', ') || 'not set')],
-    [
-      applicationsOf(doc).length > 1 ? 'Applications' : 'Application',
-      applicationsOf(doc).length === 0 ? 'not drawn' : applicationsOf(doc).map((a) => a.id as string).join(', '),
-    ],
-    [
-      'Observers',
-      doc.observers.length === 0
-        ? 'none deployed'
-        : `${doc.observers.length} deployed, ${running.length} running`,
-    ],
-    ['Data centres', doc.sites.map((s) => s.name).join(', ') || 'none'],
-    [
-      'Findings',
-      issues.value.length === 0
-        ? 'none, as modelled here'
-        : `${errors.value.length} error${errors.value.length === 1 ? '' : 's'}, ${warnings.value.length} warning${warnings.value.length === 1 ? '' : 's'}, ${issues.value.length} in all`,
-    ],
-  ];
-  /* Folded, and named for what it is. The empty rail used to open with a
-     ten-row table of what the configuration already is -- true, and not what
-     somebody who has just arrived is looking for. The hint on the closed fold
-     carries the one row that is nowhere else on screen (the readout strip
-     already reads the protection level, the member count and the findings). */
+/**
+ * The header's title where the subject has a name of its own: the field that
+ * renames it, and -- with `Hints` on, and only then -- the sentence that says
+ * what a rename does.
+ */
+function HeaderName(
+  { label, value, onCommit, focusKey, note }:
+  { label: string; value: string; onCommit: (v: string) => void; focusKey?: string; note: string },
+) {
   return (
-    <Fold id={SUMMARY_ID} title="Configuration summary" hint={doc.config.name}>
-      <dl class="sum">
-        {rows.map(([k, v]) => (
-          <div class="sum-row" key={k}>
-            <dt>{k}</dt>
-            <dd class="mono">{v}</dd>
-          </div>
-        ))}
-      </dl>
-      <Note>
-        Select a card, a site or a line on the drawing to edit it. Nothing here is hidden:
-        what a control cannot do, it says.
-      </Note>
-    </Fold>
+    <>
+      <NameField label={label} value={value} onCommit={onCommit} {...(focusKey === undefined ? {} : { focusKey })} />
+      {hintsShown() ? <span class="insp-note">{note}</span> : null}
+    </>
   );
+}
+
+/**
+ * What the header says about the subject: the kind, the name (a field where it
+ * can be renamed) and the sentence that rides with `Hints`.
+ *
+ * Keyed on the subject by the caller, so a rename that follows the card (the id
+ * changes with it) and a selection that moves to another card each get a field
+ * of their own, never one holding the last card's half-typed name.
+ */
+function Heading({ subject, doc }: { subject: Subject; doc: TopologyDoc }) {
+  const look = subjectLook(subject);
+  if (subject === null) {
+    return (
+      <SubjectHead look={look} kind="Configuration">
+        <HeaderName
+          label="Configuration name"
+          value={doc.config.name}
+          onCommit={renameConfig}
+          note="The name of the broker configuration. It is a label: nothing else refers to it."
+        />
+      </SubjectHead>
+    );
+  }
+  const kind = subjectWord(subject);
+  switch (subject.kind) {
+    case 'member':
+      /* The eyebrow says which name this is: the member's identity, as Oracle
+         spells it. */
+      return (
+        <SubjectHead look={look} kind={`${kind} · db_unique_name`}>
+          <HeaderName
+            label="db_unique_name"
+            value={subject.member.id as string}
+            onCommit={(v) => renameMember(subject.member.id, v)}
+            focusKey={`name:${subject.member.id as string}`}
+            note="The member's identity, and its name. Renaming it rewrites every reference in this configuration in the same edit."
+          />
+        </SubjectHead>
+      );
+    case 'observer':
+      return (
+        <SubjectHead look={look} kind={kind}>
+          <HeaderName
+            label="Observer name"
+            value={subject.observer.id as string}
+            onCommit={(v) => renameObserver(subject.observer.id, v)}
+            focusKey={`name:${subject.observer.id as string}`}
+            note="The name START OBSERVER gives it, and how SET MASTEROBSERVER TO names it."
+          />
+        </SubjectHead>
+      );
+    case 'application':
+      return (
+        <SubjectHead look={look} kind={kind}>
+          <HeaderName
+            label="Application name"
+            value={subject.application.id as string}
+            onCommit={(v) => renameApplication(subject.application.id as string, v)}
+            focusKey={`name:${subject.application.id as string}`}
+            note="A label for the card. Nothing in the generated configuration carries it."
+          />
+        </SubjectHead>
+      );
+    case 'site':
+      return (
+        <SubjectHead look={look} kind={kind}>
+          <HeaderName
+            label="Data centre name"
+            value={subject.site.name}
+            onCommit={(v) => renameSite(subject.site.id, v)}
+            focusKey={`name:${subject.site.id as string}`}
+            note="The label under the site rectangle. The data centre's identity does not change with it."
+          />
+        </SubjectHead>
+      );
+    case 'instance':
+    case 'link':
+    case 'route':
+      return (
+        <SubjectHead look={look} kind={kind}>
+          <PlainName name={subjectName(doc, subject)} />
+        </SubjectHead>
+      );
+  }
 }
 
 /* ---------------- the rail ---------------- */
@@ -272,23 +334,15 @@ export function Inspector() {
   const graph = redoGraph.value;
   const narrowed = mode.value === 'configure';
 
-  /* Asking for the explanations is asking for the page to say more about
-     itself, and the summary is the rail's own statement of what is drawn --
-     so turning `Hints` on opens it. Additive, exactly like the reveal a
-     finding does: the fold stays a real toggle the reader can shut again. */
-  useLayoutEffect(() => {
-    if (hintsShown()) revealSections([SUMMARY_ID]);
-  }, [hintsOn.value]);
-
   if (!canEdit(viewport.value)) {
     return (
       <div class="insp" ref={railRef}>
         <header class="insp-hd">
-          <SubjectHead look={subjectLook(null)} kind="Configuration" name={doc.config.name} />
-          <span class="rr-spacer" />
+          <SubjectHead look={subjectLook(null)} kind="Configuration">
+            <PlainName name={doc.config.name} />
+          </SubjectHead>
           <span class="insp-acts"><HintsToggle /></span>
         </header>
-        <Summary doc={doc} />
         <Note warn>{WHY.readOnlyView}</Note>
       </div>
     );
@@ -299,34 +353,33 @@ export function Inspector() {
      would remove, rather than at the foot of a form four screens down.
      Configure narrows the rail to the properties. */
   const remove = subject === null || narrowed ? null : removeAction(doc, sel[0] as string);
-  const title = subject === null ? doc.config.name : subjectName(doc, subject);
+  const refused = remove !== null && isOff(remove.enabled) ? remove.enabled.why : null;
 
   return (
     <div class="insp" ref={railRef}>
       {/* The header is the rail's one fixed row, so it is where the `Hints`
-          switch lives -- including on the empty rail, which is exactly where a
-          reader who wants the prose back is looking. With nothing selected it
-          carries that button and nothing else. */}
+          switch lives -- including on the configuration, which is exactly
+          where a reader who wants the prose back is looking. `Remove` is
+          there for a subject that can go. What shuts the rail is the bar
+          above (`RailFrame.tsx`). */}
       <header class="insp-hd">
         {/* What the rail is about, always: the selected object, or the
             configuration itself when nothing is selected. The kind word is
             not an `.eyebrow` -- the eyebrows are the section headings below. */}
-        <SubjectHead
-          look={subjectLook(subject)}
-          kind={subject === null ? 'Configuration' : subjectWord(subject)}
-          name={title}
-        />
-        <span class="rr-spacer" />
+        <Heading key={subject === null ? '' : sel[0]} subject={subject} doc={doc} />
         <span class="insp-acts">
-        <HintsToggle />
-        {subject === null ? null : (
-          <>
-            {remove === null ? null : (
+          <HintsToggle />
+          {remove === null ? null : (
+            <>
+              {/* A refusal is the button's own to carry: its tooltip and the
+                  text a screen reader reads with it. No box on the rail for
+                  something the reader has not asked about. */}
               <button
                 type="button"
-                class={`btn is-icon insp-remove${isOff(remove.enabled) ? ' is-faded' : ''}`}
-                disabled={isOff(remove.enabled)}
-                title={remove.label}
+                class={`btn is-icon insp-remove${refused === null ? '' : ' is-faded'}`}
+                disabled={refused !== null}
+                title={refused === null ? remove.label : `${remove.label}: ${refused}`}
+                {...(refused === null ? {} : { 'aria-describedby': 'insp-remove-why' })}
                 onClick={remove.run}
               >
                 <svg class="insp-ico" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
@@ -334,30 +387,11 @@ export function Inspector() {
                 </svg>
                 <span class="sr">Remove</span>
               </button>
-            )}
-            {/* Icon buttons with their word for a screen reader; the title
-                is the word for a pointer. */}
-            <button
-              type="button"
-              class="btn is-icon insp-clear"
-              title="Clear the selection (show the configuration)"
-              onClick={() => clearSelection()}
-            >
-              <svg class="insp-ico" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
-                <path d="M4.25,4.25 L11.75,11.75 M11.75,4.25 L4.25,11.75" />
-              </svg>
-              <span class="sr">Clear</span>
-            </button>
-          </>
-        )}
+              {refused === null ? null : <span class="sr" id="insp-remove-why">{refused}</span>}
+            </>
+          )}
         </span>
       </header>
-
-      {/* A refused removal says why under the header, not beside the button:
-          a sentence in the header's button row pushed `Clear` off the rail. */}
-      {remove !== null && isOff(remove.enabled) ? (
-        <p class="insp-why"><WhyPill why={remove.enabled} /></p>
-      ) : null}
 
       {sel.length > 1 ? (
         /* A count, not an explanation: it stays whatever the Hints toggle
@@ -369,12 +403,7 @@ export function Inspector() {
         </Note>
       ) : null}
 
-      {subject === null ? (
-        <>
-          <Summary doc={doc} />
-          <ConfigForm doc={doc} />
-        </>
-      ) : null}
+      {subject === null ? <ConfigForm doc={doc} /> : null}
 
       {subject?.kind === 'member'
         ? <MemberForm member={subject.member} doc={doc} graph={graph} />

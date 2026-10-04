@@ -68,7 +68,6 @@ const toggle = (root: HTMLElement): HTMLButtonElement | undefined =>
 /** One sentence out of each family of hints, so a rewording is caught. */
 const RENAME_HINT = 'Renaming it rewrites every reference';
 const ROLE_HINT = 'A configuration has exactly one primary';
-const SUMMARY_HINT = 'Select a card, a site or a line on the drawing to edit it.';
 
 beforeEach(() => {
   unmountAll();
@@ -98,27 +97,27 @@ describe('the default reading', () => {
     expect(notes.some((t) => t.includes(RENAME_HINT))).toBe(false);
     expect(notes.some((t) => t.includes('What DGMGRL and the observer dial'))).toBe(false);
     /* The control the first sentence explained is still there, and still
-       says what it is: the prose went, the property did not. */
-    expect([...root.querySelectorAll('.field-name')].map((el) => el.textContent))
-      .toContain('db_unique_name');
+       says what it is: the prose went, the property did not. It is the
+       header's title now, a labelled field. */
+    expect(root.querySelector<HTMLInputElement>('.insp-hd input[aria-label="db_unique_name"]')?.value)
+      .toBe('prm01');
+    expect(root.querySelector('.insp-note')).toBeNull();
   });
 
-  it('leaves the empty rail its summary one press away, and drops the sentence', async () => {
-    /* The summary is a fold now (ui.md SS3f). What is folded is absent from
-       the document rather than painted out of view, and the toggle that
-       brings it back is the row the reader is looking at -- so the fact the
-       table carries is still on the rail, and the sentence that explains the
-       drawing is not. */
+  it('names the configuration in the header, with no summary under it, and drops the sentence', async () => {
+    /* The empty rail used to open on a "Configuration summary" fold. It is
+       gone: the header carries the configuration's name -- a field -- and the
+       readout strip already says the rest. The sentence about what a rename
+       does is a hint, and absent with the hints off. */
     const root = mount(Inspector);
     await tick();
-    const tog = [...root.querySelectorAll<HTMLButtonElement>('button.grp-tog')]
-      .find((b) => b.querySelector('.eyebrow')?.textContent === 'Configuration summary');
-    expect(tog).toBeDefined();
+    const name = root.querySelector<HTMLInputElement>('.insp-hd input.insp-name');
+    expect(name?.value).toBe(doc.value.topology.config.name);
+    expect(name?.getAttribute('aria-label')).toBe('Configuration name');
+    expect([...root.querySelectorAll('button.grp-tog .eyebrow')].map((e) => e.textContent))
+      .not.toContain('Configuration summary');
     expect(root.querySelector('.sum')).toBeNull();
-    tog!.click();
-    await tick();
-    expect(root.querySelector('.sum')).not.toBeNull();
-    expect(root.textContent).not.toContain(SUMMARY_HINT);
+    expect(root.querySelector('.insp-note')).toBeNull();
   });
 });
 
@@ -153,9 +152,10 @@ describe('the toggle', () => {
     expect(toggle(root)).toBeDefined();
     toggle(root)?.click();
     await tick();
-    /* Asking for the explanations opens the summary they belong to. */
-    expect(root.querySelector('.sum')).not.toBeNull();
-    expect(root.textContent).toContain(SUMMARY_HINT);
+    /* Asking for the explanations says what the configuration's name is, and
+       opens nothing else: there is no summary to open. */
+    expect(root.querySelector('.insp-note')?.textContent).toContain('The name of the broker configuration');
+    expect(root.querySelector('.sum')).toBeNull();
   });
 
   it('is on the Break rail header too', async () => {

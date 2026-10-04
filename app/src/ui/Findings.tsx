@@ -5,23 +5,20 @@
  * and an always-open block of prose under the drawing was the loudest thing on
  * the page for a configuration with one warning in it. So the status card
  * carries the counts as chips -- "1 warning", "3 notes" -- and a chip opens
- * the rows in a popover over the canvas. The most serious finding may also
- * surface once as a small card above the status card, which the reader can
- * open or wave away.
+ * the rows in a popover over the canvas. There is no card that surfaces the
+ * most serious finding by itself: the chips on the status card are the one
+ * place the counts live, and the reader opens the rows when they want them.
  *
  * The rows are `IssuePanel`'s own (`bare`), so a finding reads, selects and
  * reveals exactly as it does anywhere else in the application.
  */
 
 import { useEffect } from 'preact/hooks';
-import type { Finding } from '@/engine';
 import { errors, issues, warnings } from '@/state/derived';
-import { findingsOpen, findingWaved, notesOpen } from '@/state/view';
+import { findingsOpen, notesOpen } from '@/state/view';
 import { IssuePanel, revealFindings } from './IssuePanel';
 
 export const plural = (n: number, word: string): string => `${n} ${word}${n === 1 ? '' : 's'}`;
-
-const keyOf = (f: Finding): string => `${f.id}:${f.subject.kind}:${f.subject.id ?? ''}`;
 
 /** The chips on the status card. Each one is the way into the rows it counts. */
 export function FindingsChips() {
@@ -139,32 +136,5 @@ export function FindingsPopover() {
     <section class="fnd-pop float-card" id="fnd-pop" aria-label="Validation findings">
       <FindingsSheet />
     </section>
-  );
-}
-
-/**
- * The most serious finding, once, as a small card above the status card.
- *
- * Gone while the popover is open (the row is right there), and gone once
- * waved away -- until a different finding takes the top spot.
- */
-export function FindingToast() {
-  const top = errors.value[0] ?? warnings.value[0];
-  if (top === undefined || findingsOpen.value) return null;
-  const key = keyOf(top);
-  if (findingWaved.value === key) return null;
-  const tone = top.severity === 'error' ? 'rd' : 'am';
-  return (
-    <div class={`fnd-toast float-card t-${tone}`} role="status">
-      <span class={`fnd-chip t-${tone}`}>{top.severity === 'error' ? 'Error' : 'Warning'}</span>
-      <span class="fnd-toast-m" title={top.message}>{top.message}</span>
-      <button type="button" class="btn" onClick={() => revealFindings()}>Details</button>
-      <button
-        type="button" class="btn is-icon" aria-label="Dismiss this finding" title="Dismiss"
-        onClick={() => { findingWaved.value = key; }}
-      >
-        <span aria-hidden="true">×</span>
-      </button>
-    </div>
   );
 }

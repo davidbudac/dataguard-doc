@@ -22,7 +22,7 @@ import { classicDoc } from '@/state/doc';
 import { edit, resetHistory } from '@/state/history';
 import { INTRO_KEY, dismissIntro, introDismissed, loadHints, loadIntro } from '@/state/persist';
 import {
-  MODE_SUB, hintsOn, introOpen, mode, modeGuide, railWhere, splitGuide, viewport,
+  MODE_SUB, hintsOn, introOpen, mode, modeGuide, railOpens, railWhere, splitGuide, viewport,
 } from '@/state/view';
 import type { Viewport } from '@/state/view';
 
@@ -300,14 +300,20 @@ describe('the guidance line', () => {
      that it is a drawer opened from the status bar's Inspector button. A line
      that named the right edge at every width pointed two of the four classes
      at nothing. */
-  it('names the inspector where it actually is, at every viewport', () => {
+  it('names the inspector where it actually is, and how it opens, at every viewport', () => {
     expect(railWhere('wide')).toBe('the panel on the right');
+    /* At `wide` the panel is not on screen until something is selected or the
+       Inspector button asks for it, and a line read with nothing selected says so. */
+    expect(railOpens('wide')).toContain('the panel on the right');
+    expect(railOpens('wide')).toContain('opens when you select something');
+    expect(railOpens('wide')).toContain('Inspector button');
     for (const v of VIEWPORTS) {
       const build = modeGuide('build', v);
       const configure = modeGuide('configure', v);
-      expect(build, v).toContain(railWhere(v));
-      expect(configure, v).toContain(`Settings are in ${railWhere(v)}.`);
+      expect(build, v).toContain(railOpens(v));
+      expect(configure, v).toContain(`Settings are in ${railOpens(v)}.`);
       if (v === 'wide') continue;
+      expect(railOpens(v), v).toBe(railWhere(v));
       /* Below `wide` nothing may claim there is a panel on the right ... */
       expect(build, v).not.toContain('panel on the right');
       expect(configure, v).not.toContain('panel on the right');

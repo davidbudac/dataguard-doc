@@ -65,7 +65,9 @@ export function Group(
  * a heading. A folded section renders no children at all -- the properties are
  * absent from the document, not painted out of view -- and `hint` says in one
  * mono phrase what is inside, so folding never costs the reader the answer to
- * "what is this configuration set to".
+ * "what is this configuration set to". A closed fold is always one line: the
+ * title does not wrap, and the hint is cut with an ellipsis (inspector.css)
+ * and carries its whole text in its `title`.
  *
  * On paper every fold is open: there is no toggle to press on a printout, and
  * a printed configuration that omits its own properties is not a record of it
@@ -94,7 +96,7 @@ export function Fold(
         >
           <Caret open={open} />
           <span class="eyebrow">{title}</span>
-          {hint === undefined || open ? null : <span class="grp-sum mono">{hint}</span>}
+          {hint === undefined || open ? null : <span class="grp-sum mono" title={hint}>{hint}</span>}
         </button>
         {action === undefined || !open ? null : <span class="grp-act">{action}</span>}
       </header>
@@ -125,6 +127,20 @@ export function Note(
 ) {
   if (!(always || warn || hintsShown())) return null;
   return <p class={warn ? 'grp-note is-warn' : 'grp-note'}>{children}</p>;
+}
+
+/**
+ * Rows that cannot apply, said once.
+ *
+ * Several controls that are all off for one and the same reason are a grey row
+ * each followed by the identical pill -- the noisiest thing a rail can do. They
+ * are not rendered; this one line names them and gives the reason, out of the
+ * WHY table like every other. A control that is off for a reason of its own is
+ * not part of this and stays where it is, grey, with its pill. Always on
+ * screen, whatever `Hints` says: it reports a state, it does not explain one.
+ */
+export function Withheld({ names, why }: { names: string; why: string }) {
+  return <p class="grp-note is-withheld">{names}: {why}</p>;
 }
 
 /* ---------------- numbers ---------------- */
@@ -203,6 +219,23 @@ export function Num(
 
 /* ---------------- text ---------------- */
 
+/**
+ * A one-shot focus request from the drawing: read the signal, act once, clear
+ * it -- so the form re-rendering for any other reason never pulls the caret
+ * back to the field. Returns the ref to hang on the input.
+ */
+function useFocusRequest(focusKey: string | undefined, off: boolean) {
+  const ref = useRef<HTMLInputElement | null>(null);
+  const wanted = focusKey !== undefined && focusField.value === focusKey;
+  useLayoutEffect(() => {
+    if (!wanted || off) return;
+    focusField.value = null;
+    ref.current?.focus();
+    ref.current?.select();
+  }, [wanted, off]);
+  return ref;
+}
+
 export interface TextProps {
   name: string;
   value: string;
@@ -230,18 +263,8 @@ export function Text({
   name, value, onCommit, placeholder, note, enabled = ON, focusKey, prose, problem,
 }: TextProps) {
   const off = enabled.state === 'off';
-  const ref = useRef<HTMLInputElement | null>(null);
+  const ref = useFocusRequest(focusKey, off);
   const [refused, setRefused] = useState<string | null>(null);
-  /* A one-shot focus request from the drawing (a double-click on a card):
-     read the signal, act once, clear it -- so the form re-rendering for any
-     other reason never pulls the caret back here. */
-  const wanted = focusKey !== undefined && focusField.value === focusKey;
-  useLayoutEffect(() => {
-    if (!wanted || off) return;
-    focusField.value = null;
-    ref.current?.focus();
-    ref.current?.select();
-  }, [wanted, off]);
   return (
     <Field
       name={name}
@@ -269,6 +292,62 @@ export function Text({
         }}
       />
     </Field>
+  );
+}
+
+export interface NameFieldProps {
+  /** What the field is, for a screen reader and the tooltip: "db_unique_name". */
+  label: string;
+  value: string;
+  onCommit: (v: string) => void;
+  /** When `focusField` holds this key, the input takes the focus once, text selected. */
+  focusKey?: string;
+  /** Spelled like Oracle spells it: a `db_unique_name` or an observer name. */
+  mono?: boolean;
+}
+
+/**
+ * The name of whatever the rail is about, edited where it is read: the title of
+ * the rail's header, drawn as a heading until the pointer or the caret is in it.
+ *
+ * It commits exactly as `Text` does -- on change, which is Enter or leaving the
+ * field -- and through the same edit functions, so a refused name is the same
+ * refusal; the field then snaps back to the name the document still has.
+ * `Escape` gives the typed name up. It stays a real labelled `<input>`: the
+ * reader who has never hovered it still finds it with Tab, and a screen reader
+ * hears what it names.
+ */
+export function NameField({ label, value, onCommit, focusKey, mono = true }: NameFieldProps) {
+  const ref = useFocusRequest(focusKey, false);
+  /* What the document says the name is, as of the last render. */
+  const shown = useRef(value);
+  shown.current = value;
+  return (
+    <input
+      ref={ref}
+      class={`insp-name${mono ? ' mono' : ''}`}
+      type="text"
+      value={value}
+      spellcheck={false}
+      autocomplete="off"
+      aria-label={label}
+      title={label}
+      onChange={(e) => {
+        const el = e.currentTarget as HTMLInputElement;
+        onCommit(el.value);
+        /* A refused name edits nothing, so nothing re-renders and the field
+           would keep the refused text: put back what the document has. An
+           accepted one has re-rendered by then (or unmounted, when the id is
+           the name), and this finds nothing to do. */
+        setTimeout(() => { if (el.isConnected && el.value !== shown.current) el.value = shown.current; }, 0);
+      }}
+      onKeyDown={(e) => {
+        if (e.key !== 'Escape') return;
+        const el = e.currentTarget as HTMLInputElement;
+        el.value = value;
+        el.blur();
+      }}
+    />
   );
 }
 

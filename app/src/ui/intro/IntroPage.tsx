@@ -167,9 +167,12 @@ const HOWTO: { k: string; d: JSX.Element }[] = [
     k: 'Select and edit',
     d: (
       <>
-        Click a card, data centre or link to select it and inspect its properties.
-        Use <span class="mono">⋯</span> or right-click for actions. Double-click a name or
-        press <span class="mono">F2</span> to rename it. Drag across the background to select
+        Click a card, data centre or link to select it; its properties open in the Inspector
+        (a panel on the right, a drawer on a narrower window), and clicking the empty canvas
+        puts the panel away again. With nothing selected, the Inspector button in the top bar
+        (or <span class="mono">]</span>) opens the configuration&rsquo;s own properties. The name at the top of the Inspector is a field:
+        edit it to rename. Use <span class="mono">⋯</span> or right-click for actions.
+        Double-click a name or press <span class="mono">F2</span> to rename it where it is drawn. Drag across the background to select
         several cards;{' '}
         <span class="mono">Ctrl+A</span> selects them all.
       </>
@@ -246,8 +249,8 @@ const HOWTO: { k: string; d: JSX.Element }[] = [
     k: 'Turn the explanations on',
     d: (
       <>
-        Turn on <span class="mono">Hints</span> in the inspector header to show an explanation
-        under each control. The setting is remembered.
+        Turn on <span class="mono">Hints</span> in the inspector header (open the Inspector from
+        the top bar) to show an explanation under each control. The setting is remembered.
       </>
     ),
   },

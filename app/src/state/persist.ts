@@ -15,7 +15,9 @@
  *                    strip is gone and the page replaced it.
  *   `dg-hints`       whether the sentence under each control is shown
  *   `dg-issues`      whether Build's validation panel is unfolded ('0' = folded)
- *   `dg-rail`        whether the side rail is folded to its strip ('1' = folded)
+ *   `dg-rail`        whether Break's Events rail is folded to its strip ('1' = folded)
+ *   `dg-timeline`    whether the whole timeline panel is unfolded past the handle
+ *                    on its top edge ('0' = folded; unset = open)
  *   `dg-break-timeline` the Detailed timeline's timeline, `config` or `app` -- anything else reads as config
  *   `dg-summary`     whether the Detailed timeline's run summary band is unfolded ('1' = unfolded)
  *   `dg-topology-timeline-v1` whether Topology's small timeline is open ('0' = folded; unset = open)
@@ -39,8 +41,8 @@ import { fromWire, parseJsonText, toJsonText } from './codec';
 import { isDesktop, saveFile } from '@/ui/common/desktop';
 import type { DecodeResult } from './codec';
 import {
-  BREAK_TIMELINES, breakTimeline, gridOn, hintsOn, inspectorOpen, issuesOpen, miniTimelineOpen, railCollapsed,
-  summaryOpen, viewport,
+  BREAK_TIMELINES, breakTimeline, clearSelection, gridOn, hintsOn, inspectorOpen, inspectorRailWanted, issuesOpen,
+  miniTimelineOpen, mode, railCollapsed, railOnDemand, releaseRail, selection, summaryOpen, timelineOpen, viewport,
 } from './view';
 import type { BreakTimeline, PalettePref, ThemePref } from './view';
 
@@ -57,6 +59,7 @@ export const RAIL_KEY = 'dg-rail';
 export const BREAK_TIMELINE_KEY = 'dg-break-timeline';
 export const SUMMARY_KEY = 'dg-summary';
 export const MINI_TIMELINE_KEY = 'dg-topology-timeline-v1';
+export const TIMELINE_KEY = 'dg-timeline';
 
 export const AUTOSAVE_MS = 500;
 export const RESTORE_NOTICE_MS = 8000;
@@ -216,9 +219,23 @@ export function setMiniTimelineOpen(on: boolean): void {
 
 export const toggleMiniTimeline = (): void => setMiniTimelineOpen(!miniTimelineOpen.value);
 
+/* ---------------- the timeline panel ---------------- */
+
+/** Open or folded -- `timelineOpen` in `view.ts`; unset, or anything but '0', means open. */
+export function loadTimelineOpen(): void {
+  timelineOpen.value = read(TIMELINE_KEY) !== '0';
+}
+
+export function setTimelineOpen(on: boolean): void {
+  timelineOpen.value = on;
+  write(TIMELINE_KEY, on ? '1' : '0');
+}
+
+export const toggleTimeline = (): void => setTimelineOpen(!timelineOpen.value);
+
 /* ---------------- the side rail ---------------- */
 
-/** Folded or not -- `railCollapsed` in `view.ts`, remembered here; unset means open. */
+/** Folded or not -- `railCollapsed` in `view.ts`, remembered here; unset means open. Break's Events rail only. */
 export function loadRailCollapsed(): void {
   railCollapsed.value = read(RAIL_KEY) === '1';
 }
@@ -229,22 +246,43 @@ export function setRailCollapsed(shut: boolean): void {
 }
 
 /**
- * The one `]` does, and the rail's own toggle: fold or unfold the column
- * where the rail is one, open or shut the drawer where it is a drawer.
+ * The one `]` does, and the top bar's Inspector button: put the rail away or
+ * bring it back, whatever kind of rail this mode has.
+ *
+ *  - Topology and Config at `wide` have an on-demand inspector: it is in the
+ *    document while something is selected or `inspectorOpen` says so. Toggling
+ *    it shut also drops the selection -- the selection is what holds it open,
+ *    and a press that leaves the rail where it is does nothing visible.
+ *  - Break's Events rail is a column that folds to a strip (`railCollapsed`).
+ *  - Below 1280 the rail is a drawer: `inspectorOpen` is its open state.
  */
 export function toggleRail(): void {
-  if (viewport.value === 'wide') setRailCollapsed(!railCollapsed.value);
-  else inspectorOpen.value = !inspectorOpen.value;
+  if (viewport.value !== 'wide') { inspectorOpen.value = !inspectorOpen.value; return; }
+  if (railOnDemand(mode.value)) {
+    if (inspectorRailWanted()) { releaseRail(); clearSelection(); inspectorOpen.value = false; }
+    else inspectorOpen.value = true;
+    return;
+  }
+  setRailCollapsed(!railCollapsed.value);
 }
 
 /**
- * Put the rail in front of the reader, wherever it is: unfold the column on a
- * wide screen, open the drawer below 1280. For the gestures that mean "show me
- * this in the inspector" (Edit, a finding's row, a step of the walkthrough) --
- * a button that selects something behind a folded rail appears to do nothing.
+ * Put the rail in front of the reader, wherever it is: open the drawer below
+ * 1280, bring Topology's and Config's inspector in (a selection already has,
+ * and an empty one is opened onto the configuration), unfold Break's strip. For
+ * the gestures that mean "show me this in the inspector" (Edit, a finding's
+ * row, a step of the walkthrough, `All settings`) -- a button that selects
+ * something behind a rail that is not there appears to do nothing.
+ *
+ * Call it after the selection is set, and after the mode is.
  */
 export function revealRail(): void {
   if (viewport.value !== 'wide') { inspectorOpen.value = true; return; }
+  if (railOnDemand(mode.value)) {
+    if (selection.value.length > 0) releaseRail();
+    else inspectorOpen.value = true;
+    return;
+  }
   if (railCollapsed.value) setRailCollapsed(false);
 }
 

@@ -152,9 +152,9 @@ describe('Topology with no run is Build as it always was', () => {
       .toEqual(shelf(topology.value, 0).map((t) => t.label));
     /* One row, from the dock and from nowhere else. */
     expect(r.querySelectorAll('.dock-scn')).toHaveLength(1);
-    /* The Break row (scenarios and the three chips) over the readings, and (with a run) above the small timeline. */
+    /* The handle on the card's top edge, then the Break row (scenarios and the three chips) over the readings, and (with a run) above the small timeline. */
     const dock = r.querySelector('.app-dock')!;
-    expect([...dock.children].map((c) => c.className.split(' ')[0])).toEqual(['dock-break', 'dock-status']);
+    expect([...dock.children].map((c) => c.className.split(' ')[0])).toEqual(['tlp-handle', 'dock-break', 'dock-status']);
     expect(dock.querySelector('.dock-break .sc-row')).not.toBeNull();
   });
 

@@ -11,6 +11,10 @@
  * list is what the application can be sent to, not what it can reach (the
  * network decides that, from the data centre the card stands in); and the
  * dead-address answer is this page's switch, not an Oracle parameter.
+ *
+ * Its name is the rail's header (`Inspector.tsx`), not a row. The form opens on
+ * where it stands and the connect string it dials with; the address list and
+ * this page's model of a dead host are folded, each with a hint.
  */
 
 import type { Application, ClientDescriptor, TopologyDoc } from '@/engine';
@@ -20,10 +24,11 @@ import {
 import { topology } from '@/state/derived';
 import { canEdit, viewport } from '@/state/view';
 import { CLIENT_TIMING_FIELDS, editClientTiming } from './client-timing';
-import { Check, Choice, Group, Note, Num, Pick, Text } from './controls';
+import { Check, Choice, Fold, Group, Note, Num, Pick, Text } from './controls';
 import {
-  applyClientTiming, clientHasTiming, moveToSite, patchClient as patchClientEdit, renameApplication, setAddressListed, setOwnClient,
+  applyClientTiming, clientHasTiming, moveToSite, patchClient as patchClientEdit, setAddressListed, setOwnClient,
 } from './edits';
+import { ADDRESS_LIST_ID, MODEL_ID } from './sections';
 import { off, ON, WHY } from './why';
 
 export interface ApplicationFormProps {
@@ -122,17 +127,11 @@ export function ApplicationForm({ application, doc }: ApplicationFormProps) {
   const listed = new Set(c.addresses.map((a) => a.host as string));
   const databases = doc.members.filter((m) => m.kind === 'database');
   const farSyncs = doc.members.filter((m) => m.kind === 'farsync');
+  const nListed = databases.filter((m) => m.instances.some((i) => listed.has(i.host as string))).length;
 
   return (
     <>
       <Group title="General">
-        <Text
-          name="Name" prose
-          value={application.id as string}
-          onCommit={(v) => renameApplication(id, v)}
-          focusKey={`name:${application.id as string}`}
-          note="A label for the card. Nothing in the generated configuration carries it."
-        />
         <Pick
           name="Data centre" prose
           value={(host?.site as string | undefined) ?? ''}
@@ -192,7 +191,11 @@ export function ApplicationForm({ application, doc }: ApplicationFormProps) {
         </Note>
       </Group>
 
-      <Group title={`ADDRESS_LIST (${databases.filter((m) => m.instances.some((i) => listed.has(i.host as string))).length})`}>
+      <Fold
+        id={ADDRESS_LIST_ID}
+        title="ADDRESS_LIST"
+        hint={`${nListed} of ${databases.length} databases listed`}
+      >
         {databases.map((m) => (
           <Check
             key={m.id as string}
@@ -216,9 +219,13 @@ export function ApplicationForm({ application, doc }: ApplicationFormProps) {
           Every database listed is a line on the drawing. The primary and every standby are
           listed to start with, so the string still finds the service after the role moves.
         </Note>
-      </Group>
+      </Fold>
 
-      <Group title="This page's model">
+      <Fold
+        id={MODEL_ID}
+        title="This page's model"
+        hint={c.deadBehaviour === 'drop' ? 'a dead host gives no answer' : 'a dead host refuses'}
+      >
         <Choice
           name="A dead host's answer" prose
           value={c.deadBehaviour}
@@ -230,7 +237,7 @@ export function ApplicationForm({ application, doc }: ApplicationFormProps) {
           )}
           note="Not an Oracle parameter. With no answer the dial waits out the timeout; refused, the operating system answers at once. An address behind a severed link gives no answer either way: nobody is on the far side to refuse."
         />
-      </Group>
+      </Fold>
     </>
   );
 }

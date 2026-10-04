@@ -30,6 +30,22 @@
   .app.is-float{--rail-space:calc(var(--w-float-rail) + 2 * var(--float-m))}
 }
 
+/* ---------------- no rail at all ---------------- */
+
+/* Topology's and Config's inspector is in the document only while something is
+   selected or the reader opened it (App.tsx, `railWanted`). Without it there is
+   no column, not an empty one: the docked grid (Config) is one column wide,
+   and the floating layout's inset (`--rail-space`, which the drawing's fit, the
+   dock, the zoom pill and the findings popover all measure from) is the margin
+   alone. */
+.app.no-rail{grid-template-columns:minmax(0,1fr);grid-template-areas:"head" "stage" "dock"}
+@media screen and (min-width:1280px){
+  .app.is-float.no-rail{--rail-space:var(--float-m)}
+}
+
+/* The top bar's Inspector button, pressed while the rail is up. */
+.btn.is-icon.inspector-tog[aria-expanded="true"]{color:var(--ik);background:var(--sf2)}
+
 @media (prefers-reduced-motion:no-preference){
   .app{transition:--w-inspector .22s cubic-bezier(.2,.7,.2,1)}
   .app.is-float{transition:--w-float-rail .22s cubic-bezier(.2,.7,.2,1)}

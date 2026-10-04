@@ -83,7 +83,7 @@ const KEYS: { where: string; rows: [string, string][] }[] = [
       ['Ctrl+Z · ⌘Z', 'undo'],
       ['Ctrl+Shift+Z · Ctrl+Y', 'redo'],
       ['Ctrl+A · ⌘A', 'select every card on the drawing'],
-      [']', 'collapse or expand the side panel (Topology, Detailed timeline, Config)'],
+      [']', 'open or close the Inspector panel (Topology, Config); fold or unfold the Events panel (Detailed timeline)'],
     ],
   },
   {
@@ -172,7 +172,7 @@ export function IntroCard() {
           noticed it finds out what it does -- and can press it here. */}
       <p class="intro-foot caption">
         <b>{HINTS_LABEL}</b>
-        {', in the inspector header, shows help under each control and, in Config, the '}
+        {', in the inspector header (open it with the Inspector button in the top bar), shows help under each control and, in Config, the '}
         {'rest of the line above. It is off by default, and the setting is remembered.'}
         {' '}
         <HintsToggle />

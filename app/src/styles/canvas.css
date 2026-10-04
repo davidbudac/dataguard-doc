@@ -114,6 +114,31 @@
 }
 .cv-tools .cv-add { margin: 0; align-self: flex-start; }
 
+/* What the drawing says when no database holds the primary role
+   (CanvasSlot's NotPrimaryNotice): a compact card in the stage's own flow above
+   the drawing, error-toned from the existing red tokens, with the way out in
+   it. Over the floating canvas it is positioned instead (float.css), where the
+   drawing is a full-bleed layer and has no flow to take a row from. */
+.cv-invalid { flex: 0 0 auto; margin: 10px 14px 0; min-width: 0; }
+.cv-invalid-card {
+  width: fit-content;
+  max-width: min(640px, 100%);
+  margin-inline: auto;
+  padding: 8px 12px 9px;
+  background: var(--rdf);
+  border: 1px solid var(--rd);
+  border-radius: var(--r-card);
+  box-shadow: var(--sh-card);
+  color: var(--ik);
+}
+.cv-invalid-card p { margin: 0; font-size: 12.5px; line-height: 1.4; }
+.cv-invalid-card .cv-invalid-k { font-weight: 600; font-size: 13px; }
+.cv-invalid-card .cv-invalid-t + .cv-invalid-t { margin-top: 2px; }
+.cv-invalid-do { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.cv-invalid-do + .cv-invalid-t { margin-top: 6px; }
+.cv-invalid .btn { color: var(--ik); background: var(--sf); border-color: var(--rd); padding: 4px 10px; }
+.cv-invalid .btn:hover:not(:disabled) { background: var(--sf2); border-color: var(--rd); }
+
 /* Quiet utility controls beside the additions; the drawing owns the stage. */
 .cv-zoom {
   flex: 0 0 auto;
@@ -147,7 +172,7 @@
    the first one (34px against a 39px strip) was wrong in every state. The
    stage is a column flexbox in Build (shell.css) and gives `.tp-wrap` whatever
    height is left, so the drawing scales down instead of being covered, at any
-   strip height, and the `graph === null` card beside it is clear for free. */
+   strip height, and the not-a-valid-configuration card beside it is clear for free. */
 .cv-add {
   align-self: flex-end;
   flex: 0 0 auto;

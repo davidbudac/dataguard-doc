@@ -2,11 +2,14 @@
  * Topology's floating dock: where a reader breaks the drawing and watches what
  * it does, with the timeline as the control.
  *
- * Three rows. The first is `Break`, the one-click scenarios with the three
- * settings that are a choice and not a length -- protection mode, fast-start
- * failover, the transport of the standby the run is about -- as chips at its
- * right, and `All settings →` on to the rest in the inspector
- * (break/SettingChips.tsx). The second is the status: the readings and the
+ * The card's top edge is the timeline panel's handle (timeline/PanelHandle.tsx),
+ * which folds all of it: folded, the card is the handle alone and none of what
+ * follows is rendered (`FloatDock` in App.tsx decides, and `useDockAnchor` gives
+ * the drawing the room). Under it, three rows. The first is `Break`, the
+ * one-click scenarios with the three settings that are a choice and not a
+ * length -- protection mode, fast-start failover, the transport of the standby
+ * the run is about -- as chips at its right, and `All settings →` on to the
+ * rest in the inspector (break/SettingChips.tsx). The second is the status: the readings and the
  * finding chips -- with a run, the one terse line the Detailed timeline's bar
  * carries (break/RunBar.tsx) less the two times the small timeline draws as
  * badges on its own bars ("New primary open", and each application's

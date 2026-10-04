@@ -440,7 +440,7 @@ describe('the density of the lanes', () => {
 });
 
 describe('Topology and Config', () => {
-  it('Topology keeps the floating dock, its chips and the banner, with the drawing and no bar', async () => {
+  it('Topology keeps the floating dock and its chips, with the drawing and no bar or finding card', async () => {
     mode.value = 'build';
     const r = mount();
     await tick();
@@ -448,7 +448,7 @@ describe('Topology and Config', () => {
     expect(app(r).className).not.toMatch(/bl-/);
     expect(r.querySelector('.app-dock .dock-status .readout')).not.toBeNull();
     expect(r.querySelector('.app-dock .fnd-chips')).not.toBeNull();
-    expect(r.querySelector('.fnd-toast')).not.toBeNull();
+    expect(r.querySelector('.fnd-toast')).toBeNull();
     expect(r.querySelector('.topo-svg')).not.toBeNull();
     expect(r.querySelector('.sb-bar')).toBeNull();
     expect(r.querySelector('.dock-grip')).toBeNull();

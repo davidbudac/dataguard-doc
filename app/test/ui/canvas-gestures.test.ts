@@ -24,7 +24,7 @@ import { connectFromCanvas } from '@/ui/canvas/CanvasSlot';
 import { edit, resetHistory, undo, undoLabel, undoStack } from '@/state/history';
 import { barOpen, closeBar } from '@/ui/canvas/bar';
 import { fitZoom } from '@/ui/canvas/zoom';
-import { mode, selection, toast, viewport } from '@/state/view';
+import { mode, releaseRail, selection, toast, viewport } from '@/state/view';
 import {
   addDatabase, addFsfoTarget, addInstance, addObserver, addSite, moveToSite, patchDatabase,
   patchInstance, removeInstance, shipRedo, transportForMode,
@@ -50,6 +50,7 @@ const unmountAll = (): void => {
 beforeEach(() => {
   unmountAll();
   selection.value = [];
+  releaseRail();
   toast.value = null;
   mode.value = 'build';
   viewport.value = 'wide';
@@ -428,6 +429,10 @@ describe('the bar closes on a press anywhere that is not the bar', () => {
       .dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
     await painted();
     expect(barOpen.value).toBe('sby01');
+    /* The rail comes in a moment after the first click of a selection
+       (view.ts, `railHeld`); stand in for the moment. */
+    releaseRail();
+    await tick();
     const rail = document.querySelector('.app-rail')!;
     rail.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, cancelable: true }));
     await tick();

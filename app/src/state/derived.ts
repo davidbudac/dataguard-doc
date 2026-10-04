@@ -17,11 +17,11 @@ import { inFlight, inFlightFrom } from '@/ui/canvas/place';
 import { appModelsFor } from '@/ui/timeline/build';
 import type { Geometry } from '@/ui/canvas/layout';
 import {
-  declaredPrimary, honestLevel, resolveRedoGraph, simulate, sortFindings, splitBrainOf, stateAt, validate,
+  declaredPrimary, edgelessGraph, honestLevel, resolveRedoGraph, simulate, sortFindings, splitBrainOf, stateAt, validate,
 } from '@/engine';
 import type {
-  CitationId, Claim, EngineTrace, Finding, MemberId, Outcome, ProtectionLevel, SplitBrain, Snapshot,
-  TopologyDoc,
+  CitationId, Claim, EngineTrace, Finding, MemberId, Outcome, ProtectionLevel, RedoGraph, SplitBrain,
+  Snapshot, TopologyDoc,
 } from '@/engine';
 import { doc } from './doc';
 import { edition, healthyRun, mode, tNow } from './view';
@@ -51,20 +51,40 @@ export const redoGraph = computed(() => {
 });
 
 /**
- * Where every card sits (ui.md SS2).
+ * The graph the drawing is laid out and drawn over: never null.
+ *
+ * `redoGraph` is null when no database holds the primary role, and the
+ * generators and panels read that null as "nothing to say". The canvas cannot:
+ * a drawing that blanks out leaves no card to click, so a configuration that
+ * has lost its primary could not be repaired from the drawing. It falls back
+ * to the same document with no edges (`edgelessGraph`) -- every card where
+ * the layout puts it, no redo drawn -- and CanvasSlot says it is invalid.
+ */
+export const drawnGraph = computed<RedoGraph>(
+  () => redoGraph.value ?? edgelessGraph(topology.value),
+);
+
+/**
+ * Where every card sits, for the drawing: never null, with or without a primary.
  *
  * The layout is pure and deterministic, so it belongs to the state rather than
  * to whoever is drawing at the moment: the canvas, the Configure strip and the
  * Learn workbench are three views of one drawing, and computing it here is
  * what stops them from being three drawings that agree by coincidence.
  */
-export const geometry = computed<Geometry | null>(() => {
-  const graph = redoGraph.value;
-  if (graph === null) return null;
-  return layoutTopology(topology.value, graph, {
-    overrides: doc.value.layout, transient: inFlight.value, transientFrom: inFlightFrom.value,
-  });
-});
+export const drawnGeometry = computed<Geometry>(() => layoutTopology(topology.value, drawnGraph.value, {
+  overrides: doc.value.layout, transient: inFlight.value, transientFrom: inFlightFrom.value,
+}));
+
+/**
+ * `drawnGeometry`, or null when there is no redo graph: the answer for the
+ * surfaces that draw *the redo* (the Detailed timeline's rail, the diagram
+ * figure, the report) and say so in a note of their own when there is none.
+ * Only the canvas draws a configuration that has no primary.
+ */
+export const geometry = computed<Geometry | null>(
+  () => (redoGraph.value === null ? null : drawnGeometry.value),
+);
 
 /** Validation findings, sorted by (severity, subject, id) the way the engine sorts. */
 export const issues = computed<Finding[]>(() => {
