@@ -19,7 +19,7 @@ produced, and how to extend it without breaking consistency or accuracy.
 | `diagrams/fsfo-sequence.svg` (+`.png`) | Sequence diagram of the crash case with an elapsed-time gutter |
 | `diagrams/fsfo-net-timeout.svg` (+`.png`) | Two panels separating NET_TIMEOUT (redo transport) from the broker failover clocks |
 | `diagrams/README.md` | Figure embeds, broker-property and redo-transport-property tables with verified defaults, the ping-properties quirk, the verified-facts sections behind the commit/reopen/observer/placement/side-topics views (including the 24-cell observer-placement outcome matrix) and behind the 26ai edition switch (the MaxAvailability lag-limit semantics and Oracle's self-contradiction on them, `PrimaryDatabaseCandidates`, `V$FS_FAILOVER_OBSERVERS`), the drawing idealizations, Oracle doc links. Its *Topology features* section points at `app/design/facts.md` for far sync, cascading, RedoRoutes, multi-target and multi-observer sources |
-| `app/` | The workbench: TypeScript + Vite + Preact + signals. A pure, DOM-free engine in `app/src/engine` (types, citation catalogue, validation rules, redo-graph resolver, epoch-loop simulator, generators, the legacy adapter), the interface in `app/src/ui` (including the on-canvas action bar, the Introduction page and the `Hints` toggle — see `app/design/ui.md` §3c–§3i; §3h is how the drawing is driven: click selects, `⋯` for the bar, drag-to-place, inline rename, marquee, shortcuts; §3i is the lean pass: the toolbar is the one add surface, Remove sits in the rail header; "Simulate's two layouts", at the end, is the Split and Lanes layouts of the Simulate screen and the switch between them), state in `app/src/state`, twelve presets in `app/src/presets`, ten lessons and the reference tables in `app/src/content`, 3261 vitest tests across 121 files in `app/src/**/__tests__` and `app/test`. Built to `_site/` and served at `/dataguard/`. Zero external requests, no inline script and no inline style — the page is meant to run under `script-src 'self'; style-src 'self'` |
+| `app/` | The workbench: TypeScript + Vite + Preact + signals. A pure, DOM-free engine in `app/src/engine` (types, citation catalogue, validation rules, redo-graph resolver, epoch-loop simulator, generators, the legacy adapter), the interface in `app/src/ui` (including the on-canvas action bar, the Introduction page and the `Hints` toggle — see `app/design/ui.md` §3c–§3i; §3h is how the drawing is driven: click selects, `⋯` for the bar, drag-to-place, inline rename, marquee, shortcuts; §3i is the lean pass: the toolbar is the one add surface, Remove sits in the rail header; "Simulate's two layouts", at the end, is the Split and Lanes layouts of the Simulate screen and the switch between them), state in `app/src/state`, twelve presets in `app/src/presets`, ten lessons and the reference tables in `app/src/content`, 3329 vitest tests across 124 files in `app/src/**/__tests__` and `app/test`. Built to `_site/` and served at `/dataguard/`. Zero external requests, no inline script and no inline style — the page is meant to run under `script-src 'self'; style-src 'self'` |
 | `app/public/collectors/` | Read-only SQL collector, optional Bash/SQL*Plus wrapper and run instructions for existing setups. The ⋯ menu's **Import existing setup** sheet previews pasted/file output before drawing it. `engine/collect.ts` maps current routes; imported `routesObserved` prevents invented NULL-default routes. Missing broker settings and placement assumptions remain in document notes. Validated live on a 19c primary + mounted standby (SYSDBA, local OS auth); wallet, least-privilege, RAC and far sync remain unverified. DGMGRL transcripts are not parsed. |
 | `app/design/facts.md` | The verified Oracle fact sheet for the topology features (far sync, cascading, multiple standbys and FSFO targets, multiple observers, RedoRoutes, member types, destination counts), researched 2026-08-16 against docs.oracle.com and re-verified 2026-08-17, marked `[D]` / `[D-later]` / `[UNDOC]` / `[CONFLICT]` per claim. **The only permitted source of a "documented" claim in the application.** Its top-five traps are restated in the accuracy rules below |
 | `app/design/engine.md` | The engine design: `Claim`/`Basis` labelling, the topology data model, the validation catalogue, the redo-graph resolver, the epoch-loop failure engine, the compat adapter and the 24-cell matrix gate, the generators, the module layout — plus §10, *Deviations from the design as built*, which is where the code and the specification differ |
@@ -67,8 +67,8 @@ public URL.
 
 The three gates, and what each one can catch that the others cannot:
 
-1. `npm --prefix app run test` — the application's own suite (**3261 tests
-   across 121 files**): the engine's invariants, the 24-cell matrix through the
+1. `npm --prefix app run test` — the application's own suite (**3329 tests
+   across 124 files**): the engine's invariants, the 24-cell matrix through the
    compat adapter, the validation catalogue, the generator goldens, the canvas
    and timeline geometry, the URL and file round trips.
 2. `node --test site/test.mjs` — the same kind of assertion against the legacy
@@ -1235,7 +1235,9 @@ component computes domain state locally.**
 ### The interface (`app/src/ui`)
 
 Four modes — **Topology** (internal id `build`: the editable drawing with its
-inspector, validation issues and steady-state readout, and, once something is
+inspector -- a panel that is not on screen until something is selected or it is
+opened from the top bar, `]` or `All settings →` -- validation issues and
+steady-state readout, and, once something is
 injected, the run on it: scenarios in the dock, break icons on the cards, the
 cards tinted at the playhead and a small timeline underneath that is the
 control for the run's clocks), **Detailed
@@ -1338,7 +1340,11 @@ sections it supersedes.
   about) as chips at the right and `All settings →` to the rest in the inspector
   (`break/SettingChips.tsx`, the one component the Detailed timeline's bar uses
   too) -- then the readings and the findings (the one terse line less the two times
-  the small timeline draws as badges), then the small timeline. The small timeline
+  the small timeline draws as badges), then the small timeline. The card's top edge is
+  a handle (`timeline/PanelHandle.tsx`, `timelineOpen`, `dg-timeline`) that folds the whole
+  panel to itself; the docked timeline slot wears the same one, and on paper and in the
+  popped-out window the panel is always open. There is no card above the dock for the top
+  finding: the chips count the findings and open the popover. The small timeline
   draws a labelled bracket with a grip over the bar of every clock that is a
   setting, whose label is its name and its number (press the number to type it),
   outcome badges on the bars at "New primary open" and each application's
@@ -1381,7 +1387,7 @@ sections it supersedes.
 
 ### Tests
 
-`npm --prefix app run test` is **3261 tests across 121 files**. What is where:
+`npm --prefix app run test` is **3329 tests across 124 files**. What is where:
 
 - `app/src/engine/__tests__/` — the engine's own unit tests (purity, citations,
   claims, schema, migrate, URL codec, parse, resolve, graph, axis, classic).
@@ -1416,7 +1422,9 @@ sections it supersedes.
   popover; `lane-add.test.ts`, `detailed-timeline.test.ts`), Topology with a run
   (`topology-mode.test.ts`) and its small timeline as the control
   (`mini-timeline-tune.test.ts`: badges, brackets, a grip, a typed number, the
-  retry window), the legacy-URL upgrade.
+  retry window), the timeline panel's fold (`timeline-panel.test.ts`), the on-demand
+  inspector and the names in its header (`rail.test.ts`; `rail-collapse.test.ts` is
+  Break's strip), the legacy-URL upgrade.
 - `app/test/content/` — every lesson and reference table renders.
 - `app/test/factcheck-1001-*.test.ts` — the 2026-10-01 fact check's fixes, one file per slice
   (roles, commands, generate, rules, prose, client-rac, fsfo).

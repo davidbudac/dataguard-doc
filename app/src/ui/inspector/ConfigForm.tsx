@@ -17,7 +17,7 @@ import type { FsfoConfig, MemberId, RoutePriority, TopologyDoc } from '@/engine'
 import { hostId, isDatabase, lagLimitIsSet, lagLimitOf } from '@/engine';
 import { errors } from '@/state/derived';
 import { Fact } from '../common/Chip';
-import { Action, Check, Choice, Fold, Note, Num, Pick, Text } from './controls';
+import { Action, Check, Choice, Fold, Note, Num, Pick, Text, Withheld } from './controls';
 import { FieldNote } from '../common/Field';
 import {
   patchConfig, patchEnvironment, patchFsfo, setFsfoLagLimit, setFsfoState, setFsfoThreshold, setProtectionMode,
@@ -97,11 +97,6 @@ export function ConfigForm({ doc }: ConfigFormProps) {
   return (
     <>
       <Fold id="Configuration" title="Configuration" hint={c.protectionMode}>
-        <Text
-          name="Name" prose
-          value={c.name}
-          onCommit={(v) => patchConfig('Rename the configuration', (x) => ({ ...x, name: v.trim() || x.name }))}
-        />
         <Choice
           name="Protection mode" prose
           value={c.protectionMode}
@@ -325,79 +320,93 @@ export function ConfigForm({ doc }: ConfigFormProps) {
           </Note>
         ) : null}
 
-        <Choice
-          name="FastStartFailoverLagType"
-          value={f.lagType}
-          options={[{ value: 'APPLY', label: 'APPLY' }, { value: 'TRANSPORT', label: 'TRANSPORT' }]}
-          enabled={ed === '19c' ? off(WHY.docLater26aiObservedIn1927) : gateOff(!perf, WHY.lagTypeMode)}
-          onChange={(v) => patchFsfo(
-            `Set FastStartFailoverLagType to ${v}`, (x): FsfoConfig => ({ ...x, lagType: v }),
-          )}
-          note={ed === '19c'
-            ? 'Documented from 26ai; absent from the 19c and 21c properties references. A live 19.27 system carries it regardless (SHOW FAST_START FAILOVER prints Lag Type:) -- an observation, never documentation.'
-            : 'Oracle: the type of lag (apply lag or transport lag) used to specify the data loss threshold. Under TRANSPORT this page gates on the transport lag, clamped to the apply lag, and terminal recovery still pays the apply lag -- its reading, from a blog rather than the property page.'}
-        />
+        {/* Under 19c both are off for the one reason: one line, not two grey
+            rows under a pill apiece. Under 26ai each is off, or not, for its
+            own. */}
+        {ed === '19c' ? (
+          <Withheld
+            names="FastStartFailoverLagType, FastStartFailoverLagGraceTime"
+            why={WHY.docLater26aiObservedIn1927}
+          />
+        ) : (
+          <>
+            <Choice
+              name="FastStartFailoverLagType"
+              value={f.lagType}
+              options={[{ value: 'APPLY', label: 'APPLY' }, { value: 'TRANSPORT', label: 'TRANSPORT' }]}
+              enabled={gateOff(!perf, WHY.lagTypeMode)}
+              onChange={(v) => patchFsfo(
+                `Set FastStartFailoverLagType to ${v}`, (x): FsfoConfig => ({ ...x, lagType: v }),
+              )}
+              note="Oracle: the type of lag (apply lag or transport lag) used to specify the data loss threshold. Under TRANSPORT this page gates on the transport lag, clamped to the apply lag, and terminal recovery still pays the apply lag -- its reading, from a blog rather than the property page."
+            />
 
-        <Num
-          name="FastStartFailoverLagGraceTime"
-          bound="lagGraceTimeSeconds"
-          value={f.lagGraceTimeSeconds}
-          coalesce="fsfo:laggrace"
-          enabled={ed === '19c'
-            ? off(WHY.docLater26aiObservedIn1927)
-            : !fsfoOn
-              ? off(WHY.lagGraceNoFsfo)
-              : gateOff(!perf, WHY.lagGraceMode)}
-          onChange={(v) => patchFsfo(
-            `Set FastStartFailoverLagGraceTime to ${v} s`,
-            (x): FsfoConfig => ({ ...x, lagGraceTimeSeconds: v }), 'fsfo:laggrace',
-          )}
-          note={ed === '19c'
-            ? 'Documented from 26ai; absent from the 19c and 21c properties references. A live 19.27 system carries it regardless (SHOW FAST_START FAILOVER prints Lag Grace Time:) -- an observation, never documentation.'
-            : 'The permission to keep committing while the lag is over the limit is granted by the observer or the target standby, and the property is defined only while fast-start failover is enabled.'}
-        />
+            <Num
+              name="FastStartFailoverLagGraceTime"
+              bound="lagGraceTimeSeconds"
+              value={f.lagGraceTimeSeconds}
+              coalesce="fsfo:laggrace"
+              enabled={!fsfoOn
+                ? off(WHY.lagGraceNoFsfo)
+                : gateOff(!perf, WHY.lagGraceMode)}
+              onChange={(v) => patchFsfo(
+                `Set FastStartFailoverLagGraceTime to ${v} s`,
+                (x): FsfoConfig => ({ ...x, lagGraceTimeSeconds: v }), 'fsfo:laggrace',
+              )}
+              note="The permission to keep committing while the lag is over the limit is granted by the observer or the target standby, and the property is defined only while fast-start failover is enabled."
+            />
+          </>
+        )}
 
-        <Check
-          name="ObserverPingInterval / ObserverPingRetry"
-          label="Both properties are explicitly set"
-          checked={pingSet}
-          enabled={ed === '19c' ? off(WHY.pingPropsNotIn19c) : ON}
-          onChange={(v) => patchFsfo(
-            v ? 'Set the ObserverPing properties' : 'Leave the ObserverPing properties unset',
-            (x): FsfoConfig => ({
-              ...x,
-              pingIntervalMs: v ? BOUNDS.pingIntervalMs.default : null,
-              pingRetry: v ? BOUNDS.pingRetry.default : null,
-            }),
-          )}
-          note={ed === '19c'
-            ? 'Neither property exists in 19c: absent from the 12.2, 18c and 19c property pages and from a live 19.27 system. First documented in 21c.'
-            : "When both are set, the threshold is ignored for the observer's detection. That much is documented; the arithmetic below is not."}
-        />
-        <Num
-          name="ObserverPingInterval"
-          bound="pingIntervalMs"
-          value={f.pingIntervalMs ?? BOUNDS.pingIntervalMs.default}
-          coalesce="fsfo:pingint"
-          enabled={ed === '19c' ? off(WHY.pingPropsNotIn19c) : pingSet ? ON : off(WHY.pingUnset)}
-          onChange={(v) => patchFsfo(
-            `Set ObserverPingInterval to ${v} ms`,
-            (x): FsfoConfig => ({ ...x, pingIntervalMs: v }), 'fsfo:pingint',
-          )}
-        />
-        <Num
-          name="ObserverPingRetry"
-          bound="pingRetry"
-          kind="number"
-          value={f.pingRetry ?? BOUNDS.pingRetry.default}
-          enabled={ed === '19c' ? off(WHY.pingPropsNotIn19c) : pingSet ? ON : off(WHY.pingUnset)}
-          onChange={(v) => patchFsfo(
-            `Set ObserverPingRetry to ${v}`, (x): FsfoConfig => ({ ...x, pingRetry: v }),
-          )}
-          note={detectSeconds === null
-            ? undefined
-            : `The documentation says only that detection can be reduced to nearly one second. The first failed ping plus its retries reads as ${detectSeconds.toFixed(1)} s here.`}
-        />
+        {/* Under 19c the switch and both values are off for the one reason, and
+            unset the two values are: one line each time, not three or two grey
+            rows. Set, they are two ordinary controls. */}
+        {ed === '19c' ? (
+          <Withheld names="ObserverPingInterval, ObserverPingRetry" why={WHY.pingPropsNotIn19c} />
+        ) : (
+          <>
+            <Check
+              name="ObserverPingInterval / ObserverPingRetry"
+              label="Both properties are explicitly set"
+              checked={pingSet}
+              onChange={(v) => patchFsfo(
+                v ? 'Set the ObserverPing properties' : 'Leave the ObserverPing properties unset',
+                (x): FsfoConfig => ({
+                  ...x,
+                  pingIntervalMs: v ? BOUNDS.pingIntervalMs.default : null,
+                  pingRetry: v ? BOUNDS.pingRetry.default : null,
+                }),
+              )}
+              note="When both are set, the threshold is ignored for the observer's detection. That much is documented; the arithmetic below is not."
+            />
+            {pingSet ? (
+              <>
+                <Num
+                  name="ObserverPingInterval"
+                  bound="pingIntervalMs"
+                  value={f.pingIntervalMs ?? BOUNDS.pingIntervalMs.default}
+                  coalesce="fsfo:pingint"
+                  onChange={(v) => patchFsfo(
+                    `Set ObserverPingInterval to ${v} ms`,
+                    (x): FsfoConfig => ({ ...x, pingIntervalMs: v }), 'fsfo:pingint',
+                  )}
+                />
+                <Num
+                  name="ObserverPingRetry"
+                  bound="pingRetry"
+                  kind="number"
+                  value={f.pingRetry ?? BOUNDS.pingRetry.default}
+                  onChange={(v) => patchFsfo(
+                    `Set ObserverPingRetry to ${v}`, (x): FsfoConfig => ({ ...x, pingRetry: v }),
+                  )}
+                  note={detectSeconds === null
+                    ? undefined
+                    : `The documentation says only that detection can be reduced to nearly one second. The first failed ping plus its retries reads as ${detectSeconds.toFixed(1)} s here.`}
+                />
+              </>
+            ) : <Withheld names="ObserverPingInterval, ObserverPingRetry" why={WHY.pingUnset} />}
+          </>
+        )}
         {detectSeconds === null ? null : (
           <Note>
             Detection <span class="mono">= ObserverPingInterval &times; (ObserverPingRetry + 1)</span>

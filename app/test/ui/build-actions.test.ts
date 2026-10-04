@@ -41,10 +41,11 @@ const linkRtt = (id: string): number =>
 
 /** A button in the rail, found by the words on it, with its reason beside it. */
 /* The rail's Remove sits in its header and reads "Remove"; the table's full
-   label ("Remove sby01") is its title. */
+   label ("Remove sby01") is its title, followed -- when it is refused -- by the
+   reason. */
 const byLabel = (root: HTMLElement, label: string): HTMLButtonElement | undefined =>
   [...root.querySelectorAll<HTMLButtonElement>('.insp-hd button.btn')]
-    .find((b) => b.title === label && b.textContent === 'Remove');
+    .find((b) => (b.title === label || b.title.startsWith(`${label}: `)) && b.textContent === 'Remove');
 
 beforeEach(() => {
   document.body.innerHTML = '';
@@ -74,11 +75,17 @@ describe('the rail and the table state one removal', () => {
       await tick();
       const button = byLabel(root, action!.label);
       expect(button, `no Remove button labelled ${action!.label}`).not.toBeUndefined();
-      const why = root.querySelector('.insp-why .why')?.textContent ?? null;
+      /* A refusal is the button's own: its title, and the visually hidden text
+         its `aria-describedby` names. No box under the header. */
+      expect(root.querySelector('.insp-why')).toBeNull();
+      const described = button!.getAttribute('aria-describedby');
+      const why = described === null ? null : root.querySelector(`#${described}`)?.textContent ?? null;
       const rendered = button!.disabled
         ? { state: 'off', why: why ?? '' }
         : { state: 'on' };
       expect(rendered).toEqual(action!.enabled);
+      if (button!.disabled) expect(button!.title).toBe(`${action!.label}: ${why}`);
+      else expect(button!.hasAttribute('aria-describedby')).toBe(false);
     });
   }
 

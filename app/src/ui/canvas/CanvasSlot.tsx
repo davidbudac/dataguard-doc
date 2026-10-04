@@ -19,7 +19,8 @@ import { doc, withLayout, withSiteOrder } from '@/state/doc';
 import { breakCoalescing, edit, undo, undoLabel } from '@/state/history';
 import { toggleGrid } from '@/state/persist';
 import {
-  canEdit, clearSelection, floating, focusField, gridOn, hovered, mode, railWhere, select, selection, tNow,
+  canEdit, clearSelection, floating, focusField, gridOn, holdRail, hovered, inspectorOpen, mode, railOnDemand, railWhere,
+  select, selection, tNow,
   toast, viewport,
 } from '@/state/view';
 import { buildActionsFor, openInspectorFor, removeAction } from '../build/actions';
@@ -688,6 +689,10 @@ export function CanvasSlot({ interactive = true }: CanvasSlotProps) {
         {...(zooming ? { onZoomStep: (dir: 1 | -1): void => zoomBy(dir) } : {})}
         {...(bar === null ? {} : { bar })}
         onSelect={(key: string, additive: boolean) => {
+          /* The first selection brings the inspector, and the rail moves the
+             cards (view.ts, `railHeld`): hold it past the second click of a
+             double-click, or the rename lands on the ground instead. */
+          if (railOnDemand(m) && selection.peek().length === 0 && !inspectorOpen.peek()) holdRail();
           select(key, additive);
           /* Build: a click selects and nothing else -- the rail shows the form,
              and the bar is asked for (the handle for Build's table; the right

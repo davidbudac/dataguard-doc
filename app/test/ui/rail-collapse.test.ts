@@ -1,8 +1,9 @@
 /**
- * The side rail folds to a strip and back: the toggle says what it does to
- * assistive technology, the folded rail renders none of its contents, the
+ * Break's Events rail folds to a strip and back: the toggle says what it does
+ * to assistive technology, the folded rail renders none of its contents, the
  * choice survives a reload, and the gestures that mean "show me this in the
- * inspector" unfold it.
+ * inspector" unfold it. (Topology's and Config's inspector has no strip: it is
+ * in the document or it is not -- test/ui/rail.test.ts.)
  *
  * @vitest-environment jsdom
  */
@@ -66,8 +67,13 @@ afterEach(() => {
 });
 
 describe('the side rail folds', () => {
-  it('has a labelled toggle that controls the rail and says it is open', () => {
+  it('has a labelled toggle that controls the rail and says it is open', async () => {
+    mode.value = 'break';
     const root = mount();
+    /* The lanes fold the rail by themselves on the way in; the reader opens it. */
+    await tick();
+    setRailCollapsed(false);
+    await tick();
     const rail = root.querySelector('.app-rail');
     expect(rail?.id).toBe('app-rail');
     const tog = root.querySelector<HTMLButtonElement>('.rail-tog');
@@ -75,33 +81,42 @@ describe('the side rail folds', () => {
     expect(tog?.getAttribute('aria-expanded')).toBe('true');
     expect(tog?.getAttribute('aria-controls')).toBe('app-rail');
     expect(tog?.getAttribute('aria-label')).toContain('Collapse');
-    expect(root.querySelector('.rail-bar .rail-name')?.textContent).toBe('Inspector');
+    expect(root.querySelector('.rail-bar .rail-name')?.textContent).toBe('Events');
   });
 
   it('folded, renders the strip and none of the rail\'s contents', async () => {
+    mode.value = 'break';
     const root = mount();
+    await tick();
+    setRailCollapsed(false);
+    await tick();
+    expect(root.querySelector('.app-rail .rail-body')).not.toBeNull();
     root.querySelector<HTMLButtonElement>('.rail-tog')?.click();
     await tick();
     expect(railCollapsed.value).toBe(true);
     expect(root.querySelector('.app')?.className).toContain('rail-shut');
     const rail = root.querySelector('.app-rail');
     expect(rail?.className).toContain('is-shut');
-    expect(rail?.querySelector('.insp')).toBeNull();
+    expect(rail?.querySelector('.rail-body')).toBeNull();
     const strip = rail?.querySelector<HTMLButtonElement>('.rail-strip');
     expect(strip?.getAttribute('aria-expanded')).toBe('false');
     expect(strip?.getAttribute('aria-controls')).toBe('app-rail');
     strip?.click();
     await tick();
     expect(railCollapsed.value).toBe(false);
-    expect(root.querySelector('.app-rail .insp')).not.toBeNull();
+    expect(root.querySelector('.app-rail .rail-body')).not.toBeNull();
   });
 
   it('names what is behind the strip', async () => {
-    selection.value = ['sby01'];
+    mode.value = 'break';
     setRailCollapsed(true);
     const root = mount();
     await tick();
-    expect(root.querySelector('.rail-strip')?.getAttribute('aria-label')).toBe('Expand the Inspector panel (sby01)');
+    expect(root.querySelector('.rail-strip')?.getAttribute('aria-label')).toBe('Expand the Events panel (no events)');
+    const crash = templates(topology.value, 0).find((x) => x.id === 'crash');
+    applyTemplate(crash!);
+    await tick();
+    expect(root.querySelector('.rail-strip')?.getAttribute('aria-label')).toBe('Expand the Events panel (1 event)');
   });
 
   it('is remembered, and a reload reads it back', () => {
@@ -225,6 +240,7 @@ describe('the side rail folds', () => {
   });
 
   it('unfolds for a gesture that asks for the inspector', () => {
+    mode.value = 'break';
     setRailCollapsed(true);
     revealRail();
     expect(railCollapsed.value).toBe(false);
@@ -235,6 +251,7 @@ describe('the side rail folds', () => {
   });
 
   it('toggles on ], and opens the drawer on ] where the rail is one', () => {
+    mode.value = 'break';
     press(']');
     expect(railCollapsed.value).toBe(true);
     press(']');
@@ -248,6 +265,7 @@ describe('the side rail folds', () => {
   });
 
   it('carries no inline style in either state', async () => {
+    mode.value = 'break';
     const root = mount();
     for (const el of root.querySelectorAll('*')) expect(el.getAttribute('style')).toBeNull();
     setRailCollapsed(true);

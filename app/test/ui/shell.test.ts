@@ -39,13 +39,16 @@ beforeEach(() => {
 });
 
 describe('shell', () => {
-  it('renders the two bars, the canvas and the dock', () => {
+  it('renders the two bars, the canvas and the dock -- and no rail until something asks for one', () => {
     const root = mount();
     expect(root.querySelector('.topbar')).not.toBeNull();
     expect(root.querySelector('.statusbar')).not.toBeNull();
     expect(root.querySelector('.app-stage')).not.toBeNull();
     expect(root.querySelector('.app-dock')).not.toBeNull();
-    expect(root.querySelector('.app-rail')).not.toBeNull();
+    /* Topology's inspector is on demand (test/ui/rail.test.ts): not there at
+       all, not even as a strip. */
+    expect(root.querySelector('.app-rail')).toBeNull();
+    expect(root.querySelector('.app')?.classList.contains('no-rail')).toBe(true);
   });
 
   it('carries no inline style, anywhere -- style-src is \'self\'', () => {

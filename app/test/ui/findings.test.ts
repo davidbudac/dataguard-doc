@@ -1,16 +1,19 @@
 /**
- * The floating layout's findings: chips on the status card, the rows in a
- * popover the chips open, and one small card for the most serious finding.
+ * The floating layout's findings: chips on the status card, and the rows in a
+ * popover the chips open. There is no card that surfaces the most serious
+ * finding by itself.
  *
  * @vitest-environment jsdom
  */
 
 import { beforeEach, describe, expect, it } from 'vitest';
 import { h, render } from 'preact';
+import { memberId } from '@/engine';
 import { App } from '@/ui/App';
-import { classicDoc } from '@/state/doc';
+import { classicDoc, doc } from '@/state/doc';
+import { errors, warnings } from '@/state/derived';
 import { resetHistory } from '@/state/history';
-import { findingsOpen, findingWaved, mode, notesOpen, viewport } from '@/state/view';
+import { findingsOpen, mode, notesOpen, viewport } from '@/state/view';
 
 const mount = (): HTMLElement => {
   const root = document.createElement('div');
@@ -27,7 +30,6 @@ beforeEach(() => {
   viewport.value = 'wide';
   mode.value = 'build';
   findingsOpen.value = false;
-  findingWaved.value = null;
   notesOpen.value = false;
 });
 
@@ -68,11 +70,33 @@ describe('the floating findings', () => {
     expect(root.querySelectorAll('.fnd-pop .issue.sv-info').length).toBeGreaterThan(0);
   });
 
-  it('surfaces the top finding once, and lets it be waved away', async () => {
+  it('has no card above the dock for the top finding, whatever is wrong', async () => {
     const root = mount();
-    expect(root.querySelector('.fnd-toast')).not.toBeNull();
-    root.querySelector<HTMLButtonElement>('.fnd-toast button[aria-label="Dismiss this finding"]')!.click();
     await tick();
+    /* A warning is present, and the chips count it -- and the popover opens on
+       it, which is where the finding is read. */
+    expect(warnings.value.length).toBeGreaterThan(0);
+    expect(root.querySelector('.fnd-toast')).toBeNull();
+    expect(root.querySelector('.app-dock .fnd-chips button.fnd-chip.t-am')?.textContent).toMatch(/warning/i);
+    /* An error as well: a far sync instance named as the failover target. */
+    const cur = doc.value;
+    resetHistory({
+      ...cur,
+      topology: {
+        ...cur.topology,
+        config: {
+          ...cur.topology.config,
+          fsfo: { ...cur.topology.config.fsfo, target: { kind: 'list', members: [memberId('fs01')] } },
+        },
+      },
+    });
+    await tick();
+    expect(errors.value.length).toBeGreaterThan(0);
+    expect(root.querySelector('.fnd-toast')).toBeNull();
+    expect(root.querySelector('button.fnd-chip.t-rd')).not.toBeNull();
+    root.querySelector<HTMLButtonElement>('button.fnd-chip.t-rd')!.click();
+    await tick();
+    expect(root.querySelector('.fnd-pop .issue.sv-error')).not.toBeNull();
     expect(root.querySelector('.fnd-toast')).toBeNull();
   });
 

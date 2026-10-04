@@ -6,6 +6,12 @@
  * whose fast-start-failover group alone is taller than the window. Folding the
  * five property groups puts the whole configuration back on one screen.
  *
+ * Each form opens on its primary section and folds the rest, each with its
+ * one-line hint: the configuration on its protection mode, a member on its role
+ * and its transport, an observer on where it runs, a data centre on its hosts,
+ * an application on its connect string. A reader who wants the second tier
+ * opens it once, and it stays open (below).
+ *
  * Three rules hold here.
  *
  *  - **A closed section is genuinely absent**, not painted out of view: the
@@ -41,13 +47,18 @@ export type SectionId = (typeof SECTION_IDS)[number];
  *
  * They live in the same open set, so a reader who opens the destinations on
  * one member finds them open on the next: which drawers are open is a habit,
- * not a property of a card. Both start closed -- the summary is what the rail
- * *was* before this pass and the destinations are the tallest group in the
- * application (four properties per destination).
+ * not a property of a card. All of them start closed -- the destinations are
+ * the tallest group in the application (four properties per destination), and
+ * the rest are what a member, an observer, a data centre or an application
+ * *has* rather than what it is.
  */
-export const SUMMARY_ID = 'Configuration summary';
 export const INSTANCES_ID = 'Instances';
 export const DESTS_ID = 'Destinations';
+export const IDENTITY_ID = 'Connection';
+export const OBSERVER_CMD_ID = 'START OBSERVER';
+export const SITE_LINKS_ID = 'Links';
+export const ADDRESS_LIST_ID = 'ADDRESS_LIST';
+export const MODEL_ID = "This page's model";
 /** Break's six scenarios, on the rail and on the floating palette alike. Folded to start. */
 export const SCENARIOS_ID = 'One-click scenarios';
 

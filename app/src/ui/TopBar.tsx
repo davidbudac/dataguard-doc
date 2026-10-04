@@ -20,12 +20,14 @@
 import type { ComponentChildren } from 'preact';
 import { canUndo, canRedo, redo, redoLabel, undo, undoLabel } from '@/state/history';
 import {
-  applyPalette, applyTheme, edition, introOpen, mode, MODE_LABEL, MODE_SUB, MODES, nextTheme, palette, theme,
+  applyPalette, applyTheme, edition, inspectorRailWanted, introOpen, introPage, mode, MODE_LABEL, MODE_SUB, MODES, nextTheme,
+  palette, railOnDemand, theme,
 } from '@/state/view';
 import type { Mode, PalettePref, ThemePref } from '@/state/view';
-import { saveEdition, savePalette, saveTheme } from '@/state/persist';
+import { saveEdition, savePalette, saveTheme, toggleRail } from '@/state/persist';
 import { Segmented } from './common/Segmented';
 import { INTRO_HREF, leaveIntro, openIntro } from './intro/route';
+import { PanelIcon } from './RailFrame';
 
 const THEME_WORD: Record<ThemePref, string> = { auto: 'system', light: 'light', dark: 'dark' };
 const PALETTE_WORD: Record<PalettePref, string> = { standard: 'standard', cvd: 'colour-blind safe' };
@@ -145,6 +147,24 @@ export function TopBar({ doc, actions }: TopBarProps = {}) {
             <circle cx="8" cy="11" r="2.5" class="pal-c" />
           </svg>
         </button>
+
+        {/* Topology's and Config's inspector is not on screen until something
+            is selected, so the way to it with nothing selected is here (and
+            `]`). Only where that rail is a column: below 1280 the drawer has
+            its button in the document row, and Break's Events rail its strip.
+            Pressed while the rail is up, it puts it away. */}
+        {railOnDemand(m) && !introPage.value ? (
+          <button
+            type="button"
+            class="btn is-icon inspector-tog"
+            aria-label="Inspector"
+            title="Show or hide the Inspector panel (])"
+            aria-expanded={inspectorRailWanted()}
+            onClick={() => toggleRail()}
+          >
+            <PanelIcon open={inspectorRailWanted()} />
+          </button>
+        ) : null}
 
         {/* A toggle, and it says which way it is pointing. Closing the card
             from here writes nothing to `dg-intro-v1`: opening an explanation

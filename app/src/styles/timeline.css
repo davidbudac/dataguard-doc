@@ -38,6 +38,103 @@
   touch-action: none;
 }
 
+/* ---------------- the panel's handle ---------------- */
+
+/*
+  The edge the timeline panel folds at (ui/timeline/PanelHandle.tsx).
+
+  A full-width bar drawn as the panel's top edge: a double hairline running out
+  to both sides of a small tab, which is what a grab-handle on the edge of a
+  pane looks like everywhere else. The tab is the label -- chevron, then the
+  word -- so the control reads as "fold the panel here" before anyone has
+  hovered it. It is a real button and the whole bar is the hit target. Folded,
+  it is all that is left of the panel: the body is not rendered, not painted
+  away. The same bar heads Topology's floating dock and the docked timeline slot.
+*/
+.tlp-handle {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  flex: 0 0 auto;
+  padding: 4px var(--s4);
+  font: inherit;
+  color: var(--ik3);
+  background: var(--sf2);
+  border: 0;
+  border-bottom: 1px solid var(--ln);
+  cursor: pointer;
+}
+
+/* The grip: two hairlines either side of the tab. */
+.tlp-handle::before,
+.tlp-handle::after {
+  content: "";
+  flex: 1 1 0;
+  height: 3px;
+  border-top: 1px solid var(--ln2);
+  border-bottom: 1px solid var(--ln2);
+}
+
+.tlp-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+  padding: 2px 12px;
+  font-size: 11.5px;
+  font-weight: 620;
+  letter-spacing: .02em;
+  color: var(--ik2);
+  background: var(--sf);
+  border: 1px solid var(--ln2);
+  border-radius: var(--r-ctl);
+}
+
+.tlp-caret { font-family: var(--mono); font-size: 10px; color: var(--ik3); width: 9px; }
+
+/* What a folded panel can still say: over the right-hand grip, so it carries
+   the bar's own ground under it. */
+.tlp-sum {
+  position: absolute;
+  right: var(--s4);
+  top: 50%;
+  transform: translateY(-50%);
+  padding-left: 10px;
+  font-size: 11px;
+  color: var(--ik3);
+  background: var(--sf2);
+  white-space: nowrap;
+}
+
+.tlp-handle:hover { background: var(--sf3); color: var(--ik); }
+.tlp-handle:hover .tlp-tab { color: var(--ik); border-color: var(--ik3); }
+.tlp-handle:hover .tlp-sum { background: var(--sf3); }
+.tlp-handle:hover::before,
+.tlp-handle:hover::after { border-color: var(--ik3); }
+.tlp-handle:focus-visible { outline: 2px solid var(--fc); outline-offset: -2px; }
+
+/* The dock card's top edge: the bar sits inside the card's rounded corners and
+   stays put while the dock scrolls under it. */
+.app-dock > .tlp-handle { position: sticky; top: 0; z-index: 5; border-radius: var(--r-card) var(--r-card) 0 0; }
+.app-dock > .tlp-handle:not([aria-expanded="true"]) { border-bottom: 0; border-radius: var(--r-card); }
+
+/* Docked, the handle heads the slot, which has no card of its own. */
+.tl-slot > .tlp-handle { margin: 0 0 6px; }
+
+@media (prefers-reduced-motion: no-preference) {
+  .tlp-handle, .tlp-tab, .tlp-sum { transition: background-color .16s ease, color .16s ease, border-color .16s ease; }
+}
+
+/* Paper has nobody to press it: the handle stays as the panel's heading, with
+   the grip and the chevron taken out. */
+@media print {
+  .tlp-handle { background: none; border-bottom: 1px solid var(--ln); padding-inline: 0; }
+  .tlp-handle::before, .tlp-handle::after, .tlp-caret { display: none; }
+  .tlp-tab { border: 0; padding: 0; background: none; }
+}
+
 /* ---------------- the drawing (ported) ---------------- */
 
 /* The drawing's type sizes, as custom properties so the packed timeline can set

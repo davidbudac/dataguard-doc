@@ -3,11 +3,12 @@
    One system for all of them (docs/tasks/ui-followups.md 3.2), built out of
    the 4 px ladder in tokens.css:
 
-   - a header: what is selected (a small muted kind word over the name) and
-     the rail's buttons on the right;
-   - groups, separated by a hairline, each headed by one heading style --
-     sentence case, 12 px, semibold, muted -- in a 40 px row, whether the
-     group folds or not;
+   - a header: what is selected (a small muted kind word over the name, which
+     is the field that renames it) and the rail's buttons on the right;
+   - groups, each headed by one heading style -- sentence case, 12 px,
+     semibold, muted -- in a 36 px row, whether the group folds or not. An open
+     group ends in a hairline; a closed one is its row alone, with none, so a
+     stack of folds is a list rather than a ladder of rules;
    - fields: the name on the left and the control on the right in a 32 px
      row (`.field.is-row`), or the name and its reading on one line with the
      control full width under it (`.field.is-stack`). Which one is decided by
@@ -36,7 +37,7 @@
    the kind word over the name. */
 .insp-subj{display:flex;flex-direction:row;align-items:center;gap:var(--s3);
   flex:1 1 auto;min-width:0}
-.insp-subj-t{display:flex;flex-direction:column;align-items:flex-start;gap:1px;min-width:0;
+.insp-subj-t{display:flex;flex-direction:column;align-items:stretch;gap:1px;min-width:0;
   flex:1 1 auto}
 .insp-kind{font-size:11.5px;line-height:16px;font-weight:500;color:var(--ik3);white-space:nowrap;
   overflow:hidden;text-overflow:ellipsis;max-width:100%}
@@ -50,21 +51,35 @@
 .insp-tile.t-lk{color:var(--lk);background:color-mix(in srgb,var(--lk) 16%,var(--sf))}
 .insp-tile.t-cn{color:var(--cn);background:color-mix(in srgb,var(--cn) 16%,var(--sf))}
 .insp-tile.t-sl{color:var(--ik2);background:var(--sf2)}
-/* The subject's name, on one line: it shrinks and ellipses rather than
-   breaking mid-word, and the whole name is its `title`. */
-.insp-hd .title{font-size:15px;line-height:20px;font-weight:650;max-width:100%;min-width:0;
-  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.insp-hd .rr-spacer{flex:0 0 0}
+/* The name, as the title of the rail: it reads as a heading until the pointer
+   or the caret is in it, then it is a field. The negative margin keeps the
+   text on the inset while the box around it grows outward. One line: it
+   shrinks and ellipses rather than breaking mid-word, and the whole name is its
+   `title`. */
+.insp-name{display:block;width:calc(100% + 12px);min-width:0;margin:0 -6px;padding:1px 5px;
+  font-size:15px;line-height:20px;font-weight:650;color:var(--ik);
+  background:transparent;border:1px solid transparent;border-radius:var(--r-ctl);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:text}
+.insp-name.mono{font-family:var(--mono);font-size:14px}
+.insp-name:hover{border-color:var(--ln2)}
+.insp-name:focus{outline:none;border-color:var(--vi);background:var(--sf2)}
+.insp-name:focus-visible{outline:2px solid var(--fc);outline-offset:1px}
+/* A link, a derived line and an instance have no name to edit: the same type,
+   as text. */
+.insp-title{max-width:100%;min-width:0;font-size:15px;line-height:20px;font-weight:650;
+  color:var(--ik);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* What a rename does, said once and only with `Hints` on. */
+.insp-note{font-size:12px;line-height:1.45;color:var(--ik3);white-space:normal}
 .insp-acts{display:flex;align-items:center;gap:2px;flex:0 0 auto;margin-left:auto}
-/* The header's icon buttons (Remove, Clear): square, the glyph centred. */
+/* The header's icon button (Remove): square, the glyph centred. */
 .insp .btn.is-icon{width:28px;height:28px;min-height:28px;padding:0;display:inline-flex;
   align-items:center;justify-content:center}
 .insp-ico{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:1.4;
   stroke-linecap:round;stroke-linejoin:round}
-/* Remove is the one destructive button on the rail: it says so on hover. */
+/* Remove is the one destructive button on the rail: it says so on hover. A
+   refused one carries its reason in its title and for a screen reader
+   (`aria-describedby`), not in a box under the header. */
 .insp .btn.insp-remove:hover:not(:disabled){color:var(--rd);background:var(--rdf)}
-/* A refused Remove says why on the row under the header. */
-.insp-why{margin:0;padding:var(--s2) var(--px);border-bottom:1px solid var(--ln)}
 
 /* The `Hints` switch: quiet until it is on, when it takes the accent. It is a
    toggle, not a disclosure, so it carries `aria-pressed`. */
@@ -101,7 +116,7 @@
 .grp{display:flex;flex-direction:column;min-width:0;padding-bottom:var(--s2);
   border-bottom:1px solid var(--ln)}
 .grp:last-child{border-bottom:0}
-.grp-hd{display:flex;align-items:center;gap:var(--s2);min-height:40px;
+.grp-hd{display:flex;align-items:center;gap:var(--s2);min-height:36px;
   padding:var(--s1) calc(var(--px) - var(--s1)) 0 var(--px)}
 /* The one heading style. */
 .insp .grp-hd .eyebrow{font-family:var(--sans);font-size:12px;line-height:16px;font-weight:600;
@@ -114,8 +129,11 @@
    closed section renders no children at all. */
 .grp-fold{padding-bottom:0}
 .grp-fold.is-open{padding-bottom:var(--s2)}
+/* A closed fold is its row and nothing else: no rule under it, so a stack of
+   them reads as a list. The open group above it ends in its own. */
+.grp-fold:not(.is-open){border-bottom:0}
 .grp-fold>.grp-hd{padding:0}
-.grp-tog{display:flex;align-items:center;gap:var(--s2);width:100%;min-height:40px;
+.grp-tog{display:flex;align-items:center;gap:var(--s2);width:100%;min-height:36px;
   text-align:left;padding:var(--s1) var(--px) 0;background:transparent;border:0;
   cursor:pointer;font:inherit;color:inherit}
 .grp-fold:not(.is-open) .grp-tog{padding-top:0}
@@ -133,8 +151,11 @@
 .grp-caret.is-open svg{transform:rotate(90deg)}
 @media (prefers-reduced-motion:no-preference){
   .grp-caret svg{transition:transform .16s ease}}
+/* A closed fold is always one line: the title never wraps, and the hint --
+   whose whole text is its `title` -- is cut with an ellipsis. */
+.insp .grp-tog .eyebrow{white-space:nowrap;flex:0 0 auto}
 .grp-sum{margin-left:auto;font-family:var(--mono);font-size:11.5px;color:var(--ik3);
-  min-width:0;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  flex:1 1 0;min-width:0;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 @media (prefers-reduced-motion:no-preference){
   .grp-tog{transition:background-color .16s ease}}
 
@@ -143,6 +164,9 @@
   color:var(--ik3);border:0;max-width:80ch}
 .grp-note.is-warn{color:var(--am)}
 .grp-note .mono{font-size:11px;color:var(--ik2)}
+/* Rows a control cannot use, said once (controls.tsx, `Withheld`): the names,
+   then the reason, in the quiet ink of a refusal. */
+.grp-note.is-withheld{color:var(--ik3)}
 /* An empty state is a quiet box of its own, not a stray sentence. */
 .insp .grp .empty{gap:2px;margin:var(--s1) var(--px) var(--s2);padding:var(--s3);
   font-size:12.5px;line-height:1.5;border:1px dashed var(--ln2);border-radius:10px;
@@ -273,24 +297,13 @@
 /* One destination of a group: target and transport, alternate and FALLBACK,
    then Remove -- a two-column grid, so every destination lines up. */
 .insp .rr-dgrid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:var(--s1);
-  align-items:center;padding:var(--s2) 0 var(--s1);border-top:1px solid var(--ln)}
+  align-items:center;padding:var(--s2) 0 var(--s1)}
+.insp .rr-dgrid+.rr-dgrid{margin-top:var(--s1)}
 .insp .rr-dgrid .field-in{height:28px;width:100%}
 .insp .rr-dgrid .opt{padding-left:var(--s1)}
 .insp .rr-dgrid .ctl-off{display:contents}
 .insp .rr-dgrid .btn{grid-column:2;justify-self:end}
 .insp .rr-dgrid .why{grid-column:1 / -1}
-
-/* ---------------- the summary ---------------- */
-
-/* Label left, value right, like every other row of the rail. */
-.sum{display:flex;flex-direction:column;margin:0;padding:0 var(--px) var(--s1)}
-.sum-row{display:flex;justify-content:space-between;align-items:baseline;gap:var(--s3);
-  min-height:30px;padding:5px 0;border:0}
-.sum-row+.sum-row{border-top:1px solid var(--ln)}
-.insp .sum dt{flex:0 0 auto;font-family:var(--sans);font-size:12.5px;letter-spacing:0;
-  text-transform:none;color:var(--ik2)}
-.sum dd{margin:0;min-width:0;font-size:12px;line-height:1.5;color:var(--ik);text-align:right;
-  overflow-wrap:anywhere}
 
 /* ---------------- Break rail: the events ---------------- */
 
