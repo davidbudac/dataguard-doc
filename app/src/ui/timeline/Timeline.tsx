@@ -216,11 +216,18 @@ export function Timeline(props: TimelineProps) {
     if (!fitHeight || !el) { setPlotHeight(0); return; }
     const measure = (): void => { setPlotHeight(el.getBoundingClientRect().height); };
     measure();
-    const RO = el.ownerDocument.defaultView?.ResizeObserver;
-    if (!RO) return;
-    const observer = new RO(measure);
+    const host = el.ownerDocument.defaultView;
+    const RO = host?.ResizeObserver;
+    if (!RO || !host) return;
+    // SVG scaling can change intrinsic sizes. Render after the observer's
+    // delivery cycle, so shrinking and expanding cannot recurse through it.
+    let queued: number | null = null;
+    const observer = new RO(() => {
+      if (queued !== null) return;
+      queued = host.setTimeout(() => { queued = null; measure(); }, 0);
+    });
     observer.observe(el);
-    return () => observer.disconnect();
+    return () => { observer.disconnect(); if (queued !== null) host.clearTimeout(queued); };
   }, [fitHeight]);
 
   // Hold the viewport only for the exact document produced by our drop.

@@ -116,9 +116,15 @@ function useBarAnchor(): (el: HTMLElement | null) => void {
  */
 function useDockAnchor(): (el: HTMLElement | null) => void {
   const observer = useRef<ResizeObserver | null>(null);
-  useEffect(() => () => observer.current?.disconnect(), []);
-  return (el: HTMLElement | null): void => {
+  const queued = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const disconnect = (): void => {
     observer.current?.disconnect();
+    if (queued.current !== null) clearTimeout(queued.current);
+    queued.current = null;
+  };
+  useEffect(() => disconnect, []);
+  return (el: HTMLElement | null): void => {
+    disconnect();
     observer.current = null;
     if (!el) return;
     const write = (): void => {
@@ -130,7 +136,12 @@ function useDockAnchor(): (el: HTMLElement | null) => void {
     };
     write();
     if (typeof ResizeObserver === 'undefined') return;
-    const ro = new ResizeObserver(write);
+    // Updating the dock inset resizes the sibling canvas observed elsewhere.
+    // Defer that write beyond this observer delivery cycle.
+    const ro = new ResizeObserver(() => {
+      if (queued.current !== null) return;
+      queued.current = setTimeout(() => { queued.current = null; write(); }, 0);
+    });
     ro.observe(el);
     observer.current = ro;
   };
