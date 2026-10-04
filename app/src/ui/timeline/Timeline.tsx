@@ -7,12 +7,13 @@
  * `style-src 'self'` and carries no inline style anywhere (ui.md SS1).
  */
 
-import { useMemo, useRef, useState } from 'preact/hooks';
+import { useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { GLYPH } from '../common/eventIcons';
 import type { JSX } from 'preact';
 import type { TimedEvent, TopologyDoc, Trace } from '@/engine';
 import { sortEvents } from '@/engine';
-import { buildTimeline, TL } from './build';
+import { TL } from './build';
+import { fitTimeline } from './fit';
 import type { TimelineLane, TimelineMarker, TimelineModel } from './build';
 import { Brace, TopBrace } from './Brace';
 import { EventDrag } from './EventDrag';
@@ -29,6 +30,8 @@ export interface TimelineProps {
   doc: TopologyDoc;
   /** Measured plot width in CSS pixels. */
   width: number;
+  /** Fill a resizable plot, scaling the entire SVG uniformly. */
+  fitHeight?: boolean;
   tNow: number;
   playing?: boolean;
   speed?: number;
@@ -204,8 +207,21 @@ export function Timeline(props: TimelineProps) {
   const {
     trace, doc, width, tNow, playing = false, speed = 1,
     onSeek, onMoveEvent, onPlayToggle, onSpeed, selection = null, onSelect,
-    pinnedScale = false, showTransport = true, appView = true, onAppView,
+    pinnedScale = false, showTransport = true, appView = true, onAppView, fitHeight = false,
   } = props;
+  const plot = useRef<HTMLDivElement | null>(null);
+  const [plotHeight, setPlotHeight] = useState(0);
+  useLayoutEffect(() => {
+    const el = plot.current;
+    if (!fitHeight || !el) { setPlotHeight(0); return; }
+    const measure = (): void => { setPlotHeight(el.getBoundingClientRect().height); };
+    measure();
+    const RO = el.ownerDocument.defaultView?.ResizeObserver;
+    if (!RO) return;
+    const observer = new RO(measure);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [fitHeight]);
 
   // Hold the viewport only for the exact document produced by our drop.
   // Undo, rail edits and scenario/configuration changes fit automatically.
@@ -214,9 +230,9 @@ export function Timeline(props: TimelineProps) {
     scenario: string; t0: number; t1: number;
   } | null>(null);
   const axis = heldAxis?.scenario === scenario ? heldAxis : undefined;
-  const model = useMemo(
-    () => buildTimeline(trace, doc, { width, pinnedScale, selection, app: appView, ...(axis ? { axis } : {}) }),
-    [trace, doc, width, pinnedScale, selection, axis, appView],
+  const { model, scale: drawingScale } = useMemo(
+    () => fitTimeline(trace, doc, { width, pinnedScale, selection, app: appView, ...(axis ? { axis } : {}) }, plotHeight),
+    [trace, doc, width, pinnedScale, selection, axis, appView, plotHeight],
   );
   const moveEvent = (index: number, at: number, expected: TimedEvent) => {
     const result = onMoveEvent?.(index, at, expected);
@@ -306,11 +322,11 @@ export function Timeline(props: TimelineProps) {
 
   return (
     <section class={model.empty ? 'tl is-empty' : 'tl'} aria-label="Timeline">
-      <div class="tl-plot" onPointerMove={onPointerMove} onPointerLeave={() => setTip(null)}>
+      <div class="tl-plot" ref={plot} onPointerMove={onPointerMove} onPointerLeave={() => setTip(null)}>
         <svg
           class={canSeek ? 'tl-svg is-seekable' : 'tl-svg'}
-          width={model.width}
-          height={model.height}
+          width={model.width * drawingScale}
+          height={model.height * drawingScale}
           viewBox={`0 0 ${model.width} ${model.height}`}
           role="group"
           aria-describedby={summaryId}

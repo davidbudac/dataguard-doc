@@ -17,7 +17,7 @@ import { useEffect, useRef } from 'preact/hooks';
 import type { JSX } from 'preact';
 import { setTimelineH } from '@/state/persist';
 import {
-  clampTimelineH, findingsOpen, timelineDefaultH, timelineFull, timelineH, timelineMaxH, TL_MIN_H,
+  clampTimelineH, commandOpen, findingsOpen, timelineDefaultH, timelineFull, timelineH, timelineMaxH, TL_MIN_H,
   TL_STEP,
 } from '@/state/view';
 
@@ -30,6 +30,14 @@ const headBottom = (from: Element | null): number => {
 };
 
 /** The height the panel is painted at now: measured, since CSS clamps the wish. */
+const maxH = (from: Element | null): number => {
+  const app = from?.closest('.app') ?? from?.ownerDocument.querySelector('.app');
+  const max = timelineMaxH(viewH(), headBottom(from));
+  // The docked tablet shell retains its 260px topology row above the panel.
+  return app && !app.classList.contains('is-float')
+    ? Math.max(TL_MIN_H, Math.min(max, Math.floor(viewH() - headBottom(from) - 260))) : max;
+};
+
 const paintedH = (el: Element): number => {
   const dock = el.closest('.app-dock');
   const h = dock?.getBoundingClientRect().height ?? 0;
@@ -39,19 +47,19 @@ const paintedH = (el: Element): number => {
 export const GRIP_TITLE = 'Drag to resize the timeline, or use the arrow keys; double-click or Enter resets it';
 
 export function DockGrip() {
-  const drag = useRef<{ y: number; h: number; id: number } | null>(null);
+  const drag = useRef<{ y: number; h: number; id: number; before: number | null } | null>(null);
   const vh = viewH();
   const now = timelineH.value ?? timelineDefaultH(vh);
 
   const move = (el: Element, h: number, remember: boolean): void => {
-    setTimelineH(clampTimelineH(h, viewH(), headBottom(el)), remember);
+    setTimelineH(Math.min(maxH(el), clampTimelineH(h, viewH(), headBottom(el))), remember);
   };
 
   const onPointerDown = (e: JSX.TargetedPointerEvent<HTMLDivElement>): void => {
     if (e.button !== 0) return;
     e.preventDefault();
     const el = e.currentTarget;
-    drag.current = { y: e.clientY, h: paintedH(el), id: e.pointerId };
+    drag.current = { y: e.clientY, h: paintedH(el), id: e.pointerId, before: timelineH.value };
     el.setPointerCapture?.(e.pointerId);
     el.classList.add('is-dragging');
   };
@@ -65,10 +73,18 @@ export function DockGrip() {
     if (d === null || d.id !== e.pointerId) return;
     drag.current = null;
     e.currentTarget.classList.remove('is-dragging');
-    e.currentTarget.releasePointerCapture?.(e.pointerId);
+    if (e.currentTarget.hasPointerCapture?.(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId);
     /* Written once, at the end of the gesture; a press that never moved
        leaves the stored value (and the default) alone. */
     if (e.clientY !== d.y) move(e.currentTarget, d.h + (d.y - e.clientY), true);
+  };
+  const cancel = (e: JSX.TargetedPointerEvent<HTMLDivElement>): void => {
+    const d = drag.current;
+    if (!d || d.id !== e.pointerId) return;
+    drag.current = null;
+    e.currentTarget.classList.remove('is-dragging');
+    setTimelineH(d.before, false);
+    if (e.currentTarget.hasPointerCapture?.(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId);
   };
 
   const onKeyDown = (e: JSX.TargetedKeyboardEvent<HTMLDivElement>): void => {
@@ -81,7 +97,7 @@ export function DockGrip() {
       case 'PageUp': move(el, h + step * 4, true); break;
       case 'PageDown': move(el, h - step * 4, true); break;
       case 'Home': move(el, TL_MIN_H, true); break;
-      case 'End': move(el, timelineMaxH(viewH(), headBottom(el)), true); break;
+      case 'End': move(el, maxH(el), true); break;
       case 'Enter': setTimelineH(null); break;
       default: return;
     }
@@ -95,7 +111,7 @@ export function DockGrip() {
       aria-orientation="horizontal"
       aria-label="Timeline height"
       aria-valuemin={TL_MIN_H}
-      aria-valuemax={timelineMaxH(vh, typeof document === 'undefined' ? 80 : headBottom(document.body))}
+      aria-valuemax={typeof document === 'undefined' ? timelineMaxH(vh, 80) : maxH(document.body)}
       aria-valuenow={Math.round(now)}
       aria-valuetext={`${Math.round(now)} pixels${timelineH.value === null ? ' (default)' : ''}`}
       tabIndex={0}
@@ -103,7 +119,8 @@ export function DockGrip() {
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={end}
-      onPointerCancel={end}
+      onPointerCancel={cancel}
+      onLostPointerCapture={cancel}
       onDblClick={() => setTimelineH(null)}
       onKeyDown={onKeyDown}
     >
@@ -119,7 +136,7 @@ export function DockGrip() {
  * "forget the selection".
  */
 export function onFullKey(e: KeyboardEvent): void {
-  if (e.key !== 'Escape' || e.defaultPrevented || !timelineFull.value || findingsOpen.value) return;
+  if (e.key !== 'Escape' || e.defaultPrevented || !timelineFull.value || findingsOpen.value || commandOpen.value) return;
   timelineFull.value = false;
   e.preventDefault();
   e.stopPropagation();

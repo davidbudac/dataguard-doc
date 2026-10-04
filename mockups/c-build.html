@@ -1,0 +1,94 @@
+<!doctype html><meta charset="utf-8"><title>C · Sidebar console · Build</title>
+<link rel="stylesheet" href="shared.css">
+<style>
+.app{display:grid;grid-template-columns:232px 1fr 330px;height:900px}
+nav{background:var(--bg);border-right:1px solid var(--ln);display:flex;flex-direction:column;padding:14px 10px}
+.brand{font-weight:650;font-size:14px;padding:4px 10px 16px}
+.brand small{display:block;font-weight:400;color:var(--ik3);font-size:12px}
+.nav a{display:flex;gap:10px;align-items:flex-start;padding:8px 10px;border-radius:8px;color:var(--ik2);text-decoration:none;margin-bottom:2px}
+.nav a.on{background:var(--sf);color:var(--ik);box-shadow:0 1px 2px rgba(16,25,34,.08)}
+.nav a i{font-style:normal;width:18px;text-align:center;color:var(--ik3)}
+.nav a.on i{color:var(--vi)}
+.nav a b{font-weight:550;display:block}
+.nav a small{font-size:11.5px;color:var(--ik3);line-height:1.3}
+.grp{font-size:11px;font-weight:600;color:var(--ik3);padding:18px 10px 6px}
+.chk{display:flex;gap:8px;padding:6px 10px;border-radius:7px;color:var(--ik2);font-size:12.5px;line-height:1.35}
+.chk .dot{margin-top:5px;flex:none}
+.foot{margin-top:auto;display:flex;flex-direction:column;gap:8px;padding:10px}
+main{display:flex;flex-direction:column;min-width:0}
+.bar{height:52px;display:flex;align-items:center;gap:10px;padding:0 16px;border-bottom:1px solid var(--ln)}
+.crumb{color:var(--ik3)}.crumb b{color:var(--ik);font-weight:600;font-family:var(--mono)}
+.sub{height:44px;display:flex;align-items:center;gap:6px;padding:0 16px;border-bottom:1px solid var(--ln)}
+.sub .btn{font-size:12.5px}
+.canvas{flex:1;padding:40px 30px}
+.kpis{display:grid;grid-template-columns:repeat(4,1fr);border-top:1px solid var(--ln)}
+.kpis div{padding:12px 16px;border-left:1px solid var(--ln)}
+.kpis div:first-child{border-left:0}
+.kpis small{display:block;font-size:11px;color:var(--ik3)}
+.kpis b{font-size:15px;font-weight:600}
+aside{border-left:1px solid var(--ln)}
+.tabs{display:flex;gap:18px;padding:0 20px;border-bottom:1px solid var(--ln);height:52px;align-items:flex-end}
+.tabs span{padding-bottom:12px;color:var(--ik3);font-weight:500}
+.tabs span.on{color:var(--ik);box-shadow:inset 0 -2px 0 var(--ik)}
+</style>
+<div class="app">
+<nav>
+  <div class="brand">Data Guard<small>Topology workbench</small></div>
+  <div class="nav">
+    <a class="on"><i>✎</i><span><b>Build</b><small>Draw sites, members, routes</small></span></a>
+    <a><i>ϟ</i><span><b>Break</b><small>Inject failures, run clocks</small></span></a>
+    <a><i>⌘</i><span><b>Configure</b><small>DGMGRL, init params, TNS</small></span></a>
+    <a><i>☰</i><span><b>Learn</b><small>Nine lessons</small></span></a>
+  </div>
+  <div class="grp">Checks</div>
+  <div class="chk"><span class="dot" style="background:var(--am)"></span>Auto-reinstate needs Flashback on prm01 and sby01</div>
+  <div class="chk"><span class="dot" style="background:var(--ln2)"></span>3 notes on defaults</div>
+  <div class="grp">Presets</div>
+  <div class="chk">Classic 1+1+1</div><div class="chk">Far sync</div><div class="chk">Cascade</div><div class="chk">Multi-standby</div>
+  <div class="foot">
+    <div class="row gap8"><span class="muted grow" style="font-size:12px">Release</span><div class="seg sm"><button class="on">19c</button><button>26ai</button></div></div>
+    <div class="row gap8"><span class="muted grow" style="font-size:12px">Theme</span><div class="seg sm"><button class="on">Auto</button><button>☀</button><button>☾</button></div></div>
+  </div>
+</nav>
+<main>
+  <div class="bar">
+    <span class="crumb">Configurations / <b>dg_config</b> ▾</span>
+    <span class="grow"></span>
+    <button class="ibtn">↶</button><button class="ibtn">↷</button>
+    <button class="btn">Import</button><button class="btn">Export</button><button class="btn pri">Share</button>
+  </div>
+  <div class="sub">
+    <button class="btn out">+ Standby</button><button class="btn">+ Far sync</button><button class="btn">+ Observer</button><button class="btn">+ Data centre</button>
+    <span class="grow"></span>
+    <button class="btn">Tidy</button><span class="muted">|</span><button class="btn">−</button><span class="mono muted" style="font-size:12px">100%</span><button class="btn">+</button><button class="btn">Fit</button>
+  </div>
+  <div class="canvas topo"></div>
+  <div class="kpis">
+    <div><small>Protection</small><b style="color:var(--tl)">MaxAvailability</b></div>
+    <div><small>Members</small><b>2</b></div>
+    <div><small>Fast-start failover</small><b style="color:var(--vi)">Enabled</b></div>
+    <div><small>Observers</small><b>1 running</b></div>
+  </div>
+</main>
+<aside>
+  <div class="tabs"><span class="on">Properties</span><span>Summary</span><span>Environment</span></div>
+  <div class="sec" style="padding-top:18px">
+    <h4>Configuration</h4>
+    <div class="field"><label>Name</label><input class="input" value="dg_config" style="min-width:150px"></div>
+    <div class="field"><label>Protection mode</label></div>
+    <div class="seg sm" style="width:100%"><button style="flex:1">MaxPerf</button><button class="on" style="flex:1">MaxAvail</button><button style="flex:1">MaxProt</button></div>
+    <div class="field" style="margin-top:8px"><label>Bystanders follow</label><div class="seg sm"><button class="on">All</button><button>None</button></div></div>
+    <div class="field"><label>Wide service name</label><span class="val muted">not set</span></div>
+  </div>
+  <div class="sec">
+    <h4>Fast-start failover</h4>
+    <div class="field"><label>Status</label><span class="chip ok">Enabled</span></div>
+    <div class="field"><label>Target</label><span class="val">sby01</span></div>
+    <div class="field"><label>Threshold</label><span class="val">30 s</span></div>
+    <div class="field"><label>Auto reinstate</label><span class="val">TRUE</span></div>
+  </div>
+  <div class="disc"><span>Primary candidates</span><span class="r">empty</span></div>
+  <div class="disc" style="border-bottom:1px solid var(--ln)"><span>Preferred observer hosts</span><span class="r">not set</span></div>
+</aside>
+</div>
+<script src="topo.js"></script>

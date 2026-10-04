@@ -32,6 +32,11 @@ import { collectOpen } from './import/CollectDialog';
 
 const busy = signal(false);
 
+/** Shared with the command palette; the existing file picker owns parsing. */
+export function requestImport(): void {
+  document.querySelector<HTMLInputElement>('#import-configuration')?.click();
+}
+
 /** The link the last Share produced, shown in the bar while it is fresh. */
 export const sharedUrl = signal<string | null>(null);
 export const SHARED_MS = 12000;
@@ -344,6 +349,7 @@ export function DocActions() {
           <label class="btn">
             Import
             <input
+              id="import-configuration"
               type="file"
               class="sr"
               accept=".json,.dgtopo.json,application/json"

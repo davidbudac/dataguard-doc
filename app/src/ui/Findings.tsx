@@ -16,7 +16,7 @@
 import { useEffect } from 'preact/hooks';
 import type { Finding } from '@/engine';
 import { errors, issues, warnings } from '@/state/derived';
-import { findingsOpen, findingWaved, notesOpen } from '@/state/view';
+import { commandOpen, findingsOpen, findingWaved, notesOpen } from '@/state/view';
 import { IssuePanel, revealFindings } from './IssuePanel';
 
 const plural = (n: number, word: string): string => `${n} ${word}${n === 1 ? '' : 's'}`;
@@ -79,7 +79,7 @@ export function FindingsChips() {
  * the same press as "forget the selection" -- one key, two things undone.
  */
 export function onFindingsKey(e: KeyboardEvent): void {
-  if (e.key !== 'Escape' || !findingsOpen.value) return;
+  if (e.key !== 'Escape' || !findingsOpen.value || commandOpen.value) return;
   findingsOpen.value = false;
   e.preventDefault();
   e.stopImmediatePropagation();

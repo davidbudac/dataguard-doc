@@ -13,6 +13,7 @@
  */
 
 import { signal } from '@preact/signals';
+import { resetPan } from './pan';
 
 /** The rungs, ascending. 1 is the drawing at its own size, and the home rung. */
 export const ZOOM_STEPS = [0.5, 0.65, 0.8, 1, 1.2, 1.4] as const;
@@ -65,6 +66,7 @@ export function zoomBy(dir: 1 | -1): void {
 
 /** Back to 1:1. */
 export function fitZoom(): void {
+  resetPan();
   if (zoom.peek() !== FIT_ZOOM) zoom.value = FIT_ZOOM;
 }
 

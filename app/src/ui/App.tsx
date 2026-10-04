@@ -16,7 +16,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { topology, trace } from '@/state/derived';
 import {
-  appLanesShown, canEdit, floating, gridOn, inspectorOpen, introOpen, introPage, mode, playing, selection, speed,
+  appLanesShown, canEdit, floating, gridOn, inspectorCollapsed, inspectorOpen, introOpen, introPage, mode, playing, selection, speed,
   timelineFull, timelineH, tNow, toast, viewport,
 } from '@/state/view';
 import type { Mode } from '@/state/view';
@@ -25,8 +25,9 @@ import { TopBar } from './TopBar';
 import { DocActions, DocCount, DocPicker } from './StatusBar';
 import { FindingsChips, FindingsPopover, FindingToast } from './Findings';
 import { Guidance, IntroCard } from './Guidance';
-import { usePrintExpand } from './print';
+import { printing, usePrintExpand } from './print';
 import { installShortcuts } from './shortcuts';
+import { CommandPalette } from './CommandPalette';
 import { Readout } from './Readout';
 import { IssuePanel } from './IssuePanel';
 import { Sheet } from './common/Sheet';
@@ -281,6 +282,7 @@ function TimelineSlot({ popup = false }: { popup?: boolean }) {
           /* Never narrower than the plot needs to stay legible: below that the
              timeline scrolls sideways inside its own box (ui.md SS1). */
           width={Math.max(width, MIN_TIMELINE_W)}
+          fitHeight={!printing.value && (popup || (mode.value === 'break' && canEdit(viewport.value)))}
           tNow={tNow.value}
           playing={playing.value}
           speed={speed.value}
@@ -411,11 +413,12 @@ function CanvasPop() {
   );
 }
 
-function Dock({ m, railInDock }: { m: Mode; railInDock: boolean }) {
+function Dock({ m, railInDock, sized = false }: { m: Mode; railInDock: boolean; sized?: boolean }) {
   if (m === 'learn') return railInDock ? <Workbench /> : null;
   return (
     <>
-      {m === 'configure' ? null : <Readout />}
+      {m === 'configure' ? null : m === 'break' && sized
+        ? <div class="dock-status"><DockGrip /><Readout /></div> : <Readout />}
       {m === 'build' ? <IssuePanel /> : null}
       {m === 'break' ? <TimelineSlot /> : null}
       {m === 'configure' ? <Panels /> : null}
@@ -431,6 +434,7 @@ export function App() {
   const intro = introPage.value;
   const wide = viewport.value === 'wide';
   const railInGrid = wide && HAS_RAIL[m];
+  const railFolded = inspectorCollapsed.value && !printing.value;
   /* Build and Break draw the canvas full-bleed with everything else floating
      over it; Configure and Learn keep the docked grid (state/view.ts). */
   const float = !intro && floating(m, viewport.value);
@@ -442,20 +446,20 @@ export function App() {
   /* Break's timeline panel is sized by the reader once there is a run to
      show; the steady state's one sentence keeps its own height, and so
      does the note left behind when the timeline is popped out. */
-  const sized = float && m === 'break' && trace.value !== null && popped.value.timeline === undefined;
-  const full = sized && timelineFull.value;
+  const sized = !intro && canEdit(viewport.value) && m === 'break' && trace.value !== null && popped.value.timeline === undefined;
+  const full = float && sized && timelineFull.value;
   /* Full screen belongs to the run on screen: leaving Break, or clearing the
      events, puts the drawing back. */
-  useEffect(() => { if (!sized) timelineFull.value = false; }, [sized]);
+  useEffect(() => { if (!sized || !float) timelineFull.value = false; }, [sized, float]);
   /* Installed by the shell, not by a mode: `beforeprint` fires once on the
      window, and both the Configure panels and Build's folded notes expand off
      the same signal (ui/print.ts). */
   usePrintExpand();
-  /* Undo, redo and select-all, for the whole page (ui/shortcuts.ts). */
+  /* The command catalogue supplies page shortcuts in every mode. */
   useEffect(() => installShortcuts(), []);
 
   return (
-    <div ref={appRef} class={intro ? 'app m-intro' : `app m-${m}${float ? ' is-float' : ''}${float && !gridOn.value ? ' no-grid' : ''}${full ? ' tl-full' : ''}${float && m === 'break' && !wide ? ' has-evm' : ''}`}>
+    <div ref={appRef} class={intro ? 'app m-intro' : `app m-${m}${float ? ' is-float' : ''}${float && !gridOn.value ? ' no-grid' : ''}${full ? ' tl-full' : ''}${railFolded && wide && m !== 'learn' ? ' rail-collapsed' : ''}${float && m === 'break' && !wide ? ' has-evm' : ''}`}>
       {/* One header, three bands: the modes and the small controls, then the
           quieter document row, then the line that says what to do in the mode
           that is open. It is one element so the toast can be anchored to the
@@ -521,7 +525,17 @@ export function App() {
           {railInGrid
             ? (
               <aside class={float ? 'app-rail float-card' : 'app-rail'} aria-label={RAIL_TITLE[m]}>
-                <Rail m={m} wide float={float} />
+                {m === 'learn' ? <Rail m={m} wide float={float} /> : (
+                  <>
+                    <button type="button" class="rail-toggle" aria-expanded={!railFolded}
+                      aria-controls="rail-content" title={`${inspectorCollapsed.value ? 'Expand' : 'Collapse'} ${RAIL_TITLE[m]} (I)`}
+                      onClick={() => { inspectorCollapsed.value = !inspectorCollapsed.value; }}>
+                      <span>{RAIL_TITLE[m]}</span>
+                      <span aria-hidden="true">{inspectorCollapsed.value ? '▾' : '▴'}</span>
+                    </button>
+                    {railFolded ? null : <div id="rail-content"><Rail m={m} wide float={float} /></div>}
+                  </>
+                )}
               </aside>
             )
             : null}
@@ -537,12 +551,18 @@ export function App() {
           ) : null}
 
           {float || (m === 'learn' && wide) ? null : (
-            <div class="app-dock"><Dock m={m} railInDock={!wide} /></div>
+            <div class={sized ? 'app-dock has-tl' : 'app-dock'}><Dock m={m} railInDock={!wide} sized={sized} /></div>
           )}
         </>
       )}
 
       {!intro && !wide && HAS_RAIL[m] && m !== 'learn' ? (
+        <>
+          <button type="button" class={`rail-launcher${float ? ' float-card' : ''}`}
+          aria-expanded={inspectorOpen.value} aria-haspopup="dialog"
+          title={`Open ${RAIL_TITLE[m]} (I)`} onClick={() => { inspectorOpen.value = true; }}>
+          <span>{RAIL_TITLE[m]}</span><span aria-hidden="true">▸</span>
+        </button>
         <Sheet
           open={inspectorOpen.value}
           title={RAIL_TITLE[m]}
@@ -551,6 +571,7 @@ export function App() {
         >
           <Rail m={m} wide={false} float={float} />
         </Sheet>
+        </>
       ) : null}
 
       {/* The dialogs the ⋯ menu opens live here, not in the menu: it is a
@@ -558,6 +579,8 @@ export function App() {
       {intro ? null : <WorkspacesDialog />}
       {intro ? null : <ReviewDialog />}
       {intro ? null : <CollectDialog />}
+
+      <CommandPalette />
 
       <Popout kind="timeline"><TimelinePop /></Popout>
       <Popout kind="canvas"><CanvasPop /></Popout>

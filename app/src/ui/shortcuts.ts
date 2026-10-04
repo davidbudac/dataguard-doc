@@ -1,56 +1,37 @@
-/**
- * The keys that belong to the page rather than to a control on it.
- *
- * Undo and redo were two buttons in the header and nothing else, which made
- * every slip on the drawing a trip to the top of the page. These are the
- * bindings every editor has taught: `Ctrl/Cmd+Z`, `Ctrl/Cmd+Shift+Z` and
- * `Ctrl+Y`, and `Ctrl/Cmd+A` for every card on the drawing.
- *
- * A key typed into a field is the field's: the browser's own undo inside a
- * text input is not this page's to take.
- */
+/** Page shortcuts share the command catalogue. Text fields retain their own
+ * editing keys, and modal dialogs retain all keys except palette toggle. */
+import { canEdit, clearSelection, commandOpen, selection, viewport } from '@/state/view';
+import { redo } from '@/state/history';
+import { commands, matchesShortcut, runCommand } from './commands';
+import { isElement } from './common/dom';
 
-import { topology } from '@/state/derived';
-import { redo, undo } from '@/state/history';
-import { canEdit, clearSelection, mode, selection, viewport } from '@/state/view';
-import { isHTMLElement } from './common/dom';
-
-const typing = (t: EventTarget | null): boolean =>
-  isHTMLElement(t)
-  && (t.isContentEditable || t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT');
+const typing = (target: EventTarget | null): boolean => isElement(target)
+  && (target.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"])') !== null);
 
 export function onGlobalKey(ev: KeyboardEvent): void {
-  if (ev.defaultPrevented || typing(ev.target) || !canEdit(viewport.value)) return;
+  if (ev.defaultPrevented || ev.isComposing) return;
   const mod = ev.ctrlKey || ev.metaKey;
   const key = ev.key.toLowerCase();
-  if (mod && !ev.altKey && key === 'z') {
+  const dialog = isElement(ev.target) ? ev.target.closest('[role="dialog"]') : null;
+  if (mod && !ev.altKey && !ev.shiftKey && key === 'k') {
+    // A second modal would break the current dialog's focus contract.
+    if (dialog && !commandOpen.value) return;
     ev.preventDefault();
-    if (ev.shiftKey) redo(); else undo();
+    if (!ev.repeat) commandOpen.value = !commandOpen.value;
     return;
   }
-  if (mod && !ev.altKey && !ev.shiftKey && key === 'y') {
+  if (typing(ev.target) || dialog || commandOpen.value) return;
+  if (mod && !ev.altKey && !ev.shiftKey && key === 'y' && canEdit(viewport.value)) {
+    ev.preventDefault(); redo(); return;
+  }
+  const action = commands().find(c => c.shortcut && matchesShortcut(ev, c.shortcut));
+  if (action) {
     ev.preventDefault();
-    redo();
+    if (!ev.repeat || ['undo', 'redo', 'zoom-in', 'zoom-out', 'previous', 'next'].includes(action.id)) runCommand(action.id);
     return;
   }
-  const drawing = mode.value === 'build' || mode.value === 'break';
-  if (mod && !ev.altKey && !ev.shiftKey && key === 'a' && drawing) {
-    ev.preventDefault();
-    const t = topology.value;
-    selection.value = [
-      ...t.members.map((m) => m.id as string), ...t.observers.map((o) => o.id as string),
-      ...(t.application ? [t.application.id as string] : []),
-    ];
-    return;
-  }
-  /* `Escape` with the focus nowhere: the cards handle their own, this is the
-     press after a click on the ground or in the margin. */
-  if (ev.key === 'Escape' && isHTMLElement(ev.target) && ev.target === ev.target.ownerDocument.body && selection.value.length > 0) {
-    clearSelection();
-  }
+  if (ev.key === 'Escape' && ev.target === document.body && selection.value.length) clearSelection();
 }
-
-/** Installed once by the shell; returns the uninstall. */
 export function installShortcuts(): () => void {
   document.addEventListener('keydown', onGlobalKey);
   return () => document.removeEventListener('keydown', onGlobalKey);

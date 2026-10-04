@@ -1157,3 +1157,42 @@ keeps them visible across export, share and reload. DGMGRL text is not accepted.
   `site/smoke.mjs` failed its two legacy-link checks. Boot now counts an upgraded
   link as a document.
 
+
+## Workbench controls (as built, 2026-10-04)
+
+The Inspector / Events rail now folds to its named header on a wide screen.
+`inspectorCollapsed` is view state; the form leaves the DOM, the header and
+expand button stay. The floating canvas and dock reclaim the rail's width.
+Smaller layouts keep a named launcher beside the closed drawer. An explicit
+Edit action expands the rail; printing expands it without changing the preference.
+
+The timeline's top edge has a full-width resize target with a visible grip.
+Dragging remembers the height once, on release; cancellation restores the
+previous preference. Arrow keys resize, Enter / double click reset, and the
+existing full-screen control still exits on Escape. The plot fills the remaining
+panel height and `timeline/fit.ts` scales the entire SVG uniformly, including
+lane labels, markers, hatching, braces and the playhead. Its time axis reflows to
+the available width; unusually large scales scroll horizontally. Static exports
+and print keep the original drawing scale. The tablet dock also has the grip.
+
+Panning no longer needs overflow. `canvas/pan.ts` keeps an offset in drawing
+units outside the Document, and `TopoCanvas` offsets the displayed viewBox.
+Empty-space drag pans; Shift-drag draws a selection rectangle in Build. H / the
+Hand button pan over cards as well; V returns to selection, and Space-drag or
+middle-drag temporarily pan from anywhere. Card, chassis, data-centre, port and
+resize gestures retain their own actions. Fit resets both zoom and pan; export
+and print show the whole topology. The browser's screen CTM maps panned pointer
+positions back to document coordinates.
+
+`ui/commands.ts` is the shared catalogue for shortcuts and the searchable
+Cmd/Ctrl+K palette. It covers mode changes, Inspector / Events, findings, undo /
+redo, additions, selection properties, guarded removal, zoom, fit, tidy, grid,
+hints, playback, timeline navigation, scenarios, seven Configure panels, presets,
+share, import / export, saved configurations, comparison, report and theme /
+edition. Entries reuse the existing action tables and their refusal messages.
+The palette opens focused on search, accepts arrow keys / Enter, explains disabled
+commands, traps Tab and restores focus on Escape. Actions that open another modal
+run after that restoration. Text fields retain their editing keys (except the
+explicit palette shortcut); other modals retain their keyboard contract. The
+help card lists the bindings. Escape dismisses the palette before either a
+findings popover or a full-screen timeline beneath it.

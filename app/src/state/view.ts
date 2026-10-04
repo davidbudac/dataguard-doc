@@ -94,6 +94,9 @@ export const theme = signal<ThemePref>('auto');
 export const palette = signal<PalettePref>('standard');
 export const edition = signal<Edition>('19c');
 export const inspectorOpen = signal<boolean>(false);
+/** The wide rail keeps its heading when folded; smaller screens keep a launcher. */
+export const inspectorCollapsed = signal<boolean>(false);
+export const commandOpen = signal<boolean>(false);
 /** The "How this page works" card, opened again from the header's ? button. */
 export const introOpen = signal<boolean>(false);
 /**

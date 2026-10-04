@@ -38,6 +38,7 @@ export interface SheetProps {
   variant?: 'edge' | 'card';
   /** Extra classes on the panel, for a dialog that needs its own width. */
   class?: string;
+  initialFocus?: string;
   onClose: () => void;
   children: ComponentChildren;
 }
@@ -59,7 +60,7 @@ function tabbable(panel: HTMLElement): HTMLElement[] {
 }
 
 export function Sheet({
-  open, title, position = 'right', variant = 'edge', class: extra, onClose, children,
+  open, title, initialFocus, position = 'right', variant = 'edge', class: extra, onClose, children,
 }: SheetProps) {
   const panel = useRef<HTMLElement | null>(null);
   const opener = useRef<Element | null>(null);
@@ -74,6 +75,7 @@ export function Sheet({
     if (!open || typeof document === 'undefined') return undefined;
     opener.current = document.activeElement;
     panel.current?.focus();
+    if (initialFocus) panel.current?.querySelector<HTMLElement>(initialFocus)?.focus();
     const onKey = (ev: KeyboardEvent): void => {
       const box = panel.current;
       if (ev.key === 'Tab' && box) {

@@ -454,3 +454,54 @@ button.issue{border-bottom:1px solid var(--ln)}
   .sheet.is-card{top:auto;bottom:0;right:0;left:0;width:auto;max-height:80dvh;
     border-radius:var(--r-card) var(--r-card) 0 0}
 }
+
+/* A folded panel keeps a named card at its original edge. Its body is absent
+   from the DOM; the heading remains the way back in. */
+.rail-toggle,.rail-launcher{display:flex;align-items:center;justify-content:space-between;
+  gap:18px;width:100%;padding:10px 14px;border:0;border-bottom:1px solid var(--ln);
+  background:var(--sf);color:var(--ik2);font:600 12.5px var(--sans);cursor:pointer}
+.rail-toggle:hover,.rail-launcher:hover{background:var(--sf2);color:var(--ik)}
+.rail-launcher{position:fixed;right:14px;top:calc(var(--bar-bottom,80px) + 12px);
+  width:auto;z-index:23;border:1px solid var(--ln);border-radius:var(--r-card)}
+.app.is-float.rail-collapsed{--rail-space:var(--float-m)}
+.app.is-float.rail-collapsed .app-rail{bottom:auto;width:160px;overflow:hidden}
+.app.rail-collapsed:not(.is-float){grid-template-columns:minmax(0,1fr) 160px}
+.app.rail-collapsed:not(.is-float) .app-rail{align-self:start;border-bottom:1px solid var(--ln)}
+.app.is-float .app-rail .rail-toggle{border-radius:var(--r-card) var(--r-card) 0 0}
+@media screen{
+.app.is-float .app-dock.has-tl{overflow:hidden}
+.app.is-float .has-tl>.tl-slot{flex:1 1 0;min-height:0;display:flex;flex-direction:column}
+.app.is-float .has-tl .tl{flex:1 1 0;min-height:0;grid-template-columns:minmax(0,1fr);
+  grid-template-rows:auto auto minmax(0,1fr) auto;gap:4px}
+.app.is-float .has-tl .tl-foot{grid-column:1;grid-row:1;padding:6px 0 2px}
+.app.is-float .has-tl .tl-legend{grid-column:1;grid-row:2;justify-self:start;
+  justify-content:flex-start;padding:0;gap:3px 12px;font-size:10.5px}
+.app.is-float .has-tl .tl-plot{grid-column:1;grid-row:3;min-height:0;overflow:auto;
+  height:100%;align-self:stretch}
+.app.is-float .has-tl .tl-note{grid-column:1;grid-row:4;font-size:10.5px}
+.app.is-float .has-tl .dock-status{padding-top:8px}
+.app.is-float .has-tl .chips,.app.is-float .has-tl .ro-run{flex-wrap:nowrap}
+.app.is-float .has-tl .chips{overflow-x:auto;scrollbar-width:thin;padding:8px 12px}
+.app.is-float .has-tl .chip,.app.is-float .has-tl .ro-run{flex-shrink:0}
+.app.is-float .has-tl .chip{padding-inline:12px}
+.app.is-float .has-tl .chip-v{white-space:nowrap}
+.dock-grip{height:14px}
+.dock-grip-bar{width:64px;height:4px;background:var(--ik3)}
+}
+.app.is-float.has-evm .rail-launcher{top:auto;bottom:calc(var(--dock-h,72px) + 14px + 54px)}
+@media (max-width:1023px){.rail-launcher{top:auto;bottom:14px}}
+@media print{.rail-toggle,.rail-launcher{display:none}}
+
+/* The same resizable panel in the docked tablet shell. */
+@media screen and (min-width:768px) and (max-width:1023px){
+  .app.m-break .app-dock.has-tl{position:relative;display:flex;flex-direction:column;
+    height:var(--tl-h,clamp(220px,36dvh,400px));min-height:64px;max-height:calc(100dvh - var(--bar-bottom,120px) - 260px);overflow:hidden}
+  .app.m-break .has-tl .dock-status{position:relative;padding-top:10px;flex:0 0 auto}
+  .app.m-break .has-tl>.tl-slot{flex:1 1 0;min-height:0;display:flex;flex-direction:column}
+  .app.m-break .has-tl .tl{flex:1 1 0;min-height:0;display:grid;align-items:stretch;
+    grid-template-columns:minmax(0,1fr);grid-template-rows:auto auto minmax(0,1fr) auto;gap:4px}
+  .app.m-break .has-tl .tl-foot{grid-row:1;position:static;padding:6px 0}
+  .app.m-break .has-tl .tl-legend{grid-row:2}
+  .app.m-break .has-tl .tl-plot{grid-row:3;height:100%;min-height:0;overflow:auto}
+  .app.m-break .has-tl .tl-note{grid-row:4}
+}

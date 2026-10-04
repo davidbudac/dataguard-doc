@@ -1,0 +1,70 @@
+<!doctype html><meta charset="utf-8"><title>A · Quiet toolbar · Build</title>
+<link rel="stylesheet" href="shared.css">
+<style>
+.app{display:grid;grid-template-columns:1fr 340px;grid-template-rows:52px 1fr;height:900px}
+header{grid-column:1/-1;display:flex;align-items:center;gap:16px;padding:0 16px;border-bottom:1px solid var(--ln)}
+.brand{font-weight:650;font-size:14px;display:flex;align-items:center;gap:8px}
+.brand i{width:22px;height:22px;border-radius:6px;background:var(--ik);display:inline-block;position:relative}
+.brand i::after{content:"";position:absolute;inset:6px;border:2px solid #fff;border-radius:50%}
+.cfg{display:flex;align-items:center;gap:6px;padding:5px 10px;border-radius:7px;color:var(--ik2)}
+.cfg b{color:var(--ik);font-weight:600}
+.sep{width:1px;height:20px;background:var(--ln)}
+main{position:relative;display:flex;flex-direction:column;background:var(--bg)}
+.tools{position:absolute;top:16px;left:16px;display:flex;gap:2px;background:var(--sf);border:1px solid var(--ln);border-radius:10px;padding:3px;box-shadow:0 1px 3px rgba(16,25,34,.06)}
+.tools button{padding:5px 10px;border-radius:7px;color:var(--ik2);font-weight:500}
+.tools button span{color:var(--ik3);margin-right:4px}
+.zoom{position:absolute;bottom:64px;right:16px;display:flex;gap:2px;background:var(--sf);border:1px solid var(--ln);border-radius:10px;padding:3px}
+.zoom button{padding:4px 9px;border-radius:7px;color:var(--ik2)}
+.canvas{flex:1;padding:70px 40px 20px}
+.status{height:44px;border-top:1px solid var(--ln);background:var(--sf);display:flex;align-items:center;gap:20px;padding:0 16px;color:var(--ik2)}
+.status b{color:var(--ik);font-weight:600}
+aside{border-left:1px solid var(--ln);overflow:hidden}
+.ihead{padding:16px 20px 12px;display:flex;align-items:flex-start;justify-content:space-between}
+.ihead .k{font-size:11px;color:var(--ik3);font-weight:600}
+.ihead h3{font-size:16px;font-weight:650;margin-top:2px;font-family:var(--mono)}
+</style>
+<div class="app">
+<header>
+  <div class="brand"><i></i>Data Guard</div>
+  <div class="seg"><button class="on">Build</button><button>Break</button><button>Configure</button><button>Learn</button></div>
+  <div class="sep"></div>
+  <button class="cfg">Configuration <b class="mono">dg_config</b> ▾</button>
+  <span class="grow"></span>
+  <span class="chip warn"><span class="dot" style="background:var(--am)"></span>1 warning</span>
+  <div class="seg sm"><button class="on">19c</button><button>26ai</button></div>
+  <button class="ibtn" title="Undo"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M5 4L2 7l3 3M2 7h8a4 4 0 010 8H8"/></svg></button>
+  <button class="ibtn" title="Redo"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M11 4l3 3-3 3M14 7H6a4 4 0 000 8h2"/></svg></button>
+  <button class="ibtn" title="Theme"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="5.5"/><path d="M8 2.5v11a5.5 5.5 0 000-11z" fill="currentColor"/></svg></button>
+  <button class="ibtn" title="More">⋯</button>
+  <button class="btn pri">Share</button>
+</header>
+<main>
+  <div class="tools"><button><span>+</span>Standby</button><button><span>+</span>Far sync</button><button><span>+</span>Observer</button><button><span>+</span>Data centre</button></div>
+  <div class="zoom"><button>−</button><button class="mono" style="font-size:12px">100%</button><button>+</button><button>Fit</button></div>
+  <div class="canvas dotgrid topo"></div>
+  <div class="status">
+    <span>Protection <b>MaxAvailability</b></span>
+    <span>Members <b>2</b></span>
+    <span>Fast-start failover <b style="color:var(--vi)">enabled</b> <span class="muted">· 1 observer</span></span>
+    <span class="grow"></span>
+    <button class="chip warn">FastStartFailoverAutoReinstate needs Flashback on prm01 →</button>
+    <button class="chip note">3 notes</button>
+  </div>
+</main>
+<aside>
+  <div class="ihead"><div><div class="k">Configuration</div><h3>dg_config</h3></div><button class="btn out" style="font-size:12px;padding:4px 10px">Hints</button></div>
+  <div class="sec">
+    <div class="field"><label>Name</label><input class="input" value="dg_config"></div>
+    <div class="field" style="margin-top:6px"><label>Protection mode</label></div>
+    <div class="seg sm" style="width:100%;margin-top:4px"><button style="flex:1">MaxPerf</button><button class="on" style="flex:1">MaxAvail</button><button style="flex:1">MaxProt</button></div>
+    <div class="field" style="margin-top:10px"><label>Bystanders follow role change</label><div class="seg sm"><button class="on">All</button><button>None</button></div></div>
+    <div class="field"><label>Wide service name</label><span class="val muted">not set</span></div>
+  </div>
+  <div class="disc"><span>Fast-start failover</span><span class="r">enabled → sby01</span></div>
+  <div class="disc"><span>Primary candidates</span><span class="r">empty</span></div>
+  <div class="disc"><span>Preferred observer hosts</span><span class="r">not set</span></div>
+  <div class="disc"><span>Environment</span><span class="r">15 s transition</span></div>
+  <div class="disc" style="border-bottom:1px solid var(--ln)"><span>Summary</span><span class="r"></span></div>
+</aside>
+</div>
+<script src="topo.js"></script>

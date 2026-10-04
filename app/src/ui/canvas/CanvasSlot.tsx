@@ -28,11 +28,13 @@ import {
   renameApplication, renameMember, renameObserver, renameSite, renameVerdict, setAddressListed,
   shipRedo, tidyLayout,
 } from '../inspector/edits';
+import { canvasPan, handTool } from './pan';
 import { inFlight, inFlightFrom, placeOver, renaming, setSiteAt } from './place';
 import { mergeVerdict } from './drop';
 import {
   actionsFor, hoverTools, nothingToRestore, restoreQuietLine, runAction,
 } from '../break/events';
+import { printing } from '../print';
 import { AddToolbar } from '../inspector/adds';
 import type { WhyState } from '../common/WhyPill';
 import { useRovingToolbar } from '../common/useRovingToolbar';
@@ -321,6 +323,7 @@ function ZoomStrip({ tidy, grid = false, pop = false }: { tidy: boolean; grid?: 
     ...(tidy ? [moved.length === 0 ? { state: 'off' as const, why: WHY_TIDY } : ON] : []),
     ...(grid ? [ON] : []),
     ...(pop ? [ON] : []),
+    ON,
   ];
   const roving = useRovingToolbar(states.map((w) => w.state !== 'off'));
   const rows: {
@@ -376,6 +379,11 @@ function ZoomStrip({ tidy, grid = false, pop = false }: { tidy: boolean; grid?: 
         cls: 'po-btn',
       }]
       : []),
+    {
+      label: 'Hand', name: 'Pan the canvas',
+      title: 'Drag to pan anywhere (H); Space-drag or middle-drag also pans. Shift-drag selects cards.',
+      run: () => { handTool.value = !handTool.value; }, pressed: handTool.value,
+    },
   ];
 
   return (
@@ -609,6 +617,10 @@ export function CanvasSlot({ interactive = true }: CanvasSlotProps) {
         scale={scale}
         barMargin={barMargin}
         zoomFactor={zoomFactor}
+        {...(zooming ? {
+          pan: printing.value ? { x: 0, y: 0 } : canvasPan.value, panMode: handTool.value,
+          onPan: (offset: { x: number; y: number }): void => { canvasPan.value = offset; },
+        } : {})}
         {...(zooming ? { onZoomStep: (dir: 1 | -1): void => zoomBy(dir) } : {})}
         {...(bar === null ? {} : { bar })}
         onSelect={(key: string, additive: boolean) => {

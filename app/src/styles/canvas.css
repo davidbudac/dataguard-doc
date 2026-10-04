@@ -557,3 +557,11 @@
   font-family: var(--mono); font-size: 10.5px; letter-spacing: .02em; fill: var(--ik);
 }
 .topo-svg .tp-rubber-tip.is-no .tp-rubber-tip-bg { stroke: var(--rd); fill: var(--rdf); }
+
+/* Empty ground pans even at Fit. SVG viewBox offsets leave layout and export
+   geometry intact, and the canvas clips the paper at its viewport edges. */
+.tp-wrap.pan-enabled{overflow:hidden;touch-action:none;cursor:grab}
+.tp-wrap.pan-enabled .topo-svg{overflow:visible}
+.tp-wrap.hand-tool .topo-svg,.tp-wrap.hand-tool .topo-svg *{cursor:grab}
+.tp-wrap.is-pan,.tp-wrap.is-pan *{cursor:grabbing}
+.cv-zoom button[aria-pressed="true"]{color:var(--vi);background:var(--vif)}

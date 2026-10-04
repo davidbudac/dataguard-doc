@@ -231,3 +231,32 @@ describe('the panel in Break', () => {
     expect(timelineFull.value).toBe(false);
   });
 });
+
+
+describe('dragging the top edge', () => {
+  const pointer = (el: Element, kind: string, y: number): void => {
+    const lower = `pointer${kind.toLowerCase()}`;
+    el.dispatchEvent(new MouseEvent(`on${lower}` in el ? lower : `Pointer${kind}`, {
+      bubbles: true, cancelable: true, button: 0, clientX: 100, clientY: y,
+    }));
+  };
+  it('changes the panel during the drag and remembers only the release', async () => {
+    crash(); const r = mount(); await tick();
+    const g = grip(r)!;
+    const start = timelineDefaultH(window.innerHeight);
+    pointer(g, 'Down', 400); pointer(g, 'Move', 320);
+    expect(timelineH.value).toBe(start + 80);
+    expect(memory.has(TIMELINE_H_KEY)).toBe(false);
+    pointer(g, 'Up', 320);
+    expect(memory.get(TIMELINE_H_KEY)).toBe(String(start + 80));
+  });
+  it('cancelling restores the original height without overwriting the saved preference', async () => {
+    crash(); setTimelineH(300); const r = mount(); await tick();
+    const g = grip(r)!;
+    pointer(g, 'Down', 400); pointer(g, 'Move', 300);
+    expect(timelineH.value).toBe(400);
+    pointer(g, 'Cancel', 0);
+    expect(timelineH.value).toBe(300);
+    expect(memory.get(TIMELINE_H_KEY)).toBe('300');
+  });
+});

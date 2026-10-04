@@ -304,7 +304,7 @@ describe('a data centre is dragged as a group', () => {
 });
 
 describe('a selection is made, moved and removed as one', () => {
-  const dragGround = async (root: HTMLElement, a: [number, number], b: [number, number], init: MouseEventInit = {}): Promise<void> => {
+  const dragGround = async (root: HTMLElement, a: [number, number], b: [number, number], init: MouseEventInit = { shiftKey: true }): Promise<void> => {
     const svg = root.querySelector('.topo-svg')!;
     pointer(svg, 'Down', ...a, init);
     pointer(svg, 'Move', ...b, init);
@@ -332,7 +332,7 @@ describe('a selection is made, moved and removed as one', () => {
     expect(root.querySelector('.tp-band')).toBeNull();
     pointer(root.querySelector('.topo-svg')!, 'Up', 300, 300);
     window.dispatchEvent(new KeyboardEvent('keydown', { key: ' ' }));
-    await dragGround(root, [0, 0], [300, 300]);
+    await dragGround(root, [0, 0], [300, 300], {});
     expect(root.querySelector('.tp-band')).toBeNull();
     pointer(root.querySelector('.topo-svg')!, 'Up', 300, 300);
     window.dispatchEvent(new KeyboardEvent('keyup', { key: ' ' }));

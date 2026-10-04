@@ -1,0 +1,78 @@
+<!doctype html><meta charset="utf-8"><title>B · Canvas-first · Build</title>
+<link rel="stylesheet" href="shared.css">
+<style>
+body{background:var(--bg)}
+.stage{position:absolute;inset:0;padding:90px 400px 110px 90px}
+.float{position:absolute;background:var(--sf);border:1px solid var(--ln);border-radius:12px;box-shadow:0 1px 2px rgba(16,25,34,.05),0 8px 24px rgba(16,25,34,.07)}
+.top{top:14px;left:14px;right:14px;height:50px;display:flex;align-items:center;gap:14px;padding:0 10px 0 14px}
+.brand{font-weight:650;font-size:14px}
+.brand small{font-weight:400;color:var(--ik3);font-family:var(--mono);font-size:12px;margin-left:8px}
+.pal{top:84px;left:14px;width:52px;padding:6px;display:flex;flex-direction:column;gap:4px}
+.pal button{height:40px;border-radius:8px;display:grid;place-items:center;font-size:10px;color:var(--ik2);line-height:1.1}
+.pal button b{font-size:15px;font-weight:600}
+.pal button:first-child{background:var(--sf2)}
+.pal hr{border:0;border-top:1px solid var(--ln);margin:2px 4px}
+.insp{top:84px;right:14px;width:340px;bottom:96px;overflow:hidden}
+.insp .h{padding:14px 18px 10px;display:flex;justify-content:space-between;align-items:center}
+.insp .h h3{font-size:15px;font-weight:650}
+.insp .sec{padding:12px 18px}
+.insp .disc{padding:10px 18px}
+.bot{left:14px;right:14px;bottom:14px;height:62px;display:flex;align-items:center;gap:24px;padding:0 18px}
+.stat{display:flex;flex-direction:column;gap:1px}
+.stat small{font-size:11px;color:var(--ik3)}
+.stat b{font-size:14px;font-weight:600}
+.vr{width:1px;height:28px;background:var(--ln)}
+.zoom{position:absolute;right:368px;bottom:96px;display:flex;gap:2px;padding:3px}
+.zoom button{padding:4px 9px;border-radius:7px;color:var(--ik2)}
+.toast{position:absolute;left:90px;bottom:96px;display:flex;gap:10px;align-items:center;padding:8px 12px;border-left:3px solid var(--am)}
+</style>
+<div class="stage dotgrid topo" data-sel="sby01"></div>
+
+<div class="float top">
+  <div class="brand">Data Guard<small>dg_config ▾</small></div>
+  <span class="grow"></span>
+  <div class="seg"><button class="on">Build</button><button>Break</button><button>Configure</button><button>Learn</button></div>
+  <span class="grow"></span>
+  <div class="seg sm"><button class="on">19c</button><button>26ai</button></div>
+  <button class="ibtn">↶</button><button class="ibtn">↷</button><button class="ibtn">◐</button><button class="ibtn">?</button>
+  <button class="btn pri">Share</button>
+</div>
+
+<div class="float pal">
+  <button title="Select"><b>↖</b></button>
+  <hr>
+  <button><b>S</b>stby</button>
+  <button><b>F</b>far</button>
+  <button><b>◉</b>obs</button>
+  <button><b>▢</b>DC</button>
+  <hr>
+  <button><b>⤢</b>tidy</button>
+</div>
+
+<div class="float insp">
+  <div class="h"><div><div class="muted" style="font-size:11px;font-weight:600">Physical standby · DC2</div><h3 class="mono">sby01</h3></div><button class="ibtn">⋯</button></div>
+  <div class="sec">
+    <div class="field"><label>Host</label><input class="input" value="dc2-sby01"></div>
+    <div class="field"><label>Receives from</label><span class="val">prm01</span></div>
+    <div class="field"><label>Transport</label><div class="seg sm"><button class="on">SYNC</button><button>FASTSYNC</button><button>ASYNC</button></div></div>
+    <div class="field"><label>Round trip</label><span class="val">5 ms</span></div>
+    <div class="field"><label>Flashback</label><div class="seg sm"><button>On</button><button class="on">Off</button></div></div>
+  </div>
+  <div class="disc"><span>Apply</span><span class="r">real-time</span></div>
+  <div class="disc"><span>Fast-start failover target</span><span class="r">yes</span></div>
+  <div class="disc"><span>Services</span><span class="r">none</span></div>
+  <div class="disc" style="border-bottom:1px solid var(--ln)"><span>RAC</span><span class="r">single instance</span></div>
+</div>
+
+<div class="float toast"><span class="chip warn">Warning</span><span class="ik2">Auto-reinstate needs Flashback on both databases.</span><button class="btn" style="padding:3px 8px">Fix</button><button class="btn" style="padding:3px 8px">Details</button></div>
+<div class="float zoom"><button>−</button><button class="mono" style="font-size:12px">100%</button><button>+</button><button>Fit</button></div>
+
+<div class="float bot">
+  <div class="stat"><small>Protection</small><b style="color:var(--tl)">MaxAvailability</b></div><div class="vr"></div>
+  <div class="stat"><small>Members</small><b>2</b></div><div class="vr"></div>
+  <div class="stat"><small>Fast-start failover</small><b style="color:var(--vi)">Enabled · 1 observer</b></div><div class="vr"></div>
+  <div class="stat"><small>Worst-case data loss</small><b>0 s</b></div>
+  <span class="grow"></span>
+  <span class="chip warn">1 warning</span><span class="chip note">3 notes</span>
+</div>
+<script src="topo.js"></script>

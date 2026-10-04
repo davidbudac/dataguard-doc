@@ -184,6 +184,10 @@ export interface TopoCanvasProps {
    * -- a 12-site configuration at 1:1 has cards the size of a caption.
    */
   zoomFactor?: number;
+  /** Pan changes the viewport, never the document geometry. */
+  pan?: { x: number; y: number };
+  onPan?: (offset: { x: number; y: number }) => void;
+  panMode?: boolean;
   /** Ctrl/Cmd + wheel, one rung of the caller's ladder per notch. */
   onZoomStep?: (dir: 1 | -1) => void;
   onCloseBar?: () => void;
@@ -260,7 +264,8 @@ interface PanDrag {
   /** Where the scroll port was scrolled to when the pointer went down. */
   left: number;
   top: number;
-  stage: Element;
+  stage: Element | null;
+  scale?: number;
   moved: boolean;
 }
 
@@ -464,19 +469,28 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
      drawing tool that gives the plain drag to selection. A ref, because it is
      read at the press and never painted. */
   const spaceHeld = useRef(false);
+  const suppressPanClick = useRef(false);
   /* The window the drawing is in, which may be a popup (common/popout.tsx). */
   const host = useHostWindow();
   useEffect(() => {
-    if (!interactive || !props.onSelectMany || host === null) return undefined;
-    const down = (ev: KeyboardEvent): void => { if (ev.key === ' ') spaceHeld.current = true; };
+    if (!interactive || host === null) return undefined;
+    const down = (ev: KeyboardEvent): void => {
+      if (ev.key !== ' ' || ev.defaultPrevented) return;
+      if (isElement(ev.target) && ev.target.closest('input, textarea, select, button, [contenteditable="true"], [role="slider"]')) return;
+      spaceHeld.current = true;
+      ev.preventDefault();
+    };
+    const blur = (): void => { spaceHeld.current = false; };
     const up = (ev: KeyboardEvent): void => { if (ev.key === ' ') spaceHeld.current = false; };
     host.addEventListener('keydown', down);
     host.addEventListener('keyup', up);
+    host.addEventListener('blur', blur);
     return () => {
       host.removeEventListener('keydown', down);
       host.removeEventListener('keyup', up);
+      host.removeEventListener('blur', blur);
     };
-  }, [interactive, props.onSelectMany !== undefined, host]);
+  }, [interactive, host]);
 
   /**
    * The pointer in the drawing's own units.
@@ -495,7 +509,7 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
       return { x: p.x, y: p.y };
     }
     const rect = svg.getBoundingClientRect();
-    return { x: view.x + (clientX - rect.left) * scale, y: view.y + (clientY - rect.top) * scale };
+    return { x: (view.x - (props.pan?.x ?? 0)) + (clientX - rect.left) * scale, y: (view.y - (props.pan?.y ?? 0)) + (clientY - rect.top) * scale };
   };
   const inside = (r: { x: number; y: number; w: number; h: number }, p: { x: number; y: number }): boolean =>
     p.x >= r.x && p.x <= r.x + r.w && p.y >= r.y && p.y <= r.y + r.h;
@@ -658,6 +672,8 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
    * differs per kind, and they are handled above this.
    */
   const onEntityKey = (key: string, ev: JSX.TargetedKeyboardEvent<SVGGElement>): void => {
+    // Modified keys belong to the page catalogue (for example Cmd+Shift+E).
+    if (ev.ctrlKey || ev.metaKey) return;
     switch (ev.key) {
       case 'Enter':
       case ' ': {
@@ -905,7 +921,7 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
    * Only where there is paper to grab -- a scrolling ancestor, which
    * `scrollerFor` names.
    */
-  const onSvgPointerDown = (ev: JSX.TargetedPointerEvent<SVGSVGElement>): void => {
+  const onSvgPointerDown = (ev: JSX.TargetedPointerEvent<SVGSVGElement | HTMLElement>): void => {
     if ((ev.button !== 0 && ev.button !== 1) || drag.current !== null) return;
     if (keyAt(ev.target) !== null || insideBar(ev.target)) return;
     const svg = svgRef.current;
@@ -943,13 +959,13 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
    * one on `mousedown` whatever `user-select` says about the target, once the
    * pointer has crossed into ordinary page text).
    */
-  const takeDrag = (ev: JSX.TargetedPointerEvent<SVGSVGElement>, cursor = 'grab'): void => {
+  const takeDrag = (ev: JSX.TargetedPointerEvent<SVGSVGElement | HTMLElement>, cursor = 'grab'): void => {
     svgRef.current?.setPointerCapture?.(ev.pointerId);
     host?.getSelection?.()?.removeAllRanges();
     setMoving(cursor);
   };
 
-  const onPointerMove = (ev: JSX.TargetedPointerEvent<SVGSVGElement>): void => {
+  const onPointerMove = (ev: JSX.TargetedPointerEvent<SVGSVGElement | HTMLElement>): void => {
     const d = drag.current;
     if (!d) return;
     if (d.kind === 'pan') {
@@ -961,8 +977,12 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
       if (!d.moved) { takeDrag(ev); setPanning(true); }
       d.moved = true;
       /* The paper follows the pointer, so the scroll goes the other way. */
-      d.stage.scrollLeft = d.left - dx;
-      d.stage.scrollTop = d.top - dy;
+      if (props.onPan && d.scale !== undefined) {
+        props.onPan({ x: d.left + dx * d.scale, y: d.top + dy * d.scale });
+      } else if (d.stage) {
+        d.stage.scrollLeft = d.left - dx;
+        d.stage.scrollTop = d.top - dy;
+      }
       return;
     }
     if (d.kind === 'marquee') {
@@ -1052,13 +1072,22 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
     return { x: Math.min(a.x, b.x), y: Math.min(a.y, b.y), w: Math.abs(a.x - b.x), h: Math.abs(a.y - b.y) };
   };
 
-  const endDrag = (ev: JSX.TargetedPointerEvent<SVGSVGElement>): void => {
+  const endDrag = (ev: JSX.TargetedPointerEvent<SVGSVGElement | HTMLElement>): void => {
     const d = drag.current;
     if (!d) return;
     drag.current = null;
     svgRef.current?.releasePointerCapture?.(ev.pointerId);
     if (d.moved) { setMoving(null); setFrozen(null); }
-    if (d.kind === 'pan') { if (d.moved) setPanning(false); return; }
+    if (d.kind === 'pan') {
+      if (d.moved) {
+        setPanning(false);
+        suppressPanClick.current = true;
+        // The click generated by this pointer-up is synchronous. A later click
+        // must still work if the browser did not synthesize one (touch/cancel).
+        setTimeout(() => { suppressPanClick.current = false; }, 0);
+      }
+      return;
+    }
     if (d.kind === 'resize') { if (d.moved) props.onResizeEnd?.(); return; }
     if (d.kind === 'marquee') {
       setBand(null);
@@ -1192,7 +1221,7 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
    * neither is a press inside the action bar -- which is HTML inside the
    * drawing, so it bubbles through here on its way to its own button.
    */
-  const onSvgPointerUp = (ev: JSX.TargetedPointerEvent<SVGSVGElement>): void => {
+  const onSvgPointerUp = (ev: JSX.TargetedPointerEvent<SVGSVGElement | HTMLElement>): void => {
     const d = drag.current;
     const wasCard = d !== null && (d.kind === 'card' || d.kind === 'link' || d.kind === 'resize');
     const panned = d !== null && (d.kind === 'pan' || d.kind === 'marquee') && d.moved;
@@ -1312,7 +1341,7 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
   /* In user units, and larger than the CSS size when the drawing is shrunk:
      the bar undoes the drawing's scale, so its footprint on the drawing grows
      as that scale falls. Placing against the CSS size put it off the stage. */
-  const room = barRoom(view, props.barMargin ?? { t: 0, r: 0, b: 0, l: 0 });
+  const room = barRoom({ ...view, x: view.x - (props.pan?.x ?? 0), y: view.y - (props.pan?.y ?? 0) }, props.barMargin ?? { t: 0, r: 0, b: 0, l: 0 });
   const barScale = barSize === null ? k : fittedScale(barSize, room, k);
   /* What the bar should not sit on: every other card and every caption. */
   const barObstacles = bar === null ? [] : [
@@ -1457,20 +1486,44 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
     );
   }
 
+  const onWrapDown = (ev: JSX.TargetedPointerEvent<HTMLElement>): void => {
+    if (!props.onPan || !interactive || drag.current || insideBar(ev.target)) return;
+    if (ev.button !== 0 && ev.button !== 1) return;
+    const forced = ev.button === 1 || spaceHeld.current || props.panMode;
+    const ground = keyAt(ev.target) === null
+      && !(isElement(ev.target) && ev.target.closest('.tp-stack-hd, .tp-rsz, .tp-port'));
+    if (!forced && (!ground || (ev.shiftKey && props.onSelectMany))) return;
+    const svg = svgRef.current;
+    if (!svg) return;
+    const rect = svg.getBoundingClientRect();
+    const matrix = svg.getScreenCTM?.();
+    const scale = matrix?.a ? 1 / matrix.a : rect.width > 0 ? view.w / rect.width : 1;
+    drag.current = {
+      kind: 'pan', startX: ev.clientX, startY: ev.clientY,
+      left: props.pan?.x ?? 0, top: props.pan?.y ?? 0, scale, stage: null, moved: false,
+    };
+    suppressPanClick.current = false;
+    ev.preventDefault();
+    ev.stopPropagation();
+  };
+
   return (
     <figure
-      /* `is-zoomed` releases the CSS cap that keeps the drawing inside its
-         room; `is-pannable` is the grab cursor, and only where there is
-         something to grab -- below 1:1 the drawing fits and dragging it would
-         scroll nothing, so the cursor would be a promise the page cannot keep. */
-      class={`tp-wrap${zoomFactor === 1 ? '' : ' is-zoomed'}${zoomFactor > 1 ? ' is-pannable' : ''}`}
+      /* Zoom changes rendered size. An explicit pan moves the SVG viewport
+         at every zoom; older callers retain their scrolling canvas. */
+      class={`tp-wrap${zoomFactor === 1 ? '' : ' is-zoomed'}${props.onPan || zoomFactor > 1 ? ' is-pannable' : ''}${props.onPan ? ' pan-enabled' : ''}${props.panMode ? ' hand-tool' : ''}${panning ? ' is-pan' : ''}`}
+      onPointerDownCapture={props.onPan ? onWrapDown : undefined}
+      onPointerMove={interactive && props.onPan ? onPointerMove : undefined}
+      onPointerUp={interactive && props.onPan ? onSvgPointerUp : undefined}
+      onPointerCancel={interactive && props.onPan ? endDrag : undefined}
+      onClickCapture={(ev) => { if (suppressPanClick.current) { suppressPanClick.current = false; ev.preventDefault(); ev.stopPropagation(); } }}
       ref={props.wrapRef}
     >
       <svg
         class={`topo-svg${panning ? ' is-pan' : ''}${moving === null ? '' : ` is-dragging cur-${moving}`}${
           interactive && (props.onDrag || props.onDragEnd) ? ' is-movable' : ''}`}
         ref={svgRef}
-        viewBox={`${view.x} ${view.y} ${view.w} ${view.h}`}
+        viewBox={`${view.x - (props.pan?.x ?? 0)} ${view.y - (props.pan?.y ?? 0)} ${view.w} ${view.h}`}
         width={Math.round(view.w * zoomFactor)}
         height={Math.round(view.h * zoomFactor)}
         preserveAspectRatio="xMidYMid meet"
@@ -1478,9 +1531,9 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
         aria-labelledby={sumId}
         aria-describedby={descId}
         onPointerDown={interactive ? onSvgPointerDown : undefined}
-        onPointerMove={interactive ? onPointerMove : undefined}
-        onPointerUp={interactive ? onSvgPointerUp : undefined}
-        onPointerCancel={interactive ? endDrag : undefined}
+        onPointerMove={interactive && !props.onPan ? onPointerMove : undefined}
+        onPointerUp={interactive && !props.onPan ? onSvgPointerUp : undefined}
+        onPointerCancel={interactive && !props.onPan ? endDrag : undefined}
         onPointerOver={interactive && props.tools ? onSvgPointerOver : undefined}
         onPointerLeave={interactive && props.tools ? () => setToolKey(null) : undefined}
         onWheel={interactive && props.onZoomStep ? onSvgWheel : undefined}

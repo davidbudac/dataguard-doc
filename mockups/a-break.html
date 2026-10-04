@@ -1,0 +1,91 @@
+<!doctype html><meta charset="utf-8"><title>A · Quiet toolbar · Break</title>
+<link rel="stylesheet" href="shared.css">
+<style>
+.app{display:grid;grid-template-columns:1fr 340px;grid-template-rows:52px 1fr;height:900px}
+header{grid-column:1/-1;display:flex;align-items:center;gap:16px;padding:0 16px;border-bottom:1px solid var(--ln)}
+.brand{font-weight:650;font-size:14px;display:flex;align-items:center;gap:8px}
+.brand i{width:22px;height:22px;border-radius:6px;background:var(--ik);display:inline-block;position:relative}
+.brand i::after{content:"";position:absolute;inset:6px;border:2px solid #fff;border-radius:50%}
+.cfg{display:flex;align-items:center;gap:6px;padding:5px 10px;border-radius:7px;color:var(--ik2)}
+.cfg b{color:var(--ik);font-weight:600}
+.sep{width:1px;height:20px;background:var(--ln)}
+main{position:relative;display:flex;flex-direction:column;background:var(--bg)}
+.tools{position:absolute;top:16px;left:16px;display:flex;gap:2px;background:var(--sf);border:1px solid var(--ln);border-radius:10px;padding:3px;box-shadow:0 1px 3px rgba(16,25,34,.06)}
+.tools button{padding:5px 10px;border-radius:7px;color:var(--ik2);font-weight:500}
+.tools button span{color:var(--ik3);margin-right:4px}
+.zoom{position:absolute;bottom:290px;right:16px;display:flex;gap:2px;background:var(--sf);border:1px solid var(--ln);border-radius:10px;padding:3px}
+.zoom button{padding:4px 9px;border-radius:7px;color:var(--ik2)}
+.canvas{flex:1;padding:70px 40px 20px}
+.status{height:44px;border-top:1px solid var(--ln);background:var(--sf);display:flex;align-items:center;gap:20px;padding:0 16px;color:var(--ik2)}
+.status b{color:var(--ik);font-weight:600}
+aside{border-left:1px solid var(--ln);overflow:hidden}
+.ihead{padding:16px 20px 12px;display:flex;align-items:flex-start;justify-content:space-between}
+.ihead .k{font-size:11px;color:var(--ik3);font-weight:600}
+.ihead h3{font-size:16px;font-weight:650;margin-top:2px;font-family:var(--mono)}
+.tl{background:var(--sf);border-top:1px solid var(--ln);padding:10px 16px 6px}
+.tlh{display:flex;align-items:center;gap:12px;margin-bottom:4px}
+.play{width:28px;height:28px;border-radius:50%;background:var(--ik);color:#fff;font-size:11px}
+.lg{display:inline-flex;align-items:center;gap:5px;font-size:12px;color:var(--ik2)}
+.lg i{width:10px;height:10px;border-radius:3px;display:inline-block}
+.lg i.hatch{background:repeating-linear-gradient(45deg,#D64545 0 2px,#FADEDE 2px 5px)}
+</style>
+<div class="app">
+<header>
+  <div class="brand"><i></i>Data Guard</div>
+  <div class="seg"><button>Build</button><button class="on">Break</button><button>Configure</button><button>Learn</button></div>
+  <div class="sep"></div>
+  <button class="cfg">Configuration <b class="mono">dg_config</b> ▾</button>
+  <span class="grow"></span>
+  <span class="chip warn"><span class="dot" style="background:var(--am)"></span>1 warning</span>
+  <div class="seg sm"><button class="on">19c</button><button>26ai</button></div>
+  <button class="ibtn" title="Undo"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M5 4L2 7l3 3M2 7h8a4 4 0 010 8H8"/></svg></button>
+  <button class="ibtn" title="Redo"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M11 4l3 3-3 3M14 7H6a4 4 0 000 8h2"/></svg></button>
+  <button class="ibtn" title="Theme"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="5.5"/><path d="M8 2.5v11a5.5 5.5 0 000-11z" fill="currentColor"/></svg></button>
+  <button class="ibtn" title="More">⋯</button>
+  <button class="btn pri">Share</button>
+</header>
+<main>
+  <div class="tools"><button style="color:var(--ik)">Scenario ▾</button><button>Crash primary host</button><button>Isolate primary site</button><button>Cut DC1–DC2</button><button>Switch over</button></div>
+  <div class="zoom"><button>−</button><button class="mono" style="font-size:12px">100%</button><button>+</button><button>Fit</button></div>
+  <div class="canvas dotgrid topo" data-crashed="1" style="padding:60px 60px 10px"></div>
+  <div class="tl">
+  <div class="tlh"><button class="play">▶</button><span class="mono">t = 25.0 s</span><span class="muted">of 60 s</span><span class="grow"></span>
+   <span class="lg"><i style="background:var(--tl)"></i>serving</span><span class="lg"><i style="background:var(--bl)"></i>applying</span><span class="lg"><i style="background:var(--am)"></i>waiting</span><span class="lg"><i class="hatch"></i>down</span><span class="lg"><i style="background:var(--vi)"></i>observer</span></div>
+  <svg viewBox="0 0 1060 170" width="100%" height="170">
+   <defs><pattern id="h" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="6" height="6" fill="#FADEDE"/><line x1="0" y1="0" x2="0" y2="6" stroke="#D64545" stroke-width="2"/></pattern></defs>
+   <g font-family="ui-monospace,monospace" font-size="11" fill="#6E7F93">
+    <text x="0" y="36" fill="#101922" font-weight="600">prm01</text><text x="0" y="76" fill="#101922" font-weight="600">sby01</text><text x="0" y="116" fill="#101922" font-weight="600">obs01</text>
+    <text x="80" y="160">0 s</text><text x="243" y="160">10</text><text x="408" y="160">20</text><text x="573" y="160">30</text><text x="738" y="160">40</text><text x="903" y="160">50</text>
+   </g>
+   <g stroke="#EDF1F5"><line x1="85" y1="10" x2="85" y2="140"/><line x1="250" y1="10" x2="250" y2="140"/><line x1="415" y1="10" x2="415" y2="140"/><line x1="580" y1="10" x2="580" y2="140"/><line x1="745" y1="10" x2="745" y2="140"/><line x1="910" y1="10" x2="910" y2="140"/></g>
+   <rect x="85" y="24" width="165" height="16" rx="4" fill="#0E7C6B"/><rect x="250" y="24" width="810" height="16" rx="4" fill="url(#h)"/>
+   <rect x="85" y="64" width="165" height="16" rx="4" fill="#2563EB"/><rect x="250" y="64" width="495" height="16" rx="4" fill="#D97706" opacity=".85"/><rect x="745" y="64" width="40" height="16" fill="#6D5AE6" opacity=".35"/><rect x="785" y="64" width="275" height="16" rx="4" fill="#0E7C6B"/>
+   <rect x="85" y="104" width="975" height="16" rx="4" fill="#475569" opacity=".25"/>
+   <path d="M745 100l6 12-6 12-6-12z" fill="#6D5AE6"/>
+   <g><circle cx="250" cy="14" r="9" fill="#D64545"/><text x="250" y="18" text-anchor="middle" font-size="10" font-weight="700" fill="#fff" font-family="system-ui">1</text></g>
+   <line x1="497" y1="6" x2="497" y2="142" stroke="#101922" stroke-width="1.5"/><path d="M491 4h12l-6 7z" fill="#101922"/>
+  </svg>
+</div>
+  <div class="status">
+    <span>At 25 s: <b>primary down 15 s</b>, sby01 waiting on threshold <b>(15 of 30 s)</b></span>
+    <span class="grow"></span>
+    <span>Failover at <b>40 s</b></span><span>Data loss <b>0</b></span><span>Outage <b>32 s</b></span>
+  </div>
+</main>
+<aside>
+  <div class="ihead"><div><div class="k">Events</div><h3 style="font-family:var(--sans)">1 event</h3></div><button class="btn out" style="font-size:12px;padding:4px 10px">Clear</button></div>
+  <div class="sec">
+    <div class="row gap12" style="align-items:flex-start"><span style="width:22px;height:22px;border-radius:50%;background:var(--rd);color:#fff;display:grid;place-items:center;font-size:11px;font-weight:700;flex:none">1</span>
+    <div class="grow"><b>Crash host dc1-prm01</b><div class="muted mono" style="font-size:12px">at 10.0 s · prm01 goes with it</div></div><button class="ibtn">⋯</button></div>
+  </div>
+  <div class="sec"><h4>What happens</h4>
+   <div class="field"><label>10 s</label><span class="grow ik2" style="padding-left:12px">Primary host crashes</span></div>
+   <div class="field"><label>10 s</label><span class="grow ik2" style="padding-left:12px">Observer and sby01 lose contact</span></div>
+   <div class="field"><label>40 s</label><span class="grow ik2" style="padding-left:12px">Threshold elapses, observer starts failover</span></div>
+   <div class="field"><label>42 s</label><span class="grow ik2" style="padding-left:12px">sby01 opens as primary</span></div>
+  </div>
+  <div class="disc"><span>Parameters in play</span><span class="r">threshold 30 s</span></div>
+  <div class="disc" style="border-bottom:1px solid var(--ln)"><span>Validation</span><span class="r" style="color:var(--am)">1 warning</span></div>
+</aside>
+</div>
+<script src="topo.js"></script>

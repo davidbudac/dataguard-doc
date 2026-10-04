@@ -20,7 +20,7 @@
 import type { ComponentChildren } from 'preact';
 import { canUndo, canRedo, redo, redoLabel, undo, undoLabel } from '@/state/history';
 import {
-  applyPalette, applyTheme, edition, introOpen, mode, MODE_LABEL, MODE_SUB, MODES, nextTheme, palette, theme,
+  applyPalette, applyTheme, commandOpen, edition, introOpen, mode, MODE_LABEL, MODE_SUB, MODES, nextTheme, palette, theme,
 } from '@/state/view';
 import type { Mode, PalettePref, ThemePref } from '@/state/view';
 import { saveEdition, savePalette, saveTheme } from '@/state/persist';
@@ -104,6 +104,12 @@ export function TopBar({ doc, actions }: TopBarProps = {}) {
           onClick={() => redo()}
         >
           <span aria-hidden="true">↷</span>
+        </button>
+
+        <button type="button" class="btn is-icon command-toggle" aria-label="Command palette"
+          aria-haspopup="dialog" aria-expanded={commandOpen.value} title="Search commands (⌘/Ctrl K)"
+          onClick={() => { commandOpen.value = !commandOpen.value; }}>
+          <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="7" cy="7" r="4.5" /><path d="m10.5 10.5 3.5 3.5" /></svg>
         </button>
 
         {/* One press flips light and dark; the name says which way it is

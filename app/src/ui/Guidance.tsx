@@ -79,6 +79,18 @@ const KEYS: { where: string; rows: [string, string][] }[] = [
   {
     where: 'Anywhere on the page, outside a text field',
     rows: [
+      ['Ctrl+K · ⌘K', 'search commands, including presets, scenarios and selected-object actions'],
+      ['1 · 2 · 3 · 4', 'Build · Break · Configure · Learn'],
+      ['I · J', 'toggle Inspector / Events · show findings'],
+      ['F · + · −', 'fit and recenter the topology · zoom in · zoom out'],
+      ['H · V', 'Hand tool · selection tool; drag empty space to pan, Shift-drag to select'],
+      ['Space + drag · middle drag', 'pan from anywhere on the topology'],
+      ['Shift+B · Shift+F · Shift+O · Shift+D · Shift+A', 'add standby · far sync · observer · data centre · application (Build)'],
+      ['Shift+T · G · ?', 'tidy layout · toggle grid · toggle hints'],
+      ['P · L · E', 'play/pause · full-screen timeline · event menu (Break)'],
+      [', · . · Home · End', 'previous/next state change · start/end of timeline (Break)'],
+      ['Ctrl/⌘+S · Ctrl/⌘+O', 'saved configurations · import file'],
+      ['Ctrl/⌘+Shift+S · Ctrl/⌘+Shift+E', 'share link · export JSON'],
       ['Ctrl+Z · ⌘Z', 'undo'],
       ['Ctrl+Shift+Z · Ctrl+Y', 'redo'],
       ['Ctrl+A · ⌘A', 'select every card on the drawing'],

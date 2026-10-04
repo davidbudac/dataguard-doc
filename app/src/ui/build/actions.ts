@@ -24,7 +24,7 @@
 
 import { BOUNDS, clamp, isDatabase } from '@/engine';
 import type { TopologyDoc, XptMode } from '@/engine';
-import { inspectorOpen, select, viewport } from '@/state/view';
+import { inspectorCollapsed, inspectorOpen, select, viewport } from '@/state/view';
 import type { WhyState } from '../common/WhyPill';
 import { resolveSubject } from '../inspector/Inspector';
 import {
@@ -56,6 +56,7 @@ export interface BuildAction {
  */
 export function openInspectorFor(key: string): void {
   select(key);
+  inspectorCollapsed.value = false;
   if (viewport.value !== 'wide') inspectorOpen.value = true;
 }
 
