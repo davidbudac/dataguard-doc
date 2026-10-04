@@ -15,8 +15,7 @@ import { h, render } from 'preact';
 import type { TopologyDoc } from '@/engine';
 import { App } from '@/ui/App';
 import { classicDoc, doc as docSignal } from '@/state/doc';
-import { redoStack, resetHistory, undoLabel, undoStack } from '@/state/history';
-import { menuOpen } from '@/ui/canvas/EventMenu';
+import { redoStack, resetHistory, undo, undoLabel, undoStack } from '@/state/history';
 import { closeBar } from '@/ui/canvas/bar';
 import { placeOver, placing, renaming } from '@/ui/canvas/place';
 import { fitZoom } from '@/ui/canvas/zoom';
@@ -55,7 +54,6 @@ beforeEach(() => {
   unmountAll();
   selection.value = [];
   toast.value = null;
-  menuOpen.value = false;
   mode.value = 'build';
   viewport.value = 'wide';
   renaming.value = null;
@@ -292,6 +290,74 @@ describe('a data centre is dragged as a group', () => {
     expect(docSignal.value.layout[added]).toEqual({ dx: 8, dy: 24 });
   });
 
+  /** The data centres left to right, as drawn. */
+  const columnOrder = (root: HTMLElement): string[] => [...root.querySelectorAll('.tp-sitewrap[data-node]')]
+    .map((el) => ({ id: el.getAttribute('data-node')!, x: Number(el.querySelector('rect.tp-site')!.getAttribute('x')) }))
+    .sort((a, b) => a.x - b.x)
+    .map((s) => s.id);
+  /** Drag a data centre by its panel so its middle lands on `x`. */
+  const dragSiteTo = async (root: HTMLElement, id: string, x: number): Promise<void> => {
+    const panel = rectOf(root, id, 'rect.tp-site');
+    const start = clientOf(root, panel.x + panel.w / 2, panel.y + 10);
+    const end: [number, number] = [start[0] + (x - (panel.x + panel.w / 2)), start[1]];
+    const svg = root.querySelector('.topo-svg')!;
+    pointer(siteEl(root, id), 'Down', ...start);
+    pointer(svg, 'Move', ...end);
+    await tick();
+    pointer(svg, 'Up', ...end);
+    await painted();
+  };
+  const middleOf = (root: HTMLElement, a: string, b: string): number => {
+    const ra = rectOf(root, a, 'rect.tp-site'); const rb = rectOf(root, b, 'rect.tp-site');
+    return Math.round((ra.x + ra.w + rb.x) / 2);
+  };
+
+  it('a new data centre, added on the right, dragged between two others stays there -- the columns reorder', async () => {
+    const root = await mountApp();
+    chip(root, '+ Data centre').click();
+    await painted();
+    const added = topo().sites.map((s) => s.id as string).find((id) => !['dc1', 'dc2', 'dc3'].includes(id))!;
+    /* Classic draws dc1, dc3 (the observer), dc2; the new panel goes last. */
+    expect(columnOrder(root)).toEqual(['dc1', 'dc3', 'dc2', added]);
+    const n = undoStack.value.length;
+    await dragSiteTo(root, added, middleOf(root, 'dc1', 'dc3'));
+    expect(columnOrder(root)).toEqual(['dc1', added, 'dc3', 'dc2']);
+    /* Settled into its slot, not left hanging where the pointer let go. */
+    expect(docSignal.value.layout[added]).toEqual({ dx: 0, dy: 0, order: 1 });
+    expect(undoStack.value.length).toBe(n + 1);
+    /* It stays there after a card lands in it, and one undo puts it back. */
+    addDatabase(siteId(added));
+    await painted();
+    expect(columnOrder(root)).toEqual(['dc1', added, 'dc3', 'dc2']);
+    undo();
+    undo();
+    await painted();
+    expect(columnOrder(root)).toEqual(['dc1', 'dc3', 'dc2', added]);
+  });
+
+  it('the right-most occupied data centre dragged into the middle carries its cards there, and its neighbour makes room', async () => {
+    const root = await mountApp();
+    const sby = rectOf(root, 'sby01', 'rect.tp-card');
+    const obs = topo().observers[0]!.id as string;
+    await dragSiteTo(root, 'dc2', middleOf(root, 'dc1', 'dc3'));
+    expect(columnOrder(root)).toEqual(['dc1', 'dc2', 'dc3']);
+    const sbyAfter = rectOf(root, 'sby01', 'rect.tp-card');
+    const obsAfter = rectOf(root, obs, 'rect.tp-card');
+    expect(sbyAfter.x).toBeLessThan(obsAfter.x);
+    expect(sbyAfter.y).toBe(sby.y);
+    expect(siteOf('sby01')).toBe('dc2');
+    expect(docSignal.value.layout['sby01']).toEqual({ dx: 0, dy: 0 });
+    expect(undoLabel.value).toBe('Move the DC 2 data centre');
+  });
+
+  it('a data centre dragged only part way towards a neighbour keeps the order', async () => {
+    const root = await mountApp();
+    const dc2 = rectOf(root, 'dc2', 'rect.tp-site');
+    await dragSiteTo(root, 'dc2', dc2.x + dc2.w / 2 - 48);
+    expect(columnOrder(root)).toEqual(['dc1', 'dc3', 'dc2']);
+    expect(Object.values(docSignal.value.layout).some((o) => o.order !== undefined)).toBe(false);
+  });
+
   it('still selects with a click, and still opens the rename field on a double click', async () => {
     const root = await mountApp();
     siteEl(root, 'dc1').dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
@@ -304,7 +370,7 @@ describe('a data centre is dragged as a group', () => {
 });
 
 describe('a selection is made, moved and removed as one', () => {
-  const dragGround = async (root: HTMLElement, a: [number, number], b: [number, number], init: MouseEventInit = { shiftKey: true }): Promise<void> => {
+  const dragGround = async (root: HTMLElement, a: [number, number], b: [number, number], init: MouseEventInit = {}): Promise<void> => {
     const svg = root.querySelector('.topo-svg')!;
     pointer(svg, 'Down', ...a, init);
     pointer(svg, 'Move', ...b, init);
@@ -317,7 +383,7 @@ describe('a selection is made, moved and removed as one', () => {
     const s = rectOf(root, 'sby01', 'rect.tp-card');
     const a = clientOf(root, Math.min(p.x, s.x) - 6, Math.min(p.y, s.y) - 6);
     const b = clientOf(root, Math.max(p.x, s.x) + 20, Math.max(p.y, s.y) + 20);
-    await dragGround(root, a, b);
+    await dragGround(root, a, b, { shiftKey: true });
     expect(root.querySelector('.tp-band')).not.toBeNull();
     pointer(root.querySelector('.topo-svg')!, 'Up', ...b);
     await tick();
@@ -325,23 +391,29 @@ describe('a selection is made, moved and removed as one', () => {
     expect([...selection.value].sort()).toEqual(['prm01', 'sby01']);
   });
 
-  it('with Space held, or the middle button, the drag is the pan it used to be', async () => {
+  it('a plain drag, the middle button, or Space with a modifier is the pan; only a modifier-drag is the rectangle', async () => {
     const root = await mountApp();
     await painted();
+    const svg = root.querySelector('.topo-svg')!;
+    await dragGround(root, [0, 0], [300, 300]);
+    expect(root.querySelector('.tp-band')).toBeNull();
+    pointer(svg, 'Up', 300, 300);
     await dragGround(root, [0, 0], [300, 300], { button: 1 });
     expect(root.querySelector('.tp-band')).toBeNull();
-    pointer(root.querySelector('.topo-svg')!, 'Up', 300, 300);
+    pointer(svg, 'Up', 300, 300);
     window.dispatchEvent(new KeyboardEvent('keydown', { key: ' ' }));
-    await dragGround(root, [0, 0], [300, 300], {});
+    await dragGround(root, [0, 0], [300, 300], { shiftKey: true });
     expect(root.querySelector('.tp-band')).toBeNull();
-    pointer(root.querySelector('.topo-svg')!, 'Up', 300, 300);
+    pointer(svg, 'Up', 300, 300);
     window.dispatchEvent(new KeyboardEvent('keyup', { key: ' ' }));
-    await dragGround(root, [0, 0], [300, 300]);
+    await dragGround(root, [0, 0], [300, 300], { shiftKey: true });
     expect(root.querySelector('.tp-band')).not.toBeNull();
   });
 
   it('is not offered in Break, where the ground is still the paper', async () => {
     mode.value = 'break';
+    /* The drawing is on screen in the Detailed timeline only in the docked layout. */
+    viewport.value = 'compact';
     const root = await mountApp();
     await dragGround(root, [0, 0], [400, 400]);
     expect(root.querySelector('.tp-band')).toBeNull();
@@ -354,7 +426,7 @@ describe('a selection is made, moved and removed as one', () => {
     expect([...selection.value].sort()).toEqual(
       [
         ...memberIds(), ...topo().observers.map((o) => o.id as string),
-        ...(topo().application ? [topo().application!.id as string] : []),
+        ...(topo().applications ?? []).map((a) => a.id as string),
       ].sort(),
     );
     chip(root, '+ Data centre').click();

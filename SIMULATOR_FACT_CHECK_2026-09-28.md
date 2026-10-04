@@ -40,7 +40,7 @@ found word for word on their pages (the miss is a table, `XPT.TABLE_4_2`, not a 
 | SIM-01 | fixed | Readiness is state. A standby the primary ran without is not ready; a later primary failure is a blocked failover citing "was not synchronized at the time the primary database failed". Lag grows while the target receives nothing |
 | SIM-02 | fixed | Stall only while a state change is left to confirm. Observer lost first, already unsynchronized, already over the limit: the primary runs on |
 | SIM-03 | fixed | Former primary is mounted and needs reinstatement (`ORA-16649`); never open, never a redo destination |
-| SIM-04 | fixed | Commands against a down or unreachable member are refused by the engine and greyed, with the reason, in the event menu |
+| SIM-04 | fixed | Commands against a down or unreachable member are refused by the engine and greyed, with the reason, wherever events are offered |
 | SIM-05 | fixed | The target changes only while the primary is alive. Primary and first target lost together: no failover (`documented` 26ai, `doc-later` 19c). The preset now loses the first target at 0 and the primary at 20 |
 | SIM-06 | fixed | Manual loss is the time the primary ran without the standby, basis `model` |
 | SIM-07 | fixed | `FAILOVER.PRIMARY_STILL_OPEN` error; `IMMEDIATE` refused while fast-start failover is enabled |

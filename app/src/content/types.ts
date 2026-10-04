@@ -10,7 +10,7 @@
 import type { VNode } from 'preact';
 import type { JsonPatch, TimedEvent } from '@/engine';
 
-/** The nine lessons. Stable ids: they ride in `?lesson=` and in share links. */
+/** The ten lessons. Stable ids: they ride in `?lesson=` and in share links. */
 export type LessonId =
   | 'failover-clocks'
   | 'transport-layer'
@@ -20,7 +20,8 @@ export type LessonId =
   | 'reference'
   | 'far-sync'
   | 'cascading'
-  | 'multi-observer';
+  | 'multi-observer'
+  | 'rac';
 
 /**
  * What a step does to the workbench beside it.

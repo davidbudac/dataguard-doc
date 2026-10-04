@@ -104,9 +104,9 @@ describe('the legacy v1 configuration', () => {
 
   it('clamps out-of-range numbers instead of trusting them', () => {
     const k = legacyToKnobs({
-      v: 1, params: { threshold: 5000, pingRetry: -3 }, sim: { standbyLag: 1e9 },
+      v: 1, params: { threshold: 50000, pingRetry: -3 }, sim: { standbyLag: 1e9 },
     });
-    expect(k.threshold).toBe(120);
+    expect(k.threshold).toBe(3600);
     expect(k.pingRetry).toBe(10);
     expect(k.standbyLag).toBe(90);
   });
@@ -161,7 +161,7 @@ describe('the legacy share-link query', () => {
   });
 
   it('clamps a re-ranged slider instead of ignoring the link', () => {
-    expect(legacyQueryToKnobs('?th=999').threshold).toBe(120);
+    expect(legacyQueryToKnobs('?th=99999').threshold).toBe(3600);
     expect(legacyQueryToKnobs('?pi=137').pingInterval).toBe(100);   // snapped to the 100 ms grid
   });
 

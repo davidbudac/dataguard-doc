@@ -13,7 +13,7 @@ import { hostId, memberId } from '../../src/engine/ids';
 import { multiTargetDoc } from '../topologies';
 import {
   approxW, axisSpan, buildTimeline, clampToAxis, describeEvent, fitLabel, packBraces,
-  PINNED, snapNice, TL,
+  PINNED, snapNice, TL_COMPACT, TL_FULL,
 } from '@/ui/timeline/build';
 import type { BraceInput, TimelineModel } from '@/ui/timeline/build';
 
@@ -56,10 +56,10 @@ describe('buildTimeline: the classic crash', () => {
     /* Nothing is initiated, opened or aborted in this cell, so no lane gap
        has to hold a marker label and the ladder is the plain one. */
     const m = build('observer-lost');
-    expect(m.scale.plotL).toBe(TL.gutter);
-    expect(m.lanes.map((l) => l.y)).toEqual([TL.laneTop, TL.laneTop + 48, TL.laneTop + 96]);
+    expect(m.scale.plotL).toBe(TL_FULL.gutter);
+    expect(m.lanes.map((l) => l.y)).toEqual([TL_FULL.laneTop, TL_FULL.laneTop + 48, TL_FULL.laneTop + 96]);
     expect(m.lanes.every((l) => l.height === 38)).toBe(true);
-    expect(m.lanesBottom).toBe(TL.laneTop + 3 * 48 - 10);
+    expect(m.lanesBottom).toBe(TL_FULL.laneTop + 3 * 48 - 10);
     expect(m.axisY).toBe(m.lanesBottom + 24);
   });
 
@@ -67,8 +67,8 @@ describe('buildTimeline: the classic crash', () => {
     /* The observer lane carries "Initiates failover at t = 30 s" above it and
        the standby's carries "Opens read-write"; the primary's does not. */
     const m = build();
-    expect(m.lanes.map((l) => l.y)).toEqual([TL.laneTop, TL.laneTop + 48 + TL.markRow, TL.laneTop + 96 + 2 * TL.markRow]);
-    expect(m.lanesBottom).toBe(TL.laneTop + 3 * 48 - 10 + 2 * TL.markRow);
+    expect(m.lanes.map((l) => l.y)).toEqual([TL_FULL.laneTop, TL_FULL.laneTop + 48 + TL_FULL.markRow, TL_FULL.laneTop + 96 + 2 * TL_FULL.markRow]);
+    expect(m.lanesBottom).toBe(TL_FULL.laneTop + 3 * 48 - 10 + 2 * TL_FULL.markRow);
   });
 
   it('keeps every marker label out of the lanes it sits between', () => {
@@ -148,7 +148,7 @@ describe('buildTimeline: the classic crash', () => {
     const trace = simulate(doc, []);
     const m = buildTimeline(trace, { ...doc, events: [] }, { width: 980 });
     expect(m.empty).toBe(true);
-    expect(m.caption.text).toBe('Steady state — no events injected');
+    expect(m.caption.text).toBe('Everything is working — nothing is injected, so nothing fails');
     expect(m.zeroNote).toBeNull();
     /* the lanes are still drawn: nothing is hidden, the state is just flat */
     expect(m.lanes).toHaveLength(3);
@@ -374,7 +374,7 @@ describe('brace packing', () => {
     const { braces } = packBraces(inputs, scale, 980, 300);
     expect(braces[0]?.row).toBe(0);
     expect(braces[1]?.row).toBe(1);
-    expect(braces[1]!.y - braces[0]!.y).toBe(TL.braceRow);
+    expect(braces[1]!.y - braces[0]!.y).toBe(TL_FULL.braceRow);
   });
 });
 
@@ -539,6 +539,53 @@ describe('buildTimeline: two injected events at one instant', () => {
         expect(mk.labelX, `${mk.key} over badge ${String(other.index)}`)
           .toBeGreaterThanOrEqual(other.nx + 7);
       }
+    }
+  });
+});
+
+describe('buildTimeline: the packed drawing keeps its words clear of its lines', () => {
+  const packed = (): TimelineModel => {
+    const { doc, trace } = classic('crash');
+    return buildTimeline(trace, doc, { width: 1100, density: 'compact' });
+  };
+
+  it('moves a bar sentence off a milestone line that crosses the bar', () => {
+    const m = packed();
+    const decision = m.markers.find((mk) => mk.kind === 'decision');
+    expect(decision).toBeDefined();
+    const lane = m.lanes.find((l) => l.key === decision?.laneKey);
+    const crossed = lane?.segments.filter((sg) => decision && decision.x > sg.x + 2 && decision.x < sg.x + sg.w - 2) ?? [];
+    expect(crossed.length).toBeGreaterThan(0);
+    for (const sg of crossed) {
+      if (sg.label === null || !decision) continue;
+      const half = approxW(sg.label, 11) / 2;
+      /* the sentence's whole span is on one side of the line */
+      expect(sg.lx + half <= decision.x || sg.lx - half >= decision.x).toBe(true);
+    }
+  });
+
+  it('centres every other sentence on its bar', () => {
+    const m = packed();
+    const crossed = new Set(m.markers.filter((mk) => mk.laneKey !== null).map((mk) => mk.laneKey));
+    for (const lane of m.lanes) {
+      if (crossed.has(lane.key)) continue;
+      for (const sg of lane.segments) expect(sg.lx).toBeCloseTo(sg.x + sg.w / 2, 0);
+    }
+  });
+
+  it('draws no outage brace over the lanes: the headline says what it would', () => {
+    expect(packed().topBrace).toBeNull();
+    const { doc, trace } = classic('crash');
+    expect(buildTimeline(trace, doc, { width: 1100 }).topBrace).not.toBeNull();
+  });
+
+  it('gives the lanes air: no gap under 10 px, and a milestone row of its own', () => {
+    expect(TL_COMPACT.laneGap).toBeGreaterThanOrEqual(10);
+    expect(TL_COMPACT.markRow).toBeGreaterThanOrEqual(18);
+    const m = packed();
+    const ys = m.lanes.map((l) => l.y);
+    for (let i = 1; i < ys.length; i++) {
+      expect((ys[i] as number) - (ys[i - 1] as number) - TL_COMPACT.laneH).toBeGreaterThanOrEqual(TL_COMPACT.laneGap);
     }
   });
 });

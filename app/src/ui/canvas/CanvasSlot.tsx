@@ -13,36 +13,38 @@
 import type { JSX } from 'preact';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import type { TopologyDoc } from '@/engine';
-import { hostId, siteId } from '@/engine';
-import { frame, geometry, redoGraph, topology } from '@/state/derived';
-import { doc, withLayout } from '@/state/doc';
+import { findApplication, hostId, isDatabase, siteId } from '@/engine';
+import { drawnGeometry, drawnGraph, frame, redoGraph, runShown, topology } from '@/state/derived';
+import { doc, withLayout, withSiteOrder } from '@/state/doc';
 import { breakCoalescing, edit, undo, undoLabel } from '@/state/history';
 import { toggleGrid } from '@/state/persist';
 import {
-  canEdit, clearSelection, floating, focusField, gridOn, hovered, mode, railWhere, select, selection, tNow,
+  canEdit, clearSelection, floating, focusField, gridOn, holdRail, hovered, inspectorOpen, mode, railOnDemand, railWhere,
+  select, selection, tNow,
   toast, viewport,
 } from '@/state/view';
 import { buildActionsFor, openInspectorFor, removeAction } from '../build/actions';
+import { resolveSubject } from '../inspector/Inspector';
+import { resolveRoute, routeWord } from '../build/routes';
 import {
   addDatabase, addFsfoTarget, addLink, connectVerdict, mergeIntoHost, moveToSite,
   renameApplication, renameMember, renameObserver, renameSite, renameVerdict, setAddressListed,
-  shipRedo, tidyLayout,
+  setPrimary, shipRedo, tidyLayout,
 } from '../inspector/edits';
-import { canvasPan, handTool } from './pan';
 import { inFlight, inFlightFrom, placeOver, renaming, setSiteAt } from './place';
 import { mergeVerdict } from './drop';
-import {
-  actionsFor, hoverTools, nothingToRestore, restoreQuietLine, runAction,
-} from '../break/events';
-import { printing } from '../print';
+import { hoverTools, snapT } from '../break/events';
+import { breakBar } from '../break/menu';
 import { AddToolbar } from '../inspector/adds';
 import type { WhyState } from '../common/WhyPill';
 import { useRovingToolbar } from '../common/useRovingToolbar';
 import { ON } from '../inspector/why';
-import type { BarAction } from './ActionBar';
-import { MAX_ROWS_BREAK } from './ActionBar';
-import { barFocus, barOpen, closeBar, openBar } from './bar';
-import { menuOpen, snapT } from './EventMenu';
+import type { BarAction, BarSection } from './ActionBar';
+import { barFocus, barKind, barOpen, closeBar, openBar } from './bar';
+import { marginAround, unobscured } from './anchor';
+import type { Rect } from './measure';
+import { canvasPan, handTool } from './pan';
+import { printing } from '../print';
 import { resizedBox, TopoCanvas } from './TopoCanvas';
 import { isElement, PopIcon, popIn, popOut, popped, useHostWindow } from '../common/popout';
 import {
@@ -83,10 +85,12 @@ export function connectFromCanvas(from: string, to: string): void {
   if (isSite(from) && isSite(to)) { addLink(siteId(from), siteId(to)); return; }
   const a = member(from); const b = member(to);
   /* The application and a database: the database joins its ADDRESS_LIST. */
-  const app = t.application?.id as string | undefined;
-  if (app !== undefined && (from === app || to === app)) {
-    const m = from === app ? b : a;
-    if (m) setAddressListed(m.id, true);
+  const fromApp = findApplication(t, from);
+  const toApp = findApplication(t, to);
+  const app = fromApp ?? toApp;
+  if (app !== undefined) {
+    const m = fromApp !== undefined ? b : a;
+    if (m) setAddressListed(app.id, m.id, true);
     return;
   }
   if (a && b) { shipRedo(a.id, b.id); return; }
@@ -141,7 +145,7 @@ function nameOf(t: TopologyDoc, key: string): string {
 const canRename = (t: TopologyDoc, key: string): boolean =>
   t.members.some((m) => (m.id as string) === key)
   || t.observers.some((o) => (o.id as string) === key)
-  || (t.application?.id as string | undefined) === key
+  || findApplication(t, key) !== undefined
   || t.sites.some((x) => (x.id as string) === key);
 
 function commitRename(key: string, raw: string, where: Document = document): void {
@@ -149,10 +153,10 @@ function commitRename(key: string, raw: string, where: Document = document): voi
   const m = t.members.find((x) => (x.id as string) === key);
   const o = t.observers.find((x) => (x.id as string) === key);
   renaming.value = null;
-  const isApp = (t.application?.id as string | undefined) === key;
+  const isApp = findApplication(t, key) !== undefined;
   if (m) renameMember(m.id, raw);
   else if (o) renameObserver(o.id, raw);
-  else if (isApp) renameApplication(raw);
+  else if (isApp) renameApplication(key, raw);
   else renameSite(siteId(key), raw);
   /* The field took the focus and is gone: hand it to the thing it named, under
      the name it now has, once that has been drawn. */
@@ -172,8 +176,10 @@ function commitRename(key: string, raw: string, where: Document = document): voi
  *
  * The order is the table's own -- `Edit` first, the properties between,
  * `Remove` last -- and it is load-bearing rather than cosmetic: the bar shows
- * the first six rows and says the rest are in the rail, so what gets dropped
+ * the first seven rows and says the rest are in the rail, so what gets dropped
  * has to be the least destructive thing on the list, never the way out.
+ * A link's rows include the removal of each drawn line riding it
+ * (`removeRouteAction`), between its properties and its own Remove.
  */
 function buildBar(d: TopologyDoc, keys: readonly string[]): BarAction[] {
   return buildActionsFor(d, keys).map((a) => ({
@@ -183,30 +189,6 @@ function buildBar(d: TopologyDoc, keys: readonly string[]): BarAction[] {
     run: a.run,
     ...(a.pressed === undefined ? {} : { pressed: a.pressed }),
   }));
-}
-
-/**
- * Break's table as bar rows, dropped restores and all.
- *
- * Exactly what `EventMenu` renders for the same selection at the same moment,
- * because it is the same three calls in the same order: the restores with
- * nothing to restore come out, the one sentence that stands in for them is
- * `restoreQuietLine`'s rather than this surface's, and a property rides at the
- * end where the menu puts it.
- */
-function breakBar(
-  d: TopologyDoc, keys: readonly string[], at: number,
-): { actions: BarAction[]; quiet: string | null } {
-  const all = actionsFor(d, keys, at);
-  const events = all.filter((a) => a.property !== true);
-  const properties = all.filter((a) => a.property === true);
-  const offered = events.filter((a) => !nothingToRestore(a));
-  return {
-    actions: [...offered, ...properties].map((a) => ({
-      id: a.id, label: a.label, enabled: a.enabled, run: () => runAction(a),
-    })),
-    quiet: restoreQuietLine(d, keys, at, events),
-  };
 }
 
 /**
@@ -225,14 +207,79 @@ function breakBar(
 type Margin = { t: number; r: number; b: number; l: number };
 const NO_MARGIN: Margin = { t: 0, r: 0, b: 0, l: 0 };
 
-function useCanvasScale(
-  zoomFactor: number,
-): [(el: HTMLElement | null) => void, number, Margin] {
+const rectOf = (r: DOMRect): Rect => ({ x: r.left, y: r.top, w: r.width, h: r.height });
+
+/**
+ * What floats over the stage: the top bar, the palette, the rail, the zoom
+ * pill and the timeline dock. In the docked layout they sit beside the
+ * drawing rather than over it and none of them overlaps the wrap, so asking
+ * costs nothing there.
+ */
+const CHROME = '.app-head, .app-rail, .app-dock, .palette, .zoom-pill';
+
+/**
+ * The ground the action bar may use, in CSS pixels: the wrap's *content*
+ * box, less whatever chrome still reaches into it, inside the window.
+ *
+ * Not the wrap's border box. In the floating layout the wrap is the whole
+ * window and its padding is exactly what keeps the drawing clear of the
+ * chrome over it (float.css, `--pal-r`, `--dock-h`);
+ * measuring from the border box handed the bar the ground *under* the rail,
+ * and a bar placed beside a standby at the right edge was painted beneath it.
+ * `clientWidth`/`clientHeight` leave a zoomed wrap's scrollbars out.
+ */
+function freeGround(wrap: HTMLElement): Rect {
+  const view = wrap.ownerDocument.defaultView;
+  const cs = view?.getComputedStyle(wrap);
+  const px = (v: string | undefined): number => Number.parseFloat(v ?? '') || 0;
+  const outer = wrap.getBoundingClientRect();
+  const x = outer.left + wrap.clientLeft + px(cs?.paddingLeft);
+  const y = outer.top + wrap.clientTop + px(cs?.paddingTop);
+  /* jsdom lays nothing out: no client box, so the border box stands in. */
+  const cw = wrap.clientWidth > 0 ? wrap.clientWidth : outer.width;
+  const ch = wrap.clientHeight > 0 ? wrap.clientHeight : outer.height;
+  const content: Rect = {
+    x, y,
+    w: Math.max(0, cw - px(cs?.paddingLeft) - px(cs?.paddingRight)),
+    h: Math.max(0, ch - px(cs?.paddingTop) - px(cs?.paddingBottom)),
+  };
+  const win = view === null || view === undefined ? content : unobscured(content, [
+    /* The window's own edges, as four slabs: nothing outside it is seen. */
+    { x: -1e5, y: -1e5, w: 2e5, h: 1e5 },
+    { x: -1e5, y: view.innerHeight, w: 2e5, h: 1e5 },
+    { x: -1e5, y: -1e5, w: 1e5, h: 2e5 },
+    { x: view.innerWidth, y: -1e5, w: 1e5, h: 2e5 },
+  ]);
+  const app = wrap.closest('.app') ?? wrap.ownerDocument;
+  const chrome = [...app.querySelectorAll(CHROME)]
+    .filter((el) => !el.contains(wrap) && view?.getComputedStyle(el).visibility !== 'hidden')
+    .map((el) => rectOf(el.getBoundingClientRect()))
+    .filter((r) => r.w > 0 && r.h > 0);
+  return unobscured(win, chrome);
+}
+
+/**
+ * How far the stage may paint the drawing below its own size before the action
+ * bar stops shrinking with it: narrower than the ladder's floor (0.5) because a
+ * wide preset in a narrow window is capped by the stage, not by a rung.
+ */
+const SCALE_MIN = 0.35;
+
+/**
+ * Measure the drawing against the wrap that holds it: the fraction of its own
+ * size it is painted at (`scale`, which the action bar compensates for), and the
+ * free ground around it (`margin`, where the bar may hang). Both are read again
+ * whenever the wrap resizes, the zoom rung changes, an edit changes the drawing,
+ * and -- while a bar is open -- as a zoomed drawing scrolls under the chrome.
+ */
+function useCanvasScale(zoomFactor: number): [(el: HTMLElement | null) => void, number, Margin] {
   const [scale, setScale] = useState(1);
   /* The free ground around the drawing, in user units: where the bar may hang
-     (anchor.ts `barRoom`). None while zoomed -- the wrap is a scroll port then. */
+     (anchor.ts `barRoom`). Negative where the visible ground stops inside the
+     drawing -- a zoomed drawing scrolled under the chrome. */
   const [margin, setMargin] = useState<Margin>(NO_MARGIN);
   const observer = useRef<ResizeObserver | null>(null);
+  const queued = useRef<ReturnType<typeof setTimeout> | null>(null);
   const host = useRef<HTMLElement | null>(null);
   const read = useCallback((): void => {
     const svg = host.current?.querySelector('.topo-svg') ?? null;
@@ -244,26 +291,18 @@ function useCanvasScale(
     const box = svg.getAttribute('viewBox')?.trim().split(/[\s,]+/);
     const declared = Number(box?.[2] ?? svg.getAttribute('width'));
     const painted = svg.getBoundingClientRect().width;
-    if (!(declared > 0) || !(painted > 0)) return;
-    const k = Math.min(1, Math.max(0.5, Math.round((painted / declared) * 100) / 100));
-    setScale((prev) => (prev === k ? prev : k));
     const wrap = host.current as HTMLElement;
-    const inner = svg.getBoundingClientRect();
-    const outer = wrap.getBoundingClientRect();
+    if (!(declared > 0) || !(painted > 0)) return;
+    const k = Math.min(1, Math.max(SCALE_MIN, Math.round((painted / declared) * 100) / 100));
+    setScale((prev) => (prev === k ? prev : k));
     /* User units per CSS pixel, unclamped: this converts, it does not compensate. */
     const u = declared / painted;
-    const inset = 8;
-    const side = (px: number): number => Math.max(0, Math.round((px - inset) * u));
-    const next = wrap.classList.contains('is-zoomed') ? NO_MARGIN : {
-      t: side(inner.top - outer.top),
-      r: side(outer.right - inner.right),
-      b: side(outer.bottom - inner.bottom),
-      l: side(inner.left - outer.left),
-    };
+    const next = marginAround(rectOf(svg.getBoundingClientRect()), freeGround(wrap), u);
     setMargin((prev) => (prev.t === next.t && prev.r === next.r && prev.b === next.b && prev.l === next.l
       ? prev : next));
   }, []);
-  useEffect(() => () => observer.current?.disconnect(), []);
+  const unlisten = useRef<(() => void) | null>(null);
+  useEffect(() => () => { observer.current?.disconnect(); unlisten.current?.(); if (queued.current !== null) clearTimeout(queued.current); }, []);
   /* A zoom does not resize the wrap -- the wrap is the scroll port and keeps
      the room the stage gave it, the drawing inside it grows -- so the observer
      never fires on one and the measurement would be a rung out of date. This
@@ -275,16 +314,32 @@ function useCanvasScale(
   useLayoutEffect(() => { read(); });
   const ref = useCallback((el: HTMLElement | null): void => {
     observer.current?.disconnect();
+    if (queued.current !== null) clearTimeout(queued.current);
+    queued.current = null;
     observer.current = null;
+    unlisten.current?.();
+    unlisten.current = null;
     host.current = el;
     if (!el) return;
     read();
+    /* A zoomed drawing scrolls inside the wrap, and what of it is visible --
+       the ground the bar may use -- moves with it. Read only while a bar is
+       open: nothing else uses the margin, and a re-render per scrolled pixel
+       for nobody is waste. */
+    const onScroll = (): void => {
+      if (barOpen.peek() !== null) read();
+    };
+    el.addEventListener('scroll', onScroll, { passive: true });
+    unlisten.current = () => el.removeEventListener('scroll', onScroll);
     /* The observer of the window the drawing is in: it may be a popup
        (common/popout.tsx). */
     const RO = el.ownerDocument.defaultView?.ResizeObserver
       ?? (typeof ResizeObserver === 'undefined' ? undefined : ResizeObserver);
     if (RO === undefined) return;
-    const ro = new RO(read);
+    const ro = new RO(() => {
+      if (queued.current !== null) return;
+      queued.current = setTimeout(() => { queued.current = null; read(); }, 0);
+    });
     ro.observe(el);
     observer.current = ro;
   }, [read]);
@@ -345,7 +400,7 @@ function ZoomStrip({ tidy, grid = false, pop = false }: { tidy: boolean; grid?: 
     {
       label: 'Fit',
       name: 'Fit to page',
-      title: 'Back to the drawing at its own size.',
+      title: 'Fit the whole drawing into its room; the percentage shows the size that takes.',
       run: () => fitZoom(),
     },
     ...(tidy
@@ -460,9 +515,61 @@ export interface CanvasSlotProps {
   interactive?: boolean;
 }
 
+/** How many databases the notice names as buttons before it points at the card. */
+const NOTICE_BUTTONS = 3;
+
+/**
+ * What the drawing says when no database holds the primary role.
+ *
+ * The drawing stays -- every card, still selectable and editable -- because a
+ * configuration that has lost its primary has to be repaired from somewhere,
+ * and the drawing is where the cards are. This is the card that says so, and
+ * the quickest way out: one button per database, the same `setPrimary` the
+ * inspector's Role choice and the action bar run, one undo step. It is the
+ * canvas's own chrome, not the toast (which goes after a few seconds) and not
+ * a finding (`MEMBER.PRIMARY_COUNT` is still the validator's, and still counts
+ * in the chips). A viewer who cannot edit is told and offered nothing.
+ */
+function NotPrimaryNotice({ doc: t, editable }: { doc: TopologyDoc; editable: boolean }) {
+  const databases = t.members.filter(isDatabase);
+  return (
+    <div class="cv-invalid">
+      <div class="cv-invalid-card" role="alert">
+        <p class="cv-invalid-k">Not a valid Data Guard configuration</p>
+        <p class="cv-invalid-t">No database has the primary role.</p>
+        {!editable ? null : databases.length === 0 ? (
+          <p class="cv-invalid-t">A database is needed to hold it: add one.</p>
+        ) : (
+          <>
+            <div class="cv-invalid-do">
+              {databases.slice(0, NOTICE_BUTTONS).map((m) => (
+                <button
+                  key={m.id as string}
+                  type="button"
+                  class="btn"
+                  onClick={() => setPrimary(m.id)}
+                >
+                  {`Make ${m.name} the primary`}
+                </button>
+              ))}
+            </div>
+            {databases.length > NOTICE_BUTTONS ? (
+              <p class="cv-invalid-t">Any database can be given the role from its card or the inspector.</p>
+            ) : null}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export function CanvasSlot({ interactive = true }: CanvasSlotProps) {
-  const graph = redoGraph.value;
-  const geo = geometry.value;
+  /* The drawing's own graph, never null: with no primary it is the document
+     with no redo (`edgelessGraph`), and `redoGraph` -- which the panels and
+     generators read as "nothing to say" -- stays null. */
+  const graph = drawnGraph.value;
+  const invalid = redoGraph.value === null;
+  const geo = drawnGeometry.value;
   const editable = interactive && canEdit(viewport.value);
   const keys = selection.value;
   const m = mode.value;
@@ -529,15 +636,31 @@ export function CanvasSlot({ interactive = true }: CanvasSlotProps) {
   }, [renameKey, renameLive]);
   useEffect(() => () => setSiteAt(null), []);
 
-  const built = !editable || anchored === null || keys.length === 0
-    ? null
-    : m === 'break'
-      ? breakBar(topology.value, keys, snapT(tNow.value))
-      : m === 'build'
-        ? { actions: buildBar(topology.value, keys), quiet: null }
+  const at = snapT(tNow.value);
+  /* Two lists hang under a card. Build's own table (edit, the properties,
+     remove) is what the `...` handle opens; the events the card can take at
+     the playhead are what the right button, `Shift+F10` and `E` open --
+     and, in the Detailed timeline, what a click opens too. In Topology the
+     bar says which of the two is up (`barKind`). */
+  const eventsBar = m === 'break' || (m === 'build' && barKind.value === 'events');
+  /* What each would offer for the selection, open or not: the handle is drawn
+     only over a selection that has something to offer, so it is never a
+     button that opens nothing. */
+  const offered: { actions: BarAction[]; quiet: string | null; sections?: BarSection[] } | null
+    = !editable || keys.length === 0
+      ? null
+      : m === 'break' || m === 'build'
+        ? (eventsBar
+          ? breakBar(topology.value, keys, at)
+          : { actions: buildBar(topology.value, keys), quiet: null })
         : null;
-  const bar = built === null || anchored === null
-    || (built.actions.length === 0 && built.quiet === null)
+  const offers = offered !== null && (offered.actions.length > 0 || offered.quiet !== null);
+  /* The handle is Build's: it offers Build's table whichever bar is up. */
+  const handleOffers = m === 'build' && eventsBar
+    ? editable && keys.length > 0 && buildActionsFor(topology.value, keys).length > 0
+    : offers;
+  const built = anchored === null ? null : offered;
+  const bar = built === null || anchored === null || !offers
     ? null
     : {
       key: anchored,
@@ -545,9 +668,21 @@ export function CanvasSlot({ interactive = true }: CanvasSlotProps) {
       quiet: built.quiet,
       focus: barFocus.value,
       moreWhere: railWhere(viewport.value),
-      /* Break's stage is the short one (fit-content, the timeline takes the
-         rest), and its rail already carries the whole list at the head. */
-      ...(m === 'break' ? { maxRows: MAX_ROWS_BREAK } : {}),
+      /* The events: the whole list, grouped, under a header that says when it
+         lands -- the same snapped playhead the rail's clock reading shows. */
+      ...(built.sections === undefined ? {} : { sections: built.sections, when: `at t = ${at} s` }),
+      /* A drawn line's key is plumbing: the header says what the line is. */
+      ...(() => {
+        const r = resolveRoute(topology.value, anchored);
+        if (r !== null) return { title: `${routeWord(r)} ${r.from} → ${r.to}` };
+        /* An instance's key is `sby01~2`: the header says whose it is. */
+        const subject = resolveSubject(topology.value, anchored);
+        return subject?.kind === 'instance'
+          ? { title: `Instance ${subject.instance.name} of ${subject.member.id as string}` }
+          : {};
+      })(),
+      /* Build's table ends in Remove: the cap drops rows before it, never it. */
+      ...(m === 'build' && !eventsBar ? { keepLast: true } : {}),
     };
   /* Build's additions, in the corner of the stage: the reader looking at the
      drawing should not have to find the rail -- or clear a selection -- to add
@@ -582,28 +717,17 @@ export function CanvasSlot({ interactive = true }: CanvasSlotProps) {
         {zooming ? <ZoomStrip tidy={editable && m === 'build'} /> : null}
       </div>
     );
-  if (graph === null) {
-    return (
-      <>
-        {toolbar}
-        <div class="empty">
-          <span class="empty-k">Canvas</span>
-          <p>
-            No database has the primary role, so there is no redo to draw. Give one
-            database <span class="mono">role: primary</span> to show the redo routes.
-          </p>
-        </div>
-      </>
-    );
-  }
   return (
     <>
       {toolbar}
+      {invalid ? <NotPrimaryNotice doc={topology.value} editable={editable} /> : null}
       <TopoCanvas
         doc={topology.value}
         graph={graph}
-        {...(geo ? { geometry: geo } : {})}
-        frame={mode.value === 'break' ? frame.value : null}
+        geometry={geo}
+        /* A run is a run of a configuration; with no primary there is none
+           to draw (the engine falls back to the first member). */
+        frame={!invalid && runShown() ? frame.value : null}
         overrides={doc.value.layout}
         selection={selection.value}
         hovered={hovered.value}
@@ -624,11 +748,16 @@ export function CanvasSlot({ interactive = true }: CanvasSlotProps) {
         {...(zooming ? { onZoomStep: (dir: 1 | -1): void => zoomBy(dir) } : {})}
         {...(bar === null ? {} : { bar })}
         onSelect={(key: string, additive: boolean) => {
+          /* The first selection brings the inspector, and the rail moves the
+             cards (view.ts, `railHeld`): hold it past the second click of a
+             double-click, or the rename lands on the ground instead. */
+          if (railOnDemand(m) && selection.peek().length === 0 && !inspectorOpen.peek()) holdRail();
           select(key, additive);
           /* Build: a click selects and nothing else -- the rail shows the form,
-             and the bar is asked for (the handle, the right button, Shift+F10).
-             A menu that opens under every click is in the way of the drag and
-             the line that usually follow one. Break still offers on the click:
+             and the bar is asked for (the handle for Build's table; the right
+             button, Shift+F10 and `E` for the events). A menu that opens under
+             every click is in the way of the drag and the line that usually
+             follow one. The Detailed timeline still offers on the click:
              there the list of events *is* what the click is for. */
           if (editable && !additive && m === 'break') openBar(key);
           /* A bar about something else closes now, not when an effect gets
@@ -636,7 +765,13 @@ export function CanvasSlot({ interactive = true }: CanvasSlotProps) {
           else if (barOpen.peek() !== null && barOpen.peek() !== key) closeBar();
         }}
         {...(editable
-          ? { handle: keys.length === 0 ? null : keys[keys.length - 1] as string }
+          ? {
+            handle: !handleOffers ? null : keys[keys.length - 1] as string,
+            /* Whether the bar that is up is the one the handle opens: a
+               press on it while the events are listed switches to Build's
+               table instead of shutting the events. */
+            handleOpen: anchored !== null && !eventsBar,
+          }
           : {})}
         {...(building
           ? {
@@ -670,8 +805,11 @@ export function CanvasSlot({ interactive = true }: CanvasSlotProps) {
           }
           : {})}
         onHover={(key: string | null) => { hovered.value = key; }}
-        {...(editable && m === 'break'
-          ? { tools: (key: string) => hoverTools(topology.value, key, snapT(tNow.value)) }
+        {...(editable && (m === 'break' || m === 'build')
+          ? {
+            tools: (key: string) => hoverTools(topology.value, key, snapT(tNow.value)),
+            toolsWhen: `at t = ${at} s`,
+          }
           : {})}
         onClear={() => { closeBar(); clearSelection(); }}
         onCloseBar={() => closeBar()}
@@ -679,7 +817,17 @@ export function CanvasSlot({ interactive = true }: CanvasSlotProps) {
            literally one -- so this one does move the focus into the bar. */
         {...(editable
           ? {
-            onContextMenu: (key: string): void => { select(key); openBar(key, true); },
+            onContextMenu: (key: string): void => {
+              select(key);
+              /* Topology's right button lists the events; Build's own table is
+                 the handle's. */
+              openBar(key, true, 'events');
+            },
+            ...(m === 'build'
+              ? {
+                onActions: (key: string): void => { select(key); openBar(key, true, 'actions'); },
+              }
+              : {}),
           }
           : {})}
         {...(editable && mode.value === 'build'
@@ -695,13 +843,12 @@ export function CanvasSlot({ interactive = true }: CanvasSlotProps) {
             },
           }
           : {})}
-        /* Break: a click on a card, and `E` on a focused one, open the menu of
-           what can be done to it. The menu has a fixed home (rail head on a wide
-           screen, under the drawing otherwise), so this opens it rather than
-           positioning it -- `style-src 'self'` forbids positioning anything from
-           script anyway. */
-        {...(editable && mode.value === 'break'
-          ? { onEventMenu: (): void => { menuOpen.value = true; } }
+        /* `E` on a focused card opens the bar of the events it can take, and
+           takes the focus into it -- the same bar `Shift+F10` and the right
+           button open, and (in the Detailed timeline) the one a click already
+           opened (`onSelect`, above). */
+        {...(editable && (mode.value === 'break' || mode.value === 'build')
+          ? { onEvents: (key: string): void => { select(key); openBar(key, true, 'events'); } }
           : {})}
         {...(editable && mode.value === 'build'
           ? {
@@ -727,7 +874,7 @@ export function CanvasSlot({ interactive = true }: CanvasSlotProps) {
             onResizeBy: (site: string, dx: number, dy: number): void => {
               /* Read live, not from the render: a second press before the
                  repaint must grow from where the first one left the box. */
-              const st = geometry.value?.sites.find((s) => (s.id as string) === site);
+              const st = drawnGeometry.value.sites.find((s) => (s.id as string) === site);
               if (!st) return;
               const box = resizedBox(
                 { start: st, fit: st.fit, anchor: st.anchor, empty: st.empty },
@@ -746,6 +893,20 @@ export function CanvasSlot({ interactive = true }: CanvasSlotProps) {
           edit(
             undoLabel.peek() ?? `Move the ${key} card`,
             (d) => Object.entries(boxes).reduce((acc, [id, box]) => withLayout(acc, id, box), d),
+            `drag:${key}`,
+          );
+        }}
+        /* A data centre dragged past a neighbour: the new column order and the
+           carried cards settled into it, in the drag's own edit. */
+        onReorderSites={(
+          key: string, order: readonly string[],
+          offsets: Readonly<Record<string, { dx: number; dy: number; w?: number; h?: number }>>,
+        ) => {
+          edit(
+            undoLabel.peek() ?? `Move the ${key} data centre`,
+            (d) => withSiteOrder(
+              Object.entries(offsets).reduce((acc, [k, o]) => withLayout(acc, k, o), d), order,
+            ),
             `drag:${key}`,
           );
         }}

@@ -1,13 +1,14 @@
-/* The rails: the inspector, the Break rail and the event menu at their head.
+/* The rails: the inspector and the Break rail.
 
    One system for all of them (docs/tasks/ui-followups.md 3.2), built out of
    the 4 px ladder in tokens.css:
 
-   - a header: what is selected (a small muted kind word over the name) and
-     the rail's buttons on the right;
-   - groups, separated by a hairline, each headed by one heading style --
-     sentence case, 12 px, semibold, muted -- in a 40 px row, whether the
-     group folds or not;
+   - a header: what is selected (a small muted kind word over the name, which
+     is the field that renames it) and the rail's buttons on the right;
+   - groups, each headed by one heading style -- sentence case, 12 px,
+     semibold, muted -- in a 36 px row, whether the group folds or not. An open
+     group ends in a hairline; a closed one is its row alone, with none, so a
+     stack of folds is a list rather than a ladder of rules;
    - fields: the name on the left and the control on the right in a 32 px
      row (`.field.is-row`), or the name and its reading on one line with the
      control full width under it (`.field.is-stack`). Which one is decided by
@@ -32,18 +33,53 @@
 .insp-hd{display:flex;align-items:center;flex-wrap:wrap;gap:var(--s1) var(--s2);
   min-height:60px;padding:var(--s3) calc(var(--px) - var(--s1)) var(--s3) var(--px);
   background:var(--sf);border-bottom:1px solid var(--ln);position:sticky;top:0;z-index:2}
-.insp-subj{display:flex;flex-direction:column;align-items:flex-start;gap:2px;
+/* The subject: a tile with the card's own glyph in the card's own tone, then
+   the kind word over the name. */
+.insp-subj{display:flex;flex-direction:row;align-items:center;gap:var(--s3);
   flex:1 1 auto;min-width:0}
-.insp-kind{font-size:12px;line-height:16px;color:var(--ik3);white-space:nowrap;
+.insp-subj-t{display:flex;flex-direction:column;align-items:stretch;gap:1px;min-width:0;
+  flex:1 1 auto}
+.insp-kind{font-size:11.5px;line-height:16px;font-weight:500;color:var(--ik3);white-space:nowrap;
   overflow:hidden;text-overflow:ellipsis;max-width:100%}
-/* The subject's name, on one line: it shrinks and ellipses rather than
-   breaking mid-word, and the whole name is its `title`. */
-.insp-hd .title{font-size:15px;line-height:20px;font-weight:600;max-width:100%;min-width:0;
-  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.insp-hd .rr-spacer{flex:0 0 0}
+.insp-tile{flex:0 0 auto;display:inline-flex;align-items:center;justify-content:center;
+  width:36px;height:36px;border-radius:10px;color:var(--ik2);background:var(--sf2)}
+.insp-tile svg{width:19px;height:19px;fill:none;stroke:currentColor;stroke-width:1.8;
+  stroke-linecap:round;stroke-linejoin:round}
+.insp-tile.t-tl{color:var(--tl);background:var(--tlf)}
+.insp-tile.t-bl{color:var(--bl);background:var(--blf)}
+.insp-tile.t-vi{color:var(--vi);background:var(--vif)}
+.insp-tile.t-lk{color:var(--lk);background:color-mix(in srgb,var(--lk) 16%,var(--sf))}
+.insp-tile.t-cn{color:var(--cn);background:color-mix(in srgb,var(--cn) 16%,var(--sf))}
+.insp-tile.t-sl{color:var(--ik2);background:var(--sf2)}
+/* The name, as the title of the rail: it reads as a heading until the pointer
+   or the caret is in it, then it is a field. The negative margin keeps the
+   text on the inset while the box around it grows outward. One line: it
+   shrinks and ellipses rather than breaking mid-word, and the whole name is its
+   `title`. */
+.insp-name{display:block;width:calc(100% + 12px);min-width:0;margin:0 -6px;padding:1px 5px;
+  font-size:15px;line-height:20px;font-weight:650;color:var(--ik);
+  background:transparent;border:1px solid transparent;border-radius:var(--r-ctl);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:text}
+.insp-name.mono{font-family:var(--mono);font-size:14px}
+.insp-name:hover{border-color:var(--ln2)}
+.insp-name:focus{outline:none;border-color:var(--vi);background:var(--sf2)}
+.insp-name:focus-visible{outline:2px solid var(--fc);outline-offset:1px}
+/* A link, a derived line and an instance have no name to edit: the same type,
+   as text. */
+.insp-title{max-width:100%;min-width:0;font-size:15px;line-height:20px;font-weight:650;
+  color:var(--ik);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* What a rename does, said once and only with `Hints` on. */
+.insp-note{font-size:12px;line-height:1.45;color:var(--ik3);white-space:normal}
 .insp-acts{display:flex;align-items:center;gap:2px;flex:0 0 auto;margin-left:auto}
-/* A refused Remove says why on the row under the header. */
-.insp-why{margin:0;padding:var(--s2) var(--px);border-bottom:1px solid var(--ln)}
+/* The header's icon button (Remove): square, the glyph centred. */
+.insp .btn.is-icon{width:28px;height:28px;min-height:28px;padding:0;display:inline-flex;
+  align-items:center;justify-content:center}
+.insp-ico{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:1.4;
+  stroke-linecap:round;stroke-linejoin:round}
+/* Remove is the one destructive button on the rail: it says so on hover. A
+   refused one carries its reason in its title and for a screen reader
+   (`aria-describedby`), not in a box under the header. */
+.insp .btn.insp-remove:hover:not(:disabled){color:var(--rd);background:var(--rdf)}
 
 /* The `Hints` switch: quiet until it is on, when it takes the accent. It is a
    toggle, not a disclosure, so it carries `aria-pressed`. */
@@ -54,13 +90,23 @@
 
 /* One button size on every rail: the header's, a group's `+ Rule`, a row's
    `Remove`. Ghost until the pointer is on one (float.css). */
-.insp .btn,.app-rail .evmenu .btn{font-size:12.5px;padding:4px 8px;min-height:28px}
+.insp .btn{font-size:12.5px;padding:4px 8px;min-height:28px}
 .insp .btn.is-faded{opacity:.46}
+/* At rest the rail's own buttons (Remove, + Instance, + Rule, + Group, ...) have
+   a box: a ghost with no border read as loose text beside the fields that sit
+   in boxes. The box is the published page's small rail button (`.rail-hd
+   button`): transparent, a strong hairline, a 2 px corner, secondary ink that
+   goes to full ink and a darker edge on hover. A filled box was one more grey
+   slab per row. The header's icon buttons, the Hints switch and the primary /
+   danger variants keep their own looks. */
+.insp .btn:not(.is-icon):not(.is-quiet):not(.is-primary):not(.is-solid):not(.is-danger){
+  color:var(--ik2);background:transparent;border-color:var(--ln2);border-radius:2px}
+.insp .btn:not(.is-icon):not(.is-quiet):not(.is-primary):not(.is-solid):not(.is-danger):hover:not(:disabled){
+  color:var(--ik);background:transparent;border-color:var(--ik3)}
 /* A refusal is a sentence under the control it explains, full width, never
    squeezed beside a button. */
-.insp .why,.app-rail .evmenu .why{display:block;border-radius:8px;padding:4px 10px;border:0;
-  background:color-mix(in srgb,var(--ik3) 12%,var(--sf));
-  font-size:12px;line-height:1.45}
+.insp .why{display:block;padding:0;border:0;border-radius:0;background:none;
+  font-size:12px;line-height:1.45;color:var(--ik3)}
 .insp .tag{font-family:var(--sans);font-size:11.5px;font-weight:500;text-transform:none;
   letter-spacing:0;padding:1px 8px;border-radius:999px}
 .insp .tag.mono{font-family:var(--mono);font-size:11px}
@@ -70,7 +116,7 @@
 .grp{display:flex;flex-direction:column;min-width:0;padding-bottom:var(--s2);
   border-bottom:1px solid var(--ln)}
 .grp:last-child{border-bottom:0}
-.grp-hd{display:flex;align-items:center;gap:var(--s2);min-height:40px;
+.grp-hd{display:flex;align-items:center;gap:var(--s2);min-height:36px;
   padding:var(--s1) calc(var(--px) - var(--s1)) 0 var(--px)}
 /* The one heading style. */
 .insp .grp-hd .eyebrow{font-family:var(--sans);font-size:12px;line-height:16px;font-weight:600;
@@ -83,18 +129,33 @@
    closed section renders no children at all. */
 .grp-fold{padding-bottom:0}
 .grp-fold.is-open{padding-bottom:var(--s2)}
+/* A closed fold is its row and nothing else: no rule under it, so a stack of
+   them reads as a list. The open group above it ends in its own. */
+.grp-fold:not(.is-open){border-bottom:0}
 .grp-fold>.grp-hd{padding:0}
-.grp-tog{display:flex;align-items:center;gap:var(--s2);width:100%;min-height:40px;
+.grp-tog{display:flex;align-items:center;gap:var(--s2);width:100%;min-height:36px;
   text-align:left;padding:var(--s1) var(--px) 0;background:transparent;border:0;
   cursor:pointer;font:inherit;color:inherit}
 .grp-fold:not(.is-open) .grp-tog{padding-top:0}
 .grp-fold>.grp-hd>.grp-act{flex:0 0 auto;padding:var(--s1) var(--px) 0 0}
 .grp-tog:hover{background:var(--sf2)}
 .grp-tog:hover .eyebrow{color:var(--ik)}
-.grp-caret{font-family:var(--mono);font-size:10px;line-height:16px;color:var(--ik3);
-  width:10px;flex:0 0 auto}
+.grp-tog:focus-visible{outline:2px solid var(--fc);outline-offset:-2px}
+/* An open section's heading is ink; a shut one steps back. */
+.insp .grp-fold.is-open>.grp-hd .eyebrow{color:var(--ik)}
+.insp .grp-fold:not(.is-open)>.grp-hd .eyebrow{font-weight:500}
+.grp-caret{display:inline-flex;align-items:center;justify-content:center;width:12px;height:16px;
+  flex:0 0 auto;color:var(--ik3)}
+.grp-caret svg{width:10px;height:10px;fill:none;stroke:currentColor;stroke-width:1.6;
+  stroke-linecap:round;stroke-linejoin:round}
+.grp-caret.is-open svg{transform:rotate(90deg)}
+@media (prefers-reduced-motion:no-preference){
+  .grp-caret svg{transition:transform .16s ease}}
+/* A closed fold is always one line: the title never wraps, and the hint --
+   whose whole text is its `title` -- is cut with an ellipsis. */
+.insp .grp-tog .eyebrow{white-space:nowrap;flex:0 0 auto}
 .grp-sum{margin-left:auto;font-family:var(--mono);font-size:11.5px;color:var(--ik3);
-  min-width:0;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  flex:1 1 0;min-width:0;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 @media (prefers-reduced-motion:no-preference){
   .grp-tog{transition:background-color .16s ease}}
 
@@ -103,7 +164,13 @@
   color:var(--ik3);border:0;max-width:80ch}
 .grp-note.is-warn{color:var(--am)}
 .grp-note .mono{font-size:11px;color:var(--ik2)}
-.insp .grp .empty{gap:2px;padding:0 var(--px) var(--s2);font-size:12.5px;line-height:1.5}
+/* Rows a control cannot use, said once (controls.tsx, `Withheld`): the names,
+   then the reason, in the quiet ink of a refusal. */
+.grp-note.is-withheld{color:var(--ik3)}
+/* An empty state is a quiet box of its own, not a stray sentence. */
+.insp .grp .empty{gap:2px;margin:var(--s1) var(--px) var(--s2);padding:var(--s3);
+  font-size:12.5px;line-height:1.5;border:1px dashed var(--ln2);border-radius:10px;
+  background:var(--sf2);color:var(--ik3)}
 .insp .empty .empty-k{font-family:var(--sans);font-size:12.5px;font-weight:600;
   letter-spacing:0;text-transform:none;color:var(--ik2)}
 .insp .empty p{margin:0}
@@ -147,22 +214,23 @@
 
 /* ---------------- controls ---------------- */
 
-.insp .field-in{height:30px;padding:0 8px;font-size:12px;color:var(--ik);background:var(--sf);
-  border:1px solid var(--ln2);border-radius:var(--r-ctl);width:100%;min-width:0}
+.insp .field-in{height:30px;padding:0 8px;font-size:12px;color:var(--ik);background:var(--sf2);
+  border:1px solid var(--ln2);border-radius:2px;width:100%;min-width:0}
 .insp .field-in:hover:not(:disabled){border-color:var(--ik3)}
-.insp .field-in:focus{border-color:var(--vi)}
+.insp .field-in:focus{border-color:var(--fc)}
 .insp select.field-in{cursor:pointer;padding-right:4px}
-.insp input[type="range"].field-in{height:18px;padding:0;background:transparent;border:0;
-  accent-color:var(--vi)}
+.insp input[type="range"].field-in{height:18px;padding:0;background:transparent;border:0}
 .insp input[type="range"].field-in:focus{outline:none}
 .insp input[type="range"].field-in:focus-visible{outline:2px solid var(--fc);outline-offset:3px}
 
-/* A segmented control of Oracle values: mono, on a sunken track. Full width
-   in a stack, each option an equal share; its natural width in a row. */
-.insp .field .seg{display:flex;flex-wrap:nowrap;max-width:100%;padding:2px;gap:2px;
-  border-radius:8px;background:var(--sf2)}
+/* A segmented control of Oracle values: mono, in the published page's bordered
+   box (shell.css). Full width in a stack, each option an equal share; its
+   natural width in a row. The hairlines between options are 1 px gaps over a
+   hairline-coloured track rather than a border per button, so they stay even
+   when a narrow rail wraps the options onto a second line. */
+.insp .field .seg{display:flex;flex-wrap:nowrap;max-width:100%;gap:1px;background:var(--ln)}
 .insp .field .seg button{font-family:var(--mono);font-size:11px;letter-spacing:0;
-  padding:4px 8px;min-height:24px;border-radius:6px;white-space:nowrap}
+  padding:4px 8px;min-height:24px;border-right:0;white-space:nowrap}
 /* Three long Oracle values (MAXPROTECTION | MAXAVAILABILITY | MAXPERFORMANCE)
    fit a 290 px row at 10.5 px; on a narrower rail the options wrap as whole
    words onto a second line rather than being clipped. */
@@ -171,7 +239,8 @@
 
 .opt{display:inline-flex;align-items:center;gap:var(--s2);font-size:12.5px;color:var(--ik2);
   cursor:pointer}
-.opt input{accent-color:var(--vi);margin:0;width:15px;height:15px;cursor:pointer}
+/* The flag's switch is drawn in shell.css; the label only spaces it. */
+.opt input{margin:0;cursor:pointer}
 .opt .mono{font-size:12px;color:var(--ik)}
 .opt.is-flag .field-val{line-height:16px}
 .opt input:disabled{cursor:not-allowed}
@@ -228,23 +297,13 @@
 /* One destination of a group: target and transport, alternate and FALLBACK,
    then Remove -- a two-column grid, so every destination lines up. */
 .insp .rr-dgrid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:var(--s1);
-  align-items:center;padding:var(--s2) 0 var(--s1);border-top:1px solid var(--ln)}
+  align-items:center;padding:var(--s2) 0 var(--s1)}
+.insp .rr-dgrid+.rr-dgrid{margin-top:var(--s1)}
 .insp .rr-dgrid .field-in{height:28px;width:100%}
 .insp .rr-dgrid .opt{padding-left:var(--s1)}
 .insp .rr-dgrid .ctl-off{display:contents}
 .insp .rr-dgrid .btn{grid-column:2;justify-self:end}
 .insp .rr-dgrid .why{grid-column:1 / -1}
-
-/* ---------------- the summary ---------------- */
-
-/* Label left, value right, like every other row of the rail. */
-.sum{display:flex;flex-direction:column;margin:0;padding:0 var(--px) var(--s1)}
-.sum-row{display:flex;justify-content:space-between;align-items:baseline;gap:var(--s3);
-  min-height:28px;padding:4px 0;border:0}
-.insp .sum dt{flex:0 0 auto;font-family:var(--sans);font-size:12.5px;letter-spacing:0;
-  text-transform:none;color:var(--ik2)}
-.sum dd{margin:0;min-width:0;font-size:12px;line-height:1.5;color:var(--ik);text-align:right;
-  overflow-wrap:anywhere}
 
 /* ---------------- Break rail: the events ---------------- */
 
@@ -314,50 +373,6 @@
   /* On paper every scenario carries its sentence (the rail renders them all
      while `printing` is on). */
   .tmpls{grid-template-columns:1fr;gap:var(--s3)}
-}
-
-/* ---------------- the event menu ---------------- */
-
-/* In the stage's flow, under the drawing (shell.css makes the stage a
-   column): a menu floating over the canvas covered the very card it was
-   opened for. */
-.evmenu{flex:0 0 auto;align-self:flex-start;margin:0 14px 12px;
-  width:min(320px,calc(100% - 28px));
-  display:flex;flex-direction:column;gap:2px;padding-bottom:8px;
-  background:var(--sf);border:1px solid var(--ln2);border-radius:3px;box-shadow:var(--sh);
-  max-height:min(50%,360px);overflow:auto}
-.evmenu.is-shut{width:auto;padding:6px;border-radius:3px}
-.evmenu-hd{display:flex;align-items:center;gap:8px;padding:8px 10px;
-  border-bottom:1px solid var(--ln);background:var(--sf2);position:sticky;top:0}
-.evmenu-title{font-size:11.5px;letter-spacing:.02em;color:var(--ik2);min-width:0;
-  overflow-wrap:anywhere}
-.evmenu-row{padding:4px 10px}
-.evmenu-row .btn{width:100%;justify-content:flex-start;text-align:left}
-.evmenu-row .ctl-off{display:flex;flex-direction:column;align-items:stretch;gap:4px}
-.evmenu-empty{padding:10px;font-size:12px;line-height:1.45;color:var(--ik3)}
-.evmenu-note{padding:8px 10px 2px;font-size:11px;line-height:1.4;color:var(--ik3)}
-
-/* At the head of the Break rail it is the rail's header and first group, in
-   the rail's own voice: the same 60 px header, the same inset, the same
-   buttons and refusals as the inspector. */
-.app-rail .evmenu{align-self:stretch;margin:0;width:auto;max-height:none;overflow:visible;
-  gap:0;padding-bottom:var(--s2);border:0;border-bottom:1px solid var(--ln);border-radius:0;
-  box-shadow:none}
-.app-rail .evmenu.is-shut{flex-direction:row;padding:var(--s3) var(--rail-px)}
-.app-rail .evmenu-hd{min-height:60px;padding:var(--s3) calc(var(--rail-px) - var(--s1))
-  var(--s3) var(--rail-px);background:var(--sf);margin-bottom:var(--s1);z-index:3}
-.app-rail .evmenu-title{font-family:var(--sans);font-size:13px;font-weight:600;
-  letter-spacing:0;color:var(--ik)}
-.app-rail .evmenu-at{height:26px;padding:0 6px;border-color:var(--ln2);
-  border-radius:var(--r-ctl);font-size:12px}
-.app-rail .evmenu-row{padding:0 calc(var(--rail-px) - var(--s1)) 0 calc(var(--rail-px) - 8px)}
-.app-rail .evmenu-row .btn{min-height:32px}
-.app-rail .evmenu-row .why{margin:0 0 var(--s1) 8px}
-.app-rail .evmenu-empty,.app-rail .evmenu-note,.app-rail .evmenu-hint,.app-rail .evmenu-quiet{
-  margin:0;padding:var(--s1) var(--rail-px) var(--s2);font-size:12px;line-height:1.5;
-  color:var(--ik3)}
-@media (max-width:767px){
-  .evmenu{width:auto;max-height:none;margin:12px}
 }
 
 /* ---------------- validation rows as buttons ---------------- */

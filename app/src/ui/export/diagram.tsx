@@ -25,8 +25,8 @@
 
 import { render } from 'preact';
 import { doc, exportStem } from '@/state/doc';
-import { frame, geometry, redoGraph, topology } from '@/state/derived';
-import { mode, toast } from '@/state/view';
+import { frame, geometry, redoGraph, runShown, topology } from '@/state/derived';
+import { toast } from '@/state/view';
 import { TopoCanvas } from '../canvas/TopoCanvas';
 import {
   DROP_SELECTOR, inlineComputedStyles, padBox, parseViewBox, svgDataUrl,
@@ -145,16 +145,18 @@ export const pngFileName = (): string => `${exportStem(doc.value)}.png`;
 /** ⋯ → Diagram as PNG. */
 export async function exportPng(): Promise<void> {
   try {
-    /* Break draws the run at the playhead, and the picture is what is on
-       screen; every other mode draws the configuration at rest. */
-    const snap = await snapshotDrawing({ withFrame: mode.value === 'break' });
+    /* Where a run is shown -- Topology, the Detailed timeline, Learn -- the
+       drawing is tinted by it at the playhead, and the picture is what is on
+       screen; Config and a drawing at rest are the configuration as it stands. */
+    const snap = await snapshotDrawing({ withFrame: runShown() });
     if (snap === null) {
       toast.value = { kind: 'info', text: 'There is no drawing to export: the configuration has no primary database.' };
       return;
     }
     const name = pngFileName();
-    downloadBlob(await rasterise(snap), name);
-    toast.value = { kind: 'info', text: `The diagram was saved as ${name}.` };
+    if (await downloadBlob(await rasterise(snap), name)) {
+      toast.value = { kind: 'info', text: `The diagram was saved as ${name}.` };
+    }
   } catch (e) {
     toast.value = {
       kind: 'error',

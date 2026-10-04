@@ -19,10 +19,14 @@ import type { TopologyDoc } from '../engine';
    RedoRoutes group here: (LOCAL : (FS1 SYNC PRIORITY=1, South_Sales ASYNC
    PRIORITY=2)). */
 function zeroLossDoc(): TopologyDoc {
-  /* Only this direction is declared. After a role change South_Sales has no
-     RedoRoutes of its own and ships straight to North_Sales at North_Sales's
-     LogXptMode -- SYNC, which the fast-start failover prerequisites ask of
-     the primary as of the target. */
+  /* Both directions are declared, as Oracle's Scenario 5 does: "configure redo
+     transport for the current standby database South_Sales so that when it is
+     in the primary role it sends redo data to the far sync instance FS1" --
+     South_Sales (LOCAL : FS1 SYNC), and FS1 holds a second rule for
+     South_Sales as the redo source. Without it, SHOW CONFIGURATION WHEN
+     PRIMARY IS South_Sales puts North_Sales under Members Not Receiving Redo.
+     North_Sales keeps SYNC as its LogXptMode: the fast-start failover
+     prerequisites ask it of the primary as of the target. */
   const north = database('North_Sales', ['dc1-north'], 'primary', {
     redoRoutes: [localGroups(group(
       prio(1, to('FS1', 'SYNC')), prio(2, to('South_Sales', 'ASYNC')),
@@ -30,14 +34,24 @@ function zeroLossDoc(): TopologyDoc {
     logXptMode: 'SYNC',
   });
   const fs1 = farSync('FS1', 'dc1-fs1', {
-    redoRoutes: [when('North_Sales', to('South_Sales', 'ASYNC'))],
+    redoRoutes: [
+      when('North_Sales', to('South_Sales', 'ASYNC')),
+      when('South_Sales', to('North_Sales', 'ASYNC')),
+    ],
   });
-  const south = database('South_Sales', ['dc2-south'], 'physical', { logXptMode: 'ASYNC' });
+  const south = database('South_Sales', ['dc2-south'], 'physical', {
+    logXptMode: 'ASYNC',
+    redoRoutes: [local(to('FS1', 'SYNC'))],
+  });
   /* Inside a RedoRoutes group MaxFailure is 1 unless set, and a member at 0
      "cannot be part of a RedoRoutes group": South_Sales is left at that
      default rather than written down as 0. */
   dest(north, fs1.id, { maxFailure: 1 });
   dest(fs1, south.id);
+  /* One MaxFailure per receiving member: FS1 is in the primary's group, so the
+     broker default for it is 1 whichever way redo reaches it. */
+  dest(south, fs1.id, { maxFailure: 1 });
+  dest(fs1, north.id);
   return topology({
     name: 'far_sync_zero_loss',
     sites: ['dc1', 'dc2', 'dc3'],
@@ -80,12 +94,15 @@ export const farSyncZeroLoss: Preset = {
     + '-- "This does reduce the protection level because redo transmission is then in ASYNC '
     + 'mode", so maximum availability, without acknowledgement from at least one synchronized '
     + 'standby, operates as if it were in maximum performance mode. When FS1 is back, the '
-    + 'primary ships to it again, because priority 1 is higher than priority 2. Only this '
-    + 'direction is declared. After a role change South_Sales has no RedoRoutes of its own, so '
-    + "it ships straight to North_Sales at North_Sales's LogXptMode -- SYNC, because the fast-start "
-    + "failover prerequisites set the primary's LogXptMode as well as the target's -- over the "
-    + 'long hop, with no far sync instance in front of it; the "second far sync near the standby" '
-    + 'preset is the one that declares both directions. With a far sync instance in the path, '
+    + 'primary ships to it again, because priority 1 is higher than priority 2. Both directions '
+    + 'are declared, as Oracle\'s Scenario 5 does: "configure redo transport for the current standby '
+    + 'database South_Sales so that when it is in the primary role it sends redo data to the far '
+    + 'sync instance FS1" -- South_Sales ships SYNC to FS1, and FS1, whose RedoRoutes holds a '
+    + 'second rule with South_Sales as the redo source, forwards ASYNC to North_Sales. Without '
+    + 'that route SHOW CONFIGURATION WHEN PRIMARY IS South_Sales lists North_Sales under Members '
+    + 'Not Receiving Redo. FS1 stands at the North_Sales site, so after a role change the SYNC hop '
+    + 'is the long one; the "second far sync near the standby" preset is the one that puts a far '
+    + 'sync instance beside each side. With a far sync instance in the path, '
     + 'enabling fast-start failover also needs FastStartFailoverTarget set on both the primary '
     + 'and the target standby first. Two things here '
     + "are this page's model rather than documentation: how SYNCHRONIZED is computed across the "
@@ -97,6 +114,7 @@ export const farSyncZeroLoss: Preset = {
     'FS.FAILURE_ADD_DEST', 'ROUTES.ONE_PATH_PER_GROUP', 'ROUTES.PRIORITY_EX1',
     'ROUTES.PRIORITY_26AI', 'ROUTES.MAXFAILURE_GROUP_DEFAULT', 'MAXAVAIL.AT_LEAST_ONE',
     'FSFO.TASK3_PRIMARY_XPT_19C', 'FS.ROUTES_BOTH_DIRECTIONS', 'FSFO.FARSYNC_TARGET_SCENARIO7',
+    'FS.SCENARIO5_SOUTH_ROUTE',
   ],
   doc: zeroLossDoc,
   events: () => [hostDown(0, 'dc1-fs1')],
@@ -107,8 +125,11 @@ export const farSyncZeroLoss: Preset = {
    (LOCAL : (FS1 SYNC PRIORITY=1, FS2 SYNC PRIORITY=1, South_Sales ASYNC
    PRIORITY=2)). Losing one far sync keeps the configuration zero data loss. */
 function haPairDoc(): TopologyDoc {
-  /* As in Example 5-2, one direction only: North_Sales carries SYNC for when
-     it is the standby, and receives it straight from South_Sales. */
+  /* As in Example 5-2 both directions are declared (Scenario 5): South_Sales
+     ships to FS1 when it is the primary and FS1 forwards ASYNC to
+     North_Sales. FS2 is the second path of the North_Sales -> South_Sales
+     direction only; no example declares a high-availability pair for the
+     reverse one, so none is drawn. */
   const north = database('North_Sales', ['dc1-north'], 'primary', {
     redoRoutes: [localGroups(group(
       prio(1, to('FS1', 'SYNC')), prio(1, to('FS2', 'SYNC')), prio(2, to('South_Sales', 'ASYNC')),
@@ -116,12 +137,18 @@ function haPairDoc(): TopologyDoc {
     logXptMode: 'SYNC',
   });
   const fs1 = farSync('FS1', 'dc1-fs1', {
-    redoRoutes: [when('North_Sales', to('South_Sales', 'ASYNC'))],
+    redoRoutes: [
+      when('North_Sales', to('South_Sales', 'ASYNC')),
+      when('South_Sales', to('North_Sales', 'ASYNC')),
+    ],
   });
   const fs2 = farSync('FS2', 'dc1-fs2', {
     redoRoutes: [when('North_Sales', to('South_Sales', 'ASYNC'))],
   });
-  const south = database('South_Sales', ['dc2-south'], 'physical', { logXptMode: 'ASYNC' });
+  const south = database('South_Sales', ['dc2-south'], 'physical', {
+    logXptMode: 'ASYNC',
+    redoRoutes: [local(to('FS1', 'SYNC'))],
+  });
   /* "A member whose MaxFailure property is set to zero cannot be part of a
      RedoRoutes group", so every member of the group carries a non-zero one
      -- South_Sales the broker default inside a group, which is 1. */
@@ -129,6 +156,8 @@ function haPairDoc(): TopologyDoc {
   dest(north, fs2.id, { maxFailure: 1 });
   dest(fs1, south.id);
   dest(fs2, south.id);
+  dest(south, fs1.id, { maxFailure: 1 });
+  dest(fs1, north.id);
   return topology({
     name: 'far_sync_ha_pair',
     sites: ['dc1', 'dc2', 'dc3'],
@@ -166,10 +195,12 @@ export const farSyncHaPair: Preset = {
     + 'default event kills the first far sync host, and redo moves to the second one, still '
     + 'SYNC, so committed redo still reaches disk at a far sync instance instead of dropping to '
     + 'the direct ASYNC destination, which takes over only if both far sync instances are '
-    + 'lost. The pair protects one direction only: after a role change South_Sales, with no '
-    + "RedoRoutes of its own, ships straight to North_Sales at North_Sales's LogXptMode, SYNC, and "
-    + 'neither far sync instance is in that path -- the "second far sync near the standby" preset '
-    + 'is the one that declares both directions. What SYNCHRONIZED means for the terminal '
+    + 'lost. The pair protects the North_Sales to South_Sales direction; the other is declared as '
+    + 'Oracle\'s Scenario 5 declares it, through one far sync instance: South_Sales ships SYNC to '
+    + 'FS1 when it is the primary, and FS1 forwards ASYNC to North_Sales, so a role change reaches '
+    + 'a far sync instance instead of leaving North_Sales under Members Not Receiving Redo. No '
+    + 'example makes that reverse path a pair too -- the "second far sync near the standby" preset '
+    + 'is the one that puts a far sync instance beside each side. What SYNCHRONIZED means for the terminal '
     + "standby across the far sync hop stays this page's model, and so does the instant the "
     + 'primary moves from one destination to the next.',
   cite: [
@@ -177,7 +208,7 @@ export const farSyncHaPair: Preset = {
     'ROUTES.PRIORITY_EX1', 'ROUTES.GROUP_MAXFAILURE_ZERO', 'ROUTES.MAXFAILURE_GROUP_DEFAULT',
     'ROUTES.GROUP_IS_NOT_ROUTES_SYNTAX', 'FS.SYNC_TO_FARSYNC', 'FS.ONWARD_ASYNC',
     'FS.FAILURE_ADD_DEST', 'FSFO.FARSYNC_XPT', 'FSFO.TASK3_PRIMARY_XPT_19C',
-    'FS.ROUTES_BOTH_DIRECTIONS',
+    'FS.ROUTES_BOTH_DIRECTIONS', 'FS.SCENARIO5_SOUTH_ROUTE',
   ],
   doc: haPairDoc,
   events: () => [hostDown(0, 'dc1-fs1')],

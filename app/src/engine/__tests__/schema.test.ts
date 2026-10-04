@@ -15,17 +15,19 @@ const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v)) as T;
 
 describe('BOUNDS', () => {
   it('mirrors the published control ranges', () => {
-    expect(BOUNDS.thresholdSeconds).toMatchObject({ min: 6, max: 120, step: 1, default: 30 });
-    expect(BOUNDS.lagLimitSeconds).toMatchObject({ min: 5, max: 90, default: 30 });
+    /* Floors are Oracle's; the ceilings are this page's, widened in ED-12 beyond
+       the published simulator's 120 / 90 because Oracle documents none. */
+    expect(BOUNDS.thresholdSeconds).toMatchObject({ min: 6, max: 3600, step: 1, default: 30 });
+    expect(BOUNDS.lagLimitSeconds).toMatchObject({ min: 5, max: 3600, default: 30 });
     expect(BOUNDS.pingIntervalMs).toMatchObject({ min: 100, max: 5000, step: 100, default: 100 });
     expect(BOUNDS.pingRetry).toMatchObject({ min: 10, max: 50, default: 10 });
     expect(BOUNDS.applyLagSeconds).toMatchObject({ min: 0, max: 90 });
     expect(BOUNDS.roleTransitionSeconds).toMatchObject({ min: 5, max: 60, default: 15 });
     expect(BOUNDS.latencyMs).toMatchObject({ min: 0, max: 100 });
-    expect(BOUNDS.netTimeoutSeconds).toMatchObject({ min: 1, max: 120, default: 30 });
-    expect(BOUNDS.transportConnectTimeoutSeconds).toMatchObject({ min: 1, max: 60, default: 60 });
+    expect(BOUNDS.netTimeoutSeconds).toMatchObject({ min: 1, max: 1200, default: 30 });
+    expect(BOUNDS.transportConnectTimeoutSeconds).toMatchObject({ min: 1, max: 600, default: 60 });
     expect(BOUNDS.connectTimeoutSeconds).toMatchObject({ min: 0, max: 120, default: 0 });
-    expect(BOUNDS.retryCount).toMatchObject({ min: 0, max: 100, default: 0 });
+    expect(BOUNDS.retryCount).toMatchObject({ min: 0, max: 1000, default: 0 });
     expect(BOUNDS.retryDelaySeconds).toMatchObject({ min: 0, max: 30, default: 0 });
   });
 
@@ -41,7 +43,7 @@ describe('BOUNDS', () => {
 
   it('clamps to the range and snaps to the step', () => {
     expect(clamp('thresholdSeconds', 3)).toBe(6);
-    expect(clamp('thresholdSeconds', 1000)).toBe(120);
+    expect(clamp('thresholdSeconds', 100000)).toBe(3600);
     expect(clamp('pingIntervalMs', 137)).toBe(100);
     expect(clamp('pingIntervalMs', 151)).toBe(200);
     expect(clamp('reopenSeconds', 307)).toBe(300);
@@ -157,9 +159,9 @@ describe('document validation', () => {
 
   it('clamps numerics against the one bounds table and says it did', () => {
     const raw = clone(classicTopology({})) as unknown as Record<string, unknown>;
-    (raw['config'] as { fsfo: Record<string, unknown> }).fsfo['thresholdSeconds'] = 5000;
+    (raw['config'] as { fsfo: Record<string, unknown> }).fsfo['thresholdSeconds'] = 50000;
     const r = parseTopologyDoc(raw);
-    expect(r.doc!.config.fsfo.thresholdSeconds).toBe(120);
+    expect(r.doc!.config.fsfo.thresholdSeconds).toBe(3600);
     expect(r.issues.some((i) => i.severity === 'repaired' && i.path.endsWith('thresholdSeconds'))).toBe(true);
   });
 

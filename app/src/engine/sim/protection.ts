@@ -169,25 +169,51 @@ export function noStallClaim(why: 'unobserved' | 'not-ready', lagGate: boolean):
  * the threshold, unable to reach observer or target standby, shuts down --
  * Oracle's verb ("the primary database will shut down after
  * FastStartFailoverThreshold seconds has elapsed"); the state is `aborted`.
- * The stall clock always runs on the threshold, even where the ping properties
- * have replaced it for the observer's detection.
+ * The documented part is the rule; the instant is a model (the threshold is
+ * counted from the stall's onset, which is this page's placement). The stall
+ * clock runs on the threshold even where the ping properties have replaced it
+ * for the observer's detection -- that, too, is this page's reading.
  */
 export const abortClaim = (at: Seconds, thresholdSeconds: Seconds): Claim<Seconds> =>
-  documented(at, ['FSFO.PMY_SHUTDOWN', 'FSFO.THRESHOLD'],
-    `FastStartFailoverPmyShutdown is TRUE, so the stalled primary shuts down one FastStartFailoverThreshold (${thresholdSeconds} s) after the stall began. The ping properties never move this clock -- the quirk applies to the observer's detection only.`);
+  model(at,
+    `PRIMARY.ABORT_TIMING: FastStartFailoverPmyShutdown is TRUE, so the stalled primary shuts down once it has been STALLED for longer than FastStartFailoverThreshold (${thresholdSeconds} s) -- that rule is documented ("The primary database shuts down if fast-start failover is enabled and V$DATABASE.FS_FAILOVER_STATUS indicates the primary has been STALLED for longer than FastStartFailoverThreshold seconds"). When the stall begins is this page's: the engine stalls an isolated primary at the instant it loses both the observer and the target standby, with no NET_TIMEOUT hang first, so the instant drawn here rests on that placement. Observed on a live 19.27 configuration (fact check 2026-10-01, D9): a primary that stalled shut itself down 31 s later with threshold 30 -- alert text "Primary has heard from neither observer nor target standby within FastStartFailoverThreshold seconds. It is likely an automatic failover has already occurred. Primary is shutting down." and ORA-16830, whose cause text is documented: "If the FastStartFailoverPmyShutdown configuration property was set to TRUE, the broker will shut down the primary database in this situation." An observation, not documentation of the timing.`,
+    ['FSFO.PMY_SHUTDOWN', 'FSFO.THRESHOLD', 'ORA.16830']);
+
+/** What ends a commit hang: the destination is dropped, or maximum protection has nothing left to write to. */
+export type CommitHangEnd = 'drop' | 'drop-another-remains' | 'shutdown';
+
+export function commitHangText(untilSeconds: Seconds, stalled: boolean, end: CommitHangEnd): string {
+  if (stalled) {
+    return 'The commit hang spans the whole stall: in full isolation the fast-start failover stall overrides NET_TIMEOUT\'s drop-and-continue behaviour.';
+  }
+  const wait = `Commits wait for the synchronous acknowledgement until NET_TIMEOUT expires at ${untilSeconds} s`;
+  switch (end) {
+    case 'shutdown':
+      return `${wait}. No synchronized standby is left, and maximum protection does not carry on without one: the primary shuts down rather than continue processing transactions.`;
+    case 'drop-another-remains':
+      return `${wait}, and the primary then drops that destination and carries on: another synchronized standby still receives its redo, and maximum protection shuts the primary down only when it cannot write to at least one.`;
+    default:
+      return `${wait}, and the primary then drops the destination and carries on.`;
+  }
+}
 
 /**
- * In an ordinary transport failure NET_TIMEOUT bounds the commit hang and the
- * primary drops the destination and carries on. In a fast-start failover stall
- * it does not: the stall overrides that behaviour, and at the default settings
- * NET_TIMEOUT and the threshold both run 30 s from the failure and expire
- * together.
+ * In an ordinary transport failure NET_TIMEOUT bounds the commit hang. What
+ * follows depends on the mode: the destination is dropped and the primary
+ * carries on (maximum availability, or maximum protection while another
+ * synchronized standby remains), or maximum protection shuts the primary down.
+ * In a fast-start failover stall NET_TIMEOUT does not end the hang: the stall
+ * overrides that behaviour, and at the default settings NET_TIMEOUT and the
+ * threshold both run 30 s from the failure and expire together.
  */
-export const commitHangClaim = (untilSeconds: Seconds, stalled: boolean): Claim<Seconds> =>
-  documented(untilSeconds, ['DEST.NET_TIMEOUT', 'OBS.LOSS_ALONE_STALLS_NOTHING'],
-    stalled
-      ? 'The commit hang spans the whole stall: in full isolation the fast-start failover stall overrides NET_TIMEOUT\'s drop-and-continue behaviour.'
-      : 'NET_TIMEOUT bounds how long LGWR waits for the standby\'s SYNC acknowledgement before the destination is dropped and the primary carries on. It is never a failover clock.');
+export const commitHangClaim = (
+  untilSeconds: Seconds, stalled: boolean, end: CommitHangEnd = 'drop',
+): Claim<Seconds> =>
+  documented(untilSeconds,
+    end === 'drop' || stalled
+      ? ['DEST.NET_TIMEOUT', 'OBS.LOSS_ALONE_STALLS_NOTHING']
+      : ['DEST.NET_TIMEOUT', 'OBS.LOSS_ALONE_STALLS_NOTHING', 'MAXPROT.AT_LEAST_ONE_BROKER'],
+    commitHangText(untilSeconds, stalled, end));
 
 export const modeName = (m: ProtectionMode): string =>
   m === 'MAXPROTECTION' ? 'maximum protection'

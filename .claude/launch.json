@@ -48,6 +48,30 @@
         "_site"
       ],
       "port": 8742
+    },
+    {
+      "name": "dataguard-proto",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": [
+        "vite",
+        "--port",
+        "5182",
+        "--strictPort"
+      ],
+      "cwd": ".claude/worktrees/playground/app",
+      "port": 5182
+    },
+    {
+      "name": "dataguard-verdict",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": [
+        "vite",
+        "--port",
+        "5183",
+        "--strictPort"
+      ],
+      "cwd": ".claude/worktrees/verdict-and-run-tab/app",
+      "port": 5183
     }
   ]
 }

@@ -161,7 +161,7 @@ export function DocPicker() {
       <select
         id="preset-picker"
         class="btn doc-picker"
-        title="Load one of the eleven configurations this page ships with"
+        title="Load one of the twelve configurations this page ships with"
         /* The preset's own option while the document still is that preset;
            the first option, which then says so, once it is not. */
         value={showing ? (preset as Preset).id : ''}
@@ -179,8 +179,8 @@ export function DocPicker() {
         <option value="">
           {edited ? 'Current configuration (edited)' : 'Current configuration'}
         </option>
-        {/* Short titles under headings: eleven sentences in a dropdown is
-            eleven lines of prose to read before choosing one. The sentence is
+        {/* Short titles under headings: twelve sentences in a dropdown is
+            twelve lines of prose to read before choosing one. The sentence is
             still there, as the option's title. */}
         {GROUPED_PRESETS.map(({ group, presets }) => (
           <optgroup key={group} label={group}>
@@ -193,8 +193,11 @@ export function DocPicker() {
 
       {restored.value ? (
         <span class="doc-restored">
-          Restored your last configuration
-          {' '}
+          {/* The text is what gives way when the bar is short: it ellipsises
+              (the whole sentence is its title) and the way out stays. */}
+          <span class="doc-restored-t" title="Restored your last configuration">
+            Restored your last configuration
+          </span>
           <button
             type="button"
             class="btn is-quiet"
@@ -227,7 +230,7 @@ export function DocCount() {
       class={`count ${tone}`}
       title={mode.value === 'build' || mode.value === 'break'
         ? 'Show the validation findings'
-        : 'Show the validation findings, in Build'}
+        : 'Show the validation findings, in Topology'}
       onClick={() => { revealFindings(); }}
     >
       {findingCount(errs, warns, notes)}

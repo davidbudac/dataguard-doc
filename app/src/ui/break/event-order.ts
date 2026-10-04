@@ -29,6 +29,8 @@ function subjects(doc: TopologyDoc, e: TimedEvent): string[] {
     case 'cmd.switchover': case 'cmd.failover': case 'cmd.reinstate': case 'cmd.disableFsfo':
       return ['role-command'];
     case 'cmd.setMasterObserver': return ['master-command'];
+    /* Moving apply is ordered against the instance it names starting and stopping. */
+    case 'cmd.setApplyInstance': return [`apply:${e.member}`, `instance:${e.member}:${e.instance}`];
     case 'lag.set': return [`lag:${e.member}`];
   }
 }

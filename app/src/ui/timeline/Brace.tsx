@@ -27,19 +27,19 @@ export interface BraceProps {
 }
 
 /** One packed brace: the curl, the parameter name, and what it measures. */
-export function Brace({ brace }: BraceProps) {
+export function Brace({ brace, dy1 = 26, dy2 = 41 }: BraceProps & { dy1?: number; dy2?: number }) {
   return (
     <g class="tl-brace" data-tip={`${brace.name} — ${brace.val}`}>
       <path class={`brace ${brace.tone}`} d={bracePath(brace.x0, brace.x1, brace.y, 1)} />
       <text
         class={brace.mono ? 't-brace-n t-mono' : 't-brace-n'}
         x={brace.lx}
-        y={brace.y + 26}
+        y={brace.y + dy1}
         text-anchor="middle"
       >
         {brace.name}
       </text>
-      <text class="t-brace-v t-mono" x={brace.lx} y={brace.y + 41} text-anchor="middle">
+      <text class="t-brace-v t-mono" x={brace.lx} y={brace.y + dy2} text-anchor="middle">
         {brace.val}
       </text>
     </g>

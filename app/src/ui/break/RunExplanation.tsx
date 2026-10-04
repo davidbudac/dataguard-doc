@@ -14,8 +14,10 @@ import { signal } from '@preact/signals';
 import { citation } from '@/engine';
 import type { EngineTrace, TopologyDoc } from '@/engine';
 import { inspectorOpen, mode, panelTab, playing, selection, tNow, viewport } from '@/state/view';
+import { revealRail } from '@/state/persist';
 import { Fact } from '../common/Chip';
 import { revealSections } from '../inspector/sections';
+import { Caret } from '../inspector/controls';
 import { printing } from '../print';
 import { buildExplanation } from './explain';
 
@@ -28,7 +30,7 @@ function inspectSetting(section: 'Fast-start failover' | 'PrimaryDatabaseCandida
   revealSections([section]);
   selection.value = [];
   mode.value = 'build';
-  if (viewport.value !== 'wide') inspectorOpen.value = true;
+  revealRail();
 }
 
 /**
@@ -39,7 +41,7 @@ function inspectSetting(section: 'Fast-start failover' | 'PrimaryDatabaseCandida
 export function showExplanation(): void {
   explanationOpen.value = true;
   mode.value = 'break';
-  if (viewport.value !== 'wide') inspectorOpen.value = true;
+  revealRail();
   setTimeout(() => {
     if (typeof document === 'undefined') return;
     const toggle = document.querySelector<HTMLButtonElement>('.run-explain-toggle');
@@ -67,7 +69,7 @@ export function RunExplanation({ doc, trace }: { doc: TopologyDoc; trace: Engine
           aria-controls="run-explanation-steps"
           onClick={() => { explanationOpen.value = !explanationOpen.value; }}
         >
-          <span class="grp-caret" aria-hidden="true">{open ? '▾' : '▸'}</span>
+          <Caret open={open} />
           <span class="eyebrow">Why this result?</span>
         </button>
       </header>

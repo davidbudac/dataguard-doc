@@ -31,11 +31,12 @@ export type {
   RoutePriority, ServiceDef, Site, TopologyDoc, XptMode,
 } from './types/topology';
 export {
-  declaredPrimary, destProps, findHost, findLink, findMember, findObserver, findSite,
-  isDatabase, isFarSync, memberHosts,
+  applicationClient, applicationsOf, declaredPrimary, destProps, findApplication, findHost,
+  hasOwnClient, findLink, findMember, findObserver, findSite,
+  isDatabase, isFarSync, isRac, memberHosts,
 } from './types/topology';
 
-export { primarySite, withApplication } from './application';
+export { nextApplicationName, primarySite, withApplication } from './application';
 
 /* events and states */
 export type {
@@ -51,11 +52,14 @@ export type {
 } from './types/trace';
 
 /* bounds and broker defaults */
-export type { Bound, BoundKey, BrokerDefaults } from './defaults';
+export type { Bound, BoundKey, BrokerDefaults, ClientTiming } from './defaults';
 export {
-  BOUNDS, boundOf, BROKER_DEFAULTS, clamp, defaultLagLimit, NOMINAL, pingSet, withinBounds,
+  BOUNDS, boundOf, BROKER_DEFAULTS, clamp, CLIENT_TIMING_DEFAULTS, CLIENT_TIMING_TUNED, defaultLagLimit, NOMINAL, pingSet, withinBounds,
 } from './defaults';
-export { LAG_LIMIT_UNSET_STORED, lagLimitIsSet, lagLimitOf } from './defaults';
+export {
+  clampLagLimit, CONFIG_WIDE_SERVICE_NAME_MAX, configurationWideServiceNameProblem,
+  LAG_LIMIT_UNSET_STORED, lagLimitAllowsZero, lagLimitIsSet, lagLimitOf,
+} from './defaults';
 
 /* serialization */
 export type { IssueSeverity, ParseResult, SchemaIssue } from './serialize/schema';
@@ -81,8 +85,9 @@ export {
 export type { NetState, Reachability, ReachabilityOptions } from './net/graph';
 export {
   applyNetEvent, buildReachability, emptyNetState, expandLinks, hostUp, initialNetState,
-  linkRttMs, liveInstanceHosts, memberAlive, memberDegraded, memberReachableFromHost,
-  membersReachable, netFromSummary, netSummary, reachable, upHosts,
+  instanceKey, linkRttMs, liveInstanceHosts, liveInstances, memberAlive, memberDegraded,
+  memberReachableFromHost, membersReachable, netFromSummary, netSummary, reachable,
+  stoppedInstances, upHosts,
 } from './net/graph';
 
 /* redo routing */
@@ -94,7 +99,7 @@ export {
 } from './redo/parse';
 export type { ResolveOptions } from './redo/resolve';
 export {
-  activeRule, defaultDestPriority, destKey, expandAll, groupKey, resolveRedoGraph,
+  activeRule, defaultDestPriority, destKey, edgelessGraph, expandAll, groupKey, resolveRedoGraph,
 } from './redo/resolve';
 
 /* axes */
@@ -106,9 +111,9 @@ export {
 
 /* the other three models: the application's view, one commit, the reopen ladder */
 export type {
-  AddressPlan, AppAttempt, AppClaims, AppModel, AppOptions, AppSpan, Dial, DialKind, NoEventKind,
+  AddressPlan, AppAttempt, AppClaims, AppModel, AppOptions, AppPublisher, AppSpan, Dial, DialKind, NoEventKind,
 } from './models/app';
-export { computeApp } from './models/app';
+export { computeApp, computeApps } from './models/app';
 export type {
   CommitClaims, CommitInput, CommitLeg, CommitLegResult, CommitModel, CommitWaitPolicy,
 } from './models/commit';
@@ -125,16 +130,20 @@ export type {
 export {
   blank, cmd, comment, commentMarker, commentText, dim, hl, lineText, note, renderPlain, span, svc,
 } from './generate/lines';
+export type { TnsOptions } from './generate/tnsnames';
 export { buildTns, serviceAddresses } from './generate/tnsnames';
 export type { JdbcOptions } from './generate/jdbc';
 export { buildJdbc } from './generate/jdbc';
+export { buildClientFiles } from './generate/client';
 export type { DgmgrlOptions } from './generate/dgmgrl';
 export { generateDgmgrl } from './generate/dgmgrl';
 export type { InitOraOptions } from './generate/initora';
-export { generateInitOra, generateInitOraFiles } from './generate/initora';
-export type { ShowConfigurationOptions } from './generate/show';
 export {
-  generateShowMocks, showConfiguration, showFastStartFailover, showObserver,
+  generateInitOra, generateInitOraFiles, generateRacParameters, generateStandbyRedoLogs,
+} from './generate/initora';
+export type { ShowConfigurationOptions, ShowRun } from './generate/show';
+export {
+  generateShowMocks, showConfiguration, showDatabase, showFastStartFailover, showObserver,
 } from './generate/show';
 
 /* simulation */
@@ -142,6 +151,8 @@ export type {
   Conditions, DataLossKind, EngineFacts, EngineTrace, LagStall,
 } from './sim/simulate';
 export { simulate, stateAt } from './sim/simulate';
+export type { FormerAtOpen, SplitBrain, SplitBrainWindow } from './sim/split-brain';
+export { splitBrainOf } from './sim/split-brain';
 export type { DeadlineAction, Pending, Phase, Sample, SimState, SwitchoverFacts } from './sim/kernel';
 export { buildLanes, epochAt, EPS, Queue, segmentAt, snapshotFrom } from './sim/kernel';
 export type { Readiness, TargetChoice } from './sim/fsfo';
@@ -159,6 +170,11 @@ export {
 export { honestLevel, modeAfterFailover, noStallClaim } from './sim/protection';
 export type { ManualFailoverInput, SwitchoverGateInput, SwitchoverRefusal } from './sim/roles';
 export { bystanderAhead, manualLossClaim, reinstateCommandFindings } from './sim/roles';
+export {
+  applyFailoverClaim, applyInstanceTimeout, applyParticipants, hasApplyInstance,
+  initialApplyInstance, isMultiInstanceApply, lastInstanceClockClaim, nextApplyInstance,
+  primaryDegradedClaim,
+} from './sim/rac';
 export {
   bystanderClaim, bystanders, executionClaim, manualFailoverFindings, nominalBandsClaim,
   reinstateBandClaim, reinstateFindings, SW_CONVERT, SW_VERIFY, switchoverGate,

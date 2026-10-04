@@ -2,6 +2,8 @@
  * editing keys, and modal dialogs retain all keys except palette toggle. */
 import { canEdit, clearSelection, commandOpen, selection, viewport } from '@/state/view';
 import { redo } from '@/state/history';
+import { toggleRail } from '@/state/persist';
+import { introPage, mode } from '@/state/view';
 import { commands, matchesShortcut, runCommand } from './commands';
 import { isElement } from './common/dom';
 
@@ -23,6 +25,9 @@ export function onGlobalKey(ev: KeyboardEvent): void {
   if (typing(ev.target) || dialog || commandOpen.value) return;
   if (mod && !ev.altKey && !ev.shiftKey && key === 'y' && canEdit(viewport.value)) {
     ev.preventDefault(); redo(); return;
+  }
+  if (ev.key === ']' && !ev.metaKey && (!ev.ctrlKey || ev.altKey) && mode.value !== 'learn' && !introPage.value) {
+    ev.preventDefault(); toggleRail(); return;
   }
   const action = commands().find(c => c.shortcut && matchesShortcut(ev, c.shortcut));
   if (action) {

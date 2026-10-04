@@ -12,9 +12,9 @@
  */
 
 import type {
-  Application, Member, Observer, RedoGraph, SiteId, TopologyDoc,
+  Application, Member, MemberId, Observer, RedoGraph, SiteId, TopologyDoc,
 } from '@/engine';
-import { isDatabase, isFarSync } from '@/engine';
+import { applicationsOf, isDatabase, isFarSync } from '@/engine';
 import type { CardLines, Rect } from './measure';
 import { approxW, CARD, elide, fitLabel, measureCardWidth, MINI_ICON, snap8 } from './measure';
 
@@ -39,6 +39,8 @@ export const LAYOUT = {
       hop up to the primary with its caption, and for the lanes a redo route
       takes between the two (`midLane`). */
   appGap: 92,
+  /** Between two application cards standing in one data centre. */
+  appSideGap: 16,
   /** The first lane between the member band and the application, this far
       under the member band: just clear of the data centres' own boxes. */
   midLane: 50,
@@ -227,7 +229,11 @@ export interface Geometry {
  * A hand-made offset. Under a data centre's key it may also carry `w`/`h`,
  * the size the reader gave the box (doc.ts `LayoutOverride`).
  */
-export interface LayoutOffset { dx: number; dy: number; w?: number; h?: number }
+export interface LayoutOffset {
+  dx: number; dy: number; w?: number; h?: number;
+  /** Under a data centre's key: its place in the column order (doc.ts `LayoutOverride.order`). */
+  order?: number;
+}
 
 export interface LayoutOptions {
   /** Drag overrides, keyed by node key, snapped to 8 px. */
@@ -358,17 +364,23 @@ const SLACK = LAYOUT.colPad - LAYOUT.fitPad;
  * Rank: the BFS depth the resolver already computed. A member nothing feeds
  * sits one column past the deepest reachable one, so "no redo reaches this"
  * reads as a place on the drawing rather than as a missing line.
+ *
+ * With no depth at all -- the edgeless graph of a configuration that has no
+ * primary -- nothing is "unreached": there is no source for it to be missed by.
+ * Every member takes rank 0 and none is flagged, so the data centres keep the
+ * order the document lists them in and the cards are drawn as they were.
  */
 function ranksOf(doc: TopologyDoc, graph: RedoGraph): {
   rank: Map<string, number>; maxRank: number; unreachableRank: number;
 } {
   const rank = new Map<string, number>();
   let maxDepth = 0;
+  let reached = false;
   for (const m of doc.members) {
     const d = graph.members[m.id]?.depth ?? -1;
-    if (d >= 0) maxDepth = Math.max(maxDepth, d);
+    if (d >= 0) { maxDepth = Math.max(maxDepth, d); reached = true; }
   }
-  const unreachableRank = maxDepth + 1;
+  const unreachableRank = reached ? maxDepth + 1 : 0;
   for (const m of doc.members) {
     const d = graph.members[m.id]?.depth ?? -1;
     rank.set(m.id as string, d >= 0 ? d : unreachableRank);
@@ -414,15 +426,19 @@ export function layoutTopology(
     observersBySite.set(s, list);
   }
 
-  /* The application stands where its host does; a document without one, or
+  /* An application stands where its host does; a document without one, or
      one naming a host that is gone, draws no card for it. */
-  const app = doc.application;
-  const appSite = app === undefined ? undefined : siteOfHost.get(app.host as string);
+  const appsBySite = new Map<string, Application[]>();
+  for (const a of applicationsOf(doc)) {
+    const s = siteOfHost.get(a.host as string);
+    if (s === undefined) continue;
+    appsBySite.set(s, [...(appsBySite.get(s) ?? []), a]);
+  }
 
   /* ---- 2. column order: sites by the shallowest rank they hold ---- */
   const occupied = (s: string): boolean =>
     (membersBySite.get(s)?.length ?? 0) + (observersBySite.get(s)?.length ?? 0)
-      + (appSite === s ? 1 : 0) > 0;
+      + (appsBySite.get(s)?.length ?? 0) > 0;
   const siteIds = doc.sites.map((s) => s.id as string).filter(occupied);
   /* A data centre with nothing in it yet is still drawn -- as an empty panel
      past the last occupied column, so "Add a data centre" puts something on
@@ -443,6 +459,17 @@ export function layoutTopology(
     }),
     ...emptySites,
   ];
+  /* A column order the reader set by dragging one data centre past another
+     (`LayoutOverride.order`): the columns that carry one take the slots those
+     columns hold between them, in that order; any other -- a data centre added
+     since -- keeps the slot the rank gives it. */
+  const orderOf = (s: string): number | undefined => opts.overrides?.[s]?.order;
+  const slots = ordered.map((s, i) => (orderOf(s) === undefined ? -1 : i)).filter((i) => i >= 0);
+  if (slots.length > 1) {
+    const byHand = slots.map((i) => ordered[i] as string)
+      .sort((a, b) => (orderOf(a) as number) - (orderOf(b) as number));
+    slots.forEach((slot, j) => { ordered[slot] = byHand[j] as string; });
+  }
 
   /* ---- 3. rows inside a column ---- */
   const columns = ordered.map((s, col) => {
@@ -454,7 +481,7 @@ export function layoutTopology(
       if (ka !== kb) return ka - kb;
       return a.name < b.name ? -1 : a.name > b.name ? 1 : 0;
     });
-    return { site: s as SiteId, col, obs, mems, app: appSite === s ? app : undefined };
+    return { site: s as SiteId, col, obs, mems, apps: appsBySite.get(s) ?? [] };
   });
 
   /* ---- 3b. chassis stacks: 2+ occupants sharing a host snap into one ----
@@ -577,16 +604,22 @@ export function layoutTopology(
     ? CARD.obsH
     : LAYOUT.stackHeaderH + row.observers.length * CARD.obsH);
 
-  const appCard = app === undefined || appSite === undefined ? null : (() => {
-    const lines = applicationLines(doc, app);
-    return { lines, w: measureCardWidth(lines, true), hostFull: hostName(doc, app.host as string) };
-  })();
+  /* Every application's card, and each column's row of them: side by side
+     under the databases, so a line rising from one never crosses another. */
+  const appCards = new Map<string, { lines: CardLines; w: number; hostFull: string }>();
+  for (const a of applicationsOf(doc)) {
+    if (!siteOfHost.has(a.host as string)) continue;
+    const lines = applicationLines(doc, a);
+    appCards.set(a.id as string, { lines, w: measureCardWidth(lines, true), hostFull: hostName(doc, a.host as string) });
+  }
+  const appRowW = (apps: readonly Application[]): number => apps.reduce(
+    (acc, a, i) => acc + (appCards.get(a.id as string)?.w ?? 0) + (i === 0 ? 0 : LAYOUT.appSideGap), 0);
 
   const colW = columns.map((c, ci) => {
     const widths = [
       ...(memRowsByCol[ci] ?? []).map(memRowWidth),
       ...(obsRowsByCol[ci] ?? []).map(obsRowWidth),
-      ...(c.app !== undefined && appCard !== null ? [appCard.w] : []),
+      ...(c.apps.length > 0 ? [appRowW(c.apps)] : []),
     ];
     const indent = c.mems.some((m) => sameSiteCascade(doc, graph, m, memberSite))
       ? LAYOUT.cascadeIndent : 0;
@@ -599,7 +632,7 @@ export function layoutTopology(
     colX.push(cursor);
     const after = columns[i + 1];
     const nextEmpty = after !== undefined
-      && after.mems.length + after.obs.length + (after.app === undefined ? 0 : 1) === 0;
+      && after.mems.length + after.obs.length + after.apps.length === 0;
     cursor += (colW[i] ?? 0) + (nextEmpty ? LAYOUT.emptyGap : LAYOUT.corridor);
   }
 
@@ -610,7 +643,12 @@ export function layoutTopology(
      out round the side of the site and sharing a segment with the next link. */
   const hop = (a: Member, b: Member): boolean => graph.edges.some((e) =>
     ((e.from as string) === (a.id as string) && (e.to as string) === (b.id as string))
-    || ((e.from as string) === (b.id as string) && (e.to as string) === (a.id as string)));
+    || ((e.from as string) === (b.id as string) && (e.to as string) === (a.id as string)))
+    /* The feed path says the same where there are no edges to read (the
+       edgeless graph of a configuration with no primary, which keeps the
+       places and nothing else). */
+    || feederOf(graph, a.id as string) === (b.id as string)
+    || feederOf(graph, b.id as string) === (a.id as string);
   const memGaps: number[][] = memRowsByCol.map((rows) => rows.map((row, i): number => {
     const next = rows[i + 1];
     if (!next) return 0;
@@ -838,28 +876,34 @@ export function layoutTopology(
       my += memRowHeight(row) + (memGaps[ci]?.[rowIdx] ?? LAYOUT.rowGap);
     });
 
-    if (c.app !== undefined && appCard !== null) {
-      placed.push({
-        indent: 0,
-        node: {
-          key: nodeKey('application', c.app.id as string),
-          id: c.app.id as string,
-          kind: 'application',
-          glyph: 'app',
-          site: c.site,
-          col: ci,
-          row: (memRowsByCol[ci] ?? []).length,
-          rank: -1,
-          unreachable: false,
-          instances: 1,
-          x: Math.round(cx + (cw - appCard.w) / 2),
-          y: Math.round(appBandTop),
-          w: appCard.w,
-          h: CARD.obsH,
-          lines: appCard.lines,
-          hostFull: appCard.hostFull,
-          moved: false,
-        },
+    if (c.apps.length > 0) {
+      let ax = cx + (cw - appRowW(c.apps)) / 2;
+      c.apps.forEach((app, k) => {
+        const card = appCards.get(app.id as string);
+        if (card === undefined) return;
+        placed.push({
+          indent: 0,
+          node: {
+            key: nodeKey('application', app.id as string),
+            id: app.id as string,
+            kind: 'application',
+            glyph: 'app',
+            site: c.site,
+            col: ci,
+            row: (memRowsByCol[ci] ?? []).length + k,
+            rank: -1,
+            unreachable: false,
+            instances: 1,
+            x: Math.round(ax),
+            y: Math.round(appBandTop),
+            w: card.w,
+            h: CARD.obsH,
+            lines: card.lines,
+            hostFull: card.hostFull,
+            moved: false,
+          },
+        });
+        ax += card.w + LAYOUT.appSideGap;
       });
     }
   });
@@ -1066,7 +1110,7 @@ export function layoutTopology(
     overLaneY: vy0 - LAYOUT.padTop + 2,
     bandLaneY: bandH === 0 ? vy0 - LAYOUT.padTop + 2 : memberBandTop - 10,
     underLaneY: vy1 + 4,
-    midLaneY: appCard === null || memberBandH === 0
+    midLaneY: appCards.size === 0 || memberBandH === 0
       ? null : memberBandTop + memberBandH + LAYOUT.midLane,
     trunks,
     maxRank,
@@ -1200,7 +1244,9 @@ function sameSiteCascade(
   doc: TopologyDoc, graph: RedoGraph, m: Member, siteOf: (m: Member) => string,
 ): boolean {
   const feeder = feederOf(graph, m.id as string);
-  if (feeder === null || feeder === (graph.primary as string)) return false;
+  /* Fed straight by the primary: depth 0, which is also what the edgeless
+     graph's stand-in primary has (its `primary` is an id nobody holds). */
+  if (feeder === null || feeder === (graph.primary as string) || graph.members[feeder as MemberId]?.depth === 0) return false;
   const fm = doc.members.find((x) => (x.id as string) === feeder);
   if (!fm) return false;
   return siteOf(fm) === siteOf(m);

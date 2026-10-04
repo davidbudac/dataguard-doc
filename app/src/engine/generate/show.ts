@@ -19,10 +19,11 @@ import type { MemberId } from '../ids';
 import { isParenthesised } from '../redo/parse';
 import { defaultDestPriority, resolveRedoGraph } from '../redo/resolve';
 import { lagLimitOf } from '../defaults';
+import { isMultiInstanceApply } from '../sim/rac';
 import { lagGated, pingPropertiesSet } from '../sim/fsfo';
-import { docLater, documented, model } from '../types/claims';
+import { docLater, documented, inferred, model } from '../types/claims';
 import type { Member, TopologyDoc } from '../types/topology';
-import { declaredPrimary, isDatabase, isFarSync } from '../types/topology';
+import { declaredPrimary, isDatabase, isFarSync, isRac } from '../types/topology';
 import type { GeneratedFile, Line } from './lines';
 import { blank, cmd, note } from './lines';
 
@@ -47,6 +48,8 @@ const headerLines = (): Line[] => [
 const nDoc = (text: string, cite: CitationId[]): Line => note(text, documented(text, cite));
 const nModel = (text: string, why: string, cite: CitationId[] = []): Line =>
   note(text, model(text, why, cite));
+const nInferred = (text: string, why: string, cite: CitationId[] = []): Line =>
+  note(text, inferred(text, cite, why));
 
 const MODE_WORD = {
   MAXPROTECTION: 'MaxProtection',
@@ -81,7 +84,9 @@ const HEALTH_CONDITIONS: ReadonlyArray<readonly [string, boolean]> = [
 function fsfoStatusWord(doc: TopologyDoc): { word: string; cite: CitationId[] } {
   const f = doc.config.fsfo;
   if (f.state === 'disabled') return { word: 'DISABLED', cite: ['FSFO.STATUS_WORDS'] };
-  if (f.state === 'observe-only') return { word: 'Enabled in Observe-Only Mode', cite: ['FSFO.STATUS_WORDS'] };
+  if (f.state === 'observe-only') {
+    return { word: 'Enabled in Observe-Only Mode', cite: ['FSFO.STATUS_WORDS', 'FSFO.STATUS_OBSERVE_ONLY'] };
+  }
   return lagGated(doc)
     ? { word: 'Enabled in Potential Data Loss Mode', cite: ['FSFO.STATUS_WORDS'] }
     : { word: 'Enabled in Zero Data Loss Mode', cite: ['FSFO.STATUS_WORDS'] };
@@ -99,10 +104,90 @@ function fsFailoverStatusView(doc: TopologyDoc): { view: string; cite: CitationI
 
 /* ---------------- SHOW CONFIGURATION ---------------- */
 
+/**
+ * Where the run stands at the playhead (GEN-30): the blocks then print what
+ * the broker would print at that moment -- the new primary as primary, the
+ * former primary disabled and awaiting reinstatement after a failover, the
+ * old target gone -- instead of the document's steady state.
+ */
+export interface ShowRun {
+  /** The primary at the playhead (`epoch.primary`). */
+  primary: MemberId;
+  /** How the primary came to differ from the declared one, from the run's outcome. */
+  roleChange: 'switchover' | 'failover' | null;
+  /** Every member's state at the playhead, by member id. */
+  states: Readonly<Record<string, string>>;
+  /** Every observer's state at the playhead, by observer id (`stopped` is no longer observing). */
+  observers?: Readonly<Record<string, string>>;
+}
+
 export interface ShowConfigurationOptions {
   verbose?: boolean;
-  /** `SHOW CONFIGURATION WHEN PRIMARY IS name` -- resolve with another primary. */
+  /**
+   * `SHOW CONFIGURATION WHEN PRIMARY IS 'name'` -- the redo transport that
+   * would be in effect with another primary. Members only: "it does not
+   * provide status or any other configuration information" (GEN-18).
+   */
   whenPrimaryIs?: MemberId;
+  /** The run at the playhead; see `ShowRun`. */
+  run?: ShowRun;
+  /** SHOW DATABASE, read at a frame: the instance running apply per RAC standby. */
+  applyInstances?: Readonly<Record<string, string>>;
+  /** SHOW DATABASE, read at a frame: stopped instances as `member/instance`. */
+  downInstances?: readonly string[];
+  /**
+   * SHOW CONFIGURATION, read at a frame: members the run draws open
+   * read-write as a primary although `whenPrimaryIs` is another -- the old
+   * primary a manual failover found still open.
+   */
+  openAsPrimary?: readonly string[];
+}
+
+/** What the blocks print the document through: who is primary and who is disabled. */
+interface RunView {
+  declared: MemberId | null;
+  primary: MemberId | null;
+  /** The run has moved the primary away from the declared one. */
+  moved: boolean;
+  /** Members printed `(disabled)` with ORA-16661: bystanders, and a failed primary awaiting reinstatement. */
+  disabled: ReadonlySet<string>;
+}
+
+function runView(doc: TopologyDoc, opts: ShowConfigurationOptions): RunView {
+  const declared = declaredPrimary(doc);
+  const run = opts.run;
+  const primary = run?.primary ?? opts.whenPrimaryIs ?? declared;
+  const moved = run !== undefined && declared !== null && run.primary !== declared;
+  const disabled = new Set<string>();
+  if (run !== undefined) {
+    for (const [id, state] of Object.entries(run.states)) {
+      const m = doc.members.find((x) => (x.id as string) === id);
+      if (state === 'disabled' && m !== undefined && isDatabase(m) && id !== (primary as string | null)) disabled.add(id);
+    }
+    /* "the former (failed) primary database was disabled by the broker as a
+       consequence of the failover. It must be reinstated" -- until the run
+       reinstates it (it then applies redo as a standby). */
+    if (moved && run.roleChange === 'failover' && declared !== null) {
+      const st = run.states[declared as string];
+      if (st !== 'reinstating' && st !== 'mounted-apply' && st !== 'open-ro') disabled.add(declared as string);
+    }
+  }
+  return { declared, primary, moved, disabled };
+}
+
+/**
+ * The fast-start failover targets of `primary`, in order. The document holds
+ * the declared primary's list. Once the run has moved the primary, its target
+ * is the former primary: the property is set reciprocally when fast-start
+ * failover is enabled, "the current primary ... as the target standby's future
+ * target standby should it ever take over as a primary".
+ */
+function targetIdsOf(doc: TopologyDoc, v: RunView): MemberId[] {
+  const t = doc.config.fsfo.target;
+  if (v.moved && v.declared !== null) return doc.config.fsfo.state === 'disabled' ? [] : [v.declared];
+  return t.kind === 'list'
+    ? [...t.members]
+    : doc.members.filter((m) => isDatabase(m) && m.id !== v.primary).map((m) => m.id);
 }
 
 function roleWord(m: Member, primary: MemberId): string {
@@ -158,18 +243,20 @@ function alternateOf(doc: TopologyDoc): Map<string, string> {
 export function showConfiguration(
   doc: TopologyDoc, opts: ShowConfigurationOptions = {},
 ): GeneratedFile {
-  const verbose = opts.verbose === true;
-  const declared = declaredPrimary(doc);
-  const primary = opts.whenPrimaryIs ?? declared;
+  /* WHEN PRIMARY IS prints the members and nothing else, and takes no VERBOSE. */
+  const hypothetical = opts.whenPrimaryIs !== undefined;
+  const verbose = opts.verbose === true && !hypothetical;
+  const v = runView(doc, opts);
+  const primary = v.primary;
   const lines: Line[] = [...headerLines()];
+  const nameById = (id: MemberId): string => doc.members.find((m) => m.id === id)?.name ?? String(id);
 
-  const command = `SHOW CONFIGURATION${verbose ? ' VERBOSE' : ''}${
-    opts.whenPrimaryIs !== undefined
-      ? ` WHEN PRIMARY IS ${doc.members.find((m) => m.id === opts.whenPrimaryIs)?.name ?? String(opts.whenPrimaryIs)}`
-      : ''};`;
+  const command = hypothetical
+    ? `SHOW CONFIGURATION WHEN PRIMARY IS '${nameById(opts.whenPrimaryIs as MemberId)}';`
+    : `SHOW CONFIGURATION${verbose ? ' VERBOSE' : ''};`;
   lines.push(cmd(`DGMGRL> ${command}`, {
     basis: 'documented',
-    cite: opts.whenPrimaryIs !== undefined ? ['DGMGRL.FAR_SYNC_COMMANDS'] : ['DGMGRL.BROKER_COMMANDS'],
+    cite: hypothetical ? ['DGMGRL.FAR_SYNC_COMMANDS', 'DGMGRL.SHOW_WHEN_PRIMARY_IS'] : ['DGMGRL.BROKER_COMMANDS'],
   }));
   lines.push(blank());
 
@@ -189,18 +276,35 @@ export function showConfiguration(
 
   const graph = resolveRedoGraph(doc, { primary });
   const alt = alternateOf(doc);
-  /* SHOW CONFIGURATION VERBOSE marks the fast-start failover target
-     "name- (*) role" with a "(*) Fast-Start Failover target" legend right
-     under it (DGMGRL.VERBOSE_TARGET_MARKER, Example 2). Only the active
-     target -- the first of the list -- is marked. */
-  const fsfoTargetList = doc.config.fsfo.target.kind === 'list' ? doc.config.fsfo.target.members : [];
-  const activeTargetId = doc.config.fsfo.state !== 'disabled' ? fsfoTargetList[0] : undefined;
+  const armed = doc.config.fsfo.state !== 'disabled';
+  /* The current fast-start failover target is marked "name- (*) role" whenever
+     fast-start failover is enabled (GEN-19: the plain example prints it too);
+     VERBOSE alone adds the "(*) Fast-Start Failover target" legend under it
+     (DGMGRL.SHOW_CONFIG_TARGET_ASTERISK, DGMGRL.VERBOSE_TARGET_MARKER). Only
+     the active target -- the first of the list -- is marked. */
+  const targets = targetIdsOf(doc, v);
+  const activeTargetId = armed && !hypothetical ? targets[0] : undefined;
+  /* Enabled with no observer started is legal and warns: "the ORA-16819
+     warning is displayed for the primary and target standby databases". */
+  const unobserved = armed && doc.observers.length === 0 && !hypothetical;
+  const warned = new Set<string>(unobserved
+    ? [primary as string, ...targets.map((t) => t as string)] : []);
+  /* Every observer the document registers has stopped by the playhead while
+     fast-start failover is enabled: the broker's ORA-16820, on the primary.
+     Not the no-observer-deployed case above, which is ORA-16819. */
+  const observerStates = Object.values(opts.run?.observers ?? {});
+  const observerLost = armed && !hypothetical && doc.observers.length > 0
+    && observerStates.length > 0 && observerStates.every((s) => s === 'stopped');
 
-  lines.push(cmd(`Configuration - ${doc.config.name}`, { basis: 'documented', cite: ['DGMGRL.BROKER_COMMANDS'] }));
+  lines.push(cmd(hypothetical
+    ? `Configuration when ${nameById(primary)} is primary - ${doc.config.name}`
+    : `Configuration - ${doc.config.name}`, { basis: 'documented', cite: hypothetical ? ['DGMGRL.SHOW_WHEN_PRIMARY_IS'] : ['DGMGRL.BROKER_COMMANDS'] }));
   lines.push(blank());
-  lines.push(cmd(`Protection Mode: ${MODE_WORD[doc.config.protectionMode]}`, {
-    indent: 2, basis: 'documented', cite: ['XPT.TABLE_4_2'],
-  }));
+  if (!hypothetical) {
+    lines.push(cmd(`Protection Mode: ${MODE_WORD[doc.config.protectionMode]}`, {
+      indent: 2, basis: 'documented', cite: ['DGMGRL.SHOW_CONFIG_SUMMARY'],
+    }));
+  }
   lines.push(cmd('Members:', { indent: 2 }));
 
   /* Order: the primary, then everything it feeds, deepest last -- the
@@ -229,22 +333,62 @@ export function showConfiguration(
       const of = alt.get(m.id as string);
       if (of !== undefined) markers.push(`(alternate of ${of})`);
     }
-    const marked = verbose && m.id === activeTargetId;
+    const off = v.disabled.has(m.id as string) && m.id !== primary;
+    /* A disabled bystander is not the current target. A former primary that
+       fast-start failover left disabled and awaiting reinstatement is: the
+       live 19.27 configuration kept the marker on it (`v.moved` is the only
+       way a disabled member is the active target, see `targetIdsOf`). */
+    const marked = m.id === activeTargetId && (!off || v.moved);
+    const markedWhileOff = marked && off;
     const dash = marked ? '- (*)' : '-';
+    if (off) markers.push('(disabled)');
     const text = `${m.name} ${dash} ${roleWord(m, primary)}${markers.length > 0 ? ` ${markers.join(' ')}` : ''}`;
+    const indent = 2 + depth * 2;
     if (isFarSync(m)) {
       lines.push(cmd(text, {
-        indent: 2 + depth * 2, basis: 'documented', cite: ['DGMGRL.FARSYNC_LINE_DOCUMENTED'],
+        indent, basis: 'documented', cite: ['DGMGRL.FARSYNC_LINE_DOCUMENTED'],
       }));
     } else {
-      const cite: CitationId[] = markers.some((x) => x.startsWith('(receiving'))
-        ? ['CASCADE.EXAMPLE_4_2', 'ROUTES.CASCADE_ASYNC_EXPLICIT']
-        : markers.length > 0 ? ['DGMGRL.VERBOSE_ALTERNATE', 'ROUTES.PRIORITY_19C_EX_4_3'] : ['DGMGRL.BROKER_COMMANDS'];
-      lines.push(cmd(text, { indent: 2 + depth * 2, basis: 'documented', cite }));
+      const cite: CitationId[] = off
+        ? ['FAILOVER.SHOW_CONFIGURATION_AFTER']
+        : markers.some((x) => x.startsWith('(receiving'))
+          ? ['CASCADE.EXAMPLE_4_2', 'ROUTES.CASCADE_ASYNC_EXPLICIT']
+          : markers.length > 0 ? ['DGMGRL.VERBOSE_ALTERNATE', 'ROUTES.PRIORITY_19C_EX_4_3'] : ['DGMGRL.BROKER_COMMANDS'];
+      if (marked) cite.push('DGMGRL.SHOW_CONFIG_TARGET_ASTERISK');
+      lines.push(markedWhileOff
+        ? cmd(text, {
+          indent, basis: 'inferred', cite,
+          note: 'Oracle\'s FAILOVER example prints the disabled former primary without the (*) marker, but fast-start failover was disabled there. With fast-start failover still enabled, the former primary is the target the broker sets reciprocally, and a live 19.27 configuration printed "cdb1 - (*) Physical standby database (disabled)" with ORA-16661 under it after both a manual failover and an observer-initiated failover (fact check 2026-10-01, D9). Observed on a live 19.27 configuration, not documentation.',
+        })
+        : cmd(text, { indent, basis: 'documented', cite }));
     }
-    if (marked) {
+    if (off) {
+      lines.push(cmd('ORA-16661: the standby database needs to be reinstated', {
+        indent: indent + 2, basis: 'documented', cite: ['FAILOVER.SHOW_CONFIGURATION_AFTER', 'ORA.16661'],
+      }));
+    }
+    if (observerLost && m.id === primary) {
+      lines.push(cmd('Error: ORA-16820: fast-start failover observer is no longer observing this database', {
+        indent: indent + 2, basis: 'inferred', cite: ['ORA.16820', 'FAILOVER.SHOW_CONFIGURATION_AFTER'],
+        note: 'ORA-16820\'s cause text is documented ("A previously started observer was no longer actively observing this database"). The "Error:" form under the primary, and the ERROR configuration status, are what a live 19.27 configuration printed after its only observer was stopped and stayed away about three minutes (fact check 2026-10-01, D9); an observation, not documentation. The page prints it from the moment the last observer has stopped, without the wait the live system needed.',
+      }));
+    }
+    if (warned.has(m.id as string)) {
+      lines.push(cmd('Warning: ORA-16819: fast-start failover observer not started', {
+        indent: indent + 2, basis: 'inferred', cite: ['OBS.NOT_STARTED_16819', 'FAILOVER.SHOW_CONFIGURATION_AFTER'],
+        note: "SHOW DATABASE prints ORA-16819 under 'Database Warning(s):' (OBS.NOT_STARTED_16819), for the primary and the target standby databases. SHOW CONFIGURATION prints a member's warning as 'Warning: ORA-nnnnn: ...' under its line, as its ORA-16629 example does; applying that form to ORA-16819 is this page's reading.",
+      }));
+    }
+    if (opts.openAsPrimary?.includes(m.id as string) === true && m.id !== primary) {
+      lines.push(nModel(
+        `${m.name} is still open read-write as a primary in this run, so the line above is the configuration's view, not what the run draws`,
+        'FAILOVER.FORMER_PRIMARY_OPEN: a manual failover found this database still open, Oracle puts its shutdown on the operator, and no page says the broker closes or mounts it, so this page draws it open beside the new primary. What SHOW CONFIGURATION prints for a primary in that state is not documented, so the line above is drawn from the configuration and this one says where the drawing differs.',
+        ['FAILOVER.PRIMARY_SHUT_DOWN', 'FSFO.MANUAL_FAILOVER_CONDITIONS'],
+      ));
+    }
+    if (marked && verbose) {
       lines.push(cmd('(*) Fast-Start Failover target', {
-        indent: 2 + depth * 2, basis: 'documented', cite: ['DGMGRL.VERBOSE_TARGET_MARKER'],
+        indent, basis: 'documented', cite: ['DGMGRL.VERBOSE_TARGET_MARKER'],
       }));
     }
   };
@@ -260,20 +404,61 @@ export function showConfiguration(
     for (const m of unreached) memberLine(m, 1);
   }
 
+  if (hypothetical) {
+    lines.push(blank());
+    lines.push(nDoc(
+      'the display lists all members but, unlike SHOW CONFIGURATION, no status or any other configuration information: the redo transport that would be in effect if this member were the primary',
+      ['DGMGRL.SHOW_WHEN_PRIMARY_IS'],
+    ));
+    return file(lines);
+  }
+
   lines.push(blank());
   const status = fsfoStatusWord(doc);
   lines.push(cmd(`Fast-Start Failover: ${status.word}`, { basis: 'documented', cite: status.cite }));
-  if (doc.config.fsfo.state !== 'disabled' && doc.observers.length === 0) {
+  if (unobserved) {
     lines.push(blank());
-    const view = fsFailoverStatusView(doc);
     lines.push(nDoc(
-      `no observer is deployed in this document although fast-start failover is marked enabled: this page reads that as fast-start failover never armed -- ${view.view} reads DISABLED -- which is not the same as unobserved. Unobserved is an enabled configuration whose master observer is missing: ORA-16820 is the standing health condition and the target standby is where FS_FAILOVER_STATUS reads PRIMARY UNOBSERVED`,
-      [view.cite, 'ORA.16820', 'FSFO.PRIMARY_UNOBSERVED'],
+      'no observer is deployed although fast-start failover is enabled: that is legal -- the broker displays the ORA-16819 warning for the primary and the target standby databases, and fast-start failover cannot happen until an observer is started. It is enabled and unobserved, not DISABLED',
+      ['OBS.NOT_STARTED_16819', 'OBS.CANNOT_OCCUR_LIST'],
     ));
+  }
+  if (v.moved && armed) {
+    /* The words after a role change are the document's. Fast-start failover
+       stays enabled after an observer-initiated failover (REINSTATE REQUIRED
+       exists only after one has occurred); Oracle's FAILOVER example, which
+       prints DISABLED, ran with fast-start failover disabled. */
+    lines.push(blank());
+    lines.push(opts.run?.roleChange === 'failover'
+      ? nInferred(
+        `the role has moved: the Fast-Start Failover line above is the document's setting, kept after the failover -- Oracle's FAILOVER example prints DISABLED because fast-start failover was disabled there`,
+        'REINSTATE REQUIRED is documented as present only after fast-start failover has occurred, which implies it stays enabled. A live 19.27 configuration confirmed it (fact check 2026-10-01, D9): after both a manual failover with fast-start failover enabled and an observer-initiated failover, SHOW CONFIGURATION printed "Fast-Start Failover: Enabled in Zero Data Loss Mode" and the former primary as "- (*) Physical standby database (disabled)" with ORA-16661 under it. That is an observation, not documentation; Oracle\'s own FAILOVER example printed DISABLED and no marker because fast-start failover was disabled there. The cause of ORA-16661, a role change operation that made the database require reinstatement, is not specific to a manual failover.',
+        ['FSFO.REINSTATE_REQUIRED_STATUS', 'FAILOVER.SHOW_CONFIGURATION_AFTER', 'ORA.16661'],
+      )
+      : nInferred(
+        'the role has moved: the Fast-Start Failover line above is the document\'s setting; a switchover leaves fast-start failover armed, and the former primary, restarted as a standby, is the target',
+        'No documented example shows SHOW CONFIGURATION after a switchover with fast-start failover enabled; the gate for a switchover is documented only by implication. A live 19.27 configuration (fact check 2026-10-01, D9) printed "Fast-Start Failover: Enabled in Zero Data Loss Mode" after a switchover and the former primary as "cdb1_stby - (*) Physical standby database". An observation, not documentation.',
+        ['SWITCHOVER.FSFO_GATE'],
+      ));
   }
   lines.push(blank());
   lines.push(cmd('Configuration Status:'));
-  lines.push(cmd('SUCCESS'));
+  const reinstates = [...v.disabled].filter((id) => id !== (primary as string));
+  if (observerLost) {
+    lines.push(cmd('ERROR', {
+      basis: 'inferred', cite: ['ORA.16820'],
+      note: 'A live 19.27 configuration printed Configuration Status ERROR with ORA-16820 under the primary after its only observer was stopped, once the former primary had been reinstated (fact check 2026-10-01, D9). Observed, not documented. Whether ERROR outranks the reinstatement WARNING when both stand was not observed; the page lets the observer error take precedence.',
+    }));
+  } else if (reinstates.length > 0) {
+    lines.push(cmd('WARNING', { basis: 'documented', cite: ['FAILOVER.SHOW_CONFIGURATION_AFTER'] }));
+  } else if (unobserved) {
+    lines.push(cmd('WARNING', {
+      basis: 'inferred', cite: ['OBS.NOT_STARTED_16819', 'FAILOVER.SHOW_CONFIGURATION_AFTER'],
+      note: "The ORA-16819 example shows Database Status WARNING for the primary; that the configuration status follows a member's warning is this page's reading of Oracle's FAILOVER example, where a disabled member makes the configuration WARNING.",
+    }));
+  } else {
+    lines.push(cmd('SUCCESS'));
+  }
   if (verbose) {
     lines.push(blank());
     lines.push(nModel(
@@ -326,10 +511,12 @@ export function showConfiguration(
  * example instead (DGMGRL.SHOW_FSFO_FIELDS_26AI), which adds Ping Interval /
  * Ping Retry after Threshold and does not carry Lag Type or Lag Grace Time.
  */
-export function showFastStartFailover(doc: TopologyDoc): GeneratedFile {
+export function showFastStartFailover(
+  doc: TopologyDoc, opts: ShowConfigurationOptions = {},
+): GeneratedFile {
   const lines: Line[] = [...headerLines()];
   const f = doc.config.fsfo;
-  const primary = declaredPrimary(doc);
+  const v = runView(doc, opts);
   const v26 = doc.config.edition === '26ai';
   const fieldsCite: CitationId = v26 ? 'DGMGRL.SHOW_FSFO_FIELDS_26AI' : 'DGMGRL.SHOW_FSFO_FIELDS';
   lines.push(cmd('DGMGRL> SHOW FAST_START FAILOVER;', { basis: 'documented', cite: [fieldsCite] }));
@@ -341,7 +528,7 @@ export function showFastStartFailover(doc: TopologyDoc): GeneratedFile {
 
   const pad = (label: string): string => `${label}:`.padEnd(22, ' ');
   lines.push(cmd(`${pad('Protection Mode')}${MODE_WORD[doc.config.protectionMode]}`, {
-    indent: 2, basis: 'documented', cite: ['XPT.TABLE_4_2', fieldsCite],
+    indent: 2, basis: 'documented', cite: ['DGMGRL.SHOW_CONFIG_SUMMARY', fieldsCite],
   }));
   /* The limit in force -- the broker default for the edition and mode
      until the property is set. In use in maximum performance, and under
@@ -381,9 +568,7 @@ export function showFastStartFailover(doc: TopologyDoc): GeneratedFile {
     }));
   }
 
-  const targets = f.target.kind === 'list'
-    ? f.target.members
-    : doc.members.filter((m) => isDatabase(m) && m.id !== primary).map((m) => m.id);
+  const targets = targetIdsOf(doc, v);
   const nameOf = (id: MemberId): string => doc.members.find((m) => m.id === id)?.name ?? (id as string);
   const active = targets[0];
   lines.push(cmd(`${pad('Active Target')}${active === undefined ? '(none)' : nameOf(active)}`, {
@@ -392,16 +577,19 @@ export function showFastStartFailover(doc: TopologyDoc): GeneratedFile {
   if (targets.length > 0) {
     /* Potential Targets and the per-target valid flag print for a single
        target too (GEN-11) -- Example 2's own configuration has just one. */
-    lines.push(cmd(`${pad('Potential Targets')}"${targets.map(nameOf).join(',')}"`, {
+    lines.push(cmd(`${pad('Potential Targets')}"${targets.map(nameOf).join(', ')}"`, {
       indent: 2, basis: 'documented', cite: [fieldsCite],
     }));
     /* The per-target valid flag is documented; the column heading is not. */
     for (const t of targets) {
       const m = doc.members.find((x) => x.id === t);
-      const valid = m !== undefined && isDatabase(m) && (m.role === 'physical' || m.role === 'logical');
-      lines.push(cmd(`${`${nameOf(t)}:`.padEnd(20, ' ')}${valid ? 'valid' : 'invalid'}${MODEL_MARK}`, {
+      const valid = m !== undefined && isDatabase(m) && (m.role === 'physical' || m.role === 'logical'
+        || (v.moved && m.id === v.declared)) && !v.disabled.has(t as string);
+      const awaiting = v.disabled.has(t as string);
+      lines.push(cmd(`${`${nameOf(t)}:`.padEnd(20, ' ')}${valid ? 'valid' : 'invalid'}${awaiting ? ' - member is disabled' : ''}${MODEL_MARK}`, {
         indent: 4, basis: 'model', cite: [fieldsCite, 'FSFO.TARGET_KIND'],
-        note: "A per-target valid flag is documented; the column heading and its spacing are this page's model, and the flag here reports only whether the member could be a target at all -- a physical or logical standby.",
+        note: "A per-target valid flag is documented; the column heading and its spacing are this page's model, and the flag here reports only whether the member could be a target at all -- a physical or logical standby."
+          + (awaiting ? ' The reason after \'invalid\' is what a live 19.27 configuration printed for the former primary after a failover ("invalid - member is disabled", fact check 2026-10-01, D9): an observation, not documentation.' : ''),
       }));
     }
     if (targets.length > 1) {
@@ -410,12 +598,39 @@ export function showFastStartFailover(doc: TopologyDoc): GeneratedFile {
         ['FSFO.TARGET_ORDER'],
       ));
     }
+    if (v.moved) {
+      lines.push(nDoc(
+        `${v.primary === null ? 'the new primary' : nameOf(v.primary)} is the primary at this point in the run, so its target is the former primary ${v.declared === null ? '' : nameOf(v.declared)}: FastStartFailoverTarget was set reciprocally when fast-start failover was enabled, and the reinstated database acts as the fast-start failover target for the new primary`,
+        ['FSFO.TARGET_RECIPROCAL_SHOWN', 'FSFO.REINSTATED_IS_TARGET'],
+      ));
+    }
+  } else if (v.moved) {
+    lines.push(nModel(
+      `${v.primary === null ? 'the new primary' : nameOf(v.primary)} is the primary at this point in the run and fast-start failover is disabled, so no target is listed: the document's target is now the primary itself`,
+      'With fast-start failover disabled the reciprocal FastStartFailoverTarget was never set, and the page lists no target rather than the old one.',
+    ));
   }
 
-  const master = doc.observers.find((o) => o.role === 'master') ?? doc.observers[0];
-  lines.push(cmd(`${pad('Observer')}${master === undefined ? '(none)' : master.name}`, {
-    indent: 2, basis: 'documented', cite: ['OBS.SHOW_OBSERVER_FIELDS'],
-  }));
+  /* "If there is more than one registered observer running, then the output of
+     this command shows all registered observers and indicates, with an
+     asterisk, which one is the master observer." The page's two examples print
+     one Observer: line and no asterisk, so the multi-observer layout is this
+     page's (GEN-23). */
+  if (doc.observers.length > 1) {
+    const ordered = [...doc.observers].sort((a, b) => (a.role === b.role ? 0 : a.role === 'master' ? -1 : 1));
+    ordered.forEach((o, i) => {
+      const star = f.state !== 'disabled' && o.role === 'master' ? ' (*)' : '';
+      lines.push(cmd(`${i === 0 ? pad('Observer') : ' '.repeat(22)}${o.name}${star}${i === 0 ? MODEL_MARK : ''}`, {
+        indent: 2, basis: 'model', cite: ['DGMGRL.SHOW_FSFO_ALL_OBSERVERS', 'OBS.SHOW_OBSERVER_FIELDS'],
+        note: "The documentation says the output shows all registered observers and marks the master with an asterisk; its examples show one 'Observer:' line and no asterisk, so one observer per line with '(*)' after the master is this page's layout.",
+      }));
+    });
+  } else {
+    const master = doc.observers.find((o) => o.role === 'master') ?? doc.observers[0];
+    lines.push(cmd(`${pad('Observer')}${master === undefined ? '(none)' : master.name}`, {
+      indent: 2, basis: 'documented', cite: ['OBS.SHOW_OBSERVER_FIELDS'],
+    }));
+  }
   lines.push(cmd(`${pad('Shutdown Primary')}${f.pmyShutdown ? 'TRUE' : 'FALSE'}`, {
     indent: 2, basis: 'documented', cite: ['FSFO.PMY_SHUTDOWN'],
   }));
@@ -470,8 +685,9 @@ export function showFastStartFailover(doc: TopologyDoc): GeneratedFile {
 
 /* ---------------- SHOW OBSERVER ---------------- */
 
-export function showObserver(doc: TopologyDoc): GeneratedFile {
+export function showObserver(doc: TopologyDoc, opts: ShowConfigurationOptions = {}): GeneratedFile {
   const lines: Line[] = [...headerLines()];
+  const v = runView(doc, opts);
   lines.push(cmd('DGMGRL> SHOW OBSERVER;', {
     basis: 'documented', cite: ['OBS.SHOW_OBSERVER_FIELDS'],
   }));
@@ -480,8 +696,12 @@ export function showObserver(doc: TopologyDoc): GeneratedFile {
   if (doc.observers.length === 0) {
     const view = fsFailoverStatusView(doc);
     lines.push(nDoc(
-      `no observer is deployed: that is not the same as unobserved -- with fast-start failover never enabled ${view.view} reads DISABLED, and a manual FAILOVER TO is the only thing that promotes a standby`,
-      [view.cite, 'FSFO.MANUAL_FAILOVER_CONDITIONS'],
+      doc.config.fsfo.state === 'disabled'
+        ? `no observer is deployed: that is not the same as unobserved -- with fast-start failover never enabled ${view.view} reads DISABLED, and a manual FAILOVER TO is the only thing that promotes a standby`
+        : 'no observer is deployed although fast-start failover is enabled: the broker displays the ORA-16819 warning for the primary and the target standby databases, and fast-start failover cannot happen until an observer is started',
+      doc.config.fsfo.state === 'disabled'
+        ? [view.cite, 'FSFO.MANUAL_FAILOVER_CONDITIONS']
+        : ['OBS.NOT_STARTED_16819', 'OBS.CANNOT_OCCUR_LIST'],
     ));
     return { id: 'show.observer', title: 'SHOW OBSERVER', syntax: 'show', lines, findings: [] };
   }
@@ -496,10 +716,9 @@ export function showObserver(doc: TopologyDoc): GeneratedFile {
      three-line header before the per-observer list -- "Configuration - ...",
      "Primary: ...", "Active Target Standby: ..." -- which OBS.SHOW_OBSERVER_FIELDS'
      own prose sentence never mentions, and this mock dropped along with it. */
-  const primaryId = declaredPrimary(doc);
+  const primaryId = v.primary;
   const primaryMember = doc.members.find((m) => m.id === primaryId);
-  const fsfoTargetList = doc.config.fsfo.target.kind === 'list' ? doc.config.fsfo.target.members : [];
-  const activeTargetId = armed ? fsfoTargetList[0] : undefined;
+  const activeTargetId = armed ? targetIdsOf(doc, v)[0] : undefined;
   const targetMember = doc.members.find((m) => m.id === activeTargetId)
     ?? doc.members.find((m) => isDatabase(m) && (m.role === 'physical' || m.role === 'logical'));
   lines.push(cmd(`Configuration - ${doc.config.name}`, {
@@ -579,10 +798,115 @@ export function showObserver(doc: TopologyDoc): GeneratedFile {
   return { id: 'show.observer', title: 'SHOW OBSERVER', syntax: 'show', lines, findings: [] };
 }
 
-/* ---------------- all three ---------------- */
+/* ---------------- SHOW DATABASE, for a RAC member ---------------- */
 
+const DB_ROLE_WORD = {
+  primary: 'PRIMARY', physical: 'PHYSICAL STANDBY', logical: 'LOGICAL STANDBY', snapshot: 'SNAPSHOT STANDBY',
+} as const;
+
+/**
+ * `SHOW DATABASE` for a database with more than one instance: the field that
+ * matters here is `Instance(s):`, which marks the one running apply on a RAC
+ * standby `(apply instance)` -- the documented example (facts.md F9).
+ */
+export function showDatabase(
+  doc: TopologyDoc, member: MemberId, opts: ShowConfigurationOptions = {},
+): GeneratedFile | null {
+  const m = doc.members.find((x) => x.id === member);
+  if (!m || !isDatabase(m) || !isRac(m)) return null;
+  const v = runView(doc, opts);
+  const primary = v.primary;
+  const role = m.id === primary ? 'primary' : m.role === 'primary' ? 'physical' : m.role;
+  const off = v.disabled.has(m.id as string) && m.id !== primary;
+  const lines: Line[] = [...headerLines()];
+  const show: CitationId[] = ['RAC.SHOW_DATABASE_INSTANCES'];
+  lines.push(cmd(`DGMGRL> SHOW DATABASE '${m.name}';`, { basis: 'documented', cite: ['DGMGRL.SHOW_DATABASE'] }));
+  lines.push(blank());
+  lines.push(cmd(`Database - ${m.name}`, { basis: 'documented', cite: show }));
+  lines.push(blank());
+  lines.push(cmd(`Role:               ${DB_ROLE_WORD[role]}`, { indent: 2, basis: 'documented', cite: show }));
+  const state = role === 'primary' ? 'TRANSPORT-ON'
+    : role === 'snapshot' ? 'APPLY-OFF'
+      : m.applyRunning ? 'APPLY-ON' : 'APPLY-OFF';
+  lines.push(cmd(`Intended State:     ${state}`, {
+    indent: 2, basis: 'documented',
+    cite: role === 'primary' ? ['RAC.TRANSPORT_ALL_INSTANCES'] : ['RAC.APPLY_INSTANCE'],
+  }));
+  /* A standby prints its lags between Intended State and Instance(s)
+     (GEN-24, SHOW DATABASE Example 1); a primary prints none. */
+  if (role !== 'primary') {
+    const lag = (n: number): string => (off ? '(unknown)' : `${n} seconds`);
+    lines.push(cmd(`Transport Lag:      ${lag(m.transportLagSeconds)}`, {
+      indent: 2, basis: 'documented', cite: off ? ['FAILOVER.FORMER_PRIMARY_DISABLED'] : ['DGMGRL.SHOW_DATABASE_ABBREVIATED'],
+    }));
+    lines.push(cmd(`Apply Lag:          ${lag(m.applyLagSeconds)}`, {
+      indent: 2, basis: 'documented', cite: off ? ['FAILOVER.FORMER_PRIMARY_DISABLED'] : ['DGMGRL.SHOW_DATABASE_ABBREVIATED'],
+    }));
+  }
+  lines.push(cmd('Instance(s):', { indent: 2, basis: 'documented', cite: show }));
+  const apply = opts.applyInstances?.[m.id as string];
+  const stopped = new Set(opts.downInstances ?? []);
+  for (const i of m.instances) {
+    const isApply = role !== 'primary' && role !== 'snapshot' && apply === i.name;
+    const down = stopped.has(`${m.id as string}/${i.name}`);
+    lines.push(cmd(`${i.name.padEnd(14, ' ')}${isApply ? ' (apply instance)' : ''}${down ? `  (not running)${MODEL_MARK}` : ''}`, down
+      ? {
+        indent: 4, basis: 'model', cite: show,
+        note: 'How SHOW DATABASE spells an instance that has stopped was not found in the documentation that was verified; this marker is the page\'s own.',
+      }
+      : { indent: 4, basis: 'documented', cite: show }));
+  }
+  lines.push(cmd('Database Status:', { basis: 'documented', cite: ['DGMGRL.SHOW_DATABASE_ABBREVIATED'] }));
+  if (off) {
+    lines.push(cmd('ORA-16661: the standby database needs to be reinstated', {
+      basis: 'documented', cite: ['FAILOVER.FORMER_PRIMARY_DISABLED', 'ORA.16661'],
+    }));
+  } else if (stopped.size > 0 && [...stopped].some((k) => k.startsWith(`${m.id as string}/`))) {
+    lines.push(cmd('WARNING', {
+      basis: 'model', cite: show,
+      note: 'A stopped instance makes the database status a warning in this mock; which ORA- error the broker lists for it was not verified.',
+    }));
+  } else {
+    lines.push(cmd('SUCCESS', { basis: 'documented', cite: ['DGMGRL.SHOW_DATABASE_ABBREVIATED'] }));
+  }
+  lines.push(nModel(
+    'the broker also prints Apply Rate and Real Time Query between the lags and Instance(s): this mock draws neither, and the "(computed n seconds ago)" after each lag is left off because the page reads no clock',
+    'Those fields are real SHOW DATABASE output that the document has no data for.',
+    ['DGMGRL.SHOW_DATABASE_ABBREVIATED'],
+  ));
+  lines.push(blank());
+  if (role === 'primary') {
+    lines.push(nDoc(
+      'every instance open read-write runs redo transport, and the primary stays available while at least one of them still ships redo',
+      ['RAC.TRANSPORT_ALL_INSTANCES', 'RAC.PRIMARY_AVAILABLE'],
+    ));
+  } else if (role !== 'snapshot') {
+    const several = isMultiInstanceApply(m);
+    lines.push(nDoc(
+      apply === undefined
+        ? 'no instance is applying at this point: the apply instance failed and the broker has not moved apply yet, or none is running'
+        : several
+          ? 'with ApplyInstances above 1 Redo Apply can run on all instances at the same time, but only one of them is the apply coordinator, and that is the instance the broker considers the apply instance; if it fails the broker restarts the coordinator on another running instance'
+          : 'apply runs on one instance, the apply instance; if it fails the broker restarts apply on another running instance',
+      several ? ['RAC.MULTI_INSTANCE_APPLY', 'RAC.APPLY_INSTANCE_FAILOVER'] : ['RAC.APPLY_INSTANCE', 'RAC.APPLY_INSTANCE_FAILOVER'],
+    ));
+  }
+  return {
+    id: `show.database.${m.id as string}`, title: `SHOW DATABASE ${m.name}`, syntax: 'show', lines, findings: [],
+  };
+}
+
+/* ---------------- all of them ---------------- */
+
+/**
+ * The three configuration-wide blocks, then one SHOW DATABASE per RAC
+ * database -- appended, so a configuration without RAC reads as it always did.
+ */
 export function generateShowMocks(
   doc: TopologyDoc, opts: ShowConfigurationOptions = {},
 ): GeneratedFile[] {
-  return [showConfiguration(doc, opts), showFastStartFailover(doc), showObserver(doc)];
+  const rac = doc.members
+    .map((m) => showDatabase(doc, m.id, opts))
+    .filter((f): f is GeneratedFile => f !== null);
+  return [showConfiguration(doc, opts), showFastStartFailover(doc, opts), showObserver(doc, opts), ...rac];
 }

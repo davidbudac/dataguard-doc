@@ -29,6 +29,7 @@ import { Timeline } from '../timeline/Timeline';
 import { comparisonSection } from '../review/model';
 import { buildReport, diagramLandscape } from './report-model';
 import type { ComparisonSection, FindingRow, ReportModel } from './report-model';
+import { isDesktop, printNative } from '../common/desktop';
 import '@/styles/report.css';
 
 /* ---------------- opening and closing ---------------- */
@@ -39,9 +40,16 @@ const nextFrame = (): Promise<void> =>
     else setTimeout(r, 0);
   });
 
-/** Ask the browser to print -- its dialog is where "Save as PDF" lives. */
+/**
+ * Ask the browser to print -- its dialog is where "Save as PDF" lives. macOS's
+ * webview ignores `window.print()`, so the desktop shell prints natively.
+ */
 export function printReport(): void {
-  if (typeof window !== 'undefined' && typeof window.print === 'function') window.print();
+  const fallback = (): void => {
+    if (typeof window !== 'undefined' && typeof window.print === 'function') window.print();
+  };
+  if (!isDesktop()) { fallback(); return; }
+  printNative().then((done) => { if (!done) fallback(); }, fallback);
 }
 
 /** ⋯ → Report as PDF: show the report, let it lay out, then print it. */
@@ -423,7 +431,7 @@ export function Report() {
         <section class="rp-sec is-page" aria-labelledby="rp-s-files">
           <h2 id="rp-s-files"><span class="rp-n">{num()}</span> Generated configuration</h2>
           <p class="rp-lead">
-            The same files the Configure mode generates. Grey lines are this page commenting,
+            The same files the Config mode generates. Grey lines are this page commenting,
             not part of the syntax.
           </p>
           {model.files.map((g) => (
@@ -439,7 +447,7 @@ export function Report() {
 
         {model.run === null || tr === null ? null : (
           <section class="rp-sec is-page" aria-labelledby="rp-s-run">
-            <h2 id="rp-s-run"><span class="rp-n">{num()}</span> Break: injected events and outcome</h2>
+            <h2 id="rp-s-run"><span class="rp-n">{num()}</span> Run: injected events and outcome</h2>
             <table class="rp-tab rp-events">
               <thead><tr><th>t (s)</th><th>Event</th></tr></thead>
               <tbody>

@@ -2,10 +2,10 @@
  * The Introduction (ui.md SS3e).
  *
  * What is pinned here is the contract the page makes with the rest of the
- * application: it is a page with an address, it is what a first visit opens
- * on, every button on it loads the configuration it names before it switches
- * mode, and leaving it -- by any door -- is what records that this reader has
- * been shown it.
+ * application: it is a page with an address, it opens only when asked for
+ * (the brand link, or `?intro=1` -- never on a first visit), every button on
+ * it loads the configuration it names before it switches mode, and leaving
+ * it -- by any door -- is what records that this reader has been shown it.
  *
  * @vitest-environment jsdom
  */
@@ -101,27 +101,18 @@ describe('?intro=1', () => {
 
 describe('what boot opens', () => {
   const boot = (o: Partial<Parameters<typeof introOnBoot>[0]>): boolean => introOnBoot({
-    asked: false, seen: false, hasDocument: false, keys: [], ...o,
+    asked: false, ...o,
   });
 
-  it('opens the Introduction on a first visit', () => {
-    expect(boot({})).toBe(true);
-    /* A reading preference says how to render what is shown, not what to
-       show: it does not count as an address of its own. */
-    expect(boot({ keys: ['theme', 'ed'] })).toBe(true);
+  it('does not open the Introduction on a first visit', () => {
+    expect(boot({})).toBe(false);
   });
 
-  it('leaves a link to something alone', () => {
-    expect(boot({ keys: ['preset'] })).toBe(false);
-    expect(boot({ keys: ['lesson', 'step'] })).toBe(false);
-    expect(boot({ keys: ['mode'] })).toBe(false);
-    expect(boot({ hasDocument: true })).toBe(false);
-  });
-
-  it('never opens it twice on its own, and always opens it when it is asked for', () => {
-    expect(boot({ seen: true })).toBe(false);
-    expect(boot({ seen: true, asked: true })).toBe(true);
-    expect(boot({ seen: true, asked: true, keys: ['preset'], hasDocument: true })).toBe(true);
+  it('opens it when its address, ?intro=1, is asked for', () => {
+    expect(boot({ asked: true })).toBe(true);
+    /* And that address is what the brand link carries. */
+    expect(INTRO_HREF).toBe('?intro=1');
+    expect(parseUrlQuery(INTRO_HREF).state.intro).toBe(true);
   });
 });
 
@@ -138,7 +129,7 @@ describe('the shell with the Introduction open', () => {
     expect(root.querySelector('.app-dock')).toBeNull();
     /* The header stays, and the modes with it. */
     expect(root.querySelector('.topbar')).not.toBeNull();
-    expect(button(root, 'Build')).toBeDefined();
+    expect(button(root, 'Topology')).toBeDefined();
   });
 
   it('carries no inline style, anywhere -- style-src is \'self\'', async () => {
@@ -166,7 +157,7 @@ describe('the shell with the Introduction open', () => {
   it('is left by any mode button, which records that it has been shown', async () => {
     const root = mount(App);
     await tick();
-    button(root, 'Configure').click();
+    button(root, 'Config').click();
     await tick();
     expect(introPage.value).toBe(false);
     expect(mode.value).toBe('configure');
@@ -207,7 +198,7 @@ describe('the shell with the Introduction open', () => {
 /* ---------------- the buttons ---------------- */
 
 describe('the two hero buttons', () => {
-  it('starts the reader on the classic configuration, in Build', async () => {
+  it('starts the reader on the classic configuration, in Topology', async () => {
     const root = mount(IntroPage);
     await tick();
     button(root, 'Start with the classic 1+1+1').click();
@@ -224,7 +215,8 @@ describe('the two hero buttons', () => {
     button(root, 'Watch a failover').click();
     await tick();
     expect(presetId.value).toBe('classic');
-    expect(mode.value).toBe('break');
+    /* Topology: the drawing and the small timeline under it. */
+    expect(mode.value).toBe('build');
     const events = doc.value.topology.events;
     expect(events.length).toBeGreaterThan(0);
     expect(events.some((e) => e.kind === 'host.down')).toBe(true);
@@ -235,7 +227,7 @@ describe('the two hero buttons', () => {
 });
 
 describe('the four "Try it" buttons', () => {
-  it('draws the classic in Build', async () => {
+  it('draws the classic in Topology', async () => {
     const root = mount(IntroPage);
     button(root, 'Draw the classic 1+1+1').click();
     await tick();
@@ -243,7 +235,7 @@ describe('the four "Try it" buttons', () => {
     expect(presetId.value).toBe('classic');
   });
 
-  it('breaks a far sync configuration in Break, with the scenario applied', async () => {
+  it('breaks a far sync configuration in the Detailed timeline, with the scenario applied', async () => {
     const root = mount(IntroPage);
     button(root, 'Isolate a far sync site').click();
     await tick();
@@ -270,13 +262,15 @@ describe('the four "Try it" buttons', () => {
 });
 
 describe('the classic walkthrough', () => {
-  it('starts from the hero on the classic configuration, in Break, with a clean timeline', async () => {
+  it('starts from the hero on the classic configuration, in Topology, with no run yet', async () => {
     const root = mount(IntroPage);
     await tick();
     button(root, 'Walk through it step by step').click();
     await tick();
     expect(presetId.value).toBe('classic');
-    expect(mode.value).toBe('break');
+    /* The whole walkthrough stays in Topology: the drawing, the small timeline
+       and the inspector's threshold are all there. */
+    expect(mode.value).toBe('build');
     expect(doc.value.topology.events).toHaveLength(0);
     expect(walkthroughPhase.value).toBe('crash');
     expect(introPage.value).toBe(false);
@@ -302,12 +296,13 @@ describe('the classic walkthrough', () => {
     const threshold = inspector.querySelector<HTMLInputElement>('input[aria-label="FastStartFailoverThreshold"]');
     expect(threshold).not.toBeNull();
     threshold!.value = '20';
-    threshold!.dispatchEvent(new Event('input', { bubbles: true }));
+    /* A number box commits on change (ED-12 made the threshold one: 6 to 3600 is no slider). */
+    threshold!.dispatchEvent(new Event('change', { bubbles: true }));
     await tick();
     expect(doc.value.topology.config.fsfo.thresholdSeconds).toBe(20);
     button(guide, 'See the changed result').click();
     await tick();
-    expect(mode.value).toBe('break');
+    expect(mode.value).toBe('build');
   });
 
   it('offers a prepared example on the read-only narrow layout', async () => {
@@ -344,7 +339,7 @@ describe('the page itself', () => {
     const root = mount(IntroPage);
     await tick();
     const text = root.textContent ?? '';
-    for (const word of ['Build', 'Break', 'Configure', 'Learn']) expect(text).toContain(word);
+    for (const word of ['Topology', 'Detailed timeline', 'Config', 'Learn']) expect(text).toContain(word);
     expect(text).toContain('model');
     const legacy = [...root.querySelectorAll('a')]
       .find((a) => (a.getAttribute('href') ?? '').startsWith('legacy/'));

@@ -66,7 +66,7 @@ export function LessonStep({ lesson, index, active }: LessonStepProps) {
   }, [active]);
 
   const show = (): void => { openLessonStep(lesson, index, 'live'); };
-  const openInBreak = (): void => { openStepInMode(lesson, index, 'break'); };
+  const openInTimeline = (): void => { openStepInMode(lesson, index, 'break'); };
 
   const base = baselineTopology(lesson);
   const changes = step.apply?.patches ? describePatch(step.apply.patches) : [];
@@ -98,8 +98,8 @@ export function LessonStep({ lesson, index, active }: LessonStepProps) {
               Show me
             </button>
             {' '}
-            <button type="button" class="btn" disabled={off} onClick={openInBreak}>
-              Open in Break
+            <button type="button" class="btn" disabled={off} onClick={openInTimeline}>
+              Open in the detailed timeline
             </button>
           </span>
           <WhyPill why={why} />

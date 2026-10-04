@@ -12,16 +12,22 @@
  */
 
 import { useLayoutEffect } from 'preact/hooks';
-import { BOUNDS } from '@/engine';
+import { BOUNDS, clampLagLimit, configurationWideServiceNameProblem, lagLimitAllowsZero } from '@/engine';
 import type { FsfoConfig, MemberId, RoutePriority, TopologyDoc } from '@/engine';
 import { hostId, isDatabase, lagLimitIsSet, lagLimitOf } from '@/engine';
 import { errors } from '@/state/derived';
 import { Fact } from '../common/Chip';
-import { Action, Check, Choice, Fold, Note, Num, Pick, Text } from './controls';
+import { Action, Check, Choice, Fold, Note, Num, Pick, Text, Withheld } from './controls';
 import { FieldNote } from '../common/Field';
-import { patchConfig, patchEnvironment, patchFsfo } from './edits';
+import {
+  patchConfig, patchEnvironment, patchFsfo, setFsfoLagLimit, setFsfoState, setFsfoThreshold, setProtectionMode,
+  setRoleTransition, unsetFsfoLagLimit,
+} from './edits';
 import { revealForFlagged, sectionsWithErrors } from './sections';
-import { gateOff, off, ON, WHY } from './why';
+import {
+  fsfoStateNote, lagLimitNote, PROTECTION_NOTE, ROLE_TRANSITION_NOTE, THRESHOLD_NOTE,
+} from './notes';
+import { gateOff, lagLimitGate, off, ON, WHY } from './why';
 
 export interface ConfigFormProps {
   doc: TopologyDoc;
@@ -43,15 +49,12 @@ export function ConfigForm({ doc }: ConfigFormProps) {
   const databases = doc.members.filter(isDatabase);
   const targetList = f.target.kind === 'list' ? f.target.members : [];
 
-  /* 19c: a maximum performance property, and 19c disagrees with itself about
-     whether it reaches maximum availability at all -- this page follows the
-     observed 19.27 behaviour (not evaluated there) over the chapter's "must
-     be zero" sentence. 26ai: maximum availability has the role too, where 0
-     is the broker default and means zero data loss; that role is a 21c
-     feature, not a 26ai one. */
-  const lagLimitOff = perf
-    ? ON
-    : ((ed === '26ai' && avail) ? ON : off(ed === '26ai' ? WHY.lagTypeMode : WHY.lagLimitMaxAvail19c));
+  /* Which edition and mode can set it, and why not: one function (why.ts),
+     because the Detailed timeline's popover greys the same control the same way. */
+  const lagLimitOff = lagLimitGate(doc);
+  /* 0 is a documented limit only where it is the broker default: 26ai maximum
+     availability (ED-09). */
+  const zeroOk = lagLimitAllowsZero(ed, c.protectionMode);
 
   const setTarget = (members: MemberId[]): void =>
     patchFsfo(
@@ -94,11 +97,6 @@ export function ConfigForm({ doc }: ConfigFormProps) {
   return (
     <>
       <Fold id="Configuration" title="Configuration" hint={c.protectionMode}>
-        <Text
-          name="Name" prose
-          value={c.name}
-          onCommit={(v) => patchConfig('Rename the configuration', (x) => ({ ...x, name: v.trim() || x.name }))}
-        />
         <Choice
           name="Protection mode" prose
           value={c.protectionMode}
@@ -107,8 +105,8 @@ export function ConfigForm({ doc }: ConfigFormProps) {
             { value: 'MAXAVAILABILITY', label: 'MAXAVAILABILITY' },
             { value: 'MAXPERFORMANCE', label: 'MAXPERFORMANCE' },
           ]}
-          onChange={(v) => patchConfig(`Set the protection mode to ${v}`, (x) => ({ ...x, protectionMode: v }))}
-          note="Broker table 4-2 lists the transports each mode takes: SYNC under maximum protection, SYNC or FASTSYNC under maximum availability, and ASYNC as the only mode listed for maximum performance."
+          onChange={setProtectionMode}
+          note={PROTECTION_NOTE}
         />
         <Choice
           name="BystandersFollowRoleChange"
@@ -122,14 +120,15 @@ export function ConfigForm({ doc }: ConfigFormProps) {
         <Text
           name="ConfigurationWideServiceName"
           value={c.configurationWideServiceName ?? ''}
-          placeholder={`not set (default ${c.name}_CFG)`}
+          placeholder="not set (default <primary database name>_CFG)"
+          problem={configurationWideServiceNameProblem}
           onCommit={(v) => patchConfig('Set ConfigurationWideServiceName', (x) => {
             const next = { ...x };
             if (v.trim() === '') delete next.configurationWideServiceName;
             else next.configurationWideServiceName = v.trim();
             return next;
           })}
-          note="One name for the configuration, as an alternative to listing every address. The default is primarydbname_CFG, documented in 12.2, 18c, 19c and 26ai alike -- never a later edition -- and does not change after a role transition."
+          note="Changes the name of the configuration-wide service the broker publishes on each member. The default is primarydbname_CFG -- the name of the primary database with _CFG appended, not the configuration's own name -- documented in 12.2, 18c, 19c and 26ai alike, and it does not change after a role transition. The first character must be alphanumeric and the name runs to at most 30 characters."
         />
         <Note>
           Default primarydbname_CFG.
@@ -200,14 +199,8 @@ export function ConfigForm({ doc }: ConfigFormProps) {
             { value: 'enabled', label: 'ENABLED' },
             { value: 'observe-only', label: 'OBSERVE ONLY' },
           ]}
-          onChange={(v) => patchFsfo(
-            `Set fast-start failover to ${v}`, (x): FsfoConfig => ({ ...x, state: v }),
-          )}
-          note={f.state === 'observe-only'
-            ? 'ENABLE FAST_START FAILOVER OBSERVE ONLY: the observer watches, records what it would have done, and never fails over.'
-            : f.state === 'disabled'
-              ? 'Disabled is not the same as unobserved. With fast-start failover disabled a manual FAILOVER TO is the only thing that promotes a standby, and it needs no observer.'
-              : "Failover needs both the observer and the target standby to have lost the primary for the threshold, plus the target standby's readiness check. This page draws ObserverOverride at FALSE, the broker default."}
+          onChange={setFsfoState}
+          note={fsfoStateNote(f.state)}
         />
 
         {/* The target list is the one property here that is a list, so it is
@@ -290,109 +283,130 @@ export function ConfigForm({ doc }: ConfigFormProps) {
         <Num
           name="FastStartFailoverThreshold"
           bound="thresholdSeconds"
+          kind="number"
           value={f.thresholdSeconds}
           coalesce="fsfo:threshold"
-          onChange={(v) => patchFsfo(
-            `Set FastStartFailoverThreshold to ${v} s`,
-            (x): FsfoConfig => ({ ...x, thresholdSeconds: v }), 'fsfo:threshold',
-          )}
-          note="Default 30 s, minimum 6 s. The clock starts when the observer first loses its connection to the primary, and the isolated primary's own stall clock always uses it."
+          onChange={setFsfoThreshold}
+          note={THRESHOLD_NOTE}
         />
 
         <Num
           name="FastStartFailoverLagLimit"
           bound="lagLimitSeconds"
+          kind="number"
           value={lagLimit}
           coalesce="fsfo:laglimit"
           enabled={lagLimitOff}
           warn={lagLimit > f.thresholdSeconds}
-          onChange={(v) => patchFsfo(
-            `Set FastStartFailoverLagLimit to ${v} s`,
-            (x): FsfoConfig => ({ ...x, lagLimitSeconds: v, lagLimitSet: true }), 'fsfo:laglimit',
-          )}
-          note={(lagLimitIsSet(f) ? '' : 'Not set: the broker default for this edition and mode applies. ')
-            + (lagLimit > f.thresholdSeconds
-            ? 'Oracle recommends the lag limit at or below the threshold: past it the old primary can keep committing after fast-start failover is initiated, briefly risking two primaries.'
-            : ed === '26ai' && avail
-              ? '26ai gives maximum availability a lag limit too, with a broker default of 0 -- the standby must have received everything and the failover is zero-loss. Any non-zero value, minimum 5 s, makes it bounded-loss. The role arrived in 21c; 26ai\'s own contribution is the per-mode default.'
-              : ed === '19c' && avail
-                ? 'Under 19c this control is greyed because the property page and the fast-start failover chapter disagree about whether it reaches maximum availability at all -- see the why-pill. Default 30 s, minimum 5 s.'
-                : 'Default 30 s, minimum 5 s. Failover is permitted while the gated lag stays within it.')}
+          min={zeroOk ? 0 : undefined}
+          clampTo={(raw) => clampLagLimit(ed, c.protectionMode, raw)}
+          onChange={setFsfoLagLimit}
+          note={lagLimitNote(doc)}
         />
+        {lagLimitOff.state === 'off' || !lagLimitIsSet(f) ? null : (
+          <div class="rr-line lrow is-acts">
+            <Action
+              label={zeroOk ? 'Back to the broker default (0)' : 'Back to the broker default'}
+              onClick={unsetFsfoLagLimit}
+            />
+          </div>
+        )}
+        {zeroOk && lagLimitOff.state !== 'off' ? (
+          <Note>
+            26ai gives maximum availability a lag limit default of 0, and the same page says a value
+            must be greater than or equal to 5. Oracle does not reconcile the two; 0 is taken here as
+            the zero-data-loss setting and any other value from 5.
+            <Fact basis="conflict" id="FSFO.LAGLIMIT_RANGES" />
+          </Note>
+        ) : null}
 
-        <Choice
-          name="FastStartFailoverLagType"
-          value={f.lagType}
-          options={[{ value: 'APPLY', label: 'APPLY' }, { value: 'TRANSPORT', label: 'TRANSPORT' }]}
-          enabled={ed === '19c' ? off(WHY.docLater26aiObservedIn1927) : gateOff(!perf, WHY.lagTypeMode)}
-          onChange={(v) => patchFsfo(
-            `Set FastStartFailoverLagType to ${v}`, (x): FsfoConfig => ({ ...x, lagType: v }),
-          )}
-          note={ed === '19c'
-            ? 'Documented from 26ai; absent from the 19c and 21c properties references. A live 19.27 system carries it regardless (SHOW FAST_START FAILOVER prints Lag Type:) -- an observation, never documentation.'
-            : 'Under TRANSPORT the gated quantity is the transport lag, clamped to the apply lag; terminal recovery still pays the apply lag.'}
-        />
+        {/* Under 19c both are off for the one reason: one line, not two grey
+            rows under a pill apiece. Under 26ai each is off, or not, for its
+            own. */}
+        {ed === '19c' ? (
+          <Withheld
+            names="FastStartFailoverLagType, FastStartFailoverLagGraceTime"
+            why={WHY.docLater26aiObservedIn1927}
+          />
+        ) : (
+          <>
+            <Choice
+              name="FastStartFailoverLagType"
+              value={f.lagType}
+              options={[{ value: 'APPLY', label: 'APPLY' }, { value: 'TRANSPORT', label: 'TRANSPORT' }]}
+              enabled={gateOff(!perf, WHY.lagTypeMode)}
+              onChange={(v) => patchFsfo(
+                `Set FastStartFailoverLagType to ${v}`, (x): FsfoConfig => ({ ...x, lagType: v }),
+              )}
+              note="Oracle: the type of lag (apply lag or transport lag) used to specify the data loss threshold. Under TRANSPORT this page gates on the transport lag, clamped to the apply lag, and terminal recovery still pays the apply lag -- its reading, from a blog rather than the property page."
+            />
 
-        <Num
-          name="FastStartFailoverLagGraceTime"
-          bound="lagGraceTimeSeconds"
-          value={f.lagGraceTimeSeconds}
-          coalesce="fsfo:laggrace"
-          enabled={ed === '19c'
-            ? off(WHY.docLater26aiObservedIn1927)
-            : !fsfoOn
-              ? off(WHY.lagGraceNoFsfo)
-              : gateOff(!perf, WHY.lagGraceMode)}
-          onChange={(v) => patchFsfo(
-            `Set FastStartFailoverLagGraceTime to ${v} s`,
-            (x): FsfoConfig => ({ ...x, lagGraceTimeSeconds: v }), 'fsfo:laggrace',
-          )}
-          note={ed === '19c'
-            ? 'Documented from 26ai; absent from the 19c and 21c properties references. A live 19.27 system carries it regardless (SHOW FAST_START FAILOVER prints Lag Grace Time:) -- an observation, never documentation.'
-            : 'The permission to keep committing while the lag is over the limit is granted by the observer or the target standby, and the property is defined only while fast-start failover is enabled.'}
-        />
+            <Num
+              name="FastStartFailoverLagGraceTime"
+              bound="lagGraceTimeSeconds"
+              value={f.lagGraceTimeSeconds}
+              coalesce="fsfo:laggrace"
+              enabled={!fsfoOn
+                ? off(WHY.lagGraceNoFsfo)
+                : gateOff(!perf, WHY.lagGraceMode)}
+              onChange={(v) => patchFsfo(
+                `Set FastStartFailoverLagGraceTime to ${v} s`,
+                (x): FsfoConfig => ({ ...x, lagGraceTimeSeconds: v }), 'fsfo:laggrace',
+              )}
+              note="The permission to keep committing while the lag is over the limit is granted by the observer or the target standby, and the property is defined only while fast-start failover is enabled."
+            />
+          </>
+        )}
 
-        <Check
-          name="ObserverPingInterval / ObserverPingRetry"
-          label="Both properties are explicitly set"
-          checked={pingSet}
-          enabled={ed === '19c' ? off(WHY.pingPropsNotIn19c) : ON}
-          onChange={(v) => patchFsfo(
-            v ? 'Set the ObserverPing properties' : 'Leave the ObserverPing properties unset',
-            (x): FsfoConfig => ({
-              ...x,
-              pingIntervalMs: v ? BOUNDS.pingIntervalMs.default : null,
-              pingRetry: v ? BOUNDS.pingRetry.default : null,
-            }),
-          )}
-          note={ed === '19c'
-            ? 'Neither property exists in 19c: absent from the 12.2, 18c and 19c property pages and from a live 19.27 system. First documented in 21c.'
-            : "When both are set, the threshold is ignored for the observer's detection. That much is documented; the arithmetic below is not."}
-        />
-        <Num
-          name="ObserverPingInterval"
-          bound="pingIntervalMs"
-          value={f.pingIntervalMs ?? BOUNDS.pingIntervalMs.default}
-          coalesce="fsfo:pingint"
-          enabled={ed === '19c' ? off(WHY.pingPropsNotIn19c) : pingSet ? ON : off(WHY.pingUnset)}
-          onChange={(v) => patchFsfo(
-            `Set ObserverPingInterval to ${v} ms`,
-            (x): FsfoConfig => ({ ...x, pingIntervalMs: v }), 'fsfo:pingint',
-          )}
-        />
-        <Num
-          name="ObserverPingRetry"
-          bound="pingRetry"
-          kind="number"
-          value={f.pingRetry ?? BOUNDS.pingRetry.default}
-          enabled={ed === '19c' ? off(WHY.pingPropsNotIn19c) : pingSet ? ON : off(WHY.pingUnset)}
-          onChange={(v) => patchFsfo(
-            `Set ObserverPingRetry to ${v}`, (x): FsfoConfig => ({ ...x, pingRetry: v }),
-          )}
-          note={detectSeconds === null
-            ? undefined
-            : `The documentation says only that detection can be reduced to nearly one second. The first failed ping plus its retries reads as ${detectSeconds.toFixed(1)} s here.`}
-        />
+        {/* Under 19c the switch and both values are off for the one reason, and
+            unset the two values are: one line each time, not three or two grey
+            rows. Set, they are two ordinary controls. */}
+        {ed === '19c' ? (
+          <Withheld names="ObserverPingInterval, ObserverPingRetry" why={WHY.pingPropsNotIn19c} />
+        ) : (
+          <>
+            <Check
+              name="ObserverPingInterval / ObserverPingRetry"
+              label="Both properties are explicitly set"
+              checked={pingSet}
+              onChange={(v) => patchFsfo(
+                v ? 'Set the ObserverPing properties' : 'Leave the ObserverPing properties unset',
+                (x): FsfoConfig => ({
+                  ...x,
+                  pingIntervalMs: v ? BOUNDS.pingIntervalMs.default : null,
+                  pingRetry: v ? BOUNDS.pingRetry.default : null,
+                }),
+              )}
+              note="When both are set, the threshold is ignored for the observer's detection. That much is documented; the arithmetic below is not."
+            />
+            {pingSet ? (
+              <>
+                <Num
+                  name="ObserverPingInterval"
+                  bound="pingIntervalMs"
+                  value={f.pingIntervalMs ?? BOUNDS.pingIntervalMs.default}
+                  coalesce="fsfo:pingint"
+                  onChange={(v) => patchFsfo(
+                    `Set ObserverPingInterval to ${v} ms`,
+                    (x): FsfoConfig => ({ ...x, pingIntervalMs: v }), 'fsfo:pingint',
+                  )}
+                />
+                <Num
+                  name="ObserverPingRetry"
+                  bound="pingRetry"
+                  kind="number"
+                  value={f.pingRetry ?? BOUNDS.pingRetry.default}
+                  onChange={(v) => patchFsfo(
+                    `Set ObserverPingRetry to ${v}`, (x): FsfoConfig => ({ ...x, pingRetry: v }),
+                  )}
+                  note={detectSeconds === null
+                    ? undefined
+                    : `The documentation says only that detection can be reduced to nearly one second. The first failed ping plus its retries reads as ${detectSeconds.toFixed(1)} s here.`}
+                />
+              </>
+            ) : <Withheld names="ObserverPingInterval, ObserverPingRetry" why={WHY.pingUnset} />}
+          </>
+        )}
         {detectSeconds === null ? null : (
           <Note>
             Detection <span class="mono">= ObserverPingInterval &times; (ObserverPingRetry + 1)</span>
@@ -484,6 +498,12 @@ export function ConfigForm({ doc }: ConfigFormProps) {
             : ' Under 19c a change does not affect the location of the master observer until the next role change; 26ai changes it automatically instead.'}
           <Fact basis="documented" id={ed === '26ai' ? 'OBS.PREFERRED_HOSTS_26AI' : 'OBS.PREFERRED_HOSTS'} />
         </Note>
+        <Note>
+          Oracle sets the property on each database separately. This page keeps one list for the
+          whole configuration and writes that same list to each database that needs one, so two
+          databases with different lists cannot be drawn here.
+          <Fact basis="model" id="OBS.PREFERRED_HOSTS" />
+        </Note>
       </Fold>
 
       <Fold
@@ -496,10 +516,8 @@ export function ConfigForm({ doc }: ConfigFormProps) {
           bound="roleTransitionSeconds"
           value={doc.environment.roleTransitionSeconds}
           coalesce="env:role"
-          onChange={(v) => patchEnvironment(
-            `Set the role transition to ${v} s`, (e) => ({ ...e, roleTransitionSeconds: v }), 'env:role',
-          )}
-          note="Terminal recovery, the role change and the open are environment-dependent, not parameter-driven. This is the drawing's constant for them."
+          onChange={setRoleTransition}
+          note={ROLE_TRANSITION_NOTE}
         />
         <Num
           name="Local redo write" prose

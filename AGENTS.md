@@ -19,21 +19,23 @@ produced, and how to extend it without breaking consistency or accuracy.
 | `diagrams/fsfo-sequence.svg` (+`.png`) | Sequence diagram of the crash case with an elapsed-time gutter |
 | `diagrams/fsfo-net-timeout.svg` (+`.png`) | Two panels separating NET_TIMEOUT (redo transport) from the broker failover clocks |
 | `diagrams/README.md` | Figure embeds, broker-property and redo-transport-property tables with verified defaults, the ping-properties quirk, the verified-facts sections behind the commit/reopen/observer/placement/side-topics views (including the 24-cell observer-placement outcome matrix) and behind the 26ai edition switch (the MaxAvailability lag-limit semantics and Oracle's self-contradiction on them, `PrimaryDatabaseCandidates`, `V$FS_FAILOVER_OBSERVERS`), the drawing idealizations, Oracle doc links. Its *Topology features* section points at `app/design/facts.md` for far sync, cascading, RedoRoutes, multi-target and multi-observer sources |
-| `app/` | The workbench: TypeScript + Vite + Preact + signals. A pure, DOM-free engine in `app/src/engine` (types, citation catalogue, validation rules, redo-graph resolver, epoch-loop simulator, generators, the legacy adapter), the interface in `app/src/ui` (including the on-canvas action bar, the Introduction page and the `Hints` toggle — see `app/design/ui.md` §3c–§3i; §3h is how the drawing is driven: click selects, `⋯` for the bar, drag-to-place, inline rename, marquee, shortcuts; §3i is the lean pass: the toolbar is the one add surface, Remove sits in the rail header), state in `app/src/state`, eleven presets in `app/src/presets`, nine lessons and the reference tables in `app/src/content`, 2298 vitest tests across 90 files in `app/src/**/__tests__` and `app/test`. Built to `_site/` and served at `/dataguard/`. Zero external requests, no inline script and no inline style — the page is meant to run under `script-src 'self'; style-src 'self'` |
+| `app/` | The workbench: TypeScript + Vite + Preact + signals. A pure, DOM-free engine in `app/src/engine` (types, citation catalogue, validation rules, redo-graph resolver, epoch-loop simulator, generators, the legacy adapter), the interface in `app/src/ui` (including the on-canvas action bar, the Introduction page and the `Hints` toggle — see `app/design/ui.md` §3c–§3i; §3h is how the drawing is driven: click selects, `⋯` for the bar, drag-to-place, inline rename, marquee, shortcuts; §3i is the lean pass: the toolbar is the one add surface, Remove sits in the rail header; "Simulate's two layouts", at the end, is the Split and Lanes layouts of the Simulate screen and the switch between them), state in `app/src/state`, twelve presets in `app/src/presets`, ten lessons and the reference tables in `app/src/content`, 3382 vitest tests across 128 files in `app/src/**/__tests__` and `app/test`. Built to `_site/` and served at `/dataguard/`. Zero external requests, no inline script and no inline style — the page is meant to run under `script-src 'self'; style-src 'self'` |
 | `app/public/collectors/` | Read-only SQL collector, optional Bash/SQL*Plus wrapper and run instructions for existing setups. The ⋯ menu's **Import existing setup** sheet previews pasted/file output before drawing it. `engine/collect.ts` maps current routes; imported `routesObserved` prevents invented NULL-default routes. Missing broker settings and placement assumptions remain in document notes. Validated live on a 19c primary + mounted standby (SYSDBA, local OS auth); wallet, least-privilege, RAC and far sync remain unverified. DGMGRL transcripts are not parsed. |
 | `app/design/facts.md` | The verified Oracle fact sheet for the topology features (far sync, cascading, multiple standbys and FSFO targets, multiple observers, RedoRoutes, member types, destination counts), researched 2026-08-16 against docs.oracle.com and re-verified 2026-08-17, marked `[D]` / `[D-later]` / `[UNDOC]` / `[CONFLICT]` per claim. **The only permitted source of a "documented" claim in the application.** Its top-five traps are restated in the accuracy rules below |
 | `app/design/engine.md` | The engine design: `Claim`/`Basis` labelling, the topology data model, the validation catalogue, the redo-graph resolver, the epoch-loop failure engine, the compat adapter and the 24-cell matrix gate, the generators, the module layout — plus §10, *Deviations from the design as built*, which is where the code and the specification differ |
-| `app/design/ui.md` | The application architecture: premises carried over from the legacy page, project structure and the CSP goal, Document-vs-View state, the four modes, canvas layout/routing, timeline, the migration table from the six legacy chapters, and the taste notes. Its as-built notes (event-menu placement, the mode-aware readout, the drawer's focus contract, the print pass) are the record of what the code does where it went past the design |
+| `app/design/ui.md` | The application architecture: premises carried over from the legacy page, project structure and the CSP goal, Document-vs-View state, the four modes, canvas layout/routing, timeline, the migration table from the six legacy chapters, and the taste notes. Its as-built notes (the mode-aware readout, the drawer's focus contract, the print pass) are the record of what the code does where it went past the design |
 | `HANDOFF.md` | Situation report + work order for the next agent (state of the app, the in-flight UI polish brief, how to screenshot from a sandbox, known gaps, next steps). A snapshot — this file wins where they disagree |
 | `app/README.md` | The short version of the three above: what it is, dev commands, structure, testing, deploy pointer |
 | `simulator/fsfo-simulator.html` | **Frozen.** Source fragment of the page that used to be published at `/dataguard/`; now served at `/dataguard/legacy/`. English only, pure ASCII (see [CLAUDE.md](CLAUDE.md)). Bug-fix territory only — new work goes into `app/` |
 | `testing/README.md` | Test runbook: step-by-step drills verifying each documented situation against a real 19c configuration (crash, isolation, observer loss, NET_TIMEOUT, blocked failover, reopen/MaxFailure, client view, commit measurement, plus four topology drills for far sync, cascading, multi-target and multiple observers), with an RTO/RPO probe harness and reinstate cleanup. Repo-only markdown — not part of the published site |
 | `docs/agents/fact-check.md` | How to review the workbench against Oracle: the evidence rules (only docs.oracle.com, quotes matched by grep, both editions, a live system where there is one), the eight slices, the report format, and the traps the first review fell into. With it: `app/test/fact-check/probes.probe.ts` (one runnable scenario per finding, printing `OPEN` or `CHANGED`; run with `cd app && npx vitest run --config vitest.factcheck.config.ts`, never part of `npm test`), `citations.probe.ts` (every quote in the citation catalogue looked for on the page it cites; network, so only with `FACT_CHECK_ONLINE=1`), `fetch-docs.sh` and `totext.py` (the Oracle pages as greppable text, written outside the repo) |
+| `SIMULATOR_FACT_CHECK_2026-10-01.md` | The second review, after RAC, the split-brain reading and the application's sessions landed: no live system, documentation and ~250 engine runs only. Its findings are open; its *Decisions needed* section (D5–D9) comes before any fix. It re-uses the 09-28 ids where a finding is still open, and its probes are the *2026-10-01 review* section of `probes.probe.ts` |
 | `SIMULATOR_FACT_CHECK_2026-09-28.md` | The report of the first full review of `app/` against 19c and 26ai, with a read-only look at a live 19.27 configuration, **and what was done about each finding** (its *Resolution* section). The findings are fixed except where that section says a decision was taken instead — one role change per run, resynchronization drawn as immediate, the 19c edition meaning 19c as documented — and the accuracy rules below were corrected with them. A later review re-uses its finding ids |
 | `site/build.mjs` | The site build, in three steps: `npm run build` in `app/` (which empties `_site/` and writes the hashed bundle), then `site/build-legacy.mjs`, then `assertNoInline(_site/index.html)` — a built page carrying a `<script>` with a body, an `on*=` handler or a `style=` attribute fails the build rather than the browser's content security policy. The guard proves it can fail (three fixtures it must reject, one it must accept) before it is trusted to pass |
 | `site/build-legacy.mjs` | What `site/build.mjs` used to be: wraps the fragment into a full page (doctype, charset, title, favicon, canonical + social meta) and enforces the ASCII-only guard — it exits non-zero on any byte above U+007E, naming the offending lines. Writes `_site/legacy/index.html` and copies `diagrams/` to `_site/diagrams`, which both pages share |
-| `site/smoke.mjs` | Dependency-free browser check of the built tree: serves `_site/` over `node:http`, loads it in headless Chrome (`--dump-dom`, console messages captured through `--enable-logging=stderr`), takes the page's own `data-permalink` for the `classic` and `far-sync-zero-loss` presets and reloads it cold — an untouched preset now carries no `#t=` at all, so the check accepts either a `#t=` document or a short link naming the preset (and asserts the latter is under 200 characters) — asserts the node cards, the timeline lanes and the outcome chip, opens each of the four modes by name, and checks that a published-page link (`?sc=iso&lat=2&lang=cs#ch-clocks`) upgrades into Break mode like any other old link, following *that* permalink cold to keep one real-browser `CompressionStream` → `DecompressionStream` round trip (an upgraded legacy link names no preset, so it must carry `#t=`). Probes HTTP first and falls back to an inlined single-file copy over `file://` where the machine's headless Chrome cannot fetch over HTTP. Exits non-zero on any failed check, any console message, or any file the page asked for and did not get |
+| `site/smoke.mjs` | Dependency-free browser check of the built tree: serves `_site/` over `node:http`, loads it in headless Chrome (`--dump-dom`, console messages captured through `--enable-logging=stderr`), takes the page's own `data-permalink` for the `classic` and `far-sync-zero-loss` presets and reloads it cold — an untouched preset now carries no `#t=` at all, so the check accepts either a `#t=` document or a short link naming the preset (and asserts the latter is under 200 characters) — asserts the node cards, the timeline lanes and the outcome chip, opens each of the four modes by name, and checks that a published-page link (`?sc=iso&lat=2&lang=cs#ch-clocks`) upgrades into Simulate mode like any other old link, following *that* permalink cold to keep one real-browser `CompressionStream` → `DecompressionStream` round trip (an upgraded legacy link names no preset, so it must carry `#t=`). Probes HTTP first and falls back to an inlined single-file copy over `file://` where the machine's headless Chrome cannot fetch over HTTP. Exits non-zero on any failed check, any console message, or any file the page asked for and did not get |
 | `site/test.mjs` | Standalone node test for the **legacy** fragment: extracts its four model marker blocks and asserts the documented domain invariants — including the scenario × observer-location outcome matrix as literal tables (24 cells, plus the 19c-invariance loops over the version axis). No dependencies; `node --test site/test.mjs`, 63 tests. The application reproduces the same 24 cells through its compat adapter (`app/test/legacy-matrix.test.ts`) |
+| `desktop/` | The Tauri v2 desktop shell (macOS, Windows) around the workbench -- see *The desktop app* below. Not part of the published site; `.github/workflows/desktop.yml` builds it |
 | `site/publish.sh` | Builds, runs the three test gates (`npm --prefix app run test`, `node --test site/test.mjs`, `node site/smoke.mjs`), deploys to the VPS, then verifies the public URL |
 
 `_site/` is generated — never edit it, never commit it — and its shape is a
@@ -65,8 +67,8 @@ public URL.
 
 The three gates, and what each one can catch that the others cannot:
 
-1. `npm --prefix app run test` — the application's own suite (**2298 tests
-   across 90 files**): the engine's invariants, the 24-cell matrix through the
+1. `npm --prefix app run test` — the application's own suite (**3382 tests
+   across 128 files**): the engine's invariants, the 24-cell matrix through the
    compat adapter, the validation catalogue, the generator goldens, the canvas
    and timeline geometry, the URL and file round trips.
 2. `node --test site/test.mjs` — the same kind of assertion against the legacy
@@ -161,16 +163,17 @@ none of the three gates can see a drawing that is wrong. Walk it in **both
 themes** and **both editions** — the theme toggle and the 19c/26ai toggle are in
 the top bar, and both are reading preferences that survive a reload:
 
-- **All four modes on the classic preset.** Build: select a member, edit a
-  property, undo it, watch the issue list and the steady-state readout follow.
-  Break: inject a crash from the event menu, scrub the timeline, read the
-  outcome chip. Configure: all seven tabs render, Copy works, hovering a
+- **All four modes on the classic preset.** Topology: select a member, edit a
+  property, undo it, watch the issue list and the steady-state readout follow;
+  then press a scenario in the dock, watch the cards take their state, scrub the
+  small timeline, drag a bracket's grip and press *Detailed timeline*. Detailed timeline: the lanes, the
+  chips on the bar, a brace's label opened as a popover, a grip dragged, the outcome on the bar. Config: all seven tabs render, Copy works, hovering a
   generated line highlights the member it belongs to. Learn: the lesson list,
   a "Show me" step, and the workbench beside the prose reacting to it.
-- **Every preset opens.** Eleven of them (`classic`, `observe-only`,
+- **Every preset opens.** Twelve of them (`classic`, `observe-only`,
   `far-sync-zero-loss`, `far-sync-ha-pair`, `far-sync-role-change`,
   `cascade-terminal`, `priority-alternates`, `multi-target-three-observers`,
-  `rac-primary`, `bystanders`, `max-protection`). Each one draws without a
+  `rac-primary`, `rac-standby`, `bystanders`, `max-protection`). Each one draws without a
   crossing link or a caption over a card, opens at the protection level it was
   configured in, and raises only issues that are true of it.
 - **The share link round-trips.** Copy it, open it in a fresh tab, and get the
@@ -185,11 +188,55 @@ the top bar, and both are reading preferences that survive a reload:
   alone; every gray control still carries the pill saying why; the drawer and
   the sheet still close on `Escape` and hand focus back; below 768 px the
   read-only card says editing needs a wider screen, once, not four times.
-- **Print.** `Ctrl+P` on Configure: all seven panels stack, the citation chips
+- **Print.** `Ctrl+P` on Config: all seven panels stack, the citation chips
   wrap rather than pushing the page sideways.
 - **After the deploy**, `curl -s https://dataguard.davidbudac.cz/ | grep -E
   'og:image|canonical|theme-color|rel="icon"'` finds all four, and
   `curl -sI https://dataguard.davidbudac.cz/legacy/` still returns 200.
+
+## The desktop app (desktop/)
+
+`desktop/` wraps the workbench in a **Tauri v2** shell for macOS and Windows. It
+adds no page of its own: `frontendDist` is `_site/` as `node site/build.mjs`
+builds it (the whole site, so the `legacy/` and `diagrams/` links resolve), and
+`devUrl` is the Vite dev server on port 5179.
+
+- **Toolchain.** Install Rust with [`rustup`](https://rustup.rs) (stable; the
+  dialog plugin needs 1.90+). On Windows also the WebView2 runtime (already on
+  Windows 11) and the MSVC build tools.
+- **Run and build.** `cd desktop && npm install && npm run dev` (hot reload
+  against Vite) or `npm run build`. Installers land in
+  `desktop/src-tauri/target/release/bundle/` (`macos/*.app`, `dmg/*.dmg`,
+  `nsis/*.exe`, `msi/*.msi`); `npx tauri build --debug` writes under `target/debug/`.
+  `npm run icon` regenerates `src-tauri/icons/` from `desktop/app-icon.png`
+  (rendered from the favicon in `app/index.html`; `app-icon.svg` beside it).
+- **Version.** `tauri.conf.json` reads it from `app/package.json`. To release:
+  bump that, commit, tag `v<version>` and push the tag; `.github/workflows/desktop.yml`
+  then builds the universal macOS and the Windows installers and opens a draft
+  release. Without a tag (`workflow_dispatch`) the installers are workflow artifacts only.
+- **Unsigned.** No Apple or Windows signing is configured (placeholders are
+  commented in the workflow), so the installers trigger Gatekeeper (right-click,
+  Open) and SmartScreen ("More info", "Run anyway") warnings.
+- **The shims.** The page detects the shell through `window.__TAURI__`
+  (`withGlobalTauri`), read in exactly one place, `app/src/ui/common/desktop.ts`.
+  **Desktop-only code goes through that module and nowhere else, never under
+  `app/src/engine`, and adds no npm dependency to `app/`**; with the global
+  absent every path is the browser's own. What it covers: downloads (`downloadBlob`,
+  `exportDoc`, the collector links) go through a native save dialog (Rust
+  command `save_file`) because `<a download>` does nothing in a webview; Share
+  builds the link against `PUBLIC_URL` (`https://dataguard.davidbudac.cz/`)
+  because the page's own origin is `tauri://localhost`; the report prints through
+  `print_page` (WKWebView ignores `window.print()`); `<a target=_blank>` and
+  citations open in the system browser (`on_new_window`, `on_navigation` in
+  `lib.rs`); pop-outs work because `on_new_window` returns
+  `NewWindowResponse::Create`, which keeps the opener that `popout.tsx` renders
+  through (needs Tauri 2.8+, pinned `=2.12.0`).
+- **CSP.** The web page's policy is an nginx header; the shell sets the same one
+  in `app.security.csp`, plus `connect-src 'self' ipc: http://ipc.localhost`
+  (Tauri's IPC, and the collector fetch). Change one, change the other. The
+  webview gets only the `save_file` and `print_page` commands (`build.rs`, autogenerated into `permissions/`, which is git-ignored;
+  `capabilities/default.json`); the dialog and opener plugins are used from Rust
+  only, so they need no JS permission.
 
 ## Accuracy rules (non-negotiable)
 
@@ -269,12 +316,22 @@ agree on:
   page, both of which still carry the stale "maximum performance mode only"
   sentence.** The property page is a valid citation for the value ranges only;
   the page states the contradiction in footnote 5 rather than hiding it.
-  Task 3 is stale on the transports too: it still says MaxAvailability takes
-  SYNC or FASTSYNC, against the prerequisites list's "SYNC or FASTSYNC or
-  ASYNC" — so **ASYNC under MaxAvailability is a mode conflict only under
-  19c**; under 26ai the commit view draws an informational "allowed" note
-  instead (`computeCommit` takes `version`, and zero data loss still wants
-  SYNC/FASTSYNC). **Oracle recommends `FastStartFailoverLagLimit` at or below
+  Task 3 still says MaxAvailability takes SYNC or FASTSYNC, against the
+  prerequisites list's "SYNC or FASTSYNC or ASYNC" — so **ASYNC under
+  MaxAvailability is a mode error under 19c**; under 26ai the commit view draws
+  an informational "allowed" note (`computeCommit` takes `version`, and zero
+  data loss still wants SYNC/FASTSYNC) and the validator warns with basis
+  `conflict` (`XPT.TABLE_4_2`, `XPT.PRIMARY_LOGXPTMODE`), citing the prerequisites
+  list against Table 4-2 and Task 3 (`FSFO.TASK3_MAXAVAIL_26AI`, cited as that
+  side of the conflict only, never as the rule). **The RedoRoutes alternative
+  to the primary's `LogXptMode`** is named by the 26ai prerequisites for
+  MaxAvailability and MaxPerformance only, so under 26ai MaxProtection a
+  pre-declared rule is not counted (19c names the alternative without that
+  restriction). **In 26ai MaxAvailability the lag limit takes 0** — the broker
+  default — and the page's own conflict is shown, not hidden: the same page says
+  a value "must be greater than, or equal to, 5". The control's floor is 0 there
+  (`lagLimitAllowsZero`, `clampLagLimit`), 5 everywhere else, and "back to the
+  broker default" returns the property to not set. **Oracle recommends `FastStartFailoverLagLimit` at or below
   `FastStartFailoverThreshold`**: past it the old primary can keep committing
   after fast-start failover is initiated, briefly risking two primaries — the
   rail warns when the sliders cross, and no asset may present "at most one
@@ -336,7 +393,14 @@ agree on:
   `DBMS_DG.INITIATE_FS_FAILOVER` call — and needs Flashback Database on both
   databases, the former primary started and mounted (a manual restart when
   `FastStartFailoverPmyShutdown` aborted it), the master observer able to reach
-  it, and static service names without Clusterware/Oracle Restart. Reinstate
+  it, and static service names without Clusterware/Oracle Restart. The page draws
+  the `reinstating` band (`REINSTATE.OPEN_BAND`) only from the first instant the
+  former primary is running, the master observer reaches it **and** it reaches the
+  new primary — "The master observer cannot connect to the former primary
+  database" and "The former primary database cannot connect to the new primary
+  database" are the broker's own restrictions — which may be never; until then
+  `REINSTATE.WAITING` says why, once (an aborted one waits for a manual restart,
+  nothing in a run restarts it). Reinstate
   stays out of scope; this is the wording for the one reference row and the
   sequence-diagram footer that mention it.
 - **`V$FS_FAILOVER_OBSERVERS`** (26ai diagnostics): `CURRENT_TIME` is the time the
@@ -357,6 +421,37 @@ agree on:
   nominate and reports the configuration unobserved. Never state the rule
   unconditionally, and never extend it to a failure that separates the primary
   from the target standby — that is not the documented case.
+- **STOP OBSERVER and DISABLE FAST_START FAILOVER are commands the broker can
+  refuse, and the run answers them.** "The STOP OBSERVER command fails if there
+  are two or more registered observers and you attempt to stop only the master",
+  and, with fast-start failover enabled, the primary and standby "must be
+  connected and communicating with each other" or ORA-16636 comes back; so a
+  master is lost in a run by crashing its observer host, never by `observer.stop`.
+  "Disabling fast-start failover without the FORCE option can succeed only if the
+  database on which the command is issued has a network connection with the
+  primary database and if the primary database and target standby database have a
+  network connection"; with FORCE on a primary cut off from the observer and the
+  target it "does not prevent the observer from initiating a fast-start failover",
+  and "two databases ... simultaneously assuming the primary database role" may
+  result. The event names no issuing database, so the engine takes the primary as
+  the issuer; the isolated primary's timing after a FORCE (commit hang, then
+  read-write) is a `model`. **After a failover neither refusal applies on account
+  of the former primary** (D9, live 19.27, 2026-10-01): DISABLE without FORCE was
+  accepted right after a manual failover with the former primary aborted, and STOP
+  OBSERVER right after an observer-initiated failover with it down. The former
+  primary is a member awaiting reinstatement, not the target (SHOW FAST_START
+  FAILOVER lists it "invalid - member is disabled"), so the engine accepts both and
+  says so as an `inferred` decision whose note carries the observation. After a
+  *switchover* the former primary really is the target, so the connection to it is
+  still read. STOP OBSERVER naming the master of several prints ORA-16878 (cited,
+  `ORA.16878`).
+- **A commit waits for each SYNC destination.** At `DATA_GUARD_SYNC_LATENCY`'s
+  default LGWR waits "up to ... NET_TIMEOUT ... for each SYNC standby destination",
+  so one destination going silent among several hangs the commit even while
+  another answers. What ends the hang depends on the mode: the destination is
+  dropped and the primary carries on, or -- maximum protection with no
+  synchronized standby left -- the primary shuts down. Never write "carries on"
+  for the hang that ends in that shutdown.
 - **The scripting surfaces in the 26ai change table predate 26ai.** The official
   SQLcl `DG` page is scoped "Oracle Database release 21c only" and the ORDS
   Data Guard REST endpoints are documented from ORDS 21.1 onwards (an ORDS
@@ -369,16 +464,86 @@ agree on:
   has elapsed if redo generation has been stalled…"); the HA guide says the same
   thing as "causing it to abort". Both are Oracle's; what the reader sees uses
   the broker guide's, and never "aborts itself" as if the broker pages said it.
-- **A former primary never opens after a role change while fast-start failover
-  is enabled.** "To allow the master observer to automatically reinstate the
+- **A former primary that restarts never opens after a role change while fast-start
+  failover is enabled.** "To allow the master observer to automatically reinstate the
   former primary database, the database must be started and mounted. It will
   not be allowed to open in any event if fast-start failover is enabled."
-  (`ORA-16649`). Draw it mounted and needing reinstatement; never draw two
-  databases open read-write because a host came back.
+  (`ORA-16649`). That sentence is about a former primary that *restarts*: draw it
+  mounted and needing reinstatement; never draw two databases open read-write
+  because a host came back. With fast-start failover disabled the 19c pages do not
+  spell out what state a restarted former primary is left in, so mounted is this
+  page's reading under 19c (`FAILOVER.FORMER_PRIMARY_MOUNTED`, `model`); the 26ai
+  Scenario 11 does spell it out ("Because a role transition occurred while the old
+  primary was offline, Data Guard prevents the database from reopening and leaves it
+  in a mounted state…", `FAILOVER.FORMER_PRIMARY_MOUNTED_26AI`), so under 26ai it is
+  `documented`. Either way it is drawn open where it cannot reach the new primary,
+  because nothing tells it — a `model` under both editions. **A stalled primary that
+  is reached again without ever restarting** is drawn mounted as well, but as a
+  `model` (`FSFO.FORMER_PRIMARY_NOT_OPEN` carries that basis then): the sentence is
+  about a database that is *restarted*, and no page says a stalled, still-open primary
+  is closed when contact returns.
+- **A manual failover does not close a primary that is still open.** Oracle puts
+  the shutdown on the operator ("ensure that the primary database is shut down",
+  `FAILOVER.PRIMARY_SHUT_DOWN`; "shut down prior to performing a manual failover",
+  `FSFO.MANUAL_FAILOVER_CONDITIONS`), and the engine raises
+  `FAILOVER.PRIMARY_STILL_OPEN` (documented) at the command when it is still running. No page says the broker closes or mounts an old primary that
+  is still open when a manual failover completes, and ORA-16649 is not about one that
+  stayed open. So with **fast-start failover disabled** the old primary is drawn **open
+  read-write, as primary, beside the new one** — whether or not the new primary can
+  reach it — until something takes it down: a crash, a shutdown or abort event, or the
+  end of the run. That is this page's reading of an undocumented gap
+  (`FAILOVER.FORMER_PRIMARY_OPEN`, `model`, citing the two sentences as the reason);
+  never write it as "the broker leaves it open", and never word the *former primary that
+  restarts* above as this case. With **fast-start failover enabled** the target it was
+  running with has just become the primary, so it has lost its target: it is drawn
+  **stalled** from the completion instant and then follows
+  `FastStartFailoverPmyShutdown` — aborted one `FastStartFailoverThreshold` later, or
+  stalled for good (`FAILOVER.FORMER_PRIMARY_STALLS`, `model`, owner decision D5,
+  2026-10-01, citing "Data Guard fast-start failover always guarantees that only one
+  primary database exists" and the STALLED row's "It shuts down or stalls because it is
+  likely a failover has occurred."). Nothing documented says it; never present it as
+  Oracle's outcome. A fast-start-failover-initiated failover and a switchover are
+  untouched: their old primary is the documented stall / abort /
+  `FastStartFailoverPmyShutdown` path, and the converted one.
+- **"Split brain" is Oracle's word, the reading of it is this page's.** The HA guide defines
+  the term ("two copies of the same database open read-write, each operating independently of
+  the other", `SPLIT_BRAIN.DEFINITION`) and gives no interval for it, so the Break readout's *Split brain* chip
+  (`splitBrainOf`, `engine/sim/split-brain.ts`) is `model`, note `SPLIT_BRAIN.READING`, and
+  asks one question of the drawing: were two members `open-rw` at the same moment. A
+  STALLED primary is not counted (Oracle: its redo generation is stalled; stale reads from a
+  stalled old primary that `FastStartFailoverPmyShutdown` FALSE leaves running are disclosed in the
+  note, not counted: "A value of TRUE helps to ensure that an isolated primary database cannot
+  satisfy user queries"), and the old primary is drawn open where a manual failover found it
+  still open with fast-start failover disabled (the rule above: reachable or not), so that reads
+  *yes* with the window named, closed where the old primary crashes or shuts down; with
+  fast-start failover enabled it is stalled, then aborted, and reads *no*. The chip is
+  asked only where a new primary opens by failover or manual failover, so a switchover
+  has none. Never write a
+  *no* that says the old primary "cannot" be open: say what the drawing shows (aborted
+  at N s, down, stalled, mounted), and never draw "at most one database ends up open" as
+  unconditional (see the `FastStartFailoverLagLimit` rule above).
 - **One role change per run.** The engine evaluates one failover or switchover
   and says so (`SIM.ONE_ROLE_CHANGE`) when later events would need a second.
-  Oracle documents that fast-start failover stays enabled and the reinstated
-  database becomes the new target; the page does not draw that.
+  Oracle documents, for a failover plus a reinstatement, that "the reinstated database
+  acts as the fast-start failover target for the new primary database"; that fast-start
+  failover stays enabled across a *switchover* is only implied, so never write it as
+  Oracle's sentence. The page does not draw a second role change, nor the former
+  primary becoming the target again. So after the role change the new primary has
+  **no synchronized fast-start failover target yet** (owner decision D6, 2026-10-01):
+  losing the observer and/or its standbys stalls and aborts nothing, it keeps
+  processing transactions, and the run says why once
+  (`FSFO.NO_TARGET_AFTER_ROLE_CHANGE`, `inferred` from "The reinstated database acts
+  as the fast-start failover target for the new primary database…" and "While the
+  configuration is in the unobserved state, fast-start failover cannot happen.
+  Therefore, the primary database can continue processing transactions…"). A
+  switchover's former primary is a standby from then on — never stalled or aborted
+  as a primary. Live 19.27 agreed (D9): the new primary ran 3+ minutes unobserved
+  after a crash failover with no stall; its SHOW CONFIGURATION keeps fast-start
+  failover enabled and the former primary as `- (*) … (disabled)` with ORA-16661
+  (`inferred`: an observation, not Oracle's FAILOVER example, which ran with
+  fast-start failover disabled and so carries no marker), and once every observer
+  has stopped it prints `Error: ORA-16820 …` under the primary with status ERROR
+  (`inferred`; the cause text is `ORA.16820`'s, the form is the observation).
 - `NET_TIMEOUT` is a `LOG_ARCHIVE_DEST_n` transport attribute (broker property
   `NetTimeout`), default 30 s, min 1 s, ≥ 8–10 s recommended. It bounds how long
   LGWR waits for the standby's SYNC ack; it is NEVER a failover clock, never
@@ -398,17 +563,19 @@ agree on:
   MaxPerformance it **refuses the command** — word it as a refused `SWITCHOVER`, never as a
   forbidden failover. An apply lag does *not* block MaxAvailability, because synchronized is about
   redo **received**; it only lengthens the catch-up. The **former primary** is the database that
-  restarts (as the new standby); "the new primary database does not need to be restarted", and it
-  does not wait for the old one. Sessions on the primary are terminated as it converts. No failover
+  restarts (as the new standby); "the new primary database does not need to be restarted" is the whole
+  sentence — that it does not wait for the old one is this page's drawing (`inferred`). Sessions on the primary are terminated as it converts. No failover
   clock runs at all — threshold, `ObserverPing*` and `FastStartFailoverPmyShutdown` are spectators,
-  and FSFO stays enabled across the swap. Duration is environment-dependent (unapplied redo, update
+  and FSFO is drawn enabled across the swap (implied, not stated for a switchover). Duration is environment-dependent (unapplied redo, update
   activity at the moment of the command, online redo logs to clear), so label it that way; the 1 s
   verify and 2 s convert bands are nominal drawing constants (footnote 3), not documented numbers.
 - Reinstate (`FastStartFailoverAutoReinstate`, Flashback Database) is
   deliberately out of scope; at most a footnote.
 - **Where the connect string is dialled from is this page's model, never a
   documented fact.** The published page dials from outside every data centre;
-  the workbench dials from the application's card when the document has one. An
+  the workbench dials from each application's card when the document has any (a
+  configuration holds several, each with the connect string it has: its own, else
+  the shared one). An
   address the application cannot reach gives no answer (a timeout), whatever the
   dead-address switch says. The application decides nothing about a failover —
   no clock or decision reads it — and the three costs below stay nominal drawing
@@ -423,13 +590,22 @@ agree on:
   no default; `FAILOVER` default on; `LOAD_BALANCE` default off inside an
   ADDRESS_LIST. Role-based services make the standby refuse instantly with
   ORA-12514. These parameters affect only NEW connections, never established
-  sessions. **The JDBC thin driver does not inherit Oracle Net's 60 s
-  transport default** — its own connect-timeout default is 0 in the 19c
-  driver and 20 s in current ones — so `buildJdbc()` always spells
-  `TRANSPORT_CONNECT_TIMEOUT` out with an explicit `sec` suffix (older thin
-  releases read a bare value as milliseconds). Never "simplify" the thin URL
-  back to the TNS omission rule, and never name the release that changed the
-  thin default — it is not stated on the API reference pages. Nominal drawing constants (footnote 3): refusal 0.2 s, OS refusal
+  sessions; a session is lost when its database stops serving or, on a RAC
+  database, when its instance does (Oracle: "Any sessions active when the instance
+  or service stops are terminated and the application user is immediately
+  notified" — which instance carries the sessions is `model`, `APP.SESSION_SPREAD`).
+  **The JDBC thin driver has defaults of its own from 26ai, split by edition:**
+  "Starting from Oracle AI Database Release 26ai, the default value of the
+  TRANSPORT_CONNECT_TIMEOUT parameter is 20 seconds" and RETRY_DELAY's is 1 second
+  (26ai JDBC "Data Sources and URLs"; `CLIENT.JDBC_TCT_26AI`,
+  `CLIENT.JDBC_RETRY_DELAY_26AI`). The 19c JDBC pages print neither, and Oracle Net's
+  60 s belongs to tnsnames.ora. The 20 s / 0 on the `OracleConnection` pages
+  (`CLIENT.JDBC_CURRENT`, `CLIENT.JDBC_19C`) is the `oracle.net.CONNECT_TIMEOUT`
+  connection property, not the descriptor keyword, and its release (23.6) must not be
+  cited for the keyword. `buildJdbc()` always spells `TRANSPORT_CONNECT_TIMEOUT` out, as
+  a bare number of seconds the way the JDBC page's own example writes it (units are
+  listed only for RETRY_DELAY): never invent a `sec` suffix, and never "simplify" the
+  thin URL back to the TNS omission rule. Nominal drawing constants (footnote 3): refusal 0.2 s, OS refusal
   0.15 s, establish 0.3 s; service assumed published the instant the new
   primary opens.
 - `LogXptMode` takes SYNC | FASTSYNC | ASYNC, broker default ASYNC, mapping to
@@ -443,7 +619,10 @@ agree on:
   the notice (same precedent as the 21c ObserverPing* citation). Legality per
   broker Table 4-2: MaxProtection SYNC; MaxAvailability SYNC or FASTSYNC;
   MaxPerformance ASYNC is the only mode listed — never write that SYNC is
-  illegal there. **The table is met by "at least one standby database"**, not by
+  illegal there. With fast-start failover enabled, a SYNC or FASTSYNC target or
+  primary in MaxPerformance is a **warning**, not an error: the setup lists
+  ASYNC for both (Task 3) and no sentence says the broker refuses anything else
+  (decision D8, `XPT.TABLE_4_2`, `XPT.PRIMARY_LOGXPTMODE`). **The table is met by "at least one standby database"**, not by
   every destination: "the broker verifies that there is at least one standby
   database in the configuration that can support the desired grade of
   protection", so an ASYNC bystander beside a SYNC standby is legal in every
@@ -828,8 +1007,11 @@ condensed out of it:
   favour of `V$FAST_START_FAILOVER_CONFIG`; name the view of the edition on
   screen. `SWITCHOVER … WAIT` is deprecated in 26ai in favour of `DrainTimeout`.
 - **Three more spellings worth pinning.** `ConfigurationWideServiceName`
-  defaults to `primarydbname_CFG` and "the service name does not change after a
-  role transition" (19c, introduced 12.2). `TransportDisconnectedThreshold`
+  defaults to `primarydbname_CFG` — the primary database's name, never the
+  configuration's own — and "the service name does not change after a
+  role transition" (19c, introduced 12.2); its first character is alphanumeric
+  and it runs to at most 30 characters (the form refuses otherwise,
+  `CFG.SERVICE_NAME_FORMAT` flags an imported one). `TransportDisconnectedThreshold`
   (19c, broker default 30 s, 0 = no warnings) generates a **warning status**
   when the last communication from the primary exceeds it — it is never a
   failover clock. The 19c list headed "Fast-start failover cannot occur if:"
@@ -900,8 +1082,9 @@ global appears in it; `app/test/import-boundary.test.ts` keeps the layering
 - **Types** (`types/topology.ts`, `types/events.ts`, `types/trace.ts`,
   `types/claims.ts`). The authored document is `TopologyDoc`: sites, hosts,
   links, members (`DatabaseMember` | `FarSyncMember`), observers, one
-  `Configuration` with its `FsfoConfig`, a `ClientDescriptor`, an optional
-  `Application` (the card the descriptor is dialled from), environment
+  `Configuration` with its `FsfoConfig`, a shared `ClientDescriptor`, any number
+  of `Application`s (a card each, dialled from; optionally with a descriptor of
+  its own, read through `applicationClient`), environment
   params and the event list. Derived output — `RedoEdge`, `ResolvedMember`,
   `RedoGraph`, `Epoch`, `Lane`, `Segment`, `Trace`, `DerivedFacts` — lives in
   `types/trace.ts`, because it is output rather than something anyone authors.
@@ -951,7 +1134,15 @@ global appears in it; `app/test/import-boundary.test.ts` keeps the layering
   test is the gate: the general engine may not "improve" on the verified
   outcomes. Change a cell there and you are changing `site/test.mjs`,
   `diagrams/README.md` and the fragment in the same commit, or you are wrong.
-- **Validation** (`validate/*`) is 55 rules in one catalogue (`RULE_CATALOGUE`,
+- **Numeric ranges** (`BOUNDS`) carry Oracle's floors and this page's ceilings.
+  Oracle documents a floor for most settings (threshold >= 6, lag limit >= 5)
+  and almost never a ceiling, so a maximum is the page's own and is wide
+  enough that no documented value is out of reach: 3600 s for the threshold,
+  lag limit and `ApplyInstanceTimeout` (step 1, so a typed 7 stays 7), 1200 for
+  `NetTimeout`, 600 for `TRANSPORT_CONNECT_TIMEOUT`, 1000 for `RETRY_COUNT`
+  ("change RETRY_COUNT greater than 100"). A range that wide is a number box,
+  not a slider.
+- **Validation** (`validate/*`) is 71 rules in one catalogue (`RULE_CATALOGUE`,
   one of them 26ai-only), each with an id, a severity, a permitted set of bases
   and its citations: far sync never primary, FSFO target kind and direct-redo,
   multi-target explicitness, the protection-mode/transport table, the RedoRoutes
@@ -960,16 +1151,16 @@ global appears in it; `app/test/import-boundary.test.ts` keeps the layering
   sorted `Finding[]`; the UI's issue list, the generated scripts' notes and the
   inspector's refusals all read that one list, so a rule is worded once.
 - **The other three models** (`models/*`) are the ported legacy views:
-  `computeApp` (the client's retry ladder over N addresses — dialled from the
-  application's host when the document draws one, and from outside every site,
-  as the published page dials it, when it does not), `computeCommit`
+  `computeApp` (the client's retry ladder over N addresses — dialled from an
+  application's host when the document draws one, `computeApps` for every one of
+  them, and from outside every site, as the published page dials it, when it does not), `computeCommit`
   (one commit under SYNC/FASTSYNC/ASYNC, `max(local write, remote ack path)`,
   the far sync hop terminating the commit) and `computeReopen` (the
   `ReopenSecs`/`MaxFailure` aftermath), plus `models/axis.ts`, which is the
   legacy tick-step and horizon arithmetic unchanged.
 - **The generators** (`generate/*`) emit structured `Line`s rather than text —
   `cmd`/`note`/`comment`/`blank`, a tone, a highlight flag and `data-member`
-  spans — which is what makes the Configure panels able to cross-highlight
+  spans — which is what makes the Config panels able to cross-highlight
   against the canvas. Files: DGMGRL script, `LOG_ARCHIVE_DEST_n`,
   `tnsnames.ora` + JDBC, and the `SHOW CONFIGURATION` / `SHOW FAST_START
   FAILOVER` / `SHOW OBSERVER` mocks. Every mock block carries a generated header
@@ -984,7 +1175,8 @@ overrides. The View is what a reload may forget: mode, selection, hover,
 playhead, panel tab, lesson, theme, edition, drawer state, toast. `doc.ts` holds
 the one `doc` signal, `view.ts` the view signals, `derived.ts` every computed
 value in one file and one direction (`primaryId` → `issues` → `redoGraph` →
-`geometry` → `trace` → `frame` → `readout` → the generated scripts). **No
+`geometry` (and the drawing's own never-null `drawnGraph` / `drawnGeometry`, so a
+configuration with no primary is still drawn, with a notice) → `trace` → `frame` → `readout` → the generated scripts). **No
 component computes domain state locally.**
 
 - **Undo/redo** (`history.ts`): immutable Document snapshots through
@@ -1033,8 +1225,8 @@ component computes domain state locally.**
   `lat`, `xpt`, `rs`, `mf`, `tct`, `ct`, `rc`, `rd`, …, plus `ver` for the
   edition) become a topology
   through `migrateLegacyQuery`, and the six chapter anchors become a mode and a
-  panel — `ch-clocks` → Break, `ch-transport` → Configure/Commit, `ch-app` →
-  Configure/Application view, `ch-config` → Configure/DGMGRL, `ch-side` →
+  panel — `ch-clocks` → Detailed timeline, `ch-transport` → Config/Commit, `ch-app` →
+  Config/Application view, `ch-config` → Config/DGMGRL, `ch-side` →
   Learn/SYNC transport, `ch-reference` → Learn/Reference. `#cfg=` payloads go
   through `migrateV1`. The canonical URL is then written with `replaceState`.
   `lang` is a recognised key and is ignored: there is no Czech reading any more.
@@ -1043,13 +1235,25 @@ component computes domain state locally.**
 
 ### The interface (`app/src/ui`)
 
-Four modes over one persistent canvas — **Build** (inspector, validation issues,
-steady-state readout), **Break** (event menu and event list, timeline,
-transport, outcome readout), **Configure** (seven generated panels: DGMGRL ·
+Four modes — **Topology** (internal id `build`: the editable drawing with its
+inspector -- a panel that is not on screen until something is selected or it is
+opened from the top bar, `]` or `All settings →` -- validation issues and
+steady-state readout, and, once something is
+injected, the run on it: scenarios in the dock, break icons on the cards, the
+cards tinted at the playhead and a small timeline underneath that is the
+control for the run's clocks), **Detailed
+timeline** (internal id `break`: no drawing, the lanes with a card at the head
+of each, the three setting chips on the bar, the event list, the transport and the outcome),
+**Config** (seven generated panels: DGMGRL ·
 `LOG_ARCHIVE_DEST_n` · tnsnames/JDBC · SHOW · Application view · Commit ·
-Reopen) and **Learn** (nine lessons: the six ported chapters plus Far sync,
-Cascading, Multiple observers and targets). The canvas never blinks: switching
-modes changes what is around it.
+Reopen) and **Learn** (ten lessons: the six ported chapters plus Far sync,
+Cascading, Multiple observers and targets, and RAC primary and standby). The ids
+`build` and `break` are internal and stay (as do `BreakRail`, `ui/break/`, the
+`m-build` / `m-break` classes); the address writes `mode=timeline`, leaves
+Topology as the absence of the key, and reads `topology`, `build`, `timeline`,
+`simulate` and `break`. `app/design/ui.md`, "Topology and the Detailed
+timeline", is the as-built record of the re-cut, and says which earlier
+sections it supersedes.
 
 - **Canvas** (`ui/canvas/`): `layout.ts` ranks members by BFS over the resolved
   redo graph, columns them by site, packs rows and draws the site rectangles —
@@ -1065,8 +1269,10 @@ modes changes what is around it.
   Routing and drawing both run in two passes
   (every route, then every caption; every line, then every card, then every
   caption) so a caption is never painted over by a line routed after it.
-  `app/test/ui/canvas-presets.test.ts` holds all eleven presets to the collision
-  rules and to a geometry golden. A data centre's box is the bounding box of
+  `app/test/ui/canvas-presets.test.ts` holds all twelve presets to the collision
+  rules and to a geometry golden. `app/test/ui/no-primary.test.ts` holds the drawing
+  with no primary: every card stays, no redo, the notice and its buttons, and
+  no card moving in any preset when the role is lost and regained. A data centre's box is the bounding box of
   its cards unless it has a size of its own: `layout[siteId]` may carry `w`/`h`
   (a handle resize, or a card drop that would otherwise shrink it), measured
   from the box's natural anchor and never smaller than its cards; Tidy resets it.
@@ -1077,7 +1283,8 @@ modes changes what is around it.
   no data centre is named is `ui/build/placement.ts`. The box is drawn with
   `LAYOUT.colPad` (24) round its cards and may be resized down to
   `LAYOUT.fitPad` (14). **The application** is a card of its own under the
-  member band, in the primary's data centre to start with: one dash-dot
+  member band, in the primary's data centre to start with (several stand side
+  by side): one dash-dot
   `connect` line to every database on its ADDRESS_LIST, coming up onto the
   card's bottom edge, and a lane between the member band and the application
   (`Geometry.midLaneY`) for the redo routes that would otherwise run through
@@ -1087,9 +1294,9 @@ modes changes what is around it.
   `buildTimeline(trace, topology, view) → TimelineModel`; the component maps it
   to VNodes. Lane order is primary, observers (master first, and no master at
   all while FSFO is disabled), far syncs, then standbys in BFS order with
-  cascaded ones indented. Under them, when the document draws an application,
-  its point of view: `Service`, `Sessions` and `New connections`
-  (`timeline/app-lanes.ts`, pure, from `computeApp`), on the same axis — which
+  cascaded ones indented. Under them, when the document draws applications,
+  each one's point of view: `Service`, `Sessions` and `New connections`
+  (`timeline/app-lanes.ts`, pure, from `computeApps`), on the same axis — which
   stretches to the application's reconnect — and labelled as this page's model.
   The playhead is its own component subscribing to `tNow` alone.
 - **Panels** (`ui/panels/`): the generated files, rendered from the engine's
@@ -1115,15 +1322,60 @@ modes changes what is around it.
   because both bars wrap on a narrow window and a toast pinned to their nominal
   height paints over them. `site/build.mjs` fails the build on an inline
   `<script>`, an `on*=` handler or a `style=` attribute in the built page.
-- **The event menu has one home per layout, never two.** On a wide screen it is
-  the first group at the head of the Break rail; once the rail has become a
-  drawer it moves under the drawing, because a menu inside a closed drawer is a
-  menu nobody finds. It is a panel with a fixed place, not a popup at the
-  pointer — `style-src 'self'` forbids positioning anything from script, and a
-  panel that stays put is one the reader can find again.
-- **The readout is mode-aware**: Build and Configure read the steady state even
-  when the Document carries events; Break and Learn read the outcome at `tNow`.
-  Those two lead the strip with a `Drawing at t = <n> s` chip and file the rest
+- **Events are added where the reader is looking.** In Topology a click selects
+  (the inspector), a card's hover icons are the short list, the dock's scenario
+  row is the shelf (`break/ScenarioRow.tsx`), and right-click, `Shift+F10` or `E`
+  open the grouped list under a header that says *at t = [n] s*; the `⋯` handle
+  and `A` open Build's own action table. In the Detailed timeline the cards and
+  pills at the head of the lanes carry their own buttons. `runShown()`
+  (`state/derived.ts`) is the one predicate for "the drawing and the readout
+  show a run": a trace exists and the mode is not Config. The playhead is the
+  one clock (the transport's *t* field), and the small timeline
+  (`timeline/MiniTimeline.tsx`) is one thin bar per database, far sync,
+  observer and application lane, a playhead to scrub, the transport, *Clear*,
+  *Detailed timeline* and the pop-out of the full timeline into a window of its
+  own -- and, over the bars, what makes it the control (below).
+- **The timeline is the control** (`app/design/ui.md`, "The timeline is the
+  control"). A setting is changed where the run is drawn, and there is no settings
+  form, column or row. Topology's dock (`break/PlayDock.tsx`) is three rows: `Break`
+  -- the scenarios, with the three settings that are a choice and not a length
+  (protection mode, FAST_START FAILOVER, the LogXptMode of the standby the run is
+  about) as chips at the right and `All settings →` to the rest in the inspector
+  (`break/SettingChips.tsx`, the one component the Detailed timeline's bar uses
+  too) -- then the readings and the findings (the one terse line less the two times
+  the small timeline draws as badges), then the small timeline. The card's top edge is
+  a handle (`timeline/PanelHandle.tsx`, `timelineOpen`, `dg-timeline`) that folds the whole
+  panel to itself; the docked timeline slot wears the same one, and on paper and in the
+  popped-out window the panel is always open. There is no card above the dock for the top
+  finding: the chips count the findings and open the popover. The small timeline
+  draws a labelled bracket with a grip over the bar of every clock that is a
+  setting, whose label is its name and its number (press the number to type it),
+  outcome badges on the bars at "New primary open" and each application's
+  reconnect, the decision marks as pins, and, on the application's connect-string
+  lane, a `retry window` bracket whose grip drags `RETRY_DELAY` (else the connect
+  timeout) -- the window is a sum the connect string makes, so the number on it is
+  not a box. The Detailed timeline has the same three chips on its bar and no
+  column, row or `Settings` toggle (`dg-tune` is gone): a tunable brace's label is a
+  button that opens a popover (`timeline/BracePopover.tsx`) with the number, the
+  inspector's one sentence and, for the threshold, the lag limit beside it. Grips
+  are on the end of every clock that *is* one setting, on its brace and on the lane
+  band that is the clock (`timeline/tune.ts`, `tune-handles.ts`, `TuneDrag.tsx`),
+  on both timelines; and a `+` beside the
+  playhead on each lane of the full timeline drawing (`TimelineBody`: the
+  popped-out window, the docked narrow layout), which opens the grouped event
+  menu there (`timeline/LaneAdd.tsx`). Every edit goes through the inspector's
+  named setters in `inspector/edits.ts` -- one undo sentence, one coalesce key,
+  one set of refusals -- and is marked as tuned, so the axis holds while the
+  run still fits it and the bar that changed is seen changing (`timeline/run.ts`).
+  Nothing here adds a claim: the chips' and popovers' sentences are the inspector's
+  own notes (`inspector/notes.ts`). Nothing stands above the lanes: the headline, which
+  was an equation with editable terms for a day, and the strip under it were
+  taken out on request, and the outcome is the bar's.
+- **The readout follows the run**: Config reads the steady state even when the
+  Document carries events, and so does Topology while nothing is injected; with
+  a run (`runShown()`) Topology, the Detailed timeline and Learn read the
+  outcome at `tNow` -- Topology's floating dock as the one terse line the
+  Detailed timeline's bar carries (`break/RunBar.tsx`), less the two times its small timeline draws as badges. The card strip leads with a `Drawing at t = <n> s` chip and file the rest
   behind a `Run` label, because there are **two clocks on the strip** — the
   moment the drawing is frozen at, and the run as a whole — and unlabelled they
   read as one reading taken at one instant.
@@ -1131,14 +1383,14 @@ modes changes what is around it.
   sentence set and a visually hidden structural table; one card per site is the
   tab stop (a roving `tabindex`, spelled lower case — the camel-cased JSX
   spelling lands on an SVG `<g>` as an attribute SVG has never heard of, and the
-  card silently takes no focus). `E` opens the event menu in Break, `Delete`
-  removes in Build with the same refusals the inspector's button gives. The
+  card silently takes no focus). `E` opens the grouped events and `A` Build's action table in
+  Topology, `Delete` removes there with the same refusals the inspector's button gives. The
   drawer and the sheet are modal dialogs and keep a dialog's promises: `Escape`
   closes, opening moves focus in, closing hands it back.
 
 ### Tests
 
-`npm --prefix app run test` is **2298 tests across 90 files**. What is where:
+`npm --prefix app run test` is **3382 tests across 128 files**. What is where:
 
 - `app/src/engine/__tests__/` — the engine's own unit tests (purity, citations,
   claims, schema, migrate, URL codec, parse, resolve, graph, axis, classic).
@@ -1147,15 +1399,38 @@ modes changes what is around it.
 - `app/test/legacy-models.test.ts`, `legacy-fragment-parity.test.ts` — the three
   ported models and the fragment's numbers.
 - `app/test/sim-*.test.ts`, `models-general.test.ts`, `presets.test.ts` —
-  scenario, property and invariant tests over the general engine and all eleven
-  presets.
+  scenario, property and invariant tests over the general engine and all twelve
+  presets. `sim-split-brain.test.ts` is the *Split brain* reading off a trace
+  (`splitBrainOf`) and the old primary a manual failover leaves open, with the
+  application's view of it: both primaries publishing the service at once, the
+  sessions staying on the old one, and the reconnect when it goes down while the
+  new one is already publishing (`lostAt`, `sessionsOn`, `servedAtLoss`);
+  `ui/app-overlap.test.ts` draws that on the Simulate lanes, the reconnect chip
+  and the Config figure; `ui/summary-band.test.ts` is its chip and the run-summary band
+  in Break's Split and Lanes layouts; `ui/show-open-former.test.ts` is the SHOW
+  CONFIGURATION note for it.
+- `app/test/app-placement.test.ts`, `applications.test.ts`,
+  `ui/application.test.ts`, `ui/applications-many.test.ts` — the application
+  card: its vantage, several of them each with the connect string they dial, the
+  reader for a document written with one, the share-link round trip, and the
+  edits, lanes and readout per application.
 - `app/test/generate.test.ts` + `app/test/__golden__/` — the generated DGMGRL,
   `LOG_ARCHIVE_DEST_n`, tnsnames/JDBC and SHOW output for five topologies.
 - `app/test/ui/` + `app/test/ui/__golden__/` — canvas layout and routing
-  goldens for all eleven presets, keyboard and aria, the timeline model, the
-  panels, the inspector, the shell, history, the share-link round trip, the
-  legacy-URL upgrade.
+  goldens for all twelve presets, keyboard and aria, the timeline model, the
+  panels, the inspector, the shell, history, the share-link round trip, Simulate's
+  Configuration | Application timeline switch (`timeline-switch.test.ts`), tuning in
+  the Detailed timeline (`tune.test.ts`: the mapping, the held axis, the chips;
+  `tune-drag.test.ts`: the grips; `brace-popover.test.ts`: a brace's label and its
+  popover; `lane-add.test.ts`, `detailed-timeline.test.ts`), Topology with a run
+  (`topology-mode.test.ts`) and its small timeline as the control
+  (`mini-timeline-tune.test.ts`: badges, brackets, a grip, a typed number, the
+  retry window), the timeline panel's fold (`timeline-panel.test.ts`), the on-demand
+  inspector and the names in its header (`rail.test.ts`; `rail-collapse.test.ts` is
+  Break's strip), the legacy-URL upgrade.
 - `app/test/content/` — every lesson and reference table renders.
+- `app/test/factcheck-1001-*.test.ts` — the 2026-10-01 fact check's fixes, one file per slice
+  (roles, commands, generate, rules, prose, client-rac, fsfo).
 - `site/smoke.mjs` — the built bundle in a browser (see Publishing).
 
 A golden is a record of geometry or of generated text, not of a domain fact.

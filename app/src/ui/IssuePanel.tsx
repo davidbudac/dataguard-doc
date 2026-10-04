@@ -24,10 +24,10 @@
 import type { Finding } from '@/engine';
 import { errors, issues, warnings } from '@/state/derived';
 import {
-  findingsOpen, floating, inspectorOpen, issuesOpen, lessonId, mode, notesOpen, selection, toast,
-  viewport,
+  findingsOpen, floating, inspectorOpen, issuesOpen, lessonId, mode, notesOpen, selection,
+  toast, viewport,
 } from '@/state/view';
-import { setIssuesOpen, toggleIssues } from '@/state/persist';
+import { revealRail, setIssuesOpen, toggleIssues } from '@/state/persist';
 import { Fact } from './common/Chip';
 import { revealSections, sectionOfRule } from './inspector/sections';
 import { printing } from './print';
@@ -67,14 +67,17 @@ export function revealFindings(): void {
     toast.value = {
       kind: 'info',
       text: open
-        ? 'The findings are in Build. Your lesson is where you left it.'
-        : 'The findings are in Build.',
+        ? 'The findings are in Topology. Your lesson is where you left it.'
+        : 'The findings are in Topology.',
       ...(open ? { action: { label: 'Back to the lesson', run: () => { mode.value = 'learn'; } } } : {}),
     };
   } else if (mode.value === 'configure') mode.value = 'build';
-  /* Over a full-bleed canvas the findings are a popover the status card's
-     chips open, in Build and Break alike; the rows are not docked anywhere. */
-  if (floating(mode.value, viewport.value)) { findingsOpen.value = true; return; }
+  /* Over a full-bleed canvas the findings are a popover -- the status card's
+     chips open it in Topology, the count on the bar in the Detailed timeline. */
+  if (floating(mode.value, viewport.value)) {
+    findingsOpen.value = true;
+    return;
+  }
   if (mode.value === 'break' && viewport.value !== 'wide') inspectorOpen.value = true;
   scrollFindingsIntoView();
 }
@@ -108,7 +111,7 @@ function Row({ f }: { f: Finding }) {
            fights that effect and is a no-op on an open section. */
         const section = sectionOfRule(f.id as string);
         if (section !== null) revealSections([section]);
-        if (viewport.value !== 'wide') inspectorOpen.value = true;
+        revealRail();
       }}
     >
       <span class={`tag t-${TONE[f.severity]}`}>{f.severity}</span>

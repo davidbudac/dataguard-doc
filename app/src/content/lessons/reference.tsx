@@ -5,7 +5,7 @@
  * so the same rows feed the print stylesheet and the tests.
  */
 
-import { M } from '../facts-ui';
+import { Fact, M } from '../facts-ui';
 import { Footnotes } from '../footnotes';
 import {
   RefTable, brokerProperties, changes26ai, transportProperties,
@@ -37,10 +37,12 @@ export const reference: Lesson = {
             not set, while the fast-start failover chapter&rsquo;s table still shows 100 ms / 10, an
             upstream Oracle contradiction; the minimums when explicitly set stay 100 ms and 10.{' '}
             <M>FastStartFailoverPmyShutdown</M> is identical too.{' '}
-            <M>FastStartFailoverLagLimit</M> is the one that moved: 30 s default and 5 s minimum still,
-            but only in MaxPerformance — in MaxAvailability it now applies as well, with a broker
-            default of 0. A 19c timeline read on this page is still correct under 26ai as long as
-            MaxAvailability is left at that 0.
+            <M>FastStartFailoverLagLimit</M> is the one that moved: in MaxPerformance it keeps its 30 s
+            default, and in MaxAvailability it now applies as well, with a broker default of 0. The
+            same property page also says a value &ldquo;must be greater than, or equal to, 5&rdquo;,
+            which that default of 0 sits below; Oracle does not reconcile the two. This page reads 0
+            as the zero-data-loss setting and any other value from 5. A 19c timeline read on this
+            page is still correct under 26ai as long as MaxAvailability is left at that 0.
           </Caption>
           <Caption>
             The practitioner&rsquo;s walkthrough of all of it is{' '}
@@ -92,8 +94,15 @@ export const reference: Lesson = {
             failover configuration, replacing the deprecated <M>V$DATABASE.FS_FAILOVER_*</M> columns;{' '}
             <M>V$FS_LAG_HISTOGRAM</M> samples the lag per minute into buckets and is the tuning aid for{' '}
             <M>FastStartFailoverLagLimit</M>; <M>V$DG_BROKER_PROPERTY</M> lists the broker properties;
-            and <M>V$DG_BROKER_CONFIG</M> gains <M>SWITCHOVER_READY</M> and <M>FAILOVER_READY</M>.{' '}
-            <M>VALIDATE FAST_START FAILOVER</M> in DGMGRL runs the readiness checks in one command.
+            and <M>V$DG_BROKER_CONFIG</M> gains <M>SWITCHOVER_READY</M> and <M>FAILOVER_READY</M>.
+          </Caption>
+          <Caption>
+            Not new in 26ai:{' '}
+            <Fact id="DGMGRL.VALIDATE_FSFO_19C">
+              The VALIDATE FAST_START FAILOVER command enables you to validate a fast-start failover
+              configuration
+            </Fact>
+            , and it is on the 19c command reference too.
           </Caption>
         </>
       ),

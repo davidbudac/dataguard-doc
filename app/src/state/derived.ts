@@ -14,16 +14,18 @@
 import { computed } from '@preact/signals';
 import { layoutTopology } from '@/ui/canvas/layout';
 import { inFlight, inFlightFrom } from '@/ui/canvas/place';
-import { appModelFor } from '@/ui/timeline/build';
+import { appModelsFor } from '@/ui/timeline/build';
 import type { Geometry } from '@/ui/canvas/layout';
 import {
-  declaredPrimary, honestLevel, resolveRedoGraph, simulate, sortFindings, stateAt, validate,
+  declaredPrimary, edgelessGraph, honestLevel, resolveRedoGraph, simulate, sortFindings, splitBrainOf, stateAt, validate,
 } from '@/engine';
 import type {
-  CitationId, Claim, EngineTrace, Finding, Outcome, ProtectionLevel, Snapshot, TopologyDoc,
+  CitationId, Claim, EngineTrace, Finding, MemberId, Outcome, ProtectionLevel, RedoGraph, SplitBrain,
+  Snapshot, TopologyDoc,
 } from '@/engine';
 import { doc } from './doc';
-import { edition, mode, tNow } from './view';
+import { edition, healthyRun, mode, tNow } from './view';
+import type { Mode } from './view';
 
 /**
  * The document the engine sees. The edition is a reading preference rather
@@ -49,20 +51,40 @@ export const redoGraph = computed(() => {
 });
 
 /**
- * Where every card sits (ui.md SS2).
+ * The graph the drawing is laid out and drawn over: never null.
+ *
+ * `redoGraph` is null when no database holds the primary role, and the
+ * generators and panels read that null as "nothing to say". The canvas cannot:
+ * a drawing that blanks out leaves no card to click, so a configuration that
+ * has lost its primary could not be repaired from the drawing. It falls back
+ * to the same document with no edges (`edgelessGraph`) -- every card where
+ * the layout puts it, no redo drawn -- and CanvasSlot says it is invalid.
+ */
+export const drawnGraph = computed<RedoGraph>(
+  () => redoGraph.value ?? edgelessGraph(topology.value),
+);
+
+/**
+ * Where every card sits, for the drawing: never null, with or without a primary.
  *
  * The layout is pure and deterministic, so it belongs to the state rather than
  * to whoever is drawing at the moment: the canvas, the Configure strip and the
  * Learn workbench are three views of one drawing, and computing it here is
  * what stops them from being three drawings that agree by coincidence.
  */
-export const geometry = computed<Geometry | null>(() => {
-  const graph = redoGraph.value;
-  if (graph === null) return null;
-  return layoutTopology(topology.value, graph, {
-    overrides: doc.value.layout, transient: inFlight.value, transientFrom: inFlightFrom.value,
-  });
-});
+export const drawnGeometry = computed<Geometry>(() => layoutTopology(topology.value, drawnGraph.value, {
+  overrides: doc.value.layout, transient: inFlight.value, transientFrom: inFlightFrom.value,
+}));
+
+/**
+ * `drawnGeometry`, or null when there is no redo graph: the answer for the
+ * surfaces that draw *the redo* (the Detailed timeline's rail, the diagram
+ * figure, the report) and say so in a note of their own when there is none.
+ * Only the canvas draws a configuration that has no primary.
+ */
+export const geometry = computed<Geometry | null>(
+  () => (redoGraph.value === null ? null : drawnGeometry.value),
+);
 
 /** Validation findings, sorted by (severity, subject, id) the way the engine sorts. */
 export const issues = computed<Finding[]>(() => {
@@ -83,7 +105,7 @@ export const warnings = computed(() => issues.value.filter((f) => f.severity ===
  */
 export const trace = computed<EngineTrace | null>(() => {
   const evts = events.value;
-  if (evts.length === 0) return null;
+  if (evts.length === 0 && !healthyRun.value) return null;
   return simulate(topology.value, evts, doc.value.params);
 });
 
@@ -106,6 +128,24 @@ export const runFindings = computed<Finding[]>(
   () => (trace.value ? sortFindings([...trace.value.findings]) : []),
 );
 
+/**
+ * Whether the drawing, the readout and the aria sentences are reading the run.
+ *
+ * One answer, asked by everyone. A run exists while `trace` is not null --
+ * events are injected, or the healthy "Everything is working" run was asked
+ * for -- and it is shown in every mode that draws it: Topology (`build`) and
+ * the Detailed timeline (`break`), and Learn's workbench. Configure is about
+ * the configuration, so it reads the steady state even when the Document
+ * carries events (ui.md SS3). Topology without a run is Build as it always
+ * was: monochrome cards, the steady-state readings.
+ *
+ * Reads signals, so a component that calls it re-renders when the run appears
+ * or goes; pass a mode to ask about one the reader is not in.
+ */
+export function runShown(m: Mode = mode.value): boolean {
+  return trace.value !== null && m !== 'configure';
+}
+
 export const outcome = computed(() => trace.value?.facts.outcome ?? null);
 
 /**
@@ -127,7 +167,13 @@ export const protectionLevel = computed<Claim<ProtectionLevel> | null>(
 export type Tone = 'ik' | 'tl' | 'bl' | 'am' | 'rd' | 'vi' | 'sl';
 
 export interface ReadoutChip {
+  /** Unique on the line. */
   id: string;
+  /**
+   * The kind of reading, when several chips are of one kind (one per
+   * application): what the bar ranks and keeps by. Absent, the id is the kind.
+   */
+  group?: string;
   tone: Tone;
   /** The eyebrow. */
   k: string;
@@ -187,11 +233,104 @@ function findingsChip(): ReadoutChip {
  * outcome rather than on the name of the event that caused it.
  */
 export const readout = computed<ReadoutChip[]>(
-  /* Build and Configure are about the configuration, so their readout is the
-     steady state even when the Document carries events (ui.md SS3): the
-     outcome belongs to the modes that draw the run. */
-  () => readoutFor(mode.value === 'build' || mode.value === 'configure'),
+  /* Configure is about the configuration, so its readout is the steady state
+     even when the Document carries events (ui.md SS3); Topology reads the
+     steady state until there is a run, then the run (`runShown`). */
+  () => readoutFor(!runShown()),
 );
+
+/**
+ * The Split brain chip's sentence. It branches on what the drawing shows --
+ * who is open, stalled, aborted or down at the instant the new primary opens --
+ * and never on the name of the event that led there.
+ */
+function splitBrainSentence(sb: SplitBrain, topo: TopologyDoc): string {
+  const name = (id: MemberId): string => topo.members.find((m) => m.id === id)?.name ?? (id as string);
+  const oldP = name(sb.former);
+  const newP = name(sb.newPrimary);
+  const open = `${newP} opens at ${fmt(sb.openAt)} s`;
+  const first = sb.windows[0];
+  if (first !== undefined) {
+    const more = sb.windows.length > 1
+      ? ` (and ${sb.windows.length - 1} more stretch${sb.windows.length === 2 ? '' : 'es'})` : '';
+    return first.to === null
+      ? `${oldP} and ${newP} are both open read-write from ${fmt(first.from)} s to the end of the run: ${oldP} is still open when ${open}, and nothing in this run closes it${more}.`
+      : `${oldP} and ${newP} are both open read-write from ${fmt(first.from)} s to ${fmt(first.to)} s: ${oldP} is still open when ${open}${more}.`;
+  }
+  const at = sb.formerAtOpen;
+  switch (at?.kind) {
+    case 'aborted':
+      return `${oldP} aborts at ${fmt(at.at)} s, before ${open}.`;
+    case 'stalled':
+      return at.abortsAt === null
+        ? `${oldP} is STALLED when ${open}, and nothing shuts it down; a stalled primary commits nothing, but this drawing keeps it publishing the service, so a client that connects to it reads data ${newP} has moved past (stale reads, not counted as a second open database).`
+        : `${oldP} is STALLED when ${open} and cannot commit; it shuts itself down at ${fmt(at.abortsAt)} s.`;
+    case 'closed':
+      return at.state.startsWith('mounted')
+        ? `${oldP} is mounted, not open, when ${open}: it needs reinstating before it can be a standby.`
+        : `${oldP} is not open read-write when ${open}.`;
+    default:
+      return `${oldP} is down when ${open}, so only one database is ever open read-write.`;
+  }
+}
+
+/**
+ * The chips of a run in which nothing is injected -- "Everything is working".
+ *
+ * Every chip says what the run says and no more: the engine's outcome for an
+ * empty event list is `continues`, its data-loss kind `none`, and no member is
+ * ever promoted, so there is no split brain to speak of. None of it is an
+ * Oracle statement -- it is what this page's model does with a configuration
+ * that nothing disturbs -- so each carries the `model` basis, and the strip
+ * says "nothing fails" rather than reproducing the words of a failover
+ * outcome ("nothing moved") that belong to runs where something did.
+ */
+function healthyChips(t: EngineTrace, topo: TopologyDoc): ReadoutChip[] {
+  const primary = topo.members.find((m) => m.id === t.epochs[0]?.primary);
+  const primaryName = primary?.name ?? 'The primary';
+  const chips: ReadoutChip[] = [
+    {
+      id: 'outcome', tone: 'tl', k: 'Outcome', v: 'no failure',
+      sub: 'Nothing is injected, so nothing fails: no failover is needed and none is initiated. The run is this page\'s model of the configuration, not a measurement.',
+      basis: 'model',
+    },
+    {
+      id: 'loss', tone: 'tl', k: 'Data loss', v: 'none',
+      sub: `No role change happens in this run, so nothing ${primaryName} acknowledged is at risk.`,
+      basis: 'model',
+    },
+    {
+      id: 'split', tone: 'tl', k: 'Split brain', v: 'no',
+      sub: `${primaryName} is the only member ever open read-write: no standby is promoted in this run.`,
+      basis: 'model',
+    },
+  ];
+  const models = appModelsFor(t, topo);
+  const many = models.length > 1;
+  models.forEach((ap, i) => {
+    /* Said only of an application that is up and can reach a publisher of its
+       service for the whole run; one that cannot gets no reassurance here. */
+    if (!ap.spans.every((sp) => sp.appUp && sp.serving !== null)) return;
+    const name = ap.application?.name ?? 'the application';
+    chips.push({
+      id: i === 0 ? 'app' : `app~${i}`, group: 'app', tone: 'tl',
+      k: many ? name : 'Application', v: 'served',
+      sub: `${name} is served throughout: its service is published, its sessions work and a new connection connects at once, as this page models it.`,
+      basis: 'model',
+    });
+  });
+  const observerStates = Object.values(t.facts.observers).map((o) => o.endState);
+  const master = observerStates.find((st) => st !== 'backup' && st !== 'stopped');
+  if (observerStates.length > 0) {
+    chips.push({
+      id: 'observer', tone: 'vi', k: 'Observer', v: master ?? (observerStates[0] as string),
+      sub: observerStates.length === 1 ? 'The state the observer ends in.'
+        : `${observerStates.length} observers deployed; ${master === undefined ? 'none is the master' : "the master's state is shown"}.`,
+    });
+  }
+  chips.push(findingsChip());
+  return chips;
+}
 
 /**
  * The chips for one of the two readings, whichever mode is open: `steady`
@@ -261,6 +400,7 @@ export function readoutFor(steady: boolean): ReadoutChip[] {
   }
 
   const f = t.facts;
+  if (topo.events.length === 0) return healthyChips(t, topo);
   /* A transition can be ordered and then forbidden -- the readiness check
      stands between the two, and the engine reports the instant the new primary
      WOULD have opened either way. The readout must not read that instant back
@@ -305,7 +445,7 @@ export function readoutFor(steady: boolean): ReadoutChip[] {
         v: unknown ? 'unknown' : zero ? 'none' : fmt(rpo.value),
         ...(unknown || zero ? {} : { unit: 's' }),
         sub: unknown
-          ? 'The far sync instance went down with the primary, and what it had not yet forwarded is lost with it. This run cannot say how much.'
+          ? 'The far sync instance was down or cut off from the standby when the primary failed, so redo it had not yet forwarded could not be sent on to the standby. This run cannot say how much.'
           : zero
             ? (f.dataLossKind === 'manual'
               ? 'The standby held everything the primary had generated when it was promoted. A manual failover guarantees nothing of the kind.'
@@ -343,26 +483,55 @@ export function readoutFor(steady: boolean): ReadoutChip[] {
         : {}),
     });
   }
-  /* What the run cost the application: when its connect string got through,
-     or that it never did. This page's model, from where the card stands. */
-  const ap = appModelFor(t, topo);
-  if (ap !== null && (!ap.noEvent || ap.noEventKind === 'app-down')) {
-    const name = topo.application?.name ?? 'the application';
+  /* Whether two members were ever open read-write together. Asked only where
+     a new primary opens by failover, and this page's model: Oracle has no
+     interval for it, so the answer is read off the drawing (splitBrainOf). */
+  const sb = splitBrainOf(t);
+  if (sb !== null) {
+    chips.push({
+      id: 'split', tone: sb.split.value ? 'rd' : 'tl', k: 'Split brain',
+      v: sb.split.value ? 'yes' : 'no',
+      sub: splitBrainSentence(sb, topo),
+      basis: sb.split.basis,
+      cite: [...sb.split.cite],
+    });
+  }
+  /* What the run cost each application: when its connect string got through,
+     or that it never did. This page's model, from where each card stands. One
+     reading per application, each naming its own; with a single application
+     the reading keeps the plain "Application" eyebrow. */
+  const models = appModelsFor(t, topo);
+  const many = models.length > 1;
+  const memberName = (id: string | null): string =>
+    topo.members.find((m) => (m.id as string) === id)?.name ?? (id ?? '');
+  models.forEach((ap, i) => {
+    if (ap.noEvent && ap.noEventKind !== 'app-down') return;
+    const name = ap.application?.name ?? 'the application';
+    const eyebrow = many ? name : 'Application';
+    const base = {
+      /* The first keeps the plain id; the rest are told apart by their place. */
+      id: i === 0 ? 'app' : `app~${i}`,
+      group: 'app',
+    };
     chips.push(ap.tConn !== null
       ? {
-        id: 'app', tone: 'tl', k: 'Application reconnects', v: fmt(ap.tConn), unit: 's',
-        sub: `${name} gets a new connection at this instant: the connect string's own waits, on top of the role change.`,
+        ...base, tone: 'tl', k: many ? `${name} reconnects` : 'Application reconnects', v: fmt(ap.tConn), unit: 's',
+        sub: ap.instanceLoss !== null
+          ? `${name} gets a new connection at this instant: its sessions on ${ap.instanceLoss.instance} were terminated with the instance while ${memberName(ap.sessionsOn)} went on serving, so the outage is the connect string's own.`
+          : ap.servedAtLoss !== null
+            ? `${name} gets a new connection at this instant: ${memberName(ap.sessionsOn)} went down with its sessions while ${memberName(ap.servedAtLoss)} was already publishing the service, so the outage is the connect string's own.`
+            : `${name} gets a new connection at this instant: the connect string's own waits, on top of the role change.`,
         basis: 'model',
       }
       : {
-        id: 'app', tone: 'rd', k: 'Application',
+        ...base, tone: 'rd', k: eyebrow,
         v: ap.noEventKind === 'app-down' ? 'down' : 'stays down',
         sub: ap.noEventKind === 'app-down'
           ? `${name} is down with its host, so nothing is dialled.`
           : `${name} exhausts its connect string${ap.gaveUp === null ? '' : ` at t = ${fmt(ap.gaveUp)} s`} without reaching the service.`,
         basis: 'model',
       });
-  }
+  });
   const observerStates = Object.values(f.observers).map((o) => o.endState);
   if (observerStates.length > 0) {
     /* The master's, where there is one: every other running observer ends

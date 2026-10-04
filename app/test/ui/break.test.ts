@@ -15,15 +15,16 @@ import { h, render } from 'preact';
 import { classicTopology, scenarioEvents, stateAt } from '@/engine';
 import type { TimedEvent, TopologyDoc } from '@/engine';
 import { classicDoc, doc, withEvents } from '@/state/doc';
-import { trace } from '@/state/derived';
+import { readoutFor, trace } from '@/state/derived';
 import { edit, resetHistory, undo } from '@/state/history';
-import { clearSelection, hintsOn, mode, selection, tNow, viewport } from '@/state/view';
+import { clearSelection, healthyRun, hintsOn, mode, tNow, viewport } from '@/state/view';
 import { BreakRail, scenarioNotesOpen } from '@/ui/break/BreakRail';
-import { EventMenu, menuOpen } from '@/ui/canvas/EventMenu';
+import { breakBar } from '@/ui/break/menu';
 import {
-  actionsFor, anythingDownUnder, applyTemplate, clearEvents, describeEvent, hoverTools, isDownAt, NO_RESTART_AFTER_ABORT,
-  removeEventAt, restoreQuietLine, runAction, setEventTime, templates,
+  actionsFor, anythingDownUnder, applyTemplate, clearEvents, describeEvent, healthyScenario, hoverTools, isDownAt, NO_RESTART_AFTER_ABORT,
+  removeEventAt, restoreQuietLine, runAction, setEventTime, shelf, snapT, templates,
 } from '@/ui/break/events';
+import { buildExplanation } from '@/ui/break/explain';
 import { WHY } from '@/ui/inspector/why';
 import { DEFAULT_OPEN, openSections, SCENARIOS_ID } from '@/ui/inspector/sections';
 import { printing } from '@/ui/print';
@@ -39,6 +40,22 @@ const tick = (): Promise<void> => new Promise((r) => setTimeout(r, 0));
 
 const kinds = (list: readonly TimedEvent[]): string[] => list.map((e) => e.kind);
 const byId = (t: TopologyDoc, id: string) => templates(t, 0).find((x) => x.id === id);
+
+/**
+ * What Break's action bar lists for a selection at the playhead -- the list a
+ * click on a card opens, and the only list there is now that the rail carries
+ * no menu of its own. Rows are the bar's, in its group order; a refused row
+ * carries its reason in `enabled`.
+ */
+const barOf = (keys: string[]) => breakBar(doc.value.topology, keys, snapT(tNow.value));
+const rowsOf = (keys: string[]) => barOf(keys).actions;
+const labelsOf = (keys: string[]): string[] => rowsOf(keys).map((a) => a.label);
+const rowNamed = (keys: string[], start: string) => rowsOf(keys).find((a) => a.label.startsWith(start));
+/** The refusal text under every grey row of a selection, for "does not print X". */
+const refusals = (keys: string[]): string[] => rowsOf(keys)
+  .map((a) => (a.enabled.state === 'off' ? a.enabled.why : ''))
+  .filter((w) => w !== '');
+const quietOf = (keys: string[]): string | null => barOf(keys).quiet;
 
 /**
  * Put a hand-written event list on the document. The ids are branded in the
@@ -59,7 +76,6 @@ beforeEach(() => {
   viewport.value = 'wide';
   mode.value = 'break';
   tNow.value = 0;
-  menuOpen.value = true;
   scenarioNotesOpen.value = false;
   openSections.value = new Set<string>([DEFAULT_OPEN]);
   hintsOn.value = false;
@@ -137,6 +153,95 @@ describe('the six templates', () => {
     expect(kinds(doc.value.topology.events)).toEqual(['cmd.switchover']);
     undo();
     expect(kinds(doc.value.topology.events)).toEqual(['host.down']);
+  });
+});
+
+describe('"Everything is working"', () => {
+  const t0 = (): TopologyDoc => doc.value.topology;
+
+  it('is first on the shelf, is not one of the six failures, and injects nothing', () => {
+    const list = shelf(t0(), 0);
+    expect(list.map((x) => x.id)).toEqual(['healthy', 'crash', 'isolated', 'partition', 'dc2down', 'observer-lost', 'switchover']);
+    expect(list[0]?.label).toBe('Everything is working');
+    expect(list[0]?.events).toEqual([]);
+    expect(list[0]?.enabled.state).not.toBe('off');
+    expect(templates(t0(), 0).some((x) => (x.id as string) === 'healthy')).toBe(false);
+  });
+
+  it('is greyed, with its reason, when no member holds the primary role', () => {
+    const none: TopologyDoc = { ...t0(), members: t0().members.map((m) => ({ ...m, role: 'physical' as never })) };
+    expect(healthyScenario(none).enabled).toEqual({ state: 'off', why: 'No member holds the primary role.' });
+  });
+
+  it('runs the configuration with no event at all: no trace before, the engine\'s own after', () => {
+    expect(trace.value).toBeNull();
+    applyTemplate(healthyScenario(t0()));
+    expect(t0().events).toEqual([]);
+    expect(healthyRun.value).toBe(true);
+    const run = trace.value;
+    expect(run).not.toBeNull();
+    expect(run?.facts.outcome).toBe('continues');
+    expect(run?.facts.dataLossKind).toBe('none');
+    expect(run?.facts.newPrimary).toBeNull();
+    expect(run?.facts.abortAt).toBeNull();
+    expect(run?.facts.blocked).toBe(false);
+    /* every member holds its steady state from the first instant to the last */
+    const end = run?.facts.perMember as unknown as Record<string, { endState: string }>;
+    expect(end['prm01']?.endState).toBe('open-rw');
+    expect(end['sby01']?.endState).toBe('mounted-apply');
+    expect(run?.findings.filter((f) => f.severity === 'error')).toEqual([]);
+  });
+
+  it('says plainly that nothing failed, and labels each statement as this page\'s model', () => {
+    applyTemplate(healthyScenario(t0()));
+    const chips = readoutFor(false);
+    const by = (id: string) => chips.find((c) => c.id === id);
+    expect(by('outcome')).toMatchObject({ v: 'no failure', basis: 'model' });
+    expect(by('loss')).toMatchObject({ v: 'none', basis: 'model' });
+    expect(by('split')).toMatchObject({ v: 'no', basis: 'model' });
+    expect(chips.map((c) => c.v)).not.toContain('nothing moved');
+    expect(by('open')).toBeUndefined();
+  });
+
+  it('explains itself without inventing a failover prerequisite', () => {
+    applyTemplate(healthyScenario(t0()));
+    const steps = buildExplanation(t0(), trace.value!);
+    expect(steps.map((x) => x.key)).not.toContain('no-initiation');
+    const result = steps.find((x) => x.key === 'result');
+    expect(result?.detail).toContain('Nothing was injected, so nothing failed');
+    expect(result?.claim?.basis).toBe('model');
+  });
+
+  it('clears the events a crash left, and a failure scenario after it takes the run back', () => {
+    applyTemplate(byId(t0(), 'crash')!);
+    expect(kinds(t0().events)).toEqual(['host.down']);
+    applyTemplate(healthyScenario(t0()));
+    expect(t0().events).toEqual([]);
+    expect(trace.value?.facts.outcome).toBe('continues');
+    applyTemplate(byId(t0(), 'switchover')!);
+    expect(healthyRun.value).toBe(false);
+    expect(trace.value?.facts.outcome).toBe('switchover');
+    /* and undoing back to the healthy run is the healthy run, not a crash */
+    undo();
+    expect(t0().events).toEqual([]);
+  });
+
+  it('is put away by Clear, by removing the last event, and by a new document', () => {
+    applyTemplate(healthyScenario(t0()));
+    clearEvents();
+    expect(healthyRun.value).toBe(false);
+    expect(trace.value).toBeNull();
+    applyTemplate(healthyScenario(t0()));
+    resetHistory(classicDoc());
+    expect(healthyRun.value).toBe(false);
+    expect(trace.value).toBeNull();
+  });
+
+  it('shows on the rail as an empty list that says everything is working', async () => {
+    applyTemplate(healthyScenario(t0()));
+    const root = mount(BreakRail);
+    await tick();
+    expect(root.textContent).toContain('No events — everything is working');
   });
 });
 
@@ -227,7 +332,7 @@ describe('the scenario fold', () => {
     expect(tog.getAttribute('aria-expanded')).toBe('false');
     tog.click();
     await tick();
-    expect(root.querySelectorAll('.tmpl')).toHaveLength(templates(doc.value.topology, 0).length);
+    expect(root.querySelectorAll('.tmpl')).toHaveLength(shelf(doc.value.topology, 0).length);
   });
 });
 
@@ -238,9 +343,9 @@ describe('the scenario descriptions', () => {
     const root = mount(BreakRail);
     await tick();
     const rows = [...root.querySelectorAll('.tmpl')];
-    expect(rows).toHaveLength(templates(doc.value.topology, 0).length);
+    expect(rows).toHaveLength(shelf(doc.value.topology, 0).length);
     for (const [i, row] of rows.entries()) {
-      const caption = templates(doc.value.topology, 0)[i]!.caption;
+      const caption = shelf(doc.value.topology, 0)[i]!.caption;
       /* Closed, the description is genuinely absent rather than clipped by a
          CSS rule -- and the sentence still rides on the button it belongs to,
          so a reader who hovers one row does not have to open all six. */
@@ -251,7 +356,7 @@ describe('the scenario descriptions', () => {
     root.querySelector<HTMLButtonElement>('button.tmpl-tog')!.click();
     await tick();
     for (const [i, row] of [...root.querySelectorAll('.tmpl')].entries()) {
-      const caption = templates(doc.value.topology, 0)[i]!.caption;
+      const caption = shelf(doc.value.topology, 0)[i]!.caption;
       const txt = row.querySelector('.tmpl-cap');
       expect(txt?.textContent).toBe(caption);
       expect(txt?.getAttribute('title')).toBe(caption);
@@ -264,7 +369,7 @@ describe('the scenario descriptions', () => {
       const root = mount(BreakRail);
       await tick();
       const caps = [...root.querySelectorAll('.tmpl-cap')].map((el) => el.textContent);
-      expect(caps).toEqual(templates(doc.value.topology, 0).map((t) => t.caption));
+      expect(caps).toEqual(shelf(doc.value.topology, 0).map((t) => t.caption));
     } finally {
       printing.value = false;
     }
@@ -373,24 +478,15 @@ describe('the canvas menu', () => {
     expect(sby && 'applyRunning' in sby ? sby.applyRunning : true).toBe(false);
   });
 
-  it('says what to do when nothing is selected, and keeps its own button when shut', async () => {
-    const root = mount(EventMenu);
-    await tick();
-    expect(root.textContent).toContain('Select a card');
-    menuOpen.value = false;
-    await tick();
-    expect(root.querySelector('.evmenu.is-shut')).not.toBeNull();
-    expect(root.textContent).toContain('Actions');
+  it('offers nothing for nothing selected', () => {
+    expect(barOf([])).toEqual({ actions: [], quiet: null, sections: [] });
   });
 
-  it('lists the selected card actions, each with a real button', async () => {
-    selection.value = ['sby01'];
-    const root = mount(EventMenu);
-    await tick();
-    const labels = [...root.querySelectorAll('.evmenu-row button')].map((b) => b.textContent ?? '');
+  it('lists the selected card actions, grouped', () => {
+    const labels = labelsOf(['sby01']);
     expect(labels.some((l) => l.startsWith('Crash'))).toBe(true);
     expect(labels.some((l) => l.includes('SWITCHOVER TO sby01'))).toBe(true);
-    for (const el of root.querySelectorAll('*')) expect(el.getAttribute('style')).toBeNull();
+    expect(barOf(['sby01']).sections.length).toBeGreaterThan(1);
   });
 });
 
@@ -445,66 +541,24 @@ describe('SWITCHOVER, FAILOVER and REINSTATE say why they are off', () => {
 });
 
 /**
- * The menu injects at the playhead, and until it said so the header's
- * "Inject at t = 0 s" read as a property of the menu rather than as a reading
- * of where the playhead happened to be.
+ * Events land at the playhead, and the bar's header says so: `at t = 12 s`,
+ * the same tenth of a second the rail's transport reads. There is no field of
+ * its own to set it -- the transport's time box is the one clock.
  */
-describe('the menu says where an event will land', () => {
-  it('leads with the injection time and the sentence behind it', async () => {
-    selection.value = ['prm01'];
-    tNow.value = 40;
-    const root = mount(EventMenu);
-    await tick();
-    const title = root.querySelector('.evmenu-title')?.textContent ?? '';
-    /* The clock reading is the fact, and it is in the header at every
-       setting; the sentence that spells it out is a hint. */
-    expect(title).toContain('Inject at t =');
-    expect(root.textContent).not.toContain('New events use the playhead time');
-
-    hintsOn.value = true;
-    const withHints = mount(EventMenu);
-    await tick();
-    expect(withHints.textContent).toContain('New events use the playhead time');
-  });
-
-  it('makes the clock reading the control, and moving it moves the playhead', async () => {
-    selection.value = ['prm01'];
-    const root = mount(EventMenu);
-    await tick();
-    const at = root.querySelector<HTMLInputElement>('.evmenu-at');
-    expect(at).not.toBeNull();
-    expect(at!.value).toBe('0');
-    at!.value = '12.5';
-    at!.dispatchEvent(new Event('change', { bubbles: true }));
-    await tick();
-    expect(tNow.value).toBe(12.5);
-    expect(root.querySelector<HTMLInputElement>('.evmenu-at')?.value).toBe('12.5');
-  });
-
-  it('refuses a negative injection time rather than clamping the drawing to it', async () => {
-    selection.value = ['prm01'];
-    const root = mount(EventMenu);
-    await tick();
-    const at = root.querySelector<HTMLInputElement>('.evmenu-at')!;
-    at.value = '-9';
-    at.dispatchEvent(new Event('change', { bubbles: true }));
-    await tick();
-    expect(tNow.value).toBe(0);
-  });
-
-  it('injects at the time the menu was showing, then rests the playhead on the result', async () => {
-    selection.value = ['prm01'];
+describe('an event lands at the playhead', () => {
+  it('injects at the time the playhead was showing, then rests it on the result', () => {
     tNow.value = 12;
-    const root = mount(EventMenu);
-    await tick();
-    const crash = [...root.querySelectorAll<HTMLButtonElement>('.evmenu-row button')]
-      .find((b) => (b.textContent ?? '').startsWith('Crash'))!;
-    crash.click();
-    await tick();
+    rowNamed(['prm01'], 'Crash')!.run();
     /* The event kept the time the header was showing... */
     expect(doc.value.topology.events).toEqual([{ at: 12, kind: 'host.down', host: 'dc1-prm01' }]);
     /* ...and the playhead moved past it, to where there is something to see. */
     expect(tNow.value).toBeGreaterThan(12);
+  });
+
+  it('snaps the time to a tenth of a second', () => {
+    tNow.value = 12.34;
+    rowNamed(['prm01'], 'Crash')!.run();
+    expect(doc.value.topology.events).toEqual([{ at: 12.3, kind: 'host.down', host: 'dc1-prm01' }]);
   });
 });
 
@@ -515,115 +569,85 @@ describe('the menu says where an event will land', () => {
  * hidden by a rule.
  */
 describe('restores nothing has taken down', () => {
-  it('are not rendered, and one quiet line says why', async () => {
-    selection.value = ['prm01'];
-    const root = mount(EventMenu);
-    await tick();
-    const labels = [...root.querySelectorAll('.evmenu-row button')].map((b) => b.textContent ?? '');
+  it('are not listed, and one quiet line says why', () => {
+    const labels = labelsOf(['prm01']);
     expect(labels.some((l) => l.startsWith('Restore'))).toBe(false);
     expect(labels.some((l) => l.startsWith('Bring '))).toBe(false);
     expect(labels.some((l) => l === 'Start prm01')).toBe(false);
-    const quiet = root.querySelectorAll('.evmenu-quiet');
-    expect(quiet).toHaveLength(1);
-    expect(quiet[0]?.textContent).toBe('Nothing to restore — nothing here is down.');
-    expect(root.textContent).not.toContain(WHY.nothingDown);
+    expect(quietOf(['prm01'])).toBe('Nothing to restore — nothing here is down.');
+    expect(refusals(['prm01'])).not.toContain(WHY.nothingDown);
   });
 
-  it('come back, live, once something is down', async () => {
+  it('come back, live, once something is down', () => {
     applyTemplate(byId(doc.value.topology, 'crash')!);
     tNow.value = 5;
-    selection.value = ['prm01'];
-    const root = mount(EventMenu);
-    await tick();
-    const restore = [...root.querySelectorAll<HTMLButtonElement>('.evmenu-row button')]
-      .find((b) => (b.textContent ?? '').startsWith('Restore the host'));
+    const restore = rowNamed(['prm01'], 'Restore the host');
     expect(restore).not.toBeUndefined();
-    expect(restore!.disabled).toBe(false);
+    expect(restore!.enabled.state).toBe('on');
     /* The host is back on the list, the site is not -- and the line under it
        says the second thing rather than repeating the first one's refusal. */
-    const quiet = root.querySelectorAll('.evmenu-quiet');
-    expect(quiet).toHaveLength(1);
-    expect(quiet[0]?.textContent).toBe('The other restores are not listed — nothing else here is down.');
-    expect(root.textContent).not.toContain(WHY.nothingDown);
+    expect(quietOf(['prm01'])).toBe('The other restores are not listed — nothing else here is down.');
+    expect(refusals(['prm01'])).not.toContain(WHY.nothingDown);
   });
 
   /* The observer's restore refused in its own register -- "It is running
      already." -- so it escaped the group the reason is said once for, and a
      grey restore was drawn directly above the line that stands in for it. */
-  it('include the observer, which said the same thing in different words', async () => {
-    selection.value = ['obs01'];
-    const root = mount(EventMenu);
-    await tick();
-    const labels = [...root.querySelectorAll('.evmenu-row button')].map((b) => b.textContent ?? '');
+  it('include the observer, which said the same thing in different words', () => {
+    const labels = labelsOf(['obs01']);
     expect(labels.some((l) => l.startsWith('Start the observer'))).toBe(false);
     expect(labels.some((l) => l.startsWith('Restore dc3-obs01'))).toBe(false);
-    expect(root.textContent).not.toContain('running already');
-    const quiet = root.querySelectorAll('.evmenu-quiet');
-    expect(quiet).toHaveLength(1);
-    expect(quiet[0]?.textContent).toBe('Nothing to restore — nothing here is down.');
+    expect(refusals(['obs01']).join(' ')).not.toContain('running already');
+    expect(quietOf(['obs01'])).toBe('Nothing to restore — nothing here is down.');
   });
 
-  it('come back for the observer once its host is gone', async () => {
+  it('come back for the observer once its host is gone', () => {
     inject([{ at: 0, kind: 'host.down', host: 'dc3-obs01' }]);
     tNow.value = 5;
-    selection.value = ['obs01'];
-    const root = mount(EventMenu);
-    await tick();
-    const buttons = [...root.querySelectorAll<HTMLButtonElement>('.evmenu-row button')];
-    expect(buttons.find((b) => (b.textContent ?? '').startsWith('Restore dc3-obs01'))?.disabled)
-      .toBe(false);
+    expect(rowNamed(['obs01'], 'Restore dc3-obs01')?.enabled.state).toBe('on');
     /* Starting the observer on a host that is not there draws nothing, so it
        is grey with the host named -- not dropped, because it *is* down. */
-    const start = buttons.find((b) => (b.textContent ?? '').startsWith('Start the observer'));
-    expect(start?.disabled).toBe(true);
-    expect(root.textContent).toContain('dc3-obs01 is down: restore the host first.');
-    expect(root.querySelectorAll('.evmenu-quiet')).toHaveLength(0);
+    const start = rowNamed(['obs01'], 'Start the observer');
+    expect(start?.enabled.state).toBe('off');
+    expect(refusals(['obs01'])).toContain('dc3-obs01 is down: restore the host first.');
+    expect(quietOf(['obs01'])).toBeNull();
   });
 });
 
 /**
- * The quiet line is the table's, not the menu's.
+ * The quiet line is the table's, not a surface's.
  *
- * A second surface -- the bar on the drawing -- offers the same actions and
- * drops the same restores, and a sentence written twice is a sentence that can
- * come to differ. `restoreQuietLine` is what the menu prints, so this asserts
- * exactly that: for the same selection at the same moment, the string and the
- * paragraph are the same thing.
+ * Two surfaces offer the same actions and drop the same restores -- the bar on
+ * the drawing and Lanes' More menu -- and a sentence written twice is a
+ * sentence that can come to differ. `restoreQuietLine` is what both print, so
+ * this asserts exactly that: for the same selection at the same moment, the
+ * string the bar carries is the table's.
  */
-describe('restoreQuietLine is what the menu prints', () => {
-  const printed = async (keys: string[]): Promise<string | null> => {
-    selection.value = keys;
-    const root = mount(EventMenu);
-    await tick();
-    const q = root.querySelectorAll('.evmenu-quiet');
-    expect(q.length).toBeLessThanOrEqual(1);
-    return q[0]?.textContent ?? null;
-  };
-
+describe('restoreQuietLine is what the bar prints', () => {
   const line = (keys: string[]): string | null => {
     const t = doc.value.topology;
     return restoreQuietLine(t, keys, tNow.value, actionsFor(t, keys, tNow.value));
   };
 
-  it('agrees on every branch of the sentence', async () => {
+  it('agrees on every branch of the sentence', () => {
     /* Nothing down; one host down inside a data centre that is up; a whole
        site down, where no restore is dropped at all; and a pair of links of
        which only one is cut. */
-    expect(await printed(['prm01'])).toBe(line(['prm01']));
+    expect(quietOf(['prm01'])).toBe(line(['prm01']));
 
     inject([{ at: 5, kind: 'host.down', host: 'dc1-prm01' }]);
     tNow.value = 12;
-    expect(await printed(['prm01'])).toBe(line(['prm01']));
-    expect(await printed(['dc1'])).toBe(line(['dc1']));
+    expect(quietOf(['prm01'])).toBe(line(['prm01']));
+    expect(quietOf(['dc1'])).toBe(line(['dc1']));
 
     inject([{ at: 5, kind: 'site.down', site: 'dc1' }]);
-    expect(await printed(['prm01'])).toBe(line(['prm01']));
+    expect(quietOf(['prm01'])).toBe(line(['prm01']));
     /* Nothing was dropped there, so both say nothing rather than nothing much. */
     expect(line(['prm01'])).toBeNull();
 
     inject([{ at: 0, kind: 'link.cut', link: 'dc1-dc2' }]);
     tNow.value = 10;
-    expect(await printed(['dc1-dc2', 'dc1-dc3'])).toBe(line(['dc1-dc2', 'dc1-dc3']));
+    expect(quietOf(['dc1-dc2', 'dc1-dc3'])).toBe(line(['dc1-dc2', 'dc1-dc3']));
     expect(line(['dc1-dc2', 'dc1-dc3'])).toContain('only part of this selection is down');
   });
 });
@@ -640,11 +664,7 @@ describe('restoreQuietLine is what the menu prints', () => {
  */
 describe('the quiet line and the drawing say the same thing', () => {
   /* The classic deployment: prm01 on dc1-prm01 in dc1, sby01 in dc2, obs01 in dc3. */
-  const quietOf = (root: HTMLElement): string => {
-    const q = root.querySelectorAll('.evmenu-quiet');
-    expect(q.length).toBeLessThanOrEqual(1);
-    return q[0]?.textContent ?? '';
-  };
+  const quiet = (keys: string[]): string => quietOf(keys) ?? '';
 
   it('reads a crashed host as the database on it being down, like the canvas does', () => {
     inject([{ at: 5, kind: 'host.down', host: 'dc1-prm01' }]);
@@ -656,65 +676,49 @@ describe('the quiet line and the drawing say the same thing', () => {
     expect(isDownAt(t, { kind: 'site', id: 'dc1' }, 12)).toBe(false);
   });
 
-  it('keeps "Start prm01" on the list while the host it runs on is down', async () => {
+  it('keeps "Start prm01" on the list while the host it runs on is down', () => {
     inject([{ at: 5, kind: 'host.down', host: 'dc1-prm01' }]);
     tNow.value = 12;
-    selection.value = ['prm01'];
-    const root = mount(EventMenu);
-    await tick();
-    const start = [...root.querySelectorAll<HTMLButtonElement>('.evmenu-row button')]
-      .find((b) => (b.textContent ?? '') === 'Start prm01');
+    const start = rowsOf(['prm01']).find((a) => a.label === 'Start prm01');
     /* It is down, so it is not in the "nothing has taken it down" group; it is
        grey because restoring it first would inject an event that draws
        nothing, and it names what to bring back instead. */
     expect(start).not.toBeUndefined();
-    expect(start!.disabled).toBe(true);
-    expect(root.textContent).toContain('dc1-prm01 is down: restore the host first.');
-    expect(root.textContent).not.toContain(WHY.nothingDown);
+    expect(start!.enabled.state).toBe('off');
+    expect(refusals(['prm01'])).toContain('dc1-prm01 is down: restore the host first.');
+    expect(refusals(['prm01'])).not.toContain(WHY.nothingDown);
     /* Only the site restore was dropped, and the site really is up. */
-    expect(quietOf(root)).toBe('The other restores are not listed — nothing else here is down.');
+    expect(quiet(['prm01'])).toBe('The other restores are not listed — nothing else here is down.');
   });
 
-  it('offers no crash and no lie inside a data centre that is down', async () => {
+  it('offers no crash and no lie inside a data centre that is down', () => {
     inject([{ at: 5, kind: 'site.down', site: 'dc1' }]);
     tNow.value = 12;
-    selection.value = ['prm01'];
-    const root = mount(EventMenu);
-    await tick();
-    const labels = [...root.querySelectorAll<HTMLButtonElement>('.evmenu-row button')];
-    const crash = labels.find((b) => (b.textContent ?? '').startsWith('Crash dc1-prm01'));
-    expect(crash?.disabled).toBe(true);
-    const back = labels.find((b) => (b.textContent ?? '') === 'Bring dc1 back');
-    expect(back?.disabled).toBe(false);
-    expect(root.textContent).toContain('DC 1 is down: bring the whole data centre back first.');
+    expect(rowNamed(['prm01'], 'Crash dc1-prm01')?.enabled.state).toBe('off');
+    expect(rowsOf(['prm01']).find((a) => a.label === 'Bring dc1 back')?.enabled.state).toBe('on');
+    expect(refusals(['prm01'])).toContain('DC 1 is down: bring the whole data centre back first.');
     /* Everything here is down, so no restore was dropped and there is no line. */
-    expect(quietOf(root)).toBe('');
+    expect(quiet(['prm01'])).toBe('');
   });
 
-  it('does not claim a data centre is clear when a host inside it is down', async () => {
+  it('does not claim a data centre is clear when a host inside it is down', () => {
     inject([{ at: 5, kind: 'host.down', host: 'dc1-prm01' }]);
     tNow.value = 12;
-    selection.value = ['dc1'];
-    const root = mount(EventMenu);
-    await tick();
     expect(anythingDownUnder(doc.value.topology, 'dc1', 12)).toBe(true);
-    expect(quietOf(root)).not.toContain('nothing here is down');
-    expect(quietOf(root)).toContain('what is down sits inside it');
+    expect(quiet(['dc1'])).not.toContain('nothing here is down');
+    expect(quiet(['dc1'])).toContain('what is down sits inside it');
   });
 
-  it('does not claim nothing is down when only part of the selection is', async () => {
+  it('does not claim nothing is down when only part of the selection is', () => {
     inject([{ at: 0, kind: 'link.cut', link: 'dc1-dc2' }]);
     tNow.value = 10;
-    selection.value = ['dc1-dc2', 'dc1-dc3'];
-    const root = mount(EventMenu);
-    await tick();
     /* The intersection collapsed the pair's restore to "nothing has taken it
        down" -- true of the pair, false of dc1-dc2, which is drawn cut. */
     const heal = actionsFor(doc.value.topology, ['dc1-dc2', 'dc1-dc3'], 10)
       .find((a) => a.id === 'link.heal');
     expect(heal?.enabled).toEqual({ state: 'off', why: WHY.nothingDown });
-    expect(quietOf(root)).not.toContain('nothing here is down');
-    expect(quietOf(root)).toContain('only part of this selection is down');
+    expect(quiet(['dc1-dc2', 'dc1-dc3'])).not.toContain('nothing here is down');
+    expect(quiet(['dc1-dc2', 'dc1-dc3'])).toContain('only part of this selection is down');
   });
 
   /**
@@ -732,19 +736,16 @@ describe('the quiet line and the drawing say the same thing', () => {
     ['a crashed host', { at: 5, kind: 'host.down', host: 'dc1-prm01' }],
     ['a lost data centre', { at: 5, kind: 'site.down', site: 'dc1' }],
   ] as [string, unknown][]) {
-    it(`never says "nothing here is down" after ${name}`, async () => {
+    it(`never says "nothing here is down" after ${name}`, () => {
       const checked: string[] = [];
       for (const key of keys) {
         inject([evt]);
         tNow.value = 12;
-        selection.value = [key];
-        const root = mount(EventMenu);
-        await tick();
         const down = membersUnder(doc.value.topology, key).some((m) => membersAt(12)[m] === 'down');
         if (!down) continue;
         checked.push(key);
-        expect(`${key}: ${quietOf(root)}`).not.toContain('Nothing to restore');
-        expect(`${key}: ${quietOf(root)}`).not.toContain('nothing here is down');
+        expect(`${key}: ${quiet([key])}`).not.toContain('Nothing to restore');
+        expect(`${key}: ${quiet([key])}`).not.toContain('nothing here is down');
       }
       /* The sweep is worthless if it never reached the branch: the database and
          the data centre holding it are both down under this event. */

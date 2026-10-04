@@ -21,8 +21,35 @@ export const PANEL_TABS: readonly PanelTab[] = [
   'dgmgrl', 'dests', 'tns', 'show', 'app', 'commit', 'reopen',
 ];
 
+/**
+ * Which timeline the Detailed timeline draws: `config` is the configuration's lanes (the
+ * timeline as it always was), `app` is the application's detail view -- the
+ * connect string's retry ladder, the sessions and the outage, the drawing the
+ * Config panel's Application view also makes. `app` exists only while the
+ * drawing has an application card; without one the configuration timeline is
+ * what shows whatever this says (`appTimelineOn` in ui/break/TimelineView.tsx).
+ * A reading preference, remembered under `dg-break-timeline` (persist.ts), and
+ * not in the address.
+ */
+export type BreakTimeline = 'config' | 'app';
+
+export const BREAK_TIMELINES: readonly BreakTimeline[] = ['config', 'app'];
+
+export const BREAK_TIMELINE_LABEL: Record<BreakTimeline, string> = { config: 'Configuration', app: 'Application' };
+
+export const BREAK_TIMELINE_SUB: Record<BreakTimeline, string> = {
+  config: 'Configuration — the members, links and observer on one clock',
+  app: 'Application — what the connect string does while the role moves, and what it costs the application',
+};
+
+/**
+ * The words on the mode buttons. The ids stay what they were -- `build` is
+ * Topology and `break` is the Detailed timeline, as `configure` kept its id
+ * when it became Config -- so a class, a test or an old link that says
+ * `m-break` or `?mode=build` still means the same mode.
+ */
 export const MODE_LABEL: Record<Mode, string> = {
-  build: 'Build', break: 'Break', configure: 'Configure', learn: 'Learn',
+  build: 'Topology', break: 'Detailed timeline', configure: 'Config', learn: 'Learn',
 };
 
 /**
@@ -40,12 +67,16 @@ export const MODE_LABEL: Record<Mode, string> = {
  * belongs to `modeGuide`, which knows.
  */
 export const MODE_SUB: Record<Mode, string> = {
-  build: 'Build — draw the configuration: sites, members, redo routes, observers',
-  break: 'Break — add failures and follow the simulation timeline',
+  build: 'Topology — draw the configuration, then break it: sites, members, redo routes, observers; '
+    + 'click to edit, drag to move, + to add; a scenario or the icons on a card add a failure, '
+    + 'and the timeline under the drawing follows it',
+  break: 'Detailed timeline — the run in full: follow a failure through detection, threshold, '
+    + 'role change and open, tune its settings, add an event from a lane, '
+    + 'drag a numbered marker to change its time',
   configure:
-    'Configure — generated from the drawing: DGMGRL, init parameters and connect strings; '
+    'Config — generated from the drawing: DGMGRL, init parameters and connect strings; '
     + 'hover a line to see which member it configures.',
-  learn: 'Learn — nine guided lessons and the reference tables behind them',
+  learn: 'Learn — ten guided lessons and the reference tables behind them',
 };
 
 export const PANEL_LABEL: Record<PanelTab, string> = {
@@ -93,10 +124,49 @@ export const proseOpen = signal<boolean>(false);
 export const theme = signal<ThemePref>('auto');
 export const palette = signal<PalettePref>('standard');
 export const edition = signal<Edition>('19c');
+/**
+ * The reader asked for the inspector: the top bar's Inspector button, `]`, or
+ * something that sent them to a property (`revealRail`).
+ *
+ * Below `wide` it is the drawer's open state. At `wide`, in Build and
+ * Configure, it is "the reader opened the inspector on purpose": the rail is
+ * not in the document at all until something is selected or this is set
+ * (`inspectorRailWanted`), so with nothing selected the rail would only be the
+ * configuration's own properties, and the drawing is what the reader came for.
+ * Its close button clears both the selection and this.
+ */
 export const inspectorOpen = signal<boolean>(false);
-/** The wide rail keeps its heading when folded; smaller screens keep a launcher. */
-export const inspectorCollapsed = signal<boolean>(false);
+/** Searchable page commands; transient view state. */
 export const commandOpen = signal<boolean>(false);
+/** Which timeline the Detailed timeline draws (`BreakTimeline`). Configuration to start with; written by `setBreakTimeline`. */
+export const breakTimeline = signal<BreakTimeline>('config');
+/**
+ * Which application the Application timeline draws when the canvas selection
+ * names none: the id the picker chose, else the first application. Not
+ * persisted -- the drawing's applications are the document's.
+ */
+export const breakApp = signal<string | null>(null);
+/**
+ * Whether the Detailed timeline's run summary -- the band of cards under the
+ * bar -- is unfolded. Folded to start with: the bar's terse line is the
+ * summary a reader already has, and the band is the same readings at reading
+ * size. Only meaningful with a run on screen. Remembered under `dg-summary`
+ * (persist.ts), read once at boot like `hintsOn`.
+ */
+export const summaryOpen = signal<boolean>(false);
+/**
+ * Whether the rail beside the canvas is folded to its slim strip.
+ *
+ * Only Break's Events rail has a strip now (`wide`, Detailed timeline): the
+ * lanes want the width (`break/rail-fold.ts`) and the events are what the
+ * reader may want back. Topology's and Config's inspector keeps a folded strip
+ * while its contents are not requested (`inspectorRailWanted`) -- and Learn's
+ * right half is the workbench itself. Below 1280 the rail is a drawer, which is
+ * already shut until asked for. Folded, the rail's contents are not rendered:
+ * the strip that stays is the way back, and says what is behind it. Remembered
+ * under `dg-rail` (persist.ts) and read once at boot, like `hintsOn`.
+ */
+export const railCollapsed = signal<boolean>(false);
 /** The "How this page works" card, opened again from the header's ? button. */
 export const introOpen = signal<boolean>(false);
 /**
@@ -104,9 +174,10 @@ export const introOpen = signal<boolean>(false);
  *
  * A page, not a card: it takes the stage, the rail and the dock, the header
  * stays above it with the modes still clickable, and it is addressable as
- * `?intro=1` so it can be linked to and reloaded. Boot opens it on a first
- * visit -- `dg-intro-v1` unset, and nothing in the address naming something
- * else to look at -- and any mode button leaves it (`ui/intro/route.ts`).
+ * `?intro=1` so it can be linked to and reloaded. Boot opens it only when the
+ * address asks for it -- the header's "Data Guard" link is that address; a
+ * first visit lands on Topology -- and any mode button leaves it
+ * (`ui/intro/route.ts`).
  */
 export const introPage = signal<boolean>(false);
 /**
@@ -129,6 +200,56 @@ export const notesOpen = signal<boolean>(false);
  */
 export const issuesOpen = signal<boolean>(true);
 /**
+ * Whether Topology's small timeline (ui/timeline/MiniTimeline.tsx) is open or
+ * folded to its heading. Open by default; remembered under
+ * `dg-topology-timeline-v1` (persist.ts) once the reader folds it. Folded, the
+ * dock keeps a slim "Timeline" row to open it again from.
+ */
+export const miniTimelineOpen = signal<boolean>(true);
+/**
+ * Whether the whole timeline panel is unfolded past the handle on its top edge:
+ * Topology's floating dock (the Break row, the readings and the small timeline)
+ * and the docked `TimelineSlot` (the Detailed timeline below the floating
+ * breakpoint, Learn's workbench). Open by default; remembered under
+ * `dg-timeline` (persist.ts) once the reader folds it, because a reader who
+ * folded it to give the drawing its height has said so for the session after
+ * this one too. Folded, the handle is all that is left of the panel and
+ * nothing else of it is rendered; the drawing takes the room. On paper it is
+ * open (`printing`), and in the popped-out window there is no fold at all.
+ * `miniTimelineOpen` above is the smaller fold inside it.
+ */
+export const timelineOpen = signal<boolean>(true);
+/** Requested panel height; null follows the default. */
+export const timelineH = signal<number | null>(null);
+/** The panel never gets shorter than its header row (readings and chips). */
+export const TL_MIN_H = 300;
+/** One arrow-key step on the resize handle; `Shift` takes four. */
+export const TL_STEP = 16;
+/* The gaps the floating layout keeps: the card margin at the window's foot
+   and the room under the header. Same numbers as float.css's `--float-m` and
+   the `+ 12px` under `--bar-bottom`. */
+const TL_FOOT = 14;
+const TL_HEAD_GAP = 12;
+
+/**
+ * The panel's height before the reader has touched it: just under half of
+ * the window, so the drawing keeps the larger share. Mirrored in float.css as
+ * `clamp(300px, 46dvh, 500px)`.
+ */
+export function timelineDefaultH(viewH: number): number {
+  return Math.round(Math.min(500, Math.max(300, viewH * 0.46)));
+}
+
+/** The tallest the panel may be: it stops short of the header's foot. */
+export function timelineMaxH(viewH: number, headBottom: number): number {
+  return Math.max(TL_MIN_H, Math.round(viewH - TL_FOOT - headBottom - TL_HEAD_GAP - 140));
+}
+
+export function clampTimelineH(h: number, viewH: number, headBottom: number): number {
+  return Math.min(timelineMaxH(viewH, headBottom), Math.max(TL_MIN_H, Math.round(h)));
+}
+
+/**
  * Whether the sentence under each control is shown.
  *
  * Off by default: the rail explained every control with a line of prose, and
@@ -148,52 +269,25 @@ export const hintsOn = signal<boolean>(false);
  */
 export const gridOn = signal<boolean>(true);
 /**
- * The height of Break's floating timeline panel, in CSS pixels, as the reader
- * dragged it by its top edge -- or null for the default (`timelineDefaultH`).
- * Remembered under `dg-tl-h` (persist.ts), read once at boot like `hintsOn`.
- * It is a wish, not a measurement: the panel is clamped to the window it is
- * shown in (`clampTimelineH`), so a height chosen on a tall screen does not
- * push the top bar off a short one.
- */
-export const timelineH = signal<number | null>(null);
-/**
- * Whether Break's timeline fills the window below the top bar. A moment's
- * view, not a preference: not remembered, and Escape leaves it.
- */
-export const timelineFull = signal<boolean>(false);
-/**
- * Whether Break's timeline draws the application's three lanes under the
+ * Whether the timeline draws the application's three lanes under the
  * configuration's. On to start with; a moment's view, not remembered.
  */
 export const appLanesShown = signal<boolean>(true);
-
-/** The panel never gets shorter than its header row (readings and chips). */
-export const TL_MIN_H = 64;
-/** One arrow-key step on the resize handle; `Shift` takes four. */
-export const TL_STEP = 16;
-/* The gaps the floating layout keeps: the card margin at the window's foot
-   and the room under the header. Same numbers as float.css's `--float-m` and
-   the `+ 12px` under `--bar-bottom`. */
-const TL_FOOT = 14;
-const TL_HEAD_GAP = 12;
-
 /**
- * The panel's height before the reader has touched it: a bit over a third of
- * the window, so the drawing keeps the larger share. Mirrored in float.css as
- * `clamp(220px, 36dvh, 400px)`.
+ * Whether the run is the healthy one: the configuration as it stands, with
+ * nothing injected, run rather than left as the steady-state reading.
+ *
+ * Without an event the engine has nothing to say about time, so `trace` is
+ * null and every surface reads "steady state" -- no clock, no timeline. The
+ * "Everything is working" scenario is a reader asking to see that steady state
+ * as a run: the same simulation, over an empty event list, so the timeline,
+ * the readout and the explanation all draw from the engine's own answer
+ * (outcome `continues`, no data loss) rather than from a copy of it here.
+ * A moment's view, not remembered and not in the Document: an event of any
+ * kind, a new document, or Clear puts it away.
  */
-export function timelineDefaultH(viewH: number): number {
-  return Math.round(Math.min(400, Math.max(220, viewH * 0.36)));
-}
+export const healthyRun = signal<boolean>(false);
 
-/** The tallest the panel may be: it stops short of the header's foot. */
-export function timelineMaxH(viewH: number, headBottom: number): number {
-  return Math.max(TL_MIN_H, Math.round(viewH - TL_FOOT - headBottom - TL_HEAD_GAP));
-}
-
-export function clampTimelineH(h: number, viewH: number, headBottom: number): number {
-  return Math.min(timelineMaxH(viewH, headBottom), Math.max(TL_MIN_H, Math.round(h)));
-}
 /**
  * A field the rail should focus on its next render, then forget.
  *
@@ -212,11 +306,6 @@ export const viewport = signal<Viewport>('wide');
  * always there under the drawing. View state: not remembered, not undoable.
  */
 export const findingsOpen = signal<boolean>(false);
-/**
- * The finding the reader waved away from the small warning card above the
- * status bar, by its key. A different finding brings the card back.
- */
-export const findingWaved = signal<string | null>(null);
 
 /**
  * Whether the workbench draws its canvas full-bleed with the chrome floating
@@ -240,6 +329,59 @@ export function select(id: string, additive = false): void {
 }
 
 export const clearSelection = (): void => { selection.value = []; };
+
+/* ---------------- the inspector rail, on demand ---------------- */
+
+/**
+ * Whether the rail in this mode and viewport is the on-demand kind: a column at
+ * `wide` that is in the document only while the reader wants it. Build's and
+ * Config's inspector is; Break's events and Learn's workbench are the mode
+ * itself and stay, and below `wide` the rail is a drawer with its own switch.
+ */
+export const railOnDemand = (m: Mode, v: Viewport = viewport.value): boolean =>
+  v === 'wide' && (m === 'build' || m === 'configure');
+
+/**
+ * Held for a moment after a click on the drawing selects something while
+ * nothing was selected, so the rail does not arrive between the two clicks of a
+ * double-click.
+ *
+ * The rail takes its column from the drawing -- the floating layout insets the
+ * drawing by the rail's width, the docked grid narrows the stage -- and the
+ * drawing is centred in what is left, so the cards move under the pointer the
+ * instant the rail appears; the second click of "double-click to rename" then
+ * lands on the ground. A press never selects (the card's `click` does, after
+ * the pointer has gone up, and a drag that captures the pointer never reaches
+ * it), so a single click or a drag is already safe -- this is the one gesture
+ * that is not. See `holdRail`.
+ */
+export const railHeld = signal<boolean>(false);
+
+/** A little longer than the double-click interval of every platform this runs on. */
+export const RAIL_HOLD_MS = 450;
+let railTimer: ReturnType<typeof setTimeout> | null = null;
+
+export function holdRail(): void {
+  if (railTimer !== null) clearTimeout(railTimer);
+  railHeld.value = true;
+  railTimer = setTimeout(() => { railTimer = null; railHeld.value = false; }, RAIL_HOLD_MS);
+}
+
+/** Drop the hold now: for a rail the reader asked for outright, and for tests. */
+export function releaseRail(): void {
+  if (railTimer !== null) { clearTimeout(railTimer); railTimer = null; }
+  railHeld.value = false;
+}
+
+/**
+ * Whether the on-demand rail is on screen: something is selected (once it has
+ * settled, `railHeld`) or the reader opened it (`inspectorOpen`).
+ *
+ * Read by the shell, the top bar's toggle and `]`; the mode and the viewport
+ * are theirs to check (`railOnDemand`).
+ */
+export const inspectorRailWanted = (): boolean =>
+  inspectorOpen.value || (selection.value.length > 0 && !railHeld.value);
 
 /* ---------------- theme ---------------- */
 
@@ -302,7 +444,7 @@ export const canEdit = (v: Viewport = viewport.value): boolean => v !== 'narrow'
 /* ---------------- the guidance line ---------------- */
 
 /**
- * The mode's rail, named for where it actually is.
+ * The mode's rail, named for where it actually is, once it is open.
  *
  * It is a column beside the drawing only while the viewport is `wide`
  * (`App.tsx`, `railInGrid`). Below 1280 it is a `Sheet` -- off the right edge
@@ -311,13 +453,31 @@ export const canEdit = (v: Viewport = viewport.value): boolean => v !== 'narrow'
  * on the right" at every width points two of the four viewport classes at the
  * wrong edge, which is the one thing this page's chrome is not allowed to do.
  *
- * One helper, because two guidance lines name the same rail and they must not
- * drift apart.
+ * This names the rail where something is selected, which is where it is when
+ * it is already open -- the action bar's "More in ...". `railOpens` is the one
+ * for a line read with nothing selected.
  */
 export function railWhere(v: Viewport = viewport.value): string {
   return v === 'wide'
     ? 'the panel on the right'
     : 'the Inspector drawer, from the Inspector button above';
+}
+
+/**
+ * The same rail, named for a reader who has nothing selected.
+ *
+ * At `wide` the Build and Configure rail is not on screen until something is
+ * selected (`App.tsx`, `railInGrid`), so "the panel on the right" would point at
+ * an empty edge: this says what opens it. Below `wide` the drawer was never
+ * there to begin with and `railWhere` already names its button.
+ *
+ * One helper, because two guidance lines name the same rail and they must not
+ * drift apart.
+ */
+export function railOpens(v: Viewport = viewport.value): string {
+  return v === 'wide'
+    ? 'the panel on the right, which opens when you select something or from the Inspector button above'
+    : railWhere(v);
 }
 
 /**
@@ -329,20 +489,21 @@ export function railWhere(v: Viewport = viewport.value): string {
  * Configure's line says what the mode *is* before it says what to do in it:
  * the word reads as "settings", and the panels are generated output. The
  * settings are in the inspector, which is what the second half points at --
- * wherever the inspector currently is (`railWhere`).
+ * wherever the inspector currently is, and however it is opened (`railOpens`).
  */
 export function modeGuide(m: Mode, v: Viewport = viewport.value): string {
   switch (m) {
     case 'build':
       return 'Click to edit · drag to move · + to add; '
         + 'Drag a + button onto a data centre to add, or a card’s ⊕ onto another to connect. '
-        + `Double-click to rename; ⋯ opens actions, and the full properties are in ${railWhere(v)}.`;
+        + `Double-click to rename; ⋯ (or A on a focused card) opens actions, and the full properties are in ${railOpens(v)}. `
+        + 'To break it, use a scenario or the icons on a card; right-click a card, or press E, for every event it offers.';
     case 'break':
-      return 'Click a card to add an event, drag a numbered timeline marker to change its time; '
-        + 'Earlier / Later in Events swaps adjacent times, or pick a scenario.';
+      return 'Follow the run in full: add an event from a lane, drag a numbered marker to change its time; '
+        + 'Earlier / Later in Events swaps adjacent times.';
     case 'configure':
       return 'Generated from the drawing — DGMGRL, init parameters, connect strings. '
-        + `Settings are in ${railWhere(v)}.`;
+        + `Settings are in ${railOpens(v)}.`;
     case 'learn':
       return 'Choose a lesson, then press Show me to set the workbench up for a step.';
   }

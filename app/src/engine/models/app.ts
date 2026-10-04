@@ -16,13 +16,17 @@
  *   `refuse`     the listener answers and has no such service: ORA-12514, 0.2 s
  *   `establish`  the read-write service is published there: 0.3 s
  *
- * These parameters affect only NEW connections. No established session is
- * touched by anything drawn here.
+ * These parameters affect only NEW connections; none of them touches an
+ * established session. Sessions are lost when the database carrying them stops
+ * serving or, on a RAC database, when the instance they sit on does (SIM-30:
+ * "Any sessions active when the instance or service stops are terminated and
+ * the application user is immediately notified"). Which instance carries them
+ * is this page's model (`APP.SESSION_SPREAD`).
  */
 
 import { NOMINAL } from '../defaults';
-import type { HostId, MemberId, Seconds, SiteId } from '../ids';
-import { buildReachability, hostUp, initialNetState, netFromSummary } from '../net/graph';
+import type { ApplicationId, HostId, MemberId, Seconds, SiteId } from '../ids';
+import { buildReachability, hostUp, initialNetState, instanceKey, netFromSummary } from '../net/graph';
 import type { Reachability } from '../net/graph';
 import type { Claim } from '../types/claims';
 import { documented, model } from '../types/claims';
@@ -30,7 +34,7 @@ import type { AnyState } from '../types/events';
 import type {
   Application, ClientAddress, ClientDescriptor, Host, Site, TopologyDoc,
 } from '../types/topology';
-import { declaredPrimary } from '../types/topology';
+import { applicationClient, applicationsOf, declaredPrimary } from '../types/topology';
 import type { Epoch, Lane, Segment, Trace } from '../types/trace';
 import type { AxisSpec } from './axis';
 import { fixedAxis, secondsAxis } from './axis';
@@ -95,6 +99,23 @@ export interface AppSpan {
   servingState: AnyState | null;
   /** A member publishing the service at a listed address, reachable or not. */
   published: MemberId | null;
+  /**
+   * Every member publishing the service at a listed address whose host is up,
+   * once each, in the ADDRESS_LIST order of its first such address. Normally
+   * one. Two while a manual failover's old primary stays open (with fast-start failover disabled) beside the new
+   * one (FAILOVER.FORMER_PRIMARY_OPEN, this page's reading). `reached` says
+   * whether the application can reach it. `serving` is the first reached
+   * address's member and `published` the first address's member, unchanged.
+   */
+  publishers: AppPublisher[];
+}
+
+export interface AppPublisher {
+  member: MemberId;
+  /** That member's state -- a STALLED primary still publishes. */
+  state: AnyState | null;
+  /** The application is up and reaches an address of this member that publishes. */
+  reached: boolean;
 }
 
 export interface AppClaims {
@@ -108,6 +129,30 @@ export interface AppClaims {
   singleIp: Claim<string>;
   /** Only when LOAD_BALANCE is on: the dial order stops being the list order. */
   loadBalance?: Claim<string>;
+  /** Only when FAILOVER is off: the ladder tries one address. */
+  failoverOff?: Claim<string>;
+  /** Only for a switchover: the old primary's sessions end at the conversion, with no draining drawn. */
+  drain?: Claim<string>;
+  /** Only when some stretch of the run has two publishers of the service at once. */
+  overlap?: Claim<string>;
+  /** Only when the sessions lost one instance of a database that kept serving. */
+  instanceLoss?: Claim<string>;
+  /** Only with `instanceLoss`: how the sessions were spread over the instances. */
+  sessionSpread?: Claim<string>;
+  /** Only when a primary is STALLED while the service is published: that it still accepts logons. */
+  stalledLogons?: Claim<string>;
+}
+
+/**
+ * The sessions lost one instance of a database that went on serving: the
+ * connect string dials on to a surviving instance.
+ */
+export interface InstanceLoss {
+  member: MemberId;
+  /** The instance (SID) the sessions were on and that stopped serving. */
+  instance: string;
+  /** The instance the connect string reached; null when it never connected. */
+  to: string | null;
 }
 
 export interface AppModel {
@@ -141,12 +186,34 @@ export interface AppModel {
   horizon: Seconds;
   preRoll: Seconds;
   tickStep: Seconds;
-  /** Where the application stands; null when the document has no application. */
+  /** Which application this is the view of; null for the descriptor dialled from outside every site. */
+  application: { id: ApplicationId; name: string } | null;
+  /** Where the application stands; null when it has no application. */
   placed: { host: HostId; site: SiteId } | null;
   /** When the application's own host first went down; null when it never did. */
   appDownAt: Seconds | null;
   /** The run as the application sees it, stretch by stretch. */
   spans: AppSpan[];
+  /**
+   * When the established sessions lose their database; null when they never do.
+   * That is the loss the ladder starts from, and it is not always the service
+   * going away: with two databases publishing, the sessions' own can go down
+   * while the other keeps the service published.
+   */
+  lostAt: Seconds | null;
+  /** Set when the loss is one instance of a RAC database that kept serving; null otherwise. */
+  instanceLoss: InstanceLoss | null;
+  /**
+   * The member the established sessions are on before the loss (or throughout,
+   * when there is none); null when nothing served at the start.
+   */
+  sessionsOn: MemberId | null;
+  /**
+   * Another member already publishing the service within the application's
+   * reach at the instant the sessions lost theirs; null in every run where the
+   * loss is the service going away.
+   */
+  servedAtLoss: MemberId | null;
   /**
    * The configuration as declared, before anything was injected: what the
    * pre-roll of a drawing shows. A trace opens on its first event, so its
@@ -197,13 +264,56 @@ const RETRY = documented<string>(
 );
 
 const REFUSAL = documented<string>(
-  'a role-based service that is not published is refused instantly with ORA-12514',
-  ['ORA.12514'],
+  'a listener that does not offer the role-based service answers at once that it is not there (ORA-12514), and the client tries the next address',
+  ['ORA.12514', 'CLIENT.LISTENER_ANSWERS_IMMEDIATELY'],
 );
 
 const SINGLE_IP = model<string>(
-  'one IP address per host',
-  'TRANSPORT_CONNECT_TIMEOUT applies per ADDRESS and per IP address a host name resolves to. The engine draws single-IP hosts, so one address costs one timeout.',
+  'one IP address per host, one address per node',
+  'TRANSPORT_CONNECT_TIMEOUT applies per ADDRESS and per IP address a host name resolves to. The engine draws single-IP hosts, so one address costs one timeout. It also dials one address per node, where the HA guide\'s string for a cluster names one SCAN: \"each IP in the SCAN address is expanded internally into a separate ADDRESS string\", so a SCAN of three IPs is three dials, as three nodes are here. The tnsnames card writes the SCAN form.',
+  ['CLIENT.SCAN_EXPANDED'],
+);
+
+/**
+ * A RAC database lost one instance and went on serving. What Oracle says is
+ * about the instance's own sessions; where the sessions were is this page's.
+ */
+const INSTANCE_LOSS = documented<string>(
+  'the sessions on the stopped instance are terminated and the application is notified; with TAF off only a client of that instance receives an error, and the connect string uses the next address at once',
+  ['RAC.SESSIONS_TERMINATED', 'RAC.FAN_IN_FLIGHT', 'RAC.TAF_ERROR_ONLY', 'CLIENT.VIP_NEXT_ADDRESS'],
+  'Application Continuity, if enabled, could protect incomplete transactions; this page draws none, and no TAF.',
+);
+
+const sessionSpread = (loadBalance: boolean): Claim<string> => model<string>(
+  loadBalance
+    ? 'the pooled sessions are spread over every instance the descriptor lists'
+    : 'the pooled sessions sit on the first listed instance that publishes the service',
+  loadBalance
+    ? 'APP.SESSION_SPREAD: Oracle documents what happens to the sessions of an instance that stops, not how an application\'s sessions are spread over a cluster\'s instances. LOAD_BALANCE is on, so this page puts sessions on every listed instance of the database, and the first instance that stops takes its share with it; the drawing shows that loss as the application\'s pool emptying and being rebuilt. One loss is drawn: a later loss that takes the whole database is the outage the ladder starts from instead.'
+    : 'APP.SESSION_SPREAD: Oracle documents what happens to the sessions of an instance that stops, not how an application\'s sessions are spread over a cluster\'s instances. With LOAD_BALANCE off the connect string tries the addresses in list order, so this page puts every session on the first listed instance that publishes, and its loss takes the pool with it; an instance further down the list stopping touches no session. One loss is drawn: a later loss that takes the whole database is the outage the ladder starts from instead.',
+);
+
+const STALLED_LOGONS = model<string>(
+  'a STALLED primary still accepts new connections',
+  'APP.STALLED_LOGONS: Oracle says the primary "stalls (no new transactions are able to commit)"; it says nothing about logons. This page keeps the listener answering and the service published while the primary is STALLED, so a connect succeeds and the commits behind it hang. A real stalled primary may behave differently at the logon.',
+  ['OBS.LOSS_ALONE_STALLS_NOTHING'],
+);
+
+const FAILOVER_OFF = model<string>(
+  'FAILOVER is off, so each traversal tries one address: the first in the list',
+  'CLIENT.FAILOVER_OFF: with FAILOVER off "Oracle Net tries one protocol address". Which one is not stated; this page dials the first address of the list on every traversal, so a client whose first address is the failed primary never reaches the new one. RETRY_COUNT and RETRY_DELAY still repeat that one dial.',
+  ['CLIENT.FAILOVER_OFF'],
+);
+
+const NO_DRAINING = model<string>(
+  'a switchover ends the old primary\'s sessions as it converts; draining them first is not drawn',
+  'SWITCHOVER.WAIT_DRAIN: Oracle\'s SWITCHOVER ... WAIT \"specifies that you want to wait for sessions to drain before proceeding with the switchover\" (19c, valid only for services configured for Application Continuity in Oracle Clusterware), and under 26ai the DrainTimeout property replaces it. This page draws no draining and no wait: the sessions end at the conversion, at once.',
+  ['SWITCHOVER.SESSIONS_END', 'SWITCHOVER.WAIT_DRAIN', 'SWITCHOVER.DRAIN_TIMEOUT_26AI'],
+);
+
+const TWO_PUBLISHERS = model<string>(
+  'two databases publish the role-based service at once',
+  "APP.TWO_PUBLISHERS: the role-based service is taken as published wherever a database is open read-write (the page's NOMINAL_COSTS assumption), so while a manual failover's old primary stays open (FAILOVER.FORMER_PRIMARY_OPEN, this page's reading) both it and the new primary publish it. Established sessions stay on the database they are on. A new connection lands on the first address in ADDRESS_LIST order that publishes -- in a random order with LOAD_BALANCE on -- which may be either. When the database the sessions are on goes down they are lost, and the connect string reconnects to the next address that publishes. Oracle documents none of this for two open primaries; it is this page's model.",
 );
 
 const LOAD_BALANCE = model<string>(
@@ -226,19 +336,22 @@ class TraceReader {
   private readonly hostById = new Map<string, Host>();
   private readonly siteById = new Map<string, Site>();
   private readonly memberByHost = new Map<string, MemberId>();
+  private readonly instanceByHost = new Map<string, string>();
   private readonly laneByMember = new Map<string, Lane>();
   private readonly reach = new Map<string, Reachability>();
-  /** The application's card, when the document has one standing on a host. */
+  /** The application's card, when it stands on a host that is still in the document. */
   readonly app: Application | null;
 
-  constructor(private readonly doc: TopologyDoc, private readonly trace: Trace) {
-    const a = doc.application;
+  constructor(private readonly doc: TopologyDoc, private readonly trace: Trace, a: Application | null) {
     this.app = a && doc.hosts.some((h) => h.id === a.host) ? a : null;
     for (const h of doc.hosts) this.hostById.set(h.id as string, h);
     for (const s of doc.sites) this.siteById.set(s.id as string, s);
     for (const m of doc.members) {
       for (const i of m.instances) {
-        if (!this.memberByHost.has(i.host as string)) this.memberByHost.set(i.host as string, m.id);
+        if (!this.memberByHost.has(i.host as string)) {
+          this.memberByHost.set(i.host as string, m.id);
+          this.instanceByHost.set(i.host as string, i.name);
+        }
       }
     }
     for (const l of trace.lanes) {
@@ -248,6 +361,11 @@ class TraceReader {
 
   memberOn(host: HostId): MemberId | null {
     return this.memberByHost.get(host as string) ?? null;
+  }
+
+  /** The instance (SID) that runs on this host, when a member's does. */
+  instanceOn(host: HostId): string | null {
+    return this.instanceByHost.get(host as string) ?? null;
   }
 
   /** Every instant at which an address could change its answer. */
@@ -321,7 +439,7 @@ class TraceReader {
     const key = `${e ? e.t0 : 'none'}|${revive === null ? '' : revive as string}`;
     const hit = this.reach.get(key);
     if (hit) return hit;
-    const net = netFromSummary(e?.net ?? { downHosts: [], downSites: [], downLinks: [], partitioned: false });
+    const net = netFromSummary(e?.net ?? { downHosts: [], downSites: [], downLinks: [], partitioned: false, downInstances: [] });
     if (revive !== null) {
       (net.downHosts as Set<HostId>).delete(revive);
       const site = this.hostById.get(revive as string)?.site;
@@ -364,10 +482,17 @@ class TraceReader {
     return !declared;
   }
 
-  /** Is the read-write service published at this address right now? */
+  /**
+   * Is the read-write service published at this address right now? Not where
+   * the RAC instance on this host is stopped: the listener answers and the
+   * service is not registered with it.
+   */
   publishing(host: HostId, t: Seconds): boolean {
     const member = this.memberOn(host);
     if (!member) return false;
+    const inst = this.instanceByHost.get(host as string);
+    const stopped = this.epochAt(t)?.net.downInstances ?? [];
+    if (inst !== undefined && stopped.includes(instanceKey(member, inst))) return false;
     const lane = this.laneByMember.get(member as string);
     if (!lane) return false;
     const seg = this.segmentAt(lane, t);
@@ -388,6 +513,23 @@ class TraceReader {
 export interface AppOptions {
   /** Addresses to dial; defaults to the descriptor's own list. */
   addresses?: ClientAddress[];
+  /**
+   * The application whose view this is: the descriptor is dialled from the host
+   * it stands on. Absent, the descriptor is dialled from outside every data
+   * centre. There is no default to a document's first application -- a caller
+   * with several asks for each (`computeApps`).
+   */
+  application?: Application | null;
+}
+
+/**
+ * Every application's view of the same run, one model each, in the order the
+ * document lists them; empty when it draws none. Each dials the descriptor it
+ * has (`applicationClient`), from the host it stands on.
+ */
+export function computeApps(trace: Trace, doc: TopologyDoc): AppModel[] {
+  return applicationsOf(doc).map((application) =>
+    computeApp(applicationClient(doc, application), trace, doc, { application }));
 }
 
 export function computeApp(
@@ -397,7 +539,7 @@ export function computeApp(
   const ESTAB = NOMINAL.establishSeconds;
   const RST = NOMINAL.osRefuseSeconds;
 
-  const reader = new TraceReader(doc, trace);
+  const reader = new TraceReader(doc, trace, opts.application ?? null);
   const addresses = opts.addresses ?? client.addresses;
   const rc = Math.max(0, client.retryCount);
   const rd = Math.max(0, client.retryDelaySeconds);
@@ -417,7 +559,10 @@ export function computeApp(
     nominal: NOMINAL_COSTS, timeouts: TIMEOUTS, retry: RETRY,
     refusal: REFUSAL, singleIp: SINGLE_IP,
     ...(client.loadBalance ? { loadBalance: LOAD_BALANCE } : {}),
+    ...(client.failover ? {} : { failoverOff: FAILOVER_OFF }),
   };
+  /* FAILOVER on walks the whole list; off, Oracle Net tries one address. */
+  const dialed = client.failover ? addresses : addresses.slice(0, 1);
 
   /* How one address answers at one instant. A host that went down answers per
      the descriptor's dead-address behaviour; a host that is up but cut off can
@@ -442,12 +587,89 @@ export function computeApp(
     }
   };
 
-  /* When the client loses the read-write service; null = it never does. */
+  /* Whether some address of one member answers the role-based service in reach. */
+  const memberServes = (m: MemberId, t: Seconds): boolean => reader.appUp(t)
+    && addresses.some((a) => reader.memberOn(a.host) === m
+      && reader.dialable(a.host, t) && reader.publishing(a.host, t));
   const serving = (t: Seconds): boolean => reader.appUp(t)
-    && addresses.some((a) => reader.dialable(a.host, t) && reader.publishing(a.host, t));
+    && dialed.some((a) => reader.dialable(a.host, t) && reader.publishing(a.host, t));
+  /* Every member publishing at a listed address on a host that is up, once
+     each, in the order of the member's first such address. */
+  const publishersAt = (t: Seconds): AppPublisher[] => {
+    const out: AppPublisher[] = [];
+    for (const a of addresses) {
+      if (reader.hostDown(a.host, t) || !reader.publishing(a.host, t)) continue;
+      const member = reader.memberOn(a.host);
+      if (member === null || out.some((p) => p.member === member)) continue;
+      out.push({ member, state: reader.stateOf(member, t), reached: memberServes(member, t) });
+    }
+    return out;
+  };
+
+  /* The steady state, read off the document: the declared primary publishes,
+     and the application reaches it over the links as they are declared. */
+  const primaryId = declaredPrimary(doc);
+  const net0 = initialNetState(doc);
+  const reach0 = buildReachability(doc, net0);
+  const listed = (h: HostId): boolean => addresses.some((a) => a.host === h);
+  const primaryHosts = (doc.members.find((m) => m.id === primaryId)?.instances ?? [])
+    .map((i) => i.host).filter((h) => listed(h) && hostUp(doc, net0, h));
+  const reached0 = reader.app === null
+    ? primaryHosts.length > 0
+    : primaryHosts.some((h) => reach0.reachable(reader.app?.host ?? h, h));
+  const steady = {
+    appUp: true,
+    serving: reached0 ? primaryId : null,
+    servingState: reached0 ? 'open-rw' as const : null,
+    published: primaryHosts.length > 0 ? primaryId : null,
+    publishers: primaryId !== null && primaryHosts.length > 0
+      ? [{ member: primaryId, state: 'open-rw' as const, reached: reached0 }]
+      : [],
+  };
+
+  /* When the established sessions lose their database; null = they never do.
+     The sessions are on the member that serves them, and they are lost when
+     that member stops serving -- not when the service stops being published
+     anywhere, because another database may already be publishing it. Where no
+     second member publishes the two readings are the same instant. */
   const bounds = reader.boundaries();
+  /* The addresses the established sessions sit on (APP.SESSION_SPREAD, this
+     page's model): the first listed address that publishes, or every listed
+     address of the member with LOAD_BALANCE on. For a database of one instance
+     that is the member itself, so the two readings of "lost" below coincide. */
+  const carriersOf = (m: MemberId, t: Seconds | null): ClientAddress[] => {
+    const live = addresses.filter((a) => reader.memberOn(a.host) === m
+      && (t === null
+        ? hostUp(doc, net0, a.host) && (reader.app === null || reach0.reachable(reader.app.host, a.host))
+        : reader.dialable(a.host, t) && reader.publishing(a.host, t)));
+    return client.loadBalance ? live : live.slice(0, 1);
+  };
   let lost: Seconds | null = null;
-  for (const t of bounds) { if (!serving(t)) { lost = t; break; } }
+  let instLost: { at: Seconds; host: HostId } | null = null;
+  let cur: MemberId | null = steady.serving;
+  let carriers: ClientAddress[] = cur === null ? [] : carriersOf(cur, null);
+  for (const t of bounds) {
+    if (cur !== null) {
+      if (!memberServes(cur, t)) { lost = t; break; }
+      /* The member still serves, but an instance the sessions were on may not. */
+      if (instLost === null) {
+        const gone = carriers.find((a) => !(reader.dialable(a.host, t) && reader.publishing(a.host, t)));
+        if (gone !== undefined) instLost = { at: t, host: gone.host };
+      }
+      continue;
+    }
+    cur = publishersAt(t).find((p) => p.reached)?.member ?? null;
+    if (cur === null) { lost = t; break; }
+    carriers = carriersOf(cur, t);
+  }
+  /* A loss that takes the whole database is the outage the ladder starts from,
+     as it always was; only where the database goes on serving is the loss of
+     one instance the loss drawn. */
+  const instanceLossAt: Seconds | null = lost === null && instLost !== null ? instLost.at : null;
+  if (instanceLossAt !== null) lost = instanceLossAt;
+  const sessionsOn = cur;
+  const servedAtLoss = lost === null || sessionsOn === null ? null
+    : publishersAt(lost).find((p) => p.reached && p.member !== sessionsOn)?.member ?? null;
 
   let appDownAt: Seconds | null = null;
   for (const t of bounds) { if (!reader.appUp(t)) { appDownAt = t; break; } }
@@ -467,33 +689,34 @@ export function computeApp(
       serving: servingId,
       servingState: servingId === null ? null : reader.stateOf(servingId, t),
       published: anywhere ? reader.memberOn(anywhere.host) : null,
+      publishers: publishersAt(t),
     };
     const prev = spans[spans.length - 1];
     if (prev && prev.appUp === span.appUp && prev.serving === span.serving
-      && prev.servingState === span.servingState && prev.published === span.published) {
+      && prev.servingState === span.servingState && prev.published === span.published
+      && samePublishers(prev.publishers, span.publishers)) {
       prev.t1 = span.t1;
     } else {
       spans.push(span);
     }
   });
-  /* The steady state, read off the document: the declared primary publishes,
-     and the application reaches it over the links as they are declared. */
-  const primaryId = declaredPrimary(doc);
-  const net0 = initialNetState(doc);
-  const reach0 = buildReachability(doc, net0);
-  const listed = (h: HostId): boolean => addresses.some((a) => a.host === h);
-  const primaryHosts = (doc.members.find((m) => m.id === primaryId)?.instances ?? [])
-    .map((i) => i.host).filter((h) => listed(h) && hostUp(doc, net0, h));
-  const reached0 = reader.app === null
-    ? primaryHosts.length > 0
-    : primaryHosts.some((h) => reach0.reachable(reader.app?.host ?? h, h));
-  const steady = {
-    appUp: true,
-    serving: reached0 ? primaryId : null,
-    servingState: reached0 ? 'open-rw' as const : null,
-    published: primaryHosts.length > 0 ? primaryId : null,
+  if (spans.some((x) => x.publishers.length > 1)) claims.overlap = TWO_PUBLISHERS;
+  if (facts.outcome === 'switchover' && !facts.blocked) claims.drain = NO_DRAINING;
+  if (facts.outcome === 'stall-noone' || spans.some((x) => x.servingState === 'stalled')) {
+    claims.stalledLogons = STALLED_LOGONS;
+  }
+  const instanceBase: Omit<InstanceLoss, 'to'> | null = instanceLossAt !== null && instLost !== null && sessionsOn !== null
+    ? { member: sessionsOn, instance: reader.instanceOn(instLost.host) ?? (instLost.host as string) }
+    : null;
+  if (instanceBase !== null) {
+    claims.instanceLoss = INSTANCE_LOSS;
+    claims.sessionSpread = sessionSpread(client.loadBalance);
+  }
+  const shape = {
+    application: reader.app === null ? null : { id: reader.app.id, name: reader.app.name },
+    placed, appDownAt, spans, steady, sessionsOn, servedAtLoss,
+    instanceLoss: instanceBase === null ? null : { ...instanceBase, to: null } as InstanceLoss | null,
   };
-  const shape = { placed, appDownAt, spans, steady };
 
   const noEvent = (kind: NoEventKind): AppModel => {
     const axis = fixedAxis(60);
@@ -505,8 +728,10 @@ export function computeApp(
       drop: kind === 'switchover-refused' ? false : client.deadBehaviour === 'drop',
       refuse: REFUSE, estab: ESTAB, rst: RST,
       passCost: 0, tService: null, attempts: [], tConn: null, gaveUp: null,
-      startAt: 0, worst: 0, retryCost: 0, clipped: false,
+      startAt: 0, worst: 0, retryCost: 0, clipped: false, lostAt: null,
       ...axisFields(axis), ...shape, claims,
+      /* Nothing was lost, so nothing was already serving at the loss. */
+      servedAtLoss: null,
     };
   };
 
@@ -530,8 +755,10 @@ export function computeApp(
   if (placed === null && facts.outcome === 'switchover' && facts.blocked) return noEvent('switchover-refused');
 
   /* A STALLED primary still runs its listener and still publishes the
-     service, so a new connection is accepted exactly as before. The outage
-     is at commit level, one layer below anything this ladder can see. */
+     service in this drawing, so a new connection is accepted exactly as
+     before (`STALLED_LOGONS`, a model: Oracle says only that no new
+     transactions can commit). The outage is at commit level, one layer below
+     anything this ladder can see. */
   if (facts.outcome === 'stall-noone') return noEvent('stalled');
 
   /* No role change, and the primary is still answering: the descriptor's
@@ -543,12 +770,12 @@ export function computeApp(
      first one it makes once its host is back, and there is none if it never is. */
   let startAt: Seconds | null = null;
   for (const t of bounds) { if (t >= lost && reader.appUp(t)) { startAt = t; break; } }
-  if (startAt === null) return { ...noEvent('app-down'), startAt: lost };
+  if (startAt === null) return { ...noEvent('app-down'), startAt: lost, lostAt: lost };
 
   /* The worst-case traversal: every address answers, none of them connects.
      An address that would establish right now is charged a refusal, because
      the request this ladder draws is the one that dialled too early. */
-  const plans: AddressPlan[] = addresses.map((a, index) => {
+  const plans: AddressPlan[] = dialed.map((a, index) => {
     const kind = classify(a, startAt);
     const pessimistic: Exclude<DialKind, 'establish'> = kind === 'establish' ? 'refuse' : kind;
     return {
@@ -575,8 +802,8 @@ export function computeApp(
     let t = S;
     const dials: Dial[] = [];
     let ok = false;
-    for (let i = 0; i < addresses.length; i++) {
-      const a = addresses[i] as ClientAddress;
+    for (let i = 0; i < dialed.length; i++) {
+      const a = dialed[i] as ClientAddress;
       const kind = classify(a, t);
       const cost = costOf(kind);
       dials.push({ index: i, host: a.host, kind, at: t, cost, end: t + cost });
@@ -593,7 +820,7 @@ export function computeApp(
   const worst = (rc + 1) * passCost + rc * rd;
   /* An attempt started after the service came back still pays every address
      ahead of the one that answers. */
-  const winner = winningIndex(attempts, addresses, reader, bounds, serving);
+  const winner = winningIndex(attempts, dialed, reader, bounds, serving);
   const retryCost = plans.slice(0, winner).reduce((s, p) => s + p.cost, 0) + ESTAB;
   const end = tConn !== null ? tConn : (gaveUp ?? startAt);
 
@@ -604,15 +831,24 @@ export function computeApp(
   const need = Math.max(Math.min(end, capT), initiateMark, tService ?? 0);
   const axis = secondsAxis(need);
 
+  /* Where the connect string landed after the instance went. */
+  const landed = attempts.find((x) => x.ok)?.dials.find((d) => d.kind === 'establish')?.host;
+  const instanceLoss: InstanceLoss | null = instanceBase === null ? null
+    : { ...instanceBase, to: landed === undefined ? null : reader.instanceOn(landed) };
+
   return {
     noEvent: false, noEventKind: null,
     switchover: facts.outcome === 'switchover', switchoverRefused: false,
     addresses: plans, d1, drop, refuse: REFUSE, estab: ESTAB, rst: RST,
     passCost, tService, attempts, tConn, gaveUp, startAt, worst, retryCost,
-    clipped: end > axis.horizon,
-    ...axisFields(axis), ...shape, claims,
+    clipped: end > axis.horizon, lostAt: lost,
+    ...axisFields(axis), ...shape, instanceLoss, claims,
   };
 }
+
+const samePublishers = (a: readonly AppPublisher[], b: readonly AppPublisher[]): boolean =>
+  a.length === b.length
+  && a.every((p, i) => p.member === b[i]?.member && p.state === b[i]?.state && p.reached === b[i]?.reached);
 
 const axisFields = (a: AxisSpec): Pick<AppModel, 'horizon' | 'preRoll' | 'tickStep'> =>
   ({ horizon: a.horizon, preRoll: a.preRoll, tickStep: a.tickStep });

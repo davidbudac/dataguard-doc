@@ -7,28 +7,44 @@
  * written twice, never two configurations that can drift apart.
  *
  * One deliberate difference in spelling, not in configuration: the transport
- * timeout is always written out here, because the thin driver does not inherit
- * Oracle Net's 60 s default -- its own connect-timeout default is 0 (no
- * timeout) in the 19c driver and 20 s in current ones, so an omitted value
- * would not model the same wait. The `sec` suffix pins the unit, since older
- * thin releases read a bare value as milliseconds. Never "simplify" the thin
- * URL back to the TNS omission rule. The 26ai OracleConnection page now states
- * when the thin default changed ("Starting in 23.6, the default value was
- * changed from "0" (no timeout) to "20000" (20 seconds)"); the 19c page does
- * not, so the generated comment names no release and CLIENT.JDBC_CURRENT
- * carries the sentence.
+ * timeout is always written out here. Under 26ai the thin driver has a default
+ * of its own for the descriptor keyword -- "Starting from Oracle AI Database
+ * Release 26ai, the default value of the TRANSPORT_CONNECT_TIMEOUT parameter
+ * is 20 seconds" (CLIENT.JDBC_TCT_26AI) -- where Oracle Net's is 60 s, so an
+ * omitted value would not model the same wait. The 19c JDBC pages print no
+ * default for it, and the card says so (a model). Never "simplify" the thin URL
+ * back to the TNS omission rule. Values are bare numbers, seconds, the way the
+ * JDBC page's own example writes them (CLIENT.JDBC_URL_BARE); it lists units
+ * only for RETRY_DELAY, so no `sec` suffix is invented. The 20 s / 0 that
+ * CLIENT.JDBC_CURRENT and CLIENT.JDBC_19C carry belong to the
+ * oracle.net.CONNECT_TIMEOUT connection property, not to this keyword.
  */
 
 import type { Claim } from '../types/claims';
-import { documented } from '../types/claims';
+import { documented, model } from '../types/claims';
 import type { ClientDescriptor, TopologyDoc } from '../types/topology';
 import type { GeneratedFile, Line, Span } from './lines';
 import { cmd, comment, hl, span, svc } from './lines';
 import { serviceAddresses } from './tnsnames';
 
-const SEC_SUFFIX = documented<string>(
-  'the thin driver has its own connect-timeout default -- 0 in 19c, 20 s in current drivers',
-  ['CLIENT.JDBC_19C', 'CLIENT.JDBC_CURRENT'],
+/* 26ai: the thin driver's own default for the descriptor keyword. */
+const TCT_THIN_26AI = documented<string>(
+  'starting from 26ai, the default value of TRANSPORT_CONNECT_TIMEOUT in a thin descriptor is 20 seconds',
+  ['CLIENT.JDBC_TCT_26AI'],
+  'Oracle Net\'s default in tnsnames.ora stays 60 s.',
+);
+
+/* 19c: nothing is printed for the keyword. */
+const TCT_THIN_19C = model<string>(
+  'the 19c JDBC pages print no default for TRANSPORT_CONNECT_TIMEOUT in a thin descriptor',
+  'The 19c OracleConnection page documents the oracle.net.CONNECT_TIMEOUT connection property (default 0, no timeout), which is not this keyword, and Oracle Net\'s 60 s belongs to tnsnames.ora. Writing the value out removes the question; that it needs removing is this page\'s caution, not a documented difference.',
+  ['CLIENT.TIMEOUTS', 'CLIENT.JDBC_19C'],
+);
+
+const BARE_SECONDS = documented<string>(
+  'the timeouts are written as bare numbers, which are seconds, as the JDBC page\'s own example writes them',
+  ['CLIENT.JDBC_URL_BARE', 'CLIENT.TIMEOUTS'],
+  'The JDBC page lists units only for RETRY_DELAY (ms, s, m, from 21c); for the others it shows bare numbers, and the Oracle Net page says the default unit is seconds. The oracle.net.CONNECT_TIMEOUT connection property is a different thing: 26ai reads a bare value there in milliseconds, and the 19c page says seconds.',
 );
 
 const INLINE_DESCRIPTOR = documented<string>(
@@ -47,17 +63,21 @@ export interface JdbcOptions {
    * another and passes true; chapter 4's card carries its own header.
    */
   lead?: boolean;
+  /** The descriptor to write out; the document's shared one when left out. */
+  client?: ClientDescriptor;
+  /** Whose descriptor it is, when it is one application's own: added to the card's title. */
+  label?: string;
 }
 
 export function buildJdbc(doc: TopologyDoc, opts: JdbcOptions = {}): GeneratedFile {
-  const c: ClientDescriptor = doc.client;
-  const addresses = serviceAddresses(doc);
+  const c: ClientDescriptor = opts.client ?? doc.client;
+  const addresses = serviceAddresses(doc, c);
   const service = c.serviceName;
 
   const v26 = doc.config.edition === '26ai';
   const set: string[] = [];
   if (c.connectTimeoutSeconds !== null && c.connectTimeoutSeconds > 0) {
-    set.push(`(CONNECT_TIMEOUT=${c.connectTimeoutSeconds}sec)`);
+    set.push(`(CONNECT_TIMEOUT=${c.connectTimeoutSeconds})`);
   }
   if (c.retryCount > 0) set.push(`(RETRY_COUNT=${c.retryCount})`);
   /* "Starting from Oracle AI Database Release 26ai, the default value of
@@ -65,7 +85,7 @@ export function buildJdbc(doc: TopologyDoc, opts: JdbcOptions = {}): GeneratedFi
      driver default and is worth spelling out, not just omitting. */
   if (c.retryDelaySeconds > 0 || v26) set.push(`(RETRY_DELAY=${c.retryDelaySeconds})`);
 
-  const tct = `(TRANSPORT_CONNECT_TIMEOUT=${c.transportConnectTimeoutSeconds}sec)`;
+  const tct = `(TRANSPORT_CONNECT_TIMEOUT=${c.transportConnectTimeoutSeconds})`;
   const url: Span[] = [span('jdbc:oracle:thin:@(DESCRIPTION=')];
   /* Always written out, but only highlighted when it is not the Oracle Net
      default the tnsnames card would have omitted. */
@@ -84,9 +104,16 @@ export function buildJdbc(doc: TopologyDoc, opts: JdbcOptions = {}): GeneratedFi
     lines.push(comment('the same descriptor as a JDBC thin URL -- nothing on the client to resolve'));
   }
   lines.push(cmd(url));
+  const tctClaim = v26 ? TCT_THIN_26AI : TCT_THIN_19C;
   lines.push(comment(
-    'sec written out on purpose: a bare timeout is not read as seconds by every thin release, and the thin driver does not inherit the 60 s Oracle Net default',
-    { indent: 2, basis: SEC_SUFFIX.basis, cite: [...SEC_SUFFIX.cite] },
+    v26
+      ? 'TRANSPORT_CONNECT_TIMEOUT written out on purpose: from 26ai the thin driver\'s own default is 20 seconds, where Oracle Net\'s is 60 s'
+      : 'TRANSPORT_CONNECT_TIMEOUT written out on purpose: the 19c JDBC pages print no thin default for it, and Oracle Net\'s is 60 s',
+    { indent: 2, basis: tctClaim.basis, cite: [...tctClaim.cite], ...(tctClaim.note === undefined ? {} : { note: tctClaim.note }) },
+  ));
+  lines.push(comment(
+    'bare numbers, as the JDBC page\'s own example writes them: a timeout is in seconds',
+    { indent: 2, basis: BARE_SECONDS.basis, cite: [...BARE_SECONDS.cite], ...(BARE_SECONDS.note === undefined ? {} : { note: BARE_SECONDS.note }) },
   ));
   lines.push(comment(
     `or keep the alias: jdbc:oracle:thin:@${service}, with oracle.net.tns_admin pointing at the tnsnames.ora directory`,
@@ -99,9 +126,11 @@ export function buildJdbc(doc: TopologyDoc, opts: JdbcOptions = {}): GeneratedFi
     ));
   }
 
-  const claims: Claim<string>[] = [INLINE_DESCRIPTOR, SEC_SUFFIX];
+  const claims: Claim<string>[] = [INLINE_DESCRIPTOR, tctClaim, BARE_SECONDS];
   if (v26 && c.retryDelaySeconds === 0) claims.push(RETRY_DELAY_26AI);
   return {
-    id: 'jdbc', title: 'JDBC thin URL', syntax: 'jdbc', lines, claims,
+    id: opts.label === undefined ? 'jdbc' : `jdbc:${opts.label}`,
+    title: opts.label === undefined ? 'JDBC thin URL' : `JDBC thin URL — ${opts.label}`,
+    syntax: 'jdbc', lines, claims,
   };
 }

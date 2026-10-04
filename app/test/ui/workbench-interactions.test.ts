@@ -1,5 +1,5 @@
 /** @vitest-environment jsdom */
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { h, render } from 'preact';
 import { printing } from '@/ui/print';
 import { App } from '@/ui/App';
@@ -7,8 +7,8 @@ import { classicDoc, doc } from '@/state/doc';
 import { canUndo, resetHistory, undoStack } from '@/state/history';
 import { topology } from '@/state/derived';
 import {
-  commandOpen, inspectorCollapsed, inspectorOpen, introPage, mode, selection,
-  timelineFull, timelineH, toast, viewport,
+  commandOpen, inspectorOpen, introPage, mode, selection,
+  timelineH, toast, viewport,
 } from '@/state/view';
 import { canvasPan, handTool } from '@/ui/canvas/pan';
 import { fitZoom } from '@/ui/canvas/zoom';
@@ -16,7 +16,6 @@ import { commands, filterCommands, runCommand } from '@/ui/commands';
 import { onGlobalKey } from '@/ui/shortcuts';
 import { openInspectorFor } from '@/ui/build/actions';
 import { applyTemplate, templates } from '@/ui/break/events';
-import { onFullKey } from '@/ui/timeline/DockControls';
 
 let root: HTMLElement;
 const tick = (): Promise<void> => new Promise(r => setTimeout(r, 65));
@@ -42,17 +41,18 @@ beforeEach(() => {
   document.body.innerHTML = '';
   resetHistory(classicDoc());
   mode.value = 'build'; viewport.value = 'wide'; selection.value = [];
-  inspectorCollapsed.value = false; inspectorOpen.value = false; commandOpen.value = false;
-  introPage.value = false; timelineFull.value = false; timelineH.value = null; toast.value = null;
+  inspectorOpen.value = false; commandOpen.value = false;
+  introPage.value = false; timelineH.value = null; toast.value = null;
   handTool.value = false; printing.value = false; fitZoom();
 });
-afterEach(() => { if (root) render(null, root); });
+afterEach(() => { if (root) render(null, root); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
 describe('visible folded inspector', () => {
   it('keeps a named, operable header while removing the forms, and expands again', async () => {
     await mount();
-    const toggle = root.querySelector<HTMLButtonElement>('.rail-toggle')!;
-    toggle.click(); await tick();
+    root.querySelector<HTMLButtonElement>('.rail-strip')!.click(); await tick();
+    root.querySelector<HTMLButtonElement>('.rail-tog')!.click(); await tick();
+    const toggle = root.querySelector<HTMLButtonElement>('.rail-strip')!;
     expect(toggle.textContent).toContain('Inspector');
     expect(toggle.getAttribute('aria-expanded')).toBe('false');
     expect(root.querySelector('#rail-content')).toBeNull();
@@ -62,8 +62,8 @@ describe('visible folded inspector', () => {
   });
   it('keeps a launcher beside a closed drawer and gives focus back when closing', async () => {
     viewport.value = 'medium'; await mount();
-    const launcher = root.querySelector<HTMLButtonElement>('.rail-launcher')!;
-    expect(launcher.textContent).toContain('Inspector');
+    const launcher = [...root.querySelectorAll<HTMLButtonElement>('.statusbar button')].find(b=>b.textContent==='Inspector')!;
+    expect(launcher.textContent).toBe('Inspector');
     expect(root.querySelector('[role="dialog"]')).toBeNull();
     launcher.focus(); launcher.click(); await tick();
     expect(root.querySelector('[role="dialog"]')).not.toBeNull();
@@ -72,9 +72,9 @@ describe('visible folded inspector', () => {
     expect(document.activeElement).toBe(launcher);
   });
   it('Edit expands a folded wide inspector on the requested object', async () => {
-    inspectorCollapsed.value = true; await mount();
+    await mount();
     openInspectorFor('sby01'); await tick();
-    expect(inspectorCollapsed.value).toBe(false);
+    expect(root.querySelector('.rail-strip')).toBeNull();
     expect(selection.value).toEqual(['sby01']);
     expect(root.querySelector('#rail-content')?.textContent).toContain('sby01');
   });
@@ -82,11 +82,11 @@ describe('visible folded inspector', () => {
 
 describe('printing folded panels', () => {
   it('expands the rail for print and returns to the folded preference afterward', async () => {
-    inspectorCollapsed.value = true; await mount();
+    await mount();
     expect(root.querySelector('#rail-content')).toBeNull();
     printing.value = true; await tick();
     expect(root.querySelector('#rail-content')).not.toBeNull();
-    expect(inspectorCollapsed.value).toBe(true);
+    expect(inspectorOpen.value).toBe(false);
     printing.value = false; await tick();
     expect(root.querySelector('#rail-content')).toBeNull();
   });
@@ -146,7 +146,7 @@ describe('commands and hotkeys', () => {
     const input = root.querySelector<HTMLInputElement>('[aria-label="Search commands"]')!;
     expect(document.activeElement).toBe(input);
     input.value = 'open configure'; input.dispatchEvent(new Event('input', { bubbles: true })); await tick();
-    expect(root.querySelector('[role="option"]')?.textContent).toContain('Open Configure');
+    expect(root.querySelector('[role="option"]')?.textContent).toContain('Open Config');
     key(input, 'Enter'); await tick();
     expect(commandOpen.value).toBe(false);
     expect(mode.value).toBe('configure');
@@ -198,12 +198,32 @@ describe('commands and hotkeys', () => {
     globalKey('2'); expect(mode.value).toBe('break');
     globalKey('k', { ctrlKey: true }); expect(commandOpen.value).toBe(true);
   });
-  it('Escape closes the palette before the full-screen timeline', async () => {
-    mode.value = 'break'; applyTemplate(templates(topology.value).find(t => t.id === 'crash')!);
-    await mount(); timelineFull.value = true; commandOpen.value = true; await tick();
-    const ev = new KeyboardEvent('keydown', { key: 'Escape', cancelable: true }); onFullKey(ev);
-    expect(timelineFull.value).toBe(true);
-    key(document.activeElement!, 'Escape'); await tick();
-    expect(commandOpen.value).toBe(false); expect(timelineFull.value).toBe(true);
+  it('folds the current Topology timeline without altering its run', async () => {
+    applyTemplate(templates(topology.value).find(t => t.id === 'crash')!);
+    await mount(); const before=JSON.stringify(doc.value); globalKey('l'); await tick();
+    expect(root.querySelector('.mtl')).toBeNull(); expect(JSON.stringify(doc.value)).toBe(before);
+    globalKey('l'); await tick(); expect(root.querySelector('.mtl')).not.toBeNull();
+  });
+});
+
+describe('scaling the current small timeline', () => {
+  it('fills a resized plot with one uniform SVG scale while leaving document and playhead intact', async () => {
+    let plotHeight=160;
+    const callbacks: (()=>void)[]=[];
+    class Observer { constructor(private callback:()=>void) {} observe(el:Element) { if(el.classList.contains('mtl-plot'))callbacks.push(this.callback); } disconnect() {} }
+    vi.stubGlobal('ResizeObserver',Observer);
+    vi.spyOn(HTMLElement.prototype,'getBoundingClientRect').mockImplementation(function(this:HTMLElement) {
+      const height=this.classList.contains('mtl-plot')?plotHeight:0;
+      return {width:1000,height,x:0,y:0,top:0,left:0,right:1000,bottom:height,toJSON:()=>({})} as DOMRect;
+    });
+    applyTemplate(templates(topology.value).find(t=>t.id==='crash')!); await mount();
+    const svg=root.querySelector('.mtl-svg')!; const before=JSON.stringify(doc.value);
+    expect(Number(svg.getAttribute('height'))).toBe(160);
+    const naturalHeight=Number(svg.getAttribute('viewBox')!.split(' ')[3]);
+    plotHeight=320; callbacks.forEach(cb=>cb()); await tick();
+    expect(Number(svg.getAttribute('height'))).toBe(320);
+    expect(Number(svg.getAttribute('viewBox')!.split(' ')[3])).toBe(naturalHeight);
+    expect(root.querySelector('.tl-tune-grip')).not.toBeNull();
+    expect(JSON.stringify(doc.value)).toBe(before);
   });
 });

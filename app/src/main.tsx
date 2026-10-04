@@ -5,8 +5,8 @@
  *
  *   theme      ?theme=  ->  localStorage  ->  auto
  *   edition    ?ed=     ->  localStorage  ->  19c
- *   the page  ?intro=1, or -- with dg-intro-v1 unset and nothing in the
- *             address naming something else to look at -- the Introduction
+ *   the page  the Topology workbench, unless ?intro=1 asks for the
+ *             Introduction; a first visit does not open it on its own
  *   document   #t= / #t0= / #cfg2= / #cfg=
  *                       ->  ?preset= / ?lesson=
  *                       ->  a published-page link (?sc=...#ch-clocks)
@@ -26,9 +26,8 @@ import { findPreset } from './presets';
 import { resetHistory } from './state/history';
 import { decodeFragment, fragmentKind } from './state/codec';
 import {
-  announceRestore, introDismissed, loadDoc, loadEdition, loadGrid, loadHints, loadIntro, loadIssuesOpen, loadPalette,
-  loadTheme,
-  loadTimelineH,
+  announceRestore, loadDoc, loadEdition, loadGrid, loadHints, loadIntro, loadIssuesOpen, loadPalette,
+  loadBreakTimeline, loadMiniTimelineOpen, loadRailCollapsed, loadSummaryOpen, loadTheme, loadTimelineOpen,
   startAutosave,
 } from './state/persist';
 import { upgradeLegacyUrl } from './state/legacy-url';
@@ -45,6 +44,10 @@ import './styles/tokens.css';
 import './styles/base.css';
 import './styles/shell.css';
 import './styles/float.css';
+import './styles/rail.css';
+import './styles/timeline-bar.css';
+import './styles/lanes.css';
+import './styles/summary.css';
 import './styles/popout.css';
 import './styles/print.css';
 
@@ -71,7 +74,11 @@ async function boot(): Promise<void> {
   loadHints();
   loadGrid();
   loadIssuesOpen();
-  loadTimelineH();
+  loadMiniTimelineOpen();
+  loadTimelineOpen();
+  loadRailCollapsed();
+  loadBreakTimeline();
+  loadSummaryOpen();
 
   let restoredFromStorage = false;
   let notice: string | null = null;
@@ -107,11 +114,9 @@ async function boot(): Promise<void> {
   if (!next && state.lesson !== null) next = classicDoc(state.ed);
 
   /* 3. a published-page link */
-  let upgraded = false;
   if (!next) {
     const legacy = upgradeLegacyUrl(search, hash);
     if (legacy) {
-      upgraded = true;
       next = { ...classicDoc(state.ed), topology: legacy.topology };
       if (legacy.view.mode) state.mode = legacy.view.mode;
       if (legacy.view.panel) state.panel = legacy.view.panel;
@@ -136,18 +141,11 @@ async function boot(): Promise<void> {
      way in, `?lesson=&step=` once the canonical URL is written. Either form
      sets the workbench up for that step, so a link to a step shows what the
      step is about rather than whatever was last open. */
-  /* The Introduction, when it is asked for or when this reader has never been
-     shown it and the address is not already a link to something (ui.md SS3e).
-     Read after `applyUrlState`, which has just put `?intro=1` into the signal:
-     this is the rule that can also open the page when the query is silent. */
-  introPage.value = introOnBoot({
-    asked: state.intro,
-    seen: introDismissed.value,
-    /* A published-page link is a link to something too: its old query keys
-       are a configuration, and the Introduction does not open over it. */
-    hasDocument: fragmentKind(hash) !== null || upgraded,
-    keys: [...present],
-  });
+  /* The Introduction, only when it is asked for: `?intro=1`, which is the
+     header's brand link. A first visit lands on the Topology workbench like
+     any other (ui.md SS3e). Read after `applyUrlState`, which has just put
+     `?intro=1` into the signal. */
+  introPage.value = introOnBoot({ asked: state.intro });
 
   const route = applyLearnRoute(hash, 'boot');
   if (route === null && state.lesson !== null) {

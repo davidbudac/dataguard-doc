@@ -1,7 +1,8 @@
 /**
  * Presets with more than two members or more than one observer: multi-target
- * fast-start failover, a RAC primary, snapshot and logical bystanders, and
- * maximum protection with two synchronous standbys.
+ * fast-start failover, a RAC primary, a RAC primary with a RAC standby,
+ * snapshot and logical bystanders, and maximum protection with two synchronous
+ * standbys.
  */
 
 import {
@@ -10,7 +11,7 @@ import {
 import type { Preset } from './types';
 import type { TimedEvent, TopologyDoc } from '../engine';
 
-/* Two candidate targets and three observers -- the 19c maximum. */
+/* Two candidate targets and three observers -- the 19c chapter's maximum (the START OBSERVER page says four). */
 function multiTargetDoc(): TopologyDoc {
   /* Every database takes SYNC, the primary included: after a role change
      it is the standby. */
@@ -70,7 +71,8 @@ export const multiTargetThreeObservers: Preset = {
     + 'in which they are specified", and "If the designated fast-start failover target develops '
     + 'a problem ... the broker automatically changes the fast-start failover target to one of '
     + 'the other candidate targets". Targets are verified when fast-start failover is enabled. '
-    + 'Three observers are registered, the 19c maximum -- one master, the others backups, and '
+    + 'Three observers are registered -- the 19c fast-start failover chapter says three is the '
+    + 'maximum, while the 19c START OBSERVER reference says four -- one master, the others backups, and '
     + 'only the master observer can coordinate fast-start failover; if the primary and target '
     + 'standby stay connected but the connection to the master observer is lost, the broker '
     + 'tries to nominate a backup observer as the new master, a documented attempt under that '
@@ -89,7 +91,7 @@ export const multiTargetThreeObservers: Preset = {
   cite: [
     'FSFO.MULTI_TARGET_12_2', 'FSFO.TARGET_MUST_BE_EXPLICIT', 'FSFO.TARGET_ORDER',
     'FSFO.TARGET_AUTO_CHANGE', 'FSFO.NO_SECOND_TARGET_26AI', 'FSFO.TARGET_VERIFIED_ON_ENABLE',
-    'OBS.THREE_19C',
+    'OBS.THREE_19C', 'OBS.FOUR_CMD19',
     'OBS.MASTER_ONLY_COORDINATES', 'OBS.NOMINATION_PRECONDITION', 'FSFO.THRESHOLD',
     'FSFO.BOTH_MUST_HAVE_LOST', 'OBS.PLACEMENT_NEVER_ON_DB_HOST',
   ],
@@ -130,20 +132,78 @@ export const racPrimary: Preset = {
     'The primary is a two-instance cluster; the observer, as always, runs on a host of its own, '
     + 'because it "should never be deployed at the primary database server or cluster, or on '
     + 'the standby database server or cluster". The default event stops one instance at t = 0. '
-    + 'Nothing else happens: the observer and the target standby both still reach the surviving '
-    + 'instance, and fast-start failover needs both of them to have lost the primary for '
-    + 'FastStartFailoverThreshold before it initiates anything, so no clock ever starts. Two '
-    + "modelling notes belong to this preset rather than to Oracle: the engine treats a member "
-    + 'as reachable while any one of its instance hosts is up -- degraded, not down -- and '
+    + 'Nothing else happens here: the observer and the target standby both still reach the '
+    + 'surviving instance, and Oracle says fast-start failover "will not occur unless all '
+    + 'instances comprising the Oracle RAC primary database are perceived to have failed". '
+    + 'Three modelling notes belong to this preset rather than to Oracle. The drawing starts no '
+    + 'threshold clock while any instance runs -- no Oracle sentence says whether one would; '
+    + 'Oracle advises a higher FastStartFailoverThreshold on a RAC primary "to minimize the '
+    + 'possibility of a false failover in the event of an instance failure". The engine treats a '
+    + 'member as reachable while any one of its instance hosts is up -- degraded, not down. And '
     + 'instance-level LGWR and NSS ownership is out of scope, so which instance was shipping '
     + 'redo makes no difference here. Kill the second instance too and the configuration '
-    + 'becomes the ordinary primary crash.',
+    + 'becomes the ordinary primary crash, its clock counted from the last instance lost (an '
+    + 'inference).',
   cite: [
     'OBS.PLACEMENT_NEVER_ON_DB_HOST', 'FSFO.BOTH_MUST_HAVE_LOST', 'FSFO.THRESHOLD',
-    'FSFO.OBSERVER_OVERRIDE_FALSE',
+    'FSFO.OBSERVER_OVERRIDE_FALSE', 'RAC.PERCEIVED_FAILED', 'RAC.THRESHOLD_ADVICE',
   ],
   doc: racDoc,
   events: () => [instanceDown(0, 'prm01', 'prm011')],
+};
+
+/* A two-instance RAC primary shipping to a two-instance RAC standby. */
+function racStandbyDoc(): TopologyDoc {
+  const prm = database('prm01', ['dc1-node1', 'dc1-node2'], 'primary', {
+    redoRoutes: [local(to('sby01', 'SYNC'))],
+    logXptMode: 'SYNC',
+  });
+  const sby = database('sby01', ['dc2-node1', 'dc2-node2'], 'physical', {
+    logXptMode: 'SYNC', preferredApplyInstance: 'sby011',
+  });
+  dest(prm, sby.id);
+  return topology({
+    name: 'rac_standby',
+    sites: ['dc1', 'dc2', 'dc3'],
+    hosts: [
+      host('dc1-node1', 'dc1', { cluster: 'rac1' }),
+      host('dc1-node2', 'dc1', { cluster: 'rac1' }),
+      host('dc2-node1', 'dc2', { cluster: 'rac2' }),
+      host('dc2-node2', 'dc2', { cluster: 'rac2' }),
+      host('dc3-obs01', 'dc3'),
+    ],
+    links: [['dc1', 'dc2', 5], ['dc1', 'dc3', 5], ['dc2', 'dc3', 5]],
+    members: [prm, sby],
+    observers: [observer('obs01', 'dc3-obs01')],
+    targets: ['sby01'],
+    events: [instanceDown(0, 'sby01', 'sby011')],
+  });
+}
+
+export const racStandby: Preset = {
+  id: 'rac-standby',
+  title: 'A RAC standby losing its apply instance',
+  short: 'RAC primary and RAC standby',
+  group: 'RAC',
+  summary:
+    'Both databases are two-instance clusters, and the observer runs on a host of its own at a '
+    + 'third site. The standby runs Redo Apply on exactly one instance, the apply instance -- '
+    + 'here sby011, because PreferredApplyInstance names it. The default event stops sby011 at '
+    + 't = 0. "If the apply instance fails, then the broker automatically restarts SQL Apply, or '
+    + 'the Redo Apply coordinator, as appropriate, on a different instance"; ApplyInstanceTimeout '
+    + 'is at its default of 0, "immediate apply instance failover", so apply moves to sby012 at '
+    + 'once. Nothing else changes: sby012 still receives redo, the observer and the primary still '
+    + 'reach the standby, and no fast-start failover clock starts. One modelling note belongs to '
+    + 'this preset rather than to Oracle: how long the broker takes to detect the failure is not '
+    + 'documented, and the engine draws it as instantaneous. Set ApplyInstanceTimeout on sby01 '
+    + 'to see apply stand still for that long; take sby012 down too and the standby is down.',
+  cite: [
+    'RAC.APPLY_INSTANCE', 'RAC.APPLY_INSTANCE_FAILOVER', 'RAC.APPLY_INSTANCE_SELECTION',
+    'RAC.PREFERRED_APPLY_INSTANCE', 'RAC.APPLY_INSTANCE_TIMEOUT', 'RAC.PRIMARY_AVAILABLE',
+    'OBS.PLACEMENT_NEVER_ON_DB_HOST',
+  ],
+  doc: racStandbyDoc,
+  events: () => [instanceDown(0, 'sby01', 'sby011')],
 };
 
 /* A physical target with a logical and a snapshot standby as bystanders. */

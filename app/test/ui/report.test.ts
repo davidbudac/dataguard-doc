@@ -164,7 +164,7 @@ describe('report page', () => {
     const heads = [...root.querySelectorAll('.rp h2')].map((e) => e.textContent?.replace(/^\d+\s*/, ''));
     expect(heads).toEqual([
       'Summary', 'Diagram', 'Members and observers', 'Validation findings',
-      'Generated configuration', 'Break: injected events and outcome', 'Sources',
+      'Generated configuration', 'Run: injected events and outcome', 'Sources',
     ]);
     expect(root.querySelector('.rp .topo-svg')).not.toBeNull();
     /* A model claim wears its label on paper too. */
@@ -173,6 +173,23 @@ describe('report page', () => {
     expect(root.querySelector('[style]')).toBeNull();
     render(null, root);
     expect(document.documentElement.getAttribute('data-theme')).toBe('dark');
+  });
+
+  it('prints the Split brain reading like any other outcome row: labelled as the model, with its sources numbered', () => {
+    load('classic');
+    const m = model();
+    const chip = m.run?.outcome.find((c) => c.id === 'split');
+    expect(chip).toMatchObject({ k: 'Split brain', v: 'no', basis: 'model' });
+    for (const id of chip?.cite ?? []) expect(m.refs[id]).toBeGreaterThan(0);
+    const root = document.createElement('div');
+    document.body.appendChild(root);
+    render(h(Report, {}), root);
+    const row = [...root.querySelectorAll('.rp-sum-row')].find((r) => r.querySelector('dt')?.textContent === 'Split brain');
+    expect(row).toBeDefined();
+    expect(row?.querySelector('dd .mono')?.textContent).toBe('no');
+    expect(row?.querySelector('.fact.b-model')).not.toBeNull();
+    expect(row?.querySelector('.rp-sub')?.textContent).toMatch(/^prm01 is down when sby01 opens at/);
+    render(null, root);
   });
 
   it('takes the place of the workbench, and gives it back', () => {
@@ -184,7 +201,7 @@ describe('report page', () => {
     expect(root.querySelector('.report')).not.toBeNull();
     expect(root.querySelector('.app')).toBeNull();
     /* No events, no Break section. */
-    expect([...root.querySelectorAll('.rp h2')].some((e) => e.textContent?.includes('Break'))).toBe(false);
+    expect([...root.querySelectorAll('.rp h2')].some((e) => e.textContent?.includes('Simulate'))).toBe(false);
     closeReport();
     render(h(Root, {}), root);
     expect(root.querySelector('.report')).toBeNull();

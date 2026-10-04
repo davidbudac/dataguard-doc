@@ -95,8 +95,10 @@ type Member = DatabaseMember | FarSyncMember;
 type XptMode = 'SYNC' | 'FASTSYNC' | 'ASYNC';
 interface DestProps { netTimeoutSeconds: Seconds; reopenSeconds: Seconds; maxFailure: number; affirm?: 'AFFIRM' | 'NOAFFIRM'; }
 ```
-RAC: a member is reachable if any instance host is up and reachable; degraded, not down,
-when some instances are gone. Instance-level LGWR/NSS ownership is out of scope (labelled).
+RAC: a member is reachable if any instance is running on a host that is up and reachable;
+degraded, not down, when some instances are gone (facts.md F1, documented). Instance-level
+LGWR/NSS ownership is out of scope (labelled). A RAC physical or logical standby runs apply
+on one instance, the apply instance (F2-F4); see §10 for how the loop moves it.
 
 ### 1.4 RedoRoutes
 ```ts
@@ -185,6 +187,8 @@ Rule catalogue (id · severity · basis · rule):
 - FSFO.OBSERVE_ONLY · info · documented · observe-only never fails over
 - MODE.MAXPROT_NEEDS_SYNC_DB · error · documented · far sync alone insufficient (A4)
 - MODE.MAXPROT_SNAPSHOT_ONLY · error · documented
+- ROLE.SWITCHOVER_SNAPSHOT · error · documented · a SWITCHOVER naming a snapshot standby (fact check 10-01 SIM-17)
+- ROLE.SWITCHOVER_LOGICAL_MAXPROT · error · documented · a SWITCHOVER naming a logical standby in MaxProtection (VAL-07)
 - MODE.MAXPROT_ONE_STANDBY · warning · documented · ≥2 standbys recommended (C3)
 - XPT.TABLE_4_2 · error/warn/info · documented · MaxProt SYNC; MaxAvail SYNC|FASTSYNC (26ai ASYNC → warning); MaxPerf ASYNC only mode *listed* → info, never "SYNC illegal"
 - XPT.FASTSYNC_MAXAVAIL_ONLY · error · documented
@@ -301,9 +305,17 @@ observer nor any target isolates a primary, but isolation alone is not STALLED: 
 was never observed, or whose target was never ready, has no recorded state left to change, so
 it keeps running and the run says why (`running: 'unobserved' | 'not-ready'`). It stalls once
 isolation coincides with something that *would* have to change to confirm it -- the
-configuration was observed and the active target was ready, or it is already stalled, or it is
-a former primary a role change has already passed by. `legacyStallWhenNotReady` (below) is the
-one switch that widens this back to "isolated stalls, full stop".
+configuration was observed and the active target was ready, or it is already stalled. After a
+role change the new primary has **no synchronized target yet**: `completeFailover` and
+`completeSwitchover` clear `activeTarget`, so `possible` is false and the new primary never
+stalls or aborts for the loss of the observer and/or its standbys (`FSFO.NO_TARGET_AFTER_ROLE_CHANGE`,
+`inferred`, recorded once, where it first matters; owner decision D6, 2026-10-01). The former
+primary becomes the target only once it is reinstated, or has restarted as the new standby, and the
+run draws both as open-ended bands. The only acting primaries after a role change are a former
+primary still running as a primary -- stalled before the role change and not reached since, or the
+D5 case below (`SimState.formerActs`); a switchover's former primary is a standby, and a crashed
+one that restarts is started and mounted. `legacyStallWhenNotReady` (below) is the one switch that
+widens the normal-phase rule back to "isolated stalls, full stop".
 Failover at `initiateAt` iff master lost the primary for threshold (or ping window when both
 ping props set) AND chosen target lost the primary (ObserverOverride FALSE) AND master reaches
 target AND readiness gate passes. `detect = pingSet ? pingIntervalMs*(pingRetry+1)/1000 : 0.3`
@@ -334,7 +346,9 @@ at lastAck+netTimeout (model PROT.MAXPROT_SHUTDOWN_TIMING). Bystanders per
 BystandersFollowRoleChange (default ALL). Reinstate: open band with no end
 (environment-dependent), preconditions as Findings.
 **Refused commands never change role.** SWITCHOVER TO refuses a down target, a down primary or
-the two unable to reach each other (`SWITCHOVER.GATE`); FAILOVER TO refuses a down target
+the two unable to reach each other (`SWITCHOVER.GATE`), a snapshot standby ("cannot be the target of
+a switchover"; the refusal reason is `snapshot-target`) and a logical standby in maximum protection
+(`logical-maxprotection`); FAILOVER TO refuses a down target
 (`FAILOVER.TARGET_DOWN`), and separately raises an error -- without refusing the command -- when
 the primary is still open, because the broker cannot see to it that an operator shuts it down
 first (`FAILOVER.PRIMARY_STILL_OPEN`). A manual failover with fast-start failover enabled is
@@ -342,11 +356,66 @@ conditional on the target being the current target, synchronized or inside the l
 the observer reaching it (`manualFailoverFindings`, roles.ts); the loss it books is the redo the
 target never received -- never documented as bounded, zero or lossless, always model
 (`FAILOVER.LOSS_DEPENDS`).
-**A former primary is never drawn open beside the new one.** After a role change it is mounted,
-not open, whether or not fast-start failover armed the failover (`FSFO.FORMER_PRIMARY_NOT_OPEN`
-where it did, `FAILOVER.FORMER_PRIMARY_MOUNTED` -- this page's reading -- where it did not,
-since only the fast-start-failover case has ORA-16649 spelling out the mounted state). It stays
-that way until REINSTATE DATABASE or a fresh START/STARTUP the run does not model.
+**A role change to the wrong kind of standby** (fact check 2026-10-01). A role change to a *logical* standby
+disables every physical and snapshot standby, and after a failover the original primary too
+(`disableForLogical`, `SimState.recreateMembers`): they are drawn `disabled`, REINSTATE refuses them
+(`REINSTATE.MUST_RECREATE` -- they are re-created from a copy of the new primary), and
+`BYSTANDERS.FOLLOW` reads "not followed". A manual failover to a *snapshot* standby is legal but the broker first
+converts it back to a physical standby and applies the accumulated redo: the open moves later by
+`SNAPSHOT_CONVERT` (5 s, a nominal constant) plus the redo the primary generated in the run
+(`unappliedBacklog`, applied 1:1 like every apply lag here), and `FAILOVER.SNAPSHOT_ALLOWED` is a `conflict`
+(the concepts page says a snapshot "cannot be the target of a role transition", the commands page allows the manual
+failover). A standby whose apply is stopped for the run, or a snapshot, never has a zero backlog at a failover:
+the broker "waits for the target standby database to finish applying any unapplied redo" -- the wait is
+documented, its size is `model` (`FAILOVER.APPLY_WAIT`). A snapshot standby never draws `mounted-apply`.
+**A manual failover does not close a primary that is still open -- unless fast-start failover is
+enabled.** Oracle puts the shutdown on the operator (`FAILOVER.PRIMARY_SHUT_DOWN`,
+`FSFO.MANUAL_FAILOVER_CONDITIONS`) and no page says the broker closes or mounts an old primary that
+is still open when the failover completes; ORA-16649 (`FSFO.FORMER_PRIMARY_NOT_OPEN`) is about a
+former primary that *restarts* and is not allowed to open, not one that stayed open. With
+**fast-start failover disabled**, when a manual failover completes with the old primary alive and not
+aborted (`completeFailover` sets `SimState.formerOpen`), it is drawn `open-rw` beside the new primary --
+reachable or not -- until it is taken down: `simulate` clears `formerOpen` at the first epoch in which
+it is down or aborted. The run says so as a Finding, `FAILOVER.FORMER_PRIMARY_OPEN`, `model`, note
+citing those two sentences, beside the documented `FAILOVER.PRIMARY_STILL_OPEN` error raised at the
+command. With **fast-start failover enabled** (owner decision D5, 2026-10-01) the target the old
+primary was running with has just become the primary, so it has lost its target: it is drawn
+`stalled` from the completion instant (`SimState.formerLostTarget`, `FAILOVER.FORMER_PRIMARY_STALLS`,
+`model`, citing "Data Guard fast-start failover always guarantees that only one primary database
+exists" and the STALLED row's "It shuts down or stalls because it is likely a failover has
+occurred.") and then follows `FastStartFailoverPmyShutdown`: TRUE aborts it one
+`FastStartFailoverThreshold` later through the same per-actor stall clock, FALSE leaves it stalled
+for good. Nothing documented says this; it is the page's reading of the sentences around the gap,
+and a stalled old primary is not counted as open by `splitBrainOf`. **A former primary that
+restarts** (it was down when the failover completed, or went down since) keeps its old reading:
+mounted, `FSFO.FORMER_PRIMARY_NOT_OPEN` (documented, ORA-16649) with fast-start failover enabled,
+`FAILOVER.FORMER_PRIMARY_MOUNTED` without -- `documented` under 26ai (Scenario 11: "Because a role
+transition occurred while the old primary was offline, Data Guard prevents the database from
+reopening and leaves it in a mounted state to ensure there is only one database open in the
+primary role.", `FAILOVER.FORMER_PRIMARY_MOUNTED_26AI`), `model` under 19c, whose Scenario 11 says
+none of it -- and drawn open where it cannot reach the new primary, since nothing tells it (`model`
+under both editions). **A stalled primary that is reached again without ever restarting** (SIM-20)
+is drawn mounted too, but that is `model`: Oracle documents the started-and-mounted state for a
+database that is *restarted*, and no page says a stalled, still-open primary is closed when contact
+returns. It stays mounted until REINSTATE DATABASE or a fresh START/STARTUP the run does not model.
+**Reinstatement waits for contact** (SIM-16): `completeFailover` records that automatic
+reinstatement is *pending* (`SimState.reinstatePending`) when `reinstateFindings` finds the
+preconditions met, and `trackReinstatement` starts the `reinstating` band -- and decides
+`REINSTATE.OPEN_BAND` -- only at the first epoch in which the former primary is running, the master
+observer reaches it and it reaches the new primary ("The master observer cannot connect to the
+former primary database" and "The former primary database cannot connect to the new primary
+database" are the broker's own restrictions). Until then `REINSTATE.WAITING` records why once
+(documented): an aborted former primary "must be manually restarted before the master observer can
+attempt to reinstate it" -- nothing in a run restarts it -- a down one waits for its host, a cut-off
+one for the connection. A fast-start-failover failover and a switchover are otherwise unchanged:
+the first's old primary is the documented stall / abort / `FastStartFailoverPmyShutdown` path, the
+second's is converted. `splitBrainOf` (`sim/split-brain.ts`) reads
+the result back: two lanes `open-rw` over a stretch with a length. A `Claim<boolean>`, `model`, note
+`SPLIT_BRAIN.READING` -- Oracle has no term and no interval for it -- asked only of a failover or manual
+failover that moved a primary, with the window when yes (a manual failover with the old primary still
+open and fast-start failover disabled reads yes, from the new primary's open to where the old one goes
+down, or to the end of the run) and, when no, what the old primary was doing the instant the new one
+opened (down, aborted, stalled, mounted). A STALLED primary is not counted.
 **One role change per run.** A second failover after a role change -- fast-start failover stays
 armed, and "the reinstated database acts as the fast-start failover target for the new primary
 database, making a subsequent fast-start failover possible" -- is not simulated. The run stops
@@ -405,7 +474,7 @@ Pure `(doc) => GeneratedFile[]` with structured `Line`s (`cmd`/`note`/`comment`/
 - DGMGRL script order: CREATE CONFIGURATION; ADD DATABASE ×N; ADD FAR_SYNC ×N; LogXptMode; RedoRoutes per member (both directions pre-declared, comment says nothing rewrites on role change); NetTimeout; ENABLE FAR_SYNC; ENABLE CONFIGURATION; protection mode; FastStartFailover* properties; FastStartFailoverTarget = 'a,b'; ENABLE FAST_START FAILOVER [OBSERVE ONLY]; `START OBSERVER name FILE IS … LOGFILE IS … CONNECT IDENTIFIER IS … IN BACKGROUND` ×N; SET MASTEROBSERVER TO. Traps pinned by tests: `FILE IS` never `FILE=`; `GROUP` never in RedoRoutes; validation notes come from `validate` (one source of truth).
 - LOG_ARCHIVE_DEST_n: one block per primary destination from 2 upward, ranges 1–10 / 11–31; NET_TIMEOUT omitted under ASYNC; ALTERNATE=/GROUP=/PRIORITY= only here.
 - tnsnames/JDBC: ADDRESS_LIST over all service-publishing hosts, FAILOVER=on spelled, LOAD_BALANCE omitted unless on; ConfigurationWideServiceName alternative labelled doc-later.
-- SHOW mocks (CONFIGURATION [VERBOSE] [WHEN PRIMARY IS x], FAST_START FAILOVER, OBSERVER): indentation for cascade, `(receiving current redo)`, `(alternate of X)`, Active/Potential targets with valid flag, observer Master/Backup with Host Name and Last Ping lines. UNDOC spellings (far-sync line → `(far sync instance)` with no state column; observe-only spelling; valid column header) carry model markers; every mock block carries a generated header saying it is rendered from the model.
+- SHOW mocks (CONFIGURATION [VERBOSE], CONFIGURATION WHEN PRIMARY IS 'x' -- members only, no status, no VERBOSE --, FAST_START FAILOVER, OBSERVER, and DATABASE for a RAC member with its lags and Database Status): indentation for cascade, `(receiving current redo)`, `(alternate of X)`, Active/Potential targets with valid flag, observer Master/Backup with Host Name and Last Ping lines. At a playhead after a role change the Show panel passes the run (`ShowRun`: the primary at that moment, whether the role moved by switchover or failover, every member's state), and the blocks print what the broker would print then: plain SHOW CONFIGURATION for the new primary, a failed former primary `(disabled)` with ORA-16661 and the configuration WARNING (the FAILOVER example), the new primary's FastStartFailoverTarget the former primary (the reciprocal property), none listed with fast-start failover disabled; a switchover leaves a plain standby and SUCCESS. Fast-start failover enabled with no observer started keeps ENABLE and every property in the script, and SHOW prints ORA-16819 on the primary and the target with the configuration WARNING (`inferred`). At a frame where a manual failover left the old primary open (`openAsPrimary`, read by the Show panel off the frame's `open-rw` members that are not the resolved primary), SHOW CONFIGURATION keeps its own line for that member and adds a `(model)` note that the run draws it still open (`FAILOVER.FORMER_PRIMARY_OPEN`). UNDOC spellings (far-sync line → `(far sync instance)` with no state column; observe-only spelling; valid column header) carry model markers; every mock block carries a generated header saying it is rendered from the model.
 
 ## 8. Testing
 1. Ported matrix gate (`legacy-matrix.test.ts` = site/test.mjs against the adapter, verbatim names/comments).
@@ -424,7 +493,7 @@ app/src/engine/
   net/graph.ts
   redo/{parse,resolve}.ts
   validate/{index,rules/*}.ts
-  sim/{kernel,fsfo,protection,roles,simulate}.ts
+  sim/{kernel,fsfo,protection,roles,split-brain,simulate}.ts
   models/{axis,app,commit,reopen}.ts
   compat/classic.ts
   generate/{dgmgrl,initora,tnsnames,jdbc,show,lines}.ts
@@ -499,6 +568,50 @@ the design did not state, so it is recorded rather than left to be rediscovered.
   switchover gate asks the transport directly rather than a lag-gated readiness flag. Every
   preset therefore opens at the level it was configured in, and the classic 1+1+1 steady
   state is `MAXAVAILABILITY` with zero data loss.
+- **An instance stops without its host (RAC).** `instance.down` / `instance.up` used to be
+  folded into `host.down` / `host.up` of the instance's host, which took down anything else
+  on that host (an observer, another member's instance), and let `instance.up` resurrect a
+  host a `host.down` had crashed. `NetState` now carries `downInstances` (`member/instance`
+  keys, surfaced in `NetStateSummary`), `liveInstances` filters on it, and the canvas and
+  the client-connect model read it: a stopped instance's listener answers and refuses
+  (the service is not registered there) instead of dropping packets.
+- **The RAC standby apply instance (`sim/rac.ts`, facts.md F2-F4).** A RAC physical or
+  logical standby with apply running starts on `PreferredApplyInstance` when it names an
+  instance, else on the first instance (the broker "randomly picks" -- labelled model).
+  When the apply instance stops, `updateRac` waits `ApplyInstanceTimeout` (default 0,
+  immediate) and moves apply to the preferred instance if it is running, else the first
+  running one (model for "random"); while it waits the member is `mounted-noapply`. A
+  running apply instance is never moved back to a preference that returns ("the broker
+  disregards the value of the PreferredApplyInstance property" while it runs). Detection is
+  drawn as instantaneous (undocumented, labelled). Lane segments carry `applyInstance`, so a
+  move is a new segment in the same state, and `Snapshot.applyInstances` feeds the canvas's
+  `APPLY` tag. The apply-lag input is not advanced by the gap, and multi-instance Redo Apply
+  (`ApplyInstances`) is not drawn. A RAC primary that loses some instances records a
+  `RAC.PRIMARY_DEGRADED` decision, a `model`: the cited sentences say the primary stays
+  available and that failover needs every instance perceived failed, and none mentions a clock.
+  Instances lost one after another count the threshold from the last, an `inferred`
+  `RAC.CLOCK_FROM_LAST_INSTANCE`; running instances that cannot reach a standby while others
+  can record a `model` `RAC.INSTANCE_CUT_OFF` and nothing else.
+- **RAC, second pass.** A RAC database leaving the primary role (switchover, or a failover
+  followed by reinstatement) gets an apply instance at that instant: `PreferredApplyInstance`
+  when it names a running instance (documented "in preparation for a switchover"), else the
+  first running one (model); its restart band carries it. While a RAC standby has no instance
+  applying, `applyLagOf` adds the gap (`applyGapOf`, one second per second, `SimState.now`);
+  a failover initiated in the gap records `RAC.APPLY_GAP_IN_FAILOVER` and opens that much
+  later (model: the backlog is drawn as cleared the instant apply resumes). The
+  `cmd.setApplyInstance` event moves apply to a running instance (documented command; the
+  engine leaves the document's `PreferredApplyInstance` alone and says so). `ApplyInstances`
+  (physical standby, 0-16 or ALL) is carried; `applyParticipants` reads which instances run
+  apply (coordinator first, then declared order -- model, since "the database chooses"),
+  and a non-coordinator instance stopping is `RAC.MIRA_PARTICIPANT_LOST`, a model (undocumented).
+  Which members carry an apply instance is read from the role in the run (`tracksApply`:
+  a RAC database that is not the primary at that instant), never from the declared role: a
+  standby that takes the role drops its apply instance and any gap it was waiting out, and
+  a former primary's "apply will start on" follows its running instances. An Active Data
+  Guard standby waiting out ApplyInstanceTimeout stays `open-ro` but names no apply instance.
+  Reinstatement no longer asks a RAC member for static service names: they are needed "only
+  if Oracle Clusterware or Oracle Restart is not being used", and "Oracle Clusterware is a
+  required component for using Oracle RAC" (`isRac`).
 
 ### Collected current routes
 
@@ -512,21 +625,43 @@ edges apply only under the captured primary. The importer returns assumptions
 and any schema repairs beside the document. No live database verification was
 available; the collector and mapping need a real Oracle test-environment drill.
 
-### The application as a card (2026-09-28)
+### The application as a card (2026-09-28), and several of them (2026-09-29)
 
-`TopologyDoc.application?: { id, name, host }` draws the application tier on a host
-of its own; `doc.client` stays the connect descriptor and is what the card's form
-edits. The field is optional schema-2: a document without it parses, exports and
-reloads without it, and `parseApplication` drops (and reports) one whose host is
-gone. `engine/application.ts` (`withApplication`, `primarySite`) is the one place
-that puts it on a document: in the primary's data centre, filling an empty
-ADDRESS_LIST with the primary and then every standby database, never a far sync
-instance.
+`TopologyDoc.applications?: Application[]` draws the application tier, one card per
+entry, each on a host of its own: `Application = { id, name, host, client? }`.
+`doc.client` is the **shared** connect descriptor — what an application without one of
+its own dials, and what a document with no application dials from outside every data
+centre. An application's `client` is a full `ClientDescriptor` of its own; the one
+place that chooses between the two is `applicationClient(doc, app)`
+(`types/topology.ts`, beside `applicationsOf` and `findApplication`), and nothing that
+works on behalf of an application reads `doc.client` directly. The field is optional
+schema-2: a document without it parses, exports and reloads without it, and
+`parseApplications` drops (and reports) an entry whose host is gone, whose id is
+missing or repeats an earlier one, and any address in an own descriptor that is not a
+host. `engine/application.ts` (`withApplication`, `nextApplicationName`, `primarySite`)
+is the one place that puts one on a document: in the primary's data centre unless a
+data centre is named, named `app01`, `app02`, … (the first name the id namespace is
+free of), filling an *empty shared* ADDRESS_LIST with the primary and then every
+standby database, never a far sync instance. Adding a second changes nothing about
+the first.
+
+**Migration, and why the schema number did not move.** A document written when a
+configuration held at most one application carries it as `application: {…}`.
+`parseApplications` reads that as `applications: [that]` (a file carrying both takes
+the list); everything written now says `applications`. `schema` stays `2`: the new
+field is additive and optional exactly as `application` was, the reader is tolerant,
+and a bump would only have made every older link and file "unknown" for no
+information gained. The one cost is one-way: an older build opening a newer document
+ignores `applications` and dials from outside every data centre — the configuration
+itself survives. The share link, the file and localStorage all pass through
+`parseTopologyDoc` (`migrate`), so the chain needs no step of its own.
 
 - **`computeApp` has two vantages, and the document picks.** With no application the
   published reading stands, word for word and number for number (`APP.CLIENT_VANTAGE`:
   outside every site, an address answers when its site still has a way out) — that is
-  what `classicTopology`, a legacy link and `legacy-models.test.ts` run. With one, an
+  what `classicTopology`, a legacy link and `legacy-models.test.ts` run. With one — the
+  application is named by the caller, `computeApp(client, trace, doc, { application })`,
+  and never defaulted to the document's first — an
   address is dialable when its host is up and the application's host reaches it
   (`APP.CLIENT_PLACED`, model), asked of `buildReachability` with the engine's
   no-transit default. A dead host behind a severed link is a `timeout` whatever
@@ -540,12 +675,50 @@ instance.
   service stays in reach nothing happened (the outcome only names the kind of quiet),
   and once it does not there is a ladder, whatever the broker decided — so a stalled
   primary that aborts at the threshold is a ladder from the abort.
-- **New on `AppModel`:** `placed`, `appDownAt`, `spans` (stretches over which the
-  application's picture is constant: `appUp`, `serving`, `servingState`, `published`)
-  and `steady` (the same for the configuration as declared — a trace opens on its
+- **One view per application.** `computeApps(trace, doc)` is `computeApp` once per
+  entry of `doc.applications`, in the document's order, each with
+  `applicationClient(doc, app)` and its own vantage; the result is an array whose
+  entries name their application (`AppModel.application`, null for the descriptor
+  dialled from outside). The simulation itself (`sim/*`) never sees an application, so
+  two applications in one run share one trace and differ only in where they stand and
+  what they dial: a cut between the two database data centres strands the one behind
+  it and leaves the other alone. The generators take the descriptor as an option
+  (`buildTns(doc, { client, label })`, `buildJdbc`) and `buildClientFiles(doc)` is the
+  shared pair followed by a pair for each application with a descriptor of its own.
+- **New on `AppModel`:** `application`, `placed`, `appDownAt`, `spans` (stretches over which the
+  application's picture is constant: `appUp`, `serving`, `servingState`, `published`,
+  `publishers`) and `steady` (the same for the configuration as declared — a trace opens on its
   first event, so its first span is already the failure). `NoEventKind` gains
   `app-down`: the application's host went down and never came back, so nothing is
   dialled; when it does come back the ladder starts there.
+- **Two publishers, and the loss being the sessions' database.** A manual failover
+  leaves the old primary open beside the new one (`FAILOVER.FORMER_PRIMARY_OPEN`), and
+  the role-based service is taken as published wherever a database is open read-write,
+  so for that stretch two members publish it. `AppSpan.publishers` lists every member
+  publishing at a listed address whose host is up — once each, in the ADDRESS_LIST order
+  of its first such address — with its state and whether the application reaches it;
+  `serving` (the first reached address's member) and `published` (the first address's
+  member) are unchanged, and two spans merge only when their publishers agree too.
+  That made "the loss" a different question. It is no longer the first instant nothing
+  publishes the service but the instant **the established sessions lose their
+  database**: the model tracks the member they are on (`sessionsOn`, the steady state's
+  serving member, or the first reached publisher when there was none) and the loss
+  (`lostAt`, the old `lost`) is when that member stops serving — application down, no
+  address of it dialable, or no longer publishing — or, with no member to be on,
+  when nothing serves. `servedAtLoss` names another member already publishing within
+  the application's reach at that instant, and is null in every run where the loss is
+  the service going away. Everything downstream (`startAt`, `tService`, the ladder,
+  the `noEvent` branches) reads the new `lostAt`: with the overlap, `tService` equals
+  `startAt`, and the ladder dials address 1 (the dead old primary — rst or timeout per
+  `deadBehaviour`, or an ORA-12514 refusal when only its process went down) and then
+  establishes on the new primary. Where no second member publishes the definition gives
+  the old instant (a RAC member with one instance down and another serving is still the
+  same member), and a run in which the old primary stays open to the end is
+  `noEvent('continues')` with `lostAt` null. `AppClaims.overlap` (`APP.TWO_PUBLISHERS`,
+  `model`, no citation) is present only when some span has two publishers: established
+  sessions stay on the database they are on; a new connection lands on the first address
+  that publishes (a random order with `LOAD_BALANCE`), which may be either; Oracle
+  documents none of it for two open primaries.
 - **The application decides nothing.** No rule, clock or decision in `sim/*` reads it;
   `test/app-placement.test.ts` pins that the run's facts are the same with and
   without it, beside the placement outcomes on the classic 1 + 1 + 1.

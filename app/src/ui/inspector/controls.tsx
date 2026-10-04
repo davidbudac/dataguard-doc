@@ -19,7 +19,7 @@ import { Segmented } from '../common/Segmented';
 import type { SegmentedOption } from '../common/Segmented';
 import { WhyPill } from '../common/WhyPill';
 import type { WhyState } from '../common/WhyPill';
-import { useLayoutEffect, useRef } from 'preact/hooks';
+import { useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { focusField } from '@/state/view';
 import { hintsShown } from '../hints';
 import { printing } from '../print';
@@ -27,6 +27,19 @@ import { isSectionOpen, toggleSection } from './sections';
 import { ON } from './why';
 
 /* ---------------- structure ---------------- */
+
+/**
+ * The fold's chevron: points right while shut, turns down when open (the turn
+ * is CSS, and still under `prefers-reduced-motion`). Decorative -- the button
+ * it sits in carries `aria-expanded`.
+ */
+export function Caret({ open }: { open: boolean }) {
+  return (
+    <span class={`grp-caret${open ? ' is-open' : ''}`} aria-hidden="true">
+      <svg viewBox="0 0 10 10" focusable="false"><polyline points="3.5,1.75 6.75,5 3.5,8.25" /></svg>
+    </span>
+  );
+}
 
 export function Group(
   { title, children, action, id }:
@@ -52,22 +65,26 @@ export function Group(
  * a heading. A folded section renders no children at all -- the properties are
  * absent from the document, not painted out of view -- and `hint` says in one
  * mono phrase what is inside, so folding never costs the reader the answer to
- * "what is this configuration set to".
+ * "what is this configuration set to". A closed fold is always one line: the
+ * title does not wrap, and the hint is cut with an ellipsis (inspector.css)
+ * and carries its whole text in its `title`.
  *
  * On paper every fold is open: there is no toggle to press on a printout, and
  * a printed configuration that omits its own properties is not a record of it
  * (ui.md SS3, "on paper the panels stack").
  */
 export function Fold(
-  { id, title, hint, action, children }:
+  { id, title, hint, action, children, defaultOpen = false }:
   {
     id: string; title: string; hint?: string;
+    /** Open until the reader shuts it (a RAC member's instances); shut otherwise. */
+    defaultOpen?: boolean;
     /** Controls for the open group, beside the toggle; absent while it is folded. */
     action?: ComponentChildren;
     children: ComponentChildren;
   },
 ) {
-  const open = isSectionOpen(id) || printing.value;
+  const open = isSectionOpen(id, defaultOpen) || printing.value;
   return (
     <section class={`grp grp-fold${open ? ' is-open' : ''}`}>
       <header class="grp-hd">
@@ -75,11 +92,11 @@ export function Fold(
           type="button"
           class="grp-tog"
           aria-expanded={open}
-          onClick={() => toggleSection(id)}
+          onClick={() => toggleSection(id, defaultOpen)}
         >
-          <span class="grp-caret" aria-hidden="true">{open ? '▾' : '▸'}</span>
+          <Caret open={open} />
           <span class="eyebrow">{title}</span>
-          {hint === undefined || open ? null : <span class="grp-sum mono">{hint}</span>}
+          {hint === undefined || open ? null : <span class="grp-sum mono" title={hint}>{hint}</span>}
         </button>
         {action === undefined || !open ? null : <span class="grp-act">{action}</span>}
       </header>
@@ -112,6 +129,20 @@ export function Note(
   return <p class={warn ? 'grp-note is-warn' : 'grp-note'}>{children}</p>;
 }
 
+/**
+ * Rows that cannot apply, said once.
+ *
+ * Several controls that are all off for one and the same reason are a grey row
+ * each followed by the identical pill -- the noisiest thing a rail can do. They
+ * are not rendered; this one line names them and gives the reason, out of the
+ * WHY table like every other. A control that is off for a reason of its own is
+ * not part of this and stays where it is, grey, with its pill. Always on
+ * screen, whatever `Hints` says: it reports a state, it does not explain one.
+ */
+export function Withheld({ names, why }: { names: string; why: string }) {
+  return <p class="grp-note is-withheld">{names}: {why}</p>;
+}
+
 /* ---------------- numbers ---------------- */
 
 export interface NumProps {
@@ -130,6 +161,13 @@ export interface NumProps {
   unit?: string;
   /** The name is this page's words rather than an Oracle property. */
   prose?: boolean;
+  /**
+   * A floor and a clamp of this control's own, where the bound's differs for
+   * the edition and mode the value is read under (the 26ai maximum
+   * availability lag limit, whose broker default 0 is below the bound's 5).
+   */
+  min?: number;
+  clampTo?: (raw: unknown) => number;
 }
 
 /** The width of a number box, and so of the control on a number row. */
@@ -140,9 +178,10 @@ const TEXT_PX = 150;
 const CHECK_PX = 64;
 
 export function Num(
-  { name, bound, value, onChange, kind = 'range', note, warn, enabled = ON, unit, prose }: NumProps,
+  { name, bound, value, onChange, kind = 'range', note, warn, enabled = ON, unit, prose, min, clampTo }: NumProps,
 ) {
   const b = BOUNDS[bound];
+  const clampIt = clampTo ?? ((raw: unknown): number => clamp(bound, raw));
   const off = enabled.state === 'off';
   const shown = unit ?? (b.unit === 'count' || b.unit === 'port' ? '' : b.unit);
   /* A slider takes the width under its name, its reading beside the name. A
@@ -161,17 +200,17 @@ export function Num(
       <input
         class="field-in"
         type={kind}
-        min={b.min}
+        min={min ?? b.min}
         max={b.max}
         step={b.step}
         value={String(value)}
         disabled={off}
         aria-label={name}
         onInput={kind === 'range'
-          ? (e) => onChange(clamp(bound, (e.currentTarget as HTMLInputElement).value))
+          ? (e) => onChange(clampIt((e.currentTarget as HTMLInputElement).value))
           : undefined}
         onChange={kind === 'number'
-          ? (e) => onChange(clamp(bound, (e.currentTarget as HTMLInputElement).value))
+          ? (e) => onChange(clampIt((e.currentTarget as HTMLInputElement).value))
           : undefined}
       />
     </Field>
@@ -179,6 +218,23 @@ export function Num(
 }
 
 /* ---------------- text ---------------- */
+
+/**
+ * A one-shot focus request from the drawing: read the signal, act once, clear
+ * it -- so the form re-rendering for any other reason never pulls the caret
+ * back to the field. Returns the ref to hang on the input.
+ */
+function useFocusRequest(focusKey: string | undefined, off: boolean) {
+  const ref = useRef<HTMLInputElement | null>(null);
+  const wanted = focusKey !== undefined && focusField.value === focusKey;
+  useLayoutEffect(() => {
+    if (!wanted || off) return;
+    focusField.value = null;
+    ref.current?.focus();
+    ref.current?.select();
+  }, [wanted, off]);
+  return ref;
+}
 
 export interface TextProps {
   name: string;
@@ -191,6 +247,12 @@ export interface TextProps {
   /** When `focusField` holds this key, the input takes the focus once. */
   focusKey?: string;
   prose?: boolean;
+  /**
+   * What is wrong with a typed value, or null. A value that fails is not
+   * committed: the reason takes the place of the note, in the warning tone,
+   * until the next change.
+   */
+  problem?: (v: string) => string | null;
 }
 
 /**
@@ -198,26 +260,18 @@ export interface TextProps {
  * reference in the document, and half a name is not a document.
  */
 export function Text({
-  name, value, onCommit, placeholder, note, enabled = ON, focusKey, prose,
+  name, value, onCommit, placeholder, note, enabled = ON, focusKey, prose, problem,
 }: TextProps) {
   const off = enabled.state === 'off';
-  const ref = useRef<HTMLInputElement | null>(null);
-  /* A one-shot focus request from the drawing (a double-click on a card):
-     read the signal, act once, clear it -- so the form re-rendering for any
-     other reason never pulls the caret back here. */
-  const wanted = focusKey !== undefined && focusField.value === focusKey;
-  useLayoutEffect(() => {
-    if (!wanted || off) return;
-    focusField.value = null;
-    ref.current?.focus();
-    ref.current?.select();
-  }, [wanted, off]);
+  const ref = useFocusRequest(focusKey, off);
+  const [refused, setRefused] = useState<string | null>(null);
   return (
     <Field
       name={name}
       prose={prose}
       layout={fitsBeside(name, prose === true, TEXT_PX) ? 'row' : 'stack'}
-      note={note}
+      note={refused ?? note}
+      warn={refused !== null}
       enabled={enabled}
     >
       <input
@@ -229,9 +283,71 @@ export function Text({
         disabled={off}
         spellcheck={false}
         aria-label={name}
-        onChange={(e) => onCommit((e.currentTarget as HTMLInputElement).value)}
+        aria-invalid={refused !== null}
+        onChange={(e) => {
+          const typed = (e.currentTarget as HTMLInputElement).value;
+          const why = problem === undefined ? null : problem(typed.trim());
+          setRefused(why);
+          if (why === null) onCommit(typed);
+        }}
       />
     </Field>
+  );
+}
+
+export interface NameFieldProps {
+  /** What the field is, for a screen reader and the tooltip: "db_unique_name". */
+  label: string;
+  value: string;
+  onCommit: (v: string) => void;
+  /** When `focusField` holds this key, the input takes the focus once, text selected. */
+  focusKey?: string;
+  /** Spelled like Oracle spells it: a `db_unique_name` or an observer name. */
+  mono?: boolean;
+}
+
+/**
+ * The name of whatever the rail is about, edited where it is read: the title of
+ * the rail's header, drawn as a heading until the pointer or the caret is in it.
+ *
+ * It commits exactly as `Text` does -- on change, which is Enter or leaving the
+ * field -- and through the same edit functions, so a refused name is the same
+ * refusal; the field then snaps back to the name the document still has.
+ * `Escape` gives the typed name up. It stays a real labelled `<input>`: the
+ * reader who has never hovered it still finds it with Tab, and a screen reader
+ * hears what it names.
+ */
+export function NameField({ label, value, onCommit, focusKey, mono = true }: NameFieldProps) {
+  const ref = useFocusRequest(focusKey, false);
+  /* What the document says the name is, as of the last render. */
+  const shown = useRef(value);
+  shown.current = value;
+  return (
+    <input
+      ref={ref}
+      class={`insp-name${mono ? ' mono' : ''}`}
+      type="text"
+      value={value}
+      spellcheck={false}
+      autocomplete="off"
+      aria-label={label}
+      title={label}
+      onChange={(e) => {
+        const el = e.currentTarget as HTMLInputElement;
+        onCommit(el.value);
+        /* A refused name edits nothing, so nothing re-renders and the field
+           would keep the refused text: put back what the document has. An
+           accepted one has re-rendered by then (or unmounted, when the id is
+           the name), and this finds nothing to do. */
+        setTimeout(() => { if (el.isConnected && el.value !== shown.current) el.value = shown.current; }, 0);
+      }}
+      onKeyDown={(e) => {
+        if (e.key !== 'Escape') return;
+        const el = e.currentTarget as HTMLInputElement;
+        el.value = value;
+        el.blur();
+      }}
+    />
   );
 }
 
@@ -383,13 +499,15 @@ export interface ActionProps {
   enabled?: WhyState;
   primary?: boolean;
   title?: string;
+  /** A toggle-like action that is "on" now: `aria-pressed`. Absent, the button is a plain press. */
+  pressed?: boolean;
 }
 
 /**
  * A button that can be off. The reason rides beside it, never in a tooltip:
  * a tooltip is not readable on a touch screen and does not print.
  */
-export function Action({ label, onClick, enabled = ON, primary = false, title }: ActionProps) {
+export function Action({ label, onClick, enabled = ON, primary = false, title, pressed }: ActionProps) {
   const off = enabled.state === 'off';
   return (
     <span class="ctl-off">
@@ -398,6 +516,7 @@ export function Action({ label, onClick, enabled = ON, primary = false, title }:
         class={`btn${primary ? ' is-primary' : ''}${off ? ' is-faded' : ''}`}
         disabled={off}
         title={title}
+        aria-pressed={pressed}
         onClick={onClick}
       >
         {label}

@@ -11,10 +11,11 @@ requests at runtime — no CDN, no web fonts, no network calls — and no inline
 `<script>` or `style=` anywhere, so the page runs under
 `script-src 'self'; style-src 'self'`.
 
-A first visit opens on the **Introduction** (`?intro=1`, `src/ui/intro/`) — what
-the tool is, what the drawing shows, what the four modes are for and how to do
-things — and every button on it loads a real configuration and lands in the mode
-it names. It is one link away in the header afterwards; see `design/ui.md` §3e.
+A first visit opens on the **Topology** workbench. The **Introduction**
+(`?intro=1`, `src/ui/intro/`) — what the tool is, what the drawing shows, what the
+four modes are for and how to do things — opens only from the "Data Guard" link
+in the header's top-left corner (or its own address), and every button on it loads
+a real configuration and lands in the mode it names; see `design/ui.md` §3e.
 
 Everything the page asserts about Oracle is either arithmetic over what you
 typed, a documented fact with a citation you can open, or labelled on screen as
@@ -51,8 +52,8 @@ src/
     compat/      the 1+1+1 adapter the legacy 24-cell matrix runs against
   state/       Document vs View signals, undo, URL, persistence, legacy URLs
   ui/          shell, canvas, timeline, inspector, panels, learn, intro
-  content/     the nine lessons, the reference tables, the footnotes
-  presets/     eleven worked topologies
+  content/     the ten lessons, the reference tables, the footnotes
+  presets/     twelve worked topologies
   styles/      tokens.css and the per-area stylesheets
 test/          vitest suites and goldens (see below)
 design/        engine.md, ui.md, facts.md
@@ -92,7 +93,7 @@ the tested configuration, with Undo available. The ⋯ → Report as PDF page
 prints the comparison and an up-to-date scenario run as its own section; the
 branch's standalone HTML review download was not ported (one report system).
 
-In Break, **Why this result?** (a fold on the rail under the events, and the
+In Simulate, **Why this result?** (a fold on the rail under the events, and the
 "Why?" beside the outcome in the readout) lists the run's recorded decisions
 with the basis and sources of each; selecting a step moves the playhead there
 and selects what it is about. The Introduction's **Walk through it step by
@@ -115,7 +116,7 @@ change `FastStartFailoverThreshold`) in a card under the guidance line.
   no source is cited for a fact the accuracy rules forbid it for.
 
 Goldens live in `test/__golden__/` (generated configuration files) and
-`test/ui/__golden__/` (canvas geometry for all eleven presets). When one moves,
+`test/ui/__golden__/` (canvas geometry for all twelve presets). When one moves,
 say in the commit message whether it recorded geometry or a domain fact.
 
 `node ../site/smoke.mjs` is the browser check of the built tree — it needs

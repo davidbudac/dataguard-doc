@@ -298,6 +298,23 @@ const CASES: Case[] = [
     },
   },
   {
+    id: 'ROUTES.SNAPSHOT_CONVERT_NONNULL',
+    fires: 'a snapshot standby carries a non-NULL RedoRoutes that forwards nothing',
+    quiet: 'its RedoRoutes is NULL',
+    trigger: () => {
+      const d = baseDoc({ fsfo: 'disabled' });
+      const sby = dbOf(d, 'sby01');
+      sby.role = 'snapshot';
+      sby.redoRoutes = [rule('LOCAL', [{ target: 'ALL' }])];
+      return d;
+    },
+    silent: () => {
+      const d = baseDoc({ fsfo: 'disabled' });
+      dbOf(d, 'sby01').role = 'snapshot';
+      return d;
+    },
+  },
+  {
     id: 'ROUTES.LOGICAL_LOCAL_ONLY',
     fires: 'a logical standby carries a rule whose source is not LOCAL',
     quiet: 'its only rule is a LOCAL one',
@@ -474,6 +491,63 @@ const CASES: Case[] = [
     silent: () => racClusterDoc(false),
   },
   {
+    id: 'RAC.PREFERRED_APPLY_UNKNOWN',
+    fires: 'PreferredApplyInstance names an instance the member does not have',
+    quiet: 'it names one of its own instances',
+    trigger: () => {
+      const d = racClusterDoc(false);
+      dbOf(d, 'prm01').preferredApplyInstance = 'prm019';
+      return d;
+    },
+    silent: () => {
+      const d = racClusterDoc(false);
+      dbOf(d, 'prm01').preferredApplyInstance = 'prm012';
+      return d;
+    },
+  },
+  {
+    id: 'RAC.PREFERRED_APPLY_UNUSED',
+    fires: 'PreferredApplyInstance is set on a single-instance standby',
+    quiet: 'it is set on a RAC primary, ready for a switchover',
+    trigger: () => {
+      const d = racClusterDoc(false);
+      dbOf(d, 'sby01').preferredApplyInstance = 'sby01';
+      return d;
+    },
+    silent: () => {
+      const d = racClusterDoc(false);
+      dbOf(d, 'prm01').preferredApplyInstance = 'prm011';
+      return d;
+    },
+  },
+  {
+    id: 'RAC.APPLY_INSTANCES_UNUSED',
+    fires: 'ApplyInstances is set on a single-instance standby',
+    quiet: 'it is set on a RAC primary, for when it is a physical standby',
+    trigger: () => {
+      const d = racClusterDoc(false);
+      dbOf(d, 'sby01').applyInstances = 'ALL';
+      return d;
+    },
+    silent: () => {
+      const d = racClusterDoc(false);
+      dbOf(d, 'prm01').applyInstances = 'ALL';
+      return d;
+    },
+  },
+  {
+    id: 'RAC.INSTANCES_SHARE_HOST',
+    fires: 'two instances of the RAC primary run on one node',
+    quiet: 'each instance has a node of its own',
+    trigger: () => {
+      const d = racClusterDoc(false);
+      const prm = dbOf(d, 'prm01');
+      prm.instances = prm.instances.map((i) => ({ ...i, host: prm.instances[0]!.host }));
+      return d;
+    },
+    silent: () => racClusterDoc(false),
+  },
+  {
     id: 'REINSTATE.PRECONDITIONS',
     fires: 'FastStartFailoverAutoReinstate is on with Flashback Database off',
     quiet: 'both databases meet the preconditions',
@@ -538,6 +612,117 @@ const CASES: Case[] = [
     quiet: 'thirty of them',
     trigger: () => manyDestinationsDoc(31),
     silent: () => manyDestinationsDoc(30),
+  },
+  {
+    id: 'DEST.SYNC_ABOVE_10',
+    fires: 'a SYNC destination is the tenth remote destination, which lands in LOG_ARCHIVE_DEST_11',
+    quiet: 'the ninth is the last SYNC one',
+    trigger: () => manyDestinationsDoc(10),
+    silent: () => manyDestinationsDoc(9),
+  },
+  {
+    id: 'EVENT.REINSTATE',
+    fires: 'REINSTATE names a database with Flashback Database off',
+    quiet: 'it has Flashback Database on',
+    trigger: () => {
+      const d = baseDoc();
+      dbOf(d, 'sby01').flashbackOn = false;
+      d.events = [{ at: 5, kind: 'cmd.reinstate', member: M('sby01') }];
+      return d;
+    },
+    silent: () => {
+      const d = baseDoc();
+      d.events = [{ at: 5, kind: 'cmd.reinstate', member: M('sby01') }];
+      return d;
+    },
+  },
+  {
+    id: 'EVENT.SET_APPLY_INSTANCE',
+    fires: 'WITH APPLY INSTANCE names an instance the database does not have',
+    quiet: 'it names one of its instances',
+    trigger: () => {
+      const d = baseDoc();
+      d.events = [{ at: 5, kind: 'cmd.setApplyInstance', member: M('sby01'), instance: 'sby09' }];
+      return d;
+    },
+    silent: () => {
+      const d = baseDoc();
+      d.events = [{ at: 5, kind: 'cmd.setApplyInstance', member: M('sby01'), instance: 'sby01' }];
+      return d;
+    },
+  },
+  {
+    id: 'EVENT.SET_MASTER_OBSERVER',
+    fires: 'SET MASTEROBSERVER is issued while fast-start failover is disabled',
+    quiet: 'fast-start failover is enabled',
+    trigger: () => {
+      const d = baseDoc({ fsfo: 'disabled' });
+      d.events = [{ at: 5, kind: 'cmd.setMasterObserver', observer: d.observers[0]!.id }];
+      return d;
+    },
+    silent: () => {
+      const d = baseDoc();
+      d.events = [{ at: 5, kind: 'cmd.setMasterObserver', observer: d.observers[0]!.id }];
+      return d;
+    },
+  },
+  {
+    id: 'MEMBER.PRIMARY_COUNT',
+    fires: 'two databases are marked primary',
+    quiet: 'exactly one is',
+    trigger: () => {
+      const d = baseDoc();
+      dbOf(d, 'sby01').role = 'primary';
+      return d;
+    },
+    silent: () => baseDoc(),
+  },
+  {
+    id: 'MEMBER.NAME_DUPLICATE',
+    fires: 'two members carry the same name',
+    quiet: 'their names differ',
+    trigger: () => {
+      const d = baseDoc({ extra: [database('sby02', ['dc2-sby01'], 'physical', { name: 'SBY01' })] });
+      return d;
+    },
+    silent: () => baseDoc({ extra: [database('sby02', ['dc2-sby01'], 'physical')] }),
+  },
+  {
+    id: 'MEMBER.STATIC_SERVICE',
+    fires: 'a single-instance database has no static service and automatic reinstatement does not cover it',
+    quiet: 'it has one',
+    trigger: () => {
+      const d = baseDoc({ fsfo: 'disabled' });
+      dbOf(d, 'sby01').staticServices = false;
+      return d;
+    },
+    silent: () => baseDoc({ fsfo: 'disabled' }),
+  },
+  {
+    id: 'CFG.SERVICE_NAME_FORMAT',
+    fires: 'ConfigurationWideServiceName starts with an underscore',
+    quiet: 'it starts with a letter',
+    trigger: () => {
+      const d = baseDoc();
+      d.config.configurationWideServiceName = '_cfg';
+      return d;
+    },
+    silent: () => {
+      const d = baseDoc();
+      d.config.configurationWideServiceName = 'north_cfg';
+      return d;
+    },
+  },
+  {
+    id: 'FSFO.TARGET_DISABLED',
+    fires: 'the only named target is disabled',
+    quiet: 'it is enabled',
+    trigger: () => {
+      const d = baseDoc();
+      dbOf(d, 'sby01').enabled = false;
+      return d;
+    },
+    silent: () => baseDoc(),
   },
   {
     id: 'EDIT.FSFO_ENABLED_BLOCKS',
@@ -637,6 +822,39 @@ const CASES: Case[] = [
     },
   },
   {
+    id: 'ROLE.SWITCHOVER_SNAPSHOT',
+    fires: 'a SWITCHOVER names a snapshot standby',
+    quiet: 'it names a physical standby',
+    trigger: () => {
+      const d = baseDoc({ fsfo: 'disabled' });
+      dbOf(d, 'sby01').role = 'snapshot';
+      d.events = [{ at: 0, kind: 'cmd.switchover', to: M('sby01') }];
+      return d;
+    },
+    silent: () => {
+      const d = baseDoc({ fsfo: 'disabled' });
+      d.events = [{ at: 0, kind: 'cmd.switchover', to: M('sby01') }];
+      return d;
+    },
+  },
+  {
+    id: 'ROLE.SWITCHOVER_LOGICAL_MAXPROT',
+    fires: 'a SWITCHOVER names a logical standby in maximum protection',
+    quiet: 'the mode is maximum availability',
+    trigger: () => {
+      const d = baseDoc({ fsfo: 'disabled', mode: 'MAXPROTECTION' });
+      dbOf(d, 'sby01').role = 'logical';
+      d.events = [{ at: 0, kind: 'cmd.switchover', to: M('sby01') }];
+      return d;
+    },
+    silent: () => {
+      const d = baseDoc({ fsfo: 'disabled', mode: 'MAXAVAILABILITY' });
+      dbOf(d, 'sby01').role = 'logical';
+      d.events = [{ at: 0, kind: 'cmd.switchover', to: M('sby01') }];
+      return d;
+    },
+  },
+  {
     id: 'OBS.NAME_RESERVED',
     fires: 'two observers share a name',
     quiet: 'their names differ',
@@ -715,21 +933,24 @@ describe('a document that says fast-start failover is enabled with no observer',
     const f = find(baseDoc({ observers: [] }));
     expect(f?.severity).toBe('warning');
     expect(f?.basis).toBe('documented');
-    expect(f?.message).toContain('fsfo.state = enabled');
+    expect(f?.message).toContain('Fast-start failover is enabled here');
     expect(f?.message).toContain('ORA-16819');
     expect(f?.message).toContain('is unobserved and no failover can happen');
     expect(f?.ora).toBe('ORA-16819');
     expect(f?.cite).toContain('ORA.16819');
-    /* Never "unobserved": that is the state with fast-start failover enabled
-       and the master observer missing. */
-    expect(f?.message).toContain('That is not the same as being unobserved');
+    /* VAL-13: the text of the DISABLED case is not prepended. The status is
+       not DISABLED here, and the lag-limit switchover restriction is in force
+       without an observer. */
+    expect(f?.message).not.toContain('That is not the same as being unobserved');
+    expect(f?.message).not.toContain('FS_FAILOVER_STATUS reads DISABLED');
+    expect(f?.message).not.toContain('cannot fire');
     expect(f?.message).not.toContain('cannot both be true');
   });
 
   it('warns for observe-only too, which arms nothing either', () => {
     const f = find(baseDoc({ observers: [], fsfo: 'observe-only' }));
     expect(f?.severity).toBe('warning');
-    expect(f?.message).toContain('fsfo.state = observe-only');
+    expect(f?.message).toContain('enabled in observe-only mode');
   });
 
   it('is only the standing note where the document says disabled', () => {
@@ -811,7 +1032,9 @@ describe('RedoRoutes rules, read the way Oracle writes them', () => {
     const d = twoStandbyDoc({ secondRole: 'logical', targets: [M('sby01')] });
     dbOf(d, 'sby02').redoRoutes = [rule([M('prm01')], [{ target: M('sby01'), xpt: 'ASYNC' }])];
     const f = find(d, 'ROUTES.LOGICAL_LOCAL_ONLY');
-    expect(f?.severity).toBe('warning');
+    /* An error since VAL-14: "can be set ... only if" bars the setting just as
+       firmly as "cannot be configured" bars the snapshot case. */
+    expect(f?.severity).toBe('error');
     expect(f?.basis).toBe('documented');
     expect(f?.message).toContain('redo source field');
     expect(f?.note).toBeUndefined();

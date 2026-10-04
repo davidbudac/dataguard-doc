@@ -6,10 +6,10 @@ and add a short note under it when you stop half-way.
 
 Context: on 2026-09-28 the "B / canvas-first, floating panels" redesign became the
 default look (`61812a9` on `main`). The canvas fills the viewport in Build and
-Break at ≥1024 px; top bar, left palette, right inspector card, bottom status
+Simulate at ≥1024 px; top bar, left palette, right inspector card, bottom status
 card and zoom pill float over it (`app/src/styles/float.css`, `app/src/ui/App.tsx`,
 `app/src/ui/TopBar.tsx`, `app/src/ui/StatusBar.tsx`, `app/src/ui/Findings.tsx`).
-Configure and Learn, and viewports <1024 px, fall back to the docked grid.
+Config and Learn, and viewports <1024 px, fall back to the docked grid.
 
 Rules that bite here (full list in `CLAUDE.md` / `AGENTS.md`): no inline
 `style` anywhere (CSP `style-src 'self'`), no inline script, engine stays pure,
@@ -121,8 +121,8 @@ Note: chose a print-styled report page + `window.print()` ("Save as PDF") over a
 PDF library: no dependency, no CSP change, vector diagram, selectable text. ⋯ → "Report as PDF"
 opens `?report=1` (`ui/export/Report.tsx`, contents assembled in `report-model.ts`), always light, A4.
 From the ⋯ menu: a full report — title/summary, the diagram, member/observer
-table, validation findings, the generated Configure outputs (DGMGRL, init
-params, TNS/JDBC), Break events + outcome if any, and the citations. Either a
+table, validation findings, the generated Config outputs (DGMGRL, init
+params, TNS/JDBC), Simulate events + outcome if any, and the citations. Either a
 generated PDF or a print-styled report page opened for "Save as PDF"; pick the
 approach that stays CSP-safe and document the choice here.
 
@@ -149,7 +149,7 @@ The inspector card is inconsistent: mixed heading styles, uneven spacing,
 controls that wrap unpredictably, varying row heights. Make one consistent
 system: section headings, label-left/value-right rows, full-width controls
 under the label where they do not fit, consistent spacing and dividers, same
-look for Build and Break rails. Check every selection type (nothing selected,
+look for Build and Simulate rails. Check every selection type (nothing selected,
 DC, member, RAC member, observer, far sync, link) in light and dark.
 
 ## Round 2 (2026-09-28)
@@ -201,13 +201,13 @@ card out of a stack stretches the stack's frame.
 
 ## Track 6 — rough edges left by round 1 (shell, panel, report) + timeline
 
-### 6.1 Resizable Break timeline, with full screen
+### 6.1 Resizable Simulate timeline, with full screen
 Status: done (on main via merge)
 Note: `ui/timeline/DockControls.tsx`: a `role="separator"` grip on the panel's top edge
 (drag, arrows/PageUp/Home/End, double-click or Enter resets), `timelineH` → `--tl-h`,
 remembered as `dg-tl-h`; default `clamp(220px,36dvh,400px)`. `⤢` button → `timelineFull`
 (`.tl-full`), Escape leaves (after the findings popover). Docked layout unchanged.
-User request: in Break, the timeline panel at the bottom can be dragged taller
+User request: in Simulate, the timeline panel at the bottom can be dragged taller
 (a grab handle on its top edge; height remembered; min/max sensible, keyboard
 accessible), and a full-screen button on the panel toggles it to fill the
 window (Escape exits). Also fixes the round-1 note that the panel took ~46 % of
@@ -216,16 +216,13 @@ the height by default -- pick a sensible default now that it is resizable.
 ### 6.2 Shell leftovers
 Status: done (on main via merge)
 Note: Findings' Escape is capture-phase and stops there. `useChromeInsets` (App.tsx) measures
-the palette (`--pal-r`) and, 1024-1279, the event menu -- the drawing goes under or beside it,
-whichever fits larger (`--evm-t`/`--evm-r`). One-row top bar down to 1024; tabs, lesson list,
+the palette (`--pal-r`). One-row top bar down to 1024; tabs, lesson list,
 step anchor and Explain are sans sentence case.
 - Escape with the findings popover open also clears the canvas selection.
 - Modes wrap to a second row of the top bar below ~1100 px.
-- The canvas insets use fixed palette widths (104 px Build, 236 px Break)
+- The canvas insets use fixed palette widths (104 px Build, 236 px Simulate)
   instead of measuring the palette.
-- Between 1024 and 1279 px the Break event menu floats over the canvas and the
-  drawing's fit doesn't leave room for it.
-- Configure's tab strip and Learn's lesson list still use uppercase mono labels.
+- Config's tab strip and Learn's lesson list still use uppercase mono labels.
 
 ### 6.3 Right panel in wider rails
 Status: done (on main via merge)
@@ -233,7 +230,7 @@ Note: measured, not container queries: `useRailRow` on each `.insp` root writes 
 width into `railRow` (common/Field.tsx), floored at the 340 px card's 292; `fitsBeside` reads it.
 The 360 px drawer gets 312, the 900 px bottom sheet 852 (Role / Open mode go beside their names).
 The row-or-stack choice assumes the 340 px floating rail; in the wider drawer
-(1024-1279 px) and Configure's docked rail some fields stack needlessly. Base
+(1024-1279 px) and Config's docked rail some fields stack needlessly. Base
 the choice on the rail's actual width (container query or measured width).
 
 ### 6.4 Report: wide diagrams
@@ -263,17 +260,17 @@ opening a copy changed it. Sheet also traps Tab now.
 `state/workspaces.ts`, `state/workspace-id.ts`, `ui/workspaces/Workspaces.tsx`,
 `test/ui/workspaces.test.ts`. Mount in the new top bar / ⋯ menu.
 
-### 7.2 Break run explanation
+### 7.2 Simulate run explanation
 Status: done (on main)
-Note: a "Why this result?" fold on the Break rail under the events (inspector.css idiom, folded by
+Note: a "Why this result?" fold on the Simulate rail under the events (inspector.css idiom, folded by
 default), opened and scrolled to by a quiet "Why?" beside the Outcome chip in the dock/readout.
 `explain.ts` unchanged from the branch; every step keeps its claim's basis and citations.
 `ui/break/RunExplanation.tsx`, `ui/break/explain.ts`, tests. Fit it into the
-new Break rail / timeline panel.
+new Simulate rail / timeline panel.
 
 ### 7.3 Plainer wording
 Status: done (on main)
-Note: re-applied where the text still exists (App empty states, Guidance, BreakRail, Readout, EventMenu,
+Note: re-applied where the text still exists (App empty states, Guidance, BreakRail, Readout,
 CanvasSlot, view.ts guides, IntroPage, derived.ts chips). Kept main's where the plain one lost a fact:
 hero note, "Primary and standby", the footer's "everything here is a model". Outcome now says "manual
 action needed" when nobody was promoted; the FSFO chip states the ObserverOverride FALSE assumption.
@@ -297,7 +294,7 @@ failover-target editor, revealTargetForFlagged) on the new panel system.
 Status: done (on main)
 Note: a small card centred under the guidance line, in the header's flow (`.walk`, float.css), so
 `--bar-bottom` grows and the drawing/palette/rail move down. Started by a third Introduction hero
-button ("Walk through it step by step"); main's two hero buttons and the Break card are unchanged.
+button ("Walk through it step by step"); main's two hero buttons and the Simulate card are unchanged.
 `ui/intro/Walkthrough.tsx`: position it for the floating layout.
 
 ### 7.6 Review panel
@@ -324,10 +321,84 @@ Note: `TopologyDoc.application?` (optional schema-2) on a host of its own beside
 `computeApp` dials from there, and from outside every site when the document has none (legacy links,
 old files — published numbers unchanged). Card under the member band, `connect` lines per ADDRESS,
 `midLaneY` for redo routes that used to leave by the primary's bottom edge. `LAYOUT.colPad` 24,
-`fitPad` 14. `ApplicationForm` edits `doc.client`. Break draws Service / Sessions / New connections
+`fitPad` 14. `ApplicationForm` edits `doc.client`. Simulate draws Service / Sessions / New connections
 under the configuration's lanes (`timeline/app-lanes.ts`). Tests: `test/app-placement.test.ts`,
 `test/ui/application.test.ts`; canvas goldens regenerated (geometry). Details: `app/design/ui.md`
 ("The application on the drawing"), `app/design/engine.md` §10.
 Open: a driver selector (OCI / JDBC thin) — needs its own citations; per-line cuts between the
 application and one database (today a site link or the data centre is what fails).
 
+## Track 9 — tuning a run in Simulate (2026-09-30)
+
+Details: `app/design/ui.md`, "Tuning a run in Simulate".
+
+### 9.1 A row of settings above the timeline
+Status: done (on main)
+
+### 9.2 The headline as an equation with editable terms
+Status: removed (2026-09-30, with the strip above the lanes, on request)
+
+### 9.3 Drag the end of a clock to change its setting
+Status: done (on main)
+
+### 9.4 A ghost of the previous run, with the delta
+Status: todo
+Note: left out on request. The held axis (`timeline/run.ts`) is the half of it that exists.
+
+### 9.5 Add an event from a timeline lane
+Status: done (on main)
+
+## Track 10 — Topology and the Detailed timeline (2026-09-30)
+
+Details: `app/design/ui.md`, "Topology and the Detailed timeline".
+
+### 10.1 Build becomes Topology: scenarios, break icons, a small timeline under the drawing
+Status: done (on main via merge)
+
+### 10.2 Simulate becomes the Detailed timeline: the lanes alone, settings as a column
+Status: done (on main via merge)
+Note: the Split layout, its switch, the resizable dock and its full screen are gone with it.
+
+### 10.3 Leftovers
+Status: todo
+Note: the popped-out timeline window and the `A` key were not exercised in a browser; the
+Events rail still folds on the way into the Detailed timeline (the sketch drew it open).
+
+## Track 11 — the timeline is the control (2026-10-01)
+
+Details: `app/design/ui.md`, "The timeline is the control". Two of six sketches, chosen by
+the user: prototype 3 for Topology's dock, prototype 6 for the Detailed timeline.
+
+### 11.1 Topology's dock: Break row with the three chips, the small timeline as the control
+Status: done (on branch `playground`)
+Note: `break/PlayDock.tsx`, `break/SettingChips.tsx`; `timeline/MiniTimeline.tsx` draws the
+application's lanes, labelled brackets with grips, the editable label number, outcome badges
+and pins, and has no caption.
+
+### 11.2 The Detailed timeline: no settings column, chips on the bar, braces open a popover
+Status: done (on branch `playground`)
+Note: `timeline/BracePopover.tsx`; `TuneStrip`, the `Settings` toggle and `dg-tune` are deleted.
+
+### 11.3 Leftovers
+Status: todo
+Note:
+- The retry-window grip drags `RETRY_DELAY` (else the connect timeout) and the window moves
+  by the number of gaps for each second: a sum, not a field. The number on its label is
+  therefore not a box. Whether that reads as honest is for the browser pass.
+- A pin under a grip at a decision (a threshold's end and a decision mark coincide) can cover
+  it; the grips are drawn last so they win, but the pin's head is then hard to see.
+- The application's four connect-string timings and the *Defaults* / *Tuned* presets had a
+  home in the column (Detailed timeline); now only the inspector and the Application
+  timeline's own strip have them, and the small timeline's retry-window grip reaches one.
+- The apply lag and the role transition are reachable only where the run draws their brace
+  (terminal recovery, catch-up, the role change); the column had them always. The lag limit
+  is only in the threshold's popover.
+- The small timeline always draws the application's lanes, whatever the Detailed timeline's
+  *App view* toggle says (`appLanesShown`); the readout and `restPlayhead` still read the
+  flag, so with it off the playhead's resting place is on an axis the small timeline's may
+  stretch past. Not yet checked in a browser.
+- The docked narrow layout (< 1024 px) has the scenarios and the small timeline but no chips:
+  its dock is not `PlayDock`.
+- Not exercised in a browser: the popover's placement and its flip below, the chips' wrap in
+  the dock at 1024 px, and the label packing on a crowded lane.
+- 9.4's ghost of the previous run is still todo.

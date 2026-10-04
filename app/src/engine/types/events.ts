@@ -26,6 +26,8 @@ export type EventBody =
   | { kind: 'cmd.failover'; to: MemberId; immediate?: boolean }
   | { kind: 'cmd.reinstate'; member: MemberId }
   | { kind: 'cmd.setMasterObserver'; observer: ObserverId }
+  /** EDIT DATABASE ... SET STATE='APPLY-ON' WITH APPLY INSTANCE=... on a RAC standby. */
+  | { kind: 'cmd.setApplyInstance'; member: MemberId; instance: string }
   | { kind: 'cmd.disableFsfo'; force?: boolean }
   | { kind: 'lag.set'; member: MemberId; applyLag?: Seconds; transportLag?: Seconds };
 
@@ -73,7 +75,7 @@ const PRIORITY: Record<EventKind, number> = {
   'instance.down': 2, 'instance.up': 2, 'member.down': 2, 'member.up': 2,
   'observer.stop': 3, 'observer.start': 3,
   'lag.set': 4,
-  'cmd.disableFsfo': 5, 'cmd.setMasterObserver': 5,
+  'cmd.disableFsfo': 5, 'cmd.setMasterObserver': 5, 'cmd.setApplyInstance': 5,
   'cmd.switchover': 6, 'cmd.failover': 6, 'cmd.reinstate': 6,
 };
 

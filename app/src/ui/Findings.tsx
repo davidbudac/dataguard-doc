@@ -5,23 +5,20 @@
  * and an always-open block of prose under the drawing was the loudest thing on
  * the page for a configuration with one warning in it. So the status card
  * carries the counts as chips -- "1 warning", "3 notes" -- and a chip opens
- * the rows in a popover over the canvas. The most serious finding may also
- * surface once as a small card above the status card, which the reader can
- * open or wave away.
+ * the rows in a popover over the canvas. There is no card that surfaces the
+ * most serious finding by itself: the chips on the status card are the one
+ * place the counts live, and the reader opens the rows when they want them.
  *
  * The rows are `IssuePanel`'s own (`bare`), so a finding reads, selects and
  * reveals exactly as it does anywhere else in the application.
  */
 
 import { useEffect } from 'preact/hooks';
-import type { Finding } from '@/engine';
 import { errors, issues, warnings } from '@/state/derived';
-import { commandOpen, findingsOpen, findingWaved, notesOpen } from '@/state/view';
+import { commandOpen, findingsOpen, notesOpen } from '@/state/view';
 import { IssuePanel, revealFindings } from './IssuePanel';
 
-const plural = (n: number, word: string): string => `${n} ${word}${n === 1 ? '' : 's'}`;
-
-const keyOf = (f: Finding): string => `${f.id}:${f.subject.kind}:${f.subject.id ?? ''}`;
+export const plural = (n: number, word: string): string => `${n} ${word}${n === 1 ? '' : 's'}`;
 
 /** The chips on the status card. Each one is the way into the rows it counts. */
 export function FindingsChips() {
@@ -85,25 +82,29 @@ export function onFindingsKey(e: KeyboardEvent): void {
   e.stopImmediatePropagation();
 }
 
-/** The rows, over the canvas, until the reader closes them. */
-export function FindingsPopover() {
-  const open = findingsOpen.value;
-  useEffect(() => {
-    if (!open) return undefined;
-    window.addEventListener('keydown', onFindingsKey, true);
-    return () => window.removeEventListener('keydown', onFindingsKey, true);
-  }, [open]);
-  if (!open) return null;
+/** How many of each severity there are, and the same as a phrase: "1 warning · 3 notes". */
+export function findingCounts(): { errs: number; warns: number; notes: number; text: string } {
   const errs = errors.value.length;
   const warns = warnings.value.length;
   const notes = issues.value.length - errs - warns;
-  const counts = [
+  const text = [
     errs === 0 ? null : plural(errs, 'error'),
     warns === 0 ? null : plural(warns, 'warning'),
     notes === 0 ? null : plural(notes, 'note'),
   ].filter((x) => x !== null).join(' · ');
+  return { errs, warns, notes, text };
+}
+
+/**
+ * The head and the rows of the findings popover: the counts, a close button,
+ * and `IssuePanel`'s own rows. The popover over the canvas (`FindingsPopover`)
+ * and the dropdown on the Detailed timeline's bar (`break/RunBar.tsx`) both wrap it, so
+ * the two read and behave as one.
+ */
+export function FindingsSheet() {
+  const { text: counts } = findingCounts();
   return (
-    <section class="fnd-pop float-card" id="fnd-pop" aria-label="Validation findings">
+    <>
       <header class="fnd-pop-hd">
         <span class="fnd-pop-t">Validation</span>
         <span class="fnd-pop-n">{counts === '' ? 'No issues' : counts}</span>
@@ -118,33 +119,22 @@ export function FindingsPopover() {
       <div class="fnd-pop-body">
         <IssuePanel bare />
       </div>
-    </section>
+    </>
   );
 }
 
-/**
- * The most serious finding, once, as a small card above the status card.
- *
- * Gone while the popover is open (the row is right there), and gone once
- * waved away -- until a different finding takes the top spot.
- */
-export function FindingToast() {
-  const top = errors.value[0] ?? warnings.value[0];
-  if (top === undefined || findingsOpen.value) return null;
-  const key = keyOf(top);
-  if (findingWaved.value === key) return null;
-  const tone = top.severity === 'error' ? 'rd' : 'am';
+/** The rows, over the canvas, until the reader closes them. */
+export function FindingsPopover() {
+  const open = findingsOpen.value;
+  useEffect(() => {
+    if (!open) return undefined;
+    window.addEventListener('keydown', onFindingsKey, true);
+    return () => window.removeEventListener('keydown', onFindingsKey, true);
+  }, [open]);
+  if (!open) return null;
   return (
-    <div class={`fnd-toast float-card t-${tone}`} role="status">
-      <span class={`fnd-chip t-${tone}`}>{top.severity === 'error' ? 'Error' : 'Warning'}</span>
-      <span class="fnd-toast-m" title={top.message}>{top.message}</span>
-      <button type="button" class="btn" onClick={() => revealFindings()}>Details</button>
-      <button
-        type="button" class="btn is-icon" aria-label="Dismiss this finding" title="Dismiss"
-        onClick={() => { findingWaved.value = key; }}
-      >
-        <span aria-hidden="true">×</span>
-      </button>
-    </div>
+    <section class="fnd-pop float-card" id="fnd-pop" aria-label="Validation findings">
+      <FindingsSheet />
+    </section>
   );
 }

@@ -41,9 +41,10 @@ export function openIntro(): void {
  * Leave it, and record that the reader has seen it.
  *
  * `dg-intro-v1` is the same key the dismissed "How this page works" strip
- * wrote: what it now means is "this reader has been shown the Introduction",
- * so the page opens on a first visit and never again on its own. It is still
- * one press of the header link away.
+ * wrote: what it now means is "this reader has been shown the Introduction".
+ * Nothing opens the page on its own any more -- boot gates on `?intro=1`
+ * alone -- so the key is a record, not a rule. The page is one press of the
+ * header link away.
  */
 export function leaveIntro(): void {
   introPage.value = false;
@@ -98,33 +99,20 @@ export function openLesson(index: number): void {
   leaveIntro();
 }
 
-/* ---------------- the first visit ---------------- */
-
-/**
- * Query keys that name something to look at rather than a reading preference.
- *
- * A link that carries a configuration, a preset, a lesson or a playhead is a
- * link to *that*, and opening the Introduction over it would be the page
- * deciding it knows better than the address. Only `ed` and `theme` -- which
- * say how to render whatever is shown, not what to show -- leave the first
- * visit free to start at the Introduction.
- */
-const ADDRESSED = new Set(['mode', 'report', 'panel', 'sel', 't', 'preset', 'lesson', 'step']);
+/* ---------------- boot ---------------- */
 
 export interface BootIntro {
   /** `?intro=1` was asked for outright. */
   asked: boolean;
-  /** `dg-intro-v1` is set: this reader has already been shown the page. */
-  seen: boolean;
-  /** The fragment carries a document. */
-  hasDocument: boolean;
-  /** The query keys actually present. */
-  keys: readonly string[];
 }
 
-/** Whether boot should open the Introduction. Pure, so the rule is testable. */
+/**
+ * Whether boot should open the Introduction. Pure, so the rule is testable.
+ *
+ * Only when it is asked for. A first visit lands on the Topology workbench:
+ * the page is one press of the header's "Data Guard" link away, and that link
+ * is a real `?intro=1` href, so it also survives a reload or a middle-click.
+ */
 export function introOnBoot(b: BootIntro): boolean {
-  if (b.asked) return true;
-  if (b.seen || b.hasDocument) return false;
-  return !b.keys.some((k) => ADDRESSED.has(k));
+  return b.asked;
 }

@@ -75,12 +75,13 @@ const edge = (g: RedoGraph, from: string, to: string) =>
 /* ---------------- the registry ---------------- */
 
 describe('the preset registry', () => {
-  it('carries the eleven documents the workbench offers', () => {
-    expect(PRESETS).toHaveLength(11);
+  it('carries the twelve documents the workbench offers', () => {
+    expect(PRESETS).toHaveLength(12);
     expect(PRESET_IDS).toEqual([
       'classic', 'observe-only', 'far-sync-zero-loss', 'far-sync-ha-pair',
       'far-sync-role-change', 'cascade-terminal', 'priority-alternates',
-      'multi-target-three-observers', 'rac-primary', 'bystanders', 'max-protection',
+      'multi-target-three-observers', 'rac-primary', 'rac-standby', 'bystanders',
+      'max-protection',
     ]);
   });
 
@@ -128,7 +129,7 @@ const fingerprints = (fs: readonly Finding[]): string[] => fs.map(fingerprint).s
 /**
  * What every preset is expected to raise.
  *
- * Two notes are on all eleven, because both are true of every fast-start
+ * Two notes are on all twelve, because both are true of every fast-start
  * failover configuration this workbench draws: the broker refuses the edits
  * ORA-16654 covers while fast-start failover is enabled, and ObserverOverride
  * is at its default of FALSE, which is a property of the model and says so.
@@ -150,30 +151,37 @@ const EXPECTED_FINDINGS: Record<PresetId, string[]> = {
   ].sort(),
 
   'far-sync-zero-loss': [
-    /* One MaxFailure destination on the primary, so one deprecation notice and
-       one note on what reaching the limit does. The fast-start failover
+    /* One MaxFailure destination on the primary, so one note on what reaching
+       the limit does. Its MaxFailure is 1, the in-group default, so it is not
+       reported as a change (GEN-21). The fast-start failover
        target is fed through a far sync instance, so Scenario 7's "set on
-       both sides" note applies (VAL-07.7). */
-    'info documented DEST.DEPRECATED_19C North_Sales',
+       both sides" note applies (VAL-07.7). South_Sales ships to FS1 too, for
+       the role change (Scenario 5, GEN-17), with FS1's MaxFailure: inside
+       North_Sales' group 1 is the default, so it is not reported; South_Sales
+       ships to FS1 outside a group, where it is not, so South_Sales gets the
+       notice. */
+    'info documented DEST.DEPRECATED_19C South_Sales',
     'info documented EDIT.FSFO_ENABLED_BLOCKS',
     'info documented EDIT.REMOVE_TARGET South_Sales',
     'info documented FSFO.FARSYNC_TARGET_BOTH_SIDES South_Sales',
     'info model DEST.MAXFAILURE_RESET_UNDOC North_Sales',
+    'info model DEST.MAXFAILURE_RESET_UNDOC South_Sales',
     'info model MODEL.OBSERVER_OVERRIDE',
   ].sort(),
 
   'far-sync-ha-pair': [
-    /* Two far syncs, so both notes twice -- once per destination. The subject
+    /* Two far syncs, so the reset note twice -- once per destination. The subject
        is the sending database, which is why the two lines look alike. The
        fast-start failover target is fed through a far sync instance too
-       (VAL-07.7). */
-    'info documented DEST.DEPRECATED_19C North_Sales',
-    'info documented DEST.DEPRECATED_19C North_Sales',
+       (VAL-07.7). South_Sales ships to FS1 for the role change (GEN-17),
+       outside a group, so its MaxFailure is not the default there (GEN-21). */
+    'info documented DEST.DEPRECATED_19C South_Sales',
     'info documented EDIT.FSFO_ENABLED_BLOCKS',
     'info documented EDIT.REMOVE_TARGET South_Sales',
     'info documented FSFO.FARSYNC_TARGET_BOTH_SIDES South_Sales',
     'info model DEST.MAXFAILURE_RESET_UNDOC North_Sales',
     'info model DEST.MAXFAILURE_RESET_UNDOC North_Sales',
+    'info model DEST.MAXFAILURE_RESET_UNDOC South_Sales',
     'info model MODEL.OBSERVER_OVERRIDE',
   ].sort(),
 
@@ -197,8 +205,6 @@ const EXPECTED_FINDINGS: Record<PresetId, string[]> = {
 
   'priority-alternates': [
     /* Both destinations of the priority list carry MaxFailure. */
-    'info documented DEST.DEPRECATED_19C North_Sales',
-    'info documented DEST.DEPRECATED_19C North_Sales',
     'info documented EDIT.FSFO_ENABLED_BLOCKS',
     'info documented EDIT.REMOVE_TARGET Local_Sales',
     'info model DEST.MAXFAILURE_RESET_UNDOC North_Sales',
@@ -216,6 +222,14 @@ const EXPECTED_FINDINGS: Record<PresetId, string[]> = {
 
   'rac-primary': [
     /* A second instance changes the failure, not the configuration. */
+    'info documented EDIT.FSFO_ENABLED_BLOCKS',
+    'info documented EDIT.REMOVE_TARGET sby01',
+    'info model MODEL.OBSERVER_OVERRIDE',
+  ].sort(),
+
+  'rac-standby': [
+    /* PreferredApplyInstance names one of the standby's own instances, so it
+       raises nothing either. */
     'info documented EDIT.FSFO_ENABLED_BLOCKS',
     'info documented EDIT.REMOVE_TARGET sby01',
     'info model MODEL.OBSERVER_OVERRIDE',
@@ -484,6 +498,7 @@ const STEADY_LEVEL: Record<PresetId, string> = {
   'priority-alternates': 'MAXAVAILABILITY',
   'multi-target-three-observers': 'MAXAVAILABILITY',
   'rac-primary': 'MAXAVAILABILITY',
+  'rac-standby': 'MAXAVAILABILITY',
   bystanders: 'MAXAVAILABILITY',
   'max-protection': 'MAXPROTECTION',
 };

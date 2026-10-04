@@ -1,23 +1,23 @@
 /** One catalogue for the palette and page shortcuts. Domain actions keep their
  * existing guards, undo labels and refusal messages. */
+import { applicationsOf } from '@/engine';
 import { PRESETS } from '@/presets';
 import { doc, makeDoc } from '@/state/doc';
 import { topology, trace } from '@/state/derived';
 import { canRedo, canUndo, redo, undo } from '@/state/history';
-import { exportDoc, saveEdition, saveTheme, setTimelineH, toggleGrid, toggleHints } from '@/state/persist';
+import { exportDoc, saveEdition, saveTheme, setTimelineH, toggleGrid, toggleHints, toggleRail, revealRail, toggleTimeline, toggleMiniTimeline, setBreakTimeline, setSummaryOpen } from '@/state/persist';
 import { replaceWorkingDocument } from '@/state/workspaces';
 import {
-  appLanesShown, applyTheme, canEdit, clearSelection, edition, floating, inspectorCollapsed,
+  appLanesShown, applyTheme, canEdit, clearSelection, edition, floating,
   inspectorOpen, introOpen, introPage, mode, MODE_LABEL, MODES, nextTheme, panelTab,
-  PANEL_LABEL, PANEL_TABS, playing, selection, theme, timelineFull, tNow, toast, viewport,
+  PANEL_LABEL, PANEL_TABS, playing, selection, theme, timelineOpen, miniTimelineOpen, summaryOpen, tNow, toast, viewport,
 } from '@/state/view';
 import type { WhyState } from './common/WhyPill';
 import { ON, off } from './inspector/why';
 import { ADD_ACTIONS } from './inspector/adds';
 import { tidyLayout } from './inspector/edits';
 import { buildActionsFor, openInspectorFor } from './build/actions';
-import { actionsFor, applyTemplate, clearEvents, runAction, templates } from './break/events';
-import { menuOpen, snapT } from './canvas/EventMenu';
+import { actionsFor, applyTemplate, clearEvents, runAction, snapT, templates } from './break/events';
 import { canvasPan, handTool } from './canvas/pan';
 import { canZoom, fitZoom, WHY_MAX, WHY_MIN, zoomBy } from './canvas/zoom';
 import { renaming } from './canvas/place';
@@ -44,8 +44,7 @@ const entry = (id: string, label: string, group: string, run: () => unknown,
   ({ id, label, group, run, enabled, shortcut, keyLabel });
 
 export function toggleInspector(): void {
-  if (viewport.value === 'wide') inspectorCollapsed.value = !inspectorCollapsed.value;
-  else inspectorOpen.value = !inspectorOpen.value;
+  toggleRail();
 }
 
 export function commands(): Command[] {
@@ -53,17 +52,17 @@ export function commands(): Command[] {
   const working = !introPage.value;
   const drawing = working && (mode.value === 'build' || mode.value === 'break');
   const editable = canEdit(viewport.value) ? ON : off('Editing needs a wider screen.');
-  const build = working && mode.value === 'build' ? editable : off('Open Build to edit the topology.');
-  const canvas = drawing ? ON : off('Open Build or Break to work with the drawing.');
-  const run = working && mode.value === 'break' && trace.value !== null
-    ? ON : off('Open Break and add an event first.');
+  const build = working && mode.value === 'build' ? editable : off('Open Topology to edit the topology.');
+  const canvas = drawing && !(mode.value === 'break' && floating(mode.value, viewport.value)) ? ON : off('Open Topology to work with the drawing.');
+  const run = drawing && trace.value !== null
+    ? ON : off('Choose a scenario in Topology first.');
   const docReady = working ? ON : off('Open the workbench first.');
   const picked = selection.value[0];
   const out: Command[] = MODES.map((m, i) => entry(`mode:${m}`, `Open ${MODE_LABEL[m]}`, 'Navigate',
     () => { mode.value = m; leaveIntro(); }, ON, binding(String(i + 1)), String(i + 1)));
   out.push(
     entry('inspector', mode.value === 'break' ? 'Toggle Events panel' : 'Toggle Inspector', 'View',
-      toggleInspector, working && mode.value !== 'learn' ? ON : off('Choose Build, Break or Configure.'), binding('i'), 'I'),
+      toggleInspector, working && mode.value !== 'learn' ? ON : off('Choose Topology, Detailed timeline or Config.'), binding('i'), 'I'),
     entry('undo', 'Undo', 'Edit', undo, working && canUndo.value ? editable : off('Nothing to undo yet.'), binding('z', true, false), '⌘/Ctrl Z'),
     entry('redo', 'Redo', 'Edit', redo, working && canRedo.value ? editable : off('Nothing undone yet.'), binding('z', true, true), '⌘/Ctrl Shift Z'),
     entry('share', 'Copy share link', 'Document', () => void share(), docReady, binding('s', true, true), '⌘/Ctrl Shift S'),
@@ -75,14 +74,14 @@ export function commands(): Command[] {
     entry('png', 'Export diagram as PNG', 'Document', () => void exportPng(), docReady),
     entry('pdf', 'Open report as PDF', 'Document', () => void openReport(), docReady),
     entry('fit', 'Fit topology to page', 'Canvas', fitZoom, canvas, binding('f'), 'F'),
-    entry('zoom-in', 'Zoom in', 'Canvas', () => zoomBy(1), drawing && canZoom(1) ? ON : drawing ? off(WHY_MAX) : canvas,
+    entry('zoom-in', 'Zoom in', 'Canvas', () => zoomBy(1), canvas.state === 'on' && canZoom(1) ? ON : canvas.state === 'on' ? off(WHY_MAX) : canvas,
       { keys: ['+', '='] }, '+'),
-    entry('zoom-out', 'Zoom out', 'Canvas', () => zoomBy(-1), drawing && canZoom(-1) ? ON : drawing ? off(WHY_MIN) : canvas, binding('-'), '−'),
+    entry('zoom-out', 'Zoom out', 'Canvas', () => zoomBy(-1), canvas.state === 'on' && canZoom(-1) ? ON : canvas.state === 'on' ? off(WHY_MIN) : canvas, binding('-'), '−'),
     entry('hand', 'Use Hand tool to pan canvas', 'Canvas', () => { handTool.value = true; }, canvas, binding('h'), 'H'),
     entry('select-tool', 'Use selection tool', 'Canvas', () => { handTool.value = false; }, canvas, binding('v'), 'V'),
     entry('select-all', 'Select all topology cards', 'Canvas', () => {
       selection.value = [...d.members.map(m => m.id as string), ...d.observers.map(o => o.id as string),
-        ...(d.application ? [d.application.id as string] : [])];
+        ...applicationsOf(d).map(a => a.id as string)];
     }, drawing ? editable : canvas, binding('a', true), '⌘/Ctrl A'),
     entry('clear-selection', 'Clear selection', 'Canvas', clearSelection, selection.value.length ? ON : off('Nothing selected.')),
     entry('properties', 'Edit selected object', 'Selection', () => { if (picked) openInspectorFor(picked); },
@@ -107,15 +106,18 @@ export function commands(): Command[] {
       () => { edition.value = ed; saveEdition(ed); })),
     entry('play', playing.value ? 'Pause simulation' : 'Play simulation', 'Timeline',
       () => { playing.value = !playing.value; }, run, binding('p'), 'P'),
-    entry('events', 'Open event menu', 'Timeline', () => {
-      menuOpen.value = true; inspectorCollapsed.value = false;
-      if (viewport.value !== 'wide' && !floating(mode.value, viewport.value)) inspectorOpen.value = true;
-    }, working && mode.value === 'break' ? editable : run, binding('e'), 'E'),
-    entry('full-timeline', 'Toggle full-screen timeline', 'Timeline', () => { timelineFull.value = !timelineFull.value; },
-      run.state === 'on' && floating(mode.value, viewport.value) ? ON : off('A timeline in Break on a wider screen is required.'), binding('l'), 'L'),
+    entry('events', 'Show events panel', 'Timeline', () => { revealRail(); },
+      working && mode.value === 'break' ? editable : off('Open Detailed timeline to view its events.'), binding('e'), 'E'),
+    entry('fold-timeline', timelineOpen.value ? 'Fold timeline panel' : 'Show timeline panel', 'Timeline', toggleTimeline,
+      working && mode.value === 'build' ? ON : off('Open Topology to resize or fold its timeline.'), binding('l'), 'L'),
+    entry('fold-mini-timeline', miniTimelineOpen.value ? 'Fold small timeline chart' : 'Show small timeline chart', 'Timeline', toggleMiniTimeline, run),
+    entry('run-summary', summaryOpen.value ? 'Fold run summary' : 'Show run summary', 'Timeline', () => setSummaryOpen(!summaryOpen.value), run),
+    entry('configuration-timeline', 'Show configuration timeline', 'Timeline', () => { setBreakTimeline('config'); mode.value = 'break'; }, docReady),
+    entry('application-timeline', 'Show application timeline', 'Timeline', () => { setBreakTimeline('app'); mode.value = 'break'; },
+      applicationsOf(d).length ? docReady : off('Add an application first.')),
     entry('reset-timeline', 'Reset timeline height', 'Timeline', () => setTimelineH(null), run),
     entry('application-lanes', 'Toggle application timeline lanes', 'Timeline', () => { appLanesShown.value = !appLanesShown.value; },
-      d.application ? run : off('Add an application first.')),
+      applicationsOf(d).length ? run : off('Add an application first.')),
     entry('clear-events', 'Clear injected events', 'Timeline', clearEvents, run.state === 'on' ? editable : run),
   );
   if (trace.value) {
@@ -134,7 +136,6 @@ export function commands(): Command[] {
     );
   }
   for (const add of ADD_ACTIONS) {
-    if (add.offered && !add.offered(d)) continue;
     const key = { database: 'b', farsync: 'f', observer: 'o', application: 'a', site: 'd' }[add.key];
     out.push(entry(`add:${add.key}`, add.label.replace(/^\+ /, 'Add '), 'Add', () => { const key = add.run(); if (key !== null) renaming.value = key; },
       build.state === 'off' ? build : add.enabled(d), key ? binding(key, false, true) : undefined, key ? `Shift ${key.toUpperCase()}` : undefined));
@@ -144,7 +145,7 @@ export function commands(): Command[] {
       out.push(entry(`selection:${action.id}`, action.label, 'Selection', action.run, editable.state === 'off' ? editable : action.enabled));
     }
   }
-  if (working && mode.value === 'break') {
+  if (drawing) {
     for (const action of actionsFor(d, selection.value, snapT(tNow.value))) {
       out.push(entry(`event:${action.id}`, action.label, 'Selected events', () => runAction(action), editable.state === 'off' ? editable : action.enabled));
     }
@@ -159,6 +160,7 @@ export function commands(): Command[] {
   out.push(...PRESETS.map(preset => entry(`preset:${preset.id}`, `Open preset: ${preset.short}`, 'Presets', () => {
     replaceWorkingDocument(`Open ${preset.short}`, makeDoc(preset.doc()), preset.id); leaveIntro(); fitZoom();
   }, editable)));
+  for (const m of MODES) { const item = out.find(c => c.id === `mode:${m}`); if (item) item.keywords = `open ${m}`; }
   const inspector = out.find(c => c.id === 'inspector');
   if (inspector) inspector.keywords = 'inspector events collapse expand settings properties';
   return out;

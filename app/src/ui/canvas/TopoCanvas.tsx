@@ -15,23 +15,25 @@
 
 import type { JSX } from 'preact';
 import {
-  useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState,
+  useCallback, useLayoutEffect, useMemo, useRef, useState,
 } from 'preact/hooks';
+import { findApplication } from '@/engine';
 import type { RedoGraph, Snapshot, TopologyDoc } from '@/engine';
 import type { Geometry, LayoutOffset, NodeBox, SiteBox, ViewBox } from './layout';
 import { layoutTopology, SITE_MIN } from './layout';
 import { cardFrameFor, cardRoleFor, carryEnds, chipsFor, routeTopology, siteIsDown, unionViewBox } from './routing';
 import { describeTopology, cardLabel, linkLabel, siteLabel } from './aria';
-import { anchorFor, barRoom, fittedScale, placeBar } from './anchor';
+import { anchorFor, barRoom, bodyFor, fittedScale, menuCap, placeBar } from './anchor';
 import { InlineName } from './InlineName';
 import { siteLabelRect } from './layout';
-import { ActionBar, barFootprint } from './ActionBar';
+import { ActionBar, barFootprint, menuFootprint } from './ActionBar';
 import { HoverTools, toolsSize } from './HoverTools';
 import type { CanvasTool } from './HoverTools';
-import type { BarAction } from './ActionBar';
+import type { BarAction, BarSection } from './ActionBar';
 import type { WhyState } from '../common/WhyPill';
 import { approxW, CARD } from './measure';
 import type { Rect } from './measure';
+import { parseInstanceKey } from '@/state/instanceKey';
 import { NodeCard } from './NodeCard';
 import { StackChassis } from './StackChassis';
 import { LinkPath, linkKey } from './LinkPath';
@@ -39,6 +41,7 @@ import { SiteRect, siteKey } from './SiteRect';
 import { landingFor } from './drop';
 import { snap8 } from './measure';
 import { isElement, useHostWindow } from '../common/dom';
+import { GlyphDefs } from '../common/glyphs';
 import '@/styles/canvas.css';
 
 export interface TopoCanvasProps {
@@ -64,11 +67,11 @@ export interface TopoCanvasProps {
   onSelect?: (key: string, additive: boolean) => void;
   onHover?: (key: string | null) => void;
   /**
-   * The event menu. Passing it turns a click on a card into "select it and
-   * offer what can be done to it"; `E` opens it from the keyboard. Callers
-   * that have no menu (Build mode) leave it out and a click only selects.
+   * `E` on a focused card, data centre or line: ask for the events on offer for
+   * it. Only Break passes it (Build has none to offer); the caller decides where
+   * they appear, which is the action bar.
    */
-  onEventMenu?: (key: string, at: { x: number; y: number }) => void;
+  onEvents?: (key: string) => void;
   /**
    * A card being dragged. `all` is every card the drag carries -- the whole
    * selection when the pressed card is part of one -- so the caller can write
@@ -83,6 +86,16 @@ export interface TopoCanvasProps {
    * before `onDragEnd`, so the caller can write it into the drag's own edit.
    */
   onHoldSites?: (key: string, boxes: Readonly<Record<string, LayoutOffset>>) => void;
+  /**
+   * A whole data centre let go past a neighbour's middle: the columns take the
+   * new left-to-right `order` (every data centre's id), and `offsets` are the
+   * carried cards' overrides with the drag's sideways part taken back out, so
+   * the data centre settles into its new slot and its neighbours make room.
+   * Called before `onDragEnd` (with those offsets), so the caller can write it
+   * into the drag's own edit. Without it, a data centre can only be pushed
+   * about within the order the layout gives the columns.
+   */
+  onReorderSites?: (key: string, order: readonly string[], offsets: Readonly<Record<string, LayoutOffset>>) => void;
   /**
    * A data centre resized from one of its handles (or `Alt`+arrow on it): its
    * new box as a sized override. Passing it draws the handles on a selected
@@ -103,9 +116,9 @@ export interface TopoCanvasProps {
    */
   onNudge?: (keys: readonly string[], dx: number, dy: number) => void;
   /**
-   * A rectangle dragged over the ground. Passing it makes a press on the
-   * ground start a selection rather than a pan; the pan moves to the middle
-   * button and to a drag with `Space` held.
+   * A rectangle dragged over the ground. Passing it makes a drag on the ground
+   * with Shift (or Ctrl / Cmd) held a selection, added to what is selected; a
+   * plain drag, the middle button and `Space` are the pan.
    */
   onSelectMany?: (keys: readonly string[], additive: boolean) => void;
   /**
@@ -156,6 +169,14 @@ export interface TopoCanvasProps {
     moreWhere?: string;
     /** The cap on rows, when the caller's stage is shorter than Build's. */
     maxRows?: number;
+    /** Break: draw it as the grouped context menu, every row, no cap. */
+    sections?: readonly BarSection[];
+    /** Break: when its events land, for the menu's header. */
+    when?: string;
+    /** The header's words for the subject, when not its key. */
+    title?: string;
+    /** Keep the last row (Remove) visible when the cap drops rows. */
+    keepLast?: boolean;
   } | null;
   /**
    * How far below 1:1 the drawing is rendering, measured by the caller.
@@ -174,6 +195,8 @@ export interface TopoCanvasProps {
    * means none: Build leaves it out, Break passes its short list.
    */
   tools?: (key: string) => readonly CanvasTool[];
+  /** When the icons act ("at t = 20 s"): the playhead, said on each one's title. */
+  toolsWhen?: string;
   /**
    * How large the drawing is asked to be drawn, 1 being its own size.
    *
@@ -184,11 +207,11 @@ export interface TopoCanvasProps {
    * -- a 12-site configuration at 1:1 has cards the size of a caption.
    */
   zoomFactor?: number;
-  /** Pan changes the viewport, never the document geometry. */
+  /** Viewport offset in drawing units; never part of the document. */
   pan?: { x: number; y: number };
   onPan?: (offset: { x: number; y: number }) => void;
   panMode?: boolean;
-  /** Ctrl/Cmd + wheel, one rung of the caller's ladder per notch. */
+  /** The wheel, one rung of the caller's ladder per notch (`WHEEL_NOTCH`). */
   onZoomStep?: (dir: 1 | -1) => void;
   onCloseBar?: () => void;
   /** `Shift+F10`, the context-menu key, or the right button on an entity. */
@@ -197,9 +220,22 @@ export interface TopoCanvasProps {
   onOpen?: (key: string) => void;
   /**
    * The key that carries the `...` handle -- the pointer's way to the action
-   * bar now that a click only selects. Pressing it is `onContextMenu`.
+   * bar now that a click only selects. Pressing it is `onActions`, or
+   * `onContextMenu` where the caller has no list of its own for the handle.
    */
   handle?: string | null;
+  /**
+   * What the `...` handle opens, where that is not what the right button opens:
+   * Topology's own table. `A` on a focused card, data centre or line asks for
+   * it too, and the caller moves the focus into it.
+   */
+  onActions?: (key: string) => void;
+  /**
+   * Whether the bar that is open is the one the handle opens, when the caller
+   * has two; a press on it then shuts the bar, and a press while the other is
+   * up opens this one. Absent, any open bar counts.
+   */
+  handleOpen?: boolean;
   /** The name being edited in place, over the card or the data centre it names. */
   rename?: {
     key: string;
@@ -365,6 +401,11 @@ const scrollerFor = (svg: SVGSVGElement): Element | null => {
   return svg.closest('.app-stage');
 };
 
+/** Wheel units that make one rung: a mouse notch is 100-120, a pinch step a few. */
+const WHEEL_NOTCH = 50;
+/** A pause this long ends a wheel gesture. */
+const WHEEL_IDLE_MS = 250;
+
 /** Grab thickness of a handle, and the size of the square drawn on it. */
 const HANDLE_HIT = 12;
 const HANDLE_DOT = 7;
@@ -465,18 +506,21 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
   const [barMeasured, setBarMeasured] = useState<{ key: string; w: number; h: number } | null>(null);
   /* The selection rectangle while it is being dragged, in the drawing's units. */
   const [band, setBand] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
-  /* `Space` held: the next drag on the ground is a pan, the way it is in every
-     drawing tool that gives the plain drag to selection. A ref, because it is
-     read at the press and never painted. */
+  /* `Space` held: the next drag on the ground is a pan even where a modifier
+     would have started a selection. A ref, because it is read at the press and
+     never painted. */
   const spaceHeld = useRef(false);
   const suppressPanClick = useRef(false);
+  /* The wheel's leftovers, and the spot a zoom must keep under the pointer. */
+  const wheelAcc = useRef({ sum: 0, at: 0 });
+  const zoomAnchor = useRef<{ fx: number; fy: number; x: number; y: number } | null>(null);
   /* The window the drawing is in, which may be a popup (common/popout.tsx). */
   const host = useHostWindow();
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!interactive || host === null) return undefined;
     const down = (ev: KeyboardEvent): void => {
       if (ev.key !== ' ' || ev.defaultPrevented) return;
-      if (isElement(ev.target) && ev.target.closest('input, textarea, select, button, [contenteditable="true"], [role="slider"]')) return;
+      if (isElement(ev.target) && ev.target.closest('input, textarea, select, button, [contenteditable]:not([contenteditable="false"]), [role="slider"]')) return;
       spaceHeld.current = true;
       ev.preventDefault();
     };
@@ -529,8 +573,7 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
     if (member) return member.instances.length === 1 ? (member.instances[0]?.host as string | undefined) : undefined;
     const observer = doc.observers.find((o) => (o.id as string) === key);
     if (observer) return observer.host as string;
-    return doc.application !== undefined && (doc.application.id as string) === key
-      ? (doc.application.host as string) : undefined;
+    return findApplication(doc, key)?.host as string | undefined;
   };
   /**
    * Where a single-card drag on `own` would merge it: a chassis stack whose
@@ -588,6 +631,14 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
   }, []);
 
   const isSelected = (key: string): boolean => selection.includes(key);
+  /** Which instance row of this RAC card is selected (`sby01~2`), if one is. */
+  const selectedInstanceOf = (key: string): number | null => {
+    for (const k of selection) {
+      const at = parseInstanceKey(k);
+      if (at !== null && at.member === key) return at.index;
+    }
+    return null;
+  };
   const linkAt = (key: string): number => routed.links.findIndex((l) => linkKey(l) === key);
 
   /* The tab stop follows the focus, per kind: a card is its site's stop, a
@@ -597,20 +648,11 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
     else if (linkAt(key) >= 0) setVisitedLink(key);
   };
 
-  const askEventMenu = (key: string): void => {
-    const box = cards.current.get(key)?.getBoundingClientRect();
-    props.onEventMenu?.(key, box
-      ? { x: box.left + box.width / 2, y: box.top + box.height }
-      : { x: 0, y: 0 });
-  };
-
-  /* A click always selects. Where the caller has an event menu, the same click
-     offers it, anchored under the card it belongs to. */
+  /* A click selects; what the click offers, if anything, is the caller's --
+     `onSelect` opens the action bar in Break. */
   const onCardSelect = (key: string, additive: boolean): void => {
     remember(key);
     props.onSelect?.(key, additive);
-    if (!props.onEventMenu || additive) return;
-    askEventMenu(key);
   };
 
   /* ---- keyboard: arrows walk one site, Tab steps between them ---- */
@@ -684,7 +726,17 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
       case 'e':
       case 'E': {
         ev.preventDefault();
-        askEventMenu(key);
+        props.onEvents?.(key);
+        return;
+      }
+      case 'a':
+      case 'A': {
+        /* Topology's own table -- edit, the properties, remove -- the keyboard's
+           way to what the `...` handle opens. `Ctrl+A` and `Cmd+A` are
+           select-all (ui/shortcuts.ts) and pass through untouched. */
+        if (!props.onActions || ev.ctrlKey || ev.metaKey || ev.altKey) return;
+        ev.preventDefault();
+        props.onActions(key);
         return;
       }
       case 'Delete':
@@ -724,7 +776,8 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
 
   const onCardKey = (key: string, ev: JSX.TargetedKeyboardEvent<SVGGElement>): void => {
     const node = geo.byKey[key];
-    if (!node) return;
+    /* Not a card: an instance row's key, which answers what every entity does. */
+    if (!node) { onEntityKey(key, ev); return; }
     const list = siblings(node);
     const at = list.findIndex((n) => n.key === key);
     /* `Alt` and an arrow moves the card rather than the focus: one 8 px step,
@@ -925,9 +978,10 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
     if ((ev.button !== 0 && ev.button !== 1) || drag.current !== null) return;
     if (keyAt(ev.target) !== null || insideBar(ev.target)) return;
     const svg = svgRef.current;
-    /* Where the caller takes a rectangle, the plain drag is the rectangle and
-       the pan is the middle button or `Space`. */
-    if (props.onSelectMany && ev.button === 0 && !spaceHeld.current && svg !== null) {
+    /* Where the caller takes a rectangle, it is a modifier-drag: the plain drag
+       is the pan, the way it is on a map. */
+    if (props.onSelectMany && ev.button === 0 && !spaceHeld.current && svg !== null
+      && (ev.shiftKey || ev.metaKey || ev.ctrlKey)) {
       const rect = svg.getBoundingClientRect();
       drag.current = {
         kind: 'marquee',
@@ -935,7 +989,7 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
         startY: ev.clientY,
         scale: rect.width > 0 ? view.w / rect.width : 1,
         moved: false,
-        additive: ev.shiftKey || ev.metaKey || ev.ctrlKey,
+        additive: true,
       };
       return;
     }
@@ -1146,6 +1200,20 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
         }
       }
     }
+    /* A whole data centre let go past the middle of a neighbour: that is a new
+       column order, not a push. Left to the push (step 7c), its neighbours
+       would slide out ahead of it and keep the old order, and the refitted
+       view would put it straight back where it started. */
+    if (!dropped && props.onReorderSites && geo.sites.some((st) => (st.id as string) === d.key)) {
+      const order = reorderedSites(d, all);
+      if (order !== null) {
+        const settled: Record<string, LayoutOffset> = {};
+        for (const [k, off] of Object.entries(all)) settled[k] = { ...off, dx: d.bases[k]?.dx ?? 0 };
+        props.onReorderSites(d.key, order, settled);
+        props.onDragEnd?.(d.key, settled[d.key] as LayoutOffset, settled);
+        return;
+      }
+    }
     /* Let go inside the data centre it came from: a box that would now shrink
        round what is left in it keeps the size it had when the drag began, and
        only grows -- to take a card let go past its edge (task 1.2). */
@@ -1154,6 +1222,22 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
       if (Object.keys(held).length > 0) props.onHoldSites(d.key, held);
     }
     props.onDragEnd?.(d.key, all[d.key] as LayoutOffset, all);
+  };
+
+  /**
+   * The data centres left to right by the middle of each box as the drag
+   * leaves them -- the carried one where it was let go, the others where they
+   * stood -- or null when that is the order they are already drawn in.
+   */
+  const reorderedSites = (d: CardDrag, all: Readonly<Record<string, LayoutOffset>>): string[] | null => {
+    const after = layoutTopology(doc, graph, {
+      overrides: { ...overrides, ...all }, transient: Object.keys(d.bases), transientFrom: d.bases,
+    });
+    const byCol = [...after.sites].sort((a, b) => a.col - b.col).map((st) => st.id as string);
+    const byX = [...after.sites]
+      .sort((a, b) => (a.x + a.w / 2) - (b.x + b.w / 2) || a.col - b.col)
+      .map((st) => st.id as string);
+    return byX.every((id, i) => id === byCol[i]) ? null : byX;
   };
 
   /** The data centres a card drag would shrink, with the box each should keep. */
@@ -1202,16 +1286,48 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
   };
 
   /**
-   * Ctrl (or Cmd) and the wheel: the browser's own zoom gesture, and what a
-   * trackpad pinch sends. A plain wheel is left alone -- it scrolls the stage,
-   * which is how a reader reaches the rest of a drawing bigger than its room.
+   * The wheel zooms, one rung of the ladder per notch.
+   *
+   * A mouse notch is 100-120 units and steps at once; a trackpad sends a run
+   * of small ones (and a pinch, flagged with Ctrl, smaller still), so the run
+   * is summed and a rung is taken each time it crosses `WHEEL_NOTCH`. The sum
+   * is dropped after a pause or a change of direction, so momentum does not
+   * carry the next gesture over a rung. The point under the pointer is
+   * remembered for the layout effect below, which scrolls it back under the
+   * pointer once the drawing has its new size.
    */
   const onSvgWheel = (ev: JSX.TargetedWheelEvent<SVGSVGElement>): void => {
-    if (!ev.ctrlKey && !ev.metaKey) return;
     if (!props.onZoomStep) return;
     ev.preventDefault();
-    props.onZoomStep(ev.deltaY < 0 ? 1 : -1);
+    const acc = wheelAcc.current;
+    const now = ev.timeStamp;
+    const dy = ev.deltaMode === 1 ? ev.deltaY * 33 : ev.deltaMode === 2 ? ev.deltaY * 400 : ev.deltaY;
+    if (now - acc.at > WHEEL_IDLE_MS || Math.sign(dy) !== Math.sign(acc.sum)) acc.sum = 0;
+    acc.at = now;
+    acc.sum += dy;
+    if (Math.abs(acc.sum) < WHEEL_NOTCH) return;
+    const dir = acc.sum < 0 ? 1 : -1;
+    acc.sum = 0;
+    const svg = svgRef.current;
+    const box = svg?.getBoundingClientRect();
+    zoomAnchor.current = box !== undefined && box.width > 0 && box.height > 0
+      ? { fx: (ev.clientX - box.left) / box.width, fy: (ev.clientY - box.top) / box.height, x: ev.clientX, y: ev.clientY }
+      : null;
+    props.onZoomStep(dir);
   };
+
+  /* After a zoom, put the remembered spot back under the pointer. */
+  useLayoutEffect(() => {
+    const a = zoomAnchor.current;
+    zoomAnchor.current = null;
+    const svg = svgRef.current;
+    if (a === null || svg === null) return;
+    const stage = scrollerFor(svg);
+    if (stage === null) return;
+    const box = svg.getBoundingClientRect();
+    stage.scrollLeft += box.left + a.fx * box.width - a.x;
+    stage.scrollTop += box.top + a.fy * box.height - a.y;
+  }, [zoomFactor]);
 
   /**
    * A pointer-up that landed on nothing.
@@ -1322,12 +1438,14 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
   const bar = interactive ? props.bar ?? null : null;
   const k = Math.min(1, Math.max(0.5, props.scale ?? 1));
   const barAnchor = bar === null ? null : anchorFor(bar.key, geo, routed.links);
-  const barEstimate = bar === null ? null : barFootprint(bar.actions, bar.quiet ?? null, bar.maxRows);
+  const barEstimate = bar === null ? null
+    : bar.sections !== undefined ? menuFootprint(bar.sections)
+      : barFootprint(bar.actions, bar.quiet ?? null, bar.maxRows, bar.keepLast === true);
   /* The larger of the estimate and what was painted: the estimate is what the
      placement can know before the render, the measurement is what the box
      has to be. Never smaller than the estimate, so a measurement that has not
      happened yet (jsdom, the first frame) declares the generous box. */
-  const barSize = barEstimate === null || bar === null ? null : {
+  const barNatural = barEstimate === null || bar === null ? null : {
     w: barMeasured?.key === bar.key ? Math.max(barEstimate.w, barMeasured.w) : barEstimate.w,
     h: barMeasured?.key === bar.key ? Math.max(barEstimate.h, barMeasured.h) : barEstimate.h,
   };
@@ -1342,17 +1460,36 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
      the bar undoes the drawing's scale, so its footprint on the drawing grows
      as that scale falls. Placing against the CSS size put it off the stage. */
   const room = barRoom({ ...view, x: view.x - (props.pan?.x ?? 0), y: view.y - (props.pan?.y ?? 0) }, props.barMargin ?? { t: 0, r: 0, b: 0, l: 0 });
+  /* Break's menu shows every row, so it may be taller than the ground it
+     has: then it is cut to that ground and scrolls, rather than shrinking its
+     text (`fittedScale`) or running under the chrome. */
+  /* A data centre's whole box: the bar stands beside it, not beside its name
+     band inside it, over its own cards. */
+  const barBody = bar === null || barAnchor === null ? null : bodyFor(bar.key, geo) ?? barAnchor;
+  const barCap = bar?.sections === undefined || barAnchor === null || barNatural === null
+    ? null
+    : menuCap(barAnchor, room, k, barNatural.h, {
+      width: barNatural.w, ...(barBody === null ? {} : { body: barBody }),
+    });
+  const barSize = barNatural === null ? null
+    : barCap === null ? barNatural : { w: barNatural.w, h: Math.min(barNatural.h, barCap) };
   const barScale = barSize === null ? k : fittedScale(barSize, room, k);
-  /* What the bar should not sit on: every other card and every caption. */
+  /* What the bar should not sit on: every other card and every caption --
+     for a data centre, that is its own cards too: the bar is about the box,
+     and covering what is in it hides what the menu is about. */
   const barObstacles = bar === null ? [] : [
     ...Object.entries(geo.byKey).filter(([key]) => key !== bar.key).map(([, n]) => n),
     ...routed.links.filter((l) => linkKey(l) !== bar.key).map((l) => l.pill),
   ];
   const barPlace = bar === null || barAnchor === null || barSize === null
     ? null
-    : placeBar(barAnchor, { w: barSize.w / barScale, h: barSize.h / barScale }, room, barObstacles);
+    : placeBar(
+      barAnchor, { w: barSize.w / barScale, h: barSize.h / barScale }, room, barObstacles,
+      barBody ?? barAnchor,
+    );
 
   /* The handle: the top right corner of the subject's anchor. */
+  const handleShut = bar !== null && (props.handleOpen ?? true);
   const handleKey = interactive ? props.handle ?? null : null;
   const handleRect = handleKey === null || props.rename ? null : anchorFor(handleKey, geo, routed.links);
   const handleAt = handleKey === null || handleRect === null
@@ -1364,7 +1501,11 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
 
   /* The hover icons: over the top edge of a card, in the top right corner of a
      data centre, over the caption of a line. */
+  /* Not on the thing the bar is open for: the bar is the longer answer to the
+     same question, and the strip drawn over the card's top edge sat on the
+     bar's header whenever the bar went above or beside it. */
   const tools = !interactive || toolKey === null || moving !== null || !props.tools
+    || (bar !== null && bar.key === toolKey)
     ? [] : props.tools(toolKey);
   const toolsAt = ((): { x: number; y: number } | null => {
     if (toolKey === null || tools.length === 0) return null;
@@ -1403,10 +1544,7 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
     if (bar) cards.current.get(bar.key)?.focus();
   };
 
-  const legend = legendLines(
-    doc, routed.links.some((l) => !l.active && l.kind !== 'connect'),
-    routed.links.some((l) => !l.active && l.kind === 'connect'),
-  );
+  const legend: string[] = [];
   if (!interactive) {
     legend.unshift(props.readOnlyWhy
       ?? 'This drawing is read-only here: nothing on it can be selected or moved.');
@@ -1455,6 +1593,8 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
         chips={chipsFor(doc, n)}
         label={cardLabel(doc, graph, n, frame)}
         selected={isSelected(n.key)}
+        instancesLive={props.onDelete !== undefined}
+        selectedInstance={selectedInstanceOf(n.key)}
         hovered={hovered === n.key}
         dragging={drag.current?.kind === 'card' && drag.current.moved && n.key in drag.current.bases}
         target={rubber !== null && rubber.over === n.key
@@ -1492,7 +1632,7 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
     const forced = ev.button === 1 || spaceHeld.current || props.panMode;
     const ground = keyAt(ev.target) === null
       && !(isElement(ev.target) && ev.target.closest('.tp-stack-hd, .tp-rsz, .tp-port'));
-    if (!forced && (!ground || (ev.shiftKey && props.onSelectMany))) return;
+    if (!forced && (!ground || ((ev.shiftKey || ev.ctrlKey || ev.metaKey) && props.onSelectMany))) return;
     const svg = svgRef.current;
     if (!svg) return;
     const rect = svg.getBoundingClientRect();
@@ -1572,40 +1712,7 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
           >
             <path d="M0,1 L10,5 L0,9 z" class="tp-aha" />
           </marker>
-          <g id={`${prefix}-ico-db`} fill="none" stroke-width="1.8" stroke-linecap="round">
-            <ellipse cx="12" cy="6" rx="8" ry="3.2" />
-            <path d="M4,6 V18 c0,1.77 3.58,3.2 8,3.2 s8,-1.43 8,-3.2 V6" />
-            <path d="M4,12 c0,1.77 3.58,3.2 8,3.2 s8,-1.43 8,-3.2" />
-          </g>
-          <g id={`${prefix}-ico-farsync`} fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-            <ellipse cx="10" cy="6" rx="7" ry="2.8" />
-            <path d="M3,6 V15" />
-            <path d="M17,6 V15" />
-            <path d="M14,11 L19,15.5 L14,20" />
-          </g>
-          <g id={`${prefix}-ico-snapshot`} fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-            <ellipse cx="12" cy="6" rx="8" ry="3.2" />
-            <path d="M4,6 V18 c0,1.77 3.58,3.2 8,3.2 s8,-1.43 8,-3.2 V6" />
-            <path d="M7.5,13.5 L10.8,16.8 L16.5,11" />
-          </g>
-          <g id={`${prefix}-ico-host`} fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <rect x="3" y="3.5" width="18" height="7.5" rx="1.8" />
-            <rect x="3" y="13" width="18" height="7.5" rx="1.8" />
-            <path d="M7,7.25 h.01 M7,16.75 h.01" />
-          </g>
-          <g id={`${prefix}-ico-dc`} fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M2,21 H22 M4,21 V4.5 L13,2 V21 M13,8 H20 V21" />
-            <path d="M7,8 H10 M7,12 H10 M7,16 H10 M16,12 H17 M16,16 H17" />
-          </g>
-          <g id={`${prefix}-ico-app`} fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-            <rect x="3" y="4.5" width="18" height="15" rx="2" />
-            <path d="M3,9 H21" />
-            <path d="M9.5,12.5 L7,14.75 L9.5,17 M14.5,12.5 L17,14.75 L14.5,17" />
-          </g>
-          <g id={`${prefix}-ico-observer`} fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M2.5,12 C5.5,6.8 8.6,4.6 12,4.6 s6.5,2.2 9.5,7.4 C18.5,17.2 15.4,19.4 12,19.4 s-6.5,-2.2 -9.5,-7.4 Z" />
-            <circle cx="12" cy="12" r="3.1" />
-          </g>
+          <GlyphDefs prefix={prefix} />
         </defs>
 
         <g class="tp-sites">
@@ -1723,7 +1830,10 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
         </g>
 
         {toolsAt === null || toolKey === null ? null : (
-          <HoverTools x={toolsAt.x} y={toolsAt.y} scale={k} subject={toolKey} tools={tools} />
+          <HoverTools
+            x={toolsAt.x} y={toolsAt.y} scale={k} subject={toolKey} tools={tools}
+            {...(props.toolsWhen === undefined ? {} : { when: props.toolsWhen })}
+          />
         )}
 
         {/* What is in the air, over every caption: a card carried across a
@@ -1775,23 +1885,23 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
             close it before this click could. */}
         {/* Not while something is being dragged: it hangs off the live
             geometry, which a drag holds still only in what it draws. */}
-        {handleAt === null || !props.onContextMenu || moving !== null ? null : (
+        {handleAt === null || !(props.onActions ?? props.onContextMenu) || moving !== null ? null : (
           <g
-            class={`tp-more${bar !== null ? ' is-open' : ''}`}
+            class={`tp-more${handleShut ? ' is-open' : ''}`}
             role="button"
             aria-label={`Actions for ${handleAt.key}`}
-            aria-expanded={bar !== null}
+            aria-expanded={handleShut}
             data-node={handleAt.key}
             data-more={handleAt.key}
             onPointerDown={(ev) => ev.stopPropagation()}
             onDblClick={(ev) => ev.stopPropagation()}
             onClick={(ev) => {
               ev.stopPropagation();
-              if (bar !== null) props.onCloseBar?.();
-              else props.onContextMenu?.(handleAt.key);
+              if (handleShut) props.onCloseBar?.();
+              else (props.onActions ?? props.onContextMenu)?.(handleAt.key);
             }}
           >
-            <title>Actions (also: right-click, Shift+F10)</title>
+            <title>{props.onActions ? 'Actions (also: press A). Right-click, Shift+F10 or E list the events it can take' : 'Actions (also: right-click, Shift+F10)'}</title>
             <circle class="tp-more-hit" cx={handleAt.x} cy={handleAt.y} r={12} />
             <circle class="tp-more-dot" cx={handleAt.x} cy={handleAt.y} r={8} />
             <circle class="tp-more-pip" cx={handleAt.x - 3.5} cy={handleAt.y} r={1.1} />
@@ -1828,6 +1938,11 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
             focusOnOpen={bar.focus === true}
             {...(bar.moreWhere !== undefined ? { moreWhere: bar.moreWhere } : {})}
             {...(bar.maxRows !== undefined ? { maxRows: bar.maxRows } : {})}
+            {...(bar.sections !== undefined ? { sections: bar.sections } : {})}
+            {...(bar.when !== undefined ? { when: bar.when } : {})}
+            {...(barCap !== null ? { maxHeight: barCap } : {})}
+            {...(bar.title !== undefined ? { title: bar.title } : {})}
+            {...(bar.keepLast === true ? { keepLast: true } : {})}
             {...(barSize !== null ? { box: barSize } : {})}
             onMeasure={onBarMeasure}
             onClose={closeBar}
@@ -1890,24 +2005,4 @@ function PointerTip({ x, y, text, refused }: { x: number; y: number; text: strin
       <text class="tp-rubber-tip-tx" x={x + 19} y={y - 9}>{shown}</text>
     </g>
   );
-}
-
-/** Said once, under the drawing: what an absent chip and a faded line mean. */
-export function legendLines(
-  doc: TopologyDoc, anyInactive: boolean, fadedAddress = false,
-): string[] {
-  const out: string[] = [];
-  if (doc.members.some((m) => m.instances.length > 1)) {
-    out.push('A card with no RAC chip is a single-instance database.');
-  }
-  if (doc.observers.length > 0 && doc.config.fsfo.state === 'disabled') {
-    out.push('Fast-start failover is disabled, so no observer is called the master observer; all observers have the same functionality.');
-  }
-  if (anyInactive) {
-    out.push('A faded line is a destination this configuration declares but is not shipping to now.');
-  }
-  if (fadedAddress) {
-    out.push('A faded dash-dot line is an address on the application\'s connect string where the service is not published now.');
-  }
-  return out;
 }

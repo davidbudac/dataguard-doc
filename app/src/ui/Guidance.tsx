@@ -14,20 +14,20 @@
  *    button's `title` (`MODE_SUB`).
  *  - **The first visit no longer gets a strip here.** The three clauses on one
  *    row, with "Got it" at the end, were the previous answer; a whole
- *    Introduction page is the current one (`ui/intro/`, ui.md SS3e), and it
- *    opens instead of the workbench rather than on top of it. `dg-intro-v1`
- *    now records that the reader has been shown that page.
+ *    Introduction page is the current one (`ui/intro/`, ui.md SS3e). It does
+ *    not open on a first visit -- the header's "Data Guard" link opens it,
+ *    instead of the workbench rather than on top of it. `dg-intro-v1` now
+ *    records that the reader has been shown that page.
  *  - **The `?` in the header still opens the whole explanation**, which is
  *    where the keyboard map lives -- shortcuts nothing else on the page
  *    announces -- and it is where the Introduction is offered a second time.
  *    It is a toggle, and it says so through `aria-expanded`: a second press
  *    closes the card. Closing it writes nothing: opening an explanation and
  *    shutting it again is not the same as having read the Introduction.
- *  - **A reader who is already working stops being owed the page.** An edit or
+ *  - **A reader who is already working has been shown enough.** An edit or
  *    a change of mode writes `dg-intro-v1` (the mode buttons do it in
- *    `TopBar.tsx`, an edit in the effect below), because somebody who arrived
- *    through a share link and started editing has answered the question the
- *    Introduction exists to answer.
+ *    `TopBar.tsx`, an edit in the effect below), because somebody who started
+ *    editing has answered the question the Introduction exists to answer.
  *  - **The line itself is two halves.** The gesture -- "Click a card, a data
  *    centre or a link to edit it." -- is always on screen; the clause behind
  *    it is explanation and rides with `Hints` (`ui/hints.tsx`), the one switch
@@ -45,9 +45,9 @@ import { INTRO_HREF, openIntro } from './intro/route';
 
 /** The three working modes, one clause each; Learn is the link at the foot. */
 const BULLETS: [string, string][] = [
-  ['Build', 'draw a configuration: data centres, databases, far syncs, observers and the redo between them.'],
-  ['Break', 'add a failure and follow the timeline through detection, threshold, role change and open.'],
-  ['Configure', 'generate DGMGRL commands, init parameters and connect strings from the drawing.'],
+  ['Topology', 'draw a configuration: data centres, databases, far syncs, observers and the redo between them; then break it with a scenario or a card’s icons and read the small timeline under it.'],
+  ['Detailed timeline', 'the run in full: follow a failure through detection, threshold, role change and open, and tune its settings.'],
+  ['Config', 'generate DGMGRL commands, init parameters and connect strings from the drawing.'],
 ];
 
 /**
@@ -65,14 +65,15 @@ const KEYS: { where: string; rows: [string, string][] }[] = [
     rows: [
       ['↑ ↓ ← →', 'move to the next card in the same data centre — on a link caption, the next link'],
       ['Enter · Space', 'select it — with Shift, add it to the selection'],
-      ['F2', 'rename it where it is drawn — a double click does too (Build)'],
-      ['Alt+↑ ↓ ← →', 'move the card 8 px, or the whole selection — with Shift, 32 px (Build)'],
-      ['Shift+F10 · ☰', 'open its actions and move the focus into them — the right button does too'],
-      /* `onEventMenu` is spread onto the canvas only in Break
-         (`canvas/CanvasSlot.tsx`), exactly as `onDelete` is only in Build:
-         a key that is bound in one mode says which one. */
-      ['E', 'open the event menu for it (Break)'],
-      ['Delete', 'remove it, or everything selected (Build)'],
+      ['F2', 'rename it where it is drawn — a double click does too (Topology)'],
+      ['Alt+↑ ↓ ← →', 'move the card 8 px, or the whole selection — with Shift, 32 px (Topology)'],
+      ['Shift+F10 · ☰', 'open the events it offers, at the playhead, and move the focus into them — the right button does too'],
+      /* `onEvents` is spread onto the canvas only in Topology and the Detailed
+         timeline (`canvas/CanvasSlot.tsx`), exactly as `onDelete` is only in
+         Topology: a key that is bound in one mode says which one. */
+      ['E', 'the same list of events (Topology)'],
+      ['A', 'open the ⋯ actions — edit, properties, remove — and move the focus into them (Topology)'],
+      ['Delete', 'remove it, or everything selected (Topology)'],
       ['Esc', 'close the actions first, then clear the selection'],
     ],
   },
@@ -80,20 +81,21 @@ const KEYS: { where: string; rows: [string, string][] }[] = [
     where: 'Anywhere on the page, outside a text field',
     rows: [
       ['Ctrl+K · ⌘K', 'search commands, including presets, scenarios and selected-object actions'],
-      ['1 · 2 · 3 · 4', 'Build · Break · Configure · Learn'],
+      ['1 · 2 · 3 · 4', 'Topology · Detailed timeline · Config · Learn'],
       ['I · J', 'toggle Inspector / Events · show findings'],
       ['F · + · −', 'fit and recenter the topology · zoom in · zoom out'],
       ['H · V', 'Hand tool · selection tool; drag empty space to pan, Shift-drag to select'],
       ['Space + drag · middle drag', 'pan from anywhere on the topology'],
-      ['Shift+B · Shift+F · Shift+O · Shift+D · Shift+A', 'add standby · far sync · observer · data centre · application (Build)'],
+      ['Shift+B · Shift+F · Shift+O · Shift+D · Shift+A', 'add standby · far sync · observer · data centre · application (Topology)'],
       ['Shift+T · G · ?', 'tidy layout · toggle grid · toggle hints'],
-      ['P · L · E', 'play/pause · full-screen timeline · event menu (Break)'],
-      [', · . · Home · End', 'previous/next state change · start/end of timeline (Break)'],
+      ['P · L · E', 'play/pause · fold timeline panel (Topology) · show Events (Detailed timeline)'],
+      [', · . · Home · End', 'previous/next state change · start/end of timeline (Topology / Detailed timeline)'],
       ['Ctrl/⌘+S · Ctrl/⌘+O', 'saved configurations · import file'],
       ['Ctrl/⌘+Shift+S · Ctrl/⌘+Shift+E', 'share link · export JSON'],
       ['Ctrl+Z · ⌘Z', 'undo'],
       ['Ctrl+Shift+Z · Ctrl+Y', 'redo'],
       ['Ctrl+A · ⌘A', 'select every card on the drawing'],
+      [']', 'open or close the Inspector panel (Topology, Config); fold or unfold the Events panel (Detailed timeline)'],
     ],
   },
   {
@@ -174,7 +176,7 @@ export function IntroCard() {
         <IntroLink />
         {' explains the drawing and the controls. '}
         <LearnLink />
-        {' has nine guided lessons.'}
+        {' has ten guided lessons.'}
       </p>
 
       {/* The one place the toggle is explained rather than merely offered. The
@@ -182,8 +184,8 @@ export function IntroCard() {
           noticed it finds out what it does -- and can press it here. */}
       <p class="intro-foot caption">
         <b>{HINTS_LABEL}</b>
-        {', in the inspector header, shows help under each control and the rest of the '}
-        {'line above. It is off by default, and the setting is remembered.'}
+        {', in the inspector header (open it with the Inspector button in the top bar), shows help under each control and, in Config, the '}
+        {'rest of the line above. It is off by default, and the setting is remembered.'}
         {' '}
         <HintsToggle />
       </p>
@@ -211,9 +213,9 @@ export function IntroCard() {
 /**
  * The first meaningful interaction settles the debt.
  *
- * A reader who arrived through a share link never saw the Introduction, so it
- * is still owed to them -- until they do something, at which point the
- * question it answers has been answered. An edit, an injected event and a
+ * A reader who goes straight to work never opened the Introduction; once they
+ * do something the question it answers has been answered, and the key records
+ * that. An edit, an injected event and a
  * preset load all replace `doc`; a change of mode replaces `mode` (and
  * `TopBar` writes the key for that one directly). The baseline is read when
  * this mounts rather than at import time, so the boot path -- which restores a
@@ -239,6 +241,11 @@ export function Guidance() {
   const v = viewport.value;
   const full = introOpen.value;
   useDismissOnFirstUse(!introDismissed.value);
+  /* Build and Break have no line: their gestures are in the mode button's
+     title (`MODE_SUB`) and the stage's description (`modeGuide`, in
+     `App.tsx`), and the band's height is the drawing's. The card the `?` opens
+     still hangs from here. */
+  if (m === 'break' || m === 'build') return full ? <div class="guide"><IntroCard /></div> : null;
   const { lead, rest } = splitGuide(m, v);
   return (
     <div class="guide">

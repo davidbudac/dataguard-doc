@@ -1,6 +1,8 @@
 /* Token legend: bg page ground - sf surface - sf2 sunken - sf3 track - ln hairline
    ln2 strong line - ik/ik2/ik3 ink - tl teal (serving) - bl blue (applying)
    am amber (waiting) - rd red (down) - vi violet (observer decision) - sl slate
+   *-ink = the hue as text on its own fill (band labels, the headline): the
+   light palettes darken it to 4.5:1, the dark ones leave it as the hue
    *f = the matching fill - fc focus - gd grid - sh shadow - lk redo route
    pg observer ping - ck readiness check - cn application connection (the
    link kinds, each its own colour so a line reads without the dash pattern).
@@ -18,6 +20,7 @@
 --rd:#D64545;--rdf:#FADEDE;--vi:#6D5AE6;--vif:#E3DFFB;--sl:#475569;
 --fc:#2563EB;--gd:#E7ECF2;--sh:0 1px 2px rgba(16,25,34,.05),0 8px 24px rgba(16,25,34,.05);
 --lk:#4F7BB5;--pg:#6D5AE6;--ck:#B8479E;--cn:#5B8C2A;
+--tl-ink:#0D7161;--bl-ink:#2159D3;--am-ink:#9A5404;--rd-ink:#AD3838;--vi-ink:#5E4DC6;
 }
 @media (prefers-color-scheme:dark){:root{
 --bg:#0A0E13;--sf:#111821;--sf2:#0D141C;--sf3:#16202B;--ln:#1F2A36;--ln2:#33414F;
@@ -26,6 +29,7 @@
 --rd:#F58080;--rdf:#45191C;--vi:#AEA0F8;--vif:#241E4A;--sl:#8095AC;
 --fc:#6BA5FB;--gd:#182230;--sh:0 1px 2px rgba(0,0,0,.5),0 10px 30px rgba(0,0,0,.35);
 --lk:#7FA6D9;--pg:#AEA0F8;--ck:#E68BC6;--cn:#A6D46A;
+--tl-ink:#34D3B8;--bl-ink:#6BA5FB;--am-ink:#F5B443;--rd-ink:#F58080;--vi-ink:#AEA0F8;
 }}
 :root[data-theme="dark"]{
 --bg:#0A0E13;--sf:#111821;--sf2:#0D141C;--sf3:#16202B;--ln:#1F2A36;--ln2:#33414F;
@@ -34,6 +38,7 @@
 --rd:#F58080;--rdf:#45191C;--vi:#AEA0F8;--vif:#241E4A;--sl:#8095AC;
 --fc:#6BA5FB;--gd:#182230;--sh:0 1px 2px rgba(0,0,0,.5),0 10px 30px rgba(0,0,0,.35);
 --lk:#7FA6D9;--pg:#AEA0F8;--ck:#E68BC6;--cn:#A6D46A;
+--tl-ink:#34D3B8;--bl-ink:#6BA5FB;--am-ink:#F5B443;--rd-ink:#F58080;--vi-ink:#AEA0F8;
 }
 :root[data-theme="light"]{
 --bg:#F4F6F8;--sf:#FFFFFF;--sf2:#EDF1F5;--sf3:#E4E9EF;--ln:#DCE2EA;--ln2:#BFC9D6;
@@ -42,6 +47,7 @@
 --rd:#D64545;--rdf:#FADEDE;--vi:#6D5AE6;--vif:#E3DFFB;--sl:#475569;
 --fc:#2563EB;--gd:#E7ECF2;--sh:0 1px 2px rgba(16,25,34,.05),0 8px 24px rgba(16,25,34,.05);
 --lk:#4F7BB5;--pg:#6D5AE6;--ck:#B8479E;--cn:#5B8C2A;
+--tl-ink:#0D7161;--bl-ink:#2159D3;--am-ink:#9A5404;--rd-ink:#AD3838;--vi-ink:#5E4DC6;
 }
 
 /* The colour-blind-safe palette, chosen from the top bar and stamped as
@@ -53,16 +59,19 @@
 --tl:#007A5A;--tlf:#D2EFE5;--bl:#0072B2;--blf:#D6E8F5;--am:#A86F00;--amf:#FBEDC9;
 --rd:#C45400;--rdf:#FBE0CE;--vi:#A8507F;--vif:#F5DDEA;
 --fc:#0072B2;--lk:#0072B2;--pg:#A8507F;--ck:#A86F00;--cn:#5B6B7F;
+--tl-ink:#007355;--bl-ink:#0067A0;--am-ink:#8D5D00;--rd-ink:#A34600;--vi-ink:#944670;
 }
 @media (prefers-color-scheme:dark){:root[data-palette="cvd"]{
 --tl:#2FC79A;--tlf:#0B3B2E;--bl:#56B4E9;--blf:#10304A;--am:#F0C040;--amf:#3F310C;
 --rd:#FF8A4C;--rdf:#45240F;--vi:#E29BC4;--vif:#3D1F32;
 --fc:#56B4E9;--lk:#56B4E9;--pg:#E29BC4;--ck:#F0C040;--cn:#B9C6D4;
+--tl-ink:#2FC79A;--bl-ink:#56B4E9;--am-ink:#F0C040;--rd-ink:#FF8A4C;--vi-ink:#E29BC4;
 }}
 :root[data-palette="cvd"][data-theme="dark"]{
 --tl:#2FC79A;--tlf:#0B3B2E;--bl:#56B4E9;--blf:#10304A;--am:#F0C040;--amf:#3F310C;
 --rd:#FF8A4C;--rdf:#45240F;--vi:#E29BC4;--vif:#3D1F32;
 --fc:#56B4E9;--lk:#56B4E9;--pg:#E29BC4;--ck:#F0C040;--cn:#B9C6D4;
+--tl-ink:#2FC79A;--bl-ink:#56B4E9;--am-ink:#F0C040;--rd-ink:#FF8A4C;--vi-ink:#E29BC4;
 }
 
 /* The two faces (design ui.md SS8). System sans for prose, mono for everything
@@ -83,7 +92,7 @@
    between two groups of a rail. */
 --s1:4px;--s2:8px;--s3:12px;--s4:16px;--s5:20px;--s6:24px;--s7:28px;
 --gut:20px;
-/* The rails (inspector, Break rail, event menu): the inset of every row and
+/* The rails (inspector, Break rail): the inset of every row and
    the height of a label-left/value-right row. Inside a sub-block (a
    destination, a RedoRoutes rule) the inset steps down to --s3. */
 --rail-px:16px;--row-h:32px;

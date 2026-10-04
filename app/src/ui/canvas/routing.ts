@@ -10,8 +10,11 @@
  * that depends on iteration order.
  */
 
-import type { Member, RedoGraph, Snapshot, TopologyDoc, XptMode } from '@/engine';
-import { buildReachability, initialNetState, isDatabase, linkRttMs, netFromSummary } from '@/engine';
+import type { Application, Member, RedoGraph, Snapshot, TopologyDoc, XptMode } from '@/engine';
+import {
+  applicationClient, applicationsOf, applyParticipants, findApplication, buildReachability, hasApplyInstance, initialApplyInstance, initialNetState,
+  instanceKey, isDatabase, isRac, linkRttMs, netFromSummary,
+} from '@/engine';
 import type { Geometry, NodeBox } from './layout';
 import { LAYOUT, nodeKey, readinessTargets, siteLabelRect } from './layout';
 
@@ -74,13 +77,19 @@ const hostSiteDown = (frame: Snapshot | null | undefined, doc: TopologyDoc, host
   return site !== undefined && net.downSites.some((s) => (s as string) === (site as string));
 };
 
+/** An instance is gone when its host or site is, or when it was stopped itself. */
+const instanceDown = (
+  frame: Snapshot | null | undefined, doc: TopologyDoc, m: Member, name: string, host: string,
+): boolean => hostSiteDown(frame, doc, host)
+  || (frame?.epoch.net.downInstances ?? []).includes(instanceKey(m.id, name));
+
 const memberDown = (doc: TopologyDoc, frame: Snapshot | null | undefined, m: Member): boolean => {
   if (frame) {
     const st = frame.members[m.id];
     if (st === 'down' || st === 'aborted') return true;
   }
   return m.instances.length > 0
-    && m.instances.every((i) => hostSiteDown(frame, doc, i.host as string));
+    && m.instances.every((i) => instanceDown(frame, doc, m, i.name, i.host as string));
 };
 
 const rttBetween = (doc: TopologyDoc, a: Member | undefined, b: Member | undefined): number => {
@@ -103,12 +112,13 @@ const publishes = (doc: TopologyDoc, graph: RedoGraph, frame: Snapshot | null | 
 };
 
 /**
- * The members the application's connect descriptor names, in the order it
+ * The members this application's connect descriptor names, in the order it
  * lists them: one per member, however many of its instances are addresses.
+ * The descriptor is the application's own when it has one, else the shared one.
  */
-export function applicationTargets(doc: TopologyDoc): Member[] {
+export function applicationTargets(doc: TopologyDoc, app: Application): Member[] {
   const out: Member[] = [];
-  for (const a of doc.client.addresses) {
+  for (const a of applicationClient(doc, app).addresses) {
     const m = doc.members.find((x) => x.instances.some((i) => i.host === a.host));
     if (m && !out.includes(m)) out.push(m);
   }
@@ -117,65 +127,64 @@ export function applicationTargets(doc: TopologyDoc): Member[] {
 
 /** What the application's host reaches at this instant, host by host. */
 function applicationReach(
-  doc: TopologyDoc, frame: Snapshot | null | undefined,
+  doc: TopologyDoc, frame: Snapshot | null | undefined, app: Application,
 ): (host: string) => boolean {
-  const app = doc.application;
-  if (!app) return () => false;
   const net = frame ? netFromSummary(frame.epoch.net) : initialNetState(doc);
   const reach = buildReachability(doc, net);
   return (host) => reach.reachable(app.host, host as typeof app.host);
 }
 
 /**
- * The application's lines: one to every member its ADDRESS_LIST names. The
- * line to the member publishing the service is the one carrying sessions; the
- * others are addresses that would refuse until the role moves there.
+ * Every application's lines: for each, one to every member its ADDRESS_LIST
+ * names. The line to the member publishing the service is the one carrying
+ * sessions; the others are addresses that would refuse until the role moves
+ * there.
  */
 function connectLinks(
   doc: TopologyDoc, graph: RedoGraph, geo: Geometry, frame: Snapshot | null | undefined,
 ): CanvasLink[] {
-  const app = doc.application;
-  if (!app) return [];
-  const akey = nodeKey('application', app.id as string);
-  if (geo.byKey[akey] === undefined) return [];
-  const appDown = hostSiteDown(frame, doc, app.host as string);
-  const reaches = applicationReach(doc, frame);
-  const service = doc.client.serviceName;
   const out: CanvasLink[] = [];
-  for (const m of applicationTargets(doc)) {
-    const mkey = nodeKey('member', m.id as string);
-    if (geo.byKey[mkey] === undefined) continue;
-    const hosts = m.instances.map((i) => i.host as string);
-    const mDown = memberDown(doc, frame, m);
-    const down = appDown || mDown;
-    const cut = !down && !hosts.some((h) => !hostSiteDown(frame, doc, h) && reaches(h));
-    const serving = !down && !cut && publishes(doc, graph, frame, m);
-    const rtt = linkRttMs(doc, app.host, m.instances[0]?.host ?? app.host);
-    const dl = docLinkBetween(doc, app.host as string, hosts[0]);
-    out.push({
-      id: `connect:${app.id as string}:${m.id as string}`,
-      ...(dl === undefined ? {} : { docLink: dl }),
-      kind: 'connect',
-      from: akey,
-      to: mkey,
-      active: serving,
-      up: !down && !cut,
-      cut,
-      down,
-      caption: serving ? 'sessions' : 'address',
-      value: down ? 'down' : cut ? 'cut' : `${rtt} ms`,
-      model: false,
-      arrow: false,
-      title: appDown
-        ? `${app.name} is down, so nothing dials ${m.name}.`
-        : mDown
-          ? `${app.name} lists ${m.name} in its ADDRESS_LIST, but ${m.name} is down.`
-          : cut
-            ? `${app.name} lists ${m.name} in its ADDRESS_LIST, but cannot reach it: the network between them is severed.`
-            : serving
-              ? `${app.name} connects to ${service} on ${m.name}; round trip ${rtt} ms.`
-              : `${app.name} lists ${m.name} in its ADDRESS_LIST; ${service} is not published there, so a connection is refused with ORA-12514. Round trip ${rtt} ms.`,
-    });
+  for (const app of applicationsOf(doc)) {
+    const akey = nodeKey('application', app.id as string);
+    if (geo.byKey[akey] === undefined) continue;
+    const appDown = hostSiteDown(frame, doc, app.host as string);
+    const reaches = applicationReach(doc, frame, app);
+    const service = applicationClient(doc, app).serviceName;
+    for (const m of applicationTargets(doc, app)) {
+      const mkey = nodeKey('member', m.id as string);
+      if (geo.byKey[mkey] === undefined) continue;
+      const hosts = m.instances.map((i) => i.host as string);
+      const mDown = memberDown(doc, frame, m);
+      const down = appDown || mDown;
+      const cut = !down && !hosts.some((h) => !hostSiteDown(frame, doc, h) && reaches(h));
+      const serving = !down && !cut && publishes(doc, graph, frame, m);
+      const rtt = linkRttMs(doc, app.host, m.instances[0]?.host ?? app.host);
+      const dl = docLinkBetween(doc, app.host as string, hosts[0]);
+      out.push({
+        id: `connect:${app.id as string}:${m.id as string}`,
+        ...(dl === undefined ? {} : { docLink: dl }),
+        kind: 'connect',
+        from: akey,
+        to: mkey,
+        active: serving,
+        up: !down && !cut,
+        cut,
+        down,
+        caption: serving ? 'sessions' : 'address',
+        value: down ? 'down' : cut ? 'cut' : `${rtt} ms`,
+        model: false,
+        arrow: false,
+        title: appDown
+          ? `${app.name} is down, so nothing dials ${m.name}.`
+          : mDown
+            ? `${app.name} lists ${m.name} in its ADDRESS_LIST, but ${m.name} is down.`
+            : cut
+              ? `${app.name} lists ${m.name} in its ADDRESS_LIST, but cannot reach it: the network between them is severed.`
+              : serving
+                ? `${app.name} connects to ${service} on ${m.name}; round trip ${rtt} ms.`
+                : `${app.name} lists ${m.name} in its ADDRESS_LIST; ${service} is not published there, so a connection is refused with ORA-12514. Round trip ${rtt} ms.`,
+      });
+    }
   }
   return out;
 }
@@ -1214,6 +1223,14 @@ export type Phase = 'neutral' | 'serving' | 'applying' | 'waiting' | 'observer' 
 
 export interface CardFrame {
   downInstances?: string[];
+  /**
+   * A RAC standby: the instance running apply. In Build mode it is the one
+   * the configuration starts with; under a frame, the one running apply at
+   * that instant -- absent while no instance is.
+   */
+  applyInstance?: string;
+  /** Multi-instance Redo Apply: every instance running apply, coordinator first. */
+  applyParticipants?: string[];
   phase: Phase;
   /** Hatched fill and a red border: this component is gone. */
   down: boolean;
@@ -1273,14 +1290,14 @@ export function cardFrameFor(
   doc: TopologyDoc, node: NodeBox, frame?: Snapshot | null,
 ): CardFrame {
   if (node.kind === 'application') {
-    const app = doc.application;
+    const app = findApplication(doc, node.id);
     if (!app) return NEUTRAL_FRAME;
     const hostDown = hostSiteDown(frame, doc, app.host as string);
     if (!frame || hostDown) return { ...NEUTRAL_FRAME, down: hostDown, crashed: hostDown };
     /* Serving while the service is published somewhere it reaches; waiting
        while it is not -- the card is up, and it is not getting anywhere. */
-    const reaches = applicationReach(doc, frame);
-    const served = applicationTargets(doc).some((m) => PUBLISHING.has(frame.members[m.id] ?? '')
+    const reaches = applicationReach(doc, frame, app);
+    const served = applicationTargets(doc, app).some((m) => PUBLISHING.has(frame.members[m.id] ?? '')
       && m.instances.some((i) => !hostSiteDown(frame, doc, i.host as string) && reaches(i.host as string)));
     return { ...NEUTRAL_FRAME, phase: served ? 'serving' : 'waiting', stalled: !served };
   }
@@ -1303,8 +1320,14 @@ export function cardFrameFor(
   const hosts = m.instances.map((i) => i.host as string);
   const downHosts = hosts.filter((h) => hostSiteDown(frame, doc, h)).length;
   const allDown = hosts.length > 0 && downHosts === hosts.length;
+  const downNames = m.instances
+    .filter((i) => instanceDown(frame, doc, m, i.name, i.host as string)).map((i) => i.name);
   const st = frame ? frame.members[m.id] : undefined;
   const down = allDown || st === 'down' || st === 'aborted';
+  const applyingNow = st === 'mounted-apply' || st === 'open-ro';
+  const apply = !hasApplyInstance(m) ? undefined
+    : frame ? (applyingNow ? frame.applyInstances?.[m.id] : undefined)
+      : initialApplyInstance(m) ?? undefined;
   /* "No active redo route reaches this member from the primary" is a fact
      about the instant once there is one: the alternate that has taken over
      reaches its destination, and a card left dashed under a line that is
@@ -1315,8 +1338,16 @@ export function cardFrameFor(
     down,
     crashed: allDown,
     stalled: st === 'stalled',
-    degraded: downHosts > 0 && !allDown,
-    ...(m.instances.length > 1 ? { downInstances: m.instances.filter((i) => down || hostSiteDown(frame, doc, i.host as string)).map((i) => i.name) } : {}),
+    degraded: downNames.length > 0 && !down,
+    ...(isRac(m)
+      ? { downInstances: down ? m.instances.map((i) => i.name) : downNames }
+      : {}),
+    ...(apply === undefined || down ? {} : {
+      applyInstance: apply,
+      applyParticipants: isDatabase(m)
+        ? applyParticipants(m, apply, m.instances.map((i) => i.name).filter((n) => !downNames.includes(n)))
+        : [apply],
+    }),
     unreachable: live ? !live.reachableFromPrimary : node.unreachable,
   };
 }
@@ -1353,7 +1384,7 @@ export function chipsFor(doc: TopologyDoc, node: NodeBox): CardChip[] {
     chips.push({
       text: 'APP',
       tone: 'ink',
-      title: 'The application: where the connect string is dialled from.',
+      title: 'An application: where its connect string is dialled from.',
     });
     return chips;
   }

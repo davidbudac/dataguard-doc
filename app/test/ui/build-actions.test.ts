@@ -19,7 +19,7 @@ import { classicDoc, doc } from '@/state/doc';
 import { resetHistory, undo } from '@/state/history';
 import { clearSelection, inspectorOpen, selection, viewport } from '@/state/view';
 import { Inspector } from '@/ui/inspector/Inspector';
-import { addSite } from '@/ui/inspector/edits';
+import { addHost, addSite } from '@/ui/inspector/edits';
 import { WHY } from '@/ui/inspector/why';
 import {
   buildActionsFor, buildActionsForKey, openInspectorFor, removeAction,
@@ -41,10 +41,11 @@ const linkRtt = (id: string): number =>
 
 /** A button in the rail, found by the words on it, with its reason beside it. */
 /* The rail's Remove sits in its header and reads "Remove"; the table's full
-   label ("Remove sby01") is its title. */
+   label ("Remove sby01") is its title, followed -- when it is refused -- by the
+   reason. */
 const byLabel = (root: HTMLElement, label: string): HTMLButtonElement | undefined =>
   [...root.querySelectorAll<HTMLButtonElement>('.insp-hd button.btn')]
-    .find((b) => b.title === label && b.textContent === 'Remove');
+    .find((b) => (b.title === label || b.title.startsWith(`${label}: `)) && b.textContent === 'Remove');
 
 beforeEach(() => {
   document.body.innerHTML = '';
@@ -74,11 +75,17 @@ describe('the rail and the table state one removal', () => {
       await tick();
       const button = byLabel(root, action!.label);
       expect(button, `no Remove button labelled ${action!.label}`).not.toBeUndefined();
-      const why = root.querySelector('.insp-why .why')?.textContent ?? null;
+      /* A refusal is the button's own: its title, and the visually hidden text
+         its `aria-describedby` names. No box under the header. */
+      expect(root.querySelector('.insp-why')).toBeNull();
+      const described = button!.getAttribute('aria-describedby');
+      const why = described === null ? null : root.querySelector(`#${described}`)?.textContent ?? null;
       const rendered = button!.disabled
         ? { state: 'off', why: why ?? '' }
         : { state: 'on' };
       expect(rendered).toEqual(action!.enabled);
+      if (button!.disabled) expect(button!.title).toBe(`${action!.label}: ${why}`);
+      else expect(button!.hasAttribute('aria-describedby')).toBe(false);
     });
   }
 
@@ -90,6 +97,24 @@ describe('the rail and the table state one removal', () => {
     const root = mount(Inspector);
     await tick();
     expect(byLabel(root, `Remove ${id}`)?.disabled).toBe(false);
+  });
+
+  it('offers Remove for a site holding only a bare host, and removes the site with the host', () => {
+    const site = addSite()!;
+    const host = addHost(site)!;
+    expect(topo().hosts.some((x) => x.id === host)).toBe(true);
+    const action = removeAction(topo(), site as unknown as string);
+    expect(action?.enabled).toEqual({ state: 'on' });
+    action!.run();
+    expect(topo().sites.some((s) => s.id === site)).toBe(false);
+    expect(topo().hosts.some((x) => x.id === host)).toBe(false);
+    undo();
+    expect(topo().sites.some((s) => s.id === site)).toBe(true);
+    expect(topo().hosts.some((x) => x.id === host)).toBe(true);
+  });
+
+  it('refuses Remove for a site a database still stands in', () => {
+    expect(removeAction(topo(), 'dc1')?.enabled).toEqual({ state: 'off', why: WHY.siteInUse });
   });
 
   it('refuses the last database with the last-database reason, not the primary one', () => {

@@ -12,8 +12,10 @@
  */
 
 import type { JSX } from 'preact';
+import { instanceKey } from '@/state/instanceKey';
+import { instanceLabel } from './aria';
 import type { NodeBox } from './layout';
-import { approxW, CARD, elide, MINI_ICON } from './measure';
+import { approxW, CARD, elide, instanceRowY, MINI_ICON } from './measure';
 import type { CardChip, CardFrame, Phase } from './routing';
 
 export type { CardChip, CardFrame, ChipTone, Phase } from './routing';
@@ -37,6 +39,14 @@ export interface NodeCardProps {
   /** Draw the port a line can be dragged from. */
   port?: boolean;
   interactive: boolean;
+  /**
+   * Each instance row of a RAC card is a control of its own, keyed
+   * `<member>~<n>` (`state/instanceKey.ts`). Offered in Build only: it is the
+   * rail's Instance form and Remove that give a row something to be selected
+   * for. `selectedInstance` is the zero-based row that is selected, if any.
+   */
+  instancesLive?: boolean;
+  selectedInstance?: number | null;
   tabIndex: number;
   onSelect?: (key: string, additive: boolean) => void;
   onHover?: (key: string | null) => void;
@@ -55,8 +65,15 @@ const PHASE_CLASS: Record<Phase, string> = {
   idle: 'is-sl',
 };
 
+/** The keys a focused instance row answers itself, as `onEntityKey` reads them. */
+const ROW_KEYS: ReadonlySet<string> = new Set([
+  'Enter', ' ', 'e', 'E', 'Delete', 'Backspace', 'Escape', 'F2', 'ContextMenu',
+]);
+
 const CHIP_H = 14;
 const chipWidth = (text: string): number => Math.round(approxW(text, 9, true) + 12);
+const APPLY_TAG = 'APPLY';
+const COORD_TAG = 'COORDINATOR';
 
 /** A small data centre or host icon whose bottom sits on a text baseline. */
 export function MiniIcon(props: { prefix: string; kind: 'host' | 'dc'; x: number; baseline: number }): JSX.Element {
@@ -198,15 +215,61 @@ export function NodeCard(props: NodeCardProps): JSX.Element {
         <text class="tp-sub" x={tx} y={nameY + 30}>{roleInHostLine ? node.lines.sub : roleText}</text>
       )}
       {node.instanceHosts?.map((inst, index) => {
-        const y = node.y + CARD.dbH + index * CARD.instanceRowH;
+        const y = instanceRowY(node, index);
         const host = `${inst.host} · ${inst.site}`;
         const down = frame.downInstances?.includes(inst.name) ?? false;
-        return <g key={inst.name} class="tp-instance">
-          <title>{inst.name} on host {inst.host} in {inst.site}{down ? ' — down' : ''}</title>
-          <rect class={`tp-card${down ? ' is-down' : ''}`} x={node.x + 8} y={y} width={node.w - 16} height={CARD.instanceRowH - 6} rx={3} />
-          <text class="tp-host" x={node.x + 16} y={y + 14}>{elide(inst.name, 27)}{down ? ' ×' : ''}</text>
+        /* One instance applying wears APPLY; under multi-instance Redo Apply
+           the coordinator -- the broker's apply instance -- wears COORDINATOR
+           and the others APPLY. */
+        const participants = frame.applyParticipants ?? [];
+        const coordinator = !down && frame.applyInstance === inst.name;
+        const apply = !down && (coordinator || participants.includes(inst.name));
+        const tag = coordinator && participants.length > 1 ? COORD_TAG : APPLY_TAG;
+        const tagW = chipWidth(tag);
+        const iKey = instanceKey(node.key, index);
+        const live = props.interactive && props.instancesLive === true;
+        const chosen = live && props.selectedInstance === index;
+        return <g
+          key={inst.name}
+          class={`tp-instance${live ? ' is-live' : ''}`}
+          {...(live ? {
+            role: 'button',
+            'aria-label': instanceLabel(node, index, { down, coordinator, apply }),
+            'aria-pressed': chosen,
+            tabindex: 0,
+            'data-node': iKey,
+            /* A click on the row selects the row and stops there: the card's own
+               click, which selects the database, is for the rest of the card.
+               A press still bubbles to the card, so a drag that starts on a
+               row moves the card -- the capture is taken only after the drag
+               threshold, and a click never reaches it. */
+            onClick: (ev: JSX.TargetedMouseEvent<SVGGElement>) => {
+              ev.stopPropagation();
+              props.onSelect?.(iKey, false);
+            },
+            onKeyDown: (ev: JSX.TargetedKeyboardEvent<SVGGElement>) => {
+              /* The keys every entity answers (`onEntityKey`), under the row's
+                 own key; anything else -- Tab, the arrows, the shortcuts -- goes
+                 on to the card as it always did. */
+              if (ROW_KEYS.has(ev.key) || (ev.key === 'F10' && ev.shiftKey)) {
+                props.onKeyDown?.(iKey, ev);
+                ev.stopPropagation();
+              }
+            },
+          } : {})}
+        >
+          <title>{inst.name} on host {inst.host} in {inst.site}{down ? ' — down' : coordinator ? ' — the apply instance' : apply ? ' — running Redo Apply' : ''}</title>
+          <rect class={`tp-card${down ? ' is-down' : ''}${chosen ? ' is-sel' : ''}`} x={node.x + 8} y={y} width={node.w - 16} height={CARD.instanceRowH - 6} rx={3} />
+          <text class="tp-host" x={node.x + 16} y={y + 14}>{elide(inst.name, apply ? 20 : 27)}{down ? ' ×' : ''}</text>
           <MiniIcon prefix={prefix} kind="host" x={node.x + 16} baseline={y + 29} />
           <text class="tp-sub" x={node.x + 16 + MINI_ICON.gap} y={y + 29}>{elide(host, 32)}</text>
+          {apply ? (
+            /* The one instance a RAC standby runs apply on (facts.md F2). */
+            <g class="tp-chip is-blue">
+              <rect class="tp-chip-bg" x={node.x + node.w - 14 - tagW} y={y + 4} width={tagW} height={CHIP_H} rx={3} />
+              <text class="tp-chip-tx" x={node.x + node.w - 14 - tagW / 2} y={y + 4 + 10} text-anchor="middle">{tag}</text>
+            </g>
+          ) : null}
         </g>;
       })}
       {chipNodes}

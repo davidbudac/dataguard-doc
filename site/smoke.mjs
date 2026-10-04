@@ -39,10 +39,11 @@ const PROBE_MS = 20_000;
    primary, a standby and an observer; Example 5-2 adds a far sync instance in
    front of the standby. Every member and every observer is a card on the
    canvas and a lane on the timeline; the application beside the primary is
-   one card more, and its point of view three lanes more. */
+   one card more, and its point of view three lanes more. Detailed timeline
+   also draws the application host as its own row. */
 const CASES = [
-  { preset: 'classic', cards: 4, lanes: 6 },
-  { preset: 'far-sync-zero-loss', cards: 5, lanes: 7 },
+  { preset: 'classic', cards: 4, lanes: 7 },
+  { preset: 'far-sync-zero-loss', cards: 5, lanes: 8 },
 ];
 
 const MIME = {
@@ -177,9 +178,9 @@ function load(url, timeoutMs = TIMEOUT_MS) {
 /* The canvas card and the timeline lane, counted by the class and the
    attribute the components actually carry. `data-node` is not the card's own
    mark -- site rects and link paths carry it too -- so the card is counted by
-   `class="tp-node"`, and the lookahead is what keeps `tp-nodes`, the group
+   `class="tp-node"` or Detailed timeline's `ln-card`, and the lookahead is what keeps `tp-nodes`, the group
    that holds them, out of the count. */
-const countCards = (dom) => [...dom.matchAll(/class="tp-node(?=["\s])/g)].length;
+const countCards = (dom) => [...dom.matchAll(/class="(?:tp-node|ln-card)(?=["\s])/g)].length;
 const countLanes = (dom) => [...dom.matchAll(/\sdata-lane="/g)].length;
 
 /* ---------------- the checks ---------------- */
@@ -241,7 +242,7 @@ for (const { preset, cards, lanes } of CASES) {
   /* Phase one: open the preset by name, and take the page's own share link.
      `mode=break` is where the timeline lives, and the preset carries the events
      its story needs, so there is a run to draw. */
-  const first = await load(`${base}?preset=${preset}&mode=break`);
+  const first = await load(`${base}?preset=${preset}&mode=simulate`);
   if (!first.ok) { fail(`${preset}: ${first.why}`); continue; }
   for (const line of first.console) fail(`${preset}: console said ${line}`);
 
@@ -289,24 +290,23 @@ for (const { preset, cards, lanes } of CASES) {
   if (drawnLanes === lanes) pass(`${preset}: ${lanes} timeline lanes`);
   else fail(`${preset}: expected ${lanes} timeline lanes, the page drew ${drawnLanes}`);
 
-  if (/<span class="chip-k">Outcome<\/span>/.test(run.dom)) {
-    const word = /<span class="chip-k">Outcome<\/span><span class="chip-v">([^<]*)/.exec(run.dom)?.[1] ?? '?';
-    pass(`${preset}: the readout names an outcome (${word.trim()})`);
-  } else {
-    fail(`${preset}: the readout carries no outcome chip`);
-  }
+  const outcome = /<span class="chip-k">Outcome<\/span><span class="chip-v">([^<]*)/.exec(run.dom)
+    ?? /<span class="sb-ro-i\b[^"]*"[^>]*><span class="sb-ro-k">Outcome<\/span>\s*<span class="sb-ro-v">([^<]*)/.exec(run.dom);
+  if (outcome) pass(`${preset}: the readout names an outcome (${outcome[1].trim()})`);
+  else fail(`${preset}: the readout carries no outcome`);
+
 }
 
 /* ---------------- every mode renders ---------------- */
 
 /* One canvas, four modes, and the thing that goes wrong in a browser and not
    in jsdom is a mode whose rail or panel throws on the way in. Each one is
-   asked for by name and has to draw the canvas and say nothing. */
+   asked for by name and has to draw its cards and say nothing. */
 console.log('\nmodes');
 for (const [query, mark, what] of [
-  ['mode=build', 'class="app m-build', 'Build'],
-  ['mode=break', 'class="app m-break', 'Break'],
-  ['mode=configure&panel=dgmgrl', 'class="app m-configure', 'Configure'],
+  ['mode=topology', 'class="app m-build', 'Topology'],
+  ['mode=timeline', 'class="app m-break', 'Detailed timeline'],
+  ['mode=config&panel=dgmgrl', 'class="app m-configure', 'Config'],
   ['mode=learn&lesson=failover-clocks', 'class="app m-learn', 'Learn'],
 ]) {
   const page = await load(`${base}?preset=classic&${query}`);
@@ -314,7 +314,7 @@ for (const [query, mark, what] of [
   for (const line of page.console) fail(`${what}: console said ${line}`);
   if (!page.dom.includes(mark)) { fail(`${what} mode did not open`); continue; }
   const cards = countCards(page.dom);
-  if (cards === 4) pass(`${what}: opens, draws the canvas, says nothing`);
+  if (cards === 4) pass(`${what}: opens, draws its cards, says nothing`);
   else fail(`${what}: expected 4 node cards, the page drew ${cards}`);
 }
 

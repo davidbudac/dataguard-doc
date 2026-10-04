@@ -1,7 +1,7 @@
 /**
  * The preset registry.
  *
- * Eleven documents, each one a worked example from the fact sheet or a shape
+ * Twelve documents, each one a worked example from the fact sheet or a shape
  * the workbench has to be able to draw. They are the scenario tests as well as
  * the starting points offered in the UI: `test/presets.test.ts` loads every
  * one, parses it, resolves its redo graph and runs its default event set.
@@ -11,7 +11,7 @@ import { classic, observeOnly } from './classic';
 import { farSyncHaPair, farSyncRoleChange, farSyncZeroLoss } from './farsync';
 import { cascadeTerminal, priorityAlternates } from './cascade';
 import {
-  bystanders, maxProtection, multiTargetThreeObservers, racPrimary,
+  bystanders, maxProtection, multiTargetThreeObservers, racPrimary, racStandby,
 } from './multi';
 import type { Preset, PresetGroup, PresetId } from './types';
 import { PRESET_GROUPS } from './types';
@@ -23,6 +23,7 @@ export * from './build';
 export {
   bystanders, cascadeTerminal, classic, farSyncHaPair, farSyncRoleChange, farSyncZeroLoss,
   maxProtection, multiTargetThreeObservers, observeOnly, priorityAlternates, racPrimary,
+  racStandby,
 };
 
 /** Registry order is the order the UI offers them: simplest first. */
@@ -36,6 +37,7 @@ export const PRESETS: readonly Preset[] = [
   priorityAlternates,
   multiTargetThreeObservers,
   racPrimary,
+  racStandby,
   bystanders,
   maxProtection,
 ];
@@ -43,7 +45,7 @@ export const PRESETS: readonly Preset[] = [
 export const PRESET_IDS: readonly PresetId[] = PRESETS.map((p) => p.id);
 
 /**
- * The same eleven, filed under their headings -- what the picker offers.
+ * The same twelve, filed under their headings -- what the picker offers.
  *
  * Groups keep the order `PRESET_GROUPS` declares and presets keep registry
  * order inside a group, so the list is stable whatever a member's group is

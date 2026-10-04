@@ -7,13 +7,16 @@
  * one is chosen anyway. And only the master coordinates fast-start failover:
  * with fast-start failover disabled every observer has the same
  * functionality, so the master chip is not a permanent rank.
+ *
+ * Its name is the rail's header (`Inspector.tsx`), not a row: what is left is
+ * where it runs, whether it does, and -- folded -- the command it starts with.
  */
 
 import type { Observer, TopologyDoc } from '@/engine';
 import { hostId } from '@/engine';
-import { Action, Check, Group, Note, Text } from './controls';
-import { Pick } from './controls';
-import { patchObserver, renameObserver, setMasterObserver } from './edits';
+import { Action, Check, Fold, Group, Note, Pick, Text } from './controls';
+import { patchObserver, setMasterObserver } from './edits';
+import { OBSERVER_CMD_ID } from './sections';
 import { off, ON, WHY } from './why';
 
 export interface ObserverFormProps {
@@ -29,13 +32,6 @@ export function ObserverForm({ observer, doc }: ObserverFormProps) {
   return (
     <>
       <Group title="General">
-        <Text
-          name="Name" prose
-          value={id as string}
-          onCommit={(v) => renameObserver(id, v)}
-          focusKey={`name:${id as string}`}
-          note="The name START OBSERVER gives it, and how SET MASTEROBSERVER TO names it."
-        />
         <Pick
           name="Host" prose
           value={observer.host as string}
@@ -78,7 +74,16 @@ export function ObserverForm({ observer, doc }: ObserverFormProps) {
         </Note>
       </Group>
 
-      <Group title="START OBSERVER">
+      {/* The command it is started with: what it runs as, not where it runs
+          or whether -- so it folds, and its hint is the one phrase that says
+          whether anything is set. */}
+      <Fold
+        id={OBSERVER_CMD_ID}
+        title="START OBSERVER"
+        hint={[observer.fileIs, observer.logfileIs, observer.connectIdentifier].some((v) => v !== undefined)
+          ? 'customised'
+          : 'defaults'}
+      >
         <Text
           name="FILE IS"
           value={observer.fileIs ?? ''}
@@ -128,7 +133,7 @@ export function ObserverForm({ observer, doc }: ObserverFormProps) {
           <span class="mono"> FS_FAILOVER_STATUS</span> reads
           <span class="mono"> DISABLED</span>.
         </Note>
-      </Group>
+      </Fold>
     </>
   );
 }

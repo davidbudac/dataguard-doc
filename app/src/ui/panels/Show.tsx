@@ -8,14 +8,19 @@
  *
  * The playhead is what makes it a panel rather than a picture. `frame` is
  * `stateAt(trace, tNow)`, so scrubbing walks the mock through the states the
- * simulation went through: once the role has moved, the configuration is
- * resolved for the primary at that moment -- which is exactly what
- * `SHOW CONFIGURATION WHEN PRIMARY IS name` asks for -- and the member states
- * beside the heading are the ones the model holds at t.
+ * simulation went through: once the role has moved, every block prints what
+ * the broker would print then (the run, GEN-30) -- the new primary as primary,
+ * the former primary disabled and awaiting reinstatement after a failover, the
+ * target the reciprocal one -- and the member states beside the heading are
+ * the ones the model holds at t. `SHOW CONFIGURATION WHEN PRIMARY IS` is a
+ * different question (members only, no status) and is not what this panel
+ * draws.
  */
 
 import { signal } from '@preact/signals';
-import { declaredPrimary, generateShowMocks } from '@/engine';
+import {
+  declaredPrimary, generateShowMocks, hasApplyInstance, initialApplyInstance, stoppedInstances,
+} from '@/engine';
 import { frame, topology, trace } from '@/state/derived';
 import { tNow } from '@/state/view';
 import { fmt } from '@/ui/timeline/build';
@@ -32,10 +37,34 @@ export function Show() {
   const declared = declaredPrimary(doc);
   const at = f?.epoch.primary ?? null;
   const moved = at !== null && declared !== null && at !== declared;
+  /* How the primary moved is the run's outcome: a switchover leaves a plain
+     standby behind, a failover (observer or manual) a disabled one. */
+  const outcome = t?.facts.outcome ?? null;
+  const roleChange = !moved ? null : outcome === 'switchover' ? 'switchover' : 'failover';
 
+  /* Before any event the steady state: each RAC standby on the instance it
+     starts with. */
+  const steadyApply: Record<string, string> = {};
+  for (const m of doc.members) {
+    const first = hasApplyInstance(m) ? initialApplyInstance(m) : null;
+    if (first !== null) steadyApply[m.id as string] = first;
+  }
   const files = generateShowMocks(doc, {
     verbose: showVerbose.value,
-    ...(moved ? { whenPrimaryIs: at } : {}),
+    ...(f !== null && at !== null
+      ? {
+        run: {
+          primary: at, roleChange, states: f.members as Readonly<Record<string, string>>,
+          observers: f.observers as Readonly<Record<string, string>>,
+        },
+      }
+      : {}),
+    applyInstances: f === null ? steadyApply : f.applyInstances ?? {},
+    downInstances: f === null ? [] : stoppedInstances(doc, f.epoch.net),
+    /* The old primary a manual failover found still open, drawn open beside
+       the new one: the configuration's line for it says the drawing differs. */
+    openAsPrimary: f === null || at === null ? []
+      : Object.entries(f.members).filter(([id, state]) => state === 'open-rw' && id !== at).map(([id]) => id),
   });
 
   const nameOf = (id: string): string => doc.members.find((m) => m.id === id)?.name ?? id;
@@ -64,10 +93,9 @@ export function Show() {
           widths and every line marked <span class="mono">(model)</span> were not verified
           against Oracle documentation.
           {moved
-            ? ' The role has moved at this point in the run, so the configuration below is'
-              + ` resolved with ${nameOf(at)} as primary -- the question DGMGRL's`
-              + ' WHEN PRIMARY IS form asks.'
-            : ' Scrub the timeline in Break mode and this walks with it.'}
+            ? ' The role has moved at this point in the run, so the blocks below print what the'
+              + ` broker would print now, with ${nameOf(at)} as primary.`
+            : ' Scrub the timeline in Topology or the detailed timeline and this walks with it.'}
         </p>
         {f === null ? null : (
           <p class="row">

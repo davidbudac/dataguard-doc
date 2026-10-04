@@ -499,9 +499,26 @@ describe('SIM-07: a manual failover with the primary still open', () => {
       expect(f?.basis, loc).toBe('documented');
       expect(f?.cite, loc).toContain('FAILOVER.PRIMARY_SHUT_DOWN');
       expect(f?.message, loc).toContain('ensure that the primary database is shut down');
-      /* And the two are never both open at the end of the run. */
       expect(endState(t, 'sby01'), loc).toBe('open-rw');
-      expect(endState(t, 'prm01'), loc).not.toBe('open-rw');
+      if (loc === 'none') {
+        /* Fast-start failover disabled: nothing documented closes the old
+           primary, so it stays open beside the new one: the two are both open
+           at the end of the run, and the run says that drawing is its own
+           reading. */
+        expect(endState(t, 'prm01'), loc).toBe('open-rw');
+        const open = finding(t, 'FAILOVER.FORMER_PRIMARY_OPEN');
+        expect(open?.basis, loc).toBe('model');
+        expect(open?.cite, loc).toEqual(['FAILOVER.PRIMARY_SHUT_DOWN', 'FSFO.MANUAL_FAILOVER_CONDITIONS']);
+        expect(open?.note, loc).toMatch(/^FAILOVER\.FORMER_PRIMARY_OPEN:/);
+      } else {
+        /* Fast-start failover enabled (owner decision D5, 2026-10-01): the old
+           primary has lost its target, so it is stalled and then follows
+           FastStartFailoverPmyShutdown -- a model, not a documented outcome. */
+        expect(endState(t, 'prm01'), loc).toBe('aborted');
+        expect(finding(t, 'FAILOVER.FORMER_PRIMARY_OPEN'), loc).toBeUndefined();
+        expect(finding(t, 'FAILOVER.FORMER_PRIMARY_STALLS')?.basis, loc).toBe('model');
+      }
+      expect(finding(t, 'FAILOVER.FORMER_PRIMARY_MOUNTED'), loc).toBeUndefined();
     }
   });
 

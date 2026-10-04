@@ -22,7 +22,7 @@ import { defaultDestProps } from '../serialize/schema';
 import type { CitationId } from '../citations';
 import { documented, model } from '../types/claims';
 import type { DestProps, Member, RouteDest, TopologyDoc, XptMode } from '../types/topology';
-import { declaredPrimary, isDatabase, isFarSync } from '../types/topology';
+import { declaredPrimary, isDatabase, isFarSync, isRac } from '../types/topology';
 import type { GeneratedFile, Line, Span } from './lines';
 import { blank, cmd, comment, hl, note, span } from './lines';
 
@@ -216,7 +216,128 @@ export function generateInitOraFiles(doc: TopologyDoc, opts: InitOraOptions = {}
     if (slots.length === 0) continue;
     out.push(generateInitOra(doc, { ...opts, primary: primaryId, member: m.id }));
   }
+  const rac = generateRacParameters(doc, primaryId);
+  if (rac !== null) out.push(rac);
+  const srl = generateStandbyRedoLogs(doc, primaryId);
+  if (srl !== null) out.push(srl);
   return out;
+}
+
+/* ---------------- RAC: per-instance parameters and standby redo logs ---------------- */
+
+/**
+ * What a RAC database adds to the parameter files (facts.md F6, F7): one
+ * SPFILE whose `<sid>.` entries set one instance and `*.` entries every
+ * instance, a distinct INSTANCE_NUMBER and THREAD per instance, and `%t` in
+ * LOG_ARCHIVE_FORMAT. Only written when some database runs more than one
+ * instance, so a configuration without RAC reads as it always did. The
+ * standby redo logs are SQL, not parameters: `generateStandbyRedoLogs`
+ * writes them (GEN-28).
+ */
+export function generateRacParameters(doc: TopologyDoc, primaryId: MemberId): GeneratedFile | null {
+  const racs = doc.members.filter((m) => isDatabase(m) && m.enabled && isRac(m));
+  const primary = doc.members.find((m) => m.id === primaryId);
+  if (racs.length === 0 || !primary) return null;
+  const lines: Line[] = [];
+
+  lines.push(comment('one SPFILE per RAC database: <sid>.name sets one instance, *.name',
+    { basis: 'documented', cite: ['RAC.SPFILE_SID_PREFIX'] }));
+  lines.push(comment('every instance that has no value of its own'));
+  lines.push(blank());
+  for (const m of racs) {
+    lines.push(comment(`${m.name}`));
+    m.instances.forEach((inst, i) => {
+      lines.push(cmd([span(`${inst.name}.instance_number=`), hl(String(i + 1))],
+        { basis: 'documented', cite: ['RAC.INSTANCE_NUMBER'] }));
+      lines.push(cmd([span(`${inst.name}.thread=`), hl(String(i + 1))], {
+        basis: 'model', cite: ['RAC.INSTANCE_NUMBER'],
+        note: 'Every instance needs a different INSTANCE_NUMBER, and a THREAD that differs from the others where one is set; numbering both in instance order is this page\'s choice. THREAD is superseded by INSTANCE_NAME and INSTANCE_NUMBER in 19c.',
+      }));
+    });
+    lines.push(cmd([span("*.log_archive_format='"), hl('%t_%s_%r.arc'), span("'")], {
+      basis: 'model', cite: ['RAC.SAME_DEST_EVERY_INSTANCE'],
+      note: 'The %t (thread) element is mandatory for Oracle RAC, and every instance of a Data Guard database must use the same LOG_ARCHIVE_FORMAT; the rest of the pattern is an example.',
+    }));
+    lines.push(blank());
+  }
+  if (isRac(primary)) {
+    lines.push(nDoc(
+      `set the same LOG_ARCHIVE_DEST_n on every instance of ${primary.name} (*.log_archive_dest_n), with a SERVICE whose address list reaches every instance of the standby`,
+      ['RAC.SAME_DEST_EVERY_INSTANCE'],
+    ));
+    lines.push(blank());
+  }
+
+  return {
+    id: 'initora.rac', title: 'RAC -- per-instance parameters',
+    filename: 'init.ora', syntax: 'initora', lines, findings: [],
+  };
+}
+
+/* ---------------- RAC: standby redo logs ---------------- */
+
+/**
+ * The standby redo logs a RAC configuration needs (GEN-28): SQL, so a file of
+ * its own rather than lines in an init.ora. They belong on every member that
+ * receives redo -- the standbys and any far sync instance now, and the primary
+ * for after a role change ("Ensure standby redo logs are configured on the
+ * primary and target standby databases") -- with a group set for each redo
+ * thread of the redo source: the primary's instances for a receiver, the
+ * largest other database for the primary itself. Written when some database
+ * runs more than one instance, which is when the thread count matters.
+ */
+export function generateStandbyRedoLogs(doc: TopologyDoc, primaryId: MemberId): GeneratedFile | null {
+  const primary = doc.members.find((m) => m.id === primaryId);
+  const racs = doc.members.filter((m) => isDatabase(m) && m.enabled && isRac(m));
+  if (racs.length === 0 || !primary) return null;
+  const v26 = doc.config.edition === '26ai';
+  const lines: Line[] = [];
+
+  /* TXT-14: the rule is worded differently in 26ai (at least the SAME number
+     of groups) than in 19c and 21c (at least ONE MORE). */
+  lines.push(comment(`standby redo logs on every member that receives redo: for each redo thread of the redo source,`,
+    { basis: 'documented', cite: [v26 ? 'RAC.SRL_PER_THREAD_26AI' : 'RAC.SRL_PER_THREAD'] }));
+  lines.push(comment(v26
+    ? 'at least the same number of standby redo log groups as the online redo log groups'
+    : 'at least one more standby redo log group than the online redo log groups'));
+  lines.push(comment('(query V$LOG and V$THREAD at the redo source for the groups and the threads)'));
+
+  const others = doc.members.filter((m) => isDatabase(m) && m.enabled && m.id !== primaryId);
+  const receivers = doc.members.filter((m) => (isDatabase(m) || isFarSync(m)) && m.enabled);
+  for (const r of receivers) {
+    const source = r.id === primaryId
+      ? Math.max(1, ...others.map((o) => o.instances.length))
+      : primary.instances.length;
+    const from = r.id === primaryId
+      ? 'the largest other database, which becomes the redo source after a role change'
+      : primary.name;
+    lines.push(blank());
+    lines.push(comment(`on ${r.name}: ${source} redo thread${source === 1 ? '' : 's'} of ${from}`));
+    for (let t = 1; t <= source; t++) {
+      for (let g = 0; g < 3; g++) {
+        lines.push(cmd([span('ALTER DATABASE ADD STANDBY LOGFILE THREAD '), hl(String(t)), span(' SIZE 500M;')],
+          { basis: 'documented', cite: [v26 ? 'RAC.SRL_PER_THREAD_26AI' : 'RAC.SRL_PER_THREAD'] }));
+      }
+    }
+    if (isDatabase(r) && isRac(r)) {
+      lines.push(nDoc(
+        `${r.name} is RAC too: its standby redo logs must sit where all of its instances can reach them, such as Oracle ASM or a cluster file system`,
+        ['RAC.SRL_SHARED'],
+      ));
+    }
+  }
+  lines.push(blank());
+  lines.push(nModel(
+    v26
+      ? 'three groups per thread and SIZE 500M are examples: three is more than the two online groups each instance must have at least, so it satisfies the 26ai rule (and the 19c one), and each standby redo log must be at least as large as the largest online redo log'
+      : 'three groups per thread and SIZE 500M are examples: three is one more than the two online groups each instance must have at least, and each standby redo log must be at least as large as the largest online redo log',
+    'The rule is documented; the online log count and size of this drawing are not modelled, so the numbers are placeholders.',
+    [v26 ? 'RAC.SRL_PER_THREAD_26AI' : 'RAC.SRL_PER_THREAD', 'RAC.INSTANCE_NUMBER'],
+  ));
+  return {
+    id: 'srl.rac', title: 'RAC -- standby redo logs', filename: 'standby-redo-logs.sql',
+    syntax: 'sql', lines, findings: [],
+  };
 }
 
 /* ---------------- resolving the destinations ---------------- */
@@ -325,12 +446,20 @@ function blockLines(
     span('    REOPEN='),
     p.reopenSeconds === defaults.reopenSeconds ? span(String(p.reopenSeconds)) : hl(String(p.reopenSeconds)),
     span(' MAX_FAILURE='),
-    p.maxFailure === defaults.maxFailure ? span(String(p.maxFailure)) : hl(String(p.maxFailure)),
+    /* The broker default is 1 inside a parenthesised group, 0 outside (GEN-21). */
+    p.maxFailure === defaultDestProps({ inGroup: s.group !== undefined }).maxFailure
+      ? span(String(p.maxFailure)) : hl(String(p.maxFailure)),
   ], { basis: 'documented', cite: ['DEST.REOPEN', 'DEST.MAX_FAILURE'] }));
 
   if (s.alternate !== undefined) {
     out.push(cmd([span('    ALTERNATE='), hl(`LOG_ARCHIVE_DEST_${s.alternate}`)],
       { basis: 'documented', cite: ['DEST.ATTRIBUTE_SPELLINGS'] }));
+  }
+  /* The worked example writes the back-reference on the alternate too:
+     LOG_ARCHIVE_DEST_3='SERVICE=boston ASYNC ALTERNATE=LOG_ARCHIVE_DEST_2 (TXT-26). */
+  if (s.alternateFor !== undefined) {
+    out.push(cmd([span('    ALTERNATE='), hl(`LOG_ARCHIVE_DEST_${s.alternateFor}`)],
+      { basis: 'documented', cite: ['DEST.ALTERNATE_STATE_EXAMPLE'] }));
   }
   if (s.group !== undefined && s.priority !== undefined) {
     out.push(cmd([span('    GROUP='), hl(String(s.group)), span(' PRIORITY='), hl(String(s.priority))],

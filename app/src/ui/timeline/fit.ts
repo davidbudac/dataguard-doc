@@ -13,7 +13,7 @@ export function fitTimeline(trace: Trace, doc: TopologyDoc, view: TimelineView, 
   // Brace packing depends on width; settle it before measuring the final scale.
   for (let i = 0; i < 4; i++) {
     const scale = height / model.height;
-    const next = buildTimeline(trace, doc, { ...view, width: Math.max(640, view.width / scale) });
+    const next = buildTimeline(trace, doc, { ...view, width: Math.max(640, (view.width - 1) / scale) });
     if (next.height === model.height) return { model: next, scale };
     model = next;
   }

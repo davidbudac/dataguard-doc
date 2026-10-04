@@ -10,7 +10,7 @@ It assumes a **working** broker configuration — primary, target standby, one o
 fast-start failover already enabled. It uses the same fixture as every other asset in this
 repo: primary `prm01` on host `dc1-prm01`, standby `sby01` on host `dc2-sby01`, role-based
 service `app_svc`. The observer host, which the other assets never need to name, is
-`dc3-obs01` here. Substitute your own names throughout. (The workbench's Build and Configure modes can
+`dc3-obs01` here. Substitute your own names throughout. (The workbench's Build and Config modes can
 carry your real names and parameter values, export them as a `.dgtopo.json` file, and
 share them as a link — handy for keeping a drill's parameter set next to the page that
 explains it. Drills 9–12 need more members than this fixture; each says which.)
@@ -33,6 +33,7 @@ anyone else depends on.
 | 10 | Manual failover to a cascaded terminal standby (unsent redo) | Workbench preset `cascade-terminal` |
 | 11 | Multiple FSFO targets with the first candidate down | Workbench preset `multi-target-three-observers` |
 | 12 | Master observer lost, with and without the nomination precondition | Workbench preset `multi-target-three-observers` |
+| 13 | Manual failover with the old primary still open | Workbench decision D5 (`FAILOVER.FORMER_PRIMARY_STALLS`) |
 
 Baseline for every drill unless it says otherwise: **MaxAvailability, `LogXptMode=SYNC`,
 all broker properties at their defaults** — the same configuration the figures draw.
@@ -52,6 +53,11 @@ What you need:
   from backup instead of a one-command reinstate.
 - A client host (your workstation is fine) with `sqlplus` and a `tnsnames.ora` entry for
   the two-address descriptor (drill 7 builds it).
+- DGMGRL connected **with a password** (`CONNECT sys@prm01`, or any account holding
+  SYSDBA or SYSDG in the password file), not with `/`. The broker reuses the credentials
+  to reach the other members, and under `/` that part fails: on 19.27 the target check in
+  `SHOW FAST_START FAILOVER` prints `ORA-01017`. The role changes below all reach the
+  other member.
 - The observer started with a log file you can tail — the drills watch it constantly:
 
   ```
@@ -196,6 +202,15 @@ Cleanup (this is the reinstate pattern every failover drill reuses):
    needs to be reinstated`, and its `FS_FAILOVER_STATUS` reads `REINSTATE REQUIRED`.
    If auto-reinstate doesn't fire (or you disabled it), do it by hand from DGMGRL
    connected to the new primary: `REINSTATE DATABASE 'prm01';`
+
+   If the reinstate fails with `ORA-16653` and the old primary's alert log shows
+   `ORA-38795` with `ORA-10069: Flashback images for offline file n are lost`, a datafile
+   was offline on the old primary when it failed. Flashback Database cannot take that
+   file back, so the conversion to a standby fails (`ORA-16461`). Mark the file `OFFLINE
+   FOR DROP` from inside its PDB, then reinstate again. Afterwards, on the new standby,
+   stop apply, restore the file from the new primary (RMAN `RESTORE DATAFILE n FROM
+   SERVICE '<new primary>';`), bring it online and restart apply. This happened on the
+   19.27 test pair on 2026-10-01.
 3. Wait for `SHOW CONFIGURATION` to report `SUCCESS`, then put the roles back:
    `SWITCHOVER TO 'prm01';` — with fast-start failover enabled, a switchover is only
    permitted to the fast-start failover target, which after the reinstate is exactly
@@ -290,17 +305,28 @@ Steps:
    pkill -9 -f "dgmgrl.*observer" || kill -9 <observer-pid>
    ```
 
+   If something supervises the observer (a systemd unit, a restart loop), stop that
+   first. Otherwise the observer comes back on its own, which on the 19.27 test pair took
+   about 20 seconds. That is shorter than the threshold, so the drill would never see a
+   full unobserved threshold.
+
 2. **Expected: the probe never misses a beat.** Commits keep flowing; the standby keeps
    applying.
-3. On the primary:
+3. On the primary and on the target standby:
 
    ```sql
    SELECT fs_failover_status, fs_failover_observer_present FROM v$database;
    ```
 
-   **Expected: `PRIMARY UNOBSERVED` / `NO`.** `SHOW CONFIGURATION` degrades to a
-   warning carrying `ORA-16820` ("fast-start failover observer is no longer observing
-   this database") — the *standing* condition. You should **not** see `ORA-16658`;
+   **Expected on the primary: `SYNCHRONIZED` / `NO`.** It still reaches its target, so
+   its own status does not change. **On the target standby: `PRIMARY UNOBSERVED` /
+   `NO`**, which appeared about 20 seconds after the observer stopped on 19.27. Before
+   2026-10-01 this step expected `PRIMARY UNOBSERVED` on the primary; the live check
+   showed the split above. `SHOW CONFIGURATION` lists `ORA-16820` ("fast-start failover
+   observer is no longer observing this database") under the primary. On 19.27, with
+   the observer gone for minutes, it printed `Error: ORA-16820: ...` and `Configuration
+   Status: ERROR`, not a warning. That is the *standing* condition. You should **not**
+   see `ORA-16658`;
    that one is raised only when a failover is actually attempted while unobserved,
    which is the next step.
 4. Optional sub-step — the `ifDiedNow` cost. While still unobserved, `SHUTDOWN ABORT`
@@ -813,6 +839,65 @@ Steps:
 Cleanup: restart every observer with its log file, re-enable fast-start failover, and
 confirm `SYNCHRONIZED` / `YES` and a `SUCCESS` configuration.
 
+Observed on 19.27 (2026-10-01): with two observers registered, `STOP OBSERVER` naming
+the master fails with `Error: ORA-16878: master observer cannot be stopped`, and
+`STOP OBSERVER ALL` stops both.
+
+## Drill 13 — manual failover with the old primary still open
+
+**Claim under test** (decision D5 of the 2026-10-01 fact check): with fast-start
+failover enabled, a manual `FAILOVER` while the primary is still up does not leave two
+primaries. The old primary stalls the moment its target stops receiving. With
+`FastStartFailoverPmyShutdown=TRUE` it shuts itself down one threshold later.
+
+Preconditions: the drill-0 baseline is healthy. The probe loop commits on `prm01`
+**directly**, through its own connect string rather than the two-address descriptor.
+The drill-0 query loops once a second on both databases.
+
+Steps:
+
+1. From DGMGRL connected to the target with a password: `FAILOVER TO 'sby01';`
+2. **Expected on `prm01`:**
+   - As soon as the target begins converting, `FS_FAILOVER_STATUS` reads `STALLED` and
+     commits hang.
+   - A few seconds later it reads `REINSTATE REQUIRED`, while `prm01` is still
+     `READ WRITE`.
+   - One threshold after the stall began, the instance stops. The alert log reads
+     "Primary has heard from neither observer nor target standby within
+     FastStartFailoverThreshold seconds. It is likely an automatic failover has already
+     occurred. Primary is shutting down." and then `ORA-16830: primary isolated from
+     fast-start failover partners longer than FastStartFailoverThreshold seconds:
+     shutting down`.
+3. **Expected on `sby01`:** primary, open, `REINSTATE REQUIRED`. `SHOW CONFIGURATION`
+   lists `prm01 - (*) Physical standby database (disabled)` with `ORA-16661`, and
+   fast-start failover is still `Enabled in Zero Data Loss Mode`.
+4. Probe: `prm01` acknowledges no commit after the stall began, and the new primary has
+   the last one it did acknowledge. RPO 0.
+5. Optional, while `prm01` is still down:
+   - `DISABLE FAST_START FAILOVER;` without FORCE.
+   - Or, from a fresh baseline after an observer-initiated failover, `STOP OBSERVER`.
+
+   On 19.27 both were accepted: neither waits for the former primary. If you disable,
+   re-enable it after the reinstate. `ENABLE` warns `ORA-16827` if the new primary has
+   Flashback Database off.
+
+Observed on 19.27 (2026-10-01, threshold 30 s):
+- The `FAILOVER` command took 16 s.
+- `prm01` stalled 7 s after the command and read `REINSTATE REQUIRED` 11 s after that.
+- It shut down 31 s after the stall began.
+- The last acknowledged commit was the one just before the stall, and the new primary
+  had it.
+
+For comparison, an observer-initiated failover after `SHUTDOWN ABORT` of the primary:
+- The alert log read "Attempting Fast-Start Failover because the threshold of 30
+  seconds has elapsed" 32.6 s after the abort.
+- Terminal recovery took 3.6 s and lost no data.
+- The new primary was open 37 s after the abort.
+- Unobserved and without a valid target for more than three minutes after that, it
+  never stalled.
+
+Cleanup: as drill 1 (`STARTUP MOUNT`, reinstate, switch back).
+
 ## Sources
 
 The drills' expected observations rest on the same verified facts as the figures and
@@ -889,7 +974,7 @@ against a mounted 19c database or an installation's privilege configuration.
    the imported standby becomes the primary in a simulation.
 
 Browser automation note (2026-09-28): this environment's headless Chrome falls
-back from loopback HTTP to an inlined `file://` bundle. The legacy-link Break-mode
+back from loopback HTTP to an inlined `file://` bundle. The legacy-link Simulate-mode
 and compressed-permalink smoke assertions fail on both the unchanged baseline
 and the collector build. Interactive HTTP checks of that legacy link succeed.
 Keep this limitation separate from the live Oracle acceptance drill above.

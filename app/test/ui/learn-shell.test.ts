@@ -52,7 +52,7 @@ beforeEach(() => {
 });
 
 describe('learn shell', () => {
-  it('lists the nine lessons as real links', () => {
+  it('lists the ten lessons as real links', () => {
     const root = mount();
     const links = [...root.querySelectorAll('.learn-ol a')];
     expect(links.length).toBe(LESSONS.length);
@@ -108,12 +108,12 @@ describe('learn shell', () => {
     expect(lessonStep.value).toBe(0);
   });
 
-  it('"Open in Break" leaves Learn for the timeline', async () => {
+  it('"Open in the detailed timeline" leaves Learn for the timeline', async () => {
     lessonId.value = 'failover-clocks';
     const root = mount();
     const step = [...root.querySelectorAll('.ls')][0] as HTMLElement;
     [...step.querySelectorAll('button')]
-      .find((b) => b.textContent === 'Open in Break')?.click();
+      .find((b) => b.textContent === 'Open in the detailed timeline')?.click();
     await tick();
     expect(mode.value).toBe('break');
   });
@@ -164,7 +164,7 @@ describe('learn shell', () => {
     expect(other.querySelector('.lesson-fn')).toBeNull();
   });
 
-  it('says so, in words, when a lesson id is not one of the nine', () => {
+  it('says so, in words, when a lesson id is not one of the ten', () => {
     lessonId.value = 'not-a-lesson';
     const root = mount();
     expect(root.textContent).toContain('No lesson is called');
@@ -192,13 +192,13 @@ describe('the workbench header', () => {
     lessonId.value = 'failover-clocks';
     const root = mountHeader();
     expect(buttons(root).map((b) => b.textContent))
-      .toEqual(['Open in Break', 'Open in Build']);
+      .toEqual(['Open in the detailed timeline', 'Open in Topology']);
     /* The row is the first thing in the workbench column, and it is a real
        header element rather than a band of text above the drawing. */
     expect(root.firstElementChild?.tagName).toBe('HEADER');
   });
 
-  it('"Open in Break" sets the step up and leaves for the timeline', async () => {
+  it('"Open in the detailed timeline" sets the step up and leaves for the timeline', async () => {
     lessonId.value = 'failover-clocks';
     lessonStep.value = 1;
     const root = mountHeader();
@@ -210,7 +210,7 @@ describe('the workbench header', () => {
     if (lesson) expect(doc.value.topology).toEqual(stepTopology(lesson, 1));
   });
 
-  it('"Open in Build" takes the same document to Build', async () => {
+  it('"Open in Topology" takes the same document to Topology', async () => {
     lessonId.value = 'failover-clocks';
     const root = mountHeader();
     buttons(root)[1]?.click();

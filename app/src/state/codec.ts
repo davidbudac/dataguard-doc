@@ -122,12 +122,17 @@ function parseUi(raw: unknown, dropped: string[]): WireUi {
          because it is measured off a rectangle that is not on the grid. An
          entry with only one of the two sizes is read as a plain offset --
          an older page wrote neither, so an older link reads exactly as it did. */
+      /* A data centre's place in the column order (doc.ts `LayoutOverride`). */
+      const order = typeof o['order'] === 'number' && Number.isInteger(o['order'])
+        && o['order'] >= 0 && o['order'] < 1000 ? o['order'] : null;
+      const kept = order === null ? {} : { order };
       layout[id] = w !== null && h !== null
         ? {
           dx: Math.round(clamp(dx)), dy: Math.round(clamp(dy)),
           w: Math.round(Math.max(16, Math.min(8000, w))), h: Math.round(Math.max(16, Math.min(8000, h))),
+          ...kept,
         }
-        : { dx: snapToGrid(clamp(dx)), dy: snapToGrid(clamp(dy)) };
+        : { dx: snapToGrid(clamp(dx)), dy: snapToGrid(clamp(dy)), ...kept };
     }
     out.layout = layout;
   }

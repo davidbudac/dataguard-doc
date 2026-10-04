@@ -9,12 +9,18 @@
  *                    on the old page finds it set here
  *   `dg-intro-v1`    set once the reader has been shown the Introduction
  *                    (ui.md SS3e) -- by leaving that page, or by their first
- *                    real gesture if they arrived through a link and never saw
- *                    it. It used to mean "the first-visit strip was dismissed";
- *                    the strip is gone and the page replaced it.
+ *                    real gesture. A record only: nothing opens the page on
+ *                    the strength of it (boot looks at `?intro=1` alone). It
+ *                    used to mean "the first-visit strip was dismissed"; the
+ *                    strip is gone and the page replaced it.
  *   `dg-hints`       whether the sentence under each control is shown
  *   `dg-issues`      whether Build's validation panel is unfolded ('0' = folded)
- *   `dg-tl-h`        the height (px) Break's timeline panel was dragged to
+ *   `dg-rail`        whether Break's Events rail is folded to its strip ('1' = folded)
+ *   `dg-timeline`    whether the whole timeline panel is unfolded past the handle
+ *                    on its top edge ('0' = folded; unset = open)
+ *   `dg-break-timeline` the Detailed timeline's timeline, `config` or `app` -- anything else reads as config
+ *   `dg-summary`     whether the Detailed timeline's run summary band is unfolded ('1' = unfolded)
+ *   `dg-topology-timeline-v1` whether Topology's small timeline is open ('0' = folded; unset = open)
  *   `dg-fsfo-cfg-v1` the published page's stored configuration. Read once when
  *                    there is nothing newer, and never deleted: the old page
  *                    is still serving from /legacy/ and still owns that key.
@@ -32,9 +38,13 @@ import type { SchemaIssue } from '@/engine';
 import type { Doc } from './doc';
 import { classicDoc, doc, exportFileName } from './doc';
 import { fromWire, parseJsonText, toJsonText } from './codec';
+import { isDesktop, saveFile } from '@/ui/common/desktop';
 import type { DecodeResult } from './codec';
-import { gridOn, hintsOn, issuesOpen, timelineH, TL_MIN_H } from './view';
-import type { PalettePref, ThemePref } from './view';
+import {
+  BREAK_TIMELINES, breakTimeline, clearSelection, gridOn, hintsOn, inspectorOpen, inspectorRailWanted, issuesOpen,
+  miniTimelineOpen, mode, railCollapsed, timelineH, TL_MIN_H, railOnDemand, releaseRail, selection, summaryOpen, timelineOpen, viewport,
+} from './view';
+import type { BreakTimeline, PalettePref, ThemePref } from './view';
 
 export const DOC_KEY = 'dg-doc-v1';
 export const THEME_KEY = 'dg-theme';
@@ -45,7 +55,11 @@ export const INTRO_KEY = 'dg-intro-v1';
 export const HINTS_KEY = 'dg-hints';
 export const GRID_KEY = 'dg-grid';
 export const ISSUES_KEY = 'dg-issues';
-export const TIMELINE_H_KEY = 'dg-tl-h';
+export const RAIL_KEY = 'dg-rail';
+export const BREAK_TIMELINE_KEY = 'dg-break-timeline';
+export const SUMMARY_KEY = 'dg-summary';
+export const MINI_TIMELINE_KEY = 'dg-topology-timeline-v1';
+export const TIMELINE_KEY = 'dg-timeline';
 
 export const AUTOSAVE_MS = 500;
 export const RESTORE_NOTICE_MS = 8000;
@@ -101,9 +115,9 @@ export const saveEdition = (v: '19c' | '26ai'): void => write(EDITION_KEY, v);
 /**
  * Whether the reader has already been shown the Introduction (ui.md SS3e).
  *
- * A signal rather than a read at render time: the page is opened on the first
- * visit and never again on its own, and a component that reached into
+ * A signal rather than a read at render time: a component that reached into
  * `localStorage` while rendering would be reading storage on every keystroke.
+ * Boot does not consult it -- the page opens only when asked for.
  * Boot calls `loadIntro()` once; the tests call it to stand in for a reload.
  */
 export const introDismissed = signal<boolean>(false);
@@ -150,13 +164,65 @@ export function toggleGrid(): void {
   write(GRID_KEY, gridOn.value ? '1' : '0');
 }
 
-/* ---------------- Break's timeline panel ---------------- */
+/* ---------------- Simulate's timeline: configuration or application ---------------- */
 
-/**
- * The height the reader dragged the timeline panel to -- `timelineH` in
- * `view.ts`. Read once at boot; anything that is not a whole number of pixels
- * at least `TL_MIN_H` tall reads as "never set".
- */
+/** `breakTimeline` in `view.ts`; unset, or anything else, means the configuration's. */
+export function loadBreakTimeline(): void {
+  const v = read(BREAK_TIMELINE_KEY);
+  breakTimeline.value = (BREAK_TIMELINES as readonly (string | null)[]).includes(v) ? (v as BreakTimeline) : 'config';
+}
+
+export function setBreakTimeline(v: BreakTimeline): void {
+  breakTimeline.value = v;
+  write(BREAK_TIMELINE_KEY, v);
+}
+
+/* ---------------- Break's run summary ---------------- */
+
+/** Unfolded or not -- `summaryOpen` in `view.ts`; unset, or anything but '1', means folded. */
+export function loadSummaryOpen(): void {
+  summaryOpen.value = read(SUMMARY_KEY) === '1';
+}
+
+export function setSummaryOpen(on: boolean): void {
+  summaryOpen.value = on;
+  write(SUMMARY_KEY, on ? '1' : '0');
+}
+
+export const toggleSummary = (): void => setSummaryOpen(!summaryOpen.value);
+
+/* ---------------- the validation panel ---------------- */
+
+/** Folded or not -- `issuesOpen` in `view.ts`, remembered here; unset means open. */
+export function loadIssuesOpen(): void {
+  issuesOpen.value = read(ISSUES_KEY) !== '0';
+}
+
+export function setIssuesOpen(on: boolean): void {
+  issuesOpen.value = on;
+  write(ISSUES_KEY, on ? '1' : '0');
+}
+
+export const toggleIssues = (): void => setIssuesOpen(!issuesOpen.value);
+
+/* ---------------- Topology's small timeline ---------------- */
+
+/** Open or folded -- `miniTimelineOpen` in `view.ts`; unset, or anything but '0', means open. */
+export function loadMiniTimelineOpen(): void {
+  miniTimelineOpen.value = read(MINI_TIMELINE_KEY) !== '0';
+}
+
+export function setMiniTimelineOpen(on: boolean): void {
+  miniTimelineOpen.value = on;
+  write(MINI_TIMELINE_KEY, on ? '1' : '0');
+}
+
+export const toggleMiniTimeline = (): void => setMiniTimelineOpen(!miniTimelineOpen.value);
+
+/* ---------------- the timeline panel ---------------- */
+
+/** Open or folded -- `timelineOpen` in `view.ts`; unset, or anything but '0', means open. */
+export const TIMELINE_H_KEY = 'dg-tl-h';
 export function loadTimelineH(): void {
   const raw = read(TIMELINE_H_KEY);
   const n = raw === null ? NaN : Number(raw);
@@ -178,19 +244,70 @@ export function setTimelineH(h: number | null, remember = true): void {
   }
 }
 
-/* ---------------- the validation panel ---------------- */
-
-/** Folded or not -- `issuesOpen` in `view.ts`, remembered here; unset means open. */
-export function loadIssuesOpen(): void {
-  issuesOpen.value = read(ISSUES_KEY) !== '0';
+export function loadTimelineOpen(): void {
+  loadTimelineH();
+  timelineOpen.value = read(TIMELINE_KEY) !== '0';
 }
 
-export function setIssuesOpen(on: boolean): void {
-  issuesOpen.value = on;
-  write(ISSUES_KEY, on ? '1' : '0');
+export function setTimelineOpen(on: boolean): void {
+  timelineOpen.value = on;
+  write(TIMELINE_KEY, on ? '1' : '0');
 }
 
-export const toggleIssues = (): void => setIssuesOpen(!issuesOpen.value);
+export const toggleTimeline = (): void => setTimelineOpen(!timelineOpen.value);
+
+/* ---------------- the side rail ---------------- */
+
+/** Folded or not -- `railCollapsed` in `view.ts`, remembered here; unset means open. Break's Events rail only. */
+export function loadRailCollapsed(): void {
+  railCollapsed.value = read(RAIL_KEY) === '1';
+}
+
+export function setRailCollapsed(shut: boolean): void {
+  railCollapsed.value = shut;
+  write(RAIL_KEY, shut ? '1' : '0');
+}
+
+/**
+ * The one `]` does, and the top bar's Inspector button: put the rail away or
+ * bring it back, whatever kind of rail this mode has.
+ *
+ *  - Topology and Config at `wide` have an on-demand inspector: it is in the
+ *    document while something is selected or `inspectorOpen` says so. Toggling
+ *    it shut also drops the selection -- the selection is what holds it open,
+ *    and a press that leaves the rail where it is does nothing visible.
+ *  - Break's Events rail is a column that folds to a strip (`railCollapsed`).
+ *  - Below 1280 the rail is a drawer: `inspectorOpen` is its open state.
+ */
+export function toggleRail(): void {
+  if (viewport.value !== 'wide') { inspectorOpen.value = !inspectorOpen.value; return; }
+  if (railOnDemand(mode.value)) {
+    if (inspectorRailWanted()) { releaseRail(); clearSelection(); inspectorOpen.value = false; }
+    else inspectorOpen.value = true;
+    return;
+  }
+  setRailCollapsed(!railCollapsed.value);
+}
+
+/**
+ * Put the rail in front of the reader, wherever it is: open the drawer below
+ * 1280, bring Topology's and Config's inspector in (a selection already has,
+ * and an empty one is opened onto the configuration), unfold Break's strip. For
+ * the gestures that mean "show me this in the inspector" (Edit, a finding's
+ * row, a step of the walkthrough, `All settings`) -- a button that selects
+ * something behind a rail that is not there appears to do nothing.
+ *
+ * Call it after the selection is set, and after the mode is.
+ */
+export function revealRail(): void {
+  if (viewport.value !== 'wide') { inspectorOpen.value = true; return; }
+  if (railOnDemand(mode.value)) {
+    if (selection.value.length > 0) releaseRail();
+    else inspectorOpen.value = true;
+    return;
+  }
+  if (railCollapsed.value) setRailCollapsed(false);
+}
 
 /* ---------------- the Document ---------------- */
 
@@ -249,9 +366,14 @@ export function startFresh(edition: '19c' | '26ai' = '19c'): Doc {
  * file is meant to be read, diffed and pasted into a ticket.
  */
 export function exportDoc(d: Doc = doc.value): void {
+  const json = new Blob([toJsonText(d)], { type: 'application/json' });
+  if (isDesktop()) {
+    /* No `<a download>` in the desktop webview: a native save dialog instead. */
+    void saveFile(exportFileName(d), json).catch(() => undefined);
+    return;
+  }
   if (typeof document === 'undefined' || typeof URL.createObjectURL !== 'function') return;
-  const blob = new Blob([toJsonText(d)], { type: 'application/json' });
-  const href = URL.createObjectURL(blob);
+  const href = URL.createObjectURL(json);
   const a = document.createElement('a');
   a.href = href;
   a.download = exportFileName(d);

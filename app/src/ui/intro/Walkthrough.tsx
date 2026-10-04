@@ -16,7 +16,8 @@ import type { TopologyDoc } from '@/engine';
 import { topology } from '@/state/derived';
 import { activeWorkspaceId } from '@/state/workspace-id';
 import { presetId } from '@/state/url';
-import { canEdit, inspectorOpen, mode, selection, tNow, viewport } from '@/state/view';
+import { canEdit, mode, selection, tNow, viewport } from '@/state/view';
+import { revealRail } from '@/state/persist';
 import { applyTemplate, clearEvents, restPlayhead, templates } from '@/ui/break/events';
 import { revealSections } from '@/ui/inspector/sections';
 import { jump } from './route';
@@ -42,7 +43,7 @@ function shapeOf(doc: TopologyDoc): string {
 export function startClassicWalkthrough(): void {
   const edit = canEdit(viewport.value);
   /* On a screen that cannot edit, the crash comes ready-made. */
-  jump({ preset: 'classic', ...(edit ? {} : { scenario: 'crash' as const }), mode: 'break' });
+  jump({ preset: 'classic', ...(edit ? {} : { scenario: 'crash' as const }), mode: 'build' });
   if (edit) clearEvents();
   else tNow.value = 0;
   startingShape = shapeOf(topology.value);
@@ -51,7 +52,7 @@ export function startClassicWalkthrough(): void {
   walkthroughPhase.value = edit ? 'crash' : 'advance';
 }
 
-/** Bring the threshold slider into view once the rail has drawn it. */
+/** Bring the threshold box into view once the rail has drawn it. */
 function showThreshold(): void {
   setTimeout(() => {
     if (typeof document === 'undefined') return;
@@ -92,8 +93,8 @@ export function ClassicWalkthrough() {
             : phase === 'advance'
               ? 'Advance the timeline to see when the standby opens.'
               : done
-                ? 'Back in Break, the timeline shows how the new threshold moves the failover.'
-                : 'In Build, change FastStartFailoverThreshold under Fast-start failover.'}
+                ? 'The timeline under the drawing shows how the new threshold moves the failover.'
+                : 'Change FastStartFailoverThreshold under Fast-start failover in the inspector.'}
         </span>
       </div>
       <div class="walk-acts">
@@ -105,7 +106,7 @@ export function ClassicWalkthrough() {
             onClick={() => {
               const crash = templates(topology.value).find((t) => t.id === 'crash');
               if (!crash) return;
-              mode.value = 'break';
+              mode.value = 'build';
               applyTemplate(crash);
               tNow.value = 0;
               walkthroughPhase.value = 'advance';
@@ -120,7 +121,7 @@ export function ClassicWalkthrough() {
             type="button"
             class="btn is-solid"
             onClick={() => {
-              mode.value = 'break';
+              mode.value = 'build';
               restPlayhead();
               walkthroughPhase.value = 'threshold';
             }}
@@ -135,11 +136,11 @@ export function ClassicWalkthrough() {
             class="btn is-solid"
             disabled={!done && !editable}
             onClick={() => {
-              mode.value = done ? 'break' : 'build';
+              mode.value = 'build';
               if (done) { restPlayhead(); return; }
               selection.value = [];
               revealSections(['Fast-start failover']);
-              if (viewport.value !== 'wide') inspectorOpen.value = true;
+              revealRail();
               showThreshold();
             }}
           >

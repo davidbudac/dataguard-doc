@@ -1,0 +1,60 @@
+/* The Detailed timeline's run summary (break/SummaryBand.tsx): a band of cards under the bar,
+   and the fold that stands where the terse line stands in
+   the bar. Colour from tokens only; the tone classes are the readout's own
+   (`t-tl`, `t-am`, ...). No inline style: the cards wrap on their own. */
+
+/* ---- the fold, in the bar ---- */
+/* Folded: the terse line (a click on it unfolds) and the button, in the line's place. */
+.rs-host { flex: 1 1 0; min-width: 0; display: flex; align-items: center; gap: 6px; }
+.rs-hit { flex: 1 1 0; min-width: 0; display: flex; cursor: pointer; }
+.rs-hit:hover .sb-ro { background: var(--sf3); border-radius: 4px; }
+/* Unfolded: the line gives way to a spacer, so what is right of it keeps its place. */
+.rs-fill { flex: 1 1 0; min-width: 0; }
+.rs-tog {
+  flex: 0 0 auto; display: inline-flex; align-items: center; gap: 4px; border: 0; background: transparent;
+  color: var(--ik2); font: inherit; font-size: 11.5px; padding: 2px 7px; border-radius: 5px;
+  cursor: pointer; white-space: nowrap;
+}
+.rs-tog:hover, .rs-tog[aria-expanded="true"] { background: var(--sf3); color: var(--ik); }
+
+/* ---- the band ---- */
+.rs-band {
+  flex: 0 0 auto; padding: 10px 12px; background: var(--sf2); border-bottom: 1px solid var(--ln);
+  max-height: 260px; overflow: auto; scrollbar-width: thin; box-sizing: border-box;
+}
+.rs-cards { display: grid; gap: 10px; min-width: 0; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); }
+
+.rs-card {
+  display: flex; flex-direction: column; gap: 3px; min-width: 0;
+  padding: 10px 14px 11px; background: var(--sf); border: 1px solid var(--ln);
+  border-radius: var(--r-card);
+}
+.rs-k {
+  font-family: var(--mono); font-size: 10.5px; letter-spacing: .12em; text-transform: uppercase;
+  color: var(--ik3); line-height: 1.4;
+}
+.rs-vrow { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 6px; min-width: 0; }
+.rs-v {
+  font-family: var(--mono); font-variant-numeric: tabular-nums; font-size: 24px; font-weight: 620;
+  letter-spacing: -.02em; line-height: 1.2; color: var(--ik); overflow-wrap: anywhere;
+}
+.rs-u { font-family: var(--mono); font-size: 13px; font-weight: 500; color: var(--ik2); }
+.rs-v2 { font-size: 11.5px; color: var(--ik3); }
+.rs-sub { margin: 0; font-size: 12px; line-height: 1.45; color: var(--ik2); }
+/* the model marker is base.css's `.fact`; here it only sheds the margin it has beside a value */
+.rs-foot { display: flex; align-items: center; gap: 8px; margin-top: 2px; }
+.rs-foot .fact { margin-left: 0; }
+.rs-why {
+  margin-left: auto; border: 0; background: transparent; color: var(--vi); font: inherit;
+  font-size: 11.5px; padding: 0 3px; border-radius: 4px; cursor: pointer;
+}
+.rs-why:hover { background: var(--vif); }
+
+.rs-card.t-tl .rs-v { color: var(--tl); }
+.rs-card.t-bl .rs-v { color: var(--bl); }
+.rs-card.t-am .rs-v { color: var(--am); }
+.rs-card.t-rd .rs-v { color: var(--rd); }
+.rs-card.t-vi .rs-v { color: var(--vi); }
+.rs-card.t-sl .rs-v { color: var(--sl); }
+
+@media print { .rs-band, .rs-tog { display: none; } }

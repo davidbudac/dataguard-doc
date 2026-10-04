@@ -7,7 +7,7 @@
  * an order, never a race to whichever standby happens to be usable.
  */
 
-import { observerId } from '@/engine';
+import { hostId } from '@/engine';
 import { Fact, M } from '../facts-ui';
 import { Caption, Code, Dim, P } from '../prose';
 import type { Lesson } from '../types';
@@ -77,8 +77,8 @@ export const multiObserver: Lesson = {
           page does not nominate there.
         </P>
       ),
-      apply: { events: [{ at: 0, kind: 'observer.stop', observer: observerId('obs01') }] },
-      note: 'The master observer stops while both databases stay connected: the documented nomination case, and the only one drawn.',
+      apply: { events: [{ at: 0, kind: 'host.down', host: hostId('dc4-obs01') }] },
+      note: 'The master observer\'s host dies while both databases stay connected: the documented nomination case, and the only one drawn. STOP OBSERVER is not how a master is lost here: Oracle refuses it for the master while two or more observers are registered.',
     },
     {
       title: 'Starting them, naming them, moving the master',
@@ -148,8 +148,16 @@ export const multiObserver: Lesson = {
             the observer should never be deployed at the primary database server or cluster, or on the
             standby database server or cluster
           </Fact>
-          . The primary&rsquo;s own site is not on that hierarchy at all: a site failure takes the
-          observer with the primary, and an observer on one side of a cut cannot arbitrate it.
+          .{' '}
+          <Fact
+            id={['OBS.PLACEMENT_THIRD_SITE', 'OBS.PLACEMENT_NEVER_ON_DB_HOST']}
+            basis="inferred"
+            note="Oracle's hierarchy names the third site, the application's path and the standby data center, and never the primary's own site. That a site failure takes the observer with the primary, and that an observer on one side of a cut cannot arbitrate it, are deductions from the 'isolated' wording of the first rung, not sentences."
+          >
+            The primary&rsquo;s own site is not on that hierarchy at all: a site failure takes the
+            observer with the primary, and an observer on one side of a cut cannot arbitrate it
+          </Fact>
+          .
         </P>
       ),
     },
@@ -162,7 +170,15 @@ export const multiObserver: Lesson = {
             databases and become the master observer
           </Fact>
           . The value is <M>host:priority</M> with priorities 1 to 8, lower winning, 8 the default, and
-          the property itself defaulting to Null — which restricts nothing.
+          the property itself defaulting to Null —{' '}
+          <Fact
+            id="OBS.PREFERRED_HOSTS"
+            basis="inferred"
+            note="Oracle prints the broker default as Null and says only observers on the listed hosts will observe; it does not say what an unset list means. That a Null list leaves every observer eligible is this page's reading, and how the engine behaves."
+          >
+            which this page reads as restricting nothing
+          </Fact>
+          .
         </P>
       ),
     },

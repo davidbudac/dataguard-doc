@@ -24,8 +24,9 @@ export function Dests() {
         <p class="prose">The broker-owned destination parameters.</p>
         <p class="caption">
           The broker writes these; they are shown so the properties above have somewhere
-          recognisable to land. <span class="mono">LOG_ARCHIVE_DEST_1</span> is the local
-          online redo log destination, so the remote ones start at 2.
+          recognisable to land. This page leaves <span class="mono">LOG_ARCHIVE_DEST_1</span> for
+          a local destination and numbers the remote ones from 2 -- its own convention, not an
+          Oracle rule.
           <span class="mono"> NET_TIMEOUT</span> bounds how long LGWR waits for a synchronous
           destination's acknowledgement -- it is never a failover clock, and it is omitted
           under <span class="mono">ASYNC</span>, where nothing waits for the destination at all.

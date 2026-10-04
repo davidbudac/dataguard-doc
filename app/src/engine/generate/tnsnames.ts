@@ -12,9 +12,9 @@
  */
 
 import type { Claim } from '../types/claims';
-import { documented, model } from '../types/claims';
+import { documented, inferred, model } from '../types/claims';
 import type { ClientAddress, ClientDescriptor, TopologyDoc } from '../types/topology';
-import { isDatabase } from '../types/topology';
+import { isDatabase, isRac } from '../types/topology';
 import type { GeneratedFile, Line, Span } from './lines';
 import { blank, cmd, comment, hl, note, span, svc } from './lines';
 
@@ -26,8 +26,8 @@ import { blank, cmd, comment, hl, note, span, svc } from './lines';
  * the primary role. Far sync instances can never be opened, and a snapshot
  * standby cannot be a failover target, so neither ever appears.
  */
-export function serviceAddresses(doc: TopologyDoc): ClientAddress[] {
-  if (doc.client.addresses.length > 0) return doc.client.addresses;
+export function serviceAddresses(doc: TopologyDoc, client: ClientDescriptor = doc.client): ClientAddress[] {
+  if (client.addresses.length > 0) return client.addresses;
   const out: ClientAddress[] = [];
   for (const m of doc.members) {
     if (!isDatabase(m) || !m.enabled) continue;
@@ -46,7 +46,14 @@ const hostName = (doc: TopologyDoc, address: ClientAddress): string =>
 /* ---------------- claims ---------------- */
 
 const DEFAULTS_OMITTED = documented<string>(
-  'a parameter left out of the string takes its Oracle Net default',
+  'a parameter left out of the string takes its Oracle Net default: TRANSPORT_CONNECT_TIMEOUT 60 s',
+  ['CLIENT.TIMEOUTS', 'CLIENT.RETRY_AND_FAILOVER'],
+);
+
+/* The Net reference prints a default for TRANSPORT_CONNECT_TIMEOUT only. */
+const UNDOCUMENTED_DEFAULTS = model<string>(
+  'CONNECT_TIMEOUT, RETRY_COUNT and RETRY_DELAY have no printed default',
+  'The Oracle Net reference and the HA guide print a default for TRANSPORT_CONNECT_TIMEOUT (60 s) and for none of these three. Left out of the string, this page draws them as no cap, no extra traversal and no delay between traversals. The JDBC thin driver is a different case: under 26ai its RETRY_DELAY defaults to 1 second (see the JDBC card).',
   ['CLIENT.TIMEOUTS', 'CLIENT.RETRY_AND_FAILOVER'],
 );
 
@@ -66,14 +73,38 @@ const WIDE_SERVICE = documented<string>(
   'Introduced in 12.2 and documented on the 19c broker properties page: the default is primarydbname_CFG and it does not change after a role transition.',
 );
 
+const SCAN_ALIASES = documented<string>(
+  'for Oracle RAC the aliases connect using the SCAN name',
+  ['RAC.SCAN_ALIASES'],
+  'The MAA example writes one ADDRESS_LIST per site, HOST=clu_site1-scan and HOST=clu_site2-scan.',
+);
+
+const SCAN_FOR_CLIENTS = inferred<string>(
+  'an application\'s descriptor takes the same SCAN form',
+  ['RAC.SCAN_ALIASES', 'RAC.ADDRESS_LIST_EACH_INSTANCE'],
+  'RAC.SCAN_ALIASES is about the aliases Data Guard uses between the databases (the MAA chapter, \"the aliases should connect using the SCAN name\"), and the redo transport alias in the init.ora card follows the other sentence, an address list with \"connection data for each standby database instance\". Giving an application the SCAN form is this page\'s deduction from the first; the MAA level-1 client example it rests on writes one SCAN host per site.',
+);
+
+const SCAN_NAME_MODEL = model<string>(
+  'the SCAN host names are placeholders',
+  'The drawing has no SCAN names, so each cluster is written <cluster>-scan. The connection ladder in the client panel still dials one address per node: that is the list above, not this one.',
+);
+
 /* ---------------- the file ---------------- */
 
 const tnsToken = (name: string, value: string | number): Span[] =>
   [hl(`(${name} = ${value})`)];
 
-export function buildTns(doc: TopologyDoc): GeneratedFile {
-  const c: ClientDescriptor = doc.client;
-  const addresses = serviceAddresses(doc);
+export interface TnsOptions {
+  /** The descriptor to write out; the document's shared one when left out. */
+  client?: ClientDescriptor;
+  /** Whose descriptor it is, when it is one application's own: added to the card's title. */
+  label?: string;
+}
+
+export function buildTns(doc: TopologyDoc, opts: TnsOptions = {}): GeneratedFile {
+  const c: ClientDescriptor = opts.client ?? doc.client;
+  const addresses = serviceAddresses(doc, c);
   const service = c.serviceName;
 
   const set: Span[][] = [];
@@ -86,17 +117,17 @@ export function buildTns(doc: TopologyDoc): GeneratedFile {
   if (c.connectTimeoutSeconds !== null && c.connectTimeoutSeconds > 0) {
     set.push(tnsToken('CONNECT_TIMEOUT', c.connectTimeoutSeconds));
   } else {
-    absent.push('CONNECT_TIMEOUT (no cap)');
+    absent.push('CONNECT_TIMEOUT (no printed default; drawn as no cap)');
   }
   if (c.retryCount > 0) {
     set.push(tnsToken('RETRY_COUNT', c.retryCount));
   } else {
-    absent.push('RETRY_COUNT (0 -- no retries)');
+    absent.push('RETRY_COUNT (no printed default; drawn as 0)');
   }
   if (c.retryDelaySeconds > 0) {
     set.push(tnsToken('RETRY_DELAY', c.retryDelaySeconds));
   } else {
-    absent.push('RETRY_DELAY (immediate)');
+    absent.push('RETRY_DELAY (no printed default; drawn as 0 s)');
   }
 
   const lines: Line[] = [];
@@ -126,12 +157,54 @@ export function buildTns(doc: TopologyDoc): GeneratedFile {
   if (absent.length > 0) {
     lines.push(blank());
     lines.push(comment('not in the string, defaults apply:'));
-    for (let i = 0; i < absent.length; i += 2) {
-      lines.push(comment(absent.slice(i, i + 2).join(' - '), { indent: 2 }));
-    }
+    for (const item of absent) lines.push(comment(item, { indent: 2 }));
   }
 
   const claims: Claim<string>[] = [DEFAULTS_OMITTED, FAILOVER_SPELLED, SINGLE_IP];
+  if (absent.some((x) => !x.startsWith('TRANSPORT_CONNECT_TIMEOUT'))) claims.push(UNDOCUMENTED_DEFAULTS);
+
+  /* Oracle RAC: MAA writes the alias with the cluster's SCAN name rather than
+     a node per address. Shown commented out, as the alternative spelling of
+     the same alias with the same tokens -- a second live definition of one
+     alias in one file would leave which one a client reads to chance. The
+     connection ladder this page draws keeps the node-per-address list. */
+  const racs = doc.members.filter(
+    (m) => isDatabase(m) && m.enabled && m.role !== 'snapshot' && isRac(m),
+  );
+  if (racs.length > 0) {
+    const scanAddrs: string[] = [];
+    const seen = new Set<string>();
+    for (const m of doc.members) {
+      if (!isDatabase(m) || !m.enabled || m.role === 'snapshot') continue;
+      for (const i of m.instances) {
+        const h = doc.hosts.find((x) => x.id === i.host);
+        const name = isRac(m) ? `${h?.cluster ?? m.name}-scan` : (h?.name ?? (i.host as string));
+        if (seen.has(name)) continue;
+        seen.add(name);
+        scanAddrs.push(`(ADDRESS = (PROTOCOL = tcp)(HOST = ${name})(PORT = ${h?.listenerPort ?? 1521}))`);
+      }
+    }
+    const tokenText = (sp: Span[]): string => sp.map((x) => x.text).join('');
+    lines.push(blank());
+    lines.push(note('for Oracle RAC configurations the aliases should connect using the SCAN name', SCAN_ALIASES));
+    lines.push(note('an application\'s descriptor takes the same SCAN form', SCAN_FOR_CLIENTS));
+    lines.push(comment('the same alias written with SCAN names -- use it instead of the one above:'));
+    lines.push(comment(`${service} =`));
+    lines.push(comment('  (DESCRIPTION ='));
+    for (let i = 0; i < set.length; i += 2) {
+      lines.push(comment(`    ${set.slice(i, i + 2).map(tokenText).join('')}`));
+    }
+    lines.push(comment(`    ${listHead}`));
+    scanAddrs.forEach((a, i) => {
+      lines.push(comment(`      ${a}${i === scanAddrs.length - 1 ? ')' : ''}`));
+    });
+    lines.push(comment(`    (CONNECT_DATA = (SERVICE_NAME = ${service})))`));
+    lines.push(note('<cluster>-scan is a placeholder for the cluster\'s SCAN name', SCAN_NAME_MODEL));
+    if (c.addresses.length > 0) {
+      lines.push(comment('the address list above is the one set on the client; the SCAN form is drawn from the members'));
+    }
+    claims.push(SCAN_ALIASES, SCAN_FOR_CLIENTS, SCAN_NAME_MODEL);
+  }
   if (doc.config.configurationWideServiceName) {
     lines.push(blank());
     lines.push(note(
@@ -142,7 +215,9 @@ export function buildTns(doc: TopologyDoc): GeneratedFile {
   }
 
   return {
-    id: 'tnsnames', title: 'tnsnames.ora', filename: 'tnsnames.ora',
+    id: opts.label === undefined ? 'tnsnames' : `tnsnames:${opts.label}`,
+    title: opts.label === undefined ? 'tnsnames.ora' : `tnsnames.ora — ${opts.label}`,
+    filename: 'tnsnames.ora',
     syntax: 'tnsnames', lines, claims,
   };
 }

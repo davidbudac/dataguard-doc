@@ -18,8 +18,8 @@ import { TopoCanvas } from '@/ui/canvas/TopoCanvas';
 import { App } from '@/ui/App';
 import { classicDoc, doc as docSignal } from '@/state/doc';
 import { resetHistory } from '@/state/history';
-import { mode, selection, toast, viewport } from '@/state/view';
-import { menuOpen } from '@/ui/canvas/EventMenu';
+import { mode, modeGuide, selection, toast, viewport } from '@/state/view';
+import { barFocus, barKind, barOpen, closeBar } from '@/ui/canvas/bar';
 import { classic, graphOf, threeObserverFixture } from './canvas-fixtures';
 import type { TopologyDoc } from '@/engine';
 
@@ -27,7 +27,8 @@ const tick = (): Promise<void> => new Promise((r) => setTimeout(r, 0));
 
 interface Handlers {
   onSelect?: (key: string, additive: boolean) => void;
-  onEventMenu?: (key: string, at: { x: number; y: number }) => void;
+  onEvents?: (key: string) => void;
+  onActions?: (key: string) => void;
   onDelete?: (key: string) => void;
   onClear?: () => void;
 }
@@ -70,9 +71,9 @@ const focusedKey = (): string | null =>
 
 beforeEach(() => {
   document.body.innerHTML = '';
+  closeBar();
   selection.value = [];
   toast.value = null;
-  menuOpen.value = true;
   mode.value = 'build';
   viewport.value = 'wide';
   resetHistory(classicDoc());
@@ -177,12 +178,40 @@ describe('the canvas is reachable by keyboard', () => {
     expect(onSelect).toHaveBeenLastCalledWith('sby01', true);
   });
 
-  it('asks for the event menu with E, in either case', () => {
-    const onEventMenu = vi.fn();
-    const root = mountCanvas(classic('dc3'), { onEventMenu });
+  it('asks for the events on offer with E, in either case', () => {
+    const onEvents = vi.fn();
+    const root = mountCanvas(classic('dc3'), { onEvents });
     press(card(root, 'prm01'), 'e');
     press(card(root, 'sby01'), 'E');
-    expect(onEventMenu.mock.calls.map((c) => c[0])).toEqual(['prm01', 'sby01']);
+    expect(onEvents.mock.calls.map((c) => c[0])).toEqual(['prm01', 'sby01']);
+  });
+
+  it('asks for Topology\'s action table with A, in either case, on a card, a data centre and a link', () => {
+    const onActions = vi.fn();
+    const root = mountCanvas(classic('dc3'), { onActions });
+    press(card(root, 'prm01'), 'a');
+    press(card(root, 'sby01'), 'A');
+    press(control(root, 'dc1'), 'a');
+    press(control(root, 'dc1-dc2'), 'a');
+    expect(onActions.mock.calls.map((c) => c[0])).toEqual(['prm01', 'sby01', 'dc1', 'dc1-dc2']);
+  });
+
+  it('leaves Ctrl+A, Cmd+A and Alt+A to their own owners, and does nothing without a table to open', () => {
+    const onActions = vi.fn();
+    const root = mountCanvas(classic('dc3'), { onActions });
+    for (const init of [{ ctrlKey: true }, { metaKey: true }, { altKey: true }]) {
+      const ev = new KeyboardEvent('keydown', { key: 'a', bubbles: true, cancelable: true, ...init });
+      (card(root, 'prm01') as unknown as HTMLElement).focus();
+      card(root, 'prm01').dispatchEvent(ev);
+      /* Select-all (shortcuts.ts) checks `defaultPrevented`: this must not have claimed it. */
+      expect(ev.defaultPrevented, JSON.stringify(init)).toBe(false);
+    }
+    expect(onActions).not.toHaveBeenCalled();
+    /* The Detailed timeline's drawing passes no table: the key is not bound there. */
+    const bare = mountCanvas(classic('dc3'), {});
+    const ev = new KeyboardEvent('keydown', { key: 'a', bubbles: true, cancelable: true });
+    card(bare, 'prm01').dispatchEvent(ev);
+    expect(ev.defaultPrevented).toBe(false);
   });
 
   it('removes with Delete and with Backspace, and clears with Escape', () => {
@@ -245,6 +274,8 @@ describe('the shell wires those keys to real edits', () => {
 
   it('Delete edits nothing in Break mode: that mode breaks, it does not build', async () => {
     mode.value = 'break';
+    /* The drawing is on screen in the Detailed timeline only in the docked layout. */
+    viewport.value = 'compact';
     const root = mountApp();
     await tick();
     press(card(root, 'sby01'), 'Delete');
@@ -252,26 +283,87 @@ describe('the shell wires those keys to real edits', () => {
     expect(docSignal.value.topology.members.map((m) => m.id as string)).toContain('sby01');
   });
 
-  it('E opens the event menu in Break mode', async () => {
+  it('E opens the action bar for the card in Break mode, and not in Build', async () => {
+    const built = mountApp();
+    await tick();
+    press(card(built, 'prm01'), 'E');
+    await tick();
+    expect(barOpen.value).toBeNull();
+    render(null, built);
+    built.remove();
+
     mode.value = 'break';
-    menuOpen.value = false;
+    /* The drawing is on screen in the Detailed timeline only in the docked layout. */
+    viewport.value = 'compact';
     const root = mountApp();
+    /* Effects run after the paint: let the change of mode (and the drawings
+       earlier tests left mounted, which see it too) settle before the key, or
+       one of them closes the bar the key has just opened. */
+    await new Promise<void>((r) => { requestAnimationFrame(() => r()); });
     await tick();
     press(card(root, 'prm01'), 'E');
+    await new Promise<void>((r) => { requestAnimationFrame(() => r()); });
     await tick();
-    expect(menuOpen.value).toBe(true);
+    expect(selection.value).toEqual(['prm01']);
+    expect(barOpen.value).toBe('prm01');
+    /* A key is a keyboard-shaped request: the focus goes into the bar. */
+    expect(barFocus.value).toBe(true);
+  });
+
+  it('A opens Topology\'s table with the focus in it -- edit, properties, remove -- and E the events', async () => {
+    const root = mountApp();
+    await new Promise<void>((r) => { requestAnimationFrame(() => r()); });
+    await tick();
+    press(card(root, 'sby01'), 'A');
+    await new Promise<void>((r) => { requestAnimationFrame(() => r()); });
+    await tick();
+    expect(selection.value).toEqual(['sby01']);
+    expect(barOpen.value).toBe('sby01');
+    expect(barKind.value).toBe('actions');
+    expect(barFocus.value).toBe(true);
+    const rows = [...root.querySelectorAll('.cv-bar-row button')].map((b) => b.textContent ?? '');
+    expect(rows.some((r) => r.startsWith('Edit'))).toBe(true);
+    expect(rows.some((r) => r.startsWith('Remove'))).toBe(true);
+    expect(root.querySelector('.cv-bar-hd')?.textContent ?? '').not.toContain('at t =');
+    /* Escape closes it, the same press that closes the events. */
+    press(card(root, 'sby01'), 'Escape');
+    await tick();
+    expect(barOpen.value).toBeNull();
+    /* And E on the same card is the other list. */
+    press(card(root, 'sby01'), 'E');
+    await new Promise<void>((r) => { requestAnimationFrame(() => r()); });
+    await tick();
+    expect(barKind.value).toBe('events');
+    expect(root.querySelector('.cv-bar-hd')?.textContent ?? '').toContain('at t =');
+  });
+
+  it('A is bound in Topology only: not in the docked Detailed timeline', async () => {
+    mode.value = 'break';
+    viewport.value = 'compact';
+    const root = mountApp();
+    await new Promise<void>((r) => { requestAnimationFrame(() => r()); });
+    await tick();
+    press(card(root, 'sby01'), 'A');
+    await tick();
+    expect(barOpen.value).toBeNull();
+    expect(root.querySelector('.cv-bar')).toBeNull();
+  });
+
+  it('is in the stage\'s description of Topology, next to the handle it stands in for', () => {
+    expect(modeGuide('build', 'wide')).toContain('⋯ (or A on a focused card) opens actions');
+    expect(modeGuide('break', 'wide')).not.toContain('A on a focused card');
   });
 
   /* Pressed on the focused rectangle, not called: a data centre takes focus
      now, so the refusal is reachable the way a reader reaches it -- the
      sentence the rail prints under its Remove button, said out loud rather
      than swallowed. */
-  it('Delete refuses a data centre with hosts in it, out loud', async () => {
+  it('Delete refuses a data centre with a database in it, out loud', async () => {
     const root = mountApp();
     press(control(root, 'dc1'), 'Delete');
     await tick();
     expect(docSignal.value.topology.sites.map((s) => s.id as string)).toContain('dc1');
-    expect(toast.value?.text).toBe('dc1 stays: This site still has hosts in it: move or remove them first.');
+    expect(toast.value?.text).toBe('dc1 stays: A database, an observer or an application still stands in this site: move or remove it first.');
   });
 
   it('Delete takes a link out from its caption, because nothing refuses that', async () => {

@@ -26,10 +26,14 @@ const DECISION_TITLE: Record<string, string> = {
   'BYSTANDERS.AHEAD': 'Bystander ahead of the new primary',
   'BYSTANDERS.FOLLOW': 'Bystanders follow the new primary',
   'EXEC.ENV_DEPENDENT': 'Role transition',
+  'FAILOVER.FORMER_PRIMARY_STALLS': 'Former primary stalls',
   'FSFO.BOTH_MUST_HAVE_LOST': 'Failure confirmed',
+  'FSFO.DISABLE_FAST_START_FAILOVER': 'Disable fast-start failover',
+  'FSFO.DISABLE_FORCE_PRIMARY_RUNS': 'Primary runs on after FORCE',
   'FSFO.MANUAL_FAILOVER': 'Manual failover',
   'FSFO.NO_SECOND_TARGET': 'No second target',
   'FSFO.NOT_POSSIBLE': 'Failover not possible',
+  'FSFO.NO_TARGET_AFTER_ROLE_CHANGE': 'No target after the role change',
   'FSFO.NOT_READY': 'Target not ready',
   'FSFO.OBSERVE_ONLY': 'Observe only',
   'FSFO.OBSERVE_ONLY_SCOPE': 'Observe-only scope',
@@ -44,6 +48,7 @@ const DECISION_TITLE: Record<string, string> = {
   'OBS.MASTER_LOST': 'Observer unavailable',
   'OBS.OBSERVED_AGAIN': 'Observer reconnects',
   'OBS.SET_MASTEROBSERVER': 'Master observer set',
+  'OBS.STOP_OBSERVER': 'Stop observer refused',
   'OBS.UNOBSERVED': 'Configuration unobserved',
   'PRIMARY.ABORT': 'Primary shuts down',
   'PRIMARY.NO_STALL': 'Primary keeps running',
@@ -55,6 +60,7 @@ const DECISION_TITLE: Record<string, string> = {
   'PROT.MODE_AFTER_FAILOVER': 'Protection mode after failover',
   'REINSTATE.COMMAND': 'Reinstatement',
   'REINSTATE.OPEN_BAND': 'Reinstated automatically',
+  'REINSTATE.WAITING': 'Reinstatement waits',
   'ROLE.PRIMARY_DB_CANDIDATES': 'Candidate check',
   'SIM.ONE_ROLE_CHANGE': 'One role change per run',
   'SWITCHOVER.CONVERT': 'Primary converts to standby',
@@ -81,7 +87,9 @@ const FINDING_TITLE: Record<string, string> = {
   'DEST.MAXFAILURE_RESET_UNDOC': 'Failure count reset',
   'DEST.REOPEN_SCHEDULE_MODEL': 'Destination reopen schedule',
   'FAILOVER.FORMER_PRIMARY_MOUNTED': 'Former primary mounted',
+  'FAILOVER.FORMER_PRIMARY_OPEN': 'Former primary still open',
   'FAILOVER.PRIMARY_STILL_OPEN': 'Primary still open',
+  'FSFO.DISABLE_FORCE_TWO_PRIMARIES': 'Two primaries after FORCE',
   'FSFO.FORMER_PRIMARY_NOT_OPEN': 'Former primary not open',
   'FSFO.PING_NOT_IN_19C': 'Ping properties not in 19c',
   'FSFO.RESYNC_INSTANT': 'Resync timing note',
@@ -135,6 +143,7 @@ export function eventSubjects(doc: TopologyDoc, event: TimedEvent): string[] {
       return membersOnHosts(doc, event.groups.flat());
     case 'instance.down': case 'instance.up':
     case 'member.down': case 'member.up': case 'cmd.reinstate': case 'lag.set':
+    case 'cmd.setApplyInstance':
       return [event.member];
     case 'observer.stop': case 'observer.start': case 'cmd.setMasterObserver':
       return [event.observer];
@@ -209,7 +218,7 @@ export function buildExplanation(doc: TopologyDoc, trace: EngineTrace): Explanat
     });
   }
 
-  if (trace.facts.outcome === 'continues' && doc.config.fsfo.state === 'enabled'
+  if (doc.events.length > 0 && trace.facts.outcome === 'continues' && doc.config.fsfo.state === 'enabled'
     && !trace.decisions.some((d) => d.id === 'FSFO.BOTH_MUST_HAVE_LOST')) {
     steps.push({
       key: 'no-initiation',
@@ -257,6 +266,8 @@ export function buildExplanation(doc: TopologyDoc, trace: EngineTrace): Explanat
   steps.push({
     key: 'result', at: resultAt, title: trace.facts.blocked ? 'Transition blocked' : 'Run result',
     detail: trace.facts.blocked ? 'The role transition was refused; no member changed role.'
+      : doc.events.length === 0
+        ? 'Nothing was injected, so nothing failed: the primary kept serving, no standby was promoted and no failover was initiated.'
       : trace.facts.outcome === 'manual' && trace.facts.newPrimary
         ? 'The manual failover changed the primary.' : OUTCOME[trace.facts.outcome],
     subjects: trace.facts.newPrimary ? [trace.facts.newPrimary] : [],

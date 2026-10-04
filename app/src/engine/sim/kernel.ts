@@ -53,6 +53,7 @@ const DEADLINE_PRIORITY: Record<InternalDeadlineKind, number> = {
   'switchover.verify': 17,
   'switchover.convert': 18,
   'switchover.open': 19,
+  'apply.failover': 19.5,
   /* Last at its instant on purpose: a primary that aborts at the threshold
      does so after the observer has initiated the failover at the same second. */
   'primary.abort': 20,
@@ -85,7 +86,8 @@ export type DeadlineAction =
   | 'observer.master'
   | 'switchover.verify'
   | 'switchover.convert'
-  | 'switchover.open';
+  | 'switchover.open'
+  | 'apply.failover';
 
 export class Queue {
   private items: Pending[] = [];
@@ -169,6 +171,8 @@ export interface SwitchoverFacts {
 }
 
 export interface SimState {
+  /** The instant the loop is at: what a lag that grows with time is read against. */
+  now: Seconds;
   net: NetState;
   primary: MemberId;
   fsfoState: FsfoState;
@@ -273,13 +277,52 @@ export interface SimState {
   tOpenAt: Seconds | null;
   newPrimary: MemberId | null;
   formerPrimary: MemberId | null;
+  /**
+   * A manual failover completed while the old primary was still running, and
+   * it has not been down since: it is still open read-write beside the new
+   * primary, because nothing documented closes it (the shutdown is the
+   * operator's, FAILOVER.PRIMARY_SHUT_DOWN). Cleared the moment it goes down
+   * or is aborted; a restart after that is a former primary that restarts.
+   */
+  formerOpen: boolean;
+  /**
+   * The former primary is still running as a primary after the role change and
+   * is not at peace with it: it stalled before the role change and nobody has
+   * reached it since, or (`formerLostTarget`) a manual failover took its
+   * target. It keeps its own stall clock and counts down to its own abort.
+   * Cleared the moment it is down, aborted or reached again; a former primary
+   * that restarts afterwards is started and mounted, not an acting primary
+   * (fact check 2026-10-01, SIM-15).
+   */
+  formerActs: boolean;
+  /**
+   * A manual failover with fast-start failover enabled converted the target
+   * the old primary was running with, and the old primary was still running:
+   * it has lost its target, so it is drawn stalled from that instant (owner
+   * decision D5, a `model`).
+   */
+  formerLostTarget: boolean;
+  /** Members that were down or aborted at some epoch of the run: what "restarted" means. */
+  everDown: MemberId[];
+  /**
+   * Automatic reinstatement of this former primary is pending: the failover
+   * that left it behind is one the broker reinstates after. The band starts
+   * only once the former primary is running, the master observer reaches it
+   * and it reaches the new primary (SIM-16).
+   */
+  reinstatePending: MemberId | null;
   converting: MemberId | null;
   reinstating: MemberId | null;
   abortedMembers: MemberId[];
   abortAt: Seconds | null;
   abortReason: 'stall' | 'maxprotection' | null;
-  /** Members taken out of service by BystandersFollowRoleChange = NONE. */
+  /** Members taken out of service by BystandersFollowRoleChange = NONE, or by a role change to a logical standby. */
   disabledMembers: MemberId[];
+  /**
+   * The disabled members that cannot be reinstated: a role change to a logical
+   * standby leaves them "to be re-created from a copy of the new primary".
+   */
+  recreateMembers: MemberId[];
 
   /* destinations across epochs (dests.ts) */
   /**
@@ -305,12 +348,40 @@ export interface SimState {
   /** Lag inputs can be moved by a lag.set event. */
   applyLag: Record<string, Seconds>;
   transportLag: Record<string, Seconds>;
+  /**
+   * RAC standbys (`rac.ts`): the instance holding the apply role -- or, while
+   * it is down, the one that last held it -- and since when it has been down.
+   */
+  applyInstance: Record<string, string>;
+  applyLostSince: Record<string, Seconds | null>;
+  /** PreferredApplyInstance after SET STATE ... WITH APPLY INSTANCE moved it (the command rewrites the property). */
+  preferredApply: Record<string, string>;
   manualFailoverAt: Seconds | null;
   /** Commands wait one step: they are answered against the epoch's own facts. */
   pendingSwitchover: MemberId | null;
+  /** SET STATE='APPLY-ON' WITH APPLY INSTANCE, answered in `updateRac`. */
+  pendingApplyMove: { member: MemberId; instance: string } | null;
   pendingFailover: { to: MemberId; immediate: boolean } | null;
   pendingReinstate: MemberId | null;
   pendingMasterObserver: ObserverId | null;
+  /** STOP OBSERVER, answered against the epoch's facts: the broker may refuse it. */
+  pendingStopObservers: ObserverId[];
+  /** DISABLE FAST_START FAILOVER [FORCE], answered the same way. */
+  pendingDisableFsfo: { force: boolean } | null;
+  /**
+   * The primary that ran DISABLE FAST_START FAILOVER FORCE while cut off from
+   * the observer and the target standby. Only it treats fast-start failover as
+   * disabled; the observer and the target still have it enabled, so they carry
+   * on with a failover it does not know about. Null in every other run.
+   */
+  forcedOffPrimary: MemberId | null;
+  /**
+   * The SYNC destinations the primary has seen acknowledging during its tenure
+   * (`from>to` keys), the primary they belong to, and how many of them are
+   * silent right now -- so a destination that stops answering among several
+   * starts a commit hang of its own, and one that was never up does not.
+   */
+  syncSeen: { primary: MemberId | null; up: string[]; silent: number };
   /** The protection mode the new primary runs in after a role change, where it differs. */
   modeAfterRoleChange: ProtectionMode | null;
   /** What the role change cost, decided where the role change was decided. */
@@ -324,6 +395,8 @@ export interface SimState {
 export interface Sample {
   t: Seconds;
   members: Record<string, MemberState | FarSyncState>;
+  /** RAC standbys running apply: which instance is doing it. */
+  applyInstances?: Record<string, string>;
   observers: Record<string, ObserverState>;
   links: Record<string, 'up' | 'down'>;
   /** Subjects whose band has no documented end (environment-dependent). */
@@ -348,22 +421,29 @@ export function buildLanes(samples: readonly Sample[]): Lane[] {
 
   const build = (
     kind: 'member' | 'observer' | 'link', id: string, at: (s: Sample) => string | undefined,
+    apply: (s: Sample) => string | undefined = () => undefined,
   ): void => {
     const segments: Segment[] = [];
     for (const s of samples) {
       const state = at(s);
       if (state === undefined) continue;
+      const inst = apply(s);
       const last = segments[segments.length - 1];
-      if (last && last.state === state) continue;
+      /* A RAC standby whose apply moved to another instance is a new segment
+         in the same state: the move is the thing to see. */
+      if (last && last.state === state && last.applyInstance === inst) continue;
       if (last) last.t1 = s.t;
       const seg: Segment = { t0: s.t, t1: null, state: state as Segment['state'] };
+      if (inst !== undefined) seg.applyInstance = inst;
       if (s.open.includes(id)) seg.open = true;
       segments.push(seg);
     }
     if (segments.length > 0) lanes.push({ subject: { kind, id }, segments });
   };
 
-  for (const id of ids((s) => s.members)) build('member', id, (s) => s.members[id]);
+  for (const id of ids((s) => s.members)) {
+    build('member', id, (s) => s.members[id], (s) => s.applyInstances?.[id]);
+  }
   for (const id of ids((s) => s.observers)) build('observer', id, (s) => s.observers[id]);
   for (const id of ids((s) => s.links)) build('link', id, (s) => s.links[id]);
   void first;
@@ -403,14 +483,18 @@ export function snapshotFrom(
   if (!epoch) return null;
   const members: Record<MemberId, MemberState | FarSyncState> = {};
   const observers: Record<ObserverId, ObserverState> = {};
+  const applyInstances: Record<MemberId, string> = {};
   for (const lane of lanes) {
     const seg = segmentAt(lane, t);
     if (!seg) continue;
     if (lane.subject.kind === 'member') {
       members[lane.subject.id as MemberId] = seg.state as MemberState | FarSyncState;
+      if (seg.applyInstance !== undefined) applyInstances[lane.subject.id as MemberId] = seg.applyInstance;
     } else if (lane.subject.kind === 'observer') {
       observers[lane.subject.id as ObserverId] = seg.state as ObserverState;
     }
   }
-  return { t, epoch, members, observers };
+  return Object.keys(applyInstances).length > 0
+    ? { t, epoch, members, observers, applyInstances }
+    : { t, epoch, members, observers };
 }

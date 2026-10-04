@@ -24,7 +24,7 @@ import {
 } from '@/ui/inspector/edits';
 import { resolveSubject } from '@/ui/inspector/Inspector';
 import { WHY } from '@/ui/inspector/why';
-import { appModelFor, axisSpan, buildTimeline } from '@/ui/timeline/build';
+import { appModelsFor, axisSpan, buildTimeline } from '@/ui/timeline/build';
 
 const preset = (id: string): TopologyDoc => PRESETS.find((p) => p.id === id)!.doc();
 const topo = (): TopologyDoc => docSignal.value.topology;
@@ -54,7 +54,7 @@ describe('the application on the drawing', () => {
   });
 
   it('draws no card, and no lane between the bands, for a document without one', () => {
-    const { application: _none, ...bare } = topo();
+    const { applications: _none, ...bare } = topo();
     const { geo, links } = draw(bare);
     expect(geo.nodes.some((n) => n.kind === 'application')).toBe(false);
     expect(geo.midLaneY).toBeNull();
@@ -93,7 +93,7 @@ describe('the application on the drawing', () => {
     resetHistory(makeDoc({ ...t, events: scenarioEvents('partition', t) }));
     expect(draw(topo(), 5).links.find((l) => l.id === 'connect:app01:sby01'))
       .toMatchObject({ cut: true, value: 'cut' });
-    resetHistory(makeDoc({ ...t, events: [{ at: 0, kind: 'host.down', host: t.application!.host }] }));
+    resetHistory(makeDoc({ ...t, events: [{ at: 0, kind: 'host.down', host: t.applications![0]!.host }] }));
     const lost = draw(topo(), 5);
     expect(lost.links.filter((l) => l.kind === 'connect').every((l) => l.down)).toBe(true);
     expect(cardFrameFor(topo(), lost.geo.byKey['app01']!, lost.frame)).toMatchObject({ down: true, crashed: true });
@@ -152,32 +152,33 @@ describe('the application in Build', () => {
     expect(resolveSubject(topo(), 'app01')?.kind).toBe('application');
     expect(buildActionsForKey(topo(), 'app01').map((a) => a.id)).toEqual(['edit', 'remove']);
     removeAction(topo(), 'app01')?.run();
-    expect(topo().application).toBeUndefined();
+    expect(topo().applications).toBeUndefined();
     expect(topo().hosts.some((h) => (h.id as string) === 'dc1-app01')).toBe(false);
     /* The descriptor stays: the generated connect string is still the document's. */
     expect(topo().client.addresses).toHaveLength(2);
     undo();
-    expect(topo().application?.id).toBe('app01');
+    expect(topo().applications?.[0]?.id).toBe('app01');
   });
 
-  it('is added once, beside the primary unless a data centre is named', () => {
-    expect(addApplication()).toBeNull();
-    removeApplication();
+  it('is added beside the primary unless a data centre is named, and again as often as asked', () => {
+    removeApplication('app01');
     expect(addApplication(siteId('dc3'))).toBe('app01');
-    expect(topo().hosts.find((h) => h.id === topo().application?.host)?.site).toBe('dc3');
-    removeApplication();
+    expect(topo().hosts.find((h) => h.id === topo().applications?.[0]?.host)?.site).toBe('dc3');
+    removeApplication('app01');
     expect(addApplication()).toBe('app01');
-    expect(topo().hosts.find((h) => h.id === topo().application?.host)?.site).toBe('dc1');
+    expect(topo().hosts.find((h) => h.id === topo().applications?.[0]?.host)?.site).toBe('dc1');
+    expect(addApplication()).toBe('app02');
+    expect(topo().applications?.map((a) => a.id as string)).toEqual(['app01', 'app02']);
   });
 
   it('moves to another data centre on a host of its own there, as one undo', () => {
     moveToSite('app01', siteId('dc2'));
-    const host = topo().hosts.find((h) => h.id === topo().application?.host);
+    const host = topo().hosts.find((h) => h.id === topo().applications?.[0]?.host);
     expect(host).toMatchObject({ site: 'dc2', name: 'dc2-app01' });
     expect(topo().hosts.some((h) => (h.id as string) === 'dc1-app01')).toBe(false);
     expect(draw(topo()).geo.byKey['app01']?.site).toBe('dc2');
     undo();
-    expect(topo().application?.host).toBe('dc1-app01');
+    expect(topo().applications?.[0]?.host).toBe('dc1-app01');
   });
 
   it('keeps a moved standby on the ADDRESS_LIST', () => {
@@ -196,16 +197,16 @@ describe('the application in Build', () => {
 
   it('takes a database off its list and puts it back, line and all', () => {
     const sby = topo().members.find((m) => (m.id as string) === 'sby01')!;
-    setAddressListed(sby.id, false);
+    setAddressListed('app01', sby.id, false);
     expect(topo().client.addresses.map((a) => a.host as string)).toEqual(['dc1-prm01']);
     expect(draw(topo()).links.some((l) => l.id === 'connect:app01:sby01')).toBe(false);
     expect(connectVerdict(topo(), 'app01', 'sby01')).toEqual({
-      label: 'List sby01 in the ADDRESS_LIST', enabled: { state: 'on' },
+      label: "List sby01 in app01's ADDRESS_LIST", enabled: { state: 'on' },
     });
-    setAddressListed(sby.id, true);
+    setAddressListed('app01', sby.id, true);
     expect(topo().client.addresses.map((a) => a.host as string)).toEqual(['dc1-prm01', 'dc2-sby01']);
     expect(connectVerdict(topo(), 'sby01', 'app01').enabled)
-      .toEqual({ state: 'off', why: 'sby01 is on the ADDRESS_LIST already.' });
+      .toEqual({ state: 'off', why: "sby01 is on app01's ADDRESS_LIST already." });
   });
 
   it('never lists a far sync instance, and says why', () => {
@@ -223,10 +224,10 @@ describe('the application in Build', () => {
   it('is renamed in one namespace with everything else on the drawing', () => {
     expect(renameVerdict(topo(), 'app01', 'sby01')).toEqual({ state: 'off', why: WHY.idTaken });
     expect(renameVerdict(topo(), 'app01', 'billing')).toEqual({ state: 'on' });
-    renameApplication('billing');
-    expect(topo().application).toMatchObject({ id: 'billing', name: 'billing', host: 'dc1-app01' });
-    renameApplication('sby01');
-    expect(topo().application?.id).toBe('billing');
+    renameApplication('app01', 'billing');
+    expect(topo().applications?.[0]).toMatchObject({ id: 'billing', name: 'billing', host: 'dc1-app01' });
+    renameApplication('billing', 'sby01');
+    expect(topo().applications?.[0]?.id).toBe('billing');
   });
 });
 
@@ -235,7 +236,7 @@ describe('the application in Break', () => {
     expect(actionsForKey(topo(), 'app01', 0).map((a) => a.id)).toEqual(['host.down', 'host.up']);
     const [tool] = hoverTools(topo(), 'app01', 0);
     expect(tool).toMatchObject({ id: 'host.down', icon: 'crash' });
-    resetHistory(makeDoc({ ...topo(), events: [{ at: 0, kind: 'host.down', host: topo().application!.host }] }));
+    resetHistory(makeDoc({ ...topo(), events: [{ at: 0, kind: 'host.down', host: topo().applications![0]!.host }] }));
     expect(hoverTools(topo(), 'app01', 5)[0]).toMatchObject({ id: 'host.up', icon: 'restore' });
   });
 
@@ -254,29 +255,31 @@ describe('the application in Break', () => {
     const app = m.lanes.filter((l) => l.group === 'app');
     expect(app.every((l) => l.kind === 'application' && l.id === 'app01')).toBe(true);
     expect(new Set(app.map((l) => l.key)).size).toBe(3);
-    expect(m.appSection).toMatchObject({
+    expect(m.appSections).toHaveLength(1);
+    expect(m.appSections[0]).toMatchObject({
+      id: 'app01',
       title: "The application's view",
       note: 'outage 60.3 s — 15.3 s of it inside the connect string',
     });
-    expect(m.appSection?.basis).toContain("This page's model");
+    expect(m.appSections[0]?.basis).toContain("This page's model");
     /* The heading sits between the two groups of lanes. */
     const sby = m.lanes.find((l) => l.name === 'sby01')!;
-    expect(m.appSection!.y).toBeGreaterThan(sby.y + sby.height);
-    expect(m.appSection!.y).toBeLessThan(app[0]!.y);
+    expect(m.appSections[0]!.y).toBeGreaterThan(sby.y + sby.height);
+    expect(m.appSections[0]!.y).toBeLessThan(app[0]!.y);
     expect(m.lanesBottom).toBe(app[2]!.y + app[2]!.height);
   });
 
   it('stretches the axis to the reconnect, which is past the role change', () => {
     const doc = crashed();
     const trace = simulate(doc, doc.events);
-    const ap = appModelFor(trace, doc)!;
+    const ap = appModelsFor(trace, doc)[0]!;
     expect(ap.tConn).toBeCloseTo(60.3, 9);
     expect(axisSpan(trace, doc.events, doc).t1).toBeGreaterThan(60.3);
     expect(axisSpan(trace, doc.events).t1).toBeLessThan(60.3);
     const m = buildTimeline(trace, doc, { width: 1200 });
     const mark = m.markers.find((x) => x.kind === 'app');
     expect(mark).toMatchObject({
-      key: 'app-reconnect', label: 'Application reconnected at t = 60.3 s', glyph: 'diamond',
+      key: 'app-reconnect:app01', label: 'Application reconnected at t = 60.3 s', glyph: 'diamond',
     });
     expect(mark!.x).toBeLessThanOrEqual(m.scale.plotR);
   });
@@ -313,13 +316,13 @@ describe('the application in Break', () => {
     const trace = simulate(doc, doc.events);
     const off = buildTimeline(trace, doc, { width: 1200, app: false });
     expect(off.lanes.some((l) => l.group === 'app')).toBe(false);
-    expect(off.appSection).toBeNull();
+    expect(off.appSections).toEqual([]);
     expect(off.scale.t1).toBe(axisSpan(trace, doc.events).t1);
-    const { application: _none, ...bare } = doc;
+    const { applications: _none, ...bare } = doc;
     const none = buildTimeline(simulate(bare, bare.events), bare, { width: 1200 });
-    expect(none.appSection).toBeNull();
+    expect(none.appSections).toEqual([]);
     /* The pinned scale is the static figures': the three lanes they draw. */
-    expect(buildTimeline(trace, doc, { width: 1200, pinnedScale: true }).appSection).toBeNull();
+    expect(buildTimeline(trace, doc, { width: 1200, pinnedScale: true }).appSections).toEqual([]);
   });
 
   it('says so when the application is lost with its data centre', () => {
@@ -327,7 +330,7 @@ describe('the application in Break', () => {
     moveToSite('app01', siteId('dc2'));
     const doc = { ...topo(), events: scenarioEvents('dc2down', t) };
     const m = buildTimeline(simulate(doc, doc.events), doc, { width: 1200 });
-    expect(m.appSection).toMatchObject({
+    expect(m.appSections[0]).toMatchObject({
       note: 'the application is down with its host, so nothing is dialled', tone: 'f-rd',
     });
     const conn = m.lanes.find((l) => l.name === 'New connections')!.segments;
@@ -340,13 +343,13 @@ describe('the application in Break', () => {
     const t = preset('classic');
     const doc = { ...t, events: scenarioEvents('isolated', t) };
     const m = buildTimeline(simulate(doc, doc.events), doc, { width: 1200 });
-    expect(m.appSection?.tone).toBe('f-rd');
-    expect(m.appSection?.note).toBe('the connect string is exhausted at t = 90.2 s — the application stays down');
+    expect(m.appSections[0]?.tone).toBe('f-rd');
+    expect(m.appSections[0]?.note).toBe('the connect string is exhausted at t = 90.2 s — the application stays down');
     const pool = m.lanes.find((l) => l.name === 'Sessions')!.segments.map((s) => s.title);
     expect(pool[1]).toBe('Commits hang — the primary cannot write redo anywhere');
     const svc = m.lanes.find((l) => l.name === 'Service')!.segments.map((s) => s.title);
     expect(svc).toContain('Still published — on a STALLED prm01');
     expect(svc.at(-1)).toBe("Published by sby01 — out of the application's reach");
-    expect(m.markers.find((x) => x.kind === 'app')).toMatchObject({ key: 'app-exhausted', glyph: 'cross' });
+    expect(m.markers.find((x) => x.kind === 'app')).toMatchObject({ key: 'app-exhausted:app01', glyph: 'cross' });
   });
 });

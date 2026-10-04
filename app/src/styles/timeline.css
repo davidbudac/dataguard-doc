@@ -38,25 +38,173 @@
   touch-action: none;
 }
 
+/* ---------------- the panel's handle ---------------- */
+
+/*
+  The edge the timeline panel folds at (ui/timeline/PanelHandle.tsx).
+
+  A full-width bar drawn as the panel's top edge: a double hairline running out
+  to both sides of a small tab, which is what a grab-handle on the edge of a
+  pane looks like everywhere else. The tab is the label -- chevron, then the
+  word -- so the control reads as "fold the panel here" before anyone has
+  hovered it. It is a real button and the whole bar is the hit target. Folded,
+  it is all that is left of the panel: the body is not rendered, not painted
+  away. The same bar heads Topology's floating dock and the docked timeline slot.
+*/
+.tlp-handle {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  flex: 0 0 auto;
+  padding: 4px var(--s4);
+  font: inherit;
+  color: var(--ik3);
+  background: var(--sf2);
+  border: 0;
+  border-bottom: 1px solid var(--ln);
+  cursor: pointer;
+}
+
+/* The grip: two hairlines either side of the tab. */
+.tlp-handle::before,
+.tlp-handle::after {
+  content: "";
+  flex: 1 1 0;
+  height: 3px;
+  border-top: 1px solid var(--ln2);
+  border-bottom: 1px solid var(--ln2);
+}
+
+.tlp-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+  padding: 2px 12px;
+  font-size: 11.5px;
+  font-weight: 620;
+  letter-spacing: .02em;
+  color: var(--ik2);
+  background: var(--sf);
+  border: 1px solid var(--ln2);
+  border-radius: var(--r-ctl);
+}
+
+.tlp-caret { font-family: var(--mono); font-size: 10px; color: var(--ik3); width: 9px; }
+
+/* What a folded panel can still say: over the right-hand grip, so it carries
+   the bar's own ground under it. */
+.tlp-sum {
+  position: absolute;
+  right: var(--s4);
+  top: 50%;
+  transform: translateY(-50%);
+  padding-left: 10px;
+  font-size: 11px;
+  color: var(--ik3);
+  background: var(--sf2);
+  white-space: nowrap;
+}
+
+.tlp-handle:hover { background: var(--sf3); color: var(--ik); }
+.tlp-handle:hover .tlp-tab { color: var(--ik); border-color: var(--ik3); }
+.tlp-handle:hover .tlp-sum { background: var(--sf3); }
+.tlp-handle:hover::before,
+.tlp-handle:hover::after { border-color: var(--ik3); }
+.tlp-handle:focus-visible { outline: 2px solid var(--fc); outline-offset: -2px; }
+
+/* The dock card's top edge: the bar sits inside the card's rounded corners and
+   stays put while the dock scrolls under it. */
+.app-dock > .tlp-handle { position: sticky; top: 0; z-index: 5; border-radius: var(--r-card) var(--r-card) 0 0; }
+.app-dock > .tlp-handle:not([aria-expanded="true"]) { border-bottom: 0; border-radius: var(--r-card); }
+
+/* Docked, the handle heads the slot, which has no card of its own. */
+.tl-slot > .tlp-handle { margin: 0 0 6px; }
+
+@media (prefers-reduced-motion: no-preference) {
+  .tlp-handle, .tlp-tab, .tlp-sum { transition: background-color .16s ease, color .16s ease, border-color .16s ease; }
+}
+
+/* Paper has nobody to press it: the handle stays as the panel's heading, with
+   the grip and the chevron taken out. */
+@media print {
+  .tlp-handle { background: none; border-bottom: 1px solid var(--ln); padding-inline: 0; }
+  .tlp-handle::before, .tlp-handle::after, .tlp-caret { display: none; }
+  .tlp-tab { border: 0; padding: 0; background: none; }
+}
+
 /* ---------------- the drawing (ported) ---------------- */
+
+/* The drawing's type sizes, as custom properties so the packed timeline can set
+   them larger on one class. The numbers must equal `TL_FULL.fs*` and
+   `TL_COMPACT.fs*` in build.ts, which are what the drawing measures its text
+   with (test/ui/timeline-type.test.ts reads both). */
+.tl-svg {
+  --fs-lane: 12px; --fs-bar: 11px; --fs-sub: 10px; --fs-tick: 10.5px;
+  --fs-mark: 11.5px; --fs-brace-v: 11px; --fs-top: 12px; --fs-note: 12px;
+  --fs-app: 11.5px; --fs-num: 9.5px; --fs-ph: 10.5px; --fs-rm: 6.5px;
+}
+.tl-svg.is-big {
+  --fs-lane: 13.5px; --fs-bar: 13px; --fs-tick: 12px; --fs-mark: 13px;
+  --fs-brace-v: 12.5px; --fs-top: 13px; --fs-note: 13px; --fs-app: 13px;
+  --fs-num: 11.5px; --fs-ph: 12px; --fs-rm: 8px;
+}
 
 .tl-svg text { font-family: var(--sans); fill: var(--ik2); }
 .tl-svg .t-mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
-.tl-svg .t-lane { fill: var(--ik); font-size: 12.5px; font-weight: 600; }
-.tl-svg .t-sub { fill: var(--ik3); font-size: 10px; }
-.tl-svg .t-bar { font-size: 11px; }
-.tl-svg .t-tick { fill: var(--ik3); font-size: 10.5px; }
-.tl-svg .t-mark { font-size: 11.5px; font-weight: 560; }
-.tl-svg .t-brace-n { font-size: 11.5px; fill: var(--ik); }
-.tl-svg .t-brace-v { font-size: 11px; fill: var(--ik2); }
-.tl-svg .t-top { font-size: 12px; font-weight: 560; fill: var(--ik); }
+/* A lane's name is an Oracle identifier, so it stays mono, but it labels the
+   row rather than headlining it: secondary ink at a medium weight, so the bars
+   and their state carry the eye. */
+.tl-svg .t-lane { fill: var(--ik2); font-size: var(--fs-lane); font-weight: 500; }
+.tl-svg .t-sub { fill: var(--ik3); font-size: var(--fs-sub); }
+/* The application's three lanes are aspects of the application, not peers of
+   the databases: this page's own words, in sans, and the quietest ink. */
+.tl-svg .t-lane-app { font-size: var(--fs-app); font-weight: 400; fill: var(--ik3); }
+
+/* The type icon in a lane's gutter: the canvas card's glyph (common/glyphs.tsx)
+   drawn at 14 px, tinted as the card tints it -- a primary teal, a standby blue,
+   everything else the secondary ink -- and the observer in the violet its card
+   takes while it decides, but with no badge fill behind it: a fill per lane
+   would read as one more bar. The letter is the
+   card's role mark (P, S, and M for the master observer) at the same tokens. */
+.tl-svg .tl-ico { stroke: var(--ik2); fill: none; pointer-events: none; }
+.tl-svg .tl-ico.is-primary { stroke: var(--tl); }
+.tl-svg .tl-ico.is-standby { stroke: var(--bl); }
+.tl-svg .tl-ico.is-observer { stroke: var(--vi); }
+.tl-svg .tl-ico.is-app { stroke: var(--ik2); }
+.tl-svg .tl-ico-mark rect { fill: var(--sf); stroke: var(--ik3); stroke-width: 1; }
+.tl-svg .tl-ico-mark text { fill: var(--ik2); font: 700 var(--fs-rm) var(--sans); }
+.tl-svg .tl-ico-mark.is-primary rect { fill: var(--tlf); stroke: var(--tl); }
+.tl-svg .tl-ico-mark.is-primary text { fill: var(--tl-ink); }
+.tl-svg .tl-ico-mark.is-standby rect { fill: var(--blf); stroke: var(--bl); }
+.tl-svg .tl-ico-mark.is-standby text { fill: var(--bl-ink); }
+.tl-svg .tl-ico-mark.is-observer rect { fill: var(--vif); stroke: var(--vi); }
+.tl-svg .tl-ico-mark.is-observer text { fill: var(--vi-ink); }
+.tl-svg .t-bar { font-size: var(--fs-bar); }
+.tl-svg .t-tick { fill: var(--ik3); font-size: var(--fs-tick); }
+.tl-svg .t-mark {
+  font-size: var(--fs-mark); font-weight: 560;
+  /* A gridline passes through the gap a milestone sentence stands in. */
+  paint-order: stroke; stroke: var(--sf); stroke-width: 4px; stroke-linejoin: round;
+}
+.tl-svg .t-brace-n { font-size: var(--fs-mark); fill: var(--ik); }
+.tl-svg .t-brace-v { font-size: var(--fs-brace-v); fill: var(--ik2); }
+.tl-svg .t-top { font-size: var(--fs-top); font-weight: 560; fill: var(--ik); }
 
 .tl-svg .ax { stroke: var(--ln2); stroke-width: 1; }
-.tl-svg .gridline { stroke: var(--gd); stroke-width: 1; }
+/* The ticks read through the gaps and margins between the bars, so a position
+   on the axis can be followed up to the bar it belongs to. Quiet on purpose:
+   the lane grounds carry a stroke of the same weight. */
+.tl-svg .gridline { stroke: var(--ln); stroke-width: 1; stroke-dasharray: 1 3; }
 .tl-svg .prezone { fill: var(--sf2); }
-.tl-svg .lane-bg { fill: var(--sf2); stroke: var(--ln); stroke-width: 1; }
+.tl-svg .lane-bg { fill: var(--sf2); stroke: none; }
 
-.tl-svg .bar { stroke-width: 1.25; rx: 2; }
+/* A bar is its fill and its words; the outline only has to say where it ends.
+   The stroke keeps the state's own hue, at a lower opacity, so a run of
+   adjacent bars does not draw a heavy line at every seam. */
+.tl-svg .bar { stroke-width: 1; stroke-opacity: .6; rx: 2; }
 .tl-svg .b-tl { fill: var(--tlf); stroke: var(--tl); }
 .tl-svg .b-bl { fill: var(--blf); stroke: var(--bl); }
 .tl-svg .b-am { fill: var(--amf); stroke: var(--am); }
@@ -66,7 +214,7 @@
 /* An open band has no documented end: it fades out rather than squaring off. */
 .tl-svg .bar.is-open { stroke-dasharray: 4 3; }
 .tl-svg .hatch-bg { fill: var(--rdf); }
-.tl-svg .hatch-ln { stroke: var(--rd); stroke-width: 2; opacity: .5; }
+.tl-svg .hatch-ln { stroke: var(--rd); stroke-width: 1.5; opacity: .38; }
 
 .tl-svg .f-tl { fill: var(--tl); }
 .tl-svg .f-bl { fill: var(--bl); }
@@ -74,6 +222,19 @@
 .tl-svg .f-rd { fill: var(--rd); }
 .tl-svg .f-vi { fill: var(--vi); }
 .tl-svg .f-sl { fill: var(--ik2); }
+/* A band's label is set on the band's own tint, so it takes the *-ink token: the
+   hue darkened until it reads at 4.5:1 or better on its fill in the light
+   palettes (tokens.css; test/ui/contrast.test.ts pins every pair). The plain
+   token stays for strokes, dots and braces, which is what keeps the bands pale.
+   The hatch is busy under a label, so a red one gets a ground of its own fill. */
+.tl-svg .t-bar.f-tl { fill: var(--tl-ink); }
+.tl-svg .t-bar.f-bl { fill: var(--bl-ink); }
+.tl-svg .t-bar.f-am { fill: var(--am-ink); }
+.tl-svg .t-bar.f-vi { fill: var(--vi-ink); }
+.tl-svg .t-bar.f-rd {
+  fill: var(--rd-ink);
+  paint-order: stroke; stroke: var(--rdf); stroke-width: 3px; stroke-linejoin: round;
+}
 
 .tl-svg .m-rd { stroke: var(--rd); }
 .tl-svg .m-vi { stroke: var(--vi); }
@@ -88,7 +249,7 @@
 
 /* numbered event markers: the number ties the drawing to the Break rail */
 .tl-svg .tl-marker-nb { fill: var(--sf); stroke: var(--rd); stroke-width: 1.25; }
-.tl-svg .tl-marker-nt { font-size: 9.5px; font-weight: 600; fill: var(--rd); }
+.tl-svg .tl-marker-nt { font-size: var(--fs-num); font-weight: 600; fill: var(--rd); }
 /* The injected event's icon, over its number: the canvas's hover-tool glyph. */
 .tl-svg .tl-marker-chip { fill: var(--rdf); stroke: var(--rd); stroke-width: 1; }
 .tl-svg .tl-marker-stem { stroke: var(--rd); stroke-width: 1; opacity: .55; }
@@ -105,11 +266,15 @@
 .tl-svg .tl-lane.is-selected .lane-bg { stroke: var(--ik3); stroke-width: 1.5; }
 .tl-svg .tl-lane.is-selected .t-lane { fill: var(--vi); }
 .tl-svg .tl-seg { cursor: default; }
-/* The application's lanes: a hairline and one line of text over the three. */
-.tl-svg .tl-app-rule { stroke: var(--ln2); stroke-width: 1; stroke-dasharray: 2 3; }
-.tl-svg .t-app-note { font-weight: 400; fill: var(--ik2); }
-.tl-svg .t-app-note.f-am { fill: var(--am); }
-.tl-svg .t-app-note.f-rd { fill: var(--rd); }
+/* The application's lanes: a hairline and one line of text over the three. The
+   line is a divider between two sections of the drawing, so it is a plain
+   hairline across the plot, and the words over it are a heading's, not a
+   headline's: secondary ink, the title semibold and the reading regular. */
+.tl-svg .tl-app-rule { stroke: var(--ln); stroke-width: 1; }
+.tl-svg .t-app-title { font-size: var(--fs-top); font-weight: 600; fill: var(--ik2); }
+.tl-svg .t-app-note { font-size: var(--fs-note); font-weight: 400; fill: var(--ik3); }
+.tl-svg .t-app-note.f-am { fill: var(--am-ink); }
+.tl-svg .t-app-note.f-rd { fill: var(--rd-ink); }
 /* A press anywhere on the plot seeks there (Timeline.tsx). */
 .tl-svg.is-seekable, .tl-svg.is-seekable .tl-lane, .tl-svg.is-seekable .tl-seg { cursor: pointer; }
 
@@ -123,7 +288,7 @@
 .tl-svg .tl-playhead-ln { stroke: var(--ik); stroke-width: 1; stroke-dasharray: 2 3; }
 .tl-svg .tl-playhead-grip { fill: var(--ik); }
 .tl-svg .tl-playhead-badge { fill: var(--sf); stroke: var(--ln2); stroke-width: 1; }
-.tl-svg .tl-playhead-t { font-size: 10.5px; fill: var(--ik); dominant-baseline: middle; }
+.tl-svg .tl-playhead-t { font-size: var(--fs-ph); fill: var(--ik); dominant-baseline: central; }
 .tl-svg .tl-playhead-g { cursor: ew-resize; outline: none; touch-action: none; user-select: none; }
 .tl-svg .tl-playhead-g:focus-visible .tl-playhead-grip { fill: var(--vi); }
 .tl-svg .tl-playhead-g:focus-visible .tl-playhead-ln { stroke: var(--vi); stroke-dasharray: none; }
@@ -271,6 +436,18 @@
 
 .tl-tp-in:focus-visible { outline: 2px solid var(--fc); outline-offset: 1px; }
 
+/* The five speeds as one control, where the bar has no room for the row. */
+.tl-tp-sel {
+  padding: 3px 5px;
+  border: 1px solid var(--ln);
+  border-radius: var(--r-ctl);
+  background: var(--sf);
+  color: var(--ik);
+  font: inherit;
+  font-size: 11.5px;
+}
+.tl-tp-sel:focus-visible { outline: 2px solid var(--fc); outline-offset: 1px; }
+
 .tl-tp-speeds { display: inline-flex; align-items: center; gap: 6px; }
 
 .tl-tp-speed {
@@ -288,8 +465,8 @@
 .tl-tp-speed.is-on { color: var(--ik); border-color: var(--vi); background: var(--vif); }
 .tl-tp-speed:disabled { color: var(--ik3); border-color: var(--ln); cursor: default; }
 
-/* Every gray control says why it is gray, in place -- `.why` is the one pill,
-   styled in shell.css. Beside a transport button it stays on one line. */
+/* Every gray control says why it is gray, in place -- `.why` is the one plain-text
+   note, styled in shell.css. Beside a transport button it stays on one line. */
 .tl-transport .why { white-space: nowrap; }
 
 /* The screen-reader table uses base.css's `.sr`; nothing extra is needed. */
@@ -301,5 +478,52 @@
 .tl-event-drag:focus-visible .tl-event-hit,
 .tl-event-drag:hover .tl-event-hit{stroke:var(--fc);fill:var(--sf);stroke-width:1.5}
 .tl-event-drag.is-dragging .tl-marker{opacity:.65}
-.tl-svg .tl-event-time{fill:var(--ik);font-size:11px;paint-order:stroke;stroke:var(--sf);stroke-width:4px;stroke-linejoin:round}
+.tl-svg .tl-event-time{fill:var(--ik);font-size:var(--fs-ph);paint-order:stroke;stroke:var(--sf);stroke-width:4px;stroke-linejoin:round}
 @media print{.tl-event-hit{display:none}}
+
+/* ---------------- adding an event from a lane (LaneAdd.tsx) ---------------- */
+
+/* Quiet until wanted: shown for the lane under the pointer, while it has the
+   keyboard focus and while its menu is open. Hidden, it stays focusable (Tab
+   reaches it) but takes no pointer, so a press beside the playhead still seeks. */
+.tl-svg .tl-lane-add { opacity: 0; pointer-events: none; cursor: pointer; outline: none; touch-action: none; transition: opacity .12s ease-out; }
+.tl-svg .tl-lane-add.is-shown,
+.tl-svg .tl-lane-add:focus-visible { opacity: 1; pointer-events: all; }
+.tl-svg .tl-lane-add-bg { fill: var(--sf); stroke: var(--ln2); stroke-width: 1; }
+.tl-svg .tl-lane-add-ico { fill: none; stroke: var(--ik2); stroke-width: 1.6; stroke-linecap: round; }
+.tl-svg .tl-lane-add:hover .tl-lane-add-bg,
+.tl-svg .tl-lane-add.is-open .tl-lane-add-bg { stroke: var(--vi); fill: var(--vif); }
+.tl-svg .tl-lane-add:hover .tl-lane-add-ico,
+.tl-svg .tl-lane-add.is-open .tl-lane-add-ico { stroke: var(--vi); }
+.tl-svg .tl-lane-add:focus-visible .tl-lane-add-bg { stroke: var(--fc, var(--vi)); stroke-width: 2; }
+@media print { .tl-svg .tl-lane-add { display: none; } }
+
+/* The event menu opened from a lane: Lanes' popover (`.bl-lanes .ln-menu`,
+   lanes.css) with the same list, but hung off the window rather than off a
+   card, in a node of its own in the body so the dock -- short, scrolling and a
+   stacking context -- cannot clip it or sit over it. Above the floating cards
+   (20-40) and the overflow menu (45); under the sheet and its scrim (59-60). */
+.cv-bar.cv-menu.ln-menu.is-fixed {
+  position: fixed; z-index: 58; display: flex; flex-direction: column;
+  top: 0; left: 0; max-width: calc(100vw - 16px); outline: none;
+}
+.ln-menu.is-fixed .ln-menu-body {
+  min-height: 0; overflow-y: auto; overscroll-behavior: contain;
+  scrollbar-width: thin; scrollbar-color: var(--ln2) transparent;
+}
+.ln-menu.is-fixed .cv-menu-list { overflow: visible; }
+.ln-menu.is-fixed .ln-menu-sub { margin: 8px 4px 0; padding-top: 6px; border-top: 1px solid var(--ln); font-size: 11px; color: var(--ik2); }
+.ln-menu.is-fixed .ln-menu-blk:first-child .ln-menu-sub { margin-top: 2px; border-top: 0; }
+@media print { .ln-menu.is-fixed { display: none; } }
+
+/* The grip on the end of a clock: quiet at rest, plain when the plot, the grip or the drag is live. */
+.tl-tune{cursor:ew-resize;touch-action:none}
+.tl-tune-hit{fill:transparent;stroke:transparent}
+.tl-tune-grip{fill:var(--ik2);stroke:var(--sf);stroke-width:1;opacity:.6}
+.tl-plot:hover .tl-tune-grip{opacity:.9}
+.tl-tune:hover .tl-tune-grip,
+.tl-tune:focus-visible .tl-tune-grip{fill:var(--ik);opacity:1}
+.tl-tune.is-dragging .tl-tune-grip{fill:var(--fc);opacity:1}
+.tl-tune:focus{outline:none}
+.tl-tune:focus-visible .tl-tune-hit{stroke:var(--fc);fill:var(--sf);stroke-width:1.5}
+@media print{.tl-tune{display:none}}

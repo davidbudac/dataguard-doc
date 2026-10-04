@@ -7,19 +7,25 @@
  * lag, no open mode and no broker state, so those controls are not there and
  * a sentence says why. What *is* greyed always carries its reason, out of the
  * one WHY table.
+ *
+ * The member's name is not a row here: it is the rail's header, and it is the
+ * `db_unique_name` (`Inspector.tsx`). The form opens on what the member *is* --
+ * its role and its transport -- and folds what it *has*: where it is reached,
+ * its instances, its routes and its destinations.
  */
 
 import type { Member, MemberId, RedoGraph, TopologyDoc, XptMode } from '@/engine';
-import { hostId, isDatabase } from '@/engine';
+import { hostId, isDatabase, isRac } from '@/engine';
 import { Fact } from '../common/Chip';
-import { Action, Check, Choice, Fold, Group, Note, Num, Pick, Text } from './controls';
-import { DESTS_ID, INSTANCES_ID } from './sections';
+import { Action, Check, Choice, Fold, Group, Note, Num, Pick, Text, Withheld } from './controls';
+import { DESTS_ID, IDENTITY_ID, INSTANCES_ID } from './sections';
 import { RedoRoutesEditor } from './RedoRoutesEditor';
 import {
   addInstance, destPropsOf, patchDatabase, patchDest, patchInstance, patchMember, removeInstance,
-  renameMember, setLogXptMode, setPrimary,
+  setApplyLag, setLogXptMode, setPrimary,
 } from './edits';
-import { gateOff, off, ON, WHY } from './why';
+import { APPLY_LAG_NOTE, LOG_XPT_NOTE } from './notes';
+import { gateOff, logXptOptions, off, ON, WHY } from './why';
 
 export interface MemberFormProps {
   member: Member;
@@ -60,34 +66,6 @@ export function MemberForm({ member, doc, graph }: MemberFormProps) {
 
   return (
     <>
-      {/* The header already says what this is (a primary database, a far sync
-          instance); the first group is its identity. */}
-      <Group title="General">
-        <Text
-          name="db_unique_name"
-          value={id as string}
-          onCommit={(v) => renameMember(id, v)}
-          focusKey={`name:${id as string}`}
-          note="The member's identity. Renaming it rewrites every reference in this configuration in the same edit."
-        />
-        <Text
-          name="Connect identifier" prose
-          value={member.connectIdentifier}
-          onCommit={(v) => patchMember(
-            id, `Set the connect identifier on ${id as string}`, (m) => ({ ...m, connectIdentifier: v }),
-          )}
-          note="What DGMGRL and the observer dial to reach this member."
-        />
-        <Check
-          name="Enabled" prose
-          label="In the broker configuration"
-          checked={member.enabled}
-          onChange={(v) => patchMember(
-            id, `${v ? 'Enable' : 'Disable'} ${id as string}`, (m) => ({ ...m, enabled: v }),
-          )}
-        />
-      </Group>
-
       {db === null ? (
         <Group title="Redo">
           <Note>
@@ -139,51 +117,56 @@ export function MemberForm({ member, doc, graph }: MemberFormProps) {
               id, `Set the open mode on ${id as string}`, (m) => ({ ...m, openMode: v }),
             )}
           />
-          <Num
-            name="Apply lag" prose
-            bound="applyLagSeconds"
-            value={db.applyLagSeconds}
-            coalesce={`alag:${id as string}`}
-            enabled={gateOff(isPrimary, WHY.primaryNoApply)}
-            onChange={(v) => patchDatabase(
-              id, `Set the apply lag on ${id as string}`,
-              (m) => ({ ...m, applyLagSeconds: v, transportLagSeconds: Math.min(m.transportLagSeconds, v) }),
-              `alag:${id as string}`,
-            )}
-            note="Redo this standby holds but has not applied. It lengthens the catch-up a role change pays; it does not make the standby unsynchronized."
-          />
-          <Num
-            name="Transport lag" prose
-            bound="transportLagSeconds"
-            value={db.transportLagSeconds}
-            coalesce={`xlag:${id as string}`}
-            enabled={gateOff(isPrimary, WHY.primaryNoApply)}
-            onChange={(v) => patchDatabase(
-              id, `Set the transport lag on ${id as string}`,
-              (m) => ({ ...m, transportLagSeconds: Math.min(v, m.applyLagSeconds) }),
-              `xlag:${id as string}`,
-            )}
-            note="Redo the standby has not received. Clamped to the apply lag, because redo cannot be applied before it arrives."
-          />
-          <Check
-            name="Apply running" prose
-            label="Redo apply is running"
-            checked={db.applyRunning}
-            enabled={gateOff(isPrimary, WHY.primaryNoApply)}
-            onChange={(v) => patchDatabase(
-              id, `${v ? 'Start' : 'Stop'} redo apply on ${id as string}`,
-              (m) => ({ ...m, applyRunning: v }),
-            )}
-          />
-          <Check
-            name="Real-time apply" prose
-            label="Applies from the standby redo logs"
-            checked={db.realTimeApply}
-            enabled={gateOff(isPrimary, WHY.primaryNoApply)}
-            onChange={(v) => patchDatabase(
-              id, `Set real-time apply on ${id as string}`, (m) => ({ ...m, realTimeApply: v }),
-            )}
-          />
+          {/* A primary applies no redo, so these four are one line, not four
+              grey rows under one pill apiece. A snapshot standby is off for a
+              reason of its own, and keeps its row. */}
+          {isPrimary ? (
+            <Withheld
+              names="Apply lag, transport lag, redo apply and real-time apply"
+              why={WHY.primaryNoApply}
+            />
+          ) : (
+            <>
+              <Num
+                name="Apply lag" prose
+                bound="applyLagSeconds"
+                value={db.applyLagSeconds}
+                coalesce={`alag:${id as string}`}
+                onChange={(v) => setApplyLag(id, v)}
+                note={APPLY_LAG_NOTE}
+              />
+              <Num
+                name="Transport lag" prose
+                bound="transportLagSeconds"
+                value={db.transportLagSeconds}
+                coalesce={`xlag:${id as string}`}
+                onChange={(v) => patchDatabase(
+                  id, `Set the transport lag on ${id as string}`,
+                  (m) => ({ ...m, transportLagSeconds: Math.min(v, m.applyLagSeconds) }),
+                  `xlag:${id as string}`,
+                )}
+                note="Redo the standby has not received. Clamped to the apply lag, because redo cannot be applied before it arrives."
+              />
+              <Check
+                name="Apply running" prose
+                label={db.role === 'logical' ? 'SQL Apply is running' : 'Redo apply is running'}
+                checked={db.role === 'snapshot' ? false : db.applyRunning}
+                enabled={gateOff(db.role === 'snapshot', WHY.snapshotNoApply)}
+                onChange={(v) => patchDatabase(
+                  id, `${v ? 'Start' : 'Stop'} ${db.role === 'logical' ? 'SQL Apply' : 'redo apply'} on ${id as string}`,
+                  (m) => ({ ...m, applyRunning: v }),
+                )}
+              />
+              <Check
+                name="Real-time apply" prose
+                label="Applies from the standby redo logs"
+                checked={db.realTimeApply}
+                onChange={(v) => patchDatabase(
+                  id, `Set real-time apply on ${id as string}`, (m) => ({ ...m, realTimeApply: v }),
+                )}
+              />
+            </>
+          )}
           <Check
             name="Flashback Database" prose
             label="Flashback Database is on"
@@ -200,7 +183,9 @@ export function MemberForm({ member, doc, graph }: MemberFormProps) {
             onChange={(v) => patchDatabase(
               id, `Set static services on ${id as string}`, (m) => ({ ...m, staticServices: v }),
             )}
-            note="One of the reinstatement preconditions, where Clusterware or Oracle Restart is not doing it."
+            note={isRac(member)
+              ? 'Not needed here: static service names are a reinstatement precondition only without Oracle Clusterware or Oracle Restart, and a RAC database runs under Clusterware.'
+              : 'One of the reinstatement preconditions, where Clusterware or Oracle Restart is not doing it.'}
           />
         </Group>
       )}
@@ -209,19 +194,37 @@ export function MemberForm({ member, doc, graph }: MemberFormProps) {
         <Choice
           name="LogXptMode"
           value={member.logXptMode}
-          options={[
-            { value: 'SYNC', label: 'SYNC' },
-            {
-              value: 'FASTSYNC',
-              label: 'FASTSYNC',
-              enabled: doc.config.protectionMode === 'MAXAVAILABILITY' ? ON : off(WHY.fastsyncMode),
-            },
-            { value: 'ASYNC', label: 'ASYNC' },
-          ]}
+          options={logXptOptions(doc)}
           onChange={(v) => setLogXptMode(id, v)}
-          note="How this member receives redo. Broker default ASYNC. SYNC maps to SYNC + AFFIRM, FASTSYNC to SYNC + NOAFFIRM, ASYNC to ASYNC + NOAFFIRM: AFFIRM acknowledges received redo after writing it to the standby redo log, NOAFFIRM before that write."
+          note={LOG_XPT_NOTE}
         />
       </Group>
+
+      {/* Where it is reached and whether the broker has it: what the member
+          has, not what it is -- so it comes after the role and folds. Its name
+          is the rail's header, and it is the db_unique_name. */}
+      <Fold
+        id={IDENTITY_ID}
+        title="Connection"
+        hint={`${member.connectIdentifier || 'no connect identifier'} · ${member.enabled ? 'enabled' : 'disabled'}`}
+      >
+        <Text
+          name="Connect identifier" prose
+          value={member.connectIdentifier}
+          onCommit={(v) => patchMember(
+            id, `Set the connect identifier on ${id as string}`, (m) => ({ ...m, connectIdentifier: v }),
+          )}
+          note="What DGMGRL and the observer dial to reach this member."
+        />
+        <Check
+          name="Enabled" prose
+          label="In the broker configuration"
+          checked={member.enabled}
+          onChange={(v) => patchMember(
+            id, `${v ? 'Enable' : 'Disable'} ${id as string}`, (m) => ({ ...m, enabled: v }),
+          )}
+        />
+      </Fold>
 
       {/* The tail of the form folds (ui.md SS3f). Everything above is what the
           member *is*; instances and destinations are lists that grow, and a
@@ -231,6 +234,10 @@ export function MemberForm({ member, doc, graph }: MemberFormProps) {
           it is not painted out of view. */}
       <Fold
         id={INSTANCES_ID}
+        /* A RAC member's instances are what the reader came to a cluster for:
+           open until they shut it (remembered for the session). One instance
+           is the ordinary case and stays folded. */
+        defaultOpen={member.instances.length > 1}
         title={member.instances.length > 1 ? `Instances (RAC, ${member.instances.length})` : 'Instance'}
         hint={member.instances.map((inst) => inst.name).join(', ')}
       >
@@ -268,10 +275,73 @@ export function MemberForm({ member, doc, graph }: MemberFormProps) {
         <div class="rr-line lrow is-acts">
           <Action label="+ Instance" onClick={() => addInstance(id)} />
         </div>
+        {db !== null && isRac(member) && db.role !== 'snapshot' ? (
+          <>
+            <Pick
+              name="PreferredApplyInstance"
+              value={db.preferredApplyInstance ?? ''}
+              options={[
+                { value: '', label: 'empty — the broker chooses' },
+                ...member.instances.map((inst) => ({ value: inst.name, label: inst.name })),
+                ...(db.preferredApplyInstance !== undefined
+                  && !member.instances.some((inst) => inst.name === db.preferredApplyInstance)
+                  ? [{ value: db.preferredApplyInstance, label: `${db.preferredApplyInstance} (not an instance)` }]
+                  : []),
+              ]}
+              onChange={(v) => patchDatabase(
+                id, `Set PreferredApplyInstance on ${id as string}`,
+                (m) => {
+                  const { preferredApplyInstance: _drop, ...rest } = m;
+                  return v === '' ? rest : { ...rest, preferredApplyInstance: v };
+                },
+              )}
+              note={isPrimary
+                ? 'Only used while the database is a standby: set on a primary it names the apply instance for after a switchover.'
+                : 'The instance apply starts on, and the one it returns to after the apply instance fails, when that one is running. Empty, the broker picks at random; this page draws the first running instance. “Once the apply instance is selected and, as long as the apply instance is still running, the broker disregards the value of the PreferredApplyInstance property even if you change it” -- SET STATE ... WITH APPLY INSTANCE is how a running apply instance is moved, and it updates this property.'}
+            />
+            <Num
+              name="ApplyInstanceTimeout"
+              bound="applyInstanceTimeoutSeconds"
+              kind="number"
+              value={db.applyInstanceTimeoutSeconds ?? 0}
+              onChange={(v) => patchDatabase(
+                id, `Set ApplyInstanceTimeout on ${id as string}`,
+                (m) => {
+                  const { applyInstanceTimeoutSeconds: _drop, ...rest } = m;
+                  return v > 0 ? { ...rest, applyInstanceTimeoutSeconds: v } : rest;
+                },
+              )}
+              note="How long the broker waits after detecting that the apply instance failed before it moves apply. Broker default 0: immediate apply instance failover."
+            />
+            {db.role === 'physical' || db.applyInstances !== undefined ? (
+              <Pick
+                name="ApplyInstances"
+                value={db.applyInstances === undefined ? '0' : String(db.applyInstances)}
+                options={[
+                  { value: '0', label: '0 — one instance (the default)' },
+                  ...Array.from({ length: Math.min(member.instances.length, 16) - 1 }, (_, k) => ({
+                    value: String(k + 2), label: `${k + 2} — up to ${k + 2} instances`,
+                  })),
+                  { value: 'ALL', label: 'ALL — every running instance' },
+                ]}
+                onChange={(v) => patchDatabase(
+                  id, `Set ApplyInstances on ${id as string}`,
+                  (m) => {
+                    const { applyInstances: _drop, ...rest } = m;
+                    return v === '0' ? rest : { ...rest, applyInstances: v === 'ALL' ? 'ALL' : Number(v) };
+                  },
+                )}
+                note={`Valid values 0 to 16, or ALL; physical standby only${db.role === 'physical' ? '' : ', so it is not used while this database is the primary'}. Above 1, Redo Apply runs on several instances with one of them the coordinator, the broker's apply instance; the database picks which, and this page draws the first running ones. What happens when an instance other than the coordinator fails is not documented: this page keeps apply going on the rest.${doc.config.edition === '26ai' ? ' The 19c members chapter adds “(This feature requires the standby database to have a license for the Oracle Active Data Guard option.)”; the 26ai page does not carry the sentence.' : ' “(This feature requires the standby database to have a license for the Oracle Active Data Guard option.)”'}`}
+              />
+            ) : null}
+          </>
+        ) : null}
         <Note>
-          More than one instance is RAC: the member is reachable while any instance host
-          is up and reachable, and losing some of them leaves it degraded rather than
-          down. Which instance owns the redo transport is out of scope here.
+          More than one instance is RAC. A RAC primary stays available while at least one
+          instance still ships redo, so losing some of them leaves it degraded rather than
+          down. A RAC standby runs apply on exactly one instance, the apply instance; if it
+          fails, the broker moves apply to another running instance. Which instance ships
+          which redo thread is not modelled, and a failed apply instance is detected at once.
           <Fact basis="model" id="RAC.INSTANCE_SCOPE" />
         </Note>
       </Fold>
@@ -305,6 +375,7 @@ export function MemberForm({ member, doc, graph }: MemberFormProps) {
               <Num
                 name="NetTimeout"
                 bound="netTimeoutSeconds"
+                kind="number"
                 value={p.netTimeoutSeconds}
                 coalesce={`nt:${id as string}:${to.id as string}`}
                 enabled={async ? off(WHY.netTimeoutAsync) : ON}

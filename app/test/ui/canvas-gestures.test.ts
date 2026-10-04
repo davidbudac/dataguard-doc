@@ -22,13 +22,12 @@ import { classicDoc, doc as docSignal, makeDoc } from '@/state/doc';
 import { PRESETS } from '@/presets';
 import { connectFromCanvas } from '@/ui/canvas/CanvasSlot';
 import { edit, resetHistory, undo, undoLabel, undoStack } from '@/state/history';
-import { menuOpen } from '@/ui/canvas/EventMenu';
 import { barOpen, closeBar } from '@/ui/canvas/bar';
 import { fitZoom } from '@/ui/canvas/zoom';
-import { mode, selection, toast, viewport } from '@/state/view';
+import { mode, releaseRail, selection, toast, viewport } from '@/state/view';
 import {
-  addDatabase, addFsfoTarget, addInstance, addObserver, addSite, moveToSite, shipRedo,
-  transportForMode,
+  addDatabase, addFsfoTarget, addInstance, addObserver, addSite, moveToSite, patchDatabase,
+  patchInstance, removeInstance, shipRedo, transportForMode,
 } from '@/ui/inspector/edits';
 import { actionsForKey, runAction } from '@/ui/break/events';
 import { farSyncFixture, priorityFixture } from './canvas-fixtures';
@@ -51,8 +50,8 @@ const unmountAll = (): void => {
 beforeEach(() => {
   unmountAll();
   selection.value = [];
+  releaseRail();
   toast.value = null;
-  menuOpen.value = false;
   mode.value = 'build';
   viewport.value = 'wide';
   closeBar();
@@ -92,6 +91,24 @@ describe('moveToSite: a card dropped in another data centre', () => {
     expect(member(id as string).instances[0]!.host).toBe(host);
     expect(member('sby01').instances[0]!.host as string).toBe('dc1-sby01');
     expect(siteOfHost('dc1-sby01')).toBe('dc1');
+  });
+
+  it('puts every node of a member that becomes RAC in one cluster', () => {
+    addInstance(memberId('sby01'));
+    const hosts = member('sby01').instances.map((i) => i.host as string);
+    const clusters = hosts.map((h) => topo().hosts.find((x) => (x.id as string) === h)?.cluster);
+    expect(clusters).toEqual(['sby01-crs', 'sby01-crs']);
+    /* The observer runs on a host of its own, outside the new cluster. */
+    expect(validate(topo()).some((f) => f.id === 'RAC.OBSERVER_ON_CLUSTER')).toBe(false);
+  });
+
+  it('keeps PreferredApplyInstance pointing at the instance through a rename and a removal', () => {
+    addInstance(memberId('sby01'));
+    patchDatabase(memberId('sby01'), 'prefer', (m) => ({ ...m, preferredApplyInstance: 'sby012' }));
+    patchInstance(memberId('sby01'), 1, (i) => ({ ...i, name: 'sby01b' }), 'rename');
+    expect((member('sby01') as { preferredApplyInstance?: string }).preferredApplyInstance).toBe('sby01b');
+    removeInstance(memberId('sby01'), 1);
+    expect('preferredApplyInstance' in member('sby01')).toBe(false);
   });
 
   it('moves every instance of a RAC member together', () => {
@@ -295,6 +312,8 @@ describe('a card dragged into another data centre moves there', () => {
 
   it('is not offered in Break mode, where the drawing is not edited', async () => {
     mode.value = 'break';
+    /* The drawing is on screen in the Detailed timeline only in the docked layout. */
+    viewport.value = 'compact';
     const root = await mountApp();
     const card = rectOf(root, 'sby01', 'rect.tp-card');
     const panel = rectOf(root, 'dc3', 'rect.tp-site');
@@ -392,6 +411,8 @@ describe('a line drawn from a card\'s port connects it', () => {
 
   it('draws no port on a drawing nobody may edit', async () => {
     mode.value = 'break';
+    /* The drawing is on screen in the Detailed timeline only in the docked layout. */
+    viewport.value = 'compact';
     const root = await mountApp();
     expect(root.querySelector('.tp-port')).toBeNull();
   });
@@ -408,6 +429,10 @@ describe('the bar closes on a press anywhere that is not the bar', () => {
       .dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
     await painted();
     expect(barOpen.value).toBe('sby01');
+    /* The rail comes in a moment after the first click of a selection
+       (view.ts, `railHeld`); stand in for the moment. */
+    releaseRail();
+    await tick();
     const rail = document.querySelector('.app-rail')!;
     rail.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, cancelable: true }));
     await tick();

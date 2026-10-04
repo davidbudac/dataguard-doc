@@ -1,6 +1,6 @@
 /**
- * The two controls that size Break's floating timeline panel: the grab handle
- * on its top edge and the full-screen button in its header row.
+ * The top-edge handle that sizes Topology's floating panel and the docked
+ * Detailed timeline.
  *
  * The handle is a `role="separator"` with a value, so it is one tab stop that
  * the arrow keys move -- the WAI-ARIA window-splitter pattern -- as well as a
@@ -13,11 +13,11 @@
  * it (`timelineMaxH`).
  */
 
-import { useEffect, useRef } from 'preact/hooks';
+import { useRef } from 'preact/hooks';
 import type { JSX } from 'preact';
 import { setTimelineH } from '@/state/persist';
 import {
-  clampTimelineH, commandOpen, findingsOpen, timelineDefaultH, timelineFull, timelineH, timelineMaxH, TL_MIN_H,
+  clampTimelineH, timelineDefaultH, timelineH, timelineMaxH, TL_MIN_H,
   TL_STEP,
 } from '@/state/view';
 
@@ -46,10 +46,11 @@ const paintedH = (el: Element): number => {
 
 export const GRIP_TITLE = 'Drag to resize the timeline, or use the arrow keys; double-click or Enter resets it';
 
-export function DockGrip() {
+export function PanelResize() {
   const drag = useRef<{ y: number; h: number; id: number; before: number | null } | null>(null);
   const vh = viewH();
-  const now = timelineH.value ?? timelineDefaultH(vh);
+  const limit = typeof document === 'undefined' ? timelineMaxH(vh, 80) : maxH(document.body);
+  const now = Math.max(TL_MIN_H, Math.min(limit, timelineH.value ?? timelineDefaultH(vh)));
 
   const move = (el: Element, h: number, remember: boolean): void => {
     setTimelineH(Math.min(maxH(el), clampTimelineH(h, viewH(), headBottom(el))), remember);
@@ -111,7 +112,7 @@ export function DockGrip() {
       aria-orientation="horizontal"
       aria-label="Timeline height"
       aria-valuemin={TL_MIN_H}
-      aria-valuemax={typeof document === 'undefined' ? timelineMaxH(vh, 80) : maxH(document.body)}
+      aria-valuemax={limit}
       aria-valuenow={Math.round(now)}
       aria-valuetext={`${Math.round(now)} pixels${timelineH.value === null ? ' (default)' : ''}`}
       tabIndex={0}
@@ -126,43 +127,5 @@ export function DockGrip() {
     >
       <span class="dock-grip-bar" aria-hidden="true" />
     </div>
-  );
-}
-
-/**
- * Escape leaves full screen -- unless the findings popover is open over it,
- * which is the nearer thing and closes first (Findings.tsx). Capture phase, so
- * a focused card on the drawing underneath never also reads the key as
- * "forget the selection".
- */
-export function onFullKey(e: KeyboardEvent): void {
-  if (e.key !== 'Escape' || e.defaultPrevented || !timelineFull.value || findingsOpen.value || commandOpen.value) return;
-  timelineFull.value = false;
-  e.preventDefault();
-  e.stopPropagation();
-}
-
-export function FullToggle() {
-  const full = timelineFull.value;
-  useEffect(() => {
-    if (!full) return undefined;
-    window.addEventListener('keydown', onFullKey, true);
-    return () => window.removeEventListener('keydown', onFullKey, true);
-  }, [full]);
-  return (
-    <button
-      type="button"
-      class="btn is-icon tl-full-btn"
-      aria-pressed={full}
-      aria-label="Full-screen timeline"
-      title={full ? 'Back to the drawing (Esc)' : 'Fill the window with the timeline'}
-      onClick={() => { timelineFull.value = !full; }}
-    >
-      <svg viewBox="0 0 16 16" aria-hidden="true">
-        {full
-          ? <path d="M6 2.5V6H2.5M10 2.5V6h3.5M6 13.5V10H2.5M10 13.5V10h3.5" />
-          : <path d="M2.5 6V2.5H6M13.5 6V2.5H10M2.5 10v3.5H6M13.5 10v3.5H10" />}
-      </svg>
-    </button>
   );
 }

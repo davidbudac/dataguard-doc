@@ -114,6 +114,31 @@
 }
 .cv-tools .cv-add { margin: 0; align-self: flex-start; }
 
+/* What the drawing says when no database holds the primary role
+   (CanvasSlot's NotPrimaryNotice): a compact card in the stage's own flow above
+   the drawing, error-toned from the existing red tokens, with the way out in
+   it. Over the floating canvas it is positioned instead (float.css), where the
+   drawing is a full-bleed layer and has no flow to take a row from. */
+.cv-invalid { flex: 0 0 auto; margin: 10px 14px 0; min-width: 0; }
+.cv-invalid-card {
+  width: fit-content;
+  max-width: min(640px, 100%);
+  margin-inline: auto;
+  padding: 8px 12px 9px;
+  background: var(--rdf);
+  border: 1px solid var(--rd);
+  border-radius: var(--r-card);
+  box-shadow: var(--sh-card);
+  color: var(--ik);
+}
+.cv-invalid-card p { margin: 0; font-size: 12.5px; line-height: 1.4; }
+.cv-invalid-card .cv-invalid-k { font-weight: 600; font-size: 13px; }
+.cv-invalid-card .cv-invalid-t + .cv-invalid-t { margin-top: 2px; }
+.cv-invalid-do { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.cv-invalid-do + .cv-invalid-t { margin-top: 6px; }
+.cv-invalid .btn { color: var(--ik); background: var(--sf); border-color: var(--rd); padding: 4px 10px; }
+.cv-invalid .btn:hover:not(:disabled) { background: var(--sf2); border-color: var(--rd); }
+
 /* Quiet utility controls beside the additions; the drawing owns the stage. */
 .cv-zoom {
   flex: 0 0 auto;
@@ -147,7 +172,7 @@
    the first one (34px against a 39px strip) was wrong in every state. The
    stage is a column flexbox in Build (shell.css) and gives `.tp-wrap` whatever
    height is left, so the drawing scales down instead of being covered, at any
-   strip height, and the `graph === null` card beside it is clear for free. */
+   strip height, and the not-a-valid-configuration card beside it is clear for free. */
 .cv-add {
   align-self: flex-end;
   flex: 0 0 auto;
@@ -269,6 +294,16 @@
 }
 .topo-svg .tp-node:focus-visible { outline: 2px solid var(--fc); outline-offset: 3px; }
 
+/* A RAC card's instance rows in Build are controls of their own (NodeCard).
+   The row selects; a press on it still starts the card's drag, so the pointer
+   says "click" here and "grab" on the rest of the card. */
+.topo-svg .tp-instance.is-live { cursor: pointer; }
+.topo-svg .tp-instance.is-live > rect.tp-card { pointer-events: all; }
+.topo-svg .tp-instance.is-live:hover > rect.tp-card:not(.is-sel):not(.is-down) { stroke: var(--ik3); }
+.topo-svg .tp-instance:focus { outline: none; }
+.topo-svg .tp-instance:focus-visible > rect.tp-card { stroke: var(--fc); stroke-width: 2; }
+.topo-svg .tp-instance:focus-visible { outline: 2px solid var(--fc); outline-offset: 2px; }
+
 /* ---- chips ---- */
 .topo-svg .tp-chip-bg { fill: var(--sf3); stroke: none; }
 .topo-svg .tp-chip-tx {
@@ -279,6 +314,8 @@
 .topo-svg .tp-chip.is-violet .tp-chip-tx { fill: var(--vi); }
 .topo-svg .tp-chip.is-slate .tp-chip-bg { fill: var(--sf2); }
 .topo-svg .tp-chip.is-slate .tp-chip-tx { fill: var(--sl); }
+.topo-svg .tp-chip.is-blue .tp-chip-bg { fill: var(--blf); }
+.topo-svg .tp-chip.is-blue .tp-chip-tx { fill: var(--bl); }
 
 /* ---- chassis stacks ---- */
 /* Two or more cards sharing a host: one continuous frame behind the blades,
@@ -420,7 +457,7 @@
    bar out to the width of the reason. */
 .cv-bar .ctl-off { flex-direction: column; align-items: flex-start; gap: 4px; }
 .cv-bar .why { max-width: 100%; }
-/* The event menu's own quiet line, to the pixel: it stands in for the same
+/* The quiet line that stood in the rail's event menu, to the pixel: it stands in for the same
    dropped restores and may not read as a different kind of remark. */
 .cv-bar-quiet {
   margin: 0;
@@ -429,6 +466,100 @@
   line-height: 1.4;
   color: var(--ik3);
 }
+
+/* ---- Break's context menu: the same bar, as a list ---- */
+/* Every row the table offers, grouped under small labels, each a full-width
+   left-aligned item led by its event glyph -- a menu, not a row of pills. A
+   list taller than the room it is given scrolls inside `.cv-menu-list`, under
+   a header that stays put; the cap is set through a ref (`ActionBar.tsx`,
+   the CSP's one escape hatch), and border-box so the cap is the whole box.
+   `ActionBar.menuFootprint` estimates the height from these numbers. */
+.cv-bar.cv-menu {
+  box-sizing: border-box;
+  width: 264px;
+  max-width: none;
+  gap: 0;
+  padding: 6px 4px 6px 6px;
+  overflow: hidden;
+}
+.cv-menu .cv-bar-hd { padding: 0 2px 4px 4px; border-bottom: 1px solid var(--ln); flex: 0 0 auto; }
+.cv-bar-subj { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cv-bar-subj .mono { color: var(--ik); }
+.cv-bar-when { color: var(--ik3); }
+.cv-menu-list {
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 2px;
+  /* A thin, quiet scrollbar: the native one was the heaviest thing in it. */
+  scrollbar-width: thin;
+  scrollbar-color: var(--ln2) transparent;
+}
+.cv-menu-list::-webkit-scrollbar { width: 6px; }
+.cv-menu-list::-webkit-scrollbar-track { background: transparent; }
+.cv-menu-list::-webkit-scrollbar-thumb { background: var(--ln2); border-radius: 3px; }
+.cv-menu-list::-webkit-scrollbar-thumb:hover { background: var(--ik3); }
+.cv-menu-sec { display: flex; flex-direction: column; }
+.cv-menu-lbl {
+  margin: 6px 0 1px;
+  padding: 0 4px;
+  font-family: var(--mono);
+  font-size: 10px;
+  line-height: 13px;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--ik3);
+}
+.cv-mi { display: flex; flex-direction: column; }
+.cv-mi-btn {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  width: 100%;
+  margin: 0;
+  padding: 3px 4px;
+  border: 0;
+  border-radius: 3px;
+  background: none;
+  color: var(--ik);
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.3;
+  text-align: left;
+  cursor: pointer;
+}
+.cv-mi-btn:hover:not(:disabled) { background: var(--vif); }
+.cv-mi-btn:focus-visible { outline: 2px solid var(--fc); outline-offset: -2px; }
+.cv-mi-btn:disabled { cursor: not-allowed; color: var(--ik3); }
+.cv-mi-ico {
+  flex: 0 0 14px;
+  width: 14px;
+  height: 14px;
+  margin-top: 1px;
+  fill: none;
+  stroke: var(--ik2);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.cv-mi-btn:hover:not(:disabled) .cv-mi-ico { stroke: var(--vi); }
+.cv-mi.is-off .cv-mi-ico { stroke: var(--ik3); opacity: .5; }
+.cv-mi-lbl { min-width: 0; overflow-wrap: anywhere; }
+/* The refusal, flat: the WhyPill's own element, as a quiet line indented
+   under the label it explains -- visible text, never a hover. */
+.cv-menu .why {
+  align-self: stretch;
+  margin: 0 0 2px;
+  padding: 0 4px 0 25px;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  font-size: 11px;
+  line-height: 1.35;
+  color: var(--ik3);
+}
+.cv-menu .cv-bar-quiet { padding: 2px 4px 0; font-size: 11px; }
 
 /* ---- legend ---- */
 .tp-legend {

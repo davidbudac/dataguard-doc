@@ -323,7 +323,7 @@ describe('the hash alias', () => {
     for (const t of PANEL_TABS) {
       const href = panelHref(t as PanelTab);
       expect(href.startsWith('?')).toBe(true);
-      expect(href).toContain('mode=configure');
+      expect(href).toContain('mode=config');
       if (t !== 'dgmgrl') expect(href).toContain(`panel=${t}`);
     }
   });

@@ -6,6 +6,12 @@
  * whose fast-start-failover group alone is taller than the window. Folding the
  * five property groups puts the whole configuration back on one screen.
  *
+ * Each form opens on its primary section and folds the rest, each with its
+ * one-line hint: the configuration on its protection mode, a member on its role
+ * and its transport, an observer on where it runs, a data centre on its hosts,
+ * an application on its connect string. A reader who wants the second tier
+ * opens it once, and it stays open (below).
+ *
  * Three rules hold here.
  *
  *  - **A closed section is genuinely absent**, not painted out of view: the
@@ -41,13 +47,18 @@ export type SectionId = (typeof SECTION_IDS)[number];
  *
  * They live in the same open set, so a reader who opens the destinations on
  * one member finds them open on the next: which drawers are open is a habit,
- * not a property of a card. Both start closed -- the summary is what the rail
- * *was* before this pass and the destinations are the tallest group in the
- * application (four properties per destination).
+ * not a property of a card. All of them start closed -- the destinations are
+ * the tallest group in the application (four properties per destination), and
+ * the rest are what a member, an observer, a data centre or an application
+ * *has* rather than what it is.
  */
-export const SUMMARY_ID = 'Configuration summary';
 export const INSTANCES_ID = 'Instances';
 export const DESTS_ID = 'Destinations';
+export const IDENTITY_ID = 'Connection';
+export const OBSERVER_CMD_ID = 'START OBSERVER';
+export const SITE_LINKS_ID = 'Links';
+export const ADDRESS_LIST_ID = 'ADDRESS_LIST';
+export const MODEL_ID = "This page's model";
 /** Break's six scenarios, on the rail and on the floating palette alike. Folded to start. */
 export const SCENARIOS_ID = 'One-click scenarios';
 
@@ -56,21 +67,45 @@ export const DEFAULT_OPEN: SectionId = 'Configuration';
 
 export const openSections = signal<ReadonlySet<string>>(new Set<string>([DEFAULT_OPEN]));
 
-export const isSectionOpen = (id: string): boolean => openSections.value.has(id);
+/**
+ * The folds that open by themselves in some state (`Fold`'s `defaultOpen`) and
+ * that the reader has shut. Without it a default-open fold could not be closed:
+ * "not in the open set" would mean "shut" and "never asked" at once. A fold
+ * that never opens by default never appears here.
+ */
+export const shutSections = signal<ReadonlySet<string>>(new Set<string>());
 
-export function toggleSection(id: string): void {
-  const next = new Set(openSections.value);
-  if (next.has(id)) next.delete(id);
-  else next.add(id);
-  openSections.value = next;
+/**
+ * Is this fold open? A fold the reader has toggled answers to the reader; one
+ * they have not answers to its own default (`defaultOpen`, false for most).
+ */
+export const isSectionOpen = (id: string, defaultOpen = false): boolean =>
+  openSections.value.has(id) || (defaultOpen && !shutSections.value.has(id));
+
+/** Flip a fold. `defaultOpen` is the one the fold was drawn with, so the flip is of what is on screen. */
+export function toggleSection(id: string, defaultOpen = false): void {
+  const open = isSectionOpen(id, defaultOpen);
+  const opened = new Set(openSections.value);
+  const shut = new Set(shutSections.value);
+  if (open) { opened.delete(id); if (defaultOpen) shut.add(id); }
+  else { opened.add(id); shut.delete(id); }
+  openSections.value = opened;
+  shutSections.value = shut;
 }
 
 /** Open these without closing anything; a no-op when they are open already. */
-export function revealSections(ids: Iterable<string>): void {
+export function revealSections(wanted: Iterable<string>): void {
+  const ids = [...wanted];
   const cur = openSections.value;
   const next = new Set(cur);
   for (const id of ids) next.add(id);
   if (next.size !== cur.size) openSections.value = next;
+  const shut = shutSections.value;
+  if (ids.some((id) => shut.has(id))) {
+    const left = new Set(shut);
+    for (const id of ids) left.delete(id);
+    shutSections.value = left;
+  }
 }
 
 /**
@@ -95,6 +130,7 @@ export function revealForFlagged(key: string, ids: Iterable<string>): void {
 /** Back to the state a fresh session starts in. Used by the tests. */
 export function resetSections(): void {
   openSections.value = new Set<string>([DEFAULT_OPEN]);
+  shutSections.value = new Set<string>();
   lastFlaggedKey = '';
 }
 

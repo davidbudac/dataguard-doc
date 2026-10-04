@@ -11,7 +11,10 @@
 
 :root{
   --r-card:12px;
-  --r-ctl:7px;
+  /* The corner of every button and input: 3 px, next to the 2 px of the
+     bordered controls, so the two read as one family with the published page
+     rather than as soft pills beside its hairline boxes. */
+  --r-ctl:3px;
   --float-m:14px;
   --w-float-rail:340px;
   /* The room the floating inspector takes from the right edge: its width and
@@ -22,13 +25,6 @@
 @media (prefers-color-scheme:dark){:root{--sh-card:0 1px 2px rgba(0,0,0,.5),0 10px 28px rgba(0,0,0,.45)}}
 :root[data-theme="dark"]{--sh-card:0 1px 2px rgba(0,0,0,.5),0 10px 28px rgba(0,0,0,.45)}
 :root[data-theme="light"]{--sh-card:0 1px 2px rgba(16,25,34,.05),0 8px 24px rgba(16,25,34,.08)}
-/* The lifted option of a segmented control. In light it is the card surface
-   on a sunken track; in dark the surface and the track are two shades apart,
-   so the lift is the hairline token instead. */
-:root{--seg-on:var(--sf)}
-@media (prefers-color-scheme:dark){:root{--seg-on:var(--ln2)}}
-:root[data-theme="dark"]{--seg-on:var(--ln2)}
-:root[data-theme="light"]{--seg-on:var(--sf)}
 
 /* ================= the shared controls, quieter ================= */
 
@@ -63,29 +59,26 @@
 .btn.is-icon svg .fill{fill:currentColor;stroke:none}
 select.btn{padding-right:8px}
 
-/* Segmented controls as soft pills: a sunken track, the pressed option lifted
-   out of it. No underline, no hairline between options. */
-.seg{border:0;border-radius:9px;padding:3px;gap:2px;background:var(--sf2);overflow:visible}
+/* Segmented controls keep the published page's bordered look (shell.css: a
+   hairline box, hairlines between the options, the pressed one lifted and
+   underlined in the neutral ink, not the fragment's violet) so they match the page they replaced. All that
+   changes here is the face: sans for this page's own words, where the
+   fragment's mono uppercase shouted every label. Oracle values are set mono
+   again in the inspector. */
 .seg button{font-family:var(--sans);font-size:12.5px;font-weight:500;letter-spacing:0;
-  color:var(--ik2);background:transparent;border:0;border-radius:6px;padding:4px 11px}
-.seg button:hover:not(:disabled){color:var(--ik);background:transparent}
-.seg button[aria-pressed="true"]{color:var(--ik);background:var(--seg-on);font-weight:600;
-  box-shadow:0 1px 2px rgba(16,25,34,.14)}
-.seg button:focus-visible{outline-offset:0;border-radius:6px}
+  color:var(--ik2);padding:4px 11px}
 
-/* The top bar's two segmented controls: the modes are the page's own
-   navigation, so they are the one full-size pill; the release is small. */
-.topbar-modes .seg button{font-size:13px;letter-spacing:0;padding:5px 14px}
-.topbar-modes .seg button[aria-pressed="true"],
-.topbar-modes .seg button[aria-pressed="true"]:hover{color:var(--ik);background:var(--seg-on);
-  box-shadow:0 1px 2px rgba(16,25,34,.14)}
+/* The top bar's two segmented controls. The modes are navigation and are set
+   as tabs in shell.css; they only get the roomier size here, tall enough that the underline sits
+   on the bar's lower edge rather than under the words. The release is
+   small and mono, in the ordinary bordered look. */
+.topbar-modes .seg button{font-size:13px;letter-spacing:0;line-height:16px;padding:12px 14px}
 .topbar-group .seg button{font-family:var(--mono);font-size:11.5px;letter-spacing:0;padding:3px 8px}
 
-/* Inputs: rounded, hairline, the value in mono. */
-.field-in{border-radius:var(--r-ctl);border-color:var(--ln);background:var(--sf);color:var(--ik)}
-.field-in:focus{border-color:var(--vi)}
-
-.why{border-color:transparent}
+/* Inputs keep the published page's typein look (shell.css: a 2 px corner, a
+   strong hairline, the sunken fill, the focus colour on the edge when focused);
+   only the value's ink is the reading ink here, not the fragment's violet. */
+.field-in{color:var(--ik)}
 
 /* ================= the rails ================= */
 
@@ -93,7 +86,7 @@ select.btn{padding-right:8px}
    inspector.css: header, group headings, label-left/value-right rows, list
    rows and sub-blocks. Nothing here restyles them. */
 
-/* The scenario buttons, on the rail's shelf and on the palette. */
+/* The scenario buttons, on the rail's shelf (the docked Detailed timeline). */
 .tmpl .btn{border:1px solid var(--ln);border-radius:var(--r-ctl)}
 .tmpl .btn:hover:not(:disabled){border-color:var(--ln2)}
 
@@ -112,8 +105,13 @@ button.issue{border-bottom:1px solid var(--ln)}
 .topbar-brand .brand{font-size:14px;font-weight:650;letter-spacing:-.01em;color:var(--ik);
   border-bottom:0;white-space:nowrap}
 .topbar-brand .brand:hover{color:var(--vi)}
+/* The left cluster gives way before it can reach the centred modes: the
+   brand and the tally keep their size, the picker and the restore note
+   ellipsise (their full text is a title). */
+.topbar-brand>.brand,.topbar-brand>.count{flex:0 0 auto}
+.topbar-brand>.doc-picker{flex:0 1 auto;min-width:7ch}
 .topbar-modes{flex:0 0 auto}
-.topbar-group{flex:1 1 0;justify-content:flex-end;flex-wrap:nowrap;gap:4px;min-width:0}
+.topbar-group{flex:1 1 0;justify-content:flex-end;flex-wrap:nowrap;gap:4px;min-width:max-content}
 .topbar-group .btn{font-size:12.5px;color:var(--ik2)}
 .topbar-group .btn.is-icon{font-size:16px;border-color:transparent}
 .topbar-group .btn.is-icon:hover:not(:disabled){border-color:transparent}
@@ -131,7 +129,10 @@ button.issue{border-bottom:1px solid var(--ln)}
   min-width:0;overflow:hidden;text-overflow:ellipsis;padding:4px 6px;cursor:pointer}
 .doc-picker:hover:not(:disabled){color:var(--ik)}
 .doc-picker option,.doc-picker optgroup{font-family:var(--sans);color:var(--ik);background:var(--sf)}
-.doc-restored{font-size:12px;color:var(--ik3);white-space:nowrap}
+.doc-restored{display:flex;align-items:center;gap:6px;flex:0 100 auto;min-width:0;
+  font-size:12px;color:var(--ik3);white-space:nowrap}
+.doc-restored-t{min-width:0;overflow:hidden;text-overflow:ellipsis}
+.doc-restored .btn{flex:0 0 auto}
 .topbar .count{font-family:var(--sans);font-size:12px;font-weight:500;background:transparent;
   border:0;border-bottom:1px solid transparent;padding:2px 0;cursor:pointer;white-space:nowrap}
 .topbar .count:hover{border-bottom-color:currentColor}
@@ -229,6 +230,16 @@ button.issue{border-bottom:1px solid var(--ln)}
   .app.is-float .app-stage>.tp-wrap.is-zoomed{min-height:0}
   .app.is-float .app-stage>.empty{position:absolute;top:calc(var(--bar-bottom,80px) + 18px);
     left:var(--pal-space);right:calc(var(--rail-space) + 18px)}
+  /* The not-a-valid-configuration card (canvas.css) over the top of the stage,
+     in the room the palette, the inspector and the zoom pill leave -- the same
+     room the drawing is fitted to. Its box lets the pointer through to the
+     drawing at either side of the card, and the drawing is given the row the
+     card needs (`.cv-invalid + .tp-wrap`, the card following it in the DOM) so
+     it never sits under a card it is meant to be clicked on. */
+  .app.is-float .app-stage>.cv-invalid{position:absolute;z-index:15;margin:0;pointer-events:none;
+    top:calc(var(--bar-bottom,80px) + 12px);left:var(--pal-space);right:calc(var(--rail-space) + 18px)}
+  .app.is-float .app-stage>.cv-invalid .cv-invalid-card{pointer-events:auto}
+  .app.is-float .app-stage>.cv-invalid + .tp-wrap{padding-top:calc(var(--bar-bottom,80px) + 18px + 120px)}
 
   /* The palette at the left edge. */
   .app.is-float .palette{position:absolute;left:var(--float-m);
@@ -248,63 +259,27 @@ button.issue{border-bottom:1px solid var(--ln)}
   .pal-add .why{max-width:22ch;font-size:11px}
   .pal-tidy{border-top:1px solid var(--ln);margin-top:4px;padding-top:4px}
 
-  /* Break's palette: the six scenarios, one click each. */
-  .pal-scn{width:206px;gap:6px;padding:10px}
-  .pal-k{font-size:12px;font-weight:600;color:var(--ik2);padding:0 4px}
-  .pal-scn:not(.is-open){width:auto}
-  .pal-tog{display:flex;align-items:center;gap:6px;background:transparent;border:0;
-    border-radius:6px;cursor:pointer;font-family:inherit;text-align:left;padding:4px}
-  .pal-tog:hover{background:var(--sf2);color:var(--ik)}
-  .pal-scn-list{display:flex;flex-direction:column;gap:4px}
-  .pal-scn .tmpl .btn{border:0;padding:6px 8px;font-size:12.5px;white-space:normal;
-    text-align:left;justify-content:flex-start;width:100%}
-  .pal-scn .tmpl .btn:hover:not(:disabled){background:var(--sf2)}
-
   /* The inspector card on the right. */
   .app.is-float .app-rail{position:absolute;right:var(--float-m);
     top:calc(var(--bar-bottom,80px) + 12px);bottom:var(--float-m);width:var(--w-float-rail);
     z-index:20;overflow:auto;border-left:1px solid var(--ln);border-radius:var(--r-card);
     box-shadow:var(--sh-card);scrollbar-width:thin}
   .app.is-float .app-rail .insp-hd{border-radius:var(--r-card) var(--r-card) 0 0}
-  .app.is-float .app-rail .evmenu{border-radius:var(--r-card) var(--r-card) 0 0}
 
-  /* The dock at the bottom: Build's readings, Break's timeline panel. */
+  /* Topology's dock at the bottom: the readings, the scenarios, the small timeline. The
+     popped-out timeline window is the whole window (popout.css). */
   .app.is-float .app-dock{position:absolute;left:var(--float-m);
     right:calc(var(--rail-space));bottom:var(--float-m);z-index:20;display:flex;
     flex-direction:column;border-top:1px solid var(--ln);overflow:auto;max-height:46vh;
     border-radius:var(--r-card)}
-  .app.is-float.m-break .app-dock{max-height:min(46vh,420px)}
-  /* With a run on it, Break's panel is the height the reader dragged it to
-     (`--tl-h`, written by App.tsx) or a bit over a third of the window --
-     `timelineDefaultH` in view.ts says the same -- and never so tall that it
-     reaches the header. */
-  .app.is-float.m-break .app-dock.has-tl{height:var(--tl-h,clamp(220px,36dvh,400px));
-    min-height:64px;max-height:calc(100dvh - var(--bar-bottom,80px) - 12px - var(--float-m))}
-  /* Full screen: the panel takes the window under the header, over the
-     palette, the drawing and the rail. */
-  .app.is-float.m-break.tl-full .app-dock{top:calc(var(--bar-bottom,80px) + 12px);
-    right:var(--float-m);height:auto;max-height:none;z-index:25}
-  .app.is-float.tl-full .zoom-pill,.app.is-float.tl-full .fnd-toast{visibility:hidden}
-
-  /* The grab handle: the top edge of the panel's header row. A short bar says
-     it is there; the whole edge takes the press. */
-  .dock-grip{position:absolute;top:0;left:0;right:0;height:9px;z-index:5;cursor:ns-resize;
-    touch-action:none;display:flex;justify-content:center;align-items:flex-start;
-    border-radius:var(--r-card) var(--r-card) 0 0}
-  .dock-grip-bar{width:40px;height:4px;margin-top:3px;border-radius:2px;background:var(--ln2);
-    transition:background .12s ease-out,width .12s ease-out}
-  .dock-grip:hover .dock-grip-bar,.dock-grip.is-dragging .dock-grip-bar{background:var(--ik3);width:56px}
-  .dock-grip:focus{outline:none}
-  .dock-grip:focus-visible .dock-grip-bar{background:var(--vi);width:56px}
-  .dock-grip:focus-visible{box-shadow:inset 0 2px 0 var(--vi)}
-  .app.is-float.m-break .dock-status .tl-full-btn{flex:0 0 auto;margin-left:-4px}
-  .tl-full-btn svg{fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;
-    stroke-linejoin:round}
-  .tl-full-btn[aria-pressed="true"]{color:var(--vi)}
   .dock-status{display:flex;align-items:center;gap:12px;padding:0 14px 0 0;min-width:0;
     flex:0 0 auto}
+  /* Topology with a run: the readings as one terse line (App.tsx, FloatDock). */
+  .dock-status.is-run{padding:7px 14px 7px 4px}
+  .dock-status.is-run>.sb-ro{border-left:0;margin-left:0}
   .dock-status>.readout{flex:1 1 auto;min-width:0;min-height:0;border-bottom:0;
     background:transparent}
+
   .app.is-float.m-break .dock-status{border-bottom:1px solid var(--ln);position:sticky;top:0;
     z-index:4;background:var(--sf)}
   .app.is-float .chips{padding:10px 16px;row-gap:8px}
@@ -315,6 +290,27 @@ button.issue{border-bottom:1px solid var(--ln)}
   .app.is-float .chip-v{font-size:13.5px}
   .app.is-float .chip-s{font-size:11px}
   .app.is-float .ro-run-k{font-size:11px;align-self:center}
+
+  /* Topology's scenarios: one wrapping row between the readings and the small
+     timeline, on the same 16 px sides and a hairline above it (the timeline
+     brings its own). Docked, the readout above already has its bottom rule. */
+  .dock-scn{display:flex;flex-wrap:wrap;align-items:center;gap:4px 4px;padding:6px 16px;
+    border-top:1px solid var(--ln)}
+  .app-dock>.readout+.dock-scn{border-top:0}
+  .dock-scn-k{font-size:11.5px;line-height:1.4;color:var(--ik3);margin-right:4px;white-space:nowrap}
+  .dock-scn .btn{padding:2px 7px;font-size:11.5px;white-space:nowrap}
+  .dock-scn .btn[aria-pressed="true"]{color:var(--ik);background:var(--sf3);border-color:var(--ln2);
+    font-weight:600}
+  .dock-scn .ctl-off{gap:6px}
+  .dock-scn .why{font-size:11px;white-space:nowrap;align-self:center}
+
+  /* The dock's Break row (break/PlayDock.tsx): the scenarios take what is left and the
+     three discrete settings sit at the right, on one row while they fit and wrapped
+     under the scenarios where they do not. */
+  .dock-break{display:flex;align-items:center;flex-wrap:wrap;gap:4px 14px;min-width:0;
+    border-bottom:1px solid var(--ln)}
+  .dock-break>.dock-scn{flex:1 1 auto;min-width:0;border-top:0}
+  .dock-break>.sc-row{margin-left:auto;padding:4px 16px 4px 0}
 
   .fnd-chips{display:flex;align-items:center;gap:6px;flex:0 0 auto;margin-left:auto}
   .fnd-chip{display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border:0;
@@ -328,8 +324,9 @@ button.issue{border-bottom:1px solid var(--ln)}
   button.fnd-chip:hover{box-shadow:inset 0 0 0 1px currentColor}
   button.fnd-chip[aria-expanded="true"]{box-shadow:inset 0 0 0 1px currentColor}
 
-  /* Break's timeline, as the body of the dock: the transport and the legend
-     share one compact row at the head, the lanes run under it. */
+  /* The timeline as the body of a dock (the popped-out window's): the
+     transport and the legend share one compact row at the head, the lanes run
+     under it. */
   .app.is-float .tl-slot{margin:0 16px 8px;min-width:0}
   .app.is-float .tl-slot>.empty{padding:10px 0 6px;max-width:none}
   .app.is-float .app-dock .tl{display:grid;grid-template-columns:auto minmax(0,1fr);
@@ -358,16 +355,6 @@ button.issue{border-bottom:1px solid var(--ln)}
   .app.is-float .zoom-pill .cv-zoom>:nth-child(4){order:4;margin-left:2px;padding-left:10px;border-left:1px solid var(--ln);border-radius:0}
   .app.is-float .zoom-pill .btn{padding:4px 9px;border-color:transparent}
 
-  /* The most serious finding, once, above the dock. */
-  .fnd-toast{position:absolute;left:var(--pal-space);bottom:calc(var(--dock-h,72px) + var(--float-m) + 12px);
-    z-index:21;display:flex;align-items:center;gap:10px;padding:5px 6px 5px 6px;
-    max-width:calc(100vw - var(--pal-space) - var(--rail-space) - 200px)}
-  /* The tone is the chip at its head (Error / Warning), not a left border. */
-  .fnd-toast-m{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
-    font-size:12.5px;color:var(--ik2)}
-  .fnd-toast .btn{padding:3px 8px}
-  .fnd-toast .btn.is-icon{width:26px;height:26px}
-
   /* The findings themselves, over the canvas above the chips. */
   .fnd-pop{position:absolute;right:var(--rail-space);
     bottom:calc(var(--dock-h,72px) + var(--float-m) + 10px);z-index:35;display:flex;
@@ -382,25 +369,10 @@ button.issue{border-bottom:1px solid var(--ln)}
   .fnd-pop .issues{overflow:visible}
   .issues-none{padding:14px 16px;font-size:13px;color:var(--ik3)}
 
-  /* The event menu, when there is no rail to head (1024-1279): a card at the
-     right edge, above the zoom pill, and the drawing's fit starts under it or
-     stops left of it, whichever draws larger (`--evm-t`/`--evm-r`, measured
-     by App.tsx) -- shut to its one button, it gives the room back. It scrolls
-     rather than run under the pill or the dock. */
-  .app.is-float .app-stage>.evmenu{position:absolute;right:var(--float-m);
-    top:calc(var(--bar-bottom,80px) + 12px);margin:0;z-index:22;border-radius:var(--r-card);
-    border-color:var(--ln);width:min(300px,30vw);box-sizing:border-box;overflow:auto;
-    max-height:calc(100dvh - var(--bar-bottom,80px) - var(--dock-h,72px) - 2 * var(--float-m) - 76px)}
-  .app.is-float .app-stage>.evmenu.is-shut{width:auto}
-  .app.is-float.has-evm .app-stage>.tp-wrap{
-    padding-top:var(--evm-t,calc(var(--bar-bottom,80px) + 18px));
-    padding-right:var(--evm-r,calc(var(--rail-space) + 18px))}
-
   /* 1024-1279: the inspector is a drawer, so the dock and the pill take the
      right edge back. */
   @media (max-width:1279px){
     .app.is-float{--rail-space:var(--float-m)}
-    .app.is-float .fnd-toast{max-width:calc(100vw - var(--pal-space) - 220px)}
   }
 }
 
@@ -409,16 +381,27 @@ button.issue{border-bottom:1px solid var(--ln)}
    is wider than half of what is left -- so the modes sit centred in the gap
    between the two ends instead, the pills and gaps tighten, and the
    configuration name gives up width (it ellipsises) before anything wraps.
-   One row down to 1024. */
+   One row down to 1024. ("Detailed timeline" is the longest mode word; the
+   buttons' side padding is 8 px here so it still fits beside the rest.) */
 @media (max-width:1279px){
   .topbar{gap:10px 10px;padding-left:14px}
   .topbar-brand{flex:0 1 auto}
   .topbar-brand .doc-picker{flex:0 1 auto;min-width:7ch}
   .topbar-modes{margin-inline:auto}
-  .topbar-modes .seg button{padding:5px 10px}
+  .topbar-modes .seg button{padding:12px 8px;white-space:nowrap}
   .topbar-group{flex:0 0 auto}
   .topbar-group>.seg{margin-right:2px}
   .topbar-acts{margin-left:2px;gap:4px}
+}
+/* Below 1440 there is no room beside the brand for the restore note (the
+   modes and the right-hand group take what is left): it drops under the bar,
+   at the left, for the eight seconds it is up. Above, it ellipsises inline. */
+@media (max-width:1439px){
+  .topbar{position:relative}
+  .doc-restored{position:absolute;left:14px;top:calc(100% + 6px);z-index:35;flex:none;
+    padding:6px 8px 6px 12px;background:var(--sf);border:1px solid var(--ln);
+    border-radius:var(--r-card);box-shadow:var(--sh-card)}
+  .doc-restored-t{overflow:visible}
 }
 /* Narrow top bar: the modes wrap under the brand rather than crushing it. */
 @media (max-width:1023px){
@@ -455,53 +438,26 @@ button.issue{border-bottom:1px solid var(--ln)}
     border-radius:var(--r-card) var(--r-card) 0 0}
 }
 
-/* A folded panel keeps a named card at its original edge. Its body is absent
-   from the DOM; the heading remains the way back in. */
-.rail-toggle,.rail-launcher{display:flex;align-items:center;justify-content:space-between;
-  gap:18px;width:100%;padding:10px 14px;border:0;border-bottom:1px solid var(--ln);
-  background:var(--sf);color:var(--ik2);font:600 12.5px var(--sans);cursor:pointer}
-.rail-toggle:hover,.rail-launcher:hover{background:var(--sf2);color:var(--ik)}
-.rail-launcher{position:fixed;right:14px;top:calc(var(--bar-bottom,80px) + 12px);
-  width:auto;z-index:23;border:1px solid var(--ln);border-radius:var(--r-card)}
-.app.is-float.rail-collapsed{--rail-space:var(--float-m)}
-.app.is-float.rail-collapsed .app-rail{bottom:auto;width:160px;overflow:hidden}
-.app.rail-collapsed:not(.is-float){grid-template-columns:minmax(0,1fr) 160px}
-.app.rail-collapsed:not(.is-float) .app-rail{align-self:start;border-bottom:1px solid var(--ln)}
-.app.is-float .app-rail .rail-toggle{border-radius:var(--r-card) var(--r-card) 0 0}
-@media screen{
-.app.is-float .app-dock.has-tl{overflow:hidden}
-.app.is-float .has-tl>.tl-slot{flex:1 1 0;min-height:0;display:flex;flex-direction:column}
-.app.is-float .has-tl .tl{flex:1 1 0;min-height:0;grid-template-columns:minmax(0,1fr);
-  grid-template-rows:auto auto minmax(0,1fr) auto;gap:4px}
-.app.is-float .has-tl .tl-foot{grid-column:1;grid-row:1;padding:6px 0 2px}
-.app.is-float .has-tl .tl-legend{grid-column:1;grid-row:2;justify-self:start;
-  justify-content:flex-start;padding:0;gap:3px 12px;font-size:10.5px}
-.app.is-float .has-tl .tl-plot{grid-column:1;grid-row:3;min-height:0;overflow:auto;
-  height:100%;align-self:stretch}
-.app.is-float .has-tl .tl-note{grid-column:1;grid-row:4;font-size:10.5px}
-.app.is-float .has-tl .dock-status{padding-top:8px}
-.app.is-float .has-tl .chips,.app.is-float .has-tl .ro-run{flex-wrap:nowrap}
-.app.is-float .has-tl .chips{overflow-x:auto;scrollbar-width:thin;padding:8px 12px}
-.app.is-float .has-tl .chip,.app.is-float .has-tl .ro-run{flex-shrink:0}
-.app.is-float .has-tl .chip{padding-inline:12px}
-.app.is-float .has-tl .chip-v{white-space:nowrap}
-.dock-grip{height:14px}
-.dock-grip-bar{width:64px;height:4px;background:var(--ik3)}
-}
-.app.is-float.has-evm .rail-launcher{top:auto;bottom:calc(var(--dock-h,72px) + 14px + 54px)}
-@media (max-width:1023px){.rail-launcher{top:auto;bottom:14px}}
-@media print{.rail-toggle,.rail-launcher{display:none}}
-
-/* The same resizable panel in the docked tablet shell. */
-@media screen and (min-width:768px) and (max-width:1023px){
-  .app.m-break .app-dock.has-tl{position:relative;display:flex;flex-direction:column;
-    height:var(--tl-h,clamp(220px,36dvh,400px));min-height:64px;max-height:calc(100dvh - var(--bar-bottom,120px) - 260px);overflow:hidden}
-  .app.m-break .has-tl .dock-status{position:relative;padding-top:10px;flex:0 0 auto}
-  .app.m-break .has-tl>.tl-slot{flex:1 1 0;min-height:0;display:flex;flex-direction:column}
-  .app.m-break .has-tl .tl{flex:1 1 0;min-height:0;display:grid;align-items:stretch;
+/* Resizable timeline panels use a uniform SVG scale, including text and grips. */
+@media screen and (min-width:768px){
+  .dock-grip{flex:0 0 12px;display:flex;align-items:center;justify-content:center;height:12px;
+    cursor:ns-resize;touch-action:none;user-select:none;background:var(--sf);border-radius:var(--r-card) var(--r-card) 0 0}
+  .dock-grip-bar{width:64px;height:3px;border-radius:4px;background:var(--ik3);pointer-events:none}
+  .dock-grip:hover .dock-grip-bar,.dock-grip:focus-visible .dock-grip-bar,.dock-grip.is-dragging .dock-grip-bar{background:var(--vi)}
+  .dock-grip:focus-visible{outline:2px solid var(--vi);outline-offset:-2px}
+  .app .app-dock.has-tl{display:flex;flex-direction:column;height:var(--tl-h,clamp(300px,46dvh,500px));
+    min-height:300px;max-height:calc(100dvh - var(--bar-bottom,80px) - 166px);overflow:hidden}
+  .app .has-tl>.mtl:not(.is-folded){flex:1 1 0;min-height:0}
+  .app .has-tl .mtl-plot{flex:1 1 0;min-height:0;overflow-x:auto;overflow-y:hidden}
+  .app .has-tl>.tl-slot{flex:1 1 0;min-height:0;display:flex;flex-direction:column;overflow:hidden}
+  .app .has-tl .tl{flex:1 1 0;min-height:0;display:grid;align-items:stretch;
     grid-template-columns:minmax(0,1fr);grid-template-rows:auto auto minmax(0,1fr) auto;gap:4px}
-  .app.m-break .has-tl .tl-foot{grid-row:1;position:static;padding:6px 0}
-  .app.m-break .has-tl .tl-legend{grid-row:2}
-  .app.m-break .has-tl .tl-plot{grid-row:3;height:100%;min-height:0;overflow:auto}
-  .app.m-break .has-tl .tl-note{grid-row:4}
+  .app .has-tl .tl-foot{grid-column:1;grid-row:1;position:static;padding:6px 0}
+  .app .has-tl .tl-legend{grid-column:1;grid-row:2;justify-self:start;justify-content:flex-start;padding:0;gap:3px 12px}
+  .app .has-tl .tl-plot{grid-column:1;grid-row:3;height:100%;min-height:0;overflow-x:auto;overflow-y:hidden;align-self:stretch}
+  .app .has-tl .tl-note{grid-column:1;grid-row:4}
 }
+@media screen and (min-width:768px) and (max-width:1023px){
+  .app .app-dock.has-tl{max-height:calc(100dvh - var(--bar-bottom,120px) - 260px)}
+}
+@media print{.dock-grip{display:none}}

@@ -64,7 +64,10 @@ export function zoomBy(dir: 1 | -1): void {
   if (zoom.peek() !== step) zoom.value = step;
 }
 
-/** Back to 1:1. */
+/**
+ * `Fit`: back to 1:1, the drawing against its own viewBox, which is the stage's
+ * own cap -- the whole drawing inside the room the chrome leaves it.
+ */
 export function fitZoom(): void {
   resetPan();
   if (zoom.peek() !== FIT_ZOOM) zoom.value = FIT_ZOOM;

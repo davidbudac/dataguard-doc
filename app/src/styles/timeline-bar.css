@@ -1,0 +1,140 @@
+/* The Detailed timeline's bar and the timeline's shared parts.
+
+   The bar is the one line over the lanes (break/LanesView.tsx `LanesBar`): the
+   transport, the run's readings as one terse line (break/RunBar.tsx), the
+   findings as a count with a dropdown, and the colour key behind an (i). The
+   rest of the file is what the timelines share: the application's timeline, and
+   the number box a setting is typed in. Colour from tokens only. */
+
+@media screen {
+  /* ---- the bar ---- */
+  .sb-bar {
+    position: relative; flex: 0 0 auto; display: flex; align-items: center; gap: 10px;
+    height: 40px; padding: 0 12px 0 16px; box-sizing: border-box; min-width: 0;
+    background: var(--sf2); border-bottom: 1px solid var(--ln);
+    border-radius: var(--r-card) var(--r-card) 0 0;
+  }
+  .sb-bar button, .sb-bar input, .sb-bar select, .sb-bar label, .sb-bar a { cursor: pointer; }
+  .sb-bar input { cursor: text; }
+
+  /* the transport, packed onto the bar */
+  .sb-bar .tl-transport { flex: 0 0 auto; flex-wrap: nowrap; gap: 6px; }
+  .sb-bar .tl-tp-btn { min-width: 26px; padding: 4px 7px; font-size: 11px; }
+  .sb-bar .tl-tp-in { padding: 3px 5px; font-size: 11.5px; width: 5.5ch; }
+  .sb-bar .tl-tp-speeds { gap: 1px; padding-left: 2px; }
+  .sb-bar .tl-tp-speed { padding: 3px 5px; font-size: 10.5px; letter-spacing: 0; border-radius: 5px; }
+  .sb-bar .tl-tp-slot { gap: 3px; }
+  .sb-bar .tl-transport .why { display: none; }
+
+  /* the readings, one line. Its width is the room (flex-basis 0, so the readings
+     do not size it), and TerseReadout draws only the readings that fit whole:
+     a value is never clipped. The gap and the padding are mirrored in RunBar.tsx
+     (RO_GAP, RO_PAD). */
+  .sb-ro {
+    position: relative; flex: 1 1 0; min-width: 0; display: flex; align-items: baseline; gap: 6px;
+    overflow: hidden; white-space: nowrap; font-size: 12.5px;
+    border-left: 1px solid var(--ln); margin-left: 2px; padding-left: 12px;
+  }
+  .sb-ro-i { flex: 0 0 auto; }
+  /* the hidden copy the widths are read from */
+  .sb-rm { position: absolute; left: 0; top: 0; width: max-content; height: 0; overflow: hidden; visibility: hidden; pointer-events: none; display: flex; gap: 6px; }
+  .sb-rm-w { display: flex; align-items: baseline; gap: 6px; flex: 0 0 auto; }
+  .sb-rm-i { flex: 0 0 auto; }
+  .sb-ro-k { color: var(--ik3); font-size: 11px; }
+  .sb-ro-v { font-weight: 600; color: var(--ik); }
+  .sb-ro-v2 { color: var(--ik3); font-size: 11.5px; }
+  .sb-ro-i.t-tl .sb-ro-v { color: var(--tl); }
+  .sb-ro-i.t-am .sb-ro-v { color: var(--am); }
+  .sb-ro-i.t-rd .sb-ro-v { color: var(--rd); }
+  .sb-ro-i.t-vi .sb-ro-v { color: var(--vi); }
+  .sb-ro-i.t-bl .sb-ro-v { color: var(--bl); }
+  .sb-sep { color: var(--ln2); flex: 0 0 auto; }
+  .sb-why {
+    flex: 0 0 auto; border: 0; background: transparent; color: var(--vi); font: inherit;
+    font-size: 11.5px; padding: 0 2px; border-radius: 4px;
+  }
+  .sb-why:hover { background: var(--vif); }
+
+  /* the count chip, the Fit button and the icons */
+  .sb-anchor { position: relative; flex: 0 0 auto; display: flex; align-items: center; }
+  .sb-chip {
+    display: inline-flex; align-items: center; gap: 4px; padding: 3px 9px; border: 0;
+    border-radius: 999px; font: 600 12px/1.4 var(--sans); background: var(--sf3); color: var(--ik2);
+  }
+  .sb-chip.t-am { background: var(--amf); color: var(--am); }
+  .sb-chip.t-rd { background: var(--rdf); color: var(--rd); }
+  .sb-chip.t-tl { background: var(--tlf); color: var(--tl); }
+  .sb-chip:hover, .sb-chip[aria-expanded="true"] { box-shadow: inset 0 0 0 1px currentColor; }
+  .sb-caret { font-size: 9px; opacity: .7; }
+  .sb-fit { flex: 0 0 auto; padding: 2px 8px; font-size: 11.5px; white-space: nowrap; }
+  .sb-ico {
+    display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px;
+    padding: 0; border: 0; border-radius: var(--r-ctl); background: transparent; color: var(--ik3);
+  }
+  .sb-ico:hover, .sb-ico[aria-expanded="true"] { background: var(--sf3); color: var(--ik); }
+  .sb-ico svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.4; stroke-linecap: round; }
+  .sb-bar .btn.is-icon { width: 26px; height: 26px; padding: 0; flex: 0 0 auto; }
+
+  /* the dropdowns open upward by default; the lanes' bar turns them down (lanes.css) */
+  .sb-pop {
+    position: absolute; right: 0; bottom: calc(100% + 8px); z-index: 40;
+    background: var(--sf); border: 1px solid var(--ln); border-radius: var(--r-card);
+    box-shadow: var(--sh-card); cursor: default; user-select: text;
+  }
+  .sb-pop-findings {
+    display: flex; flex-direction: column; width: min(600px, calc(100vw - 40px));
+    max-height: max(160px, min(420px, calc(100dvh - var(--dock-h, 400px) - var(--bar-bottom, 80px) - 28px)));
+    overflow: hidden;
+  }
+  .sb-pop .issues { overflow: visible; }
+  .sb-pop-key {
+    display: flex; flex-direction: column; align-items: flex-start; gap: 8px; padding: 12px 14px;
+    width: max-content; max-width: 260px; font-size: 12px;
+  }
+  .sb-pop-key .sb-app-btn { margin-top: 2px; }
+}
+
+/* ---- the second timeline: the application's detail view ----
+   The switch (`Configuration | Application`, break/TimelineView.tsx) sits on the
+   bar where there is one, and on a slim row of its own where there is not. The
+   strip above the figure carries the same controls as the rail's Connect string
+   group; colour from tokens only, so every palette follows. */
+.sb-bar .seg { flex: 0 0 auto; }
+.sb-bar .seg button { font-size: 11.5px; padding: 2px 9px; white-space: nowrap; }
+.tl-view-row { display: flex; align-items: center; padding: 6px 0 2px; min-width: 0; }
+.tl-view-row .seg button { font-size: 11.5px; padding: 2px 9px; }
+
+.app-tl { display: flex; flex-direction: column; gap: 8px; padding: 6px 0 8px; min-width: 0; }
+.app-tl-strip {
+  display: flex; flex-wrap: wrap; align-items: flex-start; gap: 6px 16px;
+  padding: 6px 10px; min-width: 0;
+  background: var(--sf2); border: 1px solid var(--ln); border-radius: 8px;
+}
+.app-tl-fields {
+  flex: 1 1 440px; min-width: 0; display: grid; gap: 0 18px;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+}
+.app-tl-fields .field { padding: 4px 0; border: 0; min-height: 0; }
+.app-tl-fig { min-width: 0; }
+.app-tl-fig > .empty { padding: 8px 4px; max-width: none; }
+
+.client-presets { display: flex; gap: 4px; flex: 0 0 auto; align-items: center; padding: 4px 0; }
+.client-presets .btn { padding: 2px 10px; font-size: 11.5px; border-color: var(--ln); }
+.client-presets .btn[aria-pressed="true"] { color: var(--ik); background: var(--sf3); border-color: var(--ln2); font-weight: 600; }
+.client-presets .btn:disabled { opacity: .5; }
+.grp > .client-presets { padding: 2px var(--px, 0) 6px; }
+
+.app-tl-pick { display: flex; flex-direction: column; gap: 2px; flex: 0 0 auto; padding: 2px 0; }
+.app-tl-pick select { max-width: 200px; }
+
+/* ---- the number box of a setting ----
+   `TuneNumber` (timeline/TuneNumber.tsx) is the box the brace popover and the small
+   timeline's labels edit a setting in. Colour from tokens only. */
+.tune-num {
+  height: 20px; box-sizing: border-box; padding: 0 4px; margin: 0;
+  font: 11.5px/1 var(--mono); color: var(--ik);
+  background: var(--sf); border: 1px solid var(--ln); border-radius: var(--r-ctl, 3px);
+  width: 52px; text-align: right; font-variant-numeric: tabular-nums;
+}
+.tune-num:disabled { opacity: .55; }
+.tune-u { font-size: 11px; color: var(--ik3); }

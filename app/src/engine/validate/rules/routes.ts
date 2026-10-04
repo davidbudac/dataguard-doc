@@ -82,8 +82,32 @@ export const snapshotForbidden: Rule = (ctx): Finding[] => {
     const to = [...new Set(forwards.map((d) => d.to.name))];
     out.push(mk('ROUTES.SNAPSHOT_FORBIDDEN', {
       subject: routeSubject(m),
-      message: `RedoRoutes on ${q(m.name)}, a snapshot standby database, forwards redo to ${to.map(q).join(', ')}. The property cannot be configured so that a snapshot standby would send redo data to another member; a snapshot standby still receives and archives redo from the primary.`,
-      cite: ['ROUTES.SNAPSHOT_FORBIDDEN', 'ROUTES.SNAPSHOT_RECEIVES_REDO'],
+      message: `RedoRoutes on ${q(m.name)}, a snapshot standby database, forwards redo to ${to.map(q).join(', ')}. The property cannot be configured so that a snapshot standby would send redo data to another member. A snapshot standby still receives and archives redo from the primary.`,
+      cite: ['ROUTES.SNAPSHOT_FORBIDDEN', 'ROUTES.SNAPSHOT_RECEIVES_REDO', 'CONVERT.SNAPSHOT_REDOROUTES_NONNULL'],
+    }));
+  }
+  return out;
+};
+
+/**
+ * Two Oracle pages draw the snapshot line in different places. The RedoRoutes
+ * property page bars a snapshot standby that would send redo onward; the
+ * CONVERT DATABASE page bars converting a physical standby whose RedoRoutes is
+ * non-NULL, whatever it says. A snapshot standby that carries a rule but
+ * forwards nothing (a LOCAL rule, which sends nothing while it is a standby)
+ * is inside the first and outside the second. Oracle does not name the
+ * difference, so the finding carries both sides.
+ */
+export const snapshotConvertNonNull: Rule = (ctx): Finding[] => {
+  const out: Finding[] = [];
+  for (const m of ctx.databases) {
+    if (m.role !== 'snapshot' || m.redoRoutes.length === 0) continue;
+    if (ctx.forwardedDests(m).length > 0) continue;
+    out.push(mk('ROUTES.SNAPSHOT_CONVERT_NONNULL', {
+      subject: routeSubject(m),
+      message: `${q(m.name)} is a snapshot standby database and its RedoRoutes property is set to a non-NULL value, although no rule of it sends redo to another member while it is a standby. The RedoRoutes property page only bars a snapshot standby that would send redo data to another member. The CONVERT DATABASE page is stricter: a physical standby database cannot be converted to a snapshot standby database if its RedoRoutes configurable property is set to non-NULL value.`,
+      cite: ['ROUTES.SNAPSHOT_FORBIDDEN', 'CONVERT.SNAPSHOT_REDOROUTES_NONNULL'],
+      note: 'Oracle states both and does not reconcile them. Read by the CONVERT DATABASE page, this rule set cannot be converted at all; read by the RedoRoutes page it is fine. The workbench draws the snapshot standby and flags the disagreement rather than choosing a side.',
     }));
   }
   return out;
@@ -97,7 +121,7 @@ export const logicalLocalOnly: Rule = (ctx): Finding[] => {
     if (!m.redoRoutes.some((r) => r.source !== 'LOCAL')) continue;
     out.push(mk('ROUTES.LOGICAL_LOCAL_ONLY', {
       subject: routeSubject(m),
-      message: `RedoRoutes on the logical standby ${q(m.name)} carries a rule whose redo source field is not LOCAL. The RedoRoutes property can be set for a logical standby database only if the redo source field is set to LOCAL.`,
+      message: `RedoRoutes on the logical standby ${q(m.name)} has a rule whose redo source field is not LOCAL. The RedoRoutes property can be set for a logical standby database only if the redo source field is set to LOCAL.`,
       cite: ['ROUTES.LOGICAL_LOCAL_ONLY'],
     }));
   }
@@ -133,7 +157,7 @@ export const alternateNeedsMaxFailure: Rule = (ctx): Finding[] => {
         subject: routeSubject(m),
         message: `RedoRoutes on ${q(m.name)} gives ${q(alt.target as string)} as the alternate of ${q(d.to.name)}, but the MaxFailure property of ${q(d.to.name)} is 0. The non-alternate member must have a non-zero value for its MaxFailure configurable property in order for an alternate to be specified: ${editOf(d.to)} ${q(d.to.name)} SET PROPERTY 'MaxFailure' = 1;`,
         cite: ['ROUTES.ALT_MAXFAILURE', 'ROUTES.GRAMMAR_121'],
-        note: 'The sentence is in the 12.1 broker guide, the only edition that documents the ALT form at all; the 12.2, 19c and 26ai grammar no longer carries ALT, so the precondition is carried over to this configuration rather than stated for it.',
+        note: 'The sentence is in the 12.1 broker guide, the only edition that documents the ALT form at all. The 12.2, 19c and 26ai grammar no longer carries ALT, so the workbench carries the 12.1 precondition over to this configuration rather than quoting a statement about it.',
         ...(fix ? { fix } : {}),
       }));
     }
@@ -159,7 +183,7 @@ export const groupNeedsMaxFailure: Rule = (ctx): Finding[] => {
       const fix = maxFailureFix(ctx, m, d.to.id, d.to.name);
       out.push(mk('ROUTES.GROUP_NEEDS_MAXFAILURE', {
         subject: routeSubject(m),
-        message: `RedoRoutes on ${q(m.name)} puts ${q(d.to.name)} in a parenthesised group while its MaxFailure property is set to 0. A member whose MaxFailure property is set to zero cannot be part of a RedoRoutes group; inside a group the property defaults to 1.`,
+        message: `RedoRoutes on ${q(m.name)} puts ${q(d.to.name)} in a parenthesised group while its MaxFailure property is set to 0. A member whose MaxFailure property is set to zero cannot be part of a RedoRoutes group, and inside a group the property defaults to 1: ${editOf(d.to)} ${q(d.to.name)} SET PROPERTY 'MaxFailure' = 1;`,
         cite: ['ROUTES.GROUP_MAXFAILURE_ZERO', 'ROUTES.MAXFAILURE_GROUP_DEFAULT'],
         ...(fix ? { fix } : {}),
       }));
@@ -179,9 +203,9 @@ export const alternate121Only: Rule = (ctx): Finding[] => {
       const alt = d.dest.alt;
       out.push(mk('ROUTES.ALT_12_1_ONLY', {
         subject: routeSubject(m),
-        message: `RedoRoutes on ${q(m.name)} uses the 12.1 ALT form. The ${ctx.doc.config.edition} grammar has no ALT or FALLBACK: it writes a remote alternate as one parenthesised group with a PRIORITY per destination, as in (LOCAL : (${d.to.name}${d.explicitXpt ? ` ${d.explicitXpt}` : ''} PRIORITY=1, ${alt.target as string}${alt.xpt ? ` ${alt.xpt}` : ''} PRIORITY=2)).`,
+        message: `RedoRoutes on ${q(m.name)} uses the 12.1 ALT form, which the ${ctx.doc.config.edition} grammar does not have (there is no ALT or FALLBACK). Write a remote alternate as one parenthesised group with a PRIORITY per destination, as in (LOCAL : (${d.to.name}${d.explicitXpt ? ` ${d.explicitXpt}` : ''} PRIORITY=1, ${alt.target as string}${alt.xpt ? ` ${alt.xpt}` : ''} PRIORITY=2)).`,
         cite: ['ROUTES.PRIORITY_26AI', 'ROUTES.PRIORITY_19C_EX_4_3', 'ROUTES.GRAMMAR_121', 'ROUTES.INTRODUCED_121'],
-        note: 'ALT and FALLBACK are documented in the 12.1 broker guide only (from 12.1.0.2); the 12.2, 19c and 26ai grammar does not carry them, and 19c Example 4-3 writes the same remote alternate with PRIORITY. No page says whether a later broker still accepts the old spelling, so this is a warning about a form that has left the grammar rather than a refusal.',
+        note: 'ALT and FALLBACK are documented in the 12.1 broker guide only (from 12.1.0.2); the 12.2, 19c and 26ai grammar does not carry them, and 19c Example 4-3 writes the same remote alternate with PRIORITY. No page says whether a later broker still accepts the old spelling, so the finding is a warning about a form that has left the grammar, not a refusal.',
       }));
     }
   }
@@ -199,7 +223,7 @@ export const cascadePhysicalOnly: Rule = (ctx): Finding[] => {
     if (!isDatabase(m) || m.role === 'physical' || m.role === 'primary') continue;
     out.push(mk('ROUTES.CASCADE_PHYSICAL_ONLY', {
       subject: routeSubject(m),
-      message: `${q(m.name)} is a ${m.role} standby and its RedoRoutes forwards redo onward. Only physical standby databases cascade redo.`,
+      message: `${q(m.name)} is a ${m.role} standby, and its RedoRoutes forwards redo onward. Only physical standby databases cascade redo.`,
       cite: ['CASCADE.PHYSICAL_ONLY', 'CASCADE.TERMINAL_INDIRECT'],
     }));
   }
@@ -214,7 +238,7 @@ export const cascadeRealTimeAsync: Rule = (ctx): Finding[] => {
       if (d.explicitXpt !== undefined) continue;
       out.push(mk('ROUTES.CASCADE_RT_ASYNC', {
         subject: routeSubject(m),
-        message: `RedoRoutes on ${q(m.name)} cascades to ${q(d.to.name)} with no transport attribute, so the destination falls back to its LogXptMode (${d.xpt}). The ASYNC redo transport attribute must be explicitly specified for a cascaded destination to enable real-time cascading, which also needs Active Data Guard; without it the terminal standby receives archived standby redo logs instead.`,
+        message: `RedoRoutes on ${q(m.name)} cascades to ${q(d.to.name)} with no transport attribute, so the destination falls back to its LogXptMode (${d.xpt}). The ASYNC redo transport attribute must be explicitly specified for a cascaded destination to enable real-time cascading, which also needs Active Data Guard. Without it, the terminal standby receives archived standby redo logs instead.`,
         cite: ['ROUTES.CASCADE_ASYNC_EXPLICIT', 'CASCADE.PHYSICAL_ONLY'],
       }));
     }
@@ -245,9 +269,9 @@ export const cascadeSyncUndocumented: Rule = (ctx): Finding[] => {
       if (d.xpt === 'ASYNC') continue;
       out.push(mk('ROUTES.CASCADE_SYNC_UNDOC', {
         subject: routeSubject(m),
-        message: `RedoRoutes on ${q(m.name)} cascades to ${q(d.to.name)} over ${d.xpt}. Real-time cascading needs ASYNC spelled out; SYNC (or no attribute) on destinations 1 through 10 is documented as non-real-time cascading, shipped as the cascader archives its standby redo logs.`,
+        message: `RedoRoutes on ${q(m.name)} cascades to ${q(d.to.name)} over ${d.xpt}. Real-time cascading needs ASYNC spelled out. SYNC (or no attribute) on destinations 1 through 10 is documented as non-real-time cascading, shipped as the cascader archives its standby redo logs.`,
         cite: ['ROUTES.CASCADE_ASYNC_EXPLICIT', 'CASCADE.SYNC_NON_REALTIME'],
-        note: 'Non-real-time cascading is documented; what the cascader waits for under SYNC and how far the terminal destination then trails are not, so this engine flags it as unmodelled rather than illegal and models nothing about it.',
+        note: 'Non-real-time cascading is documented; what the cascader waits for under SYNC, and how far the terminal destination then trails, are not. The workbench flags the hop as unmodelled rather than illegal and models nothing about it.',
       }));
     }
   }
@@ -264,7 +288,7 @@ export const farSyncOnwardSync: Rule = (ctx): Finding[] => {
         subject: routeSubject(m),
         message: `The far sync instance ${q(m.name)} forwards to ${q(d.to.name)} over ${d.xpt}. A far sync instance is documented as using ASYNC transport to ship the incoming redo to terminal standbys, and fast-start failover requires the target standby transport mode to be ASYNC.`,
         cite: ['FS.ONWARD_ASYNC', 'FSFO.FARSYNC_XPT'],
-        note: 'SYNC on the onward hop is not documented -- word it as "documented as ASYNC", never as forbidden. This engine keeps the hop but models nothing about a synchronous acknowledgement travelling back through the far sync instance.',
+        note: 'SYNC on the onward hop is not documented, so the finding says "documented as ASYNC", never as forbidden. The workbench keeps the hop but models nothing about a synchronous acknowledgement travelling back through the far sync instance.',
       }));
     }
   }
@@ -280,7 +304,7 @@ export const routeCycle: Rule = (ctx): Finding[] =>
   (ctx.graph?.findings ?? []).filter((f) => f.id === 'ROUTES.CYCLE');
 
 export const routeRules: Rule[] = [
-  sourceUnique, localAtFarSync, snapshotForbidden, logicalLocalOnly,
+  sourceUnique, localAtFarSync, snapshotForbidden, snapshotConvertNonNull, logicalLocalOnly,
   alternateNeedsMaxFailure, groupNeedsMaxFailure, alternate121Only,
   cascadePhysicalOnly, cascadeRealTimeAsync, cascadeFanout, cascadeSyncUndocumented,
   farSyncOnwardSync, routeCycle,

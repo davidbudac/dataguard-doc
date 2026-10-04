@@ -39,10 +39,10 @@ describe('legacy urls', () => {
   });
 
   it('carries the knobs through the engine, clamped', () => {
-    const up = upgradeLegacyUrl('?pm=perf&th=9999&lag=45&ol=dc1&sd=0');
+    const up = upgradeLegacyUrl('?pm=perf&th=99999&lag=45&ol=dc1&sd=0');
     expect(up?.topology.config.protectionMode).toBe('MAXPERFORMANCE');
-    /* FastStartFailoverThreshold tops out at 120 s. */
-    expect(up?.topology.config.fsfo.thresholdSeconds).toBe(120);
+    /* FastStartFailoverThreshold tops out at this page's 3600 s ceiling. */
+    expect(up?.topology.config.fsfo.thresholdSeconds).toBe(3600);
     expect(up?.topology.config.fsfo.pmyShutdown).toBe(false);
     expect(up?.topology.observers[0]?.host).toBe('dc1-obs01');
   });

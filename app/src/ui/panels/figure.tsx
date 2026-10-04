@@ -18,7 +18,7 @@
  */
 
 import type { ComponentChildren } from 'preact';
-import { useEffect, useRef, useState } from 'preact/hooks';
+import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
 import { approxW, fitLabel, packBraces, signed } from '@/ui/timeline/build';
 import type { BraceInput, TimelineScale } from '@/ui/timeline/build';
 import { Brace } from '@/ui/timeline/Brace';
@@ -315,9 +315,12 @@ export function Figure({ title, eyebrow, width, height, summaryId, summary, chil
 export function useFigWidth(min = 620): [(el: HTMLElement | null) => void, number] {
   const [width, setWidth] = useState(880);
   const observer = useRef<ResizeObserver | null>(null);
-  useEffect(() => () => observer.current?.disconnect(), []);
-  const ref = (el: HTMLElement | null): void => {
+  const queued = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { observer.current?.disconnect(); if (queued.current !== null) clearTimeout(queued.current); }, []);
+  const ref = useCallback((el: HTMLElement | null): void => {
     observer.current?.disconnect();
+    if (queued.current !== null) clearTimeout(queued.current);
+    queued.current = null;
     if (!el || typeof ResizeObserver === 'undefined') return;
     /* The content box, not the padding box: the ref sits on the padded
        panel body, and a figure as wide as the padding box runs 16 px past
@@ -328,9 +331,12 @@ export function useFigWidth(min = 620): [(el: HTMLElement | null) => void, numbe
       setWidth(Math.max(min, (el.clientWidth || 880) - pad));
     };
     read();
-    const ro = new ResizeObserver(read);
+    const ro = new ResizeObserver(() => {
+      if (queued.current !== null) return;
+      queued.current = setTimeout(() => { queued.current = null; read(); }, 0);
+    });
     ro.observe(el);
     observer.current = ro;
-  };
+  }, [min]);
   return [ref, Math.max(min, width)];
 }

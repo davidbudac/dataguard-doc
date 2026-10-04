@@ -26,6 +26,7 @@
 import { effect, signal } from '@preact/signals';
 import type { Edition } from '@/engine';
 import { findPreset } from '@/presets';
+import { shareBase } from '@/ui/common/desktop';
 import { doc, makeDoc } from './doc';
 import type { Doc } from './doc';
 import { encodeDoc, toWire } from './codec';
@@ -69,6 +70,8 @@ export const URL_DEFAULTS: UrlState = {
 
 /** Ids are ours, so the alphabet is ours: anything else is not an id. */
 const ID_RE = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$/;
+/** A selection key is an id, or an id and an instance place (`sby01~2`, `state/instanceKey.ts`). */
+const SEL_RE = /^[A-Za-z0-9][A-Za-z0-9._:~-]{0,66}$/;
 const SEL_MAX = 20;
 
 /** The axis never runs past 900 s and pre-roll never below -60 s. */
@@ -80,6 +83,12 @@ export const clampStep = (n: number): number => Math.max(0, Math.min(99, Math.ro
 /* ---------------- the table ---------------- */
 
 type Mutable = { -readonly [K in keyof UrlState]: UrlState[K] };
+
+/** The mode's word in the address, where it differs from its id. */
+const MODE_TO_URL: Partial<Record<Mode, string>> = { build: 'topology', break: 'timeline', configure: 'config' };
+const MODE_FROM_URL: Record<string, Mode | undefined> = {
+  topology: 'build', timeline: 'break', simulate: 'break', config: 'configure',
+};
 
 export interface UrlField {
   /** The public key. */
@@ -99,9 +108,16 @@ export const URL_FIELDS: readonly UrlField[] = [
     write: (s) => (s.ed === URL_DEFAULTS.ed ? null : s.ed),
   },
   {
-    k: 'mode', what: 'Build / Break / Configure / Learn',
-    parse: (raw, out) => { if ((MODES as readonly string[]).includes(raw)) out.mode = raw as Mode; },
-    write: (s) => (s.mode === URL_DEFAULTS.mode ? null : s.mode),
+    /* The words in the address are the ones on the buttons: `topology`,
+       `timeline` and `config`. The internal ids stay `build`, `break` and
+       `configure`, and an old link spelled with them -- or with `simulate`,
+       the word `break` used to wear -- still opens the right mode. */
+    k: 'mode', what: 'topology / timeline / config / learn (build, simulate, break and configure are read as the old spellings)',
+    parse: (raw, out) => {
+      const m = MODE_FROM_URL[raw] ?? ((MODES as readonly string[]).includes(raw) ? (raw as Mode) : null);
+      if (m !== null) out.mode = m;
+    },
+    write: (s) => (s.mode === URL_DEFAULTS.mode ? null : (MODE_TO_URL[s.mode] ?? s.mode)),
   },
   {
     /* A page rather than a mode: the workbench is still behind it, with the
@@ -121,16 +137,16 @@ export const URL_FIELDS: readonly UrlField[] = [
     write: (s) => (s.report ? '1' : null),
   },
   {
-    k: 'panel', what: 'the Configure tab',
+    k: 'panel', what: 'the Config tab',
     parse: (raw, out) => {
       if ((PANEL_TABS as readonly string[]).includes(raw)) out.panel = raw as PanelTab;
     },
     write: (s) => (s.panel === URL_DEFAULTS.panel ? null : s.panel),
   },
   {
-    k: 'sel', what: 'selected members, comma separated',
+    k: 'sel', what: 'selected objects (members, instances as id~n, ...), comma separated',
     parse: (raw, out) => {
-      const ids = raw.split(',').map((x) => x.trim()).filter((x) => ID_RE.test(x));
+      const ids = raw.split(',').map((x) => x.trim()).filter((x) => SEL_RE.test(x));
       out.sel = ids.slice(0, SEL_MAX);
     },
     write: (s) => (s.sel.length === 0 ? null : s.sel.join(',')),
@@ -378,7 +394,10 @@ async function canonicalTail(): Promise<{ tail: string; tooLarge: boolean }> {
 /** Build the canonical URL for the state as it stands. */
 export async function buildShareUrl(): Promise<{ url: string; tooLarge: boolean }> {
   const { tail, tooLarge } = await canonicalTail();
-  const base = typeof location === 'undefined' ? '' : location.origin + location.pathname;
+  /* On the desktop shell the page's own address is tauri://localhost, which
+     opens nowhere for the person the link is sent to (common/desktop.ts). */
+  const here = typeof location === 'undefined' ? '' : location.origin + location.pathname;
+  const base = shareBase(here);
   return { url: `${base}${tail}`, tooLarge };
 }
 

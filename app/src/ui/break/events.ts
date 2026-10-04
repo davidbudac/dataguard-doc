@@ -17,14 +17,15 @@
 
 import { scenarioEvents, stateAt } from '@/engine';
 import type { ClassicScenario, DatabaseMember, HostId, TimedEvent, TopologyDoc } from '@/engine';
-import { isDatabase } from '@/engine';
+import { findApplication, hasApplyInstance, isDatabase } from '@/engine';
 import { withEvents } from '@/state/doc';
 import { topology, trace } from '@/state/derived';
 import { edit } from '@/state/history';
-import { appLanesShown, playing, tNow, toast } from '@/state/view';
+import { appLanesShown, healthyRun, playing, tNow, toast } from '@/state/view';
 import { lastInterestingT } from '@/ui/timeline/build';
 import type { WhyState } from '../common/WhyPill';
 import type { CanvasTool, ToolIconName } from '../canvas/HoverTools';
+import { eventIcon } from '../common/eventIcons';
 import { off, ON, WHY } from '../inspector/why';
 
 import { eventTimeRefusal, reorderRefusal, snapEventTime } from './event-order';
@@ -179,8 +180,9 @@ export function anythingDownUnder(doc: TopologyDoc, key: string, t: number): boo
   if (doc.observers.some((o) => (o.id as string) === key)) {
     return isDownAt(doc, { kind: 'observer', id: key }, t);
   }
-  if (doc.application !== undefined && (doc.application.id as string) === key) {
-    return isDownAt(doc, { kind: 'host', id: doc.application.host as string }, t);
+  const application = findApplication(doc, key);
+  if (application !== undefined) {
+    return isDownAt(doc, { kind: 'host', id: application.host as string }, t);
   }
   if (doc.links.some((l) => (l.id as string) === key)) {
     return isDownAt(doc, { kind: 'link', id: key }, t);
@@ -201,6 +203,11 @@ export interface EventAction {
   /** True for a property change: it takes effect everywhere, not at `at`. */
   property?: boolean;
   run?: () => void;
+  /**
+   * The glyph, when the event kind does not picture it: isolating a data
+   * centre is `link.cut` events and a property has none (`actionIcon`).
+   */
+  icon?: ToolIconName;
 }
 
 /**
@@ -318,6 +325,20 @@ export function actionsForKey(doc: TopologyDoc, key: string, at: number): EventA
           events: [{ at, kind: 'instance.up', member: member.id, instance: inst.name }],
         });
       }
+      /* A RAC standby: move apply by hand, the documented
+         SET STATE='APPLY-ON' WITH APPLY INSTANCE. */
+      if (hasApplyInstance(member)) {
+        for (const inst of member.instances) {
+          const down = isDownAt(doc, { kind: 'instance', member: key, id: inst.name }, at);
+          out.push({
+            id: `cmd.setApplyInstance:${inst.name}`,
+            label: `Move apply to ${inst.name}`,
+            plural: 'Move apply to the instance',
+            enabled: down ? off('The instance is down: apply runs only on a running instance.') : ON,
+            events: [{ at, kind: 'cmd.setApplyInstance', member: member.id, instance: inst.name }],
+          });
+        }
+      }
     } else {
       const down = isDownAt(doc, { kind: 'member', id: key }, at);
       const held = first === undefined ? null : heldByHost(doc, first, at);
@@ -371,8 +392,11 @@ export function actionsForKey(doc: TopologyDoc, key: string, at: number): EventA
         label: `SWITCHOVER TO ${key}`,
         plural: 'Switch over',
         enabled: !primary ? off(WHY.noTarget)
-          : targetDown ? off(WHY.switchoverTargetDown)
-            : primaryDown ? off(WHY.switchoverPrimaryDown) : ON,
+          : member.role === 'snapshot' ? off(WHY.switchoverSnapshot)
+            : member.role === 'logical' && doc.config.protectionMode === 'MAXPROTECTION'
+              ? off(WHY.switchoverLogicalMaxProt)
+              : targetDown ? off(WHY.switchoverTargetDown)
+                : primaryDown ? off(WHY.switchoverPrimaryDown) : ON,
         events: [{ at, kind: 'cmd.switchover', to: member.id }],
       });
       out.push({
@@ -393,15 +417,19 @@ export function actionsForKey(doc: TopologyDoc, key: string, at: number): EventA
         events: [{ at, kind: 'cmd.reinstate', member: member.id }],
       });
       const running = member.applyRunning;
+      /* Redo Apply on a physical standby, SQL Apply on a logical one. */
+      const applyName = member.role === 'logical' ? 'SQL Apply' : 'redo apply';
       out.push({
         id: 'apply.toggle',
-        label: running ? `Stop redo apply on ${key}` : `Start redo apply on ${key}`,
-        plural: 'Toggle redo apply',
-        enabled: member.role === 'primary' ? off(WHY.primaryNoApply) : ON,
+        label: running ? `Stop ${applyName} on ${key}` : `Start ${applyName} on ${key}`,
+        plural: `Toggle ${applyName}`,
+        enabled: member.role === 'primary' ? off(WHY.primaryNoApply)
+          : member.role === 'snapshot' ? off(WHY.snapshotNoApply) : ON,
         events: [],
         property: true,
+        icon: running ? 'stop' : 'start',
         run: () => edit(
-          `${running ? 'Stop' : 'Start'} redo apply on ${key}`,
+          `${running ? 'Stop' : 'Start'} ${applyName} on ${key}`,
           (d) => ({
             ...d,
             topology: {
@@ -418,8 +446,7 @@ export function actionsForKey(doc: TopologyDoc, key: string, at: number): EventA
 
   /* The application is its host: crashing the host is the one thing that
      happens to it, and it decides nothing about what the configuration does. */
-  const app = doc.application !== undefined && (doc.application.id as string) === key
-    ? doc.application : undefined;
+  const app = findApplication(doc, key);
   if (app) {
     const hDown = isDownAt(doc, { kind: 'host', id: app.host as string }, at);
     const hostHeld = heldBySite(doc, app.host, at);
@@ -468,6 +495,7 @@ export function actionsForKey(doc: TopologyDoc, key: string, at: number): EventA
         enabled: ON,
         events: [],
         property: true,
+        icon: 'start',
         run: () => edit(`Mark ${key} running`, (d) => ({
           ...d,
           topology: {
@@ -570,6 +598,7 @@ export function actionsForKey(doc: TopologyDoc, key: string, at: number): EventA
         enabled: ON,
         events: [],
         property: true,
+        icon: 'heal',
         run: () => edit(`Mark ${key} up`, (d) => ({
           ...d,
           topology: {
@@ -611,6 +640,7 @@ export function actionsForKey(doc: TopologyDoc, key: string, at: number): EventA
         ? off('No link leaves this data centre, so there is nothing to cut.')
         : open.length === 0 ? off(WHY.alreadyDown) : ON,
       events: open.map((l) => ({ at, kind: 'link.cut', link: l.id }) as TimedEvent),
+      icon: 'isolate',
     });
     out.push({
       id: 'site.reconnect',
@@ -618,6 +648,7 @@ export function actionsForKey(doc: TopologyDoc, key: string, at: number): EventA
       plural: 'Reconnect the sites',
       enabled: shut.length === 0 ? off(WHY.nothingDown) : ON,
       events: shut.map((l) => ({ at, kind: 'link.heal', link: l.id }) as TimedEvent),
+      icon: 'reconnect',
     });
   }
 
@@ -637,11 +668,11 @@ type ToolIcon = ToolIconName;
  * slot: the way down while the thing is up, the way back once it is down --
  * grey with its reason as its title when that way back is refused.
  */
-export function hoverTools(doc: TopologyDoc, key: string, at: number): CanvasTool[] {
+export function hoverTools(doc: TopologyDoc, key: string, at: number, opts: RunOptions = {}): CanvasTool[] {
   const all = actionsForKey(doc, key, at);
   const find = (id: string): EventAction | undefined => all.find((a) => a.id === id);
   const tool = (a: EventAction, icon: ToolIcon): HoverTool => ({
-    id: a.id, icon, label: a.label, enabled: a.enabled, run: () => runAction(a),
+    id: a.id, icon, label: a.label, enabled: a.enabled, run: () => runAction(a, opts),
   });
   const pair = (downId: string, downIcon: ToolIcon, upId: string, upIcon: ToolIcon): HoverTool | null => {
     const d = find(downId);
@@ -684,7 +715,7 @@ export function hoverTools(doc: TopologyDoc, key: string, at: number): CanvasToo
   } else if (doc.observers.some((o) => (o.id as string) === key)) {
     out.push(pair('observer.stop', 'stop', 'observer.start', 'start'));
     out.push(pair('host.down', 'crash', 'host.up', 'restore'));
-  } else if ((doc.application?.id as string | undefined) === key) {
+  } else if (findApplication(doc, key) !== undefined) {
     out.push(pair('host.down', 'crash', 'host.up', 'restore'));
   } else if (doc.links.some((l) => (l.id as string) === key)) {
     out.push(pair('link.cut', 'cut', 'link.heal', 'heal'));
@@ -752,6 +783,67 @@ export function restoreQuietLine(
     : 'This one is up — what is down sits inside it and carries its own restore. Select it on the drawing.';
 }
 
+/* ---------------- the groups a menu sorts them into ---------------- */
+
+/**
+ * The event kind an action injects, or the one it stands for when it injects
+ * none: taking a cut back or healing at the very instant of the cut edits the
+ * list rather than adding to it, and isolating a data centre whose links are
+ * all down already has nothing left to cut. `null` for a property.
+ */
+const ID_KIND: Readonly<Record<string, TimedEvent['kind']>> = {
+  'link.heal': 'link.heal',
+  'link.uncut': 'link.heal',
+  'site.isolate': 'link.cut',
+  'site.reconnect': 'link.heal',
+};
+
+export function actionKind(a: EventAction): TimedEvent['kind'] | null {
+  if (a.property === true) return null;
+  return a.events[0]?.kind ?? ID_KIND[a.id.split(':')[0] as string] ?? null;
+}
+
+/** The groups the canvas's context menu sorts the table into, in order. */
+export type ActionGroup = 'fail' | 'restore' | 'role' | 'broker' | 'setting';
+
+export const ACTION_GROUPS: readonly ActionGroup[] = ['fail', 'restore', 'role', 'broker', 'setting'];
+
+export const ACTION_GROUP_LABEL: Readonly<Record<ActionGroup, string>> = {
+  fail: 'Fail',
+  restore: 'Restore',
+  role: 'Role change',
+  broker: 'Broker',
+  setting: 'Setting · the whole run',
+};
+
+/**
+ * Which group an action falls in, read off the kind of event it injects --
+ * never off its label, so a new entry in the table lands in the right group
+ * by injecting the right thing.
+ */
+export function actionGroup(a: EventAction): ActionGroup {
+  if (a.property === true) return 'setting';
+  if (isRestore(a)) return 'restore';
+  switch (actionKind(a)) {
+    case 'host.up': case 'site.up': case 'member.up': case 'instance.up':
+    case 'link.heal': case 'observer.start':
+      return 'restore';
+    case 'cmd.switchover': case 'cmd.failover': case 'cmd.reinstate':
+      return 'role';
+    case 'cmd.setMasterObserver': case 'cmd.setApplyInstance': case 'cmd.disableFsfo':
+      return 'broker';
+    default:
+      return 'fail';
+  }
+}
+
+/** The glyph a menu row carries: the timeline's icon for the same event. */
+export function actionIcon(a: EventAction): ToolIconName {
+  if (a.icon !== undefined) return a.icon;
+  const kind = actionKind(a);
+  return kind === null ? 'lag' : eventIcon(kind);
+}
+
 /**
  * The actions a whole selection offers: the intersection by id, with the
  * events of every subject folded into one entry, so one click is one undo.
@@ -775,10 +867,14 @@ export function actionsFor(doc: TopologyDoc, keys: readonly string[], at: number
       enabled: blocked ? blocked.enabled : ON,
       events: all.flatMap((x) => x.events),
       ...(a.property ? { property: true } : {}),
+      ...(a.icon ? { icon: a.icon } : {}),
     });
   }
   return out;
 }
+
+/** Events land on a tenth of a second: the axis is read to that, not finer. */
+export const snapT = (t: number): number => Math.round(t * 10) / 10;
 
 /**
  * Move the playhead to the end of what there is to see.
@@ -797,12 +893,21 @@ export function restPlayhead(): void {
   const t = trace.value;
   if (t === null) { tNow.value = 0; return; }
   const end = lastInterestingT(t, topology.value.events, appLanesShown.value ? topology.value : undefined);
-  /* A tenth of a second, the way the axis is read (EventMenu's `snapT`). */
-  tNow.value = Math.max(0, Math.round(end * 10) / 10);
+  tNow.value = Math.max(0, snapT(end));
+}
+
+export interface RunOptions {
+  /**
+   * Leave the playhead where the reader put it. The default moves it to the
+   * end of the run so the drawing shows the result; Lanes shows the whole run
+   * at once and aims its buttons at the playhead, so it must not move under a
+   * reader who is composing at t = 10 s.
+   */
+  keepPlayhead?: boolean;
 }
 
 /** Inject an action's events under one undo entry. */
-export function runAction(action: EventAction): void {
+export function runAction(action: EventAction, opts: RunOptions = {}): void {
   if (action.enabled.state === 'off') return;
   /* A property holds from the first frame, so there is no new moment to move
      the playhead to. */
@@ -810,14 +915,18 @@ export function runAction(action: EventAction): void {
   /* An action on the event list itself -- taking a cut back -- edits the
      list rather than adding to it, and leaves the playhead where it is. */
   if (action.events.length === 0) { action.run?.(); return; }
+  healthyRun.value = false;
   edit(action.label, (d) => withEvents(d, [...d.topology.events, ...action.events]));
-  restPlayhead();
+  if (opts.keepPlayhead !== true) restPlayhead();
 }
 
 /* ---------------- the six templates ---------------- */
 
+/** One of the six that inject a failure, so `id` is one of the engine's own scenarios. */
+export type FailureTemplate = Template & { id: ClassicScenario };
+
 export interface Template {
-  id: ClassicScenario;
+  id: ClassicScenario | 'healthy';
   label: string;
   caption: string;
   enabled: WhyState;
@@ -832,7 +941,7 @@ export interface Template {
  * outcome the published page draws for the same deployment, rather than an
  * approximation of it.
  */
-export function templates(doc: TopologyDoc, at = 0): Template[] {
+export function templates(doc: TopologyDoc, at = 0): FailureTemplate[] {
   const primary = doc.members.find((m) => isDatabase(m) && m.role === 'primary');
   const target = doc.config.fsfo.target;
   const targetId = target.kind === 'list' ? target.members[0] : undefined;
@@ -845,6 +954,11 @@ export function templates(doc: TopologyDoc, at = 0): Template[] {
     ? siteOfHost(doc, targetMember.instances[0].host)
     : undefined;
   const master = doc.observers.find((o) => o.role === 'master') ?? doc.observers[0];
+  /* The scenario's events kill the first-listed observer's host
+     (`scenarioEvents`), which is the master unless the document lists a backup
+     first: the caption names the one that actually dies. */
+  const killed = doc.observers[0];
+  const killedIsMaster = killed !== undefined && killed.role === 'master';
 
   const shift = (evts: TimedEvent[]): TimedEvent[] => evts.map((e) => ({ ...e, at }));
   const mk = (id: ClassicScenario): TimedEvent[] => shift(scenarioEvents(id, doc));
@@ -859,7 +973,9 @@ export function templates(doc: TopologyDoc, at = 0): Template[] {
     {
       id: 'crash',
       label: 'Crash the primary host',
-      caption: 'The primary host dies outright. Observer and standby both lose it at the same instant.',
+      caption: primary && primary.instances.length > 1
+        ? 'The host of the primary’s first instance dies outright. The other instances keep running, so the primary stays up.'
+        : 'The primary host dies outright. Observer and standby both lose it at the same instant.',
       enabled: primary ? ON : noPrimary,
       events: mk('crash'),
     },
@@ -890,9 +1006,11 @@ export function templates(doc: TopologyDoc, at = 0): Template[] {
     },
     {
       id: 'observer-lost',
-      label: 'Kill the master observer',
+      label: doc.observers.length > 1 && !killedIsMaster ? `Kill observer ${killed?.name ?? ''}`.trim() : 'Kill the master observer',
       caption: doc.observers.length > 1
-        ? 'The master observer’s host dies. The primary still reaches the standby, so it keeps serving; with both databases still connected, the broker tries to nominate a backup observer as the new master.'
+        ? (killedIsMaster
+          ? 'The master observer’s host dies. The primary still reaches the standby, so it keeps serving; with both databases still connected, the broker tries to nominate a backup observer as the new master.'
+          : `The host of ${killed?.name ?? 'the first-listed observer'}, which is not the master, dies. The master observer keeps running, so fast-start failover stays armed and the primary keeps serving.`)
         : 'The configuration’s only observer host dies. The primary still reaches the standby, so it keeps serving -- but nothing can fail over.',
       enabled: master === undefined ? off(WHY.noObserverDeployed) : ON,
       events: mk('observer-lost'),
@@ -910,11 +1028,59 @@ export function templates(doc: TopologyDoc, at = 0): Template[] {
 /** A template replaces the event list: a scenario is reproducible or it is nothing. */
 export function applyTemplate(t: Template): void {
   if (t.enabled.state === 'off') return;
+  /* The healthy scenario is the one whose event list is empty: it clears
+     whatever was injected and asks for the run of what is left. Every other
+     template puts that request away, because its events make the run. */
+  healthyRun.value = t.id === 'healthy';
   edit(`Apply the scenario: ${t.label}`, (d) => withEvents(d, t.events));
   restPlayhead();
 }
 
+/**
+ * The scenario in which nothing fails. It is not one of the failure templates
+ * (`templates`): there is no event to inject, the review suite has nothing to
+ * compare it against, and the walkthrough never asks for it. The shelf puts it
+ * first, and the run it asks for is the engine's own, over no events.
+ */
+/**
+ * What "runs as drawn" means for this document: only what it actually has.
+ * A standby with apply stopped, a snapshot standby, a far sync instance, a
+ * disabled or observer-less configuration and a document with no application
+ * are not described as applying, pinging or serving.
+ */
+function healthyCaption(doc: TopologyDoc): string {
+  const standbys = doc.members.filter(isDatabase).filter((m) => m.role !== 'primary');
+  const applying = standbys.filter((m) => m.applyRunning && m.role !== 'snapshot');
+  const parts = ['the primary is open read-write and shipping redo'];
+  if (applying.length > 0) {
+    parts.push(applying.length === standbys.length ? 'the standbys apply it' : 'the standbys with redo apply running apply it');
+  }
+  if (doc.config.fsfo.state !== 'disabled' && doc.observers.some((o) => o.running)) {
+    parts.push('the observer pings');
+  }
+  if ((doc.applications ?? []).length > 0) parts.push('the application is served');
+  const list = parts.length === 1 ? parts[0]
+    : parts.length === 2 ? `${parts[0]} and ${parts[1]}`
+      : `${parts.slice(0, -1).join(', ')}, and ${parts[parts.length - 1]}`;
+  return `Nothing fails. The configuration runs as drawn: ${list}.`;
+}
+
+export function healthyScenario(doc: TopologyDoc): Template {
+  const primary = doc.members.find((m) => isDatabase(m) && m.role === 'primary');
+  return {
+    id: 'healthy',
+    label: 'Everything is working',
+    caption: healthyCaption(doc),
+    enabled: primary ? ON : off('No member holds the primary role.'),
+    events: [],
+  };
+}
+
+/** What the scenario shelf offers, in order: the healthy run first, then the six failures. */
+export const shelf = (doc: TopologyDoc, at = 0): Template[] => [healthyScenario(doc), ...templates(doc, at)];
+
 export function clearEvents(): void {
+  healthyRun.value = false;
   edit('Clear the injected events', (d) => withEvents(d, []));
   /* Nothing is left to be at the end of: the playhead goes back to the start
      rather than resting on a clock reading that no longer means anything. */
@@ -922,6 +1088,7 @@ export function clearEvents(): void {
 }
 
 export function removeEventAt(index: number): void {
+  healthyRun.value = false;
   edit('Remove an injected event', (d) => withEvents(
     d, d.topology.events.filter((_, i) => i !== index),
   ));
@@ -975,6 +1142,7 @@ export function describeEvent(doc: TopologyDoc, e: TimedEvent): string {
     case 'cmd.failover': return `FAILOVER TO ${e.to as string}${e.immediate === true ? ' IMMEDIATE' : ''}`;
     case 'cmd.reinstate': return `REINSTATE DATABASE ${e.member as string}`;
     case 'cmd.setMasterObserver': return `SET MASTEROBSERVER TO ${e.observer as string}`;
+    case 'cmd.setApplyInstance': return `Move apply on ${e.member as string} to ${e.instance}`;
     case 'cmd.disableFsfo':
       return `DISABLE FAST_START FAILOVER${e.force === true ? ' FORCE' : ''}`;
     case 'lag.set': return `Set the lag on ${e.member as string}`;

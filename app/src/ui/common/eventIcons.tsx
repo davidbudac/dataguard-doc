@@ -70,6 +70,19 @@ export const GLYPH: Record<EventIconName, JSX.Element> = {
   ),
 };
 
+/**
+ * Redrawn for a 12 px button, where a glyph's detail turns to noise: the
+ * isolate glyph's two half-links and four ticks read as a smudge at that size,
+ * so there it is a node inside a dashed ring -- fenced off from the rest.
+ */
+export const GLYPH_SMALL: Partial<Record<EventIconName, JSX.Element>> = {
+  isolate: (
+    <>
+      <circle cx="12" cy="12" r="3.4" />
+      <circle cx="12" cy="12" r="9" stroke-dasharray="4.4 3.9" />
+    </>
+  ),
+};
 
 /** The icon that pictures an injected event on the timeline. */
 export function eventIcon(kind: TimedEvent['kind']): EventIconName {
@@ -86,6 +99,8 @@ export function eventIcon(kind: TimedEvent['kind']): EventIconName {
     case 'cmd.failover': return 'failover';
     case 'cmd.reinstate': return 'reinstate';
     case 'cmd.setMasterObserver': return 'master';
+    /* Apply starts on the instance named: the start-up glyph. */
+    case 'cmd.setApplyInstance': return 'startup';
     case 'cmd.disableFsfo': return 'disable';
     case 'lag.set': return 'lag';
   }

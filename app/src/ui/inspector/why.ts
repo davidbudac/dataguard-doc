@@ -22,6 +22,8 @@
  * the reader can build the mistake and read what Oracle says about it.
  */
 
+import type { TopologyDoc, XptMode } from '@/engine';
+import type { SegmentedOption } from '../common/Segmented';
 import type { WhyState } from '../common/WhyPill';
 
 export const ON: WhyState = { state: 'on' };
@@ -38,6 +40,10 @@ export const WHY = {
     'A later edition states this: switch the release to 26ai to set it here.',
   lagLimitMaxAvail19c:
     'Under 19c FastStartFailoverLagLimit is a maximum performance property, and 19c\'s own fast-start failover chapter and property page disagree about whether it reaches maximum availability at all. The maximum availability role is a 21c feature; 26ai gives that role its own default of 0.',
+  lagLimitMaxProt:
+    'The FastStartFailoverLagLimit property is not used in maximum protection mode.',
+  lagLimitMaxProt19c:
+    'No 19c page gives FastStartFailoverLagLimit a role in maximum protection mode, and the 26ai property page says so outright: "The FastStartFailoverLagLimit property is not used in maximum protection mode."',
   pingPropsNotIn19c:
     'ObserverPingInterval and ObserverPingRetry do not exist in 19c: absent from the 12.2, 18c and 19c property pages and from a live 19.27 system. Documented from 21c.',
   docLater26aiObservedIn1927:
@@ -66,6 +72,8 @@ export const WHY = {
     'The primary is not a failover target of itself.',
   primaryNoApply:
     'A primary applies no redo of its own.',
+  snapshotNoApply:
+    'A snapshot standby database does not apply the redo data that it receives, and it has no apply state to start or stop.',
   alreadyPrimary:
     'It holds the primary role already.',
   alreadyMaster:
@@ -80,10 +88,10 @@ export const WHY = {
     'This member holds the primary role: give the role to another database first.',
   lastInstance:
     'A member runs at least one instance.',
-  siteHasHosts:
-    'This site still has hosts in it: move or remove them first.',
+  siteInUse:
+    'A database, an observer or an application still stands in this site: move or remove it first.',
   hostInUse:
-    'This host still runs a database instance, an observer or the application.',
+    'This host still runs a database instance, an observer or an application.',
   noObserverDeployed:
     'No observer is deployed, so there is none to lose. Deploying no observer is not the same as being unobserved.',
   nothingDown:
@@ -94,12 +102,22 @@ export const WHY = {
     'No physical or logical standby is configured to move the role to.',
   switchoverTargetDown:
     'SWITCHOVER needs the target standby up: it is down at this point on the clock.',
+  switchoverSnapshot:
+    'A snapshot standby database cannot be the target of a switchover: convert it back to a physical standby first. A manual failover to it is allowed.',
+  switchoverLogicalMaxProt:
+    'Switchover to a logical standby database is disallowed when the configuration is operating in maximum protection mode.',
   switchoverPrimaryDown:
     'SWITCHOVER needs the primary up: it is down at this point on the clock.',
   failoverTargetDown:
     'FAILOVER needs the target standby up: it is down at this point on the clock.',
   notFormerPrimary:
     'REINSTATE DATABASE is for a former primary the run left needing reinstatement; the run does not show this one as that.',
+  onlyRedoDest:
+    'It is the only destination its sender ships to, and an empty RedoRoutes is (LOCAL : ALL), which ships to it again: disable the standby (Enabled, in its properties) or remove it instead.',
+  pingFollowsObserver:
+    'Every running observer connects to the primary: this line goes when the observer does.',
+  targetIsAny:
+    'FastStartFailoverTarget is ANY, so the observer checks every physical and logical standby: name the targets in the configuration to leave one out.',
   /**
    * The two ends of a range this page models, said without the numbers: the
    * range itself lives in the engine's `BOUNDS`, and a sentence here carrying
@@ -128,3 +146,38 @@ export const WHY = {
 } as const;
 
 export type WhyKey = keyof typeof WHY;
+
+/**
+ * Whether `FastStartFailoverLagLimit` can be set, and if not, why.
+ *
+ * 19c: a maximum performance property, and 19c disagrees with itself about
+ * whether it reaches maximum availability at all -- this page follows the
+ * observed 19.27 behaviour (not evaluated there) over the chapter's "must be
+ * zero" sentence. 26ai: maximum availability has the role too, where 0 is the
+ * broker default and means zero data loss; that role is a 21c feature, not a
+ * 26ai one. Maximum protection: "The FastStartFailoverLagLimit property is not
+ * used in maximum protection mode" (26ai property page; 19c agrees by
+ * omission) -- the reason given there is that one, not the maximum performance
+ * wording of the lag type (TXT-80). The rail's form and the Detailed timeline's
+ * popover both read this.
+ */
+export function lagLimitGate(doc: TopologyDoc): WhyState {
+  const ed = doc.config.edition;
+  const mode = doc.config.protectionMode;
+  if (mode === 'MAXPERFORMANCE') return ON;
+  if (mode === 'MAXPROTECTION') return off(ed === '26ai' ? WHY.lagLimitMaxProt : WHY.lagLimitMaxProt19c);
+  return ed === '26ai' ? ON : off(WHY.lagLimitMaxAvail19c);
+}
+
+/** `LogXptMode`'s three values; FASTSYNC is offered under maximum availability only. */
+export function logXptOptions(doc: TopologyDoc): SegmentedOption<XptMode>[] {
+  return [
+    { value: 'SYNC', label: 'SYNC' },
+    {
+      value: 'FASTSYNC',
+      label: 'FASTSYNC',
+      enabled: doc.config.protectionMode === 'MAXAVAILABILITY' ? ON : off(WHY.fastsyncMode),
+    },
+    { value: 'ASYNC', label: 'ASYNC' },
+  ];
+}

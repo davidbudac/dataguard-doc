@@ -13,10 +13,11 @@
  * outcome of the run, never on the name of the event that caused it.
  */
 
-import type { AppModel, EngineTrace, TopologyDoc } from '@/engine';
-import { computeApp } from '@/engine';
+import type { AppModel, ClientDescriptor, EngineTrace } from '@/engine';
+import { applicationClient, applicationsOf, computeApp } from '@/engine';
 import type { BraceInput, TimelineScale } from '@/ui/timeline/build';
 import { topology, trace } from '@/state/derived';
+import { appModelsFor } from '@/ui/timeline/build';
 import {
   Braces, braceRows, Figure, Frame, G3, Lanes, approxW, figHeight, fmt, makeScale, markLabel,
   useFigWidth,
@@ -82,7 +83,7 @@ function noEventLanes(ap: AppModel, service: string, t0: number, t1: number): Fi
     lanes[2]?.segs.push({
       a: t0, b: t1, cls: 'b-tl', ink: 'f-tl',
       labs: [
-        'The listener still answers -- connections are accepted throughout',
+        "The listener still answers (this page's model) -- connections are accepted throughout",
         'The listener still answers', 'Connects',
       ],
     });
@@ -110,50 +111,102 @@ interface Ladder {
   aggregate: boolean;
 }
 
+/**
+ * The one case where the loss is not at t = 0: a manual failover's old primary
+ * stayed open beside the new one, and went down later. The service was never
+ * gone; it is the sessions' database that was lost, at `down`.
+ */
+interface Overlap {
+  /** When the new primary opened, and both were publishing. */
+  opened: number;
+  /** When the old primary, and the sessions on it, went down. */
+  down: number;
+}
+
 function failureLanes(
   ap: AppModel, service: string, stalled: boolean, blocked: boolean, tOpen: number | null,
-  rd: number, t0: number, t1: number, pps: number,
+  rd: number, t0: number, t1: number, pps: number, overlap: Overlap | null,
 ): Ladder {
   const lanes = LANES(service);
+  /* One instance of a RAC database stopped and the database went on serving:
+     the service never left, the sessions on that instance did. */
+  const inst = ap.instanceLoss;
+  const down = overlap?.down ?? (inst === null ? 0 : ap.lostAt ?? 0);
   const att = ap.attempts;
   const last = att[att.length - 1];
   const aggregate = att.length > 1 && ((ap.passCost + rd) * pps < 22 || att.length > 48);
   const ticks: number[] = [];
 
   /* lane 0 -- where the service is published */
-  lanes[0]?.segs.push({
-    a: t0, b: 0, cls: 'b-tl', ink: 'f-tl',
-    labs: ["Published by the old primary's listener", 'On the old primary', 'Old primary'],
-  });
-  const svcBack = blocked || tOpen === null ? t1 : tOpen;
-  lanes[0]?.segs.push({
-    a: 0, b: svcBack, cls: 'b-hatch', ink: 'f-rd',
-    labs: stalled
-      ? ['Old primary stalled -- unreachable, service unpublished', 'Unreachable -- unpublished', 'Unpublished']
-      : [`Nowhere -- nothing publishes ${service}`, 'Nowhere', '--'],
-  });
-  if (!blocked && tOpen !== null) {
+  if (inst !== null) {
     lanes[0]?.segs.push({
-      a: tOpen, b: t1, cls: 'b-tl', ink: 'f-tl',
-      labs: ['Published by the new primary -- started at role change', 'On the new primary', 'New primary'],
+      a: t0, b: t1, cls: 'b-tl', ink: 'f-tl',
+      labs: [
+        `Published by the instances of the database that are still up -- ${inst.instance} no longer registers it`,
+        'On the surviving instances', 'Surviving',
+      ],
     });
+  } else if (overlap !== null) {
+    lanes[0]?.segs.push(
+      {
+        a: t0, b: overlap.opened, cls: 'b-tl', ink: 'f-tl',
+        labs: ["Published by the old primary's listener", 'On the old primary', 'Old primary'],
+      },
+      {
+        a: overlap.opened, b: down, cls: 'b-tl', ink: 'f-tl',
+        labs: ['Published by both primaries at once', 'On both primaries', 'Both'],
+      },
+      {
+        a: down, b: t1, cls: 'b-tl', ink: 'f-tl',
+        labs: ['Published by the new primary -- started at role change', 'On the new primary', 'New primary'],
+      },
+    );
+  } else {
+    lanes[0]?.segs.push({
+      a: t0, b: 0, cls: 'b-tl', ink: 'f-tl',
+      labs: ["Published by the old primary's listener", 'On the old primary', 'Old primary'],
+    });
+    const svcBack = blocked || tOpen === null ? t1 : tOpen;
+    lanes[0]?.segs.push({
+      a: 0, b: svcBack, cls: 'b-hatch', ink: 'f-rd',
+      labs: stalled
+        ? ['Old primary stalled -- unreachable, service unpublished', 'Unreachable -- unpublished', 'Unpublished']
+        : [`Nowhere -- nothing publishes ${service}`, 'Nowhere', '--'],
+    });
+    if (!blocked && tOpen !== null) {
+      lanes[0]?.segs.push({
+        a: tOpen, b: t1, cls: 'b-tl', ink: 'f-tl',
+        labs: ['Published by the new primary -- started at role change', 'On the new primary', 'New primary'],
+      });
+    }
   }
 
   /* lane 1 -- sessions that were already connected */
   lanes[1]?.segs.push({
-    a: t0, b: 0, cls: 'b-tl', ink: 'f-tl',
-    labs: ['Pooled sessions working on the primary', 'Working', 'OK'],
+    a: t0, b: down, cls: 'b-tl', ink: 'f-tl',
+    /* With two primaries open, the sessions are on the old one. */
+    labs: [
+      inst !== null
+        ? `Pooled sessions working on ${inst.instance}`
+        : overlap !== null ? 'Pooled sessions working on the old primary' : 'Pooled sessions working on the primary',
+      'Working', 'OK',
+    ],
   });
   const poolEnd = ap.tConn !== null ? ap.tConn : t1;
   if (stalled) {
     lanes[1]?.segs.push({
-      a: 0, b: poolEnd, cls: 'b-am', ink: 'f-am',
+      a: down, b: poolEnd, cls: 'b-am', ink: 'f-am',
       labs: ['In-flight calls hang -- a partition returns no errors', 'Calls hang -- pool unusable', 'Hanging'],
     });
   } else {
-    const bk = Math.min(1.5, poolEnd);
+    const bk = Math.min(down + 1.5, poolEnd);
     lanes[1]?.segs.push(
-      { a: 0, b: bk, cls: 'b-hatch', ink: 'f-rd', labs: ['In-flight calls error -- ORA-3113', 'Errors'] },
+      {
+        a: down, b: bk, cls: 'b-hatch', ink: 'f-rd',
+        labs: inst !== null
+          ? [`Sessions on ${inst.instance} are terminated and the application is notified`, 'Sessions terminated', 'Errors']
+          : ['In-flight calls error -- ORA-3113', 'Errors'],
+      },
       {
         a: bk, b: poolEnd, cls: 'b-am', ink: 'f-am',
         labs: ['Pool empty -- requests wait or fail', 'Pool empty', 'Empty'],
@@ -163,23 +216,25 @@ function failureLanes(
   if (ap.tConn !== null) {
     lanes[1]?.segs.push({
       a: ap.tConn, b: t1, cls: 'b-tl', ink: 'f-tl',
-      labs: ['Pool rebuilt on the new primary', 'Pool rebuilt', 'OK'],
+      labs: inst !== null
+        ? [`Pool rebuilt${inst.to === null ? '' : ` on ${inst.to}`}`, 'Pool rebuilt', 'OK']
+        : ['Pool rebuilt on the new primary', 'Pool rebuilt', 'OK'],
     });
   }
 
   /* lane 2 -- the retry ladder */
   lanes[2]?.segs.push({
-    a: t0, b: 0, cls: 'b-sl', ink: 'f-sl',
+    a: t0, b: down, cls: 'b-sl', ink: 'f-sl',
     labs: ['Any request connects at once', 'Connects at once', '--'],
   });
   if (aggregate) {
     const failN = ap.tConn !== null ? att.length - 1 : att.length;
     const failEnd = ap.tConn !== null
-      ? (last?.start ?? 0)
+      ? (last?.start ?? down)
       : Math.min(ap.gaveUp ?? t1, t1);
     if (failN > 0) {
       lanes[2]?.segs.push({
-        a: 0, b: failEnd, cls: 'b-am', ink: 'f-am',
+        a: down, b: failEnd, cls: 'b-am', ink: 'f-am',
         labs: [
           `${failN} failed ${failN === 1 ? 'traversal' : 'traversals'} -- the dead address waits, the rest refuse (ORA-12514)`,
           `${failN} failed ${failN === 1 ? 'traversal' : 'traversals'}`,
@@ -196,7 +251,9 @@ function failureLanes(
     for (const at of att) {
       lanes[2]?.segs.push({
         a: at.start, b: at.a1End, cls: 'b-am', ink: 'f-am',
-        labs: [`Address 1 -- dead, ${fmt(ap.d1)} s`, `${fmt(ap.d1)} s`],
+        labs: inst !== null
+          ? [`Address 1 -- ${inst.instance} does not offer ${service} (ORA-12514), ${fmt(ap.d1)} s`, `${fmt(ap.d1)} s`]
+          : [`Address 1 -- dead, ${fmt(ap.d1)} s`, `${fmt(ap.d1)} s`],
       });
       if (!at.ok && at.end < t1) ticks.push(at.end);
     }
@@ -333,7 +390,7 @@ function ladderBraces(
   } else if (first) {
     braces.push(ap.drop
       ? {
-        key: 'pass', a: 0, b: first.a1End, tone: 'br-am', mono: true,
+        key: 'pass', a: ap.servedAtLoss !== null ? from : 0, b: first.a1End, tone: 'br-am', mono: true,
         name: 'min(TRANSPORT_CONNECT_TIMEOUT, CONNECT_TIMEOUT)',
         val: `${fmt(ap.d1)} s on the dead address, every traversal`,
       }
@@ -347,7 +404,9 @@ function ladderBraces(
     braces.push({
       key: 'client', a: tOpen, b: ap.tConn, tone: 'br-sl', mono: false,
       name: 'Client-side overhead',
-      val: `${fmt(ap.tConn - tOpen)} s after the database is back`,
+      val: ap.servedAtLoss !== null
+        ? `${fmt(ap.tConn - tOpen)} s after the sessions' database went down`
+        : `${fmt(ap.tConn - tOpen)} s after the database is back`,
     });
   }
   if (ap.gaveUp !== null && !ap.clipped) {
@@ -414,32 +473,46 @@ function Reconnect({ ap, scale, g, y }: {
 
 /* ---------------- the figure ---------------- */
 
-function AppFigure({ ap, tr, doc, width }: {
-  ap: AppModel; tr: EngineTrace; doc: TopologyDoc; width: number;
+function AppFigure({ ap, client, tr, width }: {
+  ap: AppModel; client: ClientDescriptor; tr: EngineTrace; width: number;
 }) {
   const g = G3;
   const t0 = -ap.preRoll;
   const t1 = ap.horizon;
   const scale = makeScale(t0, t1, g, width);
-  const service = doc.client.serviceName;
+  const service = client.serviceName;
   const facts = tr.facts;
   const stalled = facts.conditions.stalled;
   const tOpen = ap.tService ?? facts.tOpen;
-  const rd = doc.client.retryDelaySeconds;
-  const rc = doc.client.retryCount;
+  const rd = client.retryDelaySeconds;
+  const rc = client.retryCount;
 
   const kind: 'none' | 'failure' | 'switchover' = ap.noEvent
     ? 'none' : ap.switchover ? 'switchover' : 'failure';
+
+  /* The figure assumes the loss is the failure event, at t = 0. Not so when a
+     manual failover left the old primary open beside the new one and it went
+     down later: the service was never gone, the sessions' database was lost at
+     `down`, and the new primary had opened before that. Only this case moves. */
+  const overlap: Overlap | null = kind === 'failure' && ap.servedAtLoss !== null
+    ? { down: ap.lostAt ?? 0, opened: facts.tOpen ?? ap.lostAt ?? 0 } : null;
+  /* One instance stopped and the database went on serving: nothing opened,
+     nothing was gone, the sessions on that instance were. */
+  const inst = kind === 'failure' ? ap.instanceLoss : null;
+  const down = overlap?.down ?? (inst === null ? 0 : ap.lostAt ?? 0);
+  /* When the new primary opened, for the marker on it: the failure figure's own
+     answer is the service's return, which here is the same instant as the loss. */
+  const opened = overlap?.opened ?? tOpen;
 
   const ladder: Ladder = kind === 'none'
     ? { lanes: noEventLanes(ap, service, t0, t1), ticks: [], aggregate: false }
     : kind === 'switchover'
       ? switchoverLanes(ap, service, tOpen, rd, t0, t1, scale.pxPerSecond)
-      : failureLanes(ap, service, stalled, facts.blocked, tOpen, rd, t0, t1, scale.pxPerSecond);
+      : failureLanes(ap, service, stalled, facts.blocked, tOpen, rd, t0, t1, scale.pxPerSecond, overlap);
 
   const braces = kind === 'none'
     ? []
-    : ladderBraces(ap, ladder.aggregate, kind === 'switchover' ? ap.startAt : 0, tOpen, rc, rd);
+    : ladderBraces(ap, ladder.aggregate, kind === 'switchover' ? ap.startAt : down, inst === null ? tOpen : null, rc, rd);
   const height = figHeight(g, braceRows(braces, scale, width, g));
 
   const unit = kind === 'switchover'
@@ -448,16 +521,20 @@ function AppFigure({ ap, tr, doc, width }: {
       ? 'seconds from the SWITCHOVER command'
       : ap.noEventKind === 'observer-lost'
         ? 'seconds from the observer host failure'
-        : 'seconds from the failure event';
+        : overlap !== null
+          ? 'seconds from the first event of the run'
+          : 'seconds from the failure event';
 
-  const xz = scale.x(0);
+  const xz = scale.x(down);
   const gapA = (g.lane[0] ?? 0) + g.laneH;
   const gapB = (g.lane[1] ?? 0) + g.laneH;
 
   /* the top annotation, which branches on the outcome and never on the event */
-  const outageLab = ap.tConn !== null && tOpen !== null
-    ? `Application outage = ${fmt(ap.tConn - (kind === 'switchover' ? ap.startAt : 0))} s -- ${fmt(ap.tConn - tOpen)} s of it client-side`
-    : null;
+  const outageLab = ap.tConn !== null && inst !== null
+    ? `Application outage = ${fmt(ap.tConn - down)} s -- the sessions end, the connect string dials on`
+    : ap.tConn !== null && tOpen !== null
+      ? `Application outage = ${fmt(ap.tConn - (kind === 'switchover' ? ap.startAt : down))} s -- ${fmt(ap.tConn - tOpen)} s of it client-side`
+      : null;
   const outageW = outageLab === null ? 0 : approxW(outageLab, 12);
 
   const noEventTop = ap.switchoverRefused
@@ -473,26 +550,30 @@ function AppFigure({ ap, tr, doc, width }: {
   const summary = kind === 'none'
     ? `The application's view: ${noEventTop}`
     : ap.tConn !== null
-      ? `The application's view: the service was gone from t = ${fmt(kind === 'switchover' ? ap.startAt : 0)} s and a new connection succeeded at ${fmt(ap.tConn)} s, ${fmt(ap.tConn - (tOpen ?? 0))} seconds of that spent inside the connect string.`
+      ? inst !== null
+        ? `The application's view: its sessions on ${inst.instance} were terminated at t = ${fmt(down)} s, the database went on serving the service, and a new connection succeeded at ${fmt(ap.tConn)} s${inst.to === null ? '' : ` on ${inst.to}`}.`
+        : overlap !== null
+        ? `The application's view: its sessions were lost at t = ${fmt(down)} s with the old primary, the new primary already publishing the service, and a new connection succeeded at ${fmt(ap.tConn)} s, ${fmt(ap.tConn - (tOpen ?? 0))} seconds of that spent inside the connect string.`
+        : `The application's view: the service was gone from t = ${fmt(kind === 'switchover' ? ap.startAt : 0)} s and a new connection succeeded at ${fmt(ap.tConn)} s, ${fmt(ap.tConn - (tOpen ?? 0))} seconds of that spent inside the connect string.`
       : `The application's view: the connect string exhausted its retry budget${ap.gaveUp === null ? '' : ` at ${fmt(ap.gaveUp)} s`} and the application stayed down.`;
 
-  const serviceBack = tOpen !== null && !facts.blocked;
+  const serviceBack = tOpen !== null && !facts.blocked && inst === null;
   const openCands = [
-    `New primary opens -- ${service} published at t = ${fmt(tOpen ?? 0)} s`,
-    `${service} published at t = ${fmt(tOpen ?? 0)} s`,
+    `New primary opens -- ${service} published at t = ${fmt(opened ?? 0)} s`,
+    `${service} published at t = ${fmt(opened ?? 0)} s`,
     'service back',
   ];
   const openLab = openCands.find(
-    (c) => scale.x(tOpen ?? 0) + 8 + approxW(c, 11.5) <= scale.plotR,
+    (c) => scale.x(opened ?? 0) + 8 + approxW(c, 11.5) <= scale.plotR,
   ) ?? openCands[2] ?? 'service back';
-  const openPos = markLabel(scale.x(tOpen ?? 0), scale, openLab);
+  const openPos = markLabel(scale.x(opened ?? 0), scale, openLab);
 
   return (
     <Figure
       width={width} height={height}
       eyebrow={kind === 'none'
         ? 'Nothing the connect string can see'
-        : `t = 0 is ${kind === 'switchover' ? 'the SWITCHOVER command' : 'the failure event'} · horizon ${fmt(ap.horizon)} s`}
+        : `t = 0 is ${kind === 'switchover' ? 'the SWITCHOVER command' : overlap !== null ? 'the first event of the run' : 'the failure event'} · horizon ${fmt(ap.horizon)} s`}
       summaryId="ap-summary" summary={summary}
     >
       <Frame g={g} scale={scale} step={ap.tickStep} unit={unit} preLabel="Steady state" />
@@ -509,9 +590,11 @@ function AppFigure({ ap, tr, doc, width }: {
         <>
           <line class="partition" x1={r1(xz)} y1={g.laneTop - 4} x2={r1(xz)} y2={g.lanesBottom + 4} />
           <text class="t-mark f-rd" x={r1(xz + 8)} y={g.markY}>
-            {stalled
-              ? 'The primary becomes unreachable -- requests start failing'
-              : 'The primary is gone -- requests start failing'}
+            {inst !== null
+              ? `${inst.instance} stops -- the sessions on it are terminated`
+              : stalled
+                ? 'The primary becomes unreachable -- requests start failing'
+                : 'The primary is gone -- requests start failing'}
           </text>
         </>
       ) : null}
@@ -533,11 +616,11 @@ function AppFigure({ ap, tr, doc, width }: {
         </>
       ) : null}
 
-      {kind !== 'none' && serviceBack && tOpen !== null ? (
+      {kind !== 'none' && serviceBack && opened !== null ? (
         <>
           <line
-            class="m-tl" x1={r1(scale.x(tOpen))} y1={(g.lane[0] ?? 0) - 6}
-            x2={r1(scale.x(tOpen))} y2={g.lanesBottom + 4}
+            class="m-tl" x1={r1(scale.x(opened))} y1={(g.lane[0] ?? 0) - 6}
+            x2={r1(scale.x(opened))} y2={g.lanesBottom + 4}
             stroke-width="1.5" stroke-dasharray="5 4"
           />
           <text
@@ -554,7 +637,7 @@ function AppFigure({ ap, tr, doc, width }: {
       {kind === 'none' ? null : outageLab !== null ? (
         <text
           class="t-top"
-          x={r1(Math.min(Math.max((scale.x(kind === 'switchover' ? ap.startAt : 0) + scale.x(ap.tConn ?? 0)) / 2, outageW / 2 + 6), width - outageW / 2 - 6))}
+          x={r1(Math.min(Math.max((scale.x(kind === 'switchover' ? ap.startAt : down) + scale.x(ap.tConn ?? 0)) / 2, outageW / 2 + 6), width - outageW / 2 - 6))}
           y={g.topY} text-anchor="middle"
         >
           {outageLab}
@@ -572,18 +655,68 @@ function AppFigure({ ap, tr, doc, width }: {
   );
 }
 
+/* ---------------- the figure, where it is drawn ---------------- */
+
+/**
+ * The application's detail view, sized to the room it is given: the figure
+ * above, or -- with no run yet -- the steady-state note. Drawn in two places,
+ * one component: the Config panel below and the Simulate timeline's
+ * Application view (`break/TimelineView.tsx`). It derives from the `topology`
+ * and `trace` signals, so an edit to the connect string redraws it at once.
+ * `where` only rewords the empty state; the drawing is the same.
+ */
+export function AppDetail({ where, class: cls = '', appId }: {
+  where: 'config' | 'simulate'; class?: string;
+  /** Draw only this application's figure (the Simulate timeline's picked one); else every application's. */
+  appId?: string;
+}) {
+  const doc = topology.value;
+  const [ref, width] = useFigWidth();
+  const tr = trace.value;
+  const apps = applicationsOf(doc);
+  const many = apps.length > 1 && appId === undefined;
+  return (
+    <div class={cls} ref={ref}>
+      {tr === null ? (
+        <div class="empty">
+          <span class="empty-k">Steady state</span>
+          <p>
+            Nothing has happened yet, so the connect string has nothing to survive: every
+            address answers and the first one connects.{' '}
+            {where === 'simulate'
+              ? "Inject an event -- from a card or a lane, or a scenario in Topology -- and the application's view of it is drawn here."
+              : "Inject an event in Topology or the detailed timeline -- crash the primary's host, cut a link, issue a switchover -- and the application's view of it is drawn here."}
+          </p>
+        </div>
+      ) : apps.length === 0 ? (
+        <AppFigure ap={computeApp(doc.client, tr, doc)} client={doc.client} tr={tr} width={width} />
+      ) : (
+        appModelsFor(tr, doc).map((ap, i) => {
+          const app = apps[i];
+          if (appId !== undefined && (app?.id as string | undefined) !== appId) return null;
+          return (
+            <section class="app-fig" key={app?.id as string ?? i} aria-label={many ? `${app?.name}'s view` : undefined}>
+              {many ? <h3 class="app-fig-name eyebrow">{app?.name}{app?.client ? ' — its own connect string' : ' — the shared connect string'}</h3> : null}
+              <AppFigure ap={ap} client={app ? applicationClient(doc, app) : doc.client} tr={tr} width={width} />
+            </section>
+          );
+        })
+      )}
+    </div>
+  );
+}
+
 /* ---------------- the panel ---------------- */
 
 export function AppView() {
   const doc = topology.value;
-  const [ref, width] = useFigWidth();
-  const tr = trace.value;
-  const client = doc.client;
+  const apps = applicationsOf(doc);
+  const many = apps.length > 1;
 
   return (
     <div class="panel" role="region" aria-label="Application view">
       <div class="panel-hd">
-        <span class="eyebrow">The application's view</span>
+        <span class="eyebrow">{many ? "The applications' views" : "The application's view"}</span>
         <p class="caption">
           What the connect string does while the role moves, and what it costs the
           application. Every address is classified from the run at the moment the client
@@ -593,31 +726,24 @@ export function AppView() {
           <span class="mono"> ORA-12514</span>. The refusal, OS-refusal and establish costs
           are nominal drawing constants, not documented figures, and the role-based service
           is assumed published the instant the new primary opens. These parameters affect
-          only new connections -- no established session is touched by anything drawn here.
-          {doc.application === undefined ? null : (
+          only new connections. An established session is lost only when the database it is
+          on stops serving, or -- on a RAC database -- when its instance does; a switchover
+          ends the old primary&rsquo;s sessions as it converts, and the draining that
+          <span class="mono"> SWITCHOVER ... WAIT</span> (19c) and
+          <span class="mono"> DrainTimeout</span> (26ai) offer is not drawn.
+          {apps.length === 0 ? null : (
             <>
-              {' '}The string is dialled from where the application stands on the drawing
-              (<span class="mono">{doc.application.name}</span>): an address it cannot reach
-              gives no answer. That placement is this page&rsquo;s model.
+              {' '}The string is dialled from where each application stands on the drawing
+              ({apps.map((a, i) => (
+                <>{i === 0 ? '' : ', '}<span class="mono">{a.name}</span></>
+              ))}): an address it cannot reach
+              gives no answer. {many ? 'One figure per application, each with the connect string that application dials. ' : ''}That
+              placement is this page&rsquo;s model.
             </>
           )}
         </p>
       </div>
-      <div class="panel-body" ref={ref}>
-        {tr === null ? (
-          <div class="empty">
-            <span class="empty-k">Steady state</span>
-            <p>
-              Nothing has happened yet, so the connect string has nothing to survive: every
-              address answers and the first one connects. Inject an event in Break mode --
-              crash the primary's host, cut a link, issue a switchover -- and the
-              application's view of it is drawn here.
-            </p>
-          </div>
-        ) : (
-          <AppFigure ap={computeApp(client, tr, doc)} tr={tr} doc={doc} width={width} />
-        )}
-      </div>
+      <AppDetail where="config" class="panel-body" />
     </div>
   );
 }

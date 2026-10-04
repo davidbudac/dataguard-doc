@@ -11,37 +11,47 @@
 
 import { describe, expect, it } from 'vitest';
 import {
-  claimWellFormed, computeApp, parseTopologyDoc, scenarioEvents, simulate, siteId,
+  claimWellFormed, computeApp, computeApps, parseTopologyDoc, scenarioEvents, simulate, siteId,
   withApplication,
 } from '@/engine';
-import type { AppModel, ClassicScenario, TopologyDoc } from '@/engine';
+import type { AppModel, ClassicScenario, EngineTrace, TopologyDoc } from '@/engine';
 import { PRESETS } from '@/presets';
 
 const classic = (): TopologyDoc => PRESETS.find((p) => p.id === 'classic')!.doc();
 
+/** The classic preset without its application (and the host it stood on). */
+function withoutApp(): TopologyDoc {
+  const { applications, ...bare } = classic();
+  return { ...bare, hosts: bare.hosts.filter((h) => h.id !== applications?.[0]?.host) };
+}
+
 /** The classic preset with its application standing in `site`. */
 function placed(site: string): TopologyDoc {
-  const base = classic();
-  const { application, ...bare } = base;
-  return withApplication(
-    { ...bare, hosts: bare.hosts.filter((h) => h.id !== application?.host) }, siteId(site),
-  );
+  return withApplication(withoutApp(), siteId(site));
+}
+
+/**
+ * The view of the document's one application, or -- with none -- the shared
+ * descriptor dialled from outside every data centre.
+ */
+function view(doc: TopologyDoc, trace: EngineTrace): AppModel {
+  const [only, ...more] = computeApps(trace, doc);
+  expect(more).toHaveLength(0);
+  return only ?? computeApp(doc.client, trace, doc);
 }
 
 function run(site: string | null, scenario: ClassicScenario): { doc: TopologyDoc; app: AppModel } {
-  const base = classic();
-  const { application: _none, ...bare } = base;
-  const doc = site === null ? bare : placed(site);
+  const doc = site === null ? withoutApp() : placed(site);
   const events = scenarioEvents(scenario, doc);
-  return { doc, app: computeApp(doc.client, simulate(doc, events), doc) };
+  return { doc, app: view(doc, simulate(doc, events)) };
 }
 
 describe('the application in a document', () => {
   it('stands beside the primary in every preset, on a host of its own', () => {
     for (const p of PRESETS) {
       const doc = p.doc();
-      const app = doc.application;
-      expect(app, p.id).toBeDefined();
+      expect(doc.applications, p.id).toHaveLength(1);
+      const app = doc.applications?.[0];
       const host = doc.hosts.find((h) => h.id === app?.host);
       const primary = doc.members.find((m) => m.kind === 'database' && m.role === 'primary');
       const primaryHost = doc.hosts.find((h) => h.id === primary?.instances[0]?.host);
@@ -69,27 +79,31 @@ describe('the application in a document', () => {
     const doc = classic();
     const back = parseTopologyDoc(JSON.parse(JSON.stringify(doc)));
     expect(back.ok).toBe(true);
-    expect(back.doc?.application).toEqual(doc.application);
-    const { application: _none, ...bare } = doc;
-    expect(parseTopologyDoc(JSON.parse(JSON.stringify(bare))).doc?.application).toBeUndefined();
+    expect(back.doc?.applications).toEqual(doc.applications);
+    const { applications: _none, ...bare } = doc;
+    expect(parseTopologyDoc(JSON.parse(JSON.stringify(bare))).doc?.applications).toBeUndefined();
   });
 
   it('is dropped, and said to be, when its host is not in the document', () => {
     const doc = classic();
-    const raw = JSON.parse(JSON.stringify(doc)) as { application: { host: string } };
-    raw.application.host = 'nowhere';
+    const raw = JSON.parse(JSON.stringify(doc)) as { applications: { host: string }[] };
+    raw.applications[0]!.host = 'nowhere';
     const back = parseTopologyDoc(raw);
     expect(back.ok).toBe(true);
-    expect(back.doc?.application).toBeUndefined();
-    expect(back.issues.some((i) => i.path === 'application.host' && i.severity === 'repaired')).toBe(true);
+    expect(back.doc?.applications).toBeUndefined();
+    expect(back.issues.some((i) => i.path === 'applications[0].host' && i.severity === 'repaired')).toBe(true);
   });
 
-  it('is added where asked, and only once', () => {
-    const { application: _none, ...bare } = classic();
-    const stripped = { ...bare, hosts: bare.hosts.filter((h) => (h.id as string) !== 'dc1-app01') };
-    const at3 = withApplication(stripped, siteId('dc3'));
-    expect(at3.hosts.find((h) => h.id === at3.application?.host)?.site).toBe('dc3');
-    expect(withApplication(at3, siteId('dc2'))).toBe(at3);
+  it('is added where asked, and again where asked: each on a host of its own, each with a name of its own', () => {
+    const at3 = withApplication(withoutApp(), siteId('dc3'));
+    expect(at3.hosts.find((h) => h.id === at3.applications?.[0]?.host)?.site).toBe('dc3');
+    const both = withApplication(at3, siteId('dc2'));
+    expect(both.applications?.map((a) => a.id as string)).toEqual(['app01', 'app02']);
+    expect(both.hosts.find((h) => h.id === both.applications?.[1]?.host)?.site).toBe('dc2');
+    expect(new Set(both.applications?.map((a) => a.host as string)).size).toBe(2);
+    /* The first is untouched, and neither has a descriptor of its own. */
+    expect(both.applications?.[0]).toEqual(at3.applications?.[0]);
+    expect(both.applications?.some((a) => a.client !== undefined)).toBe(false);
   });
 });
 
@@ -170,26 +184,27 @@ describe('computeApp: dialled from where the application stands', () => {
       ...scenarioEvents('partition', doc),
       { at: 0, kind: 'host.down' as const, host: doc.members[0]!.instances[0]!.host },
     ];
-    const app = computeApp(doc.client, simulate(doc, events), doc);
+    const app = view(doc, simulate(doc, events));
     expect(app.attempts[0]?.dials[0]?.kind).toBe('timeout');
     /* The same dead host, reachable: the operating system refuses at once. */
     const near = placed('dc3');
     near.client.deadBehaviour = 'rst';
     const crash = scenarioEvents('crash', near);
-    expect(computeApp(near.client, simulate(near, crash), near).attempts[0]?.dials[0]?.kind).toBe('rst');
+    expect(view(near, simulate(near, crash)).attempts[0]?.dials[0]?.kind).toBe('rst');
   });
 
   it('carries the steady state for the pre-roll: the declared primary, reached', () => {
     const { app } = run('dc1', 'crash');
     expect(app.steady).toEqual({
       appUp: true, serving: 'prm01', servingState: 'open-rw', published: 'prm01',
+      publishers: [{ member: 'prm01', state: 'open-rw', reached: true }],
     });
   });
 
   it('decides nothing: the run is the same with and without the application', () => {
     for (const sc of ['crash', 'isolated', 'partition', 'dc2down', 'switchover'] as ClassicScenario[]) {
       const withApp = placed('dc1');
-      const { application: _none, ...bare } = classic();
+      const bare = withoutApp();
       const a = simulate(withApp, scenarioEvents(sc, withApp)).facts;
       const b = simulate(bare, scenarioEvents(sc, bare)).facts;
       expect([a.outcome, a.newPrimary, a.tOpen, a.abortAt, a.blocked], sc)

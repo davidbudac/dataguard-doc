@@ -3,7 +3,7 @@
  *
  * Nothing here is engine machinery: every helper writes the same plain JSON a
  * user would produce in the editor, so a preset is a document like any other.
- * The helpers exist so that eleven presets do not repeat eleven copies of the
+ * The helpers exist so that twelve presets do not repeat twelve copies of the
  * same site/host/link boilerplate.
  */
 
@@ -189,8 +189,9 @@ export interface TopologySpec {
   /** Hosts the client's ADDRESS_LIST names; defaults to every database host. */
   clientHosts?: string[];
   /**
-   * The application's card. Left out, it stands on a host of its own in the
-   * primary's data centre; `false` leaves the document without one.
+   * The application's card: a preset draws one. Left out, it stands on a host
+   * of its own in the primary's data centre; `false` leaves the document
+   * without one.
    */
   application?: { name?: string; site?: string } | false;
   serviceName?: string;
@@ -261,7 +262,7 @@ export function topology(spec: TopologySpec): TopologyDoc {
     observers: spec.observers ?? [],
     config,
     client,
-    ...(application ? { application } : {}),
+    ...(application ? { applications: [application] } : {}),
     environment: { ...defaultEnvironment(), ...spec.environment },
     events: spec.events ?? [],
   };
