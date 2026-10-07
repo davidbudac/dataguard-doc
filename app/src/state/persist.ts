@@ -36,13 +36,13 @@
 import { effect, signal } from '@preact/signals';
 import type { SchemaIssue } from '@/engine';
 import type { Doc } from './doc';
-import { classicDoc, doc, exportFileName } from './doc';
+import { startingDoc, doc, exportFileName } from './doc';
 import { fromWire, parseJsonText, toJsonText } from './codec';
 import { isDesktop, saveFile } from '@/ui/common/desktop';
 import type { DecodeResult } from './codec';
 import {
   BREAK_TIMELINES, breakTimeline, clearSelection, gridOn, hintsOn, inspectorOpen, inspectorRailWanted, issuesOpen,
-  mode, railCollapsed, timelineH, TL_MIN_H, railOnDemand, releaseRail, selection, summaryOpen, timelineOpen, viewport,
+  mode, railCollapsed, timelineH, TL_MIN_H, railOnDemand, releaseRail, selection, summaryOpen, timelineOpen, viewport, outcomeDrawing,
 } from './view';
 import type { BreakTimeline, PalettePref, ThemePref } from './view';
 
@@ -59,6 +59,7 @@ export const RAIL_KEY = 'dg-rail';
 export const BREAK_TIMELINE_KEY = 'dg-break-timeline';
 export const SUMMARY_KEY = 'dg-summary';
 export const TIMELINE_KEY = 'dg-timeline';
+export const OUTCOME_DRAWING_KEY = 'dg-outcome-drawing';
 
 export const AUTOSAVE_MS = 500;
 export const RESTORE_NOTICE_MS = 8000;
@@ -175,6 +176,20 @@ export function setBreakTimeline(v: BreakTimeline): void {
   breakTimeline.value = v;
   write(BREAK_TIMELINE_KEY, v);
 }
+
+/* ---------------- the Outcome's drawing ---------------- */
+
+/** Shown or not -- `outcomeDrawing` in `view.ts`; unset, or anything but '0', means shown. */
+export function loadOutcomeDrawing(): void {
+  outcomeDrawing.value = read(OUTCOME_DRAWING_KEY) !== '0';
+}
+
+export function setOutcomeDrawing(on: boolean): void {
+  outcomeDrawing.value = on;
+  write(OUTCOME_DRAWING_KEY, on ? '1' : '0');
+}
+
+export const toggleOutcomeDrawing = (): void => setOutcomeDrawing(!outcomeDrawing.value);
 
 /* ---------------- Break's run summary ---------------- */
 
@@ -337,11 +352,11 @@ export function announceRestore(): () => void {
   return () => { clearTimeout(timer); restored.value = false; };
 }
 
-/** "Start fresh": the classic preset, and the autosave gone with it. */
+/** "Start fresh": the starting document, and the autosave gone with it. */
 export function startFresh(edition: '19c' | '26ai' = '19c'): Doc {
   clearSavedDoc();
   restored.value = false;
-  return classicDoc(edition);
+  return startingDoc(edition);
 }
 
 /* ---------------- files ---------------- */

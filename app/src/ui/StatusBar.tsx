@@ -11,7 +11,7 @@
 
 import { signal } from '@preact/signals';
 import type { Doc } from '@/state/doc';
-import { classicDoc, doc, makeDoc } from '@/state/doc';
+import { doc, makeDoc, startingDoc } from '@/state/doc';
 import { edit } from '@/state/history';
 import { errors, issues, warnings } from '@/state/derived';
 import { exportDoc, importFile, restored, startFresh } from '@/state/persist';
@@ -151,13 +151,11 @@ export function DocPicker() {
   const showing = preset !== null && !edited;
   return (
     <>
-      {/* The word "Preset" is gone from the bar: the picker's first option
-          names what is on screen ("1+1+1 with observer", "Current
-          configuration (edited)"), the control's own title says what it is,
-          and a label that repeats the control beside it is one more word in a
-          bar the reader reads sideways. The name stays in the accessibility
-          tree, where the control genuinely needs one. */}
-      <label class="sr" for="preset-picker">Preset</label>
+      {/* The word "Preset" is on the bar, small and quiet: with the first
+          option reading "Current configuration", nothing else said that the
+          control beside the brand is the way to the twelve shipped
+          deployments. The label is the control's accessible name too. */}
+      <label class="doc-pick-k" for="preset-picker">Preset</label>
       <select
         id="preset-picker"
         class="btn doc-picker"
@@ -240,11 +238,9 @@ export function DocCount() {
 
 /**
  * What can be done to the configuration as a whole: the drawer toggle below
- * `wide`, Share, and -- behind the overflow -- Export, Import and Reset.
- *
- * The overflow is a native `<details>`: a real disclosure with no script of
- * its own, and its three items stay in the document while it is shut, so a
- * keyboard, a test and a screen reader all find the same three buttons.
+ * `wide`, and Share. The rest -- saved configurations, compare, export,
+ * import, reset -- is `DocMenuItems`, the document's rows in the top bar's
+ * one overflow menu (TopBar.tsx).
  */
 export function DocActions() {
   const link = sharedUrl.value;
@@ -270,7 +266,7 @@ export function DocActions() {
         type="button"
         class="btn is-solid"
         disabled={busy.value}
-        title="Copy a link that carries the whole configuration"
+        title="Copy a link that carries the whole configuration (⌘/Ctrl Shift S)"
         data-permalink={shareHref.value}
         onClick={() => void share()}
       >
@@ -286,101 +282,89 @@ export function DocActions() {
           Link copied
         </a>
       )}
+    </>
+  );
+}
 
-      <details
-        class="ovf"
-        onKeyDown={(e) => {
-          if (e.key !== 'Escape') return;
-          const el = e.currentTarget as HTMLDetailsElement;
-          if (!el.open) return;
-          el.open = false;
-          el.querySelector('summary')?.focus();
-        }}
-        /* A press on one of its items is the end of the errand: shut it. */
-        onClick={(e) => {
-          const t = e.target as Element;
-          if (t.closest('.ovf-menu button') !== null) {
-            (e.currentTarget as HTMLDetailsElement).open = false;
-          }
+/**
+ * The document's rows of the overflow menu. They stay in the document while
+ * the menu is shut, so a keyboard, a test and a screen reader all find the
+ * same buttons.
+ */
+export function DocMenuItems() {
+  return (
+    <>
+      <button
+        type="button"
+        class="btn"
+        aria-haspopup="dialog"
+        aria-expanded={workspacesOpen.value}
+        title="Named copies in this browser, and drafts replaced by opening something else (⌘/Ctrl S)"
+        onClick={() => openWorkspaces()}
+      >
+        Saved configurations
+      </button>
+      <button
+        type="button"
+        class="btn"
+        aria-haspopup="dialog"
+        aria-expanded={reviewOpen.value}
+        title="Compare this configuration with a baseline, or run the common failures against it"
+        onClick={() => openReview()}
+      >
+        Compare alternatives
+      </button>
+      <button type="button" class="btn" title="Save the configuration as a JSON file (⌘/Ctrl Shift E)" onClick={() => exportDoc(doc.value)}>Export</button>
+      <button
+        type="button"
+        class="btn"
+        title="Save the drawing as a PNG picture, in the current theme"
+        onClick={() => { void exportPng(); }}
+      >
+        Diagram as PNG
+      </button>
+      <button
+        type="button"
+        class="btn"
+        title="Open the whole configuration as a printable report and save it as PDF"
+        onClick={() => { void openReport(); }}
+      >
+        Report as PDF
+      </button>
+
+      <button type="button" class="btn" aria-haspopup="dialog" onClick={() => { collectOpen.value = true; }}>
+        Import existing setup
+      </button>
+      <label class="btn" title="Open a configuration file (⌘/Ctrl O)">
+        Import
+        <input
+          id="import-configuration"
+          type="file"
+          class="sr"
+          accept=".json,.dgtopo.json,application/json"
+          onChange={(e) => {
+            const input = e.currentTarget as HTMLInputElement;
+            void onImport(input.files?.[0] ?? null).finally(() => { input.value = ''; });
+            const host = input.closest('details');
+            if (host) host.open = false;
+          }}
+        />
+      </label>
+
+      <button
+        type="button"
+        class="btn"
+        title="Back to the classic 1+1+1 configuration"
+        onClick={() => {
+          edit('Reset to the classic configuration', () => startingDoc(edition.value));
+          /* Same reason as Start fresh: this is the classic deployment, not
+             the `classic` preset, which brings its own event. */
+          presetId.value = null;
+          activeWorkspaceId.value = null;
         }}
       >
-        <summary class="btn is-icon" aria-label="More" title="Saved configurations, compare, export, import, reset">
-          <span aria-hidden="true">⋯</span>
-        </summary>
-        <div class="ovf-menu float-card">
-          <button
-            type="button"
-            class="btn"
-            aria-haspopup="dialog"
-            aria-expanded={workspacesOpen.value}
-            title="Named copies in this browser, and drafts replaced by opening something else"
-            onClick={() => openWorkspaces()}
-          >
-            Saved configurations
-          </button>
-          <button
-            type="button"
-            class="btn"
-            aria-haspopup="dialog"
-            aria-expanded={reviewOpen.value}
-            title="Compare this configuration with a baseline, or run the common failures against it"
-            onClick={() => openReview()}
-          >
-            Compare alternatives
-          </button>
-          <button type="button" class="btn" onClick={() => exportDoc(doc.value)}>Export</button>
-          <button
-            type="button"
-            class="btn"
-            title="Save the drawing as a PNG picture, in the current theme"
-            onClick={() => { void exportPng(); }}
-          >
-            Diagram as PNG
-          </button>
-          <button
-            type="button"
-            class="btn"
-            title="Open the whole configuration as a printable report and save it as PDF"
-            onClick={() => { void openReport(); }}
-          >
-            Report as PDF
-          </button>
-
-          <button type="button" class="btn" aria-haspopup="dialog" onClick={() => { collectOpen.value = true; }}>
-            Import existing setup
-          </button>
-          <label class="btn">
-            Import
-            <input
-              id="import-configuration"
-              type="file"
-              class="sr"
-              accept=".json,.dgtopo.json,application/json"
-              onChange={(e) => {
-                const input = e.currentTarget as HTMLInputElement;
-                void onImport(input.files?.[0] ?? null).finally(() => { input.value = ''; });
-                const host = input.closest('details');
-                if (host) host.open = false;
-              }}
-            />
-          </label>
-
-          <button
-            type="button"
-            class="btn"
-            title="Back to the classic 1+1+1 configuration"
-            onClick={() => {
-              edit('Reset to the classic configuration', () => classicDoc(edition.value));
-              /* Same reason as Start fresh: this is the classic deployment, not
-                 the `classic` preset, which brings its own event. */
-              presetId.value = null;
-              activeWorkspaceId.value = null;
-            }}
-          >
-            Reset
-          </button>
-        </div>
-      </details>
+        Reset
+      </button>
     </>
   );
 }
@@ -398,6 +382,10 @@ export function StatusBar({ hostRef, count = true }: StatusBarProps) {
       {count ? <DocCount /> : null}
       <span class="statusbar-spacer" />
       <DocActions />
+      <details class="ovf">
+        <summary class="btn is-icon" aria-label="More"><span aria-hidden="true">⋯</span></summary>
+        <div class="ovf-menu float-card"><DocMenuItems /></div>
+      </details>
     </div>
   );
 }

@@ -53,11 +53,10 @@ import { buildLinks, cardFrameFor, cardRoleFor, chipsFor, NEUTRAL_FRAME, siteIsD
 import type { CanvasLink } from '../canvas/routing';
 import type { NodeBox } from '../canvas/layout';
 import { approxW, elide, fitLabel } from '../canvas/measure';
-import { FindingsMenu, KeyMenu, TerseReadout, TIGHT_W } from './RunBar';
-import { ReadoutFold, SummaryBand } from './SummaryBand';
+import { DrawingToggle, FindingsMenu, KeyMenu, SettingsMenu, SummaryToggle, TIGHT_W, Verdict } from './RunBar';
+import { SummaryBand } from './SummaryBand';
 import { Sheet } from '../common/Sheet';
 import { AppTimeline, appTimelineOn, TimelineSwitch } from './TimelineView';
-import { SettingChips } from './SettingChips';
 import { assignLanes, cardSub, hostBands, planPills, segmentAt, siteOrder } from './lanes-layout';
 import type { Placed, PillPlan } from './lanes-layout';
 
@@ -435,31 +434,62 @@ function RunLanes({ tr, fr }: { tr: Trace; fr: Frame }) {
   return <Lanes run={run} fr={fr} />;
 }
 
+/**
+ * The bar over the lanes: the verdict and its readings at the left, and at the
+ * right the controls that are about the view -- which timeline, the settings
+ * behind one chip, the findings count, the colour key, the drawing, the
+ * window. The transport is not here: it is the footer under the lanes, beside
+ * the axis it moves along (`LanesFoot`).
+ */
 function LanesBar({ run }: { run: RunTimeline | null }) {
-  const [ref, width] = useWidth(1000);
-  const tight = width < TIGHT_W;
   const doc = topology.value;
   const app = appLanesShown.value;
   const appTl = appTimelineOn();
-  const t = tNow.value;
   return (
-    <header class="sb-bar ln-bar" ref={ref} role="group" aria-label="Timeline controls">
-      {run !== null && !run.model.empty ? (
-        <Transport
-          model={run.model}
-          tNow={t}
-          playing={playing.value}
-          speed={speed.value}
-          speedControl={tight ? 'select' : 'buttons'}
-          onSeek={(v) => { tNow.value = v; }}
-          onPlayToggle={() => { playing.value = !playing.value; }}
-          onSpeed={(s) => { speed.value = s; }}
-        />
-      ) : null}
-      <div class="outcome-readings"><ReadoutFold><TerseReadout run={trace.value !== null} /></ReadoutFold></div>
-      {appTl ? null : <SettingChips />}
-      <TimelineSwitch /><PopoutButton kind="timeline" />
-      {run?.held ? (
+    <header class="sb-bar ln-bar" role="group" aria-label="Timeline controls">
+      <div class="ln-top">
+        <Verdict run={trace.value !== null} />
+        <div class="ln-tools" role="group" aria-label="View">
+          <SummaryToggle />
+          <TimelineSwitch />
+          {appTl ? null : <SettingsMenu />}
+          <FindingsMenu />
+          {run === null ? (
+            (doc.applications?.length ?? 0) === 0 || appTl ? null : (
+              <button
+                type="button" class="btn sb-app-btn" aria-pressed={app}
+                title="The application's lanes under the members"
+                onClick={() => { appLanesShown.value = !app; }}
+              >
+                App view
+              </button>
+            )
+          ) : <KeyMenu run={run} />}
+          <DrawingToggle />
+          <PopoutButton kind="timeline" />
+        </div>
+      </div>
+    </header>
+  );
+}
+
+/** The transport, under the lanes and beside the axis it moves along; `Fit timeline` with it when the axis was held. */
+function LanesFoot({ run, width }: { run: RunTimeline | null; width: number }) {
+  if (run === null || run.model.empty) return null;
+  const tight = width < TIGHT_W;
+  return (
+    <footer class="ln-foot">
+      <Transport
+        model={run.model}
+        tNow={tNow.value}
+        playing={playing.value}
+        speed={speed.value}
+        speedControl={tight ? 'select' : 'buttons'}
+        onSeek={(v) => { tNow.value = v; }}
+        onPlayToggle={() => { playing.value = !playing.value; }}
+        onSpeed={(s) => { speed.value = s; }}
+      />
+      {run.held ? (
         <button
           type="button" class="btn sb-fit"
           title="An event was moved and the axis stayed where it was: fit it to the run again"
@@ -468,19 +498,7 @@ function LanesBar({ run }: { run: RunTimeline | null }) {
           Fit timeline
         </button>
       ) : null}
-      <FindingsMenu />
-      {run === null ? (
-        (doc.applications?.length ?? 0) === 0 || appTl ? null : (
-          <button
-            type="button" class="btn sb-app-btn" aria-pressed={app}
-            title="The application's lanes under the members"
-            onClick={() => { appLanesShown.value = !app; }}
-          >
-            App view
-          </button>
-        )
-      ) : <KeyMenu run={run} />}
-    </header>
+    </footer>
   );
 }
 
@@ -953,6 +971,7 @@ function Lanes({ run, fr }: { run: RunTimeline | null; fr: Frame }) {
           </>
         )}
       </div>
+      <LanesFoot run={run} width={width} />
       <span class="sr">t = {fmt(t)} s</span>
     </section>
   );

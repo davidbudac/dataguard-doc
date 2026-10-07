@@ -104,3 +104,18 @@
   .rail-bar{display:none}
   .app-rail.has-bar,.rail-body{overflow:visible;min-width:0}
 }
+
+/* ---------------- the folded rail, as a tab ---------------- */
+
+/* The column itself is empty surface: the tab at its top is the control, and
+   the window's edge below it reads as the window's edge. */
+.app-rail.is-shut{align-items:flex-start;justify-content:flex-start;background:transparent;
+  box-shadow:none;overflow:visible}
+.app:not(.is-float) .app-rail.is-shut{background:var(--sf)}
+.app.is-float .app-rail.is-shut{bottom:auto;border:0;background:transparent}
+.rail-strip{flex:0 0 auto;width:100%;padding:var(--s2) 0 var(--s2);border-radius:var(--r-card);
+  background:var(--sf);border:1px solid var(--ln);box-shadow:var(--sh-card);gap:var(--s2)}
+.app:not(.is-float) .rail-strip{border:0;border-bottom:1px solid var(--ln);border-radius:0;box-shadow:none}
+.rail-strip-n{display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;
+  padding:0 6px;border-radius:999px;font-size:11px;font-weight:600;color:var(--vi);background:var(--vif)}
+.rail-strip-t{max-height:11ch;font-size:12px}

@@ -6,12 +6,12 @@ import { PRESETS } from '@/presets';
 import { doc, makeDoc } from '@/state/doc';
 import { topology, trace } from '@/state/derived';
 import { canRedo, canUndo, redo, undo } from '@/state/history';
-import { exportDoc, saveEdition, saveTheme, setTimelineH, toggleGrid, toggleHints, toggleRail, revealRail, toggleTimeline, setBreakTimeline, setSummaryOpen } from '@/state/persist';
+import { exportDoc, saveEdition, saveTheme, setTimelineH, toggleGrid, toggleHints, toggleRail, revealRail, toggleTimeline, setBreakTimeline, setSummaryOpen , toggleOutcomeDrawing} from '@/state/persist';
 import { replaceWorkingDocument } from '@/state/workspaces';
 import {
   appLanesShown, applyTheme, canEdit, clearSelection, edition, floating,
   inspectorOpen, introOpen, introPage, mode, MODE_LABEL, MODES, nextTheme, panelTab,
-  PANEL_LABEL, PANEL_TABS, playing, selection, theme, timelineOpen, summaryOpen, tNow, toast, viewport,
+  PANEL_LABEL, PANEL_TABS, playing, selection, theme, timelineOpen, summaryOpen, tNow, toast, viewport, outcomeDrawing,
 } from '@/state/view';
 import type { WhyState } from './common/WhyPill';
 import { ON, off } from './inspector/why';
@@ -63,7 +63,7 @@ export function commands(): Command[] {
     () => goToStep(m), ON, binding(String(i + 1)), String(i + 1)));
   out.push(
     entry('inspector', mode.value === 'scenario' ? 'Toggle Events panel' : 'Toggle Inspector', 'View',
-      toggleInspector, working && mode.value !== 'learn' ? ON : off('Choose Topology, Scenario, Outcome or Config.'), binding('i'), 'I'),
+      toggleInspector, working && mode.value !== 'learn' ? ON : off('Choose Topology, Scenario, Outcome or Generated settings.'), binding('i'), 'I'),
     entry('undo', 'Undo', 'Edit', undo, working && canUndo.value ? editable : off('Nothing to undo yet.'), binding('z', true, false), '⌘/Ctrl Z'),
     entry('redo', 'Redo', 'Edit', redo, working && canRedo.value ? editable : off('Nothing undone yet.'), binding('z', true, true), '⌘/Ctrl Shift Z'),
     entry('share', 'Copy share link', 'Document', () => void share(), docReady, binding('s', true, true), '⌘/Ctrl Shift S'),
@@ -112,6 +112,8 @@ export function commands(): Command[] {
     entry('fold-timeline', timelineOpen.value ? 'Fold timeline panel' : 'Show timeline panel', 'Timeline', toggleTimeline,
       working && mode.value === 'break' && !floating(mode.value, viewport.value) ? ON : off('The docked Outcome timeline can be folded.'), binding('l'), 'L'),
     entry('run-summary', summaryOpen.value ? 'Fold run summary' : 'Show run summary', 'Timeline', () => setSummaryOpen(!summaryOpen.value), run),
+    entry('outcome-drawing', outcomeDrawing.value ? 'Hide the drawing in Outcome' : 'Show the drawing in Outcome', 'Timeline', toggleOutcomeDrawing,
+      working && mode.value === 'break' && floating(mode.value, viewport.value) ? ON : off('The Outcome keeps its drawing where it floats.')),
     entry('configuration-timeline', 'Show configuration timeline', 'Timeline', () => { setBreakTimeline('config'); goToStep('break'); }, docReady),
     entry('application-timeline', 'Show application timeline', 'Timeline', () => { setBreakTimeline('app'); goToStep('break'); },
       applicationsOf(d).length ? docReady : off('Add an application first.')),

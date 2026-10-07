@@ -146,7 +146,7 @@ describe('commands and hotkeys', () => {
     const input = root.querySelector<HTMLInputElement>('[aria-label="Search commands"]')!;
     expect(document.activeElement).toBe(input);
     input.value = 'open configure'; input.dispatchEvent(new Event('input', { bubbles: true })); await tick();
-    expect(root.querySelector('[role="option"]')?.textContent).toContain('Open Config');
+    expect(root.querySelector('[role="option"]')?.textContent).toContain('Open Generated settings');
     key(input, 'Enter'); await tick();
     expect(commandOpen.value).toBe(false);
     expect(mode.value).toBe('configure');

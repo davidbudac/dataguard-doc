@@ -154,7 +154,8 @@ describe('in the Detailed timeline', () => {
       crash();
       const r = await mount();
       expect(band(r)).toBeNull();
-      expect(line(r)?.textContent).toMatch(/Outcome/);
+      expect(line(r)?.textContent).toMatch(/New primary open/);
+      expect(r.querySelector(`${barSel} .ln-vd-v`)?.textContent).toBe('failover');
       expect(r.querySelector(`${barSel} .sb-why`)).not.toBeNull();
       const t = toggle(r);
       expect(t).not.toBeNull();
@@ -222,11 +223,10 @@ describe('in the Detailed timeline', () => {
       await tick();
       expect(line(r)).toBeNull();
       expect(r.querySelector(`${barSel} .rs-fill`)).not.toBeNull();
-      expect(r.querySelector(`${barSel} .sb-why`)).toBeNull();
+      /* The verdict and its Why? stay: the band repeats the readings, not the headline. */
+      expect(r.querySelector(`${barSel} .sb-why`)).not.toBeNull();
       const after = [...r.querySelectorAll(`${barSel} > *`)].map((el) => el.className);
-      /* Everything that was to the right of the line is still there, in the same order. */
-      const tail = (xs: string[]): string[] => xs.slice(xs.findIndex((c) => c.includes('sb-chip') || c.includes('sb-anchor')));
-      expect(tail(after)).toEqual(tail(before));
+      expect(after).toEqual(before);
       expect(r.querySelector(`${barSel} .sb-chip`)).not.toBeNull();
     });
   });

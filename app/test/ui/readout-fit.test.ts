@@ -154,8 +154,9 @@ describe('the terse line, rendered', () => {
     crash();
     stub(1400);
     const r = await mount();
-    const all = readout.value.filter((c) => c.id !== 'findings');
-    expect(all.length).toBeGreaterThan(3);
+    /* The verdict is the bar's headline, so the line carries every other reading. */
+    const all = readout.value.filter((c) => c.id !== 'findings' && c.id !== 'outcome');
+    expect(all.length).toBeGreaterThan(2);
     expect(shown(r)).toEqual(all.map((c) => c.k));
     expect(r.querySelector('.sb-ro')?.getAttribute('title')).toBeNull();
   });
@@ -173,7 +174,9 @@ describe('the terse line, rendered', () => {
     stub(430);
     const r = await mount();
     const keys = shown(r);
-    expect(keys).toContain('Outcome');
+    /* The verdict is the headline above the line, never a reading on it. */
+    expect(keys).not.toContain('Outcome');
+    expect(keys).toContain('Application reconnects');
     expect(keys).not.toContain('Data loss');
     expect(keys).not.toContain('New primary open');
     expect(keys.length).toBeLessThan(allKeys.length);
@@ -187,7 +190,7 @@ describe('the terse line, rendered', () => {
     const title = r.querySelector('.sb-ro')?.getAttribute('title') ?? '';
     expect(title).toContain('Data loss:');
     expect(title).toContain('New primary open:');
-    expect(title).toContain('Outcome:');
+    expect(title).not.toContain('Outcome:');
   });
 
   it('gives up Split brain before anything else, and never lets it stand in for an essential', async () => {
@@ -223,10 +226,10 @@ describe('the terse line, rendered', () => {
     root = null;
     document.body.innerHTML = '';
 
-    stub(470);
+    stub(300);
     const r = await mount();
     for (const v of values(r)) expect(allValues).toContain(v);
-    /* The three essentials, the application's label short, and every value whole. */
-    expect(shown(r)).toEqual(['Outcome', 'App reconnects', 'Observer']);
+    /* The two essentials of the line (the verdict is the headline above it), the application's label short, and every value whole. */
+    expect(shown(r)).toEqual(['App reconnects', 'Observer']);
   });
 });

@@ -257,8 +257,12 @@ export function currentUrlState(): UrlState {
     panel: panelTab.value,
     sel: selection.value,
     /* The playhead is deliberately absent while it is moving: one drag would
-       otherwise be a hundred history writes. */
-    t: playing.value || scrubbing.value ? URL_DEFAULTS.t : clampT(tNow.value),
+       otherwise be a hundred history writes. It is absent too where there is
+       no playhead to speak of -- Topology and the generated settings -- so a
+       link copied after a visit to the Outcome does not carry a stale clock. */
+    t: playing.value || scrubbing.value || mode.value === 'build' || mode.value === 'configure'
+      ? URL_DEFAULTS.t
+      : clampT(tNow.value),
     preset: presetId.value,
     lesson: lessonId.value,
     step: lessonStep.value,

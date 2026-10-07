@@ -346,7 +346,8 @@ describe('the surfaces that draw the redo, not the configuration', () => {
     expect(root.querySelector('.ln-note')?.textContent).toBe(
       'Nothing to draw: the configuration has no valid redo graph.',
     );
-    expect(notice(root)).toBeNull();
+    /* The drawing is above the lanes, and the way out -- a database to give the role to -- is on it. */
+    expect(notice(root)).not.toBeNull();
   });
 
   it('keeps a database role a database role: no primary is invented in the document', () => {

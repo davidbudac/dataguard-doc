@@ -44,12 +44,14 @@ export const BREAK_TIMELINE_SUB: Record<BreakTimeline, string> = {
 
 /**
  * The words on the mode buttons. The ids stay what they were -- `build` is
- * Topology and `break` is the Outcome, as `configure` kept its id
- * when it became Config -- so a class, a test or an old link that says
- * `m-break` or `?mode=build` still means the same mode.
+ * Topology and `break` is the Outcome, as `configure` kept its id when it
+ * became Config and then Generated settings (the word "Config" read as a
+ * place to change settings, and the mode is the output of them) -- so a
+ * class, a test or an old link that says `m-break` or `?mode=build` still
+ * means the same mode.
  */
 export const MODE_LABEL: Record<Mode, string> = {
-  build: 'Topology', scenario: 'Scenario', break: 'Outcome', configure: 'Config', learn: 'Learn',
+  build: 'Topology', scenario: 'Scenario', break: 'Outcome', configure: 'Generated settings', learn: 'Learn',
 };
 
 /**
@@ -71,7 +73,7 @@ export const MODE_SUB: Record<Mode, string> = {
   scenario: 'Step 2 — schedule failures, recoveries and planned actions on an event timeline',
   break: 'Step 3 — inspect the response and tune settings to see the outcome change',
   configure:
-    'Config — generated from the drawing: DGMGRL, init parameters and connect strings; '
+    'Generated settings — DGMGRL, init parameters and connect strings, generated from the drawing; '
     + 'hover a line to see which member it configures.',
   learn: 'Learn — ten guided lessons and the reference tables behind them',
 };
@@ -195,6 +197,14 @@ export const notesOpen = signal<boolean>(false);
 export const issuesOpen = signal<boolean>(true);
 /** Whether the docked Outcome/Learn timeline is expanded; persisted as dg-timeline. */
 export const timelineOpen = signal<boolean>(true);
+/**
+ * Whether the Outcome, where it floats, keeps the drawing of the topology
+ * above its lanes. On to start with: steps 1 and 2 teach through the drawing,
+ * and a step 3 that swapped it for rows of bands reset the reader's picture
+ * of what is where. Off, the lanes take the whole stage, as they did.
+ * Remembered under `dg-outcome-drawing` (persist.ts).
+ */
+export const outcomeDrawing = signal<boolean>(true);
 /** Requested panel height; null follows the default. */
 export const timelineH = signal<number | null>(null);
 /** The panel never gets shorter than its header row (readings and chips). */
@@ -462,9 +472,9 @@ export function railOpens(v: Viewport = viewport.value): string {
  * A newcomer's complaint about this page was never that it lacked controls --
  * it was that nothing said which one to touch first.
  *
- * Configure's line says what the mode *is* before it says what to do in it:
- * the word reads as "settings", and the panels are generated output. The
- * settings are in the inspector, which is what the second half points at --
+ * The generated settings' line says what the mode *is* before it says what
+ * to do in it: the panels are generated output, not a place to set anything.
+ * The settings are in the inspector, which is what the second half points at --
  * wherever the inspector currently is, and however it is opened (`railOpens`).
  */
 export function modeGuide(m: Mode, v: Viewport = viewport.value): string {
@@ -479,7 +489,7 @@ export function modeGuide(m: Mode, v: Viewport = viewport.value): string {
     case 'break':
       return 'Follow the calculated response; select an item to edit its settings beside the result. Changes rerun the scenario from the beginning.';
     case 'configure':
-      return 'Generated from the drawing — DGMGRL, init parameters, connect strings. '
+      return 'DGMGRL, init parameters and connect strings, each produced from the drawing; '
         + `Settings are in ${railOpens(v)}.`;
     case 'learn':
       return 'Choose a lesson, then press Show me to set the workbench up for a step.';
@@ -495,9 +505,8 @@ export function modeGuide(m: Mode, v: Viewport = viewport.value): string {
  * so there is one switch for the page's prose rather than two.
  *
  * The cut is made at the first `; ` where there is one, and at the first
- * sentence end otherwise: Configure's line names its own output before it says
- * where the settings are, and splitting it at the em dash would leave
- * "Generated from the drawing." standing for the whole mode.
+ * sentence end otherwise: the generated settings' line names its own output
+ * before it says where the settings are.
  */
 export function splitGuide(m: Mode, v: Viewport = viewport.value): { lead: string; rest: string } {
   const full = modeGuide(m, v);

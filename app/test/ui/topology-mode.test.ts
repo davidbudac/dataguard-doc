@@ -33,11 +33,11 @@ beforeEach(() => {
 afterEach(() => { act(() => render(null, root)); root.remove(); });
 
 describe('three steps, one document', () => {
-  it('numbers the primary navigation and keeps Config and Learn separate', () => {
+  it('numbers the primary navigation and keeps Generated settings and Learn separate', () => {
     mount();
     expect([...root.querySelectorAll('.workflow-step')].map(e => e.textContent)).toEqual(['1Topology', '2Scenario', '3Outcome']);
     expect(root.querySelector('[aria-current="step"]')?.textContent).toBe('1Topology');
-    expect(root.querySelector('.workflow-extras')?.textContent).toBe('ConfigLearn');
+    expect(root.querySelector('.workflow-extras')?.textContent).toBe('Generated settingsLearn');
     expect(root.textContent).toContain('Step 1 of 3');
   });
   it('moves freely between steps without changing the topology, events or undo history', () => {

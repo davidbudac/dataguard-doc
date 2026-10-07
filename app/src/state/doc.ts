@@ -96,6 +96,21 @@ export function classicDoc(edition: Edition = '19c'): Doc {
   return makeDoc(withApplication({ ...classicTopology({ version: edition }), events: [] }));
 }
 
+/**
+ * The round trip the starting document's site links carry. The published
+ * simulator started every link at 0 ms, and "0 ms" on every caption read as a
+ * value nobody had filled in; a few milliseconds is what two nearby data
+ * centres see, and it is what the shipped 1+1+1 preset draws. The test
+ * fixture (`classicDoc`) keeps the engine's own default, so a timing asserted
+ * against it is the engine's and not this page's.
+ */
+export const STARTING_LATENCY_MS = 5;
+
+/** What the page opens on, and comes back to: the classic deployment with realistic round trips. */
+export function startingDoc(edition: Edition = '19c'): Doc {
+  return makeDoc(withApplication({ ...classicTopology({ version: edition, latency: STARTING_LATENCY_MS }), events: [] }));
+}
+
 export const doc = signal<Doc>(classicDoc());
 
 /* ---------------- pure helpers ---------------- */

@@ -107,7 +107,7 @@ export function Transport({
         onClick={() => { if (prev !== null) seek(prev); }}
       />
       <TransportButton
-        label={playing ? 'Pause' : 'Play'}
+        label={playing ? 'Pause (P)' : 'Play (P)'}
         glyph={playing ? '❚❚' : '▶'}
         why={emptyWhy}
         onClick={onPlayToggle}

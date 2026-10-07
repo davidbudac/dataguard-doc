@@ -11,6 +11,7 @@ import { actionsFor, describeEvent, runAction, setEventTime, snapT } from '../br
 import { eventTimeBounds, MAX_EVENT_TIME } from '../break/event-order';
 import { ScenarioRow } from '../break/ScenarioRow';
 import { useWidth } from '../common/use-width';
+import { goToStep } from '../workflow';
 
 export function ScenarioEditor() {
   const doc = topology.value;
@@ -90,7 +91,19 @@ export function ScenarioTimeline() {
     if (e.currentTarget.hasPointerCapture?.(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId);
   };
   return <div class="scenario-timeline" ref={measure}>
-    <div class="scenario-timeline-head"><strong>Scheduled events</strong><span>Drag a marker to change its time · seconds from scenario start · the drawing shows the failures up to the At time</span></div>
+    <div class="scenario-timeline-head">
+      <strong>Scheduled events</strong>
+      <span class="scenario-timeline-hint">Drag a marker to change its time · seconds from scenario start · the drawing shows the failures up to the At time</span>
+      {/* The way to step 3, where the schedule is: the step bar's button is a
+          screen away from the thing it runs. */}
+      <button
+        type="button" class="btn workflow-next scenario-run"
+        title={events.length ? 'Step 3: inspect the response to this schedule' : 'Nothing scheduled yet: step 3 shows the configuration running as drawn'}
+        onClick={() => goToStep('break')}
+      >
+        {events.length ? 'See outcome →' : 'See steady state →'}
+      </button>
+    </div>
     <div class="scenario-plot">
       <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} role="group" aria-label="Scheduled events timeline"
         onPointerMove={move} onPointerUp={e => finish(e)} onPointerCancel={e => finish(e, true)}

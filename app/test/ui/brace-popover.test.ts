@@ -13,6 +13,7 @@
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { h, render } from 'preact';
+import { settingsOpen } from '@/ui/break/RunBar';
 import { classicDoc } from '@/state/doc';
 import { resetHistory } from '@/state/history';
 import { topology } from '@/state/derived';
@@ -75,6 +76,8 @@ beforeEach(() => {
   mode.value = 'break';
   breakTimeline.value = 'config';
   railCollapsed.value = false;
+  /* The three chips sit behind the bar's Settings chip: open it, as a reader would. */
+  settingsOpen.value = true;
   selection.value = [];
   tunedScenario.value = null;
   tuneDragging.value = false;

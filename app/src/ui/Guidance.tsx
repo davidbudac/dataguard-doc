@@ -48,7 +48,7 @@ const BULLETS: [string, string][] = [
   ['1 · Topology', 'draw the configuration and set its starting properties.'],
   ['2 · Scenario', 'schedule failures, recoveries and planned actions on their own timeline.'],
   ['3 · Outcome', 'the run in full: follow a failure through detection, threshold, role change and open, and tune its settings.'],
-  ['Config', 'generate DGMGRL commands, init parameters and connect strings from the drawing.'],
+  ['Generated settings', 'DGMGRL commands, init parameters and connect strings, generated from the drawing.'],
 ];
 
 /**
@@ -82,7 +82,7 @@ const KEYS: { where: string; rows: [string, string][] }[] = [
     where: 'Anywhere on the page, outside a text field',
     rows: [
       ['Ctrl+K · ⌘K', 'search commands, including presets, scenarios and selected-object actions'],
-      ['1 · 2 · 3 · 4 · 5', 'Topology · Scenario · Outcome · Config · Learn'],
+      ['1 · 2 · 3 · 4 · 5', 'Topology · Scenario · Outcome · Generated settings · Learn'],
       ['I · J', 'toggle Inspector / Events · show findings'],
       ['F · + · −', 'fit and recenter the topology · zoom in · zoom out'],
       ['H · V', 'Hand tool · selection tool; drag empty space to pan, Shift-drag to select'],
@@ -96,7 +96,7 @@ const KEYS: { where: string; rows: [string, string][] }[] = [
       ['Ctrl+Z · ⌘Z', 'undo'],
       ['Ctrl+Shift+Z · Ctrl+Y', 'redo'],
       ['Ctrl+A · ⌘A', 'select every card on the drawing'],
-      [']', 'open or close the Inspector panel (Topology, Config); fold or unfold the Events panel (Outcome)'],
+      [']', 'open or close the Inspector panel (Topology, Generated settings, Outcome); fold or unfold the Events panel (Scenario)'],
     ],
   },
   {
@@ -173,7 +173,7 @@ export function IntroCard() {
         ))}
       </ul>
       <p class="intro-foot caption">
-        The three steps share one configuration. Config and Learn use it too, and a shared link carries it.{' '}
+        The three steps share one configuration. Generated settings and Learn use it too, and a shared link carries it.{' '}
         <IntroLink />
         {' explains the drawing and the controls. '}
         <LearnLink />
@@ -185,7 +185,7 @@ export function IntroCard() {
           noticed it finds out what it does -- and can press it here. */}
       <p class="intro-foot caption">
         <b>{HINTS_LABEL}</b>
-        {', in the inspector header (open it with the Inspector button in the top bar), shows help under each control and, in Config, the '}
+        {', in the inspector header (open it with the Inspector button in the top bar), shows help under each control and, in Generated settings, the '}
         {'rest of the line above. It is off by default, and the setting is remembered.'}
         {' '}
         <HintsToggle />

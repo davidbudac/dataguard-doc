@@ -20,7 +20,7 @@
 
 import { render } from 'preact';
 import { Root } from './ui/Root';
-import { classicDoc, makeDoc } from './state/doc';
+import { classicDoc, makeDoc, startingDoc } from './state/doc';
 import type { Doc } from './state/doc';
 import { findPreset } from './presets';
 import { resetHistory } from './state/history';
@@ -28,7 +28,7 @@ import { decodeFragment, fragmentKind } from './state/codec';
 import {
   announceRestore, loadDoc, loadEdition, loadGrid, loadHints, loadIntro, loadIssuesOpen, loadPalette,
   loadBreakTimeline, loadRailCollapsed, loadSummaryOpen, loadTheme, loadTimelineOpen,
-  startAutosave,
+  startAutosave, loadOutcomeDrawing,
 } from './state/persist';
 import { upgradeLegacyUrl } from './state/legacy-url';
 import { applyLearnRoute, openLessonStep, startLearnRouting } from './ui/learn/route';
@@ -78,6 +78,7 @@ async function boot(): Promise<void> {
   loadRailCollapsed();
   loadBreakTimeline();
   loadSummaryOpen();
+  loadOutcomeDrawing();
 
   let restoredFromStorage = false;
   let notice: string | null = null;
@@ -110,7 +111,7 @@ async function boot(): Promise<void> {
       state.preset = null;
     }
   }
-  if (!next && state.lesson !== null) next = classicDoc(state.ed);
+  if (!next && state.lesson !== null) next = startingDoc(state.ed);
 
   /* 3. a published-page link */
   if (!next) {
@@ -132,7 +133,7 @@ async function boot(): Promise<void> {
   }
 
   /* 5. the classic 1+1+1 configuration */
-  resetHistory(next ?? classicDoc(state.ed));
+  resetHistory(next ?? startingDoc(state.ed));
   presetId.value = state.preset;
   applyUrlState(state);
 

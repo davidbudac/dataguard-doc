@@ -1,12 +1,25 @@
 /** Scenario templates share the engine-backed shelf and existing refusals.
  * A template stays pressed while the event list matches its scheduled events. */
 
+import type { JSX } from 'preact';
 import { sortEvents } from '@/engine';
 import { events, topology } from '@/state/derived';
 import { canEdit, healthyRun, viewport } from '@/state/view';
-import { Action } from '../inspector/controls';
+import { WhyPill } from '../common/WhyPill';
+import { GLYPH } from '../common/eventIcons';
 import { applyTemplate, shelf } from './events';
 import type { Template } from './events';
+
+/** The picture on each chip: the event glyph of what the scenario does; a tick for the one where nothing fails. */
+const ICON: Record<string, JSX.Element> = {
+  healthy: <path d="M4.5,12.5 L9.5,17.5 L19.5,7" />,
+  crash: GLYPH.crash,
+  isolated: GLYPH.isolate,
+  partition: GLYPH.cut,
+  dc2down: GLYPH.crash,
+  'observer-lost': GLYPH.stop,
+  switchover: GLYPH.switchover,
+};
 
 const same = (a: unknown, b: unknown): boolean => JSON.stringify(a) === JSON.stringify(b);
 
@@ -24,18 +37,27 @@ export function ScenarioRow({ label = 'Scenarios' }: { label?: string } = {}) {
   const list = events.value;
   const healthy = healthyRun.value;
   return (
-    <div class="dock-scn" role="group" aria-label="One-click scenarios">
+    <div class="dock-scn scn-row" role="group" aria-label="One-click scenarios">
       <span class="dock-scn-k">{label}</span>
-      {shelf(doc, 0).map((t) => (
-        <Action
-          key={t.id}
-          label={t.label}
-          title={t.caption}
-          enabled={t.enabled}
-          pressed={isCurrent(t, list, healthy)}
-          onClick={() => applyTemplate(t)}
-        />
-      ))}
+      {shelf(doc, 0).map((t) => {
+        const off = t.enabled.state === 'off';
+        return (
+          <span class="ctl-off" key={t.id}>
+            <button
+              type="button"
+              class={`scn-chip${off ? ' is-faded' : ''}`}
+              disabled={off}
+              title={t.caption}
+              aria-pressed={isCurrent(t, list, healthy)}
+              onClick={() => applyTemplate(t)}
+            >
+              <svg class="scn-ico" viewBox="0 0 24 24" aria-hidden="true">{ICON[t.id] ?? GLYPH.crash}</svg>
+              <span>{t.label}</span>
+            </button>
+            <WhyPill why={t.enabled} />
+          </span>
+        );
+      })}
     </div>
   );
 }

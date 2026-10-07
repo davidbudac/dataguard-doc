@@ -69,15 +69,13 @@ describe('the preset picker', () => {
     }
   });
 
-  it('drops the word "Preset" from the bar and keeps the name for the a11y tree', () => {
-    /* The picker's own first option names what is on screen, and the control
-       carries a title -- a visible label repeating the control beside it is
-       one more word in a bar the reader reads sideways (ui.md SS3f). The
-       label element stays: a select still needs an accessible name. */
+  it('says "Preset" beside the picker, quietly, and the word is the control\'s accessible name', () => {
+    /* The picker's first option reads "Current configuration", which said
+       nothing about the control being the way to the shipped deployments. */
     const root = mount();
     const label = root.querySelector('label[for="preset-picker"]');
     expect(label?.textContent).toBe('Preset');
-    expect(label?.className).toBe('sr');
+    expect(label?.className).toBe('doc-pick-k');
     expect(root.querySelector('#preset-picker')?.getAttribute('title')).toBeTruthy();
   });
 

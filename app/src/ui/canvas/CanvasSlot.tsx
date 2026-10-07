@@ -388,19 +388,19 @@ function ZoomStrip({ tidy, grid = false, pop = false }: { tidy: boolean; grid?: 
     {
       label: '−',
       name: 'Zoom out',
-      title: 'Draw the configuration one rung smaller.',
+      title: 'Draw the configuration one rung smaller (−).',
       run: () => zoomBy(-1),
     },
     {
       label: '+',
       name: 'Zoom in',
-      title: 'Draw the configuration one rung larger; the drawing scrolls to the rest of it.',
+      title: 'Draw the configuration one rung larger; the drawing scrolls to the rest of it (+).',
       run: () => zoomBy(1),
     },
     {
       label: 'Fit',
       name: 'Fit to page',
-      title: 'Fit the whole drawing into its room; the percentage shows the size that takes.',
+      title: 'Fit the whole drawing into its room; the percentage shows the size that takes (F).',
       run: () => fitZoom(),
     },
     ...(tidy
@@ -417,7 +417,7 @@ function ZoomStrip({ tidy, grid = false, pop = false }: { tidy: boolean; grid?: 
       ? [{
         label: <DotsIcon />,
         name: 'Dotted background',
-        title: gridOn.value ? 'Hide the dotted background.' : 'Show the dotted background.',
+        title: gridOn.value ? 'Hide the dotted background (G).' : 'Show the dotted background (G).',
         run: toggleGrid,
         pressed: gridOn.value,
       }]
@@ -496,8 +496,8 @@ function TidyButton() {
         title={off
           ? WHY_TIDY
           : picked.length > 0
-            ? 'Put the selected cards back where the layout draws them.'
-            : 'Put every card moved by hand back where the layout draws it, and every resized data centre back to its own size.'}
+            ? 'Put the selected cards back where the layout draws them (Shift+T).'
+            : 'Put every card moved by hand back where the layout draws it, and every resized data centre back to its own size (Shift+T).'}
         onClick={() => tidyLayout(picked)}
       >
         <svg viewBox="0 0 16 16" aria-hidden="true">

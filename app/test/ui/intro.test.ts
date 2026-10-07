@@ -157,7 +157,7 @@ describe('the shell with the Introduction open', () => {
   it('is left by any mode button, which records that it has been shown', async () => {
     const root = mount(App);
     await tick();
-    button(root, 'Config').click();
+    button(root, 'Generated settings').click();
     await tick();
     expect(introPage.value).toBe(false);
     expect(mode.value).toBe('configure');
@@ -168,14 +168,14 @@ describe('the shell with the Introduction open', () => {
 
   /* The header is the same header on both pages, so every control in it has
      to keep working: the card has no guidance line to hang under here. */
-  it('still opens the keyboard card from the ?', async () => {
+  it('still opens the keyboard card from the overflow menu', async () => {
     const root = mount(App);
     await tick();
     expect(root.querySelector('.intro-keys')).toBeNull();
-    button(root, '?').click();
+    button(root, 'How this page works').click();
     await tick();
     expect(root.querySelector('.intro-keys')).not.toBeNull();
-    button(root, '?').click();
+    button(root, 'How this page works').click();
     await tick();
     expect(root.querySelector('.intro-keys')).toBeNull();
   });
@@ -339,7 +339,7 @@ describe('the page itself', () => {
     const root = mount(IntroPage);
     await tick();
     const text = root.textContent ?? '';
-    for (const word of ['Topology', 'Scenario', 'Outcome', 'Config', 'Learn']) expect(text).toContain(word);
+    for (const word of ['Topology', 'Scenario', 'Outcome', 'Generated settings', 'Learn']) expect(text).toContain(word);
     expect(text).toContain('model');
     const legacy = [...root.querySelectorAll('a')]
       .find((a) => (a.getAttribute('href') ?? '').startsWith('legacy/'));

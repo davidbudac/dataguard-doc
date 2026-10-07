@@ -151,7 +151,7 @@ const MODES: ModeCard[] = [
     go: () => jump({ preset: 'far-sync-zero-loss', scenario: 'isolated', mode: 'break' }),
   },
   {
-    name: 'Config',
+    name: 'Generated settings',
     glyph: g(<><rect x="2.5" y="3.5" width="15" height="13" rx="1.5" /><path d="M5.5 8l2.5 2-2.5 2M10.5 12.5h4" /></>),
     what: 'Generate the configuration from the drawing.',
     you: 'Review the DGMGRL commands, LOG_ARCHIVE_DEST_n, tnsnames and JDBC generated from it.',
@@ -231,7 +231,7 @@ const HOWTO: { k: string; d: JSX.Element }[] = [
     k: 'Read the configuration',
     d: (
       <>
-        Config generates each tab from the drawing. Hover a line to highlight its member.
+        Each tab is generated from the drawing. Hover a line to highlight its member.
       </>
     ),
   },
@@ -400,7 +400,7 @@ export function IntroPage(): JSX.Element {
 
       <Band
         n="02"
-        title="Three steps, plus Config and Learn"
+        title="Three steps, plus Generated settings and Learn"
         lead="Use the header buttons to switch modes. A shared link opens in the mode you selected."
       >
         <div class="ip-modes">

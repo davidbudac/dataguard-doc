@@ -19,13 +19,13 @@
 import { useCallback, useEffect, useLayoutEffect, useRef } from 'preact/hooks';
 import { runShown, topology, trace } from '@/state/derived';
 import {
-  canEdit, floating, gridOn, inspectorOpen, inspectorRailWanted, introOpen, introPage, mode, modeGuide, railCollapsed,
-  railOnDemand, timelineH, timelineOpen, toast, viewport,
+  canEdit, floating, gridOn, inspectorOpen, inspectorRailWanted, introOpen, introPage, mode, modeGuide, outcomeDrawing,
+  railCollapsed, railOnDemand, timelineH, timelineOpen, toast, viewport,
 } from '@/state/view';
 import type { Mode } from '@/state/view';
 import { CollectDialog, CollectionNotice } from './import/CollectDialog';
 import { TopBar } from './TopBar';
-import { DocActions, DocCount, DocPicker } from './StatusBar';
+import { DocActions, DocCount, DocMenuItems, DocPicker } from './StatusBar';
 import { FindingsChips, FindingsPopover } from './Findings';
 import { Guidance, IntroCard } from './Guidance';
 import { printing, usePrintExpand } from './print';
@@ -380,13 +380,16 @@ export function App() {
      docked grid (state/view.ts). */
   const float = !intro && floating(m, viewport.value);
   const t = toast.value;
-  /* The Outcome, where it floats, is the lanes: the members' cards
-     and their timelines are one view, and there is no drawing of the topology
-     (the docked layout below 1024 px keeps the drawing and the timeline
-     stacked, as a viewer). */
+  /* The Outcome, where it floats, is the lanes: the members' cards and their
+     timelines are one view. By default the drawing of the topology stays
+     above them, read at the playhead, and the lanes are the dock under it
+     (`outcomeDrawing`, `split`, `bl-drawn`), sized by the same grip as the docked
+     timeline; turned off, the lanes take the whole stage. (The docked layout
+     below 1024 px keeps the drawing and the timeline stacked, as a viewer.) */
   const lanes = float && m === 'break';
-  const resizable = !printing.value && viewport.value !== 'narrow' && trace.value !== null
-    && m === 'break' && !lanes && timelineShown(timelineOpen.value);
+  const split = lanes && outcomeDrawing.value;
+  const resizable = !printing.value && viewport.value !== 'narrow' && m === 'break'
+    && (split || (!lanes && trace.value !== null && timelineShown(timelineOpen.value)));
   const desiredHeight = timelineH.value;
   useEffect(() => {
     const root = document.documentElement.style;
@@ -407,7 +410,7 @@ export function App() {
   useEffect(() => installShortcuts(), []);
 
   return (
-    <div ref={appRef} class={intro ? 'app m-intro' : `app m-${m}${float ? ' is-float' : ''}${float && !gridOn.value ? ' no-grid' : ''}${railShut ? ' rail-shut' : ''}${railSnap.value ? ' rail-snap' : ''}${lanes ? ' bl-lanes' : ''}`}>
+    <div ref={appRef} class={intro ? 'app m-intro' : `app m-${m}${float ? ' is-float' : ''}${float && !gridOn.value ? ' no-grid' : ''}${railShut ? ' rail-shut' : ''}${railSnap.value ? ' rail-snap' : ''}${lanes ? ' bl-lanes' : ''}${split ? ' bl-drawn' : ''}`}>
       {/* One header, three bands: the modes and the small controls, then the
           quieter document row, then the line that says what to do in the mode
           that is open. It is one element so the toast can be anchored to the
@@ -421,6 +424,7 @@ export function App() {
           <TopBar
             doc={<>{<DocPicker />}{float ? null : <DocCount />}</>}
             actions={<div class="statusbar app-status"><DocActions /></div>}
+            menu={<DocMenuItems />}
           />
         )}
         {intro ? null : <WorkflowBar />}
@@ -469,7 +473,7 @@ export function App() {
                 </p>
               </div>
             )}
-            <Stage m={m} lanes={lanes} />
+            <Stage m={m} lanes={lanes && !split} />
           </main>
 
           {railInGrid
@@ -492,6 +496,13 @@ export function App() {
               </aside>
             )
             : null}
+
+          {split ? (
+            <div class="app-dock float-card has-tl ln-dock" id={DOCK_ID} ref={dockRef}>
+              {resizable ? <PanelResize /> : null}
+              <LanesView />
+            </div>
+          ) : null}
 
           {float && !lanes ? (
             <>

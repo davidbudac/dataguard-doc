@@ -100,11 +100,11 @@ describe('the floating findings', () => {
     expect(root.querySelector('.fnd-toast')).toBeNull();
   });
 
-  it('keeps Export, Import and Reset behind the overflow, in the document', () => {
+  it('keeps the preferences and then Export, Import and Reset behind the overflow, in the document', () => {
     const root = mount();
     const menu = root.querySelector('details.ovf .ovf-menu');
     expect(menu).not.toBeNull();
     expect([...menu!.querySelectorAll('.btn')].map((b) => b.textContent?.trim()))
-      .toEqual(['Saved configurations', 'Compare alternatives', 'Export', 'Diagram as PNG', 'Report as PDF', 'Import existing setup', 'Import', 'Reset']);
+      .toEqual(['Themesystem', 'Palettestandard', 'How this page works', 'Saved configurations', 'Compare alternatives', 'Export', 'Diagram as PNG', 'Report as PDF', 'Import existing setup', 'Import', 'Reset']);
   });
 });

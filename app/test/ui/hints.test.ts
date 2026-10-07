@@ -250,12 +250,12 @@ describe('the guidance line', () => {
     const root = mount(Guidance);
     const line = (): string => root.querySelector('.guide-line')?.textContent ?? '';
     const { lead, rest } = splitGuide('configure', 'wide');
-    expect(line()).toBe(`Config · ${lead}`);
+    expect(line()).toBe(`Generated settings · ${lead}`);
     expect(line()).not.toContain(rest);
 
     setHints(true);
     await tick();
-    expect(line()).toBe(`Config · ${lead} ${rest}`);
+    expect(line()).toBe(`Generated settings · ${lead} ${rest}`);
   });
 });
 

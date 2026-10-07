@@ -301,14 +301,14 @@ describe('the zoom strip drives the drawing', () => {
     expect(document.activeElement?.getAttribute('aria-label')).toBe('Zoom in');
   });
 
-  it('is offered in Topology and in the docked Detailed timeline, and in neither Config nor Learn', async () => {
+  it('is offered in Topology and in the Outcome, and in neither Generated settings nor Learn', async () => {
     const root = mountApp();
     await painted();
     expect(root.querySelector('.cv-zoom')).not.toBeNull();
-    /* The floating Detailed timeline is the lanes: there is no drawing to zoom. */
+    /* The floating Outcome keeps the drawing above its lanes, and the drawing keeps its zoom. */
     mode.value = 'break';
     await painted();
-    expect(root.querySelector('.cv-zoom')).toBeNull();
+    expect(root.querySelector('.cv-zoom')).not.toBeNull();
     /* Docked (below 1024 px) it keeps the drawing and its strip. */
     viewport.value = 'compact';
     for (const m of ['break', 'configure', 'learn'] as const) {

@@ -303,14 +303,14 @@ describe('the order of the rail', () => {
   it('puts scheduled events before validation', async () => {
     const root = mount(BreakRail);
     await tick();
-    expect(eyebrows(root)).toEqual(['Events', 'Validation']);
+    expect(eyebrows(root)).toEqual(['Nothing scheduled', 'Validation']);
   });
 
   it('counts the scheduled events without repeating the template shelf', async () => {
     applyTemplate(byId(doc.value.topology, 'isolated')!);
     const root = mount(BreakRail);
     await tick();
-    expect(eyebrows(root)).toEqual(['Events (2)', 'Validation']);
+    expect(eyebrows(root)).toEqual(['2 scheduled', 'Validation']);
     expect(root.querySelectorAll('.evt')).toHaveLength(2);
     expect(root.querySelector('.tmpl')).toBeNull();
   });

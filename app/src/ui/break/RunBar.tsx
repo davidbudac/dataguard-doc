@@ -10,11 +10,15 @@
  */
 
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
-import type { RefObject } from 'preact';
+import type { ComponentChildren, RefObject } from 'preact';
+import { signal } from '@preact/signals';
 import { Fragment } from 'preact';
-import { readout, topology } from '@/state/derived';
+import { readout, topology, trace } from '@/state/derived';
 import type { ReadoutChip } from '@/state/derived';
-import { appLanesShown, findingsOpen } from '@/state/view';
+import { setSummaryOpen, toggleOutcomeDrawing } from '@/state/persist';
+import { appLanesShown, findingsOpen, outcomeDrawing, summaryOpen } from '@/state/view';
+import { SettingChips } from './SettingChips';
+import { SUMMARY_ID } from './SummaryBand';
 import { APP_VIEW_TIP } from '../timeline/Timeline';
 import type { RunTimeline } from '../timeline/run';
 import { useWidth } from '../common/use-width';
@@ -159,6 +163,127 @@ export function TerseReadout({ run, omit }: { run: boolean; omit?: readonly stri
   );
 }
 
+/**
+ * The verdict, as the bar's headline: the outcome large, Why? beside it, and
+ * the rest of the readings on one fitted line under it (`TerseReadout`, which
+ * leaves out whole what does not fit; the Summary band has them all). With no
+ * run there is no verdict, and the line stands alone as the steady state's
+ * readings.
+ */
+export function Verdict({ run }: { run: boolean }) {
+  const chips = readout.value.filter((c) => c.id !== 'findings');
+  const outcome = chips.find((c) => c.id === 'outcome') ?? null;
+  return (
+    <div class="ln-verdict">
+      {outcome === null ? (
+        <div class="ln-vd t-sl" title="Nothing is scheduled: these are the configuration's readings as drawn.">
+          <span class="ln-vd-k">Steady state</span>
+        </div>
+      ) : (
+        <div class={`ln-vd t-${outcome.tone}`} title={`${outcome.k}: ${outcome.sub}`}>
+          <span class="ln-vd-k">{outcome.k}</span>
+          <span class="ln-vd-v">{valueOf(outcome)}</span>
+          {outcome.v2 ? <span class="ln-vd-v2">{outcome.v2}</span> : null}
+          {run ? <WhyButton /> : null}
+        </div>
+      )}
+      <div class="ln-vd-line">
+        <FoldLine run={run}>
+          <TerseReadout run={run} omit={outcome === null ? undefined : [outcome.k]} />
+        </FoldLine>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The line under the verdict, and what becomes of it when the Summary band is
+ * unfolded: the band is the same readings at reading size, so the line gives
+ * way to a spacer rather than saying everything twice. Folded, a press on the
+ * line unfolds the band (a button inside it, like Why?, keeps its own click).
+ * With no run there is no band, and the line is simply the line.
+ */
+function FoldLine({ run, children }: { run: boolean; children: ComponentChildren }) {
+  if (!run) return <>{children}</>;
+  if (summaryOpen.value) return <span class="rs-fill" />;
+  return (
+    <div class="rs-host">
+      <div
+        class="rs-hit" title="Show the summary cards"
+        onClick={(e) => {
+          if ((e.target as Element).closest('button')) return;
+          setSummaryOpen(true);
+        }}
+      >
+        {children}
+      </div>
+    </div>
+  );
+}
+
+/** The Summary band's toggle on its own, for a bar whose line is folded away. */
+export function SummaryToggle() {
+  if (trace.value === null) return null;
+  const open = summaryOpen.value;
+  return (
+    <button
+      type="button" class="rs-tog" aria-expanded={open} aria-controls={SUMMARY_ID}
+      title={open ? 'Fold the summary cards away' : 'Unfold the summary cards'}
+      onClick={() => setSummaryOpen(!open)}
+    >
+      {open ? <><span aria-hidden="true">▴</span> Summary</> : <>Summary <span aria-hidden="true">▾</span></>}
+    </button>
+  );
+}
+
+/**
+ * The discrete settings behind one chip: protection mode, fast-start failover
+ * and the standby's LogXptMode as the inspector's own selects, with `All
+ * settings` under them. Three dropdowns across the bar were three controls
+ * nobody had asked for yet, over a result they had.
+ */
+export const settingsOpen = signal(false);
+
+export function SettingsMenu() {
+  const host = useRef<HTMLDivElement>(null);
+  const open = settingsOpen.value;
+  useDismiss(open, host, () => { settingsOpen.value = false; });
+  return (
+    <div class="sb-anchor" ref={host}>
+      <button
+        type="button" class="sb-tool sb-settings" aria-expanded={open} aria-controls="sb-settings"
+        title="Protection mode, fast-start failover and the standby's transport; changing one reruns the scenario"
+        onClick={() => { settingsOpen.value = !open; }}
+      >
+        Settings
+        <span class="sb-caret" aria-hidden="true">▾</span>
+      </button>
+      {open ? (
+        <div class="sb-pop sb-pop-settings" id="sb-settings" role="dialog" aria-label="Settings">
+          <SettingChips />
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+/** Whether the drawing of the topology stays above the lanes. Pressed while it does. */
+export function DrawingToggle() {
+  const on = outcomeDrawing.value;
+  return (
+    <button
+      type="button" class="sb-tool sb-draw" aria-pressed={on}
+      title={on
+        ? 'Hide the drawing: the lanes take the whole stage'
+        : 'Show the drawing of the topology above the lanes, as it is at the playhead'}
+      onClick={toggleOutcomeDrawing}
+    >
+      <svg viewBox="0 0 16 16" aria-hidden="true"><rect x="2" y="2.5" width="12" height="5" rx="1.2" /><rect x="2" y="9.5" width="12" height="4" rx="1.2" /></svg>
+      Drawing
+    </button>
+  );
+}
+
 /** The count chip, and the dropdown that carries what used to float over the canvas. */
 export function FindingsMenu() {
   const { errs, warns, notes, text } = findingCounts();
@@ -182,7 +307,7 @@ export function FindingsMenu() {
         aria-expanded={open}
         aria-controls="sb-findings"
         aria-label={text === '' ? 'Validation: no issues' : `Validation: ${text}`}
-        title={text === '' ? 'No issues' : `${text} — show the validation findings`}
+        title={text === '' ? 'No issues (J)' : `${text} — show the validation findings (J)`}
         onClick={() => { if (open) findingsOpen.value = false; else revealFindings(); }}
       >
         {loud > 0

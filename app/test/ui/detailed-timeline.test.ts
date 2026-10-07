@@ -19,9 +19,9 @@ import { h, render } from 'preact';
 import { classicDoc } from '@/state/doc';
 import { resetHistory } from '@/state/history';
 import { topology } from '@/state/derived';
-import { RAIL_KEY, setRailCollapsed } from '@/state/persist';
+import { RAIL_KEY, setRailCollapsed , OUTCOME_DRAWING_KEY, setOutcomeDrawing} from '@/state/persist';
 import { URL_FIELDS } from '@/state/url';
-import { breakTimeline, findingsOpen, mode, railCollapsed, viewport } from '@/state/view';
+import { breakTimeline, findingsOpen, mode, railCollapsed, viewport , outcomeDrawing} from '@/state/view';
 import { App } from '@/ui/App';
 import { revealFindings } from '@/ui/IssuePanel';
 import { applyTemplate, templates } from '@/ui/break/events';
@@ -69,6 +69,7 @@ beforeEach(() => {
   railCollapsed.value = false;
   findingsOpen.value = false;
   breakTimeline.value = 'config';
+  outcomeDrawing.value = true;
 });
 
 afterEach(() => {
@@ -77,20 +78,21 @@ afterEach(() => {
 });
 
 describe('the top bar', () => {
-  it('has no layout switch in any mode: the release switch is alone in the group', async () => {
+  it('has no layout switch in any mode: the release switch is in the overflow, alone among the segments', async () => {
     const r = mount();
     await tick();
     for (const m of ['build', 'break', 'configure', 'learn'] as const) {
       mode.value = m;
       await tick();
       expect(r.querySelector('[aria-label="Layout"]'), m).toBeNull();
-      expect([...r.querySelectorAll('.topbar-group > .seg')].map((x) => x.getAttribute('aria-label')), m)
+      expect([...r.querySelectorAll('.topbar-group .seg')].map((x) => x.getAttribute('aria-label')), m)
         .toEqual(['Oracle release']);
+      expect(r.querySelector('.topbar-group .ovf-menu .seg[aria-label="Oracle release"]'), m).not.toBeNull();
     }
     expect(r.querySelector('.topbar')?.textContent ?? '').not.toMatch(/\bSplit\b/);
   });
 
-  it('does not read or write a layout preference, and no URL key carries one', async () => {
+  it('does not read the retired layout preference, and no URL key carries one', async () => {
     memory.set('dg-break-layout', 'split');
     memory.set('dg-tl-h', '480');
     const r = mount();
@@ -136,13 +138,38 @@ describe('the words', () => {
 });
 
 describe('where it floats', () => {
-  it('is the lanes, on a shell that never changes, with no drawing of the topology and no dock', async () => {
+  it('keeps the drawing above the lanes: the canvas on the stage, the lanes as the dock under it, sized by the grip', async () => {
     crash();
     const r = mount();
     await tick();
     const shell = app(r);
     expect(shell.classList.contains('is-float')).toBe(true);
     expect(shell.classList.contains('bl-lanes')).toBe(true);
+    expect(shell.classList.contains('bl-drawn')).toBe(true);
+    expect(r.querySelector('.app-stage .topo-svg')).not.toBeNull();
+    expect(r.querySelector('.app-dock.ln-dock .ln-view')).not.toBeNull();
+    expect(r.querySelector('.app-dock.ln-dock .dock-grip')).not.toBeNull();
+    expect(r.querySelector('.palette')).toBeNull();
+    expect(r.querySelector('.dock-scn')).toBeNull();
+    /* The toggle on the bar is pressed, and puts the drawing away. */
+    const tog = r.querySelector<HTMLButtonElement>('.ln-bar .sb-draw')!;
+    expect(tog.getAttribute('aria-pressed')).toBe('true');
+    tog.click();
+    await tick();
+    expect(outcomeDrawing.value).toBe(false);
+    expect(memory.get(OUTCOME_DRAWING_KEY)).toBe('0');
+    expect(r.querySelector('.topo-svg')).toBeNull();
+    expect(r.querySelector('.app-dock')).toBeNull();
+  });
+
+  it('is the lanes alone, with no drawing and no dock, when the drawing is put away', async () => {
+    setOutcomeDrawing(false);
+    crash();
+    const r = mount();
+    await tick();
+    const shell = app(r);
+    expect(shell.classList.contains('bl-lanes')).toBe(true);
+    expect(shell.classList.contains('bl-drawn')).toBe(false);
     expect(r.querySelector('.ln-view')).not.toBeNull();
     expect(r.querySelector('.topo-svg')).toBeNull();
     expect(r.querySelector('.app-dock')).toBeNull();
@@ -152,29 +179,35 @@ describe('where it floats', () => {
     expect(r.querySelector('.tl-full-btn')).toBeNull();
     /* Its bar is the view's own top edge. */
     expect(r.querySelector('.ln-view .sb-bar.ln-bar')).not.toBeNull();
-    /* The timeline is the control: no settings column, row or toggle; the three chips and the way on are in the bar. */
+    /* The timeline is the control: no settings column, row or toggle; the three chips are behind one Settings chip on the bar. */
     expect(r.querySelector('.tune-strip')).toBeNull();
     expect(r.querySelector('.ln-main')).toBeNull();
     expect(r.querySelector('.sb-tune')).toBeNull();
+    expect(r.querySelector('.ln-bar .sc-row')).toBeNull();
+    r.querySelector<HTMLButtonElement>('.ln-bar .sb-settings')!.click();
+    await tick();
     expect(r.querySelectorAll('.ln-bar .sc-row select')).toHaveLength(3);
     expect(r.querySelector('.ln-bar .sc-all')).not.toBeNull();
   });
 
-  it('has the bar over the lanes, with the transport on it and no floating banner', async () => {
+  it('has the verdict on the bar, the transport under the lanes beside the axis, and no floating banner', async () => {
     crash();
     const r = mount();
     await tick();
     const bar = r.querySelector('.sb-bar');
     expect(bar).not.toBeNull();
-    expect(bar?.querySelector('.tl-transport')).not.toBeNull();
+    expect(bar?.querySelector('.tl-transport')).toBeNull();
+    expect(r.querySelector('.ln-view .ln-foot .tl-transport')).not.toBeNull();
     expect(r.querySelectorAll('.tl-transport').length).toBe(1);
     expect(r.querySelector('.tl-foot')).toBeNull();
     expect(r.querySelector('.fnd-toast')).toBeNull();
     expect(r.querySelector('.fnd-pop')).toBeNull();
     expect(r.querySelector('.fnd-chips')).toBeNull();
-    /* The readings are one line, and Why? is on it. */
-    expect(bar?.querySelector('.sb-ro')?.textContent).toMatch(/Outcome/);
-    expect(bar?.querySelector('.sb-why')).not.toBeNull();
+    /* The verdict is the headline, Why? beside it; the other readings are one line under it. */
+    expect(bar?.querySelector('.ln-vd-v')?.textContent).toBe('failover');
+    expect(bar?.querySelector('.ln-vd .sb-why')).not.toBeNull();
+    expect(bar?.querySelector('.sb-ro')?.textContent).not.toMatch(/Outcome/);
+    expect(bar?.querySelector('.sb-ro')?.textContent).toMatch(/New primary open/);
   });
 
   it('opens the findings from the count on the bar, and closes them again', async () => {
@@ -209,7 +242,7 @@ describe('where it floats', () => {
   const nothingAboveTheLanes = async (): Promise<void> => {
     const r = mount();
     await tick();
-    expect(r.querySelector('.ln-head')).toBeNull();
+    expect(r.querySelector('.ln-body .ln-head')).toBeNull();
     expect(r.querySelector('.ln-ticks')).toBeNull();
     expect(r.querySelector('.tl-headline')).toBeNull();
     expect(r.querySelector('.tl-eq')).toBeNull();
@@ -237,11 +270,11 @@ describe('where it floats', () => {
 
 
 
-  it('has no run to draw in the steady state: the bar without a transport, and the cards to start from', async () => {
+  it('has no run to draw in the steady state: no transport, and the cards to start from', async () => {
     const r = mount();
     await tick();
     expect(r.querySelector('.sb-bar')).not.toBeNull();
-    expect(r.querySelector('.sb-bar .tl-transport')).toBeNull();
+    expect(r.querySelector('.ln-view .tl-transport')).toBeNull();
     expect(r.querySelector('.ln-empty')).not.toBeNull();
     expect(r.querySelector('.ln-tool')).toBeNull();
   });
@@ -272,8 +305,8 @@ describe('where it floats, narrow', () => {
     measured(1400);
     const wide = mount();
     await tick();
-    expect(wide.querySelectorAll('.sb-bar .tl-tp-speed').length).toBe(5);
-    expect(wide.querySelector('.sb-bar .tl-tp-sel')).toBeNull();
+    expect(wide.querySelectorAll('.ln-foot .tl-tp-speed').length).toBe(5);
+    expect(wide.querySelector('.ln-foot .tl-tp-sel')).toBeNull();
     const chipsWide = wide.querySelectorAll('.sb-ro-i').length;
     render(null, wide);
     root = null;
@@ -282,8 +315,8 @@ describe('where it floats, narrow', () => {
     measured(800);
     const r = mount();
     await tick();
-    expect(r.querySelectorAll('.sb-bar .tl-tp-speed').length).toBe(0);
-    const sel = r.querySelector<HTMLSelectElement>('.sb-bar .tl-tp-sel');
+    expect(r.querySelectorAll('.ln-foot .tl-tp-speed').length).toBe(0);
+    const sel = r.querySelector<HTMLSelectElement>('.ln-foot .tl-tp-sel');
     expect(sel).not.toBeNull();
     expect([...sel!.options].map((o) => o.value)).toEqual(['0.25', '0.5', '1', '2', '4']);
     expect(r.querySelectorAll('.sb-ro-i').length).toBeLessThanOrEqual(chipsWide);

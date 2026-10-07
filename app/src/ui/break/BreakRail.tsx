@@ -2,7 +2,8 @@
 
 import { events, topology } from '@/state/derived';
 import { canEdit, healthyRun, tNow, viewport } from '@/state/view';
-import { IssuePanel } from '../IssuePanel';
+import { revealFindings } from '../IssuePanel';
+import { findingCounts } from '../Findings';
 import { Action, Group, Note } from '../inspector/controls';
 import { HintsToggle } from '../hints';
 import { WHY } from '../inspector/why';
@@ -23,7 +24,7 @@ export function BreakRail() {
   return (
     <div class="insp" ref={railRef}>
       <Group
-        title={list.length === 0 ? 'Events' : `Events (${list.length})`}
+        title={list.length === 0 ? 'Nothing scheduled' : `${list.length} scheduled`}
         action={(
           <>
             <HintsToggle />
@@ -104,10 +105,30 @@ export function BreakRail() {
       </Group>
 
 
-      {/* The same validation the Build dock shows, worded and folded the same
-          way: what is wrong with a configuration does not stop being true
-          because the reader switched to breaking it. */}
-      <IssuePanel />
+      {/* What is wrong with the configuration does not stop being true because
+          the reader switched to breaking it -- but the rows belong to step 1.
+          One line with the counts, and the way to the findings. */}
+      <ValidationLine />
+    </div>
+  );
+}
+
+/** The validation counts as one line, and the way to the rows. */
+function ValidationLine() {
+  const { errs, warns, text } = findingCounts();
+  const tone = errs > 0 ? 't-rd' : warns > 0 ? 't-am' : 't-sl';
+  return (
+    <div class="rail-val">
+      <span class="eyebrow">Validation</span>
+      <button
+        type="button"
+        class={`rail-val-btn ${tone}`}
+        title="Show the validation findings"
+        onClick={() => revealFindings()}
+      >
+        {text === '' ? 'No issues' : text}
+        <span aria-hidden="true"> →</span>
+      </button>
     </div>
   );
 }

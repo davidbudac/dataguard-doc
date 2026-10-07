@@ -178,20 +178,20 @@ describe('the switch', () => {
     await tick();
     expect(r.querySelector('.ln-view .ln-bar .seg[aria-label="Timeline"]')).not.toBeNull();
     expect(r.querySelector('.ln-view svg[aria-label="Members and their timelines"]')).not.toBeNull();
-    expect(r.querySelector('.ln-bar .tl-transport')).not.toBeNull();
+    expect(r.querySelector('.ln-view .tl-transport')).not.toBeNull();
     press(r, 'Application');
     await tick();
     expect(breakTimeline.value).toBe('app');
     expect(memory.get(BREAK_TIMELINE_KEY)).toBe('app');
     /* The configuration's transport is not the application's. */
-    expect(r.querySelector('.ln-bar .tl-transport')).toBeNull();
+    expect(r.querySelector('.ln-view .tl-transport')).toBeNull();
     expect(r.querySelector('.ln-view svg[aria-label="Members and their timelines"]')).toBeNull();
     expect(r.querySelector('.ln-view .ln-app .app-tl-fig svg')).not.toBeNull();
     press(r, 'Configuration');
     await tick();
     expect(r.querySelector('.ln-view svg[aria-label="Members and their timelines"]')).not.toBeNull();
     expect(r.querySelector('.ln-app')).toBeNull();
-    expect(r.querySelector('.ln-bar .tl-transport')).not.toBeNull();
+    expect(r.querySelector('.ln-view .tl-transport')).not.toBeNull();
   });
 
   it('swaps the view in the docked timeline, where it has a row of its own', async () => {

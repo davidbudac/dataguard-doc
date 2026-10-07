@@ -114,7 +114,7 @@ describe('the header', () => {
     const build = [...root.querySelectorAll('button')].find((b) => b.textContent === '1Topology');
     expect(build?.getAttribute('title')).toBe(MODE_SUB.build);
     const configure = [...root.querySelectorAll('button')]
-      .find((b) => b.textContent === 'Config');
+      .find((b) => b.textContent === 'Generated settings');
     /* Configure reads as "settings" and is generated output: the tooltip and
        the guidance line both have to say so. */
     expect(configure?.getAttribute('title')).toBe(MODE_SUB.configure);
@@ -130,7 +130,7 @@ describe('the header', () => {
     expect(root.textContent).not.toContain('draw the configuration');
     /* The two re-cut modes wear their new words; the ids are what they were. */
     const words = [...root.querySelectorAll('.topbar-modes button')].map((b) => b.textContent);
-    expect(words).toEqual(['1Topology', '2Scenario', '3Outcome', 'Config', 'Learn']);
+    expect(words).toEqual(['1Topology', '2Scenario', '3Outcome', 'Generated settings', 'Learn']);
   });
 
   it('carries a ? that reopens the whole explanation once it has been dismissed', async () => {
@@ -151,7 +151,7 @@ describe('the header', () => {
     const bar = mount(TopBar);
     const guide = mount(Guidance);
     const help = (): HTMLButtonElement => [...bar.querySelectorAll('button')]
-      .find((b) => b.textContent === '?') as HTMLButtonElement;
+      .find((b) => b.textContent === 'How this page works') as HTMLButtonElement;
     expect(help().getAttribute('aria-expanded')).toBe('false');
 
     help().click();
@@ -174,7 +174,7 @@ describe('the header', () => {
     const bar = mount(TopBar);
     mount(Guidance);
     const help = (): HTMLButtonElement => [...bar.querySelectorAll('button')]
-      .find((b) => b.textContent === '?') as HTMLButtonElement;
+      .find((b) => b.textContent === 'How this page works') as HTMLButtonElement;
     help().click();
     await tick();
     help().click();
@@ -202,7 +202,7 @@ describe('the guidance line', () => {
     const line = (): string => root.querySelector('.guide-line')?.textContent ?? '';
     /* One clause by default -- the gesture. The sentence behind it is
        explanation and waits for `Hints`. */
-    expect(line()).toBe(`Config · ${splitGuide('configure', 'wide').lead}`);
+    expect(line()).toBe(`Generated settings · ${splitGuide('configure', 'wide').lead}`);
     mode.value = 'learn';
     await tick();
     expect(line()).toContain(splitGuide('learn', 'wide').lead);
@@ -265,7 +265,7 @@ describe('the guidance line', () => {
 
     hintsOn.value = true;
     await tick();
-    expect(line()).toBe(`Config · ${lead} ${rest}`);
+    expect(line()).toBe(`Generated settings · ${lead} ${rest}`);
     /* The second half is the second half of `modeGuide`, promoted to its own
        sentence -- nothing is dropped on the way. */
     expect(modeGuide('configure', 'wide')).toContain('Settings are in the panel on the right');
@@ -273,7 +273,7 @@ describe('the guidance line', () => {
 
     hintsOn.value = false;
     await tick();
-    expect(line()).toBe(`Config · ${lead}`);
+    expect(line()).toBe(`Generated settings · ${lead}`);
   });
 
   /* The cut is made at a clause boundary, and Configure's first sentence names
@@ -286,13 +286,13 @@ describe('the guidance line', () => {
       expect(rest.endsWith(' '), m).toBe(false);
     }
     expect(splitGuide('configure', 'wide').lead)
-      .toBe('Generated from the drawing — DGMGRL, init parameters, connect strings.');
+      .toBe('DGMGRL, init parameters and connect strings, each produced from the drawing.');
     expect(splitGuide('learn', 'wide').rest).toBe('');
   });
 
   it('says where the + buttons and the settings actually are', () => {
     expect(modeGuide('build', 'wide')).toContain('the full properties are in the panel on the right');
-    expect(modeGuide('configure', 'wide')).toContain('Generated from the drawing');
+    expect(modeGuide('configure', 'wide')).toContain('produced from the drawing');
     expect(modeGuide('configure', 'wide')).toContain('Settings are in the panel on the right');
   });
 

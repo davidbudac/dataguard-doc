@@ -76,9 +76,16 @@ export function RailBar({ title, children }: { title: string; children?: Compone
   );
 }
 
-/** The folded rail: one button, the strip's whole height. */
+/**
+ * The folded rail: one tab at the top of its edge -- the panel glyph, the
+ * count of events where the rail is the Events rail, and the rail's name read
+ * downward -- rather than a column the whole height of the window. What is
+ * behind it is the tooltip and the accessible name.
+ */
 export function RailStrip({ title }: { title: string }) {
-  const ctx = mode.value === 'scenario' ? railContext() : 'settings';
+  const scenario = mode.value === 'scenario';
+  const ctx = scenario ? railContext() : 'settings';
+  const n = scenario ? events.value.length : null;
   return (
     <button
       type="button"
@@ -86,13 +93,13 @@ export function RailStrip({ title }: { title: string }) {
       aria-expanded="false"
       aria-controls={RAIL_ID}
       aria-label={`Expand the ${title} panel (${ctx})`}
-      title={`Expand the ${title} panel (])`}
+      title={`Expand the ${title} panel: ${ctx} (])`}
       onClick={revealRail}
     >
       <span class="rail-strip-ico"><PanelIcon open={false} /></span>
+      {n === null || n === 0 ? null : <span class="rail-strip-n mono" aria-hidden="true">{n}</span>}
       <span class="rail-strip-t" aria-hidden="true">
         <span class="rail-strip-name">{title}</span>
-        <span class="rail-strip-ctx mono">{ctx}</span>
       </span>
     </button>
   );

@@ -204,7 +204,7 @@ describe('the side rail folds', () => {
     /* No menu of events to add here: the drawer opens on the list, and Remove there removes. */
     expect(sheet.querySelector('.evmenu')).toBeNull();
     expect(sheet.textContent).not.toContain('Inject at');
-    expect(sheet.textContent).toContain('Events (1)');
+    expect(sheet.textContent).toContain('1 scheduled');
     const remove = [...sheet.querySelectorAll('button')].find((b) => b.textContent?.trim() === 'Remove')!;
     remove.click();
     await tick();
