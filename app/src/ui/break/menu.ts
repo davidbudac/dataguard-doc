@@ -36,7 +36,7 @@ export function breakBar(
 ): { actions: BarAction[]; quiet: string | null; sections: BarSection[] } {
   const all = actionsFor(d, keys, at);
   const events = all.filter((a) => a.property !== true);
-  const properties = all.filter((a) => a.property === true);
+  const properties = opts.eventsOnly ? [] : all.filter((a) => a.property === true);
   const offered = [...events.filter((a) => !nothingToRestore(a)), ...properties];
   const quiet = restoreQuietLine(d, keys, at, events);
   const isOn = (a: EventAction): boolean => a.enabled.state === 'on';

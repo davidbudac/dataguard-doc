@@ -111,7 +111,7 @@ describe('the header', () => {
      mode button says when the pointer rests on it. */
   it('says what each mode is for on the button itself, not on a line of its own', () => {
     const root = mount(TopBar);
-    const build = [...root.querySelectorAll('button')].find((b) => b.textContent === 'Topology');
+    const build = [...root.querySelectorAll('button')].find((b) => b.textContent === '1Topology');
     expect(build?.getAttribute('title')).toBe(MODE_SUB.build);
     const configure = [...root.querySelectorAll('button')]
       .find((b) => b.textContent === 'Config');
@@ -130,7 +130,7 @@ describe('the header', () => {
     expect(root.textContent).not.toContain('draw the configuration');
     /* The two re-cut modes wear their new words; the ids are what they were. */
     const words = [...root.querySelectorAll('.topbar-modes button')].map((b) => b.textContent);
-    expect(words).toEqual(['Topology', 'Detailed timeline', 'Config', 'Learn']);
+    expect(words).toEqual(['1Topology', '2Scenario', '3Outcome', 'Config', 'Learn']);
   });
 
   it('carries a ? that reopens the whole explanation once it has been dismissed', async () => {
@@ -217,7 +217,7 @@ describe('the guidance line', () => {
     await tick();
     expect(root.querySelector('.guide-line')).toBeNull();
     expect(root.querySelector('.guide')).toBeNull();
-    expect(MODE_SUB.build).toContain('click to edit, drag to move, + to add');
+    expect(MODE_SUB.build).toContain('draw the topology');
     introOpen.value = true;
     await tick();
     expect(root.querySelector('.guide .intro')).not.toBeNull();
@@ -247,8 +247,8 @@ describe('the guidance line', () => {
     await tick();
     expect(root.querySelector('.guide-line')).toBeNull();
     expect(root.querySelector('.guide')).toBeNull();
-    expect(MODE_SUB.break).toContain('the run in full');
-    expect(MODE_SUB.break).toContain('drag a numbered marker');
+    expect(MODE_SUB.break).toContain('inspect the response');
+    expect(MODE_SUB.break).toContain('tune settings');
     introOpen.value = true;
     await tick();
     expect(root.querySelector('.guide .intro')).not.toBeNull();
@@ -416,7 +416,7 @@ describe('the keyboard map', () => {
     for (const row of root.querySelectorAll('.keys-row')) {
       said.set(row.querySelector('dt')?.textContent ?? '', row.querySelector('dd')?.textContent ?? '');
     }
-    expect(said.get('E')).toContain('(Topology)');
+    expect(said.get('E')).toContain('(Scenario)');
     expect(said.get('A')).toContain('(Topology)');
     expect(said.get('Delete')).toContain('(Topology)');
   });

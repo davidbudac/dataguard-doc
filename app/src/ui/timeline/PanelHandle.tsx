@@ -1,18 +1,4 @@
-/**
- * The handle on the top edge of the timeline panel: the one control that folds
- * the whole panel (`timelineOpen`, remembered by persist.ts).
- *
- * Topology's floating dock and the docked `TimelineSlot` (the Detailed
- * timeline below the floating breakpoint, Learn's workbench) wear the same
- * bar, so "this is where it folds" is learnt once. It is a real
- * `<button aria-expanded>` with the chevron `Fold` and the small timeline's own
- * fold use, and the word, so the control says what it folds before anyone has
- * hovered it. Folded, it is all that is left of the panel: whoever renders it
- * does not render the rest, and the room goes to the drawing.
- *
- * `MiniTimeline` keeps its own, smaller fold inside the panel (`miniTimelineOpen`):
- * that one hides only the lanes, this one hides the panel.
- */
+/** Folding handle for the docked Outcome and Learn timelines. */
 
 import { playing } from '@/state/view';
 import { toggleTimeline } from '@/state/persist';

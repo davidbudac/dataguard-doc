@@ -42,7 +42,7 @@ import { isDesktop, saveFile } from '@/ui/common/desktop';
 import type { DecodeResult } from './codec';
 import {
   BREAK_TIMELINES, breakTimeline, clearSelection, gridOn, hintsOn, inspectorOpen, inspectorRailWanted, issuesOpen,
-  miniTimelineOpen, mode, railCollapsed, timelineH, TL_MIN_H, railOnDemand, releaseRail, selection, summaryOpen, timelineOpen, viewport,
+  mode, railCollapsed, timelineH, TL_MIN_H, railOnDemand, releaseRail, selection, summaryOpen, timelineOpen, viewport,
 } from './view';
 import type { BreakTimeline, PalettePref, ThemePref } from './view';
 
@@ -58,7 +58,6 @@ export const ISSUES_KEY = 'dg-issues';
 export const RAIL_KEY = 'dg-rail';
 export const BREAK_TIMELINE_KEY = 'dg-break-timeline';
 export const SUMMARY_KEY = 'dg-summary';
-export const MINI_TIMELINE_KEY = 'dg-topology-timeline-v1';
 export const TIMELINE_KEY = 'dg-timeline';
 
 export const AUTOSAVE_MS = 500;
@@ -204,20 +203,6 @@ export function setIssuesOpen(on: boolean): void {
 }
 
 export const toggleIssues = (): void => setIssuesOpen(!issuesOpen.value);
-
-/* ---------------- Topology's small timeline ---------------- */
-
-/** Open or folded -- `miniTimelineOpen` in `view.ts`; unset, or anything but '0', means open. */
-export function loadMiniTimelineOpen(): void {
-  miniTimelineOpen.value = read(MINI_TIMELINE_KEY) !== '0';
-}
-
-export function setMiniTimelineOpen(on: boolean): void {
-  miniTimelineOpen.value = on;
-  write(MINI_TIMELINE_KEY, on ? '1' : '0');
-}
-
-export const toggleMiniTimeline = (): void => setMiniTimelineOpen(!miniTimelineOpen.value);
 
 /* ---------------- the timeline panel ---------------- */
 

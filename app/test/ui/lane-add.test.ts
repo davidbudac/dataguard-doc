@@ -19,9 +19,10 @@ import { act } from 'preact/test-utils';
 import { simulate } from '@/engine';
 import { classicDoc } from '@/state/doc';
 import { resetHistory, undoStack } from '@/state/history';
-import { topology } from '@/state/derived';
+import { trace, topology } from '@/state/derived';
 import { findingsOpen, healthyRun, mode, playing, railCollapsed, selection, tNow, viewport } from '@/state/view';
-import { App } from '@/ui/App';
+import { shellTimelineProps } from '@/ui/timeline/shell-props';
+import { setEventTime } from '@/ui/break/events';
 import { applyTemplate, healthyScenario, templates } from '@/ui/break/events';
 import { Timeline } from '@/ui/timeline/Timeline';
 
@@ -42,7 +43,11 @@ let root: HTMLElement | null = null;
 const mount = (): HTMLElement => {
   root = document.createElement('div');
   document.body.appendChild(root);
-  render(h(App, {}), root);
+  const Fixture = () => h('div', { class: 'tl-plot-wrap' }, h(Timeline, {
+    ...shellTimelineProps(trace.value!, 900),
+    ...(mode.value === 'break' && viewport.value !== 'narrow' ? { laneEvents: true, onMoveEvent: setEventTime } : {}),
+  }));
+  render(h(Fixture, {}), root);
   return root;
 };
 

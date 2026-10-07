@@ -29,7 +29,7 @@ const fmt = (at: number): string => (Number.isInteger(at) ? String(at) : at.toFi
 function inspectSetting(section: 'Fast-start failover' | 'PrimaryDatabaseCandidates'): void {
   revealSections([section]);
   selection.value = [];
-  mode.value = 'build';
+  mode.value = 'break';
   revealRail();
 }
 

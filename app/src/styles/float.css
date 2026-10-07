@@ -447,8 +447,6 @@ button.issue{border-bottom:1px solid var(--ln)}
   .dock-grip:focus-visible{outline:2px solid var(--vi);outline-offset:-2px}
   .app .app-dock.has-tl{display:flex;flex-direction:column;height:var(--tl-h,clamp(300px,46dvh,500px));
     min-height:300px;max-height:calc(100dvh - var(--bar-bottom,80px) - 166px);overflow:hidden}
-  .app .has-tl>.mtl:not(.is-folded){flex:1 1 0;min-height:0}
-  .app .has-tl .mtl-plot{flex:1 1 0;min-height:0;overflow-x:auto;overflow-y:hidden}
   .app .has-tl>.tl-slot{flex:1 1 0;min-height:0;display:flex;flex-direction:column;overflow:hidden}
   .app .has-tl .tl{flex:1 1 0;min-height:0;display:grid;align-items:stretch;
     grid-template-columns:minmax(0,1fr);grid-template-rows:auto auto minmax(0,1fr) auto;gap:4px}

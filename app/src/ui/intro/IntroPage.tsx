@@ -7,7 +7,7 @@
  * little bit more useful, usable and nicer". So the shape is fixed:
  *
  *  - **Six bands, each with one job**, separated by air rather than by boxes:
- *    what this is, what the drawing shows, the four modes, how to do things,
+ *    what this is, what the drawing shows, the three steps and reference tools, how to do things,
  *    five words, and where the old page went.
  *  - **Nothing is a paragraph that could be a row.** The how-to band is a
  *    definition list of one-line gestures; the glossary is five entries of at
@@ -127,18 +127,26 @@ const g = (d: JSX.Element): JSX.Element => (
 
 const MODES: ModeCard[] = [
   {
-    name: 'Topology',
+    name: '1 · Topology',
     glyph: g(<><rect x="2.5" y="4.5" width="7" height="5" rx="1" /><rect x="10.5" y="10.5" width="7" height="5" rx="1" /><path d="M6 9.5v3.5h4.5" /></>),
-    what: 'Draw a Data Guard configuration, then break it.',
-    you: 'Add data centres, databases, far syncs and observers. Connect members to route redo. Pick a scenario, or crash a host or cut a link from its icon, and watch the timeline under the drawing.',
+    what: 'Draw a Data Guard configuration and set its starting properties.',
+    you: 'Add data centres, databases, far syncs and observers. Connect members to route redo. Check the starting configuration, then continue to Scenario.',
     cta: 'Draw the classic 1+1+1',
     go: () => jump({ preset: 'classic', mode: 'build' }),
   },
   {
-    name: 'Detailed timeline',
+    name: '2 · Scenario',
+    glyph: g(<><path d="M2 10h16M5 6v8M12 6v8" /><circle cx="5" cy="10" r="2" /><circle cx="12" cy="10" r="2" /></>),
+    what: 'Schedule what happens and when.',
+    you: 'Start with a scenario or select a target. Schedule failures, recoveries and planned actions; move their markers or enter exact times. This timeline shows only your events.',
+    cta: 'Define a primary crash',
+    go: () => jump({ preset: 'classic', scenario: 'crash', mode: 'scenario' }),
+  },
+  {
+    name: '3 · Outcome',
     glyph: g(<><path d="M11 2.5 5.5 11h4l-1 6.5L15 9h-4z" /></>),
     what: 'See how the configuration responds to a failure.',
-    you: 'Follow the run lane by lane through detection, threshold, role change and open. Tune its settings and move its events.',
+    you: 'Follow the run lane by lane through detection, threshold, role change and open. Select a member or connection to tune its settings beside the result.',
     cta: 'Isolate a far sync site',
     go: () => jump({ preset: 'far-sync-zero-loss', scenario: 'isolated', mode: 'break' }),
   },
@@ -213,9 +221,9 @@ const HOWTO: { k: string; d: JSX.Element }[] = [
     k: 'Break something',
     d: (
       <>
-        In Topology, point at a host and press its crash icon, or at a link and press its cut
-        icon; right-click a card for every event it offers. The event starts at the playhead.
-        Drag the playhead on the timeline to inspect another moment.
+        In Scenario, point at a host and press its crash icon, or at a link and press its cut
+        icon; right-click a card for every event it offers. Set the event time in the Scenario editor.
+        Continue to Outcome to inspect the response and tune settings.
       </>
     ),
   },
@@ -356,7 +364,7 @@ export function IntroPage(): JSX.Element {
           <button
             type="button"
             class="btn"
-            onClick={() => jump({ preset: 'classic', scenario: 'crash', mode: 'build' })}
+            onClick={() => jump({ preset: 'classic', scenario: 'crash', mode: 'break' })}
           >
             Watch a failover
           </button>
@@ -392,7 +400,7 @@ export function IntroPage(): JSX.Element {
 
       <Band
         n="02"
-        title="The four modes"
+        title="Three steps, plus Config and Learn"
         lead="Use the header buttons to switch modes. A shared link opens in the mode you selected."
       >
         <div class="ip-modes">

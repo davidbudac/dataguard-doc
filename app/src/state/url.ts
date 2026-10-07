@@ -32,7 +32,7 @@ import type { Doc } from './doc';
 import { encodeDoc, toWire } from './codec';
 import type { Mode, PanelTab, ThemePref } from './view';
 import {
-  MODES, PANEL_TABS, edition, introPage, lessonId, lessonStep, mode, panelTab, playing, reportPage,
+  MODES, PANEL_TABS, edition, healthyRun, introPage, lessonId, lessonStep, mode, panelTab, playing, reportPage,
   scrubbing, selection, theme, tNow,
 } from './view';
 
@@ -85,9 +85,9 @@ export const clampStep = (n: number): number => Math.max(0, Math.min(99, Math.ro
 type Mutable = { -readonly [K in keyof UrlState]: UrlState[K] };
 
 /** The mode's word in the address, where it differs from its id. */
-const MODE_TO_URL: Partial<Record<Mode, string>> = { build: 'topology', break: 'timeline', configure: 'config' };
+const MODE_TO_URL: Partial<Record<Mode, string>> = { build: 'topology', break: 'outcome', configure: 'config' };
 const MODE_FROM_URL: Record<string, Mode | undefined> = {
-  topology: 'build', timeline: 'break', simulate: 'break', config: 'configure',
+  topology: 'build', outcome: 'break', scenario: 'scenario', timeline: 'break', simulate: 'break', config: 'configure',
 };
 
 export interface UrlField {
@@ -109,10 +109,10 @@ export const URL_FIELDS: readonly UrlField[] = [
   },
   {
     /* The words in the address are the ones on the buttons: `topology`,
-       `timeline` and `config`. The internal ids stay `build`, `break` and
+       `scenario`, `outcome` and `config`. The internal ids stay `build`, `break` and
        `configure`, and an old link spelled with them -- or with `simulate`,
        the word `break` used to wear -- still opens the right mode. */
-    k: 'mode', what: 'topology / timeline / config / learn (build, simulate, break and configure are read as the old spellings)',
+    k: 'mode', what: 'topology / scenario / outcome / config / learn (build, timeline, simulate, break and configure are read as the old spellings)',
     parse: (raw, out) => {
       const m = MODE_FROM_URL[raw] ?? ((MODES as readonly string[]).includes(raw) ? (raw as Mode) : null);
       if (m !== null) out.mode = m;
@@ -269,6 +269,7 @@ export function currentUrlState(): UrlState {
 export function applyUrlState(s: UrlState): void {
   edition.value = s.ed;
   mode.value = s.mode;
+  healthyRun.value = s.mode === 'break' && doc.value.topology.events.length === 0;
   introPage.value = s.intro;
   reportPage.value = s.report;
   panelTab.value = s.panel;

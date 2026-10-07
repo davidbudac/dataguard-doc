@@ -129,7 +129,7 @@ describe('the shell with the Introduction open', () => {
     expect(root.querySelector('.app-dock')).toBeNull();
     /* The header stays, and the modes with it. */
     expect(root.querySelector('.topbar')).not.toBeNull();
-    expect(button(root, 'Topology')).toBeDefined();
+    expect(button(root, '1Topology')).toBeDefined();
   });
 
   it('carries no inline style, anywhere -- style-src is \'self\'', async () => {
@@ -216,7 +216,7 @@ describe('the two hero buttons', () => {
     await tick();
     expect(presetId.value).toBe('classic');
     /* Topology: the drawing and the small timeline under it. */
-    expect(mode.value).toBe('build');
+    expect(mode.value).toBe('break');
     const events = doc.value.topology.events;
     expect(events.length).toBeGreaterThan(0);
     expect(events.some((e) => e.kind === 'host.down')).toBe(true);
@@ -270,7 +270,7 @@ describe('the classic walkthrough', () => {
     expect(presetId.value).toBe('classic');
     /* The whole walkthrough stays in Topology: the drawing, the small timeline
        and the inspector's threshold are all there. */
-    expect(mode.value).toBe('build');
+    expect(mode.value).toBe('scenario');
     expect(doc.value.topology.events).toHaveLength(0);
     expect(walkthroughPhase.value).toBe('crash');
     expect(introPage.value).toBe(false);
@@ -290,7 +290,7 @@ describe('the classic walkthrough', () => {
     expect(tNow.value).toBeGreaterThan(0);
     button(guide, 'Open threshold control').click();
     await tick();
-    expect(mode.value).toBe('build');
+    expect(mode.value).toBe('break');
     const inspector = mount(Inspector);
     await tick();
     const threshold = inspector.querySelector<HTMLInputElement>('input[aria-label="FastStartFailoverThreshold"]');
@@ -302,7 +302,7 @@ describe('the classic walkthrough', () => {
     expect(doc.value.topology.config.fsfo.thresholdSeconds).toBe(20);
     button(guide, 'See the changed result').click();
     await tick();
-    expect(mode.value).toBe('build');
+    expect(mode.value).toBe('break');
   });
 
   it('offers a prepared example on the read-only narrow layout', async () => {
@@ -339,7 +339,7 @@ describe('the page itself', () => {
     const root = mount(IntroPage);
     await tick();
     const text = root.textContent ?? '';
-    for (const word of ['Topology', 'Detailed timeline', 'Config', 'Learn']) expect(text).toContain(word);
+    for (const word of ['Topology', 'Scenario', 'Outcome', 'Config', 'Learn']) expect(text).toContain(word);
     expect(text).toContain('model');
     const legacy = [...root.querySelectorAll('a')]
       .find((a) => (a.getAttribute('href') ?? '').startsWith('legacy/'));

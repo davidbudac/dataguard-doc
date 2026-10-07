@@ -13,9 +13,22 @@ requests at runtime — no CDN, no web fonts, no network calls — and no inline
 
 A first visit opens on the **Topology** workbench. The **Introduction**
 (`?intro=1`, `src/ui/intro/`) — what the tool is, what the drawing shows, what the
-four modes are for and how to do things — opens only from the "Data Guard" link
+three workflow steps are for and how to do things — opens only from the "Data Guard" link
 in the header's top-left corner (or its own address), and every button on it loads
 a real configuration and lands in the mode it names; see `design/ui.md` §3e.
+
+The numbered workflow has three freely revisitable steps:
+
+1. **Topology** — draw members and connections and set the starting configuration.
+2. **Scenario** — schedule failures and recoveries on an event-only timeline. Drag
+   markers or use exact times in the Events panel; scenario templates provide a start.
+3. **Outcome** — inspect each item's response and the final outcome. Select an item
+   to edit its settings beside the lanes; the same scenario recomputes immediately
+   and reports how its outcome and timings changed since the last edit.
+
+**Config** and **Learn** remain separate tools. Steps share the same document,
+undo history and share link. Legacy `mode=timeline`, `simulate` and `break` URLs
+open Outcome; new links use `mode=scenario` or `mode=outcome`.
 
 Everything the page asserts about Oracle is either arithmetic over what you
 typed, a documented fact with a citation you can open, or labelled on screen as
@@ -29,7 +42,7 @@ this page's model. That is enforced by types, not by review: see
 npm install          # first time only
 npm run dev          # Vite dev server
 npm run build        # tsc --noEmit, then vite build -> ../_site/
-npm test             # vitest, one pass (1578 tests, 58 files)
+npm test             # vitest, one pass
 npm run test:watch
 npm run typecheck
 ```

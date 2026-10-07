@@ -257,7 +257,7 @@ export function DocActions() {
           aria-expanded={inspectorOpen.value}
           onClick={() => { inspectorOpen.value = !inspectorOpen.value; }}
         >
-          {mode.value === 'break' ? 'Events' : 'Inspector'}
+          {mode.value === 'scenario' ? 'Events' : 'Inspector'}
         </button>
       )}
 

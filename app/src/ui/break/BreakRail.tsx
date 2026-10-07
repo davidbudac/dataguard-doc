@@ -1,55 +1,17 @@
-/**
- * The Detailed timeline's rail: what is actually injected into this
- * configuration, and the six scenarios as one-click templates.
- *
- * **The reader's own work comes first.** The event list is the head of the
- * rail, because injecting an event and then finding no
- * record of it on screen -- six scenario blurbs pushed the list a thousand
- * pixels down -- reads as "nothing happened". The scenarios are the shelf you
- * take something off once; the list is where the thing you took stays.
- *
- * A template replaces the event list rather than adding to it. That is
- * deliberate: a scenario is a claim about what a deployment does, and a claim
- * is only worth anything if the reader can reproduce it -- so picking one
- * always lands on exactly the events the engine's own regression matrix runs.
- * Anything hand-injected from the canvas sits in the list above, where its
- * time can be moved and it can be taken out again.
- *
- * The **empty state stays** whatever the `Hints` switch says -- a panel with
- * nothing in it has to say something true (ui.md SS8) -- and so does every
- * refusal. What rides with the switch is the prose that explains: the note
- * under the event list, and the one-line rule over the scenarios. The six
- * scenario descriptions keep their own mechanism ("Show descriptions"); they
- * are not gated twice.
- *
- * The scenarios are a shelf: six names in two columns, and nothing else. The
- * descriptions are behind the group head's own `Show descriptions` toggle --
- * six clipped one-line captions under six buttons were twelve rows of text
- * for a shelf a reader takes one thing off (ui.md SS3f). What is folded is
- * genuinely absent rather than clipped by CSS, the sentence is the button's
- * `title` at every setting, the toggle that brings it back is the row above
- * it, and print renders every description.
- */
+/** Scenario step: scheduled events, exact times, ordering and validation. */
 
-import { signal } from '@preact/signals';
-import { events, topology, trace } from '@/state/derived';
+import { events, topology } from '@/state/derived';
 import { canEdit, healthyRun, tNow, viewport } from '@/state/view';
 import { IssuePanel } from '../IssuePanel';
-import { Action, Fold, Group, Note } from '../inspector/controls';
-import { SCENARIOS_ID } from '../inspector/sections';
-import { hintsShown, HintsToggle } from '../hints';
-import { printing } from '../print';
+import { Action, Group, Note } from '../inspector/controls';
+import { HintsToggle } from '../hints';
 import { WHY } from '../inspector/why';
 import { useRailRow } from '../common/Field';
 import {
-  applyTemplate, clearEvents, describeEvent, removeEventAt, reorderEvent, setEventTime, shelf,
+  clearEvents, describeEvent, removeEventAt, reorderEvent, setEventTime,
 } from './events';
 import { eventTimeBounds, reorderRefusal } from './event-order';
-import { RunExplanation } from './RunExplanation';
 import '@/styles/inspector.css';
-
-/** Open the six scenario descriptions. View state, so it is not undoable. */
-export const scenarioNotesOpen = signal(false);
 
 export function BreakRail() {
   const railRef = useRailRow();
@@ -57,9 +19,6 @@ export function BreakRail() {
   const list = events.value;
   const editable = canEdit(viewport.value);
   const at = Math.round(tNow.value * 10) / 10;
-  const open = scenarioNotesOpen.value;
-  /* On paper there is no toggle to press, exactly as every `Fold` opens. */
-  const shown = open || printing.value;
 
   return (
     <div class="insp" ref={railRef}>
@@ -78,7 +37,7 @@ export function BreakRail() {
           <div class="empty">
             <span class="empty-k">{healthyRun.value ? 'No events — everything is working' : 'No events yet'}</span>
             <p>
-              Pick a scenario below, or add an event from a card.
+              Choose a starting scenario, or select a card and schedule an event.
             </p>
           </div>
         ) : null}
@@ -139,54 +98,11 @@ export function BreakRail() {
         {list.length === 0 ? null : (
           <Note>
             Drag numbered events on the timeline to change their time. Earlier and Later
-            swap adjacent times while keeping related events in order. The playhead is at t = {at} s.
+            swap adjacent times while keeping related events in order. New events are scheduled at t = {at} s.
           </Note>
         )}
       </Group>
 
-      {/* What the run decided, and why: under the events that caused it. */}
-      {trace.value ? <RunExplanation doc={doc} trace={trace.value} /> : null}
-
-      <Fold
-        id={SCENARIOS_ID}
-        title="One-click scenarios"
-        hint={`${shelf(doc, 0).length} scenarios`}
-        action={(
-          <button
-            type="button"
-            class="btn is-quiet tmpl-tog"
-            aria-expanded={open}
-            onClick={() => { scenarioNotesOpen.value = !open; }}
-          >
-            <span class="tmpl-car">{open ? '▾' : '▸'}</span>
-            Show descriptions
-          </button>
-        )}
-      >
-        {/* The rule the six buttons obey, which is explanation and not state:
-            it rides with the `Hints` switch like every other sentence of prose
-            on a rail. Replacing the list is undoable, and the button that does
-            it names itself. */}
-        {hintsShown() ? (
-          <p class="caption tmpl-lede">
-            A scenario replaces the current events. The topology stays the same.
-          </p>
-        ) : null}
-
-        <div class={shown ? 'tmpls is-open' : 'tmpls'}>
-          {shelf(doc, 0).map((t) => (
-            <div class="tmpl" key={t.id}>
-              <Action
-                label={t.label}
-                title={t.caption}
-                enabled={editable ? t.enabled : { state: 'off', why: WHY.readOnlyHere }}
-                onClick={() => applyTemplate(t)}
-              />
-              {shown ? <p class="tmpl-cap" title={t.caption}>{t.caption}</p> : null}
-            </div>
-          ))}
-        </div>
-      </Fold>
 
       {/* The same validation the Build dock shows, worded and folded the same
           way: what is wrong with a configuration does not stop being true

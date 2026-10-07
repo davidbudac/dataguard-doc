@@ -27,7 +27,7 @@ import { resetHistory } from './state/history';
 import { decodeFragment, fragmentKind } from './state/codec';
 import {
   announceRestore, loadDoc, loadEdition, loadGrid, loadHints, loadIntro, loadIssuesOpen, loadPalette,
-  loadBreakTimeline, loadMiniTimelineOpen, loadRailCollapsed, loadSummaryOpen, loadTheme, loadTimelineOpen,
+  loadBreakTimeline, loadRailCollapsed, loadSummaryOpen, loadTheme, loadTimelineOpen,
   startAutosave,
 } from './state/persist';
 import { upgradeLegacyUrl } from './state/legacy-url';
@@ -74,7 +74,6 @@ async function boot(): Promise<void> {
   loadHints();
   loadGrid();
   loadIssuesOpen();
-  loadMiniTimelineOpen();
   loadTimelineOpen();
   loadRailCollapsed();
   loadBreakTimeline();

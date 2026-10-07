@@ -20,13 +20,13 @@ import { useCallback, useEffect, useLayoutEffect, useRef } from 'preact/hooks';
 import { runShown, topology, trace } from '@/state/derived';
 import {
   canEdit, floating, gridOn, inspectorOpen, inspectorRailWanted, introOpen, introPage, mode, modeGuide, railCollapsed,
-  railOnDemand, miniTimelineOpen, timelineH, timelineOpen, toast, viewport,
+  railOnDemand, timelineH, timelineOpen, toast, viewport,
 } from '@/state/view';
 import type { Mode } from '@/state/view';
 import { CollectDialog, CollectionNotice } from './import/CollectDialog';
 import { TopBar } from './TopBar';
 import { DocActions, DocCount, DocPicker } from './StatusBar';
-import { FindingsPopover } from './Findings';
+import { FindingsChips, FindingsPopover } from './Findings';
 import { Guidance, IntroCard } from './Guidance';
 import { printing, usePrintExpand } from './print';
 import { CommandPalette } from './CommandPalette';
@@ -38,13 +38,13 @@ import { Sheet } from './common/Sheet';
 import { CanvasSlot } from './canvas/CanvasSlot';
 import { Inspector } from './inspector/Inspector';
 import { BreakRail } from './break/BreakRail';
-import { PlayDock } from './break/PlayDock';
-import { ScenarioRow } from './break/ScenarioRow';
+import { ScenarioEditor } from './scenario/ScenarioEditor';
+import { WorkflowBar } from './workflow';
+import { RunExplanation } from './break/RunExplanation';
 import { Panels } from './panels/Panels';
 import { LearnShell, LearnWorkbenchHeader } from './learn/LearnShell';
 import { IntroPage } from './intro/IntroPage';
 import { Timeline } from './timeline/Timeline';
-import { MiniTimeline } from './timeline/MiniTimeline';
 import { TimelineHandle, timelineShown } from './timeline/PanelHandle';
 import { shellTimelineProps } from './timeline/shell-props';
 import { WorkspacesDialog } from './workspaces/Workspaces';
@@ -56,20 +56,19 @@ import { RAIL_ID, RailBar, RailStrip } from './RailFrame';
 import { useWidth } from './common/use-width';
 import { LanesView } from './break/LanesView';
 import { AppTimeline, appTimelineOn, TimelineSwitchRow } from './break/TimelineView';
-import { railSnap, useFoldRailWhile } from './break/rail-fold';
+import { railSnap } from './break/rail-fold';
 
 /** The floating dock's id: what its handle's `aria-controls` names. */
 const DOCK_ID = 'app-dock';
 
 /** Which modes keep a rail beside the canvas. Learn's right half is the workbench. */
 const HAS_RAIL: Record<Mode, boolean> = {
-  build: true, break: true, configure: true, learn: true,
+  build: true, scenario: true, break: true, configure: true, learn: true,
 };
 
-/* The rail's own name, which is not always the mode's: Topology's is the
-   inspector and the Detailed timeline's is its events. */
+/* Scenario owns the event list; Topology and Outcome expose settings. */
 const RAIL_TITLE: Record<Mode, string> = {
-  build: 'Inspector', break: 'Events', configure: 'Inspector', learn: 'Workbench',
+  build: 'Inspector', scenario: 'Events', break: 'Inspector', configure: 'Inspector', learn: 'Workbench',
 };
 
 /**
@@ -114,9 +113,8 @@ function useBarAnchor(): (el: HTMLElement | null) => void {
 /**
  * Write the floating dock's measured height into `--dock-h`, so the drawing's
  * inset, the zoom pill, the findings popover and the palette's height follow it
- * as it grows or folds -- Topology's dock is a row of readings, a row of
- * scenarios and, with a run, the small timeline; folded at its handle it is the
- * handle alone, and the drawing gets the rest. Same escape hatch as `--bar-bottom`.
+ * as it grows: starting readings in Topology, the event editor in Scenario.
+ * Same escape hatch as `--bar-bottom`.
  */
 function useDockAnchor(): (el: HTMLElement | null) => void {
   const observer = useRef<ResizeObserver | null>(null);
@@ -231,7 +229,7 @@ function foldedSummary(): string | null {
 }
 
 /**
- * The docked timeline: the Detailed timeline below the floating breakpoint and
+ * The docked timeline: the Outcome below the floating breakpoint and
  * Learn's workbench. It wears the handle on its top edge that folds the whole
  * slot (`timelineOpen`, ui/timeline/PanelHandle.tsx), the same one Topology's
  * floating dock carries; folded, nothing else of the slot is rendered. Popped
@@ -262,7 +260,7 @@ function TimelineSlot({ popup = false, fitHeight = false }: { popup?: boolean; f
               <p>
                 {learn
                   ? 'No events in this step. A step whose "Show me" breaks something draws its timeline here.'
-                  : 'No events yet. Pick a scenario, or add an event from a card on the drawing.'}
+                  : 'No scenario yet. Open step 2, Scenario, to schedule events.'}
               </p>
             </div>
           ) : <Timeline {...shellTimelineProps(t, width)} fitHeight={(popup || fitHeight) && !printing.value} />}
@@ -287,13 +285,12 @@ function Workbench() {
   );
 }
 
-/* The Detailed timeline's rail is its own events, the scenarios and the
-   findings. What can be added lives on the drawing -- the bar a click opens,
-   the icons on a card -- and on the lanes' own buttons, never here. */
+/* The rail follows the task without changing the shared document. */
 function Rail({ m }: { m: Mode }) {
   switch (m) {
     case 'build': return <Inspector />;
-    case 'break': return <BreakRail />;
+    case 'scenario': return <BreakRail />;
+    case 'break': return <><Inspector />{trace.value ? <RunExplanation doc={topology.value} trace={trace.value} /> : null}</>;
     case 'configure': return <Inspector />;
     case 'learn': return <Workbench />;
   }
@@ -306,26 +303,14 @@ function HomeCanvas() {
 
 function Stage({ m, lanes = false }: { m: Mode; lanes?: boolean }) {
   if (m === 'learn') return <LearnShell />;
-  /* The Detailed timeline's lanes: the cards and the timeline are one view. Its cards,
-     data-centre headers and link pills carry the events. */
+  /* Outcome combines cards and response lanes; selecting either opens settings. */
   if (lanes) return <LanesView />;
   return <HomeCanvas />;
 }
 
-/* Topology's floating dock: the handle on its top edge, then the scenarios with
-   the discrete settings, the readings and the small timeline that is the
-   control (break/PlayDock.tsx). Folded at the handle, the card is the handle
-   alone and `useDockAnchor` hands the drawing the room. The Detailed timeline
-   has no dock: its lanes are the whole stage (break/LanesView.tsx). */
-function FloatDock({ resizable }: { resizable: boolean }) {
-  const open = timelineShown(timelineOpen.value);
-  return (
-    <>
-      {resizable ? <PanelResize /> : null}
-      <TimelineHandle open={open} controls={DOCK_ID} summary={open ? null : foldedSummary()} />
-      {open ? <PlayDock fitHeight={resizable} /> : null}
-    </>
-  );
+/* Topology keeps starting readings; Scenario owns the event-only schedule. */
+function FloatDock() {
+  return mode.value === 'scenario' ? <ScenarioEditor /> : <div class="dock-status"><Readout /><FindingsChips /></div>;
 }
 
 /* The two parts that can be popped out into a window of their own
@@ -359,9 +344,8 @@ function Dock({ m, railInDock, resizable }: { m: Mode; railInDock: boolean; resi
   return (
     <>
       {resizable ? <PanelResize /> : null}
-      {m === 'configure' ? null : <Readout />}
-      {m === 'build' ? <ScenarioRow /> : null}
-      {m === 'build' ? <MiniTimeline fitHeight={resizable} /> : null}
+      {m === 'configure' || m === 'scenario' ? null : <Readout />}
+      {m === 'scenario' ? <ScenarioEditor /> : null}
       {m === 'build' ? <IssuePanel /> : null}
       {m === 'break' ? <TimelineSlot fitHeight={resizable} /> : null}
       {m === 'configure' ? <Panels /> : null}
@@ -392,18 +376,17 @@ export function App() {
      is the workbench rather than a rail. */
   const railShut = railInGrid && m !== 'learn' && !printing.value && (onDemand ? !railWanted : railCollapsed.value);
   /* Topology draws the canvas full-bleed with everything else floating over
-     it, and the Detailed timeline floats its lanes; Config and Learn keep the
+     it, and the Outcome floats its lanes; Config and Learn keep the
      docked grid (state/view.ts). */
   const float = !intro && floating(m, viewport.value);
   const t = toast.value;
-  /* The Detailed timeline, where it floats, is the lanes: the members' cards
+  /* The Outcome, where it floats, is the lanes: the members' cards
      and their timelines are one view, and there is no drawing of the topology
      (the docked layout below 1024 px keeps the drawing and the timeline
      stacked, as a viewer). */
   const lanes = float && m === 'break';
   const resizable = !printing.value && viewport.value !== 'narrow' && trace.value !== null
-    && ((m === 'build' && miniTimelineOpen.value && timelineShown(timelineOpen.value))
-      || (m === 'break' && !lanes && timelineShown(timelineOpen.value)));
+    && m === 'break' && !lanes && timelineShown(timelineOpen.value);
   const desiredHeight = timelineH.value;
   useEffect(() => {
     const root = document.documentElement.style;
@@ -412,7 +395,7 @@ export function App() {
   }, [desiredHeight]);
   /* The lanes want the width, so the rail folds to its strip on the way in;
      the reader can open it (break/rail-fold.ts). */
-  useFoldRailWhile(lanes);
+
   const barRef = useBarAnchor();
   const dockRef = useDockAnchor();
   const appRef = useChromeInsets();
@@ -440,6 +423,7 @@ export function App() {
             actions={<div class="statusbar app-status"><DocActions /></div>}
           />
         )}
+        {intro ? null : <WorkflowBar />}
         {intro ? null : <Guidance />}
         {intro ? null : <CollectionNotice />}
         {/* The classic walkthrough, when one is running: in the header's
@@ -511,12 +495,12 @@ export function App() {
 
           {float && !lanes ? (
             <>
-              {/* The Detailed timeline's findings are the count on its bar and
+              {/* The Outcome's findings are the count on its bar and
                   the rows that open from it; Topology has no bar to carry
                   them, so the chips on the dock's status line are theirs. */}
               <FindingsPopover />
               <div class={`app-dock float-card${resizable ? ' has-tl' : ''}`} id={DOCK_ID} ref={dockRef}>
-                <FloatDock resizable={resizable} />
+                <FloatDock />
               </div>
             </>
           ) : null}

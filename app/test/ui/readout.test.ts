@@ -165,9 +165,9 @@ describe('the readout in Break', () => {
     expect(root.textContent).toContain('Protection level');
   });
 
-  it('reads the run in Topology once there is one, and never in Configure', async () => {
+  it('reads the run in Outcome, and never in Configure', async () => {
     crash();
-    mode.value = 'build';
+    mode.value = 'break';
     const root = mount();
     await tick();
     expect(root.textContent).toContain('Drawing at');

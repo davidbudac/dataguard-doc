@@ -1,16 +1,17 @@
 /** One catalogue for the palette and page shortcuts. Domain actions keep their
  * existing guards, undo labels and refusal messages. */
+import { goToStep } from './workflow';
 import { applicationsOf } from '@/engine';
 import { PRESETS } from '@/presets';
 import { doc, makeDoc } from '@/state/doc';
 import { topology, trace } from '@/state/derived';
 import { canRedo, canUndo, redo, undo } from '@/state/history';
-import { exportDoc, saveEdition, saveTheme, setTimelineH, toggleGrid, toggleHints, toggleRail, revealRail, toggleTimeline, toggleMiniTimeline, setBreakTimeline, setSummaryOpen } from '@/state/persist';
+import { exportDoc, saveEdition, saveTheme, setTimelineH, toggleGrid, toggleHints, toggleRail, revealRail, toggleTimeline, setBreakTimeline, setSummaryOpen } from '@/state/persist';
 import { replaceWorkingDocument } from '@/state/workspaces';
 import {
   appLanesShown, applyTheme, canEdit, clearSelection, edition, floating,
   inspectorOpen, introOpen, introPage, mode, MODE_LABEL, MODES, nextTheme, panelTab,
-  PANEL_LABEL, PANEL_TABS, playing, selection, theme, timelineOpen, miniTimelineOpen, summaryOpen, tNow, toast, viewport,
+  PANEL_LABEL, PANEL_TABS, playing, selection, theme, timelineOpen, summaryOpen, tNow, toast, viewport,
 } from '@/state/view';
 import type { WhyState } from './common/WhyPill';
 import { ON, off } from './inspector/why';
@@ -50,19 +51,19 @@ export function toggleInspector(): void {
 export function commands(): Command[] {
   const d = topology.value;
   const working = !introPage.value;
-  const drawing = working && (mode.value === 'build' || mode.value === 'break');
+  const drawing = working && (mode.value === 'build' || mode.value === 'scenario' || mode.value === 'break');
   const editable = canEdit(viewport.value) ? ON : off('Editing needs a wider screen.');
   const build = working && mode.value === 'build' ? editable : off('Open Topology to edit the topology.');
   const canvas = drawing && !(mode.value === 'break' && floating(mode.value, viewport.value)) ? ON : off('Open Topology to work with the drawing.');
-  const run = drawing && trace.value !== null
-    ? ON : off('Choose a scenario in Topology first.');
+  const run = working && mode.value === 'break' && trace.value !== null
+    ? ON : off('Open Outcome to play the simulation.');
   const docReady = working ? ON : off('Open the workbench first.');
   const picked = selection.value[0];
   const out: Command[] = MODES.map((m, i) => entry(`mode:${m}`, `Open ${MODE_LABEL[m]}`, 'Navigate',
-    () => { mode.value = m; leaveIntro(); }, ON, binding(String(i + 1)), String(i + 1)));
+    () => goToStep(m), ON, binding(String(i + 1)), String(i + 1)));
   out.push(
-    entry('inspector', mode.value === 'break' ? 'Toggle Events panel' : 'Toggle Inspector', 'View',
-      toggleInspector, working && mode.value !== 'learn' ? ON : off('Choose Topology, Detailed timeline or Config.'), binding('i'), 'I'),
+    entry('inspector', mode.value === 'scenario' ? 'Toggle Events panel' : 'Toggle Inspector', 'View',
+      toggleInspector, working && mode.value !== 'learn' ? ON : off('Choose Topology, Scenario, Outcome or Config.'), binding('i'), 'I'),
     entry('undo', 'Undo', 'Edit', undo, working && canUndo.value ? editable : off('Nothing to undo yet.'), binding('z', true, false), '⌘/Ctrl Z'),
     entry('redo', 'Redo', 'Edit', redo, working && canRedo.value ? editable : off('Nothing undone yet.'), binding('z', true, true), '⌘/Ctrl Shift Z'),
     entry('share', 'Copy share link', 'Document', () => void share(), docReady, binding('s', true, true), '⌘/Ctrl Shift S'),
@@ -85,7 +86,7 @@ export function commands(): Command[] {
     }, drawing ? editable : canvas, binding('a', true), '⌘/Ctrl A'),
     entry('clear-selection', 'Clear selection', 'Canvas', clearSelection, selection.value.length ? ON : off('Nothing selected.')),
     entry('properties', 'Edit selected object', 'Selection', () => { if (picked) openInspectorFor(picked); },
-      picked && working ? editable : off('Select an object first.')),
+      mode.value === 'scenario' ? off('Edit settings in Topology or Outcome.') : picked && working ? editable : off('Select an object first.')),
     entry('rename', 'Rename selected object', 'Selection', () => { if (picked) renaming.value = picked; },
       picked && !d.links.some(l => l.id as string === picked) ? build : off('Select a card or data centre first.'), binding('f2'), 'F2'),
     entry('delete', 'Remove selected objects', 'Selection', () => { if (picked) deleteFromCanvas(picked); },
@@ -107,18 +108,17 @@ export function commands(): Command[] {
     entry('play', playing.value ? 'Pause simulation' : 'Play simulation', 'Timeline',
       () => { playing.value = !playing.value; }, run, binding('p'), 'P'),
     entry('events', 'Show events panel', 'Timeline', () => { revealRail(); },
-      working && mode.value === 'break' ? editable : off('Open Detailed timeline to view its events.'), binding('e'), 'E'),
+      working && mode.value === 'scenario' ? editable : off('Open Scenario to view its events.'), binding('e'), 'E'),
     entry('fold-timeline', timelineOpen.value ? 'Fold timeline panel' : 'Show timeline panel', 'Timeline', toggleTimeline,
-      working && mode.value === 'build' ? ON : off('Open Topology to resize or fold its timeline.'), binding('l'), 'L'),
-    entry('fold-mini-timeline', miniTimelineOpen.value ? 'Fold small timeline chart' : 'Show small timeline chart', 'Timeline', toggleMiniTimeline, run),
+      working && mode.value === 'break' && !floating(mode.value, viewport.value) ? ON : off('The docked Outcome timeline can be folded.'), binding('l'), 'L'),
     entry('run-summary', summaryOpen.value ? 'Fold run summary' : 'Show run summary', 'Timeline', () => setSummaryOpen(!summaryOpen.value), run),
-    entry('configuration-timeline', 'Show configuration timeline', 'Timeline', () => { setBreakTimeline('config'); mode.value = 'break'; }, docReady),
-    entry('application-timeline', 'Show application timeline', 'Timeline', () => { setBreakTimeline('app'); mode.value = 'break'; },
+    entry('configuration-timeline', 'Show configuration timeline', 'Timeline', () => { setBreakTimeline('config'); goToStep('break'); }, docReady),
+    entry('application-timeline', 'Show application timeline', 'Timeline', () => { setBreakTimeline('app'); goToStep('break'); },
       applicationsOf(d).length ? docReady : off('Add an application first.')),
     entry('reset-timeline', 'Reset timeline height', 'Timeline', () => setTimelineH(null), run),
     entry('application-lanes', 'Toggle application timeline lanes', 'Timeline', () => { appLanesShown.value = !appLanesShown.value; },
       applicationsOf(d).length ? run : off('Add an application first.')),
-    entry('clear-events', 'Clear injected events', 'Timeline', clearEvents, run.state === 'on' ? editable : run),
+    entry('clear-events', 'Clear injected events', 'Timeline', clearEvents, working && mode.value === 'scenario' ? editable : off('Open Scenario to edit events.')),
   );
   if (trace.value) {
     const model = buildTimeline(trace.value, d, { width: 1000, app: appLanesShown.value });
@@ -145,8 +145,8 @@ export function commands(): Command[] {
       out.push(entry(`selection:${action.id}`, action.label, 'Selection', action.run, editable.state === 'off' ? editable : action.enabled));
     }
   }
-  if (drawing) {
-    for (const action of actionsFor(d, selection.value, snapT(tNow.value))) {
+  if (working && mode.value === 'scenario') {
+    for (const action of actionsFor(d, selection.value, snapT(tNow.value)).filter(a => !a.property)) {
       out.push(entry(`event:${action.id}`, action.label, 'Selected events', () => runAction(action), editable.state === 'off' ? editable : action.enabled));
     }
     for (const scenario of templates(d, snapT(tNow.value))) {

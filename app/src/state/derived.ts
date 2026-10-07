@@ -17,11 +17,12 @@ import { inFlight, inFlightFrom } from '@/ui/canvas/place';
 import { appModelsFor } from '@/ui/timeline/build';
 import type { Geometry } from '@/ui/canvas/layout';
 import {
-  declaredPrimary, edgelessGraph, honestLevel, resolveRedoGraph, simulate, sortFindings, splitBrainOf, stateAt, validate,
+  applyNetEvent, declaredPrimary, edgelessGraph, honestLevel, initialNetState, instanceKey, netSummary,
+  resolveRedoGraph, simulate, sortFindings, splitBrainOf, stateAt, validate,
 } from '@/engine';
 import type {
-  CitationId, Claim, EngineTrace, Finding, MemberId, Outcome, ProtectionLevel, RedoGraph, SplitBrain,
-  Snapshot, TopologyDoc,
+  CitationId, Claim, EngineTrace, Finding, MemberId, NetState, ObserverId, Outcome, ProtectionLevel, RedoGraph,
+  SplitBrain, Snapshot, TimedEvent, TopologyDoc,
 } from '@/engine';
 import { doc } from './doc';
 import { edition, healthyRun, mode, tNow } from './view';
@@ -132,18 +133,93 @@ export const runFindings = computed<Finding[]>(
  * Whether the drawing, the readout and the aria sentences are reading the run.
  *
  * One answer, asked by everyone. A run exists while `trace` is not null --
- * events are injected, or the healthy "Everything is working" run was asked
- * for -- and it is shown in every mode that draws it: Topology (`build`) and
- * the Detailed timeline (`break`), and Learn's workbench. Configure is about
- * the configuration, so it reads the steady state even when the Document
- * carries events (ui.md SS3). Topology without a run is Build as it always
- * was: monochrome cards, the steady-state readings.
+ * events are injected, or a healthy run is requested. Outcome and Learn show
+ * the simulated response. Topology and Scenario show the starting state;
+ * Config continues to describe the configured deployment.
  *
  * Reads signals, so a component that calls it re-renders when the run appears
  * or goes; pass a mode to ask about one the reader is not in.
  */
 export function runShown(m: Mode = mode.value): boolean {
-  return trace.value !== null && m !== 'configure';
+  return trace.value !== null && (m === 'break' || m === 'learn');
+}
+
+/** The failures and recoveries a scenario schedules; commands and lag are the response's business. */
+const FAULT_KINDS = new Set<TimedEvent['kind']>([
+  'host.down', 'host.up', 'site.down', 'site.up', 'link.cut', 'link.heal', 'partition',
+  'instance.down', 'instance.up', 'member.down', 'member.up', 'observer.stop', 'observer.start',
+]);
+
+/** The deployment at rest, before any event: what every scenario starts from. */
+const restingFrame = computed<Snapshot | null>(() => {
+  if (!primaryId.value) return null;
+  return stateAt(simulate(topology.value, [], doc.value.params), 0);
+});
+
+/**
+ * Step 2's drawing: the disaster, without the response.
+ *
+ * Scenario schedules failures on the drawing, so the drawing has to show them
+ * -- a crashed host hatched, a cut link slashed -- or the step is a form. But
+ * it must not show what the broker *does* about them: the failover, the new
+ * primary, the stall are step 3's answer, and drawing them here would make
+ * the two steps one. So this is the resting state with the faults scheduled
+ * by the playhead applied to the network alone: hosts, sites, links,
+ * instances, members and observers go down and come back exactly as the
+ * events say, roles and states never move. Null while nothing is scheduled,
+ * which is when the drawing shows the starting state as Topology does.
+ */
+export const scenarioFrame = computed<Snapshot | null>(() => {
+  const t = topology.value;
+  const rest = restingFrame.value;
+  const scheduled = t.events.filter((e) => FAULT_KINDS.has(e.kind));
+  if (!rest || scheduled.length === 0) return null;
+  const at = tNow.value;
+  let net: NetState = initialNetState(t);
+  const observers = { ...rest.observers };
+  for (const e of [...scheduled].sort((a, b) => a.at - b.at)) {
+    if (e.at > at) break;
+    switch (e.kind) {
+      case 'observer.stop': observers[e.observer as ObserverId] = 'stopped'; break;
+      case 'observer.start': if (observers[e.observer as ObserverId] === 'stopped') observers[e.observer as ObserverId] = 'backup'; break;
+      case 'host.down': case 'host.up': case 'site.down': case 'site.up': case 'link.cut': case 'link.heal':
+      case 'partition': case 'instance.down': case 'instance.up': case 'member.down': case 'member.up':
+        net = applyNetEvent(net, e); break;
+      default: break;
+    }
+  }
+  const hostDown = (h: string): boolean => {
+    if (net.downHosts.has(h as never)) return true;
+    const site = t.hosts.find((x) => (x.id as string) === h)?.site;
+    return site !== undefined && net.downSites.has(site);
+  };
+  const members = { ...rest.members };
+  const applyInstances = { ...rest.applyInstances };
+  for (const m of t.members) {
+    const gone = net.downMembers.has(m.id)
+      || (m.instances.length > 0 && m.instances.every((i) => hostDown(i.host as string) || net.downInstances.has(instanceKey(m.id, i.name))));
+    if (gone) { members[m.id] = 'down'; delete applyInstances[m.id]; continue; }
+    const apply = applyInstances[m.id];
+    const inst = apply === undefined ? undefined : m.instances.find((i) => i.name === apply);
+    if (inst && (hostDown(inst.host as string) || net.downInstances.has(instanceKey(m.id, inst.name)))) delete applyInstances[m.id];
+  }
+  const redo = resolveRedoGraph(t, { primary: rest.epoch.primary, net });
+  return {
+    t: at,
+    epoch: { ...rest.epoch, net: netSummary(net), redo, protectionLevel: redo.protectionLevel },
+    members,
+    observers,
+    applyInstances,
+  };
+});
+
+/**
+ * What the drawing reads in the mode it is in: the run where the run is
+ * shown, the scheduled faults in Scenario, nothing elsewhere.
+ */
+export function drawnFrame(m: Mode = mode.value): Snapshot | null {
+  if (runShown(m)) return frame.value;
+  return m === 'scenario' ? scenarioFrame.value : null;
 }
 
 export const outcome = computed(() => trace.value?.facts.outcome ?? null);

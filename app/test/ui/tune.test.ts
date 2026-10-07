@@ -523,7 +523,7 @@ describe('the setting chips', () => {
     mode.value = 'build';
     await tick();
     expect(r.querySelector('.ln-view')).toBeNull();
-    expect(r.querySelector('.dock-break .sc-row')).not.toBeNull();
+    expect(r.querySelector('.sc-row')).toBeNull();
     for (const m of ['configure', 'learn'] as const) {
       mode.value = m;
       await tick();
@@ -549,7 +549,7 @@ describe('the setting chips', () => {
     expect(isSectionOpen('Fast-start failover')).toBe(false);
     click(chips(r)!.querySelector('.sc-all'));
     await tick();
-    expect(mode.value).toBe('build');
+    expect(mode.value).toBe('break');
     expect(selection.value).toEqual([]);
     expect(isSectionOpen('Fast-start failover')).toBe(true);
   });

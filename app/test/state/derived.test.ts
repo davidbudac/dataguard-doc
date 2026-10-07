@@ -16,8 +16,8 @@
 
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
-  errors, events, frame, issues, outcome, primaryId, protectionLevel, readout, redoGraph,
-  runFindings, runShown, topology, trace,
+  drawnFrame, errors, events, frame, issues, outcome, primaryId, protectionLevel, readout, redoGraph,
+  runFindings, runShown, scenarioFrame, topology, trace,
 } from '@/state/derived';
 import { classicDoc, doc, makeDoc, withEvents, withParams } from '@/state/doc';
 import { edition, mode, tNow } from '@/state/view';
@@ -100,15 +100,36 @@ describe('with a failure injected, the engine runs', () => {
     mode.value = 'break';
   });
 
-  it('reads the run in Topology while events are in the Document, and in Learn; Configure keeps the steady state', () => {
-    mode.value = 'build';
-    expect(readout.value.map((c) => c.id)).toContain('outcome');
-    expect(runShown()).toBe(true);
-    mode.value = 'configure';
-    expect(runShown()).toBe(false);
-    expect(readout.value.map((c) => c.id)).toEqual(['protection', 'members', 'fsfo', 'findings']);
-    mode.value = 'learn';
-    expect(readout.value.map((c) => c.id)).toContain('outcome');
+  it('reserves the calculated run for Outcome and Learn, while setup steps read the starting state', () => {
+    for (const m of ['build', 'scenario', 'configure'] as const) {
+      mode.value = m;
+      expect(readout.value.map(c => c.id)).not.toContain('outcome');
+    }
+    for (const m of ['break', 'learn'] as const) {
+      mode.value = m;
+      expect(readout.value.map(c => c.id)).toContain('outcome');
+    }
+  });
+
+  it('gives Scenario the faults alone: the host is down, the roles never move', () => {
+    mode.value = 'scenario';
+    tNow.value = 60;
+    const run = frame.value;
+    expect(run?.epoch.primary).toBe(SBY);
+    const s = scenarioFrame.value;
+    expect(s).not.toBe(null);
+    expect(s?.epoch.net.downHosts).toEqual(['dc1-prm01']);
+    expect(s?.epoch.primary).toBe(PRM);
+    expect(s?.members[PRM]).toBe('down');
+    expect(['mounted-apply', 'open-ro']).toContain(s?.members[SBY]);
+    expect(drawnFrame('scenario')).toBe(s);
+    expect(drawnFrame('build')).toBe(null);
+    expect(drawnFrame('break')).toBe(run);
+    /* Before the event the drawing is the resting deployment; a command is not a fault. */
+    tNow.value = -1;
+    expect(scenarioFrame.value?.epoch.net.downHosts).toEqual([]);
+    doc.value = withEvents(classicDoc(), [{ at: 0, kind: 'cmd.switchover', to: SBY }]);
+    expect(scenarioFrame.value).toBe(null);
   });
 
   it('simulates, and orders the failover one threshold after the crash', () => {

@@ -14,7 +14,7 @@ import type { JSX } from 'preact';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import type { TopologyDoc } from '@/engine';
 import { findApplication, hostId, isDatabase, siteId } from '@/engine';
-import { drawnGeometry, drawnGraph, frame, redoGraph, runShown, topology } from '@/state/derived';
+import { drawnFrame, drawnGeometry, drawnGraph, redoGraph, topology } from '@/state/derived';
 import { doc, withLayout, withSiteOrder } from '@/state/doc';
 import { breakCoalescing, edit, undo, undoLabel } from '@/state/history';
 import { toggleGrid } from '@/state/persist';
@@ -40,7 +40,7 @@ import type { WhyState } from '../common/WhyPill';
 import { useRovingToolbar } from '../common/useRovingToolbar';
 import { ON } from '../inspector/why';
 import type { BarAction, BarSection } from './ActionBar';
-import { barFocus, barKind, barOpen, closeBar, openBar } from './bar';
+import { barFocus, barOpen, closeBar, openBar } from './bar';
 import { marginAround, unobscured } from './anchor';
 import type { Rect } from './measure';
 import { canvasPan, handTool } from './pan';
@@ -579,7 +579,7 @@ export function CanvasSlot({ interactive = true }: CanvasSlotProps) {
      rung left over from Build cannot strand a drawing with no control to undo
      it. It does not ask `canEdit` -- looking closer at a read-only drawing is
      still looking. */
-  const zooming = interactive && (m === 'build' || m === 'break');
+  const zooming = interactive && (m === 'build' || m === 'scenario' || m === 'break');
   const zoomFactor = zooming ? zoom.value : 1;
   const [wrapRef, scale, barMargin] = useCanvasScale(zoomFactor);
   const host = useHostWindow();
@@ -602,7 +602,7 @@ export function CanvasSlot({ interactive = true }: CanvasSlotProps) {
      paint, so a mount effect that closes the bar can land after the click that
      opened it and shut a bar the reader had just asked for. */
   const wasMode = useRef(m);
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (wasMode.current === m) return;
     wasMode.current = m;
     closeBar();
@@ -642,16 +642,16 @@ export function CanvasSlot({ interactive = true }: CanvasSlotProps) {
      the playhead are what the right button, `Shift+F10` and `E` open --
      and, in the Detailed timeline, what a click opens too. In Topology the
      bar says which of the two is up (`barKind`). */
-  const eventsBar = m === 'break' || (m === 'build' && barKind.value === 'events');
+  const eventsBar = m === 'scenario';
   /* What each would offer for the selection, open or not: the handle is drawn
      only over a selection that has something to offer, so it is never a
      button that opens nothing. */
   const offered: { actions: BarAction[]; quiet: string | null; sections?: BarSection[] } | null
     = !editable || keys.length === 0
       ? null
-      : m === 'break' || m === 'build'
+      : m === 'scenario' || m === 'build'
         ? (eventsBar
-          ? breakBar(topology.value, keys, at)
+          ? breakBar(topology.value, keys, at, { keepPlayhead: true, eventsOnly: true })
           : { actions: buildBar(topology.value, keys), quiet: null })
         : null;
   const offers = offered !== null && (offered.actions.length > 0 || offered.quiet !== null);
@@ -726,8 +726,9 @@ export function CanvasSlot({ interactive = true }: CanvasSlotProps) {
         graph={graph}
         geometry={geo}
         /* A run is a run of a configuration; with no primary there is none
-           to draw (the engine falls back to the first member). */
-        frame={!invalid && runShown() ? frame.value : null}
+           to draw (the engine falls back to the first member). Scenario draws
+           the scheduled faults and nothing of the response (derived.ts). */
+        frame={invalid ? null : drawnFrame()}
         overrides={doc.value.layout}
         selection={selection.value}
         hovered={hovered.value}
@@ -759,7 +760,8 @@ export function CanvasSlot({ interactive = true }: CanvasSlotProps) {
              every click is in the way of the drag and the line that usually
              follow one. The Detailed timeline still offers on the click:
              there the list of events *is* what the click is for. */
-          if (editable && !additive && m === 'break') openBar(key);
+          if (editable && !additive && m === 'scenario') openBar(key, false, 'events');
+          else if (!additive && m === 'break') openInspectorFor(key);
           /* A bar about something else closes now, not when an effect gets
              round to it: it must not outlive the selection it answered. */
           else if (barOpen.peek() !== null && barOpen.peek() !== key) closeBar();
@@ -805,9 +807,9 @@ export function CanvasSlot({ interactive = true }: CanvasSlotProps) {
           }
           : {})}
         onHover={(key: string | null) => { hovered.value = key; }}
-        {...(editable && (m === 'break' || m === 'build')
+        {...(editable && m === 'scenario'
           ? {
-            tools: (key: string) => hoverTools(topology.value, key, snapT(tNow.value)),
+            tools: (key: string) => hoverTools(topology.value, key, snapT(tNow.value), { keepPlayhead: true }),
             toolsWhen: `at t = ${at} s`,
           }
           : {})}
@@ -821,7 +823,7 @@ export function CanvasSlot({ interactive = true }: CanvasSlotProps) {
               select(key);
               /* Topology's right button lists the events; Build's own table is
                  the handle's. */
-              openBar(key, true, 'events');
+              openBar(key, true, m === 'scenario' ? 'events' : 'actions');
             },
             ...(m === 'build'
               ? {
@@ -847,7 +849,7 @@ export function CanvasSlot({ interactive = true }: CanvasSlotProps) {
            takes the focus into it -- the same bar `Shift+F10` and the right
            button open, and (in the Detailed timeline) the one a click already
            opened (`onSelect`, above). */
-        {...(editable && (mode.value === 'break' || mode.value === 'build')
+        {...(editable && mode.value === 'scenario'
           ? { onEvents: (key: string): void => { select(key); openBar(key, true, 'events'); } }
           : {})}
         {...(editable && mode.value === 'build'

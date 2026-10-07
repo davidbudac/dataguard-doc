@@ -2211,3 +2211,43 @@ current implementation's.
   application/configuration timeline switch and run summary. Text fields and
   IME composition keep their editing keys; other dialogs keep their focus
   contract. The help card lists the keys using the current mode names.
+
+
+## As built: three-step workflow (2026-10-04)
+
+This replaces the combined Topology run dock and Detailed timeline navigation
+described above. The document and engine are unchanged; the primary navigation
+now presents **1 Topology → 2 Scenario → 3 Outcome**, with a purpose sentence,
+step count and explicit next/back actions. Steps remain freely revisitable.
+Config and Learn are separate tools, outside the numbered workflow.
+
+- **Topology** draws the starting state and exposes topology editing and settings.
+  It has steady-state readings and validation, with no event or playback controls.
+- **Scenario** draws the starting topology plus an event-only schedule. Templates
+  replace the event list as before. The composer chooses time, target and action;
+  canvas menus also schedule events. The timeline draws only authored events,
+  never response bands, inferred clocks or outcomes. Markers support pointer drag
+  and keyboard movement within ordering bounds. One completed drag is one undo
+  entry; cancellation changes nothing. The Events panel supplies exact times,
+  removal, reordering and validation. Below 768 px it stays read-only.
+- **Outcome** shows response lanes, playback, findings, explanations and readings.
+  Selecting a member, observer, application, site or connection opens its settings
+  alongside the lanes (a drawer on smaller screens). A grouped connection pill
+  lets the reader choose the connection. Brace grips, property popovers and
+  setting chips remain available. Settings edits rerun the existing scenario from
+  its beginning; they do not inject an event at the playhead. A live comparison
+  reports changed outcome/timing values since the last edit, or explicitly says
+  they are unchanged. Event editing is reached through **Edit scenario**.
+
+Entering Scenario pauses playback and positions event entry at the last scheduled
+event. Entering Outcome shows the last meaningful instant, including a healthy
+run for an empty scenario. Steps preserve the document, events and undo history.
+Only Outcome and Learn paint simulation state; Topology, Scenario and Config
+paint the starting configuration. The removed mini timeline has no active stored
+preference. The full docked Outcome/Learn timeline retains its fold and sizing.
+
+Canonical URLs use `mode=scenario` and `mode=outcome`; `timeline`, `simulate` and
+`break` remain aliases for Outcome, and published legacy URLs keep their upgrade
+path. Shortcuts 1–3 select steps; 4 and 5 open Config and Learn. Timed-event
+commands are offered in Scenario, playback in Outcome, and topology edits in
+Topology. The Introduction and walkthrough follow the same sequence.

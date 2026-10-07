@@ -1,32 +1,17 @@
-/**
- * The header (ui.md SS3): brand, the four modes as steps, and — pushed to the
- * right, where nothing competes with the modes — the release, the theme,
- * undo/redo and the ? that brings the "How this page works" card back and,
- * pressed again, takes it away.
- *
- * The mode subtitle that used to sit under the buttons is gone: it said what
- * the guidance line one band below already said, and two lines of chrome for
- * one idea is what pushed the drawing down to 260 px. The sentence itself is
- * not gone — it is each mode button's `title` (`MODE_SUB`), and the mode word
- * now leads the guidance line in.
- *
- * Undo and redo use compact arrows with accessible names: the edit
- * they would reverse rides in the `title`, and a disabled one carries its
- * reason there too. The two chips that used to sit beside them, shouting
- * NOTHING TO UNDO YET at a reader who had not yet done anything, said the same
- * thing three times over and were the loudest text in the bar.
- */
+/** Main navigation: numbered workflow, reference tools and document controls.
+ * Step descriptions and next/back actions live in WorkflowBar. */
 
 import type { ComponentChildren } from 'preact';
 import { canUndo, canRedo, redo, redoLabel, undo, undoLabel } from '@/state/history';
 import {
-  applyPalette, applyTheme, commandOpen, edition, inspectorRailWanted, introOpen, introPage, mode, MODE_LABEL, MODE_SUB, MODES, nextTheme,
+  applyPalette, applyTheme, commandOpen, edition, inspectorRailWanted, introOpen, introPage, mode, MODE_LABEL, MODE_SUB, nextTheme,
   palette, railOnDemand, theme,
 } from '@/state/view';
-import type { Mode, PalettePref, ThemePref } from '@/state/view';
+import type { PalettePref, ThemePref } from '@/state/view';
 import { saveEdition, savePalette, saveTheme, toggleRail } from '@/state/persist';
 import { Segmented } from './common/Segmented';
-import { INTRO_HREF, leaveIntro, openIntro } from './intro/route';
+import { INTRO_HREF, openIntro } from './intro/route';
+import { goToStep, WORKFLOW } from './workflow';
 import { PanelIcon } from './RailFrame';
 
 const THEME_WORD: Record<ThemePref, string> = { auto: 'system', light: 'light', dark: 'dark' };
@@ -64,15 +49,18 @@ export function TopBar({ doc, actions }: TopBarProps = {}) {
       </div>
 
       <div class="topbar-modes">
-        <Segmented<Mode>
-          label="Mode"
-          value={m}
-          options={MODES.map((x) => ({ value: x, label: MODE_LABEL[x], title: MODE_SUB[x] }))}
-          /* A mode button is also the way out of the Introduction, and taking
-             it means the reader has seen the page: `dg-intro-v1` is written
-             here exactly as "Start building" writes it (intro/route.ts). */
-          onChange={(x) => { mode.value = x; leaveIntro(); }}
-        />
+        <nav class="workflow-steps" aria-label="Workflow steps">
+          {WORKFLOW.map((x, i) => <button type="button" key={x}
+            class={`workflow-step${m === x ? ' is-active' : ''}`}
+            aria-current={m === x ? 'step' : undefined} aria-label={`Step ${i + 1}: ${MODE_LABEL[x]}`} title={MODE_SUB[x]}
+            onClick={() => goToStep(x)}>
+            <span class="step-number">{i + 1}</span><span>{MODE_LABEL[x]}</span>
+          </button>)}
+        </nav>
+        <nav class="workflow-extras" aria-label="Reference and output">
+          {(['configure', 'learn'] as const).map(x => <button type="button" class={`btn is-quiet${m === x ? ' is-active' : ''}`}
+            aria-pressed={m === x} title={MODE_SUB[x]} onClick={() => goToStep(x)}>{MODE_LABEL[x]}</button>)}
+        </nav>
       </div>
 
       <div class="topbar-group">

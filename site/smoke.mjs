@@ -305,7 +305,8 @@ for (const { preset, cards, lanes } of CASES) {
 console.log('\nmodes');
 for (const [query, mark, what] of [
   ['mode=topology', 'class="app m-build', 'Topology'],
-  ['mode=timeline', 'class="app m-break', 'Detailed timeline'],
+  ['mode=scenario', 'class="app m-scenario', 'Scenario'],
+  ['mode=outcome', 'class="app m-break', 'Outcome'],
   ['mode=config&panel=dgmgrl', 'class="app m-configure', 'Config'],
   ['mode=learn&lesson=failover-clocks', 'class="app m-learn', 'Learn'],
 ]) {

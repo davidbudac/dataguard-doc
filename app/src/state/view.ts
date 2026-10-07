@@ -11,18 +11,18 @@
 import { signal } from '@preact/signals';
 import type { Edition } from '@/engine';
 
-export type Mode = 'build' | 'break' | 'configure' | 'learn';
+export type Mode = 'build' | 'scenario' | 'break' | 'configure' | 'learn';
 
 /** The Configure row's tabs, in the order ui.md SS3 lists them. */
 export type PanelTab = 'dgmgrl' | 'dests' | 'tns' | 'show' | 'app' | 'commit' | 'reopen';
 
-export const MODES: readonly Mode[] = ['build', 'break', 'configure', 'learn'];
+export const MODES: readonly Mode[] = ['build', 'scenario', 'break', 'configure', 'learn'];
 export const PANEL_TABS: readonly PanelTab[] = [
   'dgmgrl', 'dests', 'tns', 'show', 'app', 'commit', 'reopen',
 ];
 
 /**
- * Which timeline the Detailed timeline draws: `config` is the configuration's lanes (the
+ * Which timeline the Outcome draws: `config` is the configuration's lanes (the
  * timeline as it always was), `app` is the application's detail view -- the
  * connect string's retry ladder, the sessions and the outage, the drawing the
  * Config panel's Application view also makes. `app` exists only while the
@@ -44,12 +44,12 @@ export const BREAK_TIMELINE_SUB: Record<BreakTimeline, string> = {
 
 /**
  * The words on the mode buttons. The ids stay what they were -- `build` is
- * Topology and `break` is the Detailed timeline, as `configure` kept its id
+ * Topology and `break` is the Outcome, as `configure` kept its id
  * when it became Config -- so a class, a test or an old link that says
  * `m-break` or `?mode=build` still means the same mode.
  */
 export const MODE_LABEL: Record<Mode, string> = {
-  build: 'Topology', break: 'Detailed timeline', configure: 'Config', learn: 'Learn',
+  build: 'Topology', scenario: 'Scenario', break: 'Outcome', configure: 'Config', learn: 'Learn',
 };
 
 /**
@@ -67,12 +67,9 @@ export const MODE_LABEL: Record<Mode, string> = {
  * belongs to `modeGuide`, which knows.
  */
 export const MODE_SUB: Record<Mode, string> = {
-  build: 'Topology — draw the configuration, then break it: sites, members, redo routes, observers; '
-    + 'click to edit, drag to move, + to add; a scenario or the icons on a card add a failure, '
-    + 'and the timeline under the drawing follows it',
-  break: 'Detailed timeline — the run in full: follow a failure through detection, threshold, '
-    + 'role change and open, tune its settings, add an event from a lane, '
-    + 'drag a numbered marker to change its time',
+  build: 'Step 1 — draw the topology and set its initial configuration',
+  scenario: 'Step 2 — schedule failures, recoveries and planned actions on an event timeline',
+  break: 'Step 3 — inspect the response and tune settings to see the outcome change',
   configure:
     'Config — generated from the drawing: DGMGRL, init parameters and connect strings; '
     + 'hover a line to see which member it configures.',
@@ -138,7 +135,7 @@ export const edition = signal<Edition>('19c');
 export const inspectorOpen = signal<boolean>(false);
 /** Searchable page commands; transient view state. */
 export const commandOpen = signal<boolean>(false);
-/** Which timeline the Detailed timeline draws (`BreakTimeline`). Configuration to start with; written by `setBreakTimeline`. */
+/** Which timeline the Outcome draws (`BreakTimeline`). Configuration to start with; written by `setBreakTimeline`. */
 export const breakTimeline = signal<BreakTimeline>('config');
 /**
  * Which application the Application timeline draws when the canvas selection
@@ -147,7 +144,7 @@ export const breakTimeline = signal<BreakTimeline>('config');
  */
 export const breakApp = signal<string | null>(null);
 /**
- * Whether the Detailed timeline's run summary -- the band of cards under the
+ * Whether the Outcome's run summary -- the band of cards under the
  * bar -- is unfolded. Folded to start with: the bar's terse line is the
  * summary a reader already has, and the band is the same readings at reading
  * size. Only meaningful with a run on screen. Remembered under `dg-summary`
@@ -157,13 +154,10 @@ export const summaryOpen = signal<boolean>(false);
 /**
  * Whether the rail beside the canvas is folded to its slim strip.
  *
- * Only Break's Events rail has a strip now (`wide`, Detailed timeline): the
- * lanes want the width (`break/rail-fold.ts`) and the events are what the
- * reader may want back. Topology's and Config's inspector keeps a folded strip
- * while its contents are not requested (`inspectorRailWanted`) -- and Learn's
- * right half is the workbench itself. Below 1280 the rail is a drawer, which is
- * already shut until asked for. Folded, the rail's contents are not rendered:
- * the strip that stays is the way back, and says what is behind it. Remembered
+ * Scenario's Events rail can fold to a named strip. The inspectors in
+ * Topology, Outcome and Config open on demand; Learn keeps its workbench.
+ * Below 1280 the rail is a drawer. A folded rail unmounts its contents and
+ * keeps the named strip as the way back. Remembered
  * under `dg-rail` (persist.ts) and read once at boot, like `hintsOn`.
  */
 export const railCollapsed = signal<boolean>(false);
@@ -199,25 +193,7 @@ export const notesOpen = signal<boolean>(false);
  * there are rows.
  */
 export const issuesOpen = signal<boolean>(true);
-/**
- * Whether Topology's small timeline (ui/timeline/MiniTimeline.tsx) is open or
- * folded to its heading. Open by default; remembered under
- * `dg-topology-timeline-v1` (persist.ts) once the reader folds it. Folded, the
- * dock keeps a slim "Timeline" row to open it again from.
- */
-export const miniTimelineOpen = signal<boolean>(true);
-/**
- * Whether the whole timeline panel is unfolded past the handle on its top edge:
- * Topology's floating dock (the Break row, the readings and the small timeline)
- * and the docked `TimelineSlot` (the Detailed timeline below the floating
- * breakpoint, Learn's workbench). Open by default; remembered under
- * `dg-timeline` (persist.ts) once the reader folds it, because a reader who
- * folded it to give the drawing its height has said so for the session after
- * this one too. Folded, the handle is all that is left of the panel and
- * nothing else of it is rendered; the drawing takes the room. On paper it is
- * open (`printing`), and in the popped-out window there is no fold at all.
- * `miniTimelineOpen` above is the smaller fold inside it.
- */
+/** Whether the docked Outcome/Learn timeline is expanded; persisted as dg-timeline. */
 export const timelineOpen = signal<boolean>(true);
 /** Requested panel height; null follows the default. */
 export const timelineH = signal<number | null>(null);
@@ -314,7 +290,7 @@ export const findingsOpen = signal<boolean>(false);
  * and so does anything narrower than `medium`.
  */
 export function floating(m: Mode, v: Viewport): boolean {
-  return (m === 'build' || m === 'break') && (v === 'wide' || v === 'medium');
+  return (m === 'build' || m === 'scenario' || m === 'break') && (v === 'wide' || v === 'medium');
 }
 
 /* ---------------- selection helpers ---------------- */
@@ -339,7 +315,7 @@ export const clearSelection = (): void => { selection.value = []; };
  * itself and stay, and below `wide` the rail is a drawer with its own switch.
  */
 export const railOnDemand = (m: Mode, v: Viewport = viewport.value): boolean =>
-  v === 'wide' && (m === 'build' || m === 'configure');
+  v === 'wide' && (m === 'build' || m === 'break' || m === 'configure');
 
 /**
  * Held for a moment after a click on the drawing selects something while
@@ -497,10 +473,11 @@ export function modeGuide(m: Mode, v: Viewport = viewport.value): string {
       return 'Click to edit · drag to move · + to add; '
         + 'Drag a + button onto a data centre to add, or a card’s ⊕ onto another to connect. '
         + `Double-click to rename; ⋯ (or A on a focused card) opens actions, and the full properties are in ${railOpens(v)}. `
-        + 'To break it, use a scenario or the icons on a card; right-click a card, or press E, for every event it offers.';
+        + 'Continue to Scenario to schedule failures and recoveries.';
+    case 'scenario':
+      return 'Choose a starting scenario, then select a card to schedule an event; drag its marker or enter its time. The drawing shows what has failed by the time in At; the response waits for step 3.';
     case 'break':
-      return 'Follow the run in full: add an event from a lane, drag a numbered marker to change its time; '
-        + 'Earlier / Later in Events swaps adjacent times.';
+      return 'Follow the calculated response; select an item to edit its settings beside the result. Changes rerun the scenario from the beginning.';
     case 'configure':
       return 'Generated from the drawing — DGMGRL, init parameters, connect strings. '
         + `Settings are in ${railOpens(v)}.`;

@@ -18,7 +18,7 @@ import { classicDoc, doc, withEvents } from '@/state/doc';
 import { readoutFor, trace } from '@/state/derived';
 import { edit, resetHistory, undo } from '@/state/history';
 import { clearSelection, healthyRun, hintsOn, mode, tNow, viewport } from '@/state/view';
-import { BreakRail, scenarioNotesOpen } from '@/ui/break/BreakRail';
+import { BreakRail } from '@/ui/break/BreakRail';
 import { breakBar } from '@/ui/break/menu';
 import {
   actionsFor, anythingDownUnder, applyTemplate, clearEvents, describeEvent, healthyScenario, hoverTools, isDownAt, NO_RESTART_AFTER_ABORT,
@@ -26,7 +26,7 @@ import {
 } from '@/ui/break/events';
 import { buildExplanation } from '@/ui/break/explain';
 import { WHY } from '@/ui/inspector/why';
-import { DEFAULT_OPEN, openSections, SCENARIOS_ID } from '@/ui/inspector/sections';
+import { DEFAULT_OPEN, openSections } from '@/ui/inspector/sections';
 import { printing } from '@/ui/print';
 
 const mount = (component: () => unknown): HTMLElement => {
@@ -76,14 +76,12 @@ beforeEach(() => {
   viewport.value = 'wide';
   mode.value = 'break';
   tNow.value = 0;
-  scenarioNotesOpen.value = false;
   openSections.value = new Set<string>([DEFAULT_OPEN]);
   hintsOn.value = false;
   clearSelection();
 });
 
 /** Unfold the scenarios, which start folded. */
-const openScenarios = (): void => { openSections.value = new Set<string>([DEFAULT_OPEN, SCENARIOS_ID]); };
 
 describe('the six templates', () => {
   const t = classicTopology({});
@@ -251,7 +249,7 @@ describe('the event list', () => {
     await tick();
     expect(root.textContent).toContain('No events yet');
     /* The scenarios sit under the list now, so the empty state points down. */
-    expect(root.textContent).toContain('Pick a scenario below');
+    expect(root.textContent).toContain('Choose a starting scenario');
     expect(root.textContent).not.toContain('Pick a scenario above');
   });
 
@@ -302,120 +300,19 @@ describe('the order of the rail', () => {
   const eyebrows = (root: HTMLElement): string[] =>
     [...root.querySelectorAll('.eyebrow')].map((e) => e.textContent ?? '');
 
-  it('puts the reader own work first: events, then scenarios, then validation', async () => {
+  it('puts scheduled events before validation', async () => {
     const root = mount(BreakRail);
     await tick();
-    expect(eyebrows(root)).toEqual(['Events', 'One-click scenarios', 'Validation']);
+    expect(eyebrows(root)).toEqual(['Events', 'Validation']);
   });
 
-  it('counts the injected events in the eyebrow, above the scenarios', async () => {
-    openScenarios();
+  it('counts the scheduled events without repeating the template shelf', async () => {
     applyTemplate(byId(doc.value.topology, 'isolated')!);
     const root = mount(BreakRail);
     await tick();
-    expect(eyebrows(root)).toEqual(['Events (2)', 'Why this result?', 'One-click scenarios', 'Validation']);
-    /* Every event row is drawn before the first scenario row. */
-    const nodes = [...root.querySelectorAll('.evt, .tmpl')];
-    const firstTmpl = nodes.findIndex((n) => n.classList.contains('tmpl'));
-    expect(nodes.slice(0, firstTmpl).every((n) => n.classList.contains('evt'))).toBe(true);
-    expect(firstTmpl).toBe(2);
-  });
-});
-
-describe('the scenario fold', () => {
-  it('starts folded: the six names are absent until the toggle is pressed', async () => {
-    const root = mount(BreakRail);
-    await tick();
-    expect(root.querySelectorAll('.tmpl')).toHaveLength(0);
-    const tog = [...root.querySelectorAll<HTMLButtonElement>('button.grp-tog')]
-      .find((b) => b.textContent?.includes('One-click scenarios'))!;
-    expect(tog.getAttribute('aria-expanded')).toBe('false');
-    tog.click();
-    await tick();
-    expect(root.querySelectorAll('.tmpl')).toHaveLength(shelf(doc.value.topology, 0).length);
-  });
-});
-
-describe('the scenario descriptions', () => {
-  beforeEach(openScenarios);
-
-  it('is a shelf of names, with every sentence one press away', async () => {
-    const root = mount(BreakRail);
-    await tick();
-    const rows = [...root.querySelectorAll('.tmpl')];
-    expect(rows).toHaveLength(shelf(doc.value.topology, 0).length);
-    for (const [i, row] of rows.entries()) {
-      const caption = shelf(doc.value.topology, 0)[i]!.caption;
-      /* Closed, the description is genuinely absent rather than clipped by a
-         CSS rule -- and the sentence still rides on the button it belongs to,
-         so a reader who hovers one row does not have to open all six. */
-      expect(row.querySelector('.tmpl-cap')).toBeNull();
-      expect(row.querySelector('button')?.getAttribute('title')).toBe(caption);
-    }
-
-    root.querySelector<HTMLButtonElement>('button.tmpl-tog')!.click();
-    await tick();
-    for (const [i, row] of [...root.querySelectorAll('.tmpl')].entries()) {
-      const caption = shelf(doc.value.topology, 0)[i]!.caption;
-      const txt = row.querySelector('.tmpl-cap');
-      expect(txt?.textContent).toBe(caption);
-      expect(txt?.getAttribute('title')).toBe(caption);
-    }
-  });
-
-  it('renders every description on paper, where there is no toggle to press', async () => {
-    printing.value = true;
-    try {
-      const root = mount(BreakRail);
-      await tick();
-      const caps = [...root.querySelectorAll('.tmpl-cap')].map((el) => el.textContent);
-      expect(caps).toEqual(shelf(doc.value.topology, 0).map((t) => t.caption));
-    } finally {
-      printing.value = false;
-    }
-  });
-
-  it('opens all six from one real toggle that says whether it is open', async () => {
-    const root = mount(BreakRail);
-    await tick();
-    const tog = root.querySelector<HTMLButtonElement>('button.tmpl-tog');
-    expect(tog).not.toBeNull();
-    expect(tog!.tagName).toBe('BUTTON');
-    expect(tog!.textContent).toContain('Show descriptions');
-    expect(tog!.getAttribute('aria-expanded')).toBe('false');
-    expect(root.querySelector('.tmpls.is-open')).toBeNull();
-
-    tog!.click();
-    await tick();
-    expect(root.querySelector<HTMLButtonElement>('button.tmpl-tog')!
-      .getAttribute('aria-expanded')).toBe('true');
-    expect(root.querySelector('.tmpls.is-open')).not.toBeNull();
-
-    root.querySelector<HTMLButtonElement>('button.tmpl-tog')!.click();
-    await tick();
-    expect(root.querySelector('.tmpls.is-open')).toBeNull();
-  });
-
-  it('says the replace rule once, quietly, under the eyebrow -- with hints on', async () => {
-    /* Explanation, so it is not on screen by default: the reader asks for it
-       with `Hints`, and then it is exactly where it always was. */
-    expect(mount(BreakRail).querySelectorAll('.tmpl-lede')).toHaveLength(0);
-    hintsOn.value = true;
-    const root = mount(BreakRail);
-    await tick();
-    const lede = root.querySelectorAll('.tmpl-lede');
-    expect(lede).toHaveLength(1);
-    expect(lede[0]!.textContent).toContain('replaces the current events');
-    expect(root.querySelector('.tmpls')!.previousElementSibling).toBe(lede[0]!);
-  });
-
-  it('still greys a scenario it cannot run, with the reason beside it', async () => {
-    viewport.value = 'narrow';
-    const root = mount(BreakRail);
-    await tick();
-    const row = root.querySelector('.tmpl')!;
-    expect(row.querySelector('button')!.disabled).toBe(true);
-    expect(row.querySelector('.why')?.textContent).toBe(WHY.readOnlyHere);
+    expect(eyebrows(root)).toEqual(['Events (2)', 'Validation']);
+    expect(root.querySelectorAll('.evt')).toHaveLength(2);
+    expect(root.querySelector('.tmpl')).toBeNull();
   });
 });
 

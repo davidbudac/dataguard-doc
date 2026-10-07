@@ -179,7 +179,7 @@ describe('commands and hotkeys', () => {
   it('covers mode navigation, panels, presets, additions and guarded removal', () => {
     expect(filterCommands(commands(), 'configuration json').some(c => c.id === 'export')).toBe(true);
     expect(new Set(commands().map(c => c.id)).size).toBe(commands().length);
-    globalKey('3'); expect(mode.value).toBe('configure');
+    globalKey('4'); expect(mode.value).toBe('configure');
     runCommand('panel:commit'); expect(mode.value).toBe('configure');
     globalKey('1'); globalKey('B', { shiftKey: true });
     expect(topology.value.members).toHaveLength(3);
@@ -195,35 +195,8 @@ describe('commands and hotkeys', () => {
   it('keeps read-only document actions disabled while allowing navigation and the palette', () => {
     viewport.value = 'narrow'; globalKey('B', { shiftKey: true });
     expect(topology.value.members).toHaveLength(2);
-    globalKey('2'); expect(mode.value).toBe('break');
+    globalKey('2'); expect(mode.value).toBe('scenario');
     globalKey('k', { ctrlKey: true }); expect(commandOpen.value).toBe(true);
   });
-  it('folds the current Topology timeline without altering its run', async () => {
-    applyTemplate(templates(topology.value).find(t => t.id === 'crash')!);
-    await mount(); const before=JSON.stringify(doc.value); globalKey('l'); await tick();
-    expect(root.querySelector('.mtl')).toBeNull(); expect(JSON.stringify(doc.value)).toBe(before);
-    globalKey('l'); await tick(); expect(root.querySelector('.mtl')).not.toBeNull();
-  });
-});
 
-describe('scaling the current small timeline', () => {
-  it('fills a resized plot with one uniform SVG scale while leaving document and playhead intact', async () => {
-    let plotHeight=160;
-    const callbacks: (()=>void)[]=[];
-    class Observer { constructor(private callback:()=>void) {} observe(el:Element) { if(el.classList.contains('mtl-plot'))callbacks.push(this.callback); } disconnect() {} }
-    vi.stubGlobal('ResizeObserver',Observer);
-    vi.spyOn(HTMLElement.prototype,'getBoundingClientRect').mockImplementation(function(this:HTMLElement) {
-      const height=this.classList.contains('mtl-plot')?plotHeight:0;
-      return {width:1000,height,x:0,y:0,top:0,left:0,right:1000,bottom:height,toJSON:()=>({})} as DOMRect;
-    });
-    applyTemplate(templates(topology.value).find(t=>t.id==='crash')!); await mount();
-    const svg=root.querySelector('.mtl-svg')!; const before=JSON.stringify(doc.value);
-    expect(Number(svg.getAttribute('height'))).toBe(160);
-    const naturalHeight=Number(svg.getAttribute('viewBox')!.split(' ')[3]);
-    plotHeight=320; callbacks.forEach(cb=>cb()); await tick();
-    expect(Number(svg.getAttribute('height'))).toBe(320);
-    expect(Number(svg.getAttribute('viewBox')!.split(' ')[3])).toBe(naturalHeight);
-    expect(root.querySelector('.tl-tune-grip')).not.toBeNull();
-    expect(JSON.stringify(doc.value)).toBe(before);
-  });
 });

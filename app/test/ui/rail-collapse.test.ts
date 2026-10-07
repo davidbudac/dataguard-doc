@@ -68,7 +68,7 @@ afterEach(() => {
 
 describe('the side rail folds', () => {
   it('has a labelled toggle that controls the rail and says it is open', async () => {
-    mode.value = 'break';
+    mode.value = 'scenario';
     const root = mount();
     /* The lanes fold the rail by themselves on the way in; the reader opens it. */
     await tick();
@@ -85,7 +85,7 @@ describe('the side rail folds', () => {
   });
 
   it('folded, renders the strip and none of the rail\'s contents', async () => {
-    mode.value = 'break';
+    mode.value = 'scenario';
     const root = mount();
     await tick();
     setRailCollapsed(false);
@@ -108,7 +108,7 @@ describe('the side rail folds', () => {
   });
 
   it('names what is behind the strip', async () => {
-    mode.value = 'break';
+    mode.value = 'scenario';
     setRailCollapsed(true);
     const root = mount();
     await tick();
@@ -131,8 +131,9 @@ describe('the side rail folds', () => {
   });
 
   it('draws no event menu in the Detailed timeline, in the rail column or on the stage, folded or open', async () => {
-    mode.value = 'break';
+    mode.value = 'scenario';
     selection.value = ['sby01'];
+    setRailCollapsed(true);
     const root = mount();
     await tick();
     expect(root.querySelector('.app-rail')?.className).toContain('is-shut');
@@ -145,24 +146,24 @@ describe('the side rail folds', () => {
   });
 
   it('draws no event menu over Lanes at 1440 either, with a selection and the rail open', async () => {
-    mode.value = 'break';
+    mode.value = 'scenario';
     selection.value = ['sby01'];
     const root = mount();
     await tick();
     setRailCollapsed(false);
     await tick();
-    expect(root.querySelector('.ln-cardwrap')).not.toBeNull();
+    expect(root.querySelector('.topo-svg')).not.toBeNull();
     expect(root.querySelector('.app-rail .rail-body')).not.toBeNull();
     expect(root.querySelector('.evmenu')).toBeNull();
     expect(root.textContent).not.toContain('Inject at');
   });
 
   it('floats nothing over Lanes at a width with no rail column, and its drawer holds the event list alone', async () => {
-    mode.value = 'break';
+    mode.value = 'scenario';
     viewport.value = 'medium';
     const root = mount();
     await tick();
-    expect(root.querySelector('.ln-cardwrap')).not.toBeNull();
+    expect(root.querySelector('.topo-svg')).not.toBeNull();
     expect(root.querySelector('.evmenu')).toBeNull();
     selection.value = ['sby01'];
     await tick();
@@ -178,7 +179,7 @@ describe('the side rail folds', () => {
   });
 
   it('carries the event list in its drawer at 1024, and closes by button, Esc and outside press', async () => {
-    mode.value = 'break';
+    mode.value = 'scenario';
     viewport.value = 'medium';
     const crash = templates(topology.value, 0).find((x) => x.id === 'crash');
     applyTemplate(crash!);
@@ -193,7 +194,7 @@ describe('the side rail folds', () => {
     };
     /* Closed, the Lanes bar is the reader's whole top edge: no sheet, no scrim. */
     expect(document.querySelector('.sheet')).toBeNull();
-    expect(root.querySelector('.ln-bar')).not.toBeNull();
+    expect(root.querySelector('.scenario-editor')).not.toBeNull();
     expect(events().getAttribute('aria-expanded')).not.toBe('true');
 
     events().click();
@@ -226,7 +227,7 @@ describe('the side rail folds', () => {
     (document.querySelector('.scrim') as HTMLElement).click();
     await settle();
     expect(document.querySelector('.sheet')).toBeNull();
-    expect(root.querySelector('.ln-bar')).not.toBeNull();
+    expect(root.querySelector('.scenario-editor')).not.toBeNull();
   });
 
   it('does not fold Learn\'s workbench', async () => {
@@ -240,7 +241,7 @@ describe('the side rail folds', () => {
   });
 
   it('unfolds for a gesture that asks for the inspector', () => {
-    mode.value = 'break';
+    mode.value = 'scenario';
     setRailCollapsed(true);
     revealRail();
     expect(railCollapsed.value).toBe(false);
@@ -251,7 +252,7 @@ describe('the side rail folds', () => {
   });
 
   it('toggles on ], and opens the drawer on ] where the rail is one', () => {
-    mode.value = 'break';
+    mode.value = 'scenario';
     press(']');
     expect(railCollapsed.value).toBe(true);
     press(']');
@@ -265,7 +266,7 @@ describe('the side rail folds', () => {
   });
 
   it('carries no inline style in either state', async () => {
-    mode.value = 'break';
+    mode.value = 'scenario';
     const root = mount();
     for (const el of root.querySelectorAll('*')) expect(el.getAttribute('style')).toBeNull();
     setRailCollapsed(true);

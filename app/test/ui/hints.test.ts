@@ -240,7 +240,7 @@ describe('what is not a hint', () => {
     const rail = mount(BreakRail);
     await tick();
     expect(rail.textContent).toContain('No events yet');
-    expect(rail.textContent).toContain('Pick a scenario below');
+    expect(rail.textContent).toContain('Choose a starting scenario');
   });
 });
 

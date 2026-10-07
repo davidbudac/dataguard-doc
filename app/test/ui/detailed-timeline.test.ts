@@ -130,28 +130,9 @@ describe('the words', () => {
     }
   });
 
-  it('name the Detailed timeline on its sections, and say where an event is added from', async () => {
-    const r = mount();
-    await tick();
-    expect(r.querySelector('.ln-view')?.getAttribute('aria-label')).toBe('Detailed timeline: members and their timelines');
-    /* Its rail: the events, and where a first one comes from. */
-    setRailCollapsed(false);
-    await tick();
-    expect(r.querySelector('.app-rail .empty p')?.textContent).toBe('Pick a scenario below, or add an event from a card.');
-    expect(r.querySelector('.ln-bar .sc-all')?.getAttribute('title')).toBe("Every setting, in Topology's inspector");
-    /* Its Application timeline. */
-    const b = [...r.querySelectorAll<HTMLButtonElement>('.seg[aria-label="Timeline"] button')].find((x) => x.textContent === 'Application');
-    b?.click();
-    await tick();
-    expect(r.querySelector('.ln-view')?.getAttribute('aria-label')).toBe('Detailed timeline: application');
-  });
 
-  it('docked, the rail and the timeline slot say what the drawing beside them offers', async () => {
-    viewport.value = 'compact';
-    const r = mount();
-    await tick();
-    expect(r.querySelector('.tl-slot .empty p')?.textContent).toBe('No events yet. Pick a scenario, or add an event from a card on the drawing.');
-  });
+
+
 });
 
 describe('where it floats', () => {
@@ -254,21 +235,7 @@ describe('where it floats', () => {
     expect(Number(bg?.getAttribute('height'))).toBe(TL_FULL.laneH);
   });
 
-  it('draws the timeline the bar is driving: dropping an event keeps the axis, and the bar can fit it', async () => {
-    crash();
-    const r = mount();
-    await tick();
-    expect(r.querySelector('.sb-fit')).toBeNull();
-    const ev = r.querySelector<SVGGElement>('.tl-event-drag');
-    expect(ev).not.toBeNull();
-    ev!.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true, cancelable: true }));
-    await tick();
-    const fit = r.querySelector<HTMLButtonElement>('.sb-bar .sb-fit');
-    expect(fit).not.toBeNull();
-    fit!.click();
-    await tick();
-    expect(r.querySelector('.sb-fit')).toBeNull();
-  });
+
 
   it('has no run to draw in the steady state: the bar without a transport, and the cards to start from', async () => {
     const r = mount();
@@ -276,16 +243,10 @@ describe('where it floats', () => {
     expect(r.querySelector('.sb-bar')).not.toBeNull();
     expect(r.querySelector('.sb-bar .tl-transport')).toBeNull();
     expect(r.querySelector('.ln-empty')).not.toBeNull();
-    expect(r.querySelector('.ln-tool')).not.toBeNull();
+    expect(r.querySelector('.ln-tool')).toBeNull();
   });
 
-  it('has no pop-out or full-screen button: the full timeline is popped out of Topology', async () => {
-    crash();
-    const r = mount();
-    await tick();
-    expect(r.querySelector('.ln-view .po-btn')).toBeNull();
-    expect(r.querySelector('.ln-view .tl-full-btn')).toBeNull();
-  });
+
 });
 
 describe('where it floats, narrow', () => {
@@ -358,68 +319,7 @@ describe('showing the findings', () => {
   });
 });
 
-describe('the rail, on the way into the lanes', () => {
-  it('folds in memory, leaves dg-rail alone, and comes back with the mode', async () => {
-    mode.value = 'build';
-    const r = mount();
-    await tick();
-    expect(railCollapsed.value).toBe(false);
-    mode.value = 'break';
-    await tick();
-    expect(railCollapsed.value).toBe(true);
-    expect(app(r).classList.contains('rail-shut')).toBe(true);
-    expect(memory.has(RAIL_KEY)).toBe(false);
-    mode.value = 'build';
-    await tick();
-    expect(railCollapsed.value).toBe(false);
-    expect(memory.has(RAIL_KEY)).toBe(false);
-  });
 
-  it('lets the width snap for a fold nobody asked for, and glide for the reader\'s own', async () => {
-    mode.value = 'build';
-    railSnap.value = false; // a fold in an earlier test may still be letting go
-    const r = mount();
-    await tick();
-    expect(app(r).classList.contains('rail-snap')).toBe(false);
-    mode.value = 'break';
-    await tick();
-    expect(railCollapsed.value).toBe(true);
-    expect(app(r).classList.contains('rail-snap')).toBe(true);
-    /* It lets go again shortly after, so the reader's own fold animates. */
-    await new Promise((res) => setTimeout(res, 400));
-    expect(app(r).classList.contains('rail-snap')).toBe(false);
-    setRailCollapsed(false);
-    await tick();
-    expect(app(r).classList.contains('rail-snap')).toBe(false);
-  });
-
-  it('is the reader\'s once they open it: it stays open, and is stored as usual', async () => {
-    mode.value = 'build';
-    mount();
-    await tick();
-    mode.value = 'break';
-    await tick();
-    setRailCollapsed(false);
-    await tick();
-    expect(memory.get(RAIL_KEY)).toBe('0');
-    mode.value = 'build';
-    await tick();
-    expect(railCollapsed.value).toBe(false);
-  });
-
-  it('keeps a fold the reader chose beforehand', async () => {
-    setRailCollapsed(true);
-    mode.value = 'build';
-    mount();
-    await tick();
-    mode.value = 'break';
-    await tick();
-    mode.value = 'build';
-    await tick();
-    expect(railCollapsed.value).toBe(true);
-    expect(memory.get(RAIL_KEY)).toBe('1');
-  });
-});
 
 describe('the density of the lanes', () => {
   it('belongs to the model that asked for it: no shared layout to leak', () => {

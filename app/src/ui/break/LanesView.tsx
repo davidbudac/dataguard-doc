@@ -9,27 +9,18 @@
  * own, the card frames and the link states are the canvas's own. This file
  * lays them out on one set of rows.
  *
- * It is also where a reader *starts* a run. Each card carries its event buttons
- * (`lanes-events.tsx`), aimed at the playhead and changing with it, so the
- * empty view is not an instruction to go and find a menu: it is the cards, and
- * the buttons on them.
- *
- * There is no settings column or row: the timeline is the control. The three
- * settings that are a choice are chips on the bar (`SettingChips`), and a brace
- * that is one setting has its label made a button that opens a popover with the
- * number, the inspector's sentence and, for the threshold, the lag limit beside
- * it (`BracePopover`); the grips on the braces and the lanes drag the same
- * settings (`TuneDrag`).
+ * Clicking a member, site or link opens its settings beside the result. Event
+ * scheduling belongs to Scenario. Setting chips, brace popovers and grips
+ * rerun the same scenario without leaving Outcome.
  *
  * The model's lane `y` values are not used: the rows are re-stacked here (data
  * centre headers between them), and the markers and braces that hang off a lane
  * or under the axis are moved by however far theirs moved.
  */
 
-import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
+import { useMemo, useRef, useState } from 'preact/hooks';
 import { Fragment } from 'preact';
 import type { JSX } from 'preact';
-import type { CanvasTool } from '../canvas/HoverTools';
 import { frame, geometry, redoGraph, topology, trace } from '@/state/derived';
 import {
   appLanesShown, canEdit, clearSelection, mode, playing, select, selection, speed, tNow, viewport,
@@ -45,7 +36,7 @@ import { Brace } from '../timeline/Brace';
 import { BraceLabel, BracePopover } from '../timeline/BracePopover';
 import { applyTune } from '../timeline/tune';
 import { Playhead } from '../timeline/Playhead';
-import { EventDrag } from '../timeline/EventDrag';
+import { openInspectorFor } from '../build/actions';
 import { TuneDrag } from '../timeline/TuneDrag';
 import { useTuneHandles } from '../timeline/tune-handles';
 import { Transport } from '../timeline/Transport';
@@ -55,17 +46,16 @@ import type { RunTimeline } from '../timeline/run';
 import { Tooltip, tipFromEvent } from '../timeline/Tooltip';
 import type { TooltipState } from '../timeline/Tooltip';
 import { useHostWindow } from '../common/dom';
-import { popped } from '../common/popout';
+import { PopoutButton, popped } from '../common/popout';
 import { useWidth } from '../common/use-width';
-import { hoverTools, setEventTime, snapT } from './events';
+import { snapT } from './events';
 import { buildLinks, cardFrameFor, cardRoleFor, chipsFor, NEUTRAL_FRAME, siteIsDown } from '../canvas/routing';
 import type { CanvasLink } from '../canvas/routing';
 import type { NodeBox } from '../canvas/layout';
 import { approxW, elide, fitLabel } from '../canvas/measure';
 import { FindingsMenu, KeyMenu, TerseReadout, TIGHT_W } from './RunBar';
 import { ReadoutFold, SummaryBand } from './SummaryBand';
-import { EventStrip, EV, MoreMenu, stripWidth } from './lanes-events';
-import type { MenuTarget } from './lanes-events';
+import { Sheet } from '../common/Sheet';
 import { AppTimeline, appTimelineOn, TimelineSwitch } from './TimelineView';
 import { SettingChips } from './SettingChips';
 import { assignLanes, cardSub, hostBands, planPills, segmentAt, siteOrder } from './lanes-layout';
@@ -73,7 +63,7 @@ import type { Placed, PillPlan } from './lanes-layout';
 
 /* ---------------- geometry ---------------- */
 
-const CW = 232; // a card's width: room for the name, the state and the event buttons
+const CW = 232; // a card's width: room for the name and state
 const RH = TL_FULL.laneH; // a row's height, so the model's marker offsets still hold
 const GAP = 20; // between two rows of one data centre: a row of link pills, and a marker's sentence
 const HDR = 20; // a data centre's header band
@@ -197,19 +187,17 @@ function letterFor(node: NodeBox | null, role: string | null): string {
 }
 
 /**
- * One card: the badge, the name and the event buttons on the first line, what
+ * One card: the badge and name on the first line, what
  * it is and what it is doing at the playhead on the second, across the card's
  * whole width. Everything that says how it is at `t` -- the words, the frame's
  * colour and hatch, the cross, the accessible name -- is read at the same `t`:
  * the frame from the snapshot the drawing reads, the state from the band that
  * begins at it (`segmentAt`), so they cannot disagree at an event's own tick.
  */
-function Card({ x, y, row, lane, t, selected, dim, hot, tools, moreOpen, onPick, onHover, onMore }: {
+function Card({ x, y, row, lane, t, selected, dim, hot, onPick, onHover }: {
   x: number; y: number; row: Row; lane: TimelineLane | null; t: number; selected: boolean; dim: boolean; hot: boolean;
-  tools: readonly CanvasTool[]; moreOpen: boolean;
   onPick: (id: string, additive: boolean) => void;
   onHover: (id: string | null) => void;
-  onMore: (trigger: SVGGElement) => void;
 }) {
   const doc = topology.value;
   const snap = frame.value;
@@ -235,8 +223,8 @@ function Card({ x, y, row, lane, t, selected, dim, hot, tools, moreOpen, onPick,
     fr.degraded ? 'is-degraded' : '', selected ? 'is-sel' : '', hot ? 'is-hot' : ''].filter(Boolean).join(' ');
   const bdg = `ln-bdg${role ? ` is-${role}` : ''}${row.kind === 'observer' ? ' is-obs' : ''}${fr.down ? ' is-down' : ''}`;
   const name = elide(node?.lines.name ?? row.id, 16);
-  /* The chip rides after the name when the name leaves room for it before the buttons. */
-  const stripL = x + CW - 5 - stripWidth(tools.length);
+  /* The chip rides after the name when the name leaves room for it within the card. */
+  const stripL = x + CW - 5;
   const chipX = x + 38 + approxW(name, 12.5, true) + 8;
   const showChip = chip !== undefined && chipX + approxW(chip.text, 9) + chip.text.length * 0.3 <= stripL - 4;
   return (
@@ -281,9 +269,7 @@ function Card({ x, y, row, lane, t, selected, dim, hot, tools, moreOpen, onPick,
           </g>
         ) : null}
       </g>
-      <EventStrip
-        right={x + CW - 5} y={y + 3} name={node?.lines.name ?? row.id} tools={tools} moreOpen={moreOpen} onMore={onMore}
-      />
+
     </g>
   );
 }
@@ -316,9 +302,9 @@ function linkSaid(l: CanvasLink, t: number, nameOf: (key: string) => string): st
   return `${linkName(l, nameOf)}, ${st} at t = ${fmt(t)} s`;
 }
 
-function Links({ placed, pills, rows, gapY, cardX, related, hoverId, openKey, tipOf, nameOf, onOpen }: {
+function Links({ placed, pills, rows, gapY, cardX, related, hoverId, tipOf, nameOf, onOpen }: {
   placed: Placed[]; pills: PillPlan[]; rows: Row[]; gapY: number[]; cardX: number;
-  related: Set<string> | null; hoverId: string | null; openKey: string | null;
+  related: Set<string> | null; hoverId: string | null;
   tipOf: (l: CanvasLink) => string; nameOf: (key: string) => string;
   onOpen: (plan: PillPlan, trigger: SVGGElement) => void;
 }) {
@@ -344,7 +330,7 @@ function Links({ placed, pills, rows, gapY, cardX, related, hoverId, openKey, ti
         const involved = hoverId !== null && plan.links.some((l) => l.from === hoverId || l.to === hoverId);
         const faint = related !== null && !involved;
         const first = plan.links[0];
-        const acts = plan.links.some((l) => l.docLink !== undefined);
+        const acts = plan.links.length > 0;
         const st = plan.more ? 'is-more' : first ? linkState(first) : 'is-off';
         const tip = plan.links.map(tipOf).join(' · ');
         const x = cardX + PILL_PAD + plan.x;
@@ -352,13 +338,12 @@ function Links({ placed, pills, rows, gapY, cardX, related, hoverId, openKey, ti
         return (
           <g
             key={plan.key}
-            class={`ln-pill ${st}${acts ? ' is-act' : ''}${openKey === plan.key ? ' is-open' : ''}${involved ? ' is-hot' : ''}${faint ? ' is-faint' : ''}`}
+            class={`ln-pill ${st}${acts ? ' is-act' : ''}${involved ? ' is-hot' : ''}${faint ? ' is-faint' : ''}`}
             data-tip={tip}
             role={acts ? 'button' : undefined}
             tabindex={acts ? 0 : undefined}
-            aria-label={acts ? `${plan.more ? `${plan.links.length} more links: ${plan.links.map((l) => linkName(l, nameOf)).join(', ')}` : tip}, events` : undefined}
-            aria-haspopup={acts ? 'menu' : undefined}
-            aria-expanded={acts ? openKey === plan.key : undefined}
+            aria-label={acts ? `${plan.more ? `${plan.links.length} more links: ${plan.links.map((l) => linkName(l, nameOf)).join(', ')}` : tip}, settings` : undefined}
+            aria-haspopup={plan.more ? "dialog" : undefined}
             onClick={acts ? (e) => onOpen(plan, e.currentTarget) : undefined}
             onKeyDown={acts ? (e) => {
               if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpen(plan, e.currentTarget); }
@@ -426,7 +411,7 @@ function LanesMembers() {
  */
 function LanesApp() {
   return (
-    <section class="ln-view float-card" aria-label="Detailed timeline: application">
+    <section class="ln-view float-card" aria-label="Outcome: application">
       <LanesBar run={null} />
       <div class="ln-body ln-app">
         <AppTimeline />
@@ -471,9 +456,9 @@ function LanesBar({ run }: { run: RunTimeline | null }) {
           onSpeed={(s) => { speed.value = s; }}
         />
       ) : null}
-      <ReadoutFold><TerseReadout run={trace.value !== null} /></ReadoutFold>
+      <div class="outcome-readings"><ReadoutFold><TerseReadout run={trace.value !== null} /></ReadoutFold></div>
       {appTl ? null : <SettingChips />}
-      <TimelineSwitch />
+      <TimelineSwitch /><PopoutButton kind="timeline" />
       {run?.held ? (
         <button
           type="button" class="btn sb-fit"
@@ -552,10 +537,9 @@ function Lanes({ run, fr }: { run: RunTimeline | null; fr: Frame }) {
   const sel = selection.value;
   const isPlaying = playing.value;
   const view = useHostWindow();
+  const [linkChoices, setLinkChoices] = useState<{ key: string; title: string }[] | null>(null);
   const [hoverId, setHoverId] = useState<string | null>(null);
   const [tip, setTip] = useState<TooltipState | null>(null);
-  const [menu, setMenu] = useState<MenuTarget | null>(null);
-  const [menuKey, setMenuKey] = useState<string | null>(null);
   const section = useRef<HTMLElement | null>(null);
   const body = useRef<HTMLElement | null>(null);
   /* The brace whose card is open, and the label it opened from. */
@@ -707,42 +691,12 @@ function Lanes({ run, fr }: { run: RunTimeline | null; fr: Frame }) {
   };
   const selectLane = (id: string | null): void => {
     if (seeked.current) { seeked.current = false; return; }
-    if (id === null) clearSelection(); else select(id);
+    if (id === null) clearSelection(); else openInspectorFor(id);
   };
-  const onPick = (id: string, additive: boolean): void => { select(id, additive); };
+  const onPick = (id: string, additive: boolean): void => {
+    if (additive) select(id, true); else openInspectorFor(id);
+  };
 
-  /* ---- the event buttons, at the playhead ---- */
-  const keys = useMemo(
-    () => [...rows.map((r) => r.id), ...headers.map((h) => h.site)],
-    [rows, headers],
-  );
-  const tools = useMemo(() => {
-    const out = new Map<string, CanvasTool[]>();
-    for (const k of keys) out.set(k, hoverTools(doc, k, at, { keepPlayhead: true }));
-    return out;
-  }, [doc, at, keys]);
-  const toolsOf = (k: string): CanvasTool[] => tools.get(k) ?? [];
-
-  const openMenu = (key: string, subjects: MenuTarget['subjects'], trigger: Element): void => {
-    const r = trigger.getBoundingClientRect();
-    if (menu?.trigger === trigger) { setMenu(null); setMenuKey(null); return; }
-    setMenuKey(key);
-    setMenu({ subjects, anchor: { left: r.left, right: r.right, top: r.top, bottom: r.bottom }, trigger });
-  };
-  const closeMenu = (restore: boolean): void => {
-    const trigger = menu?.trigger;
-    setMenu(null);
-    setMenuKey(null);
-    if (restore && trigger instanceof Element && 'focus' in trigger) (trigger as HTMLElement).focus();
-  };
-  /* The menu is placed beside what opened it; scrolling the rows away from it would leave it hanging. */
-  useEffect(() => {
-    const el = body.current;
-    if (menu === null || el === null) return undefined;
-    const away = (): void => { setMenu(null); setMenuKey(null); };
-    el.addEventListener('scroll', away);
-    return () => el.removeEventListener('scroll', away);
-  }, [menu]);
   const nameOfRow = (r: Row): string => r.node?.lines.name ?? r.id;
   const byId = useMemo(() => new Map(rows.map((r) => [r.id, r])), [rows]);
   const nameOf = (key: string): string => { const r = byId.get(key); return r ? nameOfRow(r) : key; };
@@ -770,9 +724,10 @@ function Lanes({ run, fr }: { run: RunTimeline | null; fr: Frame }) {
     return s;
   }, [hoverId, links]);
   const tipOf = (l: CanvasLink): string => `${linkSaid(l, at, nameOf)}. ${l.title}`;
-  const onPill = (plan: PillPlan, trigger: SVGGElement): void => {
-    const subjects = plan.links.flatMap((l) => (l.docLink === undefined ? [] : [{ key: l.docLink, title: linkName(l, nameOf) }]));
-    if (subjects.length > 0) openMenu(plan.key, subjects, trigger);
+  const onPill = (plan: PillPlan): void => {
+    const subjects = [...new Map(plan.links.map(l => [l.docLink ?? l.id, { key: l.docLink ?? l.id, title: linkName(l, nameOf) }])).values()];
+    if (subjects.length === 1) openInspectorFor(subjects[0]!.key);
+    else if (subjects.length > 1) setLinkChoices(subjects);
   };
 
   const onPlotMove = (e: JSX.TargetedPointerEvent<HTMLDivElement>): void => {
@@ -796,7 +751,13 @@ function Lanes({ run, fr }: { run: RunTimeline | null; fr: Frame }) {
   const popHandle = pop === null ? undefined : handles.find((h) => h.key === pop.key);
 
   return (
-    <section class="ln-view float-card" aria-label="Detailed timeline: members and their timelines" ref={section}>
+    <section class="ln-view float-card" aria-label="Outcome: members and their timelines" ref={section}>
+      <Sheet open={linkChoices !== null} title="Choose a connection" variant="card" onClose={() => setLinkChoices(null)}>
+        <div class="scenario-link-choices">{linkChoices?.map(link => <button class="btn" key={link.key} onClick={() => {
+          setLinkChoices(null);
+          openInspectorFor(link.key);
+        }}>{link.title}</button>)}</div>
+      </Sheet>
       <LanesBar run={run} />
       <SummaryBand />
 
@@ -841,8 +802,6 @@ function Lanes({ run, fr }: { run: RunTimeline | null; fr: Frame }) {
                 )}
 
                 {headers.map((h) => {
-                  const stripR = cardX + CW - 4;
-                  const dcTools = toolsOf(h.site);
                   return (
                     <g key={h.site} class={`ln-dc${h.down ? ' is-down' : ''}${sel.includes(h.site) ? ' is-sel' : ''}`} data-site={h.site}>
                       <g
@@ -860,11 +819,7 @@ function Lanes({ run, fr }: { run: RunTimeline | null; fr: Frame }) {
                         <text x={cardX + 8} y={h.y + 13}>{h.name}{h.down ? ' — down' : ''}</text>
                       </g>
                       <line x1={cardX + CW + 6} y1={h.y + 8} x2={plotR} y2={h.y + 8} />
-                      <EventStrip
-                        right={stripR} y={h.y + (HDR - 2 - EV) / 2} name={h.name} tools={dcTools}
-                        moreOpen={menuKey === `site:${h.site}`}
-                        onMore={(el) => openMenu(`site:${h.site}`, [{ key: h.site, title: h.name }], el)}
-                      />
+
                     </g>
                   );
                 })}
@@ -931,7 +886,7 @@ function Lanes({ run, fr }: { run: RunTimeline | null; fr: Frame }) {
 
                 <Links
                   placed={placed} pills={pills} rows={rows} gapY={gapY} cardX={cardX}
-                  related={related} hoverId={hoverId} openKey={menuKey} tipOf={tipOf} nameOf={nameOf} onOpen={onPill}
+                  related={related} hoverId={hoverId} tipOf={tipOf} nameOf={nameOf} onOpen={onPill}
                 />
 
                 {rows.map((r) => (
@@ -941,11 +896,8 @@ function Lanes({ run, fr }: { run: RunTimeline | null; fr: Frame }) {
                     selected={sel.includes(r.id)}
                     dim={dim(r.id)}
                     hot={related?.has(r.id) === true}
-                    tools={toolsOf(r.id)}
-                    moreOpen={menuKey === r.id}
                     onPick={onPick}
                     onHover={setHoverId}
-                    onMore={(el) => openMenu(r.id, [{ key: r.id, title: nameOfRow(r) }], el)}
                   />
                 ))}
 
@@ -961,17 +913,7 @@ function Lanes({ run, fr }: { run: RunTimeline | null; fr: Frame }) {
                     />
                     {/* Above the playhead, so grabbing an event cannot seek instead. */}
                     {shifted.filter((m) => m.kind === 'event').map((m) => (
-                      <EventDrag
-                        key={m.key} marker={m} model={shiftedModel} doc={doc} readout="beside"
-                        onMove={(index, when, expected) => {
-                          const result = setEventTime(index, when, expected);
-                          run?.dropped(index, when, expected, result);
-                          return result;
-                        }}
-                        onStart={() => { setTip(null); if (isPlaying) playing.value = false; }}
-                      >
-                        <Marker marker={m} layout={shiftedModel.layout} />
-                      </EventDrag>
+                      <Marker key={m.key} marker={m} layout={shiftedModel.layout} />
                     ))}
                     {handles.map((hd) => {
                       const row = hd.laneKey === null ? undefined : rows.find((r) => r.laneKey === hd.laneKey);
@@ -1011,9 +953,6 @@ function Lanes({ run, fr }: { run: RunTimeline | null; fr: Frame }) {
           </>
         )}
       </div>
-      {menu === null ? null : (
-        <MoreMenu key={menuKey ?? ''} target={menu} doc={doc} t={t} view={section.current} onClose={closeMenu} />
-      )}
       <span class="sr">t = {fmt(t)} s</span>
     </section>
   );

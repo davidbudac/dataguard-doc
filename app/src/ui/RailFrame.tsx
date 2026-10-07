@@ -78,7 +78,7 @@ export function RailBar({ title, children }: { title: string; children?: Compone
 
 /** The folded rail: one button, the strip's whole height. */
 export function RailStrip({ title }: { title: string }) {
-  const ctx = mode.value === 'break' ? railContext() : 'settings';
+  const ctx = mode.value === 'scenario' ? railContext() : 'settings';
   return (
     <button
       type="button"

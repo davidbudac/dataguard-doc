@@ -273,7 +273,7 @@ describe('the shell wires those keys to real edits', () => {
   });
 
   it('Delete edits nothing in Break mode: that mode breaks, it does not build', async () => {
-    mode.value = 'break';
+    mode.value = 'scenario';
     /* The drawing is on screen in the Detailed timeline only in the docked layout. */
     viewport.value = 'compact';
     const root = mountApp();
@@ -292,7 +292,7 @@ describe('the shell wires those keys to real edits', () => {
     render(null, built);
     built.remove();
 
-    mode.value = 'break';
+    mode.value = 'scenario';
     /* The drawing is on screen in the Detailed timeline only in the docked layout. */
     viewport.value = 'compact';
     const root = mountApp();
@@ -330,6 +330,8 @@ describe('the shell wires those keys to real edits', () => {
     await tick();
     expect(barOpen.value).toBeNull();
     /* And E on the same card is the other list. */
+    mode.value = 'scenario';
+    await tick();
     press(card(root, 'sby01'), 'E');
     await new Promise<void>((r) => { requestAnimationFrame(() => r()); });
     await tick();
@@ -338,7 +340,7 @@ describe('the shell wires those keys to real edits', () => {
   });
 
   it('A is bound in Topology only: not in the docked Detailed timeline', async () => {
-    mode.value = 'break';
+    mode.value = 'scenario';
     viewport.value = 'compact';
     const root = mountApp();
     await new Promise<void>((r) => { requestAnimationFrame(() => r()); });

@@ -145,7 +145,7 @@ describe('the inspector drawer at 1024-1279', () => {
   });
 
   it('the Events rail is what the drawer carries in Break mode', async () => {
-    mode.value = 'break';
+    mode.value = 'scenario';
     const root = mount();
     inspectorOpen.value = true;
     await tick();

@@ -260,6 +260,12 @@ export function buildLinks(
   const primary = memberById(doc, graph.primary as string);
   const targets = readinessTargets(doc);
   const fsfoOn = doc.config.fsfo.state !== 'disabled';
+  /* A severed site link or a partition cuts the observer's lines too: with no
+     path to the host it watches, the ping and the readiness check draw slashed
+     the way the redo line does. */
+  const reach = buildReachability(doc, frame ? netFromSummary(frame.epoch.net) : initialNetState(doc));
+  const severed = (from: string, m: Member | undefined): boolean => !!m && m.instances.length > 0
+    && !m.instances.some((i) => !hostSiteDown(frame, doc, i.host as string) && reach.reachable(from as never, i.host));
 
   for (const o of doc.observers) {
     const okey = nodeKey('observer', o.id as string);
@@ -273,6 +279,7 @@ export function buildLinks(
       const pkey = nodeKey('member', primary.id as string);
       const pmyDown = memberDown(doc, frame, primary);
       const gone = oDown || stopped;
+      const cut = !gone && !pmyDown && severed(o.host as string, primary);
       const pmyHost = primary.instances[0]?.host as string | undefined;
       const rtt = linkRttMs(doc, o.host, primary.instances[0]?.host ?? o.host);
       const dl = docLinkBetween(doc, o.host as string, pmyHost);
@@ -283,16 +290,17 @@ export function buildLinks(
         from: okey,
         to: pkey,
         active: !gone,
-        up: !gone && !pmyDown,
-        cut: false,
+        up: !gone && !pmyDown && !cut,
+        cut,
         down: gone || pmyDown,
         caption: gone ? 'no observer to ping' : 'ping',
-        ...(gone ? {} : { value: `${rtt} ms` }),
+        ...(gone ? {} : { value: pmyDown ? 'down' : cut ? 'cut' : `${rtt} ms` }),
         model: false,
         arrow: false,
         title: gone
           ? `${o.name} is not running, so nothing pings ${primary.name}.`
-          : `${o.name} connects to the primary ${primary.name}; round trip ${rtt} ms.`,
+          : cut ? `${o.name} pings the primary ${primary.name}, but the network between them is severed.`
+            : `${o.name} connects to the primary ${primary.name}; round trip ${rtt} ms.`,
       });
     }
 
@@ -303,6 +311,7 @@ export function buildLinks(
       if (!tm || !has(tkey)) continue;
       const gone = oDown || stopped;
       const tDown = memberDown(doc, frame, tm);
+      const cut = !gone && !tDown && severed(o.host as string, tm);
       const rtt = linkRttMs(doc, o.host, tm.instances[0]?.host ?? o.host);
       const dl = docLinkBetween(doc, o.host as string, tm.instances[0]?.host as string | undefined);
       out.push({
@@ -312,16 +321,17 @@ export function buildLinks(
         from: okey,
         to: tkey,
         active: !gone,
-        up: !gone && !tDown,
-        cut: false,
+        up: !gone && !tDown && !cut,
+        cut,
         down: gone || tDown,
         caption: gone ? 'no readiness check' : 'readiness check',
-        ...(gone ? {} : { value: `${rtt} ms` }),
+        ...(gone ? {} : { value: tDown ? 'down' : cut ? 'cut' : `${rtt} ms` }),
         model: false,
         arrow: false,
         title: gone
           ? `${o.name} is not running, so no readiness check reaches ${tm.name}.`
-          : `${o.name} checks whether ${tm.name} is ready to take over; round trip ${rtt} ms.`,
+          : cut ? `${o.name} checks ${tm.name}, but the network between them is severed.`
+            : `${o.name} checks whether ${tm.name} is ready to take over; round trip ${rtt} ms.`,
       });
     }
   }

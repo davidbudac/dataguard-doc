@@ -87,14 +87,15 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe('the timeline, popped out of Topology', () => {
+describe('the timeline, popped out of Outcome', () => {
+  beforeEach(() => { mode.value = 'break'; });
   it('is offered in the small timeline\'s head row, and moves the full timeline into the new window', async () => {
     crash();
     const r = mount();
     await tick();
     const btn = popBtn(r, /timeline/);
     expect(btn).toBeDefined();
-    expect(btn?.closest('.mtl-acts')).not.toBeNull();
+    expect(btn?.closest('.ln-bar')).not.toBeNull();
     expect(btn?.getAttribute('aria-pressed')).toBe('false');
 
     btn?.click();
@@ -102,12 +103,11 @@ describe('the timeline, popped out of Topology', () => {
     expect(popped.value.timeline).toBe(popup.win);
     expect(popup.doc.querySelector('.po-tl .tl')).not.toBeNull();
     /* The drawing and the glance stay where they were; the button says it is out. */
-    expect(r.querySelector('.topo-svg')).not.toBeNull();
-    expect(r.querySelector('.mtl')).not.toBeNull();
+    expect(r.querySelector('.ln-view')).not.toBeNull();
     expect(popBtn(r, /timeline/)?.getAttribute('aria-pressed')).toBe('true');
     expect(r.querySelector('.tl')).toBeNull();
     /* The small timeline remains resizable while the full timeline is in its window. */
-    expect(r.querySelector('.app-dock.has-tl')).not.toBeNull();
+    expect(r.querySelector('.ln-view')).not.toBeNull();
   });
 
   it('offers what Topology edits in the window too: events on the lanes, the drag of a marker and the grips', async () => {
@@ -116,8 +116,8 @@ describe('the timeline, popped out of Topology', () => {
     await tick();
     popBtn(r, /timeline/)?.click();
     await tick();
-    expect(popup.doc.querySelector('.tl-lane-add')).not.toBeNull();
-    expect(popup.doc.querySelector('.tl-event-drag')).not.toBeNull();
+    expect(popup.doc.querySelector('.tl-lane-add')).toBeNull();
+    expect(popup.doc.querySelector('.tl-event-drag')).toBeNull();
     expect(popup.doc.querySelector('.tl-tune')).not.toBeNull();
     /* Not in Config, whose timeline is not the reader's to edit. */
     mode.value = 'configure';
@@ -185,11 +185,11 @@ describe('the timeline, popped out of Topology', () => {
   it('is not offered without a run to glance at, and not in the Detailed timeline', async () => {
     const r = mount();
     await tick();
-    expect(popBtn(r, /timeline/)).toBeUndefined();
+    expect(popBtn(r, /timeline/)).toBeDefined();
     crash();
     mode.value = 'break';
     await tick();
-    expect(popBtn(r, /timeline/)).toBeUndefined();
+    expect(popBtn(r, /timeline/)).toBeDefined();
   });
 });
 

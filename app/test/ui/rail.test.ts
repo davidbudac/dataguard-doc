@@ -161,7 +161,7 @@ describe('the rail at wide, in Topology and Config', () => {
   });
 
   it('leaves Break and Learn their own rails, selected or not, folded or not', async () => {
-    for (const m of ['break', 'learn'] as const) {
+    for (const m of ['scenario', 'learn'] as const) {
       mode.value = m;
       mountApp();
       await tick();
@@ -248,7 +248,7 @@ describe('the ways in with nothing selected', () => {
     toggleRail();
     expect(inspectorOpen.value).toBe(false);
     viewport.value = 'wide';
-    mode.value = 'break';
+    mode.value = 'scenario';
     toggleRail();
     expect(railCollapsed.value).toBe(true);
     revealRail();
@@ -262,7 +262,7 @@ describe('the ways in with nothing selected', () => {
     await tick();
     allSettings();
     await tick();
-    expect(mode.value).toBe('build');
+    expect(mode.value).toBe('break');
     expect(selection.value).toEqual([]);
     expect(rail()).not.toBeNull();
     expect(isSectionOpen('Fast-start failover')).toBe(true);
@@ -303,7 +303,7 @@ describe('the ways in with nothing selected', () => {
   });
 
   it('is not in the bar in Break or Learn, below wide, or over the Introduction', async () => {
-    for (const m of ['break', 'learn'] as const) {
+    for (const m of ['scenario', 'learn'] as const) {
       mode.value = m;
       mountApp();
       await tick();
@@ -360,7 +360,7 @@ describe('the close button', () => {
   });
 
   it('is Collapse, with aria-expanded, on Break\'s Events rail', async () => {
-    mode.value = 'break';
+    mode.value = 'scenario';
     mountApp();
     await tick();
     setRailCollapsed(false);

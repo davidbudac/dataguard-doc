@@ -45,8 +45,9 @@ import { INTRO_HREF, openIntro } from './intro/route';
 
 /** The three working modes, one clause each; Learn is the link at the foot. */
 const BULLETS: [string, string][] = [
-  ['Topology', 'draw a configuration: data centres, databases, far syncs, observers and the redo between them; then break it with a scenario or a card’s icons and read the small timeline under it.'],
-  ['Detailed timeline', 'the run in full: follow a failure through detection, threshold, role change and open, and tune its settings.'],
+  ['1 · Topology', 'draw the configuration and set its starting properties.'],
+  ['2 · Scenario', 'schedule failures, recoveries and planned actions on their own timeline.'],
+  ['3 · Outcome', 'the run in full: follow a failure through detection, threshold, role change and open, and tune its settings.'],
   ['Config', 'generate DGMGRL commands, init parameters and connect strings from the drawing.'],
 ];
 
@@ -71,7 +72,7 @@ const KEYS: { where: string; rows: [string, string][] }[] = [
       /* `onEvents` is spread onto the canvas only in Topology and the Detailed
          timeline (`canvas/CanvasSlot.tsx`), exactly as `onDelete` is only in
          Topology: a key that is bound in one mode says which one. */
-      ['E', 'the same list of events (Topology)'],
+      ['E', 'the list of events to schedule (Scenario)'],
       ['A', 'open the ⋯ actions — edit, properties, remove — and move the focus into them (Topology)'],
       ['Delete', 'remove it, or everything selected (Topology)'],
       ['Esc', 'close the actions first, then clear the selection'],
@@ -81,21 +82,21 @@ const KEYS: { where: string; rows: [string, string][] }[] = [
     where: 'Anywhere on the page, outside a text field',
     rows: [
       ['Ctrl+K · ⌘K', 'search commands, including presets, scenarios and selected-object actions'],
-      ['1 · 2 · 3 · 4', 'Topology · Detailed timeline · Config · Learn'],
+      ['1 · 2 · 3 · 4 · 5', 'Topology · Scenario · Outcome · Config · Learn'],
       ['I · J', 'toggle Inspector / Events · show findings'],
       ['F · + · −', 'fit and recenter the topology · zoom in · zoom out'],
       ['H · V', 'Hand tool · selection tool; drag empty space to pan, Shift-drag to select'],
       ['Space + drag · middle drag', 'pan from anywhere on the topology'],
       ['Shift+B · Shift+F · Shift+O · Shift+D · Shift+A', 'add standby · far sync · observer · data centre · application (Topology)'],
       ['Shift+T · G · ?', 'tidy layout · toggle grid · toggle hints'],
-      ['P · L · E', 'play/pause · fold timeline panel (Topology) · show Events (Detailed timeline)'],
-      [', · . · Home · End', 'previous/next state change · start/end of timeline (Topology / Detailed timeline)'],
+      ['P · L · E', 'play/pause (Outcome) · fold timeline panel · show Events (Scenario)'],
+      [', · . · Home · End', 'previous/next state change · start/end of timeline (Outcome)'],
       ['Ctrl/⌘+S · Ctrl/⌘+O', 'saved configurations · import file'],
       ['Ctrl/⌘+Shift+S · Ctrl/⌘+Shift+E', 'share link · export JSON'],
       ['Ctrl+Z · ⌘Z', 'undo'],
       ['Ctrl+Shift+Z · Ctrl+Y', 'redo'],
       ['Ctrl+A · ⌘A', 'select every card on the drawing'],
-      [']', 'open or close the Inspector panel (Topology, Config); fold or unfold the Events panel (Detailed timeline)'],
+      [']', 'open or close the Inspector panel (Topology, Config); fold or unfold the Events panel (Outcome)'],
     ],
   },
   {
@@ -172,7 +173,7 @@ export function IntroCard() {
         ))}
       </ul>
       <p class="intro-foot caption">
-        The four modes show the same configuration, and a shared link carries it.{' '}
+        The three steps share one configuration. Config and Learn use it too, and a shared link carries it.{' '}
         <IntroLink />
         {' explains the drawing and the controls. '}
         <LearnLink />
@@ -245,7 +246,7 @@ export function Guidance() {
      title (`MODE_SUB`) and the stage's description (`modeGuide`, in
      `App.tsx`), and the band's height is the drawing's. The card the `?` opens
      still hangs from here. */
-  if (m === 'break' || m === 'build') return full ? <div class="guide"><IntroCard /></div> : null;
+  if (m === 'break' || m === 'build' || m === 'scenario') return full ? <div class="guide"><IntroCard /></div> : null;
   const { lead, rest } = splitGuide(m, v);
   return (
     <div class="guide">

@@ -22,10 +22,10 @@ import { classicDoc } from '@/state/doc';
 import { resetHistory } from '@/state/history';
 import { topology } from '@/state/derived';
 import {
-  loadTimelineOpen, setMiniTimelineOpen, setTimelineOpen, TIMELINE_KEY, toggleTimeline,
+  loadTimelineOpen, setTimelineOpen, TIMELINE_KEY, toggleTimeline,
 } from '@/state/persist';
 import {
-  clearSelection, inspectorOpen, miniTimelineOpen, mode, timelineOpen, viewport,
+  clearSelection, inspectorOpen, mode, timelineOpen, viewport,
 } from '@/state/view';
 import { applyTemplate, templates } from '@/ui/break/events';
 import { popIn, popOut, popped } from '@/ui/common/popout';
@@ -76,7 +76,6 @@ beforeEach(() => {
   mode.value = 'build';
   printing.value = false;
   timelineOpen.value = true;
-  miniTimelineOpen.value = true;
 });
 
 afterEach(() => {
@@ -85,93 +84,7 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe('Topology\'s dock handle', () => {
-  it('is a real button on the card\'s top edge, open by default, with the word on it', async () => {
-    withRun();
-    mountApp();
-    await tick();
-    const btn = handle();
-    expect(btn).not.toBeNull();
-    expect(btn?.type).toBe('button');
-    expect(btn?.getAttribute('aria-expanded')).toBe('true');
-    expect(btn?.textContent).toContain('Timeline');
-    expect(btn?.textContent).toContain('▾');
-    /* It sits on the dock card's top edge: the card's first child, whole width. */
-    expect(btn?.parentElement).toBe(dock());
-    expect(dock()?.firstElementChild?.classList.contains('dock-grip')).toBe(true);
-    expect(dock()?.firstElementChild?.nextElementSibling).toBe(btn);
-    /* What it controls is there in both states. */
-    expect(btn?.getAttribute('aria-controls')).toBe('app-dock');
-    expect(document.getElementById('app-dock')).toBe(dock());
-    expect(dock()?.querySelector('.dock-break')).not.toBeNull();
-    expect(dock()?.querySelector('.dock-status')).not.toBeNull();
-    expect(dock()?.querySelector('.mtl')).not.toBeNull();
-  });
 
-  it('folds the card to its handle: everything else leaves the document', async () => {
-    withRun();
-    mountApp();
-    await tick();
-    handle()?.click();
-    await tick();
-    expect(timelineOpen.value).toBe(false);
-    expect(handle()?.getAttribute('aria-expanded')).toBe('false');
-    expect(handle()?.textContent).toContain('▸');
-    expect(dock()?.children).toHaveLength(1);
-    for (const sel of ['.dock-break', '.sc-row', '.dock-status', '.fnd-chips', '.mtl', '.tl-svg', '.dock-scn']) {
-      expect(document.querySelector(sel), sel).toBeNull();
-    }
-    /* With a run, the bar says in a few words what is behind it. */
-    expect(document.querySelector('.tlp-sum')?.textContent).toBe('1 event');
-    /* The drawing is still there, with its card. */
-    expect(document.querySelector('.topo-svg')).not.toBeNull();
-    handle()?.click();
-    await tick();
-    expect(timelineOpen.value).toBe(true);
-    expect(dock()?.querySelector('.dock-break')).not.toBeNull();
-    expect(dock()?.querySelector('.mtl')).not.toBeNull();
-    expect(document.querySelector('.tlp-sum')).toBeNull();
-  });
-
-  it('has nothing to count without a run, and says nothing when folded', async () => {
-    mountApp();
-    await tick();
-    handle()?.click();
-    await tick();
-    expect(document.querySelector('.tlp-sum')).toBeNull();
-    expect(dock()?.children).toHaveLength(1);
-  });
-
-  it('leaves the small timeline its own fold, inside the panel', async () => {
-    withRun();
-    mountApp();
-    await tick();
-    const inner = (): HTMLButtonElement | null => document.querySelector<HTMLButtonElement>('button.mtl-fold');
-    expect(inner()?.getAttribute('aria-expanded')).toBe('true');
-    inner()?.click();
-    await tick();
-    expect(miniTimelineOpen.value).toBe(false);
-    /* Only the lanes went: the panel, its handle and the Break row are there. */
-    expect(timelineOpen.value).toBe(true);
-    expect(handle()?.getAttribute('aria-expanded')).toBe('true');
-    expect(dock()?.querySelector('.dock-break')).not.toBeNull();
-    expect(inner()?.getAttribute('aria-expanded')).toBe('false');
-    expect(document.querySelector('.mtl-plot')).toBeNull();
-    /* And the panel folds over it without touching it. */
-    handle()?.click();
-    await tick();
-    expect(miniTimelineOpen.value).toBe(false);
-    setMiniTimelineOpen(true);
-  });
-
-  it('is not on the Detailed timeline floating layout, which has no dock', async () => {
-    mode.value = 'break';
-    mountApp();
-    await tick();
-    expect(document.querySelector('.app-dock.float-card')).toBeNull();
-    expect(handle()).toBeNull();
-  });
-});
 
 describe('the drawing gets the room', () => {
   /* jsdom has no layout and no ResizeObserver: a fake one stands in, and the
@@ -252,17 +165,7 @@ describe('the docked timeline', () => {
     expect(document.querySelector('.tlp-sum')?.textContent).toBe('1 event');
   });
 
-  it('folds the empty state too, which is the panel as well', async () => {
-    mode.value = 'break';
-    /* Below 1024 the Detailed timeline is the docked layout. */
-    viewport.value = 'compact';
-    mountApp();
-    await tick();
-    expect(document.querySelector('.tl-slot .empty')?.textContent).toContain('No events yet');
-    handle()?.click();
-    await tick();
-    expect(document.querySelector('.tl-slot .empty')).toBeNull();
-  });
+
 
   it('is Learn\'s workbench too', async () => {
     mode.value = 'learn';
@@ -274,15 +177,7 @@ describe('the docked timeline', () => {
     expect(document.querySelector('.app-rail .tl-slot')?.children).toHaveLength(1);
   });
 
-  it('is one fold for every home of the timeline', async () => {
-    mountApp();
-    await tick();
-    handle()?.click();
-    await tick();
-    mode.value = 'learn';
-    await tick();
-    expect(handle()?.getAttribute('aria-expanded')).toBe('false');
-  });
+
 
   it('has no fold in the popped-out window: it is always open there', async () => {
     const doc = document.implementation.createHTMLDocument('');
@@ -333,27 +228,11 @@ describe('persistence', () => {
     expect(timelineOpen.value).toBe(true);
   });
 
-  it('is written by the handle itself, and is not the small timeline\'s key', async () => {
-    mountApp();
-    await tick();
-    handle()?.click();
-    expect(memory.get('dg-timeline')).toBe('0');
-    expect(memory.has('dg-topology-timeline-v1')).toBe(false);
-  });
+
 });
 
 describe('on paper', () => {
-  it('opens a folded panel: there is no handle to press on a printout', async () => {
-    withRun();
-    setTimelineOpen(false);
-    printing.value = true;
-    mountApp();
-    await tick();
-    expect(handle()?.getAttribute('aria-expanded')).toBe('true');
-    expect(dock()?.querySelector('.dock-break')).not.toBeNull();
-    expect(dock()?.querySelector('.mtl')).not.toBeNull();
-    expect(document.querySelector('.tlp-sum')).toBeNull();
-  });
+
 
   it('opens the docked slot too', async () => {
     mode.value = 'break';

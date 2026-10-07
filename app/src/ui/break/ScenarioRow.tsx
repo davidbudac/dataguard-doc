@@ -1,18 +1,5 @@
-/**
- * The scenarios as Topology's dock carries them: one wrapping row of compact
- * buttons under the readings, above the small timeline.
- *
- * The same shelf as the rail's (`shelf` in events.ts), the same refusals
- * (`WhyState`, and the read-only reason for a viewer who cannot edit) and the
- * same press (`applyTemplate`); each button's `title` is the scenario's own
- * sentence. It was a palette at the left edge under the tools until the run's
- * small timeline took the bottom: a seven-button column and the tools did not
- * fit a 900 px window once the dock was 240 px tall.
- *
- * Shown wherever editing is allowed, with a run or without one. A scenario is
- * pressed while the event list is exactly its events -- what `applyTemplate`
- * leaves, until the reader adds, moves or removes something.
- */
+/** Scenario templates share the engine-backed shelf and existing refusals.
+ * A template stays pressed while the event list matches its scheduled events. */
 
 import { sortEvents } from '@/engine';
 import { events, topology } from '@/state/derived';

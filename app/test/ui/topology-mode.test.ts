@@ -1,462 +1,176 @@
-/**
- * Topology: the first two modes re-cut. `build` is Topology -- the editable
- * drawing plus the scenarios, the break icons on the cards and a small timeline
- * under it while there is a run -- and `break` is the Detailed timeline. The
- * ids are what they were; the words and the address are new, and every old
- * spelling of the address still opens the right mode.
- *
- * jsdom lays nothing out, so where things sit is pinned in the browser pass
- * (app/design/ui.md); what is pinned here is what is in the document, what a
- * press does and what the run shows.
- *
- * @vitest-environment jsdom
- */
-
+/** @vitest-environment jsdom */
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { h, render } from 'preact';
-import { classicDoc, doc } from '@/state/doc';
-import { resetHistory } from '@/state/history';
-import { runShown, topology, trace } from '@/state/derived';
-import { MODES, MODE_LABEL, healthyRun, mode, playing, selection, tNow, viewport } from '@/state/view';
+import { act } from 'preact/test-utils';
+import { hostId } from '@/engine';
+import { classicDoc, doc, withEvents } from '@/state/doc';
+import { topology, readout, runShown, trace } from '@/state/derived';
+import { resetHistory, undo, redo, undoStack } from '@/state/history';
 import { parseUrlQuery, serializeUrlQuery, URL_DEFAULTS } from '@/state/url';
+import { breakTimeline, healthyRun, inspectorOpen, introPage, mode, playing, railCollapsed, selection, tNow, viewport } from '@/state/view';
 import { App } from '@/ui/App';
-import { applyTemplate, shelf, templates } from '@/ui/break/events';
-import { barKind, barOpen, closeBar } from '@/ui/canvas/bar';
-import { glanceLanes } from '@/ui/timeline/MiniTimeline';
+import { goToStep } from '@/ui/workflow';
+import { applyTemplate, templates } from '@/ui/break/events';
+import { allSettings } from '@/ui/break/SettingChips';
 
-const memory = new Map<string, string>();
-const fakeStorage = {
-  getItem: (k: string) => memory.get(k) ?? null,
-  setItem: (k: string, v: string) => { memory.set(k, String(v)); },
-  removeItem: (k: string) => { memory.delete(k); },
-  clear: () => { memory.clear(); },
-  key: (i: number) => [...memory.keys()][i] ?? null,
-  get length() { return memory.size; },
-} as unknown as Storage;
-Object.defineProperty(window, 'localStorage', { configurable: true, value: fakeStorage });
-
-const tick = (): Promise<void> => new Promise((r) => setTimeout(r, 40));
-
-let root: HTMLElement | null = null;
-const mount = async (): Promise<HTMLElement> => {
-  root = document.createElement('div');
-  document.body.appendChild(root);
-  render(h(App, {}), root);
-  await tick();
-  return root;
-};
-
-/** Preact binds `onpointerX` under the camel-cased name where jsdom has no pointer events. */
-const fire = (el: Element, name: 'pointerdown' | 'pointerover', init: MouseEventInit = {}): void => {
-  const camel = name === 'pointerdown' ? 'PointerDown' : 'PointerOver';
-  el.dispatchEvent(new MouseEvent(`on${name}` in el ? name : camel, { bubbles: true, cancelable: true, ...init }));
-};
-const click = (el: Element | null): void => {
-  if (!el) throw new Error('nothing to click');
-  el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
-};
-const key = (el: Element, k: string, init: KeyboardEventInit = {}): void => {
-  el.dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true, cancelable: true, ...init }));
-};
-const card = (r: HTMLElement, id: string): SVGGElement => {
-  const el = r.querySelector(`[data-node="${id}"]`);
-  if (!(el instanceof SVGGElement)) throw new Error(`no card ${id}`);
-  return el;
-};
-const button = (r: ParentNode, text: string): HTMLButtonElement | null =>
-  [...r.querySelectorAll('button')].find((b) => b.textContent?.trim() === text) ?? null;
-const scenario = (id: string) => {
-  const t = shelf(topology.value, 0).find((x) => x.id === id);
-  if (!t) throw new Error(`no scenario ${id}`);
-  return t;
-};
-/** Press a scenario in the dock's row. */
-const pressScenario = async (r: HTMLElement, id: string): Promise<void> => {
-  click(button(r.querySelector('.dock-scn')!, scenario(id).label));
-  await tick();
-};
-const mini = (r: ParentNode): Element | null => r.querySelector('.mtl');
-const tinted = (r: ParentNode): number => r.querySelectorAll('.tp-card.is-tl, .tp-card.is-bl, .tp-card.is-am, .tp-card.is-vi, .tp-card.is-sl, .tp-card.is-down').length;
-
+let root: HTMLDivElement;
+const tick = () => new Promise<void>(r => setTimeout(r, 30));
+const button = (name: string) => [...root.querySelectorAll<HTMLButtonElement>('button')].find(b => b.textContent?.trim() === name)!;
+const crash = () => applyTemplate(templates(topology.value).find(t => t.id === 'crash')!);
+const mount = () => act(() => render(h(App, {}), root));
+const click = (el: Element) => act(() => { el.dispatchEvent(new MouseEvent('click', { bubbles: true })); });
+const change = (label: string, value: string) => act(() => {
+  const el = root.querySelector<HTMLInputElement | HTMLSelectElement>(`[aria-label="${label}"]`)!;
+  el.value = value; el.dispatchEvent(new Event('change', { bubbles: true }));
+});
 beforeEach(() => {
-  document.body.innerHTML = '';
-  document.documentElement.removeAttribute('style');
-  memory.clear();
-  resetHistory(classicDoc());
-  viewport.value = 'wide';
-  mode.value = 'build';
-  playing.value = false;
-  healthyRun.value = false;
-  selection.value = [];
-  tNow.value = 0;
-  closeBar();
+  root = document.createElement('div'); document.body.append(root);
+  resetHistory(classicDoc()); mode.value = 'build'; viewport.value = 'wide';
+  selection.value = []; inspectorOpen.value = false; railCollapsed.value = false;
+  healthyRun.value = false; playing.value = false; introPage.value = false; breakTimeline.value = 'config'; tNow.value = 0;
+  for (const n of ['pointerdown', 'pointermove', 'pointerup', 'pointercancel']) Object.defineProperty(SVGElement.prototype, `on${n}`, { configurable: true, value: null });
 });
+afterEach(() => { act(() => render(null, root)); root.remove(); });
 
-afterEach(() => {
-  if (root) render(null, root);
-  root = null;
-});
-
-describe('the names and the address', () => {
-  it('words the two re-cut modes, and keeps their ids', () => {
-    expect(MODES).toEqual(['build', 'break', 'configure', 'learn']);
-    expect(MODE_LABEL.build).toBe('Topology');
-    expect(MODE_LABEL.break).toBe('Detailed timeline');
-    expect(MODE_LABEL.configure).toBe('Config');
+describe('three steps, one document', () => {
+  it('numbers the primary navigation and keeps Config and Learn separate', () => {
+    mount();
+    expect([...root.querySelectorAll('.workflow-step')].map(e => e.textContent)).toEqual(['1Topology', '2Scenario', '3Outcome']);
+    expect(root.querySelector('[aria-current="step"]')?.textContent).toBe('1Topology');
+    expect(root.querySelector('.workflow-extras')?.textContent).toBe('ConfigLearn');
+    expect(root.textContent).toContain('Step 1 of 3');
   });
-
-  it('writes topology-free and timeline addresses, and reads every older spelling', () => {
-    expect(serializeUrlQuery({ ...URL_DEFAULTS, mode: 'break' })).toBe('mode=timeline');
-    /* Topology is the page's default, so it is the absence of a key. */
-    expect(serializeUrlQuery({ ...URL_DEFAULTS, mode: 'build' })).toBe('');
-    for (const [raw, id] of [
-      ['topology', 'build'], ['build', 'build'],
-      ['timeline', 'break'], ['simulate', 'break'], ['break', 'break'],
-    ] as const) {
-      expect(parseUrlQuery(`?mode=${raw}`).state.mode, raw).toBe(id);
-      expect(parseUrlQuery(`?mode=${raw}`).unknown, raw).toEqual([]);
-    }
-    const back = parseUrlQuery(`?${serializeUrlQuery({ ...URL_DEFAULTS, mode: 'break' })}`).state;
-    expect(back.mode).toBe('break');
+  it('moves freely between steps without changing the topology, events or undo history', () => {
+    crash(); mount(); const before = doc.value; const history = undoStack.value;
+    click(button('Define scenario →')); expect(mode.value).toBe('scenario');
+    expect(tNow.value).toBe(0); expect(root.textContent).toContain('Step 2 of 3');
+    click(button('See outcome →')); expect(mode.value).toBe('break'); expect(tNow.value).toBeGreaterThan(0);
+    click(button('← Edit scenario')); click(button('← Topology'));
+    expect(doc.value).toBe(before); expect(undoStack.value).toBe(history);
   });
-
-  it('shows the words on the mode buttons', async () => {
-    const r = await mount();
-    expect([...r.querySelectorAll('.topbar-modes button')].map((b) => b.textContent))
-      .toEqual(['Topology', 'Detailed timeline', 'Config', 'Learn']);
+  it('shows starting state in Topology and no event controls, even with a failure scheduled', () => {
+    crash(); mount();
+    expect(runShown()).toBe(false); expect(readout.value.some(c => c.id === 'outcome')).toBe(false);
+    expect(root.querySelector('.dock-scn,.mtl,.scenario-editor,.tp-tools')).toBeNull();
+    expect(root.querySelector('.topo-svg')).not.toBeNull();
+  });
+  it('writes new URLs and keeps every earlier timeline spelling', () => {
+    for (const name of ['outcome', 'timeline', 'simulate', 'break']) expect(parseUrlQuery(`?mode=${name}`).state.mode).toBe('break');
+    expect(parseUrlQuery('?mode=scenario').state.mode).toBe('scenario');
+    expect(serializeUrlQuery({ ...URL_DEFAULTS, mode: 'break' })).toContain('mode=outcome');
+    expect(serializeUrlQuery({ ...URL_DEFAULTS, mode: 'scenario' })).toContain('mode=scenario');
+  });
+  it('can inspect the no-event outcome without inventing scheduled events', () => {
+    mount(); act(() => goToStep('break'));
+    expect(trace.value?.facts.outcome).toBe('continues'); expect(doc.value.topology.events).toEqual([]);
+    expect(root.querySelector('.ln-view')).not.toBeNull();
   });
 });
 
-describe('Topology with no run is Build as it always was', () => {
-  it('draws monochrome cards, the steady-state readout and no small timeline', async () => {
-    const r = await mount();
-    expect(trace.value).toBeNull();
+describe('Scenario is the input timeline', () => {
+  beforeEach(() => { mode.value = 'scenario'; });
+  it('shows only scheduled events and no calculated clocks, result or settings', () => {
+    crash(); mount();
+    expect(root.querySelectorAll('.scenario-marker')).toHaveLength(1);
+    expect(root.querySelector('.tl-brace,.tl-tune,.ln-view,.run-explain,.sc-row,.mtl')).toBeNull();
+    expect(root.querySelector('.scenario-timeline')?.textContent).toContain('Crash');
     expect(runShown()).toBe(false);
-    expect(tinted(r)).toBe(0);
-    expect(mini(r)).toBeNull();
-    const readout = r.querySelector('.readout')?.textContent ?? '';
-    expect(readout).toContain('Protection level');
-    expect(readout).not.toContain('Drawing at');
-    expect(readout).not.toContain('Outcome');
   });
-
-  it('carries the tools alone at the left, and the scenarios in the dock', async () => {
-    const r = await mount();
-    expect(r.querySelector('.pal-stack')).toBeNull();
-    expect(r.querySelectorAll('.palette')).toHaveLength(1);
-    expect(r.querySelector('nav.pal-add')).not.toBeNull();
-    const row = r.querySelector('.app-dock .dock-scn');
-    expect(row).not.toBeNull();
-    expect(row?.querySelector('.dock-scn-k')?.textContent).toBe('Break');
-    expect([...row!.querySelectorAll('button')].map((b) => b.textContent))
-      .toEqual(shelf(topology.value, 0).map((t) => t.label));
-    /* One row, from the dock and from nowhere else. */
-    expect(r.querySelectorAll('.dock-scn')).toHaveLength(1);
-    /* The handle on the card's top edge, then the Break row (scenarios and the three chips) over the readings, and (with a run) above the small timeline. */
-    const dock = r.querySelector('.app-dock')!;
-    expect([...dock.children].map((c) => c.className.split(' ')[0])).toEqual(['tlp-handle', 'dock-break', 'dock-status']);
-    expect(dock.querySelector('.dock-break .sc-row')).not.toBeNull();
+  it('draws the scheduled failure on the cards without the response', () => {
+    crash(); mount();
+    const prm = root.querySelector('.tp-node[data-node="member:prm01"], [data-node$="prm01"].tp-node');
+    expect(prm, 'the primary card').not.toBeNull();
+    expect(prm!.querySelector('.tp-card')?.classList.contains('is-down')).toBe(true);
+    expect(prm!.querySelector('.tp-cross')).not.toBeNull();
+    /* The standby stays a standby: the failover is step 3's to show. */
+    const sby = root.querySelector('[data-node$="sby01"].tp-node')!;
+    expect(sby.querySelector('.tp-card')?.classList.contains('is-down')).toBe(false);
+    expect(root.querySelector('.ln-view,.run-explain')).toBeNull(); expect(runShown()).toBe(false);
+    expect(root.querySelector('.scenario-playhead')?.textContent).toContain('drawing at 0 s');
   });
-
-  it('titles each scenario with its sentence and refuses in place', async () => {
-    const r = await mount();
-    const b = button(r.querySelector('.dock-scn')!, scenario('crash').label);
-    expect(b?.getAttribute('title')).toBe(scenario('crash').caption);
-    /* A drawing without a primary: every scenario says why it is off. */
-    doc.value = { ...doc.value, topology: { ...doc.value.topology, members: doc.value.topology.members.map((m) => ({ ...m, role: 'physical' as const })) } };
-    await tick();
-    const off = button(r.querySelector('.dock-scn')!, scenario('crash').label);
-    expect(off?.disabled).toBe(true);
-    expect(r.querySelector('.dock-scn .why')?.textContent).toContain('primary');
+  it('isolating the primary site cuts the observer ping along with the redo', () => {
+    act(() => applyTemplate(templates(topology.value).find(t => t.id === 'isolated')!)); mount();
+    const cutLines = [...root.querySelectorAll('.tp-link.is-x')];
+    expect(cutLines.length).toBeGreaterThanOrEqual(2);
+    expect(root.textContent).toContain('pings the primary prm01, but the network between them is severed');
+    expect(root.textContent).toContain('checks whether sby01 is ready to take over');
+    expect(root.querySelector('[data-node$="prm01"].tp-node .tp-card')?.classList.contains('is-down')).toBe(false);
   });
-
-  it('offers no scenarios to a viewer who cannot edit', async () => {
-    viewport.value = 'narrow';
-    const r = await mount();
-    expect(r.querySelector('.dock-scn')).toBeNull();
+  it('shows only the failures scheduled by the At time', () => {
+    resetHistory(withEvents(classicDoc(), [{ kind: 'host.down', host: hostId('dc1-prm01'), at: 20 }])); mount();
+    const down = () => root.querySelector('[data-node$="prm01"].tp-node .tp-card')?.classList.contains('is-down');
+    expect(tNow.value).toBe(0); expect(down()).toBe(false);
+    change('New event time in seconds', '20'); expect(tNow.value).toBe(20); expect(down()).toBe(true);
   });
-
-  it('is in the docked layout too, under the readout', async () => {
-    viewport.value = 'compact';
-    const r = await mount();
-    const row = r.querySelector('.app-dock > .dock-scn');
-    expect(row).not.toBeNull();
-    expect(row?.previousElementSibling?.classList.contains('readout')).toBe(true);
+  it('schedules a failure and recovery from a selected target, with undo and redo', () => {
+    mount(); change('Event target', 'prm01'); change('Event action', 'host.down');
+    click(button('Schedule event'));
+    expect(doc.value.topology.events).toHaveLength(1); expect(doc.value.topology.events[0]?.at).toBe(0);
+    change('New event time in seconds', '60'); change('Event action', 'host.up'); click(button('Schedule event'));
+    expect(doc.value.topology.events).toHaveLength(2); expect(doc.value.topology.events[1]?.at).toBe(60);
+    const last = doc.value; act(() => undo()); expect(doc.value.topology.events).toHaveLength(1);
+    act(() => redo()); expect(doc.value).toEqual(last);
   });
-
-  it('shows the scenario that is on as pressed, until the events are changed', async () => {
-    const r = await mount();
-    const pressed = (): string[] => [...r.querySelectorAll('.dock-scn button[aria-pressed="true"]')]
-      .map((b) => b.textContent ?? '');
-    expect(pressed()).toEqual([]);
-    await pressScenario(r, 'crash');
-    expect(pressed()).toEqual([scenario('crash').label]);
-    await pressScenario(r, 'healthy');
-    expect(pressed()).toEqual([scenario('healthy').label]);
-    await pressScenario(r, 'crash');
-    click(button(r.querySelector('.mtl')!, 'Clear'));
-    await tick();
-    expect(pressed()).toEqual([]);
+  it('moves an event with the keyboard while keeping its related recovery after it', () => {
+    resetHistory(withEvents(classicDoc(), [
+      { kind: 'host.down', host: hostId('dc1-prm01'), at: 0 },
+      { kind: 'host.up', host: hostId('dc1-prm01'), at: 10 },
+    ])); mount();
+    const marker = root.querySelector('.scenario-marker')!;
+    act(() => { marker.dispatchEvent(new KeyboardEvent('keydown', { key: 'End', bubbles: true })); });
+    expect(doc.value.topology.events.map(e => e.at)).toEqual([9.9, 10]);
+    expect(undoStack.value).toHaveLength(1);
+    act(() => undo()); expect(doc.value.topology.events[0]?.at).toBe(0);
+  });
+  it('drags a marker as one edit, and cancellation changes nothing', () => {
+    crash(); mount(); const original = doc.value; const count = undoStack.value.length;
+    const svg = root.querySelector<SVGSVGElement>('.scenario-plot svg')!;
+    svg.getBoundingClientRect = () => ({ width: 880, left: 0 } as DOMRect);
+    const pointer = (el: Element, type: string, x: number) => act(() => {
+      const e = new MouseEvent(type, { bubbles: true, cancelable: true, clientX: x, button: 0 });
+      Object.defineProperty(e, 'pointerId', { value: 1 }); el.dispatchEvent(e);
+    });
+    pointer(root.querySelector('.scenario-marker')!, 'pointerdown', 265);
+    pointer(svg, 'pointermove', 375); expect(doc.value).toBe(original);
+    pointer(svg, 'pointercancel', 375); expect(doc.value).toBe(original);
+    pointer(root.querySelector('.scenario-marker')!, 'pointerdown', 265);
+    pointer(svg, 'pointerup', 375);
+    expect(doc.value.topology.events[0]?.at).toBe(12); expect(undoStack.value.length).toBe(count + 1);
+  });
+  it('keeps the input timeline read-only on a narrow screen', () => {
+    crash(); viewport.value = 'narrow'; mount();
+    expect(root.querySelector('.scenario-marker')?.getAttribute('role')).toBe('img');
+    expect(root.querySelector<HTMLInputElement>('[aria-label="New event time in seconds"]')?.disabled).toBe(true);
+    expect(root.querySelectorAll('.app-stage>.empty')).toHaveLength(1);
   });
 });
 
-describe('a scenario from the dock makes the run', () => {
-  it('shows the small timeline, tints the cards and reads the run', async () => {
-    const r = await mount();
-    await pressScenario(r, 'crash');
-    expect(trace.value).not.toBeNull();
-    expect(runShown()).toBe(true);
-    expect(mini(r)).not.toBeNull();
-    /* One thin bar row per database, far sync, observer and application lane; none for a link. */
-    const lanes = [...r.querySelectorAll('.mtl-lane')];
-    const kinds = lanes.map((l) => l.getAttribute('data-kind'));
-    expect(kinds).toContain('member');
-    expect(kinds).toContain('observer');
-    expect(kinds).toContain('application');
-    expect(kinds).not.toContain('link');
-    expect(lanes.map((l) => l.getAttribute('data-lane'))).toEqual(expect.arrayContaining(['prm01', 'obs01', 'sby01']));
-    for (const l of lanes) expect(l.querySelectorAll('.bar').length).toBeGreaterThan(0);
-    /* Its bars carry the timeline's own phase classes, and a tooltip each. */
-    const seg = r.querySelector('.mtl .tl-seg');
-    expect(seg?.querySelector('.bar')?.getAttribute('class')).toMatch(/\bb-(tl|bl|am|sl|vi|hatch)\b/);
-    expect(seg?.getAttribute('data-tip')).toBeTruthy();
-    expect(seg?.querySelector('title')?.textContent).toBe(seg?.getAttribute('data-tip'));
-    /* The injected event is a numbered mark on the axis. */
-    expect(r.querySelectorAll('.mtl .mtl-mark')).toHaveLength(doc.value.topology.events.length);
-    expect(r.querySelector('.mtl .mtl-mark text')?.textContent).toBe('1');
-    /* The drawing is tinted by its state at the playhead, the readout reads the run. */
-    expect(tinted(r)).toBeGreaterThan(0);
-    /* ...as the one terse line the Detailed timeline's bar carries, not the cards. */
-    expect(r.querySelector('.dock-status.is-run .readout')).toBeNull();
-    const readout = r.querySelector('.dock-status.is-run .sb-ro')?.textContent ?? '';
-    expect(readout).toContain('Outcome');
-    /* No caption sentence: the readings and the badges say it. */
-    expect(r.querySelector('.mtl-cap')).toBeNull();
-    expect(r.querySelector('.mtl input.tl-tp-in')).not.toBeNull();
+describe('Outcome edits settings beside the response', () => {
+  beforeEach(() => { crash(); mode.value = 'break'; });
+  it('opens a member inspector in place and recalculates the same events', async () => {
+    mount(); const events = doc.value.topology.events;
+    click(root.querySelector('.ln-node[data-node="sby01"]')!); await tick();
+    expect(selection.value).toEqual(['sby01']); expect(mode.value).toBe('break');
+    expect(root.querySelector('.app-rail .insp')).not.toBeNull(); expect(root.querySelector('.ln-view')).not.toBeNull();
+    const before = trace.value;
+    act(() => {
+      const lag = root.querySelector<HTMLInputElement>('input[aria-label="Apply lag"]')!;
+      lag.value = '5'; lag.dispatchEvent(new Event('input', { bubbles: true }));
+    }); await tick();
+    expect(trace.value).not.toBe(before); expect(doc.value.topology.events).toBe(events);
+    expect(root.querySelector('.outcome-change')?.textContent).toContain('Since the last edit');
+    expect(root.textContent).toContain('from the beginning');
+    expect(root.querySelector('.scenario-editor,.ln-ev,.tl-event-drag')).toBeNull();
   });
-
-  it('leaves the playhead at the end of the run', async () => {
-    const r = await mount();
-    await pressScenario(r, 'crash');
-    expect(tNow.value).toBeGreaterThan(0);
-    expect(r.querySelector('.mtl-playhead')?.getAttribute('aria-valuenow')).toBe(String(tNow.value));
+  it('opens global settings without leaving the outcome', () => {
+    mount(); act(() => allSettings());
+    expect(mode.value).toBe('break'); expect(inspectorOpen.value).toBe(true);
+    expect(root.querySelector('.ln-view')).not.toBeNull();
+    expect(root.querySelector('.app-rail .insp')).not.toBeNull();
   });
-
-  it('is there for the healthy run, with a bar per lane and no transport to play', async () => {
-    const r = await mount();
-    await pressScenario(r, 'healthy');
-    expect(healthyRun.value).toBe(true);
-    expect(mini(r)).not.toBeNull();
-    expect(r.querySelectorAll('.mtl-lane').length).toBeGreaterThanOrEqual(3);
-    expect(r.querySelector('.mtl .tl-transport')).toBeNull();
-    expect(button(r.querySelector('.dock-scn')!, scenario('healthy').label)?.getAttribute('aria-pressed')).toBe('true');
-  });
-
-  it('is put away by Clear, which takes the run with it', async () => {
-    const r = await mount();
-    await pressScenario(r, 'crash');
-    click(button(r.querySelector('.mtl')!, 'Clear'));
-    await tick();
-    expect(doc.value.topology.events).toEqual([]);
-    expect(trace.value).toBeNull();
-    expect(mini(r)).toBeNull();
-    expect(tinted(r)).toBe(0);
-    expect(r.querySelector('.readout')?.textContent).toContain('Protection level');
-  });
-
-  it('leads to the Detailed timeline at the same playhead', async () => {
-    const r = await mount();
-    await pressScenario(r, 'crash');
-    tNow.value = 12.3;
-    await tick();
-    click(button(r.querySelector('.mtl')!, 'Detailed timeline'));
-    await tick();
+  it('opens item settings in the drawer at medium width', async () => {
+    viewport.value = 'medium'; mount(); click(root.querySelector('.ln-node[data-node="obs01"]')!); await tick();
+    expect(inspectorOpen.value).toBe(true); expect(root.querySelector('[role="dialog"] .insp')).not.toBeNull();
     expect(mode.value).toBe('break');
-    expect(tNow.value).toBe(12.3);
-    expect(doc.value.topology.events.length).toBeGreaterThan(0);
-  });
-});
-
-describe('the mini timeline is only Topology\'s', () => {
-  const withRun = async (): Promise<HTMLElement> => {
-    applyTemplate(templates(topology.value, 0).find((x) => x.id === 'crash')!);
-    return mount();
-  };
-
-  it('is absent in Config, in Learn and in the Detailed timeline', async () => {
-    const r = await withRun();
-    expect(mini(r)).not.toBeNull();
-    for (const m of ['configure', 'learn', 'break'] as const) {
-      mode.value = m;
-      await tick();
-      expect(mini(r), m).toBeNull();
-    }
-    mode.value = 'build';
-    await tick();
-    expect(mini(r)).not.toBeNull();
-  });
-
-  it('shows to a read-only viewer who has a run to play, without Clear', async () => {
-    viewport.value = 'narrow';
-    const r = await withRun();
-    expect(mini(r)).not.toBeNull();
-    expect(button(r.querySelector('.mtl')!, 'Clear')).toBeNull();
-    expect(button(r.querySelector('.mtl')!, 'Detailed timeline')).not.toBeNull();
-  });
-
-  it('sits above the findings in the docked layout', async () => {
-    viewport.value = 'compact';
-    const r = await withRun();
-    const dock = r.querySelector('.app-dock');
-    expect(dock?.querySelector('.mtl')).not.toBeNull();
-    const kids = [...(dock?.children ?? [])].map((c) => c.className);
-    const at = kids.findIndex((c) => c.includes('mtl'));
-    const issues = kids.findIndex((c) => c.includes('issues'));
-    expect(at).toBeGreaterThanOrEqual(0);
-    if (issues >= 0) expect(at).toBeLessThan(issues);
-  });
-
-  it('draws every lane but the links', () => {
-    const lane = (kind: string) => ({ kind }) as never;
-    expect(glanceLanes([lane('member'), lane('link'), lane('application'), lane('observer')])
-      .map((l) => l.kind)).toEqual(['member', 'application', 'observer']);
-  });
-});
-
-describe('playing and seeking the small timeline', () => {
-  const withRun = async (): Promise<HTMLElement> => {
-    applyTemplate(templates(topology.value, 0).find((x) => x.id === 'crash')!);
-    return mount();
-  };
-
-  it('seeks where the plot is pressed, and stops a run that is playing', async () => {
-    const r = await withRun();
-    const svg = r.querySelector('.mtl-svg') as SVGSVGElement;
-    const w = Number(svg.getAttribute('width'));
-    svg.getBoundingClientRect = () => ({ left: 0, top: 0, right: w, bottom: 60, width: w, height: 60, x: 0, y: 0, toJSON: () => ({}) }) as DOMRect;
-    playing.value = true;
-    await tick();
-    fire(svg, 'pointerdown', { clientX: w * 0.3, button: 0 });
-    await tick();
-    const early = tNow.value;
-    expect(playing.value).toBe(false);
-    fire(svg, 'pointerdown', { clientX: w * 0.8, button: 0 });
-    await tick();
-    expect(tNow.value).toBeGreaterThan(early);
-    expect(r.querySelector('.mtl-playhead')?.getAttribute('aria-valuenow')).toBe(String(tNow.value));
-  });
-
-  it('answers the arrow keys on the playhead, one second and (with Shift) a tenth', async () => {
-    const r = await withRun();
-    tNow.value = 10;
-    await tick();
-    const head = r.querySelector('.mtl-playhead') as Element;
-    expect(head.getAttribute('role')).toBe('slider');
-    expect(head.hasAttribute('tabindex')).toBe(true);
-    key(head, 'ArrowRight');
-    await tick();
-    expect(tNow.value).toBe(11);
-    key(head, 'ArrowLeft', { shiftKey: true });
-    await tick();
-    expect(tNow.value).toBe(10.9);
-  });
-
-  it('plays from the transport', async () => {
-    const r = await withRun();
-    tNow.value = 0;
-    await tick();
-    const play = r.querySelector('.mtl button[aria-label="Play"]') as HTMLButtonElement;
-    expect(play).not.toBeNull();
-    click(play);
-    await tick();
-    expect(playing.value).toBe(true);
-    expect(r.querySelector('.mtl button[aria-label="Pause"]')).not.toBeNull();
-    playing.value = false;
-  });
-});
-
-describe('what a card does in Topology', () => {
-  it('selects on a click and does not open the event menu', async () => {
-    const r = await mount();
-    click(card(r, 'sby01'));
-    await tick();
-    expect(selection.value).toEqual(['sby01']);
-    expect(barOpen.value).toBeNull();
-    expect(r.querySelector('.cv-bar')).toBeNull();
-    expect(r.querySelector('.tp-more')?.getAttribute('data-more')).toBe('sby01');
-  });
-
-  it('lists the events, at the playhead, on the right button', async () => {
-    tNow.value = 12;
-    const r = await mount();
-    card(r, 'sby01').dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
-    await tick();
-    expect(barOpen.value).toBe('sby01');
-    expect(barKind.value).toBe('events');
-    expect(r.querySelector('.cv-bar-when')?.textContent).toBe(' · at t = 12 s');
-    expect(r.querySelector('.cv-menu-lbl')).not.toBeNull();
-    expect([...r.querySelectorAll('.cv-bar-row button')].map((b) => b.textContent)).not.toContain('Edit sby01');
-  });
-
-  it('lists the same events on E', async () => {
-    tNow.value = 4;
-    const r = await mount();
-    key(card(r, 'prm01'), 'e');
-    await tick();
-    expect(barOpen.value).toBe('prm01');
-    expect(barKind.value).toBe('events');
-    expect(r.querySelector('.cv-bar-when')?.textContent).toBe(' · at t = 4 s');
-  });
-
-  it('opens Build\'s own table from the handle, and Delete still removes', async () => {
-    const r = await mount();
-    click(card(r, 'sby01'));
-    await tick();
-    click(r.querySelector('.tp-more'));
-    await tick();
-    expect(barKind.value).toBe('actions');
-    const rows = [...r.querySelectorAll('.cv-bar-row button')].map((b) => b.textContent);
-    expect(rows[0]).toBe('Edit sby01');
-    expect(rows.at(-1)).toBe('Remove sby01');
-    closeBar();
-    await tick();
-    key(card(r, 'sby01'), 'Delete');
-    await tick();
-    expect(doc.value.topology.members.map((m) => m.id as string)).not.toContain('sby01');
-  });
-
-  it('switches a press on the handle to Build\'s table while the events are listed', async () => {
-    const r = await mount();
-    card(r, 'sby01').dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
-    await tick();
-    expect(barKind.value).toBe('events');
-    click(r.querySelector('.tp-more'));
-    await tick();
-    expect(barKind.value).toBe('actions');
-    expect(barOpen.value).toBe('sby01');
-    click(r.querySelector('.tp-more'));
-    await tick();
-    expect(barOpen.value).toBeNull();
-  });
-
-  it('injects an event from the icon on the card, and leaves the reader at the result', async () => {
-    const r = await mount();
-    fire(card(r, 'prm01'), 'pointerover');
-    await tick();
-    const strip = r.querySelector('[data-tools="prm01"]');
-    expect(strip).not.toBeNull();
-    const icons = [...(strip?.querySelectorAll('.tp-tool') ?? [])];
-    expect(icons.length).toBeGreaterThan(0);
-    /* A press on an icon is not a press on the card: it starts no drag and
-       leaves the selection alone. */
-    const before = JSON.stringify(doc.value.layout);
-    fire(icons[0] as Element, 'pointerdown', { button: 0 });
-    click(icons[0] as Element);
-    await tick();
-    expect(JSON.stringify(doc.value.layout)).toBe(before);
-    expect(doc.value.topology.events.length).toBeGreaterThan(0);
-    expect(trace.value).not.toBeNull();
-    expect(mini(r)).not.toBeNull();
-    expect(tNow.value).toBeGreaterThan(0);
   });
 });

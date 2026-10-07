@@ -1,16 +1,5 @@
-/**
- * Lanes' event buttons: the compact icons on every card, data centre header and
- * link pill, aimed at the playhead and changing with it; the More menu with the
- * whole grouped list; the empty run that is started from them; and the rest of
- * what Lanes draws (the held axis, the braces, the data centres' order, the
- * application inside its data centre).
- *
- * jsdom lays nothing out, so where things sit is pinned in the browser pass
- * (app/design/ui.md, "Break's two layouts"); what is pinned here is which
- * buttons there are, what they say, what a press does and what closes a menu.
- *
- * @vitest-environment jsdom
- */
+/** Outcome card states, lane geometry, links and setting controls.
+ * @vitest-environment jsdom */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { h, render } from 'preact';
@@ -20,7 +9,7 @@ import { resetHistory } from '@/state/history';
 import { frame, geometry, topology } from '@/state/derived';
 import { findingsOpen, mode, playing, railCollapsed, selection, tNow, viewport } from '@/state/view';
 import { App } from '@/ui/App';
-import { applyTemplate, clearEvents, templates } from '@/ui/break/events';
+import { actionsForKey, runAction, applyTemplate, clearEvents, templates } from '@/ui/break/events';
 import { siteOrder } from '@/ui/break/lanes-layout';
 import { besideReadout } from '@/ui/timeline/EventDrag';
 
@@ -60,13 +49,6 @@ const key = (el: Element | Window, k: string): void => {
   el.dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true, cancelable: true }));
 };
 
-const strip = (r: HTMLElement, name: string): Element | null => r.querySelector(`.ln-cardwrap [data-ev-for="${name}"]`);
-const strip_ = strip;
-const tools = (r: HTMLElement, name: string): Element[] => [...(strip(r, name)?.querySelectorAll('.ln-tool:not(.ln-more)') ?? [])];
-const toolIds = (r: HTMLElement, name: string): string[] => tools(r, name).map((g) => g.getAttribute('data-tool') as string);
-const tool = (r: HTMLElement, name: string, id: string): Element | null =>
-  strip(r, name)?.querySelector(`[data-tool="${id}"]`) ?? null;
-
 beforeEach(() => {
   document.body.innerHTML = '';
   document.documentElement.removeAttribute('style');
@@ -84,286 +66,6 @@ beforeEach(() => {
 afterEach(() => {
   if (root) render(null, root);
   root = null;
-});
-
-describe('the buttons on the cards', () => {
-  it('sit on every card, and on every data centre header, with a name and a More button', async () => {
-    const r = mount();
-    await tick();
-    const cards = [...r.querySelectorAll('.ln-cardwrap .ln-ev')].map((g) => g.getAttribute('data-ev-for'));
-    expect(cards).toEqual(['prm01', 'app01', 'sby01', 'obs01']);
-    const heads = [...r.querySelectorAll('.ln-dc .ln-ev')].map((g) => g.getAttribute('data-ev-for'));
-    expect(heads).toEqual(['DC 1', 'DC 2', 'DC 3']);
-    for (const g of r.querySelectorAll('.ln-ev')) {
-      expect(g.getAttribute('role')).toBe('toolbar');
-      expect(g.getAttribute('aria-label')).toMatch(/^Events for /);
-      expect(g.querySelector('.ln-more')?.getAttribute('aria-label')).toMatch(/^More events for /);
-    }
-    /* A database and its host, the application's host, a data centre and its links. */
-    expect(toolIds(r, 'prm01')).toEqual(['member.down', 'host.down']);
-    expect(toolIds(r, 'app01')).toEqual(['host.down']);
-    expect(toolIds(r, 'obs01')).toEqual(['observer.stop', 'host.down']);
-    const dc = [...r.querySelectorAll('.ln-dc [data-ev-for="DC 2"] .ln-tool:not(.ln-more)')].map((g) => g.getAttribute('data-tool'));
-    expect(dc).toEqual(['site.down', 'site.isolate']);
-  });
-
-  it('name themselves with the action, and are always there, not only under the pointer', async () => {
-    clearEvents();
-    const r = mount();
-    await tick();
-    const labels = tools(r, 'prm01').map((g) => g.getAttribute('aria-label'));
-    expect(labels).toEqual(['SHUTDOWN ABORT prm01', 'Crash dc1-prm01']);
-    for (const g of tools(r, 'prm01')) expect(g.querySelector('title')?.textContent).toBe(g.getAttribute('aria-label'));
-    expect(tools(r, 'prm01').every((g) => g.getAttribute('aria-disabled') === 'false')).toBe(true);
-  });
-
-  it('follow the playhead: a crash at 10 s is the way down before it and the way back after', async () => {
-    crashAt(10);
-    const r = mount();
-    await tick();
-    tNow.value = 5;
-    await tick();
-    expect(toolIds(r, 'prm01')).toEqual(['member.down', 'host.down']);
-
-    tNow.value = 40;
-    await tick();
-    expect(toolIds(r, 'prm01')).toEqual(['member.up', 'host.up']);
-    expect(tool(r, 'prm01', 'host.up')?.getAttribute('aria-label')).toBe('Restore the host');
-    /* The way back is the one that stands out. */
-    expect(tool(r, 'prm01', 'host.up')?.classList.contains('is-mend')).toBe(true);
-
-    tNow.value = 3;
-    await tick();
-    expect(toolIds(r, 'prm01')).toEqual(['member.down', 'host.down']);
-  });
-
-  it('keep the same element in a slot as it turns from the way down to the way back', async () => {
-    crashAt(10);
-    const r = mount();
-    await tick();
-    tNow.value = 5;
-    await tick();
-    const slot = tools(r, 'prm01')[1];
-    expect(slot?.getAttribute('data-tool')).toBe('host.down');
-    tNow.value = 40;
-    await tick();
-    /* So a keyboard reader who pressed it is still on it, reading what it is now. */
-    expect(tools(r, 'prm01')[1]).toBe(slot);
-    expect(slot?.getAttribute('data-tool')).toBe('host.up');
-  });
-
-  it('follow it for a data centre too, and refuse what the clock cannot allow', async () => {
-    const t = templates(topology.value, 10).find((x) => x.id === 'dc2down');
-    applyTemplate(t!);
-    const r = mount();
-    await tick();
-    tNow.value = 5;
-    await tick();
-    const dc2 = (): string[] => [...r.querySelectorAll('.ln-dc [data-ev-for="DC 2"] .ln-tool:not(.ln-more)')]
-      .map((g) => g.getAttribute('data-tool') as string);
-    expect(dc2()[0]).toBe('site.down');
-    tNow.value = 30;
-    await tick();
-    expect(dc2()[0]).toBe('site.up');
-    expect(r.querySelector('.ln-dc.is-down')).not.toBeNull();
-  });
-
-  it('are grey with the reason as their title when the moment refuses them', async () => {
-    crashAt(10);
-    const r = mount();
-    await tick();
-    tNow.value = 40;
-    await tick();
-    const startup = tool(r, 'prm01', 'member.up') as Element;
-    expect(startup.classList.contains('is-off')).toBe(true);
-    expect(startup.getAttribute('aria-disabled')).toBe('true');
-    expect(startup.getAttribute('aria-label')).toMatch(/ — .*down.*restore the host first/i);
-    expect(startup.querySelector('title')?.textContent).toBe(startup.getAttribute('aria-label'));
-    const before = topology.value.events.length;
-    click(startup);
-    await tick();
-    expect(topology.value.events.length).toBe(before);
-    /* A grey control is out of the tab order and the arrows; the live ones are in it. */
-    expect(startup.getAttribute('tabindex')).toBe('-1');
-
-    /* And a switchover is refused while the primary is down at this point on the clock. */
-    click(strip(r, 'sby01')?.querySelector('.ln-more') ?? null);
-    await tick();
-    const row = [...r.querySelectorAll('.ln-menu .cv-mi')].find((m) => /SWITCHOVER/.test(m.textContent ?? ''));
-    expect(row?.classList.contains('is-off')).toBe(true);
-    expect(row?.querySelector('.why')?.textContent?.length).toBeGreaterThan(0);
-  });
-
-  it('inject at the playhead and leave it where it is, and the marker is there at once', async () => {
-    clearEvents();
-    const r = mount();
-    await tick();
-    tNow.value = 12.34;
-    await tick();
-    click(tool(r, 'prm01', 'host.down'));
-    await tick();
-    const events = topology.value.events;
-    expect(events).toHaveLength(1);
-    expect(events[0]).toMatchObject({ kind: 'host.down', at: 12.3 });
-    expect(tNow.value).toBe(12.34);
-    /* The run exists now: lanes, a marker for the event, and no hint. */
-    expect(r.querySelectorAll('.ln-svg .tl-event-drag')).toHaveLength(1);
-    expect(r.querySelectorAll('.ln-svg .tl-lane').length).toBeGreaterThan(0);
-    /* No second clock: the transport's own time field is the one the buttons are aimed at. */
-    expect(r.querySelector('.evmenu')).toBeNull();
-    expect((r.querySelector('.tl-transport input[aria-label="Time in seconds"]') as HTMLInputElement).value)
-      .toMatch(/^12\.[03]/);
-    /* And the slot that was the way down is now the way back. */
-    expect(toolIds(r, 'prm01')).toEqual(['member.up', 'host.up']);
-  });
-
-  it('press with Enter and Space as well, and walk the strip with the arrows', async () => {
-    clearEvents();
-    const r = mount();
-    await tick();
-    const first = tool(r, 'prm01', 'member.down') as SVGElement;
-    expect(first.getAttribute('tabindex')).toBe('0');
-    const second = tool(r, 'prm01', 'host.down') as SVGElement;
-    expect(second.getAttribute('tabindex')).toBe('-1');
-    key(strip(r, 'prm01') as Element, 'ArrowRight');
-    await tick();
-    expect(tool(r, 'prm01', 'host.down')?.getAttribute('tabindex')).toBe('0');
-    key(tool(r, 'prm01', 'host.down') as Element, 'Enter');
-    await tick();
-    expect(topology.value.events.map((e) => e.kind)).toEqual(['host.down']);
-  });
-
-  it('clicking the card is still selecting it, and pressing a button is not', async () => {
-    clearEvents();
-    const r = mount();
-    await tick();
-    click(r.querySelector('.ln-node[data-node="prm01"]'));
-    await tick();
-    expect(selection.value).toEqual(['prm01']);
-    selection.value = [];
-    await tick();
-    click(tool(r, 'sby01', 'host.down'));
-    await tick();
-    expect(selection.value).toEqual([]);
-  });
-});
-
-describe('the More menu', () => {
-  it('lists the whole grouped table for the card, at the playhead, and closes on Escape', async () => {
-    clearEvents();
-    const r = mount();
-    await tick();
-    tNow.value = 7;
-    await tick();
-    const more = strip(r, 'sby01')?.querySelector('.ln-more') as Element;
-    expect(more.getAttribute('aria-expanded')).toBe('false');
-    click(more);
-    await tick();
-    const menu = r.querySelector('.ln-menu') as HTMLElement;
-    expect(menu).not.toBeNull();
-    expect(more.getAttribute('aria-expanded')).toBe('true');
-    expect(menu.querySelector('.cv-bar-subj')?.textContent).toContain('sby01');
-    expect(menu.querySelector('.cv-bar-subj')?.textContent).toContain('at t = 7 s');
-    const groups = [...menu.querySelectorAll('.cv-menu-lbl')].map((p) => p.textContent);
-    expect(groups.slice(0, 2)).toEqual(['Fail', 'Role change']);
-    expect(groups).toContain('Restore');
-    const rows = [...menu.querySelectorAll('.cv-mi-btn')].map((b) => b.textContent);
-    expect(rows).toContain('Crash dc2-sby01');
-    expect(rows.some((t) => /SWITCHOVER TO sby01/.test(t ?? ''))).toBe(true);
-    /* The focus moved into it, on a row that can be pressed. */
-    expect(document.activeElement?.classList.contains('cv-mi-btn')).toBe(true);
-
-    /* Arrows walk the rows. */
-    const first = document.activeElement;
-    key(menu, 'ArrowDown');
-    expect(document.activeElement).not.toBe(first);
-
-    key(window, 'Escape');
-    await tick();
-    expect(r.querySelector('.ln-menu')).toBeNull();
-    expect(more.getAttribute('aria-expanded')).toBe('false');
-    expect(document.activeElement).toBe(more);
-    /* Escape closed the menu and forgot nothing else. */
-    expect(selection.value).toEqual([]);
-  });
-
-  it('closes on a press outside it, and a second press on its opener', async () => {
-    clearEvents();
-    const r = mount();
-    await tick();
-    const more = strip(r, 'prm01')?.querySelector('.ln-more') as Element;
-    click(more);
-    await tick();
-    expect(r.querySelector('.ln-menu')).not.toBeNull();
-    document.body.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true }));
-    await tick();
-    expect(r.querySelector('.ln-menu')).toBeNull();
-
-    click(more);
-    await tick();
-    expect(r.querySelector('.ln-menu')).not.toBeNull();
-    click(more);
-    await tick();
-    expect(r.querySelector('.ln-menu')).toBeNull();
-  });
-
-  it('presses a row: the event lands at the playhead and the menu has done its job', async () => {
-    clearEvents();
-    const r = mount();
-    await tick();
-    tNow.value = 20;
-    await tick();
-    click(strip(r, 'sby01')?.querySelector('.ln-more') ?? null);
-    await tick();
-    const row = [...r.querySelectorAll('.ln-menu .cv-mi-btn')].find((b) => /^SWITCHOVER TO/.test(b.textContent ?? ''));
-    click(row ?? null);
-    await tick();
-    expect(topology.value.events).toHaveLength(1);
-    expect(topology.value.events[0]).toMatchObject({ kind: 'cmd.switchover', at: 20 });
-    expect(tNow.value).toBe(20);
-    expect(r.querySelector('.ln-menu')).toBeNull();
-  });
-
-  it('belongs to a data centre too', async () => {
-    clearEvents();
-    const r = mount();
-    await tick();
-    click(r.querySelector('.ln-dc [data-ev-for="DC 2"] .ln-more'));
-    await tick();
-    expect(r.querySelector('.ln-menu .cv-bar-subj')?.textContent).toContain('DC 2');
-    const rows = [...r.querySelectorAll('.ln-menu .cv-mi-btn')].map((b) => b.textContent);
-    expect(rows).toEqual(['Take DC 2 down', 'Isolate DC 2']);
-  });
-});
-
-describe('the links', () => {
-  it('give their cut to the pill, as a menu, at the playhead', async () => {
-    clearEvents();
-    const r = mount();
-    await tick();
-    tNow.value = 15;
-    await tick();
-    const pills = [...r.querySelectorAll('.ln-pill.is-act')];
-    expect(pills.length).toBeGreaterThan(0);
-    for (const p of pills) {
-      expect(p.getAttribute('role')).toBe('button');
-      expect(p.getAttribute('aria-haspopup')).toBe('menu');
-    }
-    click(pills[0] as Element);
-    await tick();
-    const rows = [...r.querySelectorAll('.ln-menu .cv-mi-btn')];
-    const cut = rows.find((b) => /^Cut /.test(b.textContent ?? ''));
-    expect(cut).toBeDefined();
-    click(cut ?? null);
-    await tick();
-    expect(topology.value.events).toHaveLength(1);
-    expect(topology.value.events[0]).toMatchObject({ kind: 'link.cut', at: 15 });
-    /* The pill now reads cut, and its menu offers the way back. */
-    click(r.querySelector('.ln-pill.is-act.is-down'));
-    await tick();
-    expect([...r.querySelectorAll('.ln-menu .cv-mi-btn:not(:disabled)')]
-      .some((b) => /^(Reconnect|Restore|Heal|Take|Bring)/i.test(b.textContent ?? ''))).toBe(true);
-  });
 });
 
 const node = (r: HTMLElement, name: string): Element => {
@@ -392,7 +94,7 @@ describe('the state on a card is the state at the playhead, at an event\'s own t
     /* A restore at 20, and the playhead left where it was aimed. */
     tNow.value = 20;
     await tick();
-    click(tool(r, 'prm01', 'host.up'));
+    runAction(actionsForKey(topology.value, 'prm01', tNow.value).find(a => a.id === 'host.up')!, { keepPlayhead: true });
     await tick();
     expect(tNow.value).toBe(20);
     expect(topology.value.events.map((e) => [e.kind, e.at])).toEqual([['host.down', 0], ['host.up', 20]]);
@@ -412,27 +114,7 @@ describe('the state on a card is the state at the playhead, at an event\'s own t
 });
 
 describe('a card reads in two lines and never loses its state word', () => {
-  it('has the buttons on the name\'s line and the whole width for role and state', async () => {
-    crashAt(0);
-    const r = mount();
-    await tick();
-    tNow.value = 12;
-    await tick();
-    for (const name of ['prm01', 'app01', 'sby01', 'obs01']) {
-      const g = node(r, name);
-      const strip = strip_(r, name);
-      const sub = g.querySelector('.ln-sub') as SVGTextElement;
-      expect(sub.textContent ?? '', name).not.toMatch(/…/);
-      /* the buttons sit level with the name, not with the second line */
-      const y = Number(strip?.querySelector('.ln-tool')?.getAttribute('transform')?.match(/,([\d.]+)\)/)?.[1]);
-      expect(y, name).toBeLessThan(Number(sub.getAttribute('y')) - 10);
-    }
-    /* Members and the observer carry the state at t in the text and in the accessible name. */
-    expect(subOf(r, 'sby01')).toMatch(/^Physical standby · /);
-    expect(subOf(r, 'obs01')).toMatch(/^Observer.* · /);
-    expect(node(r, 'sby01').getAttribute('aria-label')).toMatch(/^sby01, Physical standby, \S/);
-    expect(node(r, 'obs01').getAttribute('aria-label')).toMatch(/, Reconnect|, Pinging/);
-  });
+
 
   it('shows the crash as a cross in the badge, in place of the role\'s letter', async () => {
     crashAt(0);
@@ -460,7 +142,7 @@ describe('the application host has a lane of its own', () => {
     /* Crash that host at 10 s: up, then down from there. */
     tNow.value = 10;
     await tick();
-    click(tool(r, 'app01', 'host.down'));
+    runAction(actionsForKey(topology.value, 'app01', tNow.value).find(a => a.id === 'host.down')!, { keepPlayhead: true });
     await tick();
     const tips = [...(lane()?.querySelectorAll('.tl-seg') ?? [])].map((x) => x.getAttribute('data-tip'));
     expect(tips).toEqual(["app01's host — Host up", "app01's host — Down — host has crashed"]);
@@ -491,8 +173,9 @@ describe('the links are named', () => {
     /* The pill's menu is headed by the link's name, not by the pill's text. */
     click(sync ?? null);
     await tick();
-    expect(r.querySelector('.ln-menu .cv-bar-subj .mono')?.textContent).toBe('redo prm01 → sby01, SYNC');
-    expect(r.querySelector('.ln-menu .cv-bar-when')?.textContent).toMatch(/at t = 20 s/);
+    expect(selection.value.length).toBe(1);
+    expect(r.querySelector('.app-rail .insp')).not.toBeNull();
+    expect(mode.value).toBe('break');
   });
 
   it('colour the pill as the canvas does: red for down, plain for the rest', async () => {
@@ -509,17 +192,7 @@ describe('the links are named', () => {
 });
 
 describe('an empty run', () => {
-  it('shows the cards with their buttons and the tracks', async () => {
-    clearEvents();
-    const r = mount();
-    await tick();
-    expect(r.querySelectorAll('.ln-cardwrap')).toHaveLength(4);
-    expect(r.querySelectorAll('.ln-cardwrap .ln-tool:not(.ln-more)').length).toBeGreaterThanOrEqual(7);
-    expect(r.querySelectorAll('.ln-track')).toHaveLength(4);
-    /* Nothing to seek or play, but the bar still carries the findings. */
-    expect(r.querySelector('.ln-bar .tl-transport')).toBeNull();
-    expect(r.querySelector('.ln-bar .sb-chip')).not.toBeNull();
-  });
+
 
   it('still has an axis, a default minute, and a playhead on it', async () => {
     clearEvents();
@@ -536,28 +209,6 @@ describe('an empty run', () => {
     await tick();
     expect(r.querySelector('.ln-steady-ph')?.getAttribute('transform')).not.toBe(before);
     expect(r.querySelector('.ln-steady-ph .tl-playhead-t')?.textContent).toBe('t = 30');
-  });
-});
-
-describe('the axis', () => {
-  const slider = (r: HTMLElement): Element => r.querySelector('.ln-svg .tl-event-drag') as Element;
-
-  it('is held where it was when an event is moved, and Fit lets go of it', async () => {
-    crashAt(0);
-    const r = mount();
-    await tick();
-    expect(r.querySelector('.ln-bar .sb-fit')).toBeNull();
-    const ticks = (): string => [...r.querySelectorAll('.ln-svg text.t-tick.t-mono')].map((x) => x.textContent).join(',');
-    const before = ticks();
-    key(slider(r), 'ArrowRight');
-    await tick();
-    expect(topology.value.events[0]?.at).toBe(1);
-    const fit = r.querySelector('.ln-bar .sb-fit') as HTMLButtonElement | null;
-    expect(fit).not.toBeNull();
-    expect(ticks()).toBe(before);
-    fit!.click();
-    await tick();
-    expect(r.querySelector('.ln-bar .sb-fit')).toBeNull();
   });
 });
 
@@ -631,33 +282,6 @@ describe('the time readout while an event pin is dragged', () => {
     fire('move', x + 120);
     return g;
   };
-
-  it('in Lanes sits beside the pin, in the plot and clear of the sticky head, not above it', async () => {
-    crashAt(10);
-    const r = mount();
-    await tick();
-    const g = grab(r, 300);
-    await tick();
-    const t = g.querySelector('.tl-event-time') as SVGTextElement;
-    expect(t).not.toBeNull();
-    expect(t.textContent).toMatch(/^\d+(\.\d)? s$/);
-    /* jsdom lays nothing out, so where it sits is read off the attributes: inside
-       the plot's svg, and its top no higher than the svg's own top edge. */
-    expect(t.closest('.ln-plot')).not.toBeNull();
-    expect(Number(t.getAttribute('y')) - 11).toBeGreaterThanOrEqual(0);
-    expect(['start', 'end']).toContain(t.getAttribute('text-anchor'));
-  });
-
-  it('in the full timeline (docked, or popped out) keeps to the old place: centred over the pin', async () => {
-    viewport.value = 'compact';
-    crashAt(10);
-    const r = mount();
-    await tick();
-    const g = grab(r, 300);
-    await tick();
-    const t = g.querySelector('.tl-event-time') as SVGTextElement;
-    expect(t.getAttribute('text-anchor')).toBe('middle');
-  });
 
   it('flips to the pin\'s other side at the right edge and stays inside the plot', () => {
     expect(besideReadout(100, 6, 1000)).toBe('start');

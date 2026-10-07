@@ -732,6 +732,7 @@ describe('the handle on the selected thing offers what can be done to it', () =>
      playhead (the Detailed timeline's menu); Build's own table is the
      handle's. */
   it('opens the events, with the focus in them, when the gesture was the context menu', async () => {
+    mode.value = 'scenario';
     const root = await mountApp();
     card(root, 'sby01').dispatchEvent(
       new MouseEvent('contextmenu', { bubbles: true, cancelable: true }),
@@ -745,9 +746,10 @@ describe('the handle on the selected thing offers what can be done to it', () =>
   });
 
   it('offers the whole Break table, entry for entry', async () => {
-    mode.value = 'break';
+    mode.value = 'scenario';
     /* The drawing is on screen in the Detailed timeline only in the docked layout. */
     viewport.value = 'compact';
+    mode.value = 'scenario';
     const root = await mountApp();
     await clickCard(root, 'prm01');
     const doc: TopologyDoc = docSignal.value.topology;
@@ -755,7 +757,6 @@ describe('the handle on the selected thing offers what can be done to it', () =>
     const events = all.filter((a) => a.property !== true);
     const offered = [
       ...events.filter((a) => !nothingToRestore(a)),
-      ...all.filter((a) => a.property === true),
     ];
     /* Every row, nothing capped and nothing handed to the rail. */
     expect([...barRows(root)].sort()).toEqual(offered.map((a) => a.label).sort());
@@ -793,10 +794,11 @@ describe('the handle on the selected thing offers what can be done to it', () =>
   });
 
   it('says in its header when the events land, off the playhead the rail reads', async () => {
-    mode.value = 'break';
+    mode.value = 'scenario';
     /* The drawing is on screen in the Detailed timeline only in the docked layout. */
     viewport.value = 'compact';
     tNow.value = 12.34;
+    mode.value = 'scenario';
     const root = await mountApp();
     await clickCard(root, 'sby01');
     expect(root.querySelector('.cv-bar-hd .mono')?.textContent).toBe('sby01');
@@ -804,9 +806,10 @@ describe('the handle on the selected thing offers what can be done to it', () =>
   });
 
   it('takes the quick icons off the card whose menu is open', async () => {
-    mode.value = 'break';
+    mode.value = 'scenario';
     /* The drawing is on screen in the Detailed timeline only in the docked layout. */
     viewport.value = 'compact';
+    mode.value = 'scenario';
     const root = await mountApp();
     const over = (el: Element): void => {
       const name = 'onpointerover' in el ? 'pointerover' : 'PointerOver';
@@ -827,9 +830,10 @@ describe('the handle on the selected thing offers what can be done to it', () =>
   });
 
   it('injects the event the row names, at the playhead', async () => {
-    mode.value = 'break';
+    mode.value = 'scenario';
     /* The drawing is on screen in the Detailed timeline only in the docked layout. */
     viewport.value = 'compact';
+    mode.value = 'scenario';
     const root = await mountApp();
     await clickCard(root, 'prm01');
     const crash = [...root.querySelectorAll('.cv-bar-row button')]
@@ -843,10 +847,11 @@ describe('the handle on the selected thing offers what can be done to it', () =>
   /* The event menu that used to answer "what can I do to this?" is gone from
      Break: the click on the drawing is the answer, and it is the bar. */
   it('draws no event menu in Break, and a click on a card is what lists the events', async () => {
-    mode.value = 'break';
+    mode.value = 'scenario';
     /* The drawing is on screen in the Detailed timeline only in the docked layout. */
     viewport.value = 'compact';
     tNow.value = 12;
+    mode.value = 'scenario';
     const root = await mountApp();
     expect(root.querySelector('.evmenu')).toBeNull();
     expect(barOpen.value).toBeNull();
@@ -866,9 +871,10 @@ describe('the handle on the selected thing offers what can be done to it', () =>
   });
 
   it('closes the Break list on Escape and on a press outside, keeping the selection on Escape', async () => {
-    mode.value = 'break';
+    mode.value = 'scenario';
     /* The drawing is on screen in the Detailed timeline only in the docked layout. */
     viewport.value = 'compact';
+    mode.value = 'scenario';
     const root = await mountApp();
     await clickCard(root, 'sby01');
     expect(barOpen.value).toBe('sby01');
@@ -887,10 +893,11 @@ describe('the handle on the selected thing offers what can be done to it', () =>
   });
 
   it('says on each quick icon when it acts', async () => {
-    mode.value = 'break';
+    mode.value = 'scenario';
     /* The drawing is on screen in the Detailed timeline only in the docked layout. */
     viewport.value = 'compact';
     tNow.value = 20;
+    mode.value = 'scenario';
     const root = await mountApp();
     const name = (el: Element): string => ('onpointerover' in el ? 'pointerover' : 'PointerOver');
     const card0 = card(root, 'prm01');
@@ -905,6 +912,7 @@ describe('the handle on the selected thing offers what can be done to it', () =>
 
   it('offers nothing on a drawing nobody may edit', async () => {
     viewport.value = 'narrow';
+    mode.value = 'scenario';
     const root = await mountApp();
     await clickCard(root, 'sby01');
     expect(root.querySelector('.cv-bar')).toBeNull();

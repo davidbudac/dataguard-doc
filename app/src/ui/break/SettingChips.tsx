@@ -1,16 +1,10 @@
 /**
  * The settings that are not a length on the timeline, as chips: protection
  * mode, fast-start failover and the LogXptMode of the standby the run is about,
- * with `All settings →` after them to the rest in Topology's inspector.
+ * with `All settings →` opening the rest in Outcome's inspector.
  *
- * The times that matter are not here: they are braces on the timeline itself
- * (ui/timeline/MiniTimeline.tsx, break/LanesView.tsx), with a grip to drag and
- * a number to type. These three are a choice from a short list, which no length
- * on an axis can say, so each is a `label value ▾` chip -- a native select drawn
- * as its value and a caret. Topology's dock carries them on the `Break` row
- * (break/PlayDock.tsx) and the Detailed timeline's bar after the readings; this
- * is the one component for both, so what a chip offers, says and refuses cannot
- * drift between them.
+ * Timed settings live on the timeline as brace grips and popovers. These
+ * discrete choices share the inspector's named setters and refusal reasons.
  *
  * Every chip is the inspector's own setting, written through the same named
  * setters (`inspector/edits.ts`) wrapped in `tuned(...)`, so its undo sentence
@@ -57,7 +51,7 @@ const FSFO_SECTION = 'Fast-start failover';
  * fold -- so the reader lands on the rest of the settings and not on a card.
  */
 export function allSettings(): void {
-  mode.value = 'build';
+  if (mode.value !== 'break') mode.value = 'build';
   leaveIntro();
   clearSelection();
   revealSections([FSFO_SECTION]);
@@ -126,7 +120,7 @@ export function SettingChips({ logXpt = true }: { logXpt?: boolean }) {
           </select>
         </Chip>
       )}
-      <button type="button" class="btn sc-all" title="Every setting, in Topology's inspector" onClick={allSettings}>
+      <button type="button" class="btn sc-all" title="Edit configuration settings beside the result" onClick={allSettings}>
         All settings →
       </button>
     </div>

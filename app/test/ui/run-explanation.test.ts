@@ -52,7 +52,7 @@ it('opens the failover settings from a blocked readiness check and navigates to 
   expect(root.textContent).toContain('Fast-start failover is forbidden');
   const settings = root.querySelector<HTMLButtonElement>('.run-explain-settings')!;
   act(() => settings.click());
-  expect(mode.value).toBe('build');
+  expect(mode.value).toBe('break');
   expect(selection.value).toEqual([]);
   expect(openSections.value.has('Fast-start failover')).toBe(true);
   expect(inspectorOpen.value).toBe(true);

@@ -21,7 +21,7 @@ import { findApplication, hasApplyInstance, isDatabase } from '@/engine';
 import { withEvents } from '@/state/doc';
 import { topology, trace } from '@/state/derived';
 import { edit } from '@/state/history';
-import { appLanesShown, healthyRun, playing, tNow, toast } from '@/state/view';
+import { appLanesShown, healthyRun, mode, playing, tNow, toast } from '@/state/view';
 import { lastInterestingT } from '@/ui/timeline/build';
 import type { WhyState } from '../common/WhyPill';
 import type { CanvasTool, ToolIconName } from '../canvas/HoverTools';
@@ -890,6 +890,11 @@ export const snapT = (t: number): number => Math.round(t * 10) / 10;
  * on every event it will add, decided before this runs.
  */
 export function restPlayhead(): void {
+  if (mode.value === 'scenario') {
+    playing.value = false;
+    tNow.value = Math.max(0, ...topology.value.events.map(e => e.at));
+    return;
+  }
   const t = trace.value;
   if (t === null) { tNow.value = 0; return; }
   const end = lastInterestingT(t, topology.value.events, appLanesShown.value ? topology.value : undefined);
@@ -904,6 +909,8 @@ export interface RunOptions {
    * reader who is composing at t = 10 s.
    */
   keepPlayhead?: boolean;
+  /** Scenario composition offers timed actions only. */
+  eventsOnly?: boolean;
 }
 
 /** Inject an action's events under one undo entry. */
