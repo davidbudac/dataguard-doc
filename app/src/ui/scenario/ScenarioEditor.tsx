@@ -4,11 +4,13 @@ import type { JSX } from 'preact';
 import { applicationsOf } from '@/engine';
 import type { TimedEvent } from '@/engine';
 import { topology } from '@/state/derived';
-import { canEdit, select, selection, tNow, viewport } from '@/state/view';
+import { canEdit, playing, scrubbing, select, selection, tNow, viewport } from '@/state/view';
 import { Action } from '../inspector/controls';
 import { WHY } from '../inspector/why';
-import { actionsFor, describeEvent, runAction, setEventTime, snapT } from '../break/events';
-import { eventTimeBounds, MAX_EVENT_TIME } from '../break/event-order';
+import { actionsFor, describeEvent, eventGlyph, runAction, setEventTime, snapT } from '../break/events';
+import { eventDragBounds, MAX_EVENT_TIME } from '../break/event-order';
+import { GlyphIcon } from '../common/glyphs';
+import { eventIcon, GLYPH } from '../common/eventIcons';
 import { ScenarioRow } from '../break/ScenarioRow';
 import { useWidth } from '../common/use-width';
 import { goToStep } from '../workflow';
@@ -69,6 +71,10 @@ export function ScenarioTimeline() {
   const editable = canEdit(viewport.value);
   const [measure, measured] = useWidth();
   const drag = useRef<Drag | null>(null);
+  /* A press on the plot outside a marker moves the drawing's time there and
+     keeps moving it while held, like the Outcome's timeline; markers stop
+     the press, so grabbing one never seeks. */
+  const seek = useRef<number | null>(null);
   const [preview, setPreview] = useState<{ index: number; at: number } | null>(null);
   const width = Math.max(660, measured);
   const left = 265;
@@ -77,12 +83,37 @@ export function ScenarioTimeline() {
   const x = (at: number): number => left + at / horizon * (right - left);
   const height = Math.max(1, events.length) * 36 + 54;
   const bounded = (at: number, min: number, max: number): number => snapT(Math.max(min, Math.min(max, at)));
+  const playheadT = Math.min(horizon, tNow.value);
+  const seekTo = (t: number): void => { tNow.value = bounded(t, 0, horizon); };
+  const tAtPointer = (e: JSX.TargetedPointerEvent<SVGSVGElement>): number => {
+    const box = e.currentTarget.getBoundingClientRect();
+    const px = (e.clientX - box.left) * width / box.width;
+    return (px - left) / (right - left) * horizon;
+  };
+  const down = (e: JSX.TargetedPointerEvent<SVGSVGElement>): void => {
+    if (!events.length || e.button !== 0 || drag.current) return;
+    e.preventDefault();
+    playing.value = false;
+    seek.current = e.pointerId;
+    scrubbing.value = true;
+    e.currentTarget.setPointerCapture?.(e.pointerId);
+    seekTo(tAtPointer(e));
+  };
+  const endSeek = (e: JSX.TargetedPointerEvent<SVGSVGElement>): boolean => {
+    if (seek.current !== e.pointerId) return false;
+    seek.current = null;
+    scrubbing.value = false;
+    if (e.currentTarget.hasPointerCapture?.(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId);
+    return true;
+  };
   const move = (e: JSX.TargetedPointerEvent<SVGSVGElement>): void => {
+    if (seek.current === e.pointerId) { seekTo(tAtPointer(e)); return; }
     const d = drag.current;
     if (d?.pointer !== e.pointerId) return;
     setPreview({ index: d.index, at: bounded(d.startAt + (e.clientX - d.startX) * d.perPixel, d.min, d.max) });
   };
   const finish = (e: JSX.TargetedPointerEvent<SVGSVGElement>, cancel = false): void => {
+    if (endSeek(e)) return;
     const d = drag.current;
     if (d?.pointer !== e.pointerId) return;
     drag.current = null;
@@ -93,7 +124,6 @@ export function ScenarioTimeline() {
   return <div class="scenario-timeline" ref={measure}>
     <div class="scenario-timeline-head">
       <strong>Scheduled events</strong>
-      <span class="scenario-timeline-hint">Drag a marker to change its time · seconds from scenario start · the drawing shows the failures up to the At time</span>
       {/* The way to step 3, where the schedule is: the step bar's button is a
           screen away from the thing it runs. */}
       <button
@@ -106,28 +136,40 @@ export function ScenarioTimeline() {
     </div>
     <div class="scenario-plot">
       <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} role="group" aria-label="Scheduled events timeline"
-        onPointerMove={move} onPointerUp={e => finish(e)} onPointerCancel={e => finish(e, true)}
+        class={events.length ? 'is-seekable' : undefined}
+        onPointerDown={down} onPointerMove={move} onPointerUp={e => finish(e)} onPointerCancel={e => finish(e, true)}
         onKeyDown={e => { if (e.key === 'Escape' && drag.current) { drag.current = null; setPreview(null); e.stopPropagation(); } }}>
         {Array.from({ length: 7 }, (_, i) => horizon * i / 6).map(at => <g key={at}>
           <line class="scenario-grid" x1={x(at)} x2={x(at)} y1={25} y2={height - 6} />
           <text class="scenario-tick" x={x(at)} y={16} text-anchor="middle">{snapT(at)} s</text>
         </g>)}
-        {events.length ? <g class="scenario-playhead" aria-hidden="true">
-          <line x1={x(Math.min(horizon, tNow.value))} x2={x(Math.min(horizon, tNow.value))} y1={22} y2={height - 2} />
-          <text x={x(Math.min(horizon, tNow.value))} y={height - 2} text-anchor="middle">drawing at {snapT(tNow.value)} s</text>
+        {events.length ? <g class="scenario-playhead" role="slider" tabindex={0} aria-label="Drawing time"
+          aria-valuemin={0} aria-valuemax={horizon} aria-valuenow={snapT(tNow.value)} aria-valuetext={`${snapT(tNow.value)} seconds`}
+          onKeyDown={e => {
+            if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) return;
+            e.preventDefault(); e.stopPropagation();
+            playing.value = false;
+            seekTo(e.key === 'Home' ? 0 : e.key === 'End' ? horizon
+              : tNow.value + (e.key === 'ArrowLeft' ? -1 : 1) * (e.shiftKey ? 0.1 : 1));
+          }}>
+          <title>The drawing shows the scenario at this time. Click or drag the timeline to move it; arrow keys move by 1 s, Shift by 0.1 s.</title>
+          <rect class="scenario-playhead-hit" x={x(playheadT) - 6} y={22} width={12} height={height - 24} />
+          <line x1={x(playheadT)} x2={x(playheadT)} y1={22} y2={height - 2} />
+          <text x={x(playheadT)} y={height - 2} text-anchor="middle">drawing at {snapT(tNow.value)} s</text>
         </g> : null}
         {!events.length ? <text class="scenario-empty" x={12} y={52}>No scheduled events. Choose a scenario or schedule an event above.</text> : null}
         {events.map((event, index) => {
           const at = preview?.index === index ? preview.at : event.at;
           const y = 44 + index * 36;
           const label = describeEvent(doc, event);
-          const bounds = eventTimeBounds(doc, index);
+          const bounds = eventDragBounds(doc, index);
           return <g key={index}>
             <title>{label}</title>
-            <text class="scenario-label" x={12} y={y + 4}>{index + 1}. {label.length > 34 ? label.slice(0, 32) + '…' : label}</text>
+            <GlyphIcon name={eventGlyph(doc, event)} class="scenario-label-ico" x={12} y={y - 8} />
+            <text class="scenario-label" x={34} y={y + 4}>{label.length > 34 ? label.slice(0, 32) + '…' : label}</text>
             <line class="scenario-track" x1={left} x2={right} y1={y} y2={y} />
             <g class={`scenario-marker${editable ? ' is-editable' : ''}`} role={editable ? 'slider' : 'img'}
-              tabindex={editable ? 0 : undefined} aria-label={`Time of event ${index + 1}: ${label}`}
+              tabindex={editable ? 0 : undefined} aria-label={`Time of ${label}`}
               aria-valuemin={bounds.min} aria-valuemax={bounds.max} aria-valuenow={at} aria-valuetext={`${at} seconds`}
               onPointerDown={e => {
                 if (!editable || e.button !== 0) return;
@@ -148,7 +190,9 @@ export function ScenarioTimeline() {
               }}>
               <rect class="scenario-hit" x={x(at) - 14} y={y - 15} width={28} height={30} rx={5} />
               <circle cx={x(at)} cy={y} r={9} />
-              <text class="scenario-marker-number" x={x(at)} y={y + 4} text-anchor="middle">{index + 1}</text>
+              <g class="scenario-marker-ico" transform={`translate(${x(at) - 6},${y - 6}) scale(${12 / 24})`}>
+                {GLYPH[eventIcon(event.kind)]}
+              </g>
               <text class="scenario-time" x={x(at) + 16} y={y + 4}>{at} s</text>
             </g>
           </g>;

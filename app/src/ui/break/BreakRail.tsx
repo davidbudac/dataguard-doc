@@ -8,8 +8,9 @@ import { Action, Group, Note } from '../inspector/controls';
 import { HintsToggle } from '../hints';
 import { WHY } from '../inspector/why';
 import { useRailRow } from '../common/Field';
+import { GlyphIcon } from '../common/glyphs';
 import {
-  clearEvents, describeEvent, removeEventAt, reorderEvent, setEventTime,
+  clearEvents, describeEvent, eventGlyph, removeEventAt, reorderEvent, setEventTime,
 } from './events';
 import { eventTimeBounds, reorderRefusal } from './event-order';
 import '@/styles/inspector.css';
@@ -46,7 +47,7 @@ export function BreakRail() {
         {list.map((e, i) => (
           <div class="evt" key={`${i}-${e.kind}-${e.at}`}>
             <span class="evt-n">{i + 1}</span>
-            <span class="evt-b">{describeEvent(doc, e)}</span>
+            <span class="evt-b"><GlyphIcon name={eventGlyph(doc, e)} class="evt-ico" size={14} />{describeEvent(doc, e)}</span>
             {/* The event's controls on a line of their own under what it is:
                 its time, the two swaps, and Remove at the end -- the same
                 order on every row, whatever the description's length. */}

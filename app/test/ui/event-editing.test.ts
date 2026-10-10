@@ -8,7 +8,7 @@ import { classic } from '@/presets';
 import { doc, makeDoc } from '@/state/doc';
 import { resetHistory, undo, redo, undoStack } from '@/state/history';
 import { mode, viewport } from '@/state/view';
-import { eventTimeBounds, eventTimeRefusal, reorderRefusal } from '@/ui/break/event-order';
+import { eventDragBounds, eventTimeBounds, eventTimeRefusal, reorderRefusal } from '@/ui/break/event-order';
 import { reorderEvent, setEventTime } from '@/ui/break/events';
 import { BreakRail } from '@/ui/break/BreakRail';
 import { Timeline } from '@/ui/timeline/Timeline';
@@ -51,6 +51,18 @@ it('keeps repeated failures and recoveries on a host in sequence', () => {
   setEventTime(1, 25);
   expect(doc.value.topology.events).toEqual(d.events);
   expect(undoStack.value).toHaveLength(0);
+});
+
+it('stops a dragged event at its neighbours instead of passing them', () => {
+  const d = configuration([crash(10), crash(20, 'dc2-sby01'), { at: 30, kind: 'cmd.failover', to: memberId('sby01') }]);
+  // Unrelated to both neighbours, yet a drag still stops at them: the list never reorders.
+  expect(eventTimeBounds(d, 1)).toEqual({ min: 0, max: 900 });
+  // A failure sorts before a command at the same instant, so either may meet the other.
+  expect(eventDragBounds(d, 1)).toEqual({ min: 10, max: 30 });
+  expect(eventDragBounds(d, 2)).toEqual({ min: 20, max: 900 });
+  // The reverse order would swap on a tie, so a failure after a command stops 0.1 s short.
+  const r = configuration([{ at: 10, kind: 'cmd.failover', to: memberId('sby01') }, crash(20, 'dc2-sby01')]);
+  expect(eventDragBounds(r, 1).min).toBe(10.1);
 });
 
 it('keeps containment recovery and role commands in order', () => {

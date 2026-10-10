@@ -31,8 +31,12 @@
 .scenario-tick,.scenario-time{fill:var(--ik2);font:11px var(--mono)}
 .scenario-playhead line{stroke:var(--rd,#c0392b);stroke-width:1.5;stroke-dasharray:2 3}
 .scenario-playhead text{fill:var(--rd,#c0392b);font:10px var(--mono)}
+.scenario-plot svg.is-seekable{cursor:col-resize;touch-action:none}
+.scenario-playhead-hit{fill:transparent}
+.scenario-playhead:focus{outline:none}.scenario-playhead:focus line{stroke-width:3}
 .scenario-marker circle{fill:var(--vi)}
-.scenario-marker-number{fill:var(--sf);font:10px var(--mono);pointer-events:none}
+.scenario-marker-ico{fill:none;stroke:var(--sf);stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round;pointer-events:none}
+.scenario-label-ico{color:var(--ik2)}
 .scenario-hit{fill:transparent;stroke:transparent}
 .scenario-marker.is-editable{cursor:ew-resize;touch-action:none}
 .scenario-marker:focus{outline:none}.scenario-marker:focus .scenario-hit{stroke:var(--vi);stroke-width:2}
@@ -85,7 +89,6 @@
 
 /* ---- the way to step 3, beside the schedule it runs ---- */
 .scenario-timeline-head{align-items:center}
-.scenario-timeline-hint{flex:1 1 auto;min-width:0}
 .scenario-run{flex:0 0 auto}
 
 /* ---- the Events rail's one-line validation (break/BreakRail.tsx) ---- */

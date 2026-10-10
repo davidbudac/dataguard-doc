@@ -1,4 +1,5 @@
 /** Editing constraints, not Oracle rules: preserve related event sequences. */
+import { eventPriority } from '@/engine';
 import type { TimedEvent, TopologyDoc } from '@/engine';
 
 export const MAX_EVENT_TIME = 900;
@@ -51,6 +52,23 @@ export function eventTimeBounds(doc: TopologyDoc, index: number): EventTimeBound
     else max = Math.min(max, snapEventTime(other.at - gap));
   });
   return { min, max };
+}
+
+/**
+ * Where a drag may take an event: inside its related-event bounds, and no
+ * further than its neighbours in the schedule, so a drag never reorders the
+ * list -- it stops at the event before or after rather than passing it. A tie
+ * with a neighbour is allowed only where the sort keeps the two in order.
+ */
+export function eventDragBounds(doc: TopologyDoc, index: number): EventTimeBounds {
+  const event = doc.events[index];
+  if (!event) return { min: 0, max: 0 };
+  let { min, max } = eventTimeBounds(doc, index);
+  const prev = doc.events[index - 1];
+  const next = doc.events[index + 1];
+  if (prev) min = Math.max(min, snapEventTime(prev.at + (eventPriority(prev) <= eventPriority(event) ? 0 : 0.1)));
+  if (next) max = Math.min(max, snapEventTime(next.at - (eventPriority(event) <= eventPriority(next) ? 0 : 0.1)));
+  return { min, max: Math.max(min, max) };
 }
 
 export function eventTimeRefusal(doc: TopologyDoc, index: number, at: number): string | null {

@@ -319,6 +319,7 @@
   display:inline-flex;align-items:center;justify-content:center}
 .evt-b{font-family:var(--mono);font-size:12px;line-height:20px;color:var(--ik);
   overflow-wrap:anywhere}
+.evt-ico{display:inline-block;vertical-align:-2px;margin-right:6px;color:var(--ik2)}
 .evt-ctl{grid-column:2;display:flex;flex-wrap:wrap;align-items:center;gap:var(--s1) 2px;
   margin-left:-8px}
 .evt-ctl .ctl-off,.evt-order,.evt-order .ctl-off{display:contents}

@@ -17,12 +17,13 @@
 
 import { scenarioEvents, stateAt } from '@/engine';
 import type { ClassicScenario, DatabaseMember, HostId, TimedEvent, TopologyDoc } from '@/engine';
-import { findApplication, hasApplyInstance, isDatabase } from '@/engine';
+import { applicationsOf, findApplication, hasApplyInstance, isDatabase } from '@/engine';
 import { withEvents } from '@/state/doc';
 import { topology, trace } from '@/state/derived';
 import { edit } from '@/state/history';
 import { appLanesShown, healthyRun, mode, playing, tNow, toast } from '@/state/view';
-import { lastInterestingT } from '@/ui/timeline/build';
+import { lastInterestingT, memberGlyph } from '@/ui/timeline/build';
+import type { GlyphName } from '../common/glyphs';
 import type { WhyState } from '../common/WhyPill';
 import type { CanvasTool, ToolIconName } from '../canvas/HoverTools';
 import { eventIcon } from '../common/eventIcons';
@@ -1128,6 +1129,35 @@ export function reorderEvent(index: number, direction: -1 | 1): void {
 }
 
 /* ---------------- words ---------------- */
+
+/**
+ * The card an event is about, as that card's type glyph: a host's failure is
+ * drawn as what runs on the host, the way the canvas offers it on that card.
+ */
+export function eventGlyph(doc: TopologyDoc, e: TimedEvent): GlyphName {
+  const member = (id: string): GlyphName => {
+    const m = doc.members.find((x) => (x.id as string) === id);
+    return m ? memberGlyph(m) : 'db';
+  };
+  switch (e.kind) {
+    case 'host.down': case 'host.up': {
+      const m = doc.members.find((x) => x.instances.some((i) => i.host === e.host));
+      if (m) return memberGlyph(m);
+      if (doc.observers.some((o) => o.host === e.host)) return 'observer';
+      if (applicationsOf(doc).some((a) => a.host === e.host)) return 'app';
+      return 'host';
+    }
+    case 'site.down': case 'site.up': return 'dc';
+    case 'link.cut': case 'link.heal': case 'partition': return 'link';
+    case 'instance.down': case 'instance.up': case 'member.down': case 'member.up':
+    case 'cmd.reinstate': case 'cmd.setApplyInstance': case 'lag.set':
+      return member(e.member as string);
+    case 'cmd.switchover': case 'cmd.failover': return member(e.to as string);
+    /* Fast-start failover is the observer's to act on. */
+    case 'observer.stop': case 'observer.start': case 'cmd.setMasterObserver': case 'cmd.disableFsfo':
+      return 'observer';
+  }
+}
 
 /** One sentence for one injected event, in the vocabulary of the menu. */
 export function describeEvent(doc: TopologyDoc, e: TimedEvent): string {

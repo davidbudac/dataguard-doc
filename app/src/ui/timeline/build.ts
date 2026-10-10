@@ -694,7 +694,7 @@ interface LaneSeed {
 }
 
 /** The card's icon for a member: a snapshot standby has its own, a far sync too. */
-function memberGlyph(m: Member): GlyphName {
+export function memberGlyph(m: Member): GlyphName {
   if (isFarSync(m)) return 'farsync';
   return m.role === 'snapshot' ? 'snapshot' : 'db';
 }
