@@ -10,17 +10,17 @@
  * @vitest-environment jsdom
  */
 
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { h, render } from 'preact';
 import { StatusBar } from '@/ui/StatusBar';
 import { GROUPED_PRESETS, PRESETS, findPreset } from '@/presets';
 import { doc, classicDoc, makeDoc } from '@/state/doc';
 import { edit, redo, resetHistory, undo } from '@/state/history';
 import { isPristinePreset, parseUrlQuery, presetId, shareHref, shareTooLarge } from '@/state/url';
-import { findingCount, presetState, share, sharedUrl } from '@/ui/StatusBar';
+import { findingCount, presetState, share, sharedCopied, sharedUrl } from '@/ui/StatusBar';
 import { parseTopologyDoc } from '@/engine';
 import { errors, issues, warnings } from '@/state/derived';
-import { findingsOpen, inspectorOpen, mode, notesOpen, viewport } from '@/state/view';
+import { findingsOpen, inspectorOpen, mode, notesOpen, toast, viewport } from '@/state/view';
 import { workspacesOpen } from '@/state/workspaces';
 
 const mount = (): HTMLElement => {
@@ -233,6 +233,41 @@ describe('the share link', () => {
     expect(written.length).toBe(1);
     expect(sharedUrl.value).toBe(written[0]);
     expect(sharedUrl.value).toBeTruthy();
+  });
+
+  it('starts the clipboard write inside the click, before the link is compressed', async () => {
+    /* WebKit refuses a clipboard write that comes after an await. */
+    const items: { data: Record<string, Promise<Blob>> }[] = [];
+    class Item { constructor(public data: Record<string, Promise<Blob>>) {} }
+    vi.stubGlobal('ClipboardItem', Item);
+    Object.defineProperty(globalThis.navigator, 'clipboard', {
+      configurable: true,
+      value: { write: (list: Item[]) => { items.push(...list); return Promise.resolve(); } },
+    });
+    const done = share();
+    expect(items.length).toBe(1);
+    await done;
+    const blob = await items[0]!.data['text/plain']!;
+    const text = await new Promise<unknown>((resolve) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.readAsText(blob);
+    });
+    expect(text).toBe(sharedUrl.value);
+    expect(sharedCopied.value).toBe(true);
+    vi.unstubAllGlobals();
+  });
+
+  it('says so, and offers the link, when the browser refuses the clipboard', async () => {
+    Object.defineProperty(globalThis.navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText: () => Promise.reject(new Error('NotAllowedError')) },
+    });
+    await share();
+    expect(sharedCopied.value).toBe(false);
+    expect(toast.value?.kind).toBe('warn');
+    const root = mount();
+    expect(root.querySelector('a#permalink')?.textContent).toBe('Share link');
   });
 
   it('is a reason, not a dead link, when the configuration does not fit', () => {

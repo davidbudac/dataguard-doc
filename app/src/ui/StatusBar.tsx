@@ -39,32 +39,72 @@ export function requestImport(): void {
 
 /** The link the last Share produced, shown in the bar while it is fresh. */
 export const sharedUrl = signal<string | null>(null);
+/** Whether that link reached the clipboard; when not, the anchor is the way to copy it. */
+export const sharedCopied = signal<boolean>(false);
 export const SHARED_MS = 12000;
 
 let sharedTimer: ReturnType<typeof setTimeout> | null = null;
 
-function showShared(url: string): void {
+function showShared(url: string, copied: boolean): void {
   sharedUrl.value = url;
+  sharedCopied.value = copied;
   if (sharedTimer !== null) clearTimeout(sharedTimer);
   sharedTimer = setTimeout(() => { sharedTimer = null; sharedUrl.value = null; }, SHARED_MS);
+}
+
+/**
+ * Put text that is still being computed on the clipboard; true when it got there.
+ *
+ * Safari, and the WebKit view the macOS desktop shell runs in, allow a
+ * clipboard write only inside the click itself -- and the link is compressed
+ * asynchronously, so a `writeText` after that `await` is refused. A
+ * `ClipboardItem` takes a promise: the write starts within the click and
+ * completes when the text does. `writeText` after the wait remains for a
+ * browser without `ClipboardItem`, where it is still allowed.
+ */
+async function copyWhenReady(text: Promise<string | null>): Promise<boolean> {
+  const clip = typeof navigator === 'undefined' ? undefined : navigator.clipboard;
+  if (clip === undefined) return false;
+  if (typeof clip.write === 'function' && typeof ClipboardItem !== 'undefined') {
+    try {
+      const blob = text.then((t) => {
+        if (t === null) throw new Error('nothing to copy');
+        return new Blob([t], { type: 'text/plain' });
+      });
+      await clip.write([new ClipboardItem({ 'text/plain': blob })]);
+      return true;
+    } catch { /* refused or unsupported: try the plain form */ }
+  }
+  const t = await text;
+  if (t === null || typeof clip.writeText !== 'function') return false;
+  try {
+    await clip.writeText(t);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export async function share(): Promise<void> {
   busy.value = true;
   try {
-    const { url, tooLarge } = await buildShareUrl();
+    const pending = buildShareUrl();
+    /* Started before the first await: see `copyWhenReady`. */
+    const copied = copyWhenReady(pending.then((r) => (r.tooLarge ? null : r.url)));
+    const { url, tooLarge } = await pending;
     if (tooLarge) {
       toast.value = { kind: 'warn', text: TOO_LARGE_MESSAGE };
       return;
     }
     /* The link is shown either way; the clipboard is the convenience, not the
        contract. A browser that refuses it leaves the reader an anchor. */
-    showShared(url);
-    if (typeof navigator !== 'undefined' && navigator.clipboard) {
-      await navigator.clipboard.writeText(url);
+    const ok = await copied;
+    showShared(url, ok);
+    if (!ok) {
+      toast.value = { kind: 'warn', text: 'The browser did not allow copying. Right-click “Share link” beside the button to copy it.' };
     }
   } catch {
-    toast.value = { kind: 'error', text: 'The link could not be copied. It is in the address bar.' };
+    toast.value = { kind: 'error', text: 'The link could not be built. The address bar carries the configuration.' };
   } finally {
     busy.value = false;
   }
@@ -279,7 +319,7 @@ export function DocActions() {
         /* A real link, not a receipt: the address the reader can copy without
            a clipboard permission, and the one this page is at. */
         <a class="sharelink" id="permalink" rel="bookmark" href={link}>
-          Link copied
+          {sharedCopied.value ? 'Link copied' : 'Share link'}
         </a>
       )}
     </>
