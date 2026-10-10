@@ -202,6 +202,32 @@ button.issue{border-bottom:1px solid var(--ln)}
 .app{background:var(--sf)}
 .app:not(.is-float) .app-rail{box-shadow:none}
 
+/* Generated settings keeps its grid -- the panels are a document to read,
+   not a card to float over the drawing -- but wears the three steps'
+   surface: the drawing on the dotted ground, and the panels and the
+   inspector as cards beside and under it, so leaving a step for this page
+   does not drop the reader into a different application. */
+@media screen and (min-width:1024px){
+  .app.m-configure{max-width:none;border-inline:0;gap:var(--float-m);
+    padding:0 var(--float-m) var(--float-m);background:var(--bg);
+    --dot:color-mix(in srgb,var(--ln) 70%,var(--bg))}
+  .app.m-configure .app-head{padding-inline:0}
+  .app.m-configure .guide-line{padding:8px 4px 0}
+  .app.m-configure .app-stage{min-height:200px;background-color:transparent;
+    background-image:radial-gradient(var(--dot) 1px,transparent 1.2px);
+    background-size:20px 20px;background-position:10px 10px}
+  .app.m-configure.no-grid .app-stage{background-image:none}
+  .app.m-configure .app-dock,.app.m-configure .app-rail:not(.is-shut){
+    border:1px solid var(--ln);border-radius:var(--r-card);box-shadow:var(--sh-card)}
+  .app.m-configure .app-rail.has-bar:not(.is-shut) .rail-bar{border-radius:var(--r-card) var(--r-card) 0 0}
+  .app.m-configure .app-rail.is-shut{border:0;background:transparent}
+  .app.m-configure .rail-strip{border:1px solid var(--ln);border-radius:var(--r-card);
+    box-shadow:var(--sh-card)}
+  /* The files are long: the tabs stay at the top of the card while one scrolls. */
+  .app.m-configure .panel-tabs{position:sticky;top:0;z-index:3;
+    border-radius:var(--r-card) var(--r-card) 0 0}
+}
+
 /* ================= the floating layout: Build and Break ================= */
 
 @media screen{
