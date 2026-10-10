@@ -1,14 +1,14 @@
 /**
- * Configure -> DGMGRL: the broker configuration as one session you could paste.
- *
- * The script is `generateDgmgrl(doc)`, and its closing block is `validate(doc)`
- * verbatim -- one source of truth for what is wrong with a configuration, so
- * the script and the issue panel can never disagree.
+ * Configure -> DGMGRL: the broker configuration as scripts you could paste --
+ * creating the configuration, fast-start failover, each observer on its own
+ * host, the role-based services. The generator's commentary and its closing
+ * `validate(doc)` block are not drawn (`scriptsOf`); the issue panel carries
+ * the findings.
  */
 
 import { generateDgmgrl } from '@/engine';
 import { issues, primaryId, topology } from '@/state/derived';
-import { CodeBlock } from './CodeBlock';
+import { CodeBlock, scriptsOf } from './CodeBlock';
 
 export function Dgmgrl() {
   const doc = topology.value;
@@ -20,25 +20,8 @@ export function Dgmgrl() {
 
   return (
     <div class="panel" role="region" aria-label="DGMGRL">
-      <div class="panel-hd">
-        <span class="eyebrow">Configuration files</span>
-        <p class="prose">The same deployment, as you would type it.</p>
-        <p class="caption">
-          Values that differ from their documented defaults are highlighted; the grey lines
-          are this page commenting, not DGMGRL syntax. Command syntax per the 19c broker
-          commands reference; the clock properties (<span class="mono">FastStartFailoverThreshold</span>,
-          the two <span class="mono">ObserverPing*</span> properties (21c and later; 19c has
-          neither),
-          <span class="mono"> FastStartFailoverLagLimit</span>,
-          <span class="mono"> FastStartFailoverPmyShutdown</span>) are configuration-wide, while
-          <span class="mono"> LogXptMode</span> is set per database.
-          <span class="mono"> START OBSERVER IN BACKGROUND</span> is the form the documentation
-          prefers. Nothing here describes the incident: a scenario, an apply lag, a
-          role-transition time and an RTT are conditions of the environment, not configuration.
-        </p>
-      </div>
       <div class="panel-body">
-        <CodeBlock file={file} doc={doc} />
+        {scriptsOf(file).map((f) => <CodeBlock key={f.id} file={f} doc={doc} />)}
       </div>
     </div>
   );

@@ -34,8 +34,8 @@ import type { DestProps, Member, TopologyDoc } from '../types/topology';
 import type { RedoGraph } from '../types/trace';
 import { declaredPrimary, isDatabase, isFarSync, isRac } from '../types/topology';
 import { isMultiInstanceApply } from '../sim/rac';
-import type { GeneratedFile, Line, Span } from './lines';
-import { blank, cmd, comment, hl, note, span } from './lines';
+import type { FileSection, GeneratedFile, Line, Span } from './lines';
+import { blank, cmd, comment, hl, lineText, note, span } from './lines';
 
 /* The lag limit's protection-mode story is one of the fenced facts: the 26ai
    maximum-availability role may be cited only to the fast-start failover
@@ -84,6 +84,10 @@ export function generateDgmgrl(doc: TopologyDoc, opts: DgmgrlOptions = {}): Gene
   const primaryId = opts.primary ?? declaredPrimary(doc);
   const primary = members.find((m) => m.id === primaryId);
 
+  const sections: FileSection[] = [];
+  const section = (title: string, extra: Omit<FileSection, 'title' | 'start'> = {}): void => {
+    sections.push({ title, start: lines.length, ...extra });
+  };
   const file = (ls: Line[]): GeneratedFile => ({
     id: 'dgmgrl',
     title: 'DGMGRL -- the broker configuration',
@@ -91,6 +95,7 @@ export function generateDgmgrl(doc: TopologyDoc, opts: DgmgrlOptions = {}): Gene
     syntax: 'dgmgrl',
     lines: ls,
     findings,
+    ...(sections.length > 0 ? { sections } : {}),
   });
 
   if (!primary) {
@@ -125,6 +130,7 @@ export function generateDgmgrl(doc: TopologyDoc, opts: DgmgrlOptions = {}): Gene
   lines.push(blank());
 
   /* ---- the session ---- */
+  section('Create and enable the configuration');
   lines.push(cmd(`CONNECT sys@${primary.connectIdentifier} AS SYSDBA;`,
     { basis: 'documented', cite: ['DGMGRL.CONNECT'] }));
   lines.push(blank());
@@ -503,6 +509,8 @@ export function generateDgmgrl(doc: TopologyDoc, opts: DgmgrlOptions = {}): Gene
   }
 
   /* ---- fast-start failover ---- */
+  /* A session of its own when run separately, so it opens with the CONNECT. */
+  section('Fast-start failover', { prelude: lines.filter((l) => l.kind === 'cmd').slice(0, 1) });
   /* GEN-15: no observer deployed AND fast-start failover disabled is the only
      case in which nothing is armed. Enabled with no observer started is legal
      ("If you do not start the observer after you have enabled fast-start
@@ -541,7 +549,16 @@ export function generateDgmgrl(doc: TopologyDoc, opts: DgmgrlOptions = {}): Gene
     lines.push(...fsfoPropertyLines(doc, defaults));
     lines.push(...targetLines(doc, primary, graph));
     lines.push(blank());
-    lines.push(...enableAndObserverLines(doc, primary));
+    /* Each observer is started from a DGMGRL session on its own host. */
+    for (const l of enableAndObserverLines(doc, primary)) {
+      const started = l.kind === 'cmd' ? /^START OBSERVER (\S+)/.exec(lineText(l)) : null;
+      const o = started === null ? undefined : doc.observers.find((x) => x.name === started[1]);
+      if (o !== undefined) {
+        const host = doc.hosts.find((h) => h.id === o.host)?.name;
+        section(host === undefined ? `Start observer ${o.name}` : `Start observer ${o.name} on ${host}`);
+      }
+      lines.push(l);
+    }
     if (doc.observers.length === 0) {
       lines.push(blank());
       lines.push(nDoc(
@@ -558,6 +575,7 @@ export function generateDgmgrl(doc: TopologyDoc, opts: DgmgrlOptions = {}): Gene
   }));
   if (services.length > 0) {
     lines.push(blank());
+    section('Role-based services (SRVCTL, on each database host)', { shell: true });
     lines.push(nDoc(
       'role-based services are created outside DGMGRL, with SRVCTL, explicitly on each database where the service must be active -- on Oracle RAC or on a single instance managed by Oracle Restart; the lines below are runbook text for a shell on each database host, and the options after -role are yours',
       ['SERVICE.SRVCTL_PER_DATABASE', 'SERVICE.ROLE_BASED_PLATFORMS'],
@@ -579,6 +597,7 @@ export function generateDgmgrl(doc: TopologyDoc, opts: DgmgrlOptions = {}): Gene
   /* ---- what validate had to say, verbatim ---- */
   if (findings.length > 0) {
     lines.push(blank());
+    section('Validation');
     lines.push(nDoc('validation, from the same rules the issue list draws:', ['DGMGRL.BROKER_COMMANDS']));
     for (const f of findings) {
       const text = `${f.severity}: ${f.id} -- ${f.message}`;

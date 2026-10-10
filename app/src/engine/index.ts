@@ -125,7 +125,7 @@ export { computeReopen, outageFromTrace, reopenInputFrom } from './models/reopen
 
 /* config generators */
 export type {
-  FileSyntax, GeneratedFile, Line, LineKind, LineOptions, LineTone, Span,
+  FileSection, FileSyntax, GeneratedFile, Line, LineKind, LineOptions, LineTone, Span,
 } from './generate/lines';
 export {
   blank, cmd, comment, commentMarker, commentText, dim, hl, lineText, note, renderPlain, span, svc,

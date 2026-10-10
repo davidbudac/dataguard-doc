@@ -71,6 +71,21 @@ export interface GeneratedFile {
   findings?: Finding[];
   /** Claims the file as a whole rests on -- rendered as its footnotes. */
   claims?: Claim<string>[];
+  /**
+   * Where the file divides into scripts that run on their own -- a session on
+   * one host, then a session on another. Absent: the file is one script.
+   */
+  sections?: FileSection[];
+}
+
+export interface FileSection {
+  title: string;
+  /** Index into `lines` of the section's first line; it runs to the next section. */
+  start: number;
+  /** Lines that open the section when it is run on its own (the session's CONNECT). */
+  prelude?: Line[];
+  /** Its comment lines are commands for another tool (SRVCTL in a DGMGRL file). */
+  shell?: boolean;
 }
 
 /* ---------------- span builders ---------------- */

@@ -10,7 +10,7 @@
 
 import { generateInitOraFiles } from '@/engine';
 import { primaryId, topology } from '@/state/derived';
-import { CodeBlock } from './CodeBlock';
+import { CodeBlock, scriptsOf } from './CodeBlock';
 
 export function Dests() {
   const doc = topology.value;
@@ -19,19 +19,6 @@ export function Dests() {
 
   return (
     <div class="panel" role="region" aria-label="LOG_ARCHIVE_DEST_n">
-      <div class="panel-hd">
-        <span class="eyebrow">Configuration files</span>
-        <p class="prose">The broker-owned destination parameters.</p>
-        <p class="caption">
-          The broker writes these; they are shown so the properties above have somewhere
-          recognisable to land. This page leaves <span class="mono">LOG_ARCHIVE_DEST_1</span> for
-          a local destination and numbers the remote ones from 2 -- its own convention, not an
-          Oracle rule.
-          <span class="mono"> NET_TIMEOUT</span> bounds how long LGWR waits for a synchronous
-          destination's acknowledgement -- it is never a failover clock, and it is omitted
-          under <span class="mono">ASYNC</span>, where nothing waits for the destination at all.
-        </p>
-      </div>
       <div class="panel-body">
         {files.length === 0 ? (
           <div class="empty">
@@ -42,7 +29,7 @@ export function Dests() {
                 : 'The primary’s routing rules name no destination, so there is no remote LOG_ARCHIVE_DEST_n to write. Add a standby or a far sync instance in the Inspector and its block appears here.'}
             </p>
           </div>
-        ) : files.map((f) => <CodeBlock key={f.id} file={f} doc={doc} />)}
+        ) : files.flatMap(scriptsOf).map((f) => <CodeBlock key={f.id} file={f} doc={doc} />)}
       </div>
     </div>
   );

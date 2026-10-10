@@ -102,17 +102,54 @@ const gutterFor = (line: Line, syntax: GeneratedFile['syntax'], n: number): stri
   return '·';
 };
 
+/* ---------------- the scripts in a file ---------------- */
+
+/** The heading without the explanation after its dash: "DGMGRL -- the broker configuration" is "DGMGRL". */
+const shortTitle = (title: string): string => title.split(' -- ')[0] ?? title;
+
+/**
+ * A generated file as the scripts a reader pastes: only the lines you would
+ * type, one script per section the generator marks (or the whole file when it
+ * marks none), each with the session line it needs to run on its own. The
+ * commentary stays in the generator and its tests; it is not drawn here.
+ */
+export function scriptsOf(file: GeneratedFile): GeneratedFile[] {
+  const parts = file.sections !== undefined && file.sections.length > 0
+    ? file.sections
+    : [{ title: shortTitle(file.title), start: 0 }];
+  const out: GeneratedFile[] = [];
+  parts.forEach((part, i) => {
+    const end = parts[i + 1]?.start ?? file.lines.length;
+    const kept: Line[] = [];
+    for (const l of file.lines.slice(part.start, end)) {
+      if (l.kind === 'cmd') kept.push(l);
+      else if (l.kind === 'comment' && 'shell' in part && part.shell) kept.push({ ...l, kind: 'cmd' });
+      /* A spacer only between two commands, never two in a row. */
+      else if (l.kind === 'blank' && kept.length > 0 && kept[kept.length - 1]!.kind !== 'blank') kept.push(l);
+    }
+    while (kept.length > 0 && kept[kept.length - 1]!.kind === 'blank') kept.pop();
+    if (kept.length === 0) return;
+    const prelude = 'prelude' in part ? part.prelude ?? [] : [];
+    out.push({
+      id: `${file.id}.${i}`,
+      title: part.title,
+      ...(parts.length === 1 && file.filename !== undefined ? { filename: file.filename } : {}),
+      syntax: file.syntax,
+      lines: prelude.length > 0 ? [...prelude, { kind: 'blank', spans: [] }, ...kept] : kept,
+    });
+  });
+  return out;
+}
+
 /* ---------------- the block ---------------- */
 
 export interface CodeBlockProps {
   file: GeneratedFile;
   /** The document the names come from, for the cross-highlight. */
   doc: TopologyDoc;
-  /** A sentence under the heading, when the panel has one to add. */
-  caption?: string;
 }
 
-export function CodeBlock({ file, doc, caption }: CodeBlockProps) {
+export function CodeBlock({ file, doc }: CodeBlockProps) {
   const index = useMemo(() => mentionIndex(doc), [doc]);
   const [copied, setCopied] = useState(false);
   const box = useRef<HTMLOListElement | null>(null);
@@ -169,8 +206,6 @@ export function CodeBlock({ file, doc, caption }: CodeBlockProps) {
           <WhyPill why={why} />
         </span>
       </div>
-
-      {caption === undefined ? null : <p class="caption cb-cap">{caption}</p>}
 
       <ol class="cb-code" ref={box}>
         {file.lines.map((line, i) => {
