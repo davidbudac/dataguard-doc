@@ -22,13 +22,13 @@ The numbered workflow has three freely revisitable steps:
 1. **Topology** — draw members and connections and set the starting configuration.
 2. **Scenario** — schedule failures and recoveries on an event-only timeline. Drag
    markers or use exact times in the Events panel; scenario templates provide a start.
-3. **Outcome** — inspect each item's response and the final outcome. Select an item
+3. **Simulate** — inspect each item's response and the final outcome. Select an item
    to edit its settings beside the lanes; the same scenario recomputes immediately
    and reports how its outcome and timings changed since the last edit.
 
 **Config** and **Learn** remain separate tools. Steps share the same document,
-undo history and share link. Legacy `mode=timeline`, `simulate` and `break` URLs
-open Outcome; new links use `mode=scenario` or `mode=outcome`.
+undo history and share link. Legacy `mode=timeline`, `outcome` and `break` URLs
+open Simulate; new links use `mode=scenario` or `mode=simulate`.
 
 Everything the page asserts about Oracle is either arithmetic over what you
 typed, a documented fact with a citation you can open, or labelled on screen as

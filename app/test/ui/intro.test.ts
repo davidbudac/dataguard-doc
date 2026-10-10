@@ -339,7 +339,7 @@ describe('the page itself', () => {
     const root = mount(IntroPage);
     await tick();
     const text = root.textContent ?? '';
-    for (const word of ['Topology', 'Scenario', 'Outcome', 'Generated settings', 'Learn']) expect(text).toContain(word);
+    for (const word of ['Topology', 'Scenario', 'Simulate', 'Generated settings', 'Learn']) expect(text).toContain(word);
     expect(text).toContain('model');
     const legacy = [...root.querySelectorAll('a')]
       .find((a) => (a.getAttribute('href') ?? '').startsWith('legacy/'));

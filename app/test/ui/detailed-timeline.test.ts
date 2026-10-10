@@ -126,7 +126,7 @@ describe('the words', () => {
       mode.value = m;
       await tick();
       for (const line of said(r)) {
-        expect(line, m).not.toMatch(/\bSimulate\b/);
+        expect(line, m).not.toMatch(/\b(?:Step 3: Outcome|Open in Outcome|Detailed timeline)\b/);
         expect(line, m).not.toMatch(/\bBuild(?:'s)? (?:inspector|mode|dock)\b/);
       }
     }

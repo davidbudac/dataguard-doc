@@ -108,12 +108,12 @@ describe('learn shell', () => {
     expect(lessonStep.value).toBe(0);
   });
 
-  it('"Open in Outcome" leaves Learn for the timeline', async () => {
+  it('"Open in Simulate" leaves Learn for the timeline', async () => {
     lessonId.value = 'failover-clocks';
     const root = mount();
     const step = [...root.querySelectorAll('.ls')][0] as HTMLElement;
     [...step.querySelectorAll('button')]
-      .find((b) => b.textContent === 'Open in Outcome')?.click();
+      .find((b) => b.textContent === 'Open in Simulate')?.click();
     await tick();
     expect(mode.value).toBe('break');
   });
@@ -192,13 +192,13 @@ describe('the workbench header', () => {
     lessonId.value = 'failover-clocks';
     const root = mountHeader();
     expect(buttons(root).map((b) => b.textContent))
-      .toEqual(['Open in Outcome', 'Open in Topology']);
+      .toEqual(['Open in Simulate', 'Open in Topology']);
     /* The row is the first thing in the workbench column, and it is a real
        header element rather than a band of text above the drawing. */
     expect(root.firstElementChild?.tagName).toBe('HEADER');
   });
 
-  it('"Open in Outcome" sets the step up and leaves for the timeline', async () => {
+  it('"Open in Simulate" sets the step up and leaves for the timeline', async () => {
     lessonId.value = 'failover-clocks';
     lessonStep.value = 1;
     const root = mountHeader();

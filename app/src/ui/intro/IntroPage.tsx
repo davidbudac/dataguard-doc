@@ -143,7 +143,7 @@ const MODES: ModeCard[] = [
     go: () => jump({ preset: 'classic', scenario: 'crash', mode: 'scenario' }),
   },
   {
-    name: '3 · Outcome',
+    name: '3 · Simulate',
     glyph: g(<><path d="M11 2.5 5.5 11h4l-1 6.5L15 9h-4z" /></>),
     what: 'See how the configuration responds to a failure.',
     you: 'Follow the run lane by lane through detection, threshold, role change and open. Select a member or connection to tune its settings beside the result.',
@@ -223,7 +223,7 @@ const HOWTO: { k: string; d: JSX.Element }[] = [
       <>
         In Scenario, point at a host and press its crash icon, or at a link and press its cut
         icon; right-click a card for every event it offers. Set the event time in the Scenario editor.
-        Continue to Outcome to inspect the response and tune settings.
+        Continue to Simulate to inspect the response and tune settings.
       </>
     ),
   },

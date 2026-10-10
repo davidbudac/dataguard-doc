@@ -376,7 +376,7 @@ export function App() {
      is the workbench rather than a rail. */
   const railShut = railInGrid && m !== 'learn' && !printing.value && (onDemand ? !railWanted : railCollapsed.value);
   /* Topology draws the canvas full-bleed with everything else floating over
-     it, and the Outcome floats its lanes; Config and Learn keep the
+     it, and Simulate floats its lanes; Config and Learn keep the
      docked grid (state/view.ts). */
   const float = !intro && floating(m, viewport.value);
   const t = toast.value;
@@ -506,7 +506,7 @@ export function App() {
 
           {float && !lanes ? (
             <>
-              {/* The Outcome's findings are the count on its bar and
+              {/* Simulate's findings are the count on its bar and
                   the rows that open from it; Topology has no bar to carry
                   them, so the chips on the dock's status line are theirs. */}
               <FindingsPopover />

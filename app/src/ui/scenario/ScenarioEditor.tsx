@@ -72,7 +72,7 @@ export function ScenarioTimeline() {
   const [measure, measured] = useWidth();
   const drag = useRef<Drag | null>(null);
   /* A press on the plot outside a marker moves the drawing's time there and
-     keeps moving it while held, like the Outcome's timeline; markers stop
+     keeps moving it while held, like Simulate's timeline; markers stop
      the press, so grabbing one never seeks. */
   const seek = useRef<number | null>(null);
   const [preview, setPreview] = useState<{ index: number; at: number } | null>(null);
@@ -131,7 +131,7 @@ export function ScenarioTimeline() {
         title={events.length ? 'Step 3: inspect the response to this schedule' : 'Nothing scheduled yet: step 3 shows the configuration running as drawn'}
         onClick={() => goToStep('break')}
       >
-        {events.length ? 'See outcome →' : 'See steady state →'}
+        {events.length ? 'Simulate →' : 'Simulate steady state →'}
       </button>
     </div>
     <div class="scenario-plot">

@@ -57,7 +57,7 @@ function Intro() {
         can be demonstrated carries a &ldquo;Show me&rdquo; button: it loads the lesson&rsquo;s
         configuration, applies exactly the properties and events that step is about, and leaves
         everything else at its default &mdash; so a step shows the same thing however you
-        reached it. &ldquo;Open in Outcome&rdquo; and &ldquo;Open in Topology&rdquo; &mdash; under the
+        reached it. &ldquo;Open in Simulate&rdquo; and &ldquo;Open in Topology&rdquo; &mdash; under the
         step, or at the head of the workbench beside it &mdash; take the same document to the
         run in full, or to the drawing you can change.
       </p>
@@ -128,7 +128,7 @@ export function LearnWorkbenchHeader() {
       </p>
       <span class="lwh-go">
         <button type="button" class="btn" onClick={open('break')}>
-          Open in Outcome
+          Open in Simulate
         </button>
         {' '}
         <button type="button" class="btn" onClick={open('build')}>

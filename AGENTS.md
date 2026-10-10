@@ -12,16 +12,16 @@ produced, and how to extend it without breaking consistency or accuracy.
 
 ## Current workflow (2026-10-04)
 
-The workbench now has three numbered steps: **Topology → Scenario → Outcome**.
+The workbench now has three numbered steps: **Topology → Scenario → Simulate**.
 Topology edits the starting configuration; Scenario edits only scheduled events;
-Outcome shows the response and permits individual settings edits beside the
+Simulate (called Outcome until October 2026) shows the response and permits individual settings edits beside the
 result, rerunning the same scenario immediately. Config and Learn are separate
 tools. This supersedes older descriptions below of Topology's mini timeline and
 the Detailed timeline mode. See `app/design/ui.md`, *As built: three-step workflow*,
-and `app/README.md`. Existing timeline/simulate/break links still open Outcome.
+and `app/README.md`. Existing timeline/outcome/break links still open Simulate.
 The updated application suite has 3306 tests across 126 files; the counts below
 are historical. For manual checks, schedule and move events in Scenario, then tune selected
-items in Outcome; Topology should always show the starting state.
+items in Simulate; Topology should always show the starting state.
 
 ## What exists
 

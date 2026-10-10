@@ -85,7 +85,7 @@ export const clampStep = (n: number): number => Math.max(0, Math.min(99, Math.ro
 type Mutable = { -readonly [K in keyof UrlState]: UrlState[K] };
 
 /** The mode's word in the address, where it differs from its id. */
-const MODE_TO_URL: Partial<Record<Mode, string>> = { build: 'topology', break: 'outcome', configure: 'config' };
+const MODE_TO_URL: Partial<Record<Mode, string>> = { build: 'topology', break: 'simulate', configure: 'config' };
 const MODE_FROM_URL: Record<string, Mode | undefined> = {
   topology: 'build', outcome: 'break', scenario: 'scenario', timeline: 'break', simulate: 'break', config: 'configure',
 };
@@ -109,10 +109,10 @@ export const URL_FIELDS: readonly UrlField[] = [
   },
   {
     /* The words in the address are the ones on the buttons: `topology`,
-       `scenario`, `outcome` and `config`. The internal ids stay `build`, `break` and
-       `configure`, and an old link spelled with them -- or with `simulate`,
-       the word `break` used to wear -- still opens the right mode. */
-    k: 'mode', what: 'topology / scenario / outcome / config / learn (build, timeline, simulate, break and configure are read as the old spellings)',
+       `scenario`, `simulate` and `config`. The internal ids stay `build`, `break` and
+       `configure`, and an old link spelled with them -- or with `timeline` or
+       `outcome`, the words `break` wore before -- still opens the right mode. */
+    k: 'mode', what: 'topology / scenario / simulate / config / learn (build, timeline, outcome, break and configure are read as the old spellings)',
     parse: (raw, out) => {
       const m = MODE_FROM_URL[raw] ?? ((MODES as readonly string[]).includes(raw) ? (raw as Mode) : null);
       if (m !== null) out.mode = m;
@@ -259,7 +259,7 @@ export function currentUrlState(): UrlState {
     /* The playhead is deliberately absent while it is moving: one drag would
        otherwise be a hundred history writes. It is absent too where there is
        no playhead to speak of -- Topology and the generated settings -- so a
-       link copied after a visit to the Outcome does not carry a stale clock. */
+       link copied after a visit to Simulate does not carry a stale clock. */
     t: playing.value || scrubbing.value || mode.value === 'build' || mode.value === 'configure'
       ? URL_DEFAULTS.t
       : clampT(tNow.value),

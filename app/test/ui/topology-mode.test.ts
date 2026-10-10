@@ -35,7 +35,7 @@ afterEach(() => { act(() => render(null, root)); root.remove(); });
 describe('three steps, one document', () => {
   it('numbers the primary navigation and keeps Generated settings and Learn separate', () => {
     mount();
-    expect([...root.querySelectorAll('.workflow-step')].map(e => e.textContent)).toEqual(['1Topology', '2Scenario', '3Outcome']);
+    expect([...root.querySelectorAll('.workflow-step')].map(e => e.textContent)).toEqual(['1Topology', '2Scenario', '3Simulate']);
     expect(root.querySelector('[aria-current="step"]')?.textContent).toBe('1Topology');
     expect(root.querySelector('.workflow-extras')?.textContent).toBe('Generated settingsLearn');
     expect(root.textContent).toContain('Step 1 of 3');
@@ -44,7 +44,7 @@ describe('three steps, one document', () => {
     crash(); mount(); const before = doc.value; const history = undoStack.value;
     click(button('Define scenario →')); expect(mode.value).toBe('scenario');
     expect(tNow.value).toBe(0); expect(root.textContent).toContain('Step 2 of 3');
-    click(button('See outcome →')); expect(mode.value).toBe('break'); expect(tNow.value).toBeGreaterThan(0);
+    click(button('Simulate →')); expect(mode.value).toBe('break'); expect(tNow.value).toBeGreaterThan(0);
     click(button('← Edit scenario')); click(button('← Topology'));
     expect(doc.value).toBe(before); expect(undoStack.value).toBe(history);
   });
@@ -57,7 +57,7 @@ describe('three steps, one document', () => {
   it('writes new URLs and keeps every earlier timeline spelling', () => {
     for (const name of ['outcome', 'timeline', 'simulate', 'break']) expect(parseUrlQuery(`?mode=${name}`).state.mode).toBe('break');
     expect(parseUrlQuery('?mode=scenario').state.mode).toBe('scenario');
-    expect(serializeUrlQuery({ ...URL_DEFAULTS, mode: 'break' })).toContain('mode=outcome');
+    expect(serializeUrlQuery({ ...URL_DEFAULTS, mode: 'break' })).toContain('mode=simulate');
     expect(serializeUrlQuery({ ...URL_DEFAULTS, mode: 'scenario' })).toContain('mode=scenario');
   });
   it('can inspect the no-event outcome without inventing scheduled events', () => {

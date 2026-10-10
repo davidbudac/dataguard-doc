@@ -47,7 +47,7 @@ import { INTRO_HREF, openIntro } from './intro/route';
 const BULLETS: [string, string][] = [
   ['1 · Topology', 'draw the configuration and set its starting properties.'],
   ['2 · Scenario', 'schedule failures, recoveries and planned actions on their own timeline.'],
-  ['3 · Outcome', 'the run in full: follow a failure through detection, threshold, role change and open, and tune its settings.'],
+  ['3 · Simulate', 'the run in full: follow a failure through detection, threshold, role change and open, and tune its settings.'],
   ['Generated settings', 'DGMGRL commands, init parameters and connect strings, generated from the drawing.'],
 ];
 
@@ -82,21 +82,21 @@ const KEYS: { where: string; rows: [string, string][] }[] = [
     where: 'Anywhere on the page, outside a text field',
     rows: [
       ['Ctrl+K · ⌘K', 'search commands, including presets, scenarios and selected-object actions'],
-      ['1 · 2 · 3 · 4 · 5', 'Topology · Scenario · Outcome · Generated settings · Learn'],
+      ['1 · 2 · 3 · 4 · 5', 'Topology · Scenario · Simulate · Generated settings · Learn'],
       ['I · J', 'toggle Inspector / Events · show findings'],
       ['F · + · −', 'fit and recenter the topology · zoom in · zoom out'],
       ['H · V', 'Hand tool · selection tool; drag empty space to pan, Shift-drag to select'],
       ['Space + drag · middle drag', 'pan from anywhere on the topology'],
       ['Shift+B · Shift+F · Shift+O · Shift+D · Shift+A', 'add standby · far sync · observer · data centre · application (Topology)'],
       ['Shift+T · G · ?', 'tidy layout · toggle grid · toggle hints'],
-      ['P · L · E', 'play/pause (Outcome) · fold timeline panel · show Events (Scenario)'],
-      [', · . · Home · End', 'previous/next state change · start/end of timeline (Outcome)'],
+      ['P · L · E', 'play/pause (Simulate) · fold timeline panel · show Events (Scenario)'],
+      [', · . · Home · End', 'previous/next state change · start/end of timeline (Simulate)'],
       ['Ctrl/⌘+S · Ctrl/⌘+O', 'saved configurations · import file'],
       ['Ctrl/⌘+Shift+S · Ctrl/⌘+Shift+E', 'share link · export JSON'],
       ['Ctrl+Z · ⌘Z', 'undo'],
       ['Ctrl+Shift+Z · Ctrl+Y', 'redo'],
       ['Ctrl+A · ⌘A', 'select every card on the drawing'],
-      [']', 'open or close the Inspector panel (Topology, Generated settings, Outcome); fold or unfold the Events panel (Scenario)'],
+      [']', 'open or close the Inspector panel (Topology, Generated settings, Simulate); fold or unfold the Events panel (Scenario)'],
     ],
   },
   {

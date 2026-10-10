@@ -56,14 +56,14 @@ export function commands(): Command[] {
   const build = working && mode.value === 'build' ? editable : off('Open Topology to edit the topology.');
   const canvas = drawing && !(mode.value === 'break' && floating(mode.value, viewport.value)) ? ON : off('Open Topology to work with the drawing.');
   const run = working && mode.value === 'break' && trace.value !== null
-    ? ON : off('Open Outcome to play the simulation.');
+    ? ON : off('Open Simulate to play the simulation.');
   const docReady = working ? ON : off('Open the workbench first.');
   const picked = selection.value[0];
   const out: Command[] = MODES.map((m, i) => entry(`mode:${m}`, `Open ${MODE_LABEL[m]}`, 'Navigate',
     () => goToStep(m), ON, binding(String(i + 1)), String(i + 1)));
   out.push(
     entry('inspector', mode.value === 'scenario' ? 'Toggle Events panel' : 'Toggle Inspector', 'View',
-      toggleInspector, working && mode.value !== 'learn' ? ON : off('Choose Topology, Scenario, Outcome or Generated settings.'), binding('i'), 'I'),
+      toggleInspector, working && mode.value !== 'learn' ? ON : off('Choose Topology, Scenario, Simulate or Generated settings.'), binding('i'), 'I'),
     entry('undo', 'Undo', 'Edit', undo, working && canUndo.value ? editable : off('Nothing to undo yet.'), binding('z', true, false), '⌘/Ctrl Z'),
     entry('redo', 'Redo', 'Edit', redo, working && canRedo.value ? editable : off('Nothing undone yet.'), binding('z', true, true), '⌘/Ctrl Shift Z'),
     entry('share', 'Copy share link', 'Document', () => void share(), docReady, binding('s', true, true), '⌘/Ctrl Shift S'),
@@ -86,7 +86,7 @@ export function commands(): Command[] {
     }, drawing ? editable : canvas, binding('a', true), '⌘/Ctrl A'),
     entry('clear-selection', 'Clear selection', 'Canvas', clearSelection, selection.value.length ? ON : off('Nothing selected.')),
     entry('properties', 'Edit selected object', 'Selection', () => { if (picked) openInspectorFor(picked); },
-      mode.value === 'scenario' ? off('Edit settings in Topology or Outcome.') : picked && working ? editable : off('Select an object first.')),
+      mode.value === 'scenario' ? off('Edit settings in Topology or Simulate.') : picked && working ? editable : off('Select an object first.')),
     entry('rename', 'Rename selected object', 'Selection', () => { if (picked) renaming.value = picked; },
       picked && !d.links.some(l => l.id as string === picked) ? build : off('Select a card or data centre first.'), binding('f2'), 'F2'),
     entry('delete', 'Remove selected objects', 'Selection', () => { if (picked) deleteFromCanvas(picked); },
@@ -110,10 +110,10 @@ export function commands(): Command[] {
     entry('events', 'Show events panel', 'Timeline', () => { revealRail(); },
       working && mode.value === 'scenario' ? editable : off('Open Scenario to view its events.'), binding('e'), 'E'),
     entry('fold-timeline', timelineOpen.value ? 'Fold timeline panel' : 'Show timeline panel', 'Timeline', toggleTimeline,
-      working && mode.value === 'break' && !floating(mode.value, viewport.value) ? ON : off('The docked Outcome timeline can be folded.'), binding('l'), 'L'),
+      working && mode.value === 'break' && !floating(mode.value, viewport.value) ? ON : off('The docked Simulate timeline can be folded.'), binding('l'), 'L'),
     entry('run-summary', summaryOpen.value ? 'Fold run summary' : 'Show run summary', 'Timeline', () => setSummaryOpen(!summaryOpen.value), run),
-    entry('outcome-drawing', outcomeDrawing.value ? 'Hide the drawing in Outcome' : 'Show the drawing in Outcome', 'Timeline', toggleOutcomeDrawing,
-      working && mode.value === 'break' && floating(mode.value, viewport.value) ? ON : off('The Outcome keeps its drawing where it floats.')),
+    entry('outcome-drawing', outcomeDrawing.value ? 'Hide the drawing in Simulate' : 'Show the drawing in Simulate', 'Timeline', toggleOutcomeDrawing,
+      working && mode.value === 'break' && floating(mode.value, viewport.value) ? ON : off('Simulate keeps its drawing where it floats.')),
     entry('configuration-timeline', 'Show configuration timeline', 'Timeline', () => { setBreakTimeline('config'); goToStep('break'); }, docReady),
     entry('application-timeline', 'Show application timeline', 'Timeline', () => { setBreakTimeline('app'); goToStep('break'); },
       applicationsOf(d).length ? docReady : off('Add an application first.')),

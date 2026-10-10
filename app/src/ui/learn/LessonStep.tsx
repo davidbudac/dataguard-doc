@@ -99,7 +99,7 @@ export function LessonStep({ lesson, index, active }: LessonStepProps) {
             </button>
             {' '}
             <button type="button" class="btn" disabled={off} onClick={openInTimeline}>
-              Open in Outcome
+              Open in Simulate
             </button>
           </span>
           <WhyPill why={why} />

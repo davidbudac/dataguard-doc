@@ -39,7 +39,7 @@ describe('url table', () => {
   });
 
   it('writes the words on the buttons and reads every older spelling', () => {
-    expect(serializeUrlQuery({ ...URL_DEFAULTS, mode: 'break' })).toBe('mode=outcome');
+    expect(serializeUrlQuery({ ...URL_DEFAULTS, mode: 'break' })).toBe('mode=simulate');
     expect(serializeUrlQuery({ ...URL_DEFAULTS, mode: 'configure' })).toBe('mode=config');
     /* Topology is the page's default mode, so its word is never needed. */
     expect(serializeUrlQuery({ ...URL_DEFAULTS, mode: 'build' })).toBe('');
@@ -71,7 +71,7 @@ describe('url table', () => {
   it('reports keys it does not know, and drops them from the link', () => {
     const { state, unknown } = parseUrlQuery('?mode=break&utm_source=wiki&zoom=3');
     expect(unknown).toEqual(['utm_source', 'zoom']);
-    expect(serializeUrlQuery(state)).toBe('mode=outcome');
+    expect(serializeUrlQuery(state)).toBe('mode=simulate');
   });
 
   it('clamps the playhead and the lesson step', () => {

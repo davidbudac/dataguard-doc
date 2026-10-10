@@ -130,7 +130,7 @@ describe('the header', () => {
     expect(root.textContent).not.toContain('draw the configuration');
     /* The two re-cut modes wear their new words; the ids are what they were. */
     const words = [...root.querySelectorAll('.topbar-modes button')].map((b) => b.textContent);
-    expect(words).toEqual(['1Topology', '2Scenario', '3Outcome', 'Generated settings', 'Learn']);
+    expect(words).toEqual(['1Topology', '2Scenario', '3Simulate', 'Generated settings', 'Learn']);
   });
 
   it('carries a ? that reopens the whole explanation once it has been dismissed', async () => {

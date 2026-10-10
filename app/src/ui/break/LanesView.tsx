@@ -410,7 +410,7 @@ function LanesMembers() {
  */
 function LanesApp() {
   return (
-    <section class="ln-view float-card" aria-label="Outcome: application">
+    <section class="ln-view float-card" aria-label="Simulate: application">
       <LanesBar run={null} />
       <div class="ln-body ln-app">
         <AppTimeline />
@@ -769,7 +769,7 @@ function Lanes({ run, fr }: { run: RunTimeline | null; fr: Frame }) {
   const popHandle = pop === null ? undefined : handles.find((h) => h.key === pop.key);
 
   return (
-    <section class="ln-view float-card" aria-label="Outcome: members and their timelines" ref={section}>
+    <section class="ln-view float-card" aria-label="Simulate: members and their timelines" ref={section}>
       <Sheet open={linkChoices !== null} title="Choose a connection" variant="card" onClose={() => setLinkChoices(null)}>
         <div class="scenario-link-choices">{linkChoices?.map(link => <button class="btn" key={link.key} onClick={() => {
           setLinkChoices(null);

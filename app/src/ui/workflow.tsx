@@ -85,7 +85,7 @@ export function WorkflowBar() {
         <button class={`btn workflow-next${next.state === 'off' ? ' is-faded' : ''}`} disabled={next.state === 'off'}
           title={next.state === 'off' ? next.why : undefined}
           onClick={() => goToStep(m === 'build' ? 'scenario' : 'break')}>
-          {m === 'build' ? 'Define scenario →' : 'See outcome →'}
+          {m === 'build' ? 'Define scenario →' : 'Simulate →'}
         </button>
         <WhyPill why={next} />
       </span> : null}

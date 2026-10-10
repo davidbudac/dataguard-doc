@@ -51,7 +51,7 @@ export const BREAK_TIMELINE_SUB: Record<BreakTimeline, string> = {
  * means the same mode.
  */
 export const MODE_LABEL: Record<Mode, string> = {
-  build: 'Topology', scenario: 'Scenario', break: 'Outcome', configure: 'Generated settings', learn: 'Learn',
+  build: 'Topology', scenario: 'Scenario', break: 'Simulate', configure: 'Generated settings', learn: 'Learn',
 };
 
 /**
