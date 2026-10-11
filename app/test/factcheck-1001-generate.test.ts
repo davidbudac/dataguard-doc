@@ -1,6 +1,6 @@
 /**
  * Regression tests for the generated-text findings of the 2026-10-01 fact check
- * (SIMULATOR_FACT_CHECK_2026-10-01.md, section D, and the generator rows of
+ * (docs/fact-checks/SIMULATOR_FACT_CHECK_2026-10-01.md, section D, and the generator rows of
  * section E). One `describe` per finding id, the Oracle sentence in a comment.
  *
  * Each of these printed `OPEN` before its fix: the generators asserted

@@ -1,6 +1,6 @@
 /**
  * Regression tests for the role-change findings of the 2026-10-01 fact check
- * (SIMULATOR_FACT_CHECK_2026-10-01.md): SIM-17, SIM-28, SIM-21, VAL-07, SIM-23
+ * (docs/fact-checks/SIMULATOR_FACT_CHECK_2026-10-01.md): SIM-17, SIM-28, SIM-21, VAL-07, SIM-23
  * and SIM-26 -- a role change to the wrong kind of standby.
  *
  * One block per finding id, each holding the run to the Oracle sentence the

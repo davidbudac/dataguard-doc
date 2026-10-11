@@ -6,8 +6,8 @@ topology simulator you draw a Data Guard configuration in, break, and watch the
 clocks of — a TypeScript/Vite/Preact application with a pure domain engine,
 served at **https://dataguard.davidbudac.cz/**. Beside it, frozen, sits the page
 it grew out of: the single-file fast-start failover (FSFO) explainer in
-`simulator/`, still served at **/dataguard/legacy/** because every link the
-handover document and the Confluence page ever handed out points there. This file tells a future agent what exists, how it was
+`simulator/`, still served at **/dataguard/legacy/** because links published
+before the workbench existed point there. This file tells a future agent what exists, how it was
 produced, and how to extend it without breaking consistency or accuracy.
 
 ## Current workflow (2026-10-04)
@@ -37,13 +37,16 @@ items in Simulate; Topology should always show the starting state.
 | `app/design/facts.md` | The verified Oracle fact sheet for the topology features (far sync, cascading, multiple standbys and FSFO targets, multiple observers, RedoRoutes, member types, destination counts), researched 2026-08-16 against docs.oracle.com and re-verified 2026-08-17, marked `[D]` / `[D-later]` / `[UNDOC]` / `[CONFLICT]` per claim. **The only permitted source of a "documented" claim in the application.** Its top-five traps are restated in the accuracy rules below |
 | `app/design/engine.md` | The engine design: `Claim`/`Basis` labelling, the topology data model, the validation catalogue, the redo-graph resolver, the epoch-loop failure engine, the compat adapter and the 24-cell matrix gate, the generators, the module layout — plus §10, *Deviations from the design as built*, which is where the code and the specification differ |
 | `app/design/ui.md` | The application architecture: premises carried over from the legacy page, project structure and the CSP goal, Document-vs-View state, the four modes, canvas layout/routing, timeline, the migration table from the six legacy chapters, and the taste notes. Its as-built notes (the mode-aware readout, the drawer's focus contract, the print pass) are the record of what the code does where it went past the design |
-| `HANDOFF.md` | Situation report + work order for the next agent (state of the app, the in-flight UI polish brief, how to screenshot from a sandbox, known gaps, next steps). A snapshot — this file wins where they disagree |
+| `docs/history/HANDOFF.md` | Retired. Situation report + work order for the next agent (state of the app, the in-flight UI polish brief, how to screenshot from a sandbox, known gaps, next steps). A snapshot — this file wins where they disagree |
 | `app/README.md` | The short version of the three above: what it is, dev commands, structure, testing, deploy pointer |
 | `simulator/fsfo-simulator.html` | **Frozen.** Source fragment of the page that used to be published at `/dataguard/`; now served at `/dataguard/legacy/`. English only, pure ASCII (see [CLAUDE.md](CLAUDE.md)). Bug-fix territory only — new work goes into `app/` |
 | `testing/README.md` | Test runbook: step-by-step drills verifying each documented situation against a real 19c configuration (crash, isolation, observer loss, NET_TIMEOUT, blocked failover, reopen/MaxFailure, client view, commit measurement, plus four topology drills for far sync, cascading, multi-target and multiple observers), with an RTO/RPO probe harness and reinstate cleanup. Repo-only markdown — not part of the published site |
+| `README.md`, `LICENSE`, `CONTRIBUTING.md`, `SECURITY.md`, `CHANGELOG.md` | The public front door: what the tool is and how to run it, the MIT license (the Oracle sentences quoted in the citation catalogue stay Oracle's), how to contribute, how to report a problem, what changed per version |
+| `site/check.sh` | The local CI, the only CI there is: typecheck, the application suite, the legacy tests, the site build with its two guards, and the browser smoke test where Chrome exists. `--quick` stops after the tests. `.githooks/pre-push` runs the quick form; `git config core.hooksPath .githooks` enables it, `SKIP_CHECKS=1 git push` bypasses it once |
+| `docs/history/` | Retired documents kept for the record: the August 2026 fact check, fix plan and recheck of the legacy page, the gray-controls note, the August implementation handoff, and the design mockups. Nothing in there is current; this file wins where they disagree |
 | `docs/agents/fact-check.md` | How to review the workbench against Oracle: the evidence rules (only docs.oracle.com, quotes matched by grep, both editions, a live system where there is one), the eight slices, the report format, and the traps the first review fell into. With it: `app/test/fact-check/probes.probe.ts` (one runnable scenario per finding, printing `OPEN` or `CHANGED`; run with `cd app && npx vitest run --config vitest.factcheck.config.ts`, never part of `npm test`), `citations.probe.ts` (every quote in the citation catalogue looked for on the page it cites; network, so only with `FACT_CHECK_ONLINE=1`), `fetch-docs.sh` and `totext.py` (the Oracle pages as greppable text, written outside the repo) |
-| `SIMULATOR_FACT_CHECK_2026-10-01.md` | The second review, after RAC, the split-brain reading and the application's sessions landed: no live system, documentation and ~250 engine runs only. Its findings are open; its *Decisions needed* section (D5–D9) comes before any fix. It re-uses the 09-28 ids where a finding is still open, and its probes are the *2026-10-01 review* section of `probes.probe.ts` |
-| `SIMULATOR_FACT_CHECK_2026-09-28.md` | The report of the first full review of `app/` against 19c and 26ai, with a read-only look at a live 19.27 configuration, **and what was done about each finding** (its *Resolution* section). The findings are fixed except where that section says a decision was taken instead — one role change per run, resynchronization drawn as immediate, the 19c edition meaning 19c as documented — and the accuracy rules below were corrected with them. A later review re-uses its finding ids |
+| `docs/fact-checks/SIMULATOR_FACT_CHECK_2026-10-01.md` | The second review, after RAC, the split-brain reading and the application's sessions landed: no live system, documentation and ~250 engine runs only. Its findings are open; its *Decisions needed* section (D5–D9) comes before any fix. It re-uses the 09-28 ids where a finding is still open, and its probes are the *2026-10-01 review* section of `probes.probe.ts` |
+| `docs/fact-checks/SIMULATOR_FACT_CHECK_2026-09-28.md` | The report of the first full review of `app/` against 19c and 26ai, with a read-only look at a live 19.27 configuration, **and what was done about each finding** (its *Resolution* section). The findings are fixed except where that section says a decision was taken instead — one role change per run, resynchronization drawn as immediate, the 19c edition meaning 19c as documented — and the accuracy rules below were corrected with them. A later review re-uses its finding ids |
 | `site/build.mjs` | The site build, in three steps: `npm run build` in `app/` (which empties `_site/` and writes the hashed bundle), then `site/build-legacy.mjs`, then `assertNoInline(_site/index.html)` — a built page carrying a `<script>` with a body, an `on*=` handler or a `style=` attribute fails the build rather than the browser's content security policy. The guard proves it can fail (three fixtures it must reject, one it must accept) before it is trusted to pass |
 | `site/build-legacy.mjs` | What `site/build.mjs` used to be: wraps the fragment into a full page (doctype, charset, title, favicon, canonical + social meta) and enforces the ASCII-only guard — it exits non-zero on any byte above U+007E, naming the offending lines. Writes `_site/legacy/index.html` and copies `diagrams/` to `_site/diagrams`, which both pages share |
 | `site/smoke.mjs` | Dependency-free browser check of the built tree: serves `_site/` over `node:http`, loads it in headless Chrome (`--dump-dom`, console messages captured through `--enable-logging=stderr`), takes the page's own `data-permalink` for the `classic` and `far-sync-zero-loss` presets and reloads it cold — an untouched preset now carries no `#t=` at all, so the check accepts either a `#t=` document or a short link naming the preset (and asserts the latter is under 200 characters) — asserts the node cards, the timeline lanes and the outcome chip, opens each of the four modes by name, and checks that a published-page link (`?sc=iso&lat=2&lang=cs#ch-clocks`) upgrades into Simulate mode like any other old link, following *that* permalink cold to keep one real-browser `CompressionStream` → `DecompressionStream` round trip (an upgraded legacy link names no preset, so it must carry `#t=`). Probes HTTP first and falls back to an inlined single-file copy over `file://` where the machine's headless Chrome cannot fetch over HTTP. Exits non-zero on any failed check, any console message, or any file the page asked for and did not get |
@@ -74,9 +77,11 @@ Both pages are served from the user's own VPS. To publish:
 It builds `_site/` (application first, because the Vite build empties the
 directory; then the legacy page into the tree it leaves behind), runs three
 gates in the order that fails fastest, tars the result over ssh to
-`root@dbhetz-ubu26:/var/www/dataguard` (unpacking beside the live tree and
+`$DG_HOST:$DG_DEST` (unpacking beside the live tree and
 renaming it in, so a half-uploaded tree is never live), and then verifies the
-public URL.
+public URL. The host and path are not in the repository: they come from
+`site/publish.env`, which is gitignored (`site/publish.env.example` shows the
+shape), or from the environment.
 
 The three gates, and what each one can catch that the others cannot:
 
@@ -102,8 +107,8 @@ for, and fails unless that file comes back byte-equal to the one just built.
 The HTML itself is a few hundred bytes of head that a CDN may minify or
 re-encode, while the hashed asset changes with every byte of source — so the
 asset is the honest witness that what is live is what was built. `--dry-run`
-builds and tests without deploying. Overridable via `DG_HOST`, `DG_DEST`,
-`DG_URL`.
+builds and tests without deploying and needs no `publish.env`. A real deploy
+requires `DG_HOST` and `DG_DEST`; `DG_URL` and `DG_OWNER` have defaults.
 
 Old links keep working, two different ways. Anything pointing at
 `/dataguard/legacy/` lands on the frozen page. A link to `/dataguard/` itself is
@@ -125,8 +130,8 @@ Two things to know:
 Both pages are served by their own virtual host, **`dataguard.davidbudac.cz`**,
 on the VPS; the old path `https://davidbudac.cz/dataguard/…` answers with a 301
 to the same path on that host (query string included), which is what keeps
-every link the handover documents ever handed out alive. The vhost sets its own
-security headers rather than including `snippets/dbudac-headers.conf`, because
+every previously published link alive. The vhost sets its own
+security headers rather than including a shared snippet, because
 two CSP headers are enforced as their intersection and the shared snippet would
 silently break whichever page needs more.
 
@@ -155,9 +160,7 @@ location ^~ /legacy/ {
 
 A nested `location` replaces the parent's `add_header` set entirely rather than
 adding to it, so the nested block must repeat every header the parent sets, not
-just the CSP. Note that on that box the enabled config under
-`sites-enabled/` is a **regular file, not a symlink** — the `sites-available/`
-copy is stale, so edit the enabled one. Until the header is changed the
+just the CSP. Until the header is changed the
 application still works; it is simply running under a policy laxer than the one
 it was built for.
 
@@ -1486,8 +1489,8 @@ observation and labelled as one.
 `simulator/fsfo-simulator.html` is the page the workbench grew out of: one
 self-contained fragment (no doctype/html/head/body; `<title>` first), vanilla JS,
 zero external requests. It is **frozen** — bug fixes only, new work goes into
-`app/` — but it still ships, at `/dataguard/legacy/`, because every link the
-handover document and the Confluence page handed out points there.
+`app/` — but it still ships, at `/dataguard/legacy/`, because links published
+before the workbench existed point there.
 `site/build-legacy.mjs` is what wraps it into a page.
 
 **It must stay pure ASCII.** With no `<head>` it carries no `<meta charset>`, so
@@ -1621,8 +1624,7 @@ it was allowed to add anything.
   alone (see CLAUDE.md): `app/index.html` declares its charset, so em dashes,
   `×` and `≤` are written as themselves. Do not carry `\uXXXX` escapes or
   `&mdash;` into TSX or CSS.
-- **Everything is English only**, both pages. The Czech handover documents in
-  `handover/` are the one exception, and they are repo-only.
+- **Everything is English only**, both pages.
 - Presets are the scenario tests: a new topology worth drawing is a preset in
   `app/src/presets` with a canvas golden and a `presets.test.ts` entry, not a
   one-off fixture inside a test.

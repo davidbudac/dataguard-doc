@@ -1,6 +1,6 @@
 # Fact check — how to review the workbench against Oracle
 
-The procedure behind `SIMULATOR_FACT_CHECK_2026-09-28.md`, written so the next
+The procedure behind `docs/fact-checks/SIMULATOR_FACT_CHECK_2026-09-28.md`, written so the next
 review is a repeat rather than a reinvention. A fact check produces **a report
 and nothing else**: no fix is made in the same pass, because a fix made while
 reviewing is a fix nobody reviewed.
@@ -133,7 +133,7 @@ write probes, run them, and hold each outcome against slice 3.
 
 ## The report
 
-One file at the repository root, `SIMULATOR_FACT_CHECK_<date>.md`, in the shape
+One file in `docs/fact-checks/`, `SIMULATOR_FACT_CHECK_<date>.md`, in the shape
 of the 2026-09-28 one:
 
 - how it was checked, and which release any live system was on;

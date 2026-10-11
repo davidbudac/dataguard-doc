@@ -1,6 +1,6 @@
 /**
  * Regression tests for the prose, label and lesson findings of
- * SIMULATOR_FACT_CHECK_2026-10-01.md (section E and SIM-25), one `describe`
+ * docs/fact-checks/SIMULATOR_FACT_CHECK_2026-10-01.md (section E and SIM-25), one `describe`
  * per finding id where a test says something. A pure wording fix with no
  * behaviour behind it has no test here; the commit that made it says so.
  */

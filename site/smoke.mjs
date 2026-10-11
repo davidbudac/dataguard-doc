@@ -39,8 +39,9 @@ const PROBE_MS = 20_000;
    primary, a standby and an observer; Example 5-2 adds a far sync instance in
    front of the standby. Every member and every observer is a card on the
    canvas and a lane on the timeline; the application beside the primary is
-   one card more, and its point of view three lanes more. Detailed timeline
-   also draws the application host as its own row. */
+   one card more, and its point of view three lanes more. Simulate draws the
+   canvas above the lanes, and every lane group carries a card of its own
+   (`ln-card`), so the two kinds are counted apart rather than summed. */
 const CASES = [
   { preset: 'classic', cards: 4, lanes: 7 },
   { preset: 'far-sync-zero-loss', cards: 5, lanes: 8 },
@@ -180,7 +181,11 @@ function load(url, timeoutMs = TIMEOUT_MS) {
    mark -- site rects and link paths carry it too -- so the card is counted by
    `class="tp-node"` or Detailed timeline's `ln-card`, and the lookahead is what keeps `tp-nodes`, the group
    that holds them, out of the count. */
-const countCards = (dom) => [...dom.matchAll(/class="(?:tp-node|ln-card)(?=["\s])/g)].length;
+/* Cards on the canvas (`tp-node`). A view with no canvas on screen -- the
+   lanes with the drawing folded away -- is counted by its lane cards instead. */
+const countCanvasCards = (dom) => [...dom.matchAll(/class="tp-node(?=["\s])/g)].length;
+const countLaneCards = (dom) => [...dom.matchAll(/class="ln-card(?=["\s])/g)].length;
+const countCards = (dom) => countCanvasCards(dom) || countLaneCards(dom);
 const countLanes = (dom) => [...dom.matchAll(/\sdata-lane="/g)].length;
 
 /* ---------------- the checks ---------------- */
@@ -286,11 +291,18 @@ for (const { preset, cards, lanes } of CASES) {
   if (drawn === cards) pass(`${preset}: ${cards} node cards on the canvas`);
   else fail(`${preset}: expected ${cards} node cards, the page drew ${drawn}`);
 
+  /* The lanes carry one card per member, observer and application host too;
+     when both are on screen they must agree. */
+  const laneCards = countLaneCards(run.dom);
+  if (laneCards === 0 || laneCards === cards) pass(`${preset}: ${laneCards} lane cards beside the lanes`);
+  else fail(`${preset}: expected ${cards} lane cards, the page drew ${laneCards}`);
+
   const drawnLanes = countLanes(run.dom);
   if (drawnLanes === lanes) pass(`${preset}: ${lanes} timeline lanes`);
   else fail(`${preset}: expected ${lanes} timeline lanes, the page drew ${drawnLanes}`);
 
-  const outcome = /<span class="chip-k">Outcome<\/span><span class="chip-v">([^<]*)/.exec(run.dom)
+  const outcome = /<span class="ln-vd-k">Outcome<\/span><span class="ln-vd-v">([^<]*)/.exec(run.dom)
+    ?? /<span class="chip-k">Outcome<\/span><span class="chip-v">([^<]*)/.exec(run.dom)
     ?? /<span class="sb-ro-i\b[^"]*"[^>]*><span class="sb-ro-k">Outcome<\/span>\s*<span class="sb-ro-v">([^<]*)/.exec(run.dom);
   if (outcome) pass(`${preset}: the readout names an outcome (${outcome[1].trim()})`);
   else fail(`${preset}: the readout carries no outcome`);
@@ -306,7 +318,8 @@ console.log('\nmodes');
 for (const [query, mark, what] of [
   ['mode=topology', 'class="app m-build', 'Topology'],
   ['mode=scenario', 'class="app m-scenario', 'Scenario'],
-  ['mode=outcome', 'class="app m-break', 'Outcome'],
+  ['mode=simulate', 'class="app m-break', 'Simulate'],
+  ['mode=outcome', 'class="app m-break', 'Simulate (mode=outcome, the older spelling)'],
   ['mode=config&panel=dgmgrl', 'class="app m-configure', 'Config'],
   ['mode=learn&lesson=failover-clocks', 'class="app m-learn', 'Learn'],
 ]) {

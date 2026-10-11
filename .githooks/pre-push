@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# The local CI's quick form before every push: typecheck, the application
+# suite, the legacy tests. Enable once with `git config core.hooksPath .githooks`;
+# bypass once with `SKIP_CHECKS=1 git push`.
+[[ "${SKIP_CHECKS:-}" == "1" ]] && exit 0
+exec "$(git rev-parse --show-toplevel)/site/check.sh" --quick

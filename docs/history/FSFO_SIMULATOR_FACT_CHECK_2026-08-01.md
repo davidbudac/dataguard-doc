@@ -1,3 +1,5 @@
+> **Retired.** Moved to `docs/history/` on 2026-10-11 and kept for the record only; `AGENTS.md` is current and wins where they disagree. Relative links below are as written at the time.
+
 # Fact check: `simulator/fsfo-simulator.html` (English)
 
 Date: 2026-08-01  

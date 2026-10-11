@@ -48,7 +48,10 @@ npm run typecheck
 ```
 
 The whole site — this application plus the legacy page plus the figures — is
-built by `node ../site/build.mjs` from the repository root.
+built by `node ../site/build.mjs` from the repository root. `../site/check.sh`
+is the local CI (typecheck, tests, legacy tests, build, browser smoke;
+`--quick` stops after the tests), and `.githooks/pre-push` runs its quick form
+once `git config core.hooksPath .githooks` is set.
 
 ## What is where
 
@@ -152,7 +155,8 @@ desktop before publishing.
 ## Deploying
 
 From the repository root, `./site/publish.sh` builds, runs the three gates and
-deploys — and only ever when the user asks for it. The nginx and CSP details,
+deploys — and only ever when the user asks for it. The target host lives in
+`site/publish.env` (gitignored; copy `site/publish.env.example`). The nginx and CSP details,
 the pre-publish checklist and the rest are in
 [`../AGENTS.md`](../AGENTS.md#publishing).
 

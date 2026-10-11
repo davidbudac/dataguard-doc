@@ -37,6 +37,9 @@ import { startClassicWalkthrough } from './Walkthrough';
 import '@/content/content.css';
 import '@/styles/intro.css';
 
+/** Where the source lives. A link, not a request: the page still loads nothing. */
+const REPO_URL = 'https://github.com/davidbudac/dataguard-doc';
+
 /* ---------------- the drawing ---------------- */
 
 /**
@@ -459,6 +462,12 @@ export function IntroPage(): JSX.Element {
         <p class="caption">
           The page this one replaced is still served, frozen:{' '}
           <a href={LEGACY_PATH}>the original single-page explainer</a>.
+        </p>
+        <p class="caption">
+          An independent, unofficial tool — not affiliated with, endorsed by or supported by
+          Oracle. Oracle, Oracle Database and Data Guard are trademarks of Oracle and/or its
+          affiliates; the sentences a documented fact quotes stay Oracle’s.{' '}
+          <a href={REPO_URL} target="_blank" rel="noopener noreferrer">Source and license (MIT)</a>.
         </p>
       </footer>
     </article>

@@ -1,6 +1,6 @@
 /**
  * Regression tests for the simulation findings of the 2026-09-28 fact check
- * (SIMULATOR_FACT_CHECK_2026-09-28.md, section A, plus the engine halves of
+ * (docs/fact-checks/SIMULATOR_FACT_CHECK_2026-09-28.md, section A, plus the engine halves of
  * ED-01 and VAL-04).
  *
  * One block per finding. Each takes the reproduction the report gives and

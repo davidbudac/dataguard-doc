@@ -1,3 +1,5 @@
+> **Retired.** Moved to `docs/history/` on 2026-10-11 and kept for the record only; `AGENTS.md` is current and wins where they disagree. Relative links below are as written at the time.
+
 # Implementation handoff — Data Guard topology simulator
 
 Written 2026-08-17, updated 2026-08-19 (§3c) for the next agent taking over `app/`. It is a *situation report*

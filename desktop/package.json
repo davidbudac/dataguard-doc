@@ -1,6 +1,7 @@
 {
   "name": "dataguard-desktop",
   "private": true,
+  "license": "MIT",
   "version": "0.0.0",
   "description": "Tauri v2 shell around the Data Guard workbench in ../app. The shipped version is app/package.json's.",
   "scripts": {

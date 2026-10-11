@@ -1,6 +1,6 @@
 /**
  * Regression tests for the role-change findings of the 2026-10-01 fact check
- * (SIMULATOR_FACT_CHECK_2026-10-01.md) and the owner's decisions D5, D6 and D7:
+ * (docs/fact-checks/SIMULATOR_FACT_CHECK_2026-10-01.md) and the owner's decisions D5, D6 and D7:
  * SIM-15, D5, SIM-16, SIM-20 and D7 / SIM-24.
  *
  * One block per id. Each takes the reproduction the report gives and holds the

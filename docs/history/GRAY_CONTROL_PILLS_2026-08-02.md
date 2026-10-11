@@ -1,3 +1,5 @@
+> **Retired.** Moved to `docs/history/` on 2026-10-11 and kept for the record only; `AGENTS.md` is current and wins where they disagree. Relative links below are as written at the time.
+
 # Why a gray control is gray — 2026-08-02
 
 The simulator grays controls that the current state has taken away from you: pick

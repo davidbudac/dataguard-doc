@@ -23,7 +23,7 @@ Single-context: root `CONTEXT.md` + `docs/adr/`. See `docs/agents/domain.md`.
 
 Reviewing what the workbench asserts against Oracle's documentation is a procedure, not an
 improvisation: `docs/agents/fact-check.md`. It produces a report and no fixes. The last one is
-`SIMULATOR_FACT_CHECK_2026-10-01.md` (before it, `SIMULATOR_FACT_CHECK_2026-09-28.md`); their scenarios run with
+`docs/fact-checks/SIMULATOR_FACT_CHECK_2026-10-01.md` (before it, `docs/fact-checks/SIMULATOR_FACT_CHECK_2026-09-28.md`); their scenarios run with
 `cd app && npx vitest run --config vitest.factcheck.config.ts`. A feature that adds an outcome
 adds its probes to `app/test/fact-check/probes.probe.ts`.
 
@@ -76,7 +76,8 @@ back to either page.
 Commands, from `app/`: `npm run dev` · `npm run build` (typecheck then Vite, output
 straight into `../_site/`) · `npm test` (vitest) · `npm run typecheck`. The whole
 site is `node site/build.mjs`; publishing is `./site/publish.sh`, and **only when
-the user asks**.
+the user asks**. CI is local and nothing else: `./site/check.sh` runs every gate
+(`--quick` stops after the tests); `.githooks/pre-push` runs the quick form.
 
 - **Desktop shell.** `desktop/` is a Tauri v2 wrapper (macOS, Windows); everything the page does differently inside it (saving files, printing, the Share origin) lives in `app/src/ui/common/desktop.ts` and nowhere else. See AGENTS.md, *The desktop app*.
 - **The engine is pure.** Nothing under `app/src/engine` may touch the DOM, do I/O,
@@ -96,6 +97,6 @@ the user asks**.
   classes, and `el.style.setProperty` through a ref is the single escape hatch.
   `site/build.mjs` fails the build on an inline `<script>`, an `on*=` handler or a
   `style=` attribute in the built HTML.
-- **English only.** Czech survives only in the repo-only handover documents.
+- **English only.**
 - `app/` is ordinary UTF-8: write `—` and `×` as themselves, never as entities or
   `\uXXXX` escapes.

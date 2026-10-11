@@ -3,13 +3,16 @@
 # Publish the Data Guard workbench to https://dataguard.davidbudac.cz/
 #
 # What goes out: the application (app/, built by Vite) at the root, and the
-# page it replaced at /dataguard/legacy/ -- every link in the handover
-# document and the wiki page points at that one.
+# page it replaced at /dataguard/legacy/ -- links published before the
+# workbench existed point at that one.
 #
-# Replaces the old GitHub Pages deploy (.github/workflows/pages.yml, removed):
-# the repo is private now, so publishing is this explicit push instead of a
-# side effect of `git push`. Nothing here reads git -- it ships the working
-# tree, so you can preview an edit before committing it.
+# Publishing is this explicit push, never a side effect of `git push`. Nothing
+# here reads git -- it ships the working tree, so you can preview an edit
+# before committing it.
+#
+# Where it goes is not in the repository: DG_HOST and DG_DEST come from
+# site/publish.env (gitignored; see site/publish.env.example) or from the
+# environment, which wins. --dry-run needs neither.
 #
 # Usage:
 #   site/publish.sh            build, deploy, verify
@@ -23,11 +26,6 @@
 
 set -euo pipefail
 
-DG_HOST="${DG_HOST:-root@dbhetz-ubu26}"
-DG_DEST="${DG_DEST:-/var/www/dataguard}"
-DG_OWNER="${DG_OWNER:-db:db}"
-DG_URL="${DG_URL:-https://dataguard.davidbudac.cz/}"
-
 repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$repo"
 
@@ -36,6 +34,22 @@ dry_run=0
 
 say() { printf '\033[1;34m==>\033[0m %s\n' "$*"; }
 die() { printf '\033[1;31mERROR:\033[0m %s\n' "$*" >&2; exit 1; }
+
+# --- 0. where to. The environment wins over site/publish.env; the file is
+# gitignored because it names a host.
+env_host="${DG_HOST:-}"; env_dest="${DG_DEST:-}"; env_owner="${DG_OWNER:-}"; env_url="${DG_URL:-}"
+if [[ -f site/publish.env ]]; then
+  # shellcheck disable=SC1091
+  source site/publish.env
+fi
+DG_HOST="${env_host:-${DG_HOST:-}}"
+DG_DEST="${env_dest:-${DG_DEST:-}}"
+DG_OWNER="${env_owner:-${DG_OWNER:-}}"
+DG_URL="${env_url:-${DG_URL:-https://dataguard.davidbudac.cz/}}"
+if (( ! dry_run )); then
+  [[ -n "$DG_HOST" && -n "$DG_DEST" ]] \
+    || die "DG_HOST and DG_DEST are not set; copy site/publish.env.example to site/publish.env (or use --dry-run)"
+fi
 
 # --- 1. build. site/build.mjs builds the app, then the legacy page (whose
 # builder still enforces the ASCII-only rule; see CLAUDE.md), then refuses to
@@ -91,7 +105,7 @@ COPYFILE_DISABLE=1 tar -C _site --no-xattrs --exclude '.DS_Store' -czf - . \
       mkdir -p \"\${dest}.new\"
       tar -C \"\${dest}.new\" -xzf -
       test -s \"\${dest}.new/index.html\"
-      chown -R '${DG_OWNER}' \"\${dest}.new\"
+      if [ -n '${DG_OWNER}' ]; then chown -R '${DG_OWNER}' \"\${dest}.new\"; fi
       find \"\${dest}.new\" -type d -exec chmod 755 {} +
       find \"\${dest}.new\" -type f -exec chmod 644 {} +
       rm -rf \"\${dest}.old\"

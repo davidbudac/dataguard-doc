@@ -5,6 +5,7 @@ name = "dataguard-workbench"
 version = "0.0.0"
 description = "Data Guard Workbench desktop shell"
 edition = "2021"
+license = "MIT"
 publish = false
 
 [lib]

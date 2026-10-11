@@ -2,7 +2,7 @@
  * Regression tests for the 2026-10-01 fact check: validation rules, routing
  * labels, defaults and ranges. One `describe` per finding id, with the Oracle
  * sentence the fix rests on in a comment above it. The report is
- * SIMULATOR_FACT_CHECK_2026-10-01.md.
+ * docs/fact-checks/SIMULATOR_FACT_CHECK_2026-10-01.md.
  *
  * @vitest-environment jsdom
  */

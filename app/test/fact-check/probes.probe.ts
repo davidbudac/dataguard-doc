@@ -1,5 +1,5 @@
 /**
- * Fact-check probes -- the scenarios behind SIMULATOR_FACT_CHECK_2026-09-28.md.
+ * Fact-check probes -- the scenarios behind docs/fact-checks/SIMULATOR_FACT_CHECK_2026-09-28.md.
  *
  * Not part of the suite: the file name does not match `*.test.ts`, so
  * `npm test` never picks it up. Run it on purpose, from `app/`:
