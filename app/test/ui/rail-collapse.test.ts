@@ -178,7 +178,7 @@ describe('the side rail folds', () => {
     expect(document.querySelector('.sheet')).toBeNull();
   });
 
-  it('carries the event list in its drawer at 1024, and closes by button, Esc and outside press', async () => {
+  it('carries the event list in its panel at 1024, and closes by button and Esc, not by an outside press', async () => {
     mode.value = 'scenario';
     viewport.value = 'medium';
     const crash = templates(topology.value, 0).find((x) => x.id === 'crash');
@@ -192,7 +192,7 @@ describe('the side rail folds', () => {
       await tick();
       await tick();
     };
-    /* Closed, the Lanes bar is the reader's whole top edge: no sheet, no scrim. */
+    /* Closed, the Lanes bar is the reader's whole top edge: no sheet. */
     expect(document.querySelector('.sheet')).toBeNull();
     expect(root.querySelector('.scenario-editor')).not.toBeNull();
     expect(events().getAttribute('aria-expanded')).not.toBe('true');
@@ -224,10 +224,16 @@ describe('the side rail folds', () => {
     expect(document.querySelector('.sheet')).toBeNull();
     events().click();
     await settle();
-    (document.querySelector('.scrim') as HTMLElement).click();
+    /* A panel beside the page, not a modal over it (common/Sheet.tsx `modal={false}`):
+       there is no scrim, and a press on the page is a press on the page. */
+    expect(document.querySelector('.scrim')).toBeNull();
+    (root.querySelector('.scenario-editor') as HTMLElement).dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    await settle();
+    expect(document.querySelector('.sheet')).not.toBeNull();
+    expect(root.querySelector('.scenario-editor')).not.toBeNull();
+    [...document.querySelectorAll<HTMLButtonElement>('.sheet button')].find((b) => b.textContent?.trim() === 'Close')!.click();
     await settle();
     expect(document.querySelector('.sheet')).toBeNull();
-    expect(root.querySelector('.scenario-editor')).not.toBeNull();
   });
 
   it('does not fold Learn\'s workbench', async () => {

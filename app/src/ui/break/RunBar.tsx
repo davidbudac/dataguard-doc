@@ -16,7 +16,10 @@ import { Fragment } from 'preact';
 import { readout, topology, trace } from '@/state/derived';
 import type { ReadoutChip } from '@/state/derived';
 import { setSummaryOpen, toggleOutcomeDrawing } from '@/state/persist';
-import { appLanesShown, findingsOpen, outcomeDrawing, summaryOpen } from '@/state/view';
+import {
+  appLanesShown, DRAWING_MIN_H, drawingRoom, findingsOpen, headBottom, outcomeDrawing, splitFits, summaryOpen,
+  TL_MIN_H, viewportH,
+} from '@/state/view';
 import { SettingChips } from './SettingChips';
 import { SUMMARY_ID } from './SummaryBand';
 import { APP_VIEW_TIP } from '../timeline/Timeline';
@@ -267,15 +270,25 @@ export function SettingsMenu() {
   );
 }
 
-/** Whether the drawing of the topology stays above the lanes. Pressed while it does. */
+/**
+ * Whether the drawing of the topology stays above the lanes. Pressed while it
+ * does. Grey, with the reason in its title, while the window is too short to
+ * keep a readable drawing there at all (`splitFits`): the shell draws the lanes
+ * alone then, whatever the remembered choice, and the choice is kept for a
+ * taller window.
+ */
 export function DrawingToggle() {
   const on = outcomeDrawing.value;
+  const fits = splitFits(viewportH.value, headBottom.value);
+  const short = Math.max(0, DRAWING_MIN_H - drawingRoom(viewportH.value, headBottom.value, TL_MIN_H));
   return (
     <button
-      type="button" class="sb-tool sb-draw" aria-pressed={on}
-      title={on
-        ? 'Hide the drawing: the lanes take the whole stage'
-        : 'Show the drawing of the topology above the lanes, as it is at the playhead'}
+      type="button" class="sb-tool sb-draw" aria-pressed={on && fits} disabled={!fits}
+      title={!fits
+        ? `The window is about ${short} px too short to keep a readable drawing above the lanes; make it taller, or read the drawing in Topology`
+        : on
+          ? 'Hide the drawing: the lanes take the whole stage'
+          : 'Show the drawing of the topology above the lanes, as it is at the playhead'}
       onClick={toggleOutcomeDrawing}
     >
       <svg viewBox="0 0 16 16" aria-hidden="true"><rect x="2" y="2.5" width="12" height="5" rx="1.2" /><rect x="2" y="9.5" width="12" height="4" rx="1.2" /></svg>

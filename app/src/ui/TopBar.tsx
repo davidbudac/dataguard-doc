@@ -11,7 +11,7 @@ import type { PalettePref, ThemePref } from '@/state/view';
 import { saveEdition, savePalette, saveTheme, toggleRail } from '@/state/persist';
 import { Segmented } from './common/Segmented';
 import { INTRO_HREF, openIntro } from './intro/route';
-import { goToStep, WORKFLOW } from './workflow';
+import { goToStep, nextStepEnabled, WORKFLOW } from './workflow';
 import { PanelIcon } from './RailFrame';
 
 const THEME_WORD: Record<ThemePref, string> = { auto: 'system', light: 'light', dark: 'dark' };
@@ -28,10 +28,12 @@ export interface TopBarProps {
 }
 
 /**
- * The overflow: the page's preferences -- the Oracle release, the theme, the
- * palette, the help card -- and, under a rule, whatever the document offers
- * (saved configurations, export, import). One menu, so the bar keeps the
- * controls a reader touches every minute and nothing they touch once a session.
+ * The overflow: the page's preferences -- the theme, the palette, the help
+ * card -- and, under a rule, whatever the document offers (saved
+ * configurations, export, import). One menu, so the bar keeps the controls a
+ * reader touches every minute and nothing they touch once a session. The
+ * Oracle release is not one of the once-a-session things: it changes what
+ * the engine says, so it is on the bar (`EditionSwitch`).
  *
  * A native `<details>`: a real disclosure with no script of its own. A press
  * on a document row is the end of the errand and shuts it; a press on a
@@ -60,23 +62,11 @@ function Overflow({ menu }: { menu?: ComponentChildren }) {
         }
       }}
     >
-      <summary class="btn is-icon" aria-label="More" title="Oracle release, theme, palette, help · saved configurations, export, import">
+      <summary class="btn is-icon" aria-label="More" title="Theme, palette, help · saved configurations, export, import">
         <span aria-hidden="true">⋯</span>
       </summary>
       <div class="ovf-menu float-card">
         <div class="ovf-sec" role="group" aria-label="Preferences">
-          <div class="ovf-row" data-stay>
-            <span class="ovf-k">Oracle release</span>
-            <Segmented<'19c' | '26ai'>
-              label="Oracle release"
-              value={edition.value}
-              options={[
-                { value: '19c', label: '19c', title: 'Oracle Database 19c' },
-                { value: '26ai', label: '26ai', title: 'Oracle AI Database 26ai' },
-              ]}
-              onChange={(v) => { edition.value = v; saveEdition(v); }}
-            />
-          </div>
           {/* One press flips light and dark; the name says which way it is
               pointing now and which way it will go. */}
           <button
@@ -142,8 +132,33 @@ function Overflow({ menu }: { menu?: ComponentChildren }) {
   );
 }
 
+/**
+ * The Oracle release, on the bar: a reading preference that changes what the
+ * engine says about the same drawing, and so a thing to see and flip without
+ * opening a menu for it.
+ */
+function EditionSwitch() {
+  return (
+    <Segmented<'19c' | '26ai'>
+      label="Oracle release"
+      value={edition.value}
+      options={[
+        { value: '19c', label: '19c', title: 'Oracle Database 19c' },
+        { value: '26ai', label: '26ai', title: 'Oracle AI Database 26ai' },
+      ]}
+      onChange={(v) => { edition.value = v; saveEdition(v); }}
+    />
+  );
+}
+
 export function TopBar({ doc, actions, menu }: TopBarProps = {}) {
   const m = mode.value;
+  /* The three steps are the way between the steps: there is no band under
+     the bar saying "Define scenario →" any more (workflow.tsx). Its gate --
+     no primary, no run -- is on the steps it gates, with the reason as their
+     title; its tally (members, events) is read where it is drawn, in the
+     dock and the Events rail. */
+  const gate = nextStepEnabled('build');
   return (
     <header class="topbar app-top">
       <div class="topbar-brand">
@@ -163,12 +178,17 @@ export function TopBar({ doc, actions, menu }: TopBarProps = {}) {
 
       <div class="topbar-modes">
         <nav class="workflow-steps" aria-label="Workflow steps">
-          {WORKFLOW.map((x, i) => <button type="button" key={x}
-            class={`workflow-step${m === x ? ' is-active' : ''}`}
-            aria-current={m === x ? 'step' : undefined} aria-label={`Step ${i + 1}: ${MODE_LABEL[x]}`} title={MODE_SUB[x]}
-            onClick={() => goToStep(x)}>
-            <span class="step-number">{i + 1}</span><span>{MODE_LABEL[x]}</span>
-          </button>)}
+          {WORKFLOW.map((x, i) => {
+            const off = x !== 'build' && gate.state === 'off';
+            return <button type="button" key={x}
+              class={`workflow-step${m === x ? ' is-active' : ''}`}
+              aria-current={m === x ? 'step' : undefined} aria-label={`Step ${i + 1}: ${MODE_LABEL[x]}`}
+              title={off ? gate.why : MODE_SUB[x]}
+              disabled={off}
+              onClick={() => goToStep(x)}>
+              <span class="step-number">{i + 1}</span><span>{MODE_LABEL[x]}</span>
+            </button>;
+          })}
         </nav>
         {/* Not steps: what the three steps produce, and the lessons behind
             them. Quieter, and under a hairline, so they read as reference. */}
@@ -179,6 +199,7 @@ export function TopBar({ doc, actions, menu }: TopBarProps = {}) {
       </div>
 
       <div class="topbar-group">
+        {introPage.value ? null : <EditionSwitch />}
         <button
           type="button"
           class="btn is-icon"

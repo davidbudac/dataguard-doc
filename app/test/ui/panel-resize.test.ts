@@ -9,6 +9,8 @@ Object.defineProperty(window,'localStorage',{configurable:true,value:{getItem:(k
 let root: HTMLDivElement;
 const tick = () => new Promise(r => setTimeout(r, 0));
 const pointer = (el: Element, kind: string, y: number) => { const name=`pointer${kind.toLowerCase()}`; el.dispatchEvent(new MouseEvent(`on${name}` in el ? name : `Pointer${kind}`, { bubbles:true, clientY:y, button:0 })); };
+/* The ceiling leaves the drawing 260 px (view.ts `timelineMaxH`): in jsdom's 768 px window with the 80 px header fallback that is 360, under the 364 the drag below reaches. A 900 px window gives it room. */
+Object.defineProperty(window,'innerHeight',{configurable:true,value:900});
 beforeEach(() => { timelineH.value=null; memory.clear(); root=document.createElement('div'); root.className='app is-float'; document.body.append(root); render(h(PanelResize,{}),root); });
 afterEach(() => { render(null,root); root.remove(); });
 it('resizes by dragging upward and remembers only the completed gesture', async () => {

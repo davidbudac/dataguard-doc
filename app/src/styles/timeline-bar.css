@@ -20,7 +20,8 @@
   /* the transport, packed onto the bar */
   .sb-bar .tl-transport { flex: 0 0 auto; flex-wrap: nowrap; gap: 6px; }
   .sb-bar .tl-tp-btn { min-width: 26px; padding: 4px 7px; font-size: 11px; }
-  .sb-bar .tl-tp-in { padding: 3px 5px; font-size: 11.5px; width: 5.5ch; }
+  /* 7ch: `140.3` is five glyphs and the box has its padding; 5.5ch clipped it to `140.` */
+  .sb-bar .tl-tp-in { padding: 3px 5px; font-size: 11.5px; width: 7ch; }
   .sb-bar .tl-tp-speeds { gap: 1px; padding-left: 2px; }
   .sb-bar .tl-tp-speed { padding: 3px 5px; font-size: 10.5px; letter-spacing: 0; border-radius: 5px; }
   .sb-bar .tl-tp-slot { gap: 3px; }

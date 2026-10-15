@@ -17,7 +17,14 @@
   .app.bl-lanes.bl-drawn.is-float .app-dock.ln-dock{padding:0;border-top:1px solid var(--ln)}
   .app.bl-lanes.bl-drawn.is-float .ln-bar.sb-bar{border-radius:0}
 }
-/* The bar is timeline-bar.css's (`.sb-*`), on top of the lanes: its dropdowns open downward. */
+/* The bar is timeline-bar.css's (`.sb-*`), on top of the lanes: its dropdowns open downward.
+   The bar and the Summary band share a head (`.ln-head`, LanesView.tsx), and the
+   band hangs under the bar *over* the lanes rather than between the bar and
+   the lanes: unfolded, it used to take up to 260 px of a 300 px panel and the
+   lanes were a strip under it. The lanes keep their height and scroll
+   beneath; the band is a dropdown the Summary button folds away. */
+.bl-lanes .ln-head{position:relative;flex:0 0 auto;z-index:5;border-radius:inherit}
+.bl-lanes .ln-head .rs-band{position:absolute;top:100%;left:0;right:0;z-index:30;box-shadow:var(--sh-card)}
 .bl-lanes .ln-note{font-size:12.5px;color:var(--ik2)}
 .bl-lanes .ln-pad{padding:16px}
 .bl-lanes .ln-body{position:relative;flex:1 1 auto;min-height:0;overflow:auto}
@@ -204,7 +211,7 @@
     border-top:1px solid var(--ln);background:var(--sf2)}
   .bl-lanes .ln-foot .tl-transport{flex:0 0 auto;flex-wrap:nowrap;gap:6px}
   .bl-lanes .ln-foot .tl-tp-btn{min-width:26px;padding:4px 7px;font-size:11px}
-  .bl-lanes .ln-foot .tl-tp-in{padding:3px 5px;font-size:11.5px;width:5.5ch}
+  .bl-lanes .ln-foot .tl-tp-in{padding:3px 5px;font-size:11.5px;width:7ch}
   .bl-lanes .ln-foot .tl-tp-speeds{gap:1px;padding-left:2px}
   .bl-lanes .ln-foot .tl-tp-speed{padding:3px 5px;font-size:10.5px;letter-spacing:0;border-radius:5px}
   .bl-lanes .ln-foot .tl-tp-slot{gap:3px}

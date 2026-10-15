@@ -209,30 +209,72 @@ export const outcomeDrawing = signal<boolean>(true);
 export const timelineH = signal<number | null>(null);
 /** The panel never gets shorter than its header row (readings and chips). */
 export const TL_MIN_H = 300;
+/** The panel never gets taller than this by default; the grip may take it further. */
+export const TL_DEFAULT_MAX_H = 500;
 /** One arrow-key step on the resize handle; `Shift` takes four. */
 export const TL_STEP = 16;
-/* The gaps the floating layout keeps: the card margin at the window's foot
-   and the room under the header. Same numbers as float.css's `--float-m` and
-   the `+ 12px` under `--bar-bottom`. */
-const TL_FOOT = 14;
-const TL_HEAD_GAP = 12;
+/**
+ * The drawing above the lanes is worth keeping only at a size that reads: a
+ * classic 1+1+1 is 388 user units tall, so 260 px is two thirds of it, and
+ * under that its 11 px labels are 7 px. Below this the shell does not split
+ * (`splitFits`) and the lanes take the stage.
+ */
+export const DRAWING_MIN_H = 260;
+/**
+ * The air around the drawing in the floating layout, top and bottom: the
+ * 18 px under the header, and under the drawing the dock's margin and the
+ * 36 px over it (float.css, `.app.is-float .app-stage>.tp-wrap` padding).
+ */
+export const DRAWING_AIR = 18 + 14 + 36;
+/** The two numbers float.css carries as `- 328px`, so the sheet and this file agree. */
+export const TL_RESERVE = DRAWING_MIN_H + DRAWING_AIR;
 
 /**
- * The panel's height before the reader has touched it: just under half of
- * the window, so the drawing keeps the larger share. Mirrored in float.css as
- * `clamp(300px, 46dvh, 500px)`.
+ * The window's height, kept current by `startViewportWatch`; the shell's
+ * vertical budget is read from it (`splitFits`, `timelineDefaultH`).
  */
-export function timelineDefaultH(viewH: number): number {
-  return Math.round(Math.min(500, Math.max(300, viewH * 0.46)));
+export const viewportH = signal<number>(900);
+/**
+ * The measured foot of the header, written by the shell's ResizeObserver
+ * (App.tsx `useBarAnchor`) beside the `--bar-bottom` it writes for the
+ * stylesheet. 80 until measured: float.css's own fallback.
+ */
+export const headBottom = signal<number>(80);
+
+/** The room the drawing has above a panel `dockH` tall. */
+export const drawingRoom = (viewH: number, head: number, dockH: number): number =>
+  viewH - head - dockH - DRAWING_AIR;
+
+/**
+ * Whether the window is tall enough to keep the drawing above the lanes at
+ * all: with the panel at its smallest, the drawing still gets `DRAWING_MIN_H`.
+ * At 800 px with a 132 px header it does (300 px); at 700 px with a 174 px
+ * header it does not (158 px), and the lanes take the stage.
+ */
+export const splitFits = (viewH: number, head: number): boolean =>
+  drawingRoom(viewH, head, TL_MIN_H) >= DRAWING_MIN_H;
+
+/**
+ * The panel's height before the reader has touched it: whatever the window
+ * has beyond the header and a drawing of `DRAWING_MIN_H`, between 300 and
+ * 500 px. Mirrored in float.css as
+ * `clamp(300px, calc(100dvh - var(--bar-bottom) - 328px), 500px)`.
+ */
+export function timelineDefaultH(viewH: number, head: number = 80): number {
+  return Math.round(Math.min(TL_DEFAULT_MAX_H, Math.max(TL_MIN_H, viewH - head - TL_RESERVE)));
 }
 
-/** The tallest the panel may be: it stops short of the header's foot. */
-export function timelineMaxH(viewH: number, headBottom: number): number {
-  return Math.max(TL_MIN_H, Math.round(viewH - TL_FOOT - headBottom - TL_HEAD_GAP - 140));
+/**
+ * The tallest the panel may be: it leaves the drawing `DRAWING_MIN_H`. (It
+ * used to leave 140 px, which is a 284 x 98 px stamp with 3 px text: a
+ * drawing nobody can read is not a drawing worth keeping on the stage.)
+ */
+export function timelineMaxH(viewH: number, head: number): number {
+  return Math.max(TL_MIN_H, Math.round(viewH - head - TL_RESERVE));
 }
 
-export function clampTimelineH(h: number, viewH: number, headBottom: number): number {
-  return Math.min(timelineMaxH(viewH, headBottom), Math.max(TL_MIN_H, Math.round(h)));
+export function clampTimelineH(h: number, viewH: number, head: number): number {
+  return Math.min(timelineMaxH(viewH, head), Math.max(TL_MIN_H, Math.round(h)));
 }
 
 /**
@@ -418,7 +460,10 @@ export function viewportFor(width: number): Viewport {
 /** Keeps `viewport` current. Returns a teardown, for tests and for hot reload. */
 export function startViewportWatch(): () => void {
   if (typeof window === 'undefined') return () => undefined;
-  const read = (): void => { viewport.value = viewportFor(window.innerWidth); };
+  const read = (): void => {
+    viewport.value = viewportFor(window.innerWidth);
+    viewportH.value = window.innerHeight;
+  };
   read();
   window.addEventListener('resize', read, { passive: true });
   return () => window.removeEventListener('resize', read);

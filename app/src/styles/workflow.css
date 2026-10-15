@@ -9,11 +9,7 @@
 .is-active>.step-number{background:var(--vi);border-color:var(--vi);color:var(--sf)}
 .workflow-extras{border-left:1px solid var(--ln);padding-left:8px}
 .workflow-extras .is-active{color:var(--vi);background:var(--sf2)}
-.workflow-bar{display:flex;align-items:center;justify-content:space-between;gap:8px 20px;margin:8px 0;
-  padding:8px 12px;border:1px solid var(--ln);border-radius:var(--r-card);background:var(--sf);font-size:12px;color:var(--ik2)}
-.workflow-purpose{display:flex;align-items:baseline;gap:12px;min-width:0}
-.workflow-purpose strong{white-space:nowrap;color:var(--ik);font-weight:600}
-.workflow-actions{flex-shrink:0}.workflow-next{color:var(--vi);border-color:var(--vi)}
+.workflow-step:disabled{opacity:.46;cursor:not-allowed}
 .scenario-editor{font-size:12px;min-width:0}
 .scenario-compose{display:flex;align-items:center;flex-wrap:wrap;gap:10px;padding:10px 12px;border-bottom:1px solid var(--ln)}
 .scenario-compose label{display:flex;align-items:center;gap:6px;color:var(--ik2)}
@@ -50,27 +46,19 @@
   .app .topbar{flex-wrap:wrap}.app .topbar-brand{flex:1 1 200px}.app .topbar-modes{order:3;flex:1 0 100%;justify-content:center}
 }
 @media(max-width:767px){
-  .workflow-purpose{display:block}.workflow-purpose strong{display:block;margin-bottom:4px}
-  .workflow-bar{align-items:flex-start;flex-wrap:wrap}.workflow-steps{gap:0}
+  .workflow-steps{gap:0}
   .workflow-step{font-size:12px;padding:7px 6px;gap:4px}.step-number{width:19px;height:19px}
   .topbar-modes{gap:6px;flex-wrap:wrap}.workflow-extras{padding-left:4px}
   .scenario-timeline-head{flex-wrap:wrap}.scenario-compose{align-items:stretch}
 }
-@media print{.workflow-bar,.scenario-compose,.workflow-actions{display:none}.scenario-plot{max-height:none}}
+@media print{.scenario-compose{display:none}.scenario-plot{max-height:none}}
 
-.outcome-change{display:flex;align-items:center;gap:10px;margin-bottom:8px;padding:6px 12px;background:var(--sf);border:1px solid var(--ln);border-radius:6px;font-size:12px;color:var(--ik2)}
+.outcome-change{display:flex;align-items:center;gap:10px;margin:8px 0;padding:6px 12px;background:var(--sf);border:1px solid var(--ln);border-radius:6px;font-size:12px;color:var(--ik2)}
 .outcome-change strong{white-space:nowrap;color:var(--ik)}.outcome-change .btn{margin-left:auto}
 
 .app .ln-bar.sb-bar{flex-wrap:wrap;height:auto;overflow:visible}
 
 .scenario-link-choices { display: grid; gap: 8px; padding: 16px; }
-
-/* ---- the step bar's live line and the gated next step (workflow.tsx) ---- */
-.workflow-sum{font-family:var(--mono);font-size:11px;color:var(--ik3);white-space:nowrap;
-  padding-left:12px;border-left:1px solid var(--ln)}
-.workflow-sum.is-error{color:var(--rd)}
-.workflow-actions .ctl-off{gap:8px}.workflow-actions .why{white-space:nowrap}
-.workflow-next:disabled{opacity:.46;cursor:not-allowed}
 
 /* ---- the scenario chips (break/ScenarioRow.tsx): the step's main action, drawn as one ---- */
 .scn-row{gap:6px 6px;padding:10px 12px 8px}

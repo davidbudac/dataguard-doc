@@ -1,5 +1,20 @@
 # Changelog
 
+## Unreleased
+
+- Simulate's lanes scroll again in the split layout; the observer's lane and
+  the Application's view were out of reach below the dock's edge.
+- The drawing above the lanes is kept only where the window has the height
+  for a readable one; otherwise the lanes take the stage and the Drawing
+  button says why. The panel's default and ceiling leave the drawing 260 px.
+- The docked Simulate below 1024 px no longer overflows the window: the
+  timeline scrolls inside the dock and the run's readings are one line.
+- The Inspector at 1024–1279 px is a panel beside the lanes, not a modal
+  drawer over them.
+- The Summary band opens over the lanes instead of squeezing them.
+- The step band under the top bar is gone; the numbered steps carry its
+  tally and its gate. The Oracle release switch is on the bar again.
+
 ## 1.0.0 — 2026-10-11
 
 First public release.

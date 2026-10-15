@@ -72,14 +72,33 @@ describe('the inspector drawer at 1024-1279', () => {
     expect(root.querySelector('.sheet')?.className).toContain('p-bottom');
   });
 
-  it('is a modal dialog with a name', async () => {
+  it('is a named panel beside the page, not a modal over it: no scrim, no aria-modal', async () => {
     const root = mount();
     inspectorOpen.value = true;
     await tick();
     const panel = root.querySelector('.sheet');
     expect(panel?.getAttribute('role')).toBe('dialog');
-    expect(panel?.getAttribute('aria-modal')).toBe('true');
+    expect(panel?.getAttribute('aria-modal')).toBeNull();
     expect(panel?.getAttribute('aria-label')).toBe('Inspector');
+    expect(panel?.className).toContain('is-panel');
+    expect(root.querySelector('.scrim')).toBeNull();
+    /* ...and the shell makes room for it beside the lanes (float.css `has-drawer`). */
+    expect(root.querySelector('.app')?.classList.contains('has-drawer')).toBe(true);
+    inspectorOpen.value = false;
+    await tick();
+    expect(root.querySelector('.app')?.classList.contains('has-drawer')).toBe(false);
+  });
+
+  it('is a modal dialog as the bottom sheet below 1024', async () => {
+    viewport.value = 'compact';
+    const root = mount();
+    inspectorOpen.value = true;
+    await tick();
+    const panel = root.querySelector('.sheet');
+    expect(panel?.getAttribute('aria-modal')).toBe('true');
+    expect(panel?.className).not.toContain('is-panel');
+    expect(root.querySelector('.scrim')).not.toBeNull();
+    expect(root.querySelector('.app')?.classList.contains('has-drawer')).toBe(false);
   });
 
   it('takes the focus when it opens', async () => {
@@ -89,7 +108,22 @@ describe('the inspector drawer at 1024-1279', () => {
     expect(document.activeElement).toBe(root.querySelector('.sheet'));
   });
 
-  it('closes on Escape from anywhere, not only from inside the panel', async () => {
+  it('closes on Escape from inside the panel, and leaves the page\'s own Escape alone', async () => {
+    const root = mount();
+    inspectorOpen.value = true;
+    await paint();
+    (document.activeElement as HTMLElement | null)?.blur();
+    esc();
+    await paint();
+    expect(inspectorOpen.value, 'Escape outside the panel is not the panel\'s').toBe(true);
+    (root.querySelector('.sheet') as HTMLElement).focus();
+    esc();
+    await paint();
+    expect(inspectorOpen.value).toBe(false);
+  });
+
+  it('closes on Escape from anywhere as the modal bottom sheet', async () => {
+    viewport.value = 'compact';
     mount();
     inspectorOpen.value = true;
     await paint();
@@ -113,7 +147,8 @@ describe('the inspector drawer at 1024-1279', () => {
     expect(document.activeElement).toBe(opener);
   });
 
-  it('closes when the scrim is clicked, and gives the focus back too', async () => {
+  it('closes when the scrim is clicked, and gives the focus back too (the modal bottom sheet)', async () => {
+    viewport.value = 'compact';
     const root = mount();
     const opener = [...root.querySelectorAll('button')]
       .find((b) => b.textContent === 'Inspector');

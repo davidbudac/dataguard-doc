@@ -26,6 +26,13 @@
  * `variant="card"` is the same dialog as a floating card under the top bar
  * (float.css) -- the look of the page's other floating panels -- for the
  * dialogs the ⋯ menu opens, rather than the drawer's full-height edge.
+ *
+ * `modal={false}` is the Inspector beside the lanes at 1024-1279: no scrim,
+ * no `aria-modal`, no Tab fence -- the page behind it is what the reader is
+ * meant to watch while a setting changes -- and Escape closes it only from
+ * inside the panel, so the lanes' own Escape (a popover, the action bar) is
+ * not also the panel's. Opening still moves the focus in and closing still
+ * gives it back.
  */
 
 import type { ComponentChildren } from 'preact';
@@ -36,6 +43,8 @@ export interface SheetProps {
   title: string;
   position?: 'right' | 'bottom';
   variant?: 'edge' | 'card';
+  /** A modal dialog (the default), or a panel the page stays live beside. */
+  modal?: boolean;
   /** Extra classes on the panel, for a dialog that needs its own width. */
   class?: string;
   initialFocus?: string;
@@ -60,7 +69,7 @@ function tabbable(panel: HTMLElement): HTMLElement[] {
 }
 
 export function Sheet({
-  open, title, initialFocus, position = 'right', variant = 'edge', class: extra, onClose, children,
+  open, title, initialFocus, position = 'right', variant = 'edge', modal = true, class: extra, onClose, children,
 }: SheetProps) {
   const panel = useRef<HTMLElement | null>(null);
   const opener = useRef<Element | null>(null);
@@ -78,7 +87,7 @@ export function Sheet({
     if (initialFocus) panel.current?.querySelector<HTMLElement>(initialFocus)?.focus();
     const onKey = (ev: KeyboardEvent): void => {
       const box = panel.current;
-      if (ev.key === 'Tab' && box) {
+      if (ev.key === 'Tab' && box && modal) {
         const stops = tabbable(box);
         const first = stops[0];
         const last = stops.at(-1);
@@ -91,6 +100,7 @@ export function Sheet({
         return;
       }
       if (ev.key !== 'Escape') return;
+      if (!modal && !(box && box.contains(document.activeElement))) return;
       ev.preventDefault();
       close.current();
     };
@@ -103,17 +113,17 @@ export function Sheet({
       if (shut) shut.querySelector<HTMLElement>('summary')?.focus();
       else if (back instanceof HTMLElement && back.isConnected) back.focus();
     };
-  }, [open]);
+  }, [open, modal]);
 
   if (!open) return null;
   return (
     <>
-      <div class={variant === 'card' ? 'scrim is-light' : 'scrim'} onClick={onClose} />
+      {modal ? <div class={variant === 'card' ? 'scrim is-light' : 'scrim'} onClick={onClose} /> : null}
       <aside
         class={`sheet p-${position}${variant === 'card' ? ' is-card' : ''}${extra ? ` ${extra}` : ''}`}
         ref={panel}
         role="dialog"
-        aria-modal="true"
+        aria-modal={modal ? 'true' : undefined}
         aria-label={title}
         tabIndex={-1}
       >

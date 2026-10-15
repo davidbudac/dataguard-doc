@@ -473,6 +473,21 @@ button.issue{border-bottom:1px solid var(--ln)}
 .sheet.is-card .sheet-hd{background:var(--sf);padding:10px 8px 10px 16px}
 .sheet.is-card .sheet-hd .title{font-size:13px;font-weight:650;color:var(--ik)}
 .scrim.is-light{background:rgba(16,25,34,.12)}
+
+/* The Inspector at 1024-1279 (common/Sheet.tsx `modal={false}`): a panel
+   beside the lanes, not a drawer over them. It wears the card the wide rail
+   wears, under the header and down to the foot, and the shell gives it the
+   room through `--rail-space` (`has-drawer`, App.tsx): the dock, the zoom
+   pill and the drawing's inset all end where it begins, so a setting can be
+   changed and the lanes watched at the same time. */
+.sheet.is-panel{top:calc(var(--bar-bottom,80px) + 12px);right:var(--float-m);bottom:var(--float-m);
+  width:min(360px,92vw);border:1px solid var(--ln);border-radius:var(--r-card);box-shadow:var(--sh-card);
+  overflow:hidden}
+.sheet.is-panel .sheet-hd{background:var(--sf);padding:10px 8px 10px 16px}
+.sheet.is-panel .sheet-hd .title{font-size:13px;font-weight:650;color:var(--ik)}
+@media screen and (max-width:1279px){
+  .app.is-float.has-drawer{--rail-space:calc(min(360px,92vw) + 2 * var(--float-m))}
+}
 @media (max-width:767px){
   .sheet.is-card{top:auto;bottom:0;right:0;left:0;width:auto;max-height:80dvh;
     border-radius:var(--r-card) var(--r-card) 0 0}
@@ -485,17 +500,27 @@ button.issue{border-bottom:1px solid var(--ln)}
   .dock-grip-bar{width:64px;height:3px;border-radius:4px;background:var(--ik3);pointer-events:none}
   .dock-grip:hover .dock-grip-bar,.dock-grip:focus-visible .dock-grip-bar,.dock-grip.is-dragging .dock-grip-bar{background:var(--vi)}
   .dock-grip:focus-visible{outline:2px solid var(--vi);outline-offset:-2px}
-  .app .app-dock.has-tl{display:flex;flex-direction:column;height:var(--tl-h,clamp(300px,46dvh,500px));
-    min-height:300px;max-height:calc(100dvh - var(--bar-bottom,80px) - 166px);overflow:hidden}
+  /* The panel's height, unless the reader has set one (`--tl-h`): whatever the
+     window has beyond the header and a drawing worth having -- 328 px is the
+     drawing's floor and its air, DRAWING_MIN_H + DRAWING_AIR in state/view.ts,
+     which `timelineDefaultH` and `timelineMaxH` mirror. Never under 300 px,
+     never over 500. Where even 300 px leaves the drawing no room, the shell
+     does not split at all (App.tsx `splitFits`), so the floor is never hit. */
+  .app .app-dock.has-tl{display:flex;flex-direction:column;
+    height:var(--tl-h,clamp(300px,calc(100dvh - var(--bar-bottom,80px) - 328px),500px));
+    min-height:300px;max-height:calc(100dvh - var(--bar-bottom,80px) - 328px);overflow:hidden}
   .app .has-tl>.tl-slot{flex:1 1 0;min-height:0;display:flex;flex-direction:column;overflow:hidden}
   .app .has-tl .tl{flex:1 1 0;min-height:0;display:grid;align-items:stretch;
     grid-template-columns:minmax(0,1fr);grid-template-rows:auto auto minmax(0,1fr) auto;gap:4px}
   .app .has-tl .tl-foot{grid-column:1;grid-row:1;position:static;padding:6px 0}
   .app .has-tl .tl-legend{grid-column:1;grid-row:2;justify-self:start;justify-content:flex-start;padding:0;gap:3px 12px}
-  .app .has-tl .tl-plot{grid-column:1;grid-row:3;height:100%;min-height:0;overflow-x:auto;overflow-y:hidden;align-self:stretch}
+  /* The docked Timeline's own plot only (`.tl>.tl-plot`): the lanes' plot
+     (`.ln-plot`, LanesView.tsx) is a `.tl-plot` too, and this rule used to
+     reach it once the lanes moved into the dock -- a plot of 680 px in a 250 px
+     box with `overflow-y:hidden`, no scrollbar and nothing the wheel could do.
+     The lanes scroll in `.ln-body` (lanes.css); test/ui/lanes-scroll.test.ts
+     holds this apart. */
+  .app .has-tl .tl>.tl-plot{grid-column:1;grid-row:3;height:100%;min-height:0;overflow-x:auto;overflow-y:hidden;align-self:stretch}
   .app .has-tl .tl-note{grid-column:1;grid-row:4}
-}
-@media screen and (min-width:768px) and (max-width:1023px){
-  .app .app-dock.has-tl{max-height:calc(100dvh - var(--bar-bottom,120px) - 260px)}
 }
 @media print{.dock-grip{display:none}}

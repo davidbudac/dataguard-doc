@@ -463,6 +463,17 @@ input[type="checkbox"]:disabled{opacity:.5;cursor:not-allowed}
 }
 @media (max-width:1023px){
   .app{border-inline:0}
+  /* The docked Simulate (768-1023): the drawing takes a third of the window
+     and the timeline the rest, scrolling inside the dock with its transport
+     pinned at the foot (timeline.css `.tl-foot`). The dock is not resizable
+     here (App.tsx `resizable`), so it has no fixed height to overflow the
+     window with: header + a 260 px stage + a 300 px dock was 734 px in a 650
+     px window, the bottom of the dock cut off and the timeline fitted to the
+     3 px that were left. */
+  .app.m-break{grid-template-rows:auto minmax(180px,34vh) minmax(0,1fr)}
+  .app.m-break .app-stage{min-height:0}
+  .app.m-break .app-stage>.tp-wrap{min-height:0}
+  .app.m-break .app-dock{max-height:none}
 }
 @media (max-width:767px){
   .app,.app.m-build,.app.m-break,.app.m-configure,.app.m-learn{height:auto;min-height:100dvh;overflow:visible;

@@ -776,8 +776,12 @@ function Lanes({ run, fr }: { run: RunTimeline | null; fr: Frame }) {
           openInspectorFor(link.key);
         }}>{link.title}</button>)}</div>
       </Sheet>
-      <LanesBar run={run} />
-      <SummaryBand />
+      {/* The bar and the Summary band it unfolds: one head, so the band can
+          hang under the bar over the lanes (lanes.css `.ln-head`). */}
+      <div class="ln-head">
+        <LanesBar run={run} />
+        <SummaryBand />
+      </div>
 
       <div
         class="ln-body"

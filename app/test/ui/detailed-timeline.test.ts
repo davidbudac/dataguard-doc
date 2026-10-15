@@ -87,7 +87,9 @@ describe('the top bar', () => {
       expect(r.querySelector('[aria-label="Layout"]'), m).toBeNull();
       expect([...r.querySelectorAll('.topbar-group .seg')].map((x) => x.getAttribute('aria-label')), m)
         .toEqual(['Oracle release']);
-      expect(r.querySelector('.topbar-group .ovf-menu .seg[aria-label="Oracle release"]'), m).not.toBeNull();
+      /* On the bar itself, not behind the ⋯ menu: it changes what the engine says. */
+      expect(r.querySelector('.topbar-group > .seg[aria-label="Oracle release"]'), m).not.toBeNull();
+      expect(r.querySelector('.ovf-menu .seg[aria-label="Oracle release"]'), m).toBeNull();
     }
     expect(r.querySelector('.topbar')?.textContent ?? '').not.toMatch(/\bSplit\b/);
   });

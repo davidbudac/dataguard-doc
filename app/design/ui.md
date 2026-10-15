@@ -2283,3 +2283,46 @@ when its trace is unavailable. The generated file's header names the selection i
 
 Presentation lives in `styles/hierarchy.css`, connection filtering in `canvas/layers.ts` and the
 shared axis in `review/ComparisonTimeline.tsx`. No engine semantics or source claims change.
+
+## As built — the vertical budget, the lanes' scroll, the panel beside the lanes (2026-10-16)
+
+The complaint: "some of the timelines are not fully visible or scrollable, the menus get in the
+way". Verified in a browser from 900×650 to 1920×1080; six findings, all in the shell, none in the
+engine or the drawing.
+
+- **The lanes scroll again.** float.css's rule for the docked Timeline's plot inside the resizable
+  dock (`.app .has-tl .tl-plot{height:100%;overflow-y:hidden}`) reached Simulate's lanes once they
+  became that dock's body (2026-10-07): 680 px of lanes in a 250 px box, no scrollbar, a wheel that
+  did nothing, and the observer and the Application's view out of reach on a 1440×800 laptop. The
+  rule is scoped to the Timeline's own plot (`.tl>.tl-plot`); the lanes' plot is `overflow:visible`
+  inside `.ln-body`, the one scroll port, as this document already said it was.
+  `test/ui/lanes-scroll.test.ts` matches every vertical-overflow rule in the sheets against the
+  rendered tree, so the two can not drift back together.
+- **The drawing above the lanes is kept only where it reads** (`splitFits`, `state/view.ts`): with
+  the panel at its smallest, 300 px, the drawing must still get `DRAWING_MIN_H`, 260 px (two thirds
+  of a classic 1+1+1). Where it cannot — 1100×700 with a wrapped header — the lanes take the stage
+  whatever `outcomeDrawing` remembers, the Drawing button is grey with the shortfall in its title,
+  and the choice comes back with a taller window. The window's height is `viewportH` and the
+  header's measured foot `headBottom`, written beside `--bar-bottom`.
+- **The panel's default and ceiling leave the drawing that much.** Default
+  `clamp(300px, 100dvh − bar − 328px, 500px)` in float.css and `timelineDefaultH(viewH, head)` in
+  view.ts (the same 328 = 260 + 68 px of air, `TL_RESERVE`); the grip's ceiling `timelineMaxH` leaves
+  260 px too, where it left 140 — a 284×98 px stamp with 3 px text, which nobody was keeping.
+- **The docked Simulate below 1024 is not resizable** and so has no fixed-height dock to overflow
+  the window with (header + a 260 px stage + a 300 px dock was 734 px in a 650 px window, the foot
+  of the dock cut off and the timeline fitted to the 3 px left). The stage takes
+  `minmax(180px,34vh)`, the dock the rest, and the timeline scrolls inside it at its own height with
+  the transport pinned at the foot, as timeline.css always provided for. The run's readings are the
+  floating bar's one terse line (`TerseReadout`) rather than 105 px of chips; a phone keeps the chips.
+- **The Inspector at 1024–1279 is a panel beside the lanes, not a drawer over them**
+  (`Sheet modal={false}`, `.sheet.is-panel`): no scrim, no `aria-modal`, no Tab fence, Escape only
+  from inside it, and the shell gives it the room through `--rail-space` (`has-drawer`), so a
+  setting can be changed and the lanes watched rerun. The bottom sheet below 1024 stays modal.
+- **The Summary band hangs under the bar over the lanes** (`.ln-head`, lanes.css) instead of
+  standing between the bar and the lanes, where its 190 px left a 300 px panel 110 px of lanes.
+- **The step band is gone.** "Step 3 of 3 · Inspect the response …" with "← Edit scenario" repeated
+  the numbered steps in the bar and cost every screen 50 px. Its live tally is the active step's
+  title; its gate (no primary, no run) is on the Scenario and Simulate steps themselves, with the
+  reason as their title. The header is one band for the three steps.
+- **Small:** the Oracle release switch is back on the bar rather than in the ⋯ menu (it changes
+  what the engine says); the transport's time field is 7ch, so `140.3` is not `140.`.

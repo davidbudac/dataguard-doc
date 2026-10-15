@@ -240,9 +240,12 @@ describe('in the Detailed timeline', () => {
       const bar = r.querySelector(barSel) as HTMLElement;
       const below = r.querySelector(belowSel) as HTMLElement;
       expect(bar.nextElementSibling).toBe(b);
-      /* Directly above the lanes' body: there is no settings column or row between them. */
-      expect(b.nextElementSibling).toBe(below);
+      /* The bar and the band share a head, and the lanes' body follows it at once: there is
+         no settings column or row between them. (The band hangs under the bar over the body,
+         lanes.css `.ln-head`, rather than pushing it down.) */
       expect(bar.parentElement).toBe(b.parentElement);
+      expect(b.parentElement?.className).toBe('ln-head');
+      expect(b.parentElement?.nextElementSibling).toBe(below);
     });
 
     it('carries the terse line\'s readings, and only those: the readout without the findings chip', async () => {

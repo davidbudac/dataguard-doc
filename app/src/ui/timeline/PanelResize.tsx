@@ -41,7 +41,7 @@ const maxH = (from: Element | null): number => {
 const paintedH = (el: Element): number => {
   const dock = el.closest('.app-dock');
   const h = dock?.getBoundingClientRect().height ?? 0;
-  return h > 0 ? Math.round(h) : (timelineH.value ?? timelineDefaultH(viewH()));
+  return h > 0 ? Math.round(h) : (timelineH.value ?? timelineDefaultH(viewH(), headBottom(el)));
 };
 
 export const GRIP_TITLE = 'Drag to resize the timeline, or use the arrow keys; double-click or Enter resets it';
@@ -49,8 +49,9 @@ export const GRIP_TITLE = 'Drag to resize the timeline, or use the arrow keys; d
 export function PanelResize() {
   const drag = useRef<{ y: number; h: number; id: number; before: number | null } | null>(null);
   const vh = viewH();
+  const head = typeof document === 'undefined' ? 80 : headBottom(document.body);
   const limit = typeof document === 'undefined' ? timelineMaxH(vh, 80) : maxH(document.body);
-  const now = Math.max(TL_MIN_H, Math.min(limit, timelineH.value ?? timelineDefaultH(vh)));
+  const now = Math.max(TL_MIN_H, Math.min(limit, timelineH.value ?? timelineDefaultH(vh, head)));
 
   const move = (el: Element, h: number, remember: boolean): void => {
     setTimelineH(Math.min(maxH(el), clampTimelineH(h, viewH(), headBottom(el))), remember);

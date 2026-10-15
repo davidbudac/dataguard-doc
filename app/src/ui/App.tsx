@@ -19,8 +19,8 @@
 import { useCallback, useEffect, useLayoutEffect, useRef } from 'preact/hooks';
 import { runShown, topology, trace } from '@/state/derived';
 import {
-  canEdit, floating, gridOn, inspectorOpen, inspectorRailWanted, introOpen, introPage, mode, modeGuide, outcomeDrawing,
-  railCollapsed, railOnDemand, timelineH, timelineOpen, toast, viewport,
+  canEdit, floating, gridOn, headBottom, inspectorOpen, inspectorRailWanted, introOpen, introPage, mode, modeGuide, outcomeDrawing,
+  railCollapsed, railOnDemand, splitFits, timelineH, timelineOpen, toast, viewport, viewportH,
 } from '@/state/view';
 import type { Mode } from '@/state/view';
 import { CollectDialog, CollectionNotice } from './import/CollectDialog';
@@ -51,6 +51,7 @@ import { WorkspacesDialog } from './workspaces/Workspaces';
 import { ClassicWalkthrough } from './intro/Walkthrough';
 import { ReviewDialog } from './review/ReviewPanel';
 import { Popout, PopoutButton, PoppedAway, popped } from './common/popout';
+import { TerseReadout } from './break/RunBar';
 import { renaming } from './canvas/place';
 import { RAIL_ID, RailBar, RailStrip } from './RailFrame';
 import { useWidth } from './common/use-width';
@@ -97,7 +98,11 @@ function useBarAnchor(): (el: HTMLElement | null) => void {
     if (!el) return;
     const write = (): void => {
       const bottom = Math.round(el.getBoundingClientRect().bottom);
-      if (bottom > 0) el.ownerDocument.documentElement.style.setProperty('--bar-bottom', `${bottom}px`);
+      if (bottom > 0) {
+        el.ownerDocument.documentElement.style.setProperty('--bar-bottom', `${bottom}px`);
+        /* The same number for the shell's own arithmetic (`splitFits`). */
+        headBottom.value = bottom;
+      }
     };
     write();
     if (typeof ResizeObserver === 'undefined') return;
@@ -344,7 +349,14 @@ function Dock({ m, railInDock, resizable }: { m: Mode; railInDock: boolean; resi
   return (
     <>
       {resizable ? <PanelResize /> : null}
-      {m === 'configure' || m === 'scenario' ? null : <Readout />}
+      {/* The docked Simulate (768-1023) reads its run on one line, as the
+          floating bar does: the strip of chips was 105 px of a dock that had
+          250 to give, and the timeline under it got what was left. A phone
+          keeps the chips, one per line. */}
+      {m === 'configure' || m === 'scenario' ? null
+        : m === 'break' && viewport.value === 'compact'
+          ? <div class="dock-status is-run"><TerseReadout run={trace.value !== null} /></div>
+          : <Readout />}
       {m === 'scenario' ? <ScenarioEditor /> : null}
       {m === 'build' ? <IssuePanel /> : null}
       {m === 'break' ? <TimelineSlot fitHeight={resizable} /> : null}
@@ -387,9 +399,18 @@ export function App() {
      timeline; turned off, the lanes take the whole stage. (The docked layout
      below 1024 px keeps the drawing and the timeline stacked, as a viewer.) */
   const lanes = float && m === 'break';
-  const split = lanes && outcomeDrawing.value;
-  const resizable = !printing.value && viewport.value !== 'narrow' && m === 'break'
-    && (split || (!lanes && trace.value !== null && timelineShown(timelineOpen.value)));
+  /* ...and only while the window has the height for both: a drawing under
+     DRAWING_MIN_H is a stamp, so a short window gets the lanes alone and the
+     Drawing button says why (break/RunBar.tsx `DrawingToggle`). */
+  const split = lanes && outcomeDrawing.value && splitFits(viewportH.value, headBottom.value);
+  /* The grip sizes the split's dock. The docked Simulate below 1024 has no
+     grip and no fixed height: its dock takes what the grid leaves and
+     scrolls (shell.css), which is what a 650 px window can afford. */
+  const resizable = !printing.value && split;
+  /* The Inspector at 1024-1279 is a panel beside the lanes rather than a
+     drawer over them (common/Sheet.tsx `modal={false}`), and the shell makes
+     room for it (`has-drawer`, float.css). */
+  const drawerPanel = viewport.value === 'medium' && HAS_RAIL[m] && m !== 'learn' && inspectorOpen.value;
   const desiredHeight = timelineH.value;
   useEffect(() => {
     const root = document.documentElement.style;
@@ -410,7 +431,7 @@ export function App() {
   useEffect(() => installShortcuts(), []);
 
   return (
-    <div ref={appRef} class={intro ? 'app m-intro' : `app m-${m}${float ? ' is-float' : ''}${float && !gridOn.value ? ' no-grid' : ''}${railShut ? ' rail-shut' : ''}${railSnap.value ? ' rail-snap' : ''}${lanes ? ' bl-lanes' : ''}${split ? ' bl-drawn' : ''}`}>
+    <div ref={appRef} class={intro ? 'app m-intro' : `app m-${m}${float ? ' is-float' : ''}${float && !gridOn.value ? ' no-grid' : ''}${railShut ? ' rail-shut' : ''}${railSnap.value ? ' rail-snap' : ''}${lanes ? ' bl-lanes' : ''}${split ? ' bl-drawn' : ''}${drawerPanel ? ' has-drawer' : ''}`}>
       {/* One header, three bands: the modes and the small controls, then the
           quieter document row, then the line that says what to do in the mode
           that is open. It is one element so the toast can be anchored to the
@@ -527,6 +548,8 @@ export function App() {
           open={inspectorOpen.value}
           title={RAIL_TITLE[m]}
           position={viewport.value === 'compact' || viewport.value === 'narrow' ? 'bottom' : 'right'}
+          modal={viewport.value !== 'medium'}
+          class={viewport.value === 'medium' ? 'is-panel' : undefined}
           onClose={() => { inspectorOpen.value = false; }}
         >
           <Rail m={m} />

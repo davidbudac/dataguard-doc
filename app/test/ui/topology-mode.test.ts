@@ -38,14 +38,17 @@ describe('three steps, one document', () => {
     expect([...root.querySelectorAll('.workflow-step')].map(e => e.textContent)).toEqual(['1Topology', '2Scenario', '3Simulate']);
     expect(root.querySelector('[aria-current="step"]')?.textContent).toBe('1Topology');
     expect(root.querySelector('.workflow-extras')?.textContent).toBe('Generated settingsLearn');
-    expect(root.textContent).toContain('Step 1 of 3');
+    /* No band under the bar repeating the step: the step's own title carries its purpose and its tally. */
+    expect(root.querySelector('.workflow-bar')).toBeNull();
+    expect(root.textContent).not.toContain('Step 1 of 3');
+    expect(root.querySelector<HTMLButtonElement>('[aria-current="step"]')?.title).toMatch(/^Step 1 /);
   });
   it('moves freely between steps without changing the topology, events or undo history', () => {
     crash(); mount(); const before = doc.value; const history = undoStack.value;
-    click(button('Define scenario →')); expect(mode.value).toBe('scenario');
-    expect(tNow.value).toBe(0); expect(root.textContent).toContain('Step 2 of 3');
-    click(button('Simulate →')); expect(mode.value).toBe('break'); expect(tNow.value).toBeGreaterThan(0);
-    click(button('← Edit scenario')); click(button('← Topology'));
+    click(button('2Scenario')); expect(mode.value).toBe('scenario');
+    expect(tNow.value).toBe(0); expect(root.querySelector('[aria-current="step"]')?.textContent).toBe('2Scenario');
+    click(button('3Simulate')); expect(mode.value).toBe('break'); expect(tNow.value).toBeGreaterThan(0);
+    click(button('2Scenario')); click(button('1Topology'));
     expect(doc.value).toBe(before); expect(undoStack.value).toBe(history);
   });
   it('shows starting state in Topology and no event controls, even with a failure scheduled', () => {
@@ -159,7 +162,8 @@ describe('Outcome edits settings beside the response', () => {
     }); await tick();
     expect(trace.value).not.toBe(before); expect(doc.value.topology.events).toBe(events);
     expect(root.querySelector('.outcome-change')?.textContent).toContain('Since the last edit');
-    expect(root.textContent).toContain('from the beginning');
+    /* The band that said "Settings changes rerun this scenario from the beginning" is gone; the Settings chip says it. */
+    expect(root.querySelector<HTMLButtonElement>('.sb-settings')?.title).toContain('reruns the scenario');
     expect(root.querySelector('.scenario-editor,.ln-ev,.tl-event-drag')).toBeNull();
   });
   it('opens global settings without leaving the outcome', () => {
