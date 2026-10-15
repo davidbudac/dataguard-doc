@@ -22,8 +22,12 @@ import type { Edition, TopologyDoc } from '@/engine';
 import type { Mode, PanelTab } from './view';
 import { splitQuery } from './url';
 
-/** Where the published page keeps serving from, once this one is the default. */
-export const LEGACY_PATH = 'legacy/';
+/**
+ * Where the published page keeps serving from: the "simple" version at
+ * `/simple/`, beside this application at `/advanced/`. Relative, so a dev
+ * server or a preview host resolves it the same way the site does.
+ */
+export const LEGACY_PATH = '../simple/';
 
 export interface LegacyAnchorTarget {
   mode: Mode;

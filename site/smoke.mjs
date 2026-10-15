@@ -190,8 +190,9 @@ const countLanes = (dom) => [...dom.matchAll(/\sdata-lane="/g)].length;
 
 /* ---------------- the checks ---------------- */
 
-if (!existsSync(join(site, 'index.html'))) {
-  console.error('ERROR: _site/index.html is missing -- run `node site/build.mjs` first');
+const appDir = join(site, 'advanced');
+if (!existsSync(join(appDir, 'index.html'))) {
+  console.error('ERROR: _site/advanced/index.html is missing -- run `node site/build.mjs` first');
   process.exit(1);
 }
 if (!existsSync(CHROME)) {
@@ -200,8 +201,10 @@ if (!existsSync(CHROME)) {
 }
 
 const server = await serve(site);
-let base = `http://127.0.0.1:${server.port}/`;
-console.log(`serving _site/ at ${base}`);
+const siteBase = `http://127.0.0.1:${server.port}/`;
+/* The application lives at advanced/; the root is the landing page. */
+let base = `${siteBase}advanced/`;
+console.log(`serving _site/ at ${siteBase}`);
 
 /* ---------------- can this browser fetch over HTTP at all? ---------------- */
 
@@ -223,14 +226,14 @@ if (probe.ok && probe.dom.includes('smoke-probe-ok')) {
   console.error('        checking the same bundle inlined into one file over file:// instead.');
   console.error('        (This is the browser on this machine, not the site -- an interactive');
   console.error('        Chrome pointed at the URL above renders it. Asset serving is checked statically.)');
-  const html = readFileSync(join(site, 'index.html'), 'utf8');
+  const html = readFileSync(join(appDir, 'index.html'), 'utf8');
   const cssRef = /<link rel="stylesheet"[^>]*href="\.\/(assets\/[^"]+\.css)"[^>]*>/.exec(html);
   const jsRef = /<script type="module"[^>]*src="\.\/(assets\/[^"]+\.js)"[^>]*><\/script>/.exec(html);
   if (!cssRef || !jsRef) {
     fail('index.html does not reference one stylesheet and one module bundle');
   } else {
-    const css = readFileSync(join(site, cssRef[1]), 'utf8');
-    const js = readFileSync(join(site, jsRef[1]), 'utf8').replace(/<\/script>/g, '<\\/script>');
+    const css = readFileSync(join(appDir, cssRef[1]), 'utf8');
+    const js = readFileSync(join(appDir, jsRef[1]), 'utf8').replace(/<\/script>/g, '<\\/script>');
     const one = html
       .replace(cssRef[0], `<style>${css}</style>`)
       .replace(jsRef[0], `<script type="module">${js}</script>`);
@@ -383,14 +386,47 @@ if (inlineDir === null) {
   if (missing.length > 0) fail(`the page requested files the build does not have: ${missing.join(', ')}`);
   else pass('every file the page requested was served');
 } else {
-  const html = readFileSync(join(site, 'index.html'), 'utf8');
+  const html = readFileSync(join(appDir, 'index.html'), 'utf8');
   const refs = [...html.matchAll(/(?:src|href)="\.\/(assets\/[^"]+)"/g)].map((m) => m[1]);
-  const absent = refs.filter((r) => !existsSync(join(site, r)));
+  const absent = refs.filter((r) => !existsSync(join(appDir, r)));
   if (refs.length === 0) fail('index.html references no assets/ file');
   else if (absent.length > 0) fail(`index.html references files the build does not have: ${absent.join(', ')}`);
   else pass(`every asset index.html references exists (${refs.join(', ')})`);
-  if (!existsSync(join(site, 'legacy', 'index.html'))) fail('_site/legacy/index.html is missing');
+  if (!existsSync(join(site, 'simple', 'index.html'))) fail('_site/simple/index.html is missing');
   rmSync(inlineDir, { recursive: true, force: true });
+}
+
+/* ---------------- the landing page, and the simple page ---------------- */
+
+/* The root offers the two versions; it must name both, and it must leave a
+   bare `/` alone while forwarding an old deep link to simple/. Over HTTP the
+   forward is observed through what Chrome ends up dumping; over file:// the
+   page is checked statically. */
+console.log('\nlanding page');
+{
+  const landingHtml = readFileSync(join(site, 'index.html'), 'utf8');
+  for (const href of ['simple/', 'advanced/']) {
+    if (landingHtml.includes(`href="${href}"`)) pass(`landing: links ${href}`);
+    else fail(`landing: does not link ${href}`);
+  }
+  if (!existsSync(join(site, 'simple', 'index.html'))) fail('_site/simple/index.html is missing');
+  else pass('simple/index.html exists');
+  if (inlineDir === null) {
+    const bare = await load(siteBase);
+    if (!bare.ok) fail(`landing: ${bare.why}`);
+    else {
+      for (const line of bare.console) fail(`landing: console said ${line}`);
+      if (/class="lp-card lp-advanced"/.test(bare.dom)) pass('landing: a bare / shows the choice');
+      else fail('landing: a bare / did not render the two cards');
+    }
+    const old = await load(`${siteBase}?sc=iso&lat=2#ch-clocks`);
+    if (!old.ok) fail(`landing, old link: ${old.why}`);
+    else {
+      for (const line of old.console) fail(`landing, old link: console said ${line}`);
+      if (/class="fsfo/.test(old.dom) && !/lp-card/.test(old.dom)) pass('landing: an old deep link forwards to the simple page');
+      else fail('landing: an old deep link did not land on the simple page');
+    }
+  }
 }
 
 server.close();

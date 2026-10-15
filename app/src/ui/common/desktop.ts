@@ -46,11 +46,12 @@ export function isDesktop(): boolean {
  * Where the published page lives. A Share link built on the desktop shell's
  * own origin (`tauri://localhost` on macOS, `http://tauri.localhost` on
  * Windows) would open nowhere for whoever receives it, so on desktop the link
- * is made against this instead. The site is served at the root of its own
- * host (site/publish.sh, AGENTS.md "nginx"); the `/dataguard/` in older notes
- * is the path it had before it moved there.
+ * is made against this instead. The site is its own host, with a landing
+ * page at the root and this application under `/advanced/` (site/publish.sh,
+ * AGENTS.md "Publishing"); the `/dataguard/` in older notes is the path it
+ * had before it moved there.
  */
-export const PUBLIC_URL = 'https://dataguard.davidbudac.cz/';
+export const PUBLIC_URL = 'https://dataguard.davidbudac.cz/advanced/';
 
 /**
  * The base a Share link is appended to: the public address on desktop, else

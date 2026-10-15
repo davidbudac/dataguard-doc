@@ -342,7 +342,7 @@ describe('the page itself', () => {
     for (const word of ['Topology', 'Scenario', 'Simulate', 'Generated settings', 'Learn']) expect(text).toContain(word);
     expect(text).toContain('model');
     const legacy = [...root.querySelectorAll('a')]
-      .find((a) => (a.getAttribute('href') ?? '').startsWith('legacy/'));
+      .find((a) => (a.getAttribute('href') ?? '') === '../simple/');
     expect(legacy).toBeDefined();
   });
 

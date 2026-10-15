@@ -1,12 +1,14 @@
 // Wrap the head-less simulator fragment into a standalone HTML page.
 //
-// This is the PUBLISHED page -- the one every link in the handover document
-// and the wiki page points at. It is no longer the application at /dataguard/:
-// the Vite app is, and this one keeps serving from /dataguard/legacy/ so those
-// links keep working. Nothing in
-// the wrapping logic changed with the move; only where it is written did (and
-// diagrams/, which both pages share, is copied to _site/diagrams so the
-// og:image and the figures resolve for either of them).
+// This is the "simple" version of the site -- the page every link in the
+// handover document and the wiki page points at. It used to be the whole site
+// at /dataguard/; now the root is a landing page that offers it beside the
+// workbench (the "advanced" version, at /advanced/), and this one serves from
+// /simple/. The landing page forwards an old deep link (`?sc=...#ch-...`,
+// `#cfg=...`) here, so those links keep working. Nothing in the wrapping logic
+// changed with the move; only where it is written did (and diagrams/, which
+// both pages share, is copied to _site/diagrams so the og:image and the
+// figures resolve for either of them).
 //
 // Run through site/build.mjs, which builds the app first: the app's build
 // empties _site/, so building this one before it would throw the page away.
@@ -22,7 +24,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
-const out = join(root, '_site', 'legacy');
+const out = join(root, '_site', 'simple');
 const diagrams = join(root, '_site', 'diagrams');
 
 const fragment = await readFile(join(root, 'simulator/fsfo-simulator.html'), 'utf8');
@@ -64,11 +66,11 @@ const body = titleMatch ? fragment.replace(titleMatch[0], '') : fragment;
 // cannot drift apart. SITE is the canonical URL; og:image must be absolute,
 // and diagrams/ is copied into _site below, so the figure serves from the
 // same tree the page does.
-// The application at /dataguard/ is the canonical reading of this document now,
-// so the canonical link keeps pointing there; SITE stays the site root because
-// og:image and the figures live beside it in diagrams/.
+// The page is its own canonical URL now (the landing page at the root offers
+// it and the workbench as equals); SITE stays the site root because og:image
+// and the figures live beside it in diagrams/.
 const SITE = 'https://dataguard.davidbudac.cz/';
-const HERE = `${SITE}legacy/`;
+const HERE = `${SITE}simple/`;
 const DESC =
   'Interactive Oracle Data Guard configuration tool: broker properties, failover clocks, ' +
   'commit cost under SYNC/FASTSYNC/ASYNC, ReopenSecs and MaxFailure, the connect string, ' +
@@ -89,7 +91,7 @@ const page = `<!doctype html>
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="description" content="${DESC}">
 <title>${title}</title>
-<link rel="canonical" href="${SITE}">
+<link rel="canonical" href="${HERE}">
 <link rel="icon" href="${ICON}">
 <meta name="theme-color" content="#F4F6F8" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#0A0E13" media="(prefers-color-scheme: dark)">
@@ -126,4 +128,4 @@ await writeFile(join(out, 'index.html'), page, 'utf8');
    references are relative to it. */
 await cp(join(root, 'diagrams'), diagrams, { recursive: true });
 
-console.log(`built _site/legacy/index.html (${page.length} bytes), title: ${title}`);
+console.log(`built _site/simple/index.html (${page.length} bytes), title: ${title}`);

@@ -101,7 +101,7 @@ describe('the Share link origin', () => {
   beforeEach(() => { doc.value = classicDoc(); });
 
   it('names the public host, on its own', () => {
-    expect(PUBLIC_URL).toBe('https://dataguard.davidbudac.cz/');
+    expect(PUBLIC_URL).toBe('https://dataguard.davidbudac.cz/advanced/');
   });
   it('keeps the page\'s own address in a browser', () => {
     expect(shareBase('http://localhost:5179/x/')).toBe('http://localhost:5179/x/');

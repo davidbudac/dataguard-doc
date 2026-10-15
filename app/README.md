@@ -1,10 +1,11 @@
 # Data Guard topology simulator
 
 A workbench for Oracle Data Guard configurations: **draw** a topology, **break**
-it, and watch the clocks. It is the page served at
-[dataguard.davidbudac.cz](https://dataguard.davidbudac.cz/), and it replaces the
-single-file fast-start failover explainer that used to live there (still served,
-frozen, at `/dataguard/legacy/`).
+it, and watch the clocks. It is the **advanced** version served at
+[dataguard.davidbudac.cz/advanced/](https://dataguard.davidbudac.cz/advanced/);
+the **simple** version beside it, at `/simple/`, is the frozen single-file
+fast-start failover explainer this one grew out of, and the site root is a
+landing page offering the two.
 
 TypeScript + Vite + Preact + `@preact/signals`. English only. Zero external
 requests at runtime — no CDN, no web fonts, no network calls — and no inline
@@ -41,7 +42,7 @@ this page's model. That is enforced by types, not by review: see
 ```bash
 npm install          # first time only
 npm run dev          # Vite dev server
-npm run build        # tsc --noEmit, then vite build -> ../_site/
+npm run build        # tsc --noEmit, then vite build -> ../_site/advanced/
 npm test             # vitest, one pass
 npm run test:watch
 npm run typecheck

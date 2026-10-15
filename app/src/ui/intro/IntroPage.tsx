@@ -460,8 +460,8 @@ export function IntroPage(): JSX.Element {
           labelled in place as this page&rsquo;s model.
         </p>
         <p class="caption">
-          The page this one replaced is still served, frozen:{' '}
-          <a href={LEGACY_PATH}>the original single-page explainer</a>.
+          This is the advanced version. The simple one, the original single-page explainer, is
+          still served, frozen: <a href={LEGACY_PATH}>open the simple version</a>.
         </p>
         <p class="caption">
           An independent, unofficial tool — not affiliated with, endorsed by or supported by

@@ -1,12 +1,15 @@
 // Build the whole site into _site/.
 //
-//   _site/index.html          the application (app/, Vite + Preact)
-//   _site/assets/index-*.js   its one hashed bundle, and one hashed stylesheet
-//   _site/legacy/index.html   the published fragment, wrapped (build-legacy.mjs)
-//   _site/diagrams/           the figures, shared by both
+//   _site/index.html                 the landing page: simple or advanced (site/landing/)
+//   _site/landing.css, landing.js    its stylesheet and its one external script
+//   _site/simple/index.html          the published fragment, wrapped (build-legacy.mjs)
+//   _site/advanced/index.html        the application (app/, Vite + Preact)
+//   _site/advanced/assets/index-*.js its one hashed bundle, and one hashed stylesheet
+//   _site/diagrams/                  the figures, shared by all three
 //
-// Order is load-bearing: the app's build empties _site/, so it runs first and
-// the legacy page is written into the tree it leaves behind.
+// _site/ is emptied here first; the app's build empties only its own
+// advanced/ subtree, so nothing else depends on the order the parts are
+// written in.
 //
 // The last step is a guard rather than a convenience. The page is served under
 //
@@ -22,7 +25,7 @@
 
 import { spawnSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
-import { readFile } from 'node:fs/promises';
+import { cp, readFile, rm } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -44,7 +47,11 @@ function fail(message) {
   process.exit(1);
 }
 
-/* ---------------- 1. the application ---------------- */
+/* ---------------- 0. a clean tree ---------------- */
+
+await rm(out, { recursive: true, force: true });
+
+/* ---------------- 1. the application, at advanced/ ---------------- */
 
 // `npm ci` only when the tree is not there: it deletes node_modules and
 // reinstalls from the lockfile, which is right on a fresh checkout and a waste
@@ -55,12 +62,22 @@ if (!existsSync(join(app, 'node_modules'))) {
 }
 run('npm', ['run', 'build'], app);
 
-const indexPath = join(out, 'index.html');
-if (!existsSync(indexPath)) fail('_site/index.html missing after the app build');
+const appIndex = join(out, 'advanced', 'index.html');
+if (!existsSync(appIndex)) fail('_site/advanced/index.html missing after the app build');
 
-/* ---------------- 2. the published page, and the figures ---------------- */
+/* ---------------- 2. the simple page, and the figures ---------------- */
 
 run(process.execPath, [join(root, 'site', 'build-legacy.mjs')], root);
+
+/* ---------------- 2b. the landing page, at the root ---------------- */
+
+// Three static files, copied as they are: the page is the choice between the
+// two versions and nothing else, so it needs no build step of its own.
+const landing = join(root, 'site', 'landing');
+for (const f of ['index.html', 'landing.css', 'landing.js']) {
+  if (!existsSync(join(landing, f))) fail(`site/landing/${f} is missing`);
+  await cp(join(landing, f), join(out, f));
+}
 
 /* ---------------- 3. the policy guard ---------------- */
 
@@ -141,15 +158,23 @@ try {
   fail(`the inline guard rejects a page it should accept: ${err.message}`);
 }
 
-const html = await readFile(indexPath, 'utf8');
+/* The landing page and the application both live under the strict policy;
+   the simple page is one inline <script> by design and keeps its own nginx
+   location with the laxer header (AGENTS.md, "nginx"), so it is not checked. */
+const html = await readFile(appIndex, 'utf8');
+const landingHtml = await readFile(join(out, 'index.html'), 'utf8');
 try {
-  assertNoInline(html, '_site/index.html');
+  assertNoInline(html, '_site/advanced/index.html');
+  assertNoInline(landingHtml, '_site/index.html');
 } catch (err) {
   fail(err.message);
 }
 
 const bundle = /<script[^>]+src="([^"]*assets\/index-[^"]+\.js)"/i.exec(html)?.[1];
-if (!bundle) fail('_site/index.html does not reference a hashed assets/index-*.js bundle');
+if (!bundle) fail('_site/advanced/index.html does not reference a hashed assets/index-*.js bundle');
+for (const href of ['simple/', 'advanced/']) {
+  if (!landingHtml.includes(`href="${href}"`)) fail(`_site/index.html does not link ${href}`);
+}
 
-console.log(`built _site/ -- app (${html.length} bytes of HTML, ${bundle}),`
-  + ' legacy page at legacy/, figures at diagrams/');
+console.log(`built _site/ -- landing page at /, simple page at simple/,`
+  + ` app at advanced/ (${html.length} bytes of HTML, ${bundle}), figures at diagrams/`);

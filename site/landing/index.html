@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Data Guard — simple or advanced</title>
+<meta name="description" content="Oracle Data Guard, explained interactively, in two versions: a simple single-page explainer of fast-start failover, and an advanced workbench where you draw a configuration, break it and watch the clocks.">
+<link rel="canonical" href="https://dataguard.davidbudac.cz/">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%236D5AE6'/%3E%3Cpath d='M2.5 11.5h11M6 3.5v10' stroke='%23fff' stroke-width='1.6' stroke-linecap='round'/%3E%3C/svg%3E">
+<meta name="theme-color" content="#F4F6F8" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0A0E13" media="(prefers-color-scheme: dark)">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="davidbudac.cz">
+<meta property="og:title" content="Data Guard — simple or advanced">
+<meta property="og:description" content="Oracle Data Guard, explained interactively: a simple explainer of fast-start failover, and an advanced workbench where you draw a configuration, break it and watch the clocks.">
+<meta property="og:url" content="https://dataguard.davidbudac.cz/">
+<meta property="og:image" content="https://dataguard.davidbudac.cz/diagrams/fsfo-timeline-crash.png">
+<meta property="og:image:type" content="image/png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="560">
+<meta property="og:image:alt" content="Swimlane timeline of a Data Guard fast-start failover after a primary host crash: observer detection, the FastStartFailoverThreshold countdown, and the standby opening read-write.">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="stylesheet" href="./landing.css">
+<script src="./landing.js" defer></script>
+</head>
+<body>
+<main class="lp">
+  <header class="lp-head">
+    <p class="lp-kicker">Oracle Data Guard</p>
+    <h1>Fast-start failover, explained interactively.</h1>
+    <p class="lp-lead">Two versions of the same page. Pick the one that fits the question you came with.</p>
+  </header>
+
+  <nav class="lp-choices" aria-label="Versions">
+    <a class="lp-card lp-simple" href="simple/">
+      <svg class="lp-glyph" viewBox="0 0 96 40" aria-hidden="true" focusable="false">
+        <rect x="2" y="10" width="26" height="20" rx="4" class="g-primary"/>
+        <rect x="68" y="10" width="26" height="20" rx="4" class="g-standby"/>
+        <path d="M28 20h40" class="g-route"/>
+        <circle cx="48" cy="6" r="4" class="g-observer"/>
+      </svg>
+      <span class="lp-tag">Simple</span>
+      <strong class="lp-title">The single-page explainer</strong>
+      <span class="lp-desc">One primary, one standby, one observer. Move the sliders and watch the broker properties, the failover clocks, the commit cost under SYNC, FASTSYNC and ASYNC, and the DGMGRL commands redraw live. Reads top to bottom in one sitting.</span>
+      <span class="lp-cta">Open the simple version<span aria-hidden="true"> →</span></span>
+    </a>
+
+    <a class="lp-card lp-advanced" href="advanced/">
+      <svg class="lp-glyph" viewBox="0 0 96 40" aria-hidden="true" focusable="false">
+        <rect x="2" y="12" width="22" height="16" rx="4" class="g-primary"/>
+        <rect x="38" y="2" width="20" height="14" rx="4" class="g-farsync"/>
+        <rect x="72" y="2" width="22" height="14" rx="4" class="g-standby"/>
+        <rect x="72" y="24" width="22" height="14" rx="4" class="g-standby"/>
+        <path d="M24 20C30 20 32 9 38 9M58 9h14M24 20C40 20 50 32 72 32" class="g-route"/>
+        <circle cx="48" cy="34" r="4" class="g-observer"/>
+      </svg>
+      <span class="lp-tag">Advanced</span>
+      <strong class="lp-title">The topology workbench</strong>
+      <span class="lp-desc">Draw any configuration: far sync, cascades, several standbys and observers. Break it with a scenario, simulate it on a timeline, and take the generated settings with you. Documented facts carry their Oracle citation; everything else is labelled as the page&rsquo;s model.</span>
+      <span class="lp-cta">Open the advanced version<span aria-hidden="true"> →</span></span>
+    </a>
+  </nav>
+
+  <footer class="lp-foot">
+    <p>An independent, unofficial tool — not affiliated with, endorsed by or supported by Oracle. Oracle, Oracle Database and Data Guard are trademarks of Oracle and/or its affiliates. <a href="https://github.com/davidbudac/dataguard-doc" rel="noopener noreferrer">Source and license (MIT)</a>.</p>
+  </footer>
+</main>
+</body>
+</html>

@@ -2,9 +2,11 @@
 #
 # Publish the Data Guard workbench to https://dataguard.davidbudac.cz/
 #
-# What goes out: the application (app/, built by Vite) at the root, and the
-# page it replaced at /dataguard/legacy/ -- links published before the
-# workbench existed point at that one.
+# What goes out: a landing page at the root offering two versions, the
+# single-page explainer at /simple/ (the "simple" version, the page every
+# link published before the workbench existed points at -- the landing page
+# forwards their deep links there) and the application (app/, built by Vite)
+# at /advanced/.
 #
 # Publishing is this explicit push, never a side effect of `git push`. Nothing
 # here reads git -- it ships the working tree, so you can preview an edit
@@ -51,16 +53,18 @@ if (( ! dry_run )); then
     || die "DG_HOST and DG_DEST are not set; copy site/publish.env.example to site/publish.env (or use --dry-run)"
 fi
 
-# --- 1. build. site/build.mjs builds the app, then the legacy page (whose
-# builder still enforces the ASCII-only rule; see CLAUDE.md), then refuses to
-# hand over an index.html carrying anything the content security policy forbids.
+# --- 1. build. site/build.mjs builds the app into advanced/, the simple page
+# (whose builder still enforces the ASCII-only rule; see CLAUDE.md), copies the
+# landing page to the root, then refuses to hand over a landing or app
+# index.html carrying anything the content security policy forbids.
 say "Building _site/"
 command -v node >/dev/null || die "node not found"
 rm -rf _site
 node site/build.mjs
 
 [[ -s _site/index.html ]] || die "_site/index.html missing or empty after build"
-[[ -s _site/legacy/index.html ]] || die "_site/legacy/index.html missing or empty after build"
+[[ -s _site/simple/index.html ]] || die "_site/simple/index.html missing or empty after build"
+[[ -s _site/advanced/index.html ]] || die "_site/advanced/index.html missing or empty after build"
 
 # --- 1b. three gates, in the order that fails fastest.
 #
@@ -88,7 +92,7 @@ if ! git diff --quiet HEAD -- app site simulator diagrams 2>/dev/null; then
   printf '\033[1;33mNOTE:\033[0m app/, site/, simulator/ or diagrams/ has uncommitted changes; publishing the working-tree version, not %s.\n' "$rev"
   rev="${rev}+dirty"
 fi
-say "Publishing $(wc -c < _site/index.html | tr -d ' ') bytes from ${rev}"
+say "Publishing $(du -sk _site | cut -f1) KB from ${rev}"
 
 if (( dry_run )); then
   say "--dry-run: built and tested, nothing deployed"
@@ -126,28 +130,36 @@ COPYFILE_DISABLE=1 tar -C _site --no-xattrs --exclude '.DS_Store' -czf - . \
 #
 # Cache-bust: Cloudflare fronts the origin and will happily serve the old page.
 say "Verifying ${DG_URL}"
-probe="$(curl -sS -o /tmp/dg-verify.html -w '%{http_code}' \
+# The landing page at the root: it must be there and must offer both versions.
+probe="$(curl -sS -o /tmp/dg-verify-root.html -w '%{http_code}' \
   -H 'Cache-Control: no-cache' "${DG_URL}?cb=$$" || echo '000')"
 [[ "$probe" == "200" ]] || die "expected HTTP 200 from ${DG_URL}, got ${probe}"
+grep -q 'href="simple/"' /tmp/dg-verify-root.html || die "the served landing page does not link simple/"
+grep -q 'href="advanced/"' /tmp/dg-verify-root.html || die "the served landing page does not link advanced/"
 
-# The legacy page still ships, and every published link points at it.
-legacy_code="$(curl -sS -o /dev/null -w '%{http_code}' \
-  -H 'Cache-Control: no-cache' "${DG_URL}legacy/?cb=$$" || echo '000')"
-[[ "$legacy_code" == "200" ]] || die "expected HTTP 200 from ${DG_URL}legacy/, got ${legacy_code}"
+# The simple page still ships, and every published link lands on it.
+simple_code="$(curl -sS -o /dev/null -w '%{http_code}' \
+  -H 'Cache-Control: no-cache' "${DG_URL}simple/?cb=$$" || echo '000')"
+[[ "$simple_code" == "200" ]] || die "expected HTTP 200 from ${DG_URL}simple/, got ${simple_code}"
+
+# The application, whose hashed bundle is the witness.
+app_code="$(curl -sS -o /tmp/dg-verify.html -w '%{http_code}' \
+  -H 'Cache-Control: no-cache' "${DG_URL}advanced/?cb=$$" || echo '000')"
+[[ "$app_code" == "200" ]] || die "expected HTTP 200 from ${DG_URL}advanced/, got ${app_code}"
 
 bundle="$(grep -o 'assets/index-[A-Za-z0-9_-]*\.js' /tmp/dg-verify.html | head -1)"
-[[ -n "$bundle" ]] || die "the served page references no hashed assets/index-*.js"
-[[ -f "_site/${bundle}" ]] || die "the served page asks for ${bundle}, which this build did not produce"
+[[ -n "$bundle" ]] || die "the served application page references no hashed assets/index-*.js"
+[[ -f "_site/advanced/${bundle}" ]] || die "the served page asks for ${bundle}, which this build did not produce"
 
 # No Accept-Encoding is sent, so what comes back is the file itself and `cmp`
 # is comparing like with like. Keep it that way if you touch this.
 asset_code="$(curl -sS -o /tmp/dg-verify.js -w '%{http_code}' \
-  -H 'Cache-Control: no-cache' "${DG_URL}${bundle}?cb=$$" || echo '000')"
-[[ "$asset_code" == "200" ]] || die "expected HTTP 200 for ${bundle}, got ${asset_code}"
-cmp -s /tmp/dg-verify.js "_site/${bundle}" \
+  -H 'Cache-Control: no-cache' "${DG_URL}advanced/${bundle}?cb=$$" || echo '000')"
+[[ "$asset_code" == "200" ]] || die "expected HTTP 200 for advanced/${bundle}, got ${asset_code}"
+cmp -s /tmp/dg-verify.js "_site/advanced/${bundle}" \
   || die "the served ${bundle} is not the one built here"
 
 served_bytes="$(wc -c < /tmp/dg-verify.js | tr -d ' ')"
-rm -f /tmp/dg-verify.html /tmp/dg-verify.js
+rm -f /tmp/dg-verify.html /tmp/dg-verify-root.html /tmp/dg-verify.js
 
-say "Published: ${DG_URL} (HTTP 200, ${bundle}, ${served_bytes} bytes, byte-equal to the build)"
+say "Published: ${DG_URL} (landing, simple/ and advanced/ all HTTP 200; advanced/${bundle}, ${served_bytes} bytes, byte-equal to the build)"

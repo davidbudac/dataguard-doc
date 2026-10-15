@@ -1,0 +1,131 @@
+/* The landing page at the site root: two cards, one per version. Tokens are
+   the same values app/src/styles/tokens.css and the simple page define, so the
+   three pages read as one site; light is the default, dark follows the system
+   and then the stored `dg-theme` choice (landing.js stamps data-theme). */
+:root{
+  --bg:#F4F6F8;--sf:#FFFFFF;--sf2:#EDF1F5;--ln:#DCE2EA;--ln2:#BFC9D6;
+  --ik:#101922;--ik2:#46566A;--ik3:#6E7F93;
+  --tl:#0E7C6B;--bl:#2563EB;--vi:#6D5AE6;--vif:#E3DFFB;--am:#D97706;
+  --fc:#2563EB;--sh:0 1px 2px rgba(16,25,34,.05),0 8px 24px rgba(16,25,34,.05);
+  --lk:#4F7BB5;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){:root{
+  --bg:#0A0E13;--sf:#111821;--sf2:#0D141C;--ln:#1F2A36;--ln2:#33414F;
+  --ik:#E7EEF6;--ik2:#A0B1C4;--ik3:#78899C;
+  --tl:#34D3B8;--bl:#6BA5FB;--vi:#AEA0F8;--vif:#241E4A;--am:#F5B443;
+  --fc:#6BA5FB;--sh:0 1px 2px rgba(0,0,0,.5),0 10px 30px rgba(0,0,0,.35);
+  --lk:#7FA6D9;
+  color-scheme:dark;
+}}
+:root[data-theme="dark"]{
+  --bg:#0A0E13;--sf:#111821;--sf2:#0D141C;--ln:#1F2A36;--ln2:#33414F;
+  --ik:#E7EEF6;--ik2:#A0B1C4;--ik3:#78899C;
+  --tl:#34D3B8;--bl:#6BA5FB;--vi:#AEA0F8;--vif:#241E4A;--am:#F5B443;
+  --fc:#6BA5FB;--sh:0 1px 2px rgba(0,0,0,.5),0 10px 30px rgba(0,0,0,.35);
+  --lk:#7FA6D9;
+  color-scheme:dark;
+}
+:root[data-theme="light"]{
+  --bg:#F4F6F8;--sf:#FFFFFF;--sf2:#EDF1F5;--ln:#DCE2EA;--ln2:#BFC9D6;
+  --ik:#101922;--ik2:#46566A;--ik3:#6E7F93;
+  --tl:#0E7C6B;--bl:#2563EB;--vi:#6D5AE6;--vif:#E3DFFB;--am:#D97706;
+  --fc:#2563EB;--sh:0 1px 2px rgba(16,25,34,.05),0 8px 24px rgba(16,25,34,.05);
+  --lk:#4F7BB5;
+  color-scheme:light;
+}
+
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--ik)}
+body{
+  font:16px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  -webkit-font-smoothing:antialiased;
+  min-height:100dvh;
+  display:grid;
+  place-items:center;
+}
+a{color:var(--bl)}
+a:focus-visible{outline:2px solid var(--fc);outline-offset:3px}
+
+.lp{
+  width:min(100% - 2rem, 62rem);
+  margin-inline:auto;
+  padding-block:clamp(2rem, 6vh, 5rem);
+  display:grid;
+  gap:clamp(1.5rem, 4vh, 3rem);
+}
+
+/* ---- head ---- */
+.lp-head{max-width:40rem}
+.lp-kicker{
+  margin:0 0 .5rem;
+  font:600 .8125rem/1 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  letter-spacing:.08em;text-transform:uppercase;color:var(--vi);
+}
+.lp-head h1{
+  margin:0;
+  font-size:clamp(1.75rem, 1.2rem + 2.4vw, 2.75rem);
+  line-height:1.15;letter-spacing:-.01em;font-weight:650;
+  text-wrap:balance;
+}
+.lp-lead{margin:.75rem 0 0;color:var(--ik2);font-size:1.0625rem;text-wrap:pretty}
+
+/* ---- the two cards ---- */
+.lp-choices{
+  display:grid;
+  grid-template-columns:repeat(auto-fit, minmax(min(100%, 19rem), 1fr));
+  gap:1rem;
+}
+.lp-card{
+  display:grid;
+  grid-template-rows:auto auto auto 1fr auto;
+  gap:.5rem;
+  padding:1.5rem;
+  border:1px solid var(--ln);
+  border-radius:14px;
+  background:var(--sf);
+  box-shadow:var(--sh);
+  color:inherit;
+  text-decoration:none;
+  transition:border-color .15s, transform .15s;
+}
+.lp-card:hover,.lp-card:focus-visible{border-color:var(--ln2);transform:translateY(-2px)}
+.lp-card:hover .lp-cta,.lp-card:focus-visible .lp-cta{text-decoration:underline}
+.lp-advanced{border-color:color-mix(in srgb, var(--vi) 45%, var(--ln))}
+.lp-advanced:hover,.lp-advanced:focus-visible{border-color:var(--vi)}
+
+.lp-glyph{
+  width:6rem;height:2.5rem;
+  margin-bottom:.5rem;
+  overflow:visible;
+}
+.g-primary{fill:var(--tl);opacity:.9}
+.g-standby{fill:var(--bl);opacity:.75}
+.g-farsync{fill:var(--am);opacity:.8}
+.g-observer{fill:var(--vi)}
+.g-route{fill:none;stroke:var(--lk);stroke-width:1.5;stroke-dasharray:3 3}
+
+.lp-tag{
+  font:600 .75rem/1 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  letter-spacing:.08em;text-transform:uppercase;
+  color:var(--ik3);
+}
+.lp-advanced .lp-tag{color:var(--vi)}
+.lp-title{font-size:1.25rem;line-height:1.3;font-weight:650;letter-spacing:-.005em}
+.lp-desc{color:var(--ik2);font-size:.9375rem;text-wrap:pretty}
+.lp-cta{
+  margin-top:.75rem;
+  font-weight:600;
+  color:var(--bl);
+}
+.lp-advanced .lp-cta{color:var(--vi)}
+
+/* ---- foot ---- */
+.lp-foot{color:var(--ik3);font-size:.8125rem;max-width:48rem}
+.lp-foot p{margin:0}
+.lp-foot a{color:inherit}
+
+@media (prefers-reduced-motion:reduce){
+  .lp-card{transition:none}
+  .lp-card:hover,.lp-card:focus-visible{transform:none}
+}

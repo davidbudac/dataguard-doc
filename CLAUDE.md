@@ -3,11 +3,12 @@
 See [AGENTS.md](AGENTS.md) for the file inventory, accuracy rules, visual language,
 PNG regeneration, and the publishing flow.
 
-Two pages live here. The one being worked on is the workbench in `app/`
-(TypeScript + Vite + Preact), served at `/dataguard/`. Frozen beside it is the
-single-file legacy fragment in `simulator/`, served at `/dataguard/legacy/`. The
-rules below are split accordingly: the ASCII rule is the **legacy fragment's
-alone**.
+Two pages live here, behind a landing page. The one being worked on is the
+workbench in `app/` (TypeScript + Vite + Preact), served as the **advanced**
+version at `/advanced/`. Frozen beside it is the single-file legacy fragment in
+`simulator/`, served as the **simple** version at `/simple/`. The site root is
+the static landing page in `site/landing/` that offers the two. The rules below
+are split accordingly: the ASCII rule is the **legacy fragment's alone**.
 
 ## Agent skills
 
@@ -54,7 +55,7 @@ the literal seven characters. That is why JS gets `\uXXXX` and comments get ASCI
 **`site/build-legacy.mjs` enforces this** — it exits non-zero, naming the offending
 lines, on any byte above U+007E. `site/build.mjs` runs it, and `site/publish.sh`
 builds before it deploys, so a non-ASCII fragment cannot reach
-dataguard.davidbudac.cz/legacy/. To check by hand before committing:
+dataguard.davidbudac.cz/simple/. To check by hand before committing:
 
 ```bash
 LC_ALL=C grep -nP '[^\x00-\x7F]' simulator/fsfo-simulator.html && echo "NON-ASCII FOUND" || echo "ASCII clean"
@@ -74,7 +75,7 @@ back to either page.
 ## The application in `app/`
 
 Commands, from `app/`: `npm run dev` · `npm run build` (typecheck then Vite, output
-straight into `../_site/`) · `npm test` (vitest) · `npm run typecheck`. The whole
+straight into `../_site/advanced/`) · `npm test` (vitest) · `npm run typecheck`. The whole
 site is `node site/build.mjs`; publishing is `./site/publish.sh`, and **only when
 the user asks**. CI is local and nothing else: `./site/check.sh` runs every gate
 (`--quick` stops after the tests); `.githooks/pre-push` runs the quick form.

@@ -23,7 +23,7 @@
  *   `dg-topology-timeline-v1` whether Topology's small timeline is open ('0' = folded; unset = open)
  *   `dg-fsfo-cfg-v1` the published page's stored configuration. Read once when
  *                    there is nothing newer, and never deleted: the old page
- *                    is still serving from /legacy/ and still owns that key.
+ *                    is still serving from /simple/ and still owns that key.
  *
  * A restored session announces itself for 8 seconds with a way out ("Start
  * fresh"), because a page that silently reopens yesterday's edit is a page

@@ -219,7 +219,7 @@ export interface SimParams {
   /*
    * The three switches below exist for one caller: `engine/compat/classic.ts`,
    * which reproduces the frozen published page (`simulator/`, served at
-   * /dataguard/legacy/) number for number. That page's model predates the
+   * /simple/) number for number. That page's model predates the
    * 2026-09-28 fact check and the workbench no longer shares three of its
    * readings, so the adapter asks for them by name. Nothing else sets them:
    * the share-link codec does not read them and no control offers them.

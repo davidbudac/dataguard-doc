@@ -2,14 +2,14 @@ import { defineConfig } from 'vite';
 import preact from '@preact/preset-vite';
 import { fileURLToPath } from 'node:url';
 
-// Static build for https://dataguard.davidbudac.cz/ -- relative asset URLs so
+// Static build for https://dataguard.davidbudac.cz/advanced/ -- relative asset URLs so
 // the same bundle serves from any sub-path; zero external requests at runtime.
 export default defineConfig({
   base: './',
   plugins: [preact()],
   resolve: { alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) } },
   build: {
-    outDir: '../_site',
+    outDir: '../_site/advanced',
     emptyOutDir: true,
     sourcemap: false,
     target: 'es2022',
