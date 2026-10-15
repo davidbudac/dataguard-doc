@@ -12,6 +12,8 @@
 - The Inspector at 1024–1279 px is a panel beside the lanes, not a modal
   drawer over them.
 - The Summary band opens over the lanes instead of squeezing them.
+- The timeline popped out into its own window is drawn at its own size and
+  scrolls, instead of being shrunk to fit the window.
 - The step band under the top bar is gone; the numbered steps carry its
   tally and its gate. The Oracle release switch is on the bar again.
 

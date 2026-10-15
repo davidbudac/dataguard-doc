@@ -239,7 +239,11 @@ function foldedSummary(): string | null {
  * slot (`timelineOpen`, ui/timeline/PanelHandle.tsx), the same one Topology's
  * floating dock carries; folded, nothing else of the slot is rendered. Popped
  * out, the timeline is the whole of its own window, where a fold would leave
- * an empty window: it is always open there and wears no handle.
+ * an empty window: it is always open there and wears no handle -- and it is
+ * drawn at its own size and scrolls (popout.css), rather than scaled to fit a
+ * window that is 520 px tall by default: a twelve-lane run shrunk to that is
+ * 5 px text, and a window opened to see more of the timeline should not show
+ * less of it.
  */
 function TimelineSlot({ popup = false, fitHeight = false }: { popup?: boolean; fitHeight?: boolean }) {
   const [ref, width] = useWidth();
@@ -268,7 +272,7 @@ function TimelineSlot({ popup = false, fitHeight = false }: { popup?: boolean; f
                   : 'No scenario yet. Open step 2, Scenario, to schedule events.'}
               </p>
             </div>
-          ) : <Timeline {...shellTimelineProps(t, width)} fitHeight={(popup || fitHeight) && !printing.value} />}
+          ) : <Timeline {...shellTimelineProps(t, width)} fitHeight={fitHeight && !printing.value} />}
         </>
       )}
     </div>

@@ -193,6 +193,21 @@ describe('the timeline, popped out of Outcome', () => {
   });
 });
 
+describe('the timeline, popped out, keeps its size and scrolls', () => {
+  it('is not fitted to the window, and the sheet makes its plot the scroll port', async () => {
+    const { readFileSync } = await import('node:fs');
+    const { dirname, join } = await import('node:path');
+    const { fileURLToPath } = await import('node:url');
+    const css = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '../../src/styles/popout.css'), 'utf8');
+    expect(css).toMatch(/\.app\.is-float\.po \.app-dock \.tl>\.tl-plot\{[^}]*overflow-y:auto/);
+    expect(css).toMatch(/\.app\.is-float\.po \.app-dock \.tl\{[^}]*grid-template-rows:auto auto minmax\(0,1fr\) auto\}/);
+    /* And the shell asks for no height fit in the popup: `fitHeight` is the docked panel's alone. */
+    const app = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '../../src/ui/App.tsx'), 'utf8');
+    expect(app).not.toMatch(/fitHeight=\{\(popup \|\| fitHeight\)/);
+    expect(app).toMatch(/fitHeight=\{fitHeight && !printing\.value\}/);
+  });
+});
+
 describe('the timeline, popped out of the docked Detailed timeline', () => {
   it('leaves the note behind, and comes back from it', async () => {
     viewport.value = 'compact';

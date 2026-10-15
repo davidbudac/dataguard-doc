@@ -2324,5 +2324,10 @@ engine or the drawing.
   the numbered steps in the bar and cost every screen 50 px. Its live tally is the active step's
   title; its gate (no primary, no run) is on the Scenario and Simulate steps themselves, with the
   reason as their title. The header is one band for the three steps.
+- **The popped-out timeline scrolls** (`TimelineSlot popup`, popout.css): it was fitted to the
+  window with a uniform scale, so a 520 px window showed every lane at 5 px text and nothing
+  scrolled. It is 1:1 now, the transport and the colour key each a row across the window and the
+  plot the scroll port under them (one column; float.css's two-column head left the key a seven-line
+  stack beside the transport).
 - **Small:** the Oracle release switch is back on the bar rather than in the ⋯ menu (it changes
   what the engine says); the transport's time field is 7ch, so `140.3` is not `140.`.

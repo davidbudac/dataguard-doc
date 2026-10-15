@@ -31,6 +31,18 @@
 .app.is-float.po .app-dock,
 .app.is-float.m-break.po .app-dock.has-tl{position:absolute;inset:0;height:auto;min-height:0;
   max-height:none;border:0;border-radius:0;box-shadow:none}
+/* ...and the timeline in it is drawn at its own size and scrolls, not scaled
+   to fit the window (App.tsx `TimelineSlot`, no `fitHeight` here): the
+   transport and then the key, each a row of its own across the window, and
+   the lanes scrolling under them. One column: float.css's docked grid puts
+   the key beside the transport in a second column, and the transport's row
+   takes the width, which left the key a 125 px column of its own, seven
+   lines tall, with the lanes starting 200 px down. */
+.app.is-float.po .app-dock .tl{grid-template-columns:minmax(0,1fr);grid-template-rows:auto auto minmax(0,1fr) auto}
+.app.is-float.po .app-dock .tl-foot{grid-column:1;grid-row:1}
+.app.is-float.po .app-dock .tl-legend{grid-column:1;grid-row:2;justify-self:stretch;justify-content:flex-start;padding:0 0 6px}
+.app.is-float.po .app-dock .tl>.tl-plot{grid-column:1;grid-row:3;height:100%;min-height:0;overflow-y:auto}
+.app.is-float.po .app-dock .tl-note{grid-column:1;grid-row:4}
 
 /* The drawing has the window to itself: no header above it, no rail beside it,
    no dock below -- only the zoom pill in the corner, and Build's palette. */
