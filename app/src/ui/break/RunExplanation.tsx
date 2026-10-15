@@ -10,6 +10,7 @@
  * Pressing one moves the playhead to it and selects what it is about.
  */
 
+import { useMemo, useState } from 'preact/hooks';
 import { signal } from '@preact/signals';
 import { citation } from '@/engine';
 import type { EngineTrace, TopologyDoc } from '@/engine';
@@ -20,6 +21,8 @@ import { revealSections } from '../inspector/sections';
 import { Caret } from '../inspector/controls';
 import { printing } from '../print';
 import { buildExplanation } from './explain';
+import type { ExplanationStep } from './explain';
+import { appModelsFor, axisSpan } from '../timeline/build';
 
 /** A view preference; a different run does not silently open a long list. */
 export const explanationOpen = signal(false);
@@ -58,7 +61,33 @@ const RELATED = [
 
 export function RunExplanation({ doc, trace }: { doc: TopologyDoc; trace: EngineTrace }) {
   const open = explanationOpen.value || printing.value;
-  const steps = open ? buildExplanation(doc, trace) : [];
+  const steps = useMemo(() => {
+    if (!open) return [];
+    const recorded = buildExplanation(doc, trace);
+    const applicationSteps: ExplanationStep[] = appModelsFor(trace, doc).flatMap((app) => {
+      if (app.application === null || app.tConn === null || app.noEvent) return [];
+      return [{ key: `app-connected:${app.application.id}`, at: app.tConn,
+        title: `${app.application.name} reconnects`,
+        detail: `The modelled connect string reaches a serving database at t = ${fmt(app.tConn)} s.`,
+        subjects: [app.application.id],
+        claim: { value: 'Modelled application reconnect', basis: 'model',
+          cite: [...new Set([...app.claims.nominal.cite, ...app.claims.retry.cite, ...app.claims.timeouts.cite])],
+          note: app.claims.nominal.note ?? app.claims.nominal.value },
+      }];
+    });
+    return [...recorded, ...applicationSteps].sort((a, b) => a.at - b.at);
+  }, [open, doc, trace]);
+  const [chosen, setChosen] = useState<string | null>(null);
+  const selected = steps.findIndex((step) => step.key === chosen && step.at === tNow.value);
+  const seek = (index: number): void => {
+    const step = steps[index];
+    if (!step) return;
+    setChosen(step.key);
+    playing.value = false;
+    tNow.value = Math.min(step.at, axisSpan(trace, doc.events, doc).t1);
+    selection.value = step.subjects;
+    if (viewport.value !== 'wide') inspectorOpen.value = false;
+  };
   return (
     <section class={`grp grp-fold run-explain${open ? ' is-open' : ''}`}>
       <header class="grp-hd">
@@ -79,20 +108,24 @@ export function RunExplanation({ doc, trace }: { doc: TopologyDoc; trace: Engine
             Each step is from this modelled run. Select one to move the playhead there and
             highlight what it is about.
           </p>
+          <div class="explain-navigation" role="group" aria-label="Explanation playback">
+            <button type="button" class="btn" aria-label="Previous explanation step" disabled={selected <= 0}
+              title={selected <= 0 ? 'Select a later step to go back' : 'Previous explanation step'} onClick={() => seek(selected - 1)}>← Previous</button>
+            <span>{selected < 0 ? `${steps.length} steps` : `${selected + 1} / ${steps.length}`}</span>
+            <button type="button" class="btn" aria-label="Next explanation step" disabled={steps.length === 0 || selected === steps.length - 1}
+              title={selected === steps.length - 1 ? 'Last explanation step' : 'Next explanation step'} onClick={() => seek(selected + 1)}>Next →</button>
+          </div>
           <ol class="run-explain-list">
-            {steps.map((step) => (
-              <li key={step.key} class="run-explain-step">
+            {steps.map((step, index) => (
+              <li key={step.key} class={`run-explain-step${index === selected ? " is-current" : ""}`}>
                 <button
                   type="button"
                   class="run-explain-seek"
                   aria-label={`Go to t = ${fmt(step.at)} s: ${step.title}. ${step.detail}`}
-                  onClick={() => {
-                    playing.value = false;
-                    tNow.value = Math.min(step.at, trace.axis.horizon);
-                    selection.value = step.subjects;
-                    if (viewport.value !== 'wide') inspectorOpen.value = false;
-                  }}
+                  aria-current={index === selected ? 'step' : undefined}
+                  onClick={() => seek(index)}
                 >
+                  <span class="explain-step-number" aria-hidden="true">{index + 1}</span>
                   <span class="run-explain-time mono">{fmt(step.at)} s</span>
                   <span class="run-explain-copy">
                     <strong>{step.title}</strong>

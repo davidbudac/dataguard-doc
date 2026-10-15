@@ -50,6 +50,7 @@ import './styles/lanes.css';
 import './styles/summary.css';
 import './styles/popout.css';
 import './styles/print.css';
+import './styles/hierarchy.css';
 
 async function boot(): Promise<void> {
   const search = typeof location === 'undefined' ? '' : location.search;

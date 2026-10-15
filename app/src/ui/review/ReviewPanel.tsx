@@ -14,6 +14,7 @@
  * as PDF page (ui/export/Report.tsx); there is no second report generator.
  */
 
+import { ComparisonTimeline } from './ComparisonTimeline';
 import { useMemo, useState } from 'preact/hooks';
 import type { ClassicScenario } from '@/engine';
 import { doc } from '@/state/doc';
@@ -100,6 +101,7 @@ function Comparison({ current }: { current: ReviewSnapshot }) {
               {templates(topologyFor(current), 0).map((t) => <option value={t.id} key={t.id}>{t.label}</option>)}
             </select>
           </label>
+          {old ? <ComparisonTimeline before={old} after={result} /> : null}
           <div class="rv-scroll">
             <table class="rv-tab">
               <thead>
@@ -113,22 +115,22 @@ function Comparison({ current }: { current: ReviewSnapshot }) {
                 <tr>
                   <th scope="row">Outcome</th>
                   <td>{old?.unavailable ?? outcomeText(old?.trace ?? null)}</td>
-                  <td>{result.unavailable ?? outcomeText(result.trace)}</td>
+                  <td class={(old?.unavailable ?? outcomeText(old?.trace ?? null)) !== (result.unavailable ?? outcomeText(result.trace)) ? "rv-changed" : undefined}>{result.unavailable ?? outcomeText(result.trace)}</td>
                 </tr>
                 <tr>
                   <th scope="row">New primary opens</th>
                   <td>{openText(old?.trace ?? null)}</td>
-                  <td>{openText(result.trace)}</td>
+                  <td class={openText(old?.trace ?? null) !== openText(result.trace) ? "rv-changed" : undefined}>{openText(result.trace)}</td>
                 </tr>
                 <tr>
                   <th scope="row">Modelled data loss</th>
                   <td>{lossText(old?.trace ?? null)}</td>
-                  <td>{lossText(result.trace)}</td>
+                  <td class={lossText(old?.trace ?? null) !== lossText(result.trace) ? "rv-changed" : undefined}>{lossText(result.trace)}</td>
                 </tr>
                 <tr>
                   <th scope="row">Commit latency</th>
                   <td>{ms(oldCommit)}</td>
-                  <td>{ms(commit)}</td>
+                  <td class={ms(oldCommit) !== ms(commit) ? "rv-changed" : undefined}>{ms(commit)}</td>
                 </tr>
               </tbody>
             </table>
@@ -141,7 +143,7 @@ function Comparison({ current }: { current: ReviewSnapshot }) {
               Open current scenario
             </button>
           </div>
-          <details class="rv-more">
+          <details class="rv-more" open={changes.length > 0}>
             <summary>{changes.length} changed setting{changes.length === 1 ? '' : 's'}</summary>
             {changes.length ? (
               <div class="rv-scroll">

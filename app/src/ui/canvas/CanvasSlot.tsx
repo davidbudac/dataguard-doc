@@ -10,6 +10,8 @@
  * canvas workflow owns this file from here.
  */
 
+import { connectionLayer } from './layers';
+import type { ConnectionLayer } from './layers';
 import type { JSX } from 'preact';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import type { TopologyDoc } from '@/engine';
@@ -708,12 +710,14 @@ export function CanvasSlot({ interactive = true }: CanvasSlotProps) {
             <TidyButton />
           </nav>
         )}
+        {zooming ? <ConnectionLayers /> : null}
         {zooming ? <div class="zoom-pill float-card"><ZoomStrip tidy={false} grid pop /></div> : null}
       </>
     )
     : adds === null && !zooming ? null : (
       <div class="cv-tools">
         {adds}
+        {zooming ? <ConnectionLayers /> : null}
         {zooming ? <ZoomStrip tidy={editable && m === 'build'} /> : null}
       </div>
     );
@@ -742,6 +746,7 @@ export function CanvasSlot({ interactive = true }: CanvasSlotProps) {
         scale={scale}
         barMargin={barMargin}
         zoomFactor={zoomFactor}
+        connectionLayer={zooming && !printing.value ? connectionLayer.value : 'all'}
         {...(zooming ? {
           pan: printing.value ? { x: 0, y: 0 } : canvasPan.value, panMode: handTool.value,
           onPan: (offset: { x: number; y: number }): void => { canvasPan.value = offset; },
@@ -949,4 +954,17 @@ export function CanvasSlot({ interactive = true }: CanvasSlotProps) {
       />
     </>
   );
+}
+
+function ConnectionLayers() {
+  const layer = connectionLayer.value;
+  return <div class="connection-layers float-card" role="group" aria-label="Connection layers">
+    <span class="layer-label">Connections</span>
+    {(['all', 'redo', 'observer', 'application'] as const).map((value: ConnectionLayer) =>
+      <button type="button" class="btn" key={value} aria-pressed={layer === value}
+        onClick={() => { connectionLayer.value = value; closeBar(); }}>
+        {value[0]?.toUpperCase()}{value.slice(1)}
+      </button>)}
+    {layer !== 'all' ? <span class="layer-notice" role="status">Other connections hidden</span> : null}
+  </div>;
 }

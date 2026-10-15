@@ -34,6 +34,8 @@ import type { WhyState } from '../common/WhyPill';
 import { approxW, CARD } from './measure';
 import type { Rect } from './measure';
 import { parseInstanceKey } from '@/state/instanceKey';
+import { includesConnection } from './layers';
+import type { ConnectionLayer } from './layers';
 import { NodeCard } from './NodeCard';
 import { StackChassis } from './StackChassis';
 import { LinkPath, linkKey } from './LinkPath';
@@ -207,6 +209,8 @@ export interface TopoCanvasProps {
    * -- a 12-site configuration at 1:1 has cards the size of a caption.
    */
   zoomFactor?: number;
+  /** View only: which connections are drawn (`layers.ts`). */
+  connectionLayer?: ConnectionLayer;
   /** Viewport offset in drawing units; never part of the document. */
   pan?: { x: number; y: number };
   onPan?: (offset: { x: number; y: number }) => void;
@@ -440,7 +444,11 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
     () => props.geometry ?? layoutTopology(doc, graph, { overrides }),
     [props.geometry, doc, graph, overrides],
   );
-  const routed = useMemo(() => routeTopology(doc, graph, geo, frame), [doc, graph, geo, frame]);
+  const allRoutes = useMemo(() => routeTopology(doc, graph, geo, frame), [doc, graph, geo, frame]);
+  const layer = props.connectionLayer ?? 'all';
+  const routed = useMemo(() => ({ ...allRoutes,
+    links: allRoutes.links.filter((link) => includesConnection(layer, link.kind)),
+  }), [allRoutes, layer]);
   const aria = useMemo(() => describeTopology(doc, graph, frame), [doc, graph, frame]);
   /* What a drag in flight holds still: the viewBox, so the drawing does not
      rescale under the pointer as the thing being dragged changes the bounds,
@@ -1587,6 +1595,7 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
       <NodeCard
         key={n.key}
         node={n}
+        compact={(props.scale ?? 1) < 0.85 && !isSelected(n.key) && hovered !== n.key}
         prefix={prefix}
         frame={cardFrameFor(doc, n, frame)}
         databaseRole={cardRoleFor(doc, n, frame)}
@@ -1753,8 +1762,8 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
               interactive={interactive}
               highlighted={hovered === linkKey(l) || isSelected(linkKey(l))}
               selected={isSelected(linkKey(l))}
-              dimmed={hovered !== null && hovered !== linkKey(l)
-                && hovered !== l.from && hovered !== l.to}
+              dimmed={(hovered ?? selection[0] ?? null) !== null
+                && ![linkKey(l), l.from, l.to].includes(hovered ?? selection[0] ?? '')}
               onSelect={onCardSelect}
               onHover={props.onHover}
             />
@@ -1817,8 +1826,8 @@ export function TopoCanvas(props: TopoCanvasProps): JSX.Element {
               interactive={interactive}
               highlighted={hovered === linkKey(l) || isSelected(linkKey(l))}
               selected={isSelected(linkKey(l))}
-              dimmed={hovered !== null && hovered !== linkKey(l)
-                && hovered !== l.from && hovered !== l.to}
+              dimmed={(hovered ?? selection[0] ?? null) !== null
+                && ![linkKey(l), l.from, l.to].includes(hovered ?? selection[0] ?? '')}
               label={linkLabel(doc, l)}
               tabIndex={i === linkStop ? 0 : -1}
               onSelect={onCardSelect}

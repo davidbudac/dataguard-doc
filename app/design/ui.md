@@ -2251,3 +2251,35 @@ Canonical URLs use `mode=scenario` and `mode=outcome`; `timeline`, `simulate` an
 path. Shortcuts 1–3 select steps; 4 and 5 open Config and Learn. Timed-event
 commands are offered in Scenario, playback in Outcome, and topology edits in
 Topology. The Introduction and walkthrough follow the same sequence.
+
+### As built — connection layers, typed values, explanation steps, aligned comparison (2026-10-15)
+
+Ported from `ui/workbench-visual-hierarchy` (2026-10-04) onto the three-step workbench. Its
+readable-fit canvas (an 80% floor with a scrolling stage), the dock's Settings fold, the Run
+result / Now relabelling and the Config overview toggle were not carried over: the canvas now
+pans by its viewBox, the dock and small timeline it reworked are gone, and Generated settings
+already has its own surface.
+
+**Connections** selects All, Redo, Observer or Application as a view preference. Filtering never
+alters the document, graph or drawing bounds; link captions and keyboard stops follow the visible
+layer, a notice says when connections are hidden, and print always draws all of them. Selecting a
+card dims the links that do not touch it, as hovering does. Below 85% the unselected, unhovered
+cards omit their host line; names, roles, state shapes and accessible labels remain.
+
+Sliders have paired numeric entry. Verified broker defaults are shown for the threshold,
+edition-aware lag limit, grace time, NetTimeout and ReopenSecs; a different value is marked
+Changed and can be reset. Only lag limit records explicit-versus-inherited provenance, so only it
+says Following broker default or Explicit · matches default. Simulation conditions carry no
+default badge.
+
+The Why panel numbers its trace-backed steps, marks the active step and offers Previous/Next;
+selecting a step pauses, seeks and selects its subjects. Application reconnect steps reuse the
+application's model, its citations and its model basis.
+
+Compare alternatives draws baseline and current on one seconds axis, including both application
+horizons, with a scrubber of its own that never moves the workbench playhead. Changed metric cells
+are marked and the changed-settings table opens when there are changes. Neither run is invented
+when its trace is unavailable. The generated file's header names the selection it highlights.
+
+Presentation lives in `styles/hierarchy.css`, connection filtering in `canvas/layers.ts` and the
+shared axis in `review/ComparisonTimeline.tsx`. No engine semantics or source claims change.

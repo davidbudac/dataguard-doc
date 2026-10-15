@@ -3,6 +3,8 @@
 import { afterEach, expect, it } from 'vitest';
 import { h, render } from 'preact';
 import { act } from 'preact/test-utils';
+import { classicDoc } from '../../src/state/doc';
+import { appModelsFor } from '../../src/ui/timeline/build';
 import { classicTopology, hostId, memberId, simulate } from '../../src/engine';
 import { RunExplanation, explanationOpen } from '../../src/ui/break/RunExplanation';
 import { openSections, resetSections } from '../../src/ui/inspector/sections';
@@ -61,4 +63,22 @@ it('opens the failover settings from a blocked readiness check and navigates to 
   act(() => related.click());
   expect(mode.value).toBe('configure');
   expect(panelTab.value).toBe('reopen');
+});
+
+
+it('seeks past the database opening to a cited modelled application reconnect', () => {
+  const doc = { ...classicDoc().topology, events: [{ at: 0, kind: 'host.down' as const, host: hostId('dc1-prm01') }] };
+  const trace = simulate(doc);
+  const application = appModelsFor(trace, doc)[0]!;
+  expect(application.tConn).toBeGreaterThan(trace.facts.tOpen!);
+  explanationOpen.value = true;
+  act(() => render(h(RunExplanation, { doc, trace }), root));
+  const step = [...root.querySelectorAll<HTMLButtonElement>('.run-explain-seek')]
+    .find((button) => button.textContent?.includes('app01 reconnects'))!;
+  act(() => step.click());
+  expect(tNow.value).toBe(application.tConn);
+  expect(selection.value).toEqual([application.application!.id]);
+  expect(step.getAttribute('aria-current')).toBe('step');
+  expect(step.closest('li')?.querySelector('.run-explain-source')?.textContent).toContain("this page's model");
+  expect(step.closest('li')?.querySelector('.run-explain-source a')).not.toBeNull();
 });

@@ -168,6 +168,10 @@ export interface NumProps {
    */
   min?: number;
   clampTo?: (raw: unknown) => number;
+  /** Only pass an actual broker default, never a simulated condition. */
+  brokerDefault?: number;
+  explicit?: boolean;
+  onReset?: () => void;
 }
 
 /** The width of a number box, and so of the control on a number row. */
@@ -178,7 +182,7 @@ const TEXT_PX = 150;
 const CHECK_PX = 64;
 
 export function Num(
-  { name, bound, value, onChange, kind = 'range', note, warn, enabled = ON, unit, prose, min, clampTo }: NumProps,
+  { name, bound, value, onChange, kind = 'range', note, warn, enabled = ON, unit, prose, min, clampTo, brokerDefault, explicit, onReset }: NumProps,
 ) {
   const b = BOUNDS[bound];
   const clampIt = clampTo ?? ((raw: unknown): number => clamp(bound, raw));
@@ -192,11 +196,12 @@ export function Num(
       name={name}
       prose={prose}
       layout={row ? 'row' : 'stack'}
-      value={kind === 'number' ? undefined : `${value}${shown === '' ? '' : ` ${shown}`}`}
+      value={undefined}
       note={note}
       warn={warn}
       enabled={enabled}
     >
+      <div class={kind === "range" ? "num-pair" : "num-single"}>
       <input
         class="field-in"
         type={kind}
@@ -213,6 +218,19 @@ export function Num(
           ? (e) => onChange(clampIt((e.currentTarget as HTMLInputElement).value))
           : undefined}
       />
+      {kind === 'range' ? <input class="field-in num-entry" type="number" aria-label={`${name} value`}
+        min={min ?? b.min} max={b.max} step={b.step} value={String(value)} disabled={off}
+        onChange={(e) => { const raw = e.currentTarget.value; if (raw.trim() && Number.isFinite(Number(raw))) onChange(clampIt(raw)); else e.currentTarget.value = String(value); }} /> : null}
+      {shown ? <span class="num-unit">{shown}</span> : null}
+      </div>
+      {brokerDefault === undefined ? null : <div class="num-default">
+        <span class={value !== brokerDefault ? 'is-changed' : ''}>
+          {explicit === false ? 'Following broker default' : value !== brokerDefault ? 'Changed' : explicit === true ? 'Explicit · matches default' : 'Matches broker default'}
+          {value !== brokerDefault ? ` · default ${brokerDefault}${shown ? ` ${shown}` : ''}` : ''}
+        </span>
+        {!off && (value !== brokerDefault || explicit === true) ? <button type="button" class="num-reset"
+          aria-label={`Reset ${name} to broker default`} onClick={() => onReset ? onReset() : onChange(brokerDefault)}>Reset</button> : null}
+      </div>}
     </Field>
   );
 }

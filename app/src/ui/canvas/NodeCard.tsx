@@ -23,6 +23,7 @@ export { NEUTRAL_FRAME } from './routing';
 
 export interface NodeCardProps {
   node: NodeBox;
+  compact?: boolean;
   frame: CardFrame;
   databaseRole?: 'primary' | 'standby' | 'former-primary' | null;
   chips: readonly CardChip[];
@@ -181,6 +182,7 @@ export function NodeCard(props: NodeCardProps): JSX.Element {
       onPointerLeave={props.interactive ? () => props.onHover?.(null) : undefined}
       onKeyDown={props.interactive ? (ev) => props.onKeyDown?.(node.key, ev) : undefined}
     >
+      <title>{props.label}</title>
       {frame.down ? (
         <rect
           class="tp-hatchfill" x={node.x} y={node.y} width={node.w} height={node.h} rx={stacked ? 0 : 5}
@@ -207,12 +209,13 @@ export function NodeCard(props: NodeCardProps): JSX.Element {
         </g>
       ) : null}
       <text class="tp-name" x={tx} y={nameY}>{node.lines.name}</text>
-      {node.lines.host === undefined ? null
+      {props.compact || node.lines.host === undefined ? null
         : roleInHostLine || node.lines.hostAt === undefined ? (
-          <text class="tp-host" x={tx} y={nameY + 16}>{roleInHostLine ? roleText : node.lines.host}</text>
-        ) : hostLineWithIcon(node.lines.host, node.lines.hostAt, tx, nameY + 16, prefix)}
+          <text class="tp-host" x={tx} y={nameY + (isObs || roleInHostLine ? 16 : 31)}>{roleInHostLine ? roleText : node.lines.host}</text>
+        ) : hostLineWithIcon(node.lines.host, node.lines.hostAt, tx, nameY + (isObs || roleInHostLine ? 16 : 31), prefix)}
+      {props.compact && isObs ? <text class="tp-sub" x={tx} y={nameY + 16}>{node.kind === 'observer' ? 'Observer' : 'Application'}</text> : null}
       {node.lines.sub === undefined ? null : (
-        <text class="tp-sub" x={tx} y={nameY + 30}>{roleInHostLine ? node.lines.sub : roleText}</text>
+        <text class="tp-sub" x={tx} y={nameY + (roleInHostLine ? 30 : 16)}>{roleInHostLine ? node.lines.sub : roleText}</text>
       )}
       {node.instanceHosts?.map((inst, index) => {
         const y = instanceRowY(node, index);

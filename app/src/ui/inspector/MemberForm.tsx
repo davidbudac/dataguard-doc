@@ -15,7 +15,7 @@
  */
 
 import type { Member, MemberId, RedoGraph, TopologyDoc, XptMode } from '@/engine';
-import { hostId, isDatabase, isRac } from '@/engine';
+import { BROKER_DEFAULTS, hostId, isDatabase, isRac } from '@/engine';
 import { Fact } from '../common/Chip';
 import { Action, Check, Choice, Fold, Group, Note, Num, Pick, Text, Withheld } from './controls';
 import { DESTS_ID, IDENTITY_ID, INSTANCES_ID } from './sections';
@@ -375,6 +375,7 @@ export function MemberForm({ member, doc, graph }: MemberFormProps) {
               <Num
                 name="NetTimeout"
                 bound="netTimeoutSeconds"
+                brokerDefault={BROKER_DEFAULTS[doc.config.edition].netTimeoutSeconds}
                 kind="number"
                 value={p.netTimeoutSeconds}
                 coalesce={`nt:${id as string}:${to.id as string}`}
@@ -391,6 +392,7 @@ export function MemberForm({ member, doc, graph }: MemberFormProps) {
               <Num
                 name="ReopenSecs"
                 bound="reopenSeconds"
+                brokerDefault={BROKER_DEFAULTS[doc.config.edition].reopenSeconds}
                 value={p.reopenSeconds}
                 coalesce={`rs:${id as string}:${to.id as string}`}
                 onChange={(v) => patchDest(

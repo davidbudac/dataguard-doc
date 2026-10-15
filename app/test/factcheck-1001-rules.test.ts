@@ -564,7 +564,7 @@ describe('ED-09: the 26ai MaxAvailability lag limit can come back to 0', () => {
     expect(doc.value.topology.config.fsfo.lagLimitSeconds).toBe(0);
     expect(doc.value.topology.config.fsfo.lagLimitSet).toBe(true);
     await change(input(root, 'FastStartFailoverLagLimit'), '10');
-    button(root, 'Back to the broker default (0)')?.click();
+    root.querySelector<HTMLButtonElement>('button[aria-label="Reset FastStartFailoverLagLimit to broker default"]')?.click();
     await tick();
     expect(lagLimitIsSet(doc.value.topology.config.fsfo)).toBe(false);
     /* The reading edition is laid over the document: 26ai maximum availability. */

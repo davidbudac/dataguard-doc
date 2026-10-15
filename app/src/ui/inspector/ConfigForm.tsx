@@ -12,7 +12,7 @@
  */
 
 import { useLayoutEffect } from 'preact/hooks';
-import { BOUNDS, clampLagLimit, configurationWideServiceNameProblem, lagLimitAllowsZero } from '@/engine';
+import { BOUNDS, BROKER_DEFAULTS, defaultLagLimit, clampLagLimit, configurationWideServiceNameProblem, lagLimitAllowsZero } from '@/engine';
 import type { FsfoConfig, MemberId, RoutePriority, TopologyDoc } from '@/engine';
 import { hostId, isDatabase, lagLimitIsSet, lagLimitOf } from '@/engine';
 import { errors } from '@/state/derived';
@@ -285,6 +285,7 @@ export function ConfigForm({ doc }: ConfigFormProps) {
           bound="thresholdSeconds"
           kind="number"
           value={f.thresholdSeconds}
+          brokerDefault={BROKER_DEFAULTS[ed].thresholdSeconds}
           coalesce="fsfo:threshold"
           onChange={setFsfoThreshold}
           note={THRESHOLD_NOTE}
@@ -295,6 +296,9 @@ export function ConfigForm({ doc }: ConfigFormProps) {
           bound="lagLimitSeconds"
           kind="number"
           value={lagLimit}
+          brokerDefault={defaultLagLimit(ed, c.protectionMode)}
+          explicit={lagLimitIsSet(f)}
+          onReset={unsetFsfoLagLimit}
           coalesce="fsfo:laglimit"
           enabled={lagLimitOff}
           warn={lagLimit > f.thresholdSeconds}
@@ -303,14 +307,6 @@ export function ConfigForm({ doc }: ConfigFormProps) {
           onChange={setFsfoLagLimit}
           note={lagLimitNote(doc)}
         />
-        {lagLimitOff.state === 'off' || !lagLimitIsSet(f) ? null : (
-          <div class="rr-line lrow is-acts">
-            <Action
-              label={zeroOk ? 'Back to the broker default (0)' : 'Back to the broker default'}
-              onClick={unsetFsfoLagLimit}
-            />
-          </div>
-        )}
         {zeroOk && lagLimitOff.state !== 'off' ? (
           <Note>
             26ai gives maximum availability a lag limit default of 0, and the same page says a value
@@ -345,6 +341,7 @@ export function ConfigForm({ doc }: ConfigFormProps) {
               name="FastStartFailoverLagGraceTime"
               bound="lagGraceTimeSeconds"
               value={f.lagGraceTimeSeconds}
+              brokerDefault={BROKER_DEFAULTS[ed].lagGraceTimeSeconds}
               coalesce="fsfo:laggrace"
               enabled={!fsfoOn
                 ? off(WHY.lagGraceNoFsfo)

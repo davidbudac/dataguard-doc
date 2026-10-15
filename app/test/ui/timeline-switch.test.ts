@@ -325,7 +325,7 @@ describe('the strip and the figure', () => {
     const r = mount();
     await tick();
     const strip = r.querySelector('.app-tl-strip') as HTMLElement;
-    const names = [...strip.querySelectorAll('input')].map((i) => i.getAttribute('aria-label'));
+    const names = [...strip.querySelectorAll('input:not(.num-entry)')].map((i) => i.getAttribute('aria-label'));
     expect(names).toEqual(['TRANSPORT_CONNECT_TIMEOUT', 'CONNECT_TIMEOUT', 'RETRY_COUNT', 'RETRY_DELAY']);
     const fig = (): string => (r.querySelector('.app-tl-fig') as HTMLElement).innerHTML;
     const before = fig();

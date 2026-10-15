@@ -195,6 +195,7 @@ export function CodeBlock({ file, doc }: CodeBlockProps) {
       <div class="cb-hd">
         <span class="eyebrow">{file.title}</span>
         {file.filename === undefined ? null : <span class="cb-file">{file.filename}</span>}
+        {sel.length ? <span class="cb-selection">Highlighted: {sel.join(", ")}</span> : null}
         <span class="grow" />
         <span class="ctl-off">
           <button
