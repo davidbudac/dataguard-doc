@@ -191,13 +191,13 @@ export function DocPicker() {
   const showing = preset !== null && !edited;
   return (
     <>
-      {/* The word "Preset" is on the bar, small and quiet: with the first
-          option reading "Current configuration", nothing else said that the
-          control beside the brand is the way to the twelve shipped
-          deployments. The label is the control's accessible name too. */}
-      <label class="doc-pick-k" for="preset-picker">Preset</label>
+      {/* A thin rule parts the picker from the brand beside it. There is no
+          visible word: the box, the arrow and the first option say what it
+          is, and aria-label is the control's accessible name. */}
+      <span class="doc-pick-sep" aria-hidden="true" />
       <select
         id="preset-picker"
+        aria-label="Preset"
         class="btn doc-picker"
         title="Load one of the twelve configurations this page ships with"
         /* The preset's own option while the document still is that preset;

@@ -69,14 +69,13 @@ describe('the preset picker', () => {
     }
   });
 
-  it('says "Preset" beside the picker, quietly, and the word is the control\'s accessible name', () => {
-    /* The picker's first option reads "Current configuration", which said
-       nothing about the control being the way to the shipped deployments. */
+  it('has no visible "Preset" word; the picker is named by aria-label and parted from the brand by a rule', () => {
     const root = mount();
-    const label = root.querySelector('label[for="preset-picker"]');
-    expect(label?.textContent).toBe('Preset');
-    expect(label?.className).toBe('doc-pick-k');
-    expect(root.querySelector('#preset-picker')?.getAttribute('title')).toBeTruthy();
+    expect(root.querySelector('label[for="preset-picker"]')).toBeNull();
+    const picker = root.querySelector('#preset-picker');
+    expect(picker?.getAttribute('aria-label')).toBe('Preset');
+    expect(picker?.getAttribute('title')).toBeTruthy();
+    expect(picker?.previousElementSibling?.className).toBe('doc-pick-sep');
   });
 
   it('names the preset the document is, and says so when it is no longer that', async () => {

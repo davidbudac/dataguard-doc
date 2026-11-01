@@ -123,13 +123,16 @@ button.issue{border-bottom:1px solid var(--ln)}
   background:transparent;border:0;overflow:visible;font-size:12.5px}
 .topbar .statusbar>*{flex:0 0 auto}
 
-/* The configuration picker: a quiet mono name beside the brand, not a box,
-   with the one word that says what it is. */
-.doc-pick-k{font-size:11px;color:var(--ik3);white-space:nowrap;margin-right:-4px}
-.doc-picker{font-family:var(--mono);font-size:12px;color:var(--ik3);max-width:30ch;
+/* The configuration picker: the way into the shipped deployments, so it
+   reads as a control -- a filled, outlined box with legible text -- not as a
+   caption. The native arrow stays (no data: image under `img-src 'self'`). */
+.doc-pick-sep{flex:0 0 auto;width:1px;height:22px;background:var(--ln2);margin-left:6px}
+.doc-picker{font-family:var(--mono);font-size:12.5px;font-weight:600;color:var(--ik);
+  background:var(--sf2);border:1px solid var(--ln2);max-width:30ch;
   field-sizing:content;
-  min-width:0;overflow:hidden;text-overflow:ellipsis;padding:4px 6px;cursor:pointer}
-.doc-picker:hover:not(:disabled){color:var(--ik)}
+  min-width:0;overflow:hidden;text-overflow:ellipsis;padding:5px 8px;cursor:pointer}
+.doc-picker:hover:not(:disabled){color:var(--ik);background:var(--sf3);border-color:var(--vi)}
+.doc-picker:focus-visible{border-color:var(--vi)}
 .doc-picker option,.doc-picker optgroup{font-family:var(--sans);color:var(--ik);background:var(--sf)}
 .doc-restored{display:flex;align-items:center;gap:6px;flex:0 100 auto;min-width:0;
   font-size:12px;color:var(--ik3);white-space:nowrap}
