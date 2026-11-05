@@ -16,7 +16,7 @@
  */
 
 import type { Claim } from '../types/claims';
-import { documented, model } from '../types/claims';
+import { documented, inferred, model } from '../types/claims';
 import type { CitationId } from '../citations';
 import type { MemberId, Seconds } from '../ids';
 import type { ProtectionMode, TopologyDoc } from '../types/topology';
@@ -112,15 +112,48 @@ export const maxAvailDegraded = (acks: number): Claim<boolean> =>
 
 /**
  * Maximum protection with no synchronous acknowledgement left. The shutdown
- * itself is documented; the instant is not, so it is drawn one NET_TIMEOUT
- * after the last acknowledgement and labelled as this page's model.
+ * itself is documented; the instant is not, so it is drawn where LGWR stops
+ * waiting -- one NET_TIMEOUT after the last acknowledgement, or at once when
+ * the last standby refused the connection (`waitSeconds` 0) -- and labelled
+ * as this page's model.
  */
 export function maxProtectionShutdown(
-  lastAckAt: Seconds, netTimeoutSeconds: Seconds,
+  lastAckAt: Seconds, waitSeconds: Seconds,
 ): Claim<Seconds> {
-  return model(lastAckAt + netTimeoutSeconds,
-    'PROT.MAXPROT_SHUTDOWN_TIMING: maximum protection mode "shuts the primary database down rather than allowing it to continue" -- that much is documented. How long the primary waits first is not, so this engine draws it one NET_TIMEOUT after the last synchronous acknowledgement, which is the documented bound on how long LGWR waits for that acknowledgement. Oracle recommends a minimum of two standby databases so that a single standby failure cannot do this.',
+  return model(lastAckAt + waitSeconds,
+    waitSeconds === 0
+      ? 'PROT.MAXPROT_SHUTDOWN_TIMING: maximum protection mode "shuts the primary database down rather than allowing it to continue" -- that much is documented. How long the primary waits first is not. Here the last synchronized standby refused the connection -- its instance gone, its host up -- so LGWR has no acknowledgement to wait NET_TIMEOUT for, and this engine draws the shutdown at the instant of the refusal. Oracle recommends a minimum of two standby databases so that a single standby failure cannot do this.'
+      : 'PROT.MAXPROT_SHUTDOWN_TIMING: maximum protection mode "shuts the primary database down rather than allowing it to continue" -- that much is documented. How long the primary waits first is not, so this engine draws it one NET_TIMEOUT after the last synchronous acknowledgement, which is the documented bound on how long LGWR waits for that acknowledgement. Oracle recommends a minimum of two standby databases so that a single standby failure cannot do this.',
     ['MAXPROT.SHUTS_PRIMARY', 'MAXPROT.TWO_STANDBYS', 'DEST.NET_TIMEOUT']);
+}
+
+/**
+ * A synchronous destination whose instance is gone while its host still runs
+ * -- SHUTDOWN ABORT, a crashed instance -- is dropped at once: no commit hang.
+ *
+ * NET_TIMEOUT is documented as a ceiling on a wait for a reply ("the number
+ * of seconds that the LGWR background process blocks waiting for a redo
+ * transport destination to acknowledge redo data"), not as a delay every
+ * failure costs. A host that is up ends the transport session itself and
+ * refuses the reconnect, so LGWR gets an error and has nothing to wait for.
+ * No Oracle page states the standby-instance case, hence `inferred`.
+ */
+export function destRefusedClaim(names: readonly string[], end: CommitHangEnd): Claim<string> {
+  const who = names.length === 0 ? 'The synchronous standby'
+    : names.length === 1 ? (names[0] as string) : names.join(' and ');
+  const is = names.length > 1 ? 'are' : 'is';
+  const tail = end === 'shutdown'
+    ? ' No synchronized standby is left, and maximum protection does not carry on without one: the primary shuts down rather than continue processing transactions.'
+    : end === 'drop-another-remains'
+      ? ' The primary carries on: another synchronized standby still receives its redo.'
+      : ' The primary carries on without waiting out NET_TIMEOUT: commits do not hang.';
+  return inferred(
+    `${who} ${is} down while ${names.length > 1 ? 'their hosts are' : 'its host is'} up, so the connection is refused rather than left unanswered: the primary gets an error at once and drops the destination.${tail}`,
+    end === 'shutdown'
+      ? ['DEST.NET_TIMEOUT', 'MAXPROT.SHUTS_PRIMARY']
+      : ['DEST.NET_TIMEOUT', 'MAXAVAIL.AT_LEAST_ONE'],
+    'NET_TIMEOUT bounds how long LGWR "blocks waiting for a redo transport destination to acknowledge redo data sent to it" -- a ceiling on a wait for a reply. A standby whose instance is gone (SHUTDOWN ABORT, an instance crash) while its host runs does reply: the host ends the redo transport session, the primary\'s next write fails at once, and the listener refuses the reconnect because the service is gone. So there is nothing to wait for. Oracle does not describe the standby-instance case on its own page; this is this page\'s reading of the attribute, and the NET_TIMEOUT hang is kept for a host, site or network failure, where nothing answers.',
+  );
 }
 
 /** The primary's NetTimeout for one destination; the broker default is 30 s. */

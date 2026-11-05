@@ -580,7 +580,14 @@ agree on:
   table. In full isolation the FSFO stall overrides its drop-and-continue
   behavior. At the defaults it and the threshold both run 30 s from t = 0 and
   expire together — never draw NET_TIMEOUT as bounding only the first seconds
-  of an isolated stall; the commit hang spans the whole stall. The simulator's
+  of an isolated stall; the commit hang spans the whole stall. It is a ceiling
+  on a wait for a reply, not a delay every failure costs: a SYNC standby whose
+  instance is gone while its host runs (SHUTDOWN ABORT, an instance crash)
+  refuses the connection, so the primary drops it **at once** — no commit hang,
+  and in MaxProtection the shutdown at the refusal (`PROT.DEST_REFUSED`,
+  `inferred`: no Oracle page states the standby-instance case; owner report
+  2026-11-05, probe `USR-01`). Only a host, site or network failure, where
+  nothing answers, waits out NET_TIMEOUT. The simulator's
   panel B deliberately shortens it to 10 s (and says so) to pull the two
   clocks apart; the threshold/abort still runs 0 → 30 s.
 - Failover execution (terminal recovery + role change + open) is

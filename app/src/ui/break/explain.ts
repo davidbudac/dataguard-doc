@@ -55,6 +55,7 @@ const DECISION_TITLE: Record<string, string> = {
   'PRIMARY.REOPEN': 'Primary reopens',
   'PRIMARY.STALL': 'Primary stalled',
   'PROT.COMMIT_HANG': 'Commits wait',
+  'PROT.DEST_REFUSED': 'Destination dropped at once',
   'PROT.MAXAVAIL_DEGRADED': 'Protection degraded',
   'PROT.MAXPROT_SHUTDOWN': 'Primary shut down',
   'PROT.MODE_AFTER_FAILOVER': 'Protection mode after failover',

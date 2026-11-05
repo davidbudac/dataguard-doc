@@ -256,7 +256,7 @@ export function notReadyClaim(
   return model(`${who}${tail}`,
     lagGated(doc)
       ? 'FSFO.NOT_READY_TIMING: that the change has to be recorded before the primary continues is documented; when the lag crosses the limit is not. This page grows the lag by one second for every second the primary generates redo the target does not receive, starting from the lag as configured.'
-      : 'FSFO.NOT_READY_TIMING: that the change has to be recorded before the primary continues is documented; when the recording lands is not. This page draws it where the commit hang ends -- one NET_TIMEOUT after the acknowledgement stopped -- which is the instant the primary starts committing without the target.',
+      : 'FSFO.NOT_READY_TIMING: that the change has to be recorded before the primary continues is documented; when the recording lands is not. This page draws it where the commit hang ends -- one NET_TIMEOUT after the acknowledgement stopped, or at once when the target refused the connection (its instance gone, its host up) -- which is the instant the primary starts committing without the target.',
     ['FSFO.GUARANTEE_STALL', 'FSFO.STATUS_STALLED', 'DEST.NET_TIMEOUT', 'FSFO.TARGET_AUTO_CHANGE']);
 }
 

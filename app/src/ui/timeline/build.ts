@@ -1057,8 +1057,10 @@ function buildBraces(doc: TopologyDoc, f: Facts): BraceInput[] {
      instant itself -- the last acknowledgement plus NET_TIMEOUT -- is this
      page's model, and the brace says so where it is drawn. */
   if (f.outcome === 'maxprot-shutdown') {
-    if (f.abortAt !== null) {
-      const netTimeout = f.netTimeoutSeconds ?? 30;
+    /* No brace when the last standby refused the connection: the primary
+       waited for nothing, and the shutdown sits at the refusal itself. */
+    const netTimeout = f.ackWaitSeconds ?? f.netTimeoutSeconds ?? 30;
+    if (f.abortAt !== null && netTimeout > 0) {
       braces.push({
         key: 'maxprot-shutdown', a: Math.max(0, f.abortAt - netTimeout), b: f.abortAt,
         tone: 'br-rd', mono: true,

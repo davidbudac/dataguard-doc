@@ -212,6 +212,14 @@ export interface SimState {
   /** When the last synchronous acknowledgement went away. */
   ackLostSince: Seconds | null;
   /**
+   * How long LGWR waits on that loss before it drops the destination: the
+   * NET_TIMEOUT when the destination went quiet (its host, its site or the
+   * network gone), 0 when its instance is gone but its host refuses the
+   * connection (SHUTDOWN ABORT, a crashed instance). Kept after the loss
+   * ends, so the trace can say what the last one cost; null until a loss.
+   */
+  ackLostWait: Seconds | null;
+  /**
    * Whether there is an acknowledgement for this primary to lose.
    *
    * A commit hang is a destination that *stopped* acknowledging: the primary

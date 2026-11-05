@@ -16,7 +16,7 @@ import type { CitationId } from '../citations';
 import { lagLimitOf } from '../defaults';
 import type { HostId, MemberId, ObserverId, Seconds, SiteId } from '../ids';
 import {
-  applyNetEvent, buildReachability, hostUp, initialNetState, linkRttMs, liveInstances,
+  applyNetEvent, buildReachability, hostUp, initialNetState, linkRttMs, liveInstanceHosts, liveInstances,
   memberAlive, memberReachableFromHost, membersReachable, netSummary,
 } from '../net/graph';
 import type { NetState, Reachability } from '../net/graph';
@@ -42,7 +42,7 @@ import {
 import type { Readiness } from './fsfo';
 import type { CommitHangEnd } from './protection';
 import {
-  abortClaim, commitHangClaim, commitHangText, honestLevel, maxAvailDegraded, maxProtectionShutdown,
+  abortClaim, commitHangClaim, commitHangText, destRefusedClaim, honestLevel, maxAvailDegraded, maxProtectionShutdown,
   modeAfterFailover, netTimeoutForMode, netTimeoutOf, noStallClaim, stallClaim, syncAckDatabases,
   syncAckMembers,
 } from './protection';
@@ -125,6 +125,12 @@ export interface EngineFacts extends DerivedFacts {
    */
   netTimeoutSeconds: Seconds;
   /**
+   * How long LGWR waited on the last lost acknowledgement before dropping the
+   * destination: NET_TIMEOUT, or 0 when the standby refused the connection
+   * (its instance gone, its host up). Null when no acknowledgement was lost.
+   */
+  ackWaitSeconds: Seconds | null;
+  /**
    * When the master observer's own FastStartFailoverThreshold clock started:
    * "The clock starts when the observer FIRST loses its connection to the
    * primary database." Null while the observer has never lost the primary.
@@ -202,6 +208,8 @@ interface View {
   /** `from>to` of the primary's SYNC / FASTSYNC destinations that acknowledge now, and of those in service that are silent. */
   syncUp: string[];
   syncSilent: string[];
+  /** The silent ones whose instance is gone while their host refuses the connection: dropped at once, no NET_TIMEOUT wait. */
+  syncRefused: string[];
   /** The primary declares at least one SYNC or FASTSYNC destination, up or not. */
   syncDeclared: boolean;
   conditions: Conditions;
@@ -225,6 +233,10 @@ export function simulate(
   const findings: Finding[] = [];
   const seenFinding = new Set<string>();
   const seenDecision = new Set<string>();
+
+  /** When the commit hang on the current loss ends; null while no acknowledgement is lost. */
+  const hangUntil = (): Seconds | null =>
+    state.ackLostSince === null ? null : state.ackLostSince + (state.ackLostWait ?? 0);
 
   const addFinding = (f: Finding): void => {
     const k = `${f.id}|${f.subject.kind}|${f.subject.id ?? ''}`;
@@ -427,15 +439,17 @@ export function simulate(
           asString(abortClaim(at, doc.config.fsfo.thresholdSeconds)));
         break;
       case 'abort.maxprotection': {
-        const netTimeout = netTimeoutForMode(doc, view.graph);
+        const wait = state.ackLostWait ?? netTimeoutForMode(doc, view.graph);
         abort(p.member ?? state.primary, at, 'maxprotection',
-          asString(maxProtectionShutdown(at - netTimeout, netTimeout)));
+          asString(maxProtectionShutdown(at - wait, wait)));
         addFinding({
           id: 'PROT.MAXPROT_SHUTDOWN', severity: 'error', basis: 'model',
           cite: ['MAXPROT.SHUTS_PRIMARY', 'MAXPROT.TWO_STANDBYS', 'DEST.NET_TIMEOUT'],
           subject: { kind: 'member', id: (p.member ?? state.primary) as string },
           message: 'Maximum protection mode shuts the primary database down rather than allowing it to continue: no synchronous acknowledgement from a standby database is left.',
-          note: 'PROT.MAXPROT_SHUTDOWN_TIMING: the shutdown is documented, the instant is not. This engine draws it one NET_TIMEOUT after the last acknowledgement.',
+          note: wait === 0
+            ? 'PROT.MAXPROT_SHUTDOWN_TIMING: the shutdown is documented, the instant is not. The last synchronized standby refused the connection -- its instance gone, its host up -- so there is no NET_TIMEOUT to wait out, and this engine draws the shutdown at the instant of the refusal.'
+            : 'PROT.MAXPROT_SHUTDOWN_TIMING: the shutdown is documented, the instant is not. This engine draws it one NET_TIMEOUT after the last acknowledgement.',
         });
         break;
       }
@@ -1501,11 +1515,24 @@ export function simulate(
       seen.silent = 0;
     }
     for (const k of view.syncUp) if (!seen.up.includes(k)) seen.up.push(k);
+    /* A destination that refuses the connection is dropped the instant it
+       does, with no NET_TIMEOUT wait (computeView, `syncRefused`): it leaves
+       the set of destinations that can go silent until it acknowledges again. */
+    const refusedNow = view.syncRefused.filter((k) => seen.up.includes(k));
+    seen.up = seen.up.filter((k) => !refusedNow.includes(k));
     const silent = view.syncSilent.filter((k) => seen.up.includes(k)).length;
     const lostAll = state.ackArmed && view.syncAcks.length === 0;
-    state.ackLostSince = wantsAck && view.primaryAlive && (lostAll || silent > 0)
-      ? (silent > seen.silent ? at : state.ackLostSince ?? at)
-      : null;
+    if (!(wantsAck && view.primaryAlive && (lostAll || silent > 0))) {
+      state.ackLostSince = null;
+    } else if (silent > seen.silent || state.ackLostSince === null) {
+      /* A new silence restarts the wait; a loss that is only refusals has none. */
+      state.ackLostSince = at;
+      state.ackLostWait = silent > 0 || refusedNow.length === 0 ? netTimeoutForMode(doc, view.graph) : 0;
+    } else if (refusedNow.length > 0 && silent === 0 && state.ackLostWait !== null) {
+      /* Waiting on a destination that now refuses -- its host back without
+         its instance: the wait ends here. */
+      state.ackLostWait = Math.min(state.ackLostWait, at - state.ackLostSince);
+    }
     seen.silent = silent;
 
     if (state.phase === 'normal') {
@@ -1576,8 +1603,8 @@ export function simulate(
    */
   function trackReadiness(view: View, at: Seconds): void {
     const mode = modeNow(doc, state);
-    const hanging = state.ackLostSince !== null && mode !== 'MAXPERFORMANCE'
-      && state.ackLostSince + netTimeoutForMode(doc, view.graph) > at + EPS;
+    const until = hangUntil();
+    const hanging = until !== null && mode !== 'MAXPERFORMANCE' && until > at + EPS;
     const generating = view.primaryAlive && !view.stalled && !hanging;
     const gated = lagGated(doc);
     const limit = lagLimitOf(doc);
@@ -1649,7 +1676,8 @@ export function simulate(
    * How long after a member is cut off the primary carries on without it.
    *
    * One NET_TIMEOUT where the primary is waiting for it: the hop out of the
-   * primary is synchronous and that hop is what broke. Not at all where the
+   * primary is synchronous and that hop is what broke, with nothing answering
+   * at the other end. Not at all where that hop refuses the connection, or where the
    * primary never waits -- maximum performance, an ASYNC hop -- or where the
    * hop out of the primary is fine and the break is further along, behind a
    * far sync instance that is still acknowledging.
@@ -1659,7 +1687,9 @@ export function simulate(
     if (!f || !f.sync || f.firstHop === null || modeNow(doc, state) === 'MAXPERFORMANCE') return 0;
     const hopUp = view.graph.edges.some((e) => e.from === state.primary && e.to === f.firstHop
       && e.active && e.up);
-    return hopUp ? 0 : f.netTimeout;
+    if (hopUp) return 0;
+    /* A first hop that refuses the connection is dropped at once (computeView, `syncRefused`). */
+    return view.syncRefused.includes(`${state.primary as string}>${f.firstHop as string}`) ? 0 : f.netTimeout;
   }
 
   /**
@@ -2029,15 +2059,23 @@ export function simulate(
       }
     }
 
-    if (state.ackLostSince !== null && modeNow(doc, state) !== 'MAXPERFORMANCE') {
-      const until = state.ackLostSince + netTimeoutForMode(doc, view.graph);
+    const until = hangUntil();
+    if (state.ackLostSince !== null && until !== null && modeNow(doc, state) !== 'MAXPERFORMANCE') {
       const hangEnd: CommitHangEnd = modeNow(doc, state) !== 'MAXPROTECTION' ? 'drop'
         : view.syncAckDbs.length > 0 ? 'drop-another-remains' : 'shutdown';
-      /* One decision per hang: a second standby lost later is its own wait, and
-         it may end differently (the last synchronized standby shuts the primary down). */
-      decide(at, 'PROT.COMMIT_HANG', true,
-        asString(commitHangClaim(until, view.stalled, hangEnd), commitHangText(until, view.stalled, hangEnd)),
-        undefined, String(state.ackLostSince));
+      if (state.ackLostWait === 0 && !view.stalled) {
+        /* Refused, not silent: no hang to draw, the destination is dropped at once. */
+        const names = view.syncRefused.map((k) => k.split('>')[1] as string);
+        const claim = destRefusedClaim(names, hangEnd);
+        decide(at, 'PROT.DEST_REFUSED', true, asString(claim, claim.value),
+          undefined, String(state.ackLostSince));
+      } else {
+        /* One decision per hang: a second standby lost later is its own wait, and
+           it may end differently (the last synchronized standby shuts the primary down). */
+        decide(at, 'PROT.COMMIT_HANG', true,
+          asString(commitHangClaim(until, view.stalled, hangEnd), commitHangText(until, view.stalled, hangEnd)),
+          undefined, String(state.ackLostSince));
+      }
     }
 
     if (modeNow(doc, state) === 'MAXAVAILABILITY') {
@@ -2141,7 +2179,7 @@ export function simulate(
     /* Maximum protection with no synchronous acknowledgement from a database. */
     if (modeNow(doc, state) === 'MAXPROTECTION' && state.ackLostSince !== null
       && view.syncAckDbs.length === 0 && !state.abortedMembers.includes(state.primary)) {
-      const shutdown = maxProtectionShutdown(state.ackLostSince, netTimeoutForMode(doc, view.graph));
+      const shutdown = maxProtectionShutdown(state.ackLostSince, state.ackLostWait ?? netTimeoutForMode(doc, view.graph));
       if (shutdown.value <= at + EPS) {
         abort(state.primary, at, 'maxprotection', asString(shutdown));
       } else {
@@ -2190,7 +2228,7 @@ export function simulate(
     if (state.ackLostSince !== null && !view.stalled
       && (modeNow(doc, state) === 'MAXAVAILABILITY'
         || (modeNow(doc, state) === 'MAXPROTECTION' && view.syncAckDbs.length > 0))) {
-      const until = state.ackLostSince + netTimeoutForMode(doc, view.graph);
+      const until = hangUntil() ?? at;
       if (until > at + EPS) q.push({ kind: 'net.timeout', at: until }, 'net.timeout', true);
     }
   }
@@ -2665,6 +2703,20 @@ function computeView(doc: TopologyDoc, state: SimState, opts: ViewOpts): View {
     && (e.xpt === 'SYNC' || e.xpt === 'FASTSYNC') && e.active);
   const syncUp = syncEdges.filter((e) => e.up).map((e) => `${e.from as string}>${e.to as string}`);
   const syncSilent = syncEdges.filter((e) => !e.up).map((e) => `${e.from as string}>${e.to as string}`);
+  /* How a destination went silent decides how long LGWR waits on it. One
+     whose instance is gone while its host still runs -- SHUTDOWN ABORT, a
+     crashed instance -- has its transport session closed by that host, so the
+     primary's next write fails at once and the reconnect is refused just as
+     fast. Only a destination that cannot answer at all -- its host or site
+     down, the network between cut -- leaves LGWR waiting out NET_TIMEOUT. */
+  const primaryHosts = primaryAlive ? liveInstanceHosts(doc, net, primary) : [];
+  const syncRefused = syncEdges.filter((e) => {
+    if (e.up) return false;
+    const m = doc.members.find((x) => x.id === e.to);
+    if (!m || liveInstances(doc, net, m).length > 0) return false;
+    return m.instances.some((i) => hostUp(doc, net, i.host)
+      && primaryHosts.some((h) => reach.reachable(h, i.host)));
+  }).map((e) => `${e.from as string}>${e.to as string}`);
   const syncDeclared = graph.edges.some((e) => e.from === state.primary
     && (e.xpt === 'SYNC' || e.xpt === 'FASTSYNC'));
   const redoFlowing = primaryAlive
@@ -2676,7 +2728,7 @@ function computeView(doc: TopologyDoc, state: SimState, opts: ViewOpts): View {
     reach, graph, primary, primaryAlive, fsfoEnabled, master, masterHost,
     armed: fsfoEnabled && master !== null,
     obsSeesPrimary, candidates, targetSeesPrimary, obsSeesTarget, targetAlive,
-    anyTargetSeesPrimary, actors, stalled, syncAcks: acks, syncAckDbs: ackDbs, syncUp, syncSilent, syncDeclared,
+    anyTargetSeesPrimary, actors, stalled, syncAcks: acks, syncAckDbs: ackDbs, syncUp, syncSilent, syncRefused, syncDeclared,
     conditions: {
       stalled, standbyGone, redoFlowing,
       pmyReachable: primaryReachableFromOutside(doc, net, primary, primaryAlive),
@@ -2768,7 +2820,7 @@ function memberStateOf(
       return 'mounted-noapply';
     }
     if (state.ackLostSince !== null && modeNow(doc, state) !== 'MAXPERFORMANCE'
-      && state.ackLostSince + netTimeoutForMode(doc, view.graph) > at + EPS) return 'commit-hang';
+      && state.ackLostSince + (state.ackLostWait ?? 0) > at + EPS) return 'commit-hang';
     return 'open-rw';
   }
 
@@ -2947,6 +2999,7 @@ function deriveFacts(
     protectionLevel: honestLevel(view.graph.protectionLevel, modeNow(doc, state)),
     abortReason: state.abortReason,
     netTimeoutSeconds: netTimeoutForMode(doc, view.graph),
+    ackWaitSeconds: state.ackLostWait,
     thresholdStartAt: state.thresholdStartAt,
     stallStartAt: state.stallStartAt,
   };
@@ -3158,6 +3211,7 @@ function initialState(doc: TopologyDoc): SimState {
     thresholdStartAt: null,
     stallStartAt: null,
     ackLostSince: null,
+    ackLostWait: null,
     /* The configuration as declared is acknowledging; the first epoch is where
        a destination can start to be missed. */
     ackArmed: true,

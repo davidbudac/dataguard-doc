@@ -634,6 +634,18 @@ const SIM: SimProbe[] = [
       && String(d.claim.value).includes('no fast-start failover clock starts')),
     lanes: ['prm01'],
   },
+  /* Reported by the owner on 2026-11-05, outside a review. The fix rests on the
+     NET_TIMEOUT sentence and is labelled `inferred` (destRefusedClaim): a
+     review with a live configuration should confirm it there. */
+  {
+    finding: 'USR-01',
+    title: 'MaxAvailability, SHUTDOWN ABORT of the standby (its host up): the primary hangs commits for a full NET_TIMEOUT',
+    doc: () => classic(),
+    events: () => [{ at: 10, kind: 'member.down', member: memberId('sby01') }],
+    oracle: '"The NET_TIMEOUT attribute specifies the number of seconds that the LGWR background process blocks waiting for a redo transport destination to acknowledge redo data sent to it. If an acknowledgement is not received within NET_TIMEOUT seconds, an error is logged and the redo transport session to that destination is terminated." (19c and 26ai LOG_ARCHIVE_DEST_n attributes) -- a ceiling on a wait for a reply; a standby host that is up refuses the connection at once',
+    open: (t) => segments(t, 'prm01').some((s) => s.state === 'commit-hang'),
+    lanes: ['prm01'],
+  },
 ];
 
 /* ---------------- B. rules and generated text ---------------- */
